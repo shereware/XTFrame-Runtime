@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "doctest.h"
+#include "test_temp.h"
 #include "xt/compile/compile.h"
 #include "xt/document.h"
 #include "xt/flow/flow_graph.h"
@@ -436,7 +437,7 @@ std::unique_ptr<Document> docWithIds(TextShaper& shaper, const std::vector<std::
     }
     source += "</div>\n</body>\n</xt>\n";
 
-    const std::string path = std::string(XT_TEST_FLOW_DIR) + "/../../build/xt_t123_ids.xt";
+    const std::string path = (xt::test::tempDir() / "xt_t123_ids.xt").string();
     {
         std::ofstream out(path, std::ios::binary);
         REQUIRE(out.good());

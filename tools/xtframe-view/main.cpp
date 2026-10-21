@@ -322,6 +322,8 @@ struct Args {
     bool showDamage = false;
     bool dumpFlowValues = false;
     bool dumpCommands = false;  // T-202: print the last headless frame's CommandList.
+    std::string dumpPorts;      // T-401: --dump-ports <file>: the main UI's port table as JSON.
+    bool logPorts = false;      // T-401: --log-ports: print every port event of a headless run.
     bool noFlow = false;
     bool strict = false;    // T-392: --strict (compile strict; runtime warnings printed at the end).
     bool flowAuto = false;  // Set by resolveInput(): `flow` was guessed, not given.
@@ -333,6 +335,10 @@ struct Args {
     /// T-389 (measurement only): --synth-pointer N queues N PointerMove events before every
     /// frame's update(), stepping along the viewport diagonal (16 = a 1000 Hz mouse at 60 fps).
     uint32_t synthPointer = 0;
+    /// T-403 (measurement only): --synth-ports N writes the first N document-level Number ports
+    /// (declaration order, any direction) before every frame's update(), each a different
+    /// triangle wave in 0..100 that changes every frame (docs/tasks/T-403.md item 2).
+    uint32_t synthPorts = 0;
     uint32_t warmup = 0;            // T-165: windowed --screenshot frames rendered before the capture.
     float warmupDt = 1.0f / 60.0f;  // T-165: dt of each warm-up frame.
     uint32_t screenshotEvery = 0;   // T-165: also capture every Nth warm-up frame (0 = off).
@@ -677,6 +683,12 @@ bool parseArgs(int argc, char** argv, Args& out) {
             out.pointers.push_back(pointer);
         } else if (arg == "--dump-flow-values") {
             out.dumpFlowValues = true;
+        } else if (arg == "--dump-ports") {
+            if (!needValue("--dump-ports", out.dumpPorts)) {  // T-401.
+                return false;
+            }
+        } else if (arg == "--log-ports") {
+            out.logPorts = true;  // T-401.
         } else if (arg == "--dump-every") {
             std::string v;
             if (!needValue("--dump-every", v)) {
@@ -796,6 +808,12 @@ bool parseArgs(int argc, char** argv, Args& out) {
                 return false;
             }
             out.synthPointer = static_cast<uint32_t>(std::strtoul(v.c_str(), nullptr, 10));
+        } else if (arg == "--synth-ports") {
+            std::string v;
+            if (!needValue("--synth-ports", v)) {
+                return false;
+            }
+            out.synthPorts = static_cast<uint32_t>(std::strtoul(v.c_str(), nullptr, 10));
         } else if (arg == "--show-damage") {
             out.showDamage = true;
         } else if (arg == "--perf-csv") {
@@ -1258,8 +1276,14 @@ void printUsage(std::FILE* out) {
         "  --dump-flow-values      print `<node>.<port> = <value>` for the --flow graph at the end\n"
         "  --dump-every N          also print that block every N frames (implies the above)\n"
         "  --dump-commands         print the last headless frame's command list\n"
+        "  --dump-ports FILE       headless: write the main UI's declared ports (name, type,\n"
+        "                          direction, default) to FILE as JSON before the first frame\n"
+        "  --log-ports             headless: print `port <kind> <name> = <value> (frame N)` for\n"
+        "                          every port change / emit / list change of the main UI\n"
         "  --perf                  frame tracing; --perf-csv <file> writes one row per frame\n"
         "  --synth-pointer N       measurement: N PointerMove events per frame along the diagonal\n"
+        "  --synth-ports N         measurement: write the first N document-level number ports\n"
+        "                          every frame (a different 0..100 triangle wave each)\n"
         "  --show-damage           outline the dirty rectangles (needs --headless)\n"
         "  --bind-texture <name>=<file.png>\n"
         "                          bind the PNG as the host texture `engine://<name>` (repeatable;\n"
@@ -1756,6 +1780,22 @@ void applyScriptedInput(const Args& args, xt::Context& ctx, xt::DocumentHandle h
             pushPointer(ctx, xt::InputEvent::PointerMove, xt::Vec2{box.x + box.w * t, box.y + box.h * t});
         }
     }
+    // T-403: synthetic host port traffic, one write per port per frame.
+    if (args.synthPorts > 0) {
+        uint32_t written = 0;
+        for (const xt::PortRecord& port : doc->ports()) {
+            if (written == args.synthPorts) {
+                break;
+            }
+            if (!port.documentLevel || port.type != xt::PortValueType::Number) {
+                continue;
+            }
+            const uint32_t k = (frame * 3u + written * 7u) % 200u;
+            const float value = static_cast<float>(k < 100u ? k : 200u - k);
+            (void)doc->setPort(port.id, xt::Value::ofFloat(value));
+            ++written;
+        }
+    }
 }
 
 /// One FlowRuntime port value as --dump-flow-values prints it.
@@ -1774,6 +1814,116 @@ std::string formatPortValue(const xt::flow::PortValue& value) {
             return value.s;
     }
     return {};
+}
+
+/// T-401: a PortValueType as the .xt `port:` declaration spells it.
+const char* portTypeName(xt::PortValueType type) {
+    switch (type) {
+        case xt::PortValueType::Number:
+            return "number";
+        case xt::PortValueType::String:
+            return "string";
+        case xt::PortValueType::Bool:
+            return "bool";
+        case xt::PortValueType::Color:
+            return "color";
+        case xt::PortValueType::Vec2:
+            return "vec2";
+        case xt::PortValueType::Vec3:
+            return "vec3";
+        case xt::PortValueType::Entity:
+            return "entity";
+        case xt::PortValueType::Enum:
+            return "enum";
+        case xt::PortValueType::Struct:
+            return "struct";
+        case xt::PortValueType::List:
+            return "list";
+        case xt::PortValueType::Texture:
+            return "texture";
+        case xt::PortValueType::Event:
+            return "event";
+    }
+    return "unknown";
+}
+
+/// T-401: `text` as a JSON string literal (quotes included).
+std::string jsonQuote(std::string_view text) {
+    std::string out = "\"";
+    for (const char c : text) {
+        switch (c) {
+            case '"':
+                out += "\\\"";
+                break;
+            case '\\':
+                out += "\\\\";
+                break;
+            case '\n':
+                out += "\\n";
+                break;
+            case '\r':
+                out += "\\r";
+                break;
+            case '\t':
+                out += "\\t";
+                break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    char buffer[8];
+                    std::snprintf(buffer, sizeof(buffer), "\\u%04x", static_cast<unsigned>(c));
+                    out += buffer;
+                } else {
+                    out += c;
+                }
+        }
+    }
+    out += '"';
+    return out;
+}
+
+/// T-401 (43 §43.4): --dump-ports: the Document's declared ports, in PORT order, as JSON (LF line
+/// endings, one port per line): lookup name, type, direction, default (Document::portText() before
+/// the first frame; "" for struct / list / event) and, where declared, the enum values, a
+/// `list<T>`'s entry type or the struct / list entry fields. False (after its stderr line) when
+/// the file cannot be written.
+bool dumpPorts(const std::string& path, const std::string& uiName, const xt::Document& doc) {
+    static const char* const kDirs[] = {"in", "out", "call"};
+    std::string json = "{\n  \"ui\": " + jsonQuote(uiName) + ",\n  \"ports\": [";
+    const std::vector<xt::PortRecord> ports = doc.ports();
+    for (size_t i = 0; i < ports.size(); ++i) {
+        const xt::PortRecord& port = ports[i];
+        const int dir = static_cast<int>(port.dir);
+        json += i == 0 ? "\n    " : ",\n    ";
+        json += "{\"name\": " + jsonQuote(port.qualifiedName) + ", \"type\": \"" + portTypeName(port.type) +
+                "\", \"dir\": \"" + (dir >= 0 && dir <= 2 ? kDirs[dir] : "unknown") +
+                "\", \"default\": " + jsonQuote(doc.portText(port.id));
+        if (port.type == xt::PortValueType::List && port.fields.empty()) {
+            json += std::string(", \"entry\": \"") + portTypeName(port.entryType) + "\"";
+        }
+        if (!port.enumValues.empty()) {
+            json += ", \"values\": [";
+            for (size_t k = 0; k < port.enumValues.size(); ++k) {
+                json += (k == 0 ? "" : ", ") + jsonQuote(port.enumValues[k]);
+            }
+            json += "]";
+        }
+        if (!port.fields.empty()) {
+            json += ", \"fields\": [";
+            for (size_t k = 0; k < port.fields.size(); ++k) {
+                json += std::string(k == 0 ? "" : ", ") + "[" + jsonQuote(port.fields[k].first) + ", \"" +
+                        portTypeName(port.fields[k].second) + "\"]";
+            }
+            json += "]";
+        }
+        json += "}";
+    }
+    json += ports.empty() ? "]\n}\n" : "\n  ]\n}\n";
+    std::ofstream file(pathFromUtf8(path), std::ios::binary);
+    if (!file || !file.write(json.data(), static_cast<std::streamsize>(json.size()))) {
+        std::fprintf(stderr, "xtframe-view: --dump-ports: cannot write '%s'\n", path.c_str());
+        return false;
+    }
+    return true;
 }
 
 /// --dump-flow-values: `<node>.<port> = <value>`, one per line, on stdout. T-193: `title` names
@@ -2044,6 +2194,24 @@ int main(int argc, char** argv) {
         if (!loadInto(ctx, args.input, rootDir, args.assetRoots, handle)) {
             return 1;
         }
+        // T-401: --dump-ports / --log-ports (43 §43.4 corpus); the table holds the declared defaults.
+        uint32_t portLogFrame = 0;
+        if (xt::Document* doc = ctx.document(handle)) {
+            if (!args.dumpPorts.empty() &&
+                !dumpPorts(args.dumpPorts, args.ui.empty() ? args.input : args.ui, *doc)) {
+                return 1;
+            }
+            if (args.logPorts) {
+                doc->addPortListener([doc, &portLogFrame](const xt::PortEvent& event) {
+                    static const char* const kKinds[] = {"changed", "emit", "list"};
+                    const int kind = static_cast<int>(event.kind);
+                    std::printf("xtframe-view: port %s %s = %s (frame %u)\n",
+                                kind >= 0 && kind <= 2 ? kKinds[kind] : "unknown",
+                                doc->portInfo(event.port).qualifiedName.c_str(),
+                                doc->portText(event.port).c_str(), portLogFrame);
+                });
+            }
+        }
         ctx.setViewport(xt::Rect{0, 0, static_cast<float>(args.width), static_cast<float>(args.height)},
                         1.0f);
         ctx.setDevice(args.device);  // T-176 (validated by parseArgs()).
@@ -2127,6 +2295,7 @@ int main(int argc, char** argv) {
         uint32_t frameCount = args.frames > 0 ? args.frames : 1;
         for (uint32_t frame = 0; frame < frameCount; ++frame) {
             float frameDt = frame == 0 ? 0.0f : dt;
+            portLogFrame = frame;
             // T-125: queued before update(), which drains and dispatches the queue first.
             applyScriptedInput(args, ctx, handle, frame, systemEvent);
             ctx.update(frameDt);

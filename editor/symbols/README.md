@@ -12,6 +12,12 @@ The symbols every UI Project can use without drawing anything (docs/design/30-ui
 The build copies this directory next to `xtframe-editor` and `xtframe-pack`
 (`<applicationDirPath>/symbols`) and `cmake --install` puts it in `bin/symbols`.
 
+## Licence
+
+The whole library (symbols, tokens, index and thumbnails) is dedicated to the public domain
+under CC0-1.0 (`LICENSE`, draft pending review): use, change and ship it in any project,
+including commercial ones, without attribution.
+
 ## Using a symbol
 
 Link the library file from the project's symbol directory and place instances:

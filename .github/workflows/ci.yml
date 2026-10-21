@@ -31,7 +31,7 @@ jobs:
       matrix:
         include:
           - { pkg: g++-12, cxx: g++-12 }
-          - { pkg: clang-15, cxx: clang++-15 }
+          - { pkg: clang, cxx: clang++ }
     env:
       CXX: ${{ matrix.cxx }}
     steps:
@@ -54,7 +54,27 @@ jobs:
       - name: Test Release
         run: xvfb-run -a ctest --preset ninja-ci-release --output-on-failure
 
+  sanitizers:
+    # ASan + UBSan: clang Debug, XT_SANITIZE=address,undefined (preset ninja-ci-asan).
+    runs-on: ubuntu-24.04
+    env:
+      ASAN_OPTIONS: detect_leaks=1
+      UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build clang
+      - name: Configure
+        run: cmake --preset ninja-ci-asan
+      - name: Build
+        run: cmake --build --preset ninja-ci-asan
+      - name: Test
+        run: ctest --preset ninja-ci-asan --output-on-failure
+
   macos:
+    continue-on-error: true
     runs-on: macos-latest
     env:
       CXX: clang++

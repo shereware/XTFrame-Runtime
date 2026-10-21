@@ -1,0 +1,13 @@
+<xt>
+  <head>
+    <style>
+      #row { width: 100px; height: 20px; background-color: #3060a0; hit-slop: 4px 1em; }
+    </style>
+  </head>
+  <body>
+    <div id="P" port:groups="list<struct{name: string, rows: list<struct{t: string}>}>"></div>
+    <repeat port="groups" id="Rows">
+      <div id="row"><span id="name" bind:text="item(name)"></span></div>
+    </repeat>
+  </body>
+</xt>

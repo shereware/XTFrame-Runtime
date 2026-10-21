@@ -81,6 +81,10 @@ struct UiInfo {
     /// How a host places the UI in a viewport whose size differs from `size` (§22.3 `fit`):
     /// "native", "stretch", "contain", "cover" or "center". A missing key reads as "native".
     std::string fit = "native";
+    /// T-408 (docs/design/43-compatibility-and-versions.md §43.6, 22 §22.3 `contract`): the UI's
+    /// contract hash, 16 lowercase hex digits (bundle::contractHash()); empty for a bundle packed
+    /// before it existed.
+    std::string contract;
 };
 
 /// One theme of a bundle (docs/design/22-bundle.md §22.10 `themes[]`, T-170): a `.xts` file of
@@ -176,6 +180,9 @@ struct BundleSpec {
     UiScaleRule uiscaleRule = UiScaleRule::Height;
     /// T-345: `spec.uiscaleClamp` / `spec.uiscaleDpiFloor` (missing = no clamp, floor 0).
     UiScaleLimits uiscaleLimits;
+    /// T-407 (43 §43.3): `spec.behavior`, the project's behavior version (every UI's IR META carries
+    /// the same value); missing = 0, written only when not 0.
+    uint32_t behavior = 0;
 };
 
 /// T-199 (docs/design/22-bundle.md §22.10): one `assets[]` row a host may want to know about
@@ -426,7 +433,13 @@ void setBundleFileReader(BundleFileReader reader, void* user = nullptr);
 /// `ctx` must have been built with `bundle`'s own resolver -- `ContextConfig.assets =
 /// &bundle.assets()` -- otherwise the UI's `assets/<hash>.<ext>` names resolve against something
 /// else; this cannot be checked from here, so it is the host's responsibility.
-Result<DocumentHandle> loadUi(Context& ctx, Bundle& bundle, std::string_view uiId);
+///
+/// T-408 (43 §43.6, 40 §40.6.1 contract lock): a non-empty `expectContract` (the `kContractHash` /
+/// `Ports.ContractHash` of the `--gen-ports` file the host was compiled against) must equal the
+/// manifest's `uis[].contract`; otherwise nothing is loaded and kIncompatible is returned (also
+/// when the manifest has no contract). Empty: no check.
+Result<DocumentHandle> loadUi(Context& ctx, Bundle& bundle, std::string_view uiId,
+                              std::string_view expectContract = {});
 
 /// Re-reads `uiId`'s `.xtir` and hands it to Context::reloadDocument(), so `handle` keeps its
 /// identity while its content is replaced (hot reload, §22.5). Same error mapping as loadUi(),

@@ -1,0 +1,32 @@
+<xt>
+  <head>
+    <style>
+      @keyframes slide { from { translate: 0px 0px; } to { translate: 40px 0px; } }
+      #panel {
+        position: absolute; left: 20px; top: 20px; width: 220px; height: 140px;
+        background-color: #204060; border-radius: 12px; border: 3px #80c0ff;
+      }
+      #bar {
+        position: absolute; left: 16px; top: 20px; width: 100px; height: 20px;
+        background-color: #ffcc00; animation: slide 1s linear infinite;
+      }
+      #dot {
+        position: absolute; left: 24px; top: 70px; width: 40px; height: 40px;
+        border-radius: 20px; background-color: #ff4060; opacity: 0.8;
+      }
+      #tab {
+        position: absolute; left: 120px; top: 70px; width: 80px; height: 40px;
+        background-color: #608020;
+      }
+      #tab.full { background-color: #40ff60; }
+      #dot.on { background-color: #ffffff; }
+    </style>
+  </head>
+  <body>
+    <div id="panel" port:hp="number in">
+      <div id="bar"></div>
+      <div id="dot" on:click="class(on, toggle)"></div>
+      <div id="tab" bind:class.full="hp | ge(50)"></div>
+    </div>
+  </body>
+</xt>

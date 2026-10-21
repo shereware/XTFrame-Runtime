@@ -411,6 +411,11 @@ public:
     /// Documents never share a serial, even when the second lives at the first one's address
     /// under the same handle. Context::documentSerial() is the per-handle lookup.
     uint32_t loadSerial() const { return m_ir.loadSerial(); }
+    /// T-407 (43 §43.3): the project's behavior version, IR META `behavior` (0 without it). From
+    /// kBehaviorFlowSignalCoalescing (xt/version.h) on, bindings, continuous-event triggers and a
+    /// flow's value signals are coalesced per frame (27 §27.4.1); below it every event is handled
+    /// at once, as before T-389.
+    uint32_t behavior() const { return m_ir.meta().behavior(); }
     /// T-203 (docs/design/18-effects.md §18.7, the host contract): the custom effect `asset`'s
     /// ShaderRef (HLSL `source`, GLSL, parameter table, `expandPx`, `fallback`), or nullptr when
     /// `asset` is not a `.xtfx` asset of this document. Its text ranges index shaderText(), its

@@ -1,0 +1,152 @@
+<xt>
+  <head>
+    <link href="flow-big.xts"/>
+    <title>Flow Big Large</title>
+  </head>
+  <body>
+    <div id="flow-big" port:src0="number out = 0" port:src1="number out = 0" port:src2="number out = 0" port:src3="number out = 0" port:src4="number out = 0" port:src5="number out = 0" port:src6="number out = 0" port:src7="number out = 0" port:src8="number out = 0" port:src9="number out = 0" port:src10="number out = 0" port:src11="number out = 0" port:src12="number out = 0" port:src13="number out = 0" port:src14="number out = 0" port:src15="number out = 0" port:src16="number out = 0" port:src17="number out = 0" port:src18="number out = 0" port:src19="number out = 0" port:in0="number in = 0" port:in1="number in = 0" port:in2="number in = 0" port:in3="number in = 0" port:in4="number in = 0" port:in5="number in = 0" port:in6="number in = 0" port:in7="number in = 0" port:in8="number in = 0" port:in9="number in = 0" port:in10="number in = 0" port:in11="number in = 0" port:in12="number in = 0" port:in13="number in = 0" port:in14="number in = 0" port:in15="number in = 0" port:in16="number in = 0" port:in17="number in = 0" port:in18="number in = 0" port:in19="number in = 0" port:in20="number in = 0" port:in21="number in = 0" port:in22="number in = 0" port:in23="number in = 0" port:in24="number in = 0" port:in25="number in = 0" port:in26="number in = 0" port:in27="number in = 0" port:in28="number in = 0" port:in29="number in = 0">
+      <div id="hv0" class="cell"/>
+      <div id="hv1" class="cell"/>
+      <div id="hv2" class="cell"/>
+      <div id="hv3" class="cell"/>
+      <div id="hv4" class="cell"/>
+      <div id="hv5" class="cell"/>
+      <div id="hv6" class="cell"/>
+      <div id="hv7" class="cell"/>
+      <div id="hv8" class="cell"/>
+      <div id="hv9" class="cell"/>
+      <div id="hv10" class="cell"/>
+      <div id="hv11" class="cell"/>
+      <div id="hv12" class="cell"/>
+      <div id="hv13" class="cell"/>
+      <div id="hv14" class="cell"/>
+      <div id="hv15" class="cell"/>
+      <div id="hv16" class="cell"/>
+      <div id="hv17" class="cell"/>
+      <div id="hv18" class="cell"/>
+      <div id="hv19" class="cell"/>
+      <div id="hv20" class="cell"/>
+      <div id="hv21" class="cell"/>
+      <div id="st0" class="box"/>
+      <div id="st1" class="box"/>
+      <div id="st2" class="box"/>
+      <div id="st3" class="box"/>
+      <div id="st4" class="box"/>
+      <div id="st5" class="box"/>
+      <div id="st6" class="box"/>
+      <div id="st7" class="box"/>
+      <div id="st8" class="box"/>
+      <div id="st9" class="box"/>
+      <div id="st10" class="box"/>
+      <div id="st11" class="box"/>
+      <div id="st12" class="box"/>
+      <div id="st13" class="box"/>
+      <div id="st14" class="box"/>
+      <div id="st15" class="box"/>
+      <div id="st16" class="box"/>
+      <div id="st17" class="box"/>
+      <div id="st18" class="box"/>
+      <div id="st19" class="box"/>
+      <div id="st20" class="box"/>
+      <div id="st21" class="box"/>
+      <div id="st22" class="box"/>
+      <div id="st23" class="box"/>
+      <div id="st24" class="box"/>
+      <div id="st25" class="box"/>
+      <div id="st26" class="box"/>
+      <div id="st27" class="box"/>
+      <div id="st28" class="box"/>
+      <div id="st29" class="box"/>
+      <div id="st30" class="box"/>
+      <div id="st31" class="box"/>
+      <div id="st32" class="box"/>
+      <div id="st33" class="box"/>
+      <div id="st34" class="box"/>
+      <div id="st35" class="box"/>
+      <div id="st36" class="box"/>
+      <div id="st37" class="box"/>
+      <div id="st38" class="box"/>
+      <div id="st39" class="box"/>
+      <span id="tx0" class="label">0</span>
+      <span id="tx1" class="label">0</span>
+      <span id="tx2" class="label">0</span>
+      <span id="tx3" class="label">0</span>
+      <span id="tx4" class="label">0</span>
+      <span id="tx5" class="label">0</span>
+      <span id="tx6" class="label">0</span>
+      <span id="tx7" class="label">0</span>
+      <span id="tx8" class="label">0</span>
+      <span id="tx9" class="label">0</span>
+      <span id="tx10" class="label">0</span>
+      <span id="tx11" class="label">0</span>
+      <span id="tx12" class="label">0</span>
+      <span id="tx13" class="label">0</span>
+      <span id="tx14" class="label">0</span>
+      <span id="tx15" class="label">0</span>
+      <span id="tx16" class="label">0</span>
+      <span id="tx17" class="label">0</span>
+      <span id="tx18" class="label">0</span>
+      <span id="tx19" class="label">0</span>
+      <span id="tx20" class="label">0</span>
+      <span id="tx21" class="label">0</span>
+      <span id="tx22" class="label">0</span>
+      <span id="tx23" class="label">0</span>
+      <span id="tx24" class="label">0</span>
+      <span id="tx25" class="label">0</span>
+      <span id="tx26" class="label">0</span>
+      <span id="tx27" class="label">0</span>
+      <span id="tx28" class="label">0</span>
+      <span id="tx29" class="label">0</span>
+      <div id="sb0" class="bar" bind:height="src0 | range(0,100,0px,40px)"/>
+      <div id="sb1" class="bar" bind:height="src1 | range(0,100,0px,40px)"/>
+      <div id="sb2" class="bar" bind:height="src2 | range(0,100,0px,40px)"/>
+      <div id="sb3" class="bar" bind:height="src3 | range(0,100,0px,40px)"/>
+      <div id="sb4" class="bar" bind:height="src4 | range(0,100,0px,40px)"/>
+      <div id="sb5" class="bar" bind:height="src5 | range(0,100,0px,40px)"/>
+      <div id="sb6" class="bar" bind:height="src6 | range(0,100,0px,40px)"/>
+      <div id="sb7" class="bar" bind:height="src7 | range(0,100,0px,40px)"/>
+      <div id="sb8" class="bar" bind:height="src8 | range(0,100,0px,40px)"/>
+      <div id="sb9" class="bar" bind:height="src9 | range(0,100,0px,40px)"/>
+      <div id="sb10" class="bar" bind:height="src10 | range(0,100,0px,40px)"/>
+      <div id="sb11" class="bar" bind:height="src11 | range(0,100,0px,40px)"/>
+      <div id="sb12" class="bar" bind:height="src12 | range(0,100,0px,40px)"/>
+      <div id="sb13" class="bar" bind:height="src13 | range(0,100,0px,40px)"/>
+      <div id="sb14" class="bar" bind:height="src14 | range(0,100,0px,40px)"/>
+      <div id="sb15" class="bar" bind:height="src15 | range(0,100,0px,40px)"/>
+      <div id="sb16" class="bar" bind:height="src16 | range(0,100,0px,40px)"/>
+      <div id="sb17" class="bar" bind:height="src17 | range(0,100,0px,40px)"/>
+      <div id="sb18" class="bar" bind:height="src18 | range(0,100,0px,40px)"/>
+      <div id="sb19" class="bar" bind:height="src19 | range(0,100,0px,40px)"/>
+      <div id="ib0" class="bar" bind:width="in0 | range(0,100,0px,120px)"/>
+      <div id="ib1" class="bar" bind:width="in1 | range(0,100,0px,120px)"/>
+      <div id="ib2" class="bar" bind:width="in2 | range(0,100,0px,120px)"/>
+      <div id="ib3" class="bar" bind:width="in3 | range(0,100,0px,120px)"/>
+      <div id="ib4" class="bar" bind:width="in4 | range(0,100,0px,120px)"/>
+      <div id="ib5" class="bar" bind:width="in5 | range(0,100,0px,120px)"/>
+      <div id="ib6" class="bar" bind:width="in6 | range(0,100,0px,120px)"/>
+      <div id="ib7" class="bar" bind:width="in7 | range(0,100,0px,120px)"/>
+      <div id="ib8" class="bar" bind:width="in8 | range(0,100,0px,120px)"/>
+      <div id="ib9" class="bar" bind:width="in9 | range(0,100,0px,120px)"/>
+      <div id="ib10" class="bar" bind:width="in10 | range(0,100,0px,120px)"/>
+      <div id="ib11" class="bar" bind:width="in11 | range(0,100,0px,120px)"/>
+      <div id="ib12" class="bar" bind:width="in12 | range(0,100,0px,120px)"/>
+      <div id="ib13" class="bar" bind:width="in13 | range(0,100,0px,120px)"/>
+      <div id="ib14" class="bar" bind:width="in14 | range(0,100,0px,120px)"/>
+      <div id="ib15" class="bar" bind:width="in15 | range(0,100,0px,120px)"/>
+      <div id="ib16" class="bar" bind:width="in16 | range(0,100,0px,120px)"/>
+      <div id="ib17" class="bar" bind:width="in17 | range(0,100,0px,120px)"/>
+      <div id="ib18" class="bar" bind:width="in18 | range(0,100,0px,120px)"/>
+      <div id="ib19" class="bar" bind:width="in19 | range(0,100,0px,120px)"/>
+      <div id="ib20" class="bar" bind:width="in20 | range(0,100,0px,120px)"/>
+      <div id="ib21" class="bar" bind:width="in21 | range(0,100,0px,120px)"/>
+      <div id="ib22" class="bar" bind:width="in22 | range(0,100,0px,120px)"/>
+      <div id="ib23" class="bar" bind:width="in23 | range(0,100,0px,120px)"/>
+      <div id="ib24" class="bar" bind:width="in24 | range(0,100,0px,120px)"/>
+      <div id="ib25" class="bar" bind:width="in25 | range(0,100,0px,120px)"/>
+      <div id="ib26" class="bar" bind:width="in26 | range(0,100,0px,120px)"/>
+      <div id="ib27" class="bar" bind:width="in27 | range(0,100,0px,120px)"/>
+      <div id="ib28" class="bar" bind:width="in28 | range(0,100,0px,120px)"/>
+      <div id="ib29" class="bar" bind:width="in29 | range(0,100,0px,120px)"/>
+    </div>
+  </body>
+</xt>

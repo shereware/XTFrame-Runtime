@@ -50,7 +50,9 @@ bool emitPorts(const DomTree& dom, const std::vector<ExpandedSymbolInstance>& in
 
 /// T-385 (27 §27.3.2): renames every `bind:state.Disabled` attribute to `bind:disabled` (the
 /// built-in state, so no custom state of that name is registered). Call before emitPorts().
-void normalizeBindAliases(DomTree& dom);
+/// T-408: every binding alias of xt/compile/aliases.h is renamed this way, each use reported
+/// through DiagnosticSink::deprecated() at `fileName` and the element's position.
+void normalizeBindAliases(DomTree& dom, std::string_view fileName, DiagnosticSink& sink);
 
 /// T-385 (27 §27.3.2): the literal port values on `<use>`: each ExpandedSymbolInstance::useAttrs
 /// entry naming a port the instance declares directly (scope = the instance root) becomes that
@@ -103,5 +105,33 @@ bool emitBindings(const DomTree& dom, const std::vector<ExpandedSymbolInstance>&
 bool compileConverterChain(const DomTree& dom, const PortScopes& scopes, IrWriter& writer, uint32_t element,
                            std::string_view converters, std::vector<IrConverterStep>& steps,
                            std::string& err);
+
+/// T-411 (27 §27.2.3): a trigger action value that starts at a bind source, compiled by
+/// compileActionValue(). `steps` are the converter steps (for an Item head they begin with the
+/// step that reads the entry: `item(<field>)`, `index` or `count`, as a kBindRepeatItem binding).
+struct ActionValue {
+    enum class Head : uint8_t {
+        Number,  ///< A constant number (`true` / `false` are 1 / 0) followed by converters.
+        String,  ///< A quoted constant followed by converters.
+        Port,    ///< `port(<name>)`: that port's value when the action runs.
+        Item,    ///< `item(<field>)`, `item()`, `repeat.item(...)`, `repeat.index`, `repeat.count`.
+    };
+    Head head = Head::Number;
+    float number = 0;
+    std::string text;  ///< Head::String: the unquoted constant.
+    int port = -1;     ///< Head::Port: the PORT index.
+    std::vector<IrConverterStep> steps;
+};
+
+/// T-411 (27 §27.2.3): compiles a `set(<port>, <value>)` value that is a bind-source expression,
+/// as seen from DOM node `element`: a head -- `port(<name>)` (an in or out port of the scope; not
+/// a call or event port), a repeat term inside a `<repeat>` template (`item(<field>)`, `item()`,
+/// `repeat.item(...)`, `repeat.index`, `repeat.count`; `repeats` may be null) or a constant
+/// (number, `true` / `false`, quoted string) -- optionally followed by `| <converter> ...` (27
+/// §27.3.3, the bind converter parser; `tween` / `delay` rejected). Converter arguments may also
+/// name a port as `port(<name>)`. `outer.*` is not accepted. False with `err` on anything invalid.
+bool compileActionValue(const DomTree& dom, const PortScopes& scopes, const RepeatScopes* repeats,
+                        IrWriter& writer, uint32_t element, std::string_view text, ActionValue& out,
+                        std::string& err);
 
 }  // namespace xt::compile

@@ -17,12 +17,12 @@ function(xt_set_warnings target)
         target_compile_options(${target} PRIVATE /W4 /WX /permissive- /utf-8)
     else()
         target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic -Werror -Wshadow -Wconversion -Wsign-conversion)
-        # XT_BUILD_FUZZ (docs/tasks/T-39.md) is the first config that actually builds+links with
-        # real clang instead of just syntax-checking it (tools/local_ci.sh's clang step already
-        # disables this one the same way): clang's -Wextra, unlike GCC/MSVC, additionally warns on
-        # a designated-initializer struct literal that leaves later fields at their in-class
-        # defaults. Appended after -Wextra on the same target so it is not re-enabled by it.
-        if(XT_BUILD_FUZZ)
+        # Clang's -Wextra, unlike GCC/MSVC, additionally warns on a designated-initializer struct
+        # literal that leaves later fields at their in-class defaults (tools/local_ci.sh's clang
+        # step disables it the same way). First hit by XT_BUILD_FUZZ (docs/tasks/T-39.md); T-402
+        # extends it to every Clang build (the CI linux Clang leg and the sanitizers job).
+        # Appended after -Wextra on the same target so it is not re-enabled by it.
+        if(XT_BUILD_FUZZ OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
             target_compile_options(${target} PRIVATE -Wno-missing-field-initializers)
         endif()
     endif()

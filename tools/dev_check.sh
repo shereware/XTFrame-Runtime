@@ -4,7 +4,8 @@
 # each test suite once with a timeout so a hung process never blocks the caller.
 #   tools/dev_check.sh [--release] [--no-build] [--agent] <target>... -- <suite>...
 #   suites: editor | editor_service | editor_qt | editor_qt_slow | editor_qt_gl | flow | bundle | history | core | golden |
-#           gpu | gl | text | agent | import | lottie | symbols | headers | layering | testtemp | import-py | ctest
+#           gpu | gl | text | agent | import | lottie | symbols | headers | layering | testtemp | import-py | ctest | corpus | ir |
+#           roundtrip
 #          (ctest = ctest -E '^xt_.*_tests$', the command-line tests (T-267d); headers = tools/check_public_headers.sh, no build;
 #           layering = tools/check_layering.sh (T-274, R never includes / links E) and, since T-267d,
 #           tools/check_test_temp.sh too (both must pass), no build;
@@ -15,7 +16,14 @@
 #           tools/check_symbols_index.sh; editor_qt_slow runs only the `slow` suite (perf / stress cases);
 #           editor_qt_gl runs only the `gl` suite, on the native platform (hidden windows, a real GL
 #           context) with XT_REQUIRE_GL=1;
-#           import-py = python -m unittest over tests/import, no build)
+#           import-py = python -m unittest over tests/import, no build;
+#           corpus = tools/corpus_check.sh with the Release xtframe-view / xtframe-pack of this tree, built
+#           first unless --no-build (T-401, 43 §43.4; a Debug SW render is ~50x slower, the 4 projects would
+#           take hours); the CTest entry corpus_check is left out of the ctest suite, which would run it again;
+#           ir = tools/check_ir_layout.sh (T-405, 43 §43.5: ir_pod.h sizes and enum limits vs tests/ir/layout.txt and
+#           02 §2.12, the §2.2 minor, the frozen fixture of that minor), no build;
+#           roundtrip = the doctest suite `roundtrip` of xt_bundle_tests and xt_editor_service_tests (T-410, 43 §43.2:
+#           the frozen cross-version fixtures of tests/roundtrip read, written back and compared with latest/))
 # T-267a: XT_REQUIRE_GL=1 is exported for every suite, so `gl` and `editor_qt_gl` FAIL when no GL
 # context can be created. Set XT_ALLOW_NO_GL=1 yourself to get the old "no context = skipped" behaviour.
 # Each doctest suite prints its summary, every failing test case (name + first failing check, at most
@@ -63,10 +71,11 @@ changed_selection() {
     [ -z "$f" ] && continue
     any=1
     case "$f" in
+      core/include/xt/ir_pod.h) targets+=(xt_tests); suites+=(core golden ir);;  # T-405
       core/*)            targets+=(xt_tests); suites+=(core golden);;
       compile/*)         suites+=(core import editor_service);;
       import/*)          suites+=(import);;
-      bundle/*)          suites+=(bundle editor_service);;
+      bundle/*)          suites+=(bundle editor_service roundtrip);;
       flow/*)            suites+=(flow editor_qt);;
       editor/service/*)  suites+=(editor_service editor_qt);;
       editor/qt/*|editor/app/*) targets+=(xtframe-editor); suites+=(editor_qt);;
@@ -81,7 +90,10 @@ changed_selection() {
       tests/flow/*)      suites+=(flow);;
       tests/history/*)   suites+=(history);;
       tests/golden/*)    suites+=(golden);;
-      tests/unit/*|tests/ir/*) suites+=(core);;
+      tests/corpus/*|tools/corpus_check.*) suites+=(corpus);;  # T-401
+      tests/roundtrip/*) suites+=(roundtrip);;  # T-410
+      tests/unit/*)      suites+=(core);;
+      tests/ir/*|docs/design/02-ir-format.md) suites+=(core ir);;  # T-405
       *.cpp|*.h|*.hpp|*CMakeLists.txt|*.cmake) echo "dev_check --changed: no mapping for $f (add its targets and suites by hand)";;
     esac
   done < <(changed_files)
@@ -116,16 +128,18 @@ for s in "${suites[@]}"; do
     text)      targets+=(xt_text_tests);;
     agent)     targets+=(xt_agent_tests);;
     perf)      targets+=(xt_perf);;
+    corpus)    targets+=(xtframe-view xtframe-pack);;
+    roundtrip) targets+=(xt_bundle_tests xt_editor_service_tests);;  # T-410
   esac
 done
 # Each suite and target once, in the order first named.
 if [ ${#suites[@]} -gt 0 ]; then mapfile -t suites < <(dedupe "${suites[@]}"); fi
 if [ ${#targets[@]} -gt 0 ]; then mapfile -t targets < <(dedupe "${targets[@]}"); fi
 if [ "$DRY_RUN" = 1 ]; then echo "targets: ${targets[*]}"; echo "suites: ${suites[*]}"; exit 0; fi
-# headers, layering, testtemp and import-py compile nothing; when they are all that was asked for, skip the build.
+# headers, layering, testtemp, import-py and ir compile nothing; when they are all that was asked for, skip the build.
 needs_build=0
 for s in "${suites[@]}"; do
-  case "$s" in headers|layering|testtemp|import-py) ;; *) needs_build=1;; esac
+  case "$s" in headers|layering|testtemp|import-py|ir) ;; *) needs_build=1;; esac
 done
 [ ${#targets[@]} -eq 0 ] && [ "$needs_build" = 0 ] && BUILD=0
 
@@ -162,6 +176,15 @@ if [ "$BUILD" = 1 ]; then
   errs="$(cmake --build --preset "$PRESET-$(echo $CFG | tr A-Z a-z)" --parallel "${args[@]}" 2>&1 | grep -E " error |error LNK|warning C|CMake Error|MSB[0-9]+: " | grep -v _deps | head -20)"
   [ -n "$errs" ] && { echo "$errs"; echo "build FAILED"; exit 2; }
   echo "build OK (${targets[*]})"
+  # T-401: the corpus suite renders with the Release tools whatever $CFG is.
+  case " ${suites[*]} " in
+    *" corpus "*) if [ "$CFG" != Release ]; then
+                    errs="$(cmake --build --preset "$PRESET-release" --parallel --target xtframe-view --target xtframe-pack 2>&1 |
+                            grep -E " error |error LNK|CMake Error|MSB[0-9]+: " | grep -v _deps | head -20)"
+                    [ -n "$errs" ] && { echo "$errs"; echo "build FAILED (Release tools for corpus)"; exit 2; }
+                    echo "build OK (Release xtframe-view xtframe-pack for corpus)"
+                  fi;;
+  esac
 fi
 [ "${XT_ALLOW_NO_GL:-0}" = 1 ] || export XT_REQUIRE_GL=1
 # summarize <output>: the doctest / xt_golden summary lines, then every failing doctest case (name and
@@ -250,11 +273,20 @@ run_suite() {
     gl)        run gl 600 0 "$B/tests/gl/$CFG/xt_gl_tests.exe";;
     agent)     run agent 900 1 "$B/devtools/agent/$CFG/xt_agent_tests.exe";;
     perf)      run perf 900 1 "$B/tests/perf/$CFG/xt_perf.exe";;
+    # T-410: the cross-version round trips (tests/roundtrip), in both executables that hold them.
+    roundtrip) run roundtrip-bundle 600 1 "$B/tests/bundle/$CFG/xt_bundle_tests.exe" --test-suite=roundtrip
+               run roundtrip-editor_service 600 1 "$B/tests/editor_service/$CFG/xt_editor_service_tests.exe" --test-suite=roundtrip;;
+    # T-401: the project-level golden corpus; its work tree is $B/corpus-work.
+    corpus)    out="$(timeout 1800 bash tools/corpus_check.sh --view "$B/tools/Release/xtframe-view.exe" \
+                        --pack "$B/tools/Release/xtframe-pack.exe" --work "$B/corpus-work" 2>&1 </dev/null)"
+               echo "$out" | grep -E "^\[FAIL\]|^CORPUS CHECK|not found|Error" | head -40
+               echo "$out" | grep -q "^CORPUS CHECK: PASS" || fail=1;;
     headers)   out="$(bash tools/check_public_headers.sh 2>&1)"; echo "$out" | tail -12; echo "$out" | grep -q "PUBLIC HEADERS: PASS" || fail=1;;
     layering)  out="$(bash tools/check_layering.sh 2>&1)"; echo "$out" | tail -12; echo "$out" | grep -q "LAYERING: PASS" || fail=1
                # T-267d: the test temp check runs with layering too; both have to pass.
                out="$(bash tools/check_test_temp.sh 2>&1)"; echo "$out" | tail -12; echo "$out" | grep -q "TEST TEMP: PASS" || fail=1;;
     testtemp)  out="$(bash tools/check_test_temp.sh 2>&1)"; echo "$out" | tail -12; echo "$out" | grep -q "TEST TEMP: PASS" || fail=1;;
+    ir)        out="$(bash tools/check_ir_layout.sh 2>&1)"; echo "$out" | tail -12; echo "$out" | grep -q "IR LAYOUT: PASS" || fail=1;;  # T-405
     import-py) out="$(NO_COLOR=1 python -m unittest discover -s tests/import -p "test_*.py" 2>&1)"; echo "$out" | tail -4; { echo "$out" | grep -q "^Ran [0-9]* test" && ! echo "$out" | grep -q "FAILED"; } || fail=1;;
     # T-267d: the command-line tests only (the xt_add_expect_exit_test entries and the other CTest
     # entries that are not a whole doctest executable); the -E pattern leaves out the whole
@@ -262,7 +294,7 @@ run_suite() {
     # xt_bundle_tests, ..., and xt_tests, xt_golden, xt_perf), which have their own suites above. --no-tests=error: an exclusion that
     # leaves nothing is a failure. A kill shows up as the running test "***Failed" with no output, so
     # the timeout is named explicitly.
-    ctest)     out="$(cd "$B" && timeout 1800 ctest -C "$CFG" -E '^xt_(.*_)?tests$|^xt_golden$|^xt_perf$' --no-tests=error 2>&1 </dev/null)"; rc=$?
+    ctest)     out="$(cd "$B" && timeout 1800 ctest -C "$CFG" -E '^xt_(.*_)?tests$|^xt_golden$|^xt_perf$|^corpus_check$' --no-tests=error 2>&1 </dev/null)"; rc=$?
                echo "$out" | grep -E "tests passed|Failed|\*\*\*|Not Run"
                [ $rc -eq 124 ] && echo "ctest: TIMEOUT (killed after 1800 s; the test running then is reported as Failed)"
                echo "$out" | grep -q "100% tests passed" || fail=1;;
@@ -271,7 +303,7 @@ run_suite() {
 }
 # T-361: the suites below run at the same time; the rest (GL contexts, perf / slow timing cases, the
 # agent endpoint and ctest, which runs executables of its own) afterwards, one after the other.
-PARALLEL_SUITES=" core import bundle flow editor editor_service editor_qt history symbols lottie golden text gpu headers layering testtemp import-py "
+PARALLEL_SUITES=" core import bundle flow editor editor_service editor_qt history symbols lottie golden text gpu headers layering testtemp import-py ir roundtrip "
 OUT="$B/.dev_check_out.$$"; mkdir -p "$OUT"
 trap 'rm -rf "$LOCK" "$OUT"; kill $(jobs -p) 2>/dev/null' EXIT
 i=0; pids=()

@@ -296,8 +296,10 @@ public:
     void setStyle(StyleBuilder style);
     /// Sets the single DOCT chunk's contents, replacing any previous value.
     void setDoc(DocBuilder doc);
-    /// Calling this makes finish() emit a META chunk.
-    void setMeta(StringId sourceFile, StringId compilerVersion, uint64_t unixTime);
+    /// Calling this makes finish() emit a META chunk. T-405 (IR minor 8, 43 §43.3): `behavior` is
+    /// the project's `spec.behavior`, written as META's `u32 behavior` tail only when non-zero
+    /// (absent = 0), so a behavior-0 file keeps the 16-byte META older runtimes require.
+    void setMeta(StringId sourceFile, StringId compilerVersion, uint64_t unixTime, uint32_t behavior = 0);
 
     /// Appends `camera` to `scene.cameras`, returning its index (the value an `IrSceneNode` of
     /// kind Camera stores in `kindIndex`).
@@ -403,6 +405,7 @@ private:
     StringId m_metaSourceFile = kInvalidString;
     StringId m_metaCompilerVersion = kInvalidString;
     uint64_t m_metaUnixTime = 0;
+    uint32_t m_metaBehavior = 0;
     bool m_hasSourceMap = false;
     std::vector<StringId> m_srcmFiles;
     std::vector<IrSourceEntry> m_srcmEntries;

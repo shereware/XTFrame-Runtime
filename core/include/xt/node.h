@@ -1013,10 +1013,11 @@ enum class PointerEvents : uint8_t {
     Auto = 0,  ///< CSS `auto` (participates in hit testing).
     None = 1   ///< CSS `none` (excluded from hit testing).
 };
-/// 05 §5.9.11 (T-386): in the encoded `hit-slop` declaration (StyleProp 276: four f32 encoded like
-/// a Color, top / right / bottom / left), a slot <= -kHitSlopEmBias holds `em` as
-/// -(kHitSlopEmBias + em); a slot in (-kHitSlopEmBias, 0) is a percentage -f (f = percent / 100);
-/// a slot >= 0 is px. ComputedStyle::hitSlop holds the resolved values.
+/// 05 §5.9.11 (T-386): in the encoded `hit-slop` declaration of an IR of minor <= 7 (StyleProp 276:
+/// four f32 encoded like a Color, top / right / bottom / left), a slot <= -kHitSlopEmBias holds
+/// `em` as -(kHitSlopEmBias + em); a slot in (-kHitSlopEmBias, 0) is a percentage -f (f = percent /
+/// 100); a slot >= 0 is px. T-405: read only from such files; IR minor 8 writes the Length
+/// longhands StyleProp 277-280 (02 §2.6). ComputedStyle::hitSlop holds the resolved values.
 inline constexpr float kHitSlopEmBias = 65536.0f;
 /// 05 §5.9.10 (T-376): `app-region`, the borderless-window drag region a host hit-test reads
 /// (Document::appRegionAt).

@@ -22,9 +22,10 @@ namespace xt::compile {
 /// Unknown events, actions, timelines, markers, focus targets or converters are errors. Returns
 /// false if any error was reported. T-175: `port(<name>)` events, `emit(<port>)` actions and port
 /// / percentage `if` arguments are resolved against `ports` in each element's scope; every
-/// `bind:state.<Name>` attribute also registers its state name.
+/// `bind:state.<Name>` attribute also registers its state name. T-411: `repeats` (may be null)
+/// lets a `set()` value read `item(...)` / `repeat.index` / `repeat.count` inside a template.
 bool emitTriggers(const DomTree& dom, const RuleSet& ruleSet, const PortScopes& ports, IrWriter& writer,
                   std::string_view fileName, DiagnosticSink& sink, CustomStateBuilder& states,
-                  TriggerBuilder& triggers);
+                  TriggerBuilder& triggers, const RepeatScopes* repeats = nullptr);
 
 }  // namespace xt::compile

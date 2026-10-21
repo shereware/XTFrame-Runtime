@@ -4,11 +4,11 @@
 
 ## 14.1 語言與工具
 
-- C++20，`-std=c++20`；MSVC 19.3x、Clang 15+、GCC 12+ 皆須通過。
+- C++20，`-std=c++20`；MSVC 19.3x、Clang 18+（搭 libstdc++ 14）、GCC 12+ 皆須通過。
 - 警告即錯誤：MSVC `/W4 /WX`，Clang/GCC `-Wall -Wextra -Wpedantic -Werror -Wshadow -Wconversion`。
 - `xt_core`：`-fno-exceptions -fno-rtti`（MSVC `/EHs-c- /GR-`）。其他模組允許例外但公開介面不得拋出。
 - 指定初始化子（`T{.a = 1}`）省略尾端成員時 GCC 12 會報 `-Wmissing-field-initializers`（Clang/MSVC 不會）：程式碼中一律完整列出成員，或改用建構函式；測試檔可在檔首以 `#if defined(__GNUC__) && !defined(__clang__)` 包住 `#pragma GCC diagnostic ignored`。
-- 不得 include `<chrono>`、`<format>`、`<print>`：libstdc++ 14 的 `<chrono>` 會拉進 `<format>`，Clang 15 無法編譯（CI 矩陣含 clang-15）。取時間用 `<ctime>`，格式化用 `snprintf` 或 `std::to_string`。
+- 不得 include `<format>`、`<print>`（格式化用 `snprintf` 或 `std::to_string`）。`<chrono>` 可用（`perf.h`、gl、shell 已依賴）；它在 libstdc++ 14 會拉進 `<format>`，Clang 15 編不過，所以 CI 的 clang 腿用發行版的 `clang`（24.04 為 18）而不是 clang-15（2026-10-21 runtime 鏡像倉 CI 首跑的教訓）。
 - `.clang-format` 於 repo 根：`BasedOnStyle: Google`，`IndentWidth: 4`，`ColumnLimit: 110`，`DerivePointerAlignment: false`，`PointerAlignment: Left`。提交前必須格式化。
 - CMake：每個模組一個 `CMakeLists.txt`，目標名 `xt_core` 等，`target_include_directories(PUBLIC include)`。頂層選項 `XT_BUILD_GL`、`XT_BUILD_SHELL`、`XT_BUILD_TOOLS`、`XT_BUILD_TESTS`，預設 ON。
 - 第三方：`third_party/` 內 vendored 單一標頭（doctest 2.4.11、stb_image / stb_image_write、nlohmann/json 3.11.3、bc7enc/bc7decomp/rgbcx（MIT／公有，`xt_bcn`，僅貼圖壓縮與 DDS 解碼）），每個附 `VERSION` 檔記錄來源 URL 與版本；SheenBidi（Apache-2.0，附 NOTICE）與 libunibreak（zlib）以 vendored 原始碼放 `third_party/`（僅 `xt_text` 使用）；FreeType/HarfBuzz/SDL2 以 `FetchContent` 固定版本標籤；cpp-httplib（MIT，單標頭，僅 `xt_editor_service` 的 MCP 伺服器使用）以 `FetchContent` + SHA-256 固定（`cmake/xt_httplib.cmake`）。**不得**依賴系統安裝的函式庫，不用 glad。

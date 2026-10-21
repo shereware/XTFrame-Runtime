@@ -3084,35 +3084,31 @@ Status parseValueTokens(const NameEntry& entry, const Tok* toks, size_t count, s
         return Status::kOk;
     }
     if (entry.kind == Kind::HitSlop) {
-        // T-386 (05 §5.9.11): 1-4 lengths (px / % / em, >= 0) in margin order -> Color (top, right,
-        // bottom, left), encoded as the compiler encodes StyleProp 276 (xt::kHitSlopEmBias).
+        // T-386 (05 §5.9.11): 1-4 lengths (px / % / em, >= 0) in margin order -> the four Length
+        // longhands StyleProp 277-280 (top, right, bottom, left), as the compiler writes them
+        // since IR minor 8 (T-405).
         if (count < 1 || count > 4) {
             return Status::kInvalidArgument;
         }
-        float v[4] = {0, 0, 0, 0};
+        Length v[4]{};
         for (size_t i = 0; i < count; ++i) {
-            Length len{};
-            if (!parseLengthTok(toks[i], len) || !(len.value >= 0.0f) || !std::isfinite(len.value)) {
-                return Status::kInvalidArgument;
-            }
-            if (len.unit == LengthUnit::Px) {
-                v[i] = len.value;
-            } else if (len.unit == LengthUnit::Percent) {
-                v[i] = -len.value / 100.0f;
-            } else if (len.unit == LengthUnit::Em) {
-                v[i] = -(kHitSlopEmBias + len.value);
-            } else {
+            if (!parseLengthTok(toks[i], v[i]) || !(v[i].value >= 0.0f) || !std::isfinite(v[i].value) ||
+                (v[i].unit != LengthUnit::Px && v[i].unit != LengthUnit::Percent &&
+                 v[i].unit != LengthUnit::Em)) {
                 return Status::kInvalidArgument;
             }
         }
-        const float top = v[0];
-        const float right = count >= 2 ? v[1] : top;
-        const float bottom = count >= 3 ? v[2] : top;
-        const float left = count == 4 ? v[3] : right;
-        Decl decl;
-        decl.prop = entry.prop;
-        decl.value = Value::ofColor(Color{top, right, bottom, left});
-        out.push_back(std::move(decl));
+        const Length top = v[0];
+        const Length right = count >= 2 ? v[1] : top;
+        const Length bottom = count >= 3 ? v[2] : top;
+        const Length left = count == 4 ? v[3] : right;
+        const Length sides[4] = {top, right, bottom, left};
+        for (int i = 0; i < 4; ++i) {
+            Decl decl;
+            decl.prop = static_cast<uint16_t>(sp::HitSlopTop + i);
+            decl.value = Value::ofLength(sides[i].value, sides[i].unit);
+            out.push_back(std::move(decl));
+        }
         return Status::kOk;
     }
     if (entry.prop == prop::BorderColor && parseBorderColorSides(toks, count, out)) {

@@ -70,3 +70,11 @@ struct PerfScope {                                    // RAII：建構時取時�
 
 - `FrameStats::runtimeStrings`、`maxDistinctBindingStrings`；`perf.probe` 的 `document` 物件多 `runtimeStrings`、`maxDistinctBindingStrings`、`unattachedNodes`。綁定每個 port 超過 1024 個不同新字串時記一次警告 `binding "<source>" produces unbounded distinct strings; bind it to text or a String port instead of a class / converter argument`，計數繼續。
 - `xt_perf` 在 T-263d（來源表）前後皆零配置；dev_check 套件 `perf`。來源表的固定成本：mobile-hud 1080×2400 300 幀，update／paint／render 平均值在誤差內。
+
+## 21.6 flow 預算（T-403，2026-10-21）
+
+- **量什麼**：flow＋綁定 = `FrameStats::flowMs`（`FlowRuntime::tick`）＋綁定重算（`updateMs` 減去 input／style／layout／animate／transform 五個階段的剩餘，即 `Document::update` 開頭 `flushDirty`／`tick` 所在的未計時段；上限估計，也含連續觸發器結算與事件 tick）。sink 引起的下游 style／layout／paint 不算在此預算內，各歸其階段。
+- **怎麼量**：`tests/perf/flow_big/`（`gen_flow_big.py` 確定性產生）的兩份 fixture：典型 200 節點／40 sink、大圖 500 節點／100 sink，同一組 50 條值型來源（25 條每幀變化）。`xtframe-view --project <fixture> --headless --perf --frames 600 --synth-pointer 16 --synth-ports 20`，Release，取後 480 幀；`tests/perf/flow_big/flow_bench.py` 算平均與 p95。`--synth-ports N` 是本單為量測加的開關（每幀寫前 N 個文件層 number port）。
+- **預算**（平均 ms／幀，1080p SW 繪製之外）：**典型 ≤ 0.5**、**大圖 ≤ 2.0**。p95 只記錄不設線。超過即開 B17 的 B7（flow 整數化）。
+- **基準（2026-10-21，i5-13600K）**：Windows MSVC 典型 0.141（p95 0.18）、大圖 0.257（p95 0.32）；WSL GCC 典型 0.088（p95 0.11）、大圖 0.167（p95 0.22）。餘裕 3.5～12 倍，B7 不開。報告 `docs/reviews/2026-10-21-flow-benchmark.md`。
+- ctest `xt_perf_flow_big_large`／`_typical`（標籤 `perf-report`）只印 `--perf` 摘要，不斷言、不是閘門。

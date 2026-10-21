@@ -542,6 +542,11 @@ bool emitDoc(const DomTree& dom, IrWriter& writer, StyleBuilder& style, DocBuild
         }
 
         for (const DomAttr& attr : node.attrs) {
+            if (i == 0 && node.tag == "xt" && attr.name == "version") {
+                // T-406 (43 §43.2): the source-format version, checked by the parser; not part of
+                // the IR, so a document compiles to the same bytes with or without it.
+                continue;
+            }
             if (attr.name == "id") {
                 el.id = writer.intern(attr.value);
             } else if (attr.name == "class") {

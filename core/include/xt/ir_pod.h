@@ -149,6 +149,8 @@ enum class BindTarget : uint8_t {
     /// kStateChecked), a falsy one clears it; no event, no trigger (like Checked / Disabled).
     BuiltinState = 14,
 };
+/// Highest valid BindTarget code (02 §2.s; IrView::open rejects a larger one).
+inline constexpr uint8_t kBindTargetLast = 14;
 /// IrBinding::flags: the chain reads another element (`#Other.width`), so it is evaluated again
 /// after layout.
 inline constexpr uint8_t kBindAfterLayout = 1u;
@@ -246,6 +248,8 @@ enum class TriggerEvent : uint8_t {
     /// bubbles).
     FocusOut = 41,
 };
+/// Highest TriggerEvent code (02 §2.v). A larger code is not an error: the trigger never fires.
+inline constexpr uint8_t kTriggerEventLast = 41;
 
 /// IrTriggerAction::kind (27.2.3), numbered in the table's order.
 enum class TriggerAction : uint8_t {
@@ -280,6 +284,8 @@ enum class TriggerAction : uint8_t {
     /// value replaces the user's edit). The compiler accepts it only on an element with `bind:value`.
     Reset = 18,
 };
+/// Highest TriggerAction code (02 §2.v). A larger code is not an error: the action is skipped.
+inline constexpr uint8_t kTriggerActionLast = 18;
 
 /// IrTriggerAction::flags of a Play action (27.2.3 `play(<tl>[, reverse|loop|once|hold])`).
 inline constexpr uint8_t kPlayReverse = 1u;
@@ -324,9 +330,19 @@ enum class SetSource : uint8_t {
     /// value), through the converter steps at arg0 / `extra` like EventValue. Only in `change` /
     /// `input` triggers.
     ElementValue = 8,
+    // T-411 (27 §27.2.3, IR 2.9): bind-source values, read when the action runs (after any `then`
+    // wait), through the converter steps at arg0 / `extra` like EventValue. Number / String also
+    // take converter steps since 2.9 (`5 | scale(2)`); before, `extra` was always 0 for them.
+    /// `port(<name>)`: that port's current value; arg2's bits are the PORT index (in a `<repeat>`
+    /// instance a template port means the instance's copy, as the set() target does).
+    Port = 9,
+    /// `item(<field>)` / `item()` / `repeat.index` / `repeat.count`: the chain's input is the list
+    /// entry of the `<repeat>` instance holding the trigger's element, and its first step reads the
+    /// field / index / count (as a kBindRepeatItem binding). Nothing is set outside a live instance.
+    Item = 10,
 };
 /// Highest SetSource value.
-inline constexpr uint8_t kSetSourceLast = 8;
+inline constexpr uint8_t kSetSourceLast = 10;
 
 /// T-386 (08.11): IrTriggerAction::flags of an If action. kIfActive: the condition is `active`
 /// (the trigger's element has ElementState kStateActive: a press on it or inside it is in
@@ -529,8 +545,17 @@ enum class MediaFeature : uint8_t {
 /// 4 = T-233's stroke taper / width profile fields at the end of IrPathData and IrShapeData;
 /// 5 = T-243's rig: SCEN `bones[]`...`meshIndexPool[]` tail, IrPathData::skinIndex and
 /// IrBinding::sceneNode; 6 = T-335's STYL `easingPoints[]` (EasingKind::LinearPoints) and
-/// LengthUnit::Rem; 7 = T-358's PORT `defaults[]` tail (port default values).
-inline constexpr uint16_t kIrFormatMinor = 7;
+/// LengthUnit::Rem; 7 = T-358's PORT `defaults[]` tail (port default values); 8 = T-405 (43
+/// §43.5): the T-380..T-399 fields made formal (no layout change), `hit-slop` written as the four
+/// Length longhands StyleProp 277-280 instead of the biased StyleProp 276 (read only from a minor
+/// < 8 file), and the optional META `behavior` tail; 9 = T-411's SetSource Port / Item (27
+/// §27.2.3) and converter steps on Number / String set() values.
+inline constexpr uint16_t kIrFormatMinor = 9;
+
+/// T-405 (02 §2.6): the highest StyleProp number an IR of this minor may carry (core/src/
+/// style_decode.h and compile/src/xts/xts_props.h static_assert their last StyleProp against it).
+/// A larger number is not an error: the declaration is ignored.
+inline constexpr uint16_t kStylePropLast = 280;
 
 /// `.xtir` file header (§2.2, 16 bytes).
 struct IrHeader {
@@ -1375,6 +1400,10 @@ static_assert(sizeof(IrSymbolPath) == 8);
 // -------------------------------------------------------------------------------------------
 
 /// `META` chunk debug metadata: source file, compiler version, compile time (§2.10, 16 bytes).
+/// T-405 (IR minor 8, 43 §43.3): the payload may continue with `u32 behavior` (the project's
+/// `spec.behavior`); absent = 0, and the writer omits it when it is 0 so that a 16-byte META stays
+/// readable by a runtime of IR minor <= 7 (whose reader requires exactly 16 bytes). Bytes after
+/// `behavior` are ignored (a later minor's tail).
 struct IrMeta {
     /// StringId of the source file name.
     uint32_t sourceFile;

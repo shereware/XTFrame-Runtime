@@ -15,6 +15,7 @@
 
 #include "bundle_json.h"
 #include "xt/bundle/design_system.h"
+#include "xt/bundle/migrations.h"
 #include "xt/charconv.h"
 #include "xt/compile/diagnostics.h"
 #include "xt/compile/dom.h"
@@ -204,6 +205,12 @@ void readSpec(const json& obj, ProjectSpec& spec) {
             spec.platforms.push_back(std::move(platform));
         }
     }
+    // T-407 (43 §43.3): a non-negative integer; missing or anything else reads as 0.
+    spec.behavior = 0;
+    if (const auto behavior = obj.find("behavior"); behavior != obj.end() && behavior->is_number_integer()) {
+        const int64_t value = behavior->get<int64_t>();
+        spec.behavior = value > 0 ? static_cast<uint32_t>(std::min<int64_t>(value, 0xFFFFFFFF)) : 0;
+    }
     const json& safeArea = objectAt(obj, "safeArea");
     spec.safeAreaDefault = getFloat(safeArea, "default", spec.safeAreaDefault);
     spec.safeAreaConsole = getFloat(safeArea, "console", spec.safeAreaConsole);
@@ -263,6 +270,9 @@ void readSpec(const json& obj, ProjectSpec& spec) {
 
 ordered_json writeSpec(const ProjectSpec& spec) {
     ordered_json out;
+    if (spec.behavior != 0) {
+        out["behavior"] = spec.behavior;  // T-407: written only when set.
+    }
     ordered_json platforms = ordered_json::array();
     for (const SpecPlatform& platform : spec.platforms) {
         ordered_json entry;
@@ -358,6 +368,7 @@ void appendExtra(ordered_json& out, const std::string& extraText) {
 
 constexpr std::string_view kMotionSpecYaml =
     "# Motion spec (docs/design/29-ai-endpoint.md 29.6): calibrated defaults, adjust per project.\n"
+    "version: 1\n"
     "duration:  { instant: [0, 50], fast: [100, 200], normal: [200, 300], close: [200, 450], slow: [300, "
     "500], cinematic: [800, 2000] }\n"
     "easing:    { opacity: linear, move: ease-out, exit: ease-in, emphasis: back-out, spring: off }\n"
@@ -605,21 +616,24 @@ Result<UiProject> UiProject::load(std::string_view input, std::string* error) {
     }
 
     std::string depthError;  // T-262c
-    const json root = detail::parseBounded(text, detail::kMaxJsonDepth, depthError);
+    json root = detail::parseBounded(text, detail::kMaxJsonDepth, depthError);
     if (!depthError.empty()) {
         return failUiProject(Status::kInvalidArgument, error, path + ": " + depthError);
     }
     if (root.is_discarded() || !root.is_object()) {
         return failUiProject(Status::kIoError, error, "'" + path + "' is not a JSON object");
     }
-    const int version = getIntUiProject(root, "version", 0);
-    if (version != 1) {
-        return failUiProject(Status::kUnsupported, error,
-                             "'" + path + "' has version " + std::to_string(version) + ", expected 1");
+    // T-406 (43 §43.2): missing = 1; older versions are migrated, newer ones refused.
+    int fromVersion = kUiProjectFormatVersion;
+    std::string migrateError;
+    if (const Status migrated = migrateToLatest(SourceFormat::UiProject, root, &fromVersion, &migrateError);
+        migrated != Status::kOk) {
+        return failUiProject(migrated, error, "'" + path + "': " + migrateError);
     }
 
     UiProject project;
-    project.version = 1;
+    project.version = kUiProjectFormatVersion;
+    project.migratedFrom = fromVersion < kUiProjectFormatVersion ? fromVersion : 0;
     project.rootDir = trimTrailingSlashUiProject(dir);
     project.legacyKind = kind;
     project.name = getString(root, "name");
@@ -636,8 +650,8 @@ Result<UiProject> UiProject::load(std::string_view input, std::string* error) {
     const json& specObj = objectAt(root, "spec");
     readSpec(specObj, project.spec);
     project.extraSpecJson = extraKeys(
-        specObj, {"platforms", "safeArea", "logicalHeight", "uiscaleRule", "uiscaleClamp", "uiscaleDpiFloor",
-                  "responsive", "input", "languages", "fontFallback", "budget", "engine"});
+        specObj, {"behavior", "platforms", "safeArea", "logicalHeight", "uiscaleRule", "uiscaleClamp",
+                  "uiscaleDpiFloor", "responsive", "input", "languages", "fontFallback", "budget", "engine"});
 
     const auto uisIt = root.find("uis");
     if (uisIt == root.end() || !uisIt->is_array()) {
@@ -664,9 +678,12 @@ Result<UiProject> UiProject::load(std::string_view input, std::string* error) {
     project.shared.strings = getStringOr(shared, "strings", project.shared.strings);
     project.shared.recipes = getStringOr(shared, "recipes", project.shared.recipes);
     project.shared.design = getStringOr(shared, "design", project.shared.design);
+    project.extraSharedJson = extraKeys(shared, {"assetRoot", "fontDirs", "styles", "templateDirs", "symbols",
+                                                 "tokens", "themes", "strings", "recipes", "design"});
 
     project.previewDpr = getFloat(objectAt(root, "preview"), "dpr", 1.0f);
     project.previewScene = getString(objectAt(root, "preview"), "scene");  // T-344
+    project.extraPreviewJson = extraKeys(objectAt(root, "preview"), {"dpr", "scene"});
     const std::string target = getString(root, "target");
     if (!target.empty()) {
         project.target = target;
@@ -743,6 +760,8 @@ Result<UiProject> UiProject::load(std::string_view input, std::string* error) {
         }
     }
     project.assets.extraJson = extraKeys(assets, {"sourceFolders"});
+    project.extraPublishJson = extraKeys(
+        publish, {"outDir", "languages", "embedImages", "embedFonts", "thumbnails", "atlas", "targets"});
 
     project.extraJson = extraKeys(root, {"version", "name", "id", "game", "spec", "uis", "shared", "preview",
                                          "target", "publish", "assets"});
@@ -810,7 +829,7 @@ Status UiProject::save(std::string* error) const {
     }
 
     ordered_json root;
-    root["version"] = 1;
+    root["version"] = kUiProjectFormatVersion;  // T-406: always the latest.
     root["name"] = name;
     root["id"] = id;
     root["game"] = game;
@@ -835,6 +854,7 @@ Status UiProject::save(std::string* error) const {
     sharedObj["strings"] = shared.strings;
     sharedObj["recipes"] = shared.recipes;
     sharedObj["design"] = shared.design;
+    appendExtra(sharedObj, extraSharedJson);
     root["shared"] = std::move(sharedObj);
 
     ordered_json previewObj;
@@ -842,6 +862,7 @@ Status UiProject::save(std::string* error) const {
     if (!previewScene.empty()) {
         previewObj["scene"] = previewScene;  // T-344
     }
+    appendExtra(previewObj, extraPreviewJson);
     root["preview"] = std::move(previewObj);
     root["target"] = target;
 
@@ -869,6 +890,7 @@ Status UiProject::save(std::string* error) const {
         }
         publishObj["targets"] = std::move(targetArray);
     }
+    appendExtra(publishObj, extraPublishJson);
     root["publish"] = std::move(publishObj);
     // T-312a: `assets` only when it has content.
     ordered_json assetsObj = ordered_json::object();
@@ -1265,6 +1287,7 @@ Status createUiProject(std::string_view dir, std::string_view name, std::string_
     project.legacy = false;
     project.legacyKind = LegacyKind::kNone;
     project.unnamed = false;
+    project.spec.behavior = kLatestBehavior;  // T-407 (43 §43.3): a new project starts at the newest.
     if (const Status status = project.save(error); status != Status::kOk) {
         return status;
     }
@@ -1347,6 +1370,7 @@ Status adoptAsUiProject(const UiProject& unnamed, const std::vector<std::string>
     UiProject project;
     project.rootDir = normalPath(root);
     project.id = unnamed.id;
+    project.spec.behavior = kLatestBehavior;  // T-407: an adopted document starts a new project.
     project.name = pathToUtf8(pathFromUtf8(project.rootDir).filename());
     ProjectUi ui = source;
     ui.doc = source.id + "/" + docName;

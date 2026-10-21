@@ -148,6 +148,24 @@ Status FlowGraph::parse(std::string_view jsonText, FlowGraph& out, std::vector<s
         return Status::kInvalidArgument;
     }
 
+    // T-406 (43 §43.2): missing = 1; a newer version is refused before anything else is read.
+    if (root.is_object()) {
+        if (const auto versionIt = root.find("version"); versionIt != root.end()) {
+            const bool integer = versionIt->is_number_integer() || versionIt->is_number_unsigned();
+            const long long version = integer ? versionIt->get<long long>() : 0;
+            if (!integer || version < 1) {
+                errors.push_back(".xtflow: 'version' is not a positive integer");
+                return Status::kInvalidArgument;
+            }
+            if (version > kFlowFormatVersion) {
+                errors.push_back(".xtflow format version " + std::to_string(version) +
+                                 " is newer than this XTFrame supports (" +
+                                 std::to_string(kFlowFormatVersion) + "); a newer XTFrame is needed");
+                return Status::kUnsupported;
+            }
+        }
+    }
+
     if (!root.is_object() || !root.contains("nodes") || !root["nodes"].is_array() ||
         !root.contains("edges") || !root["edges"].is_array()) {
         errors.push_back("malformed .xtflow document: expected an object with 'nodes' and 'edges' arrays");
@@ -311,7 +329,7 @@ std::string FlowGraph::toJson() const {
     using nlohmann::ordered_json;
 
     ordered_json root;
-    root["version"] = 1;
+    root["version"] = kFlowFormatVersion;
 
     ordered_json nodesJson = ordered_json::array();
     for (const NodeDesc& n : nodes) {

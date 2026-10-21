@@ -187,8 +187,27 @@ std::string_view runtimeText(const SelectorMatchContext& strings, StringId id) {
     return strings.string != nullptr ? strings.string(strings.stringsCtx, id) : std::string_view{};
 }
 
-/// T-386 (05 §5.9.11): one encoded `hit-slop` side (xt::kHitSlopEmBias) -> ComputedStyle::hitSlop:
-/// px and em in this element's ui-scale, a percentage kept as -fraction for the hit test.
+/// T-386 (05 §5.9.11): one `hit-slop` side as a Length (T-405: StyleProp 277-280, IR minor 8) ->
+/// ComputedStyle::hitSlop: px and em in this element's ui-scale, a percentage kept as -fraction for
+/// the hit test; any other unit, a negative or a non-finite value is 0.
+float resolveHitSlopLength(float value, LengthUnit unit, float fontSizeSelfPx, float pxScale) {
+    if (!std::isfinite(value) || value < 0.0f) {
+        return 0.0f;
+    }
+    switch (unit) {
+        case LengthUnit::Px:
+            return value * pxScale;
+        case LengthUnit::Em:
+            return value * fontSizeSelfPx * pxScale;
+        case LengthUnit::Percent:
+            return -value / 100.0f;
+        default:
+            return 0.0f;
+    }
+}
+
+/// T-386 (05 §5.9.11): one encoded `hit-slop` side of an IR of minor <= 7 (StyleProp 276,
+/// xt::kHitSlopEmBias) -> ComputedStyle::hitSlop, as resolveHitSlopLength().
 float resolveHitSlopSide(float encoded, float fontSizeSelfPx, float pxScale) {
     if (!std::isfinite(encoded)) {
         return 0.0f;
@@ -353,9 +372,19 @@ void applyGeneralDecl(const IrView& ir, ComputedStyle& next, Length& originX, Le
         return;
     }
     if (decl.prop == style_decode::styleprop::HitSlop) {  // T-386 (05 §5.9.11).
-        for (int i = 0; i < 4; ++i) {
-            next.hitSlop[i] = resolveHitSlopSide(irValueF32(decl.value, i), fontSizeSelfPx, pxScale);
+        // T-405: the biased encoding exists only in an IR of minor <= 7; a newer file never writes
+        // StyleProp 276 (the longhands below), so a stray one is ignored.
+        if (ir.formatMinor() < 8) {
+            for (int i = 0; i < 4; ++i) {
+                next.hitSlop[i] = resolveHitSlopSide(irValueF32(decl.value, i), fontSizeSelfPx, pxScale);
+            }
         }
+        return;
+    }
+    if (decl.prop >= style_decode::styleprop::HitSlopTop &&
+        decl.prop <= style_decode::styleprop::HitSlopLeft) {  // T-405 (02 §2.6, IR minor 8).
+        next.hitSlop[decl.prop - style_decode::styleprop::HitSlopTop] = resolveHitSlopLength(
+            irValueF32(decl.value, 0), static_cast<LengthUnit>(decl.value[4]), fontSizeSelfPx, pxScale);
         return;
     }
     if (decl.prop == style_decode::styleprop::Lang) {
@@ -480,12 +509,11 @@ void applyRuntimeDecl(const IrView& ir, const SelectorMatchContext& strings, Com
         }
         return;
     }
-    if (decl.prop == style_decode::styleprop::HitSlop) {  // T-386: mini_css encodes it as the IR does.
-        if (value.type == ValueType::Color) {
-            const float sides[4] = {value.c.r, value.c.g, value.c.b, value.c.a};
-            for (int i = 0; i < 4; ++i) {
-                next.hitSlop[i] = resolveHitSlopSide(sides[i], fontSizeSelfPx, pxScale);
-            }
+    if (decl.prop >= style_decode::styleprop::HitSlopTop &&
+        decl.prop <= style_decode::styleprop::HitSlopLeft) {  // T-405: mini_css writes the longhands.
+        if (value.type == ValueType::Length) {
+            next.hitSlop[decl.prop - style_decode::styleprop::HitSlopTop] =
+                resolveHitSlopLength(value.len.value, value.len.unit, fontSizeSelfPx, pxScale);
         }
         return;
     }

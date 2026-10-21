@@ -80,6 +80,7 @@
 
 - `ports` 由 17.6 的連接點反射產生（同一套程式碼），是宿主綁定的**契約**（`params` 為可選欄位，0.3 不產生；`setProperty` 的 `prop` 是邊的參數，不屬於連接點）：C++ 端執行期以 `xt::flow::HostPorts`（13 §13.6，T-144）綁定：`ports.setInput("#score.setText", value)`、`ports.addOutputListener("#fire.Click", fn)`；輸出埠名接受 manifest 的 `document.<port>` 與 `.xtflow` 的 `#document.<port>` 兩種寫法。連接點名稱穩定性等同元素 id 的穩定性——編輯器改元素 id 時比照 UI id 提示。
 - `requires` 給宿主早期檢查（例如只做了貼圖路徑、不支援 3D 的宿主可以拒載或降級）。
+- `contract`（T-408，43 §43.6）：每個 UI 的契約雜湊，16 位小寫 hex，位於 `fileHash` 之後；`xtframe-pack --gen-ports` 生成物帶同值常數（C++ `kContractHash`、C# `Ports.ContractHash`），`loadUi(ctx, bundle, id, expectContract)` 可比對；T-408 之前打包的 bundle 沒有此鍵。
 - 版本：`xtframe` 與 `irMajor` 供宿主拒絕不相容的 bundle；bundle 自己不做語意版本，交給資產管線/版控。
 
 ### 22.3b 宿主自有容器（不在本倉；2026-10-10 去宿主化）

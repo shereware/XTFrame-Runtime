@@ -124,7 +124,7 @@ CompileResult compileLottie(std::string_view jsonPath, const CompileOptions& opt
         // <ctime> instead of <chrono>: libstdc++ 14's <chrono> pulls in <format>, which clang 15 cannot
         // compile.
         uint64_t unixTime = static_cast<uint64_t>(std::time(nullptr));
-        writer.setMeta(sourceFileId, versionId, unixTime);
+        writer.setMeta(sourceFileId, versionId, unixTime, options.behavior);  // T-407
     }
 
     result.assets = collectCompiledAssets(writer);

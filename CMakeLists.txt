@@ -55,6 +55,11 @@ endif()
 include(cmake/xt_warnings.cmake)
 include(cmake/xt_build_speed.cmake)
 include(cmake/xt_nlohmann.cmake)
+# T-404: coverage instrumentation (the `ninja-coverage` preset, tools/coverage.sh).
+option(XT_COVERAGE "Instrument every target for coverage (clang or gcc)" OFF)
+if(XT_COVERAGE)
+    include(cmake/xt_coverage.cmake)
+endif()
 
 # XT_BUILD_FUZZ: clang-only libFuzzer targets (docs/design/15-testing.md §15.5,
 # docs/tasks/T-39.md). Every target gets ASan/UBSan plus libFuzzer instrumentation without the
@@ -71,6 +76,21 @@ if(XT_BUILD_FUZZ)
     # RelWithDebInfo defines NDEBUG by default; the fuzz build keeps XT_ASSERT enabled
     # (docs/tasks/T-39.md "規則": assertion failures are findings) by stripping it back out.
     string(REPLACE "-DNDEBUG" "" CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO}")
+endif()
+# XT_SANITIZE (docs/tasks/T-402.md item 2, docs/design/15-testing.md §15.8): a comma list of
+# -fsanitize= checks for the whole tree, e.g. "address,undefined" (the `sanitizers` CI job, preset
+# ninja-ci-asan). GCC/Clang only. Like XT_BUILD_FUZZ, the vptr check is left out because xt_core is
+# built with -fno-rtti. Set before the FetchContent dependencies so they are instrumented too.
+set(XT_SANITIZE "" CACHE STRING "Comma list of -fsanitize= checks for every target (empty: off)")
+if(XT_SANITIZE)
+    if(XT_MSVC_FRONTEND)
+        message(FATAL_ERROR "XT_SANITIZE requires GCC or Clang (got an MSVC-style compiler)")
+    endif()
+    if(XT_BUILD_FUZZ)
+        message(FATAL_ERROR "XT_SANITIZE and XT_BUILD_FUZZ are exclusive (the fuzz build sets its own sanitizers)")
+    endif()
+    add_compile_options(-fsanitize=${XT_SANITIZE} -fno-sanitize=vptr -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=${XT_SANITIZE} -fno-sanitize=vptr)
 endif()
 if(XT_BUILD_GL OR XT_BUILD_SHELL)
     include(cmake/xt_sdl2.cmake)

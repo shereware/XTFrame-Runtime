@@ -64,7 +64,7 @@
 | `class(<name>[, on\|off\|toggle])` | 相容既有 flow 的 toggleClass |
 | `show()` / `hide()` / `then hide` | 顯示隱藏；`then` 表示前一動作結束後執行 |
 | `sound(<cue>[, volume])` | 27.6 |
-| `set(<port>, <value>)` / `emit(<port>)` | 對外送值／事件（宿主或 flow 收到） |
+| `set(<port>, <value>)` / `emit(<port>)` | 對外送值／事件（宿主或 flow 收到）。`<value>`：數字、`true`／`false`、`toggle`、字串、`event.value`、`value`、`pointer.fraction\|local(#id).x\|.y`、`port(<名>)`（同作用域 in／out port）、範本內 `item(<欄位>)`／`item()`／`repeat.item(...)`／`repeat.index`／`repeat.count`；除 `toggle` 外皆可接 `\| <轉換器> ...`（27.3.3 全部，`tween`／`delay` 除外；引數的 port 可寫 `port(<名>)` 或裸名）（T-411） |
 | `if <cond> <action> [else <action>]` | 條件只允許轉換器目錄的比較（27.3.3），不是表達式語言 |
 | `focus(<id>)` | 焦點導覽 |
 | `spawn(<symbol>, at=<id\|pointer\|world>, lifetime=<time>[, timeline=<name>])` | 觸發即生成暫時實例（傷害數字、拾取提示）；物件池回收；實例不入文件 |
@@ -73,6 +73,8 @@
 
 - 動作以 `;` 串接；`then` 串成序列；同一事件重複觸發時的既有播放：`play` 預設從頭重播，`hold` 保持。
 - 執行時：每個元素一張觸發表（事件 → 動作清單），編譯進 IR（03 章 NodeCommon 尾端新增 `triggers` 索引），執行時是常數時間查表，不逐幀輪詢。
+
+> T-411 實作記錄（B6）：`set()` 的值可為 bind 來源表達式。**語法**：頭為 `port(<名>)`（以觸發元素的作用域解析，in／out 皆可讀；call port 與 event 型別 port → `port(<n>): a call or event port has no value to read`；未宣告 → `port(<n>): no port "<n>" is declared here`）、範本內的 `item(<欄位>)`／`item()`／`repeat.item(...)`／`repeat.index`／`repeat.count`（與 `bind:` 同一解析器 `repeatTerm`，欄位檢查與錯誤訊息相同；範本外 `item(...)` → `item(<f>) is only valid inside a <repeat> template`，`repeat.*` 同 T-383；裸 `index`／`count` 不收；`outer.*` 不收 → 錯誤），或常數（數字、`true`／`false`、引號字串）；之後可接 `| <轉換器> ...`，由 bind 的轉換器解析器編譯（`compileActionValue()`，bind_emit），轉換器引數可寫 `port(<名>)`（只在動作值內）或裸 port 名；`tween`／`delay` 照舊拒收。目錄沒有 `add`，加法用 `offset(port(b))`。**編碼（IR 2.9）**：`SetSource::Port = 9`（arg2 位元 = PORT 索引）、`Item = 10`（鏈的輸入為觸發元素所在 `<repeat>` 實例的項目，第一步為讀欄位／序號／數量的 `item`／`index`／`count` 步驟，同 `kBindRepeatItem` 綁定）；轉換器步驟照 EventValue 放在 TRIG `conditions[]` 的 arg0／`extra`；常數接轉換器時仍是 Number／String，但 `extra` 不為 0（2.9 起執行期會跑）。`kSetSourceLast` 改 10、IR minor 升 9（`tests/ir/fixtures/v2.9.xtir`）。**求值時機**：值在動作**執行時**求，與 `pointer.*` 相同走 Job／Waiter——事件當下的資料（指標位置、`event.value`）由 Job 攜帶，`port(...)` 的值與 `item(...)`／`repeat.index` 的項目則以**執行當下**為準（`play(t) then set(x, port(a))` 讀到的是時間軸結束時的 `a`）。repeat 實例內的範本 port（T-380）——包含目標、頭與轉換器引數——都改指該實例的副本；實例已退場／不在活的實例內時 Item 來源不寫入。偏離：`setText`／`setStyle` 不是觸發動作（只是 flow 的反射輸入，27.4.1），本項只作用於 `set()`；「out port 寫入」依 27.13 本來就合法（存值再 emit），未改為錯誤，測試以 call port 目標的既有錯誤代替。
 
 ### 27.2.4 生命週期握手
 

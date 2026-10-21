@@ -30,10 +30,18 @@ struct CompileOptions {
     bool embedImages = false;
     /// true: embed `@font-face` asset bytes into the ASST chunk.
     bool embedFonts = false;
-    /// Any warning is treated as a compile failure.
+    /// Any warning is treated as a compile failure -- except the deprecation warnings of
+    /// registered aliases (T-408, xt/compile/aliases.h), which strict reports but never fails on.
     bool strict = false;
+    /// T-408 (43 §43.6): report every use of a registered alias as a `deprecated: use <new> instead
+    /// of <old>` warning even without `strict` (the editor preview, which `lint.run` reads). An
+    /// alias compiles either way; false and not strict: no warning.
+    bool reportDeprecated = false;
     /// Emit a META chunk (source file name, compiler version, timestamp).
     bool emitMeta = true;
+    /// T-407 (43 §43.3): the project's behavior version (`spec.behavior`), written as META's
+    /// `behavior` tail when `emitMeta` and non-zero (02 §2.10); 0 = the pre-beta behavior.
+    uint32_t behavior = 0;
     /// Stylesheets parsed before the document's own `<link>`/`<style>`, in this order (a bundle's
     /// `shared.styles`, docs/design/22-bundle.md §22.2). Absolute paths, or relative to `rootDir`.
     /// A path that cannot be read is an error, same as an unreadable `<link href>`. T-368:

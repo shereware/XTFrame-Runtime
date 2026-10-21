@@ -42,6 +42,7 @@ fixture (.xt 或 .json) + 參數 (width, height, dpr, time)
 - 測試字型：`tests/fonts/` 收錄一個 OFL 授權的拉丁字型與一個 CJK 子集字型（僅含測試用字），避免依賴系統字型。
 - GL 後端：以離屏 FBO 渲染同一批 fixture，與 SW 輸出比對，容差每通道 ≤ 16/255、比例 ≤ 3%（MSAA 與 stencil 差異）。CI 用 Mesa llvmpipe（Linux）執行。
 - 第一版最低案例數：UI 30 個、Lottie 20 個。
+- 專案級黃金語料庫（整個 UI Project 打包後的截圖、manifest、連接點表與行為腳本）見 43 §43.4，位置 `tests/corpus/`，以 `tools/corpus_check.sh` 比對，截圖容差同本節 SW 規則（T-401）。
 
 ## 15.4 效能與配置測試（`tests/perf/`）
 
@@ -78,3 +79,21 @@ fixture (.xt 或 .json) + 參數 (width, height, dpr, time)
 - **IR 往返**（§15.2）：`xt_tests` 的「ir corpus: compile, read through IrView, rewrite, compare bytes」對每個語料樣本編譯、驗證、經公開讀取器與寫入器重建，須逐 byte 相同；已知不對稱者列於 `kKnownAsymmetric`（目前無）。
 - **fuzz**（§15.5）：11 個 libFuzzer 目標（ir、xt、lottie、xtcl、xts、svg、xtfx、yaml、image、bundle_json、import；多格式目標以第一個 byte 選擇）；語料在建置時產生，缺任何 IR chunk 類型即建置失敗；已修的發現是每次執行前重放的迴歸檔，未修的放 `findings/` 並從 smoke 清單移除；`--fuzz` 每目標 60 s；完整閘門在 WSL GCC 與 MSVC SW shell 測試之後跑 20 s smoke。Editor Service 的 JSON 不 fuzz（需 Qt）。
 - `local_ci.sh`：clang 階段加 `-Itests/common` 與兩個 define；`devtools/` 歸 E，`tools/common/` 歸 R。
+
+## 15.8 CI 閘門（T-402，44 §44.5.1 P0）
+
+`.github/workflows/ci.yml` 在每個到 main 的 PR 與 main 的 push 上跑（另可 `workflow_dispatch`）；第一個 job `changes` 以 `git diff --name-only`（PR：base..head；push：before..after）判斷：改動全在 `docs/**` 或 `*.md` 時輸出 `code=false`，`windows`／`linux`／`sanitizers`／`runtime-export` 仍執行並成功，但每個步驟以 `if:` 跳過（整個 job 被跳過時必要檢查不會回報）；手動執行、新分支或基準不明時一律 `code=true`。`docs-checks.yml` 不設路徑過濾，每個 PR／push 都跑。合併閘門＝下表「必要」各 job 全過（branch protection 依名稱勾選）。
+
+| job | 內容 | 必要 |
+|---|---|---|
+| `windows` | MSVC `vs2022` Debug＋Release 建置與 ctest | 必要 |
+| `linux`（`g++-12`、`clang` 18 兩條腿） | `ninja-ci-debug`／`ninja-ci-release` 建置與 `xvfb-run` ctest | 必要 |
+| `sanitizers` | clang Debug、`XT_SANITIZE=address,undefined`（preset `ninja-ci-asan`，GL／shell／編輯器關）；整棵樹的 ctest（xt_tests、flow、bundle、golden 容差不變、CLI 測試），`ASAN_OPTIONS=detect_leaks=1`、`UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1`；標 `XT_SKIP_UNDER_ASAN` 的測試由 test preset 排除 | 必要 |
+| `runtime-export` | `tools/export_runtime.sh --verify`：R 層匯出獨立建置與 ctest（T-400） | 必要 |
+| `docs-checks` | `check_skill_sync`、`check_ops_doc`、`check_command_ops`、`check_symbols_index`、`check_test_temp`、`check_layering`、`check_public_headers`（無建置） | 必要 |
+| `macos` | `ninja-ci-*` 建置與 ctest；`continue-on-error` | 非必要 |
+| `fuzz` | §15.5 的 libFuzzer 60 s；只在 `workflow_dispatch` 跑 | 非必要 |
+
+- `linux` 與 `sanitizers` 的 `runs-on` 讀 repository variable `XT_LINUX_RUNNER`（JSON 標籤陣列，例如 `["self-hosted","xtframe-linux"]`），未設即 `ubuntu-24.04`；self-hosted 時跳過 apt 安裝步驟。登錄步驟見 `docs/ci/self-hosted-runner.md`。
+- `XT_SANITIZE`（頂層 CMake 快取字串，逗號清單）把 `-fsanitize=<清單> -fno-sanitize=vptr -fno-omit-frame-pointer` 加到所有目標（含 FetchContent 相依）；只限 GCC／Clang，與 `XT_BUILD_FUZZ` 互斥。vptr 檢查關閉的理由同 §15.5（xt_core 無 RTTI）。
+- `tools/local_ci.sh` 仍是本機閘門；CI 閘門不取代它。

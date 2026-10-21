@@ -13,6 +13,7 @@
 #include "bundle_json.h"
 #include "design_internal.h"
 #include "xt/bundle/design_system.h"
+#include "xt/bundle/migrations.h"
 #include "xt/compile/utf8_path.h"
 #include "yaml_lite.h"
 
@@ -22,8 +23,12 @@
 /// Every file is read with yaml_lite and written with emitYamlLite() from an ordered_json composed
 /// in the fixed key order below, so a second save of the same data writes the same bytes. Keys a
 /// reader does not know are kept in the entry's `extra` and written after the known ones,
-/// alphabetically. Fixed key orders:
-///   design.yaml    name, status, principles, sections, owners, languages, <extra>
+/// alphabetically. T-406 (43 §43.2): palette.yaml, tokens.yaml, type.yaml and every `.meta` start
+/// with the format `version` (missing on read = 1, migrated by bundle/src/migrations/, newer
+/// refused; always written as the latest). design.yaml's `version` is the design system's own
+/// version (35 §35.2) and stays an ordinary key; its format version is `formatVersion` (T-410, same
+/// rules: missing = 1, newer refused, written first). Fixed key orders:
+///   design.yaml    formatVersion, name, status, principles, sections, owners, languages, <extra>
 ///   palette.yaml   version, groups, swatches, contrast, <extra>
 ///     group        id, name, scale{base, steps, method}, status, source, approved, tags, links, note,
 ///                  swatches, <extra>
@@ -32,11 +37,11 @@
 ///                  id is written as the bare id (the abbreviated group form)
 ///   tokens.yaml    version, tokens{--name (sorted by name): {name, category, description, from,
 ///                  status, source, approved, tags, links, note, <extra>}}, <extra>
-///   type.yaml      roles[{id, name, family, weights, status, source, approved, tags, links, note,
+///   type.yaml      version, roles[{id, name, family, weights, status, source, approved, tags, links, note,
 ///                  <extra>}], <extra>
 ///   text/*.md      front matter: id, title, name, section, status, source, approved, tags, applies-to,
 ///                  links, note, <extra>; then the body unchanged
-///   *.meta         id (GUID), kind, title, name, status, source, approved, license, content, tags,
+///   *.meta         version, id (GUID), kind, title, name, status, source, approved, license, content, tags,
 ///                  annotations[{id, rect, note, links}], extracted[{value, share}], links, note,
 ///                  <extra>
 ///   source         kind, ref, at, <extra>;  approved  by, at;  link  rel, to, note
@@ -416,9 +421,13 @@ bool entryIsBare(const Entry& e) {
 
 // --- files ---
 
-/// Reads a YAML file; a missing file is null. False (with `*error`) when it is malformed or not a
-/// mapping.
-bool readYamlFile(const fs::path& path, const std::string& label, json& out, std::string* error) {
+/// Reads a YAML file; a missing file is null. False (with `*error`) when it is malformed, not a
+/// mapping, or (T-406, `versioned`) its format version (the member `versionKey`) is malformed or
+/// newer than `format`'s latest; a versioned mapping comes back migrated to the latest version,
+/// without its `versionKey` member.
+bool readYamlFile(const fs::path& path, const std::string& label, json& out, std::string* error,
+                  bundle::SourceFormat format = bundle::SourceFormat::DesignYaml, bool versioned = true,
+                  const char* versionKey = "version") {
     out = json(nullptr);
     std::error_code ec;
     if (!fs::is_regular_file(path, ec)) {
@@ -437,6 +446,13 @@ bool readYamlFile(const fs::path& path, const std::string& label, json& out, std
     if (!out.is_null() && !out.is_object()) {
         setError(error, label + ": not a mapping");
         return false;
+    }
+    if (versioned && out.is_object()) {
+        if (bundle::migrateToLatest(format, out, nullptr, &message, versionKey) != Status::kOk) {
+            setError(error, label + ": " + message);
+            return false;
+        }
+        out.erase(versionKey);
     }
     return true;
 }
@@ -512,6 +528,7 @@ void readInfo(const json& root, DesignInfo& info) {
 
 ordered_json infoJson(const DesignInfo& info) {
     ordered_json o = ordered_json::object();
+    o["formatVersion"] = bundle::kDesignYamlFormatVersion;  // T-410
     putStringDesignIo(o, "name", info.name, info.extra);
     putStringDesignIo(o, "status", info.status, info.extra);
     putList(o, "principles", info.principles, info.extra);
@@ -680,9 +697,7 @@ bool groupExists(const DesignSystem& ds, const std::string& id) {
 
 ordered_json paletteJson(const DesignSystem& ds) {
     ordered_json o = ordered_json::object();
-    if (extraHasDesignIo(ds.paletteExtra, "version")) {
-        o["version"] = ordered(ds.paletteExtra["version"]);
-    }
+    o["version"] = bundle::kDesignYamlFormatVersion;  // T-406
     if (!ds.groups.empty()) {
         ordered_json groups = ordered_json::array();
         for (const Group& g : ds.groups) {
@@ -804,9 +819,7 @@ ordered_json tokenJson(const TokenMeta& t) {
 
 ordered_json tokensJson(const DesignSystem& ds) {
     ordered_json o = ordered_json::object();
-    if (extraHasDesignIo(ds.tokensExtra, "version")) {
-        o["version"] = ordered(ds.tokensExtra["version"]);
-    }
+    o["version"] = bundle::kDesignYamlFormatVersion;  // T-406
     // Sorted by name: yaml_lite reads a mapping into a sorted json object, so this is the order a
     // load hands back, and a save after a load is byte-identical.
     std::vector<const TokenMeta*> sorted;
@@ -858,6 +871,7 @@ void readType(const json& root, DesignSystem& ds) {
 
 ordered_json typeJson(const DesignSystem& ds) {
     ordered_json o = ordered_json::object();
+    o["version"] = bundle::kDesignYamlFormatVersion;  // T-406
     if (!ds.typeRoles.empty()) {
         ordered_json roles = ordered_json::array();
         for (const TypeRole& r : ds.typeRoles) {
@@ -1029,7 +1043,7 @@ bool readReference(const fs::path& metaFile, const fs::path& designRoot, Referen
                    std::string* error) {
     const std::string relativeMeta = relativeGeneric(metaFile, designRoot);
     json root;
-    if (!readYamlFile(metaFile, relativeMeta, root, error)) {
+    if (!readYamlFile(metaFile, relativeMeta, root, error, bundle::SourceFormat::Meta)) {
         return false;
     }
     out.base.kind = EntryKind::Reference;
@@ -1091,6 +1105,7 @@ bool readReference(const fs::path& metaFile, const fs::path& designRoot, Referen
 
 std::string referenceMetaContent(const ReferenceMeta& r) {
     ordered_json o = ordered_json::object();
+    o["version"] = bundle::kMetaFormatVersion;  // T-406
     if (!r.guid.empty()) {
         o["id"] = r.guid;
     }
@@ -1286,7 +1301,10 @@ Status load(const UiProject& project, DesignSystem& out, std::vector<Issue>* iss
         ds.rootDir.pop_back();
     }
     json doc;
-    if (!readYamlFile(root / "design.yaml", "design.yaml", doc, error)) {
+    // T-406: design.yaml's `version` is the design system's own (35 §35.2), not a format version;
+    // T-410: its format version is `formatVersion`.
+    if (!readYamlFile(root / "design.yaml", "design.yaml", doc, error, bundle::SourceFormat::DesignYaml,
+                      /*versioned=*/true, "formatVersion")) {
         return Status::kInvalidArgument;
     }
     readInfo(doc, ds.info);

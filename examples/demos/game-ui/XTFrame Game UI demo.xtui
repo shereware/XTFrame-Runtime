@@ -4,6 +4,7 @@
   "id": "demo-game",
   "game": "",
   "spec": {
+    "behavior": 1,
     "platforms": [],
     "safeArea": {
       "default": 0.025,

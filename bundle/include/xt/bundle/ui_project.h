@@ -9,6 +9,7 @@
 #include "xt/bundle/bundle.h"
 #include "xt/bundle/project_file.h"
 #include "xt/types.h"
+#include "xt/version.h"
 
 /// UiProject: the editing-side container of docs/design/30-ui-project.md (§30.1, §30.2, §30.5)
 /// and its asset manifest (docs/design/26-layers-symbols-library.md §26.3.3). docs/tasks/T-183.md.
@@ -54,6 +55,11 @@ struct SpecResponsive {
 /// `<name>.xtui:spec` (§30.2 row 1). Every field is optional in the file; missing keys read as
 /// these defaults.
 struct ProjectSpec {
+    /// T-407 (43 §43.3): `spec.behavior`, the behavior version (kLatestBehavior in xt/version.h is
+    /// the newest; 1 = `flow-signal-coalescing`). Missing = 0 (the pre-beta behavior); a new
+    /// project gets kLatestBehavior. Compiled into every UI's IR META and the bundle manifest's
+    /// `spec.behavior`. Written back only when it is not 0.
+    uint32_t behavior = 0;
     /// Platforms and their resolution sets.
     std::vector<SpecPlatform> platforms;
     /// Safe-area margin as a fraction of the viewport, desktop default (§30.2: 2.5%).
@@ -199,8 +205,12 @@ enum class LegacyKind {
 
 /// A parsed `<name>.xtui` (or a `ui-project.json` / `bundle.xtproj` read as one).
 struct UiProject {
-    /// Format version of the `.xtui` content; only 1 is supported (§30.5).
+    /// Format version of the `.xtui` content: always the latest (kUiProjectFormatVersion) after
+    /// load(), which migrates older files (T-406, 43 §43.2).
     int version = 1;
+    /// T-406: the version the file had when load() migrated it to the latest; 0 when it already was
+    /// the latest (or for a project not read from a `.xtui`). Not stored in the JSON.
+    int migratedFrom = 0;
     /// Human-readable project (and bundle) name.
     std::string name;
     /// Stable bundle id; `[a-z0-9-]+` (§22.2).
@@ -236,6 +246,10 @@ struct UiProject {
     std::string extraJson;
     /// Likewise for unrecognised `spec` keys.
     std::string extraSpecJson;
+    /// T-406 (43 §43.2): likewise for unrecognised `shared`, `preview` and `publish` keys.
+    std::string extraSharedJson;
+    std::string extraPreviewJson;
+    std::string extraPublishJson;
     /// T-212 (§22.11.1): an in-memory project around a lone `.xt` (unnamedFor()). It has no
     /// `.xtui`; save() refuses it and path()/dir() are empty.
     bool unnamed = false;
@@ -259,8 +273,10 @@ struct UiProject {
     ///   - a `*.xtui`, `ui-project.json` or `bundle.xtproj` file: that file (`rootDir` = its
     ///     directory); any other file -> kInvalidArgument.
     /// Errors as ProjectFile::load(): kNotFound when no root file can be read, kIoError for invalid
-    /// JSON, kUnsupported for an unknown `version`, kInvalidArgument for a missing/malformed `id`, a
-    /// missing `uis`, a UI without `id`/`doc`, a malformed or repeated UI id.
+    /// JSON, kUnsupported for a `version` newer than kUiProjectFormatVersion (T-406: a missing one
+    /// reads as 1, an older one is migrated and migratedFrom records it), kInvalidArgument for a
+    /// missing/malformed `id`, a missing `uis`, a UI without `id`/`doc`, a malformed or repeated UI
+    /// id.
     static Result<UiProject> load(std::string_view path, std::string* error = nullptr);
 
     /// The UI Project that `upgradeToUiProject()` writes for `project`: every `bundle.xtproj` field
@@ -357,6 +373,34 @@ Status createUiProject(std::string_view dir, std::string_view name, std::string_
 /// null) receives the project-relative paths written. kIoError when a copy cannot be written.
 Status pullStandardSymbols(const UiProject& project, std::string_view standardSymbolDir,
                            std::vector<std::string>* copied = nullptr);
+
+/// T-408 (docs/design/43-compatibility-and-versions.md §43.6, 30 §30.4): one project copy of a
+/// standard symbol, as diffStandardSymbols() reports it.
+struct StandardSymbolDiff {
+    /// The symbol's index name (`Button`).
+    std::string name;
+    /// The copy, project-relative (`shared/symbols/Button.xt`).
+    std::string file;
+    /// The library file, relative to the library (`Button.xt`, `mobile/TouchButton.xt`).
+    std::string standard;
+    /// `current` (same text as the library), `outdated` (the text of an earlier library version:
+    /// a newer one is available and the copy was not edited) or `modified` (none of the known
+    /// library versions: edited in the project, maybe also behind the library).
+    std::string status;
+    /// `outdated` / `modified`: a unified line diff from the library file (`--- standard/<file>`)
+    /// to the copy (`+++ <file>`), 2 lines of context; empty for `current` or when either file is
+    /// longer than 4000 lines.
+    std::string diff;
+};
+
+/// T-408: compares every file of `<shared.symbols>/` named like a symbol of
+/// `<standardSymbolDir>/index.json` (root, `mobile/`, `list/`) with that library file. Texts are
+/// compared with CRLF read as LF; a symbol's earlier versions are the index's `previousContent`
+/// hashes (`sha256:<hex>`, kept by tools/gen_symbols_index.py). Reads only -- nothing is copied or
+/// overwritten (the project holds copies, never live links to the library). Rows are sorted by
+/// `file`. kNotFound when `standardSymbolDir` has no readable index.json.
+Status diffStandardSymbols(const UiProject& project, std::string_view standardSymbolDir,
+                           std::vector<StandardSymbolDiff>& out);
 
 /// Copies the project directory `project.rootDir` to `dir` (every file, except a `dir` nested
 /// inside it) and returns the copy in `*out` (same content, `rootDir` = `dir`, `legacy` kept).

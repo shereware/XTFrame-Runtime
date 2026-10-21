@@ -30,6 +30,9 @@ add_library(xt_core STATIC
     src/trigger_runtime.cpp
     src/repeat_controller.cpp
     src/binding_runtime.cpp
+    src/binding_runtime_eval.cpp
+    src/binding_runtime_ports.cpp
+    src/binding_runtime_api.cpp
     src/hot_reload.cpp
     src/document_state.cpp
     src/command_list.cpp

@@ -9,6 +9,7 @@
 - 讀取器對每個偏移與 count 做邊界檢查；失敗回傳 `Status::kInvalidIr`。
 - 讀取器**不修改**IR 記憶體；執行時資料另外複製到 NodeArena/Timeline。字串表則直接借用。
 - 版本：`major` 不同拒絕載入；`minor` 較新則忽略未知區塊型別。**1.x 檔案不再支援**（`major` 必須為 2，否則 `IrView::open` 回傳 `kInvalidIr`；T-42c 起）。
+- 相容規則（2.8 起一律，43 §43.5）：讀較舊 `minor` 時**缺少的尾段視為空**（陣列為 0 筆、選用欄位取預設值）；讀較新 `minor` 時**未知區塊型別忽略**，已知區塊的新尾段依該區塊的規定（PORT `nested[]` 由 minor ≤ 7 讀取器略過、META `behavior` 之後的位元組忽略），未知的列舉碼（觸發事件、動作、StyleProp）不是錯誤（觸發不發生、動作略過、宣告忽略）。`ir_pod.h` 的任何版面或列舉變更 → `kIrFormatMinor` +1、本章同一提交（含 §2.12 表）、`tests/ir/fixtures/v2.<minor>.xtir` 加一個凍結檔；`tools/check_ir_layout.sh` 檢查（CI）。
 
 ## 2.2 標頭（16 位元組）
 
@@ -16,7 +17,7 @@
 |---|---|---|
 | 0 | char[4] | `"XTIR"` |
 | 4 | uint16 | major = 2 |
-| 6 | uint16 | minor = **6**（T-335 #368，2026-10-15：STYL 尾端 `easingPoints[]` 池 + `LengthUnit::Rem = 14`）；歷史：0 無 gradientPool → 1 gradientPool（T-115）→ … → 5（M31 前）→ 6。讀取端對較舊 minor 以「缺少的尾段視為空」處理；較新 minor 依本節規則忽略未知區塊，但含 `Rem` 的宣告會被舊驗證器拒收 |
+| 6 | uint16 | minor = **9**（T-411：`SetSource` 追加 Port 9、Item 10，Number／String 的 set() 值可帶轉換器步驟（§2.v.1）；版面不變）；歷史：0 無 gradientPool → 1 gradientPool（T-115）→ 2 STYL `floatPool[]`（T-218）→ 3 SCEN `modifiers[]`／`shapes[]`（T-225）→ 4 筆畫漸細欄位（T-233）→ 5 綁定與變形尾段（T-243）→ 6 STYL `easingPoints[]` + `LengthUnit::Rem = 14`（T-335）→ 7 PORT `defaults[]`（T-358）→ 8 T-380～T-399 的欄位與列舉正式化（版面不變）、`hit-slop` 改寫為 StyleProp 277～280 的 Length 宣告（§2.6.2）、`META` 選用的 `behavior` 尾段（§2.10）（T-405，43 §43.5）→ 9。讀取端對較舊 minor 以「缺少的尾段視為空」處理（`IrView::formatMinor()` 供需要依 minor 分支的讀取點，目前只有 §2.6.2 的 `hit-slop`）；較新 minor 依 §2.1 規則忽略未知區塊與尾段，但含 `Rem` 的宣告會被 minor ≤ 5 的驗證器拒收，含 `SetSource` 9／10 的 Set 動作會被 minor ≤ 8 的驗證器拒收 |
 | 8 | uint32 | 區塊數 |
 | 12 | uint32 | 檔案總長度（含標頭） |
 
@@ -169,6 +170,20 @@ IrEffect (80 bytes，T-42c 起；佈局同 18-effects.md §18.2 EffectInstance�
 ```
 
 `valueType` 在 Decl 中額外允許兩個值：`ValueType::StringRef = 8`、`ValueType::ListRef = 9`，僅用於樣式宣告，不出現在 Keyframe。
+
+### 2.6.2 StyleProp 第二段尾端與 `hit-slop`（2.8 正式化，T-405）
+
+StyleProp 與可動畫 PropId 共用 `Decl.prop` 的編號空間：第一段 160～207，第二段自 256 起（上限 `kStylePropLast`，§2.12）；比上限大的編號不是錯誤，宣告被忽略。第二段尾端：
+
+| 值 | 屬性 | `valueType` 與 `value` |
+|---|---|---|
+| 273 | `ui-scale`（T-345） | Color 槽四個 f32：(mode 0 auto／1 none／2 clamp, min, max, 0)；繼承 |
+| 274 | `media-override`（T-345） | Enum：0 auto、1 show、2 hide；繼承 |
+| 275 | `app-region`（T-376） | Enum：0 none、1 drag、2 no-drag；繼承 |
+| 276 | `hit-slop`（T-386） | **只出現在 minor ≤ 7 的檔**：Color 槽四個 f32（上、右、下、左），每格 ≥ 0 為 px，(−65536, 0) 為百分比 −f（f = 百分比／100），≤ −65536 為 `em` 編成 −(65536 + em)（`kHitSlopEmBias`）。minor ≥ 8 的檔不寫；讀到即忽略。276 仍是 `computedStyleValue` 的計算值 id |
+| 277～280 | `hit-slop` 上／右／下／左（T-405） | Length：f32 值 + u8 單位，單位只能是 Px 0、Percent 1、Em 2，值 ≥ 0（驗證器拒收其他單位）；`var()` 參照照常。非來源屬性名，只由 `hit-slop` 簡寫產生；不繼承、不可動畫 |
+
+讀取：`IrView::formatMinor() < 8` 時 276 依上列偏移解碼；否則只認 277～280。執行期 `setStyle("hit-slop: ...")` 一樣寫 277～280。
 
 ## 2.7 `SCEN` 場景模板
 
@@ -332,7 +347,10 @@ IrSourceEntry (12 bytes):
 uint32 sourceFile      // StringId
 uint32 compilerVersion // StringId
 uint64 compileTimeUnix
+uint32 behavior        // minor 8 起，選用尾段：專案的 spec.behavior（43 §43.3）
 ```
+
+`behavior` 缺 = 0。寫出端只在非 0 時寫（payload 20 bytes），值為 0 時 payload 維持 16 bytes——minor ≤ 7 的讀取器要求 META 剛好 16 bytes，這樣 behavior 0 的 2.8 檔仍可被舊執行時開啟（behavior ≥ 1 的檔則會被舊讀取器拒收，屬預期：舊執行時無法提供新行為）。讀取：16 bytes 或 ≥ 20 bytes 合法（20 之後的位元組是更新 minor 的尾段，忽略），17～19 bytes 視為截斷而無效。`MetaChunk::behavior()`；`IrWriter::setMeta(..., behavior)`。編譯器目前一律寫 0（B2 接上 `.xtui` 的 `spec.behavior`）。
 
 ## 2.11 讀寫 API
 
@@ -394,10 +412,43 @@ public:
 ## 2.v `STAT` 與 `TRIG` 區塊（T-174 #175，2026-09-27）
 
 - **STAT**：`u32 n, u32 names[n]`（自訂狀態名 StringId；bit i = names[i]，≤ 32），`u32 n, IrStateGroup{u32 name, u32 mask}[n]`。
-- **TRIG**：`u32 n, IrTriggerTable{element, triggerOffset, triggerCount}[n]`（12 B）；`u32 n, IrTrigger{u8 event, pad3, u32 arg0, u32 arg1, u32 actionOffset, u16 actionCount, u16 headCount}[n]`（20 B）；`u32 n, IrTriggerAction{u8 kind, u8 flags, u16 next, u32 arg0, u32 arg1, f32 arg2, u16 alt, u16 pad}[n]`（20 B）；`u32 n, IrConverterStep{u8 op, pad3, f32 args[4]}[n]`（20 B）。前 `headCount` 個動作是 `;` 分隔的陳述；`next`（then）與 `alt`（else）為觸發內 1-based 索引，`If` 的 `next` 為真分支。
+- **TRIG**：`u32 n, IrTriggerTable{element, triggerOffset, triggerCount}[n]`（12 B）；`u32 n, IrTrigger{u8 event, u8 button（T-390，§2.v.1）, pad2, u32 arg0, u32 arg1, u32 actionOffset, u16 actionCount, u16 headCount}[n]`（20 B）；`u32 n, IrTriggerAction{u8 kind, u8 flags, u16 next, u32 arg0, u32 arg1, f32 arg2, u16 alt, u16 pad}[n]`（20 B）；`u32 n, IrConverterStep{u8 op, pad3, f32 args[4]}[n]`（20 B）。前 `headCount` 個動作是 `;` 分隔的陳述；`next`（then）與 `alt`（else）為觸發內 1-based 索引，`If` 的 `next` 為真分支。
 - 事件碼：Hover 1、Leave 2、Press 3、Release 4、Click 5、Focus 6、Blur 7、Check 8、Uncheck 9、Show 10、Hide 11、Port 12、TimelineEnd 13、TimelineMarker 14、StateEnter 15、StateExit 16、Key 20；17–19、21、22 保留。動作碼：Play 1、Stop 2、Seek 3、State 4、Class 5、Show 6、Hide 7、Sound 8、Emit 10、If 11、Focus 12、Haptic 14；9 `set`、13 `spawn`、15 `layer` 保留。旗標：play `kPlayReverse/Loop/Once/Hold` = 1/2/4/8；state／class 用 `TriggerMode` On/Off/Toggle。轉換器 op（27.3.3 目錄序）：Lt 7、Le 8、Gt 9、Ge 10、Eq 11、Ne 12、Between 13——**T-175 必須沿用此編號**。
 - `:state(Name)` 是 T-173 條件部件的新碼 `IrSelCond::CustomState = 16`（`tag` 為狀態名 StringId），可用於 `:not()`。
 - NodeCommon 尾端：`triggerTable`（表索引 + 1）、`customStates`（u32 bitset；名稱在 STAT）、`flags2`（`kPointerWatch = 1`）。
+
+### 2.v.1 TRIG 完整欄位與碼表（2.8 正式化，T-405）
+
+```
+IrTrigger (20 bytes):
+  u8  event           // TriggerEvent
+  u8  button          // T-390：press／release／click／dblclick／pointermove 的按鈕過濾 = PointerButton + 1，
+                      //   0 = 任一（pointermove：0 = 有無按鍵皆可）；> 3 無效
+  u8  _pad[2]
+  u32 arg0, arg1; u32 actionOffset; u16 actionCount; u16 headCount
+
+IrTriggerAction (20 bytes):
+  u8 kind (TriggerAction); u8 flags; u16 next; u32 arg0; u32 arg1; f32 arg2; u16 alt
+  u16 extra           // T-201：Set 的轉換器步數（arg0 起，在 conditions[]）；Spawn 的生成池序號
+```
+
+**TriggerEvent**（上限 `kTriggerEventLast`；更大的碼不是錯誤，該觸發不會發生）：None 0、Hover 1、Leave 2、Press 3、Release 4、Click 5、Focus 6、Blur 7、Check 8、Uncheck 9、Show 10、Hide 11、Port 12、TimelineEnd 13、TimelineMarker 14、StateEnter 15、StateExit 16、DragStart 17、DragOver 18、Drop 19、Key 20、Gesture 21、Player 22、ItemEnter 23、ItemExit 24、MediaEnd 25、DragLeave 26、Back 27、NavBlocked 28、DragValue 29、NavValue 30、DoubleClick 31（T-379）、PointerCancel 32、PointerMove 33（T-386）、DragCancel 34（T-388）、Scroll 35、OutsidePress 36（T-387）、Change 37、Input 38（T-392）、PointerDrag 39（T-394）、FocusIn 40、FocusOut 41（T-397）。
+
+**TriggerAction**（上限 `kTriggerActionLast`；更大的碼略過）：None 0、Play 1、Stop 2、Seek 3、State 4、Class 5、Show 6、Hide 7、Sound 8、Set 9、Emit 10、If 11、Focus 12（arg0 = 目標 id，`kInvalidString` = 觸發元素自身，T-392）、Spawn 13、Haptic 14、Layer 15、Remove 16、Consume 17（只在 `on:outsidepress`，T-394）、Reset 18（`reset(value)`，只在有 `bind:value` 的元素，T-399）。
+
+**動作旗標**：
+
+| 動作 | flags |
+|---|---|
+| Play | `kPlayReverse` 1、`kPlayLoop` 2、`kPlayOnce` 4、`kPlayHold` 8、`kActionMedia` 16（Stop／Seek 也用） |
+| State | 低位 `TriggerMode`（On 0／Off 1／Toggle 2）；`kStateBuiltin` 0x40（T-390／T-392）：設定內建 ElementState 而非自訂狀態——arg0 = 0 為 Disabled，否則為 ElementState bit 本身（Focus／Hover／Active／Checked／Disabled 之一，其他值無效）；`kStateTarget` 0x80（T-201）：arg1 = 目標元素（路徑）id 的 StringId |
+| Class | `TriggerMode` |
+| Spawn | `SpawnAt`：Self 0、Pointer 1、Element 2 |
+| Set | `SetSource`（上限 `kSetSourceLast`）：Number 0、String 1、Toggle 2、EventValue 3、PointerFractionX 4、PointerFractionY 5、PointerLocalX 6、PointerLocalY 7（4～7：arg2 位元為元素 id StringId，T-386）、ElementValue 8（T-392）、Port 9（arg2 位元為 PORT 索引）、Item 10（輸入為觸發元素所在 `<repeat>` 實例的項目，第一步讀欄位／序號／數量）（T-411，2.9）；EventValue、4～10 與 2.9 起的 Number／String 經 arg0／`extra` 的轉換器步驟 |
+| Layer | 1 overlay、0 normal |
+| If | 0 = arg0／arg1 是一條比較鏈（conditions[] 的範圍）；`kIfActive` 1（T-386）：條件為 `active`，範圍為空；`kIfTerms` 2（T-390）：範圍是一串須全部成立（and）的項；兩旗標不併用，其他值無效 |
+
+**`kIfTerms` 的 step 序列**：每一項 = 一個標頭 step 接自己的 `argCount` 個比較 step。標頭的 `op = Operands`（0，不當轉換器執行）、`args[0]` = `IfTerm`（以 float 存）、`args[1]` = 1 表示否定（`not`）、`args[2]` = 運算元、`args[3]` 依項而定。`IfTerm`（上限 `kIfTermLast`）：Compare 0（事件值經比較 step）、Active 1、Button 2（`args[2]` = PointerButton）、State 3（`args[2]` = 自訂狀態 bit；`args[3]` = 1 時為 ElementState bit）、Port 4（`args[2]` = PORT 索引，`argKinds` 標成 Port，再接比較 step）、External 5（T-393，拖曳來自 OS）、Dragging 6（T-394）；Active／Button／State／External／Dragging 沒有比較 step。
 
 ## 2.u `STRS` 區塊（T-179 #176，2026-09-27）
 
@@ -409,7 +460,7 @@ public:
 
 ## 2.s `PORT` 與 `BIND` 區塊（T-175 #178，2026-09-27）
 
-- **PORT**：`u32 n, IrPort{u32 name, u8 type, u8 dir, u8 flags(kPortExpose=1), u8 pad, u32 element, u32 scope (實例根或 0xFFFFFFFF), u32 fieldOffset, u32 fieldCount}[n]`（24 B）；`u32 m, IrPortField{u32 name, u8 type, pad3}[m]`（struct/list 欄位與 enum 值名）。`PortValueType`：Number 1、String 2、Bool 3、Color 4、Vec2 5、Vec3 6、Entity 7、Enum 8、Struct 9、List 10、Texture 11、Event 12；`PortDir` In 0、Out 1、Call 2。
+- **PORT**：`u32 n, IrPort{u32 name, u8 type, u8 dir, u8 flags(kPortExpose=1), u8 entryType（T-381，§2.s.3）, u32 element, u32 scope (實例根或 0xFFFFFFFF), u32 fieldOffset, u32 fieldCount}[n]`（24 B）；`u32 m, IrPortField{u32 name, u8 type, pad3}[m]`（struct/list 欄位與 enum 值名）。`PortValueType`：Number 1、String 2、Bool 3、Color 4、Vec2 5、Vec3 6、Entity 7、Enum 8、Struct 9、List 10、Texture 11、Event 12；`PortDir` In 0、Out 1、Call 2。
 - **BIND**：`u32 n, IrBinding{u32 element, u8 target, u8 flags, u16 targetId, u32 targetName, u32 sourceOffset, u16 sourceCount, u16 stepCount, u32 stepOffset}[n]`（24 B）；`u32 m, u32 sources[]`（PORT 索引，輸入 port 在前）；`u32 k, IrConverterStep[]`。`BindTarget`：Prop 1（targetId = PropId/StyleProp、targetName = CSS 名）、Text 2、Src 3、Visible 4、State 5（targetId = 狀態 bit）、Class 6、Variant 7（targetName = `v-<Prop>-` 前綴）；flags `kBindAfterLayout` 1、`kBindNoPrimary` 2。NodeCommon 未加 `bindingTable`（BIND 以元素索引）。
 - `IrConverterStep` 仍 20 B：T-174 的 pad 改為 `u8 argCount` + `u16 argKinds`（每引數 4 bit：Number 0、String 1、Port 2、Percent 3、None 4；T-174 的零值讀為全 Number）。op 0 = `Operands`（前一步的續行引數）；宿主自訂 = 0x80 並在 args[0] 帶名，執行時註冊回 0x80+i。TRIG：Port 事件與 Emit 動作的 `arg1` = PORT 索引 + 1（0 = 未宣告）。
 - **ConverterOp**：range 1、clamp 2、round 3、abs 4、scale 5、offset 6、lt 7、le 8、gt 9、ge 10、eq 11、ne 12、between 13、not 14、and 15、or 16、format 17、thousands 18、fixed 19、percent 20、time 21、upper 22、lower 23、select 24、step 25、lerpColor 26、fromToken 27、localize 28、concat 29、glyph 30、tween 31、delay 32、count 33、index 34、item 35、elemProp 36。
@@ -422,7 +473,54 @@ public:
 
 ### 2.s.2 埠預設值（T-358，2026-10-16）
 
-`IrPortField[m]` 之後追加 `u32 d, IrPortDefault{u32 port, u8 type, u8 pad[3], u8 value[16]}[d]`（24 B；`value` 依 `type`：Number f32、Bool u8、Color 4 bytes 依序 R,G,B,A、String u32 StringId、Vec2 2×f32、Vec3 3×f32、Enum u32 名 StringId；其餘型別不可有預設值）。只列有預設值的埠；舊讀取器把缺少的尾段視為空。minor 7。
+`IrPortField[m]` 之後追加 `u32 d, IrPortDefault{u32 port, u8 type, u8 pad[3], u8 value[16]}[d]`（24 B；`value` 依 `type`：Number f32、Bool u8、Color 4 bytes 依序 R,G,B,A、String u32 StringId、Vec2 2×f32、Vec3 3×f32、Enum u32 名 StringId、**List** u32 StringId（JSON 陣列文字，T-383）、**Struct** u32 StringId（JSON 物件文字，T-385）；其餘型別（Entity、Texture、Event）不可有預設值）。List／Struct 的文字在載入時以 `Document::setPortText()` 同一套規則解析；`value` 其餘位元組為 0。只列有預設值的埠；`type` 必須等於該埠的 `IrPort.type`；舊讀取器把缺少的尾段視為空。minor 7（List／Struct 文字於 minor 7 期間加入，2.8 正式化）。
+
+### 2.s.3 PORT／BIND 完整版面（2.8 正式化，T-405）
+
+PORT payload（尾段依序選用；缺 = 空）：
+
+```
+uint32 portCount;    IrPort        ports[]
+uint32 fieldCount;   IrPortField   fields[]
+uint32 defaultCount; IrPortDefault defaults[]   // minor 7（§2.s.2）
+uint32 nestedCount;  IrPortNested  nested[]     // T-391；只在有巢狀 list 欄位時寫，此時 defaults[] 也寫（可為 0 筆）
+
+IrPort (24 bytes):
+  u32 name; u8 type (PortValueType); u8 dir (PortDir); u8 flags (kPortExpose = 1)
+  u8  entryType       // T-381：List 埠的元素型別；0 = list<struct{...}>（元素欄位 = 本埠 fields），
+                      //   否則 Number／String／Bool／Color／Vec2／Vec3／Enum 的 PortValueType
+                      //   （Enum 的值名 = 本埠 fields，其餘無 fields）；非 List 埠恆為 0
+  u32 element; u32 scope; u32 fieldOffset, fieldCount
+
+IrPortNested (16 bytes，T-391):
+  u32 field           // fields[] 中型別為 List 的欄位索引
+  u8  entryType       // 同 IrPort.entryType
+  u8  _pad[3]
+  u32 fieldOffset, fieldCount   // 該 list 元素的欄位（或 Enum 值名），範圍必須在 field 之後（有限巢狀）
+```
+
+巢狀規則：每個 List 欄位**至多**一筆 `IrPortNested`。**缺尾段或缺該筆 = 無巢狀**：該欄位的值沒有元素結構（執行期不建 schema），且不得被巢狀 `<repeat>`（`kRepeatItemField`）走訪（RPT 驗證拒收）；除此之外不是錯誤（2.8 起取消 T-391「每個 List 欄位必須有描述」的拒收）。minor ≤ 7 的讀取器只讀到 `defaults[]` 為止，`nested[]` 被忽略。
+
+BIND：`IrBinding.target`（`BindTarget`，上限 `kBindTargetLast`，§2.12；更大的值無效）：
+
+| 值 | 目標 | targetId／targetName |
+|---|---|---|
+| 1 | Prop | PropId／StyleProp；CSS 名 |
+| 2 | Text | — |
+| 3 | Src | — |
+| 4 | Visible | — |
+| 5 | State | 自訂狀態 bit |
+| 6 | Class | —；class 名 |
+| 7 | Variant | —；`v-<Prop>-` 前綴 |
+| 8 | WorldAnchor（T-200） | 一個 vec2/vec3 來源、無步驟、`kBindAfterLayout` |
+| 9 | Checked（T-204） | — |
+| 10 | Port（T-380） | 目標 PORT 索引（實例宣告的 in 埠，非 Event） |
+| 11 | Disabled（T-385） | — |
+| 12 | Display（T-385） | —（真假 → 執行期 `display: none` 覆寫；非布林字串直接當 `display` 值） |
+| 13 | Value（T-392） | —（寫入可編輯 `<input>` 的執行期值，不發 Change） |
+| 14 | BuiltinState（T-392） | ElementState bit：Focus／Hover／Active／Checked |
+
+flags：`kBindAfterLayout` 1、`kBindNoPrimary` 2、`kBindRepeatItem` 4。`ConverterArg`（每引數 4 bit）：Number 0、String 1、Port 2、Percent 3、None 4、Item 5、Index 6、Count 7、OuterItem 8、OuterIndex 9（後兩者 T-391）。
 
 ## 2.r `RPT ` 區塊（T-177 #180，2026-09-27）
 
@@ -480,3 +578,91 @@ uint32 textLength;  uint8 text[]            // UTF-8；source 與 glsl 都是它
 - **最後閘門的 fuzz 修正（#325 尾端 7066f638、2386c026）**：驗證器拒絕 layout 直接讀取、單位無法解析的 Length（非 Length 型別的宣告其單位 byte 須為 0：AnchorX/Y、TranslateX/Y、LineHeight、perspective 等；`transform-origin: 1em` 由樣式階段換算）；自動播放的 `<anim>` 指向不存在的 timeline 為 kInvalidIr（`Animator::play` 對缺少的 timeline 回 0）；每條 TLIN 軌的值型別須為該屬性接受者（`core/src/property_accept.h` 的共用表，`setProperty` 對不接受的型別不做事）；未定義的軌屬性或不適用於目標節點種類者為 kInvalidIr。迭代通知每個 instance 每次 update 最多 `kMaxIterationNotesPerUpdate` = 64 則，其餘合併為一則（`iteration` = 最後到達的索引，`Note::skipped` 記略過數）；marker 通知以 marker 清單為界。迴歸輸入在 `tests/fuzz/regressions/ir/`。
 - 177 個畸形 IR 案例未再發現驗證器遺漏；205 個語料樣本經 `IrView` 讀出再以 `IrWriter` 寫回逐 byte 相同（15 §15.6，T-267c #322）。
 - IR 格式與版本在本鏈未變；`CommandList::sources`（09 §9.8）不序列化。
+
+## 2.12 版面與列舉上限表（T-405，2.8 起；`tools/check_ir_layout.sh` 比對）
+
+本表是 `core/include/xt/ir_pod.h` 每個 POD 的 `static_assert(sizeof(...))` 與列舉上限常數的正本對照；`tools/check_ir_layout.sh` 由標頭產生 `tests/ir/layout.txt`，與本表及該檔逐列比對，並檢查 §2.2 的 minor 與 `tests/ir/fixtures/v2.<minor>.xtir` 存在（CI 的 docs-checks、`dev_check.sh` 套件 `ir`）。版面或上限變更時三者與 `kIrFormatMinor` 同一提交更新（`tools/check_ir_layout.sh --update` 重寫 layout.txt）。各結構的欄位見對應小節。
+
+<!-- ir-layout:begin -->
+| 種類 | 名稱 | 值 |
+|---|---|---|
+| limit | `kBindTargetLast` | 14 |
+| limit | `kConverterOpLast` | 41 |
+| limit | `kIfTermLast` | 6 |
+| limit | `kIrFormatMinor` | 9 |
+| limit | `kIrSelCondLast` | 17 |
+| limit | `kPortTypeLast` | 12 |
+| limit | `kSetSourceLast` | 10 |
+| limit | `kStylePropLast` | 280 |
+| limit | `kTriggerActionLast` | 18 |
+| limit | `kTriggerEventLast` | 41 |
+| struct | `EasingPoint` | 8 |
+| struct | `IrAnimationSpec` | 48 |
+| struct | `IrAsset` | 16 |
+| struct | `IrAttr` | 8 |
+| struct | `IrBinding` | 28 |
+| struct | `IrBoneData` | 4 |
+| struct | `IrCalc` | 8 |
+| struct | `IrCalcOp` | 12 |
+| struct | `IrCameraData` | 48 |
+| struct | `IrChunkHeader` | 12 |
+| struct | `IrClipParam` | 8 |
+| struct | `IrClipShape` | 12 |
+| struct | `IrConstraintData` | 44 |
+| struct | `IrConverterStep` | 20 |
+| struct | `IrDecl` | 24 |
+| struct | `IrDocElement` | 48 |
+| struct | `IrDocText` | 8 |
+| struct | `IrEasing` | 20 |
+| struct | `IrEffect` | 80 |
+| struct | `IrFontFace` | 12 |
+| struct | `IrFontFallback` | 12 |
+| struct | `IrGradient` | 32 |
+| struct | `IrGradientStop` | 20 |
+| struct | `IrGridArea` | 12 |
+| struct | `IrGridList` | 12 |
+| struct | `IrGridTrack` | 8 |
+| struct | `IrHeader` | 16 |
+| struct | `IrImageData` | 16 |
+| struct | `IrKeyframe` | 72 |
+| struct | `IrKeyframesRef` | 8 |
+| struct | `IrMarker` | 12 |
+| struct | `IrMedia` | 8 |
+| struct | `IrMediaCond` | 8 |
+| struct | `IrMediaQuery` | 8 |
+| struct | `IrMediaRule` | 8 |
+| struct | `IrMeshData` | 32 |
+| struct | `IrMeta` | 16 |
+| struct | `IrModifierData` | 44 |
+| struct | `IrPathData` | 156 |
+| struct | `IrPointWeight` | 8 |
+| struct | `IrPort` | 24 |
+| struct | `IrPortDefault` | 24 |
+| struct | `IrPortField` | 8 |
+| struct | `IrPortNested` | 16 |
+| struct | `IrRepeat` | 28 |
+| struct | `IrRule` | 20 |
+| struct | `IrSceneNode` | 96 |
+| struct | `IrSelPart` | 16 |
+| struct | `IrShaderParam` | 32 |
+| struct | `IrShaderRef` | 112 |
+| struct | `IrShapeData` | 188 |
+| struct | `IrSkinData` | 20 |
+| struct | `IrSourceEntry` | 12 |
+| struct | `IrStateGroup` | 8 |
+| struct | `IrSymbolPath` | 8 |
+| struct | `IrTendon` | 28 |
+| struct | `IrTextInline` | 16 |
+| struct | `IrTextLink` | 4 |
+| struct | `IrTextRun` | 32 |
+| struct | `IrTimelineGroup` | 36 |
+| struct | `IrTimelineGroupMarker` | 8 |
+| struct | `IrTimelineGroupMember` | 16 |
+| struct | `IrTimelineGroupSound` | 8 |
+| struct | `IrTrack` | 16 |
+| struct | `IrTransitionSpec` | 32 |
+| struct | `IrTrigger` | 20 |
+| struct | `IrTriggerAction` | 20 |
+| struct | `IrTriggerTable` | 12 |
+| struct | `IrVar` | 24 |
+<!-- ir-layout:end -->

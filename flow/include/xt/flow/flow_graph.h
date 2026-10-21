@@ -13,6 +13,10 @@
 
 namespace xt::flow {
 
+/// T-406 (docs/design/43-compatibility-and-versions.md §43.2): the `.xtflow` format version toJson()
+/// writes and the newest parse() accepts (a missing `version` reads as 1).
+inline constexpr int kFlowFormatVersion = 1;
+
 /// Signal port value type (docs/design/17-editor.md §17.6). Pulse carries no value.
 enum class PortType : uint8_t { Pulse, Bool, Number, String };
 
@@ -95,10 +99,14 @@ struct FlowGraph {
     /// node types `system`, `sound`, `haptic`, `spawn`, `emit` and `timeline` exist; nodes may
     /// carry `pos` and the document `groups` (editor-only, never an error when malformed -- a
     /// malformed entry is dropped).
+    ///
+    /// T-406 (43 §43.2): `version` -- missing = 1; not a positive integer -> kInvalidArgument; newer
+    /// than kFlowFormatVersion -> kUnsupported with ".xtflow format version N is newer than this
+    /// XTFrame supports (M); a newer XTFrame is needed" (nothing else is checked then).
     static Status parse(std::string_view json, FlowGraph& out, std::vector<std::string>& errors);
 
     /// Serializes `this` back into a `.xtflow` JSON document: a top-level object with keys in the
-    /// fixed order "version" (always 1), "nodes", "edges", then (T-193, only when non-empty)
+    /// fixed order "version" (always kFlowFormatVersion), "nodes", "edges", then (T-193, only when non-empty)
     /// "groups"; each node as {id, type, [params], [pos]} and each edge as {from, to, [params]}
     /// ("params" omitted when empty, "pos" only with NodeDesc::hasPos), each group as
     /// {title, rect: [x, y, w, h], [color]}, 2-space indented. Always

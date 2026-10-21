@@ -3,6 +3,7 @@
 
 #include <cstdio>
 #include <string_view>
+#include <type_traits>
 
 #include "host_json/host_json.h"
 // The public bundle header that exposes nlohmann::json (DesignSystem's unknown keys).
@@ -33,7 +34,11 @@ bool runJsonCoexistDemo() {
 
     const std::string_view xtName = xtSignatureOf<nlohmann::json>();
     const std::string_view hostName = hostJsonTypeName();
-    const bool xtTagged = xtName.find("nlohmann::xtframe_abi::") != std::string_view::npos;
+    // Clang's __PRETTY_FUNCTION__ leaves inline namespaces out (it prints nlohmann::basic_json<>),
+    // so the tag is also checked on the type itself: nlohmann::xtframe_abi::json only names the
+    // same type when XTFrame's copy really lives in the xtframe_abi inline namespace.
+    const bool xtTagged = xtName.find("nlohmann::xtframe_abi::") != std::string_view::npos ||
+                          std::is_same_v<nlohmann::json, nlohmann::xtframe_abi::json>;
     const bool hostUntagged = hostName.find("nlohmann::") != std::string_view::npos &&
                               hostName.find("xtframe_abi") == std::string_view::npos;
 

@@ -11,6 +11,7 @@
 #include "xt/context.h"
 #include "xt/event.h"
 #include "xt/property.h"
+#include "xt/version.h"
 
 /// The §17.6 connection-point port tables, the shared graph validator (used by both
 /// FlowGraph::parse() and FlowRuntime::load(), see flow_internal.h) and the document endpoint
@@ -488,6 +489,11 @@ bool isValueSignal(Endpoint::Owner owner, const std::string& port, PortType type
         default:
             return false;
     }
+}
+
+bool coalescesSignals(const DocEndpointState& state) {
+    const Document* doc = liveDocument(state);
+    return doc != nullptr && doc->behavior() >= kBehaviorFlowSignalCoalescing;
 }
 
 std::vector<std::string> outputPortOrder(NodeType type) {

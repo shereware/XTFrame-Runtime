@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "name": "Flow Big Typical",
+  "id": "flow-typical",
+  "uis": [
+    {
+      "id": "flow-typical",
+      "doc": "ui/flow-typical/flow-typical.xt",
+      "flow": "ui/flow-typical/flow-typical.xtflow",
+      "size": [
+        1280,
+        720
+      ]
+    }
+  ]
+}

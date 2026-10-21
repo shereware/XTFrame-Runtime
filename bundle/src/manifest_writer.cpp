@@ -132,6 +132,9 @@ Status writeManifest(std::string_view dir, const ManifestData& data) {
         safeArea["default"] = writeFloat(data.spec.safeAreaDefault);
         safeArea["console"] = writeFloat(data.spec.safeAreaConsole);
         ordered_json specObj;
+        if (data.spec.behavior != 0) {
+            specObj["behavior"] = data.spec.behavior;  // T-407: written only when set.
+        }
         specObj["safeArea"] = std::move(safeArea);
         specObj["logicalHeight"] = writeFloat(data.spec.logicalHeight);
         specObj["uiscaleRule"] = uiScaleRuleName(data.spec.uiscaleRule);  // T-241
@@ -165,6 +168,9 @@ Status writeManifest(std::string_view dir, const ManifestData& data) {
         entry["ports"] = std::move(portsObj);
 
         entry["fileHash"] = ui.fileHash;
+        if (!ui.contract.empty()) {
+            entry["contract"] = ui.contract;  // T-408 (43 §43.6)
+        }
         uiArray.push_back(std::move(entry));
     }
     root["uis"] = std::move(uiArray);
@@ -408,6 +414,7 @@ bool readManifest(std::string_view dir, ManifestData& out) {
                 readPortsManifestWriter(*portsIt, "out", false, ui.ports);
             }
             ui.fileHash = getUint64(entry, "fileHash");
+            ui.contract = getString(entry, "contract");  // T-408: a kept UI keeps its contract.
             data.uis.push_back(std::move(ui));
         }
     }

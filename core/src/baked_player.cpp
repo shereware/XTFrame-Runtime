@@ -27,7 +27,9 @@ struct Reader {
             ok = false;
             return false;
         }
-        std::memcpy(dst, data + pos, n);
+        if (n != 0) {  // an empty vector's data() may be null; memcpy(null, ..., 0) is UB (T-402)
+            std::memcpy(dst, data + pos, n);
+        }
         pos += n;
         return true;
     }

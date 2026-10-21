@@ -42,11 +42,83 @@ uint64_t hashBytes(uint64_t hash, const void* data, size_t count) {
     return hash;
 }
 
-/// Hashes one POD payload. The payloads are value-initialized by Painter, so their padding bytes
-/// are zero and hashing the whole object is stable (docs/tasks/T-98.md "命令雜湊").
+/// Hashes one POD payload as its raw bytes (docs/tasks/T-98.md "命令雜湊"). Only for types without
+/// padding: padding bytes are not guaranteed to survive value-initialization or a copy (Clang leaves
+/// them indeterminate), so two equal payloads would hash differently. The padded payloads go
+/// through hashFields() below instead (T-402).
 template <class T>
 uint64_t hashPod(uint64_t hash, const T& value) {
     return hashBytes(hash, &value, sizeof(T));
+}
+
+/// T-402: the payloads with padding (PaintRef after `kind`, FillCmd's tail, StrokeCmd after
+/// `join`, GlyphsCmd after `rendering`, ClipPathCmd's tail, LayerCmd after `blend`, MaskCmd after
+/// `mode`) are hashed member by member, each member being padding-free. The size checks make a new
+/// member fail the build here until it is added to the matching overload.
+static_assert(sizeof(PaintRef) == 52 && sizeof(FillCmd) == 96 && sizeof(StrokeCmd) == 116 &&
+                  sizeof(GlyphsCmd) == 68 && sizeof(ClipPathCmd) == 44 && sizeof(LayerCmd) == 24 &&
+                  sizeof(MaskCmd) == 20,
+              "a padded command payload changed: update its hashFields() overload");
+
+uint64_t hashFields(uint64_t hash, const PaintRef& p) {
+    hash = hashPod(hash, p.kind);
+    hash = hashPod(hash, p.color);
+    hash = hashPod(hash, p.p0);
+    hash = hashPod(hash, p.p1);
+    hash = hashPod(hash, p.p2);
+    hash = hashPod(hash, p.stopOffset);
+    return hashPod(hash, p.stopCount);
+}
+
+uint64_t hashFields(uint64_t hash, const FillCmd& c) {
+    hash = hashPod(hash, c.xf);
+    hash = hashPod(hash, c.path);
+    hash = hashFields(hash, c.paint);
+    hash = hashPod(hash, c.rule);
+    return hashPod(hash, c.antialias);
+}
+
+uint64_t hashFields(uint64_t hash, const StrokeCmd& c) {
+    hash = hashPod(hash, c.xf);
+    hash = hashPod(hash, c.path);
+    hash = hashFields(hash, c.paint);
+    hash = hashPod(hash, c.width);
+    hash = hashPod(hash, c.cap);
+    hash = hashPod(hash, c.join);
+    hash = hashPod(hash, c.miterLimit);
+    hash = hashPod(hash, c.dashOffset);
+    hash = hashPod(hash, c.dashCount);
+    return hashPod(hash, c.dashPhase);
+}
+
+uint64_t hashFields(uint64_t hash, const GlyphsCmd& c) {
+    hash = hashPod(hash, c.xf);
+    hash = hashPod(hash, c.font);
+    hash = hashPod(hash, c.size);
+    hash = hashPod(hash, c.color);
+    hash = hashPod(hash, c.rendering);
+    hash = hashPod(hash, c.glyphOffset);
+    hash = hashPod(hash, c.glyphCount);
+    hash = hashPod(hash, c.effect);
+    hash = hashPod(hash, c._pad);
+    return hashPod(hash, c.effectRadius);
+}
+
+uint64_t hashFields(uint64_t hash, const ClipPathCmd& c) {
+    hash = hashPod(hash, c.xf);
+    hash = hashPod(hash, c.path);
+    return hashPod(hash, c.rule);
+}
+
+uint64_t hashFields(uint64_t hash, const LayerCmd& c) {
+    hash = hashPod(hash, c.opacity);
+    hash = hashPod(hash, c.blend);
+    return hashPod(hash, c.boundsHint);
+}
+
+uint64_t hashFields(uint64_t hash, const MaskCmd& c) {
+    hash = hashPod(hash, c.mode);
+    return hashPod(hash, c.boundsHint);
 }
 
 /// Hashes the `count` pool entries starting at `offset`, skipping a range that runs off the pool
@@ -218,14 +290,14 @@ void hashCommandList(const CommandList& list, std::vector<uint64_t>& out) {
         switch (cmd.kind) {
             case CmdKind::FillPath: {
                 const FillCmd& c = list.fills[cmd.index];
-                hash = hashPod(hash, c);
+                hash = hashFields(hash, c);
                 hash = hashPath(hash, list, c.path);
                 hash = hashPool(hash, list.stops, c.paint.stopOffset, c.paint.stopCount);
                 break;
             }
             case CmdKind::StrokePath: {
                 const StrokeCmd& c = list.strokes[cmd.index];
-                hash = hashPod(hash, c);
+                hash = hashFields(hash, c);
                 hash = hashPath(hash, list, c.path);
                 hash = hashPool(hash, list.stops, c.paint.stopOffset, c.paint.stopCount);
                 hash = hashPool(hash, list.dashes, c.dashOffset, c.dashCount);
@@ -236,7 +308,7 @@ void hashCommandList(const CommandList& list, std::vector<uint64_t>& out) {
                 break;
             case CmdKind::DrawGlyphs: {
                 const GlyphsCmd& c = list.glyphRuns[cmd.index];
-                hash = hashPod(hash, c);
+                hash = hashFields(hash, c);
                 hash = hashPool(hash, list.glyphs, c.glyphOffset, c.glyphCount);
                 hash = hashPool(hash, list.glyphPos, c.glyphOffset, c.glyphCount);
                 break;
@@ -246,15 +318,15 @@ void hashCommandList(const CommandList& list, std::vector<uint64_t>& out) {
                 break;
             case CmdKind::PushClipPath: {
                 const ClipPathCmd& c = list.clipPaths[cmd.index];
-                hash = hashPod(hash, c);
+                hash = hashFields(hash, c);
                 hash = hashPath(hash, list, c.path);
                 break;
             }
             case CmdKind::PushLayer:
-                hash = hashPod(hash, list.layers[cmd.index]);
+                hash = hashFields(hash, list.layers[cmd.index]);
                 break;
             case CmdKind::PushMask:
-                hash = hashPod(hash, list.masks[cmd.index]);
+                hash = hashFields(hash, list.masks[cmd.index]);
                 break;
             case CmdKind::PushProjection:
                 hash = hashPod(hash, list.projections[cmd.index]);

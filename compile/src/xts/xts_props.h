@@ -107,10 +107,16 @@ inline constexpr uint16_t MediaOverride = 274;
 /// 05 §5.9.10 (T-376): `app-region: none | drag | no-drag` (Enum 0 / 1 / 2); inherited, not
 /// animatable.
 inline constexpr uint16_t AppRegion = 275;
-/// 05 §5.9.11 (T-386): `hit-slop: <length>{1,4}` (margin order), four f32 encoded like a Color
-/// value (top, right, bottom, left; px, `%` and `em` per xt::kHitSlopEmBias); not inherited, not
-/// animatable.
+/// 05 §5.9.11 (T-386): `hit-slop: <length>{1,4}` (margin order); a shorthand: since IR minor 8
+/// (T-405) it is written as the four Length longhands below (IR minor <= 7 wrote one Color-encoded
+/// StyleProp 276 per xt::kHitSlopEmBias). Not inherited, not animatable.
 inline constexpr uint16_t HitSlop = 276;
+/// T-405 (02 §2.6): one `hit-slop` side (top, right, bottom, left), a Length in px, `%` or `em`.
+/// Not source property names: only the `hit-slop` shorthand emits them.
+inline constexpr uint16_t HitSlopTop = 277;
+inline constexpr uint16_t HitSlopRight = 278;
+inline constexpr uint16_t HitSlopBottom = 279;
+inline constexpr uint16_t HitSlopLeft = 280;
 /// StyleProps share IrDecl's number space with the animatable PropIds. The shape-modifier /
 /// parametric-shape / rig PropIds take 208-255 (T-225b, T-243), so StyleProps fill 160-207
 /// (kLastLow) and continue from kFirstHigh (256), below the effect PropIds (0x8000).
@@ -119,7 +125,8 @@ static_assert(kLastLow < xt::prop::ModTrimStart, "StyleProp numbers collide with
 inline constexpr uint16_t kFirstHigh = 256;
 static_assert(kFirstHigh > xt::prop::ConstraintEnabled, "StyleProp numbers collide with rig PropIds");
 /// Highest StyleProp number.
-inline constexpr uint16_t kLast = HitSlop;
+inline constexpr uint16_t kLast = HitSlopLeft;
+static_assert(kLast == xt::kStylePropLast, "update kStylePropLast (ir_pod.h) and 02 §2.12");
 static_assert(kLast < xt::prop::kEffectPropBase, "StyleProp numbers collide with effect PropIds");
 }  // namespace styleprop
 

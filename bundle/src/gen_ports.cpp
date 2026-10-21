@@ -1,10 +1,14 @@
 #include "xt/bundle/gen_ports.h"
 
+#include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <set>
 #include <string>
 #include <vector>
 
+#include "design_internal.h"
+#include "xt/ir.h"
 #include "xt/ir_pod.h"
 
 /// generatePortHeader() (T-193, `xtframe-pack --gen-ports`). See the header for the naming rules.
@@ -316,7 +320,11 @@ void generateCpp(std::span<const UiPortTable> tables, std::string& out) {
     for (const UiPortTable& table : tables) {
         const std::string ns = unique(cppName(table.uiId), namespaces);
         out += "\nnamespace " + ns + " {\n";
-        std::set<std::string> used;
+        std::set<std::string> used = {"kContractHash"};  // T-408: reserved for the constant below.
+        if (!table.contract.empty()) {
+            out += "\n// The UI's contract hash (manifest uis[].contract, T-408).\n";
+            out += "inline constexpr char kContractHash[] = \"" + table.contract + "\";\n";
+        }
         std::vector<std::string> typeRefs(table.ports.size());
         bool wroteType = false;
         for (size_t i = 0; i < table.ports.size(); ++i) {
@@ -389,7 +397,11 @@ void generateCs(std::span<const UiPortTable> tables, std::string& out) {
             }
         }
         out += "    public static class Ports\n    {\n";
-        std::set<std::string> constants;
+        std::set<std::string> constants = {"ContractHash"};  // T-408: reserved for the constant below.
+        if (!table.contract.empty()) {
+            out += "        /// <summary>The UI's contract hash (manifest uis[].contract).</summary>\n";
+            out += "        public const string ContractHash = \"" + table.contract + "\";\n";
+        }
         for (size_t i = 0; i < table.ports.size(); ++i) {
             const PortRecord& port = table.ports[i];
             const std::string name =
@@ -401,7 +413,120 @@ void generateCs(std::span<const UiPortTable> tables, std::string& out) {
     }
 }
 
+/// T-408: `text` as a JSON string literal (quotes included).
+std::string contractQuote(std::string_view text) {
+    std::string out = "\"";
+    for (const char c : text) {
+        if (c == '"' || c == '\\') {
+            out += '\\';
+            out += c;
+        } else if (static_cast<unsigned char>(c) < 0x20) {
+            char buffer[8];
+            std::snprintf(buffer, sizeof(buffer), "\\u%04x", static_cast<unsigned>(c));
+            out += buffer;
+        } else {
+            out += c;
+        }
+    }
+    out += '"';
+    return out;
+}
+
+std::string contractType(const PortRecord& rec);
+
+/// T-408: `struct{<field>:<type>,...}` of a struct / list<struct> record (list fields through
+/// `fieldLists`, T-391).
+std::string contractStruct(const PortRecord& rec) {
+    std::string out = "struct{";
+    size_t list = 0;
+    for (size_t i = 0; i < rec.fields.size(); ++i) {
+        const auto& [fieldName, fieldType] = rec.fields[i];
+        out += (i == 0 ? "" : ",") + fieldName + ":";
+        if (fieldType == PortValueType::List && list < rec.fieldLists.size()) {
+            out += contractType(rec.fieldLists[list++]);
+        } else {
+            out += typeName(fieldType);
+        }
+    }
+    return out + "}";
+}
+
+/// T-408: `enum(a|b|...)`.
+std::string contractEnum(const PortRecord& rec) {
+    std::string out = "enum(";
+    for (size_t i = 0; i < rec.enumValues.size(); ++i) {
+        out += (i == 0 ? "" : "|") + rec.enumValues[i];
+    }
+    return out + ")";
+}
+
+/// T-408: the full type spelling contractJson() writes.
+std::string contractType(const PortRecord& rec) {
+    switch (rec.type) {
+        case PortValueType::Enum:
+            return contractEnum(rec);
+        case PortValueType::Struct:
+            return contractStruct(rec);
+        case PortValueType::List:
+            if (rec.entryType == PortValueType::Enum) {
+                return "list<" + contractEnum(rec) + ">";
+            }
+            if (rec.entryType != PortValueType{}) {
+                return std::string("list<") + typeName(rec.entryType) + ">";
+            }
+            return "list<" + contractStruct(rec) + ">";
+        default:
+            return typeName(rec.type);
+    }
+}
+
+/// T-408: `["a","b"]` of `names`, sorted and deduplicated.
+std::string contractNames(std::vector<std::string> names) {
+    std::sort(names.begin(), names.end());
+    names.erase(std::unique(names.begin(), names.end()), names.end());
+    std::string out = "[";
+    for (size_t i = 0; i < names.size(); ++i) {
+        out += (i == 0 ? "" : ",") + contractQuote(names[i]);
+    }
+    return out + "]";
+}
+
 }  // namespace
+
+std::string contractJson(const Document& doc) {
+    std::vector<PortRecord> ports = doc.ports();
+    const auto lookupName = [](const PortRecord& port) -> const std::string& {
+        return port.qualifiedName.empty() ? port.name : port.qualifiedName;
+    };
+    std::stable_sort(ports.begin(), ports.end(),
+                     [&](const PortRecord& a, const PortRecord& b) { return lookupName(a) < lookupName(b); });
+    std::string out = "{\"ports\":[";
+    for (size_t i = 0; i < ports.size(); ++i) {
+        const PortRecord& port = ports[i];
+        out += i == 0 ? "{" : ",{";
+        out += "\"name\":" + contractQuote(lookupName(port));
+        out += ",\"type\":" + contractQuote(contractType(port));
+        out += ",\"dir\":" + contractQuote(dirName(port.dir));
+        out += ",\"default\":" + contractQuote(doc.portText(port.id)) + "}";
+    }
+    const IrView& ir = doc.ir();
+    std::vector<std::string> timelines;
+    for (const IrTimelineGroup& group : ir.timelineGroups().groups()) {
+        timelines.emplace_back(ir.string(group.name));
+    }
+    std::vector<std::string> states;
+    for (const uint32_t name : ir.customStates().names()) {
+        states.emplace_back(ir.string(name));
+    }
+    out += "],\"timelines\":" + contractNames(std::move(timelines));
+    out += ",\"states\":" + contractNames(std::move(states)) + "}";
+    return out;
+}
+
+std::string contractHash(const Document& doc) {
+    // design::detail::contentHash() is `sha256:<64 hex>`; the contract keeps the first 16 digits.
+    return design::detail::contentHash(contractJson(doc)).substr(7, 16);
+}
 
 bool parsePortsLanguage(std::string_view text, PortsLanguage& out) {
     if (text == "cpp" || text == "c++") {

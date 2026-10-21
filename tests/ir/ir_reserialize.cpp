@@ -156,7 +156,7 @@ std::vector<uint8_t> reserialize(const IrView& view) {
     // META
     if (view.meta().present()) {
         const IrMeta& m = *view.meta().meta();
-        w.setMeta(m.sourceFile, m.compilerVersion, m.compileTimeUnix);
+        w.setMeta(m.sourceFile, m.compilerVersion, m.compileTimeUnix, view.meta().behavior());
     }
 
     // SYMB
@@ -251,6 +251,8 @@ std::vector<uint8_t> reserialize(const IrView& view) {
         compile::PortBuilder pb;
         pb.ports = vec(view.ports().ports());
         pb.fields = vec(view.ports().fields());
+        pb.defaults = vec(view.ports().defaults());  // T-358
+        pb.nested = vec(view.ports().nested());      // T-391 (T-405: tests/ir/fixtures/v2_tail.xt)
         w.setPorts(std::move(pb));
     }
 

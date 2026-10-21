@@ -321,6 +321,9 @@ private:
         Binding* binding = nullptr;  // Null for an `if` condition (no tween / delay state).
         int maxPort = -1;            // The `_max` companion `N%` compares against.
         bool ticking = false;        // Set when a tween / delay still has work to do.
+        // T-411: a trigger set()'s element: in a `<repeat>` instance a template port argument
+        // reads that instance's copy (kInvalidNode = no such mapping).
+        NodeId node = kInvalidNode;
     };
 
     /// The host-visible slot of `port` (null for none, a template-only or a released one).

@@ -11,6 +11,7 @@
 #include <utility>
 
 #include "bundle_json.h"
+#include "xt/bundle/migrations.h"
 #include "xt/bundle/ui_project.h"
 #include "xt/charconv.h"
 #include "xt/compile/utf8_path.h"
@@ -330,6 +331,20 @@ bool AssetsManifest::parse(std::string_view text, AssetsManifest& out, std::stri
         }
         return false;
     }
+    // T-406 (43 §43.2): `version` missing = 1, newer refused (no migration sequence of its own: the
+    // file is generated from the metas, 26 §26.3.3).
+    int version = 1;
+    if (!readFormatVersion(root, version, error)) {
+        return false;
+    }
+    if (version > kAssetsManifestVersion) {
+        if (error != nullptr) {
+            *error = "assets.yaml format version " + std::to_string(version) +
+                     " is newer than this XTFrame supports (" + std::to_string(kAssetsManifestVersion) +
+                     "); a newer XTFrame is needed";
+        }
+        return false;
+    }
     for (auto it = root.begin(); it != root.end(); ++it) {
         if (it.key() != "assets" && it.key() != "version") {
             manifest.hasUnsavableContent = true;  // T-262b: toYaml() writes only these two.
@@ -439,7 +454,8 @@ bool AssetsManifest::parse(std::string_view text, AssetsManifest& out, std::stri
 }
 
 std::string AssetsManifest::toYaml() const {
-    std::string out = std::string(kAssetsHeader) + "\nversion: 1\n";
+    std::string out =
+        std::string(kAssetsHeader) + "\nversion: " + std::to_string(kAssetsManifestVersion) + "\n";
     if (assets.empty()) {
         out += "assets: []\n";
         return out;

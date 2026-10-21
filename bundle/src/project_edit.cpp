@@ -11,6 +11,7 @@
 #include "bundle_json.h"
 #include "bundle_paths.h"
 #include "xt/bundle/asset_meta.h"
+#include "xt/bundle/migrations.h"
 #include "xt/compile/utf8_path.h"
 #include "xt/flow/flow_graph.h"
 #include "yaml_lite.h"
@@ -332,6 +333,9 @@ std::string validateProjectSettings(const ProjectSettings& settings) {
         return "id: lower-case letters, digits and '-' only";
     }
     const ProjectSpec& s = settings.spec;
+    if (s.behavior > kLatestBehavior) {  // T-407 (43 §43.3)
+        return "spec.behavior: in [0, " + std::to_string(kLatestBehavior) + "]";
+    }
     for (const SpecPlatform& platform : s.platforms) {
         for (const Vec2& r : platform.resolutions) {
             if (!finite(r.x) || !finite(r.y) || r.x < 1 || r.y < 1 || r.x > 16384 || r.y > 16384) {
@@ -474,7 +478,23 @@ std::string conventionYamlText(std::string_view originalText, const nlohmann::js
         pos = end + 1;
     }
     try {
-        return head + detail::emitYamlLite(inFileOrder(doc, text, 0));
+        nlohmann::ordered_json body = inFileOrder(doc, text, 0);
+        if (body.is_object()) {
+            // T-406 (43 §43.2): `version` first, always the latest; a newer one is never written over.
+            int version = 1;
+            if (!readFormatVersion(doc, version) || version > kDesignYamlFormatVersion) {
+                return std::string();
+            }
+            nlohmann::ordered_json stamped = nlohmann::ordered_json::object();
+            stamped["version"] = kDesignYamlFormatVersion;
+            for (auto it = body.begin(); it != body.end(); ++it) {
+                if (it.key() != "version") {
+                    stamped[it.key()] = std::move(it.value());
+                }
+            }
+            body = std::move(stamped);
+        }
+        return head + detail::emitYamlLite(body);
     } catch (const std::exception&) {
         return std::string();
     }
@@ -530,6 +550,13 @@ Status putMotionSpecEntry(const UiProject& project, std::string_view id, const n
         }
         if (doc.is_null()) {
             doc = nlohmann::json::object();
+        }
+        // T-406 (43 §43.2): a motion spec from a newer XTFrame is not edited.
+        std::string migrateError;
+        if (const Status migrated = migrateToLatest(SourceFormat::DesignYaml, doc, nullptr, &migrateError);
+            migrated != Status::kOk) {
+            setErrorProjectEdit(error, std::string(kMotionSpecPath) + ": " + migrateError);
+            return migrated;
         }
     }
     doc[std::string(id)] = value;

@@ -290,6 +290,10 @@ bool getSpec(const json& root, BundleSpec& out) {
         parseUiScaleRule(ruleIt->get<std::string>(), out.uiscaleRule);
     }
     readUiScaleLimits(*it, out.uiscaleLimits);  // T-345
+    // T-407: a non-negative integer; missing or anything else reads as 0.
+    if (const auto behavior = it->find("behavior"); behavior != it->end() && behavior->is_number_unsigned()) {
+        out.behavior = static_cast<uint32_t>(std::min<uint64_t>(behavior->get<uint64_t>(), 0xFFFFFFFFu));
+    }
     return true;
 }
 

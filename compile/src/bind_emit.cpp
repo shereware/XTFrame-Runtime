@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "css_number.h"  // core/src: the CSS number (T-272).
+#include "xt/compile/aliases.h"
 #include "xt/compile/parse_xt.h"
 #include "xt/compile/validate.h"
 #include "xt/ir_pod.h"
@@ -722,6 +723,35 @@ public:
         return checkNeedField(err);
     }
 
+    /// T-411: see compileActionValue().
+    bool actionValue(uint32_t element, std::string_view text, ActionValue& out, std::string& err) {
+        m_element = element;
+        m_primary = -1;
+        m_deps.clear();
+        m_afterLayout = false;
+        m_repeatItem = false;
+        m_listValue = -1;
+        m_needField = false;
+        out = ActionValue{};
+        const std::vector<std::string> segments = splitTop(text, '|');
+        m_portCalls = true;
+        bool ok = !segments.empty() && actionHead(trimCopyBindEmit(segments[0]), out, err);
+        for (size_t i = 1; ok && i < segments.size(); ++i) {
+            Call c;
+            if (!parseCallText(segments[i], c, err) || !converter(c, out.steps, err)) {
+                if (err.empty()) {
+                    err = "invalid converter \"" + trimCopyBindEmit(segments[i]) + "\"";
+                }
+                ok = false;
+            } else if (c.name == "tween" || c.name == "delay") {
+                err = c.name + "() cannot be used in set()";
+                ok = false;
+            }
+        }
+        m_portCalls = false;
+        return ok && checkNeedField(err);
+    }
+
     bool run(BindingBuilder& out, const std::map<uint32_t, std::vector<SvgBindAttr>>* svgBinds) {
         for (uint32_t element = 0; element < m_dom.nodes.size(); ++element) {
             for (const DomAttr& attr : m_dom.nodes[element].attrs) {
@@ -779,6 +809,94 @@ private:
     // an `item(<field>)`.
     int m_listValue = -1;
     bool m_needField = false;
+    // T-411: compiling a trigger action value: a converter argument may be `port(<name>)`.
+    bool m_portCalls = false;
+
+    /// T-411: `port(<name>)` -> its PORT index (-1 = not that form; -2 = an error, `err` set).
+    /// Call ports and event ports carry no value to read.
+    int portCall(const std::string& text, std::string& err) const {
+        Call c;
+        std::string ignored;
+        if (text.rfind("port", 0) != 0 || !parseCallText(text, c, ignored) || c.name != "port" ||
+            !c.hasParens) {
+            return -1;
+        }
+        if (c.args.size() != 1 || c.args[0].empty()) {
+            err = "port() takes one port name";
+            return -2;
+        }
+        const int port = m_scopes.resolve(c.args[0], m_element);
+        if (port < 0) {
+            err = "port(" + c.args[0] + "): no port \"" + c.args[0] + "\" is declared here";
+            return -2;
+        }
+        const IrPort& decl = m_scopes.ports[static_cast<size_t>(port)];
+        if (static_cast<PortDir>(decl.dir) == PortDir::Call ||
+            static_cast<PortValueType>(decl.type) == PortValueType::Event) {
+            err = "port(" + c.args[0] + "): a call or event port has no value to read";
+            return -2;
+        }
+        return port;
+    }
+
+    /// T-411: the head of a trigger action value (compileActionValue()).
+    bool actionHead(const std::string& text, ActionValue& out, std::string& err) {
+        if (text.empty()) {
+            err = "empty value";
+            return false;
+        }
+        const int port = portCall(text, err);
+        if (port == -2) {
+            return false;
+        }
+        if (port >= 0) {
+            out.head = ActionValue::Head::Port;
+            out.port = port;
+            m_primary = port;
+            addDep(static_cast<uint32_t>(port));
+            if (static_cast<PortValueType>(m_scopes.ports[static_cast<size_t>(port)].type) ==
+                PortValueType::List) {
+                m_listValue = port;  // `port(<list>) | item(<n>)`, as T-381.
+            }
+            return true;
+        }
+        if (text.rfind("outer.", 0) == 0) {
+            err = text + " cannot be read by a trigger action (only item(), repeat.index and repeat.count)";
+            return false;
+        }
+        if (text.rfind("item(", 0) == 0 || text.rfind("repeat.", 0) == 0) {
+            ArgVal term;
+            const int t = repeatTerm(text, term, err);
+            if (t < 0) {
+                return false;
+            }
+            if (t == 0) {
+                err = text.rfind("item(", 0) == 0 ? text + " is only valid inside a <repeat> template"
+                                                  : "unknown value \"" + text + "\"";
+                return false;
+            }
+            out.head = ActionValue::Head::Item;
+            repeatHead(term, out.steps);
+            return true;
+        }
+        if (isQuoted(text)) {
+            out.head = ActionValue::Head::String;
+            out.text = text.substr(1, text.size() - 2);
+            return true;
+        }
+        if (text == "true" || text == "false") {
+            out.number = text == "true" ? 1.0f : 0.0f;
+            return true;
+        }
+        if (parseNumber(text, out.number)) {
+            return true;
+        }
+        err =
+            "a value starts with port(<name>), item(<field>), item(), repeat.index, repeat.count, a number, "
+            "true, false or a quoted string, got \"" +
+            text + "\"";
+        return false;
+    }
 
     /// T-380: the PORT index of the port `name` declared directly in the scope of symbol instance
     /// root `element`, or -1 (not an instance root, or no such port).
@@ -943,6 +1061,18 @@ private:
         if (raw.empty()) {
             err = "empty argument";
             return false;
+        }
+        if (m_portCalls && (allow & kAllowPort) != 0) {
+            const int port = portCall(raw, err);  // T-411: `port(<name>)` in a trigger value.
+            if (port == -2) {
+                return false;
+            }
+            if (port >= 0) {
+                out.kind = ConverterArg::Port;
+                out.u = static_cast<uint32_t>(port);
+                addDep(out.u);
+                return true;
+            }
         }
         if ((allow & (kAllowPort | kAllowString)) != 0) {
             const int term = repeatTerm(raw, out, err);
@@ -1416,6 +1546,13 @@ private:
             appendSteps(steps, ConverterOp::Custom, args);
             return true;
         }
+        // T-408 (43 §43.6): a registered converter alias compiles as its replacement.
+        if (const NameAlias* alias = findNameAlias(AliasKind::Converter, n)) {
+            m_sink.deprecated(m_fileName, deprecatedMessage(*alias));
+            Call renamed = c;
+            renamed.name = alias->replacement;
+            return converter(renamed, steps, err);
+        }
         err = "unknown converter \"" + n + "\"";
         return false;
     }
@@ -1820,6 +1957,16 @@ bool compileConverterChain(const DomTree& dom, const PortScopes& scopes, IrWrite
     return binder.chain(element, converters, steps, err);
 }
 
+bool compileActionValue(const DomTree& dom, const PortScopes& scopes, const RepeatScopes* repeats,
+                        IrWriter& writer, uint32_t element, std::string_view text, ActionValue& out,
+                        std::string& err) {
+    static const std::vector<ExpandedSymbolInstance> kNoInstances;
+    static const CustomStateBuilder kNoStates;
+    DiagnosticSink sink;
+    Binder binder(dom, kNoInstances, scopes, kNoStates, writer, "", sink, repeats);
+    return binder.actionValue(element, text, out, err);
+}
+
 int PortScopes::resolve(std::string_view name, uint32_t element) const {
     if (!name.empty() && name[0] == '#') {
         name.remove_prefix(1);
@@ -2042,11 +2189,13 @@ bool emitPorts(const DomTree& dom, const std::vector<ExpandedSymbolInstance>& in
     return ok;
 }
 
-void normalizeBindAliases(DomTree& dom) {
+void normalizeBindAliases(DomTree& dom, std::string_view fileName, DiagnosticSink& sink) {
     for (DomNode& node : dom.nodes) {
         for (DomAttr& attr : node.attrs) {
-            if (attr.name == "bind:state.Disabled") {
-                attr.name = "bind:disabled";  // T-385 (27 §27.3.2): the built-in state, no custom one.
+            // T-385 (27 §27.3.2): `bind:state.Disabled` is the built-in state, no custom one.
+            if (const NameAlias* alias = findNameAlias(AliasKind::Binding, attr.name)) {
+                sink.deprecated(std::string(fileName), deprecatedMessage(*alias), node.line, node.col);
+                attr.name = alias->replacement;
             }
         }
     }

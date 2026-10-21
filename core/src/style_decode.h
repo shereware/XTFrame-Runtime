@@ -133,9 +133,18 @@ inline constexpr uint16_t MediaOverride = 274;
 /// 05 §5.9.10 (T-376): `app-region: none | drag | no-drag`: Enum 0 / 1 / 2 (xt::AppRegion);
 /// inherited, not animatable.
 inline constexpr uint16_t AppRegion = 275;
-/// 05 §5.9.11 (T-386): `hit-slop: <length>{1,4}`: four f32 encoded like a Color value (top,
-/// right, bottom, left; px, `%` and `em` per xt::kHitSlopEmBias); not inherited, not animatable.
+/// 05 §5.9.11 (T-386): `hit-slop: <length>{1,4}`. In an IR of minor <= 7 only: four f32 encoded
+/// like a Color value (top, right, bottom, left; px, `%` and `em` per xt::kHitSlopEmBias). Since
+/// IR minor 8 (T-405) the compiler writes the four longhands below instead; StyleProp 276 remains
+/// the computed-value id (ElementRef::computedStyleValue). Not inherited, not animatable.
 inline constexpr uint16_t HitSlop = 276;
+/// T-405 (02 §2.6, IR minor 8): one `hit-slop` side, a plain Length (Px, Percent or Em; >= 0).
+/// Not source properties: only the `hit-slop` shorthand writes them.
+inline constexpr uint16_t HitSlopTop = 277;
+inline constexpr uint16_t HitSlopRight = 278;
+inline constexpr uint16_t HitSlopBottom = 279;
+inline constexpr uint16_t HitSlopLeft = 280;
+static_assert(HitSlopLeft == kStylePropLast, "update kStylePropLast (ir_pod.h) and 02 §2.12");
 }  // namespace styleprop
 
 /// True if `prop` (a PropId 0-108, or a StyleProp 160-186/188) is an inherited CSS property per 05.4.

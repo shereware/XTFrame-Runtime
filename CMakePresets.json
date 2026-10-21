@@ -59,6 +59,15 @@
             "inherits": "ninja-base",
             "binaryDir": "${sourceDir}/build/ci-release",
             "cacheVariables": { "CMAKE_CXX_COMPILER": "$penv{CXX}", "CMAKE_BUILD_TYPE": "Release" }
+        },
+        {
+            "name": "ninja-ci-asan",
+            "inherits": "ninja-base",
+            "binaryDir": "${sourceDir}/build/ci-asan",
+            "cacheVariables": {
+                "CMAKE_C_COMPILER": "clang", "CMAKE_CXX_COMPILER": "clang++", "CMAKE_BUILD_TYPE": "Debug",
+                "XT_SANITIZE": "address,undefined", "XT_BUILD_GL": "OFF", "XT_BUILD_SHELL": "OFF", "XT_BUILD_EDITOR": "OFF"
+            }
         }
     ],
     "buildPresets": [
@@ -72,7 +81,8 @@
         { "name": "ninja-clang-debug", "configurePreset": "ninja-clang-debug" },
         { "name": "ninja-clang-release", "configurePreset": "ninja-clang-release" },
         { "name": "ninja-ci-debug", "configurePreset": "ninja-ci-debug" },
-        { "name": "ninja-ci-release", "configurePreset": "ninja-ci-release" }
+        { "name": "ninja-ci-release", "configurePreset": "ninja-ci-release" },
+        { "name": "ninja-ci-asan", "configurePreset": "ninja-ci-asan" }
     ],
     "testPresets": [
         { "name": "vs2022-debug", "configurePreset": "vs2022", "configuration": "Debug", "output": { "outputOnFailure": true } },
@@ -85,6 +95,11 @@
         { "name": "ninja-clang-debug", "configurePreset": "ninja-clang-debug", "output": { "outputOnFailure": true } },
         { "name": "ninja-clang-release", "configurePreset": "ninja-clang-release", "output": { "outputOnFailure": true } },
         { "name": "ninja-ci-debug", "configurePreset": "ninja-ci-debug", "output": { "outputOnFailure": true } },
-        { "name": "ninja-ci-release", "configurePreset": "ninja-ci-release", "output": { "outputOnFailure": true } }
+        { "name": "ninja-ci-release", "configurePreset": "ninja-ci-release", "output": { "outputOnFailure": true } },
+        {
+            "name": "ninja-ci-asan", "configurePreset": "ninja-ci-asan", "output": { "outputOnFailure": true },
+            "environment": { "ASAN_OPTIONS": "detect_leaks=1", "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1" },
+            "filter": { "exclude": { "label": "XT_SKIP_UNDER_ASAN" } }
+        }
     ]
 }

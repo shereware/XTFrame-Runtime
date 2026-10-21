@@ -28,3 +28,16 @@ xt_no_rtti(xt_perf)
 xt_set_warnings(xt_perf)
 
 add_test(NAME xt_perf COMMAND xt_perf)
+
+# T-403 (docs/design/21-perf-tracing.md "flow budget"): the large / typical flow benchmark. Not a
+# gate -- it only prints xtframe-view's --perf summary for CI to collect (no thresholds; it fails
+# only when the fixture no longer loads). tests/perf/flow_big/flow_bench.py computes the last-480-
+# frame averages and p95 the budget is stated in.
+if(TARGET xtframe-view)
+    foreach(xt_flow_big large typical)
+        add_test(NAME xt_perf_flow_big_${xt_flow_big}
+                 COMMAND xtframe-view --project "${CMAKE_CURRENT_SOURCE_DIR}/flow_big/${xt_flow_big}"
+                         --headless --perf --frames 600 --synth-pointer 16 --synth-ports 20)
+        set_tests_properties(xt_perf_flow_big_${xt_flow_big} PROPERTIES LABELS "perf-report")
+    endforeach()
+endif()

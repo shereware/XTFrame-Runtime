@@ -12,6 +12,7 @@
 #include "xt/bundle/pack.h"
 #include "xt/bundle/project_file.h"
 #include "xt/compile/compile.h"
+#include "xt/context.h"
 #include "xt/document.h"
 #include "xt/text_shaper.h"
 
@@ -29,6 +30,32 @@ constexpr const char* kPortsDoc =
     R"X(<xt><body><div id="Hud" port:hp="number in" port:rarity="enum(common|rare) out"
     port:items="list<struct{name: string, count: number}>" port:stats="struct{hits: number, alive: bool}"
     port:hit="event out"></div></body></xt>)X";
+
+std::unique_ptr<Document> documentOf(const std::string& text) {
+    const compile::SourceFile file{"hud.xt", text};
+    compile::CompileOptions options;
+    compile::CompileResult result = compile::compileDocumentFromStrings({&file, 1}, "hud.xt", options);
+    for (const compile::Diagnostic& d : result.diagnostics) {
+        CAPTURE(d.message);
+        CHECK(d.level != compile::Diagnostic::Level::Error);
+    }
+    REQUIRE(result.ok());
+    static NullTextShaper shaper;
+    std::unique_ptr<Document> doc;
+    REQUIRE(Document::load(IrBlob{result.ir.data(), result.ir.size()}, true, &shaper, nullptr, doc) ==
+            Status::kOk);
+    return doc;
+}
+
+/// T-408: a UI with ports, a `@timeline` and custom states.
+std::string contractDoc(const char* hpType) {
+    return std::string(R"X(<xt><head><style>
+      #Bar { width: 10px; }
+      @timeline intro { #Bar { 0s { width: 0px } 1s { width: 10px } } }
+    </style></head><body><div id="Hud" port:hp=")X") +
+           hpType + R"X( in" port:rarity="enum(common|rare) out" port:hit="event out"
+      state-groups="Level: Low|Ok"><div id="Bar"></div></div></body></xt>)X";
+}
 
 std::vector<PortRecord> portsOf(const char* text) {
     const compile::SourceFile file{"hud.xt", text};
@@ -159,7 +186,7 @@ std::string outDir(const std::string& name) {
 
 TEST_CASE("gen-ports: C++ and C# output for a UI's declared ports") {
     std::vector<UiPortTable> tables;
-    tables.push_back(UiPortTable{"hud-main", portsOf(kPortsDoc)});
+    tables.push_back(UiPortTable{"hud-main", portsOf(kPortsDoc), ""});
     REQUIRE(tables[0].ports.size() == 5);
     CHECK(generatePortHeader(PortsLanguage::Cpp, tables) == kExpectedCpp);
     CHECK(generatePortHeader(PortsLanguage::CSharp, tables) == kExpectedCs);
@@ -277,4 +304,93 @@ TEST_CASE("pack: the global flow is validated, copied and listed as flows.global
     REQUIRE(report.ok);
     CHECK(!report.globalFlowWritten);
     CHECK(readText(fs::path(plainOut) / "manifest.json").find("\"flows\"") == std::string::npos);
+}
+
+TEST_CASE("T-408: contract hash -- normalized JSON, stable, changes with a port type") {
+    const std::unique_ptr<Document> a = documentOf(contractDoc("number"));
+    const std::unique_ptr<Document> b = documentOf(contractDoc("number"));
+    const std::unique_ptr<Document> c = documentOf(contractDoc("string"));
+    CHECK(contractJson(*a) ==
+          R"J({"ports":[{"name":"hit","type":"event","dir":"out","default":""},)J"
+          R"J({"name":"hp","type":"number","dir":"in","default":"0"},)J"
+          R"J({"name":"rarity","type":"enum(common|rare)","dir":"out","default":"common"}],)J"
+          R"J("timelines":["intro"],"states":["Low","Ok"]})J");
+    const std::string hash = contractHash(*a);
+    CHECK(hash.size() == 16);
+    CHECK(hash.find_first_not_of("0123456789abcdef") == std::string::npos);
+    CHECK(contractHash(*b) == hash);
+    CHECK(contractHash(*c) != hash);
+    // The type spelling covers struct / list shapes.
+    const std::unique_ptr<Document> d = documentOf(kPortsDoc);
+    const std::string json = contractJson(*d);
+    CHECK(json.find(R"("type":"list<struct{name:string,count:number}>")") != std::string::npos);
+    CHECK(json.find(R"("type":"struct{hits:number,alive:bool}")") != std::string::npos);
+}
+
+TEST_CASE("T-408: pack writes uis[].contract, --gen-ports carries it, loadUi checks it") {
+    const std::string src = copiedSample("contract");
+    writeText(fs::path(src) / "hud" / "hud.xt", contractDoc("number"));
+    std::string error;
+    Result<ProjectFile> project = ProjectFile::load(src, &error);
+    REQUIRE_MESSAGE(project.ok(), error);
+    PackOptions options;
+    options.thumbnails = false;
+    const std::string outA = outDir("contract_a");
+    const std::string outB = outDir("contract_b");
+    options.outDir = outA;
+    const PackReport first = pack(project.value(), options);
+    REQUIRE(first.ok);
+    options.outDir = outB;
+    const PackReport second = pack(project.value(), options);
+    REQUIRE(second.ok);
+
+    Result<std::unique_ptr<Bundle>> bundleA = Bundle::open(outA);
+    REQUIRE(bundleA.ok());
+    Result<std::unique_ptr<Bundle>> bundleB = Bundle::open(outB);
+    REQUIRE(bundleB.ok());
+    const UiInfo* hudA = bundleA.value()->ui("hud");
+    const UiInfo* hudB = bundleB.value()->ui("hud");
+    REQUIRE(hudA != nullptr);
+    REQUIRE(hudB != nullptr);
+    CHECK(hudA->contract.size() == 16);
+    CHECK(hudA->contract == hudB->contract);  // The same UI packed twice hashes the same.
+    REQUIRE(bundleA.value()->ui("pause") != nullptr);
+    CHECK(bundleA.value()->ui("pause")->contract.size() == 16);
+
+    // --gen-ports: the constant equals the manifest value.
+    REQUIRE(first.portTables.size() == 2);
+    CHECK(first.portTables[0].uiId == "hud");
+    CHECK(first.portTables[0].contract == hudA->contract);
+    const std::string cpp = generatePortHeader(PortsLanguage::Cpp, first.portTables);
+    CHECK(cpp.find("inline constexpr char kContractHash[] = \"" + hudA->contract + "\";") !=
+          std::string::npos);
+    const std::string cs = generatePortHeader(PortsLanguage::CSharp, first.portTables);
+    CHECK(cs.find("public const string ContractHash = \"" + hudA->contract + "\";") != std::string::npos);
+
+    // An incremental run keeps the contract of a UI it does not repack.
+    options.outDir = outA;
+    options.onlyUis = {"pause"};
+    REQUIRE(pack(project.value(), options).ok);
+    Result<std::unique_ptr<Bundle>> kept = Bundle::open(options.outDir);
+    REQUIRE(kept.ok());
+    CHECK(kept.value()->ui("hud")->contract == hudA->contract);
+
+    // A changed port type changes the hash.
+    writeText(fs::path(src) / "hud" / "hud.xt", contractDoc("string"));
+    Result<ProjectFile> changed = ProjectFile::load(src, &error);
+    REQUIRE(changed.ok());
+    options.onlyUis.clear();
+    options.outDir = outDir("contract_c");
+    const PackReport third = pack(changed.value(), options);
+    REQUIRE(third.ok);
+    CHECK(third.portTables[0].contract != hudA->contract);
+
+    // loadUi(expectContract): match loads, mismatch is kIncompatible, empty skips the check.
+    NullTextShaper shaper;
+    Context ctx(ContextConfig{&shaper, &bundleA.value()->assets()});
+    CHECK(loadUi(ctx, *bundleA.value(), "hud", hudA->contract).ok());
+    Result<DocumentHandle> wrong = loadUi(ctx, *bundleA.value(), "hud", "0000000000000000");
+    REQUIRE(!wrong.ok());
+    CHECK(wrong.status() == Status::kIncompatible);
+    CHECK(loadUi(ctx, *bundleA.value(), "hud").ok());
 }

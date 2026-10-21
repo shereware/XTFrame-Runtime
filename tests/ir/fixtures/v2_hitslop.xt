@@ -1,0 +1,15 @@
+<xt>
+  <head>
+    <style>
+      #track { position: absolute; left: 20px; top: 50px; width: 100px; height: 6px; hit-slop: 10px; }
+      #pct { position: absolute; left: 200px; top: 50px; width: 40px; height: 6px; hit-slop: 50% 0px 0px; }
+      #em { position: absolute; left: 200px; top: 150px; width: 40px; height: 6px; font-size: 10px;
+            hit-slop: 0px 1em; }
+    </style>
+  </head>
+  <body>
+    <div id="track"></div>
+    <div id="pct"></div>
+    <div id="em"></div>
+  </body>
+</xt>

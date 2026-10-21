@@ -24,6 +24,12 @@ add_library(unibreak STATIC
 )
 target_include_directories(unibreak SYSTEM PUBLIC ${PROJECT_SOURCE_DIR}/third_party/libunibreak/src)
 set_target_properties(unibreak PROPERTIES C_STANDARD 99 LINKER_LANGUAGE C)
+# T-402 (XT_SANITIZE): libunibreak calls its ub_get_next_char_* readers through a get_next_char_t
+# pointer whose first parameter is `const void*`; vendored code, left unchanged, so Clang's
+# -fsanitize=function (part of `undefined` for C since Clang 17) is off for this target only.
+if(XT_SANITIZE AND CMAKE_C_COMPILER_ID STREQUAL "Clang")
+    target_compile_options(unibreak PRIVATE -fno-sanitize=function)
+endif()
 
 # Third-party targets are not xt_text: their own warnings (e.g. MSVC C4819, "file contains a
 # character that cannot be represented in the current code page") are not our concern. No

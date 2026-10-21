@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cstdlib>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -281,6 +282,28 @@ public:
         if (lower != "xt") {
             error("root element must be <xt>", rootLine, rootCol);
             return !m_hadError;
+        }
+        // T-406 (43 §43.2): `<xt version>`, missing = 1, newer than kXtFormatVersion refused.
+        for (const DomAttr& attr : attrs) {
+            if (toLowerCopy(attr.name) != "version") {
+                continue;
+            }
+            const std::string& text = attr.value;
+            bool digits = !text.empty() && text.size() <= 7;
+            for (char c : text) {
+                digits = digits && c >= '0' && c <= '9';
+            }
+            const long version = digits ? std::strtol(text.c_str(), nullptr, 10) : 0;
+            if (version < 1) {
+                error("<xt version=\"" + text + "\"> is not a positive integer", attr.line, attr.col);
+                return !m_hadError;
+            }
+            if (version > kXtFormatVersion) {
+                error(".xt format version " + text + " is newer than this XTFrame supports (" +
+                          std::to_string(kXtFormatVersion) + "); a newer XTFrame is needed",
+                      attr.line, attr.col);
+                return !m_hadError;
+            }
         }
         DomNode root;
         root.tag = "xt";

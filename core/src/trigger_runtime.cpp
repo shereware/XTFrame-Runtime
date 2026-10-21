@@ -14,6 +14,7 @@
 #include "timeline_group.h"
 #include "xt/document.h"
 #include "xt/ir.h"
+#include "xt/version.h"
 
 /// docs/design/27-interaction.md §27.1-27.2, 08 §8.9, 13 §13.8.2-13.8.3, docs/tasks/T-174.md.
 /// TriggerRuntime plus the Document members behind custom states and the surface lifecycle.
@@ -346,9 +347,12 @@ void TriggerRuntime::onCheckedChanged(NodeId node, bool checked) {
 
 void TriggerRuntime::fire(NodeId node, TriggerEvent event, uint32_t arg0, uint32_t arg1, float value,
                           uint32_t port, uint8_t player) {
-    // T-394 (08.15): `pointerdrag` is coalesced like `pointermove`.
-    const bool continuous = event == TriggerEvent::PointerMove || event == TriggerEvent::Scroll ||
-                            event == TriggerEvent::DragOver || event == TriggerEvent::PointerDrag;
+    // T-394 (08.15): `pointerdrag` is coalesced like `pointermove`. T-407 (43 §43.3): held back
+    // only from behavior 1 (`flow-signal-coalescing`) on; behavior 0 runs every continuous event's
+    // triggers at once, as before T-389.
+    const bool continuous = (event == TriggerEvent::PointerMove || event == TriggerEvent::Scroll ||
+                             event == TriggerEvent::DragOver || event == TriggerEvent::PointerDrag) &&
+                            m_doc.behavior() >= kBehaviorFlowSignalCoalescing;
     const NodeArena& arena = m_doc.m_arena;
     if (node == kInvalidNode || !arena.alive(node) || arena.kind(node) != NodeKind::Element) {
         return;

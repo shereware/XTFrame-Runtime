@@ -744,7 +744,7 @@ void FlowRuntime::Impl::queueSignal(const std::string& uiId, DocEndpointState* s
 void FlowRuntime::Impl::signalOutput(const std::string& uiId, DocEndpointState* state, Endpoint::Owner owner,
                                      const std::string& elementId, const std::string& port,
                                      const PortValue& v) {
-    if (isValueSignal(owner, port, v.type)) {
+    if (isValueSignal(owner, port, v.type) && coalescesSignals(*state)) {  // T-407: behavior >= 1.
         queueSignal(uiId, state, owner, elementId, port, v);
         return;
     }

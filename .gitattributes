@@ -6,3 +6,30 @@
 *.xtir binary
 *.xtcl binary
 *.bin binary
+*.dds binary
+*.jar binary
+
+# T-402: scripts and text fixtures are always LF, even where text=auto's detection or a local
+# core.autocrlf would otherwise check them out with CRLF (a shebang line ending in \r, or a golden
+# event script / fixture byte-compared on Linux, fails). Never add binary formats here.
+*.sh text eol=lf
+*.py text eol=lf
+*.mjs text eol=lf
+*.cmake text eol=lf
+CMakeLists.txt text eol=lf
+*.xt text eol=lf
+*.xts text eol=lf
+*.xtflow text eol=lf
+*.xtfx text eol=lf
+*.xtui text eol=lf
+*.xtproj text eol=lf
+*.events text eol=lf
+*.meta text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.svg text eol=lf
+*.html text eol=lf
+*.csv text eol=lf
+*.lst text eol=lf
+*.txt text eol=lf

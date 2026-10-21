@@ -24,10 +24,10 @@ FlowRuntime::Impl::Impl() {
     // swapped in, the UI id stays empty (externalOutput() is the global flow's path).
     // T-389: a value signal is held back until the next tick() (queueSignal()); an event first
     // delivers the held values, then goes out as before -- inline, so a loop through the document
-    // recurses through no more frames than it did.
+    // recurses through no more frames than it did. T-407: only from behavior 1 on.
     docs.output = [this](Endpoint::Owner owner, const std::string& elementId, const std::string& port,
                          const PortValue& v) {
-        if (isValueSignal(owner, port, v.type)) {
+        if (isValueSignal(owner, port, v.type) && coalescesSignals(docs)) {
             queueSignal(std::string(), &docs, owner, elementId, port, v);
             return;
         }
@@ -314,6 +314,18 @@ Status FlowRuntime::Impl::rebind(Document& document, std::vector<std::string>& w
     return Status::kOk;
 }
 
+bool FlowRuntime::Impl::anyCoalescing() const {
+    if (coalescesSignals(docs)) {
+        return true;
+    }
+    for (const UiDoc& ui : uiDocs) {
+        if (coalescesSignals(*ui.state)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void FlowRuntime::Impl::tick(float dt) {
     if (!loaded || !enabled) {
         return;
@@ -329,8 +341,13 @@ void FlowRuntime::Impl::tick(float dt) {
     // T-389 (27 §27.4.1): the whole tick is one batch. The value signals the input dispatch
     // reported since the last tick go in first (their latest values only), then the clocks,
     // timers and polled ports; every node they reach is evaluated once at the end.
+    // T-407 (43 §43.3): a behavior-0 flow (no bound Document at behavior >= 1) keeps the
+    // pre-T-389 tick: no batch, every push evaluated at once.
     const bool outerBatch = !batching;
-    batching = true;
+    const bool coalesce = anyCoalescing();
+    if (coalesce) {
+        batching = true;
+    }
     deliverPendingSignals();
 
     for (size_t i = 0; i < nodes.size(); ++i) {
@@ -378,7 +395,9 @@ void FlowRuntime::Impl::tick(float dt) {
     for (size_t i = 0; i < uiDocs.size() && !replacing(); ++i) {
         pollDocumentOutputs(*uiDocs[i].state);
     }
-    flushSignals();  // T-389: what the polls queued, and the dirty nodes.
+    if (coalesce) {
+        flushSignals();  // T-389: what the polls queued, and the dirty nodes.
+    }
     if (outerBatch) {
         batching = false;
     }

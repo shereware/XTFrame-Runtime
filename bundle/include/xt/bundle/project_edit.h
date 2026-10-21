@@ -96,7 +96,9 @@ inline constexpr const char* kLayoutTemplateDir = "conventions/layouts";
 
 /// The YAML text of `doc` as the conventions tab writes a convention file back: the leading
 /// comment block of `originalText`, then `doc` with every mapping's keys in the order they appear
-/// in `originalText` (unknown keys last). Throws nothing; "" when `doc` cannot be written.
+/// in `originalText` (unknown keys last). T-406 (43 §43.2): a mapping is written with `version`
+/// (kDesignYamlFormatVersion) as its first key. Throws nothing; "" when `doc` cannot be written
+/// (also when its `version` is malformed or newer than kDesignYamlFormatVersion).
 std::string conventionYamlText(std::string_view originalText, const nlohmann::json& doc);
 
 /// Writes the YAML convention file `relFile` (project-relative) from `doc`, as
@@ -107,7 +109,8 @@ Status writeConventionYaml(const UiProject& project, std::string_view relFile, c
 
 /// `conventions.put {kind: "motion"}`: sets the top-level key `id` of the motion spec to `value`
 /// (a missing file is created). kInvalidArgument for an unnamed project, an empty id, a file that
-/// does not parse as a mapping; kIoError when it cannot be written.
+/// does not parse as a mapping; kUnsupported for a file whose `version` is newer than
+/// kDesignYamlFormatVersion (T-406); kIoError when it cannot be written.
 Status putMotionSpecEntry(const UiProject& project, std::string_view id, const nlohmann::json& value,
                           std::string* error = nullptr);
 

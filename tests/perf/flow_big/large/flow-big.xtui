@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "name": "Flow Big Large",
+  "id": "flow-big",
+  "uis": [
+    {
+      "id": "flow-big",
+      "doc": "ui/flow-big/flow-big.xt",
+      "flow": "ui/flow-big/flow-big.xtflow",
+      "size": [
+        1280,
+        720
+      ]
+    }
+  ]
+}

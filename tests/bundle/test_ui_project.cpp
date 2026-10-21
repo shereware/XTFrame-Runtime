@@ -1506,3 +1506,137 @@ TEST_CASE("T-314: pack writes project.commit and project.checkpoint when given a
     CHECK(b.value()->project()->commit == options.projectCommit);
     CHECK(b.value()->project()->checkpoint == "start");
 }
+
+TEST_CASE("T-407 spec.behavior: missing = 0, written only when set, packed into the manifest and META") {
+    const std::string dir = makeUiProject("spec_behavior");
+    Result<UiProject> loaded = UiProject::load(dir);
+    REQUIRE(loaded.ok());
+    UiProject project = loaded.value();
+    CHECK(project.spec.behavior == 0);  // Missing = the pre-beta behavior.
+    REQUIRE(project.save() == Status::kOk);
+    CHECK(readText(dir + "/MyGame UI.xtui").find("\"behavior\"") == std::string::npos);
+
+    // Every packed UI's IR carries the manifest's value; 0 leaves both out.
+    const auto packAndCheck = [&](const std::string& outName, uint32_t expected) {
+        const std::string out = freshDir(outName);
+        PackOptions options;
+        options.outDir = out;
+        options.thumbnails = false;
+        REQUIRE(pack(loadProject(dir), options).ok);
+        const std::string manifest = readText(out + "/manifest.json");
+        CHECK((manifest.find("\"behavior\"") != std::string::npos) == (expected != 0));
+        std::string error;
+        auto opened = Bundle::open(out, nullptr, &error);
+        REQUIRE_MESSAGE(opened.ok(), error);
+        REQUIRE(opened.value()->spec() != nullptr);
+        CHECK(opened.value()->spec()->behavior == expected);
+        int irs = 0;
+        for (const auto& entry : fs::recursive_directory_iterator(fs::path(out))) {
+            if (entry.path().extension() != ".xtir") {
+                continue;
+            }
+            std::ifstream stream(entry.path(), std::ios::binary);
+            const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(stream)),
+                                             std::istreambuf_iterator<char>());
+            Result<IrView> view = IrView::open(IrBlob{bytes.data(), bytes.size()});
+            REQUIRE(view.ok());
+            CHECK(view.value().meta().behavior() == expected);
+            ++irs;
+        }
+        CHECK(irs > 0);
+    };
+    packAndCheck("spec_behavior_out0", 0);
+
+    project.spec.behavior = 1;
+    REQUIRE(project.save() == Status::kOk);
+    const std::string text = readText(dir + "/MyGame UI.xtui");
+    CHECK(text.find("\"spec\": {\n    \"behavior\": 1,") != std::string::npos);
+    Result<UiProject> reread = UiProject::load(dir);
+    REQUIRE(reread.ok());
+    CHECK(reread.value().spec.behavior == 1);
+    CHECK(reread.value().extraSpecJson.find("behavior") == std::string::npos);
+    packAndCheck("spec_behavior_out1", 1);
+
+    // A negative or non-integer value reads as 0.
+    std::string bad = text;
+    bad.replace(bad.find("\"behavior\": 1"), std::string("\"behavior\": 1").size(), "\"behavior\": -3");
+    writeText(dir + "/MyGame UI.xtui", bad);
+    CHECK(UiProject::load(dir).value().spec.behavior == 0);
+    bad.replace(bad.find("\"behavior\": -3"), std::string("\"behavior\": -3").size(), "\"behavior\": \"1\"");
+    writeText(dir + "/MyGame UI.xtui", bad);
+    CHECK(UiProject::load(dir).value().spec.behavior == 0);
+}
+
+TEST_CASE("T-407 spec.behavior: a new UI Project starts at the latest behavior version") {
+    const std::string dir = freshDir("behavior_new_project");
+    UiProject created;
+    std::string error;
+    REQUIRE_MESSAGE(createUiProject(dir, "Fresh", "fresh", "", &created, &error) == Status::kOk, error);
+    CHECK(created.spec.behavior == kLatestBehavior);
+    Result<UiProject> reread = UiProject::load(dir);
+    REQUIRE(reread.ok());
+    CHECK(reread.value().spec.behavior == kLatestBehavior);
+    CHECK(readText(reread.value().path()).find("\"behavior\": 1") != std::string::npos);
+}
+
+TEST_CASE("T-408: diffStandardSymbols reports current / outdated / modified copies and writes nothing") {
+    std::error_code ec;
+    const fs::path base = xt::test::tempDir() / "xt_uiproj_t408_sync";
+    fs::remove_all(base, ec);
+    const fs::path library = base / "library";
+    const fs::path project = base / "project";
+    fs::create_directories(library / "mobile", ec);
+    fs::create_directories(project / "shared" / "symbols", ec);
+    const auto write = [](const fs::path& path, const std::string& text) {
+        std::ofstream out(path, std::ios::binary);
+        out << text;
+    };
+    // A is at v2 in the library; its v1 text hashes to the previousContent entry.
+    write(library / "index.json",
+          R"({"version": 1, "symbols": [
+            {"name": "A", "file": "A.xt", "previousContent":
+              ["sha256:d6591c8d3f1427fd7582bc5e85ccfc7a0e2777cdefb11f1d3fbf8112d93c7039"]},
+            {"name": "B", "file": "B.xt", "previousContent": []},
+            {"name": "C", "file": "mobile/C.xt"},
+            {"name": "E", "file": "E.xt"}]})");
+    write(library / "A.xt", "<symbol name=\"A\">\nv2\n</symbol>\n");
+    write(library / "B.xt", "<symbol name=\"B\">\none\ntwo\nthree\n</symbol>\n");
+    write(library / "mobile" / "C.xt", "<symbol name=\"C\"/>\n");
+    write(library / "E.xt", "<symbol name=\"E\"/>\n");
+    const std::string oldA = "<symbol name=\"A\">\r\nv1\r\n</symbol>\r\n";  // v1 with CRLF endings.
+    const std::string editedB = "<symbol name=\"B\">\none\nTWO\nthree\n</symbol>\n";
+    write(project / "shared" / "symbols" / "A.xt", oldA);
+    write(project / "shared" / "symbols" / "B.xt", editedB);
+    write(project / "shared" / "symbols" / "C.xt", "<symbol name=\"C\"/>\r\n");
+    write(project / "shared" / "symbols" / "D.xt", "<symbol name=\"D\"/>\n");  // Not a standard one.
+
+    UiProject ui;
+    ui.rootDir = project.generic_string();
+    ui.shared.symbols = "shared/symbols";
+    std::vector<StandardSymbolDiff> rows;
+    REQUIRE(diffStandardSymbols(ui, library.generic_string(), rows) == Status::kOk);
+    REQUIRE(rows.size() == 3);
+    CHECK(rows[0].name == "A");
+    CHECK(rows[0].file == "shared/symbols/A.xt");
+    CHECK(rows[0].standard == "A.xt");
+    CHECK(rows[0].status == "outdated");
+    CHECK(rows[0].diff ==
+          "--- standard/A.xt\n+++ shared/symbols/A.xt\n@@ -1,3 +1,3 @@\n <symbol name=\"A\">\n-v2\n+v1\n "
+          "</symbol>\n");
+    CHECK(rows[1].name == "B");
+    CHECK(rows[1].status == "modified");
+    CHECK(rows[1].diff.find("\n-two\n+TWO\n") != std::string::npos);
+    CHECK(rows[2].name == "C");
+    CHECK(rows[2].standard == "mobile/C.xt");
+    CHECK(rows[2].status == "current");
+    CHECK(rows[2].diff.empty());
+
+    // Nothing was overwritten.
+    std::ifstream in(project / "shared" / "symbols" / "A.xt", std::ios::binary);
+    const std::string afterA((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    CHECK(afterA == oldA);
+    CHECK(!fs::exists(project / "shared" / "symbols" / "E.xt", ec));
+
+    // No library index: kNotFound.
+    CHECK(diffStandardSymbols(ui, (base / "none").generic_string(), rows) == Status::kNotFound);
+}

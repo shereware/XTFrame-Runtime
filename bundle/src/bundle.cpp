@@ -226,6 +226,7 @@ Status readManifestBundle(std::string_view dir, Manifest& out, std::string* erro
             readPorts(*portsIt, "out", false, ui.ports);
         }
         ui.fileHash = getUint64(entry, "fileHash");
+        ui.contract = getString(entry, "contract");  // T-408
         manifest.uis.push_back(std::move(ui));
     }
     manifest.tokens = detail::getTokens(root);
@@ -536,10 +537,17 @@ std::string uiFilePath(const Bundle& bundle, std::string_view uiId) {
 
 }  // namespace
 
-Result<DocumentHandle> loadUi(Context& ctx, Bundle& bundle, std::string_view uiId) {
+Result<DocumentHandle> loadUi(Context& ctx, Bundle& bundle, std::string_view uiId,
+                              std::string_view expectContract) {
     const std::string path = uiFilePath(bundle, uiId);
     if (path.empty()) {
         return Result<DocumentHandle>::error(Status::kNotFound);
+    }
+    if (!expectContract.empty()) {  // T-408 (43 §43.6): the contract lock.
+        const UiInfo* info = bundle.ui(uiId);
+        if (info == nullptr || info->contract != expectContract) {
+            return Result<DocumentHandle>::error(Status::kIncompatible);
+        }
     }
     // Through detail::readFile so the T-240 file reader hook (APK assets) applies, as in reloadUi().
     std::string bytes;

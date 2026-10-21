@@ -14,7 +14,8 @@
 /// T-389 (docs/design/27-interaction.md §27.4.1, 2026-10-21 ruling): value-type document outputs
 /// are coalesced per frame -- whatever the input dispatch reported is delivered once, from the
 /// next FlowRuntime::tick(), as one batch evaluated in topological order -- while pulse / event
-/// outputs stay synchronous, one delivery per event.
+/// outputs stay synchronous, one delivery per event. T-407 (43 §43.3): only from behavior version
+/// 1 (`flow-signal-coalescing`, IR META `behavior`) on; behavior 0 delivers every event at once.
 
 using namespace xt;
 using namespace xt::flow;
@@ -28,9 +29,11 @@ constexpr const char* kDoc = R"X(<xt><head><style>
 <body id="Root"><div id="Hud" port:text="string in" port:level="number out" port:ping="event out"></div>
   <div id="Hot"></div><div id="Btn"></div></body></xt>)X";
 
-std::unique_ptr<Document> loadDoc(TextShaper& shaper) {
+/// T-407: `behavior` is the compiled META `behavior` (1 = the coalescing these T-389 cases test).
+std::unique_ptr<Document> loadDoc(TextShaper& shaper, uint32_t behavior = 1) {
     const compile::SourceFile file{"coalesce.xt", kDoc};
     compile::CompileOptions options;
+    options.behavior = behavior;
     compile::CompileResult result = compile::compileDocumentFromStrings({&file, 1}, "coalesce.xt", options);
     for (const compile::Diagnostic& d : result.diagnostics) {
         CAPTURE(d.message);
@@ -40,6 +43,7 @@ std::unique_ptr<Document> loadDoc(TextShaper& shaper) {
     std::unique_ptr<Document> doc;
     REQUIRE(Document::load(IrBlob{result.ir.data(), result.ir.size()}, true, &shaper, nullptr, doc) ==
             Status::kOk);
+    REQUIRE(doc->behavior() == behavior);
     doc->setViewport(Rect{0, 0, 400, 400});
     doc->update(0.0f);
     return doc;
@@ -232,4 +236,111 @@ TEST_CASE("T-389: a declared value port and an element's hover coalesce like the
     rt.tick(1.0f / 60.0f);
     REQUIRE(sink.writes.size() == 1);
     CHECK(sink.writes[0] == "100/true");
+}
+
+// -- T-407 (43 §43.3): behavior 0 keeps the pre-T-389 per-event delivery --------------------------
+
+namespace {
+
+/// pointerX -> toString -> #Hud.text: one downstream evaluation per delivered pointerX.
+constexpr const char* kPointerTextGraph = R"({
+    "version": 1,
+    "nodes": [ { "id": "ts", "type": "toString" } ],
+    "edges": [
+        { "from": "#document.pointerX", "to": "ts.in" },
+        { "from": "ts.out", "to": "#Hud.text" }
+    ]
+})";
+
+}  // namespace
+
+TEST_CASE("T-407: 100 pointer moves -- behavior 0 evaluates downstream 100 times, behavior 1 once") {
+    for (const uint32_t behavior : {0u, 1u}) {
+        CAPTURE(behavior);
+        NullTextShaper shaper;
+        std::unique_ptr<Document> doc = loadDoc(shaper, behavior);
+        FlowRuntime rt;
+        loadGraph(rt, *doc, kPointerTextGraph);
+        rt.tick(0.0f);
+        TextSink sink;
+        sink.attach(*doc);
+        for (int i = 0; i < 100; ++i) {
+            move(*doc, 300.0f + static_cast<float>(i), 200.0f);
+        }
+        if (behavior == 0) {
+            // Pre-T-389: each move reaches the sink within its own input dispatch.
+            REQUIRE(sink.writes.size() == 100);
+            CHECK(sink.writes.front() == "300");
+            CHECK(textOf(rt, "ts.out") == "399");  // values() without a tick.
+        } else {
+            CHECK(sink.writes.empty());
+        }
+        rt.tick(1.0f / 60.0f);
+        CHECK(sink.writes.size() == (behavior == 0 ? 100u : 1u));
+        CHECK(sink.writes.back() == "399");
+        rt.tick(1.0f / 60.0f);  // No movement, nothing more either way.
+        CHECK(sink.writes.size() == (behavior == 0 ? 100u : 1u));
+    }
+}
+
+// The pre-T-389 test_flow_runtime expectation ("#document pointer ports follow the pointer"): with
+// behavior 0 a move and a press are visible in values() at once, no tick in between.
+TEST_CASE("T-407: behavior 0 -- the pointer ports and the format node follow each event at once") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc = loadDoc(shaper, 0);
+    FlowRuntime rt;
+    loadGraph(rt, *doc, R"({
+        "version": 1,
+        "nodes": [
+            { "id": "r", "type": "constant", "params": { "value": 1000 } },
+            { "id": "add", "type": "math", "params": { "op": "add" } },
+            { "id": "down", "type": "toString" },
+            { "id": "f", "type": "format", "params": { "format": "{a},{b},{c}" } }
+        ],
+        "edges": [
+            { "from": "#document.pointerX", "to": "add.a" },
+            { "from": "r.out", "to": "add.b" },
+            { "from": "#document.pointerX", "to": "f.a" },
+            { "from": "#document.pointerY", "to": "f.b" },
+            { "from": "add.out", "to": "f.c" },
+            { "from": "#document.pointerDown", "to": "down.in" },
+            { "from": "f.out", "to": "#Hud.text" }
+        ]
+    })");
+    rt.tick(0.0f);
+    move(*doc, 310.0f, 210.0f);
+    CHECK(textOf(rt, "f.out") == "310,210,1310");
+    CHECK(valueOf(rt, "add.out") == doctest::Approx(1310.0));
+    InputEvent ev;
+    ev.kind = InputEvent::PointerDown;
+    ev.pos = Vec2{310.0f, 210.0f};
+    doc->dispatchInput(ev);
+    CHECK(textOf(rt, "down.out") == "true");
+    ev.kind = InputEvent::PointerUp;
+    doc->dispatchInput(ev);
+    CHECK(textOf(rt, "down.out") == "false");
+}
+
+TEST_CASE("T-407: behavior 0 -- a declared value port reaches the flow within its own set") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc = loadDoc(shaper, 0);
+    FlowRuntime rt;
+    loadGraph(rt, *doc, R"({
+        "version": 1,
+        "nodes": [ { "id": "ts", "type": "toString" } ],
+        "edges": [
+            { "from": "#Hud.level", "to": "ts.in" },
+            { "from": "ts.out", "to": "#Hud.text" }
+        ]
+    })");
+    rt.tick(0.0f);
+    TextSink sink;
+    sink.attach(*doc);
+    const PortId level = doc->lookupPort("Hud.level");
+    REQUIRE(level != kInvalidPort);
+    for (int i = 1; i <= 5; ++i) {
+        REQUIRE(doc->setPort(level, Value::ofFloat(static_cast<float>(i))) == Status::kOk);
+    }
+    REQUIRE(sink.writes.size() == 5);
+    CHECK(sink.writes.back() == "5");
 }

@@ -93,11 +93,12 @@ void IrWriter::setStyle(StyleBuilder style) { m_style = std::move(style); }
 
 void IrWriter::setDoc(DocBuilder doc) { m_doc = std::move(doc); }
 
-void IrWriter::setMeta(StringId sourceFile, StringId compilerVersion, uint64_t unixTime) {
+void IrWriter::setMeta(StringId sourceFile, StringId compilerVersion, uint64_t unixTime, uint32_t behavior) {
     m_hasMeta = true;
     m_metaSourceFile = sourceFile;
     m_metaCompilerVersion = compilerVersion;
     m_metaUnixTime = unixTime;
+    m_metaBehavior = behavior;
 }
 
 uint32_t IrWriter::addSceneCamera(SceneBuilder& scene, IrCameraData camera) {
@@ -390,6 +391,10 @@ std::vector<uint8_t> IrWriter::finish() const {
         meta.compilerVersion = m_metaCompilerVersion;
         meta.compileTimeUnix = m_metaUnixTime;
         appendPod(payload, meta);
+        // T-405 (IR minor 8): the `behavior` tail, omitted when 0 (02 §2.10).
+        if (m_metaBehavior != 0) {
+            appendPod(payload, m_metaBehavior);
+        }
         appendChunk(body, kChunkMETA, std::move(payload));
     }
 
@@ -574,8 +579,7 @@ std::vector<uint8_t> IrWriter::finish() const {
     IrHeader header{};
     std::memcpy(header.magic, "XTIR", 4);
     header.major = kIrFormatMajor;
-    header.minor =
-        kIrFormatMinor;  // T-358: 7; T-335: 6; T-218: 2 (STYL floatPool[]); T-115: 1 (gradientPool[]).
+    header.minor = kIrFormatMinor;  // T-411: 9; T-405: 8; T-358: 7; T-335: 6; T-218: 2; T-115: 1 (02 §2.2).
     header.chunkCount = chunkCount;
     header.totalLength = static_cast<uint32_t>(sizeof(IrHeader) + body.size());
 
@@ -688,7 +692,7 @@ IrWriter IrWriter::fromView(const IrView& view) {
 
     if (view.meta().present()) {
         const IrMeta& meta = *view.meta().meta();
-        writer.setMeta(meta.sourceFile, meta.compilerVersion, meta.compileTimeUnix);
+        writer.setMeta(meta.sourceFile, meta.compilerVersion, meta.compileTimeUnix, view.meta().behavior());
     }
 
     {

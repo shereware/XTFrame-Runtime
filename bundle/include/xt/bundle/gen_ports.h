@@ -22,6 +22,9 @@ struct UiPortTable {
     std::string uiId;
     /// Document::ports(), in PORT order.
     std::vector<PortRecord> ports;
+    /// T-408 (43 §43.6): the UI's contractHash(), written as `kContractHash` (C++) /
+    /// `Ports.ContractHash` (C#); empty: no constant is written.
+    std::string contract;
 };
 
 /// Output language of generatePortHeader().
@@ -45,5 +48,20 @@ bool parsePortsLanguage(std::string_view text, PortsLanguage& out);
 /// bool bool, color std::array<float, 4> / float[], vec2 / vec3 std::array<float, N> / float[],
 /// entity and enum std::uint32_t / uint.
 std::string generatePortHeader(PortsLanguage language, std::span<const UiPortTable> tables);
+
+/// T-408 (docs/design/43-compatibility-and-versions.md §43.6, 40 §40.6.1): the normalized JSON a
+/// UI's contract hash is taken over, one line, no spaces:
+/// `{"ports":[{"name":..,"type":..,"dir":..,"default":..},..],"timelines":[..],"states":[..]}`.
+/// `ports` are Document::ports() sorted by lookup name (PortRecord::qualifiedName): `type` spells
+/// the whole type (`number`, `enum(a|b)`, `list<number>`, `struct{hp:number,tags:list<string>}`,
+/// `list<struct{..}>`), `dir` is in / out / call and `default` Document::portText() (call it
+/// before the first update; empty for struct / list / event). `timelines` are the `@timeline`
+/// group names (TGRP) and `states` the custom state names (STAT), each sorted and deduplicated.
+std::string contractJson(const Document& doc);
+
+/// T-408: the first 16 lowercase hex digits of the SHA-256 of contractJson(doc) -- the
+/// manifest's `uis[].contract` and the `--gen-ports` constant. Two documents with the same ports
+/// (name, type, direction, default), timeline names and state names hash the same.
+std::string contractHash(const Document& doc);
 
 }  // namespace xt::bundle

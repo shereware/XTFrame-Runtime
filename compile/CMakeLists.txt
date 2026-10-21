@@ -1,5 +1,6 @@
 add_library(xt_compile STATIC
     src/placeholder.cpp
+    src/aliases.cpp
     src/ir_writer.cpp
     src/parse_xt.cpp
     src/compile_lottie.cpp
@@ -28,6 +29,14 @@ add_library(xt_compile STATIC
     src/xts/xts_lexer.cpp
     src/xts/xts_parser.cpp
     src/xts/xts_values.cpp
+    src/xts/xts_values_basic.cpp
+    src/xts/xts_values_lists.cpp
+    src/xts/xts_values_effect.cpp
+    src/xts/xts_values_gradient.cpp
+    src/xts/xts_values_transform.cpp
+    src/xts/xts_values_shorthand.cpp
+    src/xts/xts_values_grid.cpp
+    src/xts/xts_values_calc.cpp
     src/xtfx/xtfx_parse.cpp
     src/xtfx/hlsl_subset.cpp
     src/xtfx/glsl_emit.cpp
@@ -41,5 +50,10 @@ xt_enable_exceptions(xt_compile)
 xt_set_warnings(xt_compile)
 xt_unity_build(xt_compile)  # T-361
 # Both redeclare functions defined elsewhere with their default arguments (xts_parser.cpp,
-# compile_document.cpp), which one translation unit cannot repeat: compiled on their own.
-set_source_files_properties(src/bind_emit.cpp src/xts/xts_values.cpp PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
+# compile_document.cpp), which one translation unit cannot repeat: compiled on their own. T-412:
+# xts_values.cpp is split into xts_values*.cpp, which all include xts_values_internal.h (the
+# redeclarations), so every one of them stays out of the batches.
+set_source_files_properties(src/bind_emit.cpp src/xts/xts_values.cpp src/xts/xts_values_basic.cpp
+    src/xts/xts_values_lists.cpp src/xts/xts_values_effect.cpp src/xts/xts_values_gradient.cpp
+    src/xts/xts_values_transform.cpp src/xts/xts_values_shorthand.cpp src/xts/xts_values_grid.cpp
+    src/xts/xts_values_calc.cpp PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)

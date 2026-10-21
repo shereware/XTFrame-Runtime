@@ -42,6 +42,23 @@ public:
             Diagnostic{Diagnostic::Level::Error, std::move(file), line, col, std::move(message)});
     }
 
+    /// T-408 (43 §43.6): whether deprecated() records anything (CompileOptions::strict or
+    /// CompileOptions::reportDeprecated).
+    void setReportDeprecated(bool on) { m_reportDeprecated = on; }
+
+    /// T-408: a use of a registered alias (xt/compile/aliases.h): recorded as a warning when
+    /// setReportDeprecated(true), else dropped. Counted by deprecatedCount(), which a strict
+    /// compile subtracts: an alias still compiles.
+    void deprecated(std::string file, std::string message, int line = 0, int col = 0) {
+        if (m_reportDeprecated) {
+            warn(std::move(file), std::move(message), line, col);
+            ++m_deprecatedCount;
+        }
+    }
+
+    /// T-408: the warnings deprecated() recorded.
+    size_t deprecatedCount() const { return m_deprecatedCount; }
+
     /// Returns every diagnostic recorded so far, in the order they were raised.
     const std::vector<Diagnostic>& all() const { return m_diagnostics; }
 
@@ -68,6 +85,8 @@ public:
 
 private:
     std::vector<Diagnostic> m_diagnostics;
+    bool m_reportDeprecated = false;
+    size_t m_deprecatedCount = 0;
 };
 
 }  // namespace xt::compile

@@ -314,10 +314,14 @@ public:
     bool present() const { return m_meta != nullptr; }
     /// Returns the metadata record, or `nullptr` if `present()` is false.
     const IrMeta* meta() const { return m_meta; }
+    /// T-405 (IR minor 8, 43 §43.3): the project's behavior version (`spec.behavior`) from the
+    /// payload's optional `u32 behavior` after IrMeta; 0 when the tail or the chunk is absent.
+    uint32_t behavior() const { return m_behavior; }
 
 private:
     friend class IrView;
     const IrMeta* m_meta = nullptr;
+    uint32_t m_behavior = 0;
 };
 
 /// Optional `TGRP` chunk: `@timeline` groups (docs/design/04-timeline.md §4.10.1, T-172). Every
@@ -681,6 +685,10 @@ public:
     const DocChunk& doc() const { return m_doc; }
     /// Returns the optional `META` chunk.
     const MetaChunk& meta() const { return m_meta; }
+    /// T-405: the blob's IrHeader::minor (kIrFormatMinor for a default-constructed view). Readers
+    /// branch on it where an older minor encodes a value differently (02 §2.2: a minor < 8 file's
+    /// biased `hit-slop` StyleProp 276).
+    uint16_t formatMinor() const { return m_formatMinor; }
     /// Returns the optional `SYMB` symbol source table (T-171); `present()` is false when the
     /// document instantiates no symbol.
     const SymbolChunk& symbols() const { return m_symbols; }
@@ -774,6 +782,7 @@ private:
     DocChunk m_doc;
     SourceMapChunk m_sourceMap;
     MetaChunk m_meta;
+    uint16_t m_formatMinor = kIrFormatMinor;
     SymbolChunk m_symbols;
     TimelineGroupChunk m_timelineGroups;
     VarsChunk m_vars;

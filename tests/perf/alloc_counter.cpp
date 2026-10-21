@@ -73,8 +73,23 @@ void* operator new[](std::size_t size) {
     return p;
 }
 
+// T-402: the nothrow forms too (std::stable_sort's temporary buffer uses them). The library's own
+// nothrow new already calls the replaced operator new above, but under AddressSanitizer it is
+// intercepted directly, and its block then reached the free() below (alloc-dealloc-mismatch).
+void* operator new(std::size_t size, const std::nothrow_t&) noexcept {
+    xt::perf::recordAlloc(size);
+    return std::malloc(size == 0 ? 1 : size);
+}
+
+void* operator new[](std::size_t size, const std::nothrow_t&) noexcept {
+    xt::perf::recordAlloc(size);
+    return std::malloc(size == 0 ? 1 : size);
+}
+
 void operator delete(void* p) noexcept { std::free(p); }
 void operator delete[](void* p) noexcept { std::free(p); }
 void operator delete(void* p, std::size_t) noexcept { std::free(p); }
 void operator delete[](void* p, std::size_t) noexcept { std::free(p); }
+void operator delete(void* p, const std::nothrow_t&) noexcept { std::free(p); }
+void operator delete[](void* p, const std::nothrow_t&) noexcept { std::free(p); }
 #endif

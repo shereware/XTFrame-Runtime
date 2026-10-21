@@ -563,6 +563,7 @@ CompileResult compileDocumentImpl(std::string_view mainText, std::string_view ma
                                   const CompileOptions& options) {
     CompileResult result;
     DiagnosticSink sink;
+    sink.setReportDeprecated(options.strict || options.reportDeprecated);  // T-408
     std::string path(mainName);
     std::string fileName = basenameOf(mainName);
 
@@ -848,14 +849,15 @@ CompileResult compileDocumentImpl(std::string_view mainText, std::string_view ma
     {
         PortBuilder ports;
         PortScopes portScopes;
-        normalizeBindAliases(dom);  // T-385: `bind:state.Disabled` -> `bind:disabled`.
+        normalizeBindAliases(dom, path, sink);  // T-385: `bind:state.Disabled` -> `bind:disabled`.
         emitPorts(dom, symbolInstances, writer, path, sink, ports, portScopes, &svgRig.boneIds);
         applyUseLiterals(dom, symbolInstances, portScopes, writer, path, sink, ports,
                          options.strict);  // T-385
         resolveRepeatPorts(repeatDecls, portScopes, ports, writer, path, sink, repeatScopes);
         CustomStateBuilder customStates;
         TriggerBuilder triggerTables;
-        emitTriggers(dom, ruleSet, portScopes, writer, path, sink, customStates, triggerTables);
+        emitTriggers(dom, ruleSet, portScopes, writer, path, sink, customStates, triggerTables,
+                     &repeatScopes);  // T-411: item() / repeat.* set() values.
         BindingBuilder bindings;
         emitBindings(dom, symbolInstances, portScopes, customStates, writer, path, sink, bindings,
                      &repeatScopes, &svgRig.binds);
@@ -986,12 +988,13 @@ CompileResult compileDocumentImpl(std::string_view mainText, std::string_view ma
         // <ctime> instead of <chrono>: libstdc++ 14's <chrono> pulls in <format>, which clang 15
         // cannot compile (same reasoning as compile_lottie.cpp).
         uint64_t unixTime = static_cast<uint64_t>(std::time(nullptr));
-        writer.setMeta(sourceFileId, versionId, unixTime);
+        writer.setMeta(sourceFileId, versionId, unixTime, options.behavior);  // T-407
     }
 
     result.assets = collectCompiledAssets(writer);
 
-    bool failed = sink.hasErrors() || (options.strict && sink.warningCount() > 0);
+    // T-408: a deprecated alias is reported under strict but does not fail it.
+    bool failed = sink.hasErrors() || (options.strict && sink.warningCount() > sink.deprecatedCount());
     if (!failed) {
         result.ir = writer.finish();
     }

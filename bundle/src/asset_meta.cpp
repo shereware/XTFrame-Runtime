@@ -12,6 +12,7 @@
 #include "asset_internal.h"
 #include "bundle_json.h"
 #include "design_internal.h"
+#include "xt/bundle/migrations.h"
 #include "xt/compile/utf8_path.h"
 #include "xt/num_guard.h"
 #include "yaml_lite.h"
@@ -129,9 +130,9 @@ bool readLinks(const json& value, std::vector<design::Link>& out) {
 }
 
 bool isKnownKey(const std::string& key) {
-    static constexpr const char* kKnown[] = {"id",       "type",     "title",   "collection", "status",
-                                             "source",   "approved", "license", "content",    "tags",
-                                             "measured", "import",   "links",   "note"};
+    static constexpr const char* kKnown[] = {"version", "id",       "type",     "title",   "collection",
+                                             "status",  "source",   "approved", "license", "content",
+                                             "tags",    "measured", "import",   "links",   "note"};
     for (const char* known : kKnown) {
         if (key == known) {
             return true;
@@ -476,6 +477,11 @@ bool parseMeta(std::string_view text, AssetMeta& out, std::string* error) {
         setError(error, "not a mapping");
         return false;
     }
+    // T-406 (43 §43.2): missing = 1; older versions are migrated, newer ones refused.
+    if (migrateToLatest(SourceFormat::Meta, root, nullptr, &message) != Status::kOk) {
+        setError(error, message);
+        return false;
+    }
     readString(root, "id", meta.id, meta.extra);
     readString(root, "type", meta.type, meta.extra);
     readString(root, "title", meta.title, meta.extra);
@@ -590,6 +596,7 @@ std::string metaText(const AssetMeta& meta) {
         }
     };
     ordered_json o = ordered_json::object();
+    o["version"] = kMetaFormatVersion;  // T-406: always the latest.
     putString(o, "id", meta.id);
     putString(o, "type", meta.type);
     putString(o, "title", meta.title);

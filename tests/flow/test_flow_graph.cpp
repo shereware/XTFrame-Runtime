@@ -518,3 +518,23 @@ TEST_CASE("FlowGraph::parse: T-262c 32 levels parse; 33 levels is rejected") {
     REQUIRE(errors.size() == 1);
     CHECK(errors[0] == ".xtflow: nesting too deep");
 }
+
+TEST_CASE("T-406 .xtflow version: missing = 1, newer refused, malformed rejected, written as the latest") {
+    FlowGraph graph;
+    std::vector<std::string> errors;
+    CHECK(FlowGraph::parse(R"({"nodes": [], "edges": []})", graph, errors) == Status::kOk);
+    CHECK(FlowGraph::parse(R"({"version": 1, "nodes": [], "edges": []})", graph, errors) == Status::kOk);
+    errors.clear();
+    CHECK(FlowGraph::parse(R"({"version": 2, "nodes": [], "edges": []})", graph, errors) ==
+          Status::kUnsupported);
+    REQUIRE(errors.size() == 1);
+    CHECK(errors[0].find("a newer XTFrame is needed") != std::string::npos);
+    errors.clear();
+    CHECK(FlowGraph::parse(R"({"version": "1", "nodes": [], "edges": []})", graph, errors) ==
+          Status::kInvalidArgument);
+    errors.clear();
+    CHECK(FlowGraph::parse(R"({"version": 0, "nodes": [], "edges": []})", graph, errors) ==
+          Status::kInvalidArgument);
+    CHECK(FlowGraph{}.toJson().find("\"version\": " + std::to_string(kFlowFormatVersion)) !=
+          std::string::npos);
+}

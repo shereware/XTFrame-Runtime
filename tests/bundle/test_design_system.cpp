@@ -310,7 +310,7 @@ TEST_CASE("T-305 (a): design/ save -> load -> save is byte-identical and keeps u
     REQUIRE(load(projectAt(dir), loaded, nullptr, &error) == Status::kOk);
     REQUIRE(save(loaded, &error) == Status::kOk);
     CHECK(readText(dir + "/design/type.yaml") ==
-          "roles:\n  - id: body\n    family: Inter\n    weights: [400]\nowner: art team\n");
+          "version: 1\nroles:\n  - id: body\n    family: Inter\n    weights: [400]\nowner: art team\n");
 
     // Missing design/ is kNotFound; a malformed file names itself.
     CHECK(load(projectAt(freshDir("roundtrip_none")), loaded, nullptr, &error) == Status::kNotFound);

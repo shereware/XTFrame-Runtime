@@ -20,6 +20,7 @@
 #include "symbol_contracts.h"
 #include "texture_compress.h"
 #include "xt/asset_resolver.h"
+#include "xt/bundle/migrations.h"
 #include "xt/bundle/ui_project.h"
 #include "xt/command_list.h"
 #include "xt/compile/compile.h"
@@ -502,6 +503,8 @@ private:
     void packGlyphs();
 
     /// T-183: the theme / string-table directories, relative to the project root.
+    /// T-407: the `.xtui`'s `spec.behavior`; 0 for a `bundle.xtproj` pack (no UI Project).
+    uint32_t behavior() const { return m_ui != nullptr ? m_ui->spec.behavior : 0; }
     std::string themesDir() const { return m_ui != nullptr ? m_ui->shared.themes : std::string("themes"); }
     std::string stringsDir() const { return m_ui != nullptr ? m_ui->shared.strings : std::string("strings"); }
     /// T-183: `--lang`, else the UI Project's `publish.languages`.
@@ -1208,6 +1211,7 @@ void Packer::rewriteUis() {
         compileOptions.standardSymbolDir = m_options.standardSymbolDir;  // T-235: `xt-standard:`
         compileOptions.publishAssetNames = true;                         // T-273b
         compileOptions.stripEditorOnly = true;                           // T-342 (22 §22.15)
+        compileOptions.behavior = behavior();                            // T-407
         for (const std::string& style : m_project.shared.styles) {
             std::error_code ec;
             const fs::path absolute = fs::absolute(pathFromUtf8(m_project.rootDir) / pathFromUtf8(style), ec);
@@ -1245,6 +1249,9 @@ void Packer::describeUi(Context& ctx, AssetResolver& assets, Document& doc, cons
     // T-258a: the project readers already rejected sizes outside 1..16384; the casts only saturate.
     const int width = std::max(1, toInt32Sat(ui.size.x));
     const int height = std::max(1, toInt32Sat(ui.size.y));
+    // T-408 (43 §43.6): the contract hash, taken before the first update so port defaults are
+    // the declared ones.
+    out.contract = contractHash(doc);
     ctx.setViewport(Rect{0, 0, static_cast<float>(width), static_cast<float>(height)}, 1.0f);
     ctx.update(0.0f);
 
@@ -1256,7 +1263,7 @@ void Packer::describeUi(Context& ctx, AssetResolver& assets, Document& doc, cons
         out.ports.push_back(std::move(info));
     }
     // T-193: the declared-port table, for `xtframe-pack --gen-ports`.
-    m_report.portTables.push_back(UiPortTable{ui.id, doc.ports()});
+    m_report.portTables.push_back(UiPortTable{ui.id, doc.ports(), out.contract});
 
     const IrView& view = doc.ir();
     out.requiresEffects = !view.style().effects().empty() || !doc.arena().effects().empty();
@@ -1360,6 +1367,8 @@ bool Packer::packUi(const ProjectUi& ui, UiInfo& out) {
     // T-342 (03 §3.13, 22 §22.15): `editor-only` subtrees are not published; the thumbnail below
     // renders the packed IR, so it never shows them either.
     compileOptions.stripEditorOnly = true;
+    // T-407 (43 §43.3): every UI carries the project's `spec.behavior` in its META.
+    compileOptions.behavior = behavior();
     for (const std::string& style : m_project.shared.styles) {
         // Absolute, because compileDocument() resolves a *relative* implied stylesheet against
         // `rootDir` again, which would double the prefix we just added.
@@ -1689,6 +1698,7 @@ void Packer::packProjectExtras(bool incremental) {
     m_manifest.spec.logicalHeight = m_ui->spec.logicalHeight;
     m_manifest.spec.uiscaleRule = m_ui->spec.uiscaleRule;      // T-241
     m_manifest.spec.uiscaleLimits = m_ui->spec.uiscaleLimits;  // T-345
+    m_manifest.spec.behavior = m_ui->spec.behavior;            // T-407
 
     const fs::path root = pathFromUtf8(m_project.rootDir);
     std::error_code ec;
@@ -1702,7 +1712,14 @@ void Packer::packProjectExtras(bool incremental) {
         } else if (!detail::parseYamlLite(text, motion, &message)) {
             error("contracts/motion-spec.yaml", "spec: malformed motion spec: " + message);
         } else if (motion.is_object()) {
-            m_manifest.motionSpecJson = motion.dump();
+            // T-406 (43 §43.2): `version` missing = 1, newer refused; the manifest carries the
+            // spec without it.
+            if (migrateToLatest(SourceFormat::DesignYaml, motion, nullptr, &message) != Status::kOk) {
+                error("contracts/motion-spec.yaml", "spec: " + message);
+            } else {
+                motion.erase("version");
+                m_manifest.motionSpecJson = motion.dump();
+            }
         } else if (!motion.is_null()) {
             error("contracts/motion-spec.yaml", "spec: the motion spec is not a mapping");
         }

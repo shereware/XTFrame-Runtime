@@ -12,6 +12,7 @@
 
 #include "css_number.h"  // core/src: the CSS number (T-272).
 #include "style_emit.h"  // selectorMatchesStatically().
+#include "xt/compile/aliases.h"
 #include "xt/compile/validate.h"
 #include "xt/input.h"  // KeyCode, for `key(<k>)`.
 #include "xt/ir_pod.h"
@@ -249,7 +250,8 @@ struct ParsedEvent {
     std::string arg1;  // marker name.
     uint32_t key = 0;
     std::string canonical;
-    uint8_t button = 0;  // T-390 (08.13): IrTrigger::button (PointerButton + 1, 0 = any).
+    uint8_t button = 0;                // T-390 (08.13): IrTrigger::button (PointerButton + 1, 0 = any).
+    const NameAlias* alias = nullptr;  // T-408: the registered alias the event was written with.
 };
 
 /// `<name>(<arg>)<rest>` -> arg and rest; false when `text` does not start with `<name>(`.
@@ -303,6 +305,37 @@ int parsePointerValue(std::string_view text, SetSource& source, std::string& id,
     source = fraction ? (y ? SetSource::PointerFractionY : SetSource::PointerFractionX)
                       : (y ? SetSource::PointerLocalY : SetSource::PointerLocalX);
     return 1;
+}
+
+/// T-411 (27 §27.2.3): whether a set() value is a bind-source expression, compiled per element by
+/// compileActionValue(): it starts with `port(`, `item(`, `repeat.` or `outer.` (rejected there),
+/// or it is a constant (number, `true` / `false`, quoted string) followed by `| <converter>`.
+bool isSourceValue(std::string_view text) {
+    if (text.rfind("port(", 0) == 0 || text.rfind("item(", 0) == 0 || text.rfind("repeat.", 0) == 0 ||
+        text.rfind("outer.", 0) == 0) {
+        return true;
+    }
+    char quote = 0;
+    int depth = 0;
+    for (size_t i = 0; i < text.size(); ++i) {
+        const char c = text[i];
+        if (quote != 0) {
+            quote = c == quote ? 0 : quote;
+        } else if (c == '\'' || c == '"') {
+            quote = c;
+        } else if (c == '(') {
+            ++depth;
+        } else if (c == ')') {
+            --depth;
+        } else if (c == '|' && depth == 0) {
+            const std::string head = trimCopyTriggerEmit(text.substr(0, i));
+            float number = 0;
+            const bool quoted =
+                head.size() >= 2 && (head[0] == '\'' || head[0] == '"') && head.back() == head[0];
+            return quoted || head == "true" || head == "false" || parseNumberTriggerEmit(head, number);
+        }
+    }
+    return false;
 }
 
 /// T-386 (08.11): the events whose triggers may read `pointer.fraction()` / `pointer.local()`
@@ -425,7 +458,8 @@ bool parseEvent(std::string_view raw, ParsedEvent& out, std::string& err) {
     for (const Simple& s : kSimple) {
         if (text == s.name) {
             out.event = s.event;
-            out.canonical = text == "pointerdown" ? "press" : text == "pointerup" ? "release" : text;
+            out.alias = findNameAlias(AliasKind::Trigger, text);  // T-408: pointerdown / pointerup.
+            out.canonical = out.alias != nullptr ? out.alias->replacement : text;
             return true;
         }
     }
@@ -497,6 +531,8 @@ bool parseEvent(std::string_view raw, ParsedEvent& out, std::string& err) {
             out.event = enter ? TriggerEvent::StateEnter : TriggerEvent::StateExit;
             out.arg0 = arg;
             out.canonical = "state(" + arg + ")" + (enter ? ".enter" : ".exit");
+            out.alias =
+                findNameAlias(AliasKind::Trigger, enter ? "state-enter(<Name>)" : "state-exit(<Name>)");
             return true;
         }
     }
@@ -596,6 +632,7 @@ bool parseEvent(std::string_view raw, ParsedEvent& out, std::string& err) {
         out.key = static_cast<uint32_t>(n);
         out.arg1 = std::to_string(static_cast<unsigned>(inner.event));
         out.canonical = "player(" + std::to_string(n) + ")." + inner.canonical;
+        out.alias = inner.alias;  // T-408
         return true;
     }
     err = "unknown event \"" + text + "\"";
@@ -647,6 +684,7 @@ struct CompiledTrigger {
         size_t slot = 0;
         std::string port;
         std::string converters;  // After `event.value |` (T-386: or a pointer value's `|`); empty = none.
+        std::string source;      // T-411: a bind-source value (isSourceValue()), compiled per element.
     };
     // T-386 (08.11): (action index, `#id` text) of a `pointer.fraction()` / `pointer.local()` value.
     std::vector<std::pair<size_t, std::string>> pointerRefs;
@@ -694,8 +732,14 @@ bool comparisonOp(std::string_view name, size_t& argc, ConverterOp* op = nullptr
 class Emitter {
 public:
     Emitter(const DomTree& dom, const RuleSet& rules, const PortScopes& ports, IrWriter& writer,
-            std::string_view fileName, DiagnosticSink& sink)
-        : m_dom(dom), m_rules(rules), m_ports(ports), m_writer(writer), m_fileName(fileName), m_sink(sink) {
+            std::string_view fileName, DiagnosticSink& sink, const RepeatScopes* repeats = nullptr)
+        : m_dom(dom),
+          m_rules(rules),
+          m_ports(ports),
+          m_repeats(repeats),
+          m_writer(writer),
+          m_fileName(fileName),
+          m_sink(sink) {
         for (const TimelineDef& def : rules.timelines) {
             m_timelines.emplace(def.name, &def);
         }
@@ -739,6 +783,7 @@ private:
     const DomTree& m_dom;
     const RuleSet& m_rules;
     const PortScopes& m_ports;
+    const RepeatScopes* m_repeats = nullptr;  // T-411: `item()` / `repeat.*` set() values.
     IrWriter& m_writer;
     std::string m_fileName;
     DiagnosticSink& m_sink;
@@ -1689,6 +1734,13 @@ private:
         if (c.name == "spawn") {
             return makeSpawn(c, out, err);
         }
+        // T-408 (43 §43.6): a registered action alias compiles as its replacement.
+        if (const NameAlias* alias = findNameAlias(AliasKind::Action, c.name)) {
+            m_sink.deprecated(file, deprecatedMessage(*alias), line, col);
+            CallTriggerEmit renamed = c;
+            renamed.name = alias->replacement;
+            return makeAction(renamed, out, file, line, col, err);
+        }
         err = "unknown action \"" + c.name + "\"";
         return false;
     }
@@ -1775,7 +1827,10 @@ private:
         return setValue(c, out, converters, err);
     }
 
-    bool setValue(const CallTriggerEmit& c, IrTriggerAction& out, std::string& converters, std::string& err) {
+    /// T-411: `sourceText` (may be null) receives a bind-source value (isSourceValue()), whose flags
+    /// here are provisional (Port, Item, else Number); emitElements() compiles it per element.
+    bool setValue(const CallTriggerEmit& c, IrTriggerAction& out, std::string& converters, std::string& err,
+                  std::string* sourceText = nullptr) {
         if (c.args.size() != 2 || !c.args[0].key.empty() || c.args[0].value.empty() || c.args[0].isString) {
             err = "set() takes a port and a value";
             return false;
@@ -1820,10 +1875,22 @@ private:
                 }
                 converters = trimCopyTriggerEmit(std::string_view(rest).substr(1));
             }
+        } else if (isSourceValue(v.value)) {
+            // T-411 (27 §27.2.3): port(<name>) / item(...) / repeat.* / a constant, then converters.
+            const bool port = v.value.rfind("port(", 0) == 0;
+            const bool item = !port && (v.value.rfind("item(", 0) == 0 || v.value.rfind("repeat.", 0) == 0 ||
+                                        v.value.rfind("outer.", 0) == 0);
+            out.flags =
+                static_cast<uint8_t>(port ? SetSource::Port : (item ? SetSource::Item : SetSource::Number));
+            if (sourceText != nullptr) {
+                *sourceText = v.value;
+            }
         } else {
             err =
                 "set() value must be a number, true, false, toggle, a quoted string, event.value [| "
-                "<converter> ...], value [| <converter> ...] or pointer.fraction|local(#<id>).x|.y, got \"" +
+                "<converter> ...], value [| <converter> ...], pointer.fraction|local(#<id>).x|.y, "
+                "port(<name>), item(<field>), item(), repeat.index or repeat.count [| <converter> ...], "
+                "got \"" +
                 v.value + "\"";
             return false;
         }
@@ -1920,6 +1987,9 @@ private:
         if (!parseEvent(eventText, ev, err)) {
             error(file, err, line, col);
             return out;
+        }
+        if (ev.alias != nullptr) {  // T-408 (43 §43.6): compiles as its replacement.
+            m_sink.deprecated(file, deprecatedMessage(*ev.alias), line, col);
         }
         out.canonical = ev.canonical;
         out.trigger.event = static_cast<uint8_t>(ev.event);
@@ -2059,11 +2129,14 @@ private:
                     sp.port = seq[k].args[0].value;
                     IrTriggerAction scratch{};
                     std::string ignored;
-                    setValue(seq[k], scratch, sp.converters, ignored);
+                    setValue(seq[k], scratch, sp.converters, ignored, &sp.source);
+                    const bool sourceValue = !sp.source.empty();
                     out.setPorts.push_back(std::move(sp));
                     if (act.flags == static_cast<uint8_t>(SetSource::ElementValue)) {
                         out.usesElementValue = true;  // T-392 (27.3.5).
-                    } else if (act.flags >= static_cast<uint8_t>(SetSource::PointerFractionX)) {
+                    } else if (!sourceValue &&
+                               act.flags >= static_cast<uint8_t>(SetSource::PointerFractionX) &&
+                               act.flags <= static_cast<uint8_t>(SetSource::PointerLocalY)) {
                         SetSource source = SetSource::PointerFractionX;
                         std::string id;
                         std::string conv;
@@ -2385,7 +2458,45 @@ private:
                         continue;
                     }
                     act.arg1 = static_cast<uint32_t>(port) + 1u;
-                    if (!sp.converters.empty()) {
+                    if (!sp.source.empty()) {
+                        // T-411 (27 §27.2.3): the bind-source value as seen from this element.
+                        ActionValue value;
+                        std::string err;
+                        if (!compileActionValue(m_dom, m_ports, m_repeats, m_writer, element, sp.source,
+                                                value, err) ||
+                            value.steps.size() > 0xFFFFu) {
+                            error(ct.file, where + "set(): " + (err.empty() ? "invalid value" : err), ct.line,
+                                  ct.col);
+                            condOk = false;
+                            continue;
+                        }
+                        uint32_t bits = 0;
+                        switch (value.head) {
+                            case ActionValue::Head::Number:
+                                act.flags = static_cast<uint8_t>(SetSource::Number);
+                                act.arg2 = value.number;
+                                break;
+                            case ActionValue::Head::String:
+                                act.flags = static_cast<uint8_t>(SetSource::String);
+                                bits = m_writer.intern(value.text);
+                                std::memcpy(&act.arg2, &bits, sizeof(bits));
+                                break;
+                            case ActionValue::Head::Port:
+                                act.flags = static_cast<uint8_t>(SetSource::Port);
+                                bits = static_cast<uint32_t>(value.port);
+                                std::memcpy(&act.arg2, &bits, sizeof(bits));
+                                break;
+                            case ActionValue::Head::Item:
+                                act.flags = static_cast<uint8_t>(SetSource::Item);
+                                act.arg2 = 0;
+                                break;
+                        }
+                        if (!value.steps.empty()) {
+                            act.arg0 = static_cast<uint32_t>(conditions.size());
+                            act.extra = static_cast<uint16_t>(value.steps.size());
+                            conditions.insert(conditions.end(), value.steps.begin(), value.steps.end());
+                        }
+                    } else if (!sp.converters.empty()) {
                         std::vector<IrConverterStep> steps;
                         std::string err;
                         if (!compileConverterChain(m_dom, m_ports, m_writer, element, sp.converters, steps,
@@ -2594,9 +2705,14 @@ private:
                 std::string converters;
                 return parsePointerValue(v.value, source, id, converters, err) == 1;
             }
+            if (!v.isString && isSourceValue(v.value)) {
+                return true;  // T-411: checked against the scope when compiled.
+            }
             err =
                 "set() value must be a number, true, false, toggle, a quoted string, event.value [| "
-                "<converter> ...], value [| <converter> ...] or pointer.fraction|local(#<id>).x|.y";
+                "<converter> ...], value [| <converter> ...], pointer.fraction|local(#<id>).x|.y, "
+                "port(<name>), "
+                "item(<field>), item(), repeat.index or repeat.count [| <converter> ...]";
             return false;
         }
         if (c.name == "spawn") {  // T-201: a symbol and at / lifetime / timeline options.
@@ -2628,8 +2744,8 @@ private:
 
 bool emitTriggers(const DomTree& dom, const RuleSet& ruleSet, const PortScopes& ports, IrWriter& writer,
                   std::string_view fileName, DiagnosticSink& sink, CustomStateBuilder& states,
-                  TriggerBuilder& triggers) {
-    Emitter emitter(dom, ruleSet, ports, writer, fileName, sink);
+                  TriggerBuilder& triggers, const RepeatScopes* repeats) {
+    Emitter emitter(dom, ruleSet, ports, writer, fileName, sink, repeats);
     return emitter.run(states, triggers);
 }
 

@@ -5,6 +5,7 @@
 #include <string>
 
 #include "doctest.h"
+#include "xt/compile/compile.h"
 #include "xt/compile/dom.h"
 #include "xt/compile/parse_xt.h"
 
@@ -358,4 +359,40 @@ TEST_CASE("parseXt: 10000 sibling elements parse quickly") {
     static_cast<void>(ms);
 #endif
     CHECK(tree.nodes[1].children.size() == 10000);
+}
+
+TEST_CASE("T-406 <xt version>: missing = 1, newer or malformed is an error, never in the IR") {
+    const char* body = "<head></head><body><div id=\"a\">x</div></body></xt>";
+    for (const char* root : {"<xt>", "<xt version=\"1\">"}) {
+        DiagnosticSink sink;
+        DomTree tree;
+        CHECK(parseXt(std::string(root) + body, "v.xt", sink, tree));
+    }
+    {
+        DiagnosticSink sink;
+        DomTree tree;
+        CHECK_FALSE(parseXt(std::string("<xt version=\"2\">") + body, "v.xt", sink, tree));
+        CHECK(hasErrorContaining(sink, "a newer XTFrame is needed"));
+    }
+    for (const char* bad :
+         {"<xt version=\"0\">", "<xt version=\"one\">", "<xt version=\"\">", "<xt version=\"-1\">"}) {
+        DiagnosticSink sink;
+        DomTree tree;
+        CHECK_FALSE(parseXt(std::string(bad) + body, "v.xt", sink, tree));
+        CHECK(hasErrorContaining(sink, "is not a positive integer"));
+    }
+    // The same document compiles to the same bytes with and without the attribute (padded to the
+    // same length: the IR keeps source positions).
+    const std::string plainText = std::string("<xt            >") + body;
+    const std::string versionedText = std::string("<xt version=\"1\">") + body;
+    const SourceFile plain{"v.xt", plainText};
+    const SourceFile versioned{"v.xt", versionedText};
+    CompileOptions options;
+    options.emitMeta = false;  // its timestamp differs between two runs
+    const CompileResult a = compileDocumentFromStrings({&plain, 1}, "v.xt", options);
+    const CompileResult b = compileDocumentFromStrings({&versioned, 1}, "v.xt", options);
+    REQUIRE(a.ok());
+    REQUIRE(b.ok());
+    CHECK(a.ir == b.ir);
+    CHECK(kXtFormatVersion == 1);
 }

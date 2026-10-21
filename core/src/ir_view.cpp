@@ -487,10 +487,17 @@ bool IrView::parseGrid(const uint8_t* payload, size_t payloadSize, GridChunk& ou
 }
 
 bool IrView::parseMeta(const uint8_t* payload, size_t payloadSize, MetaChunk& meta) {
-    if (payloadSize != sizeof(IrMeta)) {
+    // T-405 (IR minor 8): IrMeta, then the optional `u32 behavior` (absent = 0); anything after it
+    // is a later minor's tail and is ignored. A payload between 16 and 20 bytes is truncated.
+    if (payloadSize < sizeof(IrMeta) ||
+        (payloadSize > sizeof(IrMeta) && payloadSize < sizeof(IrMeta) + sizeof(uint32_t))) {
         return false;
     }
     meta.m_meta = reinterpret_cast<const IrMeta*>(payload);
+    meta.m_behavior = 0;
+    if (payloadSize >= sizeof(IrMeta) + sizeof(uint32_t)) {
+        std::memcpy(&meta.m_behavior, payload + sizeof(IrMeta), sizeof(uint32_t));
+    }
     return true;
 }
 
@@ -765,6 +772,19 @@ bool validateDeclLength(const IrDecl& decl) {
     return static_cast<ValueType>(decl.valueType) != ValueType::Length || validLengthUnit(decl.value[4]);
 }
 
+/// T-405 (02 §2.6, IR minor 8): a `hit-slop` longhand (StyleProp 277-280) is a Length in Px,
+/// Percent or Em (or a var() reference, resolved and range-checked by the cascade).
+bool validateDeclHitSlop(const IrDecl& decl) {
+    if (decl.prop < sp::HitSlopTop || decl.prop > sp::HitSlopLeft || decl.valueType == kDeclVarRef) {
+        return true;
+    }
+    const uint8_t unit = decl.value[4];
+    return static_cast<ValueType>(decl.valueType) == ValueType::Length &&
+           (unit == static_cast<uint8_t>(LengthUnit::Px) ||
+            unit == static_cast<uint8_t>(LengthUnit::Percent) ||
+            unit == static_cast<uint8_t>(LengthUnit::Em));
+}
+
 /// T-255b: the `font-size` cascade (style_engine.cpp) reads value[4] as a unit whatever the
 /// declaration's type, so a `font-size` declaration is a Length, a calc() or a var() reference.
 bool validateDeclFontSize(const IrDecl& decl) {
@@ -1037,6 +1057,7 @@ Result<IrView> IrView::open(IrBlob blob, IrReadOptions options) {
 
     IrView view;
     view.m_blob = blob;
+    view.m_formatMinor = header->minor;
 
     enum Stage { S_STRT, S_ASST, S_STYL, S_SCEN, S_TLIN, S_DOCT_DONE, S_SRCM_DONE, S_META_DONE };
     Stage stage = S_STRT;
@@ -1355,7 +1376,8 @@ Status IrView::validate(const IrView& view) {
         if (!validateDeclStringId(decl, stringCount) || !validateDeclListRef(decl, style) ||
             !validateDeclVarRef(decl, stringCount, varFallbackCount) || !validateDeclCalc(decl, calcCount) ||
             !validateDeclLength(decl) || !validateDeclFontSize(decl) || !validateDeclCascadeLength(decl) ||
-            !validateDeclClipPath(decl, view.m_clipShapes) || !validateDeclGrid(decl, view.m_grid)) {
+            !validateDeclClipPath(decl, view.m_clipShapes) || !validateDeclGrid(decl, view.m_grid) ||
+            !validateDeclHitSlop(decl)) {
             return Status::kInvalidIr;
         }
     }
@@ -1707,7 +1729,8 @@ Status IrView::validate(const IrView& view) {
         if (!validateDeclStringId(decl, stringCount) || !validateDeclListRef(decl, style) ||
             !validateDeclVarRef(decl, stringCount, varFallbackCount) || !validateDeclCalc(decl, calcCount) ||
             !validateDeclLength(decl) || !validateDeclFontSize(decl) || !validateDeclCascadeLength(decl) ||
-            !validateDeclClipPath(decl, view.m_clipShapes) || !validateDeclGrid(decl, view.m_grid)) {
+            !validateDeclClipPath(decl, view.m_clipShapes) || !validateDeclGrid(decl, view.m_grid) ||
+            !validateDeclHitSlop(decl)) {
             return Status::kInvalidIr;
         }
     }
@@ -1859,7 +1882,7 @@ Status IrView::validate(const IrView& view) {
             return Status::kInvalidIr;
         }
     }
-    // T-391: every List field has exactly one entry description; its range lies after the field
+    // T-391: a List field has at most one entry description; its range lies after the field
     // (finite nesting); a primitive entry has no fields except an Enum entry's value names.
     for (size_t k = 0; k < portChunk.nested().size(); ++k) {
         const IrPortNested& n = portChunk.nested()[k];
@@ -1885,12 +1908,10 @@ Status IrView::validate(const IrView& view) {
             }
         }
     }
-    for (uint32_t f = 0; f < portChunk.fields().size(); ++f) {
-        if (static_cast<PortValueType>(portChunk.fields()[f].type) == PortValueType::List &&
-            portChunk.nestedOf(f) == nullptr) {
-            return Status::kInvalidIr;
-        }
-    }
+    // T-405 (43 §43.5): a List field without an entry description is not an error -- a missing
+    // `nested[]` tail (or entry) means no nesting: the field's lists carry no schema
+    // (BindingRuntime::schemaFromIr() returns null) and no nested `<repeat>` may iterate it (the
+    // RPT check below).
     // T-358: a default names a declared port, carries that port's type, and only a type that may
     // have one; String / Enum values are StringIds (an Enum value must be one of its names).
     for (const IrPortDefault& d : portChunk.defaults()) {
@@ -2071,8 +2092,10 @@ Status IrView::validate(const IrView& view) {
                     const bool idBits = act.flags == static_cast<uint8_t>(SetSource::String) ||
                                         (act.flags >= static_cast<uint8_t>(SetSource::PointerFractionX) &&
                                          act.flags <= static_cast<uint8_t>(SetSource::PointerLocalY));
+                    // T-411: a Port source's arg2 bits are a PORT index.
+                    const bool portBits = act.flags == static_cast<uint8_t>(SetSource::Port);
                     if (act.arg1 == 0 || act.arg1 > portCount || act.flags > kSetSourceLast ||
-                        (idBits && bits >= stringCount) ||
+                        (idBits && bits >= stringCount) || (portBits && bits >= portCount) ||
                         (act.extra != 0 && !inPool(act.arg0, act.extra, trig.conditions().size()))) {
                         return Status::kInvalidIr;
                     }
@@ -2130,8 +2153,7 @@ Status IrView::validate(const IrView& view) {
              b.sceneNode >= view.m_scenes[elements[b.element].scene].nodes().size())) {
             return Status::kInvalidIr;
         }
-        if (b.element >= elements.size() || b.target == 0 ||
-            b.target > static_cast<uint8_t>(BindTarget::BuiltinState) ||
+        if (b.element >= elements.size() || b.target == 0 || b.target > kBindTargetLast ||
             !inPool(b.sourceOffset, b.sourceCount, binds.sources().size()) ||
             !inPool(b.stepOffset, b.stepCount, binds.steps().size()) ||
             !validStringId(b.targetName, stringCount) ||

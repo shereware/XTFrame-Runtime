@@ -622,6 +622,18 @@ void runDeep(DeepRun& run) {
     run.hitDepth = hit != kInvalidNode ? depthOf(doc->arena(), hit) : 0;
 }
 
+#if defined(__SANITIZE_ADDRESS__)
+constexpr size_t kAsanStackScale = 4;
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer)
+constexpr size_t kAsanStackScale = 4;
+#else
+constexpr size_t kAsanStackScale = 1;
+#endif
+#else
+constexpr size_t kAsanStackScale = 1;
+#endif
+
 #if defined(_WIN32)
 DWORD WINAPI deepThread(LPVOID arg) {
     runDeep(*static_cast<DeepRun*>(arg));
@@ -811,9 +823,11 @@ TEST_CASE("T-255b: the deepest tree the validator allows updates, renders and hi
     }
     {
         // 512 KiB: smaller stacks (engine job threads, an Android main thread) must hold it too.
+        // Under AddressSanitizer (T-402, the CI `sanitizers` job) every frame carries redzones and
+        // the same recursion needs several times the stack, so the budget is scaled there.
         DeepRun run;
         run.ir = &ir;
-        REQUIRE(runDeepOnStack(run, 512u * 1024u));
+        REQUIRE(runDeepOnStack(run, 512u * 1024u * kAsanStackScale));
         CHECK(run.loaded);
         CHECK(run.hitDepth >= kMaxElementDepth - 2);
     }

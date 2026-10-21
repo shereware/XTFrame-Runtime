@@ -1091,6 +1091,9 @@ const char* kNestData =
 
 /// Builds `{name, rows: [{t}...]}` Values for one test (the storage lives as long as the builder).
 struct NestBuilder {
+    // Not an aggregate: GCC -Wextra flags `NestBuilder{doc}` (missing-field-initializers).
+    explicit NestBuilder(Document* d) : doc(d) {}
+
     Document* doc = nullptr;
     std::vector<std::unique_ptr<std::vector<Value>>> store;
     StringId nameKey = kInvalidString, rowsKey = kInvalidString, tKey = kInvalidString;

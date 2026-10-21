@@ -143,9 +143,9 @@ TEST_CASE("T-312a (a): meta text is byte-stable, in the fixed key order, unknown
     REQUIRE(back.links.size() == 1);
     CHECK(back.links[0].to == "ref:moodboard/a");
     CHECK(back.extra["zzz"] == "kept");
-    // Fixed order: id, type, title, collection, status, source, approved, license, content, tags,
-    // measured, import, links, note, then the unknown keys alphabetically.
-    CHECK(text.rfind("id: ", 0) == 0);
+    // Fixed order: version (T-406), id, type, title, collection, status, source, approved, license,
+    // content, tags, measured, import, links, note, then the unknown keys alphabetically.
+    CHECK(text.rfind("version: 1\nid: ", 0) == 0);
     const char* order[] = {"type",     "title",   "collection", "status",  "source",
                            "approved", "license", "content",    "tags",    "measured",
                            "import",   "links",   "note",       "derived", "zzz"};
@@ -169,7 +169,7 @@ TEST_CASE("T-312a (a): meta text is byte-stable, in the fixed key order, unknown
     CHECK(readMeta(dir + "/none.png", read) == Status::kNotFound);
     // A minimal meta: status is always written; nothing empty is.
     AssetMeta minimal;
-    CHECK(metaText(minimal) == "status: draft\n");
+    CHECK(metaText(minimal) == "version: 1\nstatus: draft\n");
 }
 
 TEST_CASE("T-312a (b): ensureMeta, collections and import paths") {

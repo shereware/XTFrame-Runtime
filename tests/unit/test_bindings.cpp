@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <memory>
@@ -7,6 +8,7 @@
 #include <vector>
 
 #include "doctest.h"
+#include "xt/compile/aliases.h"
 #include "xt/compile/compile.h"
 #include "xt/compile/diagnostics.h"
 #include "xt/compile/ir_writer.h"
@@ -18,6 +20,7 @@
 #include "xt/ir.h"
 #include "xt/property.h"
 #include "xt/types.h"
+#include "xt/version.h"
 
 /// Declared ports, data bindings, the converter catalog and the port API (docs/design/
 /// 27-interaction.md §27.3, 03 §3.12.3, 04 §4.10.4, 12 §12.7, 13 §13.8.1, docs/tasks/T-175.md).
@@ -32,9 +35,11 @@ std::string page(std::string_view style, std::string_view body) {
            std::string(body) + "</body></xt>";
 }
 
-CompileResult compileSrc(const std::string& xt) {
+/// T-407: `behavior` > 0 emits META with that `behavior` (0 = no META, the pre-beta behavior).
+CompileResult compileSrc(const std::string& xt, uint32_t behavior = 0) {
     CompileOptions options;
-    options.emitMeta = false;
+    options.emitMeta = behavior != 0;
+    options.behavior = behavior;
     std::vector<SourceFile> files{{"main.xt", xt}};
     return compileDocumentFromStrings(files, "main.xt", options);
 }
@@ -77,9 +82,9 @@ struct Ui {
     }
 };
 
-Ui open(const std::string& xt) {
+Ui open(const std::string& xt, uint32_t behavior = 0) {
     Ui out;
-    out.result = compileSrc(xt);
+    out.result = compileSrc(xt, behavior);
     for (const Diagnostic& d : out.result.diagnostics) {
         CAPTURE(d.message);
         CHECK(d.level != Diagnostic::Level::Error);
@@ -746,7 +751,7 @@ TEST_CASE("T-358: port defaults of every allowed type compile into the PORT defa
     REQUIRE(r.ok());
     IrHeader header{};
     std::memcpy(&header, r.ir.data(), sizeof(header));
-    CHECK(header.minor == 7);
+    CHECK(header.minor >= 7);  // T-405: 8.
     Result<IrView> view = IrView::open(IrBlob{r.ir.data(), r.ir.size()});
     REQUIRE(view.ok());
     const PortChunk& pc = view.value().ports();
@@ -1218,7 +1223,8 @@ TEST_CASE("T-392: Focused / Hover / Active / Checked are the built-in states in 
 // binding that reads it once, from the next update(); getPort() sees each value at once.
 TEST_CASE("T-389: 100 sets of a port in one frame evaluate its binding once") {
     Ui ui = open(page("", R"X(<div id="P" port:hp="number"></div>
-        <span id="T" bind:text="hp | host.count"></span>)X"));
+        <span id="T" bind:text="hp | host.count"></span>)X"),
+                 kBehaviorFlowSignalCoalescing);
     int calls = 0;
     REQUIRE(ui.doc
                 ->registerConverter("count",
@@ -1248,7 +1254,8 @@ TEST_CASE("T-399: an input a port change shows takes focus() in the same frame; 
     Ui ui =
         open(page("#Box { display: none; } #Box.on { display: block; } input { width: 80px; height: 20px; }",
                   R"X(<div id="P" port:show="bool" port:other="string">
-        <div id="Box" bind:class.on="show"><input id="In"/></div><span bind:text="other"></span></div>)X"));
+        <div id="Box" bind:class.on="show"><input id="In"/></div><span bind:text="other"></span></div>)X"),
+             kBehaviorFlowSignalCoalescing);  // T-407: "a port change is waiting" needs behavior 1.
     std::vector<std::string> events;
     const ElementRef in = ui.el("In");
     ui.doc->addListener(in, EventType::Focus, [&](Event&) { events.emplace_back("focus"); });
@@ -1342,4 +1349,143 @@ TEST_CASE("T-399: reset() takes value and needs bind:value on the element") {
     CHECK(compileError(
         compileSrc(page("", R"X(<div port:q="string"><input bind:value="q" on:blur="reset()"/></div>)X")),
         "reset() takes value"));
+}
+
+// T-407 (43 §43.3): behavior 0 keeps the pre-T-389 binding evaluation -- at once, on every set.
+TEST_CASE("T-407: behavior 0 evaluates a binding on each of 100 sets, at once") {
+    Ui ui = open(page("", R"X(<div id="P" port:hp="number"></div>
+        <span id="T" bind:text="hp | host.count"></span>)X"),
+                 0);
+    REQUIRE(ui.doc->behavior() == 0);
+    int calls = 0;
+    REQUIRE(ui.doc
+                ->registerConverter("count",
+                                    [&calls](const Value& in, std::span<const Value>) {
+                                        ++calls;
+                                        return in;
+                                    })
+                .ok());
+    ui.step(0.016f);
+    calls = 0;
+    const PortId hp = ui.port("hp");
+    for (int i = 1; i <= 100; ++i) {
+        REQUIRE(ui.doc->setPort(hp, Value::ofFloat(static_cast<float>(i))) == Status::kOk);
+        CHECK(calls == i);
+        CHECK(std::string(ui.el("T").text()) == std::to_string(i));  // No update() in between.
+    }
+    ui.step(0.016f);
+    CHECK(calls == 100);
+}
+
+// The pre-T-389 expectation of "bindings: variant on a symbol instance swaps its v-<Prop>-* class":
+// the class follows the port at once, no update() in between.
+TEST_CASE("T-407: behavior 0 swaps a bound variant class within the set") {
+    Ui ui = open(R"X(<xt><head>
+      <symbol name="Btn" variants="Kind=Primary|Secondary"><div id="Bg"></div></symbol>
+      <style>#Root { width: 100px; }</style></head>
+      <body id="Root"><div id="P" port:kind="enum(Primary|Secondary)"></div>
+      <use symbol="Btn" id="B1" variant:Kind="Primary" bind:variant.Kind="kind"></use></body></xt>)X");
+    CHECK(ui.el("B1").hasClass("v-Kind-Primary"));
+    ui.setText("kind", "Secondary");
+    CHECK(ui.el("B1").hasClass("v-Kind-Secondary"));
+    CHECK(!ui.el("B1").hasClass("v-Kind-Primary"));
+}
+
+TEST_CASE("T-407: Document::behavior() is META's behavior; no META or no tail reads 0") {
+    const std::string xt = page("", R"X(<div id="P" port:hp="number"></div>)X");
+    CHECK(open(xt, 0).doc->behavior() == 0);  // emitMeta off: no META at all.
+    CHECK(open(xt, 1).doc->behavior() == 1);
+    CHECK(open(xt, 7).doc->behavior() == 7);  // A later version: kept as written.
+    // META without the tail (behavior 0).
+    CompileOptions options;
+    std::vector<SourceFile> files{{"main.xt", xt}};
+    CompileResult r = compileDocumentFromStrings(files, "main.xt", options);
+    REQUIRE(r.ok());
+    std::unique_ptr<Document> doc;
+    REQUIRE(Document::load(IrBlob{r.ir.data(), r.ir.size()}, false, nullptr, nullptr, doc) == Status::kOk);
+    CHECK(doc->ir().meta().present());
+    CHECK(doc->behavior() == 0);
+}
+
+namespace {
+
+/// T-408: compiles `body` (inside <body>) with `strict` / `reportDeprecated`.
+CompileResult compileAliases(const std::string& body, bool strict, bool reportDeprecated,
+                             const std::string& style = "") {
+    const std::string text = "<xt><head><style>" + style + "</style></head><body>" + body + "</body></xt>";
+    const SourceFile file{"alias.xt", text};
+    CompileOptions options;
+    options.strict = strict;
+    options.reportDeprecated = reportDeprecated;
+    return compileDocumentFromStrings({&file, 1}, "alias.xt", options);
+}
+
+std::vector<std::string> deprecations(const CompileResult& result) {
+    std::vector<std::string> out;
+    for (const Diagnostic& d : result.diagnostics) {
+        if (d.level == Diagnostic::Level::Warning && d.message.rfind("deprecated: use ", 0) == 0) {
+            out.push_back(d.message);
+        }
+    }
+    return out;
+}
+
+constexpr const char* kAliasBody =
+    R"X(<div id="P" port:off="bool in" bind:state.Disabled="off" state-groups="Mode: Open|Closed"
+      on:pointerdown="state(Open)" on:pointerup(left)="state(Closed)"
+      on:state-enter(Open)="state(Closed)" on:state-exit(Open)="state(Open)"></div>)X";
+
+}  // namespace
+
+TEST_CASE("T-408: the alias registry lists the existing aliases") {
+    CHECK(std::string(findNameAlias(AliasKind::Trigger, "pointerdown")->replacement) == "press");
+    CHECK(std::string(findNameAlias(AliasKind::Trigger, "pointerup")->replacement) == "release");
+    CHECK(std::string(findNameAlias(AliasKind::Trigger, "state-enter(<Name>)")->replacement) ==
+          "state(<Name>).enter");
+    CHECK(std::string(findNameAlias(AliasKind::Binding, "bind:state.Disabled")->replacement) ==
+          "bind:disabled");
+    CHECK(findNameAlias(AliasKind::Trigger, "press") == nullptr);
+    CHECK(findNameAlias(AliasKind::Action, "pointerdown") == nullptr);
+    CHECK(nameAliases().size() == 5);
+    CHECK(deprecatedMessage(*findNameAlias(AliasKind::Trigger, "pointerdown")) ==
+          "deprecated: use press instead of pointerdown");
+}
+
+TEST_CASE("T-408: an alias compiles; strict and reportDeprecated warn, strict does not fail on it") {
+    // Default: compiles, no warning (unchanged output).
+    const CompileResult plain = compileAliases(kAliasBody, false, false);
+    CHECK(plain.ok());
+    CHECK(deprecations(plain).empty());
+
+    // reportDeprecated (editor preview / lint): one warning per use.
+    const CompileResult reported = compileAliases(kAliasBody, false, true);
+    CHECK(reported.ok());
+    const std::vector<std::string> messages = deprecations(reported);
+    REQUIRE(messages.size() == 5);
+    CHECK(std::count(messages.begin(), messages.end(),
+                     "deprecated: use bind:disabled instead of bind:state.Disabled") == 1);
+    CHECK(std::count(messages.begin(), messages.end(), "deprecated: use press instead of pointerdown") == 1);
+    CHECK(std::count(messages.begin(), messages.end(), "deprecated: use release instead of pointerup") == 1);
+    CHECK(std::count(messages.begin(), messages.end(),
+                     "deprecated: use state(<Name>).enter instead of state-enter(<Name>)") == 1);
+    CHECK(std::count(messages.begin(), messages.end(),
+                     "deprecated: use state(<Name>).exit instead of state-exit(<Name>)") == 1);
+    // The same IR as the new spellings.
+    const CompileResult renamed = compileAliases(
+        R"X(<div id="P" port:off="bool in" bind:disabled="off" state-groups="Mode: Open|Closed"
+          on:press="state(Open)" on:release(left)="state(Closed)"
+          on:state(Open).enter="state(Closed)" on:state(Open).exit="state(Open)"></div>)X",
+        false, false);
+    REQUIRE(renamed.ok());
+    CHECK(deprecations(renamed).empty());
+
+    // strict: the warnings are reported, the compile still succeeds.
+    const CompileResult strict = compileAliases(kAliasBody, true, false);
+    CHECK(strict.ok());
+    CHECK(deprecations(strict).size() == 5);
+    // ...but any other warning still fails it.
+    const CompileResult other = compileAliases(R"X(<div id="P" on:pointerdown="state(Open)"
+      state-groups="Mode: Open|Closed"></div>)X",
+                                               true, false, "#P { bogus-prop: 1; }");
+    CHECK(!other.ok());
 }

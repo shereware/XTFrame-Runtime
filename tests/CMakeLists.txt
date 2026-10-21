@@ -126,6 +126,7 @@ add_executable(xt_tests
     unit/test_json_abi.cpp
     ir/ir_reserialize.cpp
     ir/test_ir_corpus.cpp
+    ir/test_ir_fixtures.cpp
 )
 target_include_directories(xt_tests SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/third_party/doctest)
 # doctest needs the real standard headers, otherwise it conflicts with newer MSVC STL versions.
@@ -368,4 +369,19 @@ if(XT_BUILD_EDITOR AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/editor/CMakeLists.txt
     add_test(NAME t261f_editor_mcp
              COMMAND ${CMAKE_COMMAND} -DCASE=mcp "-DTOOL=$<TARGET_FILE:xtframe-mcp>" "-DWORK=${T261F_WORK}"
                      "-DSOURCE=${PROJECT_SOURCE_DIR}" -P "${T261F_SCRIPT}")
+endif()
+
+# T-401 (docs/design/43-compatibility-and-versions.md 43.4): the project-level golden corpus
+# (tests/corpus). tools/corpus_check.sh is a thin wrapper of tools/corpus_check.py; CTest runs the
+# Python script directly so it never depends on which `bash` the PATH holds. Its packs and renders
+# go to the build tree; tools/dev_check.sh runs it as its own suite `corpus`.
+if(TARGET xtframe-view AND TARGET xtframe-pack)
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME corpus_check
+                 COMMAND Python3::Interpreter "${PROJECT_SOURCE_DIR}/tools/corpus_check.py"
+                         --view $<TARGET_FILE:xtframe-view> --pack $<TARGET_FILE:xtframe-pack>
+                         --work "${CMAKE_CURRENT_BINARY_DIR}/corpus_work")
+        set_tests_properties(corpus_check PROPERTIES TIMEOUT 1800)
+    endif()
 endif()

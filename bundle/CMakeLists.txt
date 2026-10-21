@@ -28,6 +28,8 @@ add_library(xt_bundle STATIC
     src/asset_hygiene.cpp
     src/project_runtime.cpp
     src/project_edit.cpp
+    src/migrations/migrations.cpp
+    src/symbol_sync.cpp
 )
 # pack() (T-92) compiles each UI (xt_compile), reflects its connection points (xt_flow) and
 # renders its thumbnail with the software backend (xt_sw, always built).

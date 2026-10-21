@@ -28,7 +28,11 @@ static_assert(std::is_same_v<nlohmann::ordered_json, nlohmann::xtframe_abi::orde
 
 TEST_CASE("vendored nlohmann::json is in the xtframe_abi namespace") {
     const std::string_view sig = jsonAbiSignatureOf<nlohmann::json>();
+#if !defined(__clang__)
+    // Clang's __PRETTY_FUNCTION__ leaves inline namespaces out (nlohmann::basic_json<>); the
+    // static_asserts above already prove the tag there.
     CHECK(sig.find("nlohmann::xtframe_abi::basic_json") != std::string_view::npos);
+#endif
     // The library's default tag (json_abi_v3_11_3) must not appear: that is the name an untagged
     // host copy uses.
     CHECK(sig.find("json_abi") == std::string_view::npos);

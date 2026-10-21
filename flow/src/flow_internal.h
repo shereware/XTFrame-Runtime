@@ -224,6 +224,10 @@ struct DocEndpointState {
 /// cached across a dispatch (a reload's install is deferred to the end of one, T-260a). T-260c:
 /// "still the Document" is Context::documentSerial(state.handle) == state.serial.
 Document* liveDocument(const DocEndpointState& state);
+/// T-407 (43 §43.3): true when `state`'s Document is still live and its behavior version is at
+/// least kBehaviorFlowSignalCoalescing -- only then are its value signals coalesced per frame;
+/// below it (or with no live Document) every output is delivered at once, as before T-389.
+bool coalescesSignals(const DocEndpointState& state);
 
 /// "E:<id>:<port>" / "A:<id>:<port>" / "D::<port>": one output port's identity.
 std::string externalKey(Endpoint::Owner owner, const std::string& elementId, const std::string& port);
@@ -442,6 +446,10 @@ struct xt::flow::FlowRuntime::Impl {
     std::vector<uint8_t> nodeStale;
     /// Marks `nodeIndex`'s outputs for syncValueList().
     void markValuesStale(int nodeIndex);
+    /// T-407 (43 §43.3): true when any bound Document (`docs` or a global flow's UI) coalesces
+    /// (coalescesSignals()); tick() then runs as one batch. False: every push is evaluated at
+    /// once, the pre-T-389 tick.
+    bool anyCoalescing() const;
 
     /// Keeps the latest value of one value signal for the next tick().
     void queueSignal(const std::string& uiId, DocEndpointState* state, Endpoint::Owner owner,

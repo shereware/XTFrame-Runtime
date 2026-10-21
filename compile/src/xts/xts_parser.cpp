@@ -5,6 +5,7 @@
 #include <string_view>
 #include <vector>
 
+#include "xt/compile/aliases.h"
 #include "xt/compile/diagnostics.h"
 #include "xt/compile/parse_xts.h"
 #include "xt/compile/style_model.h"
@@ -778,6 +779,14 @@ private:
                 }
             }
             const PropInfo* info = findProp(nameTok.text);
+            if (info == nullptr) {
+                // T-408 (43 §43.6): a registered property alias parses as its replacement.
+                if (const NameAlias* alias = findNameAlias(AliasKind::Property, nameTok.text)) {
+                    m_sink.deprecated(m_fileName, deprecatedMessage(*alias), reportLine(nameTok.line),
+                                      nameTok.col);
+                    info = findProp(alias->replacement);
+                }
+            }
             if (info == nullptr) {
                 warn(nameTok, "unknown property \"" + nameTok.text + "\"");
                 continue;

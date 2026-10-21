@@ -16,6 +16,12 @@ namespace xt::compile {
 /// editor's source scanner uses the same limit.
 inline constexpr int kMaxXtDepth = 256;
 
+/// T-406 (docs/design/43-compatibility-and-versions.md §43.2): the `.xt` format version, the root's
+/// `<xt version="1">`. A missing `version` reads as 1; a value that is not a positive integer, or
+/// one newer than this, is an error ("... a newer XTFrame is needed"). The attribute never reaches
+/// the IR.
+inline constexpr int kXtFormatVersion = 1;
+
 /// Parses `text` (the contents of a `.xt` file named `fileName`, used only for diagnostics) into
 /// `out`. Returns false and leaves `out` in an unspecified state if any error diagnostic is
 /// produced; warnings do not affect the return value.

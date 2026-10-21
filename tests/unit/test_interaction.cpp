@@ -20,6 +20,7 @@
 #include "xt/ir.h"
 #include "xt/property.h"
 #include "xt/types.h"
+#include "xt/version.h"
 
 /// Game UI interaction (docs/design/08-events.md §8.9, 27-interaction.md §27.7, docs/tasks/
 /// T-194.md): focus navigation (geometric and explicit), local players, gamepad mapping, drag and
@@ -35,9 +36,11 @@ std::string doc(std::string_view style, std::string_view body, std::string_view 
            std::string(bodyAttrs) + ">" + std::string(body) + "</body></xt>";
 }
 
-CompileResult compileXt(const std::string& xt) {
+/// T-407: `behavior` > 0 emits META with that `behavior` (0 = no META, the pre-beta behavior).
+CompileResult compileXt(const std::string& xt, uint32_t behavior = 0) {
     CompileOptions options;
-    options.emitMeta = false;
+    options.emitMeta = behavior != 0;
+    options.behavior = behavior;
     std::vector<SourceFile> files{{"main.xt", xt}};
     return compileDocumentFromStrings(files, "main.xt", options);
 }
@@ -109,9 +112,9 @@ struct Loaded {
     }
 };
 
-Loaded load(const std::string& xt, float w = 300, float h = 200) {
+Loaded load(const std::string& xt, float w = 300, float h = 200, uint32_t behavior = 0) {
     Loaded out;
-    out.result = compileXt(xt);
+    out.result = compileXt(xt, behavior);
     for (const Diagnostic& d : out.result.diagnostics) {
         CAPTURE(d.message);
         CHECK(d.level != Diagnostic::Level::Error);
@@ -1995,7 +1998,8 @@ TEST_CASE("T-390: a disabled ancestor disables the subtree for pointer, click an
 TEST_CASE("T-389: 100 pointer moves in one frame run on:pointermove once, with the last event") {
     Loaded m = load(doc("#A { position: absolute; left: 0px; top: 0px; width: 200px; height: 100px; }",
                         "<div id=\"A\" port:x=\"number\" port:hit=\"event out\""
-                        " on:pointermove=\"set(x, pointer.local(#A).x)\" on:click=\"emit(hit)\"></div>"));
+                        " on:pointermove=\"set(x, pointer.local(#A).x)\" on:click=\"emit(hit)\"></div>"),
+                    300, 200, kBehaviorFlowSignalCoalescing);
     const PortId x = m.doc->lookupPort("x");
     const PortId hit = m.doc->lookupPort("hit");
     REQUIRE(x != kInvalidPort);
@@ -2030,7 +2034,7 @@ TEST_CASE("T-389: 100 pointer moves in one frame run on:pointermove once, with t
 }
 
 TEST_CASE("T-389: a press runs the pointer moves held before it first") {
-    Loaded m = load(kSliderXt);
+    Loaded m = load(kSliderXt, 300, 200, kBehaviorFlowSignalCoalescing);
     const PortId port = m.doc->lookupPort("S1.value");
     REQUIRE(port != kInvalidPort);
     // Press, drag to 75 % and release, all inside one frame: the move still ran while pressed.
@@ -2530,11 +2534,11 @@ void moveNoFrame(Loaded& l, float x, float y) {
 }  // namespace
 
 TEST_CASE("T-394: on:pointerdrag after the threshold, once per frame, if dragging, stops on release") {
-    Loaded l =
-        load(doc(kTrackStyle,
-                 "<div id=\"Track\" port:v=\"number in\" "
-                 "on:pointerdrag=\"set(v, pointer.fraction(#Track).x)\" "
-                 "on:pointermove=\"if dragging state(InDrag)\" on:release=\"state(Released)\"></div>"));
+    Loaded l = load(doc(kTrackStyle,
+                        "<div id=\"Track\" port:v=\"number in\" "
+                        "on:pointerdrag=\"set(v, pointer.fraction(#Track).x)\" "
+                        "on:pointermove=\"if dragging state(InDrag)\" on:release=\"state(Released)\"></div>"),
+                    300, 200, kBehaviorFlowSignalCoalescing);  // T-407: once per frame needs behavior 1.
     const PortId v = l.doc->lookupPort("v");
     int sets = 0;
     l.doc->addPortListener([&](const PortEvent& e) {
@@ -2823,4 +2827,141 @@ TEST_CASE("T-397: repeatChain lists the repeats around an element, nearest first
     CHECK(chain[1].index == 1);
     CHECK(l.doc->repeatChain(l.el("Out").node).empty());
     CHECK(l.doc->repeatChain(kInvalidNode).empty());
+}
+
+// -- T-407 (43 §43.3): behavior 0 keeps the pre-T-389 per-event triggers -----------------------------
+
+TEST_CASE("T-407: behavior 0 runs on:pointermove for each of 100 moves, at once") {
+    Loaded m =
+        load(doc("#A { position: absolute; left: 0px; top: 0px; width: 200px; height: 100px; }",
+                 "<div id=\"A\" port:x=\"number\" on:pointermove=\"set(x, pointer.local(#A).x)\"></div>"));
+    REQUIRE(m.doc->behavior() == 0);
+    const PortId x = m.doc->lookupPort("x");
+    REQUIRE(x != kInvalidPort);
+    int sets = 0;
+    m.doc->addPortListener([&](const PortEvent& ev) { sets += ev.port == x ? 1 : 0; });
+    for (int i = 1; i <= 100; ++i) {
+        InputEvent ev;
+        ev.kind = InputEvent::PointerMove;
+        ev.pos = Vec2{static_cast<float>(i), 50.0f};
+        m.doc->dispatchInput(ev);
+        CHECK(m.doc->getPort(x).f == doctest::Approx(static_cast<float>(i)));  // No update() needed.
+    }
+    CHECK(sets == 100);
+    m.step(0.016f);
+    CHECK(sets == 100);  // Nothing was held back for the frame.
+}
+
+TEST_CASE("T-407: behavior 0 -- a press, drag and release in one frame still drags the slider") {
+    Loaded m = load(kSliderXt);
+    const PortId port = m.doc->lookupPort("S1.value");
+    REQUIRE(port != kInvalidPort);
+    InputEvent ev;
+    ev.kind = InputEvent::PointerDown;
+    ev.pos = Vec2{30, 10};
+    m.doc->dispatchInput(ev);
+    ev.kind = InputEvent::PointerMove;
+    ev.pos = Vec2{95, 10};
+    m.doc->dispatchInput(ev);
+    CHECK(m.doc->getPort(port).f == doctest::Approx(0.75f));  // Before the release and the frame.
+    ev.kind = InputEvent::PointerUp;
+    m.doc->dispatchInput(ev);
+    m.step(0.016f);
+    CHECK(m.doc->getPort(port).f == doctest::Approx(0.75f));
+}
+
+// -- T-411 (27 §27.2.3): set() values that are bind-source expressions ---------------------------
+
+TEST_CASE("T-411: set() reads port(), constants and converters; port values when the action runs") {
+    Loaded m = load(doc(
+        "#A { position: absolute; left: 0px; top: 0px; width: 40px; height: 40px; }"
+        "#B { position: absolute; left: 50px; top: 0px; width: 40px; height: 40px; }"
+        "@timeline wait { duration: 0.5s; #B { 0s { opacity: 0 } 0.5s { opacity: 1 } } }",
+        "<div id=\"P\" port:a=\"number = 2\" port:b=\"number = 3\" port:total=\"number out\""
+        " port:twice=\"number\" port:c=\"number\" port:s=\"string\" port:flag=\"bool\" port:late=\"number\">"
+        "<div id=\"A\" on:click=\"set(total, port(a) | offset(port(b))); set(twice, port(a) | scale(2) | "
+        "offset(b)); set(c, 5 | scale(2)); set(s, 'ab' | upper); set(flag, port(a) | gt(port(b)))\"></div>"
+        "<div id=\"B\" on:click=\"play(wait) then set(late, port(a))\"></div></div>"));
+    m.pointer(InputEvent::PointerDown, 20, 20);
+    m.pointer(InputEvent::PointerUp, 20, 20);
+    CHECK(m.doc->getPort(m.doc->lookupPort("total")).f == doctest::Approx(5.0f));
+    CHECK(m.doc->getPort(m.doc->lookupPort("twice")).f == doctest::Approx(7.0f));
+    CHECK(m.doc->getPort(m.doc->lookupPort("c")).f == doctest::Approx(10.0f));
+    CHECK(m.doc->portText(m.doc->lookupPort("s")) == "AB");
+    CHECK(m.doc->getPort(m.doc->lookupPort("flag")).f == doctest::Approx(0.0f));
+    // A `then` wait: the port is read when the set() runs, not when the click happened.
+    m.pointer(InputEvent::PointerDown, 70, 20);
+    m.pointer(InputEvent::PointerUp, 70, 20);
+    CHECK(m.doc->getPort(m.doc->lookupPort("late")).f == doctest::Approx(0.0f));
+    REQUIRE(m.doc->setPort(m.doc->lookupPort("a"), Value::ofFloat(9.0f)) == Status::kOk);
+    m.step(0.3f);
+    m.step(0.3f);
+    CHECK(m.doc->getPort(m.doc->lookupPort("late")).f == doctest::Approx(9.0f));
+}
+
+TEST_CASE("T-411: set() inside a <repeat> template reads item(), item(<field>) and repeat.index") {
+    Loaded m = load(doc(
+        "#Rows > div { height: 20px; } #Names > div { height: 20px; }",
+        "<div id=\"P\" port:rows=\"list&lt;struct{id: string, n: number}&gt;\" port:selected=\"string\""
+        " port:at=\"number\" port:big=\"number\" port:names=\"list&lt;string&gt;\" port:pick=\"string\">"
+        "<repeat port=\"rows\" id=\"Rows\"><div id=\"Row\" on:click=\"set(selected, item(id));"
+        " set(at, repeat.index); set(big, item(n) | scale(10))\"></div></repeat>"
+        "<repeat port=\"names\" id=\"Names\"><div id=\"Name\" on:click=\"set(pick, item() | upper)\"></div>"
+        "</repeat></div>"));
+    REQUIRE(m.doc->setPortText(m.doc->lookupPort("rows"), R"([{"id":"a","n":1},{"id":"b","n":2}])") ==
+            Status::kOk);
+    REQUIRE(m.doc->setPortText(m.doc->lookupPort("names"), R"(["x","y"])") == Status::kOk);
+    m.step(0.016f);
+    auto click = [&m](const ElementRef& e) {
+        const Rect box = e.boundingBox();
+        m.pointer(InputEvent::PointerDown, box.x + 5, box.y + box.h * 0.5f);
+        m.pointer(InputEvent::PointerUp, box.x + 5, box.y + box.h * 0.5f);
+    };
+    std::span<const ElementRef> rows = m.doc->repeatInstances("Rows");
+    REQUIRE(rows.size() == 2);
+    click(rows[1]);
+    CHECK(m.doc->portText(m.doc->lookupPort("selected")) == "b");
+    CHECK(m.doc->getPort(m.doc->lookupPort("at")).f == doctest::Approx(1.0f));
+    CHECK(m.doc->getPort(m.doc->lookupPort("big")).f == doctest::Approx(20.0f));
+    // The entry is read when the action runs: an update of entry 0 shows on the next click.
+    REQUIRE(m.doc->setPortText(m.doc->lookupPort("rows"), R"([{"id":"z","n":5},{"id":"b","n":2}])") ==
+            Status::kOk);
+    m.step(0.016f);
+    click(m.doc->repeatInstances("Rows")[0]);
+    CHECK(m.doc->portText(m.doc->lookupPort("selected")) == "z");
+    CHECK(m.doc->getPort(m.doc->lookupPort("at")).f == doctest::Approx(0.0f));
+    CHECK(m.doc->getPort(m.doc->lookupPort("big")).f == doctest::Approx(50.0f));
+    std::span<const ElementRef> names = m.doc->repeatInstances("Names");
+    REQUIRE(names.size() == 2);
+    click(names[1]);
+    CHECK(m.doc->portText(m.doc->lookupPort("pick")) == "Y");
+}
+
+TEST_CASE("T-411: set() source errors -- unknown port, item() outside a template, call ports, outer") {
+    auto bad = [](const std::string& body, std::string_view needle) {
+        CompileResult r = compileXt(doc("", body));
+        CAPTURE(body);
+        CHECK_FALSE(r.ok());
+        CHECK(hasError(r, needle));
+    };
+    bad("<div port:t=\"number\" on:click=\"set(t, port(nope))\"></div>", "no port \"nope\" is declared here");
+    bad("<div port:t=\"number\" port:a=\"number\" on:click=\"set(t, port(a) | offset(port(nope)))\"></div>",
+        "no port \"nope\"");
+    bad("<div port:t=\"string\" on:click=\"set(t, item(id))\"></div>",
+        "item(id) is only valid inside a <repeat>");
+    bad("<div port:t=\"number\" on:click=\"set(t, repeat.index)\"></div>",
+        "repeat.index is only valid inside");
+    bad("<div port:t=\"number\" port:go=\"number call\" on:click=\"set(t, port(go))\"></div>",
+        "a call or event port has no value to read");
+    bad("<div port:t=\"number\" port:a=\"number\" on:click=\"set(t, port(a) | tween(1))\"></div>",
+        "cannot be used in set()");
+    bad("<div port:t=\"number\" port:go=\"number call\" on:click=\"set(go, port(t))\"></div>",
+        "cannot set the call, list or struct port");
+    bad("<div port:rows=\"list&lt;struct{id: string}&gt;\" port:t=\"string\"><repeat port=\"rows\" id=\"R\">"
+        "<div on:click=\"set(t, item(nope))\"></div></repeat></div>",
+        "no field \"nope\"");
+    std::string err;
+    CHECK(validateTriggerActions("set(t, port(a) | offset(port(b))); set(u, item(id)); set(v, 5 | scale(2))",
+                                 err));
+    CHECK_FALSE(validateTriggerActions("set(t, nope | scale(2))", err));
 }
