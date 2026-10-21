@@ -87,7 +87,7 @@
 ///                    [--fullscreen desktop|exclusive]
 ///                    [--second-window <file> [--second-display N] [--second-size WxH]] [--help]
 ///        xtframe-view --version
-///        xtframe-view --list-fonts
+///        xtframe-view --list-fonts[=names]
 ///
 /// --borderless (T-376, docs/design/23-host-integration.md §23.ab) opens the window without OS
 /// decorations: `app-region: drag` elements move the window, the edges (--resize-border N
@@ -232,9 +232,11 @@
 /// --help/-h prints the usage to stdout and exits 0. --version (T-420) prints the version lines
 /// (tools/common/print_version.h) to stdout and exits 0, whatever else is on the command line.
 /// --list-fonts (T-426) registers the system fonts (FtTextShaper::addSystemFonts()) and prints
-/// every registered family name to stdout, one per line, sorted and deduplicated (UTF-8), and exits
-/// 0, whatever else is on the command line (--version still wins); tools/corpus_check.py uses it to
-/// check a corpus project's required fonts.
+/// one `family<TAB>path` line per registered font file to stdout (path = the file it was
+/// registered from; UTF-8; sorted and deduplicated, T-429), and exits 0, whatever else is on the
+/// command line (--version still wins). --list-fonts=names prints only the family names, one per
+/// line, sorted and deduplicated (the T-426 output). tools/corpus_check.py uses it to check a
+/// corpus project's required fonts and their file hashes.
 ///
 /// Keys (read via Context::drainInput, this task's queue-only pushInput/drainInput -- no
 /// dispatch/hit-testing yet, T-32): Space pause/resume every `anim` element's defaultAnimation
@@ -339,9 +341,10 @@ struct Args {
     // Asset search directories handed to the resolver and the `.xt` compiler; empty = --root.
     std::vector<std::string> assetRoots;
     bool help = false;
-    bool version = false;    // T-420: --version.
-    bool listFonts = false;  // T-426: --list-fonts.
-    uint32_t dumpEvery = 0;  // 0 = only at the end of the run.
+    bool version = false;        // T-420: --version.
+    bool listFonts = false;      // T-426: --list-fonts.
+    bool listFontNames = false;  // T-429: --list-fonts=names (families only).
+    uint32_t dumpEvery = 0;      // 0 = only at the end of the run.
     uint32_t frames = 60;
     /// T-389 (measurement only): --synth-pointer N queues N PointerMove events before every
     /// frame's update(), stepping along the viewport diagonal (16 = a 1000 Hz mouse at 60 fps).
@@ -610,6 +613,9 @@ bool parseArgs(int argc, char** argv, Args& out) {
         }
         if (std::string_view(argv[i]) == "--list-fonts") {
             out.listFonts = true;
+        } else if (std::string_view(argv[i]) == "--list-fonts=names") {
+            out.listFonts = true;
+            out.listFontNames = true;
         }
     }
     if (out.listFonts) {
@@ -1327,7 +1333,8 @@ void printUsage(std::FILE* out) {
         "  --players N             local players 1-8: gamepad players 0..N-1 (and the slot limit)\n"
         "  --help, -h              print this text and exit 0\n"
         "  --version               print the version, IR format and behavior version and exit 0\n"
-        "  --list-fonts            print the system font family names, one per line, and exit 0\n"
+        "  --list-fonts            print the system fonts as `family<TAB>path` lines and exit 0\n"
+        "  --list-fonts=names      print the system font family names, one per line, and exit 0\n"
         "\n"
         "exit codes: 0 success, 1 load/write error, 2 argument error\n");
 }
@@ -2169,23 +2176,34 @@ int main(int argc, char** argv) {
     }
     if (args.listFonts) {
         // T-426: the families addSystemFonts() registers, sorted and deduplicated (byte order).
+        // T-429: by default each one with the file it came from, `family<TAB>path`.
 #ifndef XT_GL_NO_TEXT
         xt::text::FtTextShaper shaper;
         shaper.addSystemFonts();
         std::vector<xt::FontDesc> fonts;
         shaper.fonts(fonts);
-        std::set<std::string> families;
+        auto printable = [](const std::string& s) {
+            return std::none_of(s.begin(), s.end(),
+                                [](char c) { return static_cast<unsigned char>(c) < 0x20; });
+        };
+        std::set<std::string> lines;
         for (const xt::FontDesc& font : fonts) {
             // A family with a control character (some fonts' name tables hold line breaks)
             // cannot be printed one per line; it is left out.
-            const bool printable = std::none_of(font.family.begin(), font.family.end(),
-                                                [](char c) { return static_cast<unsigned char>(c) < 0x20; });
-            if (!font.family.empty() && printable) {
-                families.insert(font.family);
+            if (font.family.empty() || !printable(font.family)) {
+                continue;
+            }
+            if (args.listFontNames) {
+                lines.insert(font.family);
+                continue;
+            }
+            const std::string path = shaper.fontPath(font.id);
+            if (printable(path)) {
+                lines.insert(font.family + "\t" + path);
             }
         }
-        for (const std::string& family : families) {
-            std::fprintf(stdout, "%s\n", family.c_str());
+        for (const std::string& line : lines) {
+            std::fprintf(stdout, "%s\n", line.c_str());
         }
 #endif
         return 0;

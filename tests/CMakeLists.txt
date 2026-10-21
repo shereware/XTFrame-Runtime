@@ -221,6 +221,10 @@ add_subdirectory(perf)
 add_subdirectory(flow)
 add_subdirectory(bundle)
 add_subdirectory(symbols)
+# T-424: the template UI Projects (editor/templates/projects, editor layer; not in the runtime export).
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/templates/CMakeLists.txt")
+    add_subdirectory(templates)
+endif()
 # T-400: tests/import (editor layer) is not part of the runtime export.
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/import/CMakeLists.txt")
     add_subdirectory(import)

@@ -223,6 +223,11 @@ void FontTable::fonts(std::vector<FontDesc>& out) const {
     }
 }
 
+std::string FontTable::fontPath(FontId id) const {
+    if (id >= fonts_.size()) return std::string();
+    return fonts_[id].path;
+}
+
 FT_Face FontTable::openDeferred(size_t index) const {
     RegisteredFont& f = fonts_[index];
     if (!f.deferred) return f.face;

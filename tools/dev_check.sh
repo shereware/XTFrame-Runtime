@@ -4,7 +4,7 @@
 # each test suite once with a timeout so a hung process never blocks the caller.
 #   tools/dev_check.sh [--release] [--no-build] [--agent] <target>... -- <suite>...
 #   suites: editor | editor_service | editor_qt | editor_qt_slow | editor_qt_gl | flow | bundle | history | core | golden |
-#           gpu | gl | text | agent | import | lottie | symbols | headers | layering | testtemp | import-py | ctest | corpus | ir |
+#           gpu | gl | text | agent | import | lottie | symbols | templates | headers | layering | testtemp | import-py | ctest | corpus | ir |
 #           roundtrip | shape
 #          (ctest = ctest -E '^xt_.*_tests$', the command-line tests (T-267d); headers = tools/check_public_headers.sh, no build;
 #           layering = tools/check_layering.sh (T-274, R never includes / links E) and, since T-267d,
@@ -19,7 +19,7 @@
 #           import-py = python -m unittest over tests/import, no build;
 #           corpus = tools/corpus_check.sh with the Release xtframe-view / xtframe-pack of this tree, built
 #           first unless --no-build (T-401, 43 §43.4; a Debug SW render is ~50x slower, the 4 projects would
-#           take hours; strict: a project whose project.json `fonts` are not installed fails, T-426); the CTest
+#           take hours; strict: a project whose project.json `fonts` are not installed, or a different build, fails, T-426/T-429); the CTest
 #           entry corpus_check (which skips such a project) is left out of the ctest suite, which would run it again;
 #           ir = tools/check_ir_layout.sh (T-405, 43 §43.5: ir_pod.h sizes and enum limits vs tests/ir/layout.txt and
 #           02 §2.12, the §2.2 minor, the frozen fixture of that minor), no build;
@@ -85,6 +85,7 @@ changed_selection() {
       editor/core/*)     suites+=(editor editor_service editor_qt);;
       editor/history/*)  suites+=(history editor_qt);;
       tools/xtframe-view/*) suites+=(ctest);;
+      editor/templates/*|tests/templates/*) suites+=(templates);;  # T-424
       tests/editor_qt/*) suites+=(editor_qt);;
       tests/editor_service/*) suites+=(editor_service);;
       tests/editor/*)    suites+=(editor);;
@@ -93,7 +94,7 @@ changed_selection() {
       tests/flow/*)      suites+=(flow);;
       tests/history/*)   suites+=(history);;
       tests/golden/*)    suites+=(golden);;
-      tests/corpus/*|tools/corpus_check.*) suites+=(corpus);;  # T-401
+      tests/corpus/*|tools/corpus_check.*|tools/corpus_fonts.*) suites+=(corpus);;  # T-401, T-429
       tests/roundtrip/*) suites+=(roundtrip);;  # T-410
       tests/unit/*)      suites+=(core);;
       tests/ir/*|docs/design/02-ir-format.md) suites+=(core ir);;  # T-405
@@ -122,6 +123,7 @@ for s in "${suites[@]}"; do
     bundle)    targets+=(xt_bundle_tests);;
     history)   targets+=(xt_history_tests);;
     symbols)   targets+=(xt_symbols_tests);;
+    templates) targets+=(xt_templates_tests);;  # T-424
     import)    targets+=(xt_import_tests);;
     lottie)    targets+=(xt_lottie_tests);;
     core)      targets+=(xt_tests);;
@@ -267,6 +269,7 @@ run_suite() {
     bundle)    run bundle 900 1 "$B/tests/bundle/$CFG/xt_bundle_tests.exe";;
     history)   run history 900 1 "$B/tests/history/$CFG/xt_history_tests.exe";;
     symbols)   run symbols 900 1 "$B/tests/symbols/$CFG/xt_symbols_tests.exe";;
+    templates) run templates 900 1 "$B/tests/templates/$CFG/xt_templates_tests.exe";;  # T-424
     import)    run import 900 1 "$B/tests/import/$CFG/xt_import_tests.exe";;
     lottie)    run lottie 900 1 "$B/tests/import/$CFG/xt_lottie_tests.exe";;
     core)      run core 900 1 "$B/tests/$CFG/xt_tests.exe";;
@@ -309,7 +312,7 @@ run_suite() {
 }
 # T-361: the suites below run at the same time; the rest (GL contexts, perf / slow timing cases, the
 # agent endpoint and ctest, which runs executables of its own) afterwards, one after the other.
-PARALLEL_SUITES=" core import bundle flow editor editor_service editor_qt history symbols lottie golden text gpu headers layering testtemp import-py ir roundtrip shape "
+PARALLEL_SUITES=" core import bundle flow editor editor_service editor_qt history symbols templates lottie golden text gpu headers layering testtemp import-py ir roundtrip shape "
 OUT="$B/.dev_check_out.$$"; mkdir -p "$OUT"
 trap 'rm -rf "$LOCK" "$OUT"; kill $(jobs -p) 2>/dev/null' EXIT
 i=0; pids=()

@@ -25,7 +25,7 @@ cd "$(dirname "$0")/.."
 # The R directories of the RELEASE-MAP §6.1 table. gpu/ (xt_gpu, the GPU frame builder) is not in
 # the table but is runtime layer, so it is listed too. tools/xtframe-bake is filed under E by that
 # table (an E tool may use R, so there is nothing to check for it).
-R_DIRS="core compile sw gpu gl bundle flow text shell platforms/android tools/common
+R_DIRS="core compile sw gpu gl bundle flow text shell backends platforms/android tools/common
         tools/xtframe-view tools/xtframe-compile tools/xtframe-pack tools/xtframe-gpu-probe
         tools/xtframe-design"
 # The E directories of the same table (an E directory may use R; nothing is checked inside them).

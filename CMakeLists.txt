@@ -42,6 +42,12 @@ option(XT_BUILD_EDITOR "Build the editor libraries and app" OFF)
 # docs/design/36-history.md, docs/tasks/T-307.md: the history core (editor/history, xt_history; needs
 # XT_BUILD_EDITOR). On by default; the beta repository of 40 §40.10.1 turns it off.
 option(XT_EDITOR_HISTORY "Build the history core (editor/history)" ON)
+# T-423: the beta export (tools/export.sh --profile beta) leaves editor/history out; without the
+# directory the history core is off whatever the cache says (same pattern as the guards below).
+if(XT_EDITOR_HISTORY AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/editor/history/CMakeLists.txt")
+    message(STATUS "XT_EDITOR_HISTORY: OFF (the history core directory is absent)")
+    set(XT_EDITOR_HISTORY OFF)
+endif()
 # docs/design/20-agent-interface.md §20.1: the throwaway developer AI endpoint (devtools/agent).
 # Off by default; the `vs2022-agent` preset turns it on on top of the editor preset.
 option(XT_BUILD_AGENT "Build the throwaway developer agent endpoint (devtools/agent)" OFF)
@@ -135,6 +141,11 @@ if(XT_BUILD_GL)
 endif()
 if(XT_BUILD_SHELL)
     add_subdirectory(shell)
+endif()
+# backends/: reference platform x renderer glue (backends/README.md, 45 章 §45.7); every backend is
+# optional and self-skipping, so the directory is always added when present.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/backends/CMakeLists.txt")
+    add_subdirectory(backends)
 endif()
 if(XT_BUILD_EDITOR AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/editor/CMakeLists.txt")
     add_subdirectory(editor)

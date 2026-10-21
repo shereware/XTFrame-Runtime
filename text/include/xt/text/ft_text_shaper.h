@@ -65,6 +65,10 @@ public:
     uint32_t openedFontCount() const;
     /// Every registered font's `FontDesc`, appended to `out`; see `TextShaper::fonts()`.
     void fonts(std::vector<FontDesc>& out) const override;
+    /// The file path font `id` was registered from by addFontDir()/addSystemFonts() (UTF-8);
+    /// empty for a font registered from memory or a single addFontFile() call, or an unknown id.
+    /// Tooling only (T-429: `xtframe-view --list-fonts`).
+    std::string fontPath(FontId id) const;
 
     /// Finds the best registered font for `request`, falling back through the system-fallback
     /// candidate list (docs/design/07-text.md §7.3 step 3); returns kInvalidFont only if no font

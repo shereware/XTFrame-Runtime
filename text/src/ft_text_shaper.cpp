@@ -335,6 +335,11 @@ void FtTextShaper::fonts(std::vector<FontDesc>& out) const {
     impl_->fonts.fonts(out);
 }
 
+std::string FtTextShaper::fontPath(FontId id) const {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    return impl_->fonts.fontPath(id);
+}
+
 FontId FtTextShaper::match(const FontRequest& request) {
     std::lock_guard<std::mutex> lock(impl_->mutex);
     return impl_->fonts.match(request);

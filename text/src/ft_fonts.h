@@ -37,7 +37,8 @@ struct RegisteredFont {
     /// index) but is skipped by matching/fallback and its FontId maps to a null face from then on
     /// (docs/tasks/T-104.md "失敗則移除並警告一次" -- removed from `fallback_`, not erased here).
     bool broken = false;
-    /// File path, valid while `deferred` (or after a failed open, for the warning).
+    /// File path a deferred font was registered from; kept after the face is opened (reported by
+    /// FontTable::fontPath(), T-429). Empty for addFontFile()/addFontMemory() fonts.
     std::string path;
     /// Sub-face index within `path`; always 0 -- only a `.ttc`'s first face is read
     /// (docs/tasks/T-104.md).
@@ -67,6 +68,9 @@ public:
     /// Appends every registered font's `FontDesc` (id, family, weight, italic, whether it is a
     /// fallback candidate) to `out`; see `TextShaper::fonts()`.
     void fonts(std::vector<FontDesc>& out) const;
+    /// The file path font `id` was registered from (UTF-8); empty for an addFontMemory() font or
+    /// an out-of-range id (T-429).
+    std::string fontPath(FontId id) const;
 
     /// CSS Fonts Level 4 style family/weight/italic match. No family in `request.families`
     /// matches a registered family name -> first registered font. No fonts registered ->

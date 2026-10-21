@@ -17,6 +17,13 @@ families once; a project that needs a missing family fails (`[FAIL] <name>: font
 installed`), or, with --skip-missing-fonts (the CTest entry: CI machines), is skipped
 (`[SKIP] ...`, not counted as a failure).
 
+T-429: a `fonts` element may also be `{"family": "<family>", "sha256": "<hex>"}`; the family's
+font file (any of them, when it has several) must then have that SHA-256, else the project fails
+or is skipped the same way with `font '<family>' is a different build (sha256 <12 hex>...
+expected <12 hex>...)` (`xtframe-view --list-fonts` prints `family<TAB>path`; see
+tools/corpus_fonts.py). --update first re-pins every selected project's `fonts` to this machine's
+files (tools/corpus_fonts.py --update).
+
 Usage: corpus_check.py [--update] [--project <name>] [--skip-missing-fonts] [--view EXE] [--pack EXE]
                        [--work DIR]
   --update (or XT_CORPUS_UPDATE=1) rewrites expected/ from this run instead of comparing.
@@ -34,6 +41,9 @@ import struct
 import subprocess
 import sys
 import zlib
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import corpus_fonts  # noqa: E402  (T-429)
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CORPUS = os.path.join(REPO, "tests", "corpus")
@@ -256,7 +266,7 @@ class Checker:
         self.update = args.update or os.environ.get("XT_CORPUS_UPDATE", "") == "1"
         self.failures = []
         self.skipped = []
-        self.families = set()
+        self.fonts = {}  # T-429: {family: [path, ...]} from corpus_fonts.list_fonts().
 
     def fail(self, project, message):
         self.failures.append("%s: %s" % (project, message))
@@ -271,24 +281,26 @@ class Checker:
             return None
         return out
 
-    def missing_font(self, spec):
-        """The first family of the project's `fonts` that is not installed, or None (T-426)."""
-        for family in spec.get("fonts", []):
-            if family not in self.families:
-                return family
+    def font_problem(self, spec):
+        """The first unsatisfied `fonts` element's reason (T-426 family not installed, T-429 a
+        different build), or None."""
+        for entry in spec.get("fonts", []):
+            problem = corpus_fonts.font_problem(entry, self.fonts)
+            if problem is not None:
+                return problem
         return None
 
     def check_project(self, name):
         pdir = os.path.join(CORPUS, name)
         with open(os.path.join(pdir, "project.json"), encoding="utf-8") as f:
             spec = json.load(f)
-        family = self.missing_font(spec)
-        if family is not None:
+        problem = self.font_problem(spec)
+        if problem is not None:
             if self.args.skip_missing_fonts:
                 self.skipped.append(name)
-                print("[SKIP] %s: font '%s' is not installed" % (name, family), flush=True)
+                print("[SKIP] %s: %s" % (name, problem), flush=True)
             else:
-                self.fail(name, "font '%s' is not installed" % family)
+                self.fail(name, problem)
             return
         work = os.path.join(self.args.work, name)
         shutil.rmtree(work, ignore_errors=True)
@@ -401,7 +413,8 @@ def main():
     parser.add_argument("--pack", help="xtframe-pack executable (default: newest under build/)")
     parser.add_argument("--work", help="work directory (default: build/corpus-work)")
     parser.add_argument("--skip-missing-fonts", action="store_true",
-                        help="skip (instead of failing) a project whose `fonts` are not all installed")
+                        help="skip (instead of failing) a project whose `fonts` are not all installed "
+                             "(or are a different build)")
     args = parser.parse_args()
     args.view = find_tool("xtframe-view", args.view)
     args.pack = find_tool("xtframe-pack", args.pack)
@@ -419,17 +432,20 @@ def main():
         names = [n for n in names if n in args.project]
     print("corpus_check: view %s, pack %s, work %s" % (args.view, args.pack, args.work), flush=True)
     checker = Checker(args)
-    rc, out, err = run([args.view, "--list-fonts"])
-    if rc != 0:
-        print("corpus_check: xtframe-view --list-fonts exited %d" % rc)
+    fonts = corpus_fonts.list_fonts(args.view)
+    if fonts is None:
+        print("corpus_check: xtframe-view --list-fonts failed")
         return 1
-    checker.families = set(line.strip() for line in out.split("\n") if line.strip())
+    checker.fonts = fonts
+    if checker.update:
+        # T-429: re-pin the projects' font hashes to this machine before rendering expected/.
+        corpus_fonts.update_projects(args.view, names, fonts)
     for name in names:
         checker.check_project(name)
     if checker.failures:
         print("CORPUS CHECK: FAIL (%d)" % len(checker.failures))
         return 1
-    skipped = ", %d skipped (missing fonts)" % len(checker.skipped) if checker.skipped else ""
+    skipped = ", %d skipped (missing fonts or different builds)" % len(checker.skipped) if checker.skipped else ""
     print("CORPUS CHECK: %s (%d project(s)%s)" % ("UPDATED" if checker.update else "PASS",
                                                  len(names) - len(checker.skipped), skipped))
     return 0
