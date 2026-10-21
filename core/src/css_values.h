@@ -95,15 +95,14 @@ private:
 };
 
 /// Which caller reads the value. The differences are the ones the design documents give the
-/// runtime (05 §5.9.3: setStyle takes no T-176 units) plus keyword case, which 05 does not settle:
-/// the runtime has always matched keywords ASCII case-insensitively, the compiler exactly (named
-/// colours are case-insensitive in both).
+/// runtime (05 §5.9.3: setStyle takes no T-176 units). Keyword case is not one of them: keywords
+/// match ASCII case-insensitively for both (05 §5.3, ruling 2026-10-21; T-421).
 enum class Dialect : uint8_t { Compiler, Runtime };
 
 /// ASCII case-insensitive equality.
 bool iequals(std::string_view a, std::string_view b);
 
-/// `t` is the identifier `word`: case-insensitive for the runtime, exact for the compiler.
+/// `t` is the identifier `word`, ASCII case-insensitively (both dialects; T-421).
 bool isKeyword(Dialect d, const Tok& t, std::string_view word);
 
 /// Where a parser reports what the compiler words as a diagnostic. The runtime passes nullptr.

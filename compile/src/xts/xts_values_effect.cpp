@@ -26,7 +26,7 @@ namespace xts_values_detail {
 // and the declaration is dropped.
 bool parseTextEffectList(const std::vector<Tok>& toks, std::string_view fileName, int line,
                          DiagnosticSink& sink, std::vector<EffectDeclEntry>& out) {
-    if (toks.size() == 1 && toks[0].kind == TokKind::Ident && toks[0].text == "none") {
+    if (toks.size() == 1 && isKeyword(toks[0], "none")) {
         return true;
     }
     auto invalid = [&]() {
@@ -46,21 +46,23 @@ bool parseTextEffectList(const std::vector<Tok>& toks, std::string_view fileName
         if (cur.atEnd() || cur.peek().kind != TokKind::Ident) {
             return invalid();
         }
-        const std::string kind(cur.advance().text);
+        const Tok& kindTok = cur.advance();
         EffectDeclEntry entry;
         bool percentError = false;
         float a = 0, b = 0, r = 0;
-        if (kind == "outline" || kind == "glow") {
+        const bool isOutline = isKeyword(kindTok, "outline");
+        const bool isGlow = isKeyword(kindTok, "glow");
+        if (isOutline || isGlow) {
             if (!css_values::readEffectLen(cur, kCompiler, r, percentError) || r < 0.0f) {
                 return invalid();
             }
             clampRadius(r);
-            entry.kind = kind == "outline" ? EffectKind::Outline : EffectKind::Glow;
+            entry.kind = isOutline ? EffectKind::Outline : EffectKind::Glow;
             entry.params[0] = r;
-            if (kind == "glow") {
+            if (isGlow) {
                 entry.params[1] = 1;  // intensity (18.3's default).
             }
-        } else if (kind == "shadow") {
+        } else if (isKeyword(kindTok, "shadow")) {
             if (!css_values::readEffectLen(cur, kCompiler, a, percentError) ||
                 !css_values::readEffectLen(cur, kCompiler, b, percentError) ||
                 !css_values::readEffectLen(cur, kCompiler, r, percentError) || r < 0.0f) {
@@ -170,7 +172,7 @@ namespace xts_values_detail {
 
 bool parseEffectList(const std::vector<Tok>& toks, std::string_view fileName, int line, DiagnosticSink& sink,
                      std::vector<EffectDeclEntry>& out) {
-    if (toks.size() == 1 && toks[0].kind == TokKind::Ident && toks[0].text == "none") {
+    if (toks.size() == 1 && isKeyword(toks[0], "none")) {
         return true;  // Empty sequence (18.4: decl exists, count 0).
     }
     Cursor cur(toks);
@@ -195,7 +197,7 @@ bool parseEffectList(const std::vector<Tok>& toks, std::string_view fileName, in
         bool percentError = false;
         size_t diagCountBefore = sink.all().size();
         bool ok;
-        if (fn == "custom") {
+        if (css_values::iequals(fn, "custom")) {
             // T-203 (18.4, 0.3): custom("<asset>" [, <ident> <value>]*). The asset is resolved
             // and its parameter table applied by style_emit.cpp; here only the shape is checked.
             if (!parseCustomFn(inner, fileName, line, sink, entry)) {
@@ -205,7 +207,7 @@ bool parseEffectList(const std::vector<Tok>& toks, std::string_view fileName, in
         } else {
             // 18.6: BackdropBlur reads what was drawn below the node before its layer was opened,
             // so it is only meaningful as the stack's input stage.
-            if (fn == "backdrop-blur" && !out.empty()) {
+            if (css_values::iequals(fn, "backdrop-blur") && !out.empty()) {
                 sink.error(std::string(fileName), "backdrop-blur must come first", line);
                 return false;
             }

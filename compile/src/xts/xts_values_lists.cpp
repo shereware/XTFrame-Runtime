@@ -116,13 +116,13 @@ bool parseBorderImageSlice(const std::vector<Tok>& toks, int line, std::vector<S
     const float nan = std::numeric_limits<float>::quiet_NaN();
     float v[4] = {nan, nan, nan, nan};
     bool any = false;
-    if (i < toks.size() && toks[i].kind == TokKind::Ident && toks[i].text == "auto") {
+    if (i < toks.size() && isKeyword(toks[i], "auto")) {
         ++i;
     } else if (!parseSliceValues(toks, i, v, any) || !any) {
         return false;
     }
     bool fill = false;
-    if (i < toks.size() && toks[i].kind == TokKind::Ident && toks[i].text == "fill") {
+    if (i < toks.size() && isKeyword(toks[i], "fill")) {
         fill = true;
         ++i;
     }
@@ -169,11 +169,10 @@ bool parseBorderImageShorthand(const std::vector<Tok>& toks, int line, std::vect
     }
     size_t i = 0;
     std::string source;
-    if (toks[0].kind == TokKind::Ident && toks[0].text == "none") {
+    if (isKeyword(toks[0], "none")) {
         source = "none";
         i = 1;
-    } else if (toks[0].kind == TokKind::Ident && toks[0].text == "url" && toks.size() >= 3 &&
-               toks[1].kind == TokKind::LParen) {
+    } else if (isKeyword(toks[0], "url") && toks.size() >= 3 && toks[1].kind == TokKind::LParen) {
         size_t close = 2;
         while (close < toks.size() && toks[close].kind != TokKind::RParen) {
             ++close;
@@ -203,11 +202,11 @@ bool parseBorderImageShorthand(const std::vector<Tok>& toks, int line, std::vect
         if (t.kind != TokKind::Ident) {
             return false;
         }
-        if (t.text == "fill" && !fill) {
+        if (isKeyword(t, "fill") && !fill) {
             fill = true;
-        } else if (!sawMode && (t.text == "stretch" || t.text == "repeat" || t.text == "round")) {
+        } else if (!sawMode && (isKeyword(t, "stretch") || isKeyword(t, "repeat") || isKeyword(t, "round"))) {
             sawMode = true;
-            mode = t.text == "stretch" ? 0 : (t.text == "repeat" ? 1 : 2);
+            mode = isKeyword(t, "stretch") ? 0 : (isKeyword(t, "repeat") ? 1 : 2);
         } else {
             return false;
         }
@@ -226,12 +225,12 @@ bool parseBorderImageShorthand(const std::vector<Tok>& toks, int line, std::vect
 }
 
 bool parseBackgroundImage(const std::vector<Tok>& toks, std::string& out) {
-    if (toks.size() == 1 && toks[0].kind == TokKind::Ident && toks[0].text == "none") {
+    if (toks.size() == 1 && isKeyword(toks[0], "none")) {
         out = "none";
         return true;
     }
-    if (toks.size() >= 3 && toks[0].kind == TokKind::Ident && toks[0].text == "url" &&
-        toks[1].kind == TokKind::LParen && toks.back().kind == TokKind::RParen) {
+    if (toks.size() >= 3 && isKeyword(toks[0], "url") && toks[1].kind == TokKind::LParen &&
+        toks.back().kind == TokKind::RParen) {
         std::vector<Tok> inner(toks.begin() + 2, toks.end() - 1);
         if (inner.size() == 1 && inner[0].kind == TokKind::String) {
             out = inner[0].text;
@@ -294,20 +293,55 @@ constexpr xt::PropId kBackgroundPositionComponents[] = {xt::prop::BackgroundPosi
                                                         xt::prop::BackgroundPositionY};
 
 /// Appends one TransitionSpec per property `item` names (several for a multi-output shorthand,
-/// one otherwise) to `out`. Returns false (after warning) when the item is malformed.
+/// one otherwise) to `out`. Returns false, without a warning, when the item is malformed (T-421,
+/// 05 §5.3: the caller then drops the whole declaration); a well-formed item that names an unknown
+/// or non-animatable property is skipped with its own warning and returns true.
 bool parseTransitionItem(const std::vector<Tok>& item, std::string_view fileName, int line,
                          DiagnosticSink& sink, std::vector<TransitionSpec>& out,
                          std::vector<EasingPoint>* easingPoints) {
     Cursor cur(item);
     const Tok& nameTok = cur.peek();
     if (nameTok.kind != TokKind::Ident) {
-        sink.warn(std::string(fileName), "invalid transition item", line);
+        return false;
+    }
+    cur.advance();
+    float duration = 0;
+    if (!parseTimeTok(cur.peek(), duration)) {
+        return false;
+    }
+    cur.advance();
+    TransitionSpec spec;
+    spec.duration = duration;
+    spec.easing = Easing{};
+    spec.delay = 0;
+    bool haveEasing = false, haveDelay = false;
+    while (!cur.atEnd()) {
+        if (!haveEasing && isEasingStart(cur)) {
+            Easing e;
+            bool stepsClamped = false;
+            if (!parseEasingCursor(cur, e, &stepsClamped, easingPoints)) {
+                return false;
+            }
+            if (stepsClamped) {
+                sink.warn(std::string(fileName), kStepsClampedMessage, line);
+            }
+            spec.easing = e;
+            haveEasing = true;
+            continue;
+        }
+        float delay;
+        if (!haveDelay && parseTimeTok(cur.peek(), delay)) {
+            spec.delay = delay;
+            haveDelay = true;
+            cur.advance();
+            continue;
+        }
         return false;
     }
     xt::PropId single = 0xFFFF;
     const xt::PropId* props = &single;
     size_t propCount = 1;
-    if (nameTok.text == "all") {
+    if (isKeyword(nameTok, "all")) {
         single = 0xFFFF;
     } else if (nameTok.text == "transform") {
         props = kTransformComponents;
@@ -344,46 +378,9 @@ bool parseTransitionItem(const std::vector<Tok>& item, std::string_view fileName
             sink.warn(std::string(fileName),
                       "unknown or non-animatable transition property \"" + std::string(nameTok.text) + "\"",
                       line);
-            return false;
+            return true;
         }
         single = info->prop;
-    }
-    cur.advance();
-    float duration = 0;
-    if (!parseTimeTok(cur.peek(), duration)) {
-        sink.warn(std::string(fileName), "invalid value for \"transition\"", line);
-        return false;
-    }
-    cur.advance();
-    TransitionSpec spec;
-    spec.duration = duration;
-    spec.easing = Easing{};
-    spec.delay = 0;
-    bool haveEasing = false, haveDelay = false;
-    while (!cur.atEnd()) {
-        if (!haveEasing && isEasingStart(cur)) {
-            Easing e;
-            bool stepsClamped = false;
-            if (!parseEasingCursor(cur, e, &stepsClamped, easingPoints)) {
-                sink.warn(std::string(fileName), "invalid value for \"transition\"", line);
-                return false;
-            }
-            if (stepsClamped) {
-                sink.warn(std::string(fileName), kStepsClampedMessage, line);
-            }
-            spec.easing = e;
-            haveEasing = true;
-            continue;
-        }
-        float delay;
-        if (!haveDelay && parseTimeTok(cur.peek(), delay)) {
-            spec.delay = delay;
-            haveDelay = true;
-            cur.advance();
-            continue;
-        }
-        sink.warn(std::string(fileName), "invalid value for \"transition\"", line);
-        return false;
     }
     for (size_t i = 0; i < propCount; ++i) {
         spec.prop = props[i];
@@ -402,8 +399,16 @@ bool parseTransitionList(const std::vector<Tok>& toks, std::string_view fileName
     if (toks.empty()) {
         return false;
     }
+    if (toks.size() == 1 && isKeyword(toks[0], "none")) {
+        return true;  // T-421: `transition: none` is the empty list.
+    }
     for (const std::vector<Tok>& item : splitByCommaTopLevel(toks)) {
-        parseTransitionItem(item, fileName, line, sink, out, easingPoints);
+        if (!parseTransitionItem(item, fileName, line, sink, out, easingPoints)) {
+            // T-421 (05 §5.3): a malformed item makes the whole value invalid, so the declaration
+            // is dropped (the caller warns once), as for `animation` (T-413).
+            out.clear();
+            return false;
+        }
     }
     return true;
 }
@@ -443,7 +448,7 @@ bool parseAnimationList(const std::vector<Tok>& toks, std::string_view fileName,
     if (toks.empty()) {
         return false;
     }
-    if (toks.size() == 1 && toks[0].kind == TokKind::Ident && toks[0].text == "none") {
+    if (toks.size() == 1 && isKeyword(toks[0], "none")) {
         return true;
     }
     for (const std::vector<Tok>& item : splitByCommaTopLevel(toks)) {

@@ -5,6 +5,7 @@
 #include <iterator>
 #include <limits>
 
+#include "css_values.h"  // core/src: iequals (T-421).
 #include "xt/assert.h"
 #include "xt/node.h"
 
@@ -602,7 +603,7 @@ const char* enumName(uint16_t prop, uint32_t value) {
 
 bool enumValue(uint16_t prop, std::string_view name, uint32_t& out) {
     for (const EnumEntry& e : kEnums) {
-        if (e.prop == prop && name == e.name) {
+        if (e.prop == prop && css_values::iequals(name, e.name)) {  // T-421 (05 §5.3).
             out = e.value;
             return true;
         }

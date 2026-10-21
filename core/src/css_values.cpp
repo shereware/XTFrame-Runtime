@@ -37,10 +37,9 @@ bool iequals(std::string_view a, std::string_view b) {
 
 namespace {
 
-/// Keyword text match without the Ident check (callers that already know the kind).
-bool matches(Dialect d, std::string_view text, std::string_view word) {
-    return d == Dialect::Runtime ? iequals(text, word) : text == word;
-}
+/// Keyword text match without the Ident check (callers that already know the kind). ASCII
+/// case-insensitive for both dialects (05 §5.3, ruling 2026-10-21; T-421).
+bool matches(Dialect, std::string_view text, std::string_view word) { return iequals(text, word); }
 
 void warn(Diag* diag, std::string_view message) {
     if (diag != nullptr) {
@@ -56,8 +55,8 @@ void error(Diag* diag, std::string_view message) {
 
 }  // namespace
 
-bool isKeyword(Dialect d, const Tok& t, std::string_view word) {
-    return t.kind == TokKind::Ident && matches(d, t.text, word);
+bool isKeyword(Dialect, const Tok& t, std::string_view word) {
+    return t.kind == TokKind::Ident && iequals(t.text, word);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -72,19 +71,19 @@ bool parseLengthTok(const Tok& tok, Dialect d, Length& out) {
     if (tok.kind != TokKind::Number) {
         return false;
     }
-    if (tok.unit == "px") {
+    if (iequals(tok.unit, "px")) {
         out = Length{tok.num, LengthUnit::Px};
         return true;
     }
-    if (tok.unit == "%") {
+    if (iequals(tok.unit, "%")) {
         out = Length{tok.num, LengthUnit::Percent};
         return true;
     }
-    if (tok.unit == "em") {
+    if (iequals(tok.unit, "em")) {
         out = Length{tok.num, LengthUnit::Em};
         return true;
     }
-    if (tok.unit == "rem") {  // T-335: the root element's font size, resolved like em at style time.
+    if (iequals(tok.unit, "rem")) {  // T-335: the root element's font size, resolved like em at style time.
         out = Length{tok.num, LengthUnit::Rem};
         return true;
     }
@@ -128,7 +127,7 @@ bool parseFloatTok(const Tok& tok, float& out) {
 }
 
 bool parseAngleTok(const Tok& tok, float& deg) {
-    if (tok.kind != TokKind::Number || tok.unit != "deg") {
+    if (tok.kind != TokKind::Number || !iequals(tok.unit, "deg")) {
         return false;
     }
     deg = tok.num;
@@ -139,11 +138,11 @@ bool parseTimeTok(const Tok& tok, float& seconds) {
     if (tok.kind != TokKind::Number) {
         return false;
     }
-    if (tok.unit == "s") {
+    if (iequals(tok.unit, "s")) {
         seconds = tok.num;
         return true;
     }
-    if (tok.unit == "ms") {
+    if (iequals(tok.unit, "ms")) {
         seconds = tok.num / 1000.0f;
         return true;
     }
@@ -152,7 +151,7 @@ bool parseTimeTok(const Tok& tok, float& seconds) {
 
 bool parseAspectRatio(const Tok* toks, size_t count, float& out) {
     const auto positive = [](const Tok& t, float& v) { return parseFloatTok(t, v) && v > 0.0f; };
-    if (count == 1 && toks[0].kind == TokKind::Ident && toks[0].text == "auto") {
+    if (count == 1 && toks[0].kind == TokKind::Ident && iequals(toks[0].text, "auto")) {
         out = 0.0f;
         return true;
     }
@@ -231,7 +230,7 @@ bool parseRgbChannel(const Tok& tok, float& out) {
     if (tok.kind != TokKind::Number) {
         return false;
     }
-    if (tok.unit == "%") {
+    if (iequals(tok.unit, "%")) {
         out = tok.num / 100.0f;
         return true;
     }
@@ -247,15 +246,15 @@ bool parseHueTok(const Tok& t, float& deg) {
     if (t.kind != TokKind::Number) {
         return false;
     }
-    if (t.unit.empty() || t.unit == "deg") {
+    if (t.unit.empty() || iequals(t.unit, "deg")) {
         deg = t.num;
         return true;
     }
-    if (t.unit == "turn") {
+    if (iequals(t.unit, "turn")) {
         deg = t.num * 360.0f;
         return true;
     }
-    if (t.unit == "rad") {
+    if (iequals(t.unit, "rad")) {
         deg = t.num * 57.29577951308232f;
         return true;
     }
@@ -271,7 +270,7 @@ bool parseAlphaTok(const Tok& t, float& a) {
         a = t.num;
         return true;
     }
-    if (t.unit == "%") {
+    if (iequals(t.unit, "%")) {
         a = t.num / 100.0f;
         return true;
     }
@@ -297,7 +296,7 @@ bool parseHslArgs(Cursor& cur, Color& out) {
             cur.advance();
         }
         const Tok& t = cur.peek();
-        if (t.kind != TokKind::Number || t.unit != "%") {
+        if (t.kind != TokKind::Number || !iequals(t.unit, "%")) {
             return false;
         }
         v = t.num / 100.0f;
@@ -796,30 +795,31 @@ AnimationItemResult parseAnimationItem(const Tok* toks, size_t count, Dialect d,
 // ---------------------------------------------------------------------------------------------
 
 int transformCategory(std::string_view fn) {
-    if (fn == "translate" || fn == "translateX" || fn == "translateY" || fn == "translateZ" ||
-        fn == "translate3d") {
+    if (iequals(fn, "translate") || iequals(fn, "translateX") || iequals(fn, "translateY") ||
+        iequals(fn, "translateZ") || iequals(fn, "translate3d")) {
         return 0;
     }
-    if (fn == "rotateX") {
+    if (iequals(fn, "rotateX")) {
         return 1;
     }
-    if (fn == "rotateY") {
+    if (iequals(fn, "rotateY")) {
         return 2;
     }
-    if (fn == "rotate" || fn == "rotateZ") {  // T-322: rotateZ() is rotate().
+    if (iequals(fn, "rotate") || iequals(fn, "rotateZ")) {  // T-322: rotateZ() is rotate().
         return 3;
     }
-    if (fn == "skew" || fn == "skewX" || fn == "skewY") {
+    if (iequals(fn, "skew") || iequals(fn, "skewX") || iequals(fn, "skewY")) {
         return 4;
     }
-    if (fn == "scale" || fn == "scaleX" || fn == "scaleY") {
+    if (iequals(fn, "scale") || iequals(fn, "scaleX") || iequals(fn, "scaleY")) {
         return 5;
     }
     return -1;
 }
 
 bool isUnsupportedTransformFn(std::string_view fn) {
-    return fn == "rotate3d" || fn == "scale3d" || fn == "matrix3d" || fn == "perspective";
+    return iequals(fn, "rotate3d") || iequals(fn, "scale3d") || iequals(fn, "matrix3d") ||
+           iequals(fn, "perspective");
 }
 
 namespace {
@@ -858,7 +858,7 @@ bool transformNeedsCompose(const Tok* toks, size_t count) {
         if (toks[i].kind != TokKind::Ident || i + 1 >= count || toks[i + 1].kind != TokKind::LParen) {
             return false;
         }
-        if (toks[i].text == "matrix") {
+        if (iequals(toks[i].text, "matrix")) {
             needs = true;  // T-322: a 2D matrix() only ever goes through compose/decompose.
         } else {
             const int cat = transformCategory(toks[i].text);
@@ -933,27 +933,28 @@ bool parseTransformFnList(const Tok* toks, size_t count, Diag* diag, std::vector
             float v = 0;
             ok = readPx(v);
             if (ok) {
-                if (fn == "translateX" || fn == "translate") {
+                if (iequals(fn, "translateX") || iequals(fn, "translate")) {
                     f.a = v;
-                } else if (fn == "translateY") {
+                } else if (iequals(fn, "translateY")) {
                     f.b = v;
-                } else if (fn == "translateZ") {
+                } else if (iequals(fn, "translateZ")) {
                     f.c = v;
                 } else {  // translate3d
                     f.a = v;
                     ok = comma() && readPx(f.b) && comma() && readPx(f.c);
                 }
-                if (ok && fn == "translate" && cur.peek().kind == TokKind::Comma) {
+                if (ok && iequals(fn, "translate") && cur.peek().kind == TokKind::Comma) {
                     cur.advance();
                     ok = readPx(f.b);
                 }
             }
-        } else if (fn == "rotateX" || fn == "rotateY" || fn == "rotate" || fn == "rotateZ") {
-            f.kind = fn == "rotateX"   ? TransformFn::Kind::RotateX
-                     : fn == "rotateY" ? TransformFn::Kind::RotateY
-                                       : TransformFn::Kind::RotateZ;
+        } else if (iequals(fn, "rotateX") || iequals(fn, "rotateY") || iequals(fn, "rotate") ||
+                   iequals(fn, "rotateZ")) {
+            f.kind = iequals(fn, "rotateX")   ? TransformFn::Kind::RotateX
+                     : iequals(fn, "rotateY") ? TransformFn::Kind::RotateY
+                                              : TransformFn::Kind::RotateZ;
             ok = readAngle(f.a);
-        } else if (fn == "matrix") {
+        } else if (iequals(fn, "matrix")) {
             // T-322: matrix(a, b, c, d, e, f) with unitless numbers (e/f are px), decomposed into
             // translate/rotate/skewX/scale; a singular matrix is dropped with a warning.
             float m[6] = {1, 0, 0, 1, 0, 0};
@@ -976,11 +977,11 @@ bool parseTransformFnList(const Tok* toks, size_t count, Diag* diag, std::vector
             float v = 0;
             ok = readAngle(v);
             if (ok) {
-                if (fn == "skewY") {
+                if (iequals(fn, "skewY")) {
                     f.b = v;
                 } else {
                     f.a = v;
-                    if (fn == "skew" && cur.peek().kind == TokKind::Comma) {
+                    if (iequals(fn, "skew") && cur.peek().kind == TokKind::Comma) {
                         cur.advance();
                         ok = readAngle(f.b);
                     }
@@ -993,9 +994,9 @@ bool parseTransformFnList(const Tok* toks, size_t count, Diag* diag, std::vector
             float v = 1;
             ok = readFloat(v);
             if (ok) {
-                if (fn == "scaleX") {
+                if (iequals(fn, "scaleX")) {
                     f.a = v;
-                } else if (fn == "scaleY") {
+                } else if (iequals(fn, "scaleY")) {
                     f.b = v;
                 } else {
                     f.a = v;
@@ -1092,7 +1093,7 @@ bool parseTransformFixedOrder(const Tok* toks, size_t count, Diag* diag, std::ve
     }
     // 05.5 (T-69): a lone `none` keyword. Mixing it with functions (`none rotate(10deg)`) falls
     // through to the loop below and hits the "invalid value" diagnostic.
-    if (count == 1 && toks[0].kind == TokKind::Ident && toks[0].text == "none") {
+    if (count == 1 && toks[0].kind == TokKind::Ident && iequals(toks[0].text, "none")) {
         pushIdentityTransform(out);
         return true;
     }
@@ -1179,7 +1180,7 @@ bool parseTransformFixedOrder(const Tok* toks, size_t count, Diag* diag, std::ve
             return true;
         };
         bool ok = true;
-        if (fn == "translate") {
+        if (iequals(fn, "translate")) {
             Length x, y;
             ok = readLength(x);
             if (ok) {
@@ -1191,19 +1192,19 @@ bool parseTransformFixedOrder(const Tok* toks, size_t count, Diag* diag, std::ve
                     }
                 }
             }
-        } else if (fn == "translateX" || fn == "translateY") {
+        } else if (iequals(fn, "translateX") || iequals(fn, "translateY")) {
             Length v;
             ok = readLength(v);
             if (ok) {
-                pushLen(decls, fn == "translateX" ? prop::TranslateX : prop::TranslateY, v);
+                pushLen(decls, iequals(fn, "translateX") ? prop::TranslateX : prop::TranslateY, v);
             }
-        } else if (fn == "translateZ") {
+        } else if (iequals(fn, "translateZ")) {
             Length z;
             ok = readZLength(z);
             if (ok) {
                 pushLen(decls, prop::TranslateZ, z);
             }
-        } else if (fn == "translate3d") {
+        } else if (iequals(fn, "translate3d")) {
             Length x, y, z;
             ok = readLength(x) && comma() && readLength(y) && comma() && readZLength(z);
             if (ok) {
@@ -1221,7 +1222,7 @@ bool parseTransformFixedOrder(const Tok* toks, size_t count, Diag* diag, std::ve
                                      : prop::Rotation,
                           deg);
             }
-        } else if (fn == "skew") {
+        } else if (iequals(fn, "skew")) {
             float x = 0, y = 0;
             ok = readAngle(x);
             if (ok) {
@@ -1233,13 +1234,13 @@ bool parseTransformFixedOrder(const Tok* toks, size_t count, Diag* diag, std::ve
                     }
                 }
             }
-        } else if (fn == "skewX" || fn == "skewY") {
+        } else if (iequals(fn, "skewX") || iequals(fn, "skewY")) {
             float v = 0;
             ok = readAngle(v);
             if (ok) {
-                pushFloat(decls, fn == "skewX" ? prop::SkewX : prop::SkewY, v);
+                pushFloat(decls, iequals(fn, "skewX") ? prop::SkewX : prop::SkewY, v);
             }
-        } else if (fn == "scale") {
+        } else if (iequals(fn, "scale")) {
             float x = 0, y = 0;
             ok = readFloat(x);
             if (ok) {
@@ -1256,7 +1257,7 @@ bool parseTransformFixedOrder(const Tok* toks, size_t count, Diag* diag, std::ve
             float v = 0;
             ok = readFloat(v);
             if (ok) {
-                pushFloat(decls, fn == "scaleX" ? prop::ScaleX : prop::ScaleY, v);
+                pushFloat(decls, iequals(fn, "scaleX") ? prop::ScaleX : prop::ScaleY, v);
             }
         }
         if (!ok || cur.peek().kind != TokKind::RParen) {
@@ -1669,7 +1670,7 @@ bool parseGridLine(const Tok* toks, size_t count, uint32_t& out, bool& unsupport
         return true;
     };
     int v = 0;
-    if (count == 1 && toks[0].kind == TokKind::Ident && toks[0].text == "auto") {
+    if (count == 1 && toks[0].kind == TokKind::Ident && iequals(toks[0].text, "auto")) {
         out = kGridLineAuto;
         return true;
     }
@@ -1681,7 +1682,8 @@ bool parseGridLine(const Tok* toks, size_t count, uint32_t& out, bool& unsupport
         out = static_cast<uint32_t>(std::min<int>(v, static_cast<int>(kMaxGridTracks) + 1));
         return true;
     }
-    if (count == 2 && toks[0].kind == TokKind::Ident && toks[0].text == "span" && integer(toks[1], v)) {
+    if (count == 2 && toks[0].kind == TokKind::Ident && iequals(toks[0].text, "span") &&
+        integer(toks[1], v)) {
         if (v < 1) {
             return false;
         }
@@ -1720,7 +1722,8 @@ namespace {
 /// A token that could start an effect length (shadow()'s optional blur/spread, outline()'s
 /// softness), never the bare number that follows the colour.
 bool isEffectLenTok(const Tok& t) {
-    return t.kind == TokKind::Number && (t.unit == "px" || t.unit == "em" || (t.unit.empty() && t.num == 0));
+    return t.kind == TokKind::Number &&
+           (iequals(t.unit, "px") || iequals(t.unit, "em") || (t.unit.empty() && t.num == 0));
 }
 
 bool atIdent(const Cursor& cur, std::string_view word) {
@@ -1846,14 +1849,14 @@ bool parseColorAdjustFn(const std::vector<Tok>& inner, EffectInstance& out) {
             return false;
         }
         const std::string_view fn = fnTok.text;
-        const int idx = fn == "brightness"   ? 0
-                        : fn == "contrast"   ? 1
-                        : fn == "saturate"   ? 2
-                        : fn == "hue-rotate" ? 3
-                        : fn == "opacity"    ? 4
-                        : fn == "invert"     ? 5
-                        : fn == "sepia"      ? 6
-                                             : -1;
+        const int idx = iequals(fn, "brightness")   ? 0
+                        : iequals(fn, "contrast")   ? 1
+                        : iequals(fn, "saturate")   ? 2
+                        : iequals(fn, "hue-rotate") ? 3
+                        : iequals(fn, "opacity")    ? 4
+                        : iequals(fn, "invert")     ? 5
+                        : iequals(fn, "sepia")      ? 6
+                                                    : -1;
         if (idx < 0 || saw[static_cast<size_t>(idx)]) {
             return false;
         }
@@ -1869,10 +1872,10 @@ bool parseColorAdjustFn(const std::vector<Tok>& inner, EffectInstance& out) {
             float amount = 1.0f;
             if (args.size() == 1) {
                 const Tok& a = args[0];
-                if (a.kind != TokKind::Number || (!a.unit.empty() && a.unit != "%")) {
+                if (a.kind != TokKind::Number || (!a.unit.empty() && !iequals(a.unit, "%"))) {
                     return false;
                 }
-                amount = a.unit == "%" ? a.num / 100.0f : a.num;
+                amount = iequals(a.unit, "%") ? a.num / 100.0f : a.num;
             } else if (!args.empty()) {
                 return false;
             }
@@ -1929,9 +1932,9 @@ bool parseGradientMaskFn(const std::vector<Tok>& inner, Dialect d, Diag* diag, b
         return false;
     }
     float radial = 0;
-    if (items[0][0].text == "linear") {
+    if (iequals(items[0][0].text, "linear")) {
         radial = 0;
-    } else if (items[0][0].text == "radial") {
+    } else if (iequals(items[0][0].text, "radial")) {
         radial = 1;
     } else {
         return false;
@@ -1951,7 +1954,7 @@ bool parseGradientMaskFn(const std::vector<Tok>& inner, Dialect d, Diag* diag, b
     float invert = 0;
     if (!stopItems.empty()) {
         const std::vector<Tok>& last = stopItems.back();
-        if (last.size() == 1 && last[0].kind == TokKind::Ident && last[0].text == "invert") {
+        if (last.size() == 1 && last[0].kind == TokKind::Ident && iequals(last[0].text, "invert")) {
             invert = 1;
             stopItems.pop_back();
         }
@@ -2036,11 +2039,11 @@ bool parseOutlineFn(const std::vector<Tok>& inner, Dialect d, bool& percentError
     float position = 0;
     if (!cur.atEnd() && cur.peek().kind == TokKind::Ident) {
         const std::string_view kw = cur.peek().text;
-        if (kw == "outer") {
+        if (iequals(kw, "outer")) {
             position = 0;
-        } else if (kw == "center") {
+        } else if (iequals(kw, "center")) {
             position = 1;
-        } else if (kw == "inner") {
+        } else if (iequals(kw, "inner")) {
             position = 2;
         } else {
             return false;
@@ -2096,21 +2099,21 @@ EffectCall nextEffectCall(Cursor& cur, std::string_view& fn, std::vector<Tok>& i
 EffectFnResult parseEffectFn(std::string_view fn, const std::vector<Tok>& inner, Dialect d, Diag* diag,
                              bool& percentError, EffectInstance& out, std::vector<GradientStop>& stops) {
     bool ok = false;
-    if (fn == "shadow") {
+    if (iequals(fn, "shadow")) {
         ok = parseShadowFn(inner, d, percentError, out);
-    } else if (fn == "glow") {
+    } else if (iequals(fn, "glow")) {
         ok = parseGlowFn(inner, d, percentError, out);
-    } else if (fn == "blur") {
+    } else if (iequals(fn, "blur")) {
         ok = parseBlurFn(inner, d, percentError, out);
-    } else if (fn == "color-adjust") {
+    } else if (iequals(fn, "color-adjust")) {
         ok = parseColorAdjustFn(inner, out);
-    } else if (fn == "gradient-mask") {
+    } else if (iequals(fn, "gradient-mask")) {
         ok = parseGradientMaskFn(inner, d, diag, percentError, out, stops);
-    } else if (fn == "shine") {
+    } else if (iequals(fn, "shine")) {
         ok = parseShineFn(inner, d, diag, percentError, out);
-    } else if (fn == "outline") {
+    } else if (iequals(fn, "outline")) {
         ok = parseOutlineFn(inner, d, percentError, out);
-    } else if (fn == "backdrop-blur") {
+    } else if (iequals(fn, "backdrop-blur")) {
         ok = parseBackdropBlurFn(inner, d, percentError, out);
     } else {
         return EffectFnResult::Unknown;
@@ -2131,15 +2134,15 @@ bool parseGradientAngle(const Tok& tok, float& deg) {
     if (tok.kind != TokKind::Number) {
         return false;
     }
-    if (tok.unit == "deg") {
+    if (iequals(tok.unit, "deg")) {
         deg = tok.num;
         return true;
     }
-    if (tok.unit == "turn") {
+    if (iequals(tok.unit, "turn")) {
         deg = tok.num * 360.0f;
         return true;
     }
-    if (tok.unit == "rad") {
+    if (iequals(tok.unit, "rad")) {
         deg = tok.num * (180.0f / 3.14159265358979323846f);
         return true;
     }
@@ -2221,10 +2224,10 @@ bool parseGradientStops(const std::vector<std::vector<Tok>>& items, std::vector<
         bool given = false;
         if (!cur.atEnd()) {
             const Tok& t = cur.peek();
-            if (t.kind != TokKind::Number || (t.unit != "%" && !(t.unit.empty() && t.num == 0))) {
+            if (t.kind != TokKind::Number || (!iequals(t.unit, "%") && !(t.unit.empty() && t.num == 0))) {
                 return false;
             }
-            stop.offset = t.unit == "%" ? t.num / 100.0f : 0.0f;
+            stop.offset = iequals(t.unit, "%") ? t.num / 100.0f : 0.0f;
             given = true;
             cur.advance();
         }
@@ -2395,7 +2398,7 @@ bool parseClipPathValue(const Tok* toks, size_t count, Dialect d, ElementClipSha
     if (fnTok.kind != TokKind::Ident || cur.peek(1).kind != TokKind::LParen) {
         return false;
     }
-    if (fnTok.text == "path" || fnTok.text == "url") {
+    if (iequals(fnTok.text, "path") || iequals(fnTok.text, "url")) {
         unsupported = true;
         return false;
     }

@@ -476,8 +476,6 @@ void pushValues(std::vector<Decl>& out, const std::vector<css_values::PropValue>
     }
 }
 
-Status okOrInvalid(bool ok) { return ok ? Status::kOk : Status::kInvalidArgument; }
-
 css_values::IndependentTransform independentKind(uint16_t which) {
     return which == kTranslateProp ? css_values::IndependentTransform::Translate
            : which == kRotateProp  ? css_values::IndependentTransform::Rotate
@@ -519,7 +517,7 @@ bool parseAnimationList(const Tok* toks, size_t count, std::vector<AnimationDecl
 /// compile-time only (18.4).
 Status parseEffectList(const Tok* toks, size_t count, std::vector<EffectInstance>& outEffects,
                        std::vector<GradientStop>& outStops) {
-    if (count == 1 && toks[0].kind == TokKind::Ident && toks[0].text == "none") {
+    if (count == 1 && css_values::isKeyword(kRuntime, toks[0], "none")) {
         return Status::kOk;  // Empty sequence (18.4: decl exists, count 0).
     }
     Cursor cur(toks, count);

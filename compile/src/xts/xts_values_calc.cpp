@@ -97,16 +97,16 @@ char calcFunctionMarker(const Tok& t) {
     if (t.kind != TokKind::Ident) {
         return 0;
     }
-    if (t.text == "calc") {
+    if (css_values::iequals(t.text, "calc")) {
         return '(';
     }
-    if (t.text == "min") {
+    if (css_values::iequals(t.text, "min")) {
         return 'm';
     }
-    if (t.text == "max") {
+    if (css_values::iequals(t.text, "max")) {
         return 'M';
     }
-    return t.text == "clamp" ? 'c' : 0;
+    return css_values::iequals(t.text, "clamp") ? 'c' : 0;
 }
 
 }  // namespace
@@ -118,7 +118,7 @@ bool isCalcFunctionValue(const std::vector<Tok>& tokens) {
         tokens.back().kind != TokKind::RParen) {
         return false;
     }
-    if (tokens[0].text == "calc") {
+    if (css_values::iequals(tokens[0].text, "calc")) {
         return true;
     }
     // T-330: `min(...)`, `max(...)`, `clamp(...)` -- one function call whose `)` is the last token.
@@ -146,7 +146,7 @@ bool parseCalcValue(const std::vector<Tok>& tokens, std::vector<CalcOpDecl>& out
     std::vector<char> ops;       // '(' marks a group, 'm' / 'M' / 'c' a function.
     std::vector<int> argCounts;  // Arguments so far, one entry per open function.
     bool expectOperand = true;
-    const bool calcWrapped = tokens[0].text == "calc";
+    const bool calcWrapped = css_values::iequals(tokens[0].text, "calc");
     const size_t begin = calcWrapped ? 2 : 0;
     const size_t end = calcWrapped ? tokens.size() - 1 : tokens.size();
     constexpr size_t kMaxOps = 64;
@@ -175,8 +175,7 @@ bool parseCalcValue(const std::vector<Tok>& tokens, std::vector<CalcOpDecl>& out
                 }
                 continue;
             }
-            if (t.kind == TokKind::Ident && t.text == "var" && i + 1 < end &&
-                tokens[i + 1].kind == TokKind::LParen) {
+            if (isKeyword(t, "var") && i + 1 < end && tokens[i + 1].kind == TokKind::LParen) {
                 // var(--name) or var(--name, <number | length>).
                 CalcOpDecl v;
                 v.op = CalcOpKind::PushVar;

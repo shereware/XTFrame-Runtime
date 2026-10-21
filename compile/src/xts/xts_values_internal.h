@@ -75,6 +75,10 @@ private:
 };
 
 // The css_values grammar in the compiler's dialect.
+/// `t` is the identifier `word`, ASCII case-insensitively (05 §5.3, ruling 2026-10-21; T-421).
+inline bool isKeyword(const Tok& t, std::string_view word) {
+    return css_values::isKeyword(kCompiler, t, word);
+}
 inline bool parseLengthTok(const Tok& tok, Length& out) {
     return css_values::parseLengthTok(tok, kCompiler, out);
 }

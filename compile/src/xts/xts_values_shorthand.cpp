@@ -175,7 +175,7 @@ bool parseTextDecorationShorthand(const std::vector<Tok>& toks, int line, std::v
 }
 
 bool parseFlexShorthand(const std::vector<Tok>& toks, int line, std::vector<StyleDecl>& out) {
-    if (toks.size() == 1 && toks[0].kind == TokKind::Ident && toks[0].text == "none") {
+    if (toks.size() == 1 && isKeyword(toks[0], "none")) {
         StyleDecl g, s, b;
         g.prop = xt::prop::FlexGrow;
         g.value.kind = StyleValueKind::Float;

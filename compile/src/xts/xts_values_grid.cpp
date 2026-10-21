@@ -33,12 +33,12 @@ namespace {
 /// One track: `<px> | <%> | <n>fr | auto` (a bare 0 is 0px).
 bool parseGridTrackTok(const Tok& t, GridTrack& out, GridReject& why) {
     if (t.kind == TokKind::Ident) {
-        if (t.text == "auto") {
+        if (isKeyword(t, "auto")) {
             out = GridTrack{GridTrackKind::Auto, 0};
             return true;
         }
-        if (t.text == "min-content" || t.text == "max-content" || t.text == "minmax" ||
-            t.text == "fit-content" || t.text == "subgrid" || t.text == "masonry") {
+        if (isKeyword(t, "min-content") || isKeyword(t, "max-content") || isKeyword(t, "minmax") ||
+            isKeyword(t, "fit-content") || isKeyword(t, "subgrid") || isKeyword(t, "masonry")) {
             why = GridReject::Unsupported;
         }
         return false;
@@ -70,14 +70,14 @@ namespace xts_values_detail {
 bool parseGridTrackList(const std::vector<Tok>& toks, std::vector<GridTrack>& out, GridReject& why) {
     why = GridReject::Invalid;
     out.clear();
-    if (toks.size() == 1 && toks[0].kind == TokKind::Ident && toks[0].text == "none") {
+    if (toks.size() == 1 && isKeyword(toks[0], "none")) {
         return true;
     }
     for (size_t i = 0; i < toks.size(); ++i) {
         const Tok& t = toks[i];
         if (t.kind == TokKind::Ident && i + 1 < toks.size() && toks[i + 1].kind == TokKind::LParen) {
-            if (t.text != "repeat") {
-                why = (t.text == "minmax" || t.text == "fit-content") ? GridReject::Unsupported : why;
+            if (!isKeyword(t, "repeat")) {
+                why = (isKeyword(t, "minmax") || isKeyword(t, "fit-content")) ? GridReject::Unsupported : why;
                 return false;
             }
             size_t close = i + 2;
@@ -92,7 +92,7 @@ bool parseGridTrackList(const std::vector<Tok>& toks, std::vector<GridTrack>& ou
                 return false;
             }
             const Tok& count = toks[i + 2];
-            if (count.kind == TokKind::Ident && (count.text == "auto-fill" || count.text == "auto-fit")) {
+            if (isKeyword(count, "auto-fill") || isKeyword(count, "auto-fit")) {
                 why = GridReject::Unsupported;
                 return false;
             }
@@ -153,7 +153,7 @@ bool parseGridAreasValue(const std::vector<Tok>& toks, StyleValue& out, GridReje
     out.gridAreas.clear();
     out.gridAreaRows = 0;
     out.gridAreaCols = 0;
-    if (toks.size() == 1 && toks[0].kind == TokKind::Ident && toks[0].text == "none") {
+    if (toks.size() == 1 && isKeyword(toks[0], "none")) {
         return true;
     }
     if (toks.empty() || toks.size() > kMaxGridTracks) {

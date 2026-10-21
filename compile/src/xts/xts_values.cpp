@@ -88,8 +88,7 @@ bool parseSingleValue(const PropInfo& info, const std::vector<Tok>& toks, StyleV
             }
             // 05.5/19.10 (T-47a): `perspective: none` encodes as LengthUnit::Auto ("none" isn't
             // `parseLengthTok`'s "auto" spelling, so it needs its own check here).
-            if (info.prop == xt::prop::Perspective && toks[0].kind == TokKind::Ident &&
-                toks[0].text == "none") {
+            if (info.prop == xt::prop::Perspective && isKeyword(toks[0], "none")) {
                 out.kind = StyleValueKind::Length;
                 out.len = Length{0, LengthUnit::Auto};
                 return true;
@@ -223,8 +222,7 @@ bool parseSingleValue(const PropInfo& info, const std::vector<Tok>& toks, StyleV
             // T-236: `stroke-dasharray: none | <n> [,] <n> ...` and the `<x> <y>` modifier
             // parameters; each number is px or plain.
             std::vector<float> values;
-            if (info.kind == StyleValueKind::FloatArray && toks.size() == 1 &&
-                toks[0].kind == TokKind::Ident && toks[0].text == "none") {
+            if (info.kind == StyleValueKind::FloatArray && toks.size() == 1 && isKeyword(toks[0], "none")) {
                 out.kind = StyleValueKind::FloatArray;
                 out.floats.clear();
                 return true;
@@ -525,9 +523,8 @@ bool parseAndExpandDecl(const PropInfo* info, const std::vector<Tok>& tokens, st
         const Tok* str = nullptr;
         if (tokens.size() == 1 && tokens[0].kind == TokKind::String) {
             str = &tokens[0];
-        } else if (tokens.size() == 4 && tokens[0].kind == TokKind::Ident && tokens[0].text == "path" &&
-                   tokens[1].kind == TokKind::LParen && tokens[2].kind == TokKind::String &&
-                   tokens[3].kind == TokKind::RParen) {
+        } else if (tokens.size() == 4 && isKeyword(tokens[0], "path") && tokens[1].kind == TokKind::LParen &&
+                   tokens[2].kind == TokKind::String && tokens[3].kind == TokKind::RParen) {
             str = &tokens[2];
         }
         if (str == nullptr) {
@@ -571,8 +568,7 @@ namespace {
 // -------------------------------------------------------------------------------------------
 
 bool isVarOpen(const std::vector<Tok>& tokens, size_t i) {
-    return i + 1 < tokens.size() && tokens[i].kind == TokKind::Ident && tokens[i].text == "var" &&
-           tokens[i + 1].kind == TokKind::LParen;
+    return i + 1 < tokens.size() && isKeyword(tokens[i], "var") && tokens[i + 1].kind == TokKind::LParen;
 }
 
 /// A number as `.xts` text: an integer stays one, anything else gets up to 6 decimals, trailing

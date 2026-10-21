@@ -568,14 +568,116 @@ TEST_CASE("css parity: the differences the design documents keep") {
     CHECK(compiler("animation: a 1s 70000").find(",i65534,") != std::string::npos);
 }
 
-TEST_CASE("css parity: keyword case (not settled by 05; reported by T-413)") {
-    // The runtime matches keywords ASCII case-insensitively, the compiler exactly; named colours
-    // are case-insensitive in both (pinned above by `color: Red`).
+TEST_CASE("css parity: keyword case (05 §5.3, ruling 2026-10-21; T-421)") {
+    // Keywords match ASCII case-insensitively in both parsers; named colours always did (pinned
+    // above by `color: Red`).
     for (const char* css : {"display: FLEX", "width: AUTO", "transform-origin: LEFT TOP",
                             "animation: a 1s EASE-IN", "clip-path: CIRCLE()", "background-size: COVER",
-                            "outline: 1px SOLID red", "text-decoration-line: UNDERLINE", "ui-scale: NONE"}) {
-        INFO(std::string(css));
-        CHECK_FALSE(runtime(css).empty());
-        CHECK(compiler(css).empty());
+                            "outline: 1px SOLID red", "text-decoration-line: UNDERLINE", "ui-scale: NONE",
+                            "perspective: None", "animation: NONE", "position: Absolute"}) {
+        sameAccepted(css);
     }
+    // The upper-case spelling reads exactly as the lower-case one.
+    CHECK(compiler("display: FLEX") == compiler("display: flex"));
+    CHECK(compiler("transform-origin: LEFT TOP") == compiler("transform-origin: left top"));
+    // An animation name is not a keyword: it keeps its case.
+    CHECK(compiler("animation: Spin 1s") != compiler("animation: spin 1s"));
+}
+
+TEST_CASE("css parity: unit case (05 §5.3, ruling 2026-10-21; T-421)") {
+    // Units are ASCII case-insensitive in both parsers and read as their lower-case spelling.
+    for (const char* css : {"width: 10PX", "width: 2Em", "font-size: 1REM", "transform: rotate(45DEG)",
+                            "animation: a 500MS", "animation: a 2S", "effect: blur(4PX)"}) {
+        sameAccepted(css);
+    }
+    CHECK(runtime("width: 10PX") == runtime("width: 10px"));
+    CHECK(compiler("width: 10PX") == compiler("width: 10px"));
+    CHECK(runtime("animation: a 500MS") == runtime("animation: a 500ms"));
+    // The T-176 units stay compiler-only (05 §5.9.3), in any case.
+    CHECK(runtime("width: 10VW").empty());
+    CHECK(compiler("width: 10VW") == compiler("width: 10vw"));
+}
+
+TEST_CASE("css parity: function names and the remaining keywords (05 §5.3; T-421)") {
+    for (const char* css :
+         {"transform: ROTATE(45deg)", "transform: NONE", "transform: translateX(5px) TRANSLATEY(6px)",
+          "transform: Matrix(1, 0, 0, 1, 5, 6)", "aspect-ratio: AUTO", "grid-column-start: AUTO",
+          "grid-row-end: SPAN 3", "effect: NONE",
+          "effect: gradient-mask(LINEAR, 0 0, 0 100px, #fff 0%, #0000 100%)",
+          "effect: gradient-mask(Radial, 10px 10px, 1em 0, red 0%, blue 50%, INVERT)",
+          "effect: outline(1px #fff INNER)", "effect: SHADOW(0 1px 2px #000)"}) {
+        sameAccepted(css);
+    }
+    CHECK(compiler("transform: ROTATE(45deg)") == compiler("transform: rotate(45deg)"));
+    CHECK(runtime("transform: ROTATE(45deg)") == runtime("transform: rotate(45deg)"));
+    for (const char* css : {"clip-path: PATH(\"M0 0\")", "clip-path: URL(#c)"}) {
+        bothReject(css);
+    }
+    // Compiler-only syntax: calc() / min() / var().
+    CHECK(compiler("width: CALC(10px + 2em)") == compiler("width: calc(10px + 2em)"));
+    CHECK(compiler("width: Min(10px, 2em)") == compiler("width: min(10px, 2em)"));
+    CHECK(compiler("width: VAR(--w, 10px)") == compiler("width: var(--w, 10px)"));
+    CHECK_FALSE(compiler("width: CALC(10px + 2em)").empty());
+}
+
+namespace {
+
+/// The compiler's reading of one `transition` declaration: whether it was kept, its list and the
+/// warnings it raised.
+struct TransitionResult {
+    bool kept = false;
+    std::vector<compile::TransitionSpec> list;
+    std::vector<std::string> warnings;
+};
+
+TransitionResult compileTransition(std::string_view css) {
+    compile::DiagnosticSink sink;
+    std::vector<compile::StyleDecl> decls;
+    std::vector<EasingPoint> points;
+    compile::parseDeclarations(css, "parity.xts", 1, sink, decls, &points);
+    TransitionResult r;
+    r.kept = !decls.empty();
+    if (r.kept) {
+        r.list = decls[0].value.transitions;
+    }
+    for (const compile::Diagnostic& d : sink.all()) {
+        r.warnings.push_back(d.message);
+    }
+    return r;
+}
+
+}  // namespace
+
+TEST_CASE("css parity: a malformed transition item drops the declaration (05 §5.3; T-421)") {
+    // Well formed: kept, no warning; keywords and units in any case.
+    TransitionResult r = compileTransition("transition: opacity 200ms EASE-IN 50MS, ALL 1S");
+    CHECK(r.kept);
+    CHECK(r.list.size() == 2);
+    CHECK(r.warnings.empty());
+    // `none` is the empty list, without a warning.
+    for (const char* css : {"transition: none", "transition: NONE"}) {
+        INFO(std::string(css));
+        r = compileTransition(css);
+        CHECK(r.kept);
+        CHECK(r.list.empty());
+        CHECK(r.warnings.empty());
+    }
+    // One malformed item drops the whole declaration with one warning.
+    for (const char* css : {"transition: opacity 1s, 2s", "transition: opacity 1s, left wobble",
+                            "transition: opacity 1s, left 1s 2s 3s", "transition: opacity 1s,",
+                            "transition: opacity", "transition: opacity 1s cubic-bezier(1)"}) {
+        INFO(std::string(css));
+        r = compileTransition(css);
+        CHECK_FALSE(r.kept);
+        REQUIRE(r.warnings.size() == 1);
+        CHECK(r.warnings[0].find("invalid value for \"transition\"") != std::string::npos);
+    }
+    // A well-formed item naming an unknown or non-animatable property is skipped with its own
+    // warning; the rest of the list stays.
+    r = compileTransition("transition: opacity 1s, nosuch 1s");
+    CHECK(r.kept);
+    REQUIRE(r.list.size() == 1);
+    CHECK(r.list[0].prop == prop::Opacity);
+    REQUIRE(r.warnings.size() == 1);
+    CHECK(r.warnings[0].find("unknown or non-animatable transition property") != std::string::npos);
 }

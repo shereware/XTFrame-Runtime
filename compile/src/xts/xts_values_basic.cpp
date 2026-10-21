@@ -22,6 +22,24 @@ static_assert(static_cast<int>(TokenKind::LParen) == static_cast<int>(TokKind::L
 static_assert(static_cast<int>(TokenKind::Dollar) == static_cast<int>(TokKind::Dollar));
 static_assert(static_cast<int>(TokKind::Slash) == static_cast<int>(TokenKind::Dollar) + 1);
 
+namespace {
+
+/// T-421 (05 §5.3, ruling 2026-10-21): units are ASCII case-insensitive, so a known unit in any
+/// case reads as its lower-case spelling (a view of the literal); any other unit is kept as written.
+std::string_view canonicalUnit(std::string_view unit) {
+    static constexpr std::string_view kUnits[] = {
+        "px",          "em",        "rem",     "vw",  "vh",  "vmin", "vmax", "safe-top", "safe-right",
+        "safe-bottom", "safe-left", "uiscale", "deg", "rad", "turn", "s",    "ms",       "fr"};
+    for (std::string_view known : kUnits) {
+        if (css_values::iequals(unit, known)) {
+            return known;
+        }
+    }
+    return unit;
+}
+
+}  // namespace
+
 std::vector<Tok> toValueTokens(const std::vector<Token>& toks) {
     std::vector<Tok> out;
     out.reserve(toks.size());
@@ -30,7 +48,7 @@ std::vector<Tok> toValueTokens(const std::vector<Token>& toks) {
         v.kind = static_cast<TokKind>(static_cast<uint8_t>(t.kind));
         v.text = t.text;
         v.num = t.num;
-        v.unit = t.unit;
+        v.unit = canonicalUnit(t.unit);
         out.push_back(v);
     }
     return out;
