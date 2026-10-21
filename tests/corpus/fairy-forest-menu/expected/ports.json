@@ -1,0 +1,28 @@
+{
+  "demo3-menu": [
+    {
+      "name": "new_game",
+      "type": "event",
+      "dir": "out",
+      "default": ""
+    },
+    {
+      "name": "continue_game",
+      "type": "event",
+      "dir": "out",
+      "default": ""
+    },
+    {
+      "name": "open_options",
+      "type": "event",
+      "dir": "out",
+      "default": ""
+    },
+    {
+      "name": "open_credits",
+      "type": "event",
+      "dir": "out",
+      "default": ""
+    }
+  ]
+}

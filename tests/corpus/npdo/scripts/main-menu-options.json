@@ -1,0 +1,7 @@
+{
+  "ui": "main-menu",
+  "steps": [
+    {"frame": 60, "events": ["40 #btn-options.PointerEnter"], "note": "hover Options"},
+    {"frame": 90, "events": ["70 #btn-options.Click"], "note": "press Options, the global flow shows settings"}
+  ]
+}

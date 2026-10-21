@@ -1,0 +1,5 @@
+# script main-menu-options.json (ui main-menu)
+## step 1: frame 60 hover Options
+## step 2: frame 90 press Options, the global flow shows settings
+xtframe-view: port emit open_options =  (frame 70)
+xtframe-view: port changed active = false (frame 70)

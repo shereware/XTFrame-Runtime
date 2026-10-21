@@ -1,0 +1,7 @@
+# Motion spec
+version: 1
+duration:
+  fast: [100, 200]
+  normal: [200, 300]
+text:
+  min_px: 12

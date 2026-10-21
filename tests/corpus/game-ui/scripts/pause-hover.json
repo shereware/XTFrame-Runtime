@@ -1,0 +1,7 @@
+{
+  "ui": "pause",
+  "steps": [
+    {"frame": 30, "events": ["10 #resume.PointerEnter"], "note": "hover Resume"},
+    {"frame": 60, "events": ["40 #resume.PointerLeave", "40 #options.PointerEnter"], "note": "hover Options"}
+  ]
+}

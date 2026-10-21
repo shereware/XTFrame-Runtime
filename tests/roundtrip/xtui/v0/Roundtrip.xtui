@@ -1,0 +1,11 @@
+{
+  "name": "Roundtrip",
+  "id": "roundtrip",
+  "game": "Demo",
+  "spec": { "behavior": 1, "languages": ["en", "zh-TW"], "futureSpec": { "a": 1 } },
+  "uis": [ { "id": "hud", "doc": "ui/hud.xt", "size": [800, 600], "tags": ["hud"] } ],
+  "shared": { "styles": [], "futureShared": "s" },
+  "preview": { "dpr": 2, "futurePreview": [1, 2] },
+  "publish": { "outDir": "out", "futurePublish": true },
+  "futureTop": { "keep": true }
+}

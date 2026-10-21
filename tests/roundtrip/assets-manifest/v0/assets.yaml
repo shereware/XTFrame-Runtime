@@ -1,0 +1,7 @@
+assets:
+  - id: icon
+    type: image
+    file: assets/img/icon.png
+    source: manual
+    status: approved
+    measured: { w: 32, h: 32, alpha: true }

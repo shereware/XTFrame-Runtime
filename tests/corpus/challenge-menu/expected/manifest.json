@@ -1,0 +1,7417 @@
+{
+  "assets": [
+    {
+      "bytes": 158741,
+      "file": "assets/27b1b278faad51ee.png",
+      "kind": "image",
+      "manifest": {
+        "alpha": true,
+        "h": 482,
+        "id": "27b1b278faad51ee",
+        "w": 237
+      },
+      "sources": [
+        "../shared/img/27b1b278faad51ee.png"
+      ]
+    },
+    {
+      "bytes": 956149,
+      "file": "assets/56be179abb43289e.png",
+      "kind": "image",
+      "manifest": {
+        "alpha": false,
+        "h": 576,
+        "id": "56be179abb43289e",
+        "w": 1024
+      },
+      "sources": [
+        "../shared/img/56be179abb43289e.png"
+      ]
+    },
+    {
+      "bytes": 1398326,
+      "file": "assets/d0eebef1d9a7ce8c.png",
+      "kind": "image",
+      "manifest": {
+        "alpha": false,
+        "h": 720,
+        "id": "d0eebef1d9a7ce8c",
+        "w": 1280
+      },
+      "sources": [
+        "../shared/img/d0eebef1d9a7ce8c.png"
+      ]
+    }
+  ],
+  "bundle": {
+    "id": "tactical-challenges",
+    "irMajor": 2,
+    "name": "Tactical Challenges"
+  },
+  "motionSpec": {
+    "ambient": {
+      "hud": 1,
+      "menu": 2,
+      "other": 1
+    },
+    "animate_only": [
+      "transform",
+      "opacity"
+    ],
+    "celebration_per_screen": 1,
+    "duration": {
+      "cinematic": [
+        800,
+        2000
+      ],
+      "close": [
+        200,
+        450
+      ],
+      "fast": [
+        100,
+        200
+      ],
+      "instant": [
+        0,
+        50
+      ],
+      "normal": [
+        200,
+        300
+      ],
+      "slow": [
+        300,
+        500
+      ]
+    },
+    "easing": {
+      "emphasis": "back-out",
+      "exit": "ease-in",
+      "move": "ease-out",
+      "opacity": "linear",
+      "spring": "off"
+    },
+    "effects": {
+      "backdrop_blur": {
+        "hud": 0,
+        "menu": 0,
+        "panel": 2,
+        "pause": 2
+      },
+      "effect_layers_max": 24,
+      "fill_rate_max": 3.0
+    },
+    "entrance": {
+      "reveal_ms": [
+        300,
+        400
+      ],
+      "simultaneous_max": 3,
+      "stagger": "off",
+      "stagger_ms": [
+        40,
+        80
+      ]
+    },
+    "overlay": "dim",
+    "particles": {
+      "hud": 0,
+      "menu": 1,
+      "results": 1
+    },
+    "reduced_motion": "crossfade",
+    "safe_area": {
+      "applies_to": "floating",
+      "console": 0.05,
+      "default": 0.025
+    },
+    "selection": "snap",
+    "text": {
+      "contrast_min": 4.5,
+      "font_families_max": 3,
+      "hud_default_px": 14,
+      "min_px": 12
+    }
+  },
+  "project": {
+    "game": "",
+    "name": "Tactical Challenges",
+    "version": 1
+  },
+  "spec": {
+    "behavior": 1,
+    "logicalHeight": 720,
+    "safeArea": {
+      "console": 0.05,
+      "default": 0.025
+    },
+    "uiscaleRule": "height"
+  },
+  "uis": [
+    {
+      "assets": [
+        "assets/d0eebef1d9a7ce8c.png",
+        "assets/56be179abb43289e.png",
+        "assets/27b1b278faad51ee.png"
+      ],
+      "contract": "470e5ae7f0e98e05",
+      "file": "ui/challenge-menu.xtir",
+      "fileHash": 1875946719773561581,
+      "fit": "native",
+      "flow": "ui/challenge-menu.xtflow",
+      "id": "challenge-menu",
+      "name": "challenge-menu",
+      "ports": {
+        "in": [
+          {
+            "name": "#back-rule.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#back-rule.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#back-rule.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#back-rule.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#back-rule.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#back-rule.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#back-rule.setText",
+            "type": "string"
+          },
+          {
+            "name": "#back-rule.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#back-rule.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#back-rule.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#boot-scan.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#boot-scan.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#boot-scan.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#boot-scan.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#boot-scan.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#boot-scan.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#boot-scan.setText",
+            "type": "string"
+          },
+          {
+            "name": "#boot-scan.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#boot-scan.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#boot-scan.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#bottom-rule-right.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#bottom-rule-right.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#bottom-rule-right.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#bottom-rule-right.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#bottom-rule-right.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#bottom-rule-right.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#bottom-rule-right.setText",
+            "type": "string"
+          },
+          {
+            "name": "#bottom-rule-right.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#bottom-rule-right.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#bottom-rule-right.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#btn-back.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#btn-back.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#btn-back.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#btn-back.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#btn-back.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#btn-back.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#btn-back.setText",
+            "type": "string"
+          },
+          {
+            "name": "#btn-back.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#btn-back.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#btn-back.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#build-tag.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#build-tag.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#build-tag.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#build-tag.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#build-tag.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#build-tag.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#build-tag.setText",
+            "type": "string"
+          },
+          {
+            "name": "#build-tag.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#build-tag.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#build-tag.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#camera-idle.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#camera-idle.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#camera-idle.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#camera-idle.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#camera-idle.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#camera-idle.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#camera-idle.setText",
+            "type": "string"
+          },
+          {
+            "name": "#camera-idle.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#camera-idle.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#camera-idle.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#challenge-menu.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#challenge-menu.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#challenge-menu.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#challenge-menu.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#challenge-menu.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#challenge-menu.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#challenge-menu.setText",
+            "type": "string"
+          },
+          {
+            "name": "#challenge-menu.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#challenge-menu.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#challenge-menu.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-bl.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-bl.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-bl.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#corner-bl.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-bl.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#corner-bl.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#corner-bl.setText",
+            "type": "string"
+          },
+          {
+            "name": "#corner-bl.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#corner-bl.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-bl.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-br.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-br.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-br.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#corner-br.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-br.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#corner-br.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#corner-br.setText",
+            "type": "string"
+          },
+          {
+            "name": "#corner-br.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#corner-br.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-br.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tl.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tl.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tl.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#corner-tl.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tl.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#corner-tl.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#corner-tl.setText",
+            "type": "string"
+          },
+          {
+            "name": "#corner-tl.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#corner-tl.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tl.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tr.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tr.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tr.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#corner-tr.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tr.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#corner-tr.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#corner-tr.setText",
+            "type": "string"
+          },
+          {
+            "name": "#corner-tr.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#corner-tr.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tr.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-impossible.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-impossible.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-impossible.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#diff-impossible.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-impossible.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#diff-impossible.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#diff-impossible.setText",
+            "type": "string"
+          },
+          {
+            "name": "#diff-impossible.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#diff-impossible.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-impossible.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-list-body.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-list-body.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-list-body.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#diff-list-body.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-list-body.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#diff-list-body.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#diff-list-body.setText",
+            "type": "string"
+          },
+          {
+            "name": "#diff-list-body.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#diff-list-body.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-list-body.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-list.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-list.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-list.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#diff-list.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-list.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#diff-list.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#diff-list.setText",
+            "type": "string"
+          },
+          {
+            "name": "#diff-list.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#diff-list.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-list.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-posthuman.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-posthuman.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-posthuman.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#diff-posthuman.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-posthuman.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#diff-posthuman.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#diff-posthuman.setText",
+            "type": "string"
+          },
+          {
+            "name": "#diff-posthuman.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#diff-posthuman.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-posthuman.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-recruit.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-recruit.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-recruit.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#diff-recruit.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-recruit.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#diff-recruit.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#diff-recruit.setText",
+            "type": "string"
+          },
+          {
+            "name": "#diff-recruit.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#diff-recruit.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-recruit.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-soldier.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-soldier.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-soldier.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#diff-soldier.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-soldier.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#diff-soldier.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#diff-soldier.setText",
+            "type": "string"
+          },
+          {
+            "name": "#diff-soldier.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#diff-soldier.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-soldier.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-supersoldier.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-supersoldier.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-supersoldier.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#diff-supersoldier.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-supersoldier.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#diff-supersoldier.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#diff-supersoldier.setText",
+            "type": "string"
+          },
+          {
+            "name": "#diff-supersoldier.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#diff-supersoldier.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-supersoldier.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-veteran.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-veteran.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-veteran.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#diff-veteran.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-veteran.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#diff-veteran.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#diff-veteran.setText",
+            "type": "string"
+          },
+          {
+            "name": "#diff-veteran.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#diff-veteran.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-veteran.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-1.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-1.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-1.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#drip-1.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-1.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#drip-1.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#drip-1.setText",
+            "type": "string"
+          },
+          {
+            "name": "#drip-1.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#drip-1.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-1.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-2.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-2.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-2.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#drip-2.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-2.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#drip-2.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#drip-2.setText",
+            "type": "string"
+          },
+          {
+            "name": "#drip-2.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#drip-2.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-2.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-3.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-3.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-3.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#drip-3.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-3.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#drip-3.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#drip-3.setText",
+            "type": "string"
+          },
+          {
+            "name": "#drip-3.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#drip-3.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-3.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-4.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-4.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-4.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#drip-4.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-4.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#drip-4.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#drip-4.setText",
+            "type": "string"
+          },
+          {
+            "name": "#drip-4.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#drip-4.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-4.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#drips.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#drips.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#drips.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#drips.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#drips.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#drips.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#drips.setText",
+            "type": "string"
+          },
+          {
+            "name": "#drips.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#drips.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#drips.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#footer-rule.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#footer-rule.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#footer-rule.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#footer-rule.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#footer-rule.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#footer-rule.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#footer-rule.setText",
+            "type": "string"
+          },
+          {
+            "name": "#footer-rule.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#footer-rule.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#footer-rule.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#header-rule-left.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#header-rule-left.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#header-rule-left.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#header-rule-left.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#header-rule-left.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#header-rule-left.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#header-rule-left.setText",
+            "type": "string"
+          },
+          {
+            "name": "#header-rule-left.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#header-rule-left.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#header-rule-left.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#header-rule-right.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#header-rule-right.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#header-rule-right.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#header-rule-right.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#header-rule-right.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#header-rule-right.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#header-rule-right.setText",
+            "type": "string"
+          },
+          {
+            "name": "#header-rule-right.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#header-rule-right.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#header-rule-right.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#header.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#header.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#header.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#header.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#header.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#header.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#header.setText",
+            "type": "string"
+          },
+          {
+            "name": "#header.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#header.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#header.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hint-text.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hint-text.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#hint-text.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#hint-text.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hint-text.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#hint-text.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#hint-text.setText",
+            "type": "string"
+          },
+          {
+            "name": "#hint-text.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#hint-text.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#hint-text.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-impossible.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-impossible.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-impossible.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#hl-impossible.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-impossible.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#hl-impossible.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#hl-impossible.setText",
+            "type": "string"
+          },
+          {
+            "name": "#hl-impossible.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#hl-impossible.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-impossible.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-posthuman.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-posthuman.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-posthuman.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#hl-posthuman.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-posthuman.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#hl-posthuman.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#hl-posthuman.setText",
+            "type": "string"
+          },
+          {
+            "name": "#hl-posthuman.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#hl-posthuman.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-posthuman.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-recruit.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-recruit.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-recruit.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#hl-recruit.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-recruit.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#hl-recruit.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#hl-recruit.setText",
+            "type": "string"
+          },
+          {
+            "name": "#hl-recruit.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#hl-recruit.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-recruit.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-soldier.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-soldier.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-soldier.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#hl-soldier.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-soldier.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#hl-soldier.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#hl-soldier.setText",
+            "type": "string"
+          },
+          {
+            "name": "#hl-soldier.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#hl-soldier.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-soldier.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-supersoldier.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-supersoldier.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-supersoldier.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#hl-supersoldier.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-supersoldier.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#hl-supersoldier.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#hl-supersoldier.setText",
+            "type": "string"
+          },
+          {
+            "name": "#hl-supersoldier.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#hl-supersoldier.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-supersoldier.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-veteran.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-veteran.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-veteran.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#hl-veteran.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-veteran.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#hl-veteran.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#hl-veteran.setText",
+            "type": "string"
+          },
+          {
+            "name": "#hl-veteran.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#hl-veteran.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-veteran.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#holo-arc.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#holo-arc.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#holo-arc.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#holo-arc.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#holo-arc.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#holo-arc.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#holo-arc.setText",
+            "type": "string"
+          },
+          {
+            "name": "#holo-arc.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#holo-arc.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#holo-arc.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#holo-base.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#holo-base.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#holo-base.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#holo-base.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#holo-base.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#holo-base.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#holo-base.setText",
+            "type": "string"
+          },
+          {
+            "name": "#holo-base.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#holo-base.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#holo-base.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#holo-ring.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#holo-ring.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#holo-ring.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#holo-ring.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#holo-ring.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#holo-ring.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#holo-ring.setText",
+            "type": "string"
+          },
+          {
+            "name": "#holo-ring.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#holo-ring.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#holo-ring.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hud.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hud.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#hud.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#hud.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hud.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#hud.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#hud.setText",
+            "type": "string"
+          },
+          {
+            "name": "#hud.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#hud.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#hud.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#light-shaft.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#light-shaft.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#light-shaft.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#light-shaft.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#light-shaft.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#light-shaft.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#light-shaft.setText",
+            "type": "string"
+          },
+          {
+            "name": "#light-shaft.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#light-shaft.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#light-shaft.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#logo-divider.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#logo-divider.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#logo-divider.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#logo-divider.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#logo-divider.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#logo-divider.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#logo-divider.setText",
+            "type": "string"
+          },
+          {
+            "name": "#logo-divider.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#logo-divider.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#logo-divider.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#logo-mark.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#logo-mark.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#logo-mark.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#logo-mark.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#logo-mark.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#logo-mark.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#logo-mark.setText",
+            "type": "string"
+          },
+          {
+            "name": "#logo-mark.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#logo-mark.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#logo-mark.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#menu-title.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#menu-title.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#menu-title.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#menu-title.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#menu-title.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#menu-title.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#menu-title.setText",
+            "type": "string"
+          },
+          {
+            "name": "#menu-title.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#menu-title.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#menu-title.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-1-depth.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-1-depth.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-1-depth.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#mote-1-depth.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-1-depth.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#mote-1-depth.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#mote-1-depth.setText",
+            "type": "string"
+          },
+          {
+            "name": "#mote-1-depth.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#mote-1-depth.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-1-depth.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-2-depth.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-2-depth.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-2-depth.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#mote-2-depth.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-2-depth.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#mote-2-depth.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#mote-2-depth.setText",
+            "type": "string"
+          },
+          {
+            "name": "#mote-2-depth.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#mote-2-depth.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-2-depth.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-3-depth.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-3-depth.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-3-depth.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#mote-3-depth.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-3-depth.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#mote-3-depth.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#mote-3-depth.setText",
+            "type": "string"
+          },
+          {
+            "name": "#mote-3-depth.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#mote-3-depth.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-3-depth.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-4-depth.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-4-depth.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-4-depth.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#mote-4-depth.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-4-depth.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#mote-4-depth.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#mote-4-depth.setText",
+            "type": "string"
+          },
+          {
+            "name": "#mote-4-depth.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#mote-4-depth.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-4-depth.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-5-depth.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-5-depth.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-5-depth.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#mote-5-depth.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-5-depth.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#mote-5-depth.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#mote-5-depth.setText",
+            "type": "string"
+          },
+          {
+            "name": "#mote-5-depth.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#mote-5-depth.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-5-depth.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-6-depth.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-6-depth.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-6-depth.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#mote-6-depth.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-6-depth.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#mote-6-depth.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#mote-6-depth.setText",
+            "type": "string"
+          },
+          {
+            "name": "#mote-6-depth.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#mote-6-depth.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-6-depth.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-field.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-field.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-field.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#mote-field.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-field.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#mote-field.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#mote-field.setText",
+            "type": "string"
+          },
+          {
+            "name": "#mote-field.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#mote-field.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-field.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-0ee7b305.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-0ee7b305.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-0ee7b305.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#n-0ee7b305.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-0ee7b305.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#n-0ee7b305.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#n-0ee7b305.setText",
+            "type": "string"
+          },
+          {
+            "name": "#n-0ee7b305.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#n-0ee7b305.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-0ee7b305.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-2604d934.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-2604d934.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-2604d934.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#n-2604d934.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-2604d934.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#n-2604d934.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#n-2604d934.setText",
+            "type": "string"
+          },
+          {
+            "name": "#n-2604d934.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#n-2604d934.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-2604d934.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-26b0c455.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-26b0c455.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-26b0c455.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#n-26b0c455.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-26b0c455.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#n-26b0c455.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#n-26b0c455.setText",
+            "type": "string"
+          },
+          {
+            "name": "#n-26b0c455.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#n-26b0c455.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-26b0c455.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-2aea7100.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-2aea7100.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-2aea7100.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#n-2aea7100.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-2aea7100.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#n-2aea7100.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#n-2aea7100.setText",
+            "type": "string"
+          },
+          {
+            "name": "#n-2aea7100.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#n-2aea7100.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-2aea7100.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-360cf4ee.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-360cf4ee.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-360cf4ee.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#n-360cf4ee.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-360cf4ee.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#n-360cf4ee.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#n-360cf4ee.setText",
+            "type": "string"
+          },
+          {
+            "name": "#n-360cf4ee.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#n-360cf4ee.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-360cf4ee.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-4463e2b9.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-4463e2b9.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-4463e2b9.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#n-4463e2b9.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-4463e2b9.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#n-4463e2b9.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#n-4463e2b9.setText",
+            "type": "string"
+          },
+          {
+            "name": "#n-4463e2b9.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#n-4463e2b9.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-4463e2b9.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-55d9f8b6.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-55d9f8b6.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-55d9f8b6.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#n-55d9f8b6.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-55d9f8b6.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#n-55d9f8b6.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#n-55d9f8b6.setText",
+            "type": "string"
+          },
+          {
+            "name": "#n-55d9f8b6.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#n-55d9f8b6.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-55d9f8b6.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-6536294f.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-6536294f.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-6536294f.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#n-6536294f.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-6536294f.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#n-6536294f.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#n-6536294f.setText",
+            "type": "string"
+          },
+          {
+            "name": "#n-6536294f.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#n-6536294f.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-6536294f.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-762a9ebf.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-762a9ebf.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-762a9ebf.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#n-762a9ebf.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-762a9ebf.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#n-762a9ebf.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#n-762a9ebf.setText",
+            "type": "string"
+          },
+          {
+            "name": "#n-762a9ebf.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#n-762a9ebf.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-762a9ebf.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-8973aa93.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-8973aa93.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-8973aa93.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#n-8973aa93.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-8973aa93.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#n-8973aa93.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#n-8973aa93.setText",
+            "type": "string"
+          },
+          {
+            "name": "#n-8973aa93.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#n-8973aa93.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-8973aa93.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-8b1e36b8.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-8b1e36b8.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-8b1e36b8.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#n-8b1e36b8.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-8b1e36b8.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#n-8b1e36b8.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#n-8b1e36b8.setText",
+            "type": "string"
+          },
+          {
+            "name": "#n-8b1e36b8.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#n-8b1e36b8.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-8b1e36b8.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-95ae360c.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-95ae360c.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-95ae360c.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#n-95ae360c.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-95ae360c.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#n-95ae360c.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#n-95ae360c.setText",
+            "type": "string"
+          },
+          {
+            "name": "#n-95ae360c.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#n-95ae360c.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-95ae360c.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-a0e967ca.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-a0e967ca.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-a0e967ca.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#n-a0e967ca.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-a0e967ca.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#n-a0e967ca.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#n-a0e967ca.setText",
+            "type": "string"
+          },
+          {
+            "name": "#n-a0e967ca.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#n-a0e967ca.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-a0e967ca.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-a809bf40.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-a809bf40.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-a809bf40.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#n-a809bf40.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-a809bf40.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#n-a809bf40.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#n-a809bf40.setText",
+            "type": "string"
+          },
+          {
+            "name": "#n-a809bf40.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#n-a809bf40.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-a809bf40.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-d0129c2b.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-d0129c2b.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-d0129c2b.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#n-d0129c2b.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-d0129c2b.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#n-d0129c2b.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#n-d0129c2b.setText",
+            "type": "string"
+          },
+          {
+            "name": "#n-d0129c2b.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#n-d0129c2b.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-d0129c2b.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-e00e3084.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-e00e3084.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-e00e3084.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#n-e00e3084.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-e00e3084.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#n-e00e3084.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#n-e00e3084.setText",
+            "type": "string"
+          },
+          {
+            "name": "#n-e00e3084.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#n-e00e3084.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-e00e3084.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-e3e84386.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-e3e84386.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-e3e84386.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#n-e3e84386.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-e3e84386.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#n-e3e84386.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#n-e3e84386.setText",
+            "type": "string"
+          },
+          {
+            "name": "#n-e3e84386.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#n-e3e84386.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-e3e84386.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-fb0223e1.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-fb0223e1.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-fb0223e1.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#n-fb0223e1.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-fb0223e1.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#n-fb0223e1.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#n-fb0223e1.setText",
+            "type": "string"
+          },
+          {
+            "name": "#n-fb0223e1.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#n-fb0223e1.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-fb0223e1.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-body.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-body.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-body.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#panel-body.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-body.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#panel-body.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#panel-body.setText",
+            "type": "string"
+          },
+          {
+            "name": "#panel-body.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#panel-body.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-body.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-glow.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-glow.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-glow.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#panel-glow.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-glow.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#panel-glow.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#panel-glow.setText",
+            "type": "string"
+          },
+          {
+            "name": "#panel-glow.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#panel-glow.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-glow.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-plate.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-plate.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-plate.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#panel-plate.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-plate.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#panel-plate.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#panel-plate.setText",
+            "type": "string"
+          },
+          {
+            "name": "#panel-plate.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#panel-plate.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-plate.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-preview.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-preview.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-preview.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#panel-preview.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-preview.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#panel-preview.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#panel-preview.setText",
+            "type": "string"
+          },
+          {
+            "name": "#panel-preview.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#panel-preview.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-preview.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-desc.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-desc.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-desc.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#preview-desc.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-desc.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#preview-desc.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#preview-desc.setText",
+            "type": "string"
+          },
+          {
+            "name": "#preview-desc.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#preview-desc.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-desc.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-frame.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-frame.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-frame.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#preview-frame.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-frame.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#preview-frame.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#preview-frame.setText",
+            "type": "string"
+          },
+          {
+            "name": "#preview-frame.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#preview-frame.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-frame.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-image.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-image.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-image.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#preview-image.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-image.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#preview-image.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#preview-image.setText",
+            "type": "string"
+          },
+          {
+            "name": "#preview-image.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#preview-image.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-image.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-rank-icon.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-rank-icon.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-rank-icon.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#preview-rank-icon.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-rank-icon.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#preview-rank-icon.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#preview-rank-icon.setText",
+            "type": "string"
+          },
+          {
+            "name": "#preview-rank-icon.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#preview-rank-icon.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-rank-icon.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-tab.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-tab.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-tab.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#preview-tab.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-tab.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#preview-tab.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#preview-tab.setText",
+            "type": "string"
+          },
+          {
+            "name": "#preview-tab.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#preview-tab.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-tab.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-tag.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-tag.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-tag.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#preview-tag.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-tag.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#preview-tag.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#preview-tag.setText",
+            "type": "string"
+          },
+          {
+            "name": "#preview-tag.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#preview-tag.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-tag.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-block.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-block.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-block.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#profile-block.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-block.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#profile-block.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#profile-block.setText",
+            "type": "string"
+          },
+          {
+            "name": "#profile-block.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#profile-block.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-block.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-figure.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-figure.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-figure.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#profile-figure.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-figure.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#profile-figure.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#profile-figure.setText",
+            "type": "string"
+          },
+          {
+            "name": "#profile-figure.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#profile-figure.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-figure.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-label.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-label.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-label.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#profile-label.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-label.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#profile-label.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#profile-label.setText",
+            "type": "string"
+          },
+          {
+            "name": "#profile-label.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#profile-label.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-label.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-name.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-name.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-name.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#profile-name.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-name.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#profile-name.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#profile-name.setText",
+            "type": "string"
+          },
+          {
+            "name": "#profile-name.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#profile-name.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-name.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-impossible.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-impossible.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-impossible.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#row-impossible.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-impossible.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#row-impossible.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#row-impossible.setText",
+            "type": "string"
+          },
+          {
+            "name": "#row-impossible.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#row-impossible.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-impossible.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-posthuman.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-posthuman.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-posthuman.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#row-posthuman.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-posthuman.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#row-posthuman.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#row-posthuman.setText",
+            "type": "string"
+          },
+          {
+            "name": "#row-posthuman.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#row-posthuman.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-posthuman.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-recruit.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-recruit.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-recruit.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#row-recruit.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-recruit.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#row-recruit.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#row-recruit.setText",
+            "type": "string"
+          },
+          {
+            "name": "#row-recruit.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#row-recruit.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-recruit.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-soldier.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-soldier.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-soldier.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#row-soldier.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-soldier.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#row-soldier.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#row-soldier.setText",
+            "type": "string"
+          },
+          {
+            "name": "#row-soldier.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#row-soldier.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-soldier.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-supersoldier.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-supersoldier.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-supersoldier.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#row-supersoldier.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-supersoldier.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#row-supersoldier.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#row-supersoldier.setText",
+            "type": "string"
+          },
+          {
+            "name": "#row-supersoldier.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#row-supersoldier.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-supersoldier.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-veteran.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-veteran.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-veteran.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#row-veteran.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-veteran.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#row-veteran.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#row-veteran.setText",
+            "type": "string"
+          },
+          {
+            "name": "#row-veteran.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#row-veteran.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-veteran.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#scan-line.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#scan-line.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#scan-line.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#scan-line.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#scan-line.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#scan-line.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#scan-line.setText",
+            "type": "string"
+          },
+          {
+            "name": "#scan-line.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#scan-line.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#scan-line.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#scene.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#scene.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#scene.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#scene.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#scene.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#scene.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#scene.setText",
+            "type": "string"
+          },
+          {
+            "name": "#scene.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#scene.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#scene.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-impossible.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-impossible.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-impossible.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#star-impossible.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-impossible.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#star-impossible.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#star-impossible.setText",
+            "type": "string"
+          },
+          {
+            "name": "#star-impossible.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#star-impossible.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-impossible.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-posthuman.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-posthuman.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-posthuman.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#star-posthuman.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-posthuman.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#star-posthuman.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#star-posthuman.setText",
+            "type": "string"
+          },
+          {
+            "name": "#star-posthuman.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#star-posthuman.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-posthuman.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-recruit.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-recruit.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-recruit.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#star-recruit.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-recruit.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#star-recruit.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#star-recruit.setText",
+            "type": "string"
+          },
+          {
+            "name": "#star-recruit.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#star-recruit.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-recruit.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-soldier.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-soldier.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-soldier.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#star-soldier.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-soldier.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#star-soldier.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#star-soldier.setText",
+            "type": "string"
+          },
+          {
+            "name": "#star-soldier.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#star-soldier.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-soldier.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-supersoldier.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-supersoldier.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-supersoldier.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#star-supersoldier.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-supersoldier.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#star-supersoldier.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#star-supersoldier.setText",
+            "type": "string"
+          },
+          {
+            "name": "#star-supersoldier.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#star-supersoldier.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-supersoldier.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-veteran.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-veteran.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-veteran.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#star-veteran.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-veteran.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#star-veteran.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#star-veteran.setText",
+            "type": "string"
+          },
+          {
+            "name": "#star-veteran.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#star-veteran.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-veteran.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#status-online.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#status-online.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#status-online.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#status-online.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#status-online.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#status-online.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#status-online.setText",
+            "type": "string"
+          },
+          {
+            "name": "#status-online.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#status-online.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#status-online.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#vignette.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#vignette.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#vignette.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#vignette.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#vignette.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#vignette.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#vignette.setText",
+            "type": "string"
+          },
+          {
+            "name": "#vignette.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#vignette.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#vignette.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#world-image.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#world-image.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#world-image.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#world-image.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#world-image.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#world-image.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#world-image.setText",
+            "type": "string"
+          },
+          {
+            "name": "#world-image.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#world-image.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#world-image.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#world-layer.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#world-layer.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#world-layer.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#world-layer.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#world-layer.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#world-layer.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#world-layer.setText",
+            "type": "string"
+          },
+          {
+            "name": "#world-layer.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#world-layer.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#world-layer.toggleClass",
+            "type": "pulse"
+          }
+        ],
+        "out": [
+          {
+            "name": "#back-rule.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#back-rule.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#back-rule.Change",
+            "type": "string"
+          },
+          {
+            "name": "#back-rule.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#back-rule.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#back-rule.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#back-rule.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#back-rule.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#boot-scan.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#boot-scan.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#boot-scan.Change",
+            "type": "string"
+          },
+          {
+            "name": "#boot-scan.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#boot-scan.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#boot-scan.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#boot-scan.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#boot-scan.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#bottom-rule-right.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#bottom-rule-right.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#bottom-rule-right.Change",
+            "type": "string"
+          },
+          {
+            "name": "#bottom-rule-right.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#bottom-rule-right.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#bottom-rule-right.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#bottom-rule-right.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#bottom-rule-right.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#btn-back.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#btn-back.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#btn-back.Change",
+            "type": "string"
+          },
+          {
+            "name": "#btn-back.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#btn-back.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#btn-back.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#btn-back.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#btn-back.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#build-tag.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#build-tag.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#build-tag.Change",
+            "type": "string"
+          },
+          {
+            "name": "#build-tag.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#build-tag.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#build-tag.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#build-tag.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#build-tag.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#camera-idle.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#camera-idle.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#camera-idle.Change",
+            "type": "string"
+          },
+          {
+            "name": "#camera-idle.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#camera-idle.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#camera-idle.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#camera-idle.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#camera-idle.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#challenge-menu.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#challenge-menu.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#challenge-menu.Change",
+            "type": "string"
+          },
+          {
+            "name": "#challenge-menu.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#challenge-menu.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#challenge-menu.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#challenge-menu.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#challenge-menu.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#corner-bl.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-bl.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-bl.Change",
+            "type": "string"
+          },
+          {
+            "name": "#corner-bl.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-bl.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-bl.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-bl.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-bl.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#corner-br.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-br.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-br.Change",
+            "type": "string"
+          },
+          {
+            "name": "#corner-br.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-br.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-br.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-br.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-br.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#corner-tl.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tl.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tl.Change",
+            "type": "string"
+          },
+          {
+            "name": "#corner-tl.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tl.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tl.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tl.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tl.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#corner-tr.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tr.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tr.Change",
+            "type": "string"
+          },
+          {
+            "name": "#corner-tr.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tr.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tr.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tr.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tr.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#diff-impossible.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-impossible.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-impossible.Change",
+            "type": "string"
+          },
+          {
+            "name": "#diff-impossible.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-impossible.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-impossible.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-impossible.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-impossible.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#diff-list-body.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-list-body.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-list-body.Change",
+            "type": "string"
+          },
+          {
+            "name": "#diff-list-body.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-list-body.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-list-body.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-list-body.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-list-body.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#diff-list.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-list.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-list.Change",
+            "type": "string"
+          },
+          {
+            "name": "#diff-list.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-list.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-list.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-list.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-list.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#diff-posthuman.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-posthuman.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-posthuman.Change",
+            "type": "string"
+          },
+          {
+            "name": "#diff-posthuman.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-posthuman.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-posthuman.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-posthuman.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-posthuman.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#diff-recruit.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-recruit.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-recruit.Change",
+            "type": "string"
+          },
+          {
+            "name": "#diff-recruit.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-recruit.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-recruit.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-recruit.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-recruit.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#diff-soldier.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-soldier.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-soldier.Change",
+            "type": "string"
+          },
+          {
+            "name": "#diff-soldier.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-soldier.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-soldier.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-soldier.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-soldier.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#diff-supersoldier.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-supersoldier.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-supersoldier.Change",
+            "type": "string"
+          },
+          {
+            "name": "#diff-supersoldier.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-supersoldier.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-supersoldier.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-supersoldier.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-supersoldier.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#diff-veteran.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-veteran.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-veteran.Change",
+            "type": "string"
+          },
+          {
+            "name": "#diff-veteran.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-veteran.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-veteran.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-veteran.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#diff-veteran.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#drip-1.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-1.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-1.Change",
+            "type": "string"
+          },
+          {
+            "name": "#drip-1.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-1.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-1.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-1.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-1.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#drip-2.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-2.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-2.Change",
+            "type": "string"
+          },
+          {
+            "name": "#drip-2.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-2.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-2.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-2.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-2.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#drip-3.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-3.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-3.Change",
+            "type": "string"
+          },
+          {
+            "name": "#drip-3.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-3.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-3.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-3.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-3.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#drip-4.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-4.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-4.Change",
+            "type": "string"
+          },
+          {
+            "name": "#drip-4.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-4.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-4.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-4.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#drip-4.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#drips.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#drips.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#drips.Change",
+            "type": "string"
+          },
+          {
+            "name": "#drips.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#drips.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#drips.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#drips.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#drips.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#footer-rule.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#footer-rule.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#footer-rule.Change",
+            "type": "string"
+          },
+          {
+            "name": "#footer-rule.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#footer-rule.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#footer-rule.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#footer-rule.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#footer-rule.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#header-rule-left.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#header-rule-left.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#header-rule-left.Change",
+            "type": "string"
+          },
+          {
+            "name": "#header-rule-left.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#header-rule-left.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#header-rule-left.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#header-rule-left.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#header-rule-left.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#header-rule-right.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#header-rule-right.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#header-rule-right.Change",
+            "type": "string"
+          },
+          {
+            "name": "#header-rule-right.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#header-rule-right.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#header-rule-right.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#header-rule-right.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#header-rule-right.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#header.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#header.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#header.Change",
+            "type": "string"
+          },
+          {
+            "name": "#header.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#header.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#header.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#header.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#header.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#hint-text.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#hint-text.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#hint-text.Change",
+            "type": "string"
+          },
+          {
+            "name": "#hint-text.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#hint-text.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#hint-text.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#hint-text.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#hint-text.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#hl-impossible.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-impossible.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-impossible.Change",
+            "type": "string"
+          },
+          {
+            "name": "#hl-impossible.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-impossible.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-impossible.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-impossible.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-impossible.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#hl-posthuman.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-posthuman.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-posthuman.Change",
+            "type": "string"
+          },
+          {
+            "name": "#hl-posthuman.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-posthuman.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-posthuman.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-posthuman.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-posthuman.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#hl-recruit.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-recruit.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-recruit.Change",
+            "type": "string"
+          },
+          {
+            "name": "#hl-recruit.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-recruit.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-recruit.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-recruit.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-recruit.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#hl-soldier.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-soldier.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-soldier.Change",
+            "type": "string"
+          },
+          {
+            "name": "#hl-soldier.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-soldier.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-soldier.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-soldier.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-soldier.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#hl-supersoldier.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-supersoldier.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-supersoldier.Change",
+            "type": "string"
+          },
+          {
+            "name": "#hl-supersoldier.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-supersoldier.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-supersoldier.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-supersoldier.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-supersoldier.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#hl-veteran.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-veteran.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-veteran.Change",
+            "type": "string"
+          },
+          {
+            "name": "#hl-veteran.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-veteran.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-veteran.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-veteran.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#hl-veteran.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#holo-arc.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#holo-arc.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#holo-arc.Change",
+            "type": "string"
+          },
+          {
+            "name": "#holo-arc.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#holo-arc.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#holo-arc.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#holo-arc.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#holo-arc.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#holo-base.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#holo-base.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#holo-base.Change",
+            "type": "string"
+          },
+          {
+            "name": "#holo-base.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#holo-base.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#holo-base.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#holo-base.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#holo-base.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#holo-ring.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#holo-ring.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#holo-ring.Change",
+            "type": "string"
+          },
+          {
+            "name": "#holo-ring.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#holo-ring.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#holo-ring.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#holo-ring.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#holo-ring.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#hud.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#hud.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#hud.Change",
+            "type": "string"
+          },
+          {
+            "name": "#hud.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#hud.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#hud.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#hud.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#hud.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#light-shaft.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#light-shaft.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#light-shaft.Change",
+            "type": "string"
+          },
+          {
+            "name": "#light-shaft.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#light-shaft.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#light-shaft.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#light-shaft.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#light-shaft.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#logo-divider.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#logo-divider.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#logo-divider.Change",
+            "type": "string"
+          },
+          {
+            "name": "#logo-divider.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#logo-divider.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#logo-divider.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#logo-divider.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#logo-divider.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#logo-mark.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#logo-mark.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#logo-mark.Change",
+            "type": "string"
+          },
+          {
+            "name": "#logo-mark.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#logo-mark.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#logo-mark.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#logo-mark.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#logo-mark.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#menu-title.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#menu-title.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#menu-title.Change",
+            "type": "string"
+          },
+          {
+            "name": "#menu-title.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#menu-title.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#menu-title.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#menu-title.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#menu-title.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#mote-1-depth.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-1-depth.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-1-depth.Change",
+            "type": "string"
+          },
+          {
+            "name": "#mote-1-depth.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-1-depth.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-1-depth.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-1-depth.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-1-depth.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#mote-2-depth.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-2-depth.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-2-depth.Change",
+            "type": "string"
+          },
+          {
+            "name": "#mote-2-depth.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-2-depth.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-2-depth.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-2-depth.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-2-depth.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#mote-3-depth.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-3-depth.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-3-depth.Change",
+            "type": "string"
+          },
+          {
+            "name": "#mote-3-depth.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-3-depth.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-3-depth.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-3-depth.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-3-depth.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#mote-4-depth.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-4-depth.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-4-depth.Change",
+            "type": "string"
+          },
+          {
+            "name": "#mote-4-depth.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-4-depth.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-4-depth.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-4-depth.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-4-depth.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#mote-5-depth.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-5-depth.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-5-depth.Change",
+            "type": "string"
+          },
+          {
+            "name": "#mote-5-depth.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-5-depth.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-5-depth.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-5-depth.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-5-depth.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#mote-6-depth.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-6-depth.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-6-depth.Change",
+            "type": "string"
+          },
+          {
+            "name": "#mote-6-depth.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-6-depth.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-6-depth.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-6-depth.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-6-depth.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#mote-field.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-field.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-field.Change",
+            "type": "string"
+          },
+          {
+            "name": "#mote-field.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-field.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-field.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-field.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#mote-field.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#n-0ee7b305.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-0ee7b305.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-0ee7b305.Change",
+            "type": "string"
+          },
+          {
+            "name": "#n-0ee7b305.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-0ee7b305.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-0ee7b305.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-0ee7b305.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-0ee7b305.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#n-2604d934.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-2604d934.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-2604d934.Change",
+            "type": "string"
+          },
+          {
+            "name": "#n-2604d934.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-2604d934.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-2604d934.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-2604d934.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-2604d934.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#n-26b0c455.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-26b0c455.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-26b0c455.Change",
+            "type": "string"
+          },
+          {
+            "name": "#n-26b0c455.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-26b0c455.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-26b0c455.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-26b0c455.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-26b0c455.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#n-2aea7100.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-2aea7100.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-2aea7100.Change",
+            "type": "string"
+          },
+          {
+            "name": "#n-2aea7100.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-2aea7100.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-2aea7100.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-2aea7100.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-2aea7100.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#n-360cf4ee.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-360cf4ee.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-360cf4ee.Change",
+            "type": "string"
+          },
+          {
+            "name": "#n-360cf4ee.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-360cf4ee.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-360cf4ee.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-360cf4ee.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-360cf4ee.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#n-4463e2b9.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-4463e2b9.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-4463e2b9.Change",
+            "type": "string"
+          },
+          {
+            "name": "#n-4463e2b9.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-4463e2b9.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-4463e2b9.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-4463e2b9.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-4463e2b9.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#n-55d9f8b6.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-55d9f8b6.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-55d9f8b6.Change",
+            "type": "string"
+          },
+          {
+            "name": "#n-55d9f8b6.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-55d9f8b6.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-55d9f8b6.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-55d9f8b6.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-55d9f8b6.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#n-6536294f.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-6536294f.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-6536294f.Change",
+            "type": "string"
+          },
+          {
+            "name": "#n-6536294f.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-6536294f.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-6536294f.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-6536294f.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-6536294f.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#n-762a9ebf.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-762a9ebf.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-762a9ebf.Change",
+            "type": "string"
+          },
+          {
+            "name": "#n-762a9ebf.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-762a9ebf.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-762a9ebf.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-762a9ebf.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-762a9ebf.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#n-8973aa93.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-8973aa93.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-8973aa93.Change",
+            "type": "string"
+          },
+          {
+            "name": "#n-8973aa93.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-8973aa93.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-8973aa93.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-8973aa93.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-8973aa93.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#n-8b1e36b8.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-8b1e36b8.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-8b1e36b8.Change",
+            "type": "string"
+          },
+          {
+            "name": "#n-8b1e36b8.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-8b1e36b8.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-8b1e36b8.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-8b1e36b8.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-8b1e36b8.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#n-95ae360c.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-95ae360c.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-95ae360c.Change",
+            "type": "string"
+          },
+          {
+            "name": "#n-95ae360c.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-95ae360c.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-95ae360c.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-95ae360c.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-95ae360c.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#n-a0e967ca.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-a0e967ca.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-a0e967ca.Change",
+            "type": "string"
+          },
+          {
+            "name": "#n-a0e967ca.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-a0e967ca.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-a0e967ca.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-a0e967ca.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-a0e967ca.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#n-a809bf40.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-a809bf40.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-a809bf40.Change",
+            "type": "string"
+          },
+          {
+            "name": "#n-a809bf40.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-a809bf40.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-a809bf40.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-a809bf40.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-a809bf40.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#n-d0129c2b.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-d0129c2b.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-d0129c2b.Change",
+            "type": "string"
+          },
+          {
+            "name": "#n-d0129c2b.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-d0129c2b.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-d0129c2b.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-d0129c2b.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-d0129c2b.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#n-e00e3084.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-e00e3084.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-e00e3084.Change",
+            "type": "string"
+          },
+          {
+            "name": "#n-e00e3084.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-e00e3084.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-e00e3084.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-e00e3084.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-e00e3084.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#n-e3e84386.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-e3e84386.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-e3e84386.Change",
+            "type": "string"
+          },
+          {
+            "name": "#n-e3e84386.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-e3e84386.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-e3e84386.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-e3e84386.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-e3e84386.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#n-fb0223e1.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-fb0223e1.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-fb0223e1.Change",
+            "type": "string"
+          },
+          {
+            "name": "#n-fb0223e1.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-fb0223e1.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-fb0223e1.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-fb0223e1.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#n-fb0223e1.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#panel-body.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-body.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-body.Change",
+            "type": "string"
+          },
+          {
+            "name": "#panel-body.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-body.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-body.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-body.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-body.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#panel-glow.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-glow.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-glow.Change",
+            "type": "string"
+          },
+          {
+            "name": "#panel-glow.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-glow.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-glow.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-glow.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-glow.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#panel-plate.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-plate.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-plate.Change",
+            "type": "string"
+          },
+          {
+            "name": "#panel-plate.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-plate.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-plate.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-plate.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-plate.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#panel-preview.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-preview.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-preview.Change",
+            "type": "string"
+          },
+          {
+            "name": "#panel-preview.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-preview.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-preview.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-preview.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-preview.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#preview-desc.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-desc.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-desc.Change",
+            "type": "string"
+          },
+          {
+            "name": "#preview-desc.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-desc.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-desc.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-desc.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-desc.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#preview-frame.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-frame.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-frame.Change",
+            "type": "string"
+          },
+          {
+            "name": "#preview-frame.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-frame.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-frame.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-frame.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-frame.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#preview-image.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-image.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-image.Change",
+            "type": "string"
+          },
+          {
+            "name": "#preview-image.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-image.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-image.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-image.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-image.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#preview-rank-icon.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-rank-icon.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-rank-icon.Change",
+            "type": "string"
+          },
+          {
+            "name": "#preview-rank-icon.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-rank-icon.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-rank-icon.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-rank-icon.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-rank-icon.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#preview-tab.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-tab.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-tab.Change",
+            "type": "string"
+          },
+          {
+            "name": "#preview-tab.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-tab.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-tab.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-tab.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-tab.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#preview-tag.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-tag.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-tag.Change",
+            "type": "string"
+          },
+          {
+            "name": "#preview-tag.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-tag.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-tag.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-tag.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#preview-tag.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#profile-block.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-block.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-block.Change",
+            "type": "string"
+          },
+          {
+            "name": "#profile-block.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-block.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-block.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-block.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-block.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#profile-figure.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-figure.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-figure.Change",
+            "type": "string"
+          },
+          {
+            "name": "#profile-figure.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-figure.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-figure.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-figure.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-figure.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#profile-label.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-label.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-label.Change",
+            "type": "string"
+          },
+          {
+            "name": "#profile-label.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-label.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-label.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-label.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-label.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#profile-name.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-name.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-name.Change",
+            "type": "string"
+          },
+          {
+            "name": "#profile-name.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-name.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-name.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-name.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#profile-name.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#row-impossible.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-impossible.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-impossible.Change",
+            "type": "string"
+          },
+          {
+            "name": "#row-impossible.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-impossible.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-impossible.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-impossible.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-impossible.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#row-posthuman.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-posthuman.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-posthuman.Change",
+            "type": "string"
+          },
+          {
+            "name": "#row-posthuman.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-posthuman.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-posthuman.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-posthuman.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-posthuman.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#row-recruit.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-recruit.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-recruit.Change",
+            "type": "string"
+          },
+          {
+            "name": "#row-recruit.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-recruit.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-recruit.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-recruit.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-recruit.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#row-soldier.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-soldier.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-soldier.Change",
+            "type": "string"
+          },
+          {
+            "name": "#row-soldier.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-soldier.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-soldier.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-soldier.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-soldier.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#row-supersoldier.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-supersoldier.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-supersoldier.Change",
+            "type": "string"
+          },
+          {
+            "name": "#row-supersoldier.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-supersoldier.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-supersoldier.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-supersoldier.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-supersoldier.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#row-veteran.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-veteran.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-veteran.Change",
+            "type": "string"
+          },
+          {
+            "name": "#row-veteran.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-veteran.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-veteran.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-veteran.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#row-veteran.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#scan-line.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#scan-line.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#scan-line.Change",
+            "type": "string"
+          },
+          {
+            "name": "#scan-line.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#scan-line.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#scan-line.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#scan-line.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#scan-line.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#scene.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#scene.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#scene.Change",
+            "type": "string"
+          },
+          {
+            "name": "#scene.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#scene.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#scene.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#scene.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#scene.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#star-impossible.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-impossible.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-impossible.Change",
+            "type": "string"
+          },
+          {
+            "name": "#star-impossible.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-impossible.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-impossible.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-impossible.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-impossible.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#star-posthuman.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-posthuman.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-posthuman.Change",
+            "type": "string"
+          },
+          {
+            "name": "#star-posthuman.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-posthuman.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-posthuman.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-posthuman.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-posthuman.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#star-recruit.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-recruit.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-recruit.Change",
+            "type": "string"
+          },
+          {
+            "name": "#star-recruit.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-recruit.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-recruit.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-recruit.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-recruit.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#star-soldier.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-soldier.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-soldier.Change",
+            "type": "string"
+          },
+          {
+            "name": "#star-soldier.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-soldier.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-soldier.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-soldier.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-soldier.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#star-supersoldier.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-supersoldier.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-supersoldier.Change",
+            "type": "string"
+          },
+          {
+            "name": "#star-supersoldier.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-supersoldier.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-supersoldier.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-supersoldier.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-supersoldier.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#star-veteran.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-veteran.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-veteran.Change",
+            "type": "string"
+          },
+          {
+            "name": "#star-veteran.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-veteran.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-veteran.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-veteran.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#star-veteran.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#status-online.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#status-online.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#status-online.Change",
+            "type": "string"
+          },
+          {
+            "name": "#status-online.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#status-online.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#status-online.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#status-online.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#status-online.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#vignette.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#vignette.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#vignette.Change",
+            "type": "string"
+          },
+          {
+            "name": "#vignette.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#vignette.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#vignette.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#vignette.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#vignette.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#world-image.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#world-image.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#world-image.Change",
+            "type": "string"
+          },
+          {
+            "name": "#world-image.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#world-image.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#world-image.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#world-image.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#world-image.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#world-layer.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#world-layer.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#world-layer.Change",
+            "type": "string"
+          },
+          {
+            "name": "#world-layer.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#world-layer.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#world-layer.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#world-layer.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#world-layer.hover",
+            "type": "bool"
+          },
+          {
+            "name": "document.clock",
+            "type": "number"
+          },
+          {
+            "name": "document.pointerDown",
+            "type": "bool"
+          },
+          {
+            "name": "document.pointerNX",
+            "type": "number"
+          },
+          {
+            "name": "document.pointerNY",
+            "type": "number"
+          },
+          {
+            "name": "document.pointerX",
+            "type": "number"
+          },
+          {
+            "name": "document.pointerY",
+            "type": "number"
+          },
+          {
+            "name": "document.viewportHeight",
+            "type": "number"
+          },
+          {
+            "name": "document.viewportWidth",
+            "type": "number"
+          }
+        ]
+      },
+      "requires": {
+        "effects": true,
+        "space3d": true,
+        "text": true
+      },
+      "size": [
+        1280,
+        720
+      ],
+      "tags": [],
+      "thumb": "thumbs/challenge-menu.png"
+    }
+  ],
+  "version": 1
+}

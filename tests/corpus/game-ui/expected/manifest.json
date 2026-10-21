@@ -1,0 +1,2849 @@
+{
+  "assets": [],
+  "bundle": {
+    "id": "demo-game",
+    "irMajor": 2,
+    "name": "XTFrame Game UI demo"
+  },
+  "motionSpec": {
+    "ambient": {
+      "hud": 1,
+      "menu": 2,
+      "other": 1
+    },
+    "animate_only": [
+      "transform",
+      "opacity"
+    ],
+    "celebration_per_screen": 1,
+    "duration": {
+      "cinematic": [
+        800,
+        2000
+      ],
+      "close": [
+        200,
+        450
+      ],
+      "fast": [
+        100,
+        200
+      ],
+      "instant": [
+        0,
+        50
+      ],
+      "normal": [
+        200,
+        300
+      ],
+      "slow": [
+        300,
+        500
+      ]
+    },
+    "easing": {
+      "emphasis": "back-out",
+      "exit": "ease-in",
+      "move": "ease-out",
+      "opacity": "linear",
+      "spring": "off"
+    },
+    "effects": {
+      "backdrop_blur": {
+        "hud": 0,
+        "menu": 0,
+        "panel": 2,
+        "pause": 2
+      },
+      "effect_layers_max": 24,
+      "fill_rate_max": 3.0
+    },
+    "entrance": {
+      "reveal_ms": [
+        300,
+        400
+      ],
+      "simultaneous_max": 3,
+      "stagger": "off",
+      "stagger_ms": [
+        40,
+        80
+      ]
+    },
+    "overlay": "dim",
+    "particles": {
+      "hud": 0,
+      "menu": 1,
+      "results": 1
+    },
+    "reduced_motion": "crossfade",
+    "safe_area": {
+      "applies_to": "floating",
+      "console": 0.05,
+      "default": 0.025
+    },
+    "selection": "snap",
+    "text": {
+      "contrast_min": 4.5,
+      "font_families_max": 3,
+      "hud_default_px": 14,
+      "min_px": 12
+    }
+  },
+  "project": {
+    "game": "",
+    "name": "XTFrame Game UI demo",
+    "version": 1
+  },
+  "spec": {
+    "behavior": 1,
+    "logicalHeight": 720,
+    "safeArea": {
+      "console": 0.05,
+      "default": 0.025
+    },
+    "uiscaleRule": "height"
+  },
+  "uis": [
+    {
+      "assets": [],
+      "contract": "470e5ae7f0e98e05",
+      "file": "ui/hud.xtir",
+      "fileHash": 9649861178156500723,
+      "fit": "native",
+      "flow": "ui/hud.xtflow",
+      "id": "hud",
+      "name": "hud",
+      "ports": {
+        "in": [
+          {
+            "name": "#alert.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#alert.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#alert.pause",
+            "type": "pulse"
+          },
+          {
+            "name": "#alert.play",
+            "type": "pulse"
+          },
+          {
+            "name": "#alert.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#alert.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#alert.resume",
+            "type": "pulse"
+          },
+          {
+            "name": "#alert.seek",
+            "type": "number"
+          },
+          {
+            "name": "#alert.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#alert.setSpeed",
+            "type": "number"
+          },
+          {
+            "name": "#alert.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#alert.setText",
+            "type": "string"
+          },
+          {
+            "name": "#alert.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#alert.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#alert.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammo.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammo.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammo.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#ammo.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammo.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#ammo.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#ammo.setText",
+            "type": "string"
+          },
+          {
+            "name": "#ammo.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#ammo.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammo.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammoButtons.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammoButtons.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammoButtons.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#ammoButtons.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammoButtons.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#ammoButtons.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#ammoButtons.setText",
+            "type": "string"
+          },
+          {
+            "name": "#ammoButtons.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#ammoButtons.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammoButtons.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammoPanel.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammoPanel.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammoPanel.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#ammoPanel.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammoPanel.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#ammoPanel.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#ammoPanel.setText",
+            "type": "string"
+          },
+          {
+            "name": "#ammoPanel.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#ammoPanel.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammoPanel.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammoRow.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammoRow.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammoRow.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#ammoRow.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammoRow.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#ammoRow.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#ammoRow.setText",
+            "type": "string"
+          },
+          {
+            "name": "#ammoRow.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#ammoRow.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammoRow.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#card.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#card.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#card.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#card.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#card.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#card.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#card.setText",
+            "type": "string"
+          },
+          {
+            "name": "#card.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#card.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#card.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#clock.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#clock.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#clock.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#clock.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#clock.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#clock.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#clock.setText",
+            "type": "string"
+          },
+          {
+            "name": "#clock.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#clock.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#clock.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#fire.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#fire.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#fire.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#fire.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#fire.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#fire.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#fire.setText",
+            "type": "string"
+          },
+          {
+            "name": "#fire.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#fire.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#fire.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#heal.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#heal.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#heal.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#heal.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#heal.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#heal.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#heal.setText",
+            "type": "string"
+          },
+          {
+            "name": "#heal.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#heal.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#heal.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpBar.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpBar.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpBar.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#hpBar.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpBar.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#hpBar.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#hpBar.setText",
+            "type": "string"
+          },
+          {
+            "name": "#hpBar.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#hpBar.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpBar.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpFill.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpFill.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpFill.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#hpFill.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpFill.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#hpFill.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#hpFill.setText",
+            "type": "string"
+          },
+          {
+            "name": "#hpFill.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#hpFill.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpFill.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpRow.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpRow.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpRow.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#hpRow.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpRow.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#hpRow.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#hpRow.setText",
+            "type": "string"
+          },
+          {
+            "name": "#hpRow.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#hpRow.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpRow.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpText.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpText.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpText.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#hpText.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpText.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#hpText.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#hpText.setText",
+            "type": "string"
+          },
+          {
+            "name": "#hpText.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#hpText.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpText.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#name.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#name.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#name.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#name.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#name.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#name.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#name.setText",
+            "type": "string"
+          },
+          {
+            "name": "#name.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#name.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#name.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#player.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#player.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#player.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#player.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#player.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#player.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#player.setText",
+            "type": "string"
+          },
+          {
+            "name": "#player.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#player.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#player.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#radar.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#radar.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#radar.pause",
+            "type": "pulse"
+          },
+          {
+            "name": "#radar.play",
+            "type": "pulse"
+          },
+          {
+            "name": "#radar.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#radar.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#radar.resume",
+            "type": "pulse"
+          },
+          {
+            "name": "#radar.seek",
+            "type": "number"
+          },
+          {
+            "name": "#radar.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#radar.setSpeed",
+            "type": "number"
+          },
+          {
+            "name": "#radar.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#radar.setText",
+            "type": "string"
+          },
+          {
+            "name": "#radar.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#radar.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#radar.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#reload.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#reload.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#reload.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#reload.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#reload.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#reload.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#reload.setText",
+            "type": "string"
+          },
+          {
+            "name": "#reload.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#reload.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#reload.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#root.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#root.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#root.setText",
+            "type": "string"
+          },
+          {
+            "name": "#root.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#root.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#skill1.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#skill1.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#skill1.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#skill1.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#skill1.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#skill1.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#skill1.setText",
+            "type": "string"
+          },
+          {
+            "name": "#skill1.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#skill1.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#skill1.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#skill2.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#skill2.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#skill2.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#skill2.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#skill2.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#skill2.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#skill2.setText",
+            "type": "string"
+          },
+          {
+            "name": "#skill2.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#skill2.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#skill2.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#skill3.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#skill3.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#skill3.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#skill3.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#skill3.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#skill3.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#skill3.setText",
+            "type": "string"
+          },
+          {
+            "name": "#skill3.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#skill3.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#skill3.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#skills.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#skills.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#skills.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#skills.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#skills.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#skills.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#skills.setText",
+            "type": "string"
+          },
+          {
+            "name": "#skills.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#skills.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#skills.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#stageL.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#stageL.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#stageL.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#stageL.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#stageL.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#stageL.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#stageL.setText",
+            "type": "string"
+          },
+          {
+            "name": "#stageL.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#stageL.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#stageL.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#stageR.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#stageR.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#stageR.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#stageR.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#stageR.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#stageR.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#stageR.setText",
+            "type": "string"
+          },
+          {
+            "name": "#stageR.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#stageR.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#stageR.toggleClass",
+            "type": "pulse"
+          }
+        ],
+        "out": [
+          {
+            "name": "#alert.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#alert.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#alert.Change",
+            "type": "string"
+          },
+          {
+            "name": "#alert.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#alert.Finished",
+            "type": "pulse"
+          },
+          {
+            "name": "#alert.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#alert.Marker",
+            "type": "string"
+          },
+          {
+            "name": "#alert.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#alert.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#alert.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#alert.localTime",
+            "type": "number"
+          },
+          {
+            "name": "#ammo.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammo.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammo.Change",
+            "type": "string"
+          },
+          {
+            "name": "#ammo.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammo.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammo.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammo.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammo.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#ammoButtons.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammoButtons.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammoButtons.Change",
+            "type": "string"
+          },
+          {
+            "name": "#ammoButtons.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammoButtons.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammoButtons.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammoButtons.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammoButtons.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#ammoPanel.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammoPanel.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammoPanel.Change",
+            "type": "string"
+          },
+          {
+            "name": "#ammoPanel.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammoPanel.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammoPanel.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammoPanel.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammoPanel.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#ammoRow.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammoRow.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammoRow.Change",
+            "type": "string"
+          },
+          {
+            "name": "#ammoRow.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammoRow.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammoRow.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammoRow.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#ammoRow.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#card.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#card.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#card.Change",
+            "type": "string"
+          },
+          {
+            "name": "#card.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#card.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#card.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#card.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#card.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#clock.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#clock.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#clock.Change",
+            "type": "string"
+          },
+          {
+            "name": "#clock.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#clock.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#clock.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#clock.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#clock.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#fire.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#fire.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#fire.Change",
+            "type": "string"
+          },
+          {
+            "name": "#fire.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#fire.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#fire.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#fire.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#fire.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#heal.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#heal.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#heal.Change",
+            "type": "string"
+          },
+          {
+            "name": "#heal.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#heal.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#heal.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#heal.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#heal.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#hpBar.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpBar.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpBar.Change",
+            "type": "string"
+          },
+          {
+            "name": "#hpBar.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpBar.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpBar.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpBar.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpBar.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#hpFill.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpFill.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpFill.Change",
+            "type": "string"
+          },
+          {
+            "name": "#hpFill.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpFill.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpFill.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpFill.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpFill.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#hpRow.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpRow.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpRow.Change",
+            "type": "string"
+          },
+          {
+            "name": "#hpRow.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpRow.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpRow.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpRow.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpRow.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#hpText.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpText.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpText.Change",
+            "type": "string"
+          },
+          {
+            "name": "#hpText.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpText.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpText.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpText.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#hpText.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#name.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#name.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#name.Change",
+            "type": "string"
+          },
+          {
+            "name": "#name.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#name.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#name.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#name.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#name.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#player.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#player.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#player.Change",
+            "type": "string"
+          },
+          {
+            "name": "#player.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#player.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#player.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#player.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#player.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#radar.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#radar.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#radar.Change",
+            "type": "string"
+          },
+          {
+            "name": "#radar.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#radar.Finished",
+            "type": "pulse"
+          },
+          {
+            "name": "#radar.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#radar.Marker",
+            "type": "string"
+          },
+          {
+            "name": "#radar.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#radar.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#radar.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#radar.localTime",
+            "type": "number"
+          },
+          {
+            "name": "#reload.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#reload.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#reload.Change",
+            "type": "string"
+          },
+          {
+            "name": "#reload.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#reload.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#reload.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#reload.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#reload.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#root.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.Change",
+            "type": "string"
+          },
+          {
+            "name": "#root.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#skill1.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#skill1.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#skill1.Change",
+            "type": "string"
+          },
+          {
+            "name": "#skill1.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#skill1.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#skill1.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#skill1.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#skill1.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#skill2.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#skill2.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#skill2.Change",
+            "type": "string"
+          },
+          {
+            "name": "#skill2.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#skill2.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#skill2.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#skill2.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#skill2.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#skill3.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#skill3.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#skill3.Change",
+            "type": "string"
+          },
+          {
+            "name": "#skill3.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#skill3.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#skill3.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#skill3.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#skill3.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#skills.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#skills.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#skills.Change",
+            "type": "string"
+          },
+          {
+            "name": "#skills.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#skills.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#skills.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#skills.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#skills.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#stageL.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#stageL.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#stageL.Change",
+            "type": "string"
+          },
+          {
+            "name": "#stageL.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#stageL.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#stageL.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#stageL.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#stageL.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#stageR.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#stageR.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#stageR.Change",
+            "type": "string"
+          },
+          {
+            "name": "#stageR.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#stageR.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#stageR.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#stageR.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#stageR.hover",
+            "type": "bool"
+          },
+          {
+            "name": "document.clock",
+            "type": "number"
+          },
+          {
+            "name": "document.pointerDown",
+            "type": "bool"
+          },
+          {
+            "name": "document.pointerNX",
+            "type": "number"
+          },
+          {
+            "name": "document.pointerNY",
+            "type": "number"
+          },
+          {
+            "name": "document.pointerX",
+            "type": "number"
+          },
+          {
+            "name": "document.pointerY",
+            "type": "number"
+          },
+          {
+            "name": "document.viewportHeight",
+            "type": "number"
+          },
+          {
+            "name": "document.viewportWidth",
+            "type": "number"
+          }
+        ]
+      },
+      "requires": {
+        "effects": true,
+        "space3d": true,
+        "text": true
+      },
+      "size": [
+        1280,
+        720
+      ],
+      "tags": [
+        "ingame"
+      ],
+      "thumb": "thumbs/hud.png"
+    },
+    {
+      "assets": [],
+      "contract": "470e5ae7f0e98e05",
+      "file": "ui/pause.xtir",
+      "fileHash": 9046885541804851577,
+      "fit": "native",
+      "flow": "",
+      "id": "pause",
+      "name": "pause",
+      "ports": {
+        "in": [
+          {
+            "name": "#halo.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#halo.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#halo.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#halo.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#halo.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#halo.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#halo.setText",
+            "type": "string"
+          },
+          {
+            "name": "#halo.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#halo.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#halo.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#headRow.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#headRow.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#headRow.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#headRow.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#headRow.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#headRow.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#headRow.setText",
+            "type": "string"
+          },
+          {
+            "name": "#headRow.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#headRow.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#headRow.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#heading.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#heading.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#heading.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#heading.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#heading.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#heading.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#heading.setText",
+            "type": "string"
+          },
+          {
+            "name": "#heading.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#heading.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#heading.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hint.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hint.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#hint.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#hint.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#hint.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#hint.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#hint.setText",
+            "type": "string"
+          },
+          {
+            "name": "#hint.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#hint.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#hint.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#menu.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#menu.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#menu.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#menu.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#menu.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#menu.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#menu.setText",
+            "type": "string"
+          },
+          {
+            "name": "#menu.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#menu.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#menu.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#options.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#options.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#options.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#options.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#options.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#options.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#options.setText",
+            "type": "string"
+          },
+          {
+            "name": "#options.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#options.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#options.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#pauseRadar.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#pauseRadar.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#pauseRadar.pause",
+            "type": "pulse"
+          },
+          {
+            "name": "#pauseRadar.play",
+            "type": "pulse"
+          },
+          {
+            "name": "#pauseRadar.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#pauseRadar.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#pauseRadar.resume",
+            "type": "pulse"
+          },
+          {
+            "name": "#pauseRadar.seek",
+            "type": "number"
+          },
+          {
+            "name": "#pauseRadar.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#pauseRadar.setSpeed",
+            "type": "number"
+          },
+          {
+            "name": "#pauseRadar.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#pauseRadar.setText",
+            "type": "string"
+          },
+          {
+            "name": "#pauseRadar.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#pauseRadar.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#pauseRadar.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#quit.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#quit.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#quit.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#quit.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#quit.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#quit.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#quit.setText",
+            "type": "string"
+          },
+          {
+            "name": "#quit.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#quit.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#quit.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#resume.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#resume.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#resume.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#resume.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#resume.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#resume.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#resume.setText",
+            "type": "string"
+          },
+          {
+            "name": "#resume.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#resume.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#resume.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#root.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#root.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#root.setText",
+            "type": "string"
+          },
+          {
+            "name": "#root.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#root.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#scrim.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#scrim.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#scrim.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#scrim.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#scrim.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#scrim.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#scrim.setText",
+            "type": "string"
+          },
+          {
+            "name": "#scrim.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#scrim.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#scrim.toggleClass",
+            "type": "pulse"
+          }
+        ],
+        "out": [
+          {
+            "name": "#halo.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#halo.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#halo.Change",
+            "type": "string"
+          },
+          {
+            "name": "#halo.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#halo.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#halo.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#halo.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#halo.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#headRow.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#headRow.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#headRow.Change",
+            "type": "string"
+          },
+          {
+            "name": "#headRow.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#headRow.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#headRow.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#headRow.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#headRow.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#heading.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#heading.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#heading.Change",
+            "type": "string"
+          },
+          {
+            "name": "#heading.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#heading.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#heading.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#heading.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#heading.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#hint.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#hint.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#hint.Change",
+            "type": "string"
+          },
+          {
+            "name": "#hint.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#hint.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#hint.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#hint.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#hint.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#menu.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#menu.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#menu.Change",
+            "type": "string"
+          },
+          {
+            "name": "#menu.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#menu.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#menu.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#menu.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#menu.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#options.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#options.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#options.Change",
+            "type": "string"
+          },
+          {
+            "name": "#options.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#options.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#options.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#options.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#options.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#pauseRadar.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#pauseRadar.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#pauseRadar.Change",
+            "type": "string"
+          },
+          {
+            "name": "#pauseRadar.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#pauseRadar.Finished",
+            "type": "pulse"
+          },
+          {
+            "name": "#pauseRadar.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#pauseRadar.Marker",
+            "type": "string"
+          },
+          {
+            "name": "#pauseRadar.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#pauseRadar.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#pauseRadar.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#pauseRadar.localTime",
+            "type": "number"
+          },
+          {
+            "name": "#quit.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#quit.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#quit.Change",
+            "type": "string"
+          },
+          {
+            "name": "#quit.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#quit.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#quit.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#quit.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#quit.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#resume.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#resume.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#resume.Change",
+            "type": "string"
+          },
+          {
+            "name": "#resume.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#resume.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#resume.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#resume.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#resume.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#root.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.Change",
+            "type": "string"
+          },
+          {
+            "name": "#root.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#scrim.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#scrim.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#scrim.Change",
+            "type": "string"
+          },
+          {
+            "name": "#scrim.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#scrim.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#scrim.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#scrim.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#scrim.hover",
+            "type": "bool"
+          },
+          {
+            "name": "document.clock",
+            "type": "number"
+          },
+          {
+            "name": "document.pointerDown",
+            "type": "bool"
+          },
+          {
+            "name": "document.pointerNX",
+            "type": "number"
+          },
+          {
+            "name": "document.pointerNY",
+            "type": "number"
+          },
+          {
+            "name": "document.pointerX",
+            "type": "number"
+          },
+          {
+            "name": "document.pointerY",
+            "type": "number"
+          },
+          {
+            "name": "document.viewportHeight",
+            "type": "number"
+          },
+          {
+            "name": "document.viewportWidth",
+            "type": "number"
+          }
+        ]
+      },
+      "requires": {
+        "effects": true,
+        "space3d": false,
+        "text": true
+      },
+      "size": [
+        1280,
+        720
+      ],
+      "tags": [
+        "menu"
+      ],
+      "thumb": "thumbs/pause.png"
+    }
+  ],
+  "version": 1
+}

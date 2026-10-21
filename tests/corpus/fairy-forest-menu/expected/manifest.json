@@ -1,0 +1,4476 @@
+{
+  "assets": [
+    {
+      "bytes": 1503162,
+      "file": "assets/10579101e79703e6.png",
+      "kind": "image",
+      "manifest": {
+        "alpha": false,
+        "h": 720,
+        "id": "trail-3",
+        "w": 1280
+      },
+      "sources": [
+        "../shared/img/trail-3.png"
+      ]
+    },
+    {
+      "bytes": 6686,
+      "file": "assets/1157cfa7dd016b62.png",
+      "kind": "image",
+      "manifest": {
+        "alpha": true,
+        "h": 128,
+        "id": "item-option-icon-color",
+        "w": 128
+      },
+      "sources": [
+        "../shared/img/item-option-icon-color.png"
+      ]
+    },
+    {
+      "bytes": 14527,
+      "file": "assets/3204658ff226ef50.png",
+      "kind": "image",
+      "manifest": {
+        "alpha": true,
+        "h": 128,
+        "id": "item-continue-icon-gray",
+        "w": 128
+      },
+      "sources": [
+        "../shared/img/item-continue-icon-gray.png"
+      ]
+    },
+    {
+      "bytes": 55424,
+      "file": "assets/406da2b133c4ea0f.png",
+      "kind": "image",
+      "manifest": {
+        "alpha": true,
+        "h": 1440,
+        "id": "fx-petals-color",
+        "w": 2560
+      },
+      "sources": [
+        "../shared/img/fx-petals-color.png"
+      ]
+    },
+    {
+      "bytes": 1333801,
+      "file": "assets/533d6b22f83cedd3.png",
+      "kind": "image",
+      "manifest": {
+        "alpha": false,
+        "h": 720,
+        "id": "bg-gray",
+        "w": 1280
+      },
+      "sources": [
+        "../shared/img/bg-gray.png"
+      ]
+    },
+    {
+      "bytes": 34651,
+      "file": "assets/5ddd42efeaa5625d.png",
+      "kind": "image",
+      "manifest": {
+        "alpha": true,
+        "h": 200,
+        "id": "corner-tr-color",
+        "w": 300
+      },
+      "sources": [
+        "../shared/img/corner-tr-color.png"
+      ]
+    },
+    {
+      "bytes": 7331,
+      "file": "assets/5effaab195cb8179.png",
+      "kind": "image",
+      "manifest": {
+        "alpha": true,
+        "h": 128,
+        "id": "item-credits-icon-color",
+        "w": 128
+      },
+      "sources": [
+        "../shared/img/item-credits-icon-color.png"
+      ]
+    },
+    {
+      "bytes": 6088,
+      "file": "assets/6409e882b0f4812b.png",
+      "kind": "image",
+      "manifest": {
+        "alpha": true,
+        "h": 128,
+        "id": "item-new-icon-gray",
+        "w": 128
+      },
+      "sources": [
+        "../shared/img/item-new-icon-gray.png"
+      ]
+    },
+    {
+      "bytes": 6773,
+      "file": "assets/8f0fcdaca3f36de9.png",
+      "kind": "image",
+      "manifest": {
+        "alpha": true,
+        "h": 128,
+        "id": "item-credits-icon-gray",
+        "w": 128
+      },
+      "sources": [
+        "../shared/img/item-credits-icon-gray.png"
+      ]
+    },
+    {
+      "bytes": 247685,
+      "file": "assets/9aa94c6f44b19d35.png",
+      "kind": "image",
+      "manifest": {
+        "alpha": true,
+        "h": 720,
+        "id": "fx-light",
+        "w": 1280
+      },
+      "sources": [
+        "../shared/img/fx-light.png"
+      ]
+    },
+    {
+      "bytes": 280920,
+      "file": "assets/acc8194d31f71544.png",
+      "kind": "image",
+      "manifest": {
+        "alpha": true,
+        "h": 1440,
+        "id": "fx-fireflies",
+        "w": 2560
+      },
+      "sources": [
+        "../shared/img/fx-fireflies.png"
+      ]
+    },
+    {
+      "bytes": 38739,
+      "file": "assets/afeffdeee262af00.png",
+      "kind": "image",
+      "manifest": {
+        "alpha": true,
+        "h": 120,
+        "id": "garland-color",
+        "w": 640
+      },
+      "sources": [
+        "../shared/img/garland-color.png"
+      ]
+    },
+    {
+      "bytes": 19948,
+      "file": "assets/baffdd633a8dd179.png",
+      "kind": "image",
+      "manifest": {
+        "alpha": true,
+        "h": 128,
+        "id": "item-continue-icon-color",
+        "w": 128
+      },
+      "sources": [
+        "../shared/img/item-continue-icon-color.png"
+      ]
+    },
+    {
+      "bytes": 35395,
+      "file": "assets/bb11f6edb21868e0.png",
+      "kind": "image",
+      "manifest": {
+        "alpha": true,
+        "h": 120,
+        "id": "garland-gray",
+        "w": 640
+      },
+      "sources": [
+        "../shared/img/garland-gray.png"
+      ]
+    },
+    {
+      "bytes": 6298,
+      "file": "assets/ced14db136f6e15f.png",
+      "kind": "image",
+      "manifest": {
+        "alpha": true,
+        "h": 128,
+        "id": "item-new-icon-color",
+        "w": 128
+      },
+      "sources": [
+        "../shared/img/item-new-icon-color.png"
+      ]
+    },
+    {
+      "bytes": 54751,
+      "file": "assets/ef5fd6b6dfcac01b.png",
+      "kind": "image",
+      "manifest": {
+        "alpha": true,
+        "h": 1440,
+        "id": "fx-petals-gray",
+        "w": 2560
+      },
+      "sources": [
+        "../shared/img/fx-petals-gray.png"
+      ]
+    },
+    {
+      "bytes": 6468,
+      "file": "assets/efbc855ea0ec8db5.png",
+      "kind": "image",
+      "manifest": {
+        "alpha": true,
+        "h": 128,
+        "id": "item-option-icon-gray",
+        "w": 128
+      },
+      "sources": [
+        "../shared/img/item-option-icon-gray.png"
+      ]
+    },
+    {
+      "bytes": 29236,
+      "file": "assets/ff35aaf2967cff04.png",
+      "kind": "image",
+      "manifest": {
+        "alpha": true,
+        "h": 200,
+        "id": "corner-tr-gray",
+        "w": 300
+      },
+      "sources": [
+        "../shared/img/corner-tr-gray.png"
+      ]
+    }
+  ],
+  "bundle": {
+    "id": "demo-3-fairy-forest-menu",
+    "irMajor": 2,
+    "name": "Demo 3 Fairy Forest Menu"
+  },
+  "project": {
+    "game": "",
+    "name": "Demo 3 Fairy Forest Menu",
+    "version": 1
+  },
+  "spec": {
+    "behavior": 1,
+    "logicalHeight": 720,
+    "safeArea": {
+      "console": 0.05,
+      "default": 0.025
+    },
+    "uiscaleRule": "height"
+  },
+  "uis": [
+    {
+      "assets": [
+        "assets/533d6b22f83cedd3.png",
+        "assets/10579101e79703e6.png",
+        "assets/9aa94c6f44b19d35.png",
+        "assets/acc8194d31f71544.png",
+        "assets/ef5fd6b6dfcac01b.png",
+        "assets/406da2b133c4ea0f.png",
+        "assets/bb11f6edb21868e0.png",
+        "assets/afeffdeee262af00.png",
+        "assets/ff35aaf2967cff04.png",
+        "assets/5ddd42efeaa5625d.png",
+        "assets/6409e882b0f4812b.png",
+        "assets/ced14db136f6e15f.png",
+        "assets/3204658ff226ef50.png",
+        "assets/baffdd633a8dd179.png",
+        "assets/efbc855ea0ec8db5.png",
+        "assets/1157cfa7dd016b62.png",
+        "assets/8f0fcdaca3f36de9.png",
+        "assets/5effaab195cb8179.png"
+      ],
+      "contract": "01c04f2bcac0f723",
+      "file": "ui/demo3-menu.xtir",
+      "fileHash": 7420082979565577724,
+      "fit": "native",
+      "flow": "ui/demo3-menu.xtflow",
+      "id": "demo3-menu",
+      "name": "demo3-menu",
+      "ports": {
+        "in": [
+          {
+            "name": "#bg-color.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#bg-color.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#bg-color.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#bg-color.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#bg-color.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#bg-color.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#bg-color.setText",
+            "type": "string"
+          },
+          {
+            "name": "#bg-color.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#bg-color.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#bg-color.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#bg-gray.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#bg-gray.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#bg-gray.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#bg-gray.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#bg-gray.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#bg-gray.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#bg-gray.setText",
+            "type": "string"
+          },
+          {
+            "name": "#bg-gray.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#bg-gray.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#bg-gray.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-bl-color.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-bl-color.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-bl-color.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#corner-bl-color.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-bl-color.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#corner-bl-color.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#corner-bl-color.setText",
+            "type": "string"
+          },
+          {
+            "name": "#corner-bl-color.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#corner-bl-color.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-bl-color.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-bl-gray.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-bl-gray.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-bl-gray.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#corner-bl-gray.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-bl-gray.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#corner-bl-gray.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#corner-bl-gray.setText",
+            "type": "string"
+          },
+          {
+            "name": "#corner-bl-gray.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#corner-bl-gray.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-bl-gray.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tr-color.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tr-color.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tr-color.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#corner-tr-color.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tr-color.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#corner-tr-color.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#corner-tr-color.setText",
+            "type": "string"
+          },
+          {
+            "name": "#corner-tr-color.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#corner-tr-color.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tr-color.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tr-gray.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tr-gray.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tr-gray.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#corner-tr-gray.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tr-gray.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#corner-tr-gray.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#corner-tr-gray.setText",
+            "type": "string"
+          },
+          {
+            "name": "#corner-tr-gray.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#corner-tr-gray.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tr-gray.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#demo3-menu.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#demo3-menu.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#demo3-menu.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#demo3-menu.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#demo3-menu.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#demo3-menu.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#demo3-menu.setText",
+            "type": "string"
+          },
+          {
+            "name": "#demo3-menu.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#demo3-menu.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#demo3-menu.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-fireflies.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-fireflies.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-fireflies.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#fx-fireflies.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-fireflies.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#fx-fireflies.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#fx-fireflies.setText",
+            "type": "string"
+          },
+          {
+            "name": "#fx-fireflies.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#fx-fireflies.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-fireflies.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-layer.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-layer.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-layer.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#fx-layer.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-layer.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#fx-layer.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#fx-layer.setText",
+            "type": "string"
+          },
+          {
+            "name": "#fx-layer.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#fx-layer.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-layer.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-light.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-light.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-light.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#fx-light.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-light.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#fx-light.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#fx-light.setText",
+            "type": "string"
+          },
+          {
+            "name": "#fx-light.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#fx-light.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-light.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-petals-color.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-petals-color.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-petals-color.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#fx-petals-color.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-petals-color.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#fx-petals-color.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#fx-petals-color.setText",
+            "type": "string"
+          },
+          {
+            "name": "#fx-petals-color.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#fx-petals-color.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-petals-color.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-petals-gray.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-petals-gray.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-petals-gray.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#fx-petals-gray.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-petals-gray.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#fx-petals-gray.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#fx-petals-gray.setText",
+            "type": "string"
+          },
+          {
+            "name": "#fx-petals-gray.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#fx-petals-gray.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-petals-gray.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-petals.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-petals.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-petals.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#fx-petals.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-petals.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#fx-petals.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#fx-petals.setText",
+            "type": "string"
+          },
+          {
+            "name": "#fx-petals.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#fx-petals.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-petals.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#garland-color.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#garland-color.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#garland-color.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#garland-color.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#garland-color.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#garland-color.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#garland-color.setText",
+            "type": "string"
+          },
+          {
+            "name": "#garland-color.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#garland-color.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#garland-color.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#garland-gray.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#garland-gray.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#garland-gray.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#garland-gray.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#garland-gray.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#garland-gray.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#garland-gray.setText",
+            "type": "string"
+          },
+          {
+            "name": "#garland-gray.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#garland-gray.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#garland-gray.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-hl.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-hl.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-hl.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-hl.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-hl.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#item-continue-hl.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-hl.setText",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-hl.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-hl.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-hl.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-icon-color.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-icon-color.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-icon-color.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-icon-color.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-icon-color.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#item-continue-icon-color.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-icon-color.setText",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-icon-color.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-icon-color.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-icon-color.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-icon-gray.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-icon-gray.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-icon-gray.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-icon-gray.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-icon-gray.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#item-continue-icon-gray.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-icon-gray.setText",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-icon-gray.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-icon-gray.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-icon-gray.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-icon.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-icon.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-icon.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-icon.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-icon.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#item-continue-icon.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-icon.setText",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-icon.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-icon.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-icon.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-label-color.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-label-color.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-label-color.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-label-color.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-label-color.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#item-continue-label-color.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-label-color.setText",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-label-color.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-label-color.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-label-color.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-label-gray.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-label-gray.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-label-gray.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-label-gray.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-label-gray.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#item-continue-label-gray.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-label-gray.setText",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-label-gray.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-label-gray.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-label-gray.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-label.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-label.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-label.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-label.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-label.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#item-continue-label.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-label.setText",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-label.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-label.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-label.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#item-continue.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue.setText",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-hl.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-hl.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-hl.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-hl.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-hl.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#item-credits-hl.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-hl.setText",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-hl.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-hl.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-hl.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-icon-color.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-icon-color.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-icon-color.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-icon-color.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-icon-color.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#item-credits-icon-color.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-icon-color.setText",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-icon-color.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-icon-color.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-icon-color.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-icon-gray.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-icon-gray.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-icon-gray.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-icon-gray.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-icon-gray.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#item-credits-icon-gray.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-icon-gray.setText",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-icon-gray.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-icon-gray.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-icon-gray.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-icon.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-icon.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-icon.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-icon.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-icon.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#item-credits-icon.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-icon.setText",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-icon.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-icon.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-icon.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-label-color.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-label-color.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-label-color.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-label-color.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-label-color.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#item-credits-label-color.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-label-color.setText",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-label-color.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-label-color.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-label-color.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-label-gray.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-label-gray.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-label-gray.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-label-gray.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-label-gray.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#item-credits-label-gray.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-label-gray.setText",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-label-gray.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-label-gray.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-label-gray.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-label.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-label.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-label.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-label.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-label.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#item-credits-label.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-label.setText",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-label.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-label.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-label.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#item-credits.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits.setText",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-hl.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-hl.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-hl.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-hl.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-hl.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#item-new-hl.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-hl.setText",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-hl.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-hl.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-hl.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-icon-color.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-icon-color.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-icon-color.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-icon-color.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-icon-color.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#item-new-icon-color.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-icon-color.setText",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-icon-color.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-icon-color.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-icon-color.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-icon-gray.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-icon-gray.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-icon-gray.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-icon-gray.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-icon-gray.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#item-new-icon-gray.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-icon-gray.setText",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-icon-gray.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-icon-gray.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-icon-gray.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-icon.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-icon.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-icon.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-icon.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-icon.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#item-new-icon.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-icon.setText",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-icon.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-icon.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-icon.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-label-color.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-label-color.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-label-color.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-label-color.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-label-color.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#item-new-label-color.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-label-color.setText",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-label-color.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-label-color.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-label-color.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-label-gray.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-label-gray.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-label-gray.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-label-gray.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-label-gray.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#item-new-label-gray.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-label-gray.setText",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-label-gray.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-label-gray.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-label-gray.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-label.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-label.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-label.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-label.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-label.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#item-new-label.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-label.setText",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-label.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-label.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-label.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#item-new.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#item-new.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#item-new.setText",
+            "type": "string"
+          },
+          {
+            "name": "#item-new.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#item-new.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-hl.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-hl.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-hl.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-hl.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-hl.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#item-option-hl.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-hl.setText",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-hl.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-hl.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-hl.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-icon-color.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-icon-color.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-icon-color.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-icon-color.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-icon-color.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#item-option-icon-color.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-icon-color.setText",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-icon-color.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-icon-color.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-icon-color.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-icon-gray.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-icon-gray.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-icon-gray.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-icon-gray.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-icon-gray.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#item-option-icon-gray.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-icon-gray.setText",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-icon-gray.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-icon-gray.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-icon-gray.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-icon.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-icon.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-icon.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-icon.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-icon.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#item-option-icon.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-icon.setText",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-icon.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-icon.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-icon.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-label-color.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-label-color.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-label-color.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-label-color.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-label-color.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#item-option-label-color.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-label-color.setText",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-label-color.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-label-color.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-label-color.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-label-gray.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-label-gray.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-label-gray.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-label-gray.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-label-gray.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#item-option-label-gray.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-label-gray.setText",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-label-gray.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-label-gray.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-label-gray.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-label.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-label.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-label.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-label.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-label.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#item-option-label.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-label.setText",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-label.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-label.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-label.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#item-option.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#item-option.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#item-option.setText",
+            "type": "string"
+          },
+          {
+            "name": "#item-option.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#item-option.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#menu-panel.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#menu-panel.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#menu-panel.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#menu-panel.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#menu-panel.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#menu-panel.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#menu-panel.setText",
+            "type": "string"
+          },
+          {
+            "name": "#menu-panel.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#menu-panel.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#menu-panel.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-warm.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-warm.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-warm.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#panel-warm.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-warm.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#panel-warm.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#panel-warm.setText",
+            "type": "string"
+          },
+          {
+            "name": "#panel-warm.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#panel-warm.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-warm.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#title-color.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#title-color.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#title-color.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#title-color.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#title-color.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#title-color.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#title-color.setText",
+            "type": "string"
+          },
+          {
+            "name": "#title-color.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#title-color.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#title-color.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#title-gray.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#title-gray.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#title-gray.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#title-gray.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#title-gray.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#title-gray.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#title-gray.setText",
+            "type": "string"
+          },
+          {
+            "name": "#title-gray.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#title-gray.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#title-gray.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#title-group.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#title-group.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#title-group.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#title-group.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#title-group.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#title-group.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#title-group.setText",
+            "type": "string"
+          },
+          {
+            "name": "#title-group.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#title-group.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#title-group.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-1.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-1.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-1.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#trail-1.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-1.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#trail-1.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#trail-1.setText",
+            "type": "string"
+          },
+          {
+            "name": "#trail-1.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#trail-1.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-1.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-2.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-2.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-2.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#trail-2.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-2.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#trail-2.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#trail-2.setText",
+            "type": "string"
+          },
+          {
+            "name": "#trail-2.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#trail-2.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-2.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-3.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-3.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-3.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#trail-3.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-3.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#trail-3.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#trail-3.setText",
+            "type": "string"
+          },
+          {
+            "name": "#trail-3.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#trail-3.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-3.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-layer.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-layer.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-layer.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#trail-layer.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-layer.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#trail-layer.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#trail-layer.setText",
+            "type": "string"
+          },
+          {
+            "name": "#trail-layer.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#trail-layer.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-layer.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#vignette.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#vignette.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#vignette.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#vignette.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#vignette.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#vignette.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#vignette.setText",
+            "type": "string"
+          },
+          {
+            "name": "#vignette.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#vignette.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#vignette.toggleClass",
+            "type": "pulse"
+          }
+        ],
+        "out": [
+          {
+            "name": "#bg-color.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#bg-color.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#bg-color.Change",
+            "type": "string"
+          },
+          {
+            "name": "#bg-color.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#bg-color.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#bg-color.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#bg-color.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#bg-color.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#bg-gray.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#bg-gray.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#bg-gray.Change",
+            "type": "string"
+          },
+          {
+            "name": "#bg-gray.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#bg-gray.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#bg-gray.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#bg-gray.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#bg-gray.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#corner-bl-color.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-bl-color.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-bl-color.Change",
+            "type": "string"
+          },
+          {
+            "name": "#corner-bl-color.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-bl-color.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-bl-color.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-bl-color.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-bl-color.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#corner-bl-gray.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-bl-gray.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-bl-gray.Change",
+            "type": "string"
+          },
+          {
+            "name": "#corner-bl-gray.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-bl-gray.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-bl-gray.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-bl-gray.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-bl-gray.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#corner-tr-color.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tr-color.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tr-color.Change",
+            "type": "string"
+          },
+          {
+            "name": "#corner-tr-color.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tr-color.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tr-color.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tr-color.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tr-color.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#corner-tr-gray.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tr-gray.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tr-gray.Change",
+            "type": "string"
+          },
+          {
+            "name": "#corner-tr-gray.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tr-gray.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tr-gray.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tr-gray.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#corner-tr-gray.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#demo3-menu.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#demo3-menu.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#demo3-menu.Change",
+            "type": "string"
+          },
+          {
+            "name": "#demo3-menu.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#demo3-menu.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#demo3-menu.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#demo3-menu.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#demo3-menu.continue_game",
+            "type": "pulse"
+          },
+          {
+            "name": "#demo3-menu.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#demo3-menu.new_game",
+            "type": "pulse"
+          },
+          {
+            "name": "#demo3-menu.open_credits",
+            "type": "pulse"
+          },
+          {
+            "name": "#demo3-menu.open_options",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-fireflies.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-fireflies.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-fireflies.Change",
+            "type": "string"
+          },
+          {
+            "name": "#fx-fireflies.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-fireflies.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-fireflies.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-fireflies.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-fireflies.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#fx-layer.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-layer.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-layer.Change",
+            "type": "string"
+          },
+          {
+            "name": "#fx-layer.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-layer.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-layer.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-layer.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-layer.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#fx-light.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-light.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-light.Change",
+            "type": "string"
+          },
+          {
+            "name": "#fx-light.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-light.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-light.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-light.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-light.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#fx-petals-color.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-petals-color.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-petals-color.Change",
+            "type": "string"
+          },
+          {
+            "name": "#fx-petals-color.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-petals-color.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-petals-color.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-petals-color.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-petals-color.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#fx-petals-gray.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-petals-gray.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-petals-gray.Change",
+            "type": "string"
+          },
+          {
+            "name": "#fx-petals-gray.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-petals-gray.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-petals-gray.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-petals-gray.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-petals-gray.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#fx-petals.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-petals.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-petals.Change",
+            "type": "string"
+          },
+          {
+            "name": "#fx-petals.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-petals.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-petals.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-petals.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#fx-petals.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#garland-color.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#garland-color.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#garland-color.Change",
+            "type": "string"
+          },
+          {
+            "name": "#garland-color.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#garland-color.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#garland-color.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#garland-color.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#garland-color.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#garland-gray.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#garland-gray.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#garland-gray.Change",
+            "type": "string"
+          },
+          {
+            "name": "#garland-gray.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#garland-gray.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#garland-gray.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#garland-gray.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#garland-gray.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#item-continue-hl.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-hl.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-hl.Change",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-hl.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-hl.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-hl.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-hl.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-hl.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#item-continue-icon-color.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-icon-color.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-icon-color.Change",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-icon-color.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-icon-color.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-icon-color.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-icon-color.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-icon-color.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#item-continue-icon-gray.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-icon-gray.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-icon-gray.Change",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-icon-gray.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-icon-gray.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-icon-gray.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-icon-gray.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-icon-gray.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#item-continue-icon.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-icon.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-icon.Change",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-icon.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-icon.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-icon.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-icon.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-icon.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#item-continue-label-color.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-label-color.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-label-color.Change",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-label-color.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-label-color.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-label-color.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-label-color.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-label-color.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#item-continue-label-gray.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-label-gray.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-label-gray.Change",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-label-gray.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-label-gray.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-label-gray.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-label-gray.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-label-gray.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#item-continue-label.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-label.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-label.Change",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue-label.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-label.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-label.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-label.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue-label.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#item-continue.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue.Change",
+            "type": "string"
+          },
+          {
+            "name": "#item-continue.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-continue.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#item-credits-hl.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-hl.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-hl.Change",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-hl.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-hl.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-hl.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-hl.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-hl.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#item-credits-icon-color.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-icon-color.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-icon-color.Change",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-icon-color.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-icon-color.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-icon-color.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-icon-color.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-icon-color.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#item-credits-icon-gray.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-icon-gray.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-icon-gray.Change",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-icon-gray.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-icon-gray.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-icon-gray.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-icon-gray.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-icon-gray.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#item-credits-icon.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-icon.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-icon.Change",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-icon.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-icon.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-icon.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-icon.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-icon.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#item-credits-label-color.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-label-color.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-label-color.Change",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-label-color.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-label-color.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-label-color.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-label-color.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-label-color.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#item-credits-label-gray.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-label-gray.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-label-gray.Change",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-label-gray.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-label-gray.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-label-gray.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-label-gray.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-label-gray.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#item-credits-label.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-label.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-label.Change",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits-label.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-label.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-label.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-label.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits-label.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#item-credits.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits.Change",
+            "type": "string"
+          },
+          {
+            "name": "#item-credits.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-credits.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#item-new-hl.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-hl.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-hl.Change",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-hl.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-hl.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-hl.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-hl.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-hl.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#item-new-icon-color.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-icon-color.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-icon-color.Change",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-icon-color.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-icon-color.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-icon-color.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-icon-color.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-icon-color.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#item-new-icon-gray.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-icon-gray.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-icon-gray.Change",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-icon-gray.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-icon-gray.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-icon-gray.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-icon-gray.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-icon-gray.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#item-new-icon.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-icon.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-icon.Change",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-icon.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-icon.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-icon.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-icon.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-icon.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#item-new-label-color.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-label-color.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-label-color.Change",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-label-color.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-label-color.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-label-color.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-label-color.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-label-color.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#item-new-label-gray.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-label-gray.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-label-gray.Change",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-label-gray.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-label-gray.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-label-gray.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-label-gray.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-label-gray.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#item-new-label.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-label.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-label.Change",
+            "type": "string"
+          },
+          {
+            "name": "#item-new-label.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-label.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-label.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-label.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new-label.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#item-new.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new.Change",
+            "type": "string"
+          },
+          {
+            "name": "#item-new.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-new.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#item-option-hl.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-hl.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-hl.Change",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-hl.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-hl.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-hl.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-hl.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-hl.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#item-option-icon-color.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-icon-color.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-icon-color.Change",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-icon-color.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-icon-color.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-icon-color.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-icon-color.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-icon-color.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#item-option-icon-gray.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-icon-gray.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-icon-gray.Change",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-icon-gray.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-icon-gray.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-icon-gray.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-icon-gray.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-icon-gray.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#item-option-icon.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-icon.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-icon.Change",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-icon.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-icon.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-icon.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-icon.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-icon.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#item-option-label-color.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-label-color.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-label-color.Change",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-label-color.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-label-color.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-label-color.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-label-color.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-label-color.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#item-option-label-gray.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-label-gray.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-label-gray.Change",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-label-gray.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-label-gray.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-label-gray.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-label-gray.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-label-gray.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#item-option-label.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-label.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-label.Change",
+            "type": "string"
+          },
+          {
+            "name": "#item-option-label.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-label.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-label.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-label.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option-label.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#item-option.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option.Change",
+            "type": "string"
+          },
+          {
+            "name": "#item-option.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#item-option.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#menu-panel.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#menu-panel.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#menu-panel.Change",
+            "type": "string"
+          },
+          {
+            "name": "#menu-panel.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#menu-panel.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#menu-panel.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#menu-panel.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#menu-panel.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#panel-warm.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-warm.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-warm.Change",
+            "type": "string"
+          },
+          {
+            "name": "#panel-warm.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-warm.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-warm.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-warm.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#panel-warm.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#title-color.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#title-color.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#title-color.Change",
+            "type": "string"
+          },
+          {
+            "name": "#title-color.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#title-color.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#title-color.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#title-color.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#title-color.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#title-gray.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#title-gray.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#title-gray.Change",
+            "type": "string"
+          },
+          {
+            "name": "#title-gray.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#title-gray.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#title-gray.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#title-gray.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#title-gray.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#title-group.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#title-group.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#title-group.Change",
+            "type": "string"
+          },
+          {
+            "name": "#title-group.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#title-group.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#title-group.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#title-group.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#title-group.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#trail-1.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-1.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-1.Change",
+            "type": "string"
+          },
+          {
+            "name": "#trail-1.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-1.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-1.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-1.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-1.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#trail-2.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-2.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-2.Change",
+            "type": "string"
+          },
+          {
+            "name": "#trail-2.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-2.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-2.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-2.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-2.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#trail-3.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-3.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-3.Change",
+            "type": "string"
+          },
+          {
+            "name": "#trail-3.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-3.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-3.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-3.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-3.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#trail-layer.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-layer.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-layer.Change",
+            "type": "string"
+          },
+          {
+            "name": "#trail-layer.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-layer.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-layer.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-layer.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#trail-layer.hover",
+            "type": "bool"
+          },
+          {
+            "name": "#vignette.AnimationEnd",
+            "type": "pulse"
+          },
+          {
+            "name": "#vignette.Blur",
+            "type": "pulse"
+          },
+          {
+            "name": "#vignette.Change",
+            "type": "string"
+          },
+          {
+            "name": "#vignette.Click",
+            "type": "pulse"
+          },
+          {
+            "name": "#vignette.Focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#vignette.PointerEnter",
+            "type": "pulse"
+          },
+          {
+            "name": "#vignette.PointerLeave",
+            "type": "pulse"
+          },
+          {
+            "name": "#vignette.hover",
+            "type": "bool"
+          },
+          {
+            "name": "document.clock",
+            "type": "number"
+          },
+          {
+            "name": "document.pointerDown",
+            "type": "bool"
+          },
+          {
+            "name": "document.pointerNX",
+            "type": "number"
+          },
+          {
+            "name": "document.pointerNY",
+            "type": "number"
+          },
+          {
+            "name": "document.pointerX",
+            "type": "number"
+          },
+          {
+            "name": "document.pointerY",
+            "type": "number"
+          },
+          {
+            "name": "document.viewportHeight",
+            "type": "number"
+          },
+          {
+            "name": "document.viewportWidth",
+            "type": "number"
+          }
+        ]
+      },
+      "requires": {
+        "effects": true,
+        "space3d": false,
+        "text": true
+      },
+      "size": [
+        1280,
+        720
+      ],
+      "tags": [],
+      "thumb": "thumbs/demo3-menu.png"
+    }
+  ],
+  "version": 1
+}

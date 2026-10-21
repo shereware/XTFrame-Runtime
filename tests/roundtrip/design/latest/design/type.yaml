@@ -1,0 +1,6 @@
+version: 1
+roles:
+  - id: body
+    family: Inter
+    weights: [400, 700]
+futureType: 1

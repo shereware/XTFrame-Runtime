@@ -1,0 +1,3 @@
+version: 1
+timelines: [intro, idle, outro]
+buttons: four states

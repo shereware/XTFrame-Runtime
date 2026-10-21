@@ -1,0 +1,9 @@
+# Asset manifest (docs/design/26-layers-symbols-library.md 26.3.3); xtframe-pack fills `measured`.
+version: 1
+assets:
+  - id: icon
+    type: image
+    file: assets/img/icon.png
+    source: manual
+    status: approved
+    measured: { w: 32, h: 32, alpha: true }

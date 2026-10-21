@@ -1,0 +1,7 @@
+version: 1
+groups:
+  - id: ink
+    name: Ink
+    swatches:
+      - id: ink-900
+        value: "#101418"

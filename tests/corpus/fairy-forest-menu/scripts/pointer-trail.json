@@ -1,0 +1,7 @@
+{
+  "ui": "demo3-menu",
+  "steps": [
+    {"frame": 40, "pointers": ["20 320 260 move"], "note": "pointer to 320,260"},
+    {"frame": 70, "pointers": ["50 900 480 move"], "note": "pointer to 900,480"}
+  ]
+}

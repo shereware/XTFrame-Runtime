@@ -1,0 +1,9 @@
+{
+  "ui": "hud",
+  "printText": ["ammo", "hpText"],
+  "steps": [
+    {"frame": 20, "events": ["10 #fire.Click", "15 #fire.Click", "20 #fire.Click"], "note": "fire three times"},
+    {"frame": 50, "events": ["40 #reload.Click"], "note": "reload"},
+    {"frame": 80, "events": ["70 #heal.Click"], "note": "heal"}
+  ]
+}

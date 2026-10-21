@@ -1,0 +1,10 @@
+{
+  "source": "examples/demos/game-ui",
+  "dpr": 1,
+  "frames": [0, 30, 120],
+  "uis": [
+    {"id": "hud", "width": 1280, "height": 720},
+    {"id": "pause", "width": 1280, "height": 720}
+  ],
+  "scripts": ["hud-fire-reload.json", "pause-hover.json"]
+}

@@ -120,8 +120,8 @@ std::string unifiedDiffSymbolSync(const std::string& a, const std::string& b, co
         size_t countA = 0;
         size_t countB = 0;
         for (size_t s = begin; s < stop; ++s) {
-            countA += steps[s].op != '+' ? 1 : 0;
-            countB += steps[s].op != '-' ? 1 : 0;
+            countA += steps[s].op != '+' ? size_t{1} : size_t{0};
+            countB += steps[s].op != '-' ? size_t{1} : size_t{0};
         }
         const size_t startA = countA == 0 ? steps[begin].i : steps[begin].i + 1;
         const size_t startB = countB == 0 ? steps[begin].j : steps[begin].j + 1;

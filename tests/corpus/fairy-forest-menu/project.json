@@ -1,0 +1,9 @@
+{
+  "source": "examples/demos/fairy-forest-menu/ui-project",
+  "dpr": 1,
+  "frames": [0, 30, 120],
+  "uis": [
+    {"id": "demo3-menu", "width": 1280, "height": 720}
+  ],
+  "scripts": ["pointer-trail.json"]
+}

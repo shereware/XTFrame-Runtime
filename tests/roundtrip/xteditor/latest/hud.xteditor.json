@@ -1,0 +1,43 @@
+{
+  "futureTop": {
+    "keep": [
+      1,
+      2
+    ]
+  },
+  "layers": {
+    "Panel": {
+      "collapsed": false,
+      "hidden": true,
+      "locked": false,
+      "solo": false
+    }
+  },
+  "sounds": {},
+  "timeline": {
+    "futureTimeline": 3,
+    "loopRange": [
+      0.0,
+      1.0
+    ],
+    "name": "intro",
+    "onion": {
+      "after": 0,
+      "before": 0
+    },
+    "playhead": 0.5,
+    "scope": ""
+  },
+  "version": 1,
+  "view": {
+    "device": "16:9",
+    "futureView": "x",
+    "mode": "design",
+    "pan": [
+      10.0,
+      20.0
+    ],
+    "safeArea": 0.05000000074505806,
+    "zoom": 2.0
+  }
+}

@@ -1,0 +1,11 @@
+<xt version="1">
+  <head>
+    <style>
+#Panel { position: absolute; left: 100px; top: 100px; width: 200px; height: 100px; background-color: #202020; }
+#Title { font-size: 12px; color: #ffffff; }
+    </style>
+  </head>
+  <body>
+    <div id="Panel"><span id="Title">Hello</span></div>
+  </body>
+</xt>

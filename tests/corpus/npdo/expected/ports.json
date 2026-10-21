@@ -1,0 +1,320 @@
+{
+  "main-menu": [
+    {
+      "name": "new_game",
+      "type": "event",
+      "dir": "out",
+      "default": ""
+    },
+    {
+      "name": "continue_game",
+      "type": "event",
+      "dir": "out",
+      "default": ""
+    },
+    {
+      "name": "load_game",
+      "type": "event",
+      "dir": "out",
+      "default": ""
+    },
+    {
+      "name": "open_options",
+      "type": "event",
+      "dir": "out",
+      "default": ""
+    },
+    {
+      "name": "open_credits",
+      "type": "event",
+      "dir": "out",
+      "default": ""
+    },
+    {
+      "name": "quit_game",
+      "type": "event",
+      "dir": "out",
+      "default": ""
+    },
+    {
+      "name": "active",
+      "type": "bool",
+      "dir": "in",
+      "default": "true"
+    }
+  ],
+  "settings": [
+    {
+      "name": "master_volume",
+      "type": "number",
+      "dir": "in",
+      "default": "80"
+    },
+    {
+      "name": "music_volume",
+      "type": "number",
+      "dir": "in",
+      "default": "60"
+    },
+    {
+      "name": "sfx_volume",
+      "type": "number",
+      "dir": "in",
+      "default": "75"
+    },
+    {
+      "name": "dialogue_volume",
+      "type": "number",
+      "dir": "in",
+      "default": "90"
+    },
+    {
+      "name": "output_device",
+      "type": "string",
+      "dir": "in",
+      "default": "Headphones (Realtek)"
+    },
+    {
+      "name": "audio_mode",
+      "type": "string",
+      "dir": "in",
+      "default": "Night Mode"
+    },
+    {
+      "name": "subtitles",
+      "type": "bool",
+      "dir": "in",
+      "default": "true"
+    },
+    {
+      "name": "gp_camera_shake",
+      "type": "number",
+      "dir": "in",
+      "default": "60"
+    },
+    {
+      "name": "gp_autosave",
+      "type": "bool",
+      "dir": "in",
+      "default": "true"
+    },
+    {
+      "name": "gp_hints",
+      "type": "bool",
+      "dir": "in",
+      "default": "true"
+    },
+    {
+      "name": "gfx_brightness",
+      "type": "number",
+      "dir": "in",
+      "default": "50"
+    },
+    {
+      "name": "gfx_vsync",
+      "type": "bool",
+      "dir": "in",
+      "default": "true"
+    },
+    {
+      "name": "gfx_grain",
+      "type": "bool",
+      "dir": "in",
+      "default": "false"
+    },
+    {
+      "name": "ctl_sensitivity",
+      "type": "number",
+      "dir": "in",
+      "default": "40"
+    },
+    {
+      "name": "ctl_invert_y",
+      "type": "bool",
+      "dir": "in",
+      "default": "false"
+    },
+    {
+      "name": "acc_contrast",
+      "type": "bool",
+      "dir": "in",
+      "default": "false"
+    },
+    {
+      "name": "acc_text_size",
+      "type": "number",
+      "dir": "in",
+      "default": "50"
+    },
+    {
+      "name": "mic_input_volume",
+      "type": "number",
+      "dir": "in",
+      "default": "70"
+    },
+    {
+      "name": "mic_voice_chat",
+      "type": "bool",
+      "dir": "in",
+      "default": "true"
+    },
+    {
+      "name": "mic_push_to_talk",
+      "type": "bool",
+      "dir": "in",
+      "default": "false"
+    },
+    {
+      "name": "tab",
+      "type": "number",
+      "dir": "in",
+      "default": "0"
+    },
+    {
+      "name": "tab_gameplay",
+      "type": "event",
+      "dir": "out",
+      "default": ""
+    },
+    {
+      "name": "tab_graphics",
+      "type": "event",
+      "dir": "out",
+      "default": ""
+    },
+    {
+      "name": "tab_audio",
+      "type": "event",
+      "dir": "out",
+      "default": ""
+    },
+    {
+      "name": "tab_controls",
+      "type": "event",
+      "dir": "out",
+      "default": ""
+    },
+    {
+      "name": "tab_accessibility",
+      "type": "event",
+      "dir": "out",
+      "default": ""
+    },
+    {
+      "name": "tab_microphone",
+      "type": "event",
+      "dir": "out",
+      "default": ""
+    },
+    {
+      "name": "audio_mode_prev",
+      "type": "event",
+      "dir": "out",
+      "default": ""
+    },
+    {
+      "name": "audio_mode_next",
+      "type": "event",
+      "dir": "out",
+      "default": ""
+    },
+    {
+      "name": "open_output_device",
+      "type": "event",
+      "dir": "out",
+      "default": ""
+    },
+    {
+      "name": "toggle_subtitles",
+      "type": "event",
+      "dir": "out",
+      "default": ""
+    },
+    {
+      "name": "play_test_sound",
+      "type": "event",
+      "dir": "out",
+      "default": ""
+    },
+    {
+      "name": "apply_settings",
+      "type": "event",
+      "dir": "out",
+      "default": ""
+    },
+    {
+      "name": "reset_defaults",
+      "type": "event",
+      "dir": "out",
+      "default": ""
+    },
+    {
+      "name": "back",
+      "type": "event",
+      "dir": "out",
+      "default": ""
+    },
+    {
+      "name": "active",
+      "type": "bool",
+      "dir": "in",
+      "default": "true"
+    }
+  ],
+  "hud": [
+    {
+      "name": "objective",
+      "type": "string",
+      "dir": "in",
+      "default": "Reach the Main Entrance"
+    },
+    {
+      "name": "location",
+      "type": "string",
+      "dir": "in",
+      "default": "St. Ren Hospital Grounds"
+    },
+    {
+      "name": "clock",
+      "type": "string",
+      "dir": "in",
+      "default": "17:42"
+    },
+    {
+      "name": "hp",
+      "type": "number",
+      "dir": "in",
+      "default": "64"
+    },
+    {
+      "name": "stamina",
+      "type": "number",
+      "dir": "in",
+      "default": "78"
+    },
+    {
+      "name": "noise_label",
+      "type": "string",
+      "dir": "in",
+      "default": "Low"
+    },
+    {
+      "name": "interact_label",
+      "type": "string",
+      "dir": "in",
+      "default": "Open Gate"
+    },
+    {
+      "name": "interact_visible",
+      "type": "bool",
+      "dir": "in",
+      "default": "true"
+    },
+    {
+      "name": "active",
+      "type": "bool",
+      "dir": "in",
+      "default": "true"
+    }
+  ]
+}

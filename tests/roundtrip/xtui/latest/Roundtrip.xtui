@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "name": "Roundtrip",
+  "id": "roundtrip",
+  "game": "Demo",
+  "spec": {
+    "behavior": 1,
+    "platforms": [],
+    "safeArea": {
+      "default": 0.025,
+      "console": 0.05
+    },
+    "input": {
+      "methods": [],
+      "players": 1
+    },
+    "languages": [
+      "en",
+      "zh-TW"
+    ],
+    "fontFallback": {},
+    "budget": {
+      "frameMs": 0,
+      "effectLayers": 0,
+      "fillRate": 0
+    },
+    "engine": {
+      "name": "",
+      "version": ""
+    },
+    "futureSpec": {
+      "a": 1
+    }
+  },
+  "uis": [
+    {
+      "id": "hud",
+      "doc": "ui/hud.xt",
+      "size": [
+        800,
+        600
+      ],
+      "tags": [
+        "hud"
+      ]
+    }
+  ],
+  "shared": {
+    "assetRoot": "shared",
+    "fontDirs": [],
+    "styles": [],
+    "templateDirs": [],
+    "symbols": "shared/symbols",
+    "tokens": "shared/tokens.xts",
+    "themes": "shared/themes",
+    "strings": "shared/strings",
+    "recipes": "shared/recipes",
+    "design": "design",
+    "futureShared": "s"
+  },
+  "preview": {
+    "dpr": 2,
+    "futurePreview": [
+      1,
+      2
+    ]
+  },
+  "target": "engine",
+  "publish": {
+    "outDir": "out",
+    "languages": [],
+    "embedImages": false,
+    "embedFonts": false,
+    "thumbnails": [
+      320,
+      180
+    ],
+    "atlas": {
+      "enabled": false,
+      "maxSize": 4096,
+      "padding": 2,
+      "mipmaps": false,
+      "scope": "ui"
+    },
+    "futurePublish": true
+  },
+  "futureTop": {
+    "keep": true
+  }
+}

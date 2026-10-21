@@ -1,0 +1,4 @@
+tokens:
+  --color-accent:
+    description: Accent
+    category: color

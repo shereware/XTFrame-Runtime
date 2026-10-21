@@ -1,0 +1,10 @@
+# script hud-fire-reload.json (ui hud)
+## step 1: frame 20 fire three times
+text=27
+text=100
+## step 2: frame 50 reload
+text=30
+text=94
+## step 3: frame 80 heal
+text=30
+text=97

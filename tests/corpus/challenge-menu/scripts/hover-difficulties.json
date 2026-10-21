@@ -1,0 +1,7 @@
+{
+  "ui": "challenge-menu",
+  "steps": [
+    {"frame": 40, "events": ["20 #diff-recruit.PointerEnter"], "note": "hover Recruit"},
+    {"frame": 80, "events": ["60 #diff-recruit.PointerLeave", "60 #diff-veteran.PointerEnter"], "note": "hover Veteran"}
+  ]
+}

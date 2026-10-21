@@ -96,3 +96,5 @@
 ## 43.8 beta 相容聲明（C4 的骨架）
 
 一頁：§43.1 三條承諾、§43.7 的凍結與實驗兩表、「遇到行為差異怎麼回報」（附 `xtframe-view --version` 與專案的 `spec.behavior`）。
+
+**記錄（T-416，2026-10-21）**：`docs/COMPATIBILITY.md`（英文）與 `docs/COMPATIBILITY.zh-TW.md` 已入倉並列入 `tools/export/runtime.lst`；編輯器以 `ExperimentalBadge`（清單 `editor/qt/src/experimental_features.h`，`tools/check_experimental_sync.sh` 比對本節實驗表）標示 Rig、Modifiers（有執行期修改器時）、3D 面板與 `<video>`／`<sequence>` 的 Clip 群組，`layer: overlay` 巢狀順序與 `snapshotState` 無編輯器介面故不標；About 顯示 IR 與行為版本（最新／本專案）、相容性連結與「Copy version info」。

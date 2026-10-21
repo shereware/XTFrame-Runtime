@@ -1,0 +1,10 @@
+{
+  "v": 1,
+  "layers": { "Panel": { "hidden": true, "locked": false, "solo": false, "collapsed": false } },
+  "view": { "zoom": 2.0, "pan": [10.0, 20.0], "device": "16:9", "safeArea": 0.05, "mode": "design",
+            "futureView": "x" },
+  "timeline": { "scope": "", "name": "intro", "playhead": 0.5, "loopRange": [0.0, 1.0],
+                "onion": { "before": 0, "after": 0 }, "futureTimeline": 3 },
+  "sounds": {},
+  "futureTop": { "keep": [1, 2] }
+}
