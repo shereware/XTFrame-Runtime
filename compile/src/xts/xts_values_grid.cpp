@@ -7,8 +7,6 @@
 #include <string>
 #include <vector>
 
-#include "css_color.h"          // core/src: named colours and hsl() (T-322).
-#include "transform_compose.h"  // core/src: 05.5's compose/decompose path (T-120).
 #include "xt/charconv.h"
 #include "xt/compile/diagnostics.h"
 #include "xt/compile/parse_value.h"
@@ -33,8 +31,8 @@ namespace {
 // -------------------------------------------------------------------------------------------
 
 /// One track: `<px> | <%> | <n>fr | auto` (a bare 0 is 0px).
-bool parseGridTrackTok(const Token& t, GridTrack& out, GridReject& why) {
-    if (t.kind == TokenKind::Ident) {
+bool parseGridTrackTok(const Tok& t, GridTrack& out, GridReject& why) {
+    if (t.kind == TokKind::Ident) {
         if (t.text == "auto") {
             out = GridTrack{GridTrackKind::Auto, 0};
             return true;
@@ -45,11 +43,11 @@ bool parseGridTrackTok(const Token& t, GridTrack& out, GridReject& why) {
         }
         return false;
     }
-    if (t.kind == TokenKind::LBracket) {
+    if (t.kind == TokKind::LBracket) {
         why = GridReject::Unsupported;  // A named line.
         return false;
     }
-    if (t.kind != TokenKind::Number || !std::isfinite(t.num) || t.num < 0.0f) {
+    if (t.kind != TokKind::Number || !std::isfinite(t.num) || t.num < 0.0f) {
         return false;
     }
     if (t.unit == "px" || (t.unit.empty() && t.num == 0.0f)) {
@@ -69,36 +67,36 @@ bool parseGridTrackTok(const Token& t, GridTrack& out, GridReject& why) {
 namespace xts_values_detail {
 
 /// `none | [<track> | repeat(<n>, <track>+)]+`, `repeat()` expanded; `none` is an empty list.
-bool parseGridTrackList(const std::vector<Token>& toks, std::vector<GridTrack>& out, GridReject& why) {
+bool parseGridTrackList(const std::vector<Tok>& toks, std::vector<GridTrack>& out, GridReject& why) {
     why = GridReject::Invalid;
     out.clear();
-    if (toks.size() == 1 && toks[0].kind == TokenKind::Ident && toks[0].text == "none") {
+    if (toks.size() == 1 && toks[0].kind == TokKind::Ident && toks[0].text == "none") {
         return true;
     }
     for (size_t i = 0; i < toks.size(); ++i) {
-        const Token& t = toks[i];
-        if (t.kind == TokenKind::Ident && i + 1 < toks.size() && toks[i + 1].kind == TokenKind::LParen) {
+        const Tok& t = toks[i];
+        if (t.kind == TokKind::Ident && i + 1 < toks.size() && toks[i + 1].kind == TokKind::LParen) {
             if (t.text != "repeat") {
                 why = (t.text == "minmax" || t.text == "fit-content") ? GridReject::Unsupported : why;
                 return false;
             }
             size_t close = i + 2;
-            while (close < toks.size() && toks[close].kind != TokenKind::RParen) {
-                if (toks[close].kind == TokenKind::LParen) {
+            while (close < toks.size() && toks[close].kind != TokKind::RParen) {
+                if (toks[close].kind == TokKind::LParen) {
                     why = GridReject::Unsupported;  // minmax() / fit-content() inside repeat().
                     return false;
                 }
                 ++close;
             }
-            if (close >= toks.size() || close < i + 5 || toks[i + 3].kind != TokenKind::Comma) {
+            if (close >= toks.size() || close < i + 5 || toks[i + 3].kind != TokKind::Comma) {
                 return false;
             }
-            const Token& count = toks[i + 2];
-            if (count.kind == TokenKind::Ident && (count.text == "auto-fill" || count.text == "auto-fit")) {
+            const Tok& count = toks[i + 2];
+            if (count.kind == TokKind::Ident && (count.text == "auto-fill" || count.text == "auto-fit")) {
                 why = GridReject::Unsupported;
                 return false;
             }
-            if (count.kind != TokenKind::Number || !count.unit.empty() || !(count.num >= 1.0f) ||
+            if (count.kind != TokKind::Number || !count.unit.empty() || !(count.num >= 1.0f) ||
                 count.num > static_cast<float>(kMaxGridTracks) || std::trunc(count.num) != count.num) {
                 return false;
             }
@@ -149,25 +147,25 @@ namespace xts_values_detail {
 /// `none | <string>+`: one string per row, cells separated by whitespace; a run of `.` is an
 /// empty cell. Every row must have the same cell count and every name must cover a rectangle,
 /// or the whole value is rejected (06 §6.15).
-bool parseGridAreasValue(const std::vector<Token>& toks, StyleValue& out, GridReject& why) {
+bool parseGridAreasValue(const std::vector<Tok>& toks, StyleValue& out, GridReject& why) {
     why = GridReject::Invalid;
     out.kind = StyleValueKind::GridAreas;
     out.gridAreas.clear();
     out.gridAreaRows = 0;
     out.gridAreaCols = 0;
-    if (toks.size() == 1 && toks[0].kind == TokenKind::Ident && toks[0].text == "none") {
+    if (toks.size() == 1 && toks[0].kind == TokKind::Ident && toks[0].text == "none") {
         return true;
     }
     if (toks.empty() || toks.size() > kMaxGridTracks) {
         return false;
     }
     std::vector<std::vector<std::string>> cells;
-    for (const Token& t : toks) {
-        if (t.kind != TokenKind::String) {
+    for (const Tok& t : toks) {
+        if (t.kind != TokKind::String) {
             return false;
         }
         std::vector<std::string> row;
-        const std::string& text = t.text;
+        const std::string_view text = t.text;
         size_t i = 0;
         while (i < text.size()) {
             if (text[i] == ' ' || text[i] == '\t' || text[i] == '\n' || text[i] == '\r') {
@@ -191,7 +189,7 @@ bool parseGridAreasValue(const std::vector<Token>& toks, StyleValue& out, GridRe
             if (i == start) {
                 return false;  // A character that is neither a name nor whitespace nor `.`.
             }
-            row.push_back(text.substr(start, i - start));
+            row.emplace_back(text.substr(start, i - start));
         }
         if (row.empty() || row.size() > kMaxGridTracks || (!cells.empty() && row.size() != cells[0].size())) {
             return false;
@@ -249,50 +247,22 @@ bool parseGridAreasValue(const std::vector<Token>& toks, StyleValue& out, GridRe
 
 /// One grid line `toks[begin, end)`: `auto | <integer> | span <integer>` into the kGridLine*
 /// encoding. Negative lines and named lines are outside the subset.
-bool parseGridLine(const std::vector<Token>& toks, size_t begin, size_t end, uint32_t& out, GridReject& why) {
-    const auto integer = [](const Token& t, int& v) {
-        if (t.kind != TokenKind::Number || !t.unit.empty() || std::trunc(t.num) != t.num ||
-            !(std::fabs(t.num) <= 1.0e6f)) {
-            return false;
-        }
-        v = static_cast<int>(t.num);
-        return true;
-    };
-    const size_t n = end - begin;
-    int v = 0;
-    if (n == 1 && toks[begin].kind == TokenKind::Ident && toks[begin].text == "auto") {
-        out = kGridLineAuto;
-        return true;
+bool parseGridLine(const std::vector<Tok>& toks, size_t begin, size_t end, uint32_t& out, GridReject& why) {
+    bool unsupported = false;
+    const bool ok = css_values::parseGridLine(toks.data() + begin, end - begin, out, unsupported);
+    if (unsupported) {
+        why = GridReject::Unsupported;
     }
-    if (n == 1 && integer(toks[begin], v)) {
-        if (v < 1) {
-            why = GridReject::Unsupported;  // 0 is invalid in CSS; negative lines are not done.
-            return false;
-        }
-        out = static_cast<uint32_t>(std::min<int>(v, static_cast<int>(kMaxGridTracks) + 1));
-        return true;
-    }
-    if (n == 2 && toks[begin].kind == TokenKind::Ident && toks[begin].text == "span" &&
-        integer(toks[begin + 1], v)) {
-        if (v < 1) {
-            return false;
-        }
-        out = kGridLineSpan | static_cast<uint32_t>(std::min<int>(v, static_cast<int>(kMaxGridTracks)));
-        return true;
-    }
-    if (n >= 1 && toks[begin].kind == TokenKind::Ident) {
-        why = GridReject::Unsupported;  // A named line.
-    }
-    return false;
+    return ok;
 }
 
 /// `grid-column` / `grid-row`: `<line> [/ <line>]` -> the start / end longhands (a missing end
 /// is `auto`).
-bool parseGridLineShorthand(const std::vector<Token>& toks, uint16_t startProp, int line,
+bool parseGridLineShorthand(const std::vector<Tok>& toks, uint16_t startProp, int line,
                             std::vector<StyleDecl>& out, GridReject& why) {
     size_t slash = toks.size();
     for (size_t i = 0; i < toks.size(); ++i) {
-        if (isSlashTok(toks[i])) {
+        if (isSlash(toks[i])) {
             slash = i;
             break;
         }

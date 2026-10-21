@@ -7,8 +7,6 @@
 #include <string>
 #include <vector>
 
-#include "css_color.h"          // core/src: named colours and hsl() (T-322).
-#include "transform_compose.h"  // core/src: 05.5's compose/decompose path (T-120).
 #include "xt/charconv.h"
 #include "xt/compile/diagnostics.h"
 #include "xt/compile/parse_value.h"
@@ -33,7 +31,7 @@ namespace {
 // Single (non-shorthand) value dispatch.
 // -------------------------------------------------------------------------------------------
 
-bool parseSingleValue(const PropInfo& info, const std::vector<Token>& toks, StyleValue& out) {
+bool parseSingleValue(const PropInfo& info, const std::vector<Tok>& toks, StyleValue& out) {
     switch (info.kind) {
         case StyleValueKind::Float: {
             if (info.prop == xt::prop::AspectRatio) {  // T-328 (06 §6.16).
@@ -78,8 +76,8 @@ bool parseSingleValue(const PropInfo& info, const std::vector<Token>& toks, Styl
                 return false;
             }
             if (info.prop == xt::prop::LineHeight) {
-                const Token& t = toks[0];
-                if (t.kind != TokenKind::Number) {
+                const Tok& t = toks[0];
+                if (t.kind != TokKind::Number) {
                     return false;
                 }
                 if (t.unit.empty()) {
@@ -90,7 +88,7 @@ bool parseSingleValue(const PropInfo& info, const std::vector<Token>& toks, Styl
             }
             // 05.5/19.10 (T-47a): `perspective: none` encodes as LengthUnit::Auto ("none" isn't
             // `parseLengthTok`'s "auto" spelling, so it needs its own check here).
-            if (info.prop == xt::prop::Perspective && toks[0].kind == TokenKind::Ident &&
+            if (info.prop == xt::prop::Perspective && toks[0].kind == TokKind::Ident &&
                 toks[0].text == "none") {
                 out.kind = StyleValueKind::Length;
                 out.len = Length{0, LengthUnit::Auto};
@@ -139,7 +137,7 @@ bool parseSingleValue(const PropInfo& info, const std::vector<Token>& toks, Styl
             if (toks.size() != 1) {
                 return false;
             }
-            if (info.prop == styleprop::LineClamp && toks[0].kind == TokenKind::Number) {
+            if (info.prop == styleprop::LineClamp && toks[0].kind == TokKind::Number) {
                 // T-331 (05 §5.9.8): an integer >= 1 (`none` is the keyword below).
                 const int n = xt::toInt32Sat(toks[0].num);
                 if (!toks[0].unit.empty() || n < 1 || static_cast<float>(n) != toks[0].num) {
@@ -150,7 +148,7 @@ bool parseSingleValue(const PropInfo& info, const std::vector<Token>& toks, Styl
                 return true;
             }
             if (info.prop == styleprop::FontWeight) {
-                if (toks[0].kind == TokenKind::Number && toks[0].unit.empty()) {
+                if (toks[0].kind == TokKind::Number && toks[0].unit.empty()) {
                     int w = xt::toInt32Sat(toks[0].num);  // T-258b (D11): no UB past int.
                     if (w < 100 || w > 900 || w % 100 != 0) {
                         return false;
@@ -160,7 +158,7 @@ bool parseSingleValue(const PropInfo& info, const std::vector<Token>& toks, Styl
                     return true;
                 }
             }
-            if (toks[0].kind != TokenKind::Ident) {
+            if (toks[0].kind != TokKind::Ident) {
                 return false;
             }
             uint32_t e;
@@ -174,7 +172,7 @@ bool parseSingleValue(const PropInfo& info, const std::vector<Token>& toks, Styl
         case StyleValueKind::String: {
             if (info.prop == styleprop::GridArea) {
                 // T-338 (06 §6.15): only `<name>` or `auto` (stored as "").
-                if (toks.size() != 1 || toks[0].kind != TokenKind::Ident) {
+                if (toks.size() != 1 || toks[0].kind != TokKind::Ident) {
                     return false;
                 }
                 out.kind = StyleValueKind::String;
@@ -190,12 +188,12 @@ bool parseSingleValue(const PropInfo& info, const std::vector<Token>& toks, Styl
                 out.str = std::move(s);
                 return true;
             }
-            if (toks.size() == 1 && toks[0].kind == TokenKind::String) {
+            if (toks.size() == 1 && toks[0].kind == TokKind::String) {
                 out.kind = StyleValueKind::String;
                 out.str = toks[0].text;
                 return true;
             }
-            if (toks.size() == 1 && toks[0].kind == TokenKind::Ident) {
+            if (toks.size() == 1 && toks[0].kind == TokKind::Ident) {
                 out.kind = StyleValueKind::String;
                 out.str = toks[0].text;
                 return true;
@@ -226,16 +224,16 @@ bool parseSingleValue(const PropInfo& info, const std::vector<Token>& toks, Styl
             // parameters; each number is px or plain.
             std::vector<float> values;
             if (info.kind == StyleValueKind::FloatArray && toks.size() == 1 &&
-                toks[0].kind == TokenKind::Ident && toks[0].text == "none") {
+                toks[0].kind == TokKind::Ident && toks[0].text == "none") {
                 out.kind = StyleValueKind::FloatArray;
                 out.floats.clear();
                 return true;
             }
-            for (const Token& t : toks) {
-                if (t.kind == TokenKind::Comma && info.kind == StyleValueKind::FloatArray) {
+            for (const Tok& t : toks) {
+                if (t.kind == TokKind::Comma && info.kind == StyleValueKind::FloatArray) {
                     continue;
                 }
-                if (t.kind != TokenKind::Number || !(t.unit.empty() || t.unit == "px")) {
+                if (t.kind != TokKind::Number || !(t.unit.empty() || t.unit == "px")) {
                     return false;
                 }
                 values.push_back(t.num);
@@ -270,16 +268,9 @@ bool parseSingleValue(const PropInfo& info, const std::vector<Token>& toks, Styl
 
 }  // namespace
 
-bool parseEasingValue(const std::vector<Token>& tokens, Easing& out, bool* stepsClamped,
-                      std::vector<EasingPoint>* easingPoints) {
-    Cursor cur(tokens);
-    if (!parseEasingCursor(cur, out, stepsClamped, easingPoints)) {
-        return false;
-    }
-    return cur.atEnd();
-}
+namespace xts_values_detail {
 
-bool parseAndExpandDecl(const PropInfo* info, const std::vector<Token>& tokens, std::string_view fileName,
+bool parseAndExpandDecl(const PropInfo* info, const std::vector<Tok>& tokens, std::string_view fileName,
                         int line, DiagnosticSink& sink, std::vector<StyleDecl>& outDecls,
                         std::vector<EasingPoint>* easingPoints) {
     auto invalid = [&](const std::string& extra) {
@@ -299,7 +290,7 @@ bool parseAndExpandDecl(const PropInfo* info, const std::vector<Token>& tokens, 
         // T-336 (05 §5.9.8): `overflow: <x> <y>` sets the two axes; one value stays StyleProp 168.
         uint32_t x = 0;
         uint32_t y = 0;
-        if (tokens[0].kind != TokenKind::Ident || tokens[1].kind != TokenKind::Ident ||
+        if (tokens[0].kind != TokKind::Ident || tokens[1].kind != TokKind::Ident ||
             !enumValue(styleprop::OverflowX, tokens[0].text, x) ||
             !enumValue(styleprop::OverflowY, tokens[1].text, y)) {
             return invalid("");
@@ -531,12 +522,12 @@ bool parseAndExpandDecl(const PropInfo* info, const std::vector<Token>& tokens, 
     if (info->prop == xt::prop::PathData) {
         // T-190: `d: path("<svg path data>")` or a bare string; parsed into verbs/points when the
         // inline `<svg>` timeline is built (compile_document.cpp).
-        const Token* str = nullptr;
-        if (tokens.size() == 1 && tokens[0].kind == TokenKind::String) {
+        const Tok* str = nullptr;
+        if (tokens.size() == 1 && tokens[0].kind == TokKind::String) {
             str = &tokens[0];
-        } else if (tokens.size() == 4 && tokens[0].kind == TokenKind::Ident && tokens[0].text == "path" &&
-                   tokens[1].kind == TokenKind::LParen && tokens[2].kind == TokenKind::String &&
-                   tokens[3].kind == TokenKind::RParen) {
+        } else if (tokens.size() == 4 && tokens[0].kind == TokKind::Ident && tokens[0].text == "path" &&
+                   tokens[1].kind == TokKind::LParen && tokens[2].kind == TokKind::String &&
+                   tokens[3].kind == TokKind::RParen) {
             str = &tokens[2];
         }
         if (str == nullptr) {
@@ -579,9 +570,9 @@ namespace {
 // T-170: design tokens (docs/design/05-style-and-css.md §5.9.2-5.9.3).
 // -------------------------------------------------------------------------------------------
 
-bool isVarOpen(const std::vector<Token>& tokens, size_t i) {
-    return i + 1 < tokens.size() && tokens[i].kind == TokenKind::Ident && tokens[i].text == "var" &&
-           tokens[i + 1].kind == TokenKind::LParen;
+bool isVarOpen(const std::vector<Tok>& tokens, size_t i) {
+    return i + 1 < tokens.size() && tokens[i].kind == TokKind::Ident && tokens[i].text == "var" &&
+           tokens[i + 1].kind == TokKind::LParen;
 }
 
 /// A number as `.xts` text: an integer stays one, anything else gets up to 6 decimals, trailing
@@ -604,17 +595,17 @@ std::string numberText(float value) {
 
 /// The whole-value form `var(--name)` / `var(--name, <fallback>)`: fills `name` and `fallback`.
 /// False when `tokens` is anything else (including a fallback that itself holds a `var()`).
-bool splitWholeVar(const std::vector<Token>& tokens, std::string& name, std::vector<Token>& fallback) {
-    if (tokens.size() < 4 || !isVarOpen(tokens, 0) || tokens[2].kind != TokenKind::Ident ||
+bool splitWholeVar(const std::vector<Tok>& tokens, std::string& name, std::vector<Tok>& fallback) {
+    if (tokens.size() < 4 || !isVarOpen(tokens, 0) || tokens[2].kind != TokKind::Ident ||
         tokens[2].text.size() < 3 || tokens[2].text.compare(0, 2, "--") != 0) {
         return false;
     }
     int depth = 0;
     size_t close = tokens.size();
     for (size_t i = 1; i < tokens.size(); ++i) {
-        if (tokens[i].kind == TokenKind::LParen) {
+        if (tokens[i].kind == TokKind::LParen) {
             ++depth;
-        } else if (tokens[i].kind == TokenKind::RParen && --depth == 0) {
+        } else if (tokens[i].kind == TokKind::RParen && --depth == 0) {
             close = i;
             break;
         }
@@ -627,7 +618,7 @@ bool splitWholeVar(const std::vector<Token>& tokens, std::string& name, std::vec
     if (tokens.size() == 4) {
         return true;
     }
-    if (tokens[3].kind != TokenKind::Comma || tokens.size() == 5) {
+    if (tokens[3].kind != TokKind::Comma || tokens.size() == 5) {
         return false;
     }
     fallback.assign(tokens.begin() + 4, tokens.end() - 1);
@@ -643,7 +634,7 @@ bool isUniformShorthand(std::string_view cssName) {
 
 }  // namespace
 
-bool containsVarFunction(const std::vector<Token>& tokens) {
+bool containsVarFunction(const std::vector<Tok>& tokens) {
     for (size_t i = 0; i < tokens.size(); ++i) {
         if (isVarOpen(tokens, i)) {
             return true;
@@ -652,26 +643,25 @@ bool containsVarFunction(const std::vector<Token>& tokens) {
     return false;
 }
 
-std::string tokensToText(const std::vector<Token>& tokens) {
+std::string tokensToText(const std::vector<Tok>& tokens) {
     std::string out;
     for (size_t i = 0; i < tokens.size(); ++i) {
-        const Token& t = tokens[i];
-        const bool glueLeft =
-            t.kind == TokenKind::RParen || t.kind == TokenKind::Comma ||
-            (t.kind == TokenKind::LParen && i > 0 && tokens[i - 1].kind == TokenKind::Ident);
-        const bool afterOpen = i > 0 && tokens[i - 1].kind == TokenKind::LParen;
+        const Tok& t = tokens[i];
+        const bool glueLeft = t.kind == TokKind::RParen || t.kind == TokKind::Comma ||
+                              (t.kind == TokKind::LParen && i > 0 && tokens[i - 1].kind == TokKind::Ident);
+        const bool afterOpen = i > 0 && tokens[i - 1].kind == TokKind::LParen;
         if (!out.empty() && !glueLeft && !afterOpen) {
             out += ' ';
         }
         switch (t.kind) {
-            case TokenKind::Ident:
+            case TokKind::Ident:
                 out += t.text;
                 break;
-            case TokenKind::Number:
+            case TokKind::Number:
                 out += numberText(t.num);
                 out += t.unit;
                 break;
-            case TokenKind::String:
+            case TokKind::String:
                 out += '"';
                 for (char c : t.text) {
                     if (c == '"' || c == '\\') {
@@ -681,38 +671,38 @@ std::string tokensToText(const std::vector<Token>& tokens) {
                 }
                 out += '"';
                 break;
-            case TokenKind::Hash:
+            case TokKind::Hash:
                 out += '#';
                 out += t.text;
                 break;
-            case TokenKind::LParen:
+            case TokKind::LParen:
                 out += '(';
                 break;
-            case TokenKind::RParen:
+            case TokKind::RParen:
                 out += ')';
                 break;
-            case TokenKind::Comma:
+            case TokKind::Comma:
                 out += ',';
                 break;
-            case TokenKind::Colon:
+            case TokKind::Colon:
                 out += ':';
                 break;
-            case TokenKind::Dot:
+            case TokKind::Dot:
                 out += '.';
                 break;
-            case TokenKind::Star:
+            case TokKind::Star:
                 out += '*';
                 break;
-            case TokenKind::Gt:
+            case TokKind::Gt:
                 out += '>';
                 break;
-            case TokenKind::Bang:
+            case TokKind::Bang:
                 out += '!';
                 break;
-            case TokenKind::At:
+            case TokKind::At:
                 out += '@';
                 break;
-            case TokenKind::Unknown: {
+            case TokKind::Unknown: {
                 // T-176: a lone operator character (`+`, `/`, `<`, `=`) the lexer has no token for.
                 const std::string_view prefix = "unexpected character '";
                 if (t.text.size() == prefix.size() + 2 && t.text.compare(0, prefix.size(), prefix) == 0) {
@@ -727,10 +717,10 @@ std::string tokensToText(const std::vector<Token>& tokens) {
     return out;
 }
 
-bool parseVarDecl(const PropInfo* info, const std::vector<Token>& tokens, std::string_view fileName, int line,
+bool parseVarDecl(const PropInfo* info, const std::vector<Tok>& tokens, std::string_view fileName, int line,
                   DiagnosticSink& sink, std::vector<StyleDecl>& outDecls) {
     std::string name;
-    std::vector<Token> fallback;
+    std::vector<Tok> fallback;
     const bool whole = splitWholeVar(tokens, name, fallback);
     const bool plain = info->kind == StyleValueKind::Float || info->kind == StyleValueKind::Length ||
                        info->kind == StyleValueKind::Color || info->kind == StyleValueKind::Enum;
@@ -742,7 +732,7 @@ bool parseVarDecl(const PropInfo* info, const std::vector<Token>& tokens, std::s
         d.line = line;
         if (!fallback.empty()) {
             std::vector<StyleDecl> parsed;
-            if (!parseAndExpandDecl(info, fallback, fileName, line, sink, parsed)) {
+            if (!parseAndExpandDecl(info, fallback, fileName, line, sink, parsed, nullptr)) {
                 return false;  // parseAndExpandDecl already warned about the fallback.
             }
             if (parsed.size() != 1) {
@@ -760,17 +750,17 @@ bool parseVarDecl(const PropInfo* info, const std::vector<Token>& tokens, std::s
     }
     if (whole && info->kind == StyleValueKind::Shorthand && isUniformShorthand(info->cssName)) {
         // Which longhands the shorthand feeds: expand a placeholder `0px` and keep only the props.
-        Token zero;
-        zero.kind = TokenKind::Number;
+        Tok zero;
+        zero.kind = TokKind::Number;
         zero.num = 0;
         zero.unit = "px";
         DiagnosticSink scratch;
         std::vector<StyleDecl> shape;
         std::vector<StyleDecl> parsedFallback;
-        if (parseAndExpandDecl(info, std::vector<Token>{zero}, fileName, line, scratch, shape) &&
+        if (parseAndExpandDecl(info, std::vector<Tok>{zero}, fileName, line, scratch, shape, nullptr) &&
             !shape.empty()) {
             if (!fallback.empty() &&
-                !parseAndExpandDecl(info, fallback, fileName, line, sink, parsedFallback)) {
+                !parseAndExpandDecl(info, fallback, fileName, line, sink, parsedFallback, nullptr)) {
                 return false;
             }
             for (const StyleDecl& longhand : shape) {
@@ -801,19 +791,22 @@ bool parseVarDecl(const PropInfo* info, const std::vector<Token>& tokens, std::s
     return true;
 }
 
+}  // namespace xts_values_detail
+
 bool parseValue(uint16_t prop, std::string_view text, StyleValue& out) {
     const PropInfo* info = findPropById(prop);
     if (info == nullptr) {
         return false;
     }
     Lexer lexer(text);
-    std::vector<Token> toks;
+    std::vector<Token> lexed;
     for (Token t = lexer.next(); t.kind != TokenKind::End; t = lexer.next()) {
         if (t.kind == TokenKind::Unknown) {
             return false;
         }
-        toks.push_back(t);
+        lexed.push_back(t);
     }
+    const std::vector<Tok> toks = toValueTokens(lexed);
     if (info->kind == StyleValueKind::TransitionList || info->kind == StyleValueKind::AnimationList) {
         // No DiagnosticSink available here; T-35's runtime mini-parser doesn't need transition/
         // animation lists (those are compile-time-only per 05.6), so this is conservatively
@@ -826,14 +819,15 @@ bool parseValue(uint16_t prop, std::string_view text, StyleValue& out) {
 Status parseEffectList(std::string_view text, std::vector<EffectDeclEntry>& out, DiagnosticSink& sink) {
     out.clear();
     Lexer lexer(text);
-    std::vector<Token> toks;
+    std::vector<Token> lexed;
     for (Token t = lexer.next(); t.kind != TokenKind::End; t = lexer.next()) {
         if (t.kind == TokenKind::Unknown) {
             sink.error("<effect>", "invalid value for \"effect\": lexer error", 1);
             return Status::kInvalidArgument;
         }
-        toks.push_back(t);
+        lexed.push_back(t);
     }
+    const std::vector<Tok> toks = toValueTokens(lexed);
     if (toks.empty()) {
         sink.error("<effect>", "invalid value for \"effect\": empty", 1);
         return Status::kInvalidArgument;
@@ -846,8 +840,10 @@ Status parseEffectList(std::string_view text, std::vector<EffectDeclEntry>& out,
 
 // docs/design/28-animation-editing.md §28.1.2 / 05.9.3 (T-172): an `@timeline` time point is
 // seconds or milliseconds; a bare `0` is accepted as 0 s. Negative times are rejected.
-bool parseTimelineTime(const Token& tok, float& seconds) {
-    if (tok.kind != TokenKind::Number) {
+bool parseTimelineTime(const Token& lexed, float& seconds) {
+    const std::vector<Token> one{lexed};
+    const Tok tok = toValueTokens(one)[0];
+    if (tok.kind != TokKind::Number) {
         return false;
     }
     if (tok.unit.empty()) {
@@ -866,7 +862,8 @@ bool parseTimelineTime(const Token& tok, float& seconds) {
 // docs/design/18-effects.md §18.12 (T-172): the value of an `effect.<effect>.<param>` timeline
 // declaration. A color parameter takes any `<color>`; every other parameter is one number, unitless
 // or in the unit 18.3 gives it (px for lengths, deg for angles), stored as a plain Float.
-bool parseEffectParamValue(const std::vector<Token>& tokens, bool isColor, StyleValue& out) {
+bool parseEffectParamValue(const std::vector<Token>& lexed, bool isColor, StyleValue& out) {
+    const std::vector<Tok> tokens = toValueTokens(lexed);
     if (isColor) {
         Color c;
         if (!parseColorTokens(tokens, c)) {
@@ -876,16 +873,50 @@ bool parseEffectParamValue(const std::vector<Token>& tokens, bool isColor, Style
         out.color = c;
         return true;
     }
-    if (tokens.size() != 1 || tokens[0].kind != TokenKind::Number) {
+    if (tokens.size() != 1 || tokens[0].kind != TokKind::Number) {
         return false;
     }
-    const Token& t = tokens[0];
+    const Tok& t = tokens[0];
     if (!(t.unit.empty() || t.unit == "px" || t.unit == "deg")) {
         return false;
     }
     out.kind = StyleValueKind::Float;
     out.f = t.num;
     return true;
+}
+
+// The lexer-token entry points xts_parser.cpp declares: one conversion, then the css_values-token
+// versions above (T-413).
+
+bool parseEasingValue(const std::vector<Token>& tokens, Easing& out, bool* stepsClamped,
+                      std::vector<EasingPoint>* easingPoints) {
+    const std::vector<Tok> toks = toValueTokens(tokens);
+    Cursor cur(toks);
+    return parseEasingCursor(cur, out, stepsClamped, easingPoints) && cur.atEnd();
+}
+
+bool parseAndExpandDecl(const PropInfo* info, const std::vector<Token>& tokens, std::string_view fileName,
+                        int line, DiagnosticSink& sink, std::vector<StyleDecl>& outDecls,
+                        std::vector<EasingPoint>* easingPoints) {
+    return xts_values_detail::parseAndExpandDecl(info, toValueTokens(tokens), fileName, line, sink, outDecls,
+                                                 easingPoints);
+}
+
+bool containsVarFunction(const std::vector<Token>& tokens) {
+    return xts_values_detail::containsVarFunction(toValueTokens(tokens));
+}
+
+bool isCalcFunctionValue(const std::vector<Token>& tokens) {
+    return xts_values_detail::isCalcFunctionValue(toValueTokens(tokens));
+}
+
+std::string tokensToText(const std::vector<Token>& tokens) {
+    return xts_values_detail::tokensToText(toValueTokens(tokens));
+}
+
+bool parseVarDecl(const PropInfo* info, const std::vector<Token>& tokens, std::string_view fileName, int line,
+                  DiagnosticSink& sink, std::vector<StyleDecl>& outDecls) {
+    return xts_values_detail::parseVarDecl(info, toValueTokens(tokens), fileName, line, sink, outDecls);
 }
 
 }  // namespace xt::compile

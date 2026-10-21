@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string_view>
 
+#include "style_decode.h"  // core/src: the StyleProp numbers (T-413).
 #include "xt/compile/style_model.h"
 #include "xt/node.h"  // ConstraintKind (T-243).
 #include "xt/property.h"
@@ -13,110 +14,11 @@
 namespace xt::compile {
 
 /// StyleProp numbers, docs/design/05-style-and-css.md §5.4. Not animatable (PropId 0-159 covers
-/// the animatable range instead; see core/include/xt/property.h).
+/// the animatable range instead; see core/include/xt/property.h). T-413: the one table is core's
+/// (core/src/style_decode.h, which the runtime decodes with); the compiler names the same numbers
+/// through it.
 namespace styleprop {
-inline constexpr uint16_t Display = 160;
-inline constexpr uint16_t Position = 161;
-inline constexpr uint16_t FlexDirection = 162;
-inline constexpr uint16_t FlexWrap = 163;
-inline constexpr uint16_t JustifyContent = 164;
-inline constexpr uint16_t AlignItems = 165;
-inline constexpr uint16_t AlignSelf = 166;
-inline constexpr uint16_t AlignContent = 167;
-inline constexpr uint16_t Overflow = 168;
-inline constexpr uint16_t ZIndex = 169;
-inline constexpr uint16_t Visibility = 170;
-inline constexpr uint16_t PointerEvents = 171;
-inline constexpr uint16_t FontFamily = 172;
-inline constexpr uint16_t FontWeight = 173;
-inline constexpr uint16_t FontStyle = 174;
-inline constexpr uint16_t TextAlign = 175;
-inline constexpr uint16_t WhiteSpace = 176;
-inline constexpr uint16_t TextOverflow = 177;
-inline constexpr uint16_t Cursor = 178;
-inline constexpr uint16_t ObjectFit = 179;
-inline constexpr uint16_t Transition = 180;
-inline constexpr uint16_t Animation = 181;
-inline constexpr uint16_t BackgroundImage = 182;
-inline constexpr uint16_t Direction = 183;
-inline constexpr uint16_t WritingMode = 184;
-inline constexpr uint16_t TextOrientation = 185;
-inline constexpr uint16_t Lang = 186;
-inline constexpr uint16_t Effect = 187;              ///< 18-effects.md §18.4 (T-51a).
-inline constexpr uint16_t BackfaceVisibility = 188;  ///< 05.5/19.10 (T-47a).
-inline constexpr uint16_t TextRendering = 189;       ///< 23.4/T-101; auto | geometricPrecision.
-inline constexpr uint16_t BackgroundGradient = 190;  ///< 05.5c (T-115); ListRef-valued.
-inline constexpr uint16_t PointerWatch = 191;        ///< 27.2.5/08.9 (T-174); false | true.
-inline constexpr uint16_t TextEffect = 192;          ///< 07.8 (T-178); ListRef into STYL effects[].
-inline constexpr uint16_t ClipStart = 193;           ///< 28.2/04.10.2 (T-191); seconds (`0.2s`).
-inline constexpr uint16_t ClipRate = 194;            ///< 28.2/04.10.2 (T-191); a number.
-inline constexpr uint16_t FocusNav = 195;            ///< 08.9 (T-194); auto | explicit | none.
-inline constexpr uint16_t Layer = 196;               ///< 08.9 (T-194); normal | overlay.
-/// T-199 (05 §5.9.2, 26 §26.3.4): `border-image` longhands; encodings in core/src/style_decode.h.
-inline constexpr uint16_t BorderImageSource = 197;  ///< StringRef: asset name or "none".
-inline constexpr uint16_t BorderImageSlice =
-    198;  ///< 4 x f32 (Color-encoded): px, -fraction = %, NaN = auto.
-inline constexpr uint16_t BorderImageRepeat = 199;  ///< stretch | repeat | round.
-inline constexpr uint16_t BorderImageFill = 200;    ///< false | true.
-inline constexpr uint16_t OutlineStyle = 201;       ///< 05 §5.9.8 (T-325); none | solid.
-inline constexpr uint16_t TextTransform = 202;      ///< 05 §5.9.8 (T-323); inherited.
-/// 05 §5.9.8 (T-324): none | [underline || overline || line-through], a set of bits 1/2/4
-/// (xt::kTextDecoration*).
-inline constexpr uint16_t TextDecorationLine = 203;
-inline constexpr uint16_t MixBlendMode = 204;  ///< 18 §18.12 (T-326); a BlendMode value.
-/// 05 §5.9.8 (T-327): stretch | no-repeat | repeat | repeat-x | repeat-y (xt::kBackgroundRepeat*).
-inline constexpr uint16_t BackgroundRepeat = 205;
-inline constexpr uint16_t ImageRendering = 206;  ///< 05 §5.9.8 (T-327); auto | pixelated; inherited.
-/// 05 §5.9.8 (T-332): `none | inset() | circle() | ellipse() | polygon()`; Enum = 0 or 1 + the
-/// `CLIP` chunk shape index; not inherited, not animatable.
-inline constexpr uint16_t ClipPath = 207;
-/// 05 §5.9.8 (T-331): none | <integer >= 1> (alias `-webkit-line-clamp`); Enum payload = the
-/// count, 0 = none.
-inline constexpr uint16_t LineClamp = 256;  ///< The first StyleProp past the rig PropIds.
-/// 05 §5.9.8 (T-331): normal | tabular-nums; inherited.
-inline constexpr uint16_t FontVariantNumeric = 257;
-/// 05 §5.9.8 (T-333): `border-top/right/bottom/left-style` (`border-style` 1-4 values expands to
-/// them): none | solid | dashed | dotted (xt::kBorderStyle*), initial solid; not inherited.
-inline constexpr uint16_t BorderTopStyle = 258;
-inline constexpr uint16_t BorderRightStyle = 259;
-inline constexpr uint16_t BorderBottomStyle = 260;
-inline constexpr uint16_t BorderLeftStyle = 261;
-/// 05 §5.9.8 (T-336): `overflow-x` / `overflow-y` (visible | hidden | scroll | auto); `overflow`
-/// with one value stays StyleProp 168 (both axes), with two values expands to these.
-inline constexpr uint16_t OverflowX = 262;
-inline constexpr uint16_t OverflowY = 263;
-/// 06 §6.15 (T-338): grid. `grid-template-columns` / `-rows` (GridTracks: Enum 0 = none, else 1 +
-/// the IR `GRID` track-list index), `grid-template-areas` (GridAreas: likewise into the area
-/// lists), `justify-items` (AlignItems numbering), the four line longhands (Enum, xt::kGridLine*)
-/// and `grid-area: <name> | auto` (String; `auto` = ""). None inherited, none animatable.
-inline constexpr uint16_t GridTemplateColumns = 264;
-inline constexpr uint16_t GridTemplateRows = 265;
-inline constexpr uint16_t GridTemplateAreas = 266;
-inline constexpr uint16_t JustifyItems = 267;
-inline constexpr uint16_t GridColumnStart = 268;
-inline constexpr uint16_t GridColumnEnd = 269;
-inline constexpr uint16_t GridRowStart = 270;
-inline constexpr uint16_t GridRowEnd = 271;
-inline constexpr uint16_t GridArea = 272;
-/// 05 §5.9.9 (T-345): `ui-scale: auto | none | clamp(<min>, <max>)`, four f32 encoded like a
-/// Color value: (mode 0 auto / 1 none / 2 clamp, min, max, 0); inherited, not animatable.
-inline constexpr uint16_t UiScale = 273;
-/// 05 §5.9.9 (T-345): `media-override: auto | show | hide` (Enum 0 / 1 / 2); inherited, not
-/// animatable.
-inline constexpr uint16_t MediaOverride = 274;
-/// 05 §5.9.10 (T-376): `app-region: none | drag | no-drag` (Enum 0 / 1 / 2); inherited, not
-/// animatable.
-inline constexpr uint16_t AppRegion = 275;
-/// 05 §5.9.11 (T-386): `hit-slop: <length>{1,4}` (margin order); a shorthand: since IR minor 8
-/// (T-405) it is written as the four Length longhands below (IR minor <= 7 wrote one Color-encoded
-/// StyleProp 276 per xt::kHitSlopEmBias). Not inherited, not animatable.
-inline constexpr uint16_t HitSlop = 276;
-/// T-405 (02 §2.6): one `hit-slop` side (top, right, bottom, left), a Length in px, `%` or `em`.
-/// Not source property names: only the `hit-slop` shorthand emits them.
-inline constexpr uint16_t HitSlopTop = 277;
-inline constexpr uint16_t HitSlopRight = 278;
-inline constexpr uint16_t HitSlopBottom = 279;
-inline constexpr uint16_t HitSlopLeft = 280;
+using namespace xt::style_decode::styleprop;
 /// StyleProps share IrDecl's number space with the animatable PropIds. The shape-modifier /
 /// parametric-shape / rig PropIds take 208-255 (T-225b, T-243), so StyleProps fill 160-207
 /// (kLastLow) and continue from kFirstHigh (256), below the effect PropIds (0x8000).

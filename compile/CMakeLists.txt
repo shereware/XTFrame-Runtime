@@ -43,7 +43,8 @@ add_library(xt_compile STATIC
 )
 target_link_libraries(xt_compile PUBLIC xt_core)
 target_include_directories(xt_compile PUBLIC include)
-# core/src/transform_compose.h: the shared `transform` compose/decompose helper (T-120).
+# core/src private headers the compiler shares with the runtime: css_values.h (the CSS value grammar,
+# T-413), css_color.h, transform_compose.h (T-120) and style_decode.h (the StyleProp numbers).
 target_include_directories(xt_compile PRIVATE ${PROJECT_SOURCE_DIR}/core/src)
 target_link_libraries(xt_compile PRIVATE xt_nlohmann)
 xt_enable_exceptions(xt_compile)

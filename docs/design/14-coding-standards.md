@@ -74,6 +74,8 @@ core/
     └── mini_css.cpp         // 13.3 setStyle 用
 ```
 
+**檔案長度（2026-10-21，B17 C3／T-415）**：新檔案 ≤ 1,500 行；`tests/` 底下的測試檔 ≤ 2,500 行。既有超過者列在豁免清單 `tools/file_length_allow.txt`（一行一個路徑），只減不增，拆檔後移除該行。`tools/check_file_length.sh` 檢查（`dev_check.sh` 套件 `shape`），清單外的超長檔即失敗；清單內已降到上限以下的項目只警告（過期項目）。不計第三方、建置目錄與生成檔。重複程式碼：`tools/dupcheck.py` 的組數記於 `tools/dupcheck_baseline.txt`，`tools/check_dupcheck.sh` 只在組數增加時警告、不擋；覆蓋率（`coverage.sh`）不進閘門。
+
 ## 14.6 註解與文件
 
 - 每個公開標頭頂部一段用途說明；每個公開函式一行 `///` 摘要，參數語意若不明顯再補。
@@ -113,3 +115,4 @@ core/
 
 - 數字文字不依賴行程 locale：解析走 `xt::fromChars`／`css_number::read`，輸出走 `xt::formatFloat`（`%g`）或 `xt::formatFixed`（`%.<n>f`）；進入檔案、IR、JSON 的文字不用 `strtof` 家族與 printf 家族的浮點轉換；每個 Qt 程式在建立 application 物件後把 `LC_NUMERIC` 固定為 "C"。
 - 路徑字串一律 UTF-8；`std::filesystem::path` 只經 `compile::pathFromUtf8`／`pathToUtf8`／`genericPathToUtf8` 建立與轉回；`core/` 不得 include `<filesystem>`（`tools/check_layering.sh` 規則 3）；測試不得直接呼叫 `temp_directory_path()`（`tools/check_test_temp.sh`）。
+- CSS 值解析只有 core 一份：`core/src/css_values.{h,cpp}` 由執行期 `mini_css` 與編譯器 `xts_values*` 共用，兩邊只加各自的屬性表、診斷與 `.xts` 專屬語法，不再各寫一份（T-413）。

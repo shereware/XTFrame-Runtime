@@ -5,7 +5,7 @@
 #   tools/dev_check.sh [--release] [--no-build] [--agent] <target>... -- <suite>...
 #   suites: editor | editor_service | editor_qt | editor_qt_slow | editor_qt_gl | flow | bundle | history | core | golden |
 #           gpu | gl | text | agent | import | lottie | symbols | headers | layering | testtemp | import-py | ctest | corpus | ir |
-#           roundtrip
+#           roundtrip | shape
 #          (ctest = ctest -E '^xt_.*_tests$', the command-line tests (T-267d); headers = tools/check_public_headers.sh, no build;
 #           layering = tools/check_layering.sh (T-274, R never includes / links E) and, since T-267d,
 #           tools/check_test_temp.sh too (both must pass), no build;
@@ -23,7 +23,9 @@
 #           ir = tools/check_ir_layout.sh (T-405, 43 §43.5: ir_pod.h sizes and enum limits vs tests/ir/layout.txt and
 #           02 §2.12, the §2.2 minor, the frozen fixture of that minor), no build;
 #           roundtrip = the doctest suite `roundtrip` of xt_bundle_tests and xt_editor_service_tests (T-410, 43 §43.2:
-#           the frozen cross-version fixtures of tests/roundtrip read, written back and compared with latest/))
+#           the frozen cross-version fixtures of tests/roundtrip read, written back and compared with latest/);
+#           shape = tools/check_file_length.sh (must pass) and tools/check_dupcheck.sh (warns when the duplicate
+#           group count rises, fails only when dupcheck.py fails) (T-415, 14 §14.5), no build)
 # T-267a: XT_REQUIRE_GL=1 is exported for every suite, so `gl` and `editor_qt_gl` FAIL when no GL
 # context can be created. Set XT_ALLOW_NO_GL=1 yourself to get the old "no context = skipped" behaviour.
 # Each doctest suite prints its summary, every failing test case (name + first failing check, at most
@@ -136,10 +138,10 @@ done
 if [ ${#suites[@]} -gt 0 ]; then mapfile -t suites < <(dedupe "${suites[@]}"); fi
 if [ ${#targets[@]} -gt 0 ]; then mapfile -t targets < <(dedupe "${targets[@]}"); fi
 if [ "$DRY_RUN" = 1 ]; then echo "targets: ${targets[*]}"; echo "suites: ${suites[*]}"; exit 0; fi
-# headers, layering, testtemp, import-py and ir compile nothing; when they are all that was asked for, skip the build.
+# headers, layering, testtemp, import-py, ir and shape compile nothing; when they are all that was asked for, skip the build.
 needs_build=0
 for s in "${suites[@]}"; do
-  case "$s" in headers|layering|testtemp|import-py|ir) ;; *) needs_build=1;; esac
+  case "$s" in headers|layering|testtemp|import-py|ir|shape) ;; *) needs_build=1;; esac
 done
 [ ${#targets[@]} -eq 0 ] && [ "$needs_build" = 0 ] && BUILD=0
 
@@ -287,6 +289,9 @@ run_suite() {
                out="$(bash tools/check_test_temp.sh 2>&1)"; echo "$out" | tail -12; echo "$out" | grep -q "TEST TEMP: PASS" || fail=1;;
     testtemp)  out="$(bash tools/check_test_temp.sh 2>&1)"; echo "$out" | tail -12; echo "$out" | grep -q "TEST TEMP: PASS" || fail=1;;
     ir)        out="$(bash tools/check_ir_layout.sh 2>&1)"; echo "$out" | tail -12; echo "$out" | grep -q "IR LAYOUT: PASS" || fail=1;;  # T-405
+    # T-415: file-length rule (fails) and duplicate-group baseline (warning only).
+    shape)     out="$(bash tools/check_file_length.sh 2>&1)"; echo "$out" | tail -12; echo "$out" | grep -q "FILE LENGTH: PASS" || fail=1
+               out="$(bash tools/check_dupcheck.sh 2>&1)"; echo "$out" | tail -6; echo "$out" | grep -q "DUPCHECK: PASS" || fail=1;;
     import-py) out="$(NO_COLOR=1 python -m unittest discover -s tests/import -p "test_*.py" 2>&1)"; echo "$out" | tail -4; { echo "$out" | grep -q "^Ran [0-9]* test" && ! echo "$out" | grep -q "FAILED"; } || fail=1;;
     # T-267d: the command-line tests only (the xt_add_expect_exit_test entries and the other CTest
     # entries that are not a whole doctest executable); the -E pattern leaves out the whole
@@ -303,7 +308,7 @@ run_suite() {
 }
 # T-361: the suites below run at the same time; the rest (GL contexts, perf / slow timing cases, the
 # agent endpoint and ctest, which runs executables of its own) afterwards, one after the other.
-PARALLEL_SUITES=" core import bundle flow editor editor_service editor_qt history symbols lottie golden text gpu headers layering testtemp import-py ir roundtrip "
+PARALLEL_SUITES=" core import bundle flow editor editor_service editor_qt history symbols lottie golden text gpu headers layering testtemp import-py ir roundtrip shape "
 OUT="$B/.dev_check_out.$$"; mkdir -p "$OUT"
 trap 'rm -rf "$LOCK" "$OUT"; kill $(jobs -p) 2>/dev/null' EXIT
 i=0; pids=()

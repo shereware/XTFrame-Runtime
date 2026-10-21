@@ -19,6 +19,7 @@
                         // GL upload.
 #endif
 #include "../common/console_utf8.h"
+#include "../common/print_version.h"
 #include "../common/standard_symbols_note.h"
 #include "view_flow.h"
 #include "xt/animator.h"
@@ -84,6 +85,7 @@
 ///                    [--borderless] [--resize-border N] [--no-live-resize]
 ///                    [--fullscreen desktop|exclusive]
 ///                    [--second-window <file> [--second-display N] [--second-size WxH]] [--help]
+///        xtframe-view --version
 ///
 /// --borderless (T-376, docs/design/23-host-integration.md §23.ab) opens the window without OS
 /// decorations: `app-region: drag` elements move the window, the edges (--resize-border N
@@ -225,7 +227,8 @@
 /// CTest, which has no display.
 ///
 /// Exit codes: 0 success, 1 a load/compile error, 2 argument error (usage printed to stderr).
-/// --help/-h prints the usage to stdout and exits 0.
+/// --help/-h prints the usage to stdout and exits 0. --version (T-420) prints the version lines
+/// (tools/common/print_version.h) to stdout and exits 0, whatever else is on the command line.
 ///
 /// Keys (read via Context::drainInput, this task's queue-only pushInput/drainInput -- no
 /// dispatch/hit-testing yet, T-32): Space pause/resume every `anim` element's defaultAnimation
@@ -330,6 +333,7 @@ struct Args {
     // Asset search directories handed to the resolver and the `.xt` compiler; empty = --root.
     std::vector<std::string> assetRoots;
     bool help = false;
+    bool version = false;    // T-420: --version.
     uint32_t dumpEvery = 0;  // 0 = only at the end of the run.
     uint32_t frames = 60;
     /// T-389 (measurement only): --synth-pointer N queues N PointerMove events before every
@@ -590,6 +594,13 @@ bool parsePointerSpec(const std::string& spec, ScriptedPointer& out) {
 }
 
 bool parseArgs(int argc, char** argv, Args& out) {
+    // T-420: --version wins over every other argument, a malformed one included.
+    for (int i = 1; i < argc; ++i) {
+        if (std::string_view(argv[i]) == "--version") {
+            out.version = true;
+            return true;
+        }
+    }
     std::vector<std::string> positional;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -1301,6 +1312,7 @@ void printUsage(std::FILE* out) {
         "  --gamepad               open SDL game controllers (windowed mode), one player each\n"
         "  --players N             local players 1-8: gamepad players 0..N-1 (and the slot limit)\n"
         "  --help, -h              print this text and exit 0\n"
+        "  --version               print the version, IR format and behavior version and exit 0\n"
         "\n"
         "exit codes: 0 success, 1 load/write error, 2 argument error\n");
 }
@@ -2135,6 +2147,10 @@ int main(int argc, char** argv) {
     if (!parseArgs(argc, argv, args)) {
         printUsage(stderr);
         return 2;
+    }
+    if (args.version) {
+        xt::tools::printVersion("xtframe-view", stdout);
+        return 0;
     }
     if (args.help) {
         printUsage(stdout);

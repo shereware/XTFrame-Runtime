@@ -14,6 +14,7 @@
 
 #include "calc_emit.h"
 #include "compiled_assets.h"
+#include "css_values.h"         // core/src: toIrEasing() (T-413).
 #include "xt/asset_resolver.h"  // isExternalAssetName / isAtlasAssetName (T-150, T-199).
 #include "xt/command_list.h"    // customParamSlots() (T-203).
 #include "xt/compile/parse_xts.h"
@@ -51,21 +52,9 @@ bool readFileBytesStyleEmit(const fs::path& path, std::vector<uint8_t>& out) {
     return static_cast<bool>(in) || in.eof();
 }
 
-IrEasing toIrEasing(const Easing& e) {
-    if (e.kind == EasingKind::LinearPoints) {
-        // T-335: RuleSet::easingPoints and StyleBuilder::easingPoints share the offsets.
-        return irLinearPointsEasing(e.pointOffset, e.pointCount);
-    }
-    IrEasing out{};
-    out.kind = static_cast<uint8_t>(e.kind);
-    out.stepsJumpEnd = e.stepsJumpEnd;
-    out.stepCount = e.stepCount;
-    out.x1 = e.x1;
-    out.y1 = e.y1;
-    out.x2 = e.x2;
-    out.y2 = e.y2;
-    return out;
-}
+// T-335: a LinearPoints easing's offsets index RuleSet::easingPoints, which StyleBuilder::easingPoints
+// shares. T-413: the encoding is core's (css_values, shared with the runtime's mini_css).
+using css_values::toIrEasing;
 
 /// One neutral keyframe (docs/design/12-compiler.md §12.3): value.type == Enum, e == 0xFFFFFFFF.
 /// Its easing is irrelevant when it's the last keyframe on the track and Linear otherwise (no

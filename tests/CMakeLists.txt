@@ -87,6 +87,7 @@ add_executable(xt_tests
     unit/test_composition.cpp
     unit/test_focus_keyboard.cpp
     unit/test_mini_css.cpp
+    unit/test_css_parity.cpp
     unit/test_element_ref.cpp
     unit/test_query.cpp
     unit/test_dynamic_tree.cpp
@@ -375,13 +376,19 @@ endif()
 # (tests/corpus). tools/corpus_check.sh is a thin wrapper of tools/corpus_check.py; CTest runs the
 # Python script directly so it never depends on which `bash` the PATH holds. Its packs and renders
 # go to the build tree; tools/dev_check.sh runs it as its own suite `corpus`.
-if(TARGET xtframe-view AND TARGET xtframe-pack)
+# T-422: the expected screenshots are rendered with the Windows system fonts the corpus projects
+# name (Bahnschrift, Segoe UI, Palatino Linotype, Georgia), so the test is registered on Windows
+# only; cross-platform rendering is the golden suite's job (tests/golden, with tolerances). A Debug
+# run takes over 30 minutes on a hosted runner, so the test is limited to the optimised
+# configurations (ctest -C Release / RelWithDebInfo).
+if(WIN32 AND TARGET xtframe-view AND TARGET xtframe-pack)
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_Interpreter_FOUND)
         add_test(NAME corpus_check
                  COMMAND Python3::Interpreter "${PROJECT_SOURCE_DIR}/tools/corpus_check.py"
                          --view $<TARGET_FILE:xtframe-view> --pack $<TARGET_FILE:xtframe-pack>
-                         --work "${CMAKE_CURRENT_BINARY_DIR}/corpus_work")
+                         --work "${CMAKE_CURRENT_BINARY_DIR}/corpus_work"
+                 CONFIGURATIONS Release RelWithDebInfo)
         set_tests_properties(corpus_check PROPERTIES TIMEOUT 1800)
     endif()
 endif()

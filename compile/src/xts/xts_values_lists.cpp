@@ -7,8 +7,6 @@
 #include <string>
 #include <vector>
 
-#include "css_color.h"          // core/src: named colours and hsl() (T-322).
-#include "transform_compose.h"  // core/src: 05.5's compose/decompose path (T-120).
 #include "xt/charconv.h"
 #include "xt/compile/diagnostics.h"
 #include "xt/compile/parse_value.h"
@@ -33,31 +31,8 @@ namespace xts_values_detail {
 // font-family.
 // -------------------------------------------------------------------------------------------
 
-bool parseFontFamilyList(const std::vector<Token>& toks, std::vector<std::string>& out) {
-    Cursor cur(toks);
-    if (cur.atEnd()) {
-        return false;
-    }
-    for (;;) {
-        if (cur.peek().kind == TokenKind::String) {
-            out.push_back(cur.advance().text);
-        } else if (cur.peek().kind == TokenKind::Ident) {
-            std::string name = cur.advance().text;
-            while (cur.peek().kind == TokenKind::Ident) {
-                name += ' ';
-                name += cur.advance().text;
-            }
-            out.push_back(std::move(name));
-        } else {
-            return false;
-        }
-        if (cur.peek().kind == TokenKind::Comma) {
-            cur.advance();
-            continue;
-        }
-        break;
-    }
-    return cur.atEnd() && !out.empty();
+bool parseFontFamilyList(const std::vector<Tok>& toks, std::vector<std::string>& out) {
+    return css_values::parseFontFamilyList(toks.data(), toks.size(), out);
 }
 
 }  // namespace xts_values_detail
@@ -78,11 +53,11 @@ namespace {
 
 /// Reads up to four slice numbers at `i`; 1 value = all sides, 2 = L/R then T/B, 4 = L R T B.
 /// False on 3 values or a number with any unit but `%`. `any` = at least one value read.
-bool parseSliceValues(const std::vector<Token>& toks, size_t& i, float out[4], bool& any) {
+bool parseSliceValues(const std::vector<Tok>& toks, size_t& i, float out[4], bool& any) {
     float v[4] = {0, 0, 0, 0};
     size_t n = 0;
-    while (i < toks.size() && n < 4 && toks[i].kind == TokenKind::Number) {
-        const Token& t = toks[i];
+    while (i < toks.size() && n < 4 && toks[i].kind == TokKind::Number) {
+        const Tok& t = toks[i];
         if (!t.unit.empty() && t.unit != "%") {
             return false;
         }
@@ -136,18 +111,18 @@ StyleDecl enumDecl(uint16_t prop, uint32_t e, int line) {
 }
 
 /// `border-image-slice` longhand: values (or `auto`) plus an optional `fill`.
-bool parseBorderImageSlice(const std::vector<Token>& toks, int line, std::vector<StyleDecl>& decls) {
+bool parseBorderImageSlice(const std::vector<Tok>& toks, int line, std::vector<StyleDecl>& decls) {
     size_t i = 0;
     const float nan = std::numeric_limits<float>::quiet_NaN();
     float v[4] = {nan, nan, nan, nan};
     bool any = false;
-    if (i < toks.size() && toks[i].kind == TokenKind::Ident && toks[i].text == "auto") {
+    if (i < toks.size() && toks[i].kind == TokKind::Ident && toks[i].text == "auto") {
         ++i;
     } else if (!parseSliceValues(toks, i, v, any) || !any) {
         return false;
     }
     bool fill = false;
-    if (i < toks.size() && toks[i].kind == TokenKind::Ident && toks[i].text == "fill") {
+    if (i < toks.size() && toks[i].kind == TokKind::Ident && toks[i].text == "fill") {
         fill = true;
         ++i;
     }
@@ -161,90 +136,52 @@ bool parseBorderImageSlice(const std::vector<Token>& toks, int line, std::vector
     return true;
 }
 
-/// T-345 (05 §5.9.9): `ui-scale: auto | none | clamp(<min>, <max>)` -> one Color-encoded
-/// declaration (mode, min, max, 0); a clamp needs 0 < min <= max.
-bool parseUiScale(const std::vector<Token>& toks, int line, std::vector<StyleDecl>& decls) {
-    float v[4] = {0, 0, 0, 0};
-    if (toks.size() == 1 && toks[0].kind == TokenKind::Ident) {
-        if (toks[0].text == "auto") {
-            v[0] = 0;
-        } else if (toks[0].text == "none") {
-            v[0] = 1;
-        } else {
-            return false;
-        }
-    } else if (toks.size() == 6 && toks[0].kind == TokenKind::Ident && toks[0].text == "clamp" &&
-               toks[1].kind == TokenKind::LParen && toks[3].kind == TokenKind::Comma &&
-               toks[5].kind == TokenKind::RParen && parseFloatTok(toks[2], v[1]) &&
-               parseFloatTok(toks[4], v[2])) {
-        if (!(v[1] > 0.0f) || !(v[2] >= v[1]) || !std::isfinite(v[2])) {
-            return false;
-        }
-        v[0] = 2;
-    } else {
+/// T-345 (05 §5.9.9): `ui-scale` -> one Color-encoded declaration (mode, min, max, 0).
+bool parseUiScale(const std::vector<Tok>& toks, int line, std::vector<StyleDecl>& decls) {
+    float v[3] = {0, 0, 0};
+    if (!css_values::parseUiScale(toks.data(), toks.size(), kCompiler, v)) {
         return false;
     }
-    StyleDecl d;
-    d.prop = styleprop::UiScale;
-    d.value.kind = StyleValueKind::Color;
-    d.value.color = Color{v[0], v[1], v[2], v[3]};
-    d.line = line;
-    decls.push_back(d);
+    appendPropValues({{styleprop::UiScale, Value::ofColor(Color{v[0], v[1], v[2], 0})}}, line, decls);
     return true;
 }
 
-/// T-386 (05 §5.9.11): `hit-slop: <length>{1,4}` (px / % / em, >= 0; margin order) -> T-405 (IR
-/// minor 8): the four Length longhands HitSlopTop..HitSlopLeft (top, right, bottom, left).
-bool parseHitSlop(const std::vector<Token>& toks, int line, std::vector<StyleDecl>& decls) {
-    if (toks.empty() || toks.size() > 4) {
+/// T-386 (05 §5.9.11): `hit-slop` -> T-405 (IR minor 8): the four Length longhands
+/// HitSlopTop..HitSlopLeft (top, right, bottom, left).
+bool parseHitSlop(const std::vector<Tok>& toks, int line, std::vector<StyleDecl>& decls) {
+    Length sides[4];
+    if (!css_values::parseHitSlop(toks.data(), toks.size(), kCompiler, sides)) {
         return false;
     }
-    Length v[4]{};
-    for (size_t i = 0; i < toks.size(); ++i) {
-        if (!parseLengthTok(toks[i], v[i]) || !(v[i].value >= 0.0f) || !std::isfinite(v[i].value) ||
-            (v[i].unit != LengthUnit::Px && v[i].unit != LengthUnit::Percent &&
-             v[i].unit != LengthUnit::Em)) {
-            return false;
-        }
-    }
-    const size_t n = toks.size();
-    const Length top = v[0];
-    const Length right = n >= 2 ? v[1] : top;
-    const Length bottom = n >= 3 ? v[2] : top;
-    const Length left = n == 4 ? v[3] : right;
-    const Length sides[4] = {top, right, bottom, left};
     for (uint16_t i = 0; i < 4; ++i) {
-        StyleDecl d;
-        d.prop = static_cast<uint16_t>(styleprop::HitSlopTop + i);
-        d.value.kind = StyleValueKind::Length;
-        d.value.len = sides[i];
-        d.line = line;
-        decls.push_back(d);
+        appendPropValues({{static_cast<uint16_t>(styleprop::HitSlopTop + i),
+                           Value::ofLength(sides[i].value, sides[i].unit)}},
+                         line, decls);
     }
     return true;
 }
 
 /// The `border-image` shorthand: every longhand is emitted (unspecified parts take their initial
 /// values, as a CSS shorthand resets them).
-bool parseBorderImageShorthand(const std::vector<Token>& toks, int line, std::vector<StyleDecl>& decls) {
+bool parseBorderImageShorthand(const std::vector<Tok>& toks, int line, std::vector<StyleDecl>& decls) {
     if (toks.empty()) {
         return false;
     }
     size_t i = 0;
     std::string source;
-    if (toks[0].kind == TokenKind::Ident && toks[0].text == "none") {
+    if (toks[0].kind == TokKind::Ident && toks[0].text == "none") {
         source = "none";
         i = 1;
-    } else if (toks[0].kind == TokenKind::Ident && toks[0].text == "url" && toks.size() >= 3 &&
-               toks[1].kind == TokenKind::LParen) {
+    } else if (toks[0].kind == TokKind::Ident && toks[0].text == "url" && toks.size() >= 3 &&
+               toks[1].kind == TokKind::LParen) {
         size_t close = 2;
-        while (close < toks.size() && toks[close].kind != TokenKind::RParen) {
+        while (close < toks.size() && toks[close].kind != TokKind::RParen) {
             ++close;
         }
         if (close >= toks.size()) {
             return false;
         }
-        std::vector<Token> url(toks.begin(), toks.begin() + static_cast<std::ptrdiff_t>(close) + 1);
+        std::vector<Tok> url(toks.begin(), toks.begin() + static_cast<std::ptrdiff_t>(close) + 1);
         if (!parseBackgroundImage(url, source)) {
             return false;
         }
@@ -262,8 +199,8 @@ bool parseBorderImageShorthand(const std::vector<Token>& toks, int line, std::ve
     bool sawMode = false;
     uint32_t mode = 0;
     while (i < toks.size()) {
-        const Token& t = toks[i];
-        if (t.kind != TokenKind::Ident) {
+        const Tok& t = toks[i];
+        if (t.kind != TokKind::Ident) {
             return false;
         }
         if (t.text == "fill" && !fill) {
@@ -288,15 +225,15 @@ bool parseBorderImageShorthand(const std::vector<Token>& toks, int line, std::ve
     return true;
 }
 
-bool parseBackgroundImage(const std::vector<Token>& toks, std::string& out) {
-    if (toks.size() == 1 && toks[0].kind == TokenKind::Ident && toks[0].text == "none") {
+bool parseBackgroundImage(const std::vector<Tok>& toks, std::string& out) {
+    if (toks.size() == 1 && toks[0].kind == TokKind::Ident && toks[0].text == "none") {
         out = "none";
         return true;
     }
-    if (toks.size() >= 3 && toks[0].kind == TokenKind::Ident && toks[0].text == "url" &&
-        toks[1].kind == TokenKind::LParen && toks.back().kind == TokenKind::RParen) {
-        std::vector<Token> inner(toks.begin() + 2, toks.end() - 1);
-        if (inner.size() == 1 && inner[0].kind == TokenKind::String) {
+    if (toks.size() >= 3 && toks[0].kind == TokKind::Ident && toks[0].text == "url" &&
+        toks[1].kind == TokKind::LParen && toks.back().kind == TokKind::RParen) {
+        std::vector<Tok> inner(toks.begin() + 2, toks.end() - 1);
+        if (inner.size() == 1 && inner[0].kind == TokKind::String) {
             out = inner[0].text;
             return true;
         }
@@ -305,12 +242,12 @@ bool parseBackgroundImage(const std::vector<Token>& toks, std::string& out) {
         std::string path;
         for (size_t i = 0; i < inner.size(); ++i) {
             if (i % 2 == 0) {
-                if (inner[i].kind != TokenKind::Ident) {
+                if (inner[i].kind != TokKind::Ident) {
                     return false;
                 }
                 path += inner[i].text;
             } else {
-                if (inner[i].kind != TokenKind::Dot) {
+                if (inner[i].kind != TokKind::Dot) {
                     return false;
                 }
                 path += '.';
@@ -328,46 +265,6 @@ bool parseBackgroundImage(const std::vector<Token>& toks, std::string& out) {
 // -------------------------------------------------------------------------------------------
 // transition / animation lists.
 // -------------------------------------------------------------------------------------------
-
-// Splits `toks` on top-level commas only (paren depth 0); a comma inside a nested call does not
-// split. Needed by `transition`/`animation` (whose per-item easing can be
-// `cubic-bezier(a,b,c,d)`/`steps(n, end)` -- T-119: a depth-blind split cut those calls apart and
-// every item after the first failed to parse) and by `gradient-mask()`'s comma-separated groups.
-std::vector<std::vector<Token>> splitByCommaTopLevel(const std::vector<Token>& toks) {
-    std::vector<std::vector<Token>> items;
-    std::vector<Token> cur;
-    int depth = 0;
-    for (const Token& t : toks) {
-        if (t.kind == TokenKind::LParen) {
-            ++depth;
-        } else if (t.kind == TokenKind::RParen) {
-            --depth;
-        }
-        if (t.kind == TokenKind::Comma && depth == 0) {
-            items.push_back(std::move(cur));
-            cur.clear();
-        } else {
-            cur.push_back(t);
-        }
-    }
-    items.push_back(std::move(cur));
-    return items;
-}
-
-bool parseTimeTok(const Token& tok, float& seconds) {
-    if (tok.kind != TokenKind::Number) {
-        return false;
-    }
-    if (tok.unit == "s") {
-        seconds = tok.num;
-        return true;
-    }
-    if (tok.unit == "ms") {
-        seconds = tok.num / 1000.0f;
-        return true;
-    }
-    return false;
-}
 
 }  // namespace xts_values_detail
 
@@ -398,12 +295,12 @@ constexpr xt::PropId kBackgroundPositionComponents[] = {xt::prop::BackgroundPosi
 
 /// Appends one TransitionSpec per property `item` names (several for a multi-output shorthand,
 /// one otherwise) to `out`. Returns false (after warning) when the item is malformed.
-bool parseTransitionItem(const std::vector<Token>& item, std::string_view fileName, int line,
+bool parseTransitionItem(const std::vector<Tok>& item, std::string_view fileName, int line,
                          DiagnosticSink& sink, std::vector<TransitionSpec>& out,
                          std::vector<EasingPoint>* easingPoints) {
     Cursor cur(item);
-    const Token& nameTok = cur.peek();
-    if (nameTok.kind != TokenKind::Ident) {
+    const Tok& nameTok = cur.peek();
+    if (nameTok.kind != TokKind::Ident) {
         sink.warn(std::string(fileName), "invalid transition item", line);
         return false;
     }
@@ -445,7 +342,8 @@ bool parseTransitionItem(const std::vector<Token>& item, std::string_view fileNa
         if (info == nullptr || info->kind == StyleValueKind::Shorthand || !info->animatable ||
             info->prop == xt::prop::PathData || info->prop == xt::prop::DashArray) {
             sink.warn(std::string(fileName),
-                      "unknown or non-animatable transition property \"" + nameTok.text + "\"", line);
+                      "unknown or non-animatable transition property \"" + std::string(nameTok.text) + "\"",
+                      line);
             return false;
         }
         single = info->prop;
@@ -498,13 +396,13 @@ bool parseTransitionItem(const std::vector<Token>& item, std::string_view fileNa
 
 namespace xts_values_detail {
 
-bool parseTransitionList(const std::vector<Token>& toks, std::string_view fileName, int line,
+bool parseTransitionList(const std::vector<Tok>& toks, std::string_view fileName, int line,
                          DiagnosticSink& sink, std::vector<TransitionSpec>& out,
                          std::vector<EasingPoint>* easingPoints) {
     if (toks.empty()) {
         return false;
     }
-    for (const std::vector<Token>& item : splitByCommaTopLevel(toks)) {
+    for (const std::vector<Tok>& item : splitByCommaTopLevel(toks)) {
         parseTransitionItem(item, fileName, line, sink, out, easingPoints);
     }
     return true;
@@ -514,108 +412,24 @@ bool parseTransitionList(const std::vector<Token>& toks, std::string_view fileNa
 
 namespace {
 
-bool parseAnimationItem(const std::vector<Token>& item, std::string_view fileName, int line,
+/// One `animation` item through core's grammar (css_values); the compiler encodes `infinite` as
+/// 0xFFFF and clamps a finite count to kMaxFiniteIterations with a warning.
+bool parseAnimationItem(const std::vector<Tok>& item, std::string_view fileName, int line,
                         DiagnosticSink& sink, AnimationSpec& out, std::vector<EasingPoint>* easingPoints) {
-    Cursor cur(item);
-    const Token& nameTok = cur.peek();
-    if (nameTok.kind != TokenKind::Ident) {
-        sink.warn(std::string(fileName), "invalid animation item", line);
+    SinkDiag diag(sink, fileName, line);
+    css_values::AnimationItem parsed;
+    if (css_values::parseAnimationItem(item.data(), item.size(), kCompiler, &diag, parsed, easingPoints) !=
+        css_values::AnimationItemResult::Ok) {
         return false;
     }
-    out.name = nameTok.text;
-    cur.advance();
-    float duration = 0;
-    if (!parseTimeTok(cur.peek(), duration)) {
-        sink.warn(std::string(fileName), "invalid value for \"animation\"", line);
-        return false;
-    }
-    cur.advance();
-    out.duration = duration;
-    out.delay = 0;
-    out.easing = Easing{};
-    out.iterations = 1;
-    out.direction = static_cast<uint8_t>(AnimDirection::Normal);
-    out.fill = static_cast<uint8_t>(AnimFillMode::None);
-    out.playState = static_cast<uint8_t>(AnimPlayState::Running);
-    bool haveEasing = false, haveDelay = false, haveIter = false, haveDir = false, haveFill = false,
-         havePlay = false;
-    while (!cur.atEnd()) {
-        const Token& t = cur.peek();
-        float num;
-        if (!haveDelay && parseTimeTok(t, num)) {
-            out.delay = num;
-            haveDelay = true;
-            cur.advance();
-            continue;
-        }
-        if (!haveEasing && isEasingStart(cur)) {
-            Easing e;
-            bool stepsClamped = false;
-            if (!parseEasingCursor(cur, e, &stepsClamped, easingPoints)) {
-                sink.warn(std::string(fileName), "invalid value for \"animation\"", line);
-                return false;
-            }
-            if (stepsClamped) {
-                sink.warn(std::string(fileName), kStepsClampedMessage, line);
-            }
-            out.easing = e;
-            haveEasing = true;
-            continue;
-        }
-        if (!haveIter && t.kind == TokenKind::Ident && t.text == "infinite") {
-            out.iterations = 0xFFFF;
-            haveIter = true;
-            cur.advance();
-            continue;
-        }
-        if (!haveIter && t.kind == TokenKind::Number && t.unit.empty() && t.num >= 0) {
-            // T-258b (D11): a finite count stays below the `infinite` sentinel 0xFFFF; a fractional
-            // count still truncates.
-            if (t.num > static_cast<float>(kMaxFiniteIterations)) {
-                sink.warn(std::string(fileName),
-                          "animation iteration count clamped to " + std::to_string(kMaxFiniteIterations),
-                          line);
-                out.iterations = kMaxFiniteIterations;
-            } else {
-                out.iterations = static_cast<uint16_t>(t.num);
-            }
-            haveIter = true;
-            cur.advance();
-            continue;
-        }
-        if (!haveDir && t.kind == TokenKind::Ident &&
-            (t.text == "normal" || t.text == "reverse" || t.text == "alternate" ||
-             t.text == "alternate-reverse")) {
-            AnimDirection d = t.text == "normal"      ? AnimDirection::Normal
-                              : t.text == "reverse"   ? AnimDirection::Reverse
-                              : t.text == "alternate" ? AnimDirection::Alternate
-                                                      : AnimDirection::AlternateReverse;
-            out.direction = static_cast<uint8_t>(d);
-            haveDir = true;
-            cur.advance();
-            continue;
-        }
-        if (!haveFill && t.kind == TokenKind::Ident &&
-            (t.text == "none" || t.text == "forwards" || t.text == "backwards" || t.text == "both")) {
-            AnimFillMode f = t.text == "none"        ? AnimFillMode::None
-                             : t.text == "forwards"  ? AnimFillMode::Forwards
-                             : t.text == "backwards" ? AnimFillMode::Backwards
-                                                     : AnimFillMode::Both;
-            out.fill = static_cast<uint8_t>(f);
-            haveFill = true;
-            cur.advance();
-            continue;
-        }
-        if (!havePlay && t.kind == TokenKind::Ident && (t.text == "running" || t.text == "paused")) {
-            out.playState =
-                static_cast<uint8_t>(t.text == "paused" ? AnimPlayState::Paused : AnimPlayState::Running);
-            havePlay = true;
-            cur.advance();
-            continue;
-        }
-        sink.warn(std::string(fileName), "invalid value for \"animation\"", line);
-        return false;
-    }
+    out.name = std::string(parsed.name);
+    out.duration = parsed.duration;
+    out.delay = parsed.delay;
+    out.easing = parsed.easing;
+    out.iterations = parsed.infinite ? 0xFFFF : parsed.iterations;
+    out.direction = parsed.direction;
+    out.fill = parsed.fill;
+    out.playState = parsed.playState;
     return true;
 }
 
@@ -623,16 +437,23 @@ bool parseAnimationItem(const std::vector<Token>& item, std::string_view fileNam
 
 namespace xts_values_detail {
 
-bool parseAnimationList(const std::vector<Token>& toks, std::string_view fileName, int line,
+bool parseAnimationList(const std::vector<Tok>& toks, std::string_view fileName, int line,
                         DiagnosticSink& sink, std::vector<AnimationSpec>& out,
                         std::vector<EasingPoint>* easingPoints) {
     if (toks.empty()) {
         return false;
     }
-    for (const std::vector<Token>& item : splitByCommaTopLevel(toks)) {
+    if (toks.size() == 1 && toks[0].kind == TokKind::Ident && toks[0].text == "none") {
+        return true;
+    }
+    for (const std::vector<Tok>& item : splitByCommaTopLevel(toks)) {
         AnimationSpec spec;
         if (!parseAnimationItem(item, fileName, line, sink, spec, easingPoints)) {
-            continue;
+            // T-413 (05 §5.3): a malformed item makes the whole value invalid, so the declaration
+            // is dropped (the caller warns) instead of compiling as a shorter list -- or as
+            // `animation: none` -- as the runtime parser already did.
+            out.clear();
+            return false;
         }
         if (spec.iterations == 0) {
             // T-272: a count of 0 (CSS: the animation does not play) is not emitted; IR's 0 means

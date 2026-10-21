@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "../common/console_utf8.h"
+#include "../common/print_version.h"
 #include "../common/standard_symbols_note.h"
 #include "xt/bundle/ui_project.h"
 #include "xt/compile/compile.h"
@@ -19,6 +20,10 @@
 ///
 /// Usage: xtframe-compile <input.json | input.xt> -o <out.xtir> [--root DIR] [--embed-images]
 ///                       [--embed-fonts] [--strict] [--no-meta] [--standard-symbols DIR]
+///        xtframe-compile --version
+///
+/// --version (T-420) prints the version lines (tools/common/print_version.h) to stdout and exits 0,
+/// whatever else is on the command line.
 ///
 /// T-235: `--standard-symbols DIR` is where `<link rel="symbols" href="xt-standard:<Name>">`
 /// resolves (CompileOptions::standardSymbolDir); default `<executable dir>/symbols` when present.
@@ -53,7 +58,8 @@ namespace fs = std::filesystem;
 void printUsage() {
     std::fprintf(stderr,
                  "usage: xtframe-compile <input.json | input.xt> -o <out.xtir> [--root DIR] "
-                 "[--embed-images] [--embed-fonts] [--strict] [--no-meta] [--standard-symbols DIR]\n");
+                 "[--embed-images] [--embed-fonts] [--strict] [--no-meta] [--standard-symbols DIR]\n"
+                 "       xtframe-compile --version\n");
 }
 
 /// Reads the `.xtir` header's major/minor version directly from the serialized bytes (no IrView
@@ -90,6 +96,14 @@ static int run(int argc, char** argv) {
     bool embedFonts = false;
     bool strict = false;
     bool emitMeta = true;
+
+    // T-420: --version wins over every other argument.
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) == "--version") {
+            xt::tools::printVersion("xtframe-compile", stdout);
+            return 0;
+        }
+    }
 
     std::vector<std::string> positional;
     for (int i = 1; i < argc; ++i) {

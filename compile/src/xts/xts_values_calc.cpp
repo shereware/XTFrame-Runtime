@@ -7,8 +7,6 @@
 #include <string>
 #include <vector>
 
-#include "css_color.h"          // core/src: named colours and hsl() (T-322).
-#include "transform_compose.h"  // core/src: 05.5's compose/decompose path (T-120).
 #include "xt/charconv.h"
 #include "xt/compile/diagnostics.h"
 #include "xt/compile/parse_value.h"
@@ -35,14 +33,14 @@ namespace {
 /// The operator character a token stands for inside `calc()`, or 0. `*` has its own token; a
 /// spaced `-` lexes as the identifier "-"; `+` and `/` have no token and arrive as Unknown
 /// "unexpected character" tokens.
-char calcOperatorChar(const Token& t) {
-    if (t.kind == TokenKind::Star) {
+char calcOperatorChar(const Tok& t) {
+    if (t.kind == TokKind::Star) {
         return '*';
     }
-    if (t.kind == TokenKind::Ident && t.text == "-") {
+    if (t.kind == TokKind::Ident && t.text == "-") {
         return '-';
     }
-    if (t.kind == TokenKind::Unknown) {
+    if (t.kind == TokKind::Unknown) {
         const std::string_view prefix = "unexpected character '";
         if (t.text.size() == prefix.size() + 2 && t.text.compare(0, prefix.size(), prefix) == 0) {
             const char c = t.text[prefix.size()];
@@ -74,8 +72,8 @@ CalcOpKind calcOpKind(char op) {
 }
 
 /// A calc() operand token: a number (unitless) or a length. `%`, px, em and the T-176 units.
-bool parseCalcOperand(const Token& t, CalcOpDecl& out) {
-    if (t.kind != TokenKind::Number) {
+bool parseCalcOperand(const Tok& t, CalcOpDecl& out) {
+    if (t.kind != TokKind::Number) {
         return false;
     }
     if (t.unit.empty()) {
@@ -95,8 +93,8 @@ bool parseCalcOperand(const Token& t, CalcOpDecl& out) {
 
 /// T-330: what an identifier opens in operand position: '(' for `calc(` (a plain group), 'm' for
 /// `min(`, 'M' for `max(`, 'c' for `clamp(`; 0 for anything else.
-char calcFunctionMarker(const Token& t) {
-    if (t.kind != TokenKind::Ident) {
+char calcFunctionMarker(const Tok& t) {
+    if (t.kind != TokKind::Ident) {
         return 0;
     }
     if (t.text == "calc") {
@@ -113,9 +111,11 @@ char calcFunctionMarker(const Token& t) {
 
 }  // namespace
 
-bool isCalcFunctionValue(const std::vector<Token>& tokens) {
-    if (tokens.size() < 3 || calcFunctionMarker(tokens[0]) == 0 || tokens[1].kind != TokenKind::LParen ||
-        tokens.back().kind != TokenKind::RParen) {
+namespace xts_values_detail {
+
+bool isCalcFunctionValue(const std::vector<Tok>& tokens) {
+    if (tokens.size() < 3 || calcFunctionMarker(tokens[0]) == 0 || tokens[1].kind != TokKind::LParen ||
+        tokens.back().kind != TokKind::RParen) {
         return false;
     }
     if (tokens[0].text == "calc") {
@@ -124,7 +124,7 @@ bool isCalcFunctionValue(const std::vector<Token>& tokens) {
     // T-330: `min(...)`, `max(...)`, `clamp(...)` -- one function call whose `)` is the last token.
     int depth = 0;
     for (size_t i = 1; i < tokens.size(); ++i) {
-        depth += tokens[i].kind == TokenKind::LParen ? 1 : (tokens[i].kind == TokenKind::RParen ? -1 : 0);
+        depth += tokens[i].kind == TokKind::LParen ? 1 : (tokens[i].kind == TokKind::RParen ? -1 : 0);
         if (depth == 0 && i + 1 < tokens.size()) {
             return false;
         }
@@ -132,7 +132,7 @@ bool isCalcFunctionValue(const std::vector<Token>& tokens) {
     return depth == 0;
 }
 
-bool parseCalcValue(const std::vector<Token>& tokens, std::vector<CalcOpDecl>& out, std::string& error) {
+bool parseCalcValue(const std::vector<Tok>& tokens, std::vector<CalcOpDecl>& out, std::string& error) {
     out.clear();
     if (!isCalcFunctionValue(tokens)) {
         error = "expected calc(...), min(...), max(...) or clamp(...)";
@@ -160,37 +160,37 @@ bool parseCalcValue(const std::vector<Token>& tokens, std::vector<CalcOpDecl>& o
         }
     };
     for (size_t i = begin; i < end; ++i) {
-        const Token& t = tokens[i];
+        const Tok& t = tokens[i];
         if (expectOperand) {
             const char marker = calcFunctionMarker(t);
-            if (t.kind == TokenKind::LParen ||
-                (marker != 0 && i + 1 < end && tokens[i + 1].kind == TokenKind::LParen)) {
-                if (t.kind == TokenKind::Ident) {
+            if (t.kind == TokKind::LParen ||
+                (marker != 0 && i + 1 < end && tokens[i + 1].kind == TokKind::LParen)) {
+                if (t.kind == TokKind::Ident) {
                     ++i;  // `calc(` nested: same as a plain group; `min(` etc.: a function.
                 }
-                const char open = t.kind == TokenKind::LParen ? '(' : marker;
+                const char open = t.kind == TokKind::LParen ? '(' : marker;
                 ops.push_back(open);
                 if (open != '(') {
                     argCounts.push_back(1);
                 }
                 continue;
             }
-            if (t.kind == TokenKind::Ident && t.text == "var" && i + 1 < end &&
-                tokens[i + 1].kind == TokenKind::LParen) {
+            if (t.kind == TokKind::Ident && t.text == "var" && i + 1 < end &&
+                tokens[i + 1].kind == TokKind::LParen) {
                 // var(--name) or var(--name, <number | length>).
                 CalcOpDecl v;
                 v.op = CalcOpKind::PushVar;
-                if (i + 3 >= end || tokens[i + 2].kind != TokenKind::Ident || tokens[i + 2].text.size() < 3 ||
+                if (i + 3 >= end || tokens[i + 2].kind != TokKind::Ident || tokens[i + 2].text.size() < 3 ||
                     tokens[i + 2].text.compare(0, 2, "--") != 0) {
                     error = "expected var(--name) in calc()";
                     return false;
                 }
                 v.varName = tokens[i + 2].text;
                 size_t j = i + 3;
-                if (tokens[j].kind == TokenKind::Comma) {
+                if (tokens[j].kind == TokKind::Comma) {
                     CalcOpDecl fb;
                     if (j + 2 >= tokens.size() || !parseCalcOperand(tokens[j + 1], fb) ||
-                        tokens[j + 2].kind != TokenKind::RParen) {
+                        tokens[j + 2].kind != TokKind::RParen) {
                         error = "a var() fallback inside calc() must be one number or length";
                         return false;
                     }
@@ -200,7 +200,7 @@ bool parseCalcValue(const std::vector<Token>& tokens, std::vector<CalcOpDecl>& o
                     v.value = fb.value;
                     j += 2;
                 }
-                if (j >= end || tokens[j].kind != TokenKind::RParen) {
+                if (j >= end || tokens[j].kind != TokKind::RParen) {
                     error = "expected ')' after var() in calc()";
                     return false;
                 }
@@ -218,7 +218,7 @@ bool parseCalcValue(const std::vector<Token>& tokens, std::vector<CalcOpDecl>& o
             expectOperand = false;
             continue;
         }
-        if (t.kind == TokenKind::Comma) {
+        if (t.kind == TokKind::Comma) {
             // T-330: the next argument of the innermost min() / max() / clamp().
             popOperators();
             if (ops.empty() || ops.back() == '(') {
@@ -229,7 +229,7 @@ bool parseCalcValue(const std::vector<Token>& tokens, std::vector<CalcOpDecl>& o
             expectOperand = true;
             continue;
         }
-        if (t.kind == TokenKind::RParen) {
+        if (t.kind == TokKind::RParen) {
             popOperators();
             if (ops.empty()) {
                 error = "unbalanced ')' in calc()";
@@ -359,5 +359,7 @@ bool parseCalcValue(const std::vector<Token>& tokens, std::vector<CalcOpDecl>& o
     }
     return true;
 }
+
+}  // namespace xts_values_detail
 
 }  // namespace xt::compile

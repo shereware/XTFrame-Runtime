@@ -27,9 +27,9 @@
 /// border-radius, flex, gap, inset) is *not* part of this subset and parses as an invalid
 /// declaration.
 ///
-/// core does not include compile/ headers, so the CSS-name/enum-keyword tables here are an
-/// independent, hand-written copy of compile/src/xts/xts_props.cpp's (the same relationship
-/// style_decode.h already has to it).
+/// The value grammar is core/src/css_values.h, which the compiler's `.xts` parser shares (T-413);
+/// core does not include compile/ headers, so the CSS-name/enum-keyword tables here are still an
+/// independent, hand-written copy of compile/src/xts/xts_props.cpp's.
 
 namespace xt::mini_css {
 

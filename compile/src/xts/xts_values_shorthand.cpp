@@ -7,8 +7,6 @@
 #include <string>
 #include <vector>
 
-#include "css_color.h"          // core/src: named colours and hsl() (T-322).
-#include "transform_compose.h"  // core/src: 05.5's compose/decompose path (T-120).
 #include "xt/charconv.h"
 #include "xt/compile/diagnostics.h"
 #include "xt/compile/parse_value.h"
@@ -33,8 +31,7 @@ namespace xts_values_detail {
 // 1-4 value shorthands (margin/padding/border-width/border-radius/inset).
 // -------------------------------------------------------------------------------------------
 
-bool expand1to4(const PropId order[4], const std::vector<Token>& toks, int line,
-                std::vector<StyleDecl>& out) {
+bool expand1to4(const PropId order[4], const std::vector<Tok>& toks, int line, std::vector<StyleDecl>& out) {
     if (toks.empty() || toks.size() > 4) {
         return false;
     }
@@ -44,28 +41,8 @@ bool expand1to4(const PropId order[4], const std::vector<Token>& toks, int line,
             return false;
         }
     }
-    Length top, right, bottom, left;
-    switch (toks.size()) {
-        case 1:
-            top = right = bottom = left = v[0];
-            break;
-        case 2:
-            top = bottom = v[0];
-            right = left = v[1];
-            break;
-        case 3:
-            top = v[0];
-            right = left = v[1];
-            bottom = v[2];
-            break;
-        default:
-            top = v[0];
-            right = v[1];
-            bottom = v[2];
-            left = v[3];
-            break;
-    }
-    Length vals[4] = {top, right, bottom, left};
+    Length vals[4];
+    css_values::expandSides(v, toks.size(), vals);
     for (int i = 0; i < 4; ++i) {
         StyleDecl d;
         d.prop = order[i];
@@ -77,7 +54,7 @@ bool expand1to4(const PropId order[4], const std::vector<Token>& toks, int line,
     return true;
 }
 
-bool parseBorderShorthand(const std::vector<Token>& toks, int line, std::vector<StyleDecl>& out) {
+bool parseBorderShorthand(const std::vector<Tok>& toks, int line, std::vector<StyleDecl>& out) {
     if (toks.empty() || toks.size() > 5) {  // width (1 tok) + color (up to 4 toks, e.g. rgba(...)).
         return false;
     }
@@ -87,7 +64,7 @@ bool parseBorderShorthand(const std::vector<Token>& toks, int line, std::vector<
     Color color{};
     Cursor cur(toks);
     while (!cur.atEnd()) {
-        const Token& t = cur.peek();
+        const Tok& t = cur.peek();
         if (!haveColor) {
             Cursor probe = cur;
             Color c;
@@ -131,55 +108,27 @@ bool parseBorderShorthand(const std::vector<Token>& toks, int line, std::vector<
     return true;
 }
 
-/// T-333 (05 §5.9.8): `border-color` with two to four colors, expanded by the CSS 1-4 value rule
-/// onto the per-side colors (139-142). Returns false -- leaving the declaration to the plain
-/// one-color path, which writes the legacy BorderColor -- unless `toks` is 2-4 colors.
-bool parseBorderColorSides(const std::vector<Token>& toks, int line, std::vector<StyleDecl>& out) {
-    Color c[4];
-    size_t n = 0;
-    Cursor cur(toks);
-    while (!cur.atEnd()) {
-        if (n == 4 || !parseColorCursor(cur, c[n])) {
-            return false;
-        }
-        ++n;
-    }
-    if (n < 2) {
+/// T-333 (05 §5.9.8): `border-color` with two to four colors onto the per-side colors (139-142);
+/// false (the plain one-color path, the legacy BorderColor) unless `toks` is 2-4 colors.
+bool parseBorderColorSides(const std::vector<Tok>& toks, int line, std::vector<StyleDecl>& out) {
+    Color sides[4];
+    if (!css_values::parseBorderColorSides(toks.data(), toks.size(), sides)) {
         return false;
     }
-    const Color top = c[0];
-    const Color right = c[1];
-    const Color bottom = n >= 3 ? c[2] : c[0];
-    const Color left = n == 4 ? c[3] : c[1];
-    const Color sides[4] = {top, right, bottom, left};
     const PropId props[4] = {xt::prop::BorderTopColor, xt::prop::BorderRightColor,
                              xt::prop::BorderBottomColor, xt::prop::BorderLeftColor};
     for (int i = 0; i < 4; ++i) {
-        StyleDecl d;
-        d.prop = props[i];
-        d.value.kind = StyleValueKind::Color;
-        d.value.color = sides[i];
-        d.line = line;
-        out.push_back(d);
+        appendPropValues({{props[i], Value::ofColor(sides[i])}}, line, out);
     }
     return true;
 }
 
-/// T-333 (05 §5.9.8): `border-style: <style>{1,4}` (none | solid | dashed | dotted), expanded by
-/// the CSS 1-4 value rule onto the four `border-*-style` StyleProps.
-bool parseBorderStyleShorthand(const std::vector<Token>& toks, int line, std::vector<StyleDecl>& out) {
-    if (toks.empty() || toks.size() > 4) {
+/// T-333 (05 §5.9.8): `border-style` 1-4 keywords onto the four side longhands.
+bool parseBorderStyleShorthand(const std::vector<Tok>& toks, int line, std::vector<StyleDecl>& out) {
+    uint32_t sides[4] = {};
+    if (!css_values::parseBorderStyleSides(toks.data(), toks.size(), kCompiler, sides)) {
         return false;
     }
-    uint32_t v[4] = {};
-    for (size_t i = 0; i < toks.size(); ++i) {
-        if (toks[i].kind != TokenKind::Ident || !enumValue(styleprop::BorderTopStyle, toks[i].text, v[i])) {
-            return false;
-        }
-    }
-    const size_t n = toks.size();
-    const uint32_t sides[4] = {v[0], n >= 2 ? v[1] : v[0], n >= 3 ? v[2] : v[0],
-                               n == 4 ? v[3] : (n >= 2 ? v[1] : v[0])};
     const uint16_t props[4] = {styleprop::BorderTopStyle, styleprop::BorderRightStyle,
                                styleprop::BorderBottomStyle, styleprop::BorderLeftStyle};
     for (int i = 0; i < 4; ++i) {
@@ -188,187 +137,45 @@ bool parseBorderStyleShorthand(const std::vector<Token>& toks, int line, std::ve
     return true;
 }
 
-/// T-325 (05 §5.9.8): `outline: <width> <style> <color>`, each part optional and in any order
-/// (at least one). An absent width / style takes its initial value (0, `none`); an absent color
-/// writes no `outline-color` declaration, which leaves its initial value -- the element's `color`
-/// -- in effect (there is no `currentcolor` value to write).
-bool parseOutlineShorthand(const std::vector<Token>& toks, int line, std::vector<StyleDecl>& out) {
-    if (toks.empty()) {
+/// T-325 (05 §5.9.8): `outline` -> outline-width, outline-style and, when given, outline-color (an
+/// absent color leaves its initial value, the element's `color`).
+bool parseOutlineShorthand(const std::vector<Tok>& toks, int line, std::vector<StyleDecl>& out) {
+    css_values::OutlineValue o;
+    if (!css_values::parseOutline(toks.data(), toks.size(), kCompiler, o)) {
         return false;
     }
-    bool haveWidth = false, haveStyle = false, haveColor = false;
-    Length width{0, LengthUnit::Px};
-    uint32_t style = 0;
-    Color color{};
-    Cursor cur(toks);
-    while (!cur.atEnd()) {
-        const Token& t = cur.peek();
-        if (!haveStyle && t.kind == TokenKind::Ident && (t.text == "none" || t.text == "solid")) {
-            style = t.text == "solid" ? 1 : 0;
-            haveStyle = true;
-            cur.advance();
-            continue;
-        }
-        if (!haveWidth) {
-            Length len;
-            if (parseLengthTok(t, len) && len.unit != LengthUnit::Auto && len.unit != LengthUnit::Percent &&
-                len.value >= 0.0f) {
-                width = len;
-                haveWidth = true;
-                cur.advance();
-                continue;
-            }
-        }
-        if (!haveColor) {
-            Cursor probe = cur;
-            Color c;
-            if (parseColorCursor(probe, c)) {
-                cur = probe;
-                color = c;
-                haveColor = true;
-                continue;
-            }
-        }
-        return false;
-    }
-    StyleDecl dw;
-    dw.prop = xt::prop::OutlineWidth;
-    dw.value.kind = StyleValueKind::Length;
-    dw.value.len = width;
-    dw.line = line;
-    out.push_back(dw);
-    out.push_back(enumDecl(styleprop::OutlineStyle, style, line));
-    if (haveColor) {
-        StyleDecl dc;
-        dc.prop = xt::prop::OutlineColor;
-        dc.value.kind = StyleValueKind::Color;
-        dc.value.color = color;
-        dc.line = line;
-        out.push_back(dc);
+    appendPropValues({{xt::prop::OutlineWidth, Value::ofLength(o.width.value, o.width.unit)}}, line, out);
+    out.push_back(enumDecl(styleprop::OutlineStyle, o.style, line));
+    if (o.haveColor) {
+        appendPropValues({{xt::prop::OutlineColor, Value::ofColor(o.color)}}, line, out);
     }
     return true;
 }
 
-}  // namespace xts_values_detail
-
-namespace {
-
-/// T-324 (05 §5.9.8): one `text-decoration-line` keyword's bit (xt::kTextDecoration*), or 0.
-uint32_t textDecorationBit(const Token& t) {
-    if (t.kind != TokenKind::Ident) {
-        return 0;
-    }
-    if (t.text == "underline") {
-        return xt::kTextDecorationUnderline;
-    }
-    if (t.text == "overline") {
-        return xt::kTextDecorationOverline;
-    }
-    if (t.text == "line-through") {
-        return xt::kTextDecorationLineThrough;
-    }
-    return 0;
+/// T-324: `text-decoration-line: none | [underline || overline || line-through]` -> the bit set.
+bool parseTextDecorationLine(const std::vector<Tok>& toks, uint32_t& out) {
+    return css_values::parseTextDecorationLine(toks.data(), toks.size(), kCompiler, out);
 }
 
-}  // namespace
-
-namespace xts_values_detail {
-
-/// T-324: `text-decoration-line: none | [underline || overline || line-through]`, each keyword
-/// at most once, in any order -> the bit set.
-bool parseTextDecorationLine(const std::vector<Token>& toks, uint32_t& out) {
-    out = 0;
-    if (toks.size() == 1 && toks[0].kind == TokenKind::Ident && toks[0].text == "none") {
-        return true;
-    }
-    for (const Token& t : toks) {
-        const uint32_t bit = textDecorationBit(t);
-        if (bit == 0 || (out & bit) != 0) {
-            return false;
-        }
-        out |= bit;
-    }
-    return !toks.empty();
-}
-
-/// T-324: a `text-decoration-thickness` value: `auto` or a non-negative px / em length (no
-/// percentage).
-bool isDecorationThickness(const Length& len) {
-    return len.unit == LengthUnit::Auto ||
-           ((len.unit == LengthUnit::Px || len.unit == LengthUnit::Em) && len.value >= 0.0f);
-}
-
-/// T-324 (05 §5.9.8): `text-decoration: <line…> [<color>] [<thickness>]`, the parts in any order
-/// (at least one). An absent line / thickness takes its initial value (`none`, `auto`); an absent
-/// color writes no `text-decoration-color` declaration, which leaves its initial value -- the
-/// element's `color` -- in effect (as parseOutlineShorthand does for `outline-color`).
-bool parseTextDecorationShorthand(const std::vector<Token>& toks, int line, std::vector<StyleDecl>& out) {
-    if (toks.empty()) {
+/// T-324 (05 §5.9.8): `text-decoration` -> the line set, the thickness and, when given, the color
+/// (an absent color leaves its initial value, the element's `color`).
+bool parseTextDecorationShorthand(const std::vector<Tok>& toks, int line, std::vector<StyleDecl>& out) {
+    css_values::TextDecorationValue t;
+    if (!css_values::parseTextDecoration(toks.data(), toks.size(), kCompiler, t)) {
         return false;
     }
-    bool haveLine = false, haveColor = false, haveThickness = false;
-    uint32_t lines = 0;
-    Length thickness{0, LengthUnit::Auto};
-    Color color{};
-    Cursor cur(toks);
-    while (!cur.atEnd()) {
-        const Token& t = cur.peek();
-        if (!haveLine && t.kind == TokenKind::Ident && t.text == "none") {
-            haveLine = true;
-            cur.advance();
-            continue;
-        }
-        const uint32_t bit = textDecorationBit(t);
-        if (bit != 0) {
-            if ((lines & bit) != 0 || (haveLine && lines == 0)) {
-                return false;
-            }
-            lines |= bit;
-            haveLine = true;
-            cur.advance();
-            continue;
-        }
-        if (!haveThickness) {
-            Length len;
-            if (parseLengthTok(t, len) && isDecorationThickness(len)) {
-                thickness = len;
-                haveThickness = true;
-                cur.advance();
-                continue;
-            }
-        }
-        if (!haveColor) {
-            Cursor probe = cur;
-            Color c;
-            if (parseColorCursor(probe, c)) {
-                cur = probe;
-                color = c;
-                haveColor = true;
-                continue;
-            }
-        }
-        return false;
-    }
-    out.push_back(enumDecl(styleprop::TextDecorationLine, lines, line));
-    StyleDecl dt;
-    dt.prop = xt::prop::TextDecorationThickness;
-    dt.value.kind = StyleValueKind::Length;
-    dt.value.len = thickness;
-    dt.line = line;
-    out.push_back(dt);
-    if (haveColor) {
-        StyleDecl dc;
-        dc.prop = xt::prop::TextDecorationColor;
-        dc.value.kind = StyleValueKind::Color;
-        dc.value.color = color;
-        dc.line = line;
-        out.push_back(dc);
+    out.push_back(enumDecl(styleprop::TextDecorationLine, t.lines, line));
+    appendPropValues(
+        {{xt::prop::TextDecorationThickness, Value::ofLength(t.thickness.value, t.thickness.unit)}}, line,
+        out);
+    if (t.haveColor) {
+        appendPropValues({{xt::prop::TextDecorationColor, Value::ofColor(t.color)}}, line, out);
     }
     return true;
 }
 
-bool parseFlexShorthand(const std::vector<Token>& toks, int line, std::vector<StyleDecl>& out) {
-    if (toks.size() == 1 && toks[0].kind == TokenKind::Ident && toks[0].text == "none") {
+bool parseFlexShorthand(const std::vector<Tok>& toks, int line, std::vector<StyleDecl>& out) {
+    if (toks.size() == 1 && toks[0].kind == TokKind::Ident && toks[0].text == "none") {
         StyleDecl g, s, b;
         g.prop = xt::prop::FlexGrow;
         g.value.kind = StyleValueKind::Float;
@@ -397,7 +204,7 @@ bool parseFlexShorthand(const std::vector<Token>& toks, int line, std::vector<St
     float shrink = 1;
     Length basis{0, LengthUnit::Px};
     size_t idx = 1;
-    if (idx < toks.size() && toks[idx].kind == TokenKind::Number && toks[idx].unit.empty()) {
+    if (idx < toks.size() && toks[idx].kind == TokKind::Number && toks[idx].unit.empty()) {
         if (!parseFloatTok(toks[idx], shrink)) {
             return false;
         }
@@ -431,7 +238,7 @@ bool parseFlexShorthand(const std::vector<Token>& toks, int line, std::vector<St
     return true;
 }
 
-bool parseGapShorthand(const std::vector<Token>& toks, int line, std::vector<StyleDecl>& out) {
+bool parseGapShorthand(const std::vector<Tok>& toks, int line, std::vector<StyleDecl>& out) {
     if (toks.empty() || toks.size() > 2) {
         return false;
     }
@@ -461,7 +268,7 @@ bool parseGapShorthand(const std::vector<Token>& toks, int line, std::vector<Sty
 // (one value sets both); `particle-color: <c> | <a> <b> | <c0> <c1> <c2> <c3>` -> the four color
 // stops (t = 0, 1/3, 2/3, 1). Two colors become the stops of the straight a->b line, which the
 // runtime's piecewise-linear interpolation reproduces exactly.
-bool parseParticlePairShorthand(const std::vector<Token>& toks, xt::PropId first, xt::PropId second, int line,
+bool parseParticlePairShorthand(const std::vector<Tok>& toks, xt::PropId first, xt::PropId second, int line,
                                 std::vector<StyleDecl>& out) {
     if (toks.empty() || toks.size() > 2) {
         return false;
@@ -486,7 +293,7 @@ bool parseParticlePairShorthand(const std::vector<Token>& toks, xt::PropId first
     return true;
 }
 
-bool parseParticleColorShorthand(const std::vector<Token>& toks, int line, std::vector<StyleDecl>& out) {
+bool parseParticleColorShorthand(const std::vector<Tok>& toks, int line, std::vector<StyleDecl>& out) {
     Cursor cur(toks);
     std::vector<Color> colors;
     while (!cur.atEnd()) {
@@ -527,34 +334,9 @@ bool parseParticleColorShorthand(const std::vector<Token>& toks, int line, std::
     return true;
 }
 
-/// T-328 (06 §6.16): `aspect-ratio: auto | <w> / <h> | <number>` as one width / height Float, `auto`
-/// = 0. Both numbers must be unitless and positive (a zero or negative ratio is dropped).
-bool parseAspectRatio(const std::vector<Token>& toks, float& out) {
-    const auto positive = [](const Token& t, float& v) {
-        if (t.kind != TokenKind::Number || !t.unit.empty() || !(t.num > 0.0f)) {
-            return false;
-        }
-        v = t.num;
-        return true;
-    };
-    if (toks.size() == 1 && toks[0].kind == TokenKind::Ident && toks[0].text == "auto") {
-        out = 0.0f;
-        return true;
-    }
-    float w = 0.0f;
-    float h = 1.0f;
-    if (toks.size() == 1) {
-        if (!positive(toks[0], w)) {
-            return false;
-        }
-        out = w;
-        return true;
-    }
-    if (toks.size() != 3 || !positive(toks[0], w) || !isSlashTok(toks[1]) || !positive(toks[2], h)) {
-        return false;
-    }
-    out = w / h;
-    return true;
+/// T-328 (06 §6.16): `aspect-ratio: auto | <w> / <h> | <number>` as one width / height Float.
+bool parseAspectRatio(const std::vector<Tok>& toks, float& out) {
+    return css_values::parseAspectRatio(toks.data(), toks.size(), out);
 }
 
 }  // namespace xts_values_detail

@@ -7,14 +7,14 @@
 #include "xt/value.h"
 
 /// IrDecl -> Value/enum-field decoding, the 05.4 initial-value table and the inherited-property
-/// table. A private (core/src) header used only by style_engine.cpp/selector_match.cpp; core stays
-/// free of any compile/ dependency, so these numbers are a hand-written, independent copy of
-/// compile/src/xts/xts_props.h's `styleprop` numbers and initialValue()/kProps `inherited` column
-/// (see docs/design/05-style-and-css.md §5.4, docs/tasks/T-24.md).
+/// table. A private (core/src) header; the `styleprop` numbers below are the only copy -- the
+/// compiler's xt::compile::styleprop (compile/src/xts/xts_props.h) names them through this header
+/// (T-413). The initial values and the inherited column are still a separate hand-written copy of
+/// compile/src/xts/xts_props.cpp's (see docs/design/05-style-and-css.md §5.4, docs/tasks/T-24.md).
 
 namespace xt::style_decode {
 
-/// Non-animatable StyleProp numbers (05.4). Identical numbering to compile's xt::compile::styleprop.
+/// Non-animatable StyleProp numbers (05.4), shared with the compiler (xt::compile::styleprop).
 namespace styleprop {
 inline constexpr uint16_t Display = 160;
 inline constexpr uint16_t Position = 161;

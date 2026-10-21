@@ -121,6 +121,11 @@ if(XT_BUILD_TESTS)
     xt_add_expect_exit_test(xtframe-compile_missing_output_flag CODE 2 OUTPUT "usage: xtframe-compile"
         COMMAND $<TARGET_FILE:xtframe-compile> "${PROJECT_SOURCE_DIR}/tests/lottie/min_solid_anim.json")
 
+    # T-420: --version prints three lines to stdout and exits 0, whatever else is given.
+    xt_add_expect_exit_test(xtframe-compile_version CODE 0
+        OUTPUT "^xtframe-compile [0-9]+\\.[0-9]+\\.[0-9]+[^a-z]+ir-format 2\\.[0-9]+[^a-z]+behavior [0-9]+"
+        COMMAND $<TARGET_FILE:xtframe-compile> --version --bogus)
+
     # T-23: `.xt` input via compileDocument.
     xt_add_expect_exit_test(xtframe-compile_xt_ok CODE 0 OUTPUT "wrote "
         COMMAND $<TARGET_FILE:xtframe-compile> "${PROJECT_SOURCE_DIR}/tests/xt/doc_basic.xt"
@@ -148,6 +153,11 @@ if(XT_BUILD_TESTS)
     xt_add_expect_exit_test(xtframe-pack_unknown_ui CODE 2 OUTPUT "no UI with id 'nope'"
         COMMAND $<TARGET_FILE:xtframe-pack> "${PROJECT_SOURCE_DIR}/tests/bundle/fixtures/sample"
                 -o "${CMAKE_BINARY_DIR}/xtframe-pack-test-out/sample-ui" --ui nope --no-thumbs)
+
+    # T-420: --version prints three lines to stdout and exits 0, whatever else is given.
+    xt_add_expect_exit_test(xtframe-pack_version CODE 0
+        OUTPUT "^xtframe-pack [0-9]+\\.[0-9]+\\.[0-9]+[^a-z]+ir-format 2\\.[0-9]+[^a-z]+behavior [0-9]+"
+        COMMAND $<TARGET_FILE:xtframe-pack> --upgrade --version)
 
     # T-274 (docs/RELEASE-MAP.md §6.1): xtframe-pack is runtime layer and no longer bakes vectors.
     # `--bake-vectors` is a moved option (exit 2, pointing at xtframe-editor); an unbaked
@@ -355,6 +365,10 @@ if(XT_BUILD_TESTS)
                     --headless --frames 2 --width 320 --height 200 --screenshot rel.png)
 
         xt_add_expect_exit_test(xtframe-view_help CODE 0 OUTPUT "usage: xtframe-view" COMMAND ${XT_VIEW} --help)
+        # T-420: --version prints three lines to stdout and exits 0, whatever else is given.
+        xt_add_expect_exit_test(xtframe-view_version CODE 0
+            OUTPUT "^xtframe-view [0-9]+\\.[0-9]+\\.[0-9]+[^a-z]+ir-format 2\\.[0-9]+[^a-z]+behavior [0-9]+"
+            COMMAND ${XT_VIEW} --width nope --version)
 
         # T-261f item 2: a document, a screenshot and a Bundle in a directory the ANSI code page
         # cannot spell.

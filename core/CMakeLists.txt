@@ -63,6 +63,7 @@ add_library(xt_core STATIC
     src/element_ref.cpp
     src/mini_css.cpp
     src/css_color.cpp
+    src/css_values.cpp
     src/selector_query.cpp
     src/document_load.cpp
     src/context.cpp

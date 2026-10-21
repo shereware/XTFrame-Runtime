@@ -58,6 +58,7 @@ CSS 子集。解析器自寫。
 - 值單位：`px`、`%`、`em`、`auto`、無單位數字（僅 `flex-grow/shrink`、`opacity`、`z-index`、`line-height`）。
 - 顏色：`#rgb #rgba #rrggbb #rrggbbaa`、`rgb()`、`rgba()`、`transparent`、17 個 CSS Level 1 命名色加 `orange`。
 - 未知屬性或無法解析的值：編譯警告並忽略該宣告。
+- 裁決（2026-10-21，T-413 對照測試發現）：**關鍵字與單位 ASCII 不分大小寫**（CSS Syntax 語意；`display: FLEX`、`10PX` 合法），命名色亦同；字串與 `url()` 內容保留大小寫。執行期 `mini_css` 已如此，編譯器仍為完全相符——補齊為 T-421。**清單型屬性（`animation`、`transition`、`effect`…）任一項無效 → 整條宣告丟棄並警告**，不是跳過該項；`animation` 已依此修正（T-413），`transition` 同樣補齊於 T-421。
 
 ## 5.4 支援的屬性
 

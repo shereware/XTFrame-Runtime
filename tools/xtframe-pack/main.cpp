@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "../common/console_utf8.h"
+#include "../common/print_version.h"
 #include "xt/bundle/asset_meta.h"
 #include "xt/bundle/bundle.h"
 #include "xt/bundle/design_doc.h"
@@ -24,6 +25,10 @@
 ///                   [--ui <id>]... [--strict] [--no-thumbs] [--embed] [--prune] [--lang <list>]
 ///                   [--allow-placeholders]
 ///        xtframe-pack --upgrade <bundle-dir>
+///        xtframe-pack --version
+///
+/// --version (T-420) prints the version lines (tools/common/print_version.h) to stdout and exits 0,
+/// whatever else is on the command line.
 ///
 /// T-183 (docs/design/30-ui-project.md, 22-bundle.md §22.10, 12-compiler.md §12.7): a directory
 /// is read as a UI Project (T-214: its `<name>.xtui`, else a legacy `ui-project.json`, else
@@ -97,7 +102,8 @@ void printUsage() {
                  "[--ui <id>]... [--strict] [--no-thumbs] [--embed] [--prune] [--lang <list>] "
                  "[--gen-ports cpp|cs <out>] [--atlas] [--atlas-scope ui|bundle] "
                  "[--compress bc7|bc3|bc1|none] [--font-subset] [--allow-placeholders]\n"
-                 "       xtframe-pack --upgrade <bundle-dir>\n");
+                 "       xtframe-pack --upgrade <bundle-dir>\n"
+                 "       xtframe-pack --version\n");
 }
 
 /// T-274: appended to the compiler's `vector.unbakedModifier` message, since the pack does not bake.
@@ -169,6 +175,14 @@ int packMain(int argc, char** argv) {
     bool genPorts = false;
     xt::bundle::PortsLanguage portsLanguage = xt::bundle::PortsLanguage::Cpp;
     std::string portsOut;
+
+    // T-420: --version wins over every other argument.
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) == "--version") {
+            xt::tools::printVersion("xtframe-pack", stdout);
+            return 0;
+        }
+    }
 
     if (argc >= 2 && std::string(argv[1]) == "--upgrade") {
         if (argc != 3) {
