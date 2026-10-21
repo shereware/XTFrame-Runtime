@@ -23,6 +23,14 @@ jobs:
         run: cmake --build --preset vs2022-release
       - name: Test Release
         run: ctest --preset vs2022-release --output-on-failure
+      - name: Upload corpus_check output
+        # The renders a failed corpus_check produced, for a local diff against tests/corpus/*/expected.
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: corpus-actual-windows
+          path: build/vs2022/tests/corpus_work/*/actual/
+          if-no-files-found: ignore
 
   linux:
     runs-on: ubuntu-24.04

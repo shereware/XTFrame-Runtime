@@ -307,8 +307,10 @@ TEST_CASE("CommandListSimplifier: null shaper drops DrawGlyphs entirely") {
     glyphs.color = Color{1, 1, 1, 1};
     glyphs.glyphOffset = 0;
     glyphs.glyphCount = 1;
-    list.glyphs = {65};
-    list.glyphPos = {Vec2{0, 0}};
+    // assign() rather than `= {65}`: GCC 12 -O2 turns the one-element initializer_list
+    // assignment into a bogus -Werror=array-bounds (runtime mirror CI, g++-12 Release).
+    list.glyphs.assign(1, 65u);
+    list.glyphPos.assign(1, Vec2{0, 0});
     list.glyphRuns.push_back(glyphs);
     pushCmd(list, CmdKind::DrawGlyphs, 0);
 
@@ -559,8 +561,10 @@ TEST_CASE("CommandListSimplifier: flatten3D drops DrawGlyphs (no shaper) and cou
     glyphs.color = Color{1, 1, 1, 1};
     glyphs.glyphOffset = 0;
     glyphs.glyphCount = 1;
-    list.glyphs = {65};
-    list.glyphPos = {Vec2{0, 0}};
+    // assign() rather than `= {65}`: GCC 12 -O2 turns the one-element initializer_list
+    // assignment into a bogus -Werror=array-bounds (runtime mirror CI, g++-12 Release).
+    list.glyphs.assign(1, 65u);
+    list.glyphPos.assign(1, Vec2{0, 0});
     list.glyphRuns.push_back(glyphs);
     pushCmd(list, CmdKind::DrawGlyphs, 0);
     popProjection(list);
