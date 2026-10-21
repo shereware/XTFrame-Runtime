@@ -8,6 +8,8 @@
 #include <string_view>
 #include <vector>
 
+#include "xt/util/text.h"
+
 /// Hand-written recursive-descent `.xt` parser. See docs/design/05-style-and-css.md §5.1-5.2,
 /// docs/tasks/T-21.md.
 
@@ -15,39 +17,16 @@ namespace xt::compile {
 
 namespace {
 
-bool isAsciiAlpha(char c) { return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'); }
-bool isAsciiDigit(char c) { return c >= '0' && c <= '9'; }
-bool isAsciiHexDigit(char c) { return isAsciiDigit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'); }
+using util::isAsciiAlpha;
+using util::isAsciiDigit;
+using util::isAsciiHexDigit;
+using util::isWs;
 bool isNameChar(char c) { return isAsciiAlpha(c) || isAsciiDigit(c) || c == '_' || c == '-'; }
-bool isWs(char c) { return c == ' ' || c == '\t' || c == '\r' || c == '\n'; }
 
-char toLowerChar(char c) {
-    if (c >= 'A' && c <= 'Z') {
-        return static_cast<char>(c - 'A' + 'a');
-    }
-    return c;
-}
-
-std::string toLowerCopy(std::string_view s) {
-    std::string out;
-    out.reserve(s.size());
-    for (char c : s) {
-        out.push_back(toLowerChar(c));
-    }
-    return out;
-}
-
-bool iequalsAscii(std::string_view a, std::string_view b) {
-    if (a.size() != b.size()) {
-        return false;
-    }
-    for (size_t i = 0; i < a.size(); ++i) {
-        if (toLowerChar(a[i]) != toLowerChar(b[i])) {
-            return false;
-        }
-    }
-    return true;
-}
+using util::iequalsAscii;
+using util::toLowerChar;
+using util::toLowerCopy;
+using util::utf8Encode;
 
 /// Collapses runs of whitespace (space/tab/CR/LF) to a single space and trims both ends.
 std::string foldWhitespace(std::string_view s) {
@@ -68,27 +47,6 @@ std::string foldWhitespace(std::string_view s) {
         }
         out.push_back(c);
         any = true;
-    }
-    return out;
-}
-
-/// Encodes a Unicode code point as UTF-8.
-std::string utf8Encode(uint32_t cp) {
-    std::string out;
-    if (cp <= 0x7Fu) {
-        out.push_back(static_cast<char>(cp));
-    } else if (cp <= 0x7FFu) {
-        out.push_back(static_cast<char>(0xC0u | (cp >> 6)));
-        out.push_back(static_cast<char>(0x80u | (cp & 0x3Fu)));
-    } else if (cp <= 0xFFFFu) {
-        out.push_back(static_cast<char>(0xE0u | (cp >> 12)));
-        out.push_back(static_cast<char>(0x80u | ((cp >> 6) & 0x3Fu)));
-        out.push_back(static_cast<char>(0x80u | (cp & 0x3Fu)));
-    } else {
-        out.push_back(static_cast<char>(0xF0u | (cp >> 18)));
-        out.push_back(static_cast<char>(0x80u | ((cp >> 12) & 0x3Fu)));
-        out.push_back(static_cast<char>(0x80u | ((cp >> 6) & 0x3Fu)));
-        out.push_back(static_cast<char>(0x80u | (cp & 0x3Fu)));
     }
     return out;
 }

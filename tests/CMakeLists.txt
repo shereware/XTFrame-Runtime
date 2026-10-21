@@ -381,13 +381,16 @@ endif()
 # only; cross-platform rendering is the golden suite's job (tests/golden, with tolerances). A Debug
 # run takes over 30 minutes on a hosted runner, so the test is limited to the optimised
 # configurations (ctest -C Release / RelWithDebInfo).
+# T-426: each project.json lists the font families it needs (`fonts`); a runner without one of them
+# skips that project (--skip-missing-fonts) instead of failing on its screenshots. tools/dev_check.sh
+# runs the strict mode (a missing font fails).
 if(WIN32 AND TARGET xtframe-view AND TARGET xtframe-pack)
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_Interpreter_FOUND)
         add_test(NAME corpus_check
                  COMMAND Python3::Interpreter "${PROJECT_SOURCE_DIR}/tools/corpus_check.py"
                          --view $<TARGET_FILE:xtframe-view> --pack $<TARGET_FILE:xtframe-pack>
-                         --work "${CMAKE_CURRENT_BINARY_DIR}/corpus_work"
+                         --work "${CMAKE_CURRENT_BINARY_DIR}/corpus_work" --skip-missing-fonts
                  CONFIGURATIONS Release RelWithDebInfo)
         set_tests_properties(corpus_check PROPERTIES TIMEOUT 1800)
     endif()

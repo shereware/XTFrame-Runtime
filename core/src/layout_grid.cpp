@@ -3,6 +3,7 @@
 #include <utility>
 #include <vector>
 
+#include "layout_common.h"
 #include "xt/assert.h"
 #include "xt/layout.h"
 #include "xt/node.h"
@@ -18,26 +19,6 @@
 namespace xt {
 
 namespace {
-
-Edges resolveEdgesPx(const Length& t, const Length& r, const Length& b, const Length& l, float refW) {
-    return Edges{resolveLength(t, refW, 0), resolveLength(r, refW, 0), resolveLength(b, refW, 0),
-                 resolveLength(l, refW, 0)};
-}
-
-float clampMinMax(float value, Length minLen, Length maxLen, float refW) {
-    float clamped = value;
-    if (maxLen.unit != LengthUnit::Auto) {
-        float maxV = resolveLength(maxLen, refW, 0);
-        if (clamped > maxV) {
-            clamped = maxV;
-        }
-    }
-    float minV = resolveLength(minLen, refW, 0);
-    if (clamped < minV) {
-        clamped = minV;
-    }
-    return clamped;
-}
 
 /// One axis of an item's requested placement: a definite start (0-based) or auto, and a span.
 struct AxisPlacement {
@@ -690,26 +671,15 @@ void LayoutEngine::layoutGrid(NodeArena& arena, NodeId node, float availW, float
     // The container's own box, as layoutFlex sizes it (§6.4 references, T-74 definiteness).
     const float refW = availW;
     const float refH = availH;
-    const Edges margin =
-        resolveEdgesPx(style.base[prop::MarginTop].len, style.base[prop::MarginRight].len,
-                       style.base[prop::MarginBottom].len, style.base[prop::MarginLeft].len, refW);
-    const Edges padding =
-        resolveEdgesPx(style.base[prop::PaddingTop].len, style.base[prop::PaddingRight].len,
-                       style.base[prop::PaddingBottom].len, style.base[prop::PaddingLeft].len, refW);
-    const Edges border =
-        resolveEdgesPx(style.base[prop::BorderTopWidth].len, style.base[prop::BorderRightWidth].len,
-                       style.base[prop::BorderBottomWidth].len, style.base[prop::BorderLeftWidth].len, refW);
+    const auto [margin, padding, border] = resolveBoxEdges(style, refW);
     const float extraW = padding.left + padding.right + border.left + border.right;
     const float extraH = padding.top + padding.bottom + border.top + border.bottom;
 
     const Length widthLen = style.base[prop::Width].len;
     const bool widthAuto = widthLen.unit == LengthUnit::Auto;
     float definiteBorderBoxH = 0;
-    bool heightDefinite = resolveHeightLength(style.base[prop::Height].len, refH, definiteBorderBoxH);
-    if (!heightDefinite && imposedH >= 0.0f) {
-        definiteBorderBoxH = imposedH;
-        heightDefinite = true;
-    }
+    bool heightDefinite =
+        resolveDefiniteHeight(style.base[prop::Height].len, refH, imposedH, definiteBorderBoxH);
     data.hasIntrinsic = 0;
     data.intrinsic = Vec2{0, 0};
 
@@ -734,20 +704,8 @@ void LayoutEngine::layoutGrid(NodeArena& arena, NodeId node, float availW, float
     // §6.16 (T-328): `aspect-ratio` on the border box, as in layoutFlex.
     const float ratio = node == m_aspectSuppressed ? 0.0f : style.base[prop::AspectRatio].f;
     if (ratio > 0.0f && ((widthAuto && heightDefinite) || (!heightDefinite && !widthIsAxisAuto))) {
-        AspectMinMax bounds = aspectMinMax(style, refW, refH);
-        bounds.minW += extraW;
-        bounds.minH += extraH;
-        bounds.maxW = bounds.maxW < kFlexNoMax ? bounds.maxW + extraW : kFlexNoMax;
-        bounds.maxH = bounds.maxH < kFlexNoMax ? bounds.maxH + extraH : kFlexNoMax;
-        Vec2 size;
-        if (heightDefinite) {
-            const float h =
-                clampHeightMinMax(std::max(0.0f, definiteBorderBoxH - extraH),
-                                  style.base[prop::MinHeight].len, style.base[prop::MaxHeight].len, refH);
-            size = resolveAspect(kUndefinedRef, h + extraH, ratio, bounds);
-        } else {
-            size = resolveAspect(contentW + extraW, kUndefinedRef, ratio, bounds, widthAuto);
-        }
+        const Vec2 size = containerAspectSize(style, ratio, refW, refH, extraW, extraH, heightDefinite,
+                                              definiteBorderBoxH, contentW, widthAuto);
         contentW = std::max(0.0f, size.x - extraW);
         widthIsAxisAuto = false;
         definiteBorderBoxH = size.y;

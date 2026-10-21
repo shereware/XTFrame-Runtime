@@ -39,4 +39,8 @@ std::string emitYamlLite(const nlohmann::ordered_json& value, int indent = 0);
 /// The same for an unordered json (its keys come out alphabetically).
 std::string emitYamlLite(const nlohmann::json& value, int indent = 0);
 
+/// An unordered json as an ordered one (keys sorted, as json keeps them); used before emitting
+/// YAML or ordered JSON (T-414: asset_meta.cpp and design_io.cpp had copies).
+nlohmann::ordered_json toOrdered(const nlohmann::json& value);
+
 }  // namespace xt::bundle::detail

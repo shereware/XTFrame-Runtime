@@ -64,39 +64,6 @@ void setError(std::string* error, std::string message) {
     }
 }
 
-ordered_json ordered(const json& value) {
-    if (value.is_object()) {
-        ordered_json out = ordered_json::object();
-        for (auto it = value.begin(); it != value.end(); ++it) {
-            out[it.key()] = ordered(it.value());
-        }
-        return out;
-    }
-    if (value.is_array()) {
-        ordered_json out = ordered_json::array();
-        for (const json& item : value) {
-            out.push_back(ordered(item));
-        }
-        return out;
-    }
-    if (value.is_string()) {
-        return ordered_json(value.get<std::string>());
-    }
-    if (value.is_boolean()) {
-        return ordered_json(value.get<bool>());
-    }
-    if (value.is_number_unsigned()) {
-        return ordered_json(value.get<uint64_t>());
-    }
-    if (value.is_number_integer()) {
-        return ordered_json(value.get<int64_t>());
-    }
-    if (value.is_number_float()) {
-        return ordered_json(value.get<double>());
-    }
-    return ordered_json(nullptr);
-}
-
 /// A float as the double of its shortest decimal form, so `0.12f` is written `0.12`.
 ordered_json floatJson(float value) {
     char buffer[64];
@@ -286,7 +253,7 @@ std::string readId(const json& obj, const char* key = "id") {
 
 void putStringDesignIo(ordered_json& o, const char* key, const std::string& value, const json& extra) {
     if (extraHasDesignIo(extra, key)) {
-        o[key] = ordered(extra[key]);
+        o[key] = bundle::detail::toOrdered(extra[key]);
     } else if (!value.empty()) {
         o[key] = value;
     }
@@ -311,7 +278,7 @@ ordered_json listJson(const std::vector<std::string>& items, bool numbersAsNumbe
 
 void putList(ordered_json& o, const char* key, const std::vector<std::string>& items, const json& extra) {
     if (extraHasDesignIo(extra, key)) {
-        o[key] = ordered(extra[key]);
+        o[key] = bundle::detail::toOrdered(extra[key]);
     } else if (!items.empty()) {
         o[key] = listJson(items);
     }
@@ -333,7 +300,7 @@ ordered_json linksJson(const std::vector<Link>& links) {
 
 void putLinks(ordered_json& o, const std::vector<Link>& links, const json& extra) {
     if (extraHasDesignIo(extra, "links")) {
-        o["links"] = ordered(extra["links"]);
+        o["links"] = bundle::detail::toOrdered(extra["links"]);
     } else if (!links.empty()) {
         o["links"] = linksJson(links);
     }
@@ -341,7 +308,7 @@ void putLinks(ordered_json& o, const std::vector<Link>& links, const json& extra
 
 void putStatus(ordered_json& o, const Entry& e) {
     if (extraHasDesignIo(e.extra, "status")) {
-        o["status"] = ordered(e.extra["status"]);
+        o["status"] = bundle::detail::toOrdered(e.extra["status"]);
     } else if (e.status != EntryStatus::Draft) {
         o["status"] = detail::statusText(e);
     }
@@ -350,7 +317,7 @@ void putStatus(ordered_json& o, const Entry& e) {
 void putSource(ordered_json& o, const Entry& e) {
     const bool rawSource = extraHasDesignIo(e.extra, "source") && !e.extra["source"].is_object();
     if (rawSource) {
-        o["source"] = ordered(e.extra["source"]);
+        o["source"] = bundle::detail::toOrdered(e.extra["source"]);
         return;
     }
     ordered_json s = ordered_json::object();
@@ -366,7 +333,7 @@ void putSource(ordered_json& o, const Entry& e) {
     if (extraHasDesignIo(e.extra, "source")) {
         for (auto it = e.extra["source"].begin(); it != e.extra["source"].end(); ++it) {
             if (!s.contains(it.key())) {
-                s[it.key()] = ordered(it.value());
+                s[it.key()] = bundle::detail::toOrdered(it.value());
             }
         }
     }
@@ -377,7 +344,7 @@ void putSource(ordered_json& o, const Entry& e) {
 
 void putApproved(ordered_json& o, const Entry& e) {
     if (extraHasDesignIo(e.extra, "approved")) {
-        o["approved"] = ordered(e.extra["approved"]);
+        o["approved"] = bundle::detail::toOrdered(e.extra["approved"]);
         return;
     }
     if (e.approved.by.empty() && e.approved.at.empty()) {
@@ -408,7 +375,7 @@ void putExtra(ordered_json& o, const json& extra) {
     }
     for (auto it = extra.begin(); it != extra.end(); ++it) {
         if (!o.contains(it.key()) && !knownKey(it.key(), {"status", "source", "approved", "links", "tags"})) {
-            o[it.key()] = ordered(it.value());
+            o[it.key()] = bundle::detail::toOrdered(it.value());
         }
     }
 }
@@ -538,7 +505,7 @@ ordered_json infoJson(const DesignInfo& info) {
     if (info.extra.is_object()) {
         for (auto it = info.extra.begin(); it != info.extra.end(); ++it) {
             if (!o.contains(it.key())) {
-                o[it.key()] = ordered(it.value());
+                o[it.key()] = bundle::detail::toOrdered(it.value());
             }
         }
     }
@@ -593,7 +560,7 @@ ordered_json swatchJson(const Swatch& s, bool topLevel) {
         putStringDesignIo(o, "group", s.group, s.base.extra);
     }
     if (extraHasDesignIo(s.base.extra, "scale")) {
-        o["scale"] = ordered(s.base.extra["scale"]);
+        o["scale"] = bundle::detail::toOrdered(s.base.extra["scale"]);
     } else if (!s.scale.base.empty() || s.scale.step != 0 || !s.scale.method.empty()) {
         ordered_json scale = ordered_json::object();
         if (!s.scale.base.empty()) {
@@ -705,7 +672,7 @@ ordered_json paletteJson(const DesignSystem& ds) {
             go["id"] = g.base.id;
             putStringDesignIo(go, "name", g.name.empty() ? g.base.name : g.name, g.base.extra);
             if (extraHasDesignIo(g.base.extra, "scale")) {
-                go["scale"] = ordered(g.base.extra["scale"]);
+                go["scale"] = bundle::detail::toOrdered(g.base.extra["scale"]);
             } else if (!g.scale.base.empty() || g.scale.steps != 0 || !g.scale.method.empty()) {
                 ordered_json scale = ordered_json::object();
                 if (!g.scale.base.empty()) {
@@ -723,7 +690,7 @@ ordered_json paletteJson(const DesignSystem& ds) {
             putLinks(go, g.base.links, g.base.extra);
             putStringDesignIo(go, "note", g.base.note, g.base.extra);
             if (extraHasDesignIo(g.base.extra, "swatches")) {
-                go["swatches"] = ordered(g.base.extra["swatches"]);
+                go["swatches"] = bundle::detail::toOrdered(g.base.extra["swatches"]);
             } else {
                 ordered_json list = ordered_json::array();
                 std::set<std::string> written;
@@ -762,12 +729,12 @@ ordered_json paletteJson(const DesignSystem& ds) {
         o["swatches"] = std::move(loose);
     }
     if (extraHasDesignIo(ds.paletteExtra, "contrast")) {
-        o["contrast"] = ordered(ds.paletteExtra["contrast"]);
+        o["contrast"] = bundle::detail::toOrdered(ds.paletteExtra["contrast"]);
     }
     if (ds.paletteExtra.is_object()) {
         for (auto it = ds.paletteExtra.begin(); it != ds.paletteExtra.end(); ++it) {
             if (!o.contains(it.key())) {
-                o[it.key()] = ordered(it.value());
+                o[it.key()] = bundle::detail::toOrdered(it.value());
             }
         }
     }
@@ -836,7 +803,7 @@ ordered_json tokensJson(const DesignSystem& ds) {
     if (ds.tokensExtra.is_object()) {
         for (auto it = ds.tokensExtra.begin(); it != ds.tokensExtra.end(); ++it) {
             if (!o.contains(it.key())) {
-                o[it.key()] = ordered(it.value());
+                o[it.key()] = bundle::detail::toOrdered(it.value());
             }
         }
     }
@@ -880,7 +847,7 @@ ordered_json typeJson(const DesignSystem& ds) {
             putStringDesignIo(ro, "name", r.base.name, r.base.extra);
             putStringDesignIo(ro, "family", r.family, r.base.extra);
             if (extraHasDesignIo(r.base.extra, "weights")) {
-                ro["weights"] = ordered(r.base.extra["weights"]);
+                ro["weights"] = bundle::detail::toOrdered(r.base.extra["weights"]);
             } else if (!r.weights.empty()) {
                 ro["weights"] = listJson(r.weights, /*numbersAsNumbers=*/true);
             }
@@ -895,7 +862,7 @@ ordered_json typeJson(const DesignSystem& ds) {
     if (ds.typeExtra.is_object()) {
         for (auto it = ds.typeExtra.begin(); it != ds.typeExtra.end(); ++it) {
             if (!o.contains(it.key())) {
-                o[it.key()] = ordered(it.value());
+                o[it.key()] = bundle::detail::toOrdered(it.value());
             }
         }
     }
@@ -1009,7 +976,7 @@ std::string textFileContent(const TextEntry& t) {
     putStringDesignIo(o, "title", t.title, t.base.extra);
     putStringDesignIo(o, "name", t.base.name, t.base.extra);
     if (extraHasDesignIo(t.base.extra, "section")) {
-        o["section"] = ordered(t.base.extra["section"]);
+        o["section"] = bundle::detail::toOrdered(t.base.extra["section"]);
     } else if (t.sections.size() == 1) {
         o["section"] = t.sections[0];
     } else if (!t.sections.empty()) {
@@ -1027,7 +994,7 @@ std::string textFileContent(const TextEntry& t) {
         }
     }
     if (extraHasDesignIo(t.base.extra, "applies-to")) {
-        o["applies-to"] = ordered(t.base.extra["applies-to"]);
+        o["applies-to"] = bundle::detail::toOrdered(t.base.extra["applies-to"]);
     } else if (!appliesTo.empty()) {
         o["applies-to"] = listJson(appliesTo);
     }
@@ -1116,7 +1083,7 @@ std::string referenceMetaContent(const ReferenceMeta& r) {
     putStringDesignIo(o, "license", r.license, r.base.extra);
     putStringDesignIo(o, "content", r.contentHash, r.base.extra);
     if (extraHasDesignIo(r.base.extra, "annotations")) {
-        o["annotations"] = ordered(r.base.extra["annotations"]);
+        o["annotations"] = bundle::detail::toOrdered(r.base.extra["annotations"]);
     } else if (!r.annotations.empty()) {
         ordered_json list = ordered_json::array();
         for (const ReferenceMeta::Annotation& a : r.annotations) {
@@ -1138,7 +1105,7 @@ std::string referenceMetaContent(const ReferenceMeta& r) {
         o["annotations"] = std::move(list);
     }
     if (extraHasDesignIo(r.base.extra, "extracted")) {
-        o["extracted"] = ordered(r.base.extra["extracted"]);
+        o["extracted"] = bundle::detail::toOrdered(r.base.extra["extracted"]);
     } else if (!r.extracted.empty()) {
         ordered_json list = ordered_json::array();
         for (const ReferenceMeta::Extracted& x : r.extracted) {

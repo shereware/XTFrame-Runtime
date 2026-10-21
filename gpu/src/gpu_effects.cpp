@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <vector>
 
+#include "effect_math.h"  // core/src: shared with xt::sw (T-414)
 #include "xt/assert.h"
 #include "xt/effect_utils.h"
 
@@ -36,7 +37,6 @@ namespace xt::gpu::detail {
 
 namespace {
 
-constexpr float kDegToRad = 0.017453292519943295f;
 constexpr float kMaxDevicePx = 64.0f;
 
 float clampDevicePx64(float v) {
@@ -60,11 +60,7 @@ float swEffectiveSigma(float sigma) {
     if (sigma <= 1e-6f) {
         return 0.0f;
     }
-    float sigma2 = sigma * sigma;
-    int w = static_cast<int>(std::floor(std::sqrt(12.0f * sigma2 / 3.0f + 1.0f)));
-    if (w % 2 == 0) {
-        w -= 1;
-    }
+    const int w = effect_math::boxBlurWidth(sigma);
     if (w < 1) {
         return 0.0f;
     }
@@ -446,7 +442,7 @@ private:
         sat[1] = {-saturation * lr, 1.0f + saturation * (1.0f - lg), -saturation * lb, 0.0f, 0.0f};
         sat[2] = {-saturation * lr, -saturation * lg, 1.0f + saturation * (1.0f - lb), 0.0f, 0.0f};
 
-        float theta = hueDeg * kDegToRad;
+        float theta = hueDeg * effect_math::kDegToRad;
         float cs = std::cos(theta);
         float sn = std::sin(theta);
         Mat3x5 toYiq = identity();
@@ -527,38 +523,20 @@ private:
     }
 
     TargetHandle applyShine(const EffectInstance& p, TargetHandle src) {
-        float position = p.params[0];
-        float width = std::max(0.0f, p.params[1]);
-        float softness = std::clamp(p.params[2], 0.0f, 1.0f);
-        float angleDeg = p.params[3];
         float intensity = p.params[4];
         Color color = p.colors[0];
 
-        float rad = angleDeg * kDegToRad;
-        Vec2 d{std::cos(rad), std::sin(rad)};
-        const Rect& cb = m_in.contentBoundsPx;
-        Vec2 corners[4] = {
-            Vec2{cb.x, cb.y},
-            Vec2{cb.x + cb.w, cb.y},
-            Vec2{cb.x, cb.y + cb.h},
-            Vec2{cb.x + cb.w, cb.y + cb.h},
-        };
-        float lo = corners[0].x * d.x + corners[0].y * d.y;
-        float hi = lo;
-        for (int i = 1; i < 4; ++i) {
-            float proj = corners[i].x * d.x + corners[i].y * d.y;
-            lo = std::min(lo, proj);
-            hi = std::max(hi, proj);
-        }
+        const effect_math::ShineBand band = effect_math::shineBand(p, m_in.contentBoundsPx);
+        const Vec2 d = band.dir;
         ShineParams sp{};
         sp.dirX = d.x;
         sp.dirY = d.y;
         // The shader projects window-relative positions; move the band center by the window
         // origin's projection so it stays where the surface-space content box puts it (T-151).
-        sp.center = lo + (hi - lo) * position -
-                    (static_cast<float>(m_window.x) * d.x + static_cast<float>(m_window.y) * d.y);
-        sp.edge0 = width * (1.0f - softness) * 0.5f;
-        sp.edge1 = width * 0.5f;
+        sp.center =
+            band.center - (static_cast<float>(m_window.x) * d.x + static_cast<float>(m_window.y) * d.y);
+        sp.edge0 = band.edge0;
+        sp.edge1 = band.edge1;
         sp.r = color.r;
         sp.g = color.g;
         sp.b = color.b;

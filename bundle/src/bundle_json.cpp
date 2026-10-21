@@ -8,6 +8,7 @@
 #include <limits>
 #include <string>
 
+#include "json_bounded.h"  // compile/src: T-262c, the one bounded parse (T-414)
 #include "xt/bundle/bundle.h"
 #include "xt/charconv.h"
 #include "xt/compile/utf8_path.h"
@@ -31,26 +32,7 @@ namespace xt::bundle::detail {
 using compile::pathFromUtf8;
 
 json parseBounded(std::string_view text, int maxDepth, std::string& error) {
-    error.clear();
-    bool tooDeep = false;
-    // `depth` is the number of enclosing containers, so the root starts at 0 and a container
-    // starting at depth `maxDepth` would be level `maxDepth + 1`. Refusing it (returning false)
-    // makes nlohmann skip building it and everything inside it.
-    const json::parser_callback_t callback = [&tooDeep, maxDepth](int depth, json::parse_event_t event,
-                                                                  json& /*parsed*/) {
-        if ((event == json::parse_event_t::object_start || event == json::parse_event_t::array_start) &&
-            depth >= maxDepth) {
-            tooDeep = true;
-            return false;
-        }
-        return true;
-    };
-    json root = json::parse(text.begin(), text.end(), callback, /*allow_exceptions=*/false);
-    if (tooDeep) {
-        error = "nesting too deep";
-        return json(json::value_t::discarded);
-    }
-    return root;
+    return compile::detail::parseBounded(text, maxDepth, error);
 }
 
 namespace {
@@ -323,24 +305,6 @@ void readUiScaleLimits(const json& spec, UiScaleLimits& out) {
     out.dpiFloor = std::isfinite(floor) && floor > 0.0f ? floor : 0.0f;
 }
 
-namespace {
-
-/// `value` as an integer when integral, else the float's shortest round-trip spelling (0.8f is
-/// written as 0.8, not as the widened double), like ui_project.cpp's writeNumber().
-nlohmann::ordered_json shortNumber(float value) {
-    const auto rounded = static_cast<int64_t>(value);
-    if (static_cast<float>(rounded) == value) {
-        return nlohmann::ordered_json(rounded);
-    }
-    char buffer[32] = {};
-    const std::to_chars_result result = std::to_chars(buffer, buffer + sizeof(buffer) - 1, value);
-    double widened = 0;
-    xt::fromChars(buffer, result.ptr, widened);
-    return nlohmann::ordered_json(widened);
-}
-
-}  // namespace
-
 void writeUiScaleLimits(nlohmann::ordered_json& spec, const UiScaleLimits& limits) {
     if (limits.clamped) {
         nlohmann::ordered_json range = nlohmann::ordered_json::array();
@@ -502,6 +466,30 @@ std::vector<AtlasJson> getAtlases(const json& root) {
         }
     }
     return out;
+}
+
+nlohmann::ordered_json shortNumber(float value) {
+    const auto rounded = static_cast<int64_t>(value);
+    if (static_cast<float>(rounded) == value) {
+        return nlohmann::ordered_json(rounded);
+    }
+    char buffer[32] = {};
+    const std::to_chars_result result = std::to_chars(buffer, buffer + sizeof(buffer) - 1, value);
+    double widened = 0;
+    xt::fromChars(buffer, result.ptr, widened);
+    return nlohmann::ordered_json(widened);
+}
+
+std::filesystem::path findStandardSymbol(const std::filesystem::path& library,
+                                         const std::filesystem::path& fileName) {
+    std::error_code ec;
+    for (const std::filesystem::path& candidate :
+         {library / fileName, library / "mobile" / fileName, library / "list" / fileName}) {
+        if (std::filesystem::is_regular_file(candidate, ec)) {
+            return candidate;
+        }
+    }
+    return std::filesystem::path();
 }
 
 }  // namespace xt::bundle::detail

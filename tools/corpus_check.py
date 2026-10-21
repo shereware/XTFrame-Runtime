@@ -11,9 +11,17 @@ XT_GOLDEN_RATIO of the pixels may differ, default 0), manifest.json (normalized)
 the script logs byte for byte. A differing screenshot gets a `<name>.diff.png` next to the actual
 image (differing pixels red, the rest the expected image's luminance).
 
-Usage: corpus_check.py [--update] [--project <name>] [--view EXE] [--pack EXE] [--work DIR]
+T-426: a project.json may list `"fonts": ["<family>", ...]`, the font families its expected/
+renders depend on. Before the run the script asks `xtframe-view --list-fonts` for the installed
+families once; a project that needs a missing family fails (`[FAIL] <name>: font '<family>' is not
+installed`), or, with --skip-missing-fonts (the CTest entry: CI machines), is skipped
+(`[SKIP] ...`, not counted as a failure).
+
+Usage: corpus_check.py [--update] [--project <name>] [--skip-missing-fonts] [--view EXE] [--pack EXE]
+                       [--work DIR]
   --update (or XT_CORPUS_UPDATE=1) rewrites expected/ from this run instead of comparing.
-Exit codes: 0 every project matches (or was updated), 1 a difference or a failed run, 2 usage.
+Exit codes: 0 every project matches (or was updated, or skipped), 1 a difference or a failed run,
+2 usage.
 Standard library only.
 """
 
@@ -247,6 +255,8 @@ class Checker:
         self.args = args
         self.update = args.update or os.environ.get("XT_CORPUS_UPDATE", "") == "1"
         self.failures = []
+        self.skipped = []
+        self.families = set()
 
     def fail(self, project, message):
         self.failures.append("%s: %s" % (project, message))
@@ -261,10 +271,25 @@ class Checker:
             return None
         return out
 
+    def missing_font(self, spec):
+        """The first family of the project's `fonts` that is not installed, or None (T-426)."""
+        for family in spec.get("fonts", []):
+            if family not in self.families:
+                return family
+        return None
+
     def check_project(self, name):
         pdir = os.path.join(CORPUS, name)
         with open(os.path.join(pdir, "project.json"), encoding="utf-8") as f:
             spec = json.load(f)
+        family = self.missing_font(spec)
+        if family is not None:
+            if self.args.skip_missing_fonts:
+                self.skipped.append(name)
+                print("[SKIP] %s: font '%s' is not installed" % (name, family), flush=True)
+            else:
+                self.fail(name, "font '%s' is not installed" % family)
+            return
         work = os.path.join(self.args.work, name)
         shutil.rmtree(work, ignore_errors=True)
         actual = os.path.join(work, "actual")
@@ -375,6 +400,8 @@ def main():
     parser.add_argument("--view", help="xtframe-view executable (default: newest under build/)")
     parser.add_argument("--pack", help="xtframe-pack executable (default: newest under build/)")
     parser.add_argument("--work", help="work directory (default: build/corpus-work)")
+    parser.add_argument("--skip-missing-fonts", action="store_true",
+                        help="skip (instead of failing) a project whose `fonts` are not all installed")
     args = parser.parse_args()
     args.view = find_tool("xtframe-view", args.view)
     args.pack = find_tool("xtframe-pack", args.pack)
@@ -392,12 +419,19 @@ def main():
         names = [n for n in names if n in args.project]
     print("corpus_check: view %s, pack %s, work %s" % (args.view, args.pack, args.work), flush=True)
     checker = Checker(args)
+    rc, out, err = run([args.view, "--list-fonts"])
+    if rc != 0:
+        print("corpus_check: xtframe-view --list-fonts exited %d" % rc)
+        return 1
+    checker.families = set(line.strip() for line in out.split("\n") if line.strip())
     for name in names:
         checker.check_project(name)
     if checker.failures:
         print("CORPUS CHECK: FAIL (%d)" % len(checker.failures))
         return 1
-    print("CORPUS CHECK: %s (%d project(s))" % ("UPDATED" if checker.update else "PASS", len(names)))
+    skipped = ", %d skipped (missing fonts)" % len(checker.skipped) if checker.skipped else ""
+    print("CORPUS CHECK: %s (%d project(s)%s)" % ("UPDATED" if checker.update else "PASS",
+                                                 len(names) - len(checker.skipped), skipped))
     return 0
 
 

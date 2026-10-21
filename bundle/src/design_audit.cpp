@@ -13,12 +13,14 @@
 
 #include "bundle_json.h"
 #include "color_math.h"
+#include "design_internal.h"
 #include "xt/bundle/design_color.h"
 #include "xt/bundle/design_doc.h"
 #include "xt/compile/diagnostics.h"
 #include "xt/compile/dom.h"
 #include "xt/compile/parse_xt.h"
 #include "xt/compile/utf8_path.h"
+#include "xt/util/text.h"
 
 /// design.audit (docs/design/35-design-system.md §35.7.1; docs/tasks/T-309.md item 3): a text scan of
 /// the style values of a UI Project. Declarations are read from `.xts` text, `<style>` blocks and
@@ -45,24 +47,9 @@ using compile::pathToUtf8;
 
 namespace {
 
-bool isNameCharDesignAudit(char c) {
-    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' ||
-           c == '_' || static_cast<unsigned char>(c) >= 0x80;
-}
-
 bool isHexDigit(char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'); }
 
-std::string trim(std::string_view s) {
-    size_t b = 0;
-    size_t e = s.size();
-    while (b < e && (s[b] == ' ' || s[b] == '\t' || s[b] == '\n' || s[b] == '\r')) {
-        ++b;
-    }
-    while (e > b && (s[e - 1] == ' ' || s[e - 1] == '\t' || s[e - 1] == '\n' || s[e - 1] == '\r')) {
-        --e;
-    }
-    return std::string(s.substr(b, e - b));
-}
+using util::trim;
 
 std::string lower(std::string s) {
     for (char& c : s) {
@@ -91,40 +78,6 @@ std::string collapseSpace(std::string_view s) {
     return out;
 }
 
-/// The last `#id` of each comma-separated selector of a rule prelude.
-std::vector<std::string> preludeIdsDesignAudit(std::string_view prelude) {
-    std::vector<std::string> out;
-    int depth = 0;
-    std::string last;
-    const auto flush = [&]() {
-        if (!last.empty()) {
-            out.push_back(last);
-        }
-        last.clear();
-    };
-    for (size_t i = 0; i < prelude.size(); ++i) {
-        const char c = prelude[i];
-        if (c == '(') {
-            ++depth;
-        } else if (c == ')') {
-            --depth;
-        } else if (c == ',' && depth == 0) {
-            flush();
-        } else if (c == '#' && depth == 0) {
-            size_t j = i + 1;
-            while (j < prelude.size() && isNameCharDesignAudit(prelude[j])) {
-                ++j;
-            }
-            if (j > i + 1) {
-                last = std::string(prelude.substr(i + 1, j - i - 1));
-            }
-            i = j - 1;
-        }
-    }
-    flush();
-    return out;
-}
-
 /// One declaration of a stylesheet: property, value and the `#id`s of the innermost enclosing rule
 /// whose selector names one.
 struct Declaration {
@@ -146,7 +99,7 @@ void addDeclaration(std::string_view text, const std::vector<std::string>& stack
         return;
     }
     for (auto it = stack.rbegin(); it != stack.rend() && d.ids.empty(); ++it) {
-        d.ids = preludeIdsDesignAudit(*it);
+        d.ids = detail::preludeIds(*it);
     }
     out.push_back(std::move(d));
 }
@@ -501,7 +454,7 @@ private:
         size_t i = 0;
         while (i < v.size()) {
             const char c = v[i];
-            const bool boundary = i == 0 || !isNameCharDesignAudit(v[i - 1]);
+            const bool boundary = i == 0 || !detail::isNameChar(v[i - 1]);
             if (c == 'v' && boundary && v.compare(i, 4, "var(") == 0) {
                 size_t j = i + 4;
                 while (j < v.size() && (v[j] == ' ' || v[j] == '\t')) {
@@ -509,7 +462,7 @@ private:
                 }
                 if (j + 1 < v.size() && v[j] == '-' && v[j + 1] == '-') {
                     size_t k = j + 2;
-                    while (k < v.size() && isNameCharDesignAudit(v[k])) {
+                    while (k < v.size() && detail::isNameChar(v[k])) {
                         ++k;
                     }
                     if (countsAsValue(std::string(v.substr(j + 2, k - j - 2)))) {
@@ -535,8 +488,7 @@ private:
                     ++j;
                 }
                 const size_t n = j - i - 1;
-                if ((n == 3 || n == 4 || n == 6 || n == 8) &&
-                    (j == v.size() || !isNameCharDesignAudit(v[j]))) {
+                if ((n == 3 || n == 4 || n == 6 || n == 8) && (j == v.size() || !detail::isNameChar(v[j]))) {
                     const std::string hex = normalizeHex(v.substr(i, j - i));
                     if (!hex.empty()) {
                         add(m_colors, hex, where);
@@ -566,12 +518,12 @@ private:
                 if (end > i) {
                     if (end + 2 <= v.size() && (v[end] == 'p' || v[end] == 'P') &&
                         (v[end + 1] == 'x' || v[end + 1] == 'X') &&
-                        (end + 2 == v.size() || !isNameCharDesignAudit(v[end + 2]))) {
+                        (end + 2 == v.size() || !detail::isNameChar(v[end + 2]))) {
                         add(m_sizes, normalizeNumber(v.substr(i, end - i)) + "px", where);
                         ++m_literalValues;
                     }
                     i = end;
-                    while (i < v.size() && isNameCharDesignAudit(v[i])) {
+                    while (i < v.size() && detail::isNameChar(v[i])) {
                         ++i;
                     }
                     continue;

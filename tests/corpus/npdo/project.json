@@ -1,6 +1,7 @@
 {
   "source": "examples/demos/npdo/ui-project",
   "dpr": 1,
+  "fonts": ["Georgia"],
   "frames": [0, 30, 120],
   "uis": [
     {"id": "main-menu", "width": 1920, "height": 1080},

@@ -38,6 +38,8 @@
 #include "xt/sw/sw_png.h"
 #include "xt/sw/sw_renderer.h"
 #include "xt/text_shaper.h"
+#include "xt/util/hash.h"
+#include "xt/util/time.h"
 #include "xt/version.h"
 #include "yaml_lite.h"
 #ifdef XT_BUNDLE_HAS_TEXT
@@ -64,42 +66,9 @@ namespace {
 constexpr uint8_t kAssetKindImage = 0;
 constexpr uint8_t kAssetKindFont = 1;
 
-/// FNV-1a, 64-bit: the content hash both `assets/<hash16>.<ext>` and `uis[].fileHash` use.
-uint64_t fnv1a64(const std::string& bytes) {
-    uint64_t hash = 14695981039346656037ULL;
-    for (const char byte : bytes) {
-        hash ^= static_cast<uint64_t>(static_cast<unsigned char>(byte));
-        hash *= 1099511628211ULL;
-    }
-    return hash;
-}
-
-/// `hash` as exactly 16 lowercase hex digits.
-std::string hex16(uint64_t hash) {
-    char buffer[17] = {};
-    std::snprintf(buffer, sizeof(buffer), "%016llx", static_cast<unsigned long long>(hash));
-    return std::string(buffer);
-}
-
-/// The current time as ISO-8601 UTC, e.g. "2026-09-22T10:00:00Z".
-std::string isoUtcNow() {
-    const std::time_t now = std::time(nullptr);
-    std::tm utc{};
-#if defined(_MSC_VER)
-    if (gmtime_s(&utc, &now) != 0) {
-        return std::string();
-    }
-#else
-    if (gmtime_r(&now, &utc) == nullptr) {
-        return std::string();
-    }
-#endif
-    char buffer[32] = {};
-    if (std::strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%SZ", &utc) == 0) {
-        return std::string();
-    }
-    return std::string(buffer);
-}
+using util::fnv1a64;
+using util::hex16;
+using util::isoUtcNow;
 
 /// `path`'s extension, lowercased and including the dot; ".bin" when it has none.
 std::string lowerExtension(std::string_view path) {
@@ -1332,15 +1301,10 @@ void Packer::pullStandardSymbols(const fs::path& docPath) {
             continue;
         }
         // T-241: the library root first, then its `mobile/` subset (23 §23.11.2); T-382: `list/`.
-        fs::path standard = pathFromUtf8(m_options.standardSymbolDir) / target.filename();
-        if (!fs::is_regular_file(standard, ec)) {
-            standard = pathFromUtf8(m_options.standardSymbolDir) / "mobile" / target.filename();
-        }
-        if (!fs::is_regular_file(standard, ec)) {
-            standard = pathFromUtf8(m_options.standardSymbolDir) / "list" / target.filename();
-        }
+        const fs::path standard =
+            detail::findStandardSymbol(pathFromUtf8(m_options.standardSymbolDir), target.filename());
         std::string bytes;
-        if (!fs::is_regular_file(standard, ec) || !readBytes(standard, bytes)) {
+        if (standard.empty() || !readBytes(standard, bytes)) {
             continue;  // Not a standard symbol: the compile reports the missing file.
         }
         fs::create_directories(symbolsDir, ec);

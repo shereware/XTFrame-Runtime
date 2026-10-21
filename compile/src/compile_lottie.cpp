@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "compiled_assets.h"
+#include "file_bytes.h"
 #include "xt/compile/compile.h"
 #include "xt/compile/ir_writer.h"
 #include "xt/compile/lottie_parser.h"
@@ -19,35 +20,13 @@
 
 namespace xt::compile {
 
-namespace {
-
-bool readFileBytes(const std::string& path, std::vector<uint8_t>& out) {
-    std::ifstream in(pathFromUtf8(path), std::ios::binary);
-    if (!in.good()) {
-        return false;
-    }
-    in.seekg(0, std::ios::end);
-    std::streamoff size = in.tellg();
-    if (size < 0) {
-        return false;
-    }
-    in.seekg(0, std::ios::beg);
-    out.resize(static_cast<size_t>(size));
-    if (size > 0) {
-        in.read(reinterpret_cast<char*>(out.data()), size);
-    }
-    return static_cast<bool>(in) || in.eof();
-}
-
-}  // namespace
-
 CompileResult compileLottie(std::string_view jsonPath, const CompileOptions& options) {
     CompileResult result;
     std::string path(jsonPath);
     DiagnosticSink sink;
 
     std::vector<uint8_t> bytes;
-    if (!readFileBytes(path, bytes)) {
+    if (!detail::readFileBytes(pathFromUtf8(path), bytes)) {
         sink.error(path, "failed to read file");
         result.diagnostics = sink.all();
         return result;

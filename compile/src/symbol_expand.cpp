@@ -8,6 +8,7 @@
 
 #include "xt/compile/parse_xts.h"
 #include "xt/node.h"  // ElementState bits (kStateHover etc.), for `requires="states: ..."`.
+#include "xt/util/text.h"
 #include "xts/xts_props.h"
 
 /// See docs/design/26-layers-symbols-library.md §26.2, 12-compiler.md §12.7, docs/tasks/T-171.md.
@@ -64,17 +65,7 @@ bool inList(const std::array<std::string_view, N>& list, std::string_view s) {
     return std::find(list.begin(), list.end(), s) != list.end();
 }
 
-std::string trim(std::string_view s) {
-    size_t b = 0;
-    size_t e = s.size();
-    while (b < e && (s[b] == ' ' || s[b] == '\t' || s[b] == '\r' || s[b] == '\n')) {
-        ++b;
-    }
-    while (e > b && (s[e - 1] == ' ' || s[e - 1] == '\t' || s[e - 1] == '\r' || s[e - 1] == '\n')) {
-        --e;
-    }
-    return std::string(s.substr(b, e - b));
-}
+using util::trim;
 
 std::vector<std::string> split(std::string_view s, char sep) {
     std::vector<std::string> out;

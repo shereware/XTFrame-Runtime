@@ -15,6 +15,7 @@
 #include "bind_emit.h"
 #include "compiled_assets.h"
 #include "doc_emit.h"
+#include "file_bytes.h"
 #include "json_bounded.h"
 #include "repeat_emit.h"
 #include "style_emit.h"
@@ -56,27 +57,9 @@ namespace {
 
 namespace fs = std::filesystem;
 
-bool readFileBytesCompileDocument(const fs::path& path, std::vector<uint8_t>& out) {
-    std::ifstream in(path, std::ios::binary);
-    if (!in.good()) {
-        return false;
-    }
-    in.seekg(0, std::ios::end);
-    std::streamoff size = in.tellg();
-    if (size < 0) {
-        return false;
-    }
-    in.seekg(0, std::ios::beg);
-    out.resize(static_cast<size_t>(size));
-    if (size > 0) {
-        in.read(reinterpret_cast<char*>(out.data()), size);
-    }
-    return static_cast<bool>(in) || in.eof();
-}
-
 bool readFileText(const fs::path& path, std::string& out) {
     std::vector<uint8_t> bytes;
-    if (!readFileBytesCompileDocument(path, bytes)) {
+    if (!detail::readFileBytes(path, bytes)) {
         return false;
     }
     out.assign(bytes.begin(), bytes.end());
@@ -739,7 +722,7 @@ CompileResult compileDocumentImpl(std::string_view mainText, std::string_view ma
         const std::string& src = srcAttr->value;
         fs::path jsonPath = resolveAsset(options, xtDir, src);
         std::vector<uint8_t> jsonBytes;
-        if (!readFileBytesCompileDocument(jsonPath, jsonBytes)) {
+        if (!detail::readFileBytes(jsonPath, jsonBytes)) {
             sink.error(path, "anim src \"" + src + "\" not found", node.line, node.col);
             continue;
         }

@@ -6,6 +6,7 @@
 #include <cstring>
 #include <vector>
 
+#include "effect_math.h"  // core/src: shared with xt::gpu (T-414)
 #include "sw_blend.h"
 #include "sw_effect_math.h"
 #include "sw_simd.h"
@@ -18,7 +19,6 @@ namespace xt::sw {
 
 namespace {
 
-constexpr float kDegToRad = 0.017453292519943295f;
 constexpr float kMaxDevicePx = 64.0f;
 
 /// docs/design/18-effects.md §18.3: "半徑類...換算到裝置 px 後上限 64...超過夾住並警告一次". One
@@ -497,31 +497,14 @@ void applyShine(const EffectInstance& p, Vec2 bufferOriginPx, const Rect& conten
                 Surface& dst, const EffectTimers& timers) {
     PerfFieldScope pixScope(timers.pix);
     resizeLike(dst, src);
-    float position = p.params[0];
-    float width = std::max(0.0f, p.params[1]);
-    float softness = std::clamp(p.params[2], 0.0f, 1.0f);
-    float angleDeg = p.params[3];
     float intensity = p.params[4];
     Color color = p.colors[0];
 
-    float rad = angleDeg * kDegToRad;
-    Vec2 d{std::cos(rad), std::sin(rad)};
-    Vec2 corners[4] = {
-        Vec2{contentBoundsPx.x, contentBoundsPx.y},
-        Vec2{contentBoundsPx.x + contentBoundsPx.w, contentBoundsPx.y},
-        Vec2{contentBoundsPx.x, contentBoundsPx.y + contentBoundsPx.h},
-        Vec2{contentBoundsPx.x + contentBoundsPx.w, contentBoundsPx.y + contentBoundsPx.h},
-    };
-    float lo = corners[0].x * d.x + corners[0].y * d.y;
-    float hi = lo;
-    for (int i = 1; i < 4; ++i) {
-        float proj = corners[i].x * d.x + corners[i].y * d.y;
-        lo = std::min(lo, proj);
-        hi = std::max(hi, proj);
-    }
-    float c = lo + (hi - lo) * position;
-    float edge0 = width * (1.0f - softness) * 0.5f;
-    float edge1 = width * 0.5f;
+    const effect_math::ShineBand shine = effect_math::shineBand(p, contentBoundsPx);
+    const Vec2 d = shine.dir;
+    const float c = shine.center;
+    const float edge0 = shine.edge0;
+    const float edge1 = shine.edge1;
 
     for (int y = 0; y < src.h; ++y) {
         const float* srcRow = src.row(y);

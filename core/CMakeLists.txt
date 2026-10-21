@@ -10,6 +10,7 @@ add_library(xt_core STATIC
     src/camera.cpp
     src/node_arena.cpp
     src/crc32.cpp
+    src/sha256.cpp
     src/ir_view.cpp
     src/geom_flatten.cpp
     src/geom_stroke.cpp

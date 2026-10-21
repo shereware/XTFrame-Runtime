@@ -6,6 +6,7 @@
 #include <span>
 #include <vector>
 
+#include "effect_math.h"  // core/src: geometry and effect math shared with xt::gpu (T-414)
 #include "sw_blend.h"
 #include "sw_effects.h"
 #include "sw_layer.h"
@@ -91,27 +92,6 @@ struct Box {
 Box intersectBox(const Box& a, const Box& b) {
     Box r{std::max(a.x0, b.x0), std::max(a.y0, b.y0), std::min(a.x1, b.x1), std::min(a.y1, b.y1)};
     return r.empty() ? Box{} : r;
-}
-
-/// Bounding box of a raw (untransformed) path point pool: every float pair in `points` (Move/Line
-/// endpoints and Cubic control points alike -- a loose box is fine, it only feeds
-/// project3d::projectedScaleMax's tolerance estimate, docs/design/19-3d-space.md §19.7). Empty (or
-/// odd-sized, which never happens for a well-formed path) input returns a zero Rect.
-Rect boundsOfPoints(std::span<const float> points) {
-    if (points.size() < 2) {
-        return Rect{};
-    }
-    float minX = points[0];
-    float maxX = points[0];
-    float minY = points[1];
-    float maxY = points[1];
-    for (size_t i = 0; i + 1 < points.size(); i += 2) {
-        minX = std::min(minX, points[i]);
-        maxX = std::max(maxX, points[i]);
-        minY = std::min(minY, points[i + 1]);
-        maxY = std::max(maxY, points[i + 1]);
-    }
-    return Rect{minX, minY, maxX - minX, maxY - minY};
 }
 
 /// One `PushEffect`'s worth of state, stashed between the PushEffect and its matching PopEffect
@@ -571,12 +551,9 @@ struct SwRenderer::Impl {
     // --- T-343 Direct target mode --------------------------------------------------------------
 
     static float backdropSigma(const EffectInstance& screenParams) {
-        return std::min(std::max(0.0f, screenParams.params[0]), 64.0f) * 0.5f;
+        return effect_math::backdropSigma(screenParams);
     }
-    /// 18 §18.15: every pyramid level reads one texel past the region, i.e. 2^levels px.
-    static float pyramidMargin(float sigma) {
-        return static_cast<float>(1 << backdropPyramidLevels(std::min(sigma, 32.0f)));
-    }
+    static float pyramidMargin(float sigma) { return effect_math::pyramidMargin(sigma); }
 
     /// A read region `boundsPx` outset by `outset`, clamped to the target and padded exactly as
     /// the GPU builder pads a transient window (frame_emit.h: a multiple of 32, at least 64,
@@ -779,22 +756,12 @@ struct SwRenderer::Impl {
 
         // §23.aa.3: the read regions of the top-level backdrop-blur runs, merged where they meet.
         for (size_t i = 0; i < runs.size(); ++i) {
-            const SceneRun& run = runs[i];
-            if (!run.sceneRead || run.first >= list.commands.size()) {
+            const EffectCmd* lead = effect_math::leadingBackdropBlur(list, runs[i]);
+            if (lead == nullptr) {
                 continue;
             }
-            const Command& cmd = list.commands[run.first];
-            if (cmd.kind != CmdKind::PushEffect) {
-                continue;
-            }
-            const EffectCmd& c = list.effectCmds[cmd.index];
-            if (c.effectCount == 0 || c.effectOffset >= list.effects.size()) {
-                continue;
-            }
+            const EffectCmd& c = *lead;
             const EffectInstance& first = list.effects[c.effectOffset];
-            if (first.kind != EffectKind::BackdropBlur || first.enabled == 0) {
-                continue;
-            }
             const EffectInstance screenFirst = effectToScreen(first, mul(deviceScale(dpr), c.xf));
             const float sigma = backdropSigma(screenFirst);
             const Box region = paddedRegion(toTargetPx(c.boundsHint, dpr),
@@ -972,17 +939,10 @@ struct SwRenderer::Impl {
     /// Returns false (leave the paint unprojected) when the box is degenerate or a corner fails to
     /// project.
     bool screenToPlaneHomography(std::span<const Vec2> planePts, Mat3& out) const {
-        if (planePts.empty()) {
+        Vec2 plane[4];
+        if (!effect_math::planeBoxCorners(planePts, plane)) {
             return false;
         }
-        float x0 = planePts[0].x, y0 = planePts[0].y, x1 = x0, y1 = y0;
-        for (const Vec2& p : planePts) {
-            x0 = std::min(x0, p.x);
-            y0 = std::min(y0, p.y);
-            x1 = std::max(x1, p.x);
-            y1 = std::max(y1, p.y);
-        }
-        const Vec2 plane[4] = {Vec2{x0, y0}, Vec2{x1, y0}, Vec2{x1, y1}, Vec2{x0, y1}};
         Vec2 screen[4];
         for (int i = 0; i < 4; ++i) {
             bool ok = false;
@@ -1012,11 +972,7 @@ struct SwRenderer::Impl {
     /// dpr-scaled xf (the flattening transform); `rawPoints` is the unflattened path's point pool
     /// (fed to boundsOfPoints for the tolerance estimate only).
     float flattenTolerance(const Mat2x3& deviceXf, std::span<const float> rawPoints) const {
-        if (mappings.empty()) {
-            return kFlattenTolerance;
-        }
-        float sMax = project3d::projectedScaleMax(mappings, deviceXf, boundsOfPoints(rawPoints));
-        return kFlattenTolerance / sMax;
+        return effect_math::flattenTolerance(mappings, deviceXf, rawPoints);
     }
 
     /// The clip byte array that applies to the draw about to be issued: the plain clip mask,

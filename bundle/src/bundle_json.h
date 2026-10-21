@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <filesystem>
 #include <json.hpp>
 #include <string>
 #include <string_view>
@@ -35,6 +36,12 @@ bool readFile(const std::string& path, std::string& out);
 /// failure the temporary file is removed and `path` is left untouched.
 bool writeFile(const std::string& path, const std::string& text);
 
+/// T-241 / T-382 (23 §23.11.2): the standard-library copy of symbol file `fileName` -- the
+/// library root first, then its `mobile/` and `list/` subsets; empty when none is a regular file.
+/// Shared by pack() and pullStandardSymbols() (T-414).
+std::filesystem::path findStandardSymbol(const std::filesystem::path& library,
+                                         const std::filesystem::path& fileName);
+
 /// Joins `dir` and `name` with '/', tolerating an empty or already-slash-terminated `dir`.
 std::string joinPath(std::string_view dir, std::string_view name);
 
@@ -46,6 +53,10 @@ bool getBool(const json& obj, const char* key, bool fallback);
 float getFloat(const json& obj, const char* key, float fallback);
 /// `obj[key]` as a two-element `[x, y]` number array, or `fallback` otherwise.
 Vec2 getVec2(const json& obj, const char* key, Vec2 fallback);
+/// `value` as an integer when integral, else the float's shortest round-trip spelling (0.8f is
+/// written as 0.8, not as the widened double). T-414: also what manifest_writer.cpp and
+/// ui_project.cpp write.
+nlohmann::ordered_json shortNumber(float value);
 /// T-258a: the largest UI `size` component, px.
 inline constexpr float kMaxUiSize = 16384.0f;
 /// T-258a: the largest `publish.thumbnails` component, px.

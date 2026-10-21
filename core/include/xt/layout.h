@@ -129,8 +129,8 @@ bool resolveHeightLength(Length len, float refH, float& outPx);
 
 /// docs/design/06-layout.md §6.4 (T-74): clamps `value` to [`min-height`, `max-height`], ignoring
 /// either bound that is not definite against `refH` (see resolveHeightLength). The width-side
-/// equivalent is a plain clamp against the containing block content width, which each layout_*.cpp
-/// keeps as its own local `clampMinMax`.
+/// equivalent is a plain clamp against the containing block content width, `clampMinMax` in
+/// core/src/layout_common.h (shared by the layout_*.cpp passes).
 float clampHeightMinMax(float value, Length minLen, Length maxLen, float refH);
 
 /// "No max" sentinel for FlexBasisInput::maxMain (docs/design/06-layout.md §6.9 step 2: a `max-*`

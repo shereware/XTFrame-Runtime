@@ -3,6 +3,8 @@
 #include <cmath>
 #include <cstdio>
 
+#include "xt/util/hex.h"
+
 /// See color_math.h.
 
 namespace xt::bundle::detail {
@@ -11,18 +13,7 @@ namespace {
 
 constexpr double kPi = 3.14159265358979323846;
 
-int hexDigit(char c) {
-    if (c >= '0' && c <= '9') {
-        return c - '0';
-    }
-    if (c >= 'a' && c <= 'f') {
-        return c - 'a' + 10;
-    }
-    if (c >= 'A' && c <= 'F') {
-        return c - 'A' + 10;
-    }
-    return -1;
-}
+using util::hexDigit;
 
 double linearize(double c) { return c <= 0.04045 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4); }
 

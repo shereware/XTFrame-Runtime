@@ -19,7 +19,8 @@
 #           import-py = python -m unittest over tests/import, no build;
 #           corpus = tools/corpus_check.sh with the Release xtframe-view / xtframe-pack of this tree, built
 #           first unless --no-build (T-401, 43 §43.4; a Debug SW render is ~50x slower, the 4 projects would
-#           take hours); the CTest entry corpus_check is left out of the ctest suite, which would run it again;
+#           take hours; strict: a project whose project.json `fonts` are not installed fails, T-426); the CTest
+#           entry corpus_check (which skips such a project) is left out of the ctest suite, which would run it again;
 #           ir = tools/check_ir_layout.sh (T-405, 43 §43.5: ir_pod.h sizes and enum limits vs tests/ir/layout.txt and
 #           02 §2.12, the §2.2 minor, the frozen fixture of that minor), no build;
 #           roundtrip = the doctest suite `roundtrip` of xt_bundle_tests and xt_editor_service_tests (T-410, 43 §43.2:

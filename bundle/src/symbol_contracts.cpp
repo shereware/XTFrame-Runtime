@@ -11,6 +11,7 @@
 #include "xt/compile/dom.h"
 #include "xt/compile/parse_xt.h"
 #include "xt/compile/utf8_path.h"
+#include "xt/util/text.h"
 
 /// Symbol contract summaries (T-200; docs/design/22-bundle.md §22.10 `symbols`, 26 §26.2): read
 /// from `<symbol name requires state-groups>` definitions and what their bodies declare.
@@ -25,14 +26,7 @@ namespace {
 
 namespace fs = std::filesystem;
 
-std::string trim(std::string_view s) {
-    const size_t a = s.find_first_not_of(" \t\r\n");
-    if (a == std::string_view::npos) {
-        return std::string();
-    }
-    const size_t b = s.find_last_not_of(" \t\r\n");
-    return std::string(s.substr(a, b - a + 1));
-}
+using util::trim;
 
 /// `text` split at `sep`, each piece trimmed, empty pieces dropped.
 std::vector<std::string> splitTrim(std::string_view text, char sep) {

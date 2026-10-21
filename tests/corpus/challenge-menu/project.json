@@ -1,6 +1,7 @@
 {
   "source": "examples/demos/challenge-menu/ui-project",
   "dpr": 1,
+  "fonts": ["Bahnschrift"],
   "frames": [0, 30, 120],
   "uis": [
     {"id": "challenge-menu", "width": 1280, "height": 720}

@@ -42,20 +42,6 @@ ordered_json writeVec2ManifestWriter(Vec2 value) {
     return array;
 }
 
-/// A float as its shortest round-trip spelling (0.025f -> 0.025, not 0.02500000037252903), or
-/// an integer when whole.
-ordered_json writeFloat(float value) {
-    const auto rounded = static_cast<int64_t>(value);
-    if (static_cast<float>(rounded) == value) {
-        return ordered_json(rounded);
-    }
-    char buffer[32] = {};
-    const std::to_chars_result result = std::to_chars(buffer, buffer + sizeof(buffer) - 1, value);
-    double widened = 0;
-    xt::fromChars(buffer, result.ptr, widened);  // T-268: not strtod, whose '.' is the locale's.
-    return ordered_json(widened);
-}
-
 /// One `ports.in`/`ports.out` array. `params` is optional and 0.3 never produces it (§22.3).
 ordered_json writePorts(const std::vector<PortInfo>& ports, bool isInput) {
     ordered_json array = ordered_json::array();
@@ -129,14 +115,14 @@ Status writeManifest(std::string_view dir, const ManifestData& data) {
     // T-207 (§22.10 `spec`, 17.4.1 item 5): the host's setDevice()/setUiScale() defaults.
     if (data.hasSpec) {
         ordered_json safeArea;
-        safeArea["default"] = writeFloat(data.spec.safeAreaDefault);
-        safeArea["console"] = writeFloat(data.spec.safeAreaConsole);
+        safeArea["default"] = detail::shortNumber(data.spec.safeAreaDefault);
+        safeArea["console"] = detail::shortNumber(data.spec.safeAreaConsole);
         ordered_json specObj;
         if (data.spec.behavior != 0) {
             specObj["behavior"] = data.spec.behavior;  // T-407: written only when set.
         }
         specObj["safeArea"] = std::move(safeArea);
-        specObj["logicalHeight"] = writeFloat(data.spec.logicalHeight);
+        specObj["logicalHeight"] = detail::shortNumber(data.spec.logicalHeight);
         specObj["uiscaleRule"] = uiScaleRuleName(data.spec.uiscaleRule);  // T-241
         detail::writeUiScaleLimits(specObj, data.spec.uiscaleLimits);     // T-345
         root["spec"] = std::move(specObj);

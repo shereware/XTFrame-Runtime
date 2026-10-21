@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <string_view>
 
+#include "layout_common.h"
 #include "xt/assert.h"
 #include "xt/layout.h"
 #include "xt/node.h"
@@ -10,32 +11,6 @@
 /// the absolute pass's own children (layout_absolute.cpp). See docs/tasks/T-25.md.
 
 namespace xt {
-
-namespace {
-
-Edges resolveEdgesPx(const Length& t, const Length& r, const Length& b, const Length& l, float refW) {
-    return Edges{resolveLength(t, refW, 0), resolveLength(r, refW, 0), resolveLength(b, refW, 0),
-                 resolveLength(l, refW, 0)};
-}
-
-/// CSS-style clamp: max(min, min(value, max)); an Auto min/max length means "no bound" (min
-/// defaults to 0 either way since Length{Auto} resolves to the 0 fallback via resolveLength).
-float clampMinMax(float value, Length minLen, Length maxLen, float refW) {
-    float clamped = value;
-    if (maxLen.unit != LengthUnit::Auto) {
-        float maxV = resolveLength(maxLen, refW, 0);
-        if (clamped > maxV) {
-            clamped = maxV;
-        }
-    }
-    float minV = resolveLength(minLen, refW, 0);
-    if (clamped < minV) {
-        clamped = minV;
-    }
-    return clamped;
-}
-
-}  // namespace
 
 void storeScrollSize(NodeArena& arena, NodeId node, float contentW, float minHeight) {
     Vec2 extent{contentW, minHeight};
@@ -204,14 +179,7 @@ void LayoutEngine::layoutBlock(NodeArena& arena, NodeId node, float availW, floa
     float refW = availW;
     float refH = availH;
 
-    Edges margin = resolveEdgesPx(style.base[prop::MarginTop].len, style.base[prop::MarginRight].len,
-                                  style.base[prop::MarginBottom].len, style.base[prop::MarginLeft].len, refW);
-    Edges padding =
-        resolveEdgesPx(style.base[prop::PaddingTop].len, style.base[prop::PaddingRight].len,
-                       style.base[prop::PaddingBottom].len, style.base[prop::PaddingLeft].len, refW);
-    Edges border =
-        resolveEdgesPx(style.base[prop::BorderTopWidth].len, style.base[prop::BorderRightWidth].len,
-                       style.base[prop::BorderBottomWidth].len, style.base[prop::BorderLeftWidth].len, refW);
+    const auto [margin, padding, border] = resolveBoxEdges(style, refW);
 
     Length widthLen = style.base[prop::Width].len;
     Length heightLen = style.base[prop::Height].len;
@@ -220,11 +188,7 @@ void LayoutEngine::layoutBlock(NodeArena& arena, NodeId node, float availW, floa
     // containing block height behaves as `auto`. An `imposedH` (flex cross stretch / flex column
     // main size) only applies when the element's own height isn't definite by itself.
     float definiteBorderBoxH = 0;
-    bool heightDefinite = resolveHeightLength(heightLen, refH, definiteBorderBoxH);
-    if (!heightDefinite && imposedH >= 0.0f) {
-        definiteBorderBoxH = imposedH;
-        heightDefinite = true;
-    }
+    bool heightDefinite = resolveDefiniteHeight(heightLen, refH, imposedH, definiteBorderBoxH);
 
     // §6.10: img/anim intrinsic size, cached on ElementData for later tasks (e.g. T-26 flex-basis).
     std::string_view tag = string(data.tag);
@@ -284,11 +248,7 @@ void LayoutEngine::layoutBlock(NodeArena& arena, NodeId node, float availW, floa
         // auto -> the width is the definite axis). min/max-width/height bound the content box.
         const float boxW = explicitRatio > 0.0f ? extraW : 0.0f;
         const float boxH = explicitRatio > 0.0f ? extraH : 0.0f;
-        AspectMinMax bounds = aspectMinMax(style, refW, refH);
-        bounds.minW += boxW;
-        bounds.minH += boxH;
-        bounds.maxW = bounds.maxW < kFlexNoMax ? bounds.maxW + boxW : kFlexNoMax;
-        bounds.maxH = bounds.maxH < kFlexNoMax ? bounds.maxH + boxH : kFlexNoMax;
+        const AspectMinMax bounds = aspectMinMaxPlusBox(style, refW, refH, boxW, boxH);
         Vec2 size;
         if (widthFromRatio) {
             const float definiteH =

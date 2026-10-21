@@ -20,6 +20,7 @@
 #include "xt/ir_pod.h"
 #include "xt/node.h"
 #include "xt/num_guard.h"
+#include "xt/util/hex.h"
 
 /// Static SVG vector import (docs/design/12-compiler.md §12.2.1, docs/tasks/T-110.md): a hand
 /// written XML subset parser plus the element/paint mapping onto the same Scene node structure
@@ -389,19 +390,6 @@ std::vector<float> parseNumberList(std::string_view s) {
     return out;
 }
 
-int hexDigitParseSvg(char c) {
-    if (c >= '0' && c <= '9') {
-        return c - '0';
-    }
-    if (c >= 'a' && c <= 'f') {
-        return c - 'a' + 10;
-    }
-    if (c >= 'A' && c <= 'F') {
-        return c - 'A' + 10;
-    }
-    return -1;
-}
-
 std::string toLower(std::string_view s) {
     std::string out(s);
     for (char& c : out) {
@@ -423,7 +411,7 @@ bool parseColor(std::string_view raw, Color& out) {
         std::string_view hex(s.c_str() + 1, s.size() - 1);
         int v[8] = {};
         for (size_t k = 0; k < hex.size(); ++k) {
-            int d = hexDigitParseSvg(hex[k]);
+            int d = util::hexDigit(hex[k]);
             if (d < 0 || k >= 8) {
                 return false;
             }

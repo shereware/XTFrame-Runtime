@@ -14,7 +14,8 @@
 
 #include "calc_emit.h"
 #include "compiled_assets.h"
-#include "css_values.h"         // core/src: toIrEasing() (T-413).
+#include "css_values.h"  // core/src: toIrEasing() (T-413).
+#include "file_bytes.h"
 #include "xt/asset_resolver.h"  // isExternalAssetName / isAtlasAssetName (T-150, T-199).
 #include "xt/command_list.h"    // customParamSlots() (T-203).
 #include "xt/compile/parse_xts.h"
@@ -33,24 +34,6 @@ namespace xt::compile {
 namespace {
 
 namespace fs = std::filesystem;
-
-bool readFileBytesStyleEmit(const fs::path& path, std::vector<uint8_t>& out) {
-    std::ifstream in(path, std::ios::binary);
-    if (!in.good()) {
-        return false;
-    }
-    in.seekg(0, std::ios::end);
-    std::streamoff size = in.tellg();
-    if (size < 0) {
-        return false;
-    }
-    in.seekg(0, std::ios::beg);
-    out.resize(static_cast<size_t>(size));
-    if (size > 0) {
-        in.read(reinterpret_cast<char*>(out.data()), size);
-    }
-    return static_cast<bool>(in) || in.eof();
-}
 
 // T-335: a LinearPoints easing's offsets index RuleSet::easingPoints, which StyleBuilder::easingPoints
 // shares. T-413: the encoding is core's (css_values, shared with the runtime's mini_css).
@@ -1359,7 +1342,7 @@ AssetId ensureImageAsset(IrWriter& writer, const std::string& src, std::string_v
     bool embedded = false;
     if (options.embedImages) {
         std::vector<uint8_t> bytes;
-        if (readFileBytesStyleEmit(full, bytes)) {
+        if (detail::readFileBytes(full, bytes)) {
             ab.embedded = std::move(bytes);
             embedded = true;
         } else {
@@ -1462,7 +1445,7 @@ AssetId ensureShaderAsset(IrWriter& writer, const std::string& src, std::string_
     ab.kind = 2;  // Shader (docs/design/02-ir-format.md §2.5).
     ab.sourceName = src;
     std::error_code ec;
-    const bool onDisk = fs::is_regular_file(full, ec) && readFileBytesStyleEmit(full, bytes);
+    const bool onDisk = fs::is_regular_file(full, ec) && detail::readFileBytes(full, bytes);
     ab.resolvedPath = onDisk ? pathToUtf8(full) : std::string();
     std::string assetName = src;
     if (onDisk && options.assetNameRewrite) {
@@ -1714,7 +1697,7 @@ bool emitStyle(const RuleSet& ruleSet, IrWriter& writer, StyleBuilder& style,
             bool embedded = false;
             if (options.embedFonts) {
                 std::vector<uint8_t> bytes;
-                if (readFileBytesStyleEmit(full, bytes)) {
+                if (detail::readFileBytes(full, bytes)) {
                     ab.embedded = std::move(bytes);
                     embedded = true;
                 } else {

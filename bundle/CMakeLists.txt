@@ -43,6 +43,8 @@ if(XT_BUILD_TEXT)
     target_compile_definitions(xt_bundle PRIVATE XT_BUNDLE_HAS_TEXT)
 endif()
 target_include_directories(xt_bundle PUBLIC include)
+# T-414: compile/src/json_bounded.h, the one bounded JSON parse (bundle links xt_compile).
+target_include_directories(xt_bundle PRIVATE ${PROJECT_SOURCE_DIR}/compile/src)
 # T-305: PUBLIC because include/xt/bundle/design_system.h keeps unknown keys as nlohmann::json
 # (T-396: the xtframe_abi-tagged copy, cmake/xt_nlohmann.cmake).
 target_link_libraries(xt_bundle PUBLIC xt_nlohmann)

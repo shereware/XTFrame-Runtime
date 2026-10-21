@@ -72,28 +72,12 @@ std::string trimTrailingSlashUiProject(std::string_view dir) {
     return out;
 }
 
-/// Writes `value` as an integer when it is integral (sizes stay "[1280, 720]").
-void writeNumberUiProject(ordered_json& slot, float value) {
-    const auto rounded = static_cast<int64_t>(value);
-    if (static_cast<float>(rounded) == value) {
-        slot = rounded;
-        return;
-    }
-    // The float's shortest round-trip spelling, so 0.025f is written as 0.025 rather than as the
-    // widened double 0.02500000037252903.
-    char buffer[32] = {};
-    const std::to_chars_result result = std::to_chars(buffer, buffer + sizeof(buffer) - 1, value);
-    double widened = 0;
-    xt::fromChars(buffer, result.ptr, widened);  // T-268: not strtod, whose '.' is the locale's.
-    slot = widened;
-}
-
 ordered_json writeVec2UiProject(Vec2 v) {
     ordered_json out = ordered_json::array();
     out.push_back(ordered_json());
     out.push_back(ordered_json());
-    writeNumberUiProject(out[0], v.x);
-    writeNumberUiProject(out[1], v.y);
+    out[0] = detail::shortNumber(v.x);
+    out[1] = detail::shortNumber(v.y);
     return out;
 }
 
@@ -286,11 +270,11 @@ ordered_json writeSpec(const ProjectSpec& spec) {
     }
     out["platforms"] = std::move(platforms);
     ordered_json safeArea;
-    writeNumberUiProject(safeArea["default"], spec.safeAreaDefault);
-    writeNumberUiProject(safeArea["console"], spec.safeAreaConsole);
+    safeArea["default"] = detail::shortNumber(spec.safeAreaDefault);
+    safeArea["console"] = detail::shortNumber(spec.safeAreaConsole);
     out["safeArea"] = std::move(safeArea);
     if (spec.logicalHeight != 1080.0f) {
-        writeNumberUiProject(out["logicalHeight"], spec.logicalHeight);  // T-210: written only when set.
+        out["logicalHeight"] = detail::shortNumber(spec.logicalHeight);  // T-210: written only when set.
     }
     if (spec.uiscaleRule != UiScaleRule::Height) {
         out["uiscaleRule"] = uiScaleRuleName(spec.uiscaleRule);  // T-241: written only when set.
@@ -316,9 +300,9 @@ ordered_json writeSpec(const ProjectSpec& spec) {
     }
     out["fontFallback"] = std::move(fallback);
     ordered_json budget;
-    writeNumberUiProject(budget["frameMs"], spec.budgetFrameMs);
+    budget["frameMs"] = detail::shortNumber(spec.budgetFrameMs);
     budget["effectLayers"] = spec.budgetEffectLayers;
-    writeNumberUiProject(budget["fillRate"], spec.budgetFillRate);
+    budget["fillRate"] = detail::shortNumber(spec.budgetFillRate);
     if (spec.budgetParticles > 0) {
         budget["particles"] = spec.budgetParticles;  // T-202: written only when set.
     }
@@ -858,7 +842,7 @@ Status UiProject::save(std::string* error) const {
     root["shared"] = std::move(sharedObj);
 
     ordered_json previewObj;
-    writeNumberUiProject(previewObj["dpr"], previewDpr);
+    previewObj["dpr"] = detail::shortNumber(previewDpr);
     if (!previewScene.empty()) {
         previewObj["scene"] = previewScene;  // T-344
     }
@@ -1209,15 +1193,9 @@ Status pullStandardSymbols(const UiProject& project, std::string_view standardSy
             if (fs::exists(target, ec) || target.parent_path() != symbolsDir) {
                 continue;
             }
-            fs::path standard = library / target.filename();
-            if (!fs::is_regular_file(standard, ec)) {
-                standard = library / "mobile" / target.filename();
-            }
-            if (!fs::is_regular_file(standard, ec)) {
-                standard = library / "list" / target.filename();  // T-382
-            }
+            const fs::path standard = detail::findStandardSymbol(library, target.filename());  // T-382
             std::string bytes;
-            if (!fs::is_regular_file(standard, ec) || !detail::readFile(pathToUtf8(standard), bytes)) {
+            if (standard.empty() || !detail::readFile(pathToUtf8(standard), bytes)) {
                 continue;  // Not a standard symbol: the compile reports the missing file.
             }
             fs::create_directories(symbolsDir, ec);

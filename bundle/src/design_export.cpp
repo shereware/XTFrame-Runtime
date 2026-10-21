@@ -23,6 +23,7 @@
 #include "xt/compile/parse_xts.h"
 #include "xt/compile/style_model.h"
 #include "xt/compile/utf8_path.h"
+#include "xt/util/text.h"
 
 /// The Claude Design design-system exchange (docs/design/35-design-system.md §35.4, §35.7.1;
 /// docs/tasks/T-316.md items 1 and 2). See xt/bundle/design_export.h.
@@ -71,18 +72,6 @@ constexpr const char* kTokensFile = "tokens.json";
 constexpr const char* kPaletteFile = "palette.json";
 constexpr const char* kComponentsFile = "components.md";
 
-std::string trimDesignExport(std::string_view s) {
-    size_t b = 0;
-    size_t e = s.size();
-    while (b < e && (s[b] == ' ' || s[b] == '\t' || s[b] == '\r' || s[b] == '\n')) {
-        ++b;
-    }
-    while (e > b && (s[e - 1] == ' ' || s[e - 1] == '\t' || s[e - 1] == '\r' || s[e - 1] == '\n')) {
-        --e;
-    }
-    return std::string(s.substr(b, e - b));
-}
-
 /// `text` split at '\n', each line without a trailing '\r'; a final newline gives no empty line.
 std::vector<std::string> splitLines(std::string_view text) {
     std::vector<std::string> out;
@@ -112,11 +101,11 @@ std::string joinLines(const std::vector<std::string>& lines) {
 }
 
 void trimBlankLines(std::vector<std::string>& lines) {
-    while (!lines.empty() && trimDesignExport(lines.back()).empty()) {
+    while (!lines.empty() && util::trim(lines.back()).empty()) {
         lines.pop_back();
     }
     size_t first = 0;
-    while (first < lines.size() && trimDesignExport(lines[first]).empty()) {
+    while (first < lines.size() && util::trim(lines[first]).empty()) {
         ++first;
     }
     lines.erase(lines.begin(), lines.begin() + static_cast<std::ptrdiff_t>(first));
@@ -131,7 +120,7 @@ void replaceAll(std::string& text, std::string_view from, std::string_view to) {
 }
 
 bool isFence(const std::string& line) {
-    const std::string t = trimDesignExport(line);
+    const std::string t = util::trim(line);
     return t.rfind("```", 0) == 0 || t.rfind("~~~", 0) == 0;
 }
 
@@ -152,11 +141,11 @@ int headingLevel(const std::string& line) {
 
 /// A heading line's text without its `#` marks.
 std::string headingText(const std::string& line, int level) {
-    std::string text = trimDesignExport(std::string_view(line).substr(static_cast<size_t>(level)));
+    std::string text = util::trim(std::string_view(line).substr(static_cast<size_t>(level)));
     while (!text.empty() && text.back() == '#') {
         text.pop_back();
     }
-    return trimDesignExport(text);
+    return util::trim(text);
 }
 
 /// "accent-text" -> "accentText", "neutral-500" -> "neutral500".
@@ -203,7 +192,7 @@ std::string camelToKebab(std::string_view s) {
 
 /// `12`, `12px`, `1.5` as a number; false for anything else.
 bool parseNumber(const std::string& text, double& out) {
-    std::string t = trimDesignExport(text);
+    std::string t = util::trim(text);
     if (t.size() > 2 && t.compare(t.size() - 2, 2, "px") == 0) {
         t.resize(t.size() - 2);
     }
@@ -232,35 +221,13 @@ ordered_json numberOrText(const std::string& value) {
     if (parseNumber(value, v)) {
         return numberJson(v);
     }
-    return ordered_json(trimDesignExport(value));
+    return ordered_json(util::trim(value));
 }
 
 /// The `--name: value` declarations of a stylesheet (name without `--`), first declaration's order,
 /// last declaration's value. Empty when the file cannot be read.
 std::vector<std::pair<std::string, std::string>> readDecls(const fs::path& file, const std::string& label) {
-    std::vector<std::pair<std::string, std::string>> out;
-    std::string text;
-    if (!bundle::detail::readFile(pathToUtf8(file), text)) {
-        return out;
-    }
-    compile::DiagnosticSink sink;
-    compile::RuleSet rules;
-    compile::parseXts(text, label, 1, sink, rules);
-    std::map<std::string, size_t> index;
-    for (const compile::TokenDecl& t : rules.tokens) {
-        if (t.name.size() < 3) {
-            continue;
-        }
-        const std::string name = t.name.substr(2);
-        const auto found = index.find(name);
-        if (found == index.end()) {
-            index[name] = out.size();
-            out.emplace_back(name, trimDesignExport(t.value));
-        } else {
-            out[found->second].second = trimDesignExport(t.value);
-        }
-    }
-    return out;
+    return detail::readTokenDecls(pathToUtf8(file), label);
 }
 
 using Decls = std::vector<std::pair<std::string, std::string>>;
@@ -277,7 +244,7 @@ DeclMap toMap(const Decls& decls) {
 /// `value` with `var(--x)` followed (theme overrides first, then the base) up to 8 levels; the
 /// original text when it does not resolve.
 std::string resolveValue(const std::string& value, const DeclMap& base, const DeclMap* theme) {
-    std::string current = trimDesignExport(value);
+    std::string current = util::trim(value);
     for (int depth = 0; depth < 8; ++depth) {
         if (current.rfind("var(", 0) != 0) {
             return current;
@@ -297,44 +264,20 @@ std::string resolveValue(const std::string& value, const DeclMap& base, const De
         if (theme != nullptr) {
             const auto found = theme->find(name);
             if (found != theme->end()) {
-                current = trimDesignExport(found->second);
+                current = util::trim(found->second);
                 continue;
             }
         }
         const auto found = base.find(name);
         if (found == base.end()) {
-            return trimDesignExport(value);
+            return util::trim(value);
         }
-        current = trimDesignExport(found->second);
+        current = util::trim(found->second);
     }
-    return trimDesignExport(value);
+    return util::trim(value);
 }
 
-/// The theme files of `project` (sorted by path): (stem, file).
-std::vector<std::pair<std::string, fs::path>> themeFiles(const UiProject& project) {
-    std::vector<std::pair<std::string, fs::path>> out;
-    if (project.shared.themes.empty()) {
-        return out;
-    }
-    const fs::path dir = pathFromUtf8(project.rootDir) / pathFromUtf8(project.shared.themes);
-    std::error_code ec;
-    std::vector<fs::path> files;
-    if (fs::is_directory(dir, ec)) {
-        for (fs::directory_iterator it(dir, ec), end; it != end; it.increment(ec)) {
-            if (ec) {
-                break;
-            }
-            if (it->is_regular_file(ec) && it->path().extension() == ".xts") {
-                files.push_back(it->path());
-            }
-        }
-    }
-    std::sort(files.begin(), files.end());
-    for (const fs::path& file : files) {
-        out.emplace_back(pathToUtf8(file.stem()), file);
-    }
-    return out;
-}
+using detail::themeFiles;
 
 fs::path tokensPath(const UiProject& project) {
     return pathFromUtf8(project.rootDir) / pathFromUtf8(project.shared.tokens);
@@ -349,7 +292,7 @@ bool isDeprecatedEntry(const Entry& e) {
 /// One Markdown table row's cells (`\|` kept as written).
 std::vector<std::string> tableCells(const std::string& line) {
     std::vector<std::string> cells;
-    std::string t = trimDesignExport(line);
+    std::string t = util::trim(line);
     if (!t.empty() && t.front() == '|') {
         t.erase(0, 1);
     }
@@ -362,13 +305,13 @@ std::vector<std::string> tableCells(const std::string& line) {
             current += "\\|";
             ++i;
         } else if (t[i] == '|') {
-            cells.push_back(trimDesignExport(current));
+            cells.push_back(util::trim(current));
             current.clear();
         } else {
             current += t[i];
         }
     }
-    cells.push_back(trimDesignExport(current));
+    cells.push_back(util::trim(current));
     return cells;
 }
 
@@ -381,14 +324,14 @@ std::string tableRow(const std::vector<std::string>& cells) {
 }
 
 bool isTableRule(const std::string& line) {
-    const std::string t = trimDesignExport(line);
+    const std::string t = util::trim(line);
     return t.rfind("| ---", 0) == 0 || t.rfind("|---", 0) == 0;
 }
 
 /// Every table of `lines` without its `UIs` column (an internal count).
 void dropUiColumns(std::vector<std::string>& lines) {
     for (size_t i = 0; i + 1 < lines.size(); ++i) {
-        if (trimDesignExport(lines[i]).rfind('|', 0) != 0 || !isTableRule(lines[i + 1])) {
+        if (util::trim(lines[i]).rfind('|', 0) != 0 || !isTableRule(lines[i + 1])) {
             continue;
         }
         const std::vector<std::string> header = tableCells(lines[i]);
@@ -397,7 +340,7 @@ void dropUiColumns(std::vector<std::string>& lines) {
             continue;
         }
         const size_t column = static_cast<size_t>(it - header.begin());
-        for (size_t j = i; j < lines.size() && trimDesignExport(lines[j]).rfind('|', 0) == 0; ++j) {
+        for (size_t j = i; j < lines.size() && util::trim(lines[j]).rfind('|', 0) == 0; ++j) {
             std::vector<std::string> cells = tableCells(lines[j]);
             if (column < cells.size()) {
                 cells.erase(cells.begin() + static_cast<std::ptrdiff_t>(column));
@@ -443,7 +386,7 @@ std::string buildReadme(const UiProject& project, const DesignSystem& ds, const 
         std::string title = headingText(lines[i], 2);
         const size_t dot = title.find("\xC2\xB7 ");  // "3 · Color"
         if (dot != std::string::npos) {
-            title = trimDesignExport(title.substr(dot + 3));
+            title = util::trim(title.substr(dot + 3));
         }
         std::vector<std::string> body;
         for (++i; i < lines.size() && lines[i].rfind("## ", 0) != 0; ++i) {
@@ -904,7 +847,7 @@ std::string buildComponents(const UiProject& project, const DesignSystem& ds, st
             out.push_back("### " + s.name);
             out.emplace_back();
             if (!s.description.empty()) {
-                out.push_back(trimDesignExport(s.description));
+                out.push_back(util::trim(s.description));
                 out.emplace_back();
             }
             if (!s.source.empty()) {
@@ -950,7 +893,7 @@ bool isSafeName(const std::string& name) {
 /// A value that can go into a declaration as written: not empty, at most kMaxValueBytes, no
 /// control character, no `;`, braces, `<` or comment marks, balanced quotes.
 bool isSafeValue(const std::string& value) {
-    const std::string t = trimDesignExport(value);
+    const std::string t = util::trim(value);
     if (t.empty() || t.size() > kMaxValueBytes) {
         return false;
     }
@@ -970,7 +913,7 @@ bool isSafeValue(const std::string& value) {
 
 /// A text field (name, role, note) without line breaks, at most kMaxTextFieldBytes.
 std::string textField(const json& object, const char* key) {
-    std::string out = trimDesignExport(jsonString(object, key));
+    std::string out = util::trim(jsonString(object, key));
     for (char& c : out) {
         if (static_cast<unsigned char>(c) < 0x20) {
             c = ' ';
@@ -1033,7 +976,7 @@ std::string withoutNumber(const std::string& title) {
     } else if (j == i) {
         return title;  // "3D effects"
     }
-    const std::string rest = trimDesignExport(title.substr(j));
+    const std::string rest = util::trim(title.substr(j));
     return rest.empty() ? title : rest;
 }
 
@@ -1043,7 +986,7 @@ std::string sectionFor(const std::string& title) {
     for (const char c : title) {
         key += (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
     }
-    key = trimDesignExport(key);
+    key = util::trim(key);
     replaceAll(key, "&", "and");
     static const std::vector<std::pair<const char*, std::vector<const char*>>> kTable = {
         {"identity", {"identity", "overview", "about", "introduction", "brand", "principles"}},
@@ -1235,7 +1178,7 @@ std::string insertDecls(const std::string& text,
                         const std::vector<std::pair<std::string, std::string>>& decls) {
     std::string lines;
     for (const auto& [name, value] : decls) {
-        lines += "  " + name + ": " + trimDesignExport(value) + ";\n";
+        lines += "  " + name + ": " + util::trim(value) + ";\n";
     }
     // Find `:root` and its block outside comments and strings.
     size_t rootAt = std::string::npos;
@@ -1346,7 +1289,7 @@ std::vector<std::pair<std::string, std::string>> stringMembers(const json& objec
             report.notes.push_back(what + "." + key + ": not a usable value");
             continue;
         }
-        out.emplace_back(key, trimDesignExport(it->get<std::string>()));
+        out.emplace_back(key, util::trim(it->get<std::string>()));
     }
     return out;
 }
@@ -1448,7 +1391,7 @@ void importSwatch(DesignSystem& ds, const json& s, const std::string& group, Imp
         report.notes.push_back("palette.json: swatch '" + id.substr(0, kMaxKeyBytes) + "' has no usable id");
         return;
     }
-    const std::string value = normalizeHex(trimDesignExport(jsonString(s, "value")));
+    const std::string value = normalizeHex(util::trim(jsonString(s, "value")));
     if (value.empty()) {
         report.notes.push_back("palette.json: swatch '" + id + "' has no hex value");
         return;
@@ -1665,7 +1608,7 @@ Status importClaudeDesign(const UiProject& project, std::string_view dir, Import
     int index = 0;
     for (const MdSection& s : sections) {
         ++index;
-        if (trimDesignExport(s.body).empty()) {
+        if (util::trim(s.body).empty()) {
             r.notes.push_back("README.md: section '" + s.title + "' is empty; not imported");
             continue;
         }
@@ -1688,7 +1631,7 @@ Status importClaudeDesign(const UiProject& project, std::string_view dir, Import
         importPalette(ds, palette, r);
     }
     // components.md -> one text entry.
-    if (hasComponents && !trimDesignExport(components).empty()) {
+    if (hasComponents && !util::trim(components).empty()) {
         std::string title = "Components";
         for (const std::string& line : splitLines(components)) {
             if (headingLevel(line) == 1) {
@@ -1723,5 +1666,35 @@ Status importClaudeDesign(const UiProject& project, std::string_view dir, Import
     }
     return Status::kOk;
 }
+
+namespace detail {
+
+/// The theme files of `project` (sorted by path): (stem, file).
+std::vector<std::pair<std::string, fs::path>> themeFiles(const UiProject& project) {
+    std::vector<std::pair<std::string, fs::path>> out;
+    if (project.shared.themes.empty()) {
+        return out;
+    }
+    const fs::path dir = pathFromUtf8(project.rootDir) / pathFromUtf8(project.shared.themes);
+    std::error_code ec;
+    std::vector<fs::path> files;
+    if (fs::is_directory(dir, ec)) {
+        for (fs::directory_iterator it(dir, ec), end; it != end; it.increment(ec)) {
+            if (ec) {
+                break;
+            }
+            if (it->is_regular_file(ec) && it->path().extension() == ".xts") {
+                files.push_back(it->path());
+            }
+        }
+    }
+    std::sort(files.begin(), files.end());
+    for (const fs::path& file : files) {
+        out.emplace_back(pathToUtf8(file.stem()), file);
+    }
+    return out;
+}
+
+}  // namespace detail
 
 }  // namespace xt::bundle::design

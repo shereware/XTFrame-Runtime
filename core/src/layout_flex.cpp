@@ -3,6 +3,7 @@
 #include <utility>
 #include <vector>
 
+#include "layout_common.h"
 #include "xt/assert.h"
 #include "xt/layout.h"
 #include "xt/node.h"
@@ -79,26 +80,6 @@ void resolveFlexibleLengths(const std::vector<FlexBasisInput>& items, float free
 }
 
 namespace {
-
-Edges resolveEdgesPx(const Length& t, const Length& r, const Length& b, const Length& l, float refW) {
-    return Edges{resolveLength(t, refW, 0), resolveLength(r, refW, 0), resolveLength(b, refW, 0),
-                 resolveLength(l, refW, 0)};
-}
-
-float clampMinMax(float value, Length minLen, Length maxLen, float refW) {
-    float clamped = value;
-    if (maxLen.unit != LengthUnit::Auto) {
-        float maxV = resolveLength(maxLen, refW, 0);
-        if (clamped > maxV) {
-            clamped = maxV;
-        }
-    }
-    float minV = resolveLength(minLen, refW, 0);
-    if (clamped < minV) {
-        clamped = minV;
-    }
-    return clamped;
-}
 
 /// AlignSelf::Auto -> the container's align-items, otherwise unchanged. AlignItems and AlignSelf
 /// enumerators intentionally line up (AlignSelf's non-Auto values are AlignItems's values shifted
@@ -709,14 +690,7 @@ void LayoutEngine::layoutFlex(NodeArena& arena, NodeId node, float availW, float
     float refW = availW;
     float refH = availH;
 
-    Edges margin = resolveEdgesPx(style.base[prop::MarginTop].len, style.base[prop::MarginRight].len,
-                                  style.base[prop::MarginBottom].len, style.base[prop::MarginLeft].len, refW);
-    Edges padding =
-        resolveEdgesPx(style.base[prop::PaddingTop].len, style.base[prop::PaddingRight].len,
-                       style.base[prop::PaddingBottom].len, style.base[prop::PaddingLeft].len, refW);
-    Edges border =
-        resolveEdgesPx(style.base[prop::BorderTopWidth].len, style.base[prop::BorderRightWidth].len,
-                       style.base[prop::BorderBottomWidth].len, style.base[prop::BorderLeftWidth].len, refW);
+    const auto [margin, padding, border] = resolveBoxEdges(style, refW);
 
     Length widthLen = style.base[prop::Width].len;
     Length heightLen = style.base[prop::Height].len;
@@ -724,11 +698,7 @@ void LayoutEngine::layoutFlex(NodeArena& arena, NodeId node, float availW, float
     // T-74, as in layoutBlock: "definite" (Px, or Percent against a definite refH) rather than
     // "not auto", plus an outer-imposed used height when the element's own height isn't definite.
     float definiteBorderBoxH = 0;
-    bool heightDefinite = resolveHeightLength(heightLen, refH, definiteBorderBoxH);
-    if (!heightDefinite && imposedH >= 0.0f) {
-        definiteBorderBoxH = imposedH;
-        heightDefinite = true;
-    }
+    bool heightDefinite = resolveDefiniteHeight(heightLen, refH, imposedH, definiteBorderBoxH);
 
     data.hasIntrinsic = 0;
     data.intrinsic = Vec2{0, 0};
@@ -767,20 +737,8 @@ void LayoutEngine::layoutFlex(NodeArena& arena, NodeId node, float availW, float
     if (ratio > 0.0f && ((widthAuto && heightDefinite) || (!heightDefinite && !widthIsAxisAuto))) {
         const float extraW = padding.left + padding.right + border.left + border.right;
         const float extraH = padding.top + padding.bottom + border.top + border.bottom;
-        AspectMinMax bounds = aspectMinMax(style, refW, refH);
-        bounds.minW += extraW;
-        bounds.minH += extraH;
-        bounds.maxW = bounds.maxW < kFlexNoMax ? bounds.maxW + extraW : kFlexNoMax;
-        bounds.maxH = bounds.maxH < kFlexNoMax ? bounds.maxH + extraH : kFlexNoMax;
-        Vec2 size;
-        if (heightDefinite) {
-            const float h =
-                clampHeightMinMax(std::max(0.0f, definiteBorderBoxH - extraH),
-                                  style.base[prop::MinHeight].len, style.base[prop::MaxHeight].len, refH);
-            size = resolveAspect(kUndefinedRef, h + extraH, ratio, bounds);
-        } else {
-            size = resolveAspect(contentW + extraW, kUndefinedRef, ratio, bounds, widthAuto);
-        }
+        const Vec2 size = containerAspectSize(style, ratio, refW, refH, extraW, extraH, heightDefinite,
+                                              definiteBorderBoxH, contentW, widthAuto);
         contentW = std::max(0.0f, size.x - extraW);
         widthIsAxisAuto = false;
         definiteBorderBoxH = size.y;

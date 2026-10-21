@@ -14,6 +14,7 @@
 #include "xt/compile/validate.h"
 #include "xt/ir_pod.h"
 #include "xt/timeline.h"
+#include "xt/util/hex.h"
 #include "xts/xts_props.h"
 
 /// docs/design/27-interaction.md §27.3, 03 §3.12.3, 05 §5.9.1, 12 §12.7, docs/tasks/T-175.md.
@@ -262,18 +263,7 @@ bool parsePlainNumber(std::string_view text, float& out) {
     return true;
 }
 
-int hexDigit(char c) {
-    if (c >= '0' && c <= '9') {
-        return c - '0';
-    }
-    if (c >= 'a' && c <= 'f') {
-        return c - 'a' + 10;
-    }
-    if (c >= 'A' && c <= 'F') {
-        return c - 'A' + 10;
-    }
-    return -1;
-}
+using util::hexDigit;
 
 /// T-358: `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`, `rgb(r, g, b)` or `rgba(r, g, b, a)` (0-255
 /// channels, alpha 0-1) -> RGBA8 bytes.

@@ -46,10 +46,7 @@ using compile::pathToUtf8;
 
 namespace {
 
-bool isNameChar(char c) {
-    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' ||
-           c == '_' || static_cast<unsigned char>(c) >= 0x80;
-}
+using detail::isNameChar;
 
 /// The variable names (without `--`) of every `var(--name` in `text`.
 std::vector<std::string> varNames(std::string_view text) {
@@ -76,39 +73,7 @@ std::vector<std::string> varNames(std::string_view text) {
     return out;
 }
 
-/// The last `#id` of each comma-separated selector of a rule prelude.
-std::vector<std::string> preludeIds(std::string_view prelude) {
-    std::vector<std::string> out;
-    int depth = 0;
-    std::string last;
-    const auto flush = [&]() {
-        if (!last.empty()) {
-            out.push_back(last);
-        }
-        last.clear();
-    };
-    for (size_t i = 0; i < prelude.size(); ++i) {
-        const char c = prelude[i];
-        if (c == '(') {
-            ++depth;
-        } else if (c == ')') {
-            --depth;
-        } else if (c == ',' && depth == 0) {
-            flush();
-        } else if (c == '#' && depth == 0) {
-            size_t j = i + 1;
-            while (j < prelude.size() && isNameChar(prelude[j])) {
-                ++j;
-            }
-            if (j > i + 1) {
-                last = std::string(prelude.substr(i + 1, j - i - 1));
-            }
-            i = j - 1;
-        }
-    }
-    flush();
-    return out;
-}
+using detail::preludeIds;
 
 /// One `var(--name` use in a stylesheet: the variable and the `#id`s of the innermost enclosing rule
 /// whose selector names one (empty when none does).
@@ -722,5 +687,43 @@ std::vector<Issue> validate(const DesignSystem& ds, const Graph& graph) {
     }
     return out;
 }
+
+namespace detail {
+
+/// The last `#id` of each comma-separated selector of a rule prelude.
+std::vector<std::string> preludeIds(std::string_view prelude) {
+    std::vector<std::string> out;
+    int depth = 0;
+    std::string last;
+    const auto flush = [&]() {
+        if (!last.empty()) {
+            out.push_back(last);
+        }
+        last.clear();
+    };
+    for (size_t i = 0; i < prelude.size(); ++i) {
+        const char c = prelude[i];
+        if (c == '(') {
+            ++depth;
+        } else if (c == ')') {
+            --depth;
+        } else if (c == ',' && depth == 0) {
+            flush();
+        } else if (c == '#' && depth == 0) {
+            size_t j = i + 1;
+            while (j < prelude.size() && isNameChar(prelude[j])) {
+                ++j;
+            }
+            if (j > i + 1) {
+                last = std::string(prelude.substr(i + 1, j - i - 1));
+            }
+            i = j - 1;
+        }
+    }
+    flush();
+    return out;
+}
+
+}  // namespace detail
 
 }  // namespace xt::bundle::design

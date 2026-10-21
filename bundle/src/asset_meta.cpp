@@ -42,40 +42,6 @@ void setError(std::string* error, std::string message) {
     }
 }
 
-/// An unordered json as an ordered one (keys sorted, as json keeps them).
-ordered_json ordered(const json& value) {
-    if (value.is_object()) {
-        ordered_json out = ordered_json::object();
-        for (auto it = value.begin(); it != value.end(); ++it) {
-            out[it.key()] = ordered(it.value());
-        }
-        return out;
-    }
-    if (value.is_array()) {
-        ordered_json out = ordered_json::array();
-        for (const json& item : value) {
-            out.push_back(ordered(item));
-        }
-        return out;
-    }
-    if (value.is_string()) {
-        return ordered_json(value.get<std::string>());
-    }
-    if (value.is_boolean()) {
-        return ordered_json(value.get<bool>());
-    }
-    if (value.is_number_unsigned()) {
-        return ordered_json(value.get<uint64_t>());
-    }
-    if (value.is_number_integer()) {
-        return ordered_json(value.get<int64_t>());
-    }
-    if (value.is_number_float()) {
-        return ordered_json(value.get<double>());
-    }
-    return ordered_json(nullptr);
-}
-
 void putExtra(json& extra, const std::string& key, const json& value) {
     if (!extra.is_object()) {
         extra = json::object();
@@ -590,7 +556,7 @@ std::string metaText(const AssetMeta& meta) {
     const auto extraHas = [&extra](const char* key) { return extra.is_object() && extra.contains(key); };
     const auto putString = [&](ordered_json& o, const char* key, const std::string& value) {
         if (extraHas(key)) {
-            o[key] = ordered(extra[key]);
+            o[key] = bundle::detail::toOrdered(extra[key]);
         } else if (!value.empty()) {
             o[key] = value;
         }
@@ -602,12 +568,12 @@ std::string metaText(const AssetMeta& meta) {
     putString(o, "title", meta.title);
     putString(o, "collection", meta.collection);
     if (extraHas("status")) {
-        o["status"] = ordered(extra["status"]);
+        o["status"] = bundle::detail::toOrdered(extra["status"]);
     } else {
         o["status"] = meta.status.empty() ? std::string("draft") : meta.status;
     }
     if (extraHas("source") && !extra["source"].is_object()) {
-        o["source"] = ordered(extra["source"]);
+        o["source"] = bundle::detail::toOrdered(extra["source"]);
     } else {
         ordered_json s = ordered_json::object();
         if (!meta.source.kind.empty()) {
@@ -622,7 +588,7 @@ std::string metaText(const AssetMeta& meta) {
         if (extraHas("source")) {
             for (auto it = extra["source"].begin(); it != extra["source"].end(); ++it) {
                 if (!s.contains(it.key())) {
-                    s[it.key()] = ordered(it.value());
+                    s[it.key()] = bundle::detail::toOrdered(it.value());
                 }
             }
         }
@@ -631,7 +597,7 @@ std::string metaText(const AssetMeta& meta) {
         }
     }
     if (extraHas("approved")) {
-        o["approved"] = ordered(extra["approved"]);
+        o["approved"] = bundle::detail::toOrdered(extra["approved"]);
     } else if (!meta.approved.by.empty() || !meta.approved.at.empty()) {
         ordered_json a = ordered_json::object();
         if (!meta.approved.by.empty()) {
@@ -645,12 +611,12 @@ std::string metaText(const AssetMeta& meta) {
     putString(o, "license", meta.license);
     putString(o, "content", meta.contentHash);
     if (extraHas("tags")) {
-        o["tags"] = ordered(extra["tags"]);
+        o["tags"] = bundle::detail::toOrdered(extra["tags"]);
     } else if (!meta.tags.empty()) {
         o["tags"] = meta.tags;
     }
     if (extraHas("measured")) {
-        o["measured"] = ordered(extra["measured"]);
+        o["measured"] = bundle::detail::toOrdered(extra["measured"]);
     } else {
         const AssetMeasured& m = meta.measured;
         ordered_json mo = ordered_json::object();
@@ -669,10 +635,10 @@ std::string metaText(const AssetMeta& meta) {
         }
     }
     if (!meta.import.is_null() && !(meta.import.is_object() && meta.import.empty())) {
-        o["import"] = ordered(meta.import);
+        o["import"] = bundle::detail::toOrdered(meta.import);
     }
     if (extraHas("links")) {
-        o["links"] = ordered(extra["links"]);
+        o["links"] = bundle::detail::toOrdered(extra["links"]);
     } else if (!meta.links.empty()) {
         ordered_json list = ordered_json::array();
         for (const design::Link& link : meta.links) {
@@ -690,7 +656,7 @@ std::string metaText(const AssetMeta& meta) {
     if (extra.is_object()) {
         for (auto it = extra.begin(); it != extra.end(); ++it) {
             if (!o.contains(it.key()) && !isKnownKey(it.key())) {
-                o[it.key()] = ordered(it.value());
+                o[it.key()] = bundle::detail::toOrdered(it.value());
             }
         }
     }

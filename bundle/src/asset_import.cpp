@@ -19,6 +19,7 @@
 #include "xt/compile/utf8_path.h"
 #include "xt/num_guard.h"
 #include "xt/sw/sw_png.h"
+#include "xt/util/time.h"
 #include "yaml_lite.h"
 
 /// The asset import pipeline, replacing, source folders, the generated `manifest/assets.yaml` and
@@ -38,25 +39,7 @@ namespace {
 /// How many names an import tries (`<name>`, `<name>-2`, ...) before giving up.
 constexpr int kMaxNameTries = 1000;
 
-/// The current time as ISO 8601 UTC ("2026-10-11T08:00:00Z"); "" when the clock cannot be read.
-std::string isoUtcNow() {
-    const std::time_t now = std::time(nullptr);
-    std::tm utc{};
-#if defined(_MSC_VER)
-    if (gmtime_s(&utc, &now) != 0) {
-        return std::string();
-    }
-#else
-    if (gmtime_r(&now, &utc) == nullptr) {
-        return std::string();
-    }
-#endif
-    char buffer[32] = {};
-    if (std::strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%SZ", &utc) == 0) {
-        return std::string();
-    }
-    return std::string(buffer);
-}
+using util::isoUtcNow;
 
 bool fileExists(const std::string& path) {
     std::error_code ec;

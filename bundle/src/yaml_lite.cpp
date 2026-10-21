@@ -790,6 +790,8 @@ void emitSequence(std::string& out, const ordered_json& array, int indent) {
     }
 }
 
+}  // namespace
+
 ordered_json toOrdered(const json& value) {
     if (value.is_object()) {
         ordered_json out = ordered_json::object();
@@ -822,8 +824,6 @@ ordered_json toOrdered(const json& value) {
     }
     return ordered_json(nullptr);
 }
-
-}  // namespace
 
 std::string emitYamlLite(const nlohmann::ordered_json& value, int indent) {
     std::string out;

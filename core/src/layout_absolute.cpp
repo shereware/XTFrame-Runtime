@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <string_view>
 
+#include "layout_common.h"
 #include "xt/assert.h"
 #include "xt/layout.h"
 #include "xt/node.h"
@@ -15,26 +16,6 @@
 namespace xt {
 
 namespace {
-
-Edges resolveEdgesPx(const Length& t, const Length& r, const Length& b, const Length& l, float refW) {
-    return Edges{resolveLength(t, refW, 0), resolveLength(r, refW, 0), resolveLength(b, refW, 0),
-                 resolveLength(l, refW, 0)};
-}
-
-float clampMinMax(float value, Length minLen, Length maxLen, float refW) {
-    float clamped = value;
-    if (maxLen.unit != LengthUnit::Auto) {
-        float maxV = resolveLength(maxLen, refW, 0);
-        if (clamped > maxV) {
-            clamped = maxV;
-        }
-    }
-    float minV = resolveLength(minLen, refW, 0);
-    if (clamped < minV) {
-        clamped = minV;
-    }
-    return clamped;
-}
 
 /// True when `node` has at least one child that takes part in its normal flow (an Element that is
 /// neither `display: none`, a <camera>, nor absolutely positioned). T-74 part B uses it to pick
@@ -65,14 +46,7 @@ void LayoutEngine::resolveAbsoluteBox(NodeArena& arena, NodeId node, Rect cbPadd
     float cbW = cbPaddingAbs.w;
     float cbH = cbPaddingAbs.h;
 
-    Edges margin = resolveEdgesPx(style.base[prop::MarginTop].len, style.base[prop::MarginRight].len,
-                                  style.base[prop::MarginBottom].len, style.base[prop::MarginLeft].len, cbW);
-    Edges padding =
-        resolveEdgesPx(style.base[prop::PaddingTop].len, style.base[prop::PaddingRight].len,
-                       style.base[prop::PaddingBottom].len, style.base[prop::PaddingLeft].len, cbW);
-    Edges border =
-        resolveEdgesPx(style.base[prop::BorderTopWidth].len, style.base[prop::BorderRightWidth].len,
-                       style.base[prop::BorderBottomWidth].len, style.base[prop::BorderLeftWidth].len, cbW);
+    const auto [margin, padding, border] = resolveBoxEdges(style, cbW);
 
     Length widthLen = style.base[prop::Width].len;
     Length heightLen = style.base[prop::Height].len;

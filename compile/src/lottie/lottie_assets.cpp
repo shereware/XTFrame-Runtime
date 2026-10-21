@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include "../file_bytes.h"
 #include "base64.h"
 #include "lottie_model.h"
 #include "xt/compile/utf8_path.h"
@@ -14,23 +15,7 @@ namespace xt::compile {
 
 namespace {
 
-bool readFileBytes(const std::filesystem::path& path, std::vector<uint8_t>& out) {
-    std::ifstream in(path, std::ios::binary);
-    if (!in.good()) {
-        return false;
-    }
-    in.seekg(0, std::ios::end);
-    std::streamoff size = in.tellg();
-    if (size < 0) {
-        return false;
-    }
-    in.seekg(0, std::ios::beg);
-    out.resize(static_cast<size_t>(size));
-    if (size > 0) {
-        in.read(reinterpret_cast<char*>(out.data()), size);
-    }
-    return static_cast<bool>(in) || in.eof();
-}
+using detail::readFileBytes;
 
 /// Splits a `data:<mime>;base64,<data>` URI's payload out; returns false if there is no comma
 /// (malformed).

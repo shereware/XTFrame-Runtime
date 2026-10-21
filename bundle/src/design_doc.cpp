@@ -23,6 +23,7 @@
 #include "xt/compile/parse_xts.h"
 #include "xt/compile/style_model.h"
 #include "xt/compile/utf8_path.h"
+#include "xt/util/text.h"
 #include "yaml_lite.h"
 
 /// The `DESIGN.md` generator and the remaining design lint (docs/design/35-design-system.md §35.4,
@@ -70,18 +71,6 @@ enum SectionIndex : size_t {
 
 using Lines = std::vector<std::string>;
 
-std::string trimDesignDoc(std::string_view s) {
-    size_t b = 0;
-    size_t e = s.size();
-    while (b < e && (s[b] == ' ' || s[b] == '\t' || s[b] == '\r' || s[b] == '\n')) {
-        ++b;
-    }
-    while (e > b && (s[e - 1] == ' ' || s[e - 1] == '\t' || s[e - 1] == '\r' || s[e - 1] == '\n')) {
-        --e;
-    }
-    return std::string(s.substr(b, e - b));
-}
-
 std::string joinDesignDoc(const std::vector<std::string>& items, const char* separator) {
     std::string out;
     for (size_t i = 0; i < items.size(); ++i) {
@@ -96,7 +85,7 @@ std::string joinDesignDoc(const std::vector<std::string>& items, const char* sep
 /// A table cell: `|` escaped, line breaks as spaces.
 std::string cell(std::string_view text) {
     std::string out;
-    for (char c : trimDesignDoc(text)) {
+    for (char c : util::trim(text)) {
         if (c == '|') {
             out += "\\|";
         } else if (c == '\n' || c == '\r') {
@@ -211,34 +200,7 @@ void flatten(const json& v, const std::string& prefix, std::vector<std::vector<s
     rows.push_back({code(prefix), inlineValue(v)});
 }
 
-/// The `--name: value` declarations of a stylesheet: (name without `--`, value), first declaration's
-/// order, last declaration's value.
-std::vector<std::pair<std::string, std::string>> readTokenDecls(const std::string& path,
-                                                                const std::string& label) {
-    std::vector<std::pair<std::string, std::string>> out;
-    std::string text;
-    if (path.empty() || !bundle::detail::readFile(path, text)) {
-        return out;
-    }
-    compile::DiagnosticSink sink;
-    compile::RuleSet rules;
-    compile::parseXts(text, label, 1, sink, rules);
-    std::map<std::string, size_t> index;
-    for (const compile::TokenDecl& t : rules.tokens) {
-        if (t.name.size() < 3) {
-            continue;
-        }
-        const std::string name = t.name.substr(2);
-        const auto found = index.find(name);
-        if (found == index.end()) {
-            index[name] = out.size();
-            out.emplace_back(name, trimDesignDoc(t.value));
-        } else {
-            out[found->second].second = trimDesignDoc(t.value);
-        }
-    }
-    return out;
-}
+using detail::readTokenDecls;
 
 /// Everything the generator and the lint read from the project besides the design directory.
 struct ProjectData {
@@ -262,30 +224,14 @@ void loadProjectData(const UiProject& project, const DesignSystem& ds, ProjectDa
     for (const auto& [name, value] : data.tokenOrder) {
         data.tokenValues[name] = value;
     }
-    if (!project.shared.themes.empty()) {
-        const fs::path dir = data.root / pathFromUtf8(project.shared.themes);
-        std::error_code ec;
-        std::vector<fs::path> files;
-        if (fs::is_directory(dir, ec)) {
-            for (fs::directory_iterator it(dir, ec), end; it != end; it.increment(ec)) {
-                if (ec) {
-                    break;
-                }
-                if (it->is_regular_file(ec) && it->path().extension() == ".xts") {
-                    files.push_back(it->path());
-                }
-            }
+    for (const auto& [stem, file] : detail::themeFiles(project)) {
+        data.themeNames.push_back(stem);
+        std::map<std::string, std::string> values;
+        for (auto& [name, value] :
+             readTokenDecls(pathToUtf8(file), genericPathToUtf8(file.lexically_relative(data.root)))) {
+            values[name] = value;
         }
-        std::sort(files.begin(), files.end());
-        for (const fs::path& file : files) {
-            data.themeNames.push_back(pathToUtf8(file.stem()));
-            std::map<std::string, std::string> values;
-            for (auto& [name, value] :
-                 readTokenDecls(pathToUtf8(file), genericPathToUtf8(file.lexically_relative(data.root)))) {
-                values[name] = value;
-            }
-            data.themes.push_back(std::move(values));
-        }
+        data.themes.push_back(std::move(values));
     }
     data.synced = ds;
     syncTokenMeta(data.synced, project, nullptr);
@@ -296,7 +242,7 @@ void loadProjectData(const UiProject& project, const DesignSystem& ds, ProjectDa
 /// does not resolve.
 std::string resolveColor(const std::string& ref, const DesignSystem& ds, const ProjectData& data,
                          const std::map<std::string, std::string>* theme) {
-    std::string current = trimDesignDoc(ref);
+    std::string current = util::trim(ref);
     for (int depth = 0; depth < 8; ++depth) {
         if (!current.empty() && current[0] == '#') {
             return normalizeHex(current);
@@ -410,7 +356,7 @@ Lines renderText(const TextEntry& t, bool forAi) {
         pos = nl + 1;
     }
     for (std::string line : bodyLines) {
-        const std::string trimmed = trimDesignDoc(line);
+        const std::string trimmed = util::trim(line);
         if (trimmed.rfind("```", 0) == 0 || trimmed.rfind("~~~", 0) == 0) {
             fence = !fence;
             out.push_back(line);
@@ -422,11 +368,11 @@ Lines renderText(const TextEntry& t, bool forAi) {
                 ++level;
             }
             if (level <= 6 && (level == line.size() || line[level] == ' ' || line[level] == '\t')) {
-                std::string text = trimDesignDoc(line.substr(level));
+                std::string text = util::trim(line.substr(level));
                 while (!text.empty() && text.back() == '#') {
                     text.pop_back();
                 }
-                text = trimDesignDoc(text);
+                text = util::trim(text);
                 if (level == 1 && !titled) {
                     titled = true;
                     headingDesignDoc(out, text + draftMark(t.base));
@@ -449,7 +395,7 @@ Lines renderText(const TextEntry& t, bool forAi) {
                 }
                 line.erase(at, end - at + 1);
             }
-            if (trimDesignDoc(line).empty() && !trimmed.empty()) {
+            if (util::trim(line).empty() && !trimmed.empty()) {
                 continue;
             }
         }
@@ -515,7 +461,7 @@ public:
         if (!m_ds.info.sections.empty()) {
             std::fill(visible.begin(), visible.end(), false);
             for (const std::string& key : m_ds.info.sections) {
-                const int i = sectionIndexOf(trimDesignDoc(key));
+                const int i = sectionIndexOf(util::trim(key));
                 if (i >= 0) {
                     visible[static_cast<size_t>(i)] = true;
                 }
@@ -524,7 +470,7 @@ public:
         if (!m_options.sections.empty()) {
             std::vector<bool> wanted(kSectionCount, false);
             for (const std::string& key : m_options.sections) {
-                const int i = sectionIndexOf(trimDesignDoc(key));
+                const int i = sectionIndexOf(util::trim(key));
                 if (i >= 0) {
                     wanted[static_cast<size_t>(i)] = true;
                 }
@@ -606,7 +552,7 @@ private:
                 break;
             }
             used += lines[keep].size() + 1;
-            const std::string t = trimDesignDoc(lines[keep]);
+            const std::string t = util::trim(lines[keep]);
             if (t.rfind("```", 0) == 0 || t.rfind("~~~", 0) == 0) {
                 fence = !fence;
             }
@@ -617,7 +563,7 @@ private:
         fenceAtCut = fence;
         size_t more = 0;
         for (size_t i = keep; i < lines.size(); ++i) {
-            if (!trimDesignDoc(lines[i]).empty()) {
+            if (!util::trim(lines[i]).empty()) {
                 ++more;
             }
         }
@@ -640,7 +586,7 @@ private:
             const bool screen = t.path.rfind("text/screens/", 0) == 0;
             bool here = section == kScreens && screen;
             for (const std::string& key : t.sections) {
-                if (sectionIndexOf(trimDesignDoc(key)) == static_cast<int>(section) &&
+                if (sectionIndexOf(util::trim(key)) == static_cast<int>(section) &&
                     !(screen && section == kScreens)) {
                     here = true;
                 }
@@ -765,7 +711,7 @@ private:
             const auto description = info.extra.find("description");
             if (description != info.extra.end() && description->is_string()) {
                 blankDesignDoc(out);
-                out.push_back(trimDesignDoc(description->get<std::string>()));
+                out.push_back(util::trim(description->get<std::string>()));
             }
         }
         if (!info.principles.empty()) {
@@ -1221,14 +1167,14 @@ private:
         while (pos <= body.size()) {
             const size_t nl = body.find('\n', pos);
             const std::string line =
-                trimDesignDoc(body.substr(pos, nl == std::string::npos ? std::string::npos : nl - pos));
+                util::trim(body.substr(pos, nl == std::string::npos ? std::string::npos : nl - pos));
             if (!line.empty() && line[0] == '#') {
                 flush();
                 size_t level = 0;
                 while (level < line.size() && line[level] == '#') {
                     ++level;
                 }
-                inDecision = detail::headingSlug(trimDesignDoc(line.substr(level))) == "decision";
+                inDecision = detail::headingSlug(util::trim(line.substr(level))) == "decision";
             } else if (line.empty()) {
                 flush();
             } else {
@@ -1590,5 +1536,38 @@ std::vector<Issue> lintDocument(const UiProject& project, const DesignSystem& ds
     }
     return lintRules(project, ds, graph, options, true);
 }
+
+namespace detail {
+
+/// The `--name: value` declarations of a stylesheet: (name without `--`, value), first declaration's
+/// order, last declaration's value.
+std::vector<std::pair<std::string, std::string>> readTokenDecls(const std::string& path,
+                                                                const std::string& label) {
+    std::vector<std::pair<std::string, std::string>> out;
+    std::string text;
+    if (path.empty() || !bundle::detail::readFile(path, text)) {
+        return out;
+    }
+    compile::DiagnosticSink sink;
+    compile::RuleSet rules;
+    compile::parseXts(text, label, 1, sink, rules);
+    std::map<std::string, size_t> index;
+    for (const compile::TokenDecl& t : rules.tokens) {
+        if (t.name.size() < 3) {
+            continue;
+        }
+        const std::string name = t.name.substr(2);
+        const auto found = index.find(name);
+        if (found == index.end()) {
+            index[name] = out.size();
+            out.emplace_back(name, util::trim(t.value));
+        } else {
+            out[found->second].second = util::trim(t.value);
+        }
+    }
+    return out;
+}
+
+}  // namespace detail
 
 }  // namespace xt::bundle::design

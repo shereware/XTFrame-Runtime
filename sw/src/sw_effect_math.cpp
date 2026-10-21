@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <limits>
 
+#include "effect_math.h"  // core/src: shared with xt::gpu (T-414)
 #include "sw_blend.h"
 #include "sw_simd.h"
 #include "xt/effect_utils.h"
@@ -20,11 +21,7 @@ constexpr float kPi = 3.14159265358979323846f;
 /// Box width per 18.6: `w = floor(sqrt(12*sigma^2/3 + 1))`, forced odd. Returns the box *radius*
 /// (half-width); sets `skip` when `w < 1` (the axis should be left unchanged).
 int boxRadius(float sigma, bool& skip) {
-    float sigma2 = sigma * sigma;
-    int w = static_cast<int>(std::floor(std::sqrt(12.0f * sigma2 / 3.0f + 1.0f)));
-    if (w % 2 == 0) {
-        w -= 1;
-    }
+    const int w = effect_math::boxBlurWidth(sigma);
     if (w < 1) {
         skip = true;
         return 0;

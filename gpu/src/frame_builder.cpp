@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "damage_internal.h"  // core/src: hashCommandList (T-162 effect cache keys)
+#include "effect_math.h"      // core/src: geometry and effect math shared with xt::sw (T-414)
 #include "frame_emit.h"
 #include "gpu_effects.h"
 #include "gradient_lut.h"
@@ -74,23 +75,6 @@ uint32_t packPremultiplied(Color c) {
     };
     uint32_t ab = static_cast<uint32_t>(std::lround(a * 255.0f)) & 0xFFu;
     return ch(c.r) | (ch(c.g) << 8) | (ch(c.b) << 16) | (ab << 24);
-}
-
-Rect boundsOfPoints(std::span<const float> points) {
-    if (points.size() < 2) {
-        return Rect{};
-    }
-    float minX = points[0];
-    float maxX = points[0];
-    float minY = points[1];
-    float maxY = points[1];
-    for (size_t i = 0; i + 1 < points.size(); i += 2) {
-        minX = std::min(minX, points[i]);
-        maxX = std::max(maxX, points[i]);
-        minY = std::min(minY, points[i + 1]);
-        maxY = std::max(maxY, points[i + 1]);
-    }
-    return Rect{minX, minY, maxX - minX, maxY - minY};
 }
 
 Rect boundsOf(std::span<const Vec2> pts) {
@@ -698,11 +682,7 @@ struct FrameBuilder::Impl {
     }
 
     float flattenTolerance(const Mat2x3& deviceXf, std::span<const float> rawPoints) const {
-        if (mappings.empty()) {
-            return kFlattenTolerance;
-        }
-        float sMax = project3d::projectedScaleMax(mappings, deviceXf, boundsOfPoints(rawPoints));
-        return kFlattenTolerance / sMax;
+        return effect_math::flattenTolerance(mappings, deviceXf, rawPoints);
     }
 
     HomoPoint homogeneousVertexPos(Vec2 p, bool& ok) {
@@ -741,17 +721,10 @@ struct FrameBuilder::Impl {
     /// shape before projection) and its projected corners. Returns false (the paint then stays
     /// unprojected) for a degenerate box or a corner that fails to project.
     bool setupProjectedPaint(std::span<const Vec2> planePts) {
-        if (planePts.empty()) {
+        Vec2 plane[4];
+        if (!effect_math::planeBoxCorners(planePts, plane)) {
             return false;
         }
-        float x0 = planePts[0].x, y0 = planePts[0].y, x1 = x0, y1 = y0;
-        for (const Vec2& p : planePts) {
-            x0 = std::min(x0, p.x);
-            y0 = std::min(y0, p.y);
-            x1 = std::max(x1, p.x);
-            y1 = std::max(y1, p.y);
-        }
-        const Vec2 plane[4] = {Vec2{x0, y0}, Vec2{x1, y0}, Vec2{x1, y1}, Vec2{x0, y1}};
         Vec2 screen[4];
         for (int i = 0; i < 4; ++i) {
             bool ok = false;
@@ -764,6 +737,8 @@ struct FrameBuilder::Impl {
             !homographyFromQuad(plane, screen, projPlaneToScreen)) {
             return false;
         }
+        const float x0 = plane[0].x;
+        const float y0 = plane[0].y;
         const float wRef = projPlaneToScreen.m[6] * x0 + projPlaneToScreen.m[7] * y0 + projPlaneToScreen.m[8];
         if (std::fabs(wRef) <= 1e-12f) {
             return false;
@@ -3305,12 +3280,9 @@ struct FrameBuilder::Impl {
     // ---------------------------------------------------------------------------------------
 
     static float backdropSigma(const EffectInstance& screenParams) {
-        return std::min(std::max(0.0f, screenParams.params[0]), 64.0f) * 0.5f;
+        return effect_math::backdropSigma(screenParams);
     }
-    /// 18 §18.15: every pyramid level reads one texel past the region, i.e. 2^levels px.
-    static float pyramidMargin(float sigma) {
-        return static_cast<float>(1 << backdropPyramidLevels(std::min(sigma, 32.0f)));
-    }
+    static float pyramidMargin(float sigma) { return effect_math::pyramidMargin(sigma); }
 
     void releaseAllBands() {
         for (Band& b : prevBands) {
@@ -3566,22 +3538,12 @@ struct FrameBuilder::Impl {
 
         // §23.aa.3: the read regions of the top-level backdrop-blur runs, merged where they meet.
         for (size_t i = 0; i < runs.size(); ++i) {
-            const SceneRun& run = runs[i];
-            if (!run.sceneRead || run.first >= cl.commands.size()) {
+            const EffectCmd* lead = effect_math::leadingBackdropBlur(cl, runs[i]);
+            if (lead == nullptr) {
                 continue;
             }
-            const Command& cmd = cl.commands[run.first];
-            if (cmd.kind != CmdKind::PushEffect) {
-                continue;
-            }
-            const EffectCmd& c = cl.effectCmds[cmd.index];
-            if (c.effectCount == 0 || c.effectOffset >= cl.effects.size()) {
-                continue;
-            }
+            const EffectCmd& c = *lead;
             const EffectInstance& first = cl.effects[c.effectOffset];
-            if (first.kind != EffectKind::BackdropBlur || first.enabled == 0) {
-                continue;
-            }
             const EffectInstance screenFirst = effectToScreen(first, mul(scaling(Vec2{dpr, dpr}), c.xf));
             const float sigma = backdropSigma(screenFirst);
             const float outset = effectReadExpand(screenFirst) + pyramidMargin(sigma);
