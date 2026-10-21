@@ -1,0 +1,10 @@
+id: cebf3a4f-01de-41c9-8304-b0f2b4e377c2
+type: vector
+status: draft
+source:
+  kind: manual
+content: sha256:b8bbbbad3438f5268b4b6107d69630289cd0c4b32a9685465de19ebd5cd396b1
+measured:
+  w: 20
+  h: 20
+  alpha: true

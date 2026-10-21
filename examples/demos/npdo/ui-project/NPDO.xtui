@@ -1,0 +1,103 @@
+{
+  "version": 1,
+  "name": "NPDO",
+  "id": "npdo",
+  "game": "",
+  "spec": {
+    "platforms": [],
+    "safeArea": {
+      "default": 0.025,
+      "console": 0.05
+    },
+    "uiscaleRule": "fit",
+    "input": {
+      "methods": [],
+      "players": 1
+    },
+    "languages": [],
+    "fontFallback": {},
+    "budget": {
+      "frameMs": 0,
+      "effectLayers": 0,
+      "fillRate": 0
+    },
+    "engine": {
+      "name": "",
+      "version": ""
+    },
+    "logicalHeight": 1080
+  },
+  "uis": [
+    {
+      "id": "main-menu",
+      "doc": "main-menu/main-menu.xt",
+      "flow": "main-menu/main-menu.xtflow",
+      "size": [
+        1920,
+        1080
+      ]
+    },
+    {
+      "id": "settings",
+      "doc": "settings/settings.xt",
+      "flow": "settings/settings.xtflow",
+      "size": [
+        1920,
+        1080
+      ]
+    },
+    {
+      "id": "hud",
+      "doc": "hud/hud.xt",
+      "flow": "hud/hud.xtflow",
+      "size": [
+        1920,
+        1080
+      ]
+    }
+  ],
+  "shared": {
+    "assetRoot": "shared",
+    "fontDirs": [
+      "shared/fonts"
+    ],
+    "styles": [
+      "shared/base.xts"
+    ],
+    "templateDirs": [],
+    "symbols": "shared/symbols",
+    "tokens": "shared/tokens.xts",
+    "themes": "shared/themes",
+    "strings": "shared/strings",
+    "recipes": "shared/recipes",
+    "design": "design"
+  },
+  "preview": {
+    "dpr": 1
+  },
+  "target": "engine",
+  "publish": {
+    "outDir": "publish",
+    "languages": [],
+    "embedImages": false,
+    "embedFonts": false,
+    "thumbnails": [
+      320,
+      180
+    ],
+    "atlas": {
+      "enabled": false,
+      "maxSize": 4096,
+      "padding": 2,
+      "mipmaps": false,
+      "scope": "ui"
+    },
+    "targets": [
+      {
+        "kind": "dir",
+        "path": "publish",
+        "lastPublished": "2026-10-18T07:22:17Z"
+      }
+    ]
+  }
+}

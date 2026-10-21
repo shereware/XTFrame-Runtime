@@ -1,0 +1,12 @@
+id: 36dea856-c5e7-4d4c-bb5c-e4120b6cecea
+type: image
+title: hud-preview-bg
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/ingame_background.png
+content: sha256:b390433adccdf7390479d0aaec5d2f153e3c1dd8831f9a6ae0498b78ef046b90
+measured:
+  w: 1536
+  h: 1024
+  alpha: false

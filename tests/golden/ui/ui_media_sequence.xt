@@ -1,0 +1,13 @@
+<xt>
+  <head>
+    <style>
+      body { margin: 0; }
+      #S { position: absolute; left: 16px; top: 16px; width: 96px; height: 48px; object-fit: fill; }
+      #A { position: absolute; left: 144px; top: 16px; width: 96px; height: 48px; object-fit: fill; }
+    </style>
+  </head>
+  <body>
+    <sequence id="S" src="media/seq" fps="4" autoplay></sequence>
+    <sequence id="A" src="media/atlas.png" frame-size="8x4" fps="4" autoplay loop></sequence>
+  </body>
+</xt>

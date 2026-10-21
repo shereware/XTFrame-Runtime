@@ -1,0 +1,4 @@
+target 64x64 vertices=8 indices=12 cmds=2 passes=1 params=0
+pass 0: target=0 clear=0 copy=0 from=0 view=(0,0,64,64) cmds=2
+  0 Texture SrcOver TestEqualRef ref=0 tex=yes src=0 aux=0 linear idx=6 verts=4 clip=(0,0,64,64)
+  1 Texture SrcOver TestEqualRef ref=0 tex=yes src=0 aux=0 point idx=6 verts=4 clip=(0,0,64,64)

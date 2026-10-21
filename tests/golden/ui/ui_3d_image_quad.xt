@@ -1,0 +1,11 @@
+<xt>
+  <head>
+    <style>
+      #stage { position: absolute; left: 0px; top: 0px; width: 256px; height: 256px; perspective: 400px; }
+      #pic { position: absolute; left: 48px; top: 68px; width: 160px; height: 120px; transform: rotateY(50deg); }
+    </style>
+  </head>
+  <body>
+    <div id="stage"><img id="pic" src="checker.png"/></div>
+  </body>
+</xt>

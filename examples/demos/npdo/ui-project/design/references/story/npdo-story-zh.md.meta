@@ -1,0 +1,20 @@
+id: f9811398-1a30-43e9-8b00-26529a5e107f
+kind: reference
+title: NPDO story bible (zh-TW, source)
+status: approved
+source:
+  kind: ai:service
+  ref: npdo-story-zh.md
+approved:
+  by: Bigspring
+  at: 2026-10-17T02:55:46Z
+tags: [story, lore, copy, zh-TW]
+license: own
+content: sha256:a01d2b4fa115e865a38e6593cabb440a80870fcb6058a747a09f47188af2c9cc
+links:
+  - rel: evidence-for
+    to: text:principles#dread-first-defiance-later
+  - rel: evidence-for
+    to: decision:0003
+  - rel: evidence-for
+    to: text:principles#paperwork-in-the-ruins

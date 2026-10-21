@@ -1,0 +1,57 @@
+/* Starter UI Project: base design tokens ("Daylight"). The .xtui names this file as
+   `shared.tokens`, so xtframe-pack and the editor load it before every UI's own stylesheets; a UI
+   must not <link> it again (a token declared twice is a compiler warning).
+   Token names follow the standard symbol library (editor/symbols/tokens.xts); every standard
+   symbol draws only through them. themes/dark.xts redefines the colors. */
+:root {
+  --color-bg: #e9edf2;
+  --color-surface: #f8fafc;
+  --color-surface-raised: #ffffff;
+  --color-surface-sunken: #dde3ea;
+  --color-border: #c3ccd6;
+  --color-border-strong: #8d99a6;
+  --color-text: #17202a;
+  --color-text-dim: #4f5b67;
+  --color-text-on-accent: #ffffff;
+  --color-accent: #0f7b8a;
+  --color-accent-hover: #12909f;
+  --color-accent-pressed: #0b5f6b;
+  --color-focus: #c26a00;
+  --color-disabled-bg: #d5dbe2;
+  --color-disabled-text: #8a949e;
+  --color-danger: #c62f3a;
+  --color-warning: #b86e00;
+  --color-success: #23875a;
+  --color-info: #1f6fb2;
+  --color-scrim: #0b0e13a6;
+  --color-track: #cfd6de;
+  --color-shadow: #0b0e1340;
+  --font-family: "Segoe UI", "Noto Sans", "Helvetica", "DejaVu Sans";
+  --font-size-xs: 12px;
+  --font-size-s: 14px;
+  --font-size-m: 16px;
+  --font-size-l: 20px;
+  --font-size-xl: 28px;
+  --radius-s: 4px;
+  --radius-m: 8px;
+  --radius-l: 12px;
+  --radius-full: 999px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --border-w: 1px;
+  --focus-w: 2px;
+  --control-s: 28px;
+  --control-m: 36px;
+  --control-l: 44px;
+  --motion-instant: 50ms;
+  --motion-fast: 150ms;
+  --motion-normal: 250ms;
+  /* Screen layout (conventions/layouts): the safe margin is 2.5 % of 1280 x 720 rounded up. */
+  --safe-x: 32px;
+  --safe-y: 24px;
+}
+
+@font-fallback zh-TW { font-family: "Microsoft JhengHei", "Noto Sans TC", "Noto Sans CJK TC"; }

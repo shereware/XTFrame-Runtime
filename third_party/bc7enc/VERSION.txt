@@ -1,0 +1,3 @@
+b9438627eef73a1157e84201b6fa6eb2ffd6d9f0
+https://github.com/richgel999/bc7enc_rdo (files: bc7enc.h, bc7enc.cpp, bc7decomp.h, bc7decomp.cpp, rgbcx.h, rgbcx.cpp, rgbcx_table4_small.h (RGBCX_USE_SMALLER_TABLES=1; the large rgbcx_table4.h is not vendored), LICENSE)
+https://raw.githubusercontent.com/richgel999/bc7enc_rdo/b9438627eef73a1157e84201b6fa6eb2ffd6d9f0/

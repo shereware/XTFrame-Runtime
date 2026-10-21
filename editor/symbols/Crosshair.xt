@@ -1,0 +1,65 @@
+<xt>
+  <head>
+    <!-- Crosshair: standard symbol (docs/design/30-ui-project.md 30.4). See README.md. -->
+    <symbol name="Crosshair" origin="center" state-groups="Aim: Idle|Target"
+            requires="states: Idle, Target">
+      <div id="Box" port:spread="number in" port:on_target="bool in" port:hit="event in"
+           bind:state.Target="on_target" bind:state.Idle="on_target | not" on:port(hit)="play(hit)">
+        <div id="Reticle" bind:width="spread | clamp(0, 1) | range(0, 1, 24px, 72px) | tween(0.1s)"
+             bind:height="spread | clamp(0, 1) | range(0, 1, 24px, 72px) | tween(0.1s)">
+          <div id="Top"></div>
+          <div id="Bottom"></div>
+          <div id="Left"></div>
+          <div id="Right"></div>
+        </div>
+        <div id="Dot"></div>
+        <div id="HitMark"></div>
+      </div>
+    </symbol>
+    <style>
+      symbol(Crosshair) {
+        #Box {
+          position: relative;
+          width: 80px;
+          height: 80px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          pointer-events: none;
+        }
+        #Reticle { position: relative; width: 24px; height: 24px; }
+        #Top, #Bottom { position: absolute; left: 50%; width: 2px; height: 8px; margin-left: -1px; background-color: var(--color-text); }
+        #Top { top: -8px; }
+        #Bottom { bottom: -8px; }
+        #Left, #Right { position: absolute; top: 50%; width: 8px; height: 2px; margin-top: -1px; background-color: var(--color-text); }
+        #Left { left: -8px; }
+        #Right { right: -8px; }
+        #Dot {
+          position: absolute;
+          left: 38px;
+          top: 38px;
+          width: 4px;
+          height: 4px;
+          border-radius: var(--radius-full);
+          background-color: var(--color-text);
+        }
+        #HitMark {
+          position: absolute;
+          left: 30px;
+          top: 30px;
+          width: 20px;
+          height: 20px;
+          border-width: 2px;
+          border-color: var(--color-danger);
+          border-radius: var(--radius-full);
+          opacity: 0;
+        }
+        #Box:state(Target) #Top, #Box:state(Target) #Bottom, #Box:state(Target) #Left,
+        #Box:state(Target) #Right, #Box:state(Target) #Dot { background-color: var(--color-danger); }
+        @timeline hit {
+          #HitMark { 0s { opacity: 1; transform: scale(0.6) } 0.15s ease-out { opacity: 0; transform: scale(1.2) } }
+        }
+      }
+    </style>
+  </head>
+</xt>

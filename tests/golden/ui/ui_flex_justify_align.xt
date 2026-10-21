@@ -1,0 +1,27 @@
+<xt>
+  <head>
+    <style>
+      #jbetween, #jcenter, #acenter, #aend {
+        display: flex;
+        width: 232px;
+        height: 50px;
+        margin: 4px 12px;
+        background-color: #eeeeee;
+      }
+      #jbetween { justify-content: space-between; }
+      #jcenter { justify-content: center; }
+      #acenter { align-items: center; }
+      #aend { align-items: flex-end; }
+      #jbetween > div, #jcenter > div { width: 40px; height: 20px; background-color: #ff0000; }
+      #acenter > div, #aend > div { width: 40px; background-color: #0000ff; }
+      #acenter #a1, #aend #b1 { height: 15px; }
+      #acenter #a2, #aend #b2 { height: 35px; }
+    </style>
+  </head>
+  <body>
+    <div id="jbetween"><div></div><div></div><div></div></div>
+    <div id="jcenter"><div></div><div></div><div></div></div>
+    <div id="acenter"><div id="a1"></div><div id="a2"></div></div>
+    <div id="aend"><div id="b1"></div><div id="b2"></div></div>
+  </body>
+</xt>

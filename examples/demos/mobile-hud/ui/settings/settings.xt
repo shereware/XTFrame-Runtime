@@ -1,0 +1,26 @@
+<xt>
+  <head>
+    <!-- Mobile HUD demo settings (docs/design/23-host-integration.md 23.11.2): a BottomSheet over
+         the game view holding a TabBar of sections, two touch toggles and a touch slider. Tap or
+         swipe the grip to expand / collapse the sheet; the host owns every value. -->
+    <link rel="symbols" href="../../shared/symbols/TopBar.xt"/>
+    <link rel="symbols" href="../../shared/symbols/BottomSheet.xt"/>
+    <link rel="symbols" href="../../shared/symbols/TabBar.xt"/>
+    <link rel="symbols" href="../../shared/symbols/ToggleTouch.xt"/>
+    <link rel="symbols" href="../../shared/symbols/SliderTouch.xt"/>
+    <link href="settings.xts"/>
+  </head>
+  <body>
+    <div id="Screen">
+      <div id="TopSlot"><use symbol="TopBar" id="Top" slot:title="Paused"/></div>
+      <use symbol="BottomSheet" id="Sheet" slot:title="Settings">
+        <slot name="content">
+          <div id="Sections"><use symbol="TabBar" id="Pages" variant:Count="3" slot:tab1="Game" slot:tab2="Audio" slot:tab3="Controls"/></div>
+          <use symbol="ToggleTouch" id="Vibration" slot:label="Vibration"/>
+          <use symbol="ToggleTouch" id="LeftHanded" slot:label="Left-handed controls"/>
+          <use symbol="SliderTouch" id="Sensitivity" slot:label="Stick sensitivity"/>
+        </slot>
+      </use>
+    </div>
+  </body>
+</xt>

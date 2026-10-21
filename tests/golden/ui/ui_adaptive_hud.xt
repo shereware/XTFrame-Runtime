@@ -1,0 +1,29 @@
+<xt>
+  <head>
+    <style>
+      /* T-176: one HUD, laid out on the actual screen. The background covers the whole viewport
+         (bleed), the key elements anchor to the safe area, the side panel only shows at 21:9+. */
+      #bg { position: absolute; left: 0; top: 0; width: 100vw; height: 100vh;
+            background-gradient: linear-gradient(90deg, #203040 0%, #405060 50%, #203040 100%); }
+      #hp { position: absolute; left: 1safe-left; bottom: 1safe-bottom; width: calc(30vh + 20px);
+            height: 12px; background-color: #401010; }
+      #hpfill { width: 70%; height: 100%; background-color: #e03030; }
+      #map { position: absolute; right: 1safe-right; top: 1safe-top; width: 25vh; height: 25vh;
+             border-radius: 50%; background-color: #30a060; }
+      #cross { position: absolute; left: calc(50vw - 4px); top: calc(50vh - 4px); width: 8px;
+               height: 8px; background-color: #ffffff; }
+      #side { display: none; position: absolute; left: 1safe-left; top: calc(50vh - 20px);
+              width: 10vw; height: 40px; background-color: #4080ff; }
+      @media (aspect-ratio >= 21/9) {
+        #side { display: block; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="bg"></div>
+    <div id="hp"><div id="hpfill"></div></div>
+    <div id="map"></div>
+    <div id="cross"></div>
+    <div id="side"></div>
+  </body>
+</xt>

@@ -1,0 +1,10 @@
+id: 2a4058bb-d3f6-4345-91ab-d9a53b543ca9
+type: image
+status: draft
+source:
+  kind: manual
+content: sha256:97644c3877a943f86712374b198917e8fd2423afff96e5503eeafa38c0993518
+measured:
+  w: 1280
+  h: 720
+  alpha: false

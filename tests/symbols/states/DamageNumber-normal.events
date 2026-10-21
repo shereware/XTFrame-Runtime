@@ -1,0 +1,13 @@
+# T-198: DamageNumber, state 'normal'. T-201: two hits spawned (spawn()), captured mid-pop.
+update 0.6
+port Dmg.amount 125
+port Dmg.x 20
+port Dmg.y 40
+port Dmg.crit false
+port Dmg.hit 1
+port Dmg.amount 1840
+port Dmg.x 100
+port Dmg.y 10
+port Dmg.crit true
+port Dmg.hit 1
+update 0.16

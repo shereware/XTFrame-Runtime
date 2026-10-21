@@ -1,0 +1,40 @@
+<xt>
+  <head>
+    <!-- Layout template: inventory, 1280 x 720 (docs/design/30-ui-project.md 30.2 class 4).
+         Most surveyed inventory screens are three-zone "mixed" layouts (79 %,
+         docs/reference/ui-survey-2026-09/report.md): list or grid on the left, the character or
+         item model in the middle, details on the right.
+           Header    Tabs (categories) and currency Counter
+           List      item grid (`<repeat>` of item cells, virtualized)
+           Model     `<external source="scene-view:inventory">` or item art
+           Details   name, stats (ProgressBar), actions (Button)
+           Footer    input hints (InputGlyph)
+         Replace the guide boxes with standard symbols. -->
+    <style>
+      body { width: 100vw; height: 100vh; font-family: var(--font-family); }
+      #Screen { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
+      .anchor {
+        position: absolute;
+        display: flex;
+        border-width: var(--border-w);
+        border-color: var(--color-border);
+        border-radius: var(--radius-s);
+      }
+      .guide { color: var(--color-text-dim); font-size: var(--font-size-xs); padding: var(--space-1); }
+      #Header { left: var(--safe-x); top: var(--safe-y); width: 1216px; height: 56px; }
+      #List { left: var(--safe-x); top: 96px; width: 420px; height: 540px; }
+      #Model { left: 468px; top: 96px; width: 400px; height: 540px; }
+      #Details { right: var(--safe-x); top: 96px; width: 364px; height: 540px; }
+      #Footer { left: var(--safe-x); bottom: var(--safe-y); width: 1216px; height: 32px; }
+    </style>
+  </head>
+  <body>
+    <div id="Screen">
+      <div id="Header" class="anchor"><span id="HeaderGuide" class="guide">Header</span></div>
+      <div id="List" class="anchor"><span id="ListGuide" class="guide">List</span></div>
+      <div id="Model" class="anchor"><span id="ModelGuide" class="guide">Model</span></div>
+      <div id="Details" class="anchor"><span id="DetailsGuide" class="guide">Details</span></div>
+      <div id="Footer" class="anchor"><span id="FooterGuide" class="guide">Footer</span></div>
+    </div>
+  </body>
+</xt>

@@ -1,0 +1,42 @@
+<xt>
+  <head>
+    <!-- Main menu built from the standard symbol library, placed by
+         conventions/layouts/main-menu.xt: title and a vertical list on the left (the most common
+         main-menu layout in the 2026-09 survey), input hints bottom-right, a quit confirmation. -->
+    <link rel="symbols" href="../../shared/symbols/Button.xt"/>
+    <link rel="symbols" href="../../shared/symbols/InputGlyph.xt"/>
+    <link rel="symbols" href="../../shared/symbols/Modal.xt"/>
+    <link rel="symbols" href="../../shared/symbols/Notification.xt"/>
+    <link href="main-menu.xts"/>
+  </head>
+  <body on:show="play(intro)">
+    <div id="Screen">
+      <div id="Left">
+        <span id="Title">@menu_title</span>
+        <span id="Subtitle">@menu_subtitle</span>
+        <div id="List">
+          <use symbol="Button" id="Continue" variant:Size="L" slot:label="@menu_continue"/>
+          <use symbol="Button" id="NewGame" variant:Kind="Secondary" variant:Size="L" slot:label="@menu_new_game"/>
+          <use symbol="Button" id="Settings" variant:Kind="Secondary" variant:Size="L" slot:label="@menu_settings"/>
+          <use symbol="Button" id="Credits" variant:Kind="Ghost" variant:Size="L" slot:label="@menu_credits"/>
+          <use symbol="Button" id="Quit" variant:Kind="Ghost" variant:Size="L" slot:label="@menu_quit"/>
+        </div>
+      </div>
+      <div id="TopRight">
+        <use symbol="Notification" id="News" slot:title="@menu_news_title" slot:text="@menu_news_text"/>
+      </div>
+      <span id="Version">@menu_version</span>
+      <div id="Hints">
+        <use symbol="InputGlyph" id="HintSelect" slot:label="@hint_select"><slot name="glyph"><glyph key="confirm"/></slot></use>
+        <use symbol="InputGlyph" id="HintBack" slot:label="@hint_back"><slot name="glyph"><glyph key="back"/></slot></use>
+      </div>
+      <use symbol="Modal" id="QuitConfirm" class="closed" slot:title="@quit_title">
+        <slot name="body"><span id="QuitText">@quit_text</span></slot>
+        <slot name="actions">
+          <use symbol="Button" id="QuitCancel" variant:Kind="Secondary" variant:Size="S" slot:label="@quit_cancel"/>
+          <use symbol="Button" id="QuitConfirmButton" variant:Size="S" slot:label="@quit_confirm"/>
+        </slot>
+      </use>
+    </div>
+  </body>
+</xt>

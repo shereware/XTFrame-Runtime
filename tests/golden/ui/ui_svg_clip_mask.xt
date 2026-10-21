@@ -1,0 +1,43 @@
+<xt>
+  <head>
+    <style>
+      /* T-225b (31 §31.5.3): clip-path / mask references in an inline <svg>. */
+      svg { position: absolute; left: 0px; top: 0px; width: 256px; height: 256px; }
+    </style>
+  </head>
+  <body>
+    <svg id="Masks" viewBox="0 0 256 256" width="256" height="256">
+      <defs>
+        <clipPath id="circ"><circle cx="0" cy="0" r="44"/></clipPath>
+        <linearGradient id="fade" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#ffffff"/>
+          <stop offset="1" stop-color="#000000"/>
+        </linearGradient>
+        <mask id="lum"><rect x="-48" y="-48" width="96" height="96" fill="url(#fade)"/></mask>
+        <mask id="alp" mask-type="alpha"><circle cx="0" cy="0" r="44" fill="#000000" fill-opacity="0.5"/></mask>
+      </defs>
+      <!-- A clipPath outside <defs> is not drawn itself; its transform applies to its content. -->
+      <clipPath id="ring" clip-rule="evenodd" transform="translate(64 192)">
+        <path d="M-46 0 A46 46 0 1 0 46 0 A46 46 0 1 0 -46 0 Z M-22 0 A22 22 0 1 0 22 0 A22 22 0 1 0 -22 0 Z"/>
+      </clipPath>
+      <!-- Top left: vertical stripes in a group clipped by a circle (the group's own transform
+           places the clip). -->
+      <g transform="translate(64 64)" clip-path="url(#circ)">
+        <rect x="-48" y="-48" width="96" height="96" fill="#3366cc"/>
+        <rect x="-40" y="-48" width="12" height="96" fill="#ffcc00"/>
+        <rect x="-16" y="-48" width="12" height="96" fill="#ffcc00"/>
+        <rect x="8" y="-48" width="12" height="96" fill="#ffcc00"/>
+        <rect x="32" y="-48" width="12" height="96" fill="#ffcc00"/>
+      </g>
+      <!-- Top right: the same clip reused, plus a left-to-right luminance fade (two layers). -->
+      <rect transform="translate(192 64)" x="-48" y="-48" width="96" height="96" fill="#dd3344"
+            clip-path="url(#circ)" mask="url(#lum)"/>
+      <!-- Bottom left: an even-odd ring clip on a square. -->
+      <rect x="16" y="144" width="96" height="96" fill="#22aa66" clip-path="url(#ring)"/>
+      <!-- Bottom right: an alpha mask (half-opaque circle) on a group. -->
+      <g transform="translate(192 192)" mask="url(#alp)">
+        <rect x="-48" y="-48" width="96" height="96" fill="#8844cc"/>
+      </g>
+    </svg>
+  </body>
+</xt>

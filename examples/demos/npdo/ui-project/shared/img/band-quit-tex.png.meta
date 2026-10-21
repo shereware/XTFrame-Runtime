@@ -1,0 +1,12 @@
+id: 35f1d5a7-f80a-42d0-8fb5-1f5c5b7049d0
+type: image
+title: band-quit-tex
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/menu-hl-6.png
+content: sha256:320a4ee47ed116f57a03cc3034dc30ac97258891276aa8730fbbff7770dc36b5
+measured:
+  w: 600
+  h: 84
+  alpha: true

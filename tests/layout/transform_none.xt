@@ -1,0 +1,19 @@
+<xt>
+  <head>
+    <style>
+      @keyframes flipNone { 0% { transform: none } 100% { transform: rotateY(180deg) } }
+      body { width: 200px; height: 200px; }
+      #noneBox { position: absolute; left: 0px; top: 0px; width: 20px; height: 20px;
+                 transform: none; }
+      #spunBox { position: absolute; left: 0px; top: 40px; width: 20px; height: 20px;
+                 transform: translate(5px, 6px) rotateY(20deg) rotate(30deg) scale(2); }
+      #flipBox { position: absolute; left: 0px; top: 80px; width: 20px; height: 20px;
+                 animation: flipNone 2s linear; }
+    </style>
+  </head>
+  <body id="body">
+    <div id="noneBox"></div>
+    <div id="spunBox"></div>
+    <div id="flipBox"></div>
+  </body>
+</xt>

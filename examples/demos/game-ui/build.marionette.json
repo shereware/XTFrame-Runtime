@@ -1,0 +1,383 @@
+[
+ {
+  "op": "author.rule",
+  "args": [
+   "body",
+   {
+    "width": "1280px",
+    "height": "720px"
+   }
+  ]
+ },
+ {
+  "op": "author.rule",
+  "args": [
+   "#root",
+   {
+    "height": "720px",
+    "position": "relative",
+    "background-color": "#0b0f17",
+    "color": "#e6edf3",
+    "font-family": "\"Segoe UI\", \"Noto Sans\", \"Helvetica\", \"DejaVu Sans\"",
+    "font-size": "16px",
+    "overflow": "hidden",
+    "width": "1280px"
+   }
+  ]
+ },
+ {
+  "op": "author.element",
+  "args": [
+   "#root",
+   -1,
+   "div",
+   {
+    "id": "stageL",
+    "class": "stage"
+   }
+  ]
+ },
+ {
+  "op": "author.element",
+  "args": [
+   "#stageL",
+   -1,
+   "div",
+   {
+    "id": "player",
+    "class": "panel"
+   }
+  ]
+ },
+ {
+  "op": "author.element",
+  "args": [
+   "#player",
+   -1,
+   "div",
+   {
+    "class": "label"
+   },
+   "OPERATIVE"
+  ]
+ },
+ {
+  "op": "author.element",
+  "args": [
+   "#player",
+   -1,
+   "div",
+   {
+    "id": "name",
+    "class": "title"
+   },
+   "K. Vance"
+  ]
+ },
+ {
+  "op": "author.element",
+  "args": [
+   "#player",
+   -1,
+   "div",
+   {
+    "id": "hpBar",
+    "class": "bar"
+   }
+  ]
+ },
+ {
+  "op": "author.element",
+  "args": [
+   "#hpBar",
+   -1,
+   "div",
+   {
+    "id": "hpFill",
+    "class": "fill"
+   }
+  ]
+ },
+ {
+  "op": "author.element",
+  "args": [
+   "#player",
+   -1,
+   "div",
+   {
+    "id": "hpRow",
+    "class": "row"
+   }
+  ]
+ },
+ {
+  "op": "author.element",
+  "args": [
+   "#hpRow",
+   -1,
+   "span",
+   {
+    "class": "label"
+   },
+   "HP"
+  ]
+ },
+ {
+  "op": "author.element",
+  "args": [
+   "#hpRow",
+   -1,
+   "span",
+   {
+    "id": "hpText",
+    "class": "value"
+   },
+   "100"
+  ]
+ },
+ {
+  "op": "author.element",
+  "args": [
+   "#hpRow",
+   -1,
+   "button",
+   {
+    "id": "heal",
+    "class": "chip"
+   },
+   "HEAL"
+  ]
+ },
+ {
+  "op": "author.element",
+  "args": [
+   "#root",
+   -1,
+   "div",
+   {
+    "id": "stageR",
+    "class": "stage"
+   }
+  ]
+ },
+ {
+  "op": "author.element",
+  "args": [
+   "#stageR",
+   -1,
+   "div",
+   {
+    "id": "ammoPanel",
+    "class": "panel"
+   }
+  ]
+ },
+ {
+  "op": "author.element",
+  "args": [
+   "#ammoPanel",
+   -1,
+   "div",
+   {
+    "class": "label"
+   },
+   "AMMO"
+  ]
+ },
+ {
+  "op": "author.element",
+  "args": [
+   "#ammoPanel",
+   -1,
+   "div",
+   {
+    "id": "ammoRow",
+    "class": "row"
+   }
+  ]
+ },
+ {
+  "op": "author.element",
+  "args": [
+   "#ammoRow",
+   -1,
+   "span",
+   {
+    "id": "ammo",
+    "class": "big"
+   },
+   "30"
+  ]
+ },
+ {
+  "op": "author.element",
+  "args": [
+   "#ammoRow",
+   -1,
+   "span",
+   {
+    "class": "dim"
+   },
+   "/ 90"
+  ]
+ },
+ {
+  "op": "author.element",
+  "args": [
+   "#ammoPanel",
+   -1,
+   "div",
+   {
+    "id": "ammoButtons",
+    "class": "row"
+   }
+  ]
+ },
+ {
+  "op": "author.element",
+  "args": [
+   "#ammoButtons",
+   -1,
+   "button",
+   {
+    "id": "fire",
+    "class": "btn primary"
+   },
+   "FIRE"
+  ]
+ },
+ {
+  "op": "author.element",
+  "args": [
+   "#ammoButtons",
+   -1,
+   "button",
+   {
+    "id": "reload",
+    "class": "btn"
+   },
+   "RELOAD"
+  ]
+ },
+ {
+  "op": "author.element",
+  "args": [
+   "#root",
+   -1,
+   "div",
+   {
+    "id": "skillsWrap"
+   }
+  ]
+ },
+ {
+  "op": "author.element",
+  "args": [
+   "#skillsWrap",
+   -1,
+   "div",
+   {
+    "id": "skills"
+   }
+  ]
+ },
+ {
+  "op": "author.element",
+  "args": [
+   "#skills",
+   -1,
+   "button",
+   {
+    "id": "skill1",
+    "class": "skill ready"
+   },
+   "Q"
+  ]
+ },
+ {
+  "op": "author.element",
+  "args": [
+   "#skills",
+   -1,
+   "button",
+   {
+    "id": "skill2",
+    "class": "skill"
+   },
+   "E"
+  ]
+ },
+ {
+  "op": "author.element",
+  "args": [
+   "#skills",
+   -1,
+   "button",
+   {
+    "id": "skill3",
+    "class": "skill"
+   },
+   "R"
+  ]
+ },
+ {
+  "op": "author.element",
+  "args": [
+   "#root",
+   -1,
+   "div",
+   {
+    "id": "card"
+   }
+  ]
+ },
+ {
+  "op": "author.element",
+  "args": [
+   "#card",
+   -1,
+   "div",
+   {
+    "class": "label"
+   },
+   "OBJECTIVE"
+  ]
+ },
+ {
+  "op": "author.element",
+  "args": [
+   "#card",
+   -1,
+   "div",
+   {
+    "class": "title"
+   },
+   "Secure the relay"
+  ]
+ },
+ {
+  "op": "author.element",
+  "args": [
+   "#card",
+   -1,
+   "div",
+   {
+    "class": "dim"
+   },
+   "click to flip"
+  ]
+ },
+ {
+  "op": "author.element",
+  "args": [
+   "#root",
+   -1,
+   "div",
+   {
+    "id": "clock",
+    "class": "dim"
+   },
+   "0.0"
+  ]
+ }
+]

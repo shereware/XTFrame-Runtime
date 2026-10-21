@@ -1,0 +1,12 @@
+id: 66f4c967-52a7-4525-b841-d4aa609d4f52
+type: image
+title: menu-grime
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/menu-grime.png
+content: sha256:ea631edf68173d04b545fe6cb76e238b9c55e368946897042f1163de54c2f2ce
+measured:
+  w: 1280
+  h: 720
+  alpha: true

@@ -1,0 +1,12 @@
+id: b56c750f-047d-4e13-bef0-4d0bc85b4516
+type: image
+title: item-option-icon-gray
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/5ac0bf2f0c404ab1a17e78f7c59c4235
+content: sha256:c243919fa441adfec51b7d82cdecff42135a318e06c26637fff68c805d0db0f6
+measured:
+  w: 128
+  h: 128
+  alpha: true

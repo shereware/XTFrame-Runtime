@@ -1,0 +1,71 @@
+<xt>
+  <head>
+    <!-- HUD overlay demo (examples/demos/README.md "hud-overlay"): a 1920x1080 in-game HUD with no
+         background of its own -- the host draws it over the game frame with straight alpha. The
+         game frame under it here is an editor-only reference (03 3.13): the canvas shows it, the
+         Demo space and the published bundle do not. Ports hp, stamina, ammo (numbers) and damage
+         (an event) are what the host sets; the `demo` timeline seeds and animates them on its own
+         (8 s loop) so the HUD moves without a host. -->
+    <link href="hud.xts"/>
+  </head>
+  <body port:hp="number in" port:stamina="number in" port:ammo="number in" port:damage="event in"
+        on:show="set(hp, 100); set(stamina, 80); set(ammo, 24); play(demo, loop)"
+        on:port(damage)="class(hurt, on); play(hurt-clear)"
+        on:timeline(hurt-clear).end="class(hurt, off)"
+        on:timeline(demo).marker(hit)="class(hurt, on); play(hurt-clear); set(hp, 22); set(stamina, 30); set(ammo, 7)"
+        on:timeline(demo).marker(heal)="set(hp, 100); set(stamina, 80); set(ammo, 24)">
+    <div id="Screen">
+      <img id="GameShot" src="../references/game-shot.png" editor-only/>
+
+      <div id="Vignette"></div>
+      <div id="HurtClock"></div>
+
+      <div id="Status">
+        <div id="HpTrack" class="track">
+          <div id="HpFill" bind:width="hp | range(0, 100, 0px, 356px) | tween(0.6s, ease-out)"></div>
+          <div id="HpLow" bind:visible="hp | lt(30)"></div>
+        </div>
+        <span id="HpText" class="value" bind:text="hp | round(0)">100</span>
+        <div id="StaminaTrack" class="track">
+          <div id="StaminaFill" bind:width="stamina | range(0, 100, 0px, 276px) | tween(0.6s, ease-out)"></div>
+        </div>
+      </div>
+
+      <div id="Skills">
+        <button id="Skill1" class="skill"><div class="icon blade"></div><span class="key">1</span></button>
+        <button id="Skill2" class="skill" autofocus=""><div class="icon shield"></div><span class="key">2</span></button>
+        <button id="Skill3" class="skill"><div class="icon bolt"></div><div id="Cooldown"></div><span class="key">3</span></button>
+        <button id="Skill4" class="skill"><div class="icon heal"></div><span class="key">4</span></button>
+        <button id="Skill5" class="skill"><div class="icon dash"></div><span class="key">5</span></button>
+      </div>
+
+      <div id="MapFrame">
+        <div id="MapClip"><img id="MapImage" src="../shared/minimap.png"/></div>
+        <div id="MapGlow"></div>
+        <div id="MapRing"></div>
+        <div id="MapPlayer"></div>
+      </div>
+
+      <div id="Crosshair">
+        <div id="CrossTop" class="hair v"></div>
+        <div id="CrossBottom" class="hair v"></div>
+        <div id="CrossLeft" class="hair h"></div>
+        <div id="CrossRight" class="hair h"></div>
+        <div id="CrossDot"></div>
+      </div>
+
+      <div id="Quests">
+        <span id="QuestTitle">Objectives</span>
+        <span class="quest">Reach the relay tower on the ridge before the storm front closes the pass</span>
+        <span class="quest">Recover the three data cores from the wreck; the last one is guarded by a heavy drone that shields its allies</span>
+        <span class="quest">Optional: light the beacons along the old road so the convoy can follow you through the dark valley</span>
+      </div>
+
+      <div id="Ammo">
+        <div id="AmmoIcon"><div class="round"></div><div class="round"></div><div class="round"></div></div>
+        <span id="AmmoCount" bind:text="ammo | round(0)">24</span>
+        <span id="AmmoReserve">/ 120</span>
+      </div>
+    </div>
+  </body>
+</xt>

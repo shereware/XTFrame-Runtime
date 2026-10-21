@@ -1,0 +1,23 @@
+<xt>
+  <head>
+    <style>
+      @font-face { font-family: "Noto Naskh Arabic"; src: "../../fonts/NotoNaskhArabic-Regular.subset.ttf"; }
+      @font-face { font-family: "Noto Sans"; src: "../../fonts/NotoSans-Regular.subset.ttf"; }
+      #a {
+        margin: 16px;
+        width: 120px;
+        direction: rtl;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        font-family: "Noto Naskh Arabic", "Noto Sans";
+        font-size: 20px;
+        color: #202020;
+        background-color: #f0f0f0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="a">السلام عليكم</div>
+  </body>
+</xt>

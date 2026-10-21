@@ -1,0 +1,87 @@
+{
+  "version": 1,
+  "name": "XTFrame Game UI demo",
+  "id": "demo-game",
+  "game": "",
+  "spec": {
+    "platforms": [],
+    "safeArea": {
+      "default": 0.025,
+      "console": 0.05
+    },
+    "logicalHeight": 720,
+    "input": {
+      "methods": [],
+      "players": 1
+    },
+    "languages": [],
+    "fontFallback": {},
+    "budget": {
+      "frameMs": 0,
+      "effectLayers": 0,
+      "fillRate": 0
+    },
+    "engine": {
+      "name": "",
+      "version": ""
+    }
+  },
+  "uis": [
+    {
+      "id": "hud",
+      "doc": "hud/hud.xt",
+      "flow": "hud/hud.xtflow",
+      "size": [
+        1280,
+        720
+      ],
+      "tags": [
+        "ingame"
+      ]
+    },
+    {
+      "id": "pause",
+      "doc": "menus/pause.xt",
+      "size": [
+        1280,
+        720
+      ],
+      "tags": [
+        "menu"
+      ]
+    }
+  ],
+  "shared": {
+    "assetRoot": "shared",
+    "fontDirs": [],
+    "styles": [
+      "shared/base.xts"
+    ],
+    "templateDirs": [],
+    "symbols": "shared/symbols",
+    "tokens": "",
+    "themes": "themes",
+    "strings": "strings",
+    "recipes": "shared/recipes"
+  },
+  "preview": {
+    "dpr": 1
+  },
+  "target": "engine",
+  "publish": {
+    "outDir": "",
+    "languages": [],
+    "embedImages": false,
+    "embedFonts": false,
+    "thumbnails": [
+      320,
+      180
+    ],
+    "atlas": {
+      "enabled": false,
+      "maxSize": 4096,
+      "padding": 2,
+      "mipmaps": false
+    }
+  }
+}

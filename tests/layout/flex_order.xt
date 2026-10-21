@@ -1,0 +1,25 @@
+<xt>
+  <head>
+    <style>
+      #row { display: flex; width: 300px; height: 50px; position: relative; }
+      #o-a { width: 50px; order: 2; }
+      #o-b { width: 60px; }
+      #o-c { width: 70px; order: -1; }
+      #o-d { width: 40px; order: 2; }
+      #abs { position: absolute; left: 10px; top: 5px; width: 20px; height: 20px; order: -5; }
+      #p-row { display: flex; width: 300px; height: 50px; }
+      #p1 { width: 100px; background-color: #ff0000; order: 1; }
+      #p2 { width: 100px; background-color: #00ff00; margin-right: -50px; }
+    </style>
+  </head>
+  <body>
+    <div id="row">
+      <div id="o-a"></div>
+      <div id="o-b"></div>
+      <div id="o-c"></div>
+      <div id="o-d"></div>
+      <div id="abs"></div>
+    </div>
+    <div id="p-row"><div id="p1"></div><div id="p2"></div></div>
+  </body>
+</xt>

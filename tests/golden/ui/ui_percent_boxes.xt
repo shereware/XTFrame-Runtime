@@ -1,0 +1,32 @@
+<xt>
+  <head>
+    <style>
+      #outer {
+        width: 200px;
+        height: 200px;
+        margin: 28px;
+        background-color: #eeeeee;
+      }
+      #mid {
+        width: 80%;
+        height: 80%;
+        margin: 5%;
+        max-width: 140px;
+        background-color: #ffaa00;
+      }
+      #inner {
+        width: 50%;
+        height: 50%;
+        margin: 5%;
+        background-color: #0000ff;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="outer">
+      <div id="mid">
+        <div id="inner"></div>
+      </div>
+    </div>
+  </body>
+</xt>

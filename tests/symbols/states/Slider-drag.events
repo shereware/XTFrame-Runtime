@@ -1,0 +1,7 @@
+# T-201: Slider, state 'drag': the track is pressed and dragged (drag.value sets `value`).
+port Volume.min 0
+port Volume.max 100
+port Volume.value 35
+update 0.6
+pointerdown 150 54
+pointermove 220 54

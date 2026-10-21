@@ -1,0 +1,2 @@
+# T-190: start the natively imported Lottie timeline; the manifest time then advances the clock.
+play main

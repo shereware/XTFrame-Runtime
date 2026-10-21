@@ -1,0 +1,35 @@
+<xt>
+  <head>
+    <style>
+      /* T-160 (bench BUG-5): 8-digit hex gradient stops (alpha 0 at the start) over a dark
+         plate, flat (#a) and on a rotated/translated 3D panel (#panel), where the gradient must
+         be evaluated in the panel's plane rather than in screen space. */
+      body { width: 256px; height: 256px; background-color: #101812; }
+      #root { position: absolute; left: 0px; top: 0px; width: 256px; height: 256px;
+              perspective: 600px; perspective-origin: 50% 50%; }
+      #a { position: absolute; left: 16px; top: 16px; width: 160px; height: 40px;
+           background-gradient: linear-gradient(90deg, #1a261f00 0%, #2a3a30 40%, #3a5040 100%); }
+      #b { position: absolute; left: 16px; top: 64px; width: 160px; height: 40px;
+           background-gradient: linear-gradient(90deg, #ff000000 0%, #ff0000ff 50%, #0000ff80 100%); }
+      #panel { position: absolute; left: 40px; top: 120px; width: 200px; height: 110px;
+               transform: rotateY(-25deg) translateZ(30px); transform-origin: 100% 50%; }
+      #plate { position: absolute; left: 0px; top: 0px; width: 200px; height: 110px;
+               background-color: #0a110de6; transform: translateZ(-40px); }
+      #tab { position: absolute; right: 0px; top: 0px; width: 160px; height: 40px;
+             background-gradient: linear-gradient(90deg, #ff000000 0%, #ff0000ff 50%, #0000ffff 100%); }
+      #tab2 { position: absolute; left: 0px; top: 60px; width: 200px; height: 40px;
+              background-gradient: radial-gradient(50% 50% at 50% 50%, #ffffffff, #00ff0000); }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div id="a"></div>
+      <div id="b"></div>
+      <div id="panel">
+        <div id="plate"></div>
+        <div id="tab"></div>
+        <div id="tab2"></div>
+      </div>
+    </div>
+  </body>
+</xt>

@@ -1,0 +1,6 @@
+<xt>
+  <body>
+    <img src="engine://scene"/>
+    <img src="engine://scene" style="width: 64px; height: 32px"/>
+  </body>
+</xt>

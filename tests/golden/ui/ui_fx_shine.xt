@@ -1,0 +1,25 @@
+<xt>
+  <head>
+    <style>
+      body { width: 256px; height: 256px; background-color: #f0f0f0; }
+      @keyframes shinesweep {
+        from { effect: shine(20deg 30px #fff 1 0.5 0); }
+        to { effect: shine(20deg 30px #fff 1 0.5 1); }
+      }
+      #a {
+        position: absolute;
+        left: 58px;
+        top: 108px;
+        width: 140px;
+        height: 40px;
+        border-radius: 6px;
+        background-color: #202030;
+        effect: shine(20deg 30px #fff 1 0.5 0);
+        animation: shinesweep 1s linear;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="a"></div>
+  </body>
+</xt>

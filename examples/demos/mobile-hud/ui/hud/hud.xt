@@ -1,0 +1,40 @@
+<xt>
+  <head>
+    <!-- Mobile HUD demo (docs/design/23-host-integration.md 23.11.2): a portrait game HUD built
+         from the standard mobile symbols. TopBar along the top safe area (pause, health, ammo),
+         a minimap placeholder top-right (<external>, the host binds its texture), the virtual
+         joystick bottom-left and two action buttons bottom-right. Pressing a button plays its
+         cooldown ring; `intro` brings the HUD in when the UI is shown. -->
+    <link rel="symbols" href="../../shared/symbols/TopBar.xt"/>
+    <link rel="symbols" href="../../shared/symbols/HealthBar.xt"/>
+    <link rel="symbols" href="../../shared/symbols/Counter.xt"/>
+    <link rel="symbols" href="../../shared/symbols/VirtualJoystick.xt"/>
+    <link rel="symbols" href="../../shared/symbols/TouchButton.xt"/>
+    <link href="hud.xts"/>
+  </head>
+  <body>
+    <div id="Screen" on:show="play(intro)">
+      <div id="TopSlot">
+        <use symbol="TopBar" id="Top">
+          <slot name="left"><button id="Pause" on:click="sound(ui_back); emit(pause)"><div id="PauseBarA"></div><div id="PauseBarB"></div></button></slot>
+          <slot name="title"><use symbol="HealthBar" id="Health" slot:label="HP"/></slot>
+          <slot name="right"><use symbol="Counter" id="Ammo" slot:label="Ammo"/></slot>
+        </use>
+      </div>
+      <div id="MapSlot">
+        <external id="Minimap" source="engine://minimap"></external>
+      </div>
+      <div id="StickSlot"><use symbol="VirtualJoystick" id="Stick"/></div>
+      <div id="Actions">
+        <div id="JumpSlot" class="action" on:press="play(jump-cooldown)">
+          <div id="JumpRing" class="ring"></div>
+          <use symbol="TouchButton" id="Jump" slot:label="Jump"/>
+        </div>
+        <div id="AttackSlot" class="action" on:press="play(attack-cooldown)">
+          <div id="AttackRing" class="ring"></div>
+          <use symbol="TouchButton" id="Attack" slot:label="Attack"/>
+        </div>
+      </div>
+    </div>
+  </body>
+</xt>

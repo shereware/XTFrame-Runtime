@@ -1,0 +1,10 @@
+<xt>
+  <head>
+    <style>
+      #icon { width: 192px; height: 192px; margin: 32px; object-fit: contain; }
+    </style>
+  </head>
+  <body>
+    <img id="icon" src="unsupported.svg"/>
+  </body>
+</xt>

@@ -1,0 +1,13 @@
+<xt>
+  <head>
+    <style>
+      #none { position: absolute; left: 0px; top: 0px; width: 40px; height: 40px; display: none; }
+      #hidden { position: absolute; left: 0px; top: 60px; width: 40px; height: 40px; visibility: hidden; }
+      #hiddenChild { width: 10px; height: 10px; visibility: visible; }
+    </style>
+  </head>
+  <body>
+    <div id="none"></div>
+    <div id="hidden"><div id="hiddenChild"></div></div>
+  </body>
+</xt>

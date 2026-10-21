@@ -1,0 +1,30 @@
+<xt>
+  <head>
+    <style>
+      /* T-173: :nth-child(even) stripes and a :focus-within highlight (docs/tasks/T-173.md). */
+      .list { position: absolute; left: 16px; top: 16px; width: 224px; }
+      .row { height: 20px; background-color: #d8d8d8; }
+      .row:nth-child(even) { background-color: #3a78c0; }
+      .row:last-child { background-color: #20a050; }
+      .panel { position: absolute; left: 16px; top: 160px; width: 224px; height: 80px; background-color: #eeeeee; }
+      .panel:focus-within { background-color: #ffc400; }
+      .panel:focus-within .mark { background-color: #c02020; }
+      .mark { position: absolute; left: 16px; top: 20px; width: 40px; height: 40px; background-color: #888888; }
+      .field { position: absolute; left: 96px; top: 20px; width: 112px; height: 40px; background-color: #ffffff; }
+    </style>
+  </head>
+  <body>
+    <div class="list">
+      <div class="row"></div>
+      <div class="row"></div>
+      <div class="row"></div>
+      <div class="row"></div>
+      <div class="row"></div>
+      <div class="row"></div>
+    </div>
+    <div class="panel">
+      <div class="mark"></div>
+      <div class="field" tabindex="0"></div>
+    </div>
+  </body>
+</xt>

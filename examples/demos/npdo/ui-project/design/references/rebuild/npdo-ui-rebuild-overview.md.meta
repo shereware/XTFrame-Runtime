@@ -1,0 +1,9 @@
+id: c59b5b5d-311c-48be-8603-b6060a2ade1c
+kind: reference
+title: npdo ui rebuild overview
+source:
+  kind: ai:service
+  ref: npdo-ui-rebuild-overview.md
+tags: [rebuild, spec]
+license: own
+content: sha256:3ba760d0c06b93246df2673ddfa3902e9a5224e202165b8f20ef0a0ee5ab94fc

@@ -1,0 +1,996 @@
+{
+ "version": 1,
+ "nodes": [
+  {
+   "id": "sel",
+   "type": "radio",
+   "params": {
+    "count": 6,
+    "initial": 5
+   }
+  },
+  {
+   "id": "idx_recruit",
+   "type": "constant",
+   "params": {
+    "value": 0
+   }
+  },
+  {
+   "id": "is_recruit",
+   "type": "compare",
+   "params": {
+    "op": "eq"
+   }
+  },
+  {
+   "id": "idx_soldier",
+   "type": "constant",
+   "params": {
+    "value": 1
+   }
+  },
+  {
+   "id": "is_soldier",
+   "type": "compare",
+   "params": {
+    "op": "eq"
+   }
+  },
+  {
+   "id": "idx_veteran",
+   "type": "constant",
+   "params": {
+    "value": 2
+   }
+  },
+  {
+   "id": "is_veteran",
+   "type": "compare",
+   "params": {
+    "op": "eq"
+   }
+  },
+  {
+   "id": "idx_supersoldier",
+   "type": "constant",
+   "params": {
+    "value": 3
+   }
+  },
+  {
+   "id": "is_supersoldier",
+   "type": "compare",
+   "params": {
+    "op": "eq"
+   }
+  },
+  {
+   "id": "idx_posthuman",
+   "type": "constant",
+   "params": {
+    "value": 4
+   }
+  },
+  {
+   "id": "is_posthuman",
+   "type": "compare",
+   "params": {
+    "op": "eq"
+   }
+  },
+  {
+   "id": "idx_impossible",
+   "type": "constant",
+   "params": {
+    "value": 5
+   }
+  },
+  {
+   "id": "is_impossible",
+   "type": "compare",
+   "params": {
+    "op": "eq"
+   }
+  },
+  {
+   "id": "popTimer",
+   "type": "timer",
+   "params": {
+    "interval": 0.16,
+    "autostart": false,
+    "repeat": false
+   }
+  },
+  {
+   "id": "tagText",
+   "type": "lookup",
+   "params": {
+    "values": [
+     "RECRUIT",
+     "SOLDIER",
+     "VETERAN",
+     "SUPERSOLDIER",
+     "POST-HUMAN",
+     "IMPOSSIBLE"
+    ]
+   }
+  },
+  {
+   "id": "descText",
+   "type": "lookup",
+   "params": {
+    "values": [
+     "A WALK IN THE PARK. THE COMBAT SUIT WILL HELP TO KEEP YOU ALIVE.",
+     "ENEMIES FIGHT BACK. USE THE ARMOR AND THE CLOAK WISELY.",
+     "HOSTILES FLANK AND SUPPRESS. MISTAKES ARE PUNISHED QUICKLY.",
+     "NO CROSSHAIR, NO HIT MARKERS. THE ENEMY SPEAKS ITS OWN LANGUAGE.",
+     "ONE LIFE. SUIT ENERGY DRAINS FAST AND THE ENEMY NEVER MISSES.",
+     "NOTHING WILL SAVE YOU. EVERY SHOT IS LETHAL, EVERY SHADOW IS HOSTILE."
+    ]
+   }
+  },
+  {
+   "id": "hintText",
+   "type": "lookup",
+   "params": {
+    "values": [
+     "A GOOD PLACE TO LEARN WHAT THE SUIT CAN DO.",
+     "THE WAY THE JUNGLE WAS MEANT TO BE FOUGHT.",
+     "FOR THOSE WHO ALREADY KNOW THE JUNGLE.",
+     "NO ASSISTS. TRUST YOUR INSTINCTS.",
+     "ONLY THE SUIT WILL REMEMBER YOUR NAME.",
+     "NO SUIT CAN SAVE YOU HERE. WHY ARE YOU TRYING?"
+    ]
+   }
+  },
+  {
+   "id": "imageTone",
+   "type": "lookup",
+   "params": {
+    "values": [
+     "opacity: 1.00",
+     "opacity: 0.95",
+     "opacity: 0.88",
+     "opacity: 0.80",
+     "opacity: 0.72",
+     "opacity: 0.62"
+    ]
+   }
+  },
+  {
+   "id": "clock",
+   "type": "clock"
+  },
+  {
+   "id": "introEnd",
+   "type": "constant",
+   "params": {
+    "value": 0.15
+   }
+  },
+  {
+   "id": "introOn",
+   "type": "compare",
+   "params": {
+    "op": "lt"
+   }
+  },
+  {
+   "id": "listX",
+   "type": "math",
+   "params": {
+    "op": "map",
+    "inLo": -1,
+    "inHi": 1,
+    "outLo": 144,
+    "outHi": 116
+   }
+  },
+  {
+   "id": "listY",
+   "type": "math",
+   "params": {
+    "op": "map",
+    "inLo": -1,
+    "inHi": 1,
+    "outLo": 204,
+    "outHi": 188
+   }
+  },
+  {
+   "id": "listPos",
+   "type": "format",
+   "params": {
+    "format": "left: {a}px; top: {b}px; transition: left 700ms cubic-bezier(.2,.7,.2,1), top 700ms cubic-bezier(.2,.7,.2,1)",
+    "decimals": 1
+   }
+  },
+  {
+   "id": "listPark",
+   "type": "constant",
+   "params": {
+    "value": "left: -520px; top: 196px; transition: left 0ms, top 0ms"
+   }
+  },
+  {
+   "id": "listStyle",
+   "type": "select"
+  },
+  {
+   "id": "panelX",
+   "type": "math",
+   "params": {
+    "op": "map",
+    "inLo": -1,
+    "inHi": 1,
+    "outLo": 670,
+    "outHi": 630
+   }
+  },
+  {
+   "id": "panelY",
+   "type": "math",
+   "params": {
+    "op": "map",
+    "inLo": -1,
+    "inHi": 1,
+    "outLo": 176,
+    "outHi": 156
+   }
+  },
+  {
+   "id": "panelPos",
+   "type": "format",
+   "params": {
+    "format": "left: {a}px; top: {b}px; transition: left 700ms cubic-bezier(.2,.7,.2,1), top 700ms cubic-bezier(.2,.7,.2,1)",
+    "decimals": 1
+   }
+  },
+  {
+   "id": "panelPark",
+   "type": "constant",
+   "params": {
+    "value": "left: 1400px; top: 166px; transition: left 0ms, top 0ms"
+   }
+  },
+  {
+   "id": "panelStyle",
+   "type": "select"
+  },
+  {
+   "id": "worldX",
+   "type": "math",
+   "params": {
+    "op": "map",
+    "inLo": -1,
+    "inHi": 1,
+    "outLo": -66,
+    "outHi": -14
+   }
+  },
+  {
+   "id": "worldY",
+   "type": "math",
+   "params": {
+    "op": "map",
+    "inLo": -1,
+    "inHi": 1,
+    "outLo": -38,
+    "outHi": -10
+   }
+  },
+  {
+   "id": "worldPos",
+   "type": "format",
+   "params": {
+    "format": "left: {a}px; top: {b}px; transition: left 700ms cubic-bezier(.2,.7,.2,1), top 700ms cubic-bezier(.2,.7,.2,1)",
+    "decimals": 1
+   }
+  },
+  {
+   "id": "ringSpin_k",
+   "type": "constant",
+   "params": {
+    "value": 50
+   }
+  },
+  {
+   "id": "ringSpin",
+   "type": "math",
+   "params": {
+    "op": "mul"
+   }
+  },
+  {
+   "id": "ringSpinStyle",
+   "type": "format",
+   "params": {
+    "format": "transform: rotate({a}deg)",
+    "decimals": 2
+   }
+  },
+  {
+   "id": "arcSpin_k",
+   "type": "constant",
+   "params": {
+    "value": -110
+   }
+  },
+  {
+   "id": "arcSpin",
+   "type": "math",
+   "params": {
+    "op": "mul"
+   }
+  },
+  {
+   "id": "arcSpinStyle",
+   "type": "format",
+   "params": {
+    "format": "transform: rotate({a}deg)",
+    "decimals": 2
+   }
+  }
+ ],
+ "edges": [
+  {
+   "from": "#diff-recruit.PointerEnter",
+   "to": "sel.set0"
+  },
+  {
+   "from": "#diff-recruit.Focus",
+   "to": "sel.set0"
+  },
+  {
+   "from": "#diff-recruit.Click",
+   "to": "sel.set0"
+  },
+  {
+   "from": "#diff-soldier.PointerEnter",
+   "to": "sel.set1"
+  },
+  {
+   "from": "#diff-soldier.Focus",
+   "to": "sel.set1"
+  },
+  {
+   "from": "#diff-soldier.Click",
+   "to": "sel.set1"
+  },
+  {
+   "from": "#diff-veteran.PointerEnter",
+   "to": "sel.set2"
+  },
+  {
+   "from": "#diff-veteran.Focus",
+   "to": "sel.set2"
+  },
+  {
+   "from": "#diff-veteran.Click",
+   "to": "sel.set2"
+  },
+  {
+   "from": "#diff-supersoldier.PointerEnter",
+   "to": "sel.set3"
+  },
+  {
+   "from": "#diff-supersoldier.Focus",
+   "to": "sel.set3"
+  },
+  {
+   "from": "#diff-supersoldier.Click",
+   "to": "sel.set3"
+  },
+  {
+   "from": "#diff-posthuman.PointerEnter",
+   "to": "sel.set4"
+  },
+  {
+   "from": "#diff-posthuman.Focus",
+   "to": "sel.set4"
+  },
+  {
+   "from": "#diff-posthuman.Click",
+   "to": "sel.set4"
+  },
+  {
+   "from": "#diff-impossible.PointerEnter",
+   "to": "sel.set5"
+  },
+  {
+   "from": "#diff-impossible.Focus",
+   "to": "sel.set5"
+  },
+  {
+   "from": "#diff-impossible.Click",
+   "to": "sel.set5"
+  },
+  {
+   "from": "sel.index",
+   "to": "is_recruit.a"
+  },
+  {
+   "from": "idx_recruit.out",
+   "to": "is_recruit.b"
+  },
+  {
+   "from": "is_recruit.true",
+   "to": "#row-recruit.addClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_recruit.false",
+   "to": "#row-recruit.removeClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_recruit.true",
+   "to": "#hl-recruit.addClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_recruit.false",
+   "to": "#hl-recruit.removeClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_recruit.true",
+   "to": "#star-recruit.addClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_recruit.false",
+   "to": "#star-recruit.removeClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_recruit.true",
+   "to": "#diff-recruit.addClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_recruit.false",
+   "to": "#diff-recruit.removeClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "sel.index",
+   "to": "is_soldier.a"
+  },
+  {
+   "from": "idx_soldier.out",
+   "to": "is_soldier.b"
+  },
+  {
+   "from": "is_soldier.true",
+   "to": "#row-soldier.addClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_soldier.false",
+   "to": "#row-soldier.removeClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_soldier.true",
+   "to": "#hl-soldier.addClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_soldier.false",
+   "to": "#hl-soldier.removeClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_soldier.true",
+   "to": "#star-soldier.addClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_soldier.false",
+   "to": "#star-soldier.removeClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_soldier.true",
+   "to": "#diff-soldier.addClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_soldier.false",
+   "to": "#diff-soldier.removeClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "sel.index",
+   "to": "is_veteran.a"
+  },
+  {
+   "from": "idx_veteran.out",
+   "to": "is_veteran.b"
+  },
+  {
+   "from": "is_veteran.true",
+   "to": "#row-veteran.addClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_veteran.false",
+   "to": "#row-veteran.removeClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_veteran.true",
+   "to": "#hl-veteran.addClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_veteran.false",
+   "to": "#hl-veteran.removeClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_veteran.true",
+   "to": "#star-veteran.addClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_veteran.false",
+   "to": "#star-veteran.removeClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_veteran.true",
+   "to": "#diff-veteran.addClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_veteran.false",
+   "to": "#diff-veteran.removeClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "sel.index",
+   "to": "is_supersoldier.a"
+  },
+  {
+   "from": "idx_supersoldier.out",
+   "to": "is_supersoldier.b"
+  },
+  {
+   "from": "is_supersoldier.true",
+   "to": "#row-supersoldier.addClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_supersoldier.false",
+   "to": "#row-supersoldier.removeClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_supersoldier.true",
+   "to": "#hl-supersoldier.addClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_supersoldier.false",
+   "to": "#hl-supersoldier.removeClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_supersoldier.true",
+   "to": "#star-supersoldier.addClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_supersoldier.false",
+   "to": "#star-supersoldier.removeClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_supersoldier.true",
+   "to": "#diff-supersoldier.addClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_supersoldier.false",
+   "to": "#diff-supersoldier.removeClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "sel.index",
+   "to": "is_posthuman.a"
+  },
+  {
+   "from": "idx_posthuman.out",
+   "to": "is_posthuman.b"
+  },
+  {
+   "from": "is_posthuman.true",
+   "to": "#row-posthuman.addClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_posthuman.false",
+   "to": "#row-posthuman.removeClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_posthuman.true",
+   "to": "#hl-posthuman.addClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_posthuman.false",
+   "to": "#hl-posthuman.removeClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_posthuman.true",
+   "to": "#star-posthuman.addClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_posthuman.false",
+   "to": "#star-posthuman.removeClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_posthuman.true",
+   "to": "#diff-posthuman.addClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_posthuman.false",
+   "to": "#diff-posthuman.removeClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "sel.index",
+   "to": "is_impossible.a"
+  },
+  {
+   "from": "idx_impossible.out",
+   "to": "is_impossible.b"
+  },
+  {
+   "from": "is_impossible.true",
+   "to": "#row-impossible.addClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_impossible.false",
+   "to": "#row-impossible.removeClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_impossible.true",
+   "to": "#hl-impossible.addClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_impossible.false",
+   "to": "#hl-impossible.removeClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_impossible.true",
+   "to": "#star-impossible.addClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_impossible.false",
+   "to": "#star-impossible.removeClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_impossible.true",
+   "to": "#diff-impossible.addClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "is_impossible.false",
+   "to": "#diff-impossible.removeClass",
+   "params": {
+    "class": "on"
+   }
+  },
+  {
+   "from": "sel.changed",
+   "to": "#preview-frame.toggleClass",
+   "params": {
+    "class": "flip"
+   }
+  },
+  {
+   "from": "sel.changed",
+   "to": "#preview-tag.toggleClass",
+   "params": {
+    "class": "flip"
+   }
+  },
+  {
+   "from": "sel.changed",
+   "to": "#preview-desc.toggleClass",
+   "params": {
+    "class": "flip"
+   }
+  },
+  {
+   "from": "sel.changed",
+   "to": "#hint-text.toggleClass",
+   "params": {
+    "class": "flip"
+   }
+  },
+  {
+   "from": "sel.changed",
+   "to": "#preview-frame.addClass",
+   "params": {
+    "class": "pop"
+   }
+  },
+  {
+   "from": "sel.changed",
+   "to": "popTimer.start"
+  },
+  {
+   "from": "popTimer.tick",
+   "to": "#preview-frame.removeClass",
+   "params": {
+    "class": "pop"
+   }
+  },
+  {
+   "from": "sel.index",
+   "to": "tagText.index"
+  },
+  {
+   "from": "tagText.out",
+   "to": "#preview-tag.setText"
+  },
+  {
+   "from": "sel.index",
+   "to": "descText.index"
+  },
+  {
+   "from": "descText.out",
+   "to": "#preview-desc.setText"
+  },
+  {
+   "from": "sel.index",
+   "to": "hintText.index"
+  },
+  {
+   "from": "hintText.out",
+   "to": "#hint-text.setText"
+  },
+  {
+   "from": "sel.index",
+   "to": "imageTone.index"
+  },
+  {
+   "from": "imageTone.out",
+   "to": "#preview-image.setStyle"
+  },
+  {
+   "from": "clock.seconds",
+   "to": "introOn.a"
+  },
+  {
+   "from": "introEnd.out",
+   "to": "introOn.b"
+  },
+  {
+   "from": "#document.pointerNX",
+   "to": "listX.a"
+  },
+  {
+   "from": "#document.pointerNY",
+   "to": "listY.a"
+  },
+  {
+   "from": "listX.out",
+   "to": "listPos.a"
+  },
+  {
+   "from": "listY.out",
+   "to": "listPos.b"
+  },
+  {
+   "from": "introOn.out",
+   "to": "listStyle.cond"
+  },
+  {
+   "from": "listPark.out",
+   "to": "listStyle.a"
+  },
+  {
+   "from": "listPos.out",
+   "to": "listStyle.b"
+  },
+  {
+   "from": "listStyle.out",
+   "to": "#diff-list.setStyle"
+  },
+  {
+   "from": "#document.pointerNX",
+   "to": "panelX.a"
+  },
+  {
+   "from": "#document.pointerNY",
+   "to": "panelY.a"
+  },
+  {
+   "from": "panelX.out",
+   "to": "panelPos.a"
+  },
+  {
+   "from": "panelY.out",
+   "to": "panelPos.b"
+  },
+  {
+   "from": "introOn.out",
+   "to": "panelStyle.cond"
+  },
+  {
+   "from": "panelPark.out",
+   "to": "panelStyle.a"
+  },
+  {
+   "from": "panelPos.out",
+   "to": "panelStyle.b"
+  },
+  {
+   "from": "panelStyle.out",
+   "to": "#panel-preview.setStyle"
+  },
+  {
+   "from": "#document.pointerNX",
+   "to": "worldX.a"
+  },
+  {
+   "from": "#document.pointerNY",
+   "to": "worldY.a"
+  },
+  {
+   "from": "worldX.out",
+   "to": "worldPos.a"
+  },
+  {
+   "from": "worldY.out",
+   "to": "worldPos.b"
+  },
+  {
+   "from": "worldPos.out",
+   "to": "#world-layer.setStyle"
+  },
+  {
+   "from": "clock.seconds",
+   "to": "ringSpin.a"
+  },
+  {
+   "from": "ringSpin_k.out",
+   "to": "ringSpin.b"
+  },
+  {
+   "from": "ringSpin.out",
+   "to": "ringSpinStyle.a"
+  },
+  {
+   "from": "ringSpinStyle.out",
+   "to": "#holo-ring.setStyle"
+  },
+  {
+   "from": "clock.seconds",
+   "to": "arcSpin.a"
+  },
+  {
+   "from": "arcSpin_k.out",
+   "to": "arcSpin.b"
+  },
+  {
+   "from": "arcSpin.out",
+   "to": "arcSpinStyle.a"
+  },
+  {
+   "from": "arcSpinStyle.out",
+   "to": "#holo-arc.setStyle"
+  }
+ ]
+}

@@ -1,0 +1,7 @@
+# docs/tasks/T-33b.md: a focused text input, "ab" typed, then an IME composition in flight.
+# The composition string uses characters the NotoSansSC subset actually carries (the sheet's
+# example text is not in it) and a cursor on a codepoint boundary.
+focus #inp
+textinput ab
+compstart
+compupdate 世界 3 0

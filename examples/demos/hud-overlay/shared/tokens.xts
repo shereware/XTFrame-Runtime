@@ -1,0 +1,8 @@
+/* HUD overlay demo: design tokens, named by the .xtui as `shared.tokens` (so hud.xt does not
+   <link> it). hud.xts writes each var() with the same value as its fallback, so the document opened
+   on its own (xtframe-view hud/hud.xt) looks the same. */
+:root {
+  --hud-accent: #7fd4ff;
+  --hud-text: #f2f5f8;
+  --hud-glass: rgba(255, 255, 255, 0.08);
+}

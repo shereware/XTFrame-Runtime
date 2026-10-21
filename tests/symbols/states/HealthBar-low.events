@@ -1,0 +1,6 @@
+# T-198: HealthBar, state 'low'.
+port Hp.hp_max 100
+port Hp.hp 72
+update 0.6
+port Hp.hp 18
+update 0.5

@@ -1,0 +1,9 @@
+id: af9573a5-bb17-410e-9912-cf665c1285ef
+kind: reference
+title: main menu hover options
+source:
+  kind: ai:service
+  ref: main-menu-hover-options.png
+tags: [screenshot, main]
+license: own
+content: sha256:7fe099c90ecfdd2ba87d92cde22f289945ae66c31a9aaa5eb5ee0076b159a8b0

@@ -1,0 +1,29 @@
+<xt>
+  <head>
+    <style>
+      @keyframes spin { from { opacity: 1 } to { opacity: 0.5 } }
+      body { display: flex; }
+      #root { display: flex; flex-direction: column; }
+      #inc { width: 60px; height: 24px; }
+      #count { width: 40px; height: 24px; }
+      #name { width: 100px; height: 24px; }
+      #echo { width: 100px; height: 24px; }
+      #darkToggle { width: 60px; height: 24px; }
+      #bar { width: 100px; height: 24px; }
+      #anim { width: 50px; height: 50px; }
+      #spin { width: 30px; height: 24px; animation: spin 0.8s ease-in; }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <button id="inc">+1</button>
+      <span id="count">0</span>
+      <input id="name" type="text"/>
+      <span id="echo"></span>
+      <button id="darkToggle">dark</button>
+      <div id="bar"></div>
+      <anim id="anim" src="../lottie/min_solid_anim.json" autoplay="false"/>
+      <div id="spin"></div>
+    </div>
+  </body>
+</xt>

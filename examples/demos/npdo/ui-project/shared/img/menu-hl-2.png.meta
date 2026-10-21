@@ -1,0 +1,12 @@
+id: 18b4c4a1-e03a-47cb-8b50-ae0bc8cfbb31
+type: image
+title: menu-hl-2
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/menu-hl-2.png
+content: sha256:9089904b94ae85ffb153bd4fbeb54517f8b4551aae4cf47d52d4ff6965597b9c
+measured:
+  w: 600
+  h: 84
+  alpha: true

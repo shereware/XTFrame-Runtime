@@ -1,0 +1,390 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "ammo",
+      "type": "counter",
+      "params": {
+        "initial": 30.0,
+        "max": 30.0,
+        "min": 0.0,
+        "step": 1.0
+      }
+    },
+    {
+      "id": "ammoText",
+      "type": "toString",
+      "params": {
+        "format": "{}"
+      }
+    },
+    {
+      "id": "ammoEmpty",
+      "type": "compare",
+      "params": {
+        "op": "eq"
+      }
+    },
+    {
+      "id": "zero",
+      "type": "constant",
+      "params": {
+        "value": 0.0
+      }
+    },
+    {
+      "id": "bleed",
+      "type": "timer",
+      "params": {
+        "autostart": true,
+        "interval": 0.4
+      }
+    },
+    {
+      "id": "hp",
+      "type": "counter",
+      "params": {
+        "initial": 100.0,
+        "max": 100.0,
+        "min": 0.0,
+        "step": 3.0
+      }
+    },
+    {
+      "id": "hpText",
+      "type": "toString",
+      "params": {
+        "format": "{}"
+      }
+    },
+    {
+      "id": "hpWidth",
+      "type": "toString",
+      "params": {
+        "format": "width: {}%"
+      }
+    },
+    {
+      "id": "thirty",
+      "type": "constant",
+      "params": {
+        "value": 30.0
+      }
+    },
+    {
+      "id": "hpLow",
+      "type": "compare",
+      "params": {
+        "op": "lt"
+      }
+    },
+    {
+      "id": "clock",
+      "type": "clock"
+    },
+    {
+      "id": "clockText",
+      "type": "toString",
+      "params": {
+        "decimals": 1.0,
+        "format": "{}s"
+      }
+    },
+    {
+      "id": "tiltLY",
+      "type": "math",
+      "params": {
+        "op": "map",
+        "inLo": -1,
+        "inHi": 1,
+        "outLo": 32,
+        "outHi": 16
+      }
+    },
+    {
+      "id": "tiltRY",
+      "type": "math",
+      "params": {
+        "op": "map",
+        "inLo": -1,
+        "inHi": 1,
+        "outLo": -16,
+        "outHi": -32
+      }
+    },
+    {
+      "id": "tiltX",
+      "type": "math",
+      "params": {
+        "op": "map",
+        "inLo": -1,
+        "inHi": 1,
+        "outLo": 7,
+        "outHi": -7
+      }
+    },
+    {
+      "id": "endName",
+      "type": "constant",
+      "params": {
+        "value": "end"
+      }
+    },
+    {
+      "id": "alertFlash",
+      "type": "compare",
+      "params": {
+        "op": "ne"
+      }
+    },
+    {
+      "id": "radarTimer",
+      "type": "timer",
+      "params": {
+        "autostart": true,
+        "interval": 5.0
+      }
+    },
+    {
+      "id": "radarFast",
+      "type": "toggle",
+      "params": {
+        "initial": false
+      }
+    },
+    {
+      "id": "radarSpeed",
+      "type": "select"
+    },
+    {
+      "id": "speedFast",
+      "type": "constant",
+      "params": {
+        "value": 2.0
+      }
+    },
+    {
+      "id": "speedSlow",
+      "type": "constant",
+      "params": {
+        "value": 1.0
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "#fire.Click",
+      "to": "ammo.decrement"
+    },
+    {
+      "from": "#reload.Click",
+      "to": "ammo.reset"
+    },
+    {
+      "from": "ammo.value",
+      "to": "ammoText.in"
+    },
+    {
+      "from": "ammoText.out",
+      "to": "#ammo.setText"
+    },
+    {
+      "from": "ammo.value",
+      "to": "ammoEmpty.a"
+    },
+    {
+      "from": "zero.out",
+      "to": "ammoEmpty.b"
+    },
+    {
+      "from": "ammoEmpty.true",
+      "to": "#ammoPanel.addClass",
+      "params": {
+        "class": "empty"
+      }
+    },
+    {
+      "from": "ammoEmpty.false",
+      "to": "#ammoPanel.removeClass",
+      "params": {
+        "class": "empty"
+      }
+    },
+    {
+      "from": "bleed.tick",
+      "to": "hp.decrement"
+    },
+    {
+      "from": "#heal.Click",
+      "to": "hp.reset"
+    },
+    {
+      "from": "hp.value",
+      "to": "hpText.in"
+    },
+    {
+      "from": "hpText.out",
+      "to": "#hpText.setText"
+    },
+    {
+      "from": "hp.value",
+      "to": "hpWidth.in"
+    },
+    {
+      "from": "hpWidth.out",
+      "to": "#hpFill.setStyle"
+    },
+    {
+      "from": "hp.value",
+      "to": "hpLow.a"
+    },
+    {
+      "from": "thirty.out",
+      "to": "hpLow.b"
+    },
+    {
+      "from": "hpLow.true",
+      "to": "#player.addClass",
+      "params": {
+        "class": "danger"
+      }
+    },
+    {
+      "from": "hpLow.false",
+      "to": "#player.removeClass",
+      "params": {
+        "class": "danger"
+      }
+    },
+    {
+      "from": "clock.seconds",
+      "to": "clockText.in"
+    },
+    {
+      "from": "clockText.out",
+      "to": "#clock.setText"
+    },
+    {
+      "from": "#card.Click",
+      "to": "#card.toggleClass",
+      "params": {
+        "class": "flipped"
+      }
+    },
+    {
+      "from": "#document.pointerNX",
+      "to": "tiltLY.a"
+    },
+    {
+      "from": "tiltLY.out",
+      "to": "#player.setProperty",
+      "params": {
+        "prop": "RotationY"
+      }
+    },
+    {
+      "from": "#document.pointerNX",
+      "to": "tiltRY.a"
+    },
+    {
+      "from": "tiltRY.out",
+      "to": "#ammoPanel.setProperty",
+      "params": {
+        "prop": "RotationY"
+      }
+    },
+    {
+      "from": "#document.pointerNY",
+      "to": "tiltX.a"
+    },
+    {
+      "from": "tiltX.out",
+      "to": "#player.setProperty",
+      "params": {
+        "prop": "RotationX"
+      }
+    },
+    {
+      "from": "tiltX.out",
+      "to": "#ammoPanel.setProperty",
+      "params": {
+        "prop": "RotationX"
+      }
+    },
+    {
+      "from": "hpLow.true",
+      "to": "#alert.removeClass",
+      "params": {
+        "class": "hidden"
+      }
+    },
+    {
+      "from": "hpLow.true",
+      "to": "#alert.play"
+    },
+    {
+      "from": "#alert.Finished",
+      "to": "#alert.play"
+    },
+    {
+      "from": "hpLow.false",
+      "to": "#alert.pause"
+    },
+    {
+      "from": "hpLow.false",
+      "to": "#alert.addClass",
+      "params": {
+        "class": "hidden"
+      }
+    },
+    {
+      "from": "hpLow.false",
+      "to": "#player.removeClass",
+      "params": {
+        "class": "flash"
+      }
+    },
+    {
+      "from": "#alert.Marker",
+      "to": "alertFlash.a"
+    },
+    {
+      "from": "endName.out",
+      "to": "alertFlash.b"
+    },
+    {
+      "from": "alertFlash.true",
+      "to": "#player.addClass",
+      "params": {
+        "class": "flash"
+      }
+    },
+    {
+      "from": "alertFlash.false",
+      "to": "#player.removeClass",
+      "params": {
+        "class": "flash"
+      }
+    },
+    {
+      "from": "radarTimer.tick",
+      "to": "radarFast.toggle"
+    },
+    {
+      "from": "radarFast.value",
+      "to": "radarSpeed.cond"
+    },
+    {
+      "from": "speedFast.out",
+      "to": "radarSpeed.a"
+    },
+    {
+      "from": "speedSlow.out",
+      "to": "radarSpeed.b"
+    },
+    {
+      "from": "radarSpeed.out",
+      "to": "#radar.setSpeed"
+    }
+  ]
+}

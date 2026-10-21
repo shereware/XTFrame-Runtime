@@ -1,0 +1,4 @@
+# T-241: TabBar, state 'selected'.
+port Tabs.value 0
+update 0.6
+click 230 50

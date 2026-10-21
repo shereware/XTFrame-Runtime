@@ -1,0 +1,25 @@
+<xt>
+  <head>
+    <style>
+      #row {
+        display: flex;
+        width: 232px;
+        height: 100px;
+        margin: 12px;
+        gap: 8px;
+        background-color: #eeeeee;
+      }
+      #row > div { flex: 1; height: 100px; }
+      #a { background-color: #ff0000; }
+      #b { background-color: #00aa00; }
+      #c { background-color: #0000ff; }
+    </style>
+  </head>
+  <body>
+    <div id="row">
+      <div id="a"></div>
+      <div id="b"></div>
+      <div id="c"></div>
+    </div>
+  </body>
+</xt>

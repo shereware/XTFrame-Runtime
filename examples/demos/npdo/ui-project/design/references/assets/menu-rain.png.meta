@@ -1,0 +1,9 @@
+id: 9adab4f4-b122-4d08-a8d2-4d8d08f40a69
+kind: reference
+title: menu-rain
+source:
+  kind: ai:service
+  ref: menu-rain.png
+tags: [asset, texture]
+license: own
+content: sha256:3e2076cd6db4463e8c101906a46df7bf6fd5784e40f9d3ce55ed2068b5e7555d

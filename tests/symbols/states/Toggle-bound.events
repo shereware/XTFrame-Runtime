@@ -1,0 +1,3 @@
+# T-204: Toggle, state 'bound' (the host sets Sound.value; bind:checked moves the switch).
+update 0.6
+port Sound.value true

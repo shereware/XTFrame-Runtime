@@ -1,0 +1,11 @@
+<xt>
+  <head>
+    <style>
+      #outer { position: absolute; left: 0px; top: 0px; width: 100px; height: 100px; overflow: hidden; }
+      #inner { position: absolute; left: 120px; top: 0px; width: 50px; height: 50px; }
+    </style>
+  </head>
+  <body>
+    <div id="outer"><div id="inner"></div></div>
+  </body>
+</xt>

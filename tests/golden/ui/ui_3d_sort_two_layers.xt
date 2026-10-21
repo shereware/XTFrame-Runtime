@@ -1,0 +1,12 @@
+<xt>
+  <head>
+    <style>
+      #stage { position: absolute; left: 0px; top: 0px; width: 256px; height: 256px; perspective: 400px; }
+      #back { position: absolute; left: 58px; top: 78px; width: 100px; height: 100px; transform: translateZ(-100px); background-color: #30a030; }
+      #front { position: absolute; left: 98px; top: 78px; width: 100px; height: 100px; transform: translateZ(50px); background-color: #3060c0; }
+    </style>
+  </head>
+  <body>
+    <div id="stage"><div id="front"></div><div id="back"></div></div>
+  </body>
+</xt>

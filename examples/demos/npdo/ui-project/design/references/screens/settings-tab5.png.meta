@@ -1,0 +1,9 @@
+id: 78516ef4-78ea-4cc9-b154-ad7b7e67d22e
+kind: reference
+title: settings tab5
+source:
+  kind: ai:service
+  ref: settings-tab5.png
+tags: [screenshot, settings]
+license: own
+content: sha256:3c858332668ddc8d85f9c6017b71673942ad80347d8dd49c2fcf2d627b880e95

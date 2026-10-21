@@ -1,0 +1,23 @@
+<xt>
+  <head>
+    <style>
+      #box {
+        width: 120px;
+        height: 120px;
+        margin: 40px;
+        padding: 10px;
+        border: 4px #333333;
+      }
+      #clip {
+        width: 92px;
+        height: 92px;
+        object-fit: contain;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="box">
+      <anim id="clip" src="../../lottie/min_solid_anim.json" autoplay="false"/>
+    </div>
+  </body>
+</xt>

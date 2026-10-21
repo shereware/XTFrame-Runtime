@@ -1,0 +1,18 @@
+<xt>
+  <head>
+    <style>
+      @font-face { font-family: "Noto Sans"; src: "../../fonts/NotoSans-Regular.subset.ttf"; }
+      @font-face { font-family: "Noto Sans SC"; src: "../../fonts/NotoSansSC-Regular.subset.ttf"; }
+      #a {
+        margin: 16px;
+        width: 140px;
+        font-family: "Noto Sans", "Noto Sans SC";
+        font-size: 20px;
+        color: #202020;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="a">這是一段 mixed text 測試換行</div>
+  </body>
+</xt>

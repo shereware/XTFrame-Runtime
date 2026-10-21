@@ -1,0 +1,19 @@
+<xt>
+  <head>
+    <!-- T-392 (27 §27.3.2, XF-073): a virtualized repeat whose scroll container is 0 px high;
+         `xtframe-view --strict` prints the runtime warning. -->
+    <style>
+      #scroll { width: 200px; height: 0px; overflow: scroll; }
+      #row { height: 20px; }
+    </style>
+  </head>
+  <body>
+    <div id="box" port:items="list<struct{name: string}>">
+      <div id="scroll">
+        <repeat port="items" id="Item" virtualize>
+          <div id="row"><span id="name" bind:text="item(name)"></span></div>
+        </repeat>
+      </div>
+    </div>
+  </body>
+</xt>

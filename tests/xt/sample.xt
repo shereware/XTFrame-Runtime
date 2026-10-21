@@ -1,0 +1,16 @@
+<xt>
+  <head>
+    <link href="theme.xts"/>
+    <style> .a { color: #fff; } </style>
+    <title>Demo</title>
+  </head>
+  <body>
+    <div id="root" class="panel large" style="width: 200px">
+      <span>Hello</span>
+      <img src="images/logo.png"/>
+      <anim src="anims/loading.json" autoplay="true" loop="true"/>
+      <input type="text" value=""/>
+      <button disabled="true">OK</button>
+    </div>
+  </body>
+</xt>

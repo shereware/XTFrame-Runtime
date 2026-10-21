@@ -1,0 +1,16 @@
+build/
+build-*/
+out/
+.vs/
+.vscode/
+.idea/
+*.user
+CMakeUserPresets.json
+__pycache__/
+debug.log
+# T-267a: a mismatching GPU snapshot's dump (tests/gpu writes it to the build tree; older builds wrote
+# it next to the snapshots).
+*.actual.txt
+
+# T-357: derived per-project caches (offline UI thumbnails, 40 §40.3.3)
+.xtcache/

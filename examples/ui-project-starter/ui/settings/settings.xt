@@ -1,0 +1,62 @@
+<xt>
+  <head>
+    <!-- Settings screen built from the standard symbol library: a centred panel with Tabs, two
+         columns of setting rows and a footer with input hints and the Apply / Back buttons. The
+         host (or a flow) owns every value: it listens to the rows' events and sets their ports. -->
+    <link rel="symbols" href="../../shared/symbols/Tabs.xt"/>
+    <link rel="symbols" href="../../shared/symbols/OptionCycler.xt"/>
+    <link rel="symbols" href="../../shared/symbols/Dropdown.xt"/>
+    <link rel="symbols" href="../../shared/symbols/Slider.xt"/>
+    <link rel="symbols" href="../../shared/symbols/Toggle.xt"/>
+    <link rel="symbols" href="../../shared/symbols/Checkbox.xt"/>
+    <link rel="symbols" href="../../shared/symbols/RadioGroup.xt"/>
+    <link rel="symbols" href="../../shared/symbols/Stepper.xt"/>
+    <link rel="symbols" href="../../shared/symbols/TextField.xt"/>
+    <link rel="symbols" href="../../shared/symbols/Tooltip.xt"/>
+    <link rel="symbols" href="../../shared/symbols/ProgressBar.xt"/>
+    <link rel="symbols" href="../../shared/symbols/Button.xt"/>
+    <link rel="symbols" href="../../shared/symbols/InputGlyph.xt"/>
+    <link href="settings.xts"/>
+  </head>
+  <body>
+    <div id="Screen">
+      <div id="Panel">
+        <div id="Header">
+          <span id="Heading">@settings_title</span>
+          <use symbol="Tabs" id="Pages" slot:tab1="@settings_tab_general" slot:tab2="@settings_tab_video"
+               slot:tab3="@settings_tab_audio" slot:tab4="@settings_tab_controls"/>
+        </div>
+        <div id="Columns">
+          <div id="ColumnA">
+            <use symbol="TextField" id="PlayerName" slot:label="@settings_player_name"/>
+            <div id="DifficultyRow">
+              <span id="DifficultyLabel">@settings_difficulty</span>
+              <use symbol="Tooltip" id="DifficultyHelp" slot:tip="@settings_difficulty_help"/>
+            </div>
+            <use symbol="RadioGroup" id="Difficulty"/>
+            <use symbol="Checkbox" id="Hints" slot:label="@settings_hints"/>
+            <use symbol="Toggle" id="Subtitles" slot:label="@settings_subtitles"/>
+          </div>
+          <div id="ColumnB">
+            <use symbol="OptionCycler" id="WindowMode" slot:label="@settings_window_mode"/>
+            <use symbol="Dropdown" id="Quality" slot:label="@settings_quality"/>
+            <use symbol="Slider" id="Volume" slot:label="@settings_volume"/>
+            <use symbol="Stepper" id="Fov" slot:label="@settings_fov"/>
+            <use symbol="ProgressBar" id="Shaders" slot:label="@settings_shaders"/>
+          </div>
+        </div>
+        <div id="Divider"></div>
+        <div id="Footer">
+          <div id="Hints">
+            <use symbol="InputGlyph" id="HintTab" slot:label="@hint_tabs"><slot name="glyph"><glyph key="tab_next"/></slot></use>
+            <use symbol="InputGlyph" id="HintBack" slot:label="@hint_back"><slot name="glyph"><glyph key="back"/></slot></use>
+          </div>
+          <div id="Actions">
+            <use symbol="Button" id="Back" variant:Kind="Secondary" slot:label="@settings_back"/>
+            <use symbol="Button" id="Apply" slot:label="@settings_apply"/>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</xt>

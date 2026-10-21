@@ -1,0 +1,7 @@
+# T-194: player 0 takes the first button, then moves right; player 1 takes the first button,
+# then moves down and right. Final: player 0 on #b (red), player 1 on #e (blue border).
+pad 0 Right
+pad 0 Right
+pad 1 Down
+pad 1 Down
+pad 1 Right

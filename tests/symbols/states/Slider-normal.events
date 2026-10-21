@@ -1,0 +1,5 @@
+# T-198: Slider, state 'normal'.
+port Volume.min 0
+port Volume.max 100
+port Volume.value 35
+update 0.6

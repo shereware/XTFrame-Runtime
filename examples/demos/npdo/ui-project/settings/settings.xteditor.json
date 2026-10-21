@@ -1,0 +1,28 @@
+{
+  "layers": {},
+  "sounds": {},
+  "timeline": {
+    "loopRange": [
+      0.0,
+      0.0
+    ],
+    "name": "intro",
+    "onion": {
+      "after": 0,
+      "before": 0
+    },
+    "playhead": 0.8333333134651184,
+    "scope": ""
+  },
+  "v": 1,
+  "view": {
+    "device": "16:9",
+    "mode": "design",
+    "pan": [
+      0.0,
+      0.0
+    ],
+    "safeArea": 0.05000000074505806,
+    "zoom": 1.0
+  }
+}

@@ -1,0 +1,28 @@
+<xt>
+  <head>
+    <style>
+      #a {
+        position: absolute;
+        left: 28px;
+        top: 88px;
+        width: 90px;
+        height: 90px;
+        background-color: #ff4040;
+        effect: blur(6px);
+      }
+      #b {
+        position: absolute;
+        left: 138px;
+        top: 88px;
+        width: 90px;
+        height: 90px;
+        background-color: #4080ff;
+        effect: blur(6px);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="a"></div>
+    <div id="b"></div>
+  </body>
+</xt>

@@ -1,0 +1,5 @@
+target 256x256 vertices=340 indices=510 cmds=3 passes=1 params=0
+pass 0: target=0 clear=0 copy=0 from=0 view=(0,0,256,256) cmds=3
+  0 StencilOnly Replace WriteIncrWrap ref=0 tex=no src=0 aux=0 linear idx=498 verts=332 clip=(0,0,256,256)
+  1 Solid SrcOver TestNotEqualZero ref=0 tex=no src=0 aux=0 linear idx=6 verts=4 clip=(0,0,256,256)
+  2 StencilOnly Replace ClearRect ref=0 tex=no src=0 aux=0 linear idx=6 verts=4 clip=(0,0,256,256)

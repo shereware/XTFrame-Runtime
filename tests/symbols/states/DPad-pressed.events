@@ -1,0 +1,4 @@
+# T-241: DPad, state 'pressed'.
+update 0.6
+pointermove 156 100
+pointerdown 156 100

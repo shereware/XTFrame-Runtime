@@ -1,0 +1,13 @@
+<xt>
+  <head>
+    <style>
+      div { width: 40px; height: 20px; transform: rotate(90deg); }
+      #a { transform-origin: 0 0; }
+      #b { transform-origin: 50% 50%; }
+    </style>
+  </head>
+  <body>
+    <div id="a"></div>
+    <div id="b"></div>
+  </body>
+</xt>

@@ -1,0 +1,17 @@
+<xt>
+  <head>
+    <style>
+      #a {
+        effect: shadow(2px 4px 6px #0008) blur(3px);
+        transition: effect .3s;
+      }
+      @keyframes fx {
+        from { effect: blur(0px); }
+        to { effect: blur(10px); }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="a"></div>
+  </body>
+</xt>

@@ -1,0 +1,14 @@
+<xt>
+<head>
+<style>
+.a > .b { color: red; }
+/* not a real css comment marker, just content */
+a < b
+</style>
+</head>
+<body>
+<!-- comment
+spanning multiple lines with > inside -->
+<div>ok</div>
+</body>
+</xt>

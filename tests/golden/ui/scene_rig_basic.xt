@@ -1,0 +1,36 @@
+<xt>
+  <head>
+    <style>
+      /* T-244 (32 §32.3): an IR-loaded skeleton evaluated by Document::update. Two bones from
+         (60, 140), each 60 long, straight at rest; a box skinned over them (the middle column
+         half and half); an IK constraint on the second bone follows the red dot, which the
+         timeline moves. The manifest samples 0 s, 0.4 s and 0.8 s. */
+      svg { position: absolute; left: 28px; top: 28px; width: 200px; height: 200px; }
+      @timeline main {
+        duration: 1s;
+        #Rig1/Hand { 0s { transform: translate(170px, 100px) } 1s { transform: translate(110px, 50px) } }
+      }
+    </style>
+  </head>
+  <body>
+    <svg id="Rig1" viewBox="0 0 200 200" width="200" height="200">
+      <path id="Arm" d="M60 128 L120 128 L180 128 L180 152 L120 152 L60 152 Z" fill="#3366cc"
+            stroke="#112244" stroke-width="2" xt-skin="Skel">
+        <xt-weights bones="A B">0 0:1
+1 0:.5 1:.5
+2 1:1
+3 1:1
+4 0:.5 1:.5
+5 0:1</xt-weights>
+      </path>
+      <xt-skeleton id="Skel">
+        <xt-bone id="A" length="60" translate="60 140">
+          <xt-bone id="B" length="60">
+            <xt-constraint kind="ik" target="#Hand"/>
+          </xt-bone>
+        </xt-bone>
+      </xt-skeleton>
+      <circle id="Hand" cx="0" cy="0" r="5" fill="#dd2222"/>
+    </svg>
+  </body>
+</xt>

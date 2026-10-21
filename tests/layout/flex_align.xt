@@ -1,0 +1,31 @@
+<xt>
+  <head>
+    <style>
+      #aiStretch, #aiStart, #aiEnd, #aiCenter {
+        display: flex;
+        width: 400px;
+        height: 100px;
+      }
+      #aiStretch { align-items: stretch; }
+      #aiStart { align-items: flex-start; }
+      #aiEnd { align-items: flex-end; }
+      #aiCenter { align-items: center; }
+
+      #aiStretch > div { width: 50px; }
+      #aiStart > div, #aiEnd > div, #aiCenter > div { width: 50px; }
+      #fs1 { height: 20px; }
+      #fs2 { height: 40px; }
+      #fe1 { height: 20px; }
+      #fe2 { height: 40px; }
+      #ce1 { height: 20px; }
+      #ce2 { height: 40px; }
+      #selfOverride { height: 40px; align-self: center; }
+    </style>
+  </head>
+  <body>
+    <div id="aiStretch"><div id="s1"></div><div id="s2"></div></div>
+    <div id="aiStart"><div id="fs1"></div><div id="fs2"></div><div id="selfOverride"></div></div>
+    <div id="aiEnd"><div id="fe1"></div><div id="fe2"></div></div>
+    <div id="aiCenter"><div id="ce1"></div><div id="ce2"></div></div>
+  </body>
+</xt>

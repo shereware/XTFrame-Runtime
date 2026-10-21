@@ -1,0 +1,5 @@
+# T-198: RadioGroup, state 'hover'.
+port Difficulty.options [{"label":"Story"},{"label":"Normal"},{"label":"Hard"}]
+port Difficulty.value 1
+update 0.6
+pointermove 40 30

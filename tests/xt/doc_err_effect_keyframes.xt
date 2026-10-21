@@ -1,0 +1,13 @@
+<xt>
+  <head>
+    <style>
+      @keyframes fxerr {
+        from { effect: blur(2px); }
+        to { effect: glow(2px #fff); }
+      }
+    </style>
+  </head>
+  <body>
+    <div/>
+  </body>
+</xt>

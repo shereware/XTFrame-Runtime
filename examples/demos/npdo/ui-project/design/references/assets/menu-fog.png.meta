@@ -1,0 +1,9 @@
+id: 334793da-c83e-438c-9b11-af6e3943cbe6
+kind: reference
+title: menu-fog
+source:
+  kind: ai:service
+  ref: menu-fog.png
+tags: [asset, texture]
+license: own
+content: sha256:cd5f88dca1e9091cd234fd3daf3171910b9bd61a3cb5aed835107b9f838db18e

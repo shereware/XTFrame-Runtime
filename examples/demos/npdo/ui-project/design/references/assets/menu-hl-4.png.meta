@@ -1,0 +1,9 @@
+id: f703046f-95f1-4efb-ae9a-f36c97f50f34
+kind: reference
+title: menu-hl-4
+source:
+  kind: ai:service
+  ref: menu-hl-4.png
+tags: [asset, texture]
+license: own
+content: sha256:d15a386cb0956a90c2f56caab4747a059f501c71231c454d4c7baa083e5b0818

@@ -1,0 +1,9 @@
+id: 9be93f80-7c35-4557-87e6-d9f5c9c89307
+kind: reference
+title: menu-hl-2
+source:
+  kind: ai:service
+  ref: menu-hl-2.png
+tags: [asset, texture]
+license: own
+content: sha256:9089904b94ae85ffb153bd4fbeb54517f8b4551aae4cf47d52d4ff6965597b9c

@@ -1,0 +1,3 @@
+# T-175: hp_max first, then hp (bindings re-evaluate on each change).
+port hp_max 100
+port hp 72

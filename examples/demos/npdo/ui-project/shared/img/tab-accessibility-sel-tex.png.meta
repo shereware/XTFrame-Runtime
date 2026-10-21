@@ -1,0 +1,12 @@
+id: 89db6144-fe81-406f-b4f9-d7138ba42100
+type: image
+title: tab-accessibility-sel-tex
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/tab-hl-5.png
+content: sha256:2f406e611af7f8c8ba94d5945b84067f792c6e12efa2778649b0266331df023f
+measured:
+  w: 372
+  h: 88
+  alpha: true

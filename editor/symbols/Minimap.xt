@@ -1,0 +1,60 @@
+<xt>
+  <head>
+    <!-- Minimap: standard symbol (docs/design/30-ui-project.md 30.4). See README.md.
+         The map itself is external content: the host renders camera `minimap` into it. -->
+    <symbol name="Minimap" requires="slots: label">
+      <div id="Box">
+        <div id="Frame">
+          <external id="View" source="scene-view:minimap"/>
+          <div id="Player"></div>
+          <span id="North">N</span>
+        </div>
+        <span id="Zone"><slot name="label">Unknown area</slot></span>
+      </div>
+    </symbol>
+    <style>
+      symbol(Minimap) {
+        #Box {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          row-gap: var(--space-1);
+          font-family: var(--font-family);
+        }
+        #Frame {
+          position: relative;
+          width: 160px;
+          height: 160px;
+          border-width: var(--focus-w);
+          border-color: var(--color-border-strong);
+          border-radius: var(--radius-full);
+          background-color: var(--color-surface-sunken);
+          overflow: hidden;
+        }
+        #View { position: absolute; left: 0px; top: 0px; width: 160px; height: 160px; object-fit: cover; }
+        #Player {
+          position: absolute;
+          left: 74px;
+          top: 74px;
+          width: 12px;
+          height: 12px;
+          border-width: 2px;
+          border-color: var(--color-surface);
+          border-radius: var(--radius-full);
+          background-color: var(--color-accent);
+        }
+        #North {
+          position: absolute;
+          left: 74px;
+          top: 4px;
+          width: 12px;
+          text-align: center;
+          color: var(--color-text);
+          font-size: var(--font-size-xs);
+          font-weight: 700;
+        }
+        #Zone { color: var(--color-text); font-size: var(--font-size-xs); text-effect: shadow 0px 1px 2px var(--color-shadow); }
+      }
+    </style>
+  </head>
+</xt>

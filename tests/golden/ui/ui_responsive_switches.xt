@@ -1,0 +1,21 @@
+<xt>
+  <head>
+    <style>
+      /* T-345 (05 §5.9.9): one 40px box per `ui-scale` value, run under uiscale 1.5. Its px
+         lengths (size, border, radius, the child's inset) follow the box's factor; the left
+         offsets are vw so the three columns stay where they are. */
+      .box { position: absolute; top: 8px; width: 40px; height: 40px; border: 1px #202020;
+             border-radius: 4px; background-color: #4a90d9; }
+      .box div { position: absolute; left: 10px; top: 10px; width: 10px; height: 10px;
+                 background-color: #ffffff; }
+      #auto { left: 4vw; }
+      #none { left: 37vw; ui-scale: none; background-color: #d94a4a; }
+      #clamp { left: 70vw; ui-scale: clamp(0.5, 1.25); background-color: #4ad97a; }
+    </style>
+  </head>
+  <body>
+    <div id="auto" class="box"><div></div></div>
+    <div id="none" class="box"><div></div></div>
+    <div id="clamp" class="box"><div></div></div>
+  </body>
+</xt>

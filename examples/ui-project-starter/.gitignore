@@ -1,0 +1,5 @@
+# xtframe-pack output (publish.outDir).
+out/
+# xtframe-pack copies the standard symbols a UI references into shared/symbols/ on first pack
+# (docs/design/30-ui-project.md 30.4); this example keeps no project symbols of its own.
+shared/symbols/*.xt

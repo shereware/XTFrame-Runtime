@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff3b30"/>
+      <stop offset="1" stop-color="#1144ee"/>
+    </linearGradient>
+    <radialGradient id="rg" gradientUnits="userSpaceOnUse" cx="160" cy="32" r="34">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#118844"/>
+    </radialGradient>
+    <rect id="chip" x="0" y="0" width="36" height="20" rx="8" fill="#8855cc"/>
+  </defs>
+
+  <!-- Row 1: rect, gradient-filled circle, radial-gradient ellipse, round-capped line. -->
+  <rect x="8" y="8" width="48" height="48" fill="#3366cc"/>
+  <circle cx="92" cy="32" r="24" fill="url(#lg)"/>
+  <ellipse cx="160" cy="32" rx="32" ry="20" fill="url(#rg)"/>
+  <line x1="208" y1="12" x2="246" y2="52" stroke="#cc3333" stroke-width="10" stroke-linecap="round"/>
+
+  <!-- Row 2: polygon, an arc path with a bevel join, a dashed square-capped stroke. -->
+  <polygon points="8,120 32,72 56,120" fill="#22aa55"/>
+  <path d="M80 120 A 24 24 0 0 1 128 120 Z" fill="#ffaa00" stroke="#333333" stroke-width="4"
+        stroke-linejoin="bevel"/>
+  <path d="M152 96 H 248" stroke="#884499" stroke-width="10" stroke-dasharray="20 16"
+        stroke-linecap="square" fill="none"/>
+
+  <!-- Row 3: chained group transform, and an even-odd donut. -->
+  <g transform="translate(64,168) rotate(20) scale(1.2)" opacity="0.9">
+    <rect x="-40" y="-24" width="80" height="48" fill="#dd5577" stroke="#222222" stroke-width="5"
+          stroke-linejoin="miter"/>
+  </g>
+  <path d="M148 138 h96 v64 h-96 z M168 156 h56 v28 h-56 z" fill="#2288aa" fill-rule="evenodd"/>
+
+  <!-- Row 4: rounded rect, and two <use> copies of a shape defined in <defs>. -->
+  <rect x="8" y="212" width="104" height="36" rx="16" ry="16" fill="#666666"/>
+  <use href="#chip" x="132" y="216"/>
+  <use href="#chip" x="184" y="216" style="fill:#ee9922"/>
+</svg>

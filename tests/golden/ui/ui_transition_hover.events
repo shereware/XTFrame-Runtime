@@ -1,0 +1,3 @@
+# docs/tasks/T-36.md: hovering #box starts the width transition; time=0.2s (of the 0.4s
+# transition) lands it at width 140px (halfway from 80 to 200).
+pointermove 20 20

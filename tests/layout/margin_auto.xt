@@ -1,0 +1,10 @@
+<xt>
+  <head>
+    <style>
+      #a { width: 100px; margin: 0 auto; }
+    </style>
+  </head>
+  <body>
+    <div id="a"></div>
+  </body>
+</xt>

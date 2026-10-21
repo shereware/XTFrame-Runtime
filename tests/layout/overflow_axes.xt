@@ -1,0 +1,26 @@
+<xt>
+  <head>
+    <style>
+      #fits { position: absolute; left: 0px; top: 0px; width: 100px; height: 100px; overflow: auto; }
+      #fits-c { width: 50px; height: 50px; }
+      #tall { position: absolute; left: 120px; top: 0px; width: 100px; height: 100px; padding: 10px;
+              overflow: auto; }
+      #tall-c { width: 50px; height: 300px; }
+      #y-only { position: absolute; left: 260px; top: 0px; width: 100px; height: 100px;
+                overflow-x: hidden; overflow-y: scroll; }
+      #y-only-c { width: 200px; height: 300px; }
+      #x-only { position: absolute; left: 0px; top: 150px; width: 100px; height: 100px; overflow-x: auto; }
+      #x-only-c { width: 250px; height: 50px; }
+      #pair { position: absolute; left: 150px; top: 150px; width: 100px; height: 100px; display: flex;
+              overflow: scroll hidden; }
+      #pair > div { width: 80px; height: 150px; flex-shrink: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="fits"><div id="fits-c"></div></div>
+    <div id="tall"><div id="tall-c"></div></div>
+    <div id="y-only"><div id="y-only-c"></div></div>
+    <div id="x-only"><div id="x-only-c"></div></div>
+    <div id="pair"><div id="pair-a"></div><div id="pair-b"></div></div>
+  </body>
+</xt>

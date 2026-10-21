@@ -1,0 +1,10 @@
+id: f834e385-2559-4538-a8b4-6ed5eb12f744
+type: vector
+status: draft
+source:
+  kind: manual
+content: sha256:7b938d56dd6b92fad47a31e7a59024447a1cc7f6730853c22d686b38bd9426a3
+measured:
+  w: 26
+  h: 26
+  alpha: true

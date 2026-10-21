@@ -1,0 +1,6 @@
+target 256x256 vertices=20 indices=66 cmds=2 passes=2 params=2
+transient 1: 128x128 rgba8 stencil=1
+pass 0: target=1 clear=1 copy=0 from=0 view=(68,68,128,128) cmds=1
+  0 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=60 verts=16 clip=(0,0,256,256)
+pass 1: target=0 clear=0 copy=0 from=0 view=(0,0,256,256) cmds=1
+  1 Composite SrcOver None ref=0 tex=no src=1 aux=0 linear idx=6 verts=4 clip=(0,0,256,256)

@@ -1,0 +1,6 @@
+BasedOnStyle: Google
+IndentWidth: 4
+ColumnLimit: 110
+DerivePointerAlignment: false
+PointerAlignment: Left
+AccessModifierOffset: -4

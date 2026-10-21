@@ -1,0 +1,9 @@
+id: c92d015f-38cd-4c3a-898f-3d796ff9b0c5
+kind: reference
+title: texture recipe (tex2.py)
+source:
+  kind: ai:service
+  ref: texture-recipe-tex2.txt
+tags: [asset, recipe]
+license: own
+content: sha256:6b5b7505ba31c0e2f277655744c5e9bf342121423b71135ede794e2904544c72

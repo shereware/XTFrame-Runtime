@@ -1,0 +1,27 @@
+<xt>
+  <head>
+    <style>
+      /* T-211: percent translate resolves against the element's own border box. Guides mark
+         where each box should land. */
+      div { position: absolute; }
+      .guide { width: 2px; height: 256px; top: 0px; background-color: #cccccc; }
+      #g1 { left: 127px; }
+      #center { left: 128px; top: 64px; width: 96px; height: 48px; background-color: #ff8800;
+                transform: translate(-50%, -50%); }
+      #right { left: 32px; top: 112px; width: 64px; height: 32px; background-color: #0077ff;
+               transform: translateX(100%); }
+      #mixed { left: 32px; top: 160px; width: 80px; height: 24px; background-color: #22aa44;
+               transform: translate(50%, 8px); }
+      #anim { left: 16px; top: 216px; width: 48px; height: 24px; background-color: #cc2266;
+              animation: slide 1s linear 0s 1 normal both; }
+      @keyframes slide { from { transform: translateX(0%); } to { transform: translateX(400%); } }
+    </style>
+  </head>
+  <body>
+    <div id="g1" class="guide"></div>
+    <div id="center"></div>
+    <div id="right"></div>
+    <div id="mixed"></div>
+    <div id="anim"></div>
+  </body>
+</xt>

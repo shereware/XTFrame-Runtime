@@ -1,0 +1,180 @@
+version: 1
+groups:
+  - id: brand
+    name: Brand
+    status: approved
+    source:
+      kind: manual
+    swatches:
+      - id: teal
+        name: Teal
+        value: "#0f7b8a"
+        role: primary
+        status: approved
+        source:
+          kind: manual
+        note: Interactive elements, selection and progress.
+      - id: teal-bright
+        name: Teal bright
+        value: "#12909f"
+        role: hover
+        status: approved
+        source:
+          kind: manual
+        note: Teal under the pointer.
+      - id: teal-deep
+        name: Teal deep
+        value: "#0b5f6b"
+        role: pressed
+        status: approved
+        source:
+          kind: manual
+        note: Teal while pressed.
+      - id: amber
+        name: Amber
+        value: "#c26a00"
+        role: focus
+        status: approved
+        source:
+          kind: manual
+        note: The focus ring; never a fill.
+  - id: neutral
+    name: Neutrals
+    status: approved
+    source:
+      kind: manual
+    swatches:
+      - id: white
+        name: White
+        value: "#ffffff"
+        role: surface
+        status: approved
+        source:
+          kind: manual
+        note: Raised surfaces and text on teal.
+      - id: slate-50
+        name: Slate 50
+        value: "#f8fafc"
+        role: surface
+        status: approved
+        source:
+          kind: manual
+        note: Panels.
+      - id: slate-100
+        name: Slate 100
+        value: "#e9edf2"
+        role: background
+        status: approved
+        source:
+          kind: manual
+        note: The screen behind every panel.
+      - id: slate-150
+        name: Slate 150
+        value: "#dde3ea"
+        role: surface
+        status: approved
+        source:
+          kind: manual
+        note: Sunken wells and tracks.
+      - id: slate-200
+        name: Slate 200
+        value: "#d5dbe2"
+        role: disabled
+        status: approved
+        source:
+          kind: manual
+        note: Disabled fills.
+      - id: slate-250
+        name: Slate 250
+        value: "#cfd6de"
+        role: track
+        status: approved
+        source:
+          kind: manual
+        note: Slider and progress tracks.
+      - id: slate-300
+        name: Slate 300
+        value: "#c3ccd6"
+        role: border
+        status: approved
+        source:
+          kind: manual
+        note: Hairlines and control outlines.
+      - id: slate-450
+        name: Slate 450
+        value: "#8d99a6"
+        role: border
+        status: approved
+        source:
+          kind: manual
+        note: Outlines that must stand out.
+      - id: slate-500
+        name: Slate 500
+        value: "#8a949e"
+        role: disabled
+        status: approved
+        source:
+          kind: manual
+        note: Disabled text.
+      - id: slate-700
+        name: Slate 700
+        value: "#4f5b67"
+        role: text
+        status: approved
+        source:
+          kind: manual
+        note: Secondary text.
+      - id: slate-900
+        name: Slate 900
+        value: "#17202a"
+        role: text
+        status: approved
+        source:
+          kind: manual
+        note: Body text.
+      - id: night
+        name: Night
+        value: "#0b0e13"
+        role: shadow
+        status: approved
+        source:
+          kind: manual
+        note: Scrims and shadows, always with alpha.
+  - id: state
+    name: States
+    status: approved
+    source:
+      kind: manual
+    swatches:
+      - id: red
+        name: Red
+        value: "#c62f3a"
+        role: danger
+        status: approved
+        source:
+          kind: manual
+        note: Damage, destructive actions, errors.
+      - id: orange
+        name: Orange
+        value: "#b86e00"
+        role: warning
+        status: approved
+        source:
+          kind: manual
+        note: Warnings and low resources.
+      - id: green
+        name: Green
+        value: "#23875a"
+        role: success
+        status: approved
+        source:
+          kind: manual
+        note: Health and completed steps.
+      - id: blue
+        name: Blue
+        value: "#1f6fb2"
+        role: info
+        status: approved
+        source:
+          kind: manual
+        note: Neutral notices and hints.

@@ -1,0 +1,49 @@
+<xt>
+  <head>
+    <!-- Layout template: in-game HUD, 1280 x 720 (docs/design/30-ui-project.md 30.2 class 4).
+         Anchored corners are the norm (about 80 % of surveyed HUD screens,
+         docs/reference/ui-survey-2026-09/report.md). Typical content per anchor:
+           TopLeft      health / resources (RPG, action), objective tracker
+           TopCenter    compass strip, boss bar
+           TopRight     minimap, score / timer, notifications
+           Center       crosshair, hit marker, damage numbers
+           LowCenter    interaction prompt, subtitles
+           BottomLeft   health (shooter), quick slots (souls-like)
+           BottomCenter hotbar / skills
+           BottomRight  weapon and ammo, abilities with cooldowns
+         Floating elements keep the safe margin (2.5 %, 5 % on console); edge-docked bars may
+         touch the edge. Replace the guide boxes with standard symbols. -->
+    <style>
+      body { width: 100vw; height: 100vh; font-family: var(--font-family); }
+      #Screen { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
+      .anchor {
+        position: absolute;
+        display: flex;
+        border-width: var(--border-w);
+        border-color: var(--color-border);
+        border-radius: var(--radius-s);
+      }
+      .guide { color: var(--color-text-dim); font-size: var(--font-size-xs); padding: var(--space-1); }
+      #TopLeft { left: var(--safe-x); top: var(--safe-y); width: 300px; height: 120px; }
+      #TopCenter { left: 460px; top: var(--safe-y); width: 360px; height: 40px; }
+      #TopRight { right: var(--safe-x); top: var(--safe-y); width: 200px; height: 200px; }
+      #Center { left: 600px; top: 320px; width: 80px; height: 80px; }
+      #LowCenter { left: 320px; top: 500px; width: 640px; height: 90px; }
+      #BottomLeft { left: var(--safe-x); bottom: var(--safe-y); width: 240px; height: 80px; }
+      #BottomCenter { left: 462px; bottom: var(--safe-y); width: 356px; height: 64px; }
+      #BottomRight { right: var(--safe-x); bottom: var(--safe-y); width: 240px; height: 100px; }
+    </style>
+  </head>
+  <body>
+    <div id="Screen">
+      <div id="TopLeft" class="anchor"><span id="TopLeftGuide" class="guide">TopLeft</span></div>
+      <div id="TopCenter" class="anchor"><span id="TopCenterGuide" class="guide">TopCenter</span></div>
+      <div id="TopRight" class="anchor"><span id="TopRightGuide" class="guide">TopRight</span></div>
+      <div id="Center" class="anchor"><span id="CenterGuide" class="guide">Center</span></div>
+      <div id="LowCenter" class="anchor"><span id="LowCenterGuide" class="guide">LowCenter</span></div>
+      <div id="BottomLeft" class="anchor"><span id="BottomLeftGuide" class="guide">BottomLeft</span></div>
+      <div id="BottomCenter" class="anchor"><span id="BottomCenterGuide" class="guide">BottomCenter</span></div>
+      <div id="BottomRight" class="anchor"><span id="BottomRightGuide" class="guide">BottomRight</span></div>
+    </div>
+  </body>
+</xt>

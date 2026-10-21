@@ -1,0 +1,3 @@
+# T-170: switch themes twice: "dark", then "alt" (overrides --bg and --gap).
+theme dark ui_tokens_dark.xts
+theme alt ui_tokens_alt.xts

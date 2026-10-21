@@ -1,0 +1,4 @@
+# T-198: TextField, state 'typed'.
+update 0.6
+key Tab
+textinput Ada

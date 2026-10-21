@@ -1,0 +1,19 @@
+<xt>
+  <head>
+    <style>
+      /* T-175: data bindings (27.3.2): a range() width and a format() text over two ports (the test font subset has no '/'). */
+      @font-face { font-family: "Noto Sans"; src: "../../fonts/NotoSans-Regular.subset.ttf"; }
+      #Hp { position: absolute; left: 24px; top: 24px; width: 208px; height: 28px; background-color: #333333; }
+      #Hp_Bar { position: absolute; left: 4px; top: 4px; height: 20px; background-color: #33aa66; }
+      #Hp_Bar:state(Low) { background-color: #cc3333; }
+      #Hp_Text { position: absolute; left: 24px; top: 64px; width: 208px; height: 36px;
+                 font-family: "Noto Sans"; font-size: 24px; color: #202020; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <div id="Hp" port:hp="number in" port:hp_max="number in">
+      <div id="Hp_Bar" bind:width="hp | range(0, hp_max, 0px, 200px)" bind:state.Low="hp | lt(40%)"></div>
+    </div>
+    <span id="Hp_Text" bind:text="format('HP {0} of {1}', hp, hp_max)"></span>
+  </body>
+</xt>

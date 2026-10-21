@@ -1,0 +1,23 @@
+<xt>
+  <head>
+    <style>
+      @font-face { font-family: "Noto Sans"; src: "../../fonts/NotoSans-Regular.subset.ttf"; }
+      div {
+        margin: 12px;
+        width: 220px;
+        font-family: "Noto Sans";
+        font-size: 22px;
+        color: #202020;
+        background-color: #f0f0f0;
+      }
+      #left { text-align: left; }
+      #center { text-align: center; }
+      #right { text-align: right; }
+    </style>
+  </head>
+  <body>
+    <div id="left">Left</div>
+    <div id="center">Center</div>
+    <div id="right">Right</div>
+  </body>
+</xt>

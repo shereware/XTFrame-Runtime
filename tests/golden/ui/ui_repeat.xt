@@ -1,0 +1,27 @@
+<xt>
+  <head>
+    <style>
+      /* T-177: a <repeat> list (docs/design/27-interaction.md 27.3.4): five rows bound to a
+         list<struct> port, item-enter / item-exit timelines played per instance. */
+      #List { position: absolute; left: 16px; top: 16px; width: 224px; }
+      .row { height: 24px; margin-bottom: 8px; background-color: #dddddd; }
+      #Bar { height: 24px; }
+      @timeline item-in {
+        duration: 0.4s;
+        #Row { 0s { opacity: 0; transform: translateX(-96px) } 0.4s { opacity: 1; transform: translateX(0px) } }
+      }
+      @timeline item-out {
+        duration: 0.4s;
+        #Row { 0s { opacity: 1; transform: translateX(0px) } 0.4s { opacity: 0; transform: translateX(96px) } }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="P" port:items="list<struct{color: color, w: number}>"></div>
+    <div id="List">
+      <repeat port="items" id="Item" item-enter="play(item-in)" item-exit="play(item-out) then remove">
+        <div id="Row" class="row"><div id="Bar" bind:background-color="item(color)" bind:width="item(w)"></div></div>
+      </repeat>
+    </div>
+  </body>
+</xt>

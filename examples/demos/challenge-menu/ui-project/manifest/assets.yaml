@@ -1,0 +1,63 @@
+# Asset manifest (docs/design/26-layers-symbols-library.md 26.3.3); xtframe-pack fills `measured`.
+version: 1
+assets:
+  - id: 192ad3d5740c1e36
+    type: vector
+    file: shared/img/192ad3d5740c1e36.svg
+    source: manual
+    status: draft
+    measured: { w: 20, h: 20, alpha: true }
+  - id: 1ef77b988f8077a3
+    type: vector
+    file: shared/img/1ef77b988f8077a3.svg
+    source: manual
+    status: draft
+    measured: { w: 26, h: 26, alpha: true }
+  - id: 27b1b278faad51ee
+    type: image
+    file: shared/img/27b1b278faad51ee.png
+    source: manual
+    status: draft
+    measured: { w: 237, h: 482, alpha: true }
+  - id: 31b7f7983f18b6f3
+    type: vector
+    file: shared/img/31b7f7983f18b6f3.svg
+    source: manual
+    status: draft
+    measured: { w: 26, h: 26, alpha: true }
+  - id: 48cd3971a263efb0
+    type: vector
+    file: shared/img/48cd3971a263efb0.svg
+    source: manual
+    status: draft
+    measured: { w: 76, h: 52, alpha: true }
+  - id: 4fdd003b92da76b7
+    type: vector
+    file: shared/img/4fdd003b92da76b7.svg
+    source: manual
+    status: draft
+    measured: { w: 26, h: 26, alpha: true }
+  - id: 56be179abb43289e
+    type: image
+    file: shared/img/56be179abb43289e.png
+    source: manual
+    status: draft
+    measured: { w: 1024, h: 576, alpha: false }
+  - id: bb6265870ea52967
+    type: vector
+    file: shared/img/bb6265870ea52967.svg
+    source: manual
+    status: draft
+    measured: { w: 26, h: 26, alpha: true }
+  - id: ca5c1de7f4f02d09
+    type: vector
+    file: shared/img/ca5c1de7f4f02d09.svg
+    source: manual
+    status: draft
+    measured: { w: 48, h: 36, alpha: true }
+  - id: d0eebef1d9a7ce8c
+    type: image
+    file: shared/img/d0eebef1d9a7ce8c.png
+    source: manual
+    status: draft
+    measured: { w: 1280, h: 720, alpha: false }

@@ -1,0 +1,19 @@
+<xt>
+  <head>
+    <style>
+      #stage { position: absolute; left: 0px; top: 0px; width: 256px; height: 256px; perspective: 400px; }
+      .panel { position: absolute; width: 96px; height: 96px; }
+      /* T-120: the same two functions in both orders. `rotateY` first turns the panel and then
+         pushes it along its own (rotated) z axis; the reverse pushes it straight toward the
+         viewer and only then turns it, so the two land in visibly different places. */
+      #turn-then-push { left: 16px; top: 80px; transform: rotateY(50deg) translateZ(60px); background-color: #c04040; }
+      #push-then-turn { left: 144px; top: 80px; transform: translateZ(60px) rotateY(50deg); background-color: #3060c0; }
+    </style>
+  </head>
+  <body>
+    <div id="stage">
+      <div class="panel" id="turn-then-push"></div>
+      <div class="panel" id="push-then-turn"></div>
+    </div>
+  </body>
+</xt>

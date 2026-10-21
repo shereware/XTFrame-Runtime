@@ -1,0 +1,3 @@
+# docs/tasks/T-36.md: pointer moves into #btn2 (top:80px, height:40px), which applies
+# button:hover from ui_button_states.xts.
+pointermove 80 100

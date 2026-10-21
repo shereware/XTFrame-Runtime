@@ -1,0 +1,15 @@
+<xt>
+  <head>
+    <style>
+      div { margin: 5px; }
+      #a { height: 20px; }
+      #b { height: 30px; }
+      #c { height: 40px; }
+    </style>
+  </head>
+  <body>
+    <div id="a"></div>
+    <div id="b"></div>
+    <div id="c"></div>
+  </body>
+</xt>

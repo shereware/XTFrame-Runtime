@@ -1,0 +1,9 @@
+id: ac8c0ccd-b324-4b74-82f6-fc6e43475991
+kind: reference
+title: hud spec
+source:
+  kind: ai:service
+  ref: hud-spec.md
+tags: [rebuild, spec]
+license: own
+content: sha256:539baee2f9189bae8ed0dc4a8d6b26c46920639e8563389cf760ca63ddb75f62

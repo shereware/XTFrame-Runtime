@@ -1,0 +1,9 @@
+button {
+  background-color: #cccccc;
+}
+button:hover {
+  background-color: #66aaff;
+}
+button:disabled {
+  background-color: #888888;
+}

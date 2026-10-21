@@ -1,0 +1,76 @@
+<xt>
+  <head>
+    <link href="../shared/base.xts"/>
+    <link href="main-menu.xts"/>
+    <title>Main Menu</title>
+  </head>
+  <body>
+    <div id="main-menu" on:port(active)="if eq(1) show() else hide(); if eq(1) play(intro)" on:timeline(intro).end="play(idle, loop)" port:new_game="event out" port:continue_game="event out" port:load_game="event out" port:open_options="event out" port:open_credits="event out" port:quit_game="event out" port:active="bool in = true">
+      <div id="menu-scene">
+        <img id="menu-bg" src="../shared/img/menu-bg.png"/>
+        <img id="menu-lamp" src="../shared/img/menu-lamp.png"/>
+        <div id="menu-lamp-core"/>
+      </div>
+      <div id="menu-fog-layer" class="s-8270ba">
+        <div id="menu-fog"/>
+      </div>
+      <div id="menu-shade-left" class="s-29cc76">
+        <div id="menu-shade-left-fill"/>
+      </div>
+      <div id="menu-shade-bottom" class="s-29cc76">
+        <div id="menu-shade-bottom-fill"/>
+      </div>
+      <img id="menu-grime" src="../shared/img/menu-grime.png"/>
+      <div id="menu-rain-layer" class="s-8270ba">
+        <div id="menu-rain"/>
+      </div>
+      <img id="menu-title" src="../shared/img/menu-title.png"/>
+      <div id="menu-list">
+        <div id="btn-new-game" class="menu-item" on:hover="sound(ui_hover); play(hover1)" on:leave="play(hover1, reverse)" on:click="sound(ui_confirm); emit(new_game)">
+          <div id="band-new-game" class="menu-band">
+            <img id="menu-hl-1" class="band-tex" src="../shared/img/menu-hl-1.png"/>
+          </div>
+          <span id="label-new-game" class="menu-label">New Game</span>
+        </div>
+        <div id="btn-continue" class="menu-item" on:hover="sound(ui_hover); play(hover2)" on:leave="play(hover2, reverse)" on:click="sound(ui_confirm); emit(continue_game)">
+          <div id="band-continue" class="menu-band">
+            <img id="menu-hl-2" class="band-tex" src="../shared/img/menu-hl-2.png"/>
+          </div>
+          <span id="label-continue" class="menu-label">Continue</span>
+        </div>
+        <div id="btn-load-game" class="menu-item" on:hover="sound(ui_hover); play(hover3)" on:leave="play(hover3, reverse)" on:click="sound(ui_confirm); emit(load_game)">
+          <div id="band-load-game" class="menu-band">
+            <img id="menu-hl-3" class="band-tex" src="../shared/img/menu-hl-3.png"/>
+          </div>
+          <span id="label-load-game" class="menu-label">Load Game</span>
+        </div>
+        <div id="btn-options" class="menu-item" on:hover="sound(ui_hover); play(hover4)" on:leave="play(hover4, reverse)" on:click="sound(ui_confirm); emit(open_options)">
+          <div id="band-options" class="menu-band">
+            <img id="menu-hl-4" class="band-tex" src="../shared/img/menu-hl-4.png"/>
+          </div>
+          <span id="label-options" class="menu-label">Options</span>
+        </div>
+        <div id="btn-credits" class="menu-item" on:hover="sound(ui_hover); play(hover5)" on:leave="play(hover5, reverse)" on:click="sound(ui_confirm); emit(open_credits)">
+          <div id="band-credits" class="menu-band">
+            <img id="menu-hl-5" class="band-tex" src="../shared/img/menu-hl-5.png"/>
+          </div>
+          <span id="label-credits" class="menu-label">Credits</span>
+        </div>
+        <div id="btn-quit" class="menu-item" on:hover="sound(ui_hover); play(hover6)" on:leave="play(hover6, reverse)" on:click="sound(ui_back); emit(quit_game)">
+          <div id="band-quit" class="menu-band">
+            <img id="menu-hl-6" class="band-tex" src="../shared/img/menu-hl-6.png"/>
+          </div>
+          <span id="label-quit" class="menu-label">Quit</span>
+        </div>
+      </div>
+      <span id="menu-version">v1.0.0</span>
+      <div id="menu-hints">
+        <span id="key-w" class="key">W</span>
+        <span id="key-s" class="key">S</span>
+        <span id="hint-select" class="hint">Select</span>
+        <span id="key-e" class="key">E</span>
+        <span id="hint-confirm" class="hint">Confirm</span>
+      </div>
+    </div>
+  </body>
+</xt>

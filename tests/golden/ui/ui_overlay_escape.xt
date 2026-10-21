@@ -1,0 +1,49 @@
+<xt>
+  <head>
+    <style>
+      /* T-194 (08.9): #pop is inside the overflow-hidden #clip but is `layer: overlay`, so it is
+         neither clipped nor covered by the later sibling #cover; #inside is clipped as usual. */
+      #clip {
+        position: absolute;
+        left: 30px;
+        top: 30px;
+        width: 100px;
+        height: 80px;
+        overflow: hidden;
+        background-color: #eeeeee;
+      }
+      #inside {
+        position: absolute;
+        left: -20px;
+        top: 40px;
+        width: 60px;
+        height: 80px;
+        background-color: #0066ff;
+      }
+      #pop {
+        position: absolute;
+        left: 50px;
+        top: -20px;
+        width: 120px;
+        height: 100px;
+        background-color: #ff5500;
+        layer: overlay;
+      }
+      #cover {
+        position: absolute;
+        left: 120px;
+        top: 90px;
+        width: 110px;
+        height: 110px;
+        background-color: #22aa44;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="clip">
+      <div id="inside"></div>
+      <div id="pop"></div>
+    </div>
+    <div id="cover"></div>
+  </body>
+</xt>

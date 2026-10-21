@@ -1,0 +1,12 @@
+id: 425df130-c459-4ab4-a8fe-f6be26e47803
+type: image
+title: item-credits-icon-gray
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/aa3472217fc43ebf1affd57e0752b994
+content: sha256:3ac91e62540deb171b98acb72cfb3f794391fa2e0f8235de09e312d217ffaada
+measured:
+  w: 128
+  h: 128
+  alpha: true

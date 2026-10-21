@@ -1,0 +1,51 @@
+<xt>
+  <head>
+    <style>
+      #cb { position: relative; width: 400px; height: 300px; }
+      #row { position: absolute; left: 8px; top: 8px;
+             display: flex; flex-direction: row; gap: 16px; }
+      #row > div { width: 64px; height: 64px; }
+      #rowLeftOnly { position: absolute; left: 8px;
+                     display: flex; flex-direction: row; gap: 16px; }
+      #rowLeftOnly > div { width: 64px; height: 64px; }
+      #rowPad { position: absolute; left: 8px; top: 100px; padding: 8px;
+                display: flex; flex-direction: row; gap: 16px; }
+      #rowPad > div { width: 64px; height: 64px; }
+      #col { position: absolute; left: 8px; top: 200px;
+             display: flex; flex-direction: column; gap: 16px; }
+      #col > div { width: 64px; height: 64px; }
+      #overflow { position: absolute; left: 0px; top: 0px;
+                  display: flex; flex-direction: row; gap: 10px; }
+      #overflow > div { width: 150px; height: 50px; }
+    </style>
+  </head>
+  <body>
+    <div id="cb">
+      <div id="row">
+        <div id="ra"></div>
+        <div id="rb"></div>
+        <div id="rc"></div>
+      </div>
+      <div id="rowLeftOnly">
+        <div id="la"></div>
+        <div id="lb"></div>
+        <div id="lc"></div>
+      </div>
+      <div id="rowPad">
+        <div id="pa"></div>
+        <div id="pb"></div>
+        <div id="pc"></div>
+      </div>
+      <div id="col">
+        <div id="ca"></div>
+        <div id="cb2"></div>
+        <div id="cc"></div>
+      </div>
+    </div>
+    <div id="overflow">
+      <div id="oa"></div>
+      <div id="ob"></div>
+      <div id="oc"></div>
+    </div>
+  </body>
+</xt>

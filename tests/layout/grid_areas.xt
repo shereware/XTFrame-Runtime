@@ -1,0 +1,32 @@
+<xt>
+  <head>
+    <style>
+      /* T-338 (06 §6.15): three named areas filled out of document order plus an absolute child
+         that leaves the grid; a 2 x 2 span placed first, the auto items filling the free cells
+         row-major (sparse) and a column-only item; a placement past the explicit columns is
+         clamped to the last one (06 §6.15, not Chrome's implicit tracks). */
+      #areas { display: grid; position: relative; width: 300px; height: 200px;
+               grid-template-columns: 100px 1fr; grid-template-rows: 50px 1fr;
+               grid-template-areas: "h h" "s m"; }
+      #m { grid-area: m; }
+      #s { grid-area: s; }
+      #h { grid-area: h; }
+      #abs { position: absolute; left: 5px; top: 5px; width: 10px; height: 10px; }
+      #span { display: grid; width: 200px; grid-template-columns: repeat(4, 50px);
+              grid-template-rows: repeat(3, 50px); }
+      #big { grid-column: 2 / span 2; grid-row: 1 / 3; }
+      #f { grid-column: 3; }
+      #clamp { display: grid; width: 100px; grid-template-columns: 50px 50px; grid-template-rows: 20px; }
+      #k { grid-column: 5; }
+      #k2 { height: 10px; }
+    </style>
+  </head>
+  <body>
+    <div id="areas"><div id="m"></div><div id="s"></div><div id="h"></div><div id="abs"></div></div>
+    <div id="span">
+      <div id="big"></div><div id="a"></div><div id="b"></div><div id="c"></div><div id="d"></div>
+      <div id="e"></div><div id="f"></div>
+    </div>
+    <div id="clamp"><div id="k"></div><div id="k2"></div></div>
+  </body>
+</xt>

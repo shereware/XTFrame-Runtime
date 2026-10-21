@@ -1,0 +1,4 @@
+# T-177: five entries, then index 1 removed; the fixture time samples item-out half way (the
+# exiting row keeps its place until `then remove`).
+port items [{"color":"#e74c3c","w":200},{"color":"#e67e22","w":160},{"color":"#f1c40f","w":120},{"color":"#2ecc71","w":180},{"color":"#3498db","w":140}]
+listremove items 1

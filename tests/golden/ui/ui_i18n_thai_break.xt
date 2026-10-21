@@ -1,0 +1,17 @@
+<xt>
+  <head>
+    <style>
+      @font-face { font-family: "Noto Sans Thai"; src: "../../fonts/NotoSansThai-Regular.subset.ttf"; }
+      #a {
+        margin: 16px;
+        width: 120px;
+        font-family: "Noto Sans Thai";
+        font-size: 20px;
+        color: #202020;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="a" lang="th">ประเทศไทยมีวัฒนธรรมที่งดงาม</div>
+  </body>
+</xt>

@@ -1,0 +1,9 @@
+id: 13752c67-11a6-4a27-8220-9f9f86cf5a60
+kind: reference
+title: tab-hl-2
+source:
+  kind: ai:service
+  ref: tab-hl-2.png
+tags: [asset, texture]
+license: own
+content: sha256:4f54abd5b5572fba2611cd3396cb85bab7ced59a165179aa56d6fa30d63719ec

@@ -1,0 +1,85 @@
+<xt>
+  <head>
+    <link href="../shared/base.xts"/>
+    <link href="hud.xts"/>
+    <title>XTFrame HUD demo</title>
+  </head>
+  <body>
+    <div id="root">
+      <div id="stageL" class="stage">
+        <div id="player" class="panel">
+          <div class="label">
+  OPERATIVE
+</div>
+          <div id="name" class="title">
+  K. Vance
+</div>
+          <div id="hpBar" class="bar">
+            <div id="hpFill" class="fill"/>
+          </div>
+          <div id="hpRow" class="row">
+            <span class="label">
+  HP
+</span>
+            <span id="hpText" class="value">
+  100
+</span>
+            <button id="heal" class="chip">
+  HEAL
+</button>
+            <anim id="alert" class="hidden" src="../shared/anim/alert.json" autoplay="false"/>
+          </div>
+        </div>
+      </div>
+      <div id="stageR" class="stage">
+        <div id="ammoPanel" class="panel">
+          <div class="label">
+  AMMO
+</div>
+          <div id="ammoRow" class="row">
+            <span id="ammo" class="big">
+  30
+</span>
+            <span class="dim">
+  / 90
+</span>
+          </div>
+          <div id="ammoButtons" class="row">
+            <button id="fire" class="btn primary">
+  FIRE
+</button>
+            <button id="reload" class="btn">
+  RELOAD
+</button>
+          </div>
+        </div>
+      </div>
+      <div id="skills">
+          <button id="skill1" class="skill ready">
+  Q
+</button>
+          <button id="skill2" class="skill">
+  E
+</button>
+          <button id="skill3" class="skill">
+  R
+</button>
+        </div>
+      <div id="card">
+        <div class="label">
+  OBJECTIVE
+</div>
+        <div class="title">
+  Secure the relay
+</div>
+        <div class="dim">
+  click to flip
+</div>
+      </div>
+      <anim id="radar" src="../shared/anim/radar.json" loop="true"/>
+      <div id="clock" class="dim">
+  0.0
+</div>
+    </div>
+  </body>
+</xt>

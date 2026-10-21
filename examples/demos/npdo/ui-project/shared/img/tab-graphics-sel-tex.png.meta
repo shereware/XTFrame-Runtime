@@ -1,0 +1,12 @@
+id: 5baedbd9-54f0-4d71-8230-1be0f234e0a9
+type: image
+title: tab-graphics-sel-tex
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/tab-hl-2.png
+content: sha256:4f54abd5b5572fba2611cd3396cb85bab7ced59a165179aa56d6fa30d63719ec
+measured:
+  w: 372
+  h: 88
+  alpha: true

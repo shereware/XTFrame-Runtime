@@ -1,0 +1,200 @@
+# UI golden fixture manifest (docs/tasks/T-27.md). One fixture per line:
+#   <name> <xt relative path> <width> <height> <time seconds> [clearColor hex, default ffffff]
+#     [events script, *.events, optional]
+ui_box_bg box_bg.xt 256 256 0 ffffff
+ui_border_radius border_radius.xt 256 256 0 ffffff
+ui_radius_clamp radius_clamp.xt 256 256 0 ffffff
+ui_overflow_hidden overflow_hidden.xt 256 256 0 ffffff
+ui_zindex zindex.xt 256 256 0 ffffff
+ui_opacity_group opacity_group.xt 256 256 0 ffffff
+ui_img_fit img_fit.xt 256 256 0 ffffff
+ui_anim_in_box anim_in_box.xt 256 256 0 ffffff
+ui_visibility visibility.xt 256 256 0 ffffff
+ui_transform transform.xt 256 256 0 ffffff
+ui_absolute_nested absolute_nested.xt 256 256 0 ffffff
+# T-30 text fixtures (docs/tasks/T-30.md "黃金圖"). Only run when xt_text is built (see
+# golden_ui.cpp); they use the OFL font subsets in tests/fonts via <style> @font-face.
+ui_text_wrap ui_text_wrap.xt 256 256 0 ffffff
+ui_text_cjk ui_text_cjk.xt 256 256 0 ffffff
+ui_text_rtl ui_text_rtl.xt 256 256 0 ffffff
+ui_text_bidi ui_text_bidi.xt 256 256 0 ffffff
+ui_text_vertical ui_text_vertical.xt 256 256 0 ffffff
+ui_text_ellipsis ui_text_ellipsis.xt 256 256 0 ffffff
+ui_text_align ui_text_align.xt 256 256 0 ffffff
+# T-30b multilingual text fixtures (docs/tasks/T-30b.md "Fixture" table): 256x192 canvas.
+ui_i18n_fallback ui_i18n_fallback.xt 256 192 0 ffffff
+ui_i18n_arabic_shaping ui_i18n_arabic_shaping.xt 256 192 0 ffffff
+ui_i18n_hebrew_rtl ui_i18n_hebrew_rtl.xt 256 192 0 ffffff
+ui_i18n_bidi_nested ui_i18n_bidi_nested.xt 256 192 0 ffffff
+ui_i18n_thai_break ui_i18n_thai_break.xt 256 192 0 ffffff
+ui_i18n_cjk_mixed_wrap ui_i18n_cjk_mixed_wrap.xt 256 192 0 ffffff
+ui_i18n_emoji ui_i18n_emoji.xt 256 192 0 ffffff
+ui_i18n_vertical_mixed ui_i18n_vertical_mixed.xt 256 192 0 ffffff
+ui_i18n_vertical_upright ui_i18n_vertical_upright.xt 256 192 0 ffffff
+ui_i18n_ellipsis_rtl ui_i18n_ellipsis_rtl.xt 256 192 0 ffffff
+ui_i18n_combining ui_i18n_combining.xt 256 192 0 ffffff
+ui_i18n_letter_spacing ui_i18n_letter_spacing.xt 256 192 0 ffffff
+# T-33b IME fixture: the optional 7th column names an event script (docs/tasks/T-33b.md
+# 「事件腳本文法」). Needs xt_text, like the ui_text_* entries above.
+ui_ime_composing ui_ime_composing.xt 256 128 0 ffffff ui_ime_composing.events
+# T-36 UI golden fixtures (docs/tasks/T-36.md "Fixture 表"): flex layout, transition/animation
+# mid-state, widget states, scroll and event-script-driven state pseudo-classes.
+ui_flex_row ui_flex_row.xt 256 256 0 ffffff
+ui_flex_column_wrap ui_flex_column_wrap.xt 256 256 0 ffffff
+ui_flex_grow_shrink ui_flex_grow_shrink.xt 256 256 0 ffffff
+ui_flex_justify_align ui_flex_justify_align.xt 256 256 0 ffffff
+ui_flex_text_items ui_flex_text_items.xt 256 256 0 ffffff
+ui_percent_boxes ui_percent_boxes.xt 256 256 0 ffffff
+ui_display_none_reflow ui_display_none_reflow.xt 256 256 0 ffffff
+ui_css_animation_mid ui_css_animation_mid.xt 256 256 0.5 ffffff
+ui_transition_hover ui_transition_hover.xt 256 256 0.2 ffffff ui_transition_hover.events
+ui_button_states ui_button_states.xt 256 256 0 ffffff ui_button_states.events
+ui_checkbox_toggle ui_checkbox_toggle.xt 256 256 0 ffffff ui_checkbox_toggle.events
+ui_input_caret_selection ui_input_caret_selection.xt 256 256 0 ffffff ui_input_caret_selection.events
+# T-395 (08 §8.16): an empty input draws its placeholder at 50 % of `color`; a filled one does not.
+ui_text_input_placeholder ui_text_input_placeholder.xt 256 256 0 ffffff
+ui_scroll_wheel ui_scroll_wheel.xt 256 256 0 ffffff ui_scroll_wheel.events
+ui_focus_ring ui_focus_ring.xt 256 256 0 ffffff ui_focus_ring.events
+# T-325 (05 §5.9.8): an `outline` focus ring (SW here; xt_gl_tests compares GL to the same image).
+ui_outline_focus ui_outline_focus.xt 256 256 0 ffffff ui_outline_focus.events
+# T-324 (05 §5.9.8): text-decoration lines and a run override (needs xt_text, @font-face; xt_gl_tests
+# compares GL to the same image).
+ui_text_decoration ui_text_decoration.xt 256 256 0 ffffff
+# T-331 (05 §5.9.8): line-clamp 1 / 2 / 3 with the ellipsis, and font-variant-numeric figures
+# (needs xt_text, @font-face).
+ui_line_clamp ui_line_clamp.xt 256 256 0 ffffff
+# T-326 (18 §18.12): every mix-blend-mode value, one 64 px cell each (4 x 5 grid, 17 used).
+ui_blend_modes ui_blend_modes.xt 256 320 0 ffffff
+# T-327 (05 §5.9.8): background-size cover / contain, repeat, position and a rounded clip
+# (xt_gl_tests compares GL to the same image).
+ui_background_image ui_background_image.xt 256 256 0 ffffff
+ui_clip_path ui_clip_path.xt 256 256 0 ffffff
+ui_grid_inventory ui_grid_inventory.xt 256 256 0 161922
+# T-333 (05 §5.9.8): four border colors, dashed, dotted and a rounded dashed border (xt_gl_tests
+# compares GL to the same image).
+ui_border_styles ui_border_styles.xt 256 256 0 ffffff
+ui_anim_scene_time ui_anim_scene_time.xt 256 256 0.5 ffffff
+# T-48 3D golden fixtures (docs/tasks/T-48.md "黃金圖"; docs/design/19-3d-space.md §19.10's row 15).
+# ui_3d_text_perspective needs xt_text (@font-face), like the ui_text_* entries above.
+ui_3d_card_flip ui_3d_card_flip.xt 256 256 0 ffffff
+ui_3d_text_perspective ui_3d_text_perspective.xt 256 256 0 ffffff
+ui_3d_sort_two_layers ui_3d_sort_two_layers.xt 256 256 0 ffffff
+ui_3d_backface_hidden ui_3d_backface_hidden.xt 256 256 0 ffffff
+ui_3d_camera_tag ui_3d_camera_tag.xt 256 256 0 ffffff
+ui_3d_image_quad ui_3d_image_quad.xt 256 256 0 ffffff
+# T-55 effect golden fixtures (docs/tasks/T-55.md "黃金圖"; docs/design/18-effects.md §18.10's
+# row 15). ui_fx_glow/ui_fx_outline need xt_text (@font-face), like the ui_text_*/ui_3d_text_*
+# entries above.
+ui_fx_shadow ui_fx_shadow.xt 256 256 0 ffffff
+ui_fx_glow ui_fx_glow.xt 256 256 0 ffffff
+ui_fx_blur ui_fx_blur.xt 256 256 0 ffffff
+ui_fx_color_adjust ui_fx_color_adjust.xt 256 256 0 ffffff
+# T-334 (05 §5.9.8): color-adjust invert()/sepia(), ColorAdjust slots 5/6; GL compared in tests/gl.
+fx_invert_sepia fx_invert_sepia.xt 256 256 0 ffffff
+ui_fx_gradient_mask ui_fx_gradient_mask.xt 256 256 0 ffffff
+ui_fx_shine ui_fx_shine.xt 256 256 0.5 ffffff
+ui_fx_outline ui_fx_outline.xt 256 256 0 ffffff
+ui_fx_shadow_anim ui_fx_shadow_anim.xt 256 256 0.5 ffffff
+# T-111 inset shadow (docs/design/18-effects.md 18.3's DropShadow `inset`).
+ui_fx_shadow_inset ui_fx_shadow_inset.xt 256 256 0 ffffff
+# T-130 backdrop-blur (docs/design/18-effects.md §18.3's kind 8): a colour grid with a
+# half-transparent rounded panel straddling its right edge.
+ui_fx_backdrop ui_fx_backdrop.xt 256 256 0 ffffff
+# T-172 @timeline (docs/design/28-animation-editing.md §28.1): one intro timeline played by the
+# event script, captured at three time points.
+ui_timeline_intro_020 ui_timeline_intro.xt 256 256 0.2 ffffff ui_timeline_intro.events
+ui_timeline_intro_050 ui_timeline_intro.xt 256 256 0.5 ffffff ui_timeline_intro.events
+ui_timeline_intro_080 ui_timeline_intro.xt 256 256 0.8 ffffff ui_timeline_intro.events
+ui_fx_stack ui_fx_stack.xt 256 256 0 ffffff
+ui_fx_3d ui_fx_3d.xt 256 256 0 ffffff
+# T-110 SVG static vector import (docs/tasks/T-110.md "黃金圖").
+ui_svg_basic ui_svg_basic.xt 256 256 0 ffffff
+ui_svg_unsupported ui_svg_unsupported.xt 256 256 0 ffffff
+# T-218: vector properties in the cascade -- token fill, :hover recolour of an inline <svg> icon.
+ui_svg_hover ui_svg_hover.xt 256 256 0 ffffff ui_svg_hover.events
+# T-225b (31 §31.6.1, §31.5.3): runtime shape modifiers in an inline <svg> (the timeline animates
+# trim-end and copies; sampled at 0.5 s), and clipPath / mask references.
+ui_svg_modifiers ui_svg_modifiers.xt 256 256 0.5 ffffff ui_svg_modifiers.events
+ui_svg_clip_mask ui_svg_clip_mask.xt 256 256 0 ffffff
+# T-115 background-gradient (docs/design/05-style-and-css.md §5.5c): linear 0deg / linear 45deg
+# with three positioned stops / centered radial / off-center radial with border-radius.
+ui_bg_gradient ui_bg_gradient.xt 256 256 0 ffffff
+# T-119 R1 `opacity: 0` (docs/tasks/T-119.md item 1): five boxes at 0 / 0.0 / 0.01 / 0.5 / 1.
+ui_opacity_zero opacity_zero.xt 256 256 0 ffffff
+# T-120 arbitrary transform order (docs/design/05-style-and-css.md 5.5): the same two
+# functions written both ways round, inside one perspective container.
+ui_transform_order ui_transform_order.xt 256 256 0 ffffff
+# T-160 bench fixes: 8-digit hex gradient stops, flat and on a 3D panel (BUG-5); a gradient-only
+# line with a shadow moved only by a translateY animation, at t = 0.5 s (BUG-6).
+ui_bg_gradient_8digit ui_bg_gradient_8digit.xt 256 256 0 ffffff
+ui_anim_transform_sweep ui_anim_transform_sweep.xt 256 256 0.5 ffffff
+# T-171 symbols: one Button symbol, three instances (default, prop: override, variant + slot).
+ui_symbol_button ui_symbol_button.xt 256 256 0 ffffff
+# T-170: native var() tokens -- the base values, then setTheme() once ("dark") and twice ("dark"
+# then "alt"); each theme file overrides two tokens and nothing is recompiled.
+ui_tokens_base ui_tokens.xt 256 256 0 ffffff
+ui_tokens_theme_dark ui_tokens.xt 256 256 0 ffffff ui_tokens_dark.events
+ui_tokens_theme_alt ui_tokens.xt 256 256 0 ffffff ui_tokens_alt.events
+# T-173 selector fixture (docs/tasks/T-173.md): :nth-child(even) stripes + :focus-within.
+ui_selectors_stripes_focus ui_selectors_stripes_focus.xt 256 256 0 ffffff ui_selectors_stripes_focus.events
+# T-176: the same HUD at 16:9 and 21:9 -- health bar anchored to the safe area, background
+# covering (bleeding past) it, the side panel only at 21:9 via @media (aspect-ratio >= 21/9).
+ui_adaptive_16x9 ui_adaptive_hud.xt 320 180 0 000000 ui_adaptive.events
+ui_adaptive_21x9 ui_adaptive_hud.xt 420 180 0 000000 ui_adaptive.events
+# T-345 (05 §5.9.9): three 40px boxes under uiscale 1.5 -- ui-scale auto (60px), none (40px) and
+# clamp(0.5, 1.25) (50px), each with a 1px border and a 10px inset child.
+ui_responsive_switches ui_responsive_switches.xt 256 128 0 ffffff ui_responsive_switches.events
+# T-174 triggers: on:hover plays a timeline (half way, end); :state() styles with a state group,
+# an .xts state-enter and a click-driven state toggle.
+ui_trigger_hover_020 ui_trigger_hover.xt 256 256 0.2 ffffff ui_trigger_hover.events
+ui_trigger_hover_040 ui_trigger_hover.xt 256 256 0.4 ffffff ui_trigger_hover.events
+ui_state_low ui_state_low.xt 256 256 0 ffffff ui_state_low.events
+# T-179: the same screen in English and Traditional Chinese -- @key text resolved through the
+# harness table, :lang(zh) recolouring the title, CJK glyphs from the @font-fallback zh-TW chain.
+ui_text_l10n_en ui_l10n.xt 256 128 0 ffffff ui_l10n_en.events
+ui_text_l10n_zh ui_l10n.xt 256 128 0 ffffff ui_l10n_zh.events
+# T-178 rich text (docs/design/07-text.md 7.8): runs, text-effect, <glyph> (one resolved through the
+# event script, one drawn as [fire]), <img inline>, text-reveal 0.5. Needs xt_text.
+ui_text_rich ui_text_rich.xt 256 256 0 ffffff ui_text_rich.events
+# T-175 bindings: a health bar bound with range() and a `{0} of {1}` format text, at hp 72/100 and
+# after `port hp 30` (the bar also turns :state(Low) via lt(40%)).
+ui_text_bind_hp_72 ui_text_bind_hp.xt 256 128 0 ffffff ui_text_bind_hp_72.events
+ui_text_bind_hp_30 ui_text_bind_hp.xt 256 128 0 ffffff ui_text_bind_hp_30.events
+# T-177 <repeat>: five rows from a list<struct> port; one inserted (item-in half way); one removed
+# (item-out half way, still in place until `then remove`).
+ui_repeat_list ui_repeat.xt 256 256 0 ffffff ui_repeat_list.events
+ui_repeat_insert ui_repeat.xt 256 256 0.2 ffffff ui_repeat_insert.events
+ui_repeat_remove ui_repeat.xt 256 256 0.2 ffffff ui_repeat_remove.events
+# T-191 external content: an image sequence (folder, 4 fps) and an atlas sequence at 0 s and 0.6 s;
+# an unbound <video> and engine:// texture drawn as placeholders (label needs xt_text).
+ui_media_sequence_000 ui_media_sequence.xt 256 80 0 ffffff
+ui_media_sequence_060 ui_media_sequence.xt 256 80 0.6 ffffff
+ui_text_media_placeholder ui_media_placeholder.xt 256 256 0.1 ffffff ui_media_placeholder.events
+# T-190: Lottie files imported natively by `xtframe-import lottie` (the generated .xt/.xts/.xtanim.json
+# and symbol library are checked in): a precomp symbol placed by clip-start under a parent, and a
+# trim-path stroke driven by a path-trim track. Must match the lottie_* goldens of the same files.
+ui_lottie_native_precomp lottie_native_precomp/precomp_parent.xt 256 256 1.0 000000 lottie_native.events
+ui_lottie_native_trim lottie_native_trim/trim.xt 256 256 0.5 000000 lottie_native.events
+# T-194: a `layer: overlay` child escapes its overflow-hidden parent and paints above a later
+# sibling; two local players' focus rings after d-pad navigation (`:focus-player(n)`).
+ui_overlay_escape ui_overlay_escape.xt 256 256 0 ffffff
+# T-199 (26.3.4): `border-image` nine-slice -- stretch, repeat + fill, round with border widths,
+# percentage slices; nine.png is a 24 x 24 image with distinct corner / edge / centre colours.
+ui_border_image ui_border_image.xt 256 160 0 ffffff
+ui_focus_two_players ui_focus_two_players.xt 256 160 0 ffffff ui_focus_two_players.events
+# T-203 (docs/design/18-effects.md §18.7): `.xtfx` custom effects. `gl-only`: xt_golden (SW) skips
+# them, xt_gl_tests renders them through xt::gl and compares with the expected image.
+ui_fx_custom ui_fx_custom.xt 256 256 0.5 ffffff gl-only
+# T-202 (03 §3.12.5): `<particles>` at a fixed 0.5 s -- rect/edge/circle/point emitters, additive
+# solid sparks, textured (checker.png) snow, a 4-stop color ramp and a burst capped by `max`.
+ui_particles ui_particles.xt 256 256 0.5 ffffff
+# T-211 (05 tail ruling): `translate` percentages against the element's own border box -- centred
+# with translate(-50%, -50%) on the guide, translateX(100%), mixed % / px, and a % keyframe
+# animation half way (0.5 s = translateX(200%)).
+ui_translate_percent ui_translate_percent.xt 256 256 0.5 ffffff
+# T-244 (32 §32.3): a two-bone skeleton with a skinned box and an IK target the timeline moves,
+# sampled at three times.
+scene_rig_basic_0 scene_rig_basic.xt 256 256 0 ffffff scene_rig_basic.events
+scene_rig_basic_1 scene_rig_basic.xt 256 256 0.4 ffffff scene_rig_basic.events
+scene_rig_basic_2 scene_rig_basic.xt 256 256 0.8 ffffff scene_rig_basic.events
+scene_rig_own_transform scene_rig_own_transform.xt 256 256 0 ffffff

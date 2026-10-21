@@ -1,0 +1,12 @@
+id: 028e4a54-528d-4176-b9d7-74c37f951c66
+type: image
+title: fx-light
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/b001fc81890bead32e7cf9ef8d1b22b4
+content: sha256:3685746881b4bea1701ef342e5e545dad51dfcd4c61188cdbf7355fc7db06729
+measured:
+  w: 1280
+  h: 720
+  alpha: true

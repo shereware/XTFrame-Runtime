@@ -1,0 +1,12 @@
+id: 9a21d3c3-e60f-4019-83a0-423874412d34
+type: image
+title: menu-lamp
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/menu-lamp.png
+content: sha256:542319dcce2f096201099f6a38759daa7fe59cffce45a4417d13351c7ae262dd
+measured:
+  w: 320
+  h: 320
+  alpha: true

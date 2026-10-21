@@ -1,0 +1,105 @@
+/* Shared theme for the game-ui UI Project: palette, type scale, panel and button base.
+   Listed in the .xtui as shared.styles, so xtframe-pack loads it before every UI's own
+   stylesheet. Each .xt also <link>s it explicitly so a single document still looks right when it
+   is opened on its own with xtframe-view or xtframe-editor. Loading it twice is harmless: the rules
+   are identical, so the cascade result is the same. */
+
+body {
+  height: 100vh;
+  width: 100vw;
+}
+
+#root {
+  background-color: #0b0f17;
+  color: #e6edf3;
+  font-family: "Segoe UI", "Noto Sans", "Helvetica", "DejaVu Sans";
+  font-size: 16px;
+  height: 100vh;
+  overflow: hidden;
+  position: relative;
+  width: 100vw;
+}
+
+.panel {
+  background-color: #161b22e6;
+  border: 1px #30363d;
+  border-radius: 12px;
+  effect: shadow(0 10px 28px 0 #000000 0.55);
+  padding: 16px 20px 18px 20px;
+  position: absolute;
+}
+
+.label {
+  color: #8b949e;
+  font-size: 12px;
+  letter-spacing: 2px;
+}
+
+.title {
+  font-size: 22px;
+  margin: 2px 0px 12px 0px;
+}
+
+.dim {
+  color: #8b949e;
+  font-size: 14px;
+}
+
+.row {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.btn {
+  background-color: #21262d;
+  border: 1px #30363d;
+  border-radius: 8px;
+  color: #e6edf3;
+  font-size: 14px;
+  height: 36px;
+  letter-spacing: 1px;
+  line-height: 36px;
+  padding: 0px 18px 0px 18px;
+  text-align: center;
+  transition: background-color 120ms;
+}
+
+.btn:hover {
+  background-color: #30363d;
+}
+
+.btn:active {
+  background-color: #484f58;
+}
+
+.primary {
+  background-color: #1f6feb;
+  border: 1px #388bfd;
+}
+
+.primary:hover {
+  background-color: #388bfd;
+}
+
+.primary:active {
+  background-color: #1158c7;
+}
+
+.chip {
+  background-color: #238636;
+  border-radius: 12px;
+  color: #ffffff;
+  font-size: 12px;
+  height: 24px;
+  letter-spacing: 1px;
+  line-height: 24px;
+  padding: 0px 10px 0px 10px;
+  text-align: center;
+  transition: background-color 120ms;
+}
+
+.chip:hover {
+  background-color: #2ea043;
+}

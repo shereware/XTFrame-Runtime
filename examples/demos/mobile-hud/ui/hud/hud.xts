@@ -1,0 +1,115 @@
+/* Mobile HUD demo layout: portrait, 1080 px wide at uiscale 1 (spec.uiscaleRule shortEdge).
+   Colors and sizes come from the standard tokens only; the bars and buttons keep clear of the
+   safe area through the `safe-*` units. */
+
+body {
+  width: 100vw;
+  height: 100vh;
+  background-color: var(--color-bg);
+  font-family: var(--font-family);
+}
+
+#Screen {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+}
+
+#TopSlot {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 100vw;
+  display: flex;
+}
+
+#Pause {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  column-gap: 6px;
+  width: var(--touch-min);
+  height: var(--touch-min);
+  border-radius: var(--radius-m);
+  background-color: var(--color-surface-raised);
+}
+
+#Pause:active { background-color: var(--color-accent-pressed); }
+
+#PauseBarA, #PauseBarB {
+  width: 6px;
+  height: 18px;
+  border-radius: var(--radius-s);
+  background-color: var(--color-text);
+}
+
+#MapSlot {
+  position: absolute;
+  right: calc(1safe-right + 24px);
+  top: calc(1safe-top + 96px);
+  width: 240px;
+  height: 240px;
+  border-width: var(--focus-w);
+  border-color: var(--color-border-strong);
+  border-radius: var(--radius-l);
+  background-color: var(--color-surface-sunken);
+  overflow: hidden;
+}
+
+#Minimap { width: 240px; height: 240px; }
+
+#StickSlot {
+  position: absolute;
+  left: calc(1safe-left + 64px);
+  bottom: calc(1safe-bottom + 96px);
+}
+
+#Actions {
+  position: absolute;
+  right: calc(1safe-right + 48px);
+  bottom: calc(1safe-bottom + 96px);
+  display: flex;
+  align-items: flex-end;
+  column-gap: var(--space-6);
+}
+
+.action {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 112px;
+  height: 112px;
+}
+
+#AttackSlot { margin-bottom: 72px; }
+
+.ring {
+  position: absolute;
+  left: 4px;  /* centred in the 112px .action slot */
+  top: 4px;
+  width: 104px;
+  height: 104px;
+  border-width: 4px;
+  border-color: var(--color-accent);
+  border-radius: var(--radius-full);
+  opacity: 0;
+}
+
+@timeline intro {
+  #TopSlot { 0s { opacity: 0; transform: translateY(-40px) } 0.3s ease-out { opacity: 1; transform: translateY(0px) } }
+  #MapSlot { 0.1s { opacity: 0; transform: scale(0.9) } 0.4s ease-out { opacity: 1; transform: scale(1) } }
+  #StickSlot { 0.15s { opacity: 0; transform: translateX(-60px) } 0.45s ease-out { opacity: 1; transform: translateX(0px) } }
+  #Actions { 0.15s { opacity: 0; transform: translateX(60px) } 0.45s ease-out { opacity: 1; transform: translateX(0px) } }
+}
+
+@timeline attack-cooldown {
+  #AttackRing { 0s { opacity: 1; transform: scale(1) } 0.5s ease-out { opacity: 0; transform: scale(1.25) } }
+}
+
+@timeline jump-cooldown {
+  #JumpRing { 0s { opacity: 1; transform: scale(1) } 0.5s ease-out { opacity: 0; transform: scale(1.25) } }
+}
+
+/* Instances size through their internal path ids (editor/symbols/README.md "Layout"). */
+#Top/Box { width: 100vw; }

@@ -1,0 +1,9 @@
+id: ed75d1a0-828c-4bfc-a4aa-c245fe6c8989
+kind: reference
+title: tab-hl-4
+source:
+  kind: ai:service
+  ref: tab-hl-4.png
+tags: [asset, texture]
+license: own
+content: sha256:33501ebae122ac87d57d1adaba4885e68257ffbcb64c7ac80a348b6346d85e3e

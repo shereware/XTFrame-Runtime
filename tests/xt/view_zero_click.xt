@@ -1,0 +1,16 @@
+<xt>
+  <head>
+    <!-- T-359: `--event "#zero.Click"` on an element with no hit area fires its triggers directly. -->
+    <style>
+      body { display: flex; flex-direction: column; }
+      #zero { width: 0px; height: 0px; }
+      #label { width: 100px; height: 24px; }
+    </style>
+  </head>
+  <body>
+    <div id="box" port:count="number in">
+      <div id="zero" on:click="set(count, 7)"></div>
+      <span id="label" bind:text="count"></span>
+    </div>
+  </body>
+</xt>

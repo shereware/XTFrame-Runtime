@@ -1,0 +1,24 @@
+{
+  "diagnostics": [],
+  "highCount": 1,
+  "lowCount": 0,
+  "mediumCount": 0,
+  "mode": "native",
+  "nodeCount": 1,
+  "nodes": [
+    {
+      "fidelity": "high",
+      "out": "TrimLayer",
+      "source": "\"TrimLayer\" (ind 0)",
+      "warnings": []
+    }
+  ],
+  "notNative": [],
+  "source": "trim.json",
+  "timeline": {
+    "duration": 2.0,
+    "markers": 0,
+    "name": "main",
+    "tracks": 1
+  }
+}

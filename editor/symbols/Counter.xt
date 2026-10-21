@@ -1,0 +1,33 @@
+<xt>
+  <head>
+    <!-- Counter: standard symbol (docs/design/30-ui-project.md 30.4). See README.md. -->
+    <symbol name="Counter" requires="slots: label, icon">
+      <div id="Box" port:value="number in" port:gain="event in" on:port(gain)="play(hit)">
+        <div id="Icon"><slot name="icon"><div id="IconDot"></div></slot></div>
+        <div id="Copy">
+          <span id="Label"><slot name="label">Gold</slot></span>
+          <span id="Value" bind:text="value | tween(0.4s, ease-out) | round | thousands"></span>
+        </div>
+      </div>
+    </symbol>
+    <style>
+      symbol(Counter) {
+        #Box {
+          display: flex;
+          align-items: center;
+          column-gap: var(--space-2);
+          font-family: var(--font-family);
+          color: var(--color-text);
+        }
+        #Icon { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; }
+        #IconDot { width: 18px; height: 18px; border-radius: var(--radius-full); background-color: var(--color-warning); }
+        #Copy { display: flex; flex-direction: column; }
+        #Label { color: var(--color-text-dim); font-size: var(--font-size-xs); letter-spacing: 1px; }
+        #Value { font-size: var(--font-size-l); font-weight: 700; }
+        @timeline hit {
+          #Value { 0s { transform: scale(1.15) } 0.2s ease-out { transform: scale(1) } }
+        }
+      }
+    </style>
+  </head>
+</xt>

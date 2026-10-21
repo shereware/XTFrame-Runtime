@@ -1,0 +1,4 @@
+# T-198: HealthBar, state 'normal'.
+port Hp.hp_max 100
+port Hp.hp 72
+update 0.6

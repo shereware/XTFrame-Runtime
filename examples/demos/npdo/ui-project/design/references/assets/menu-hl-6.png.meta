@@ -1,0 +1,9 @@
+id: 5b330c4d-f220-4dde-8c79-edeb980d9ec8
+kind: reference
+title: menu-hl-6
+source:
+  kind: ai:service
+  ref: menu-hl-6.png
+tags: [asset, texture]
+license: own
+content: sha256:320a4ee47ed116f57a03cc3034dc30ac97258891276aa8730fbbff7770dc36b5

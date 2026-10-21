@@ -1,0 +1,13 @@
+<xt>
+  <head>
+    <style>
+      div { height: 20px; }
+      #b { position: relative; left: 10px; top: 5px; }
+    </style>
+  </head>
+  <body>
+    <div id="a"></div>
+    <div id="b"></div>
+    <div id="c"></div>
+  </body>
+</xt>

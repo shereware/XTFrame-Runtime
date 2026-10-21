@@ -1,0 +1,76 @@
+/* Main menu layout: conventions/layouts/main-menu.xt's anchors. Colors come from tokens only. */
+
+body {
+  width: 100vw;
+  height: 100vh;
+  background-color: var(--color-bg);
+  font-family: var(--font-family);
+}
+
+#Screen {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#Left {
+  position: absolute;
+  left: calc(1safe-left + 64px);
+  top: calc(1safe-top + 102px);
+  display: flex;
+  flex-direction: column;
+  row-gap: var(--space-2);
+}
+
+#Title {
+  color: var(--color-text);
+  font-size: 44px;
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+
+#Subtitle {
+  margin-bottom: var(--space-6);
+  color: var(--color-text-dim);
+  font-size: var(--font-size-m);
+}
+
+#List {
+  display: flex;
+  flex-direction: column;
+  row-gap: var(--space-3);
+}
+
+#TopRight {
+  position: absolute;
+  right: var(--safe-x);
+  top: var(--safe-y);
+  display: flex;
+  justify-content: flex-end;
+}
+
+#Version {
+  position: absolute;
+  left: var(--safe-x);
+  bottom: var(--safe-y);
+  color: var(--color-text-dim);
+  font-size: var(--font-size-xs);
+}
+
+#Hints {
+  position: absolute;
+  right: var(--safe-x);
+  bottom: var(--safe-y);
+  display: flex;
+  justify-content: flex-end;
+  column-gap: var(--space-6);
+}
+
+/* The quit confirmation starts hidden; the host removes `closed` to open it. */
+.closed { visibility: hidden; }
+
+@timeline intro {
+  #Left { 0s { opacity: 0; transform: translateX(-24px) } 0.3s ease-out { opacity: 1; transform: translateX(0px) } }
+  #Hints { 0s { opacity: 0 } 0.2s { opacity: 0 } 0.4s linear { opacity: 1 } }
+}

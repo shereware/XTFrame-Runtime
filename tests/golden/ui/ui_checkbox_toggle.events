@@ -1,0 +1,2 @@
+# docs/tasks/T-36.md: click #chk2's center to toggle it checked (its :checked style is green).
+click 40 100

@@ -1,0 +1,28 @@
+<xt>
+  <head>
+    <style>
+      /* T-327 (05 §5.9.8): background-size / background-position / background-repeat, the rounded
+         padding-box clip and image-rendering. */
+      div { position: absolute; background-color: #dddddd; }
+      #cover { left: 8px; top: 8px; width: 112px; height: 64px; background-image: url(nine.png);
+               background-size: cover; background-position: center; background-repeat: no-repeat; }
+      #contain { left: 136px; top: 8px; width: 112px; height: 64px; background-image: url(nine.png);
+                 background-size: contain; background-position: right center; background-repeat: no-repeat; }
+      #repeat { left: 8px; top: 88px; width: 112px; height: 64px; background-image: url(checker.png);
+                background-size: 16px 16px; background-position: 4px 6px; background-repeat: repeat;
+                image-rendering: pixelated; }
+      #position { left: 136px; top: 88px; width: 112px; height: 64px; background-image: url(nine.png);
+                  background-size: 32px auto; background-position: 75% 25%; background-repeat: no-repeat; }
+      #rounded { left: 8px; top: 168px; width: 240px; height: 80px; border-radius: 24px;
+                 background-image: url(checker.png); background-size: 40px 80px; background-position: 0 50%;
+                 background-repeat: repeat-x; image-rendering: pixelated; }
+    </style>
+  </head>
+  <body>
+    <div id="cover"></div>
+    <div id="contain"></div>
+    <div id="repeat"></div>
+    <div id="position"></div>
+    <div id="rounded"></div>
+  </body>
+</xt>

@@ -1,0 +1,12 @@
+id: 6a36f4b6-a322-4170-bdb6-6af9b24a6fd6
+type: image
+title: menu-hl-1
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/menu-hl-1.png
+content: sha256:49d75a37ed432f19dcbb8c6ce4dd7b4fdf3a0b17a7bbcb6220361e5c583c4c25
+measured:
+  w: 600
+  h: 84
+  alpha: true

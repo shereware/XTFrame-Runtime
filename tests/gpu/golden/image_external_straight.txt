@@ -1,0 +1,3 @@
+target 512x512 vertices=8 indices=12 cmds=1 passes=1 params=0
+pass 0: target=0 clear=0 copy=0 from=0 view=(0,0,512,512) cmds=1
+  0 TextureStraight SrcOver TestEqualRef ref=0 tex=yes src=0 aux=0 linear idx=12 verts=8 clip=(0,0,512,512)

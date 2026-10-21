@@ -1,0 +1,4 @@
+# T-198: Notification, state 'warning'.
+port Note.tone 0
+update 0.6
+port Note.tone 1

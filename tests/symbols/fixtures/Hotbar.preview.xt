@@ -1,0 +1,23 @@
+<xt>
+  <head>
+    <!-- T-198: preview of the Hotbar standard symbol (golden states and thumbnail). -->
+    <link href="../../../editor/symbols/tokens.xts"/>
+    <link rel="symbols" href="../../../editor/symbols/Hotbar.xt"/>
+    <style>
+      @font-face { font-family: "Noto Sans"; src: "../../fonts/NotoSans-Regular.subset.ttf"; }
+      body {
+        width: 360px;
+        height: 90px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        row-gap: 12px;
+        background-color: var(--color-bg);
+      }
+    </style>
+  </head>
+  <body>
+    <use symbol="Hotbar" id="Bar"/>
+  </body>
+</xt>

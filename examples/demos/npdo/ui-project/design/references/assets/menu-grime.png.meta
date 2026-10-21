@@ -1,0 +1,9 @@
+id: 296d90fe-03dd-45e2-943b-a7bedab2b42d
+kind: reference
+title: menu-grime
+source:
+  kind: ai:service
+  ref: menu-grime.png
+tags: [asset, texture]
+license: own
+content: sha256:ea631edf68173d04b545fe6cb76e238b9c55e368946897042f1163de54c2f2ce

@@ -1,0 +1,20 @@
+<xt>
+  <head>
+    <style>
+      #outer { display: flex; width: 400px; height: 100px; }
+      #mid { width: 150px; display: flex; flex-direction: column; }
+      #inner1 { height: 30px; }
+      #inner2 { height: 40px; }
+      #side { width: 100px; }
+    </style>
+  </head>
+  <body>
+    <div id="outer">
+      <div id="mid">
+        <div id="inner1"></div>
+        <div id="inner2"></div>
+      </div>
+      <div id="side"></div>
+    </div>
+  </body>
+</xt>

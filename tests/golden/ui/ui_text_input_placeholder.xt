@@ -1,0 +1,25 @@
+<xt>
+  <head>
+    <style>
+      @font-face { font-family: "TestSans"; src: "../../fonts/NotoSans-Regular.subset.ttf"; }
+      input {
+        margin: 16px 24px;
+        width: 200px;
+        height: 40px;
+        padding: 8px;
+        background-color: #ffffff;
+        border: 1px #808080;
+        font-family: "TestSans";
+        font-size: 20px;
+        line-height: 1.2em;
+        color: #202020;
+      }
+      #centered { text-align: center; }
+    </style>
+  </head>
+  <body>
+    <input id="empty" type="text" placeholder="Search name" />
+    <input id="centered" type="text" placeholder="Search" />
+    <input id="filled" type="text" placeholder="Search name" value="hello" />
+  </body>
+</xt>

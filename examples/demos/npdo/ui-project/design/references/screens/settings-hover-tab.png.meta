@@ -1,0 +1,9 @@
+id: 6b5d21db-799d-4173-a198-80eb733020d9
+kind: reference
+title: settings hover tab
+source:
+  kind: ai:service
+  ref: settings-hover-tab.png
+tags: [screenshot, settings]
+license: own
+content: sha256:2c4d09374ed6d5c29b1b790cd107141bf20cc4ebb92a4a44ad6946603c9fe7e1

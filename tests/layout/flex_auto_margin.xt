@@ -1,0 +1,16 @@
+<xt>
+  <head>
+    <style>
+      #container { display: flex; width: 400px; height: 30px; }
+      #container > div { width: 80px; }
+      #c { margin-left: auto; }
+    </style>
+  </head>
+  <body>
+    <div id="container">
+      <div id="a"></div>
+      <div id="b"></div>
+      <div id="c"></div>
+    </div>
+  </body>
+</xt>

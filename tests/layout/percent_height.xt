@@ -1,0 +1,24 @@
+<xt>
+  <head>
+    <style>
+      body { height: 100%; }
+      #fill { height: 100%; }
+      #auto-parent { }
+      #half-of-auto { height: 50%; }
+      #filler { height: 20px; }
+      #fixed { height: 200px; }
+      #half { height: 50%; }
+      #min { min-height: 100%; }
+    </style>
+  </head>
+  <body>
+    <div id="fill"></div>
+    <div id="auto-parent">
+      <div id="half-of-auto"><div id="filler"></div></div>
+    </div>
+    <div id="fixed">
+      <div id="half"></div>
+      <div id="min"></div>
+    </div>
+  </body>
+</xt>

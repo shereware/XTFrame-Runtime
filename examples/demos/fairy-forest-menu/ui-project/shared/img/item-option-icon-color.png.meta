@@ -1,0 +1,12 @@
+id: 3ded32de-2cb5-4f67-a109-10e3e6b92e40
+type: image
+title: item-option-icon-color
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/53ab6030cabe22b2c7db2349e72688a3
+content: sha256:93b4cf861253860a1ad784e8eec8a7f1265021a56e9f5be1cffe619f1325c8b0
+measured:
+  w: 128
+  h: 128
+  alpha: true

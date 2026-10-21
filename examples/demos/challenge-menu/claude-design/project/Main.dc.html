@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tactical Challenges</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body { margin: 0; background: #030504 }
+.rule { position: absolute; height: 1px; background: linear-gradient(90deg, #9fbf9f00 0%, #9fbf9fb3 20%, #9fbf9fb3 80%, #9fbf9f00 100%) }
+.row { position: absolute; left: 0px; width: 420px; height: 40px; transform: translateX(0px) translateZ(0px);
+       transition: transform 280ms cubic-bezier(.2,.8,.2,1) }
+.hl { position: absolute; left: 18px; top: 2px; width: 390px; height: 36px; opacity: 0;
+      background: linear-gradient(90deg, #f5b91e55 0%, #f5b91e1c 45%, #f5b91e00 100%);
+      border-top: 1px solid #f5d27a66; transition: opacity 220ms ease-out }
+.hl.on { opacity: 1; box-shadow: 0 0 18px 0 #f5b91e44 }
+.star { position: absolute; left: 10px; top: 9px; width: 20px; height: 20px; opacity: 0; transition: opacity 220ms ease-out }
+.star.on { opacity: 1 }
+.diff-item { position: absolute; top: 2px; width: 340px; height: 36px; padding: 0px; margin: 0px;
+             background-color: #00000000; border: 0px solid #00000000;
+             text-align: left; line-height: 36px; font-size: 21px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase;
+             color: #cfe3c6; text-shadow: 0 0 8px #7fbf8a66; transition: all 200ms ease-out }
+.diff-item:hover { color: #ffffff }
+.diff-item.on { font-size: 25px; color: #f5b91e }
+.frame-swap { animation: frame-b 560ms cubic-bezier(.2,.8,.2,1) 0s 1 normal both }
+.frame-swap.flip { animation: frame-a 560ms cubic-bezier(.2,.8,.2,1) 0s 1 normal both }
+.text-swap { animation: text-b 420ms cubic-bezier(.2,.8,.2,1) 0s 1 normal both }
+.text-swap.flip { animation: text-a 420ms cubic-bezier(.2,.8,.2,1) 0s 1 normal both }
+.hint-swap { animation: hint-b 420ms ease-out 0s 1 normal both }
+.hint-swap.flip { animation: hint-a 420ms ease-out 0s 1 normal both }
+.frame-z { transform: translateZ(45px) rotateX(0deg); transition: transform 320ms ease-out }
+.frame-z.pop { transform: translateZ(130px) rotateX(-14deg) }
+.corner { pointer-events: none; position: absolute; width: 26px; height: 26px; transform: translateZ(100px);
+          filter: drop-shadow(0 0 6px #6fff9f); animation: corner-pulse 1800ms ease-in-out 0s infinite alternate }
+.mote { position: absolute; width: 10px; height: 10px; border-radius: 5px;
+        background: radial-gradient(circle, #d8ffe8cc 0%, #9fdcb800 70%) }
+@keyframes drift {
+  from { transform: scale(1.04) translateX(-12px) translateY(0px); }
+  to   { transform: scale(1.04) translateX(12px) translateY(-8px); }
+}
+@keyframes shaft {
+  from { opacity: 0.3; }
+  to   { opacity: 0.85; }
+}
+@keyframes float {
+  from { transform: translateY(0px) translateX(0px); opacity: 0.25; }
+  to   { transform: translateY(-60px) translateX(14px); opacity: 0.9; }
+}
+@keyframes drip {
+  from { transform: translateY(-120px); opacity: 0; }
+  to   { transform: translateY(760px); opacity: 0.9; }
+}
+@keyframes list-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes panel-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes frame-a {
+  from { opacity: 0.1; }
+  to   { opacity: 1; }
+}
+@keyframes frame-b {
+  from { opacity: 0.1; }
+  to   { opacity: 1; }
+}
+@keyframes text-a {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes text-b {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes hint-a {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes hint-b {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes scan {
+  from { transform: translateY(-50px); }
+  to   { transform: translateY(200px); }
+}
+@keyframes corner-pulse {
+  from { opacity: 0.45; }
+  to   { opacity: 1; }
+}
+@keyframes glow-pulse {
+  from { opacity: 0.4; }
+  to   { opacity: 0.9; }
+}
+@keyframes flicker {
+  0%   { opacity: 0.9; }
+  45%  { opacity: 0.75; }
+  50%  { opacity: 0.35; }
+  55%  { opacity: 0.85; }
+  100% { opacity: 0.95; }
+}
+@keyframes boot-sweep {
+  from { transform: translateY(-20px); opacity: 1; }
+  to   { transform: translateY(740px); opacity: 0; }
+}
+@keyframes hud-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes blink {
+  from { opacity: 0.25; }
+  to   { opacity: 1; }
+}
+</style>
+</helmet>
+<div id="challenge-menu" style="position: relative; width: 1280px; height: 720px; overflow: hidden; background-color: #030504; perspective: 1000px; perspective-origin: 50% 50%; font-family: 'Bahnschrift SemiCondensed', 'Bahnschrift', 'Segoe UI', sans-serif; color: #cfe3c6;">
+
+  <div id="scene" style="position: absolute; left: 0px; top: 0px; width: 1280px; height: 720px; pointer-events: none;">
+  <div id="camera-idle" style="position: absolute; left: 0px; top: 0px; width: 1280px; height: 720px;">
+
+        <div id="world-layer" style="pointer-events: none; position: absolute; left: -40px; top: -24px; width: 1360px; height: 768px; transform: translateZ(-500px) scale(1.62); transition: left 1000ms cubic-bezier(.2,.7,.2,1), top 1000ms cubic-bezier(.2,.7,.2,1);">
+      <img id="world-image" src="/_blob/fa3e6ce2a3c22464147c6d03ba1f06d8" alt="" style="width: 1360px; height: 768px; object-fit: cover; animation: drift 18s ease-in-out 0s infinite alternate;">
+    </div>
+
+    <div id="light-shaft" style="pointer-events: none; position: absolute; left: 360px; top: -100px; width: 560px; height: 820px; transform: translateZ(-300px) scale(1.3); background: radial-gradient(ellipse, #c8f0e066 0%, #6fa08f22 45%, #00000000 75%); animation: shaft 7s ease-in-out 0s infinite alternate;"></div>
+
+    <div id="vignette" style="pointer-events: none; position: absolute; left: 0px; top: 0px; width: 1280px; height: 720px; transform: translateZ(-150px) scale(1.25); background: radial-gradient(ellipse, #00000000 0%, #00000000 50%, #000000b3 88%, #000000f2 100%);"></div>
+
+    <div id="mote-field" style="pointer-events: none; position: absolute; left: 0px; top: 0px; width: 1280px; height: 720px;">
+      <div id="mote-1-depth" style="position: absolute; left: 260px; top: 520px; width: 10px; height: 10px; transform: translateZ(120px);"><div class="mote" style="animation: float 6s ease-in-out 0s infinite alternate;"></div></div>
+      <div id="mote-2-depth" style="position: absolute; left: 560px; top: 180px; width: 10px; height: 10px; transform: translateZ(60px);"><div class="mote" style="animation: float 8s ease-in-out 1s infinite alternate;"></div></div>
+      <div id="mote-3-depth" style="position: absolute; left: 610px; top: 600px; width: 10px; height: 10px; transform: translateZ(220px);"><div class="mote" style="width: 16px; height: 16px; border-radius: 8px; animation: float 7s ease-in-out 2s infinite alternate;"></div></div>
+      <div id="mote-4-depth" style="position: absolute; left: 1150px; top: 300px; width: 10px; height: 10px; transform: translateZ(160px);"><div class="mote" style="animation: float 9s ease-in-out 0.5s infinite alternate;"></div></div>
+      <div id="mote-5-depth" style="position: absolute; left: 90px; top: 250px; width: 10px; height: 10px; transform: translateZ(260px);"><div class="mote" style="width: 18px; height: 18px; border-radius: 9px; animation: float 10s ease-in-out 3s infinite alternate;"></div></div>
+      <div id="mote-6-depth" style="position: absolute; left: 900px; top: 640px; width: 10px; height: 10px; transform: translateZ(90px);"><div class="mote" style="animation: float 6.5s ease-in-out 1.5s infinite alternate;"></div></div>
+    </div>
+
+        <nav id="diff-list" style="pointer-events: auto; position: absolute; left: 130px; top: 196px; width: 420px; height: 270px; transform-origin: 0% 50%; transform: rotateY(16deg) translateZ(40px); transition: left 700ms cubic-bezier(.2,.7,.2,1), top 700ms cubic-bezier(.2,.7,.2,1);">
+      <div id="diff-list-body" style="position: absolute; left: 0px; top: 0px; width: 420px; height: 270px; animation: list-in 700ms ease-out 200ms 1 normal both;">
+        <div id="row-recruit" class="row" style="top: 0px;">
+          <div id="hl-recruit" class="hl"></div>
+          <div id="star-recruit" class="star"><svg width="20" height="20" viewBox="0 0 20 20"><polygon points="10,1 12.6,7.2 19.4,7.6 14.2,11.9 15.9,18.5 10,14.8 4.1,18.5 5.8,11.9 0.6,7.6 7.4,7.2" fill="#f5b91e"></polygon></svg></div>
+          <button id="diff-recruit" class="diff-item" style="left: 46px;">Recruit</button>
+        </div>
+        <div id="row-soldier" class="row" style="top: 44px;">
+          <div id="hl-soldier" class="hl"></div>
+          <div id="star-soldier" class="star"><svg width="20" height="20" viewBox="0 0 20 20"><polygon points="10,1 12.6,7.2 19.4,7.6 14.2,11.9 15.9,18.5 10,14.8 4.1,18.5 5.8,11.9 0.6,7.6 7.4,7.2" fill="#f5b91e"></polygon></svg></div>
+          <button id="diff-soldier" class="diff-item" style="left: 45px;">Soldier</button>
+        </div>
+        <div id="row-veteran" class="row" style="top: 88px;">
+          <div id="hl-veteran" class="hl"></div>
+          <div id="star-veteran" class="star"><svg width="20" height="20" viewBox="0 0 20 20"><polygon points="10,1 12.6,7.2 19.4,7.6 14.2,11.9 15.9,18.5 10,14.8 4.1,18.5 5.8,11.9 0.6,7.6 7.4,7.2" fill="#f5b91e"></polygon></svg></div>
+          <button id="diff-veteran" class="diff-item" style="left: 44px;">Veteran</button>
+        </div>
+        <div id="row-supersoldier" class="row" style="top: 132px;">
+          <div id="hl-supersoldier" class="hl"></div>
+          <div id="star-supersoldier" class="star"><svg width="20" height="20" viewBox="0 0 20 20"><polygon points="10,1 12.6,7.2 19.4,7.6 14.2,11.9 15.9,18.5 10,14.8 4.1,18.5 5.8,11.9 0.6,7.6 7.4,7.2" fill="#f5b91e"></polygon></svg></div>
+          <button id="diff-supersoldier" class="diff-item" style="left: 42px;">Supersoldier</button>
+        </div>
+        <div id="row-posthuman" class="row" style="top: 176px;">
+          <div id="hl-posthuman" class="hl"></div>
+          <div id="star-posthuman" class="star"><svg width="20" height="20" viewBox="0 0 20 20"><polygon points="10,1 12.6,7.2 19.4,7.6 14.2,11.9 15.9,18.5 10,14.8 4.1,18.5 5.8,11.9 0.6,7.6 7.4,7.2" fill="#f5b91e"></polygon></svg></div>
+          <button id="diff-posthuman" class="diff-item" style="left: 41px;">Post-Human Warrior</button>
+        </div>
+        <div id="row-impossible" class="row on" style="top: 220px;">
+          <div id="hl-impossible" class="hl on"></div>
+          <div id="star-impossible" class="star on"><svg width="20" height="20" viewBox="0 0 20 20"><polygon points="10,1 12.6,7.2 19.4,7.6 14.2,11.9 15.9,18.5 10,14.8 4.1,18.5 5.8,11.9 0.6,7.6 7.4,7.2" fill="#f5b91e"></polygon></svg></div>
+          <button id="diff-impossible" class="diff-item on" style="left: 40px;">Impossible (Really)</button>
+        </div>
+      </div>
+    </nav>
+    </div>
+
+        <section id="panel-preview" style="position: absolute; left: 650px; top: 166px; width: 450px; height: 380px; transform-origin: 100% 50%; transform: rotateY(-18deg) translateZ(30px); transition: left 700ms cubic-bezier(.2,.7,.2,1), top 700ms cubic-bezier(.2,.7,.2,1);">
+      <div id="panel-glow" style="pointer-events: none; position: absolute; left: -40px; top: -40px; width: 530px; height: 460px; transform: translateZ(-90px); background: radial-gradient(ellipse, #5fd08a40 0%, #2f6f4a18 45%, #00000000 72%); animation: glow-pulse 3s ease-in-out 0s infinite alternate;"></div>
+      <div id="panel-plate" style="position: absolute; left: 0px; top: 0px; width: 450px; height: 380px; transform: translateZ(-60px); background-color: #0a110de6; border: 1px solid #8fb09277; border-radius: 2px; box-shadow: 0 24px 60px 0 #000000cc; animation: panel-in 700ms ease-out 350ms 1 normal both;"></div>
+      <div id="panel-body" style="position: absolute; left: 0px; top: 0px; width: 450px; height: 380px;">
+        <div id="preview-tab" style="position: absolute; right: -1px; top: -1px; width: 160px; height: 26px; background: linear-gradient(90deg, #1a261f00 0%, #2a3a30 40%, #3a5040 100%); border-bottom: 1px solid #8fb09277;"></div>
+        <span id="preview-tag" class="text-swap" style="position: absolute; right: 14px; top: 2px; font-size: 15px; font-weight: 600; letter-spacing: 1px; line-height: 22px; color: #e8f5e4; transform: translateZ(30px);">IMPOSSIBLE</span>
+        <div id="preview-frame" class="frame-swap frame-z" style="position: absolute; left: 16px; top: 44px; width: 418px; height: 188px; border: 1px solid #b7d4b999; overflow: hidden; background-color: #0b1410; box-shadow: 0 18px 40px 0 #000000cc;">
+          <img id="preview-image" src="/_blob/ee80da4ba469020118f1a26dee008ecc" alt="Armored soldier in the rainforest" style="width: 418px; height: 188px; object-fit: cover;">
+          <div id="scan-line" style="position: absolute; left: 0px; top: 0px; width: 418px; height: 40px; background: linear-gradient(180deg, #9fffc000 0%, #9fffc03a 50%, #9fffc000 100%); animation: scan 3.2s linear 0s infinite;"></div>
+        </div>
+        <div id="preview-rank-icon" style="position: absolute; left: 24px; top: 256px; width: 76px; height: 52px; transform: translateZ(80px); filter: drop-shadow(0 0 8px #f5a000);">
+          <svg width="76" height="52" viewBox="0 0 76 52"><polygon points="38,4 74,44 58,44 38,22 18,44 2,44" fill="#d9960f"></polygon><polygon points="38,4 74,44 66,44 38,13 10,44 2,44" fill="#ffd35c"></polygon></svg>
+        </div>
+        <p id="preview-desc" class="text-swap" style="position: absolute; left: 112px; top: 256px; width: 316px; margin: 0px; font-size: 15px; font-weight: 600; letter-spacing: 1px; line-height: 22px; text-transform: uppercase; color: #dcecd6; transform: translateZ(30px);">Nothing will save you. Every shot is lethal, every shadow is hostile.</p>
+        <div id="corner-tl" class="corner" style="left: -9px; top: -9px;"><svg width="26" height="26" viewBox="0 0 26 26"><path d="M2 24 L2 2 L24 2" fill="none" stroke="#b8ffd0" stroke-width="3"></path></svg></div>
+        <div id="corner-tr" class="corner" style="left: 433px; top: -9px;"><svg width="26" height="26" viewBox="0 0 26 26"><path d="M2 2 L24 2 L24 24" fill="none" stroke="#b8ffd0" stroke-width="3"></path></svg></div>
+        <div id="corner-bl" class="corner" style="left: -9px; top: 363px;"><svg width="26" height="26" viewBox="0 0 26 26"><path d="M2 2 L2 24 L24 24" fill="none" stroke="#b8ffd0" stroke-width="3"></path></svg></div>
+        <div id="corner-br" class="corner" style="left: 433px; top: 363px;"><svg width="26" height="26" viewBox="0 0 26 26"><path d="M24 2 L24 24 L2 24" fill="none" stroke="#b8ffd0" stroke-width="3"></path></svg></div>
+      </div>
+    </section>
+    </div>
+
+    <div id="profile-block" style="pointer-events: none; position: absolute; left: 990px; top: 470px; width: 210px; height: 200px; transform: translateZ(60px);">
+      <span id="profile-label" style="position: absolute; left: 0px; top: 92px; font-size: 16px; font-weight: 600; letter-spacing: 1px; color: #7f9a86;">PROFILE</span>
+      <span id="profile-name" style="position: absolute; left: -4px; top: 112px; font-size: 18px; font-weight: 600; letter-spacing: 1px; color: #e8f5e4;">DEFAULT</span>
+      <div id="holo-base" style="position: absolute; left: 84px; top: 90px; width: 140px; height: 140px; transform: scaleY(0.26);">
+        <div id="holo-ring" style="position: absolute; left: 10px; top: 10px; width: 116px; height: 116px; border: 2px solid #8fffb899; border-radius: 60px; box-shadow: 0 0 14px 0 #5fff9f88; transform: rotate(0deg);"></div>
+        <div id="holo-arc" style="position: absolute; left: 0px; top: 0px; width: 132px; height: 132px; border-radius: 70px; border: 4px solid #c8ffdcdd; border-right-width: 0px; border-bottom-width: 0px; transform: rotate(0deg);"></div>
+      </div>
+      <img id="profile-figure" src="/_blob/ec25fc45ce7fdcd5e446985cae4b9adf" alt="Suit profile figure" style="position: absolute; left: 124px; top: 36px; width: 60px; height: 120px; object-fit: contain; animation: flicker 2.8s linear 0s infinite;">
+    </div>
+
+    <div id="drips" style="pointer-events: none; position: absolute; left: 0px; top: 0px; width: 1280px; height: 720px; transform: translateZ(180px);">
+      <div id="drip-1" style="position: absolute; left: 96px; top: 0px; width: 2px; height: 90px; background: linear-gradient(180deg, #d8f0e000 0%, #d8f0e066 100%); animation: drip 9s linear 0s infinite;"></div>
+      <div id="drip-2" style="position: absolute; left: 318px; top: 0px; width: 2px; height: 70px; background: linear-gradient(180deg, #d8f0e000 0%, #d8f0e055 100%); animation: drip 12s linear 3s infinite;"></div>
+      <div id="drip-3" style="position: absolute; left: 604px; top: 0px; width: 2px; height: 110px; background: linear-gradient(180deg, #d8f0e000 0%, #d8f0e044 100%); animation: drip 14s linear 6s infinite;"></div>
+      <div id="drip-4" style="position: absolute; left: 1210px; top: 0px; width: 2px; height: 80px; background: linear-gradient(180deg, #d8f0e000 0%, #d8f0e066 100%); animation: drip 10s linear 1s infinite;"></div>
+    </div>
+
+  </div>
+  </div>
+
+  <div id="hud" style="pointer-events: none; font-family: 'Bahnschrift SemiCondensed', 'Bahnschrift', 'Segoe UI', sans-serif; position: absolute; left: 0px; top: 0px; width: 1280px; height: 720px; animation: hud-in 900ms ease-out 0s 1 normal both;">
+    <header id="header" style="position: absolute; left: 0px; top: 0px; width: 1280px; height: 120px;">
+      <span id="build-tag" style="position: absolute; left: 118px; top: 44px; font-size: 10px; letter-spacing: 1px; color: #7d8f7c;">v 1.2.1.1000</span>
+      <div id="header-rule-left" class="rule" style="left: 100px; top: 60px; width: 280px;"></div>
+      <div id="header-rule-right" class="rule" style="left: 900px; top: 60px; width: 290px;"></div>
+      <div id="logo-mark" style="position: absolute; left: 118px; top: 68px; width: 48px; height: 36px;">
+        <svg width="48" height="36" viewBox="0 0 48 36"><path d="M6 18 L18 6 L34 6 M42 18 L30 30 L14 30 M12 18 L36 18 M22 12 L28 18 L22 24" fill="none" stroke="#e8f5e4" stroke-width="3"></path></svg>
+      </div>
+      <div id="logo-divider" style="position: absolute; left: 172px; top: 66px; width: 1px; height: 42px; background-color: #9fbf9fb3;"></div>
+      <h1 id="menu-title" style="position: absolute; left: 184px; top: 80px; margin: 0px; font-size: 22px; font-weight: 600; letter-spacing: 1px; line-height: 26px; color: #e8f5e4; text-shadow: 0 0 10px #9fe0b066;">TACTICAL CHALLENGES</h1>
+    </header>
+
+    <div id="footer-rule" class="rule" style="left: 380px; top: 640px; width: 540px;"></div>
+    <p id="hint-text" class="hint-swap" style="position: absolute; left: 380px; top: 614px; width: 540px; margin: 0px; text-align: center; font-size: 14px; font-weight: 600; letter-spacing: 1px; line-height: 20px; color: #dcecd6;">NO SUIT CAN SAVE YOU HERE. WHY ARE YOU TRYING?</p>
+
+    <div id="back-rule" class="rule" style="left: 76px; top: 668px; width: 110px;"></div>
+    <button id="btn-back" style="pointer-events: auto; position: absolute; left: 184px; top: 652px; width: 162px; height: 32px; padding: 0px; background: linear-gradient(90deg, #1f2c24e6 0%, #121a15e6 100%); border: 1px solid #a9c8aa99; border-radius: 16px; text-align: center; line-height: 30px; font-family: 'Bahnschrift SemiCondensed', 'Bahnschrift', 'Segoe UI', sans-serif; font-size: 19px; font-weight: 600; letter-spacing: 2px; color: #e8f5e4; box-shadow: 0 0 12px 0 #6fbf8a33;">«   BACK</button>
+
+    <span id="status-online" style="position: absolute; left: 90px; top: 674px; font-size: 9px; letter-spacing: 1px; color: #8fa08e; animation: blink 1400ms ease-in-out 0s infinite alternate;">[ONLINE]</span>
+    <div id="bottom-rule-right" class="rule" style="left: 960px; top: 676px; width: 260px;"></div>
+  </div>
+
+  <div id="boot-scan" style="pointer-events: none; position: absolute; left: 0px; top: 0px; width: 1280px; height: 3px; background: linear-gradient(90deg, #9fffc000 0%, #c8ffdcee 50%, #9fffc000 100%); box-shadow: 0 0 24px 4px #6fff9f88; animation: boot-sweep 1100ms ease-in 0s 1 normal both;"></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":720}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

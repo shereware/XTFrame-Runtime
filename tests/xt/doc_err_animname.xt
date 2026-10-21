@@ -1,0 +1,10 @@
+<xt>
+  <head>
+    <style>
+      div { animation: nope 1s; }
+    </style>
+  </head>
+  <body>
+    <div/>
+  </body>
+</xt>

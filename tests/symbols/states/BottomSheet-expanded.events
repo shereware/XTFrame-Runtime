@@ -1,0 +1,3 @@
+# T-241: BottomSheet, state 'expanded'.
+port Sheet.open true
+update 0.6

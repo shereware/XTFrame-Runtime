@@ -1,0 +1,117 @@
+# Asset manifest (docs/design/26-layers-symbols-library.md 26.3.3); xtframe-pack fills `measured`.
+version: 1
+assets:
+  - id: hud-preview-bg
+    type: image
+    file: shared/img/hud-preview-bg.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 1536, h: 1024, alpha: false }
+  - id: menu-bg
+    type: image
+    file: shared/img/menu-bg.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 1672, h: 941, alpha: false }
+  - id: menu-fog
+    type: image
+    file: shared/img/menu-fog.png
+    source: manual
+    status: draft
+    measured: { w: 1280, h: 320, alpha: true }
+  - id: menu-grime
+    type: image
+    file: shared/img/menu-grime.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 1280, h: 720, alpha: true }
+  - id: menu-hl-1
+    type: image
+    file: shared/img/menu-hl-1.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 600, h: 84, alpha: true }
+  - id: menu-hl-2
+    type: image
+    file: shared/img/menu-hl-2.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 600, h: 84, alpha: true }
+  - id: menu-hl-3
+    type: image
+    file: shared/img/menu-hl-3.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 600, h: 84, alpha: true }
+  - id: menu-hl-4
+    type: image
+    file: shared/img/menu-hl-4.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 600, h: 84, alpha: true }
+  - id: menu-hl-5
+    type: image
+    file: shared/img/menu-hl-5.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 600, h: 84, alpha: true }
+  - id: menu-hl-6
+    type: image
+    file: shared/img/menu-hl-6.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 600, h: 84, alpha: true }
+  - id: menu-lamp
+    type: image
+    file: shared/img/menu-lamp.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 320, h: 320, alpha: true }
+  - id: menu-rain
+    type: image
+    file: shared/img/menu-rain.png
+    source: manual
+    status: draft
+    measured: { w: 512, h: 512, alpha: true }
+  - id: menu-title
+    type: image
+    file: shared/img/menu-title.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 2172, h: 724, alpha: true }
+  - id: tab-hl-1
+    type: image
+    file: shared/img/tab-hl-1.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 372, h: 88, alpha: true }
+  - id: tab-hl-2
+    type: image
+    file: shared/img/tab-hl-2.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 372, h: 88, alpha: true }
+  - id: tab-hl-3
+    type: image
+    file: shared/img/tab-hl-3.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 372, h: 88, alpha: true }
+  - id: tab-hl-4
+    type: image
+    file: shared/img/tab-hl-4.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 372, h: 88, alpha: true }
+  - id: tab-hl-5
+    type: image
+    file: shared/img/tab-hl-5.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 372, h: 88, alpha: true }
+  - id: tab-hl-6
+    type: image
+    file: shared/img/tab-hl-6.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 372, h: 88, alpha: true }

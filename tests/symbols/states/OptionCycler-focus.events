@@ -1,0 +1,4 @@
+# T-198: OptionCycler, state 'focus'.
+port Mode.current Borderless
+update 0.6
+key Tab

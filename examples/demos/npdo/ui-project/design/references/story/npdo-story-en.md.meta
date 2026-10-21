@@ -1,0 +1,13 @@
+id: 029339e4-b903-4f8a-9a50-dbff1194f5dd
+kind: reference
+title: NPDO story bible (English translation)
+status: approved
+source:
+  kind: ai:service
+  ref: npdo-story-en.md
+approved:
+  by: Bigspring
+  at: 2026-10-17T02:55:44Z
+tags: [story, lore, copy, en]
+license: own
+content: sha256:7d507a2b11d0567f403b811b59bcea00edbe59d3f1c65fb07f5291d7d06ead79

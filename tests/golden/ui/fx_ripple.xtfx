@@ -1,0 +1,13 @@
+// T-203 golden fixture: the 18.7 example effect.
+name: Ripple
+param amplitude float 4 [0, 32]
+param speed float 1.5 [0, 10]
+param tint color #ffffff
+fallback: blur(2px)
+expand: 8px
+---
+float4 xtMain(XtInput i)
+{
+    float2 uv = i.uv + sin(i.uv.yx * 40 + xtTime * speed) * (amplitude * i.texelSize);
+    return xtSample(uv) * tint;
+}

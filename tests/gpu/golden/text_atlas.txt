@@ -1,0 +1,3 @@
+target 96x32 vertices=20 indices=30 cmds=1 passes=1 params=8
+pass 0: target=0 clear=0 copy=0 from=0 view=(0,0,96,32) cmds=1
+  0 Glyph SrcOver TestEqualRef ref=0 tex=yes src=0 aux=0 linear idx=30 verts=20 clip=(0,0,96,32)

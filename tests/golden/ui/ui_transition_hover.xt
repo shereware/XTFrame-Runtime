@@ -1,0 +1,19 @@
+<xt>
+  <head>
+    <style>
+      #box {
+        position: absolute;
+        left: 0px;
+        top: 0px;
+        width: 80px;
+        height: 40px;
+        background-color: #ff0000;
+        transition: width 0.4s linear;
+      }
+      #box:hover { width: 200px; }
+    </style>
+  </head>
+  <body>
+    <div id="box"></div>
+  </body>
+</xt>

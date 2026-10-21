@@ -1,0 +1,12 @@
+id: 83e9dad5-e616-46a0-925a-e2a624d4c859
+type: image
+title: tab-controls-sel-tex
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/tab-hl-4.png
+content: sha256:33501ebae122ac87d57d1adaba4885e68257ffbcb64c7ac80a348b6346d85e3e
+measured:
+  w: 372
+  h: 88
+  alpha: true

@@ -1,0 +1,2076 @@
+{
+  "version": 1,
+  "description": "XTFrame standard symbol library (docs/design/30-ui-project.md 30.4). One symbol per <Name>.xt; every symbol draws only through the tokens of tokens.xts.",
+  "tokens": "tokens.xts",
+  "categories": {
+    "form": "Forms and settings",
+    "hud": "HUD",
+    "input": "Input prompts",
+    "mobile": "Mobile (touch)",
+    "list": "Lists"
+  },
+  "symbols": [
+    {
+      "name": "Button",
+      "category": "form",
+      "file": "Button.xt",
+      "thumbnail": "Button.png",
+      "description": "Push button with Kind and Size variants; emits `pressed` on click.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Pressed",
+          "Focus",
+          "Disabled"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "variants": {
+        "Kind": [
+          "Primary",
+          "Secondary",
+          "Ghost"
+        ],
+        "Size": [
+          "S",
+          "M",
+          "L"
+        ]
+      },
+      "ports": [
+        {
+          "name": "pressed",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [
+        "hover-in",
+        "hover-out",
+        "press"
+      ],
+      "triggers": [
+        "hover: play(hover-in)",
+        "leave: play(hover-out)",
+        "press: sound(ui_click); play(press)",
+        "click: emit(pressed)"
+      ],
+      "tokens": [
+        "color-accent",
+        "color-accent-hover",
+        "color-accent-pressed",
+        "color-border",
+        "color-disabled-bg",
+        "color-disabled-text",
+        "color-focus",
+        "color-surface-raised",
+        "color-surface-sunken",
+        "color-text",
+        "color-text-on-accent",
+        "control-l",
+        "control-m",
+        "control-s",
+        "focus-w",
+        "font-family",
+        "font-size-l",
+        "font-size-m",
+        "font-size-s",
+        "motion-fast",
+        "radius-m",
+        "space-3",
+        "space-4",
+        "space-6"
+      ]
+    },
+    {
+      "name": "Toggle",
+      "category": "form",
+      "file": "Toggle.xt",
+      "thumbnail": "Toggle.png",
+      "description": "On/off switch with a label.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Focus",
+          "Checked",
+          "Disabled"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "ports": [
+        {
+          "name": "value",
+          "type": "bool",
+          "dir": "in"
+        }
+      ],
+      "timelines": [],
+      "triggers": [
+        "check: sound(ui_toggle); set(value, true)",
+        "uncheck: sound(ui_toggle); set(value, false)"
+      ],
+      "tokens": [
+        "color-accent",
+        "color-accent-hover",
+        "color-border-strong",
+        "color-disabled-bg",
+        "color-disabled-text",
+        "color-focus",
+        "color-text",
+        "color-text-dim",
+        "color-text-on-accent",
+        "color-track",
+        "focus-w",
+        "font-family",
+        "font-size-m",
+        "motion-fast",
+        "radius-full",
+        "space-3"
+      ],
+      "notes": "The switch is the checkbox input with its knob inside; its check / uncheck set the `value` port (`set(value, true|false)`). A host change of `value` does not move the switch (no `checked` binding target); the host sets that with setAttribute(\"checked\")."
+    },
+    {
+      "name": "Checkbox",
+      "category": "form",
+      "file": "Checkbox.xt",
+      "thumbnail": "Checkbox.png",
+      "description": "Check box with a label.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Focus",
+          "Checked",
+          "Disabled"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "ports": [
+        {
+          "name": "value",
+          "type": "bool",
+          "dir": "in"
+        }
+      ],
+      "timelines": [],
+      "triggers": [
+        "check: sound(ui_toggle); set(value, true)",
+        "uncheck: sound(ui_toggle); set(value, false)"
+      ],
+      "tokens": [
+        "color-accent",
+        "color-border-strong",
+        "color-disabled-bg",
+        "color-disabled-text",
+        "color-focus",
+        "color-surface-sunken",
+        "color-text",
+        "color-text-on-accent",
+        "focus-w",
+        "font-family",
+        "font-size-m",
+        "motion-instant",
+        "radius-full",
+        "radius-s",
+        "space-2"
+      ],
+      "notes": "Same as Toggle: the box is the checkbox input with its mark inside; its check / uncheck set the `value` port."
+    },
+    {
+      "name": "RadioGroup",
+      "category": "form",
+      "file": "RadioGroup.xt",
+      "thumbnail": "RadioGroup.png",
+      "description": "Single choice from a list of options (`<repeat>`).",
+      "requires": {
+        "states": [
+          "Hover",
+          "Focus",
+          "Selected",
+          "Disabled"
+        ],
+        "slots": []
+      },
+      "ports": [
+        {
+          "name": "options",
+          "type": "list<struct{label: string}>",
+          "dir": "in"
+        },
+        {
+          "name": "value",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "select",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [],
+      "triggers": [
+        "press: sound(ui_select); emit(select)"
+      ],
+      "tokens": [
+        "color-accent",
+        "color-border-strong",
+        "color-disabled-bg",
+        "color-disabled-text",
+        "color-focus",
+        "color-text",
+        "focus-w",
+        "font-family",
+        "font-size-m",
+        "radius-full",
+        "radius-s",
+        "space-1",
+        "space-2"
+      ],
+      "notes": "Controlled: the host sets `value` (selected index) on `select`; a trigger cannot set a state on a sibling, so the group cannot select locally."
+    },
+    {
+      "name": "Slider",
+      "category": "form",
+      "file": "Slider.xt",
+      "thumbnail": "Slider.png",
+      "description": "Horizontal value slider with a readout.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Pressed",
+          "Focus",
+          "Disabled"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "ports": [
+        {
+          "name": "value",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "min",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "max",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "decrease",
+          "type": "event",
+          "dir": "out"
+        },
+        {
+          "name": "increase",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [],
+      "triggers": [
+        "drag.value: set(value, event.value | range(0, 1, min, max) | round)",
+        "nav.value: sound(ui_tick); if lt(0) emit(decrease) else emit(increase)"
+      ],
+      "tokens": [
+        "color-accent",
+        "color-accent-pressed",
+        "color-disabled-text",
+        "color-focus",
+        "color-text",
+        "color-text-dim",
+        "color-track",
+        "focus-w",
+        "font-family",
+        "font-size-s",
+        "motion-fast",
+        "radius-full",
+        "radius-m",
+        "space-2",
+        "space-3"
+      ],
+      "notes": "The track is `draggable=\"axis-x\"`: a press or drag along it sets `value` (min..max, rounded); with the track focused, Left/Right keys and the gamepad d-pad emit `decrease` / `increase` (nav.value)."
+    },
+    {
+      "name": "Stepper",
+      "category": "form",
+      "file": "Stepper.xt",
+      "thumbnail": "Stepper.png",
+      "description": "Minus / value / plus control.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Pressed",
+          "Focus",
+          "Disabled"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "ports": [
+        {
+          "name": "value",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "decrease",
+          "type": "event",
+          "dir": "out"
+        },
+        {
+          "name": "increase",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [],
+      "triggers": [
+        "press: sound(ui_tick)",
+        "click: emit(decrease)",
+        "press: sound(ui_tick)",
+        "click: emit(increase)"
+      ],
+      "tokens": [
+        "color-accent-pressed",
+        "color-border",
+        "color-disabled-bg",
+        "color-disabled-text",
+        "color-focus",
+        "color-surface-raised",
+        "color-text",
+        "control-s",
+        "focus-w",
+        "font-family",
+        "font-size-m",
+        "motion-fast",
+        "radius-s",
+        "space-2",
+        "space-4"
+      ],
+      "notes": "Controlled: `decrease` / `increase` events, the host sets `value`."
+    },
+    {
+      "name": "Dropdown",
+      "category": "form",
+      "file": "Dropdown.xt",
+      "thumbnail": "Dropdown.png",
+      "description": "Closed field that opens an option list on the overlay layer.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Focus",
+          "Open",
+          "Selected",
+          "Disabled"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "ports": [
+        {
+          "name": "options",
+          "type": "list<struct{label: string}>",
+          "dir": "in"
+        },
+        {
+          "name": "value",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "current",
+          "type": "string",
+          "dir": "in"
+        },
+        {
+          "name": "select",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [],
+      "triggers": [
+        "click: sound(ui_open); state(Open, toggle)",
+        "blur: state(Open, off)",
+        "state(Open).enter: layer(overlay)",
+        "state(Open).exit: layer(normal)",
+        "press: sound(ui_select); emit(select)"
+      ],
+      "tokens": [
+        "border-w",
+        "color-accent",
+        "color-border",
+        "color-border-strong",
+        "color-disabled-bg",
+        "color-disabled-text",
+        "color-focus",
+        "color-surface-raised",
+        "color-text",
+        "color-text-dim",
+        "control-m",
+        "font-family",
+        "font-size-m",
+        "font-size-s",
+        "motion-fast",
+        "radius-m",
+        "radius-s",
+        "space-1",
+        "space-2",
+        "space-3"
+      ],
+      "notes": "The list sits inside the field, shown by the custom state Open; while Open the field is lifted into the overlay layer (`layer(overlay)` on state(Open).enter). The list is a `focus-trap`."
+    },
+    {
+      "name": "OptionCycler",
+      "category": "form",
+      "file": "OptionCycler.xt",
+      "thumbnail": "OptionCycler.png",
+      "description": "Left/right option switcher (settings row).",
+      "requires": {
+        "states": [
+          "Hover",
+          "Focus",
+          "Disabled"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "ports": [
+        {
+          "name": "current",
+          "type": "string",
+          "dir": "in"
+        },
+        {
+          "name": "prev",
+          "type": "event",
+          "dir": "out"
+        },
+        {
+          "name": "next",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [],
+      "triggers": [
+        "key(Left): sound(ui_tick); emit(prev)",
+        "key(Right): sound(ui_tick); emit(next)",
+        "press: sound(ui_tick)",
+        "click: emit(prev)",
+        "press: sound(ui_tick)",
+        "click: emit(next)"
+      ],
+      "tokens": [
+        "color-accent",
+        "color-border",
+        "color-disabled-text",
+        "color-focus",
+        "color-surface-raised",
+        "color-text",
+        "control-l",
+        "control-s",
+        "focus-w",
+        "font-family",
+        "font-size-m",
+        "motion-instant",
+        "radius-m",
+        "radius-s",
+        "space-2",
+        "space-3",
+        "space-4"
+      ],
+      "notes": "Controlled: `prev` / `next` events, the host sets `current`."
+    },
+    {
+      "name": "TextField",
+      "category": "form",
+      "file": "TextField.xt",
+      "thumbnail": "TextField.png",
+      "description": "Single-line text input with a label and a localized placeholder.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Focus",
+          "Disabled"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "ports": [
+        {
+          "name": "submit",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [],
+      "triggers": [
+        "key(Enter): sound(ui_confirm); emit(submit)"
+      ],
+      "tokens": [
+        "border-w",
+        "color-border",
+        "color-border-strong",
+        "color-disabled-bg",
+        "color-disabled-text",
+        "color-focus",
+        "color-surface-sunken",
+        "color-text",
+        "color-text-dim",
+        "control-m",
+        "font-family",
+        "font-size-m",
+        "font-size-s",
+        "motion-fast",
+        "radius-m",
+        "space-1",
+        "space-2",
+        "space-3"
+      ],
+      "notes": "The placeholder is the key @xt_textfield_placeholder; Enter emits `submit`."
+    },
+    {
+      "name": "Tabs",
+      "category": "form",
+      "file": "Tabs.xt",
+      "thumbnail": "Tabs.png",
+      "description": "Four tabs driven by the Tab state group.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Focus",
+          "Tab1",
+          "Tab2",
+          "Tab3",
+          "Tab4"
+        ],
+        "slots": [
+          "tab1",
+          "tab2",
+          "tab3",
+          "tab4"
+        ]
+      },
+      "stateGroups": {
+        "Tab": [
+          "Tab1",
+          "Tab2",
+          "Tab3",
+          "Tab4"
+        ]
+      },
+      "ports": [
+        {
+          "name": "value",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "select",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [],
+      "triggers": [
+        "click: sound(ui_tab); state(Tab1, on, target=#Box); emit(select)",
+        "click: sound(ui_tab); state(Tab2, on, target=#Box); emit(select)",
+        "click: sound(ui_tab); state(Tab3, on, target=#Box); emit(select)",
+        "click: sound(ui_tab); state(Tab4, on, target=#Box); emit(select)"
+      ],
+      "tokens": [
+        "color-accent",
+        "color-border",
+        "color-surface-raised",
+        "color-text",
+        "color-text-dim",
+        "font-family",
+        "font-size-m",
+        "motion-instant",
+        "radius-s",
+        "space-1",
+        "space-2",
+        "space-4"
+      ],
+      "notes": "A click selects its tab directly (`state(TabN, on, target=#Box)`) and emits `select` from that tab's element; `value` (0-3) also selects the Tab1..Tab4 state."
+    },
+    {
+      "name": "Tooltip",
+      "category": "form",
+      "file": "Tooltip.xt",
+      "thumbnail": "Tooltip.png",
+      "description": "Anchor with a tip shown on the overlay layer after a 600 ms hover.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Focus"
+        ],
+        "slots": [
+          "anchor",
+          "tip"
+        ]
+      },
+      "ports": [],
+      "timelines": [],
+      "triggers": [],
+      "tokens": [
+        "border-w",
+        "color-border",
+        "color-surface-raised",
+        "color-text",
+        "color-text-dim",
+        "font-family",
+        "font-size-s",
+        "motion-fast",
+        "radius-full",
+        "radius-s",
+        "space-2",
+        "space-3"
+      ],
+      "notes": "The 600 ms hover delay is a transition delay (the tip fades in on :hover)."
+    },
+    {
+      "name": "Modal",
+      "category": "form",
+      "file": "Modal.xt",
+      "thumbnail": "Modal.png",
+      "description": "Centered dialog over a scrim with title, body and action slots.",
+      "requires": {
+        "states": [],
+        "slots": [
+          "title",
+          "body",
+          "actions"
+        ]
+      },
+      "ports": [
+        {
+          "name": "dismiss",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [
+        "intro",
+        "outro"
+      ],
+      "triggers": [
+        "show: play(intro)",
+        "hide: play(outro) then hide",
+        "key(Escape): sound(ui_back); emit(dismiss)"
+      ],
+      "tokens": [
+        "border-w",
+        "color-border",
+        "color-border-strong",
+        "color-scrim",
+        "color-shadow",
+        "color-surface",
+        "color-text",
+        "color-text-dim",
+        "font-family",
+        "font-size-l",
+        "font-size-m",
+        "radius-l",
+        "space-2",
+        "space-4",
+        "space-6"
+      ],
+      "notes": "The panel box is a `focus-trap` (navigation stays inside); intro plays on show, outro on hide (then hides)."
+    },
+    {
+      "name": "Toast",
+      "category": "form",
+      "file": "Toast.xt",
+      "thumbnail": "Toast.png",
+      "description": "Toast queue: a `<repeat>` whose entries slide in and out.",
+      "requires": {
+        "states": [
+          "Hover"
+        ],
+        "slots": []
+      },
+      "ports": [
+        {
+          "name": "toasts",
+          "type": "list<struct{title: string, text: string}>",
+          "dir": "in"
+        },
+        {
+          "name": "dismiss",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [
+        "item-in",
+        "item-out"
+      ],
+      "triggers": [
+        "click: emit(dismiss)",
+        "item-enter: play(item-in)",
+        "item-exit: play(item-out) then remove"
+      ],
+      "tokens": [
+        "border-w",
+        "color-accent",
+        "color-border",
+        "color-border-strong",
+        "color-shadow",
+        "color-surface-raised",
+        "color-text",
+        "color-text-dim",
+        "font-family",
+        "font-size-m",
+        "font-size-s",
+        "radius-full",
+        "radius-m",
+        "space-1",
+        "space-2",
+        "space-3"
+      ],
+      "notes": "Entries come and go with listInsert / listRemove; item-enter / item-exit play the item-in / item-out timelines."
+    },
+    {
+      "name": "ProgressBar",
+      "category": "form",
+      "file": "ProgressBar.xt",
+      "thumbnail": "ProgressBar.png",
+      "description": "Labelled progress bar; value mapped with range().",
+      "requires": {
+        "states": [
+          "Running",
+          "Complete"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "stateGroups": {
+        "Progress": [
+          "Running",
+          "Complete"
+        ]
+      },
+      "ports": [
+        {
+          "name": "value",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "value_max",
+          "type": "number",
+          "dir": "in"
+        }
+      ],
+      "timelines": [],
+      "triggers": [],
+      "tokens": [
+        "color-accent",
+        "color-success",
+        "color-text",
+        "color-text-dim",
+        "color-track",
+        "font-family",
+        "font-size-s",
+        "motion-normal",
+        "radius-full",
+        "space-1"
+      ]
+    },
+    {
+      "name": "CooldownRing",
+      "category": "form",
+      "file": "CooldownRing.xt",
+      "thumbnail": "CooldownRing.png",
+      "description": "Radial cooldown indicator around an icon slot.",
+      "requires": {
+        "states": [
+          "Ready",
+          "Cooling"
+        ],
+        "slots": [
+          "icon"
+        ]
+      },
+      "stateGroups": {
+        "Cooldown": [
+          "Ready",
+          "Cooling"
+        ]
+      },
+      "ports": [
+        {
+          "name": "ready",
+          "type": "bool",
+          "dir": "in"
+        }
+      ],
+      "timelines": [
+        "cooldown"
+      ],
+      "triggers": [],
+      "tokens": [
+        "color-accent",
+        "color-surface",
+        "color-text",
+        "color-text-dim",
+        "color-track",
+        "radius-full",
+        "radius-s"
+      ],
+      "notes": "The sweep is three stacked conic-gradient discs (no clipping); the host drives the `cooldown` timeline (1 s = 0-100 %) with playTimeline / seekTimeline. The sweep colours are tokens substituted at compile time (a theme recolours the dial and the ready state, not the sweep)."
+    },
+    {
+      "name": "HealthBar",
+      "category": "hud",
+      "file": "HealthBar.xt",
+      "thumbnail": "HealthBar.png",
+      "description": "Health bar with a tweened fill and a Low state below 25 %.",
+      "requires": {
+        "states": [
+          "Normal",
+          "Low"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "stateGroups": {
+        "Level": [
+          "Normal",
+          "Low"
+        ]
+      },
+      "ports": [
+        {
+          "name": "hp",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "hp_max",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "hit",
+          "type": "event",
+          "dir": "in"
+        }
+      ],
+      "timelines": [
+        "hit"
+      ],
+      "triggers": [
+        "port(hit): play(hit)"
+      ],
+      "tokens": [
+        "border-w",
+        "color-border",
+        "color-danger",
+        "color-success",
+        "color-surface-sunken",
+        "color-text",
+        "color-text-dim",
+        "font-family",
+        "font-size-s",
+        "motion-normal",
+        "radius-s",
+        "space-1"
+      ],
+      "notes": "The fill scales on x (`bind:scale-x`, transform-origin at its left edge) and tweens; no relayout."
+    },
+    {
+      "name": "Counter",
+      "category": "hud",
+      "file": "Counter.xt",
+      "thumbnail": "Counter.png",
+      "description": "Resource counter whose number tweens and uses thousands separators.",
+      "requires": {
+        "states": [],
+        "slots": [
+          "label",
+          "icon"
+        ]
+      },
+      "ports": [
+        {
+          "name": "value",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "gain",
+          "type": "event",
+          "dir": "in"
+        }
+      ],
+      "timelines": [
+        "hit"
+      ],
+      "triggers": [
+        "port(gain): play(hit)"
+      ],
+      "tokens": [
+        "color-text",
+        "color-text-dim",
+        "color-warning",
+        "font-family",
+        "font-size-l",
+        "font-size-xs",
+        "radius-full",
+        "space-2"
+      ]
+    },
+    {
+      "name": "Hotbar",
+      "category": "hud",
+      "file": "Hotbar.xt",
+      "thumbnail": "Hotbar.png",
+      "description": "Row of quick slots (`<repeat>`) with a selected slot.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Selected",
+          "Empty"
+        ],
+        "slots": []
+      },
+      "ports": [
+        {
+          "name": "slots",
+          "type": "list<struct{key: string, count: number, empty: bool}>",
+          "dir": "in"
+        },
+        {
+          "name": "selected",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "select",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [],
+      "triggers": [
+        "press: sound(ui_select); emit(select)"
+      ],
+      "tokens": [
+        "color-accent",
+        "color-border",
+        "color-border-strong",
+        "color-surface-raised",
+        "color-surface-sunken",
+        "color-text",
+        "color-text-dim",
+        "focus-w",
+        "font-family",
+        "font-size-xs",
+        "motion-instant",
+        "radius-m",
+        "radius-s",
+        "space-2"
+      ],
+      "notes": "Controlled: `selected` (index) from the host; a click emits `select` with the entry index."
+    },
+    {
+      "name": "Crosshair",
+      "category": "hud",
+      "file": "Crosshair.xt",
+      "thumbnail": "Crosshair.png",
+      "description": "Reticle whose gap follows `spread`; Target state and hit flash.",
+      "requires": {
+        "states": [
+          "Idle",
+          "Target"
+        ],
+        "slots": []
+      },
+      "stateGroups": {
+        "Aim": [
+          "Idle",
+          "Target"
+        ]
+      },
+      "ports": [
+        {
+          "name": "spread",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "on_target",
+          "type": "bool",
+          "dir": "in"
+        },
+        {
+          "name": "hit",
+          "type": "event",
+          "dir": "in"
+        }
+      ],
+      "timelines": [
+        "hit"
+      ],
+      "triggers": [
+        "port(hit): play(hit)"
+      ],
+      "tokens": [
+        "color-danger",
+        "color-text",
+        "radius-full"
+      ],
+      "notes": "The hit flash is the `hit` timeline, playable from the host until symbol-scope play() works."
+    },
+    {
+      "name": "DamageNumber",
+      "category": "hud",
+      "file": "DamageNumber.xt",
+      "thumbnail": "DamageNumber.png",
+      "description": "Floating damage numbers (normal and critical), one spawned per hit.",
+      "requires": {
+        "states": [
+          "Crit"
+        ],
+        "slots": []
+      },
+      "ports": [
+        {
+          "name": "amount",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "crit",
+          "type": "bool",
+          "dir": "in"
+        },
+        {
+          "name": "x",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "y",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "hit",
+          "type": "event",
+          "dir": "in"
+        }
+      ],
+      "timelines": [],
+      "triggers": [
+        "port(hit): spawn(DamagePop, at=#Origin, lifetime=0.45s, timeline=pop)"
+      ],
+      "tokens": [
+        "color-shadow",
+        "color-text",
+        "color-warning",
+        "font-family",
+        "font-size-l",
+        "font-size-xl"
+      ],
+      "notes": "Set amount / crit / x / y (offset from the field's top-left), then fire `hit`: each hit spawns a DamagePop (its `pop` timeline, 0.45 s) that keeps the values it was spawned with. The file also defines DamageNumberList, the list-port alternative (`numbers: list<struct{amount, x, y, crit}>`, item-enter / item-exit)."
+    },
+    {
+      "name": "Minimap",
+      "category": "hud",
+      "file": "Minimap.xt",
+      "thumbnail": "Minimap.png",
+      "description": "Round minimap frame around external content (`scene-view:minimap`).",
+      "requires": {
+        "states": [],
+        "slots": [
+          "label"
+        ]
+      },
+      "ports": [],
+      "timelines": [],
+      "triggers": [],
+      "tokens": [
+        "color-accent",
+        "color-border-strong",
+        "color-shadow",
+        "color-surface",
+        "color-surface-sunken",
+        "color-text",
+        "focus-w",
+        "font-family",
+        "font-size-xs",
+        "radius-full",
+        "space-1"
+      ],
+      "notes": "The map is `<external source=\"scene-view:minimap\">`; the round frame does not clip external content to its radius."
+    },
+    {
+      "name": "CompassStrip",
+      "category": "hud",
+      "file": "CompassStrip.xt",
+      "thumbnail": "CompassStrip.png",
+      "description": "Heading strip scrolled by `heading` (degrees).",
+      "requires": {
+        "states": [],
+        "slots": [
+          "marker"
+        ]
+      },
+      "ports": [
+        {
+          "name": "heading",
+          "type": "number",
+          "dir": "in"
+        }
+      ],
+      "timelines": [],
+      "triggers": [],
+      "tokens": [
+        "border-w",
+        "color-accent",
+        "color-border-strong",
+        "color-shadow",
+        "color-text",
+        "color-text-dim",
+        "font-family",
+        "font-size-xs"
+      ],
+      "notes": "The strip scrolls with `bind:translate-x` (a transform component; no relayout)."
+    },
+    {
+      "name": "Subtitle",
+      "category": "hud",
+      "file": "Subtitle.xt",
+      "thumbnail": "Subtitle.png",
+      "description": "Subtitle line with speaker; text-reveal intro.",
+      "requires": {
+        "states": [
+          "Character",
+          "Narrator"
+        ],
+        "slots": []
+      },
+      "stateGroups": {
+        "Voice": [
+          "Character",
+          "Narrator"
+        ]
+      },
+      "ports": [
+        {
+          "name": "speaker",
+          "type": "string",
+          "dir": "in"
+        },
+        {
+          "name": "line",
+          "type": "string",
+          "dir": "in"
+        },
+        {
+          "name": "narrator",
+          "type": "bool",
+          "dir": "in"
+        }
+      ],
+      "timelines": [
+        "intro",
+        "outro"
+      ],
+      "triggers": [
+        "port(line): play(intro)",
+        "hide: play(outro) then hide"
+      ],
+      "tokens": [
+        "color-accent",
+        "color-scrim",
+        "color-text",
+        "color-text-dim",
+        "font-family",
+        "font-size-m",
+        "font-size-s",
+        "radius-s",
+        "space-1",
+        "space-2",
+        "space-4"
+      ],
+      "notes": "The intro (text-reveal) runs from the host API until symbol-scope play() works; the Narrator voice hides the speaker."
+    },
+    {
+      "name": "Notification",
+      "category": "hud",
+      "file": "Notification.xt",
+      "thumbnail": "Notification.png",
+      "description": "Notification card with Info / Warning / Danger tones.",
+      "requires": {
+        "states": [
+          "Info",
+          "Warning",
+          "Danger"
+        ],
+        "slots": [
+          "title",
+          "text"
+        ]
+      },
+      "stateGroups": {
+        "Tone": [
+          "Info",
+          "Warning",
+          "Danger"
+        ]
+      },
+      "ports": [
+        {
+          "name": "tone",
+          "type": "number",
+          "dir": "in"
+        }
+      ],
+      "timelines": [
+        "intro",
+        "outro"
+      ],
+      "triggers": [
+        "show: sound(ui_notify); play(intro)",
+        "hide: play(outro) then hide"
+      ],
+      "tokens": [
+        "color-danger",
+        "color-info",
+        "color-shadow",
+        "color-surface",
+        "color-text",
+        "color-text-dim",
+        "color-warning",
+        "font-family",
+        "font-size-m",
+        "font-size-s",
+        "radius-full",
+        "radius-s",
+        "space-3",
+        "space-4"
+      ]
+    },
+    {
+      "name": "InputGlyph",
+      "category": "input",
+      "file": "InputGlyph.xt",
+      "thumbnail": "InputGlyph.png",
+      "description": "Key cap showing the glyph of an input action plus a label.",
+      "requires": {
+        "states": [],
+        "slots": [
+          "glyph",
+          "label"
+        ]
+      },
+      "ports": [],
+      "timelines": [],
+      "triggers": [],
+      "tokens": [
+        "border-w",
+        "color-border-strong",
+        "color-surface-raised",
+        "color-text",
+        "font-family",
+        "font-size-s",
+        "radius-s",
+        "space-1",
+        "space-2"
+      ],
+      "notes": "Fill the `glyph` slot with `<glyph key=\"<action>\"/>`; without a glyph provider the action name shows as text."
+    },
+    {
+      "name": "ButtonPrompt",
+      "category": "input",
+      "file": "ButtonPrompt.xt",
+      "thumbnail": "ButtonPrompt.png",
+      "description": "Rich-text prompt line with inline input glyphs.",
+      "requires": {
+        "states": [],
+        "slots": [
+          "text"
+        ]
+      },
+      "ports": [],
+      "timelines": [
+        "intro"
+      ],
+      "triggers": [
+        "show: play(intro)"
+      ],
+      "tokens": [
+        "color-scrim",
+        "color-text",
+        "font-family",
+        "font-size-m",
+        "radius-s",
+        "space-2",
+        "space-3"
+      ],
+      "notes": "Fill the `text` slot with text and `<glyph key>` elements."
+    },
+    {
+      "name": "VirtualJoystick",
+      "category": "mobile",
+      "file": "mobile/VirtualJoystick.xt",
+      "thumbnail": "mobile/VirtualJoystick.png",
+      "description": "Virtual thumbstick (>= 160 px): drag the pad to write `axis`, release re-centres it.",
+      "requires": {
+        "states": [
+          "Idle",
+          "Active"
+        ],
+        "slots": []
+      },
+      "variants": {
+        "Mode": [
+          "Fixed",
+          "Floating"
+        ]
+      },
+      "ports": [
+        {
+          "name": "axis",
+          "type": "vec2",
+          "dir": "out"
+        },
+        {
+          "name": "knob",
+          "type": "vec2",
+          "dir": "in"
+        },
+        {
+          "name": "dead",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "active",
+          "type": "bool",
+          "dir": "in"
+        }
+      ],
+      "timelines": [
+        "release"
+      ],
+      "triggers": [
+        "press: set(active, true)",
+        "drag.value: set(axis, event.value | range(0, 1, -1, 1) | vec2(0)); set(knob, event.value | range(0, 1, -1, 1) | vec2(0))",
+        "release: set(active, false); set(axis, event.value | vec2(0)); set(knob, event.value | vec2(0)); play(release)"
+      ],
+      "tokens": [
+        "border-w",
+        "color-accent",
+        "color-accent-pressed",
+        "color-border",
+        "color-border-strong",
+        "color-disabled-bg",
+        "color-surface-raised",
+        "color-surface-sunken",
+        "focus-w",
+        "motion-fast",
+        "radius-full",
+        "touch-lg"
+      ],
+      "notes": "The pad is `draggable=\"axis-x\"`, so a drag writes only the x component (`axis` = (x, 0), x in -1..1); there is no vertical drag value yet, so `axis.y` stays 0 unless the host writes it. `dead` (the host sets 0.15) draws the dead-zone ring; the host applies the dead zone. Mode=Floating fades the base until active; the base does not move to the touch point (no pointer position in triggers)."
+    },
+    {
+      "name": "TouchButton",
+      "category": "mobile",
+      "file": "mobile/TouchButton.xt",
+      "thumbnail": "mobile/TouchButton.png",
+      "description": "Large round touch button (--touch-lg) with hold, auto-repeat and a cooldown shade.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Pressed",
+          "Disabled",
+          "Cooling"
+        ],
+        "slots": [
+          "icon",
+          "label"
+        ]
+      },
+      "ports": [
+        {
+          "name": "pressed",
+          "type": "event",
+          "dir": "out"
+        },
+        {
+          "name": "held",
+          "type": "bool",
+          "dir": "out"
+        },
+        {
+          "name": "repeat",
+          "type": "event",
+          "dir": "out"
+        },
+        {
+          "name": "cooldown",
+          "type": "number",
+          "dir": "in"
+        }
+      ],
+      "timelines": [
+        "press",
+        "repeat"
+      ],
+      "triggers": [
+        "press: sound(ui_click); set(held, true); emit(pressed); play(press); play(repeat, loop)",
+        "release: set(held, false); stop(repeat)",
+        "timeline(repeat).marker(tick): emit(repeat)"
+      ],
+      "tokens": [
+        "color-accent",
+        "color-accent-pressed",
+        "color-border",
+        "color-border-strong",
+        "color-disabled-bg",
+        "color-disabled-text",
+        "color-focus",
+        "color-scrim",
+        "color-surface-raised",
+        "color-text",
+        "color-text-dim",
+        "color-track",
+        "focus-w",
+        "font-family",
+        "font-size-s",
+        "motion-fast",
+        "radius-full",
+        "radius-s",
+        "space-1",
+        "touch-lg"
+      ],
+      "notes": "Press emits `pressed`, sets `held` and loops the `repeat` timeline whose `tick` marker emits `repeat` every 0.25 s (a fixed interval: a symbol cannot take a `repeat-ms` attribute); `cooldown` (0..1, host-driven) scales a vertical shade rather than a conic ring and sets Cooling."
+    },
+    {
+      "name": "DPad",
+      "category": "mobile",
+      "file": "mobile/DPad.xt",
+      "thumbnail": "mobile/DPad.png",
+      "description": "Four-way touch D-pad emitting `dir` with `direction` (0 up, 1 right, 2 down, 3 left) and `axis`.",
+      "requires": {
+        "states": [
+          "Pressed",
+          "Disabled"
+        ],
+        "slots": []
+      },
+      "ports": [
+        {
+          "name": "dir",
+          "type": "event",
+          "dir": "out"
+        },
+        {
+          "name": "axis",
+          "type": "vec2",
+          "dir": "out"
+        },
+        {
+          "name": "direction",
+          "type": "number",
+          "dir": "out"
+        }
+      ],
+      "timelines": [
+        "press"
+      ],
+      "triggers": [
+        "press: sound(ui_tick); set(direction, 0); set(axis, event.value | vec2(-1)); emit(dir); play(press)",
+        "release: set(axis, event.value | vec2(0))",
+        "press: sound(ui_tick); set(direction, 1); set(axis, event.value | offset(1) | vec2(0)); emit(dir); play(press)",
+        "release: set(axis, event.value | vec2(0))",
+        "press: sound(ui_tick); set(direction, 2); set(axis, event.value | vec2(1)); emit(dir); play(press)",
+        "release: set(axis, event.value | vec2(0))",
+        "press: sound(ui_tick); set(direction, 3); set(axis, event.value | offset(-1) | vec2(0)); emit(dir); play(press)",
+        "release: set(axis, event.value | vec2(0))"
+      ],
+      "tokens": [
+        "color-accent",
+        "color-accent-pressed",
+        "color-border",
+        "color-border-strong",
+        "color-disabled-bg",
+        "color-disabled-text",
+        "color-focus",
+        "color-surface",
+        "color-surface-raised",
+        "color-text-dim",
+        "color-text-on-accent",
+        "focus-w",
+        "motion-instant",
+        "radius-m",
+        "radius-s"
+      ],
+      "notes": "Each arrow writes `direction` and `axis` (unit vector, y down) before emitting `dir`; release writes `axis` = (0, 0)."
+    },
+    {
+      "name": "SwipeCard",
+      "category": "mobile",
+      "file": "mobile/SwipeCard.xt",
+      "thumbnail": "mobile/SwipeCard.png",
+      "description": "Stacked swipe card: a left / right swipe emits `swipe` with `direction` -1 / 1 and flies the card out.",
+      "requires": {
+        "states": [
+          "Pressed"
+        ],
+        "slots": [
+          "content",
+          "next"
+        ]
+      },
+      "ports": [
+        {
+          "name": "swipe",
+          "type": "event",
+          "dir": "out"
+        },
+        {
+          "name": "direction",
+          "type": "number",
+          "dir": "out"
+        },
+        {
+          "name": "offset",
+          "type": "number",
+          "dir": "in"
+        }
+      ],
+      "timelines": [
+        "snap-back",
+        "fly-left",
+        "fly-right",
+        "intro"
+      ],
+      "triggers": [
+        "drag.value: set(offset, event.value | range(0, 1, -1, 1))",
+        "release: set(offset, 0); play(snap-back)",
+        "gesture(swipe(left)): sound(ui_select); set(direction, -1); emit(swipe); play(fly-left)",
+        "gesture(swipe(right)): sound(ui_select); set(direction, 1); emit(swipe); play(fly-right)"
+      ],
+      "tokens": [
+        "border-w",
+        "color-accent",
+        "color-border",
+        "color-border-strong",
+        "color-shadow",
+        "color-surface",
+        "color-surface-raised",
+        "color-text",
+        "color-text-dim",
+        "font-family",
+        "font-size-l",
+        "radius-l"
+      ],
+      "notes": "The top card follows a horizontal drag through the local `offset` port and snaps back on release; the swipe gestures play `fly-left` / `fly-right`; the host swaps the content and plays `intro`."
+    },
+    {
+      "name": "BottomSheet",
+      "category": "mobile",
+      "file": "mobile/BottomSheet.xt",
+      "thumbnail": "mobile/BottomSheet.png",
+      "description": "Bottom sheet docked to the bottom safe area; tap or swipe the grip to expand / collapse.",
+      "requires": {
+        "states": [
+          "Collapsed",
+          "Expanded"
+        ],
+        "slots": [
+          "title",
+          "content"
+        ]
+      },
+      "stateGroups": {
+        "Sheet": [
+          "Collapsed",
+          "Expanded"
+        ]
+      },
+      "ports": [
+        {
+          "name": "open",
+          "type": "bool",
+          "dir": "in"
+        }
+      ],
+      "timelines": [
+        "expand",
+        "collapse"
+      ],
+      "triggers": [
+        "port(open): if gt(0) play(expand) else play(collapse)",
+        "click: sound(ui_open); set(open, toggle)",
+        "gesture(swipe(up)): set(open, true)",
+        "gesture(swipe(down)): sound(ui_back); set(open, false)"
+      ],
+      "tokens": [
+        "border-w",
+        "color-accent",
+        "color-border",
+        "color-border-strong",
+        "color-shadow",
+        "color-surface-raised",
+        "color-text",
+        "font-family",
+        "font-size-l",
+        "radius-full",
+        "radius-l",
+        "space-2",
+        "space-3",
+        "space-4",
+        "touch-min"
+      ],
+      "notes": "The symbol writes `open` itself (Toggle convention) and plays `expand` / `collapse` on every change; closing by dragging is approximated by the swipe(down) gesture (there is no vertical drag value)."
+    },
+    {
+      "name": "TabBar",
+      "category": "mobile",
+      "file": "mobile/TabBar.xt",
+      "thumbnail": "mobile/TabBar.png",
+      "description": "Bottom tab bar with 3-5 tabs (variant Count) inside the bottom safe area.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Bar1",
+          "Bar2",
+          "Bar3",
+          "Bar4",
+          "Bar5"
+        ],
+        "slots": [
+          "tab1",
+          "tab2",
+          "tab3",
+          "tab4",
+          "tab5"
+        ]
+      },
+      "variants": {
+        "Count": [
+          "3",
+          "4",
+          "5"
+        ]
+      },
+      "stateGroups": {
+        "TabBar": [
+          "Bar1",
+          "Bar2",
+          "Bar3",
+          "Bar4",
+          "Bar5"
+        ]
+      },
+      "ports": [
+        {
+          "name": "value",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "select",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [
+        "tab-change"
+      ],
+      "triggers": [
+        "click: sound(ui_tab); set(value, 0); emit(select); play(tab-change)",
+        "click: sound(ui_tab); set(value, 1); emit(select); play(tab-change)",
+        "click: sound(ui_tab); set(value, 2); emit(select); play(tab-change)",
+        "click: sound(ui_tab); set(value, 3); emit(select); play(tab-change)",
+        "click: sound(ui_tab); set(value, 4); emit(select); play(tab-change)"
+      ],
+      "tokens": [
+        "border-w",
+        "color-accent",
+        "color-border",
+        "color-surface",
+        "color-surface-raised",
+        "color-text",
+        "color-text-dim",
+        "color-track",
+        "font-family",
+        "font-size-xs",
+        "motion-instant",
+        "radius-m",
+        "space-1",
+        "space-2",
+        "touch-min"
+      ],
+      "notes": "A tap writes `value` and emits `select`; `value` (0-4) selects the Bar1..Bar5 state of the TabBar group."
+    },
+    {
+      "name": "TopBar",
+      "category": "mobile",
+      "file": "mobile/TopBar.xt",
+      "thumbnail": "mobile/TopBar.png",
+      "description": "Top app bar that clears the status bar (top safe-area padding), with left / title / right slots.",
+      "requires": {
+        "states": [],
+        "slots": [
+          "title",
+          "left",
+          "right"
+        ]
+      },
+      "ports": [],
+      "timelines": [
+        "intro"
+      ],
+      "triggers": [],
+      "tokens": [
+        "border-w",
+        "color-border",
+        "color-surface",
+        "color-text",
+        "font-family",
+        "font-size-l",
+        "space-2",
+        "space-3",
+        "touch-min"
+      ],
+      "notes": "Its top padding is `1safe-top`; `intro` slides the bar in."
+    },
+    {
+      "name": "PullIndicator",
+      "category": "mobile",
+      "file": "mobile/PullIndicator.xt",
+      "thumbnail": "mobile/PullIndicator.png",
+      "description": "Pull-to-refresh indicator driven by `progress` (0..1); reaching 1 loops `spin`.",
+      "requires": {
+        "states": [
+          "Pulling",
+          "Ready"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "stateGroups": {
+        "Pull": [
+          "Pulling",
+          "Ready"
+        ]
+      },
+      "ports": [
+        {
+          "name": "progress",
+          "type": "number",
+          "dir": "in"
+        }
+      ],
+      "timelines": [
+        "spin"
+      ],
+      "triggers": [
+        "port(progress): if ge(1) play(spin, loop)"
+      ],
+      "tokens": [
+        "color-accent",
+        "color-border",
+        "color-surface-raised",
+        "color-text",
+        "color-text-dim",
+        "focus-w",
+        "font-family",
+        "font-size-s",
+        "radius-full",
+        "radius-s",
+        "space-2",
+        "touch-min"
+      ],
+      "notes": "The host writes `progress` while the list is pulled and stops `spin` (stopTimeline) when the refresh is done."
+    },
+    {
+      "name": "ToggleTouch",
+      "category": "mobile",
+      "file": "mobile/ToggleTouch.xt",
+      "thumbnail": "mobile/ToggleTouch.png",
+      "description": "Touch-size Toggle: the switch is --touch-min tall.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Focus",
+          "Checked",
+          "Disabled"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "ports": [
+        {
+          "name": "value",
+          "type": "bool",
+          "dir": "in"
+        }
+      ],
+      "timelines": [
+        "flip"
+      ],
+      "triggers": [
+        "check: sound(ui_toggle); set(value, true); play(flip)",
+        "uncheck: sound(ui_toggle); set(value, false); play(flip)"
+      ],
+      "tokens": [
+        "color-accent",
+        "color-accent-hover",
+        "color-border-strong",
+        "color-disabled-bg",
+        "color-disabled-text",
+        "color-focus",
+        "color-text",
+        "color-text-dim",
+        "color-text-on-accent",
+        "color-track",
+        "focus-w",
+        "font-family",
+        "font-size-m",
+        "motion-fast",
+        "radius-full",
+        "space-3",
+        "touch-min"
+      ],
+      "notes": "A copy of Toggle (symbols have no `extends`); check / uncheck also play `flip`."
+    },
+    {
+      "name": "SliderTouch",
+      "category": "mobile",
+      "file": "mobile/SliderTouch.xt",
+      "thumbnail": "mobile/SliderTouch.png",
+      "description": "Touch-size Slider: a --touch-min track and handle.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Pressed",
+          "Focus",
+          "Disabled"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "ports": [
+        {
+          "name": "value",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "min",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "max",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "decrease",
+          "type": "event",
+          "dir": "out"
+        },
+        {
+          "name": "increase",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [
+        "grab"
+      ],
+      "triggers": [
+        "press: play(grab)",
+        "drag.value: set(value, event.value | range(0, 1, min, max) | round)",
+        "nav.value: sound(ui_tick); if lt(0) emit(decrease) else emit(increase)"
+      ],
+      "tokens": [
+        "color-accent",
+        "color-accent-pressed",
+        "color-disabled-text",
+        "color-focus",
+        "color-text",
+        "color-text-dim",
+        "color-track",
+        "focus-w",
+        "font-family",
+        "font-size-m",
+        "motion-fast",
+        "radius-full",
+        "radius-m",
+        "space-2",
+        "space-3",
+        "touch-min"
+      ],
+      "notes": "A copy of Slider (symbols have no `extends`); pressing the track plays `grab`."
+    },
+    {
+      "name": "PinchZoomView",
+      "category": "mobile",
+      "file": "mobile/PinchZoomView.xt",
+      "thumbnail": "mobile/PinchZoomView.png",
+      "description": "Clipping container whose content is scaled by `scale` (clamped to min..max); pinch emits `pinch`.",
+      "requires": {
+        "states": [
+          "Zoomed"
+        ],
+        "slots": [
+          "content"
+        ]
+      },
+      "ports": [
+        {
+          "name": "scale",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "min",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "max",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "pinch",
+          "type": "event",
+          "dir": "out"
+        },
+        {
+          "name": "reset",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [
+        "zoom"
+      ],
+      "triggers": [
+        "gesture(pinch): emit(pinch)",
+        "gesture(doubletap): sound(ui_select); emit(reset); play(zoom)"
+      ],
+      "tokens": [
+        "border-w",
+        "color-accent",
+        "color-border",
+        "color-success",
+        "color-surface-raised",
+        "color-surface-sunken",
+        "color-text",
+        "color-text-dim",
+        "font-family",
+        "font-size-xs",
+        "radius-full",
+        "radius-m",
+        "radius-s",
+        "space-2"
+      ],
+      "notes": "The gesture scale is not a trigger event value, so the host turns `pinch` into a new `scale` and resets it on `reset` (double tap)."
+    },
+    {
+      "name": "ListItem",
+      "category": "list",
+      "file": "list/ListItem.xt",
+      "thumbnail": "list/ListItem.png",
+      "description": "Reference list entry to copy (30.13): title / subtitle / selected in-ports, a trailing slot, a Selected state; emits `activate` and `dblactivate`.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Focus",
+          "Selected"
+        ],
+        "slots": [
+          "trailing"
+        ]
+      },
+      "ports": [
+        {
+          "name": "title",
+          "type": "string",
+          "dir": "in"
+        },
+        {
+          "name": "subtitle",
+          "type": "string",
+          "dir": "in"
+        },
+        {
+          "name": "selected",
+          "type": "bool",
+          "dir": "in"
+        },
+        {
+          "name": "activate",
+          "type": "event",
+          "dir": "out"
+        },
+        {
+          "name": "dblactivate",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [],
+      "triggers": [
+        "click: sound(ui_select); emit(activate)",
+        "dblclick: emit(dblactivate)"
+      ],
+      "tokens": [
+        "color-accent",
+        "color-focus",
+        "color-surface",
+        "color-surface-raised",
+        "color-text",
+        "color-text-dim",
+        "color-text-on-accent",
+        "control-l",
+        "focus-w",
+        "font-family",
+        "font-size-m",
+        "font-size-s",
+        "motion-fast",
+        "radius-m",
+        "space-1",
+        "space-2",
+        "space-3"
+      ],
+      "notes": "The list-entry pattern: values through in-ports (`bind:title=\"item(title)\"` on the <use> in a <repeat> template), free content through the `trailing` slot (slot content may bind item() and document ports), states through bind:state (Selected follows `selected`). From a <repeat> entry the events carry the entry index."
+    }
+  ]
+}

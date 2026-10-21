@@ -1,0 +1,9 @@
+id: 781e43fb-c4ec-42ae-965a-a4a0f053839f
+kind: reference
+title: hud-preview-bg
+source:
+  kind: ai:service
+  ref: hud-preview-bg.png
+tags: [asset, texture]
+license: own
+content: sha256:b390433adccdf7390479d0aaec5d2f153e3c1dd8831f9a6ae0498b78ef046b90

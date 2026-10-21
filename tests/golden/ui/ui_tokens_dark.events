@@ -1,0 +1,2 @@
+# T-170: switch to the "dark" theme (overrides --bg and --accent).
+theme dark ui_tokens_dark.xts

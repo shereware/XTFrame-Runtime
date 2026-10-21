@@ -1,0 +1,40 @@
+<xt>
+  <head>
+    <style>
+      div {
+        position: absolute;
+        width: 100px;
+        height: 100px;
+      }
+      #a {
+        left: 16px;
+        top: 16px;
+        background-gradient: linear-gradient(0deg, #ff0000, #0000ff);
+      }
+      #b {
+        left: 140px;
+        top: 16px;
+        background-gradient: linear-gradient(45deg, #ff0000 0%, #00ff00 30%, #0000ff 100%);
+      }
+      #c {
+        left: 16px;
+        top: 140px;
+        background-color: #202020;
+        background-gradient: radial-gradient(50% 50% at 50% 50%, #ffffff, #000000);
+      }
+      #d {
+        left: 140px;
+        top: 140px;
+        border-top-left-radius: 24px;
+        border-bottom-right-radius: 24px;
+        background-gradient: radial-gradient(70% 40% at 25% 30%, #ffcc00, #cc0066);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="a"></div>
+    <div id="b"></div>
+    <div id="c"></div>
+    <div id="d"></div>
+  </body>
+</xt>

@@ -1,0 +1,12 @@
+id: 04e18aa8-c9ff-46db-8d47-96bf1cf0eaaf
+type: image
+title: tab-audio-sel-tex
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/tab-hl-3.png
+content: sha256:8bb49b01bbe75f1ac8c04a1a95942f787d95661e2859de7bbd6458dc495c4626
+measured:
+  w: 372
+  h: 88
+  alpha: true

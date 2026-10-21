@@ -1,0 +1,6 @@
+# T-198: Dropdown, state 'open'.
+port Quality.options [{"label":"Low"},{"label":"Medium"},{"label":"High"},{"label":"Ultra"}]
+port Quality.value 2
+port Quality.current High
+update 0.6
+click 100 60

@@ -1,0 +1,11 @@
+<xt>
+  <head>
+    <style>
+      #scaled { width: 100px; }
+    </style>
+  </head>
+  <body>
+    <img id="scaled" src="../lottie/img/pix.png"/>
+    <img id="natural" src="../lottie/img/pix.png"/>
+  </body>
+</xt>

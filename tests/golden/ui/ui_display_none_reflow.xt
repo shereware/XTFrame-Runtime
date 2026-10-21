@@ -1,0 +1,14 @@
+<xt>
+  <head>
+    <style>
+      #a { width: 200px; height: 60px; margin: 12px; background-color: #ff0000; }
+      #b { width: 200px; height: 60px; margin: 12px; background-color: #00aa00; display: none; }
+      #c { width: 200px; height: 60px; margin: 12px; background-color: #0000ff; }
+    </style>
+  </head>
+  <body>
+    <div id="a"></div>
+    <div id="b"></div>
+    <div id="c"></div>
+  </body>
+</xt>

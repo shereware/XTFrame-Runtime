@@ -1,0 +1,5 @@
+# T-174: Full then Low (same group: Full is cleared), then click the button (state toggle).
+state Hp Full
+state Hp Low
+pointerdown 80 136
+pointerup 80 136

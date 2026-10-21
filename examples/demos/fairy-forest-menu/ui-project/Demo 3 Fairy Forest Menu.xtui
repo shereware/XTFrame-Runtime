@@ -1,0 +1,84 @@
+{
+  "version": 1,
+  "name": "Demo 3 Fairy Forest Menu",
+  "id": "demo-3-fairy-forest-menu",
+  "game": "",
+  "spec": {
+    "platforms": [],
+    "safeArea": {
+      "default": 0.025,
+      "console": 0.05
+    },
+    "logicalHeight": 720,
+    "input": {
+      "methods": [],
+      "players": 1
+    },
+    "languages": [],
+    "fontFallback": {},
+    "budget": {
+      "frameMs": 0,
+      "effectLayers": 0,
+      "fillRate": 0
+    },
+    "engine": {
+      "name": "",
+      "version": ""
+    }
+  },
+  "uis": [
+    {
+      "id": "demo3-menu",
+      "doc": "demo3-menu/demo3-menu.xt",
+      "flow": "demo3-menu/demo3-menu.xtflow",
+      "size": [
+        1280,
+        720
+      ]
+    }
+  ],
+  "shared": {
+    "assetRoot": "shared",
+    "fontDirs": [
+      "shared/fonts"
+    ],
+    "styles": [
+      "shared/base.xts"
+    ],
+    "templateDirs": [],
+    "symbols": "shared/symbols",
+    "tokens": "shared/tokens.xts",
+    "themes": "shared/themes",
+    "strings": "shared/strings",
+    "recipes": "shared/recipes",
+    "design": "design"
+  },
+  "preview": {
+    "dpr": 1
+  },
+  "target": "engine",
+  "publish": {
+    "outDir": "publish",
+    "languages": [],
+    "embedImages": false,
+    "embedFonts": false,
+    "thumbnails": [
+      320,
+      180
+    ],
+    "atlas": {
+      "enabled": false,
+      "maxSize": 4096,
+      "padding": 2,
+      "mipmaps": false,
+      "scope": "ui"
+    },
+    "targets": [
+      {
+        "kind": "dir",
+        "path": "publish",
+        "lastPublished": "2026-10-18T07:20:42Z"
+      }
+    ]
+  }
+}

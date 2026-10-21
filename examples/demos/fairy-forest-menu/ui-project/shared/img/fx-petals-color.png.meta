@@ -1,0 +1,12 @@
+id: e24e8175-87a4-4366-9004-2ad2ce563bae
+type: image
+title: fx-petals-color
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/d8a520306f042f32a1b86e9267c22d37
+content: sha256:0c2972506ec6f4b7660f488e22343b1d20d5d81009079953ebbd1ff89d6150e3
+measured:
+  w: 2560
+  h: 1440
+  alpha: true

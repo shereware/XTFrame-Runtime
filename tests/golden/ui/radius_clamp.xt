@@ -1,0 +1,10 @@
+<xt>
+  <head>
+    <style>
+      #a { width: 100px; height: 50px; margin: 40px; background-color: #33aa33; border-radius: 200px; }
+    </style>
+  </head>
+  <body>
+    <div id="a"></div>
+  </body>
+</xt>

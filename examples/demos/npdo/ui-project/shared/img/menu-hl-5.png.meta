@@ -1,0 +1,12 @@
+id: 24fb461b-0d1b-40ac-9133-ef6afc4dae09
+type: image
+title: menu-hl-5
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/menu-hl-5.png
+content: sha256:deb1550a2654775730e6e864ab68d69eafafca16db291f28a07486f920b36d85
+measured:
+  w: 600
+  h: 84
+  alpha: true

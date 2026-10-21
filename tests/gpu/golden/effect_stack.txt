@@ -1,0 +1,17 @@
+target 64x64 vertices=12 indices=36 cmds=6 passes=6 params=159
+transient 1: 64x64 rgba8 stencil=1
+transient 2: 64x64 rgba8 stencil=0
+transient 3: 64x64 rgba8 stencil=0
+transient 4: 64x64 rgba8 stencil=0
+pass 0: target=1 clear=1 copy=0 from=0 view=(0,0,64,64) cmds=1
+  0 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=30 verts=8 clip=(0,0,64,64)
+pass 1: target=2 clear=0 copy=0 from=0 view=(0,0,64,64) cmds=1
+  1 Effect Replace None ref=0 program=GaussColor tex=no src=1 aux=0 linear idx=6 verts=4 clip=(0,0,64,64)
+pass 2: target=3 clear=0 copy=0 from=0 view=(0,0,64,64) cmds=1
+  2 Effect Replace None ref=0 program=GaussColor tex=no src=2 aux=0 linear idx=6 verts=4 clip=(0,0,64,64)
+pass 3: target=2 clear=0 copy=0 from=0 view=(0,0,64,64) cmds=1
+  3 Effect Replace None ref=0 program=AlphaExtract tex=no src=3 aux=0 linear idx=6 verts=4 clip=(0,0,64,64)
+pass 4: target=4 clear=0 copy=0 from=0 view=(0,0,64,64) cmds=1
+  4 Effect Replace None ref=0 program=ShadowGlow tex=no src=3 aux=2 linear idx=6 verts=4 clip=(0,0,64,64)
+pass 5: target=0 clear=0 copy=0 from=0 view=(0,0,64,64) cmds=1
+  5 Composite SrcOver None ref=0 tex=no src=4 aux=0 linear idx=6 verts=4 clip=(0,0,64,64)

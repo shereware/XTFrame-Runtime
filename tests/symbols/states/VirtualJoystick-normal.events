@@ -1,0 +1,4 @@
+# T-241: VirtualJoystick, state 'normal'.
+port Stick.dead 0.15
+port Float.dead 0.15
+update 0.6

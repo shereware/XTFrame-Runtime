@@ -1,0 +1,23 @@
+<xt>
+  <head>
+    <style>
+      @keyframes shadowmove {
+        from { effect: shadow(0px 0px 10px #00000080); }
+        to { effect: shadow(20px 20px 10px #00000080); }
+      }
+      #a {
+        position: absolute;
+        left: 68px;
+        top: 68px;
+        width: 100px;
+        height: 100px;
+        background-color: #3060c0;
+        effect: shadow(0px 0px 10px #00000080);
+        animation: shadowmove 1s linear;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="a"></div>
+  </body>
+</xt>

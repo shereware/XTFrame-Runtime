@@ -1,0 +1,57 @@
+<xt>
+  <head>
+    <!-- Toggle: standard symbol (docs/design/30-ui-project.md 30.4). See README.md.
+         The switch is the checkbox input, its knob an element inside it. The input's own check /
+         uncheck set the `value` port, and `bind:checked` moves the switch when the host sets
+         `value`. -->
+    <symbol name="Toggle" requires="states: Hover, Focus, Checked, Disabled; slots: label">
+      <div id="Box" port:value="bool in">
+        <span id="Label"><slot name="label">Toggle</slot></span>
+        <input type="checkbox" id="Switch" bind:checked="value"
+               on:check="sound(ui_toggle); set(value, true)" on:uncheck="sound(ui_toggle); set(value, false)">
+          <div id="Knob"></div>
+        </input>
+      </div>
+    </symbol>
+    <style>
+      symbol(Toggle) {
+        #Box {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          column-gap: var(--space-3);
+          width: 220px;
+          color: var(--color-text);
+          font-family: var(--font-family);
+          font-size: var(--font-size-m);
+        }
+        #Label { white-space: nowrap; }
+        #Switch {
+          display: flex;
+          align-items: center;
+          width: 44px;
+          height: 24px;
+          padding: 0px 2px;
+          border-width: var(--focus-w);
+          border-color: transparent;
+          border-radius: var(--radius-full);
+          background-color: var(--color-track);
+          transition: background-color var(--motion-fast) linear;
+        }
+        #Knob {
+          width: 16px;
+          height: 16px;
+          border-radius: var(--radius-full);
+          background-color: var(--color-text-dim);
+        }
+        #Box:hover #Switch { background-color: var(--color-border-strong); }
+        #Switch:focus { border-color: var(--color-focus); }
+        #Switch:checked { justify-content: flex-end; background-color: var(--color-accent); }
+        #Switch:checked #Knob { background-color: var(--color-text-on-accent); }
+        #Box:hover #Switch:checked { background-color: var(--color-accent-hover); }
+        :disabled #Switch { background-color: var(--color-disabled-bg) !important; }
+        :disabled #Label { color: var(--color-disabled-text); }
+      }
+    </style>
+  </head>
+</xt>

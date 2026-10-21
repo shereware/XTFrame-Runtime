@@ -1,0 +1,16 @@
+<xt>
+  <head>
+    <style>
+      #i-override { width: 100px; aspect-ratio: 2; }
+      #i-auto { width: 100px; aspect-ratio: auto; }
+      #i-height { height: 30px; }
+      #i-min { min-width: 100px; }
+    </style>
+  </head>
+  <body>
+    <img id="i-override" src="../lottie/img/pix.png"/>
+    <img id="i-auto" src="../lottie/img/pix.png"/>
+    <img id="i-height" src="../lottie/img/pix.png"/>
+    <img id="i-min" src="../lottie/img/pix.png"/>
+  </body>
+</xt>

@@ -1,0 +1,12 @@
+id: c40487cc-99de-4b53-8ab6-4255a8c876aa
+type: image
+title: item-credits-icon-color
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/ba1c7da016f8c7130016015024836aea
+content: sha256:03908ab11702b403e935ce950b3da00f969fbc4b2492fcc541670542fb1c5136
+measured:
+  w: 128
+  h: 128
+  alpha: true

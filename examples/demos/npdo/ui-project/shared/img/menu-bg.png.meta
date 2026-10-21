@@ -1,0 +1,12 @@
+id: bfd57506-fe76-41cc-9ba1-302f094f5928
+type: image
+title: menu-bg
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/intro_background.png
+content: sha256:e9a8868e05024dbd9e996117413dade4c7c1b3734fc7d3b597335c26e54afb91
+measured:
+  w: 1672
+  h: 941
+  alpha: false

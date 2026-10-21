@@ -1,0 +1,43 @@
+<xt>
+  <head>
+    <style>
+      div {
+        position: absolute;
+        width: 96px;
+        height: 96px;
+      }
+      #a {
+        left: 24px;
+        top: 24px;
+        background-gradient: linear-gradient(45deg, #ff3300, #3300ff);
+        border-top-left-radius: 16px;
+        effect: custom("fx_ripple.xtfx", amplitude 6, tint #ffee88);
+      }
+      #b {
+        left: 136px;
+        top: 24px;
+        background-gradient: linear-gradient(0deg, #00cc66, #003366);
+        effect: shadow(0 4px 8px #00000080) custom("fx_ripple.xtfx");
+      }
+      #c {
+        left: 24px;
+        top: 136px;
+        background-gradient: radial-gradient(50% 50% at 50% 50%, #ffffff, #ff0088);
+        effect: custom("fx_swirl.xtfx", strength 1.5);
+      }
+      #d {
+        left: 136px;
+        top: 136px;
+        background-color: #2255aa;
+        border-bottom-right-radius: 32px;
+        effect: custom("fx_swirl.xtfx", center 0.3 0.7) glow(6px #ffffff);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="a"></div>
+    <div id="b"></div>
+    <div id="c"></div>
+    <div id="d"></div>
+  </body>
+</xt>

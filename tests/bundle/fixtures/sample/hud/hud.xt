@@ -1,0 +1,8 @@
+<xt>
+  <body>
+    <div id="panel">
+      <img src="img/a.png"/>
+      <button id="fire" style="font-size: 48px">Fire</button>
+    </div>
+  </body>
+</xt>

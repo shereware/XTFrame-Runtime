@@ -1,0 +1,9 @@
+target 64x64 vertices=12 indices=36 cmds=3 passes=3 params=13
+transient 1: 64x64 rgba8 stencil=1
+transient 2: 64x64 rgba8 stencil=0
+pass 0: target=1 clear=1 copy=0 from=0 view=(0,0,64,64) cmds=1
+  0 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=30 verts=8 clip=(0,0,64,64)
+pass 1: target=2 clear=0 copy=0 from=0 view=(0,0,64,64) cmds=1
+  1 Effect Replace None ref=0 program=Shine tex=no src=1 aux=0 linear idx=6 verts=4 clip=(0,0,64,64)
+pass 2: target=0 clear=0 copy=0 from=0 view=(0,0,64,64) cmds=1
+  2 Composite SrcOver None ref=0 tex=no src=2 aux=0 linear idx=6 verts=4 clip=(0,0,64,64)

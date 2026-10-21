@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "name": "Missing symbols",
+  "id": "missing-symbols",
+  "uis": [
+    {
+      "id": "main",
+      "doc": "ui/main/main.xt",
+      "size": [320, 240]
+    },
+    {
+      "id": "second",
+      "doc": "ui/second/second.xt",
+      "size": [320, 240]
+    }
+  ],
+  "shared": {
+    "symbols": "shared/lib"
+  }
+}

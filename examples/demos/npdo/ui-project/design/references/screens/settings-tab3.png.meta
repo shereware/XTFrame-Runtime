@@ -1,0 +1,9 @@
+id: 4828d1cd-c25f-4d7b-b0c9-d15bf60f321a
+kind: reference
+title: settings tab3
+source:
+  kind: ai:service
+  ref: settings-tab3.png
+tags: [screenshot, settings]
+license: own
+content: sha256:6e7edc8993d70674131b0bfb706c42dfd0e4ff2850b89b558220ba6bd4b0bc8e

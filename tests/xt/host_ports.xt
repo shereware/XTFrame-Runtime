@@ -1,0 +1,17 @@
+<xt>
+  <head>
+    <style>
+      body { display: flex; flex-direction: column; }
+      #title { width: 100px; height: 24px; }
+      #btn { width: 80px; height: 30px; }
+      #name { width: 100px; height: 24px; }
+      #gone { width: 40px; height: 20px; }
+    </style>
+  </head>
+  <body>
+    <span id="title">start</span>
+    <button id="btn">go</button>
+    <input id="name" type="text"/>
+    <div id="gone"></div>
+  </body>
+</xt>

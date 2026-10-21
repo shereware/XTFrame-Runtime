@@ -1,0 +1,7 @@
+target 64x64 vertices=24 indices=72 cmds=5 passes=1 params=0
+pass 0: target=0 clear=0 copy=0 from=0 view=(0,0,64,64) cmds=5
+  0 StencilOnly Replace WriteIncrWrap ref=0 tex=no src=0 aux=0 linear idx=6 verts=4 clip=(0,0,64,64)
+  1 StencilOnly Replace ClipPush ref=1 tex=no src=0 aux=0 linear idx=6 verts=4 clip=(0,0,64,64)
+  2 Solid SrcOver TestEqualRef ref=1 tex=no src=0 aux=0 linear idx=30 verts=8 clip=(18,18,28,28)
+  3 StencilOnly Replace ClipPop ref=1 tex=no src=0 aux=0 linear idx=6 verts=4 clip=(0,0,64,64)
+  4 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=30 verts=8 clip=(0,0,64,64)

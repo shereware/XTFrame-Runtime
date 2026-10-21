@@ -1,0 +1,90 @@
+{
+    "version": 6,
+    "cmakeMinimumRequired": { "major": 3, "minor": 24, "patch": 0 },
+    "configurePresets": [
+        {
+            "name": "vs2022",
+            "generator": "Visual Studio 17 2022",
+            "binaryDir": "${sourceDir}/build/vs2022"
+        },
+        {
+            "name": "vs2022-sw-shell",
+            "inherits": "vs2022",
+            "binaryDir": "${sourceDir}/build/vs2022-sw-shell",
+            "cacheVariables": { "XT_SHELL_GL": "OFF" }
+        },
+        {
+            "name": "clang-cl",
+            "generator": "Visual Studio 17 2022",
+            "toolset": "ClangCL",
+            "binaryDir": "${sourceDir}/build/clang-cl"
+        },
+        {
+            "name": "ninja-base",
+            "hidden": true,
+            "generator": "Ninja"
+        },
+        {
+            "name": "ninja-gcc-debug",
+            "inherits": "ninja-base",
+            "binaryDir": "${sourceDir}/build/ninja-gcc-debug",
+            "cacheVariables": { "CMAKE_CXX_COMPILER": "g++", "CMAKE_BUILD_TYPE": "Debug" }
+        },
+        {
+            "name": "ninja-gcc-release",
+            "inherits": "ninja-base",
+            "binaryDir": "${sourceDir}/build/ninja-gcc-release",
+            "cacheVariables": { "CMAKE_CXX_COMPILER": "g++", "CMAKE_BUILD_TYPE": "Release" }
+        },
+        {
+            "name": "ninja-clang-debug",
+            "inherits": "ninja-base",
+            "binaryDir": "${sourceDir}/build/ninja-clang-debug",
+            "cacheVariables": { "CMAKE_CXX_COMPILER": "clang++", "CMAKE_BUILD_TYPE": "Debug" }
+        },
+        {
+            "name": "ninja-clang-release",
+            "inherits": "ninja-base",
+            "binaryDir": "${sourceDir}/build/ninja-clang-release",
+            "cacheVariables": { "CMAKE_CXX_COMPILER": "clang++", "CMAKE_BUILD_TYPE": "Release" }
+        },
+        {
+            "name": "ninja-ci-debug",
+            "inherits": "ninja-base",
+            "binaryDir": "${sourceDir}/build/ci-debug",
+            "cacheVariables": { "CMAKE_CXX_COMPILER": "$penv{CXX}", "CMAKE_BUILD_TYPE": "Debug" }
+        },
+        {
+            "name": "ninja-ci-release",
+            "inherits": "ninja-base",
+            "binaryDir": "${sourceDir}/build/ci-release",
+            "cacheVariables": { "CMAKE_CXX_COMPILER": "$penv{CXX}", "CMAKE_BUILD_TYPE": "Release" }
+        }
+    ],
+    "buildPresets": [
+        { "name": "vs2022-debug", "configurePreset": "vs2022", "configuration": "Debug" },
+        { "name": "vs2022-release", "configurePreset": "vs2022", "configuration": "Release" },
+        { "name": "vs2022-sw-shell-debug", "configurePreset": "vs2022-sw-shell", "configuration": "Debug" },
+        { "name": "clang-cl-debug", "configurePreset": "clang-cl", "configuration": "Debug" },
+        { "name": "clang-cl-release", "configurePreset": "clang-cl", "configuration": "Release" },
+        { "name": "ninja-gcc-debug", "configurePreset": "ninja-gcc-debug" },
+        { "name": "ninja-gcc-release", "configurePreset": "ninja-gcc-release" },
+        { "name": "ninja-clang-debug", "configurePreset": "ninja-clang-debug" },
+        { "name": "ninja-clang-release", "configurePreset": "ninja-clang-release" },
+        { "name": "ninja-ci-debug", "configurePreset": "ninja-ci-debug" },
+        { "name": "ninja-ci-release", "configurePreset": "ninja-ci-release" }
+    ],
+    "testPresets": [
+        { "name": "vs2022-debug", "configurePreset": "vs2022", "configuration": "Debug", "output": { "outputOnFailure": true } },
+        { "name": "vs2022-release", "configurePreset": "vs2022", "configuration": "Release", "output": { "outputOnFailure": true } },
+        { "name": "vs2022-sw-shell-debug", "configurePreset": "vs2022-sw-shell", "configuration": "Debug", "output": { "outputOnFailure": true } },
+        { "name": "clang-cl-debug", "configurePreset": "clang-cl", "configuration": "Debug", "output": { "outputOnFailure": true } },
+        { "name": "clang-cl-release", "configurePreset": "clang-cl", "configuration": "Release", "output": { "outputOnFailure": true } },
+        { "name": "ninja-gcc-debug", "configurePreset": "ninja-gcc-debug", "output": { "outputOnFailure": true } },
+        { "name": "ninja-gcc-release", "configurePreset": "ninja-gcc-release", "output": { "outputOnFailure": true } },
+        { "name": "ninja-clang-debug", "configurePreset": "ninja-clang-debug", "output": { "outputOnFailure": true } },
+        { "name": "ninja-clang-release", "configurePreset": "ninja-clang-release", "output": { "outputOnFailure": true } },
+        { "name": "ninja-ci-debug", "configurePreset": "ninja-ci-debug", "output": { "outputOnFailure": true } },
+        { "name": "ninja-ci-release", "configurePreset": "ninja-ci-release", "output": { "outputOnFailure": true } }
+    ]
+}

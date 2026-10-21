@@ -1,0 +1,22 @@
+<xt>
+  <head>
+    <style>
+      body { width: 256px; height: 256px; background-color: #ffffff; }
+      div {
+        position: absolute;
+        top: 88px;
+        width: 70px;
+        height: 70px;
+        background-color: #ff8800;
+      }
+      #i1 { left: 8px; }
+      #i2 { left: 93px; effect: color-adjust(saturate(-1)); }
+      #i3 { left: 178px; effect: color-adjust(hue-rotate(120deg)); }
+    </style>
+  </head>
+  <body>
+    <div id="i1"></div>
+    <div id="i2"></div>
+    <div id="i3"></div>
+  </body>
+</xt>

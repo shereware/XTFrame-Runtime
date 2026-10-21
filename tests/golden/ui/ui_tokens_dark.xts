@@ -1,0 +1,2 @@
+/* Theme "dark": overrides two tokens (docs/tasks/T-170.md). */
+:root { --bg: #202020; --accent: #ffcc00; }

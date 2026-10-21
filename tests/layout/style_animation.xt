@@ -1,0 +1,33 @@
+<xt>
+  <head>
+    <style>
+      @keyframes spin { from { opacity: 1 } to { opacity: 0.5 } }
+      @keyframes fx { from { effect: blur(0px) } to { effect: blur(10px) } }
+      body { width: 400px; height: 300px; }
+      #hoverBox { position: absolute; left: 0px; top: 0px; width: 60px; height: 30px;
+                  opacity: 1; transition: opacity 0.2s linear; }
+      #hoverBox:hover { opacity: 0.5; }
+      #spinBox { position: absolute; left: 0px; top: 100px; width: 20px; height: 20px; }
+      #spinBox.run { animation: spin 1s linear 0s infinite; }
+      #widthBox { position: absolute; left: 0px; top: 150px; width: 50px; height: 20px; }
+      #smoothBox { position: absolute; left: 0px; top: 200px; width: 50px; height: 20px;
+                   transition: width 0.1s linear; }
+      #host { position: absolute; left: 200px; top: 0px; width: 100px; height: 100px; }
+      #fxBox { position: absolute; left: 0px; top: 250px; width: 20px; height: 20px;
+               effect: blur(0px); animation: fx 1s linear; }
+      #tfBox { position: absolute; left: 300px; top: 200px; width: 60px; height: 30px;
+               transform: rotateY(0deg); transition: transform 0.2s linear; }
+      #tfBox:hover { transform: rotateY(60deg); }
+      .made { width: 10px; height: 10px; }
+    </style>
+  </head>
+  <body id="body">
+    <div id="hoverBox"></div>
+    <div id="spinBox"></div>
+    <div id="widthBox"></div>
+    <div id="smoothBox"></div>
+    <div id="host"></div>
+    <div id="fxBox"></div>
+    <div id="tfBox"></div>
+  </body>
+</xt>

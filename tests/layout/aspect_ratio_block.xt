@@ -1,0 +1,18 @@
+<xt>
+  <head>
+    <style>
+      #b-width { width: 160px; aspect-ratio: 16 / 9; }
+      #b-height { height: 50px; aspect-ratio: 2; }
+      #b-auto { aspect-ratio: 4/1; }
+      #b-max { aspect-ratio: 2; max-height: 50px; }
+      #b-both { width: 100px; height: 20px; aspect-ratio: 2; }
+    </style>
+  </head>
+  <body>
+    <div id="b-width"></div>
+    <div id="b-height"></div>
+    <div id="b-auto"></div>
+    <div id="b-max"></div>
+    <div id="b-both"></div>
+  </body>
+</xt>

@@ -1,0 +1,71 @@
+<xt>
+  <head>
+    <!-- ListItem: the reference list-entry symbol (docs/design/30-ui-project.md 30.13,
+         27-interaction.md 27.3.4). See ../README.md "List".
+         Copy it for every list-entry component. Each way data reaches an entry is shown once:
+         - values -> in-ports (the default): `title`, `subtitle`, `selected`. Inside a <repeat>
+           template the instance takes them with bind:<port>, e.g. bind:title="item(title)";
+           each entry keeps its own copy (path id `Rows/3/Item.title`).
+         - free content -> the slot `trailing` (a badge, an icon, a button). Slot content belongs
+           to the document, so it may bind item(...) and document ports itself.
+         - states -> bind:state.<Name>: `Selected` follows the `selected` port. Exclusive states
+           go into a state group (state-groups="Mark: Unread|Read").
+         Events: a click emits `activate`, a double click also `dblactivate` (after the second
+         `activate`); from a <repeat> entry both carry the entry index. -->
+    <symbol name="ListItem" requires="states: Hover, Focus, Selected; slots: trailing">
+      <div id="Box" port:title="string in" port:subtitle="string in" port:selected="bool in"
+           port:activate="event out" port:dblactivate="event out" tabindex="0"
+           bind:state.Selected="selected"
+           on:click="sound(ui_select); emit(activate)" on:dblclick="emit(dblactivate)">
+        <div id="Text">
+          <span id="Title" bind:text="title"></span>
+          <span id="Subtitle" bind:text="subtitle"></span>
+        </div>
+        <div id="Trailing"><slot name="trailing"></slot></div>
+      </div>
+    </symbol>
+    <style>
+      symbol(ListItem) {
+        #Box {
+          display: flex;
+          align-items: center;
+          column-gap: var(--space-3);
+          width: 300px;
+          min-height: var(--control-l);
+          padding: var(--space-2) var(--space-3);
+          border-width: var(--focus-w);
+          border-color: transparent;
+          border-radius: var(--radius-m);
+          background-color: var(--color-surface);
+          color: var(--color-text);
+          font-family: var(--font-family);
+          font-size: var(--font-size-m);
+          transition: background-color var(--motion-fast) linear;
+        }
+        #Text {
+          display: flex;
+          flex-direction: column;
+          flex-grow: 1;
+          row-gap: var(--space-1);
+        }
+        #Title { white-space: nowrap; }
+        #Subtitle {
+          white-space: nowrap;
+          color: var(--color-text-dim);
+          font-size: var(--font-size-s);
+        }
+        #Trailing {
+          display: flex;
+          align-items: center;
+          column-gap: var(--space-2);
+          color: var(--color-text-dim);
+          font-size: var(--font-size-s);
+        }
+        #Box:hover { background-color: var(--color-surface-raised); }
+        #Box:focus { border-color: var(--color-focus); }
+        #Box:state(Selected) { background-color: var(--color-accent); color: var(--color-text-on-accent); }
+        #Box:state(Selected) #Subtitle, #Box:state(Selected) #Trailing { color: var(--color-text-on-accent); }
+      }
+    </style>
+  </head>
+</xt>

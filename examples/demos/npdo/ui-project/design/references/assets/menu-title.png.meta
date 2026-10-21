@@ -1,0 +1,9 @@
+id: 43688dcf-38b1-4187-894d-83db7ce376a1
+kind: reference
+title: menu-title
+source:
+  kind: ai:service
+  ref: menu-title.png
+tags: [asset, texture]
+license: own
+content: sha256:6eb801b955682f5b5de58a3faea4dbeb4d3ef77d9d95b6a3e4714f8de278e038

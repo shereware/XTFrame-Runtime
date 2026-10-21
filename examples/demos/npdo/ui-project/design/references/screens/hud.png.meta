@@ -1,0 +1,9 @@
+id: 40926e56-6245-4f16-8678-3838f47a2525
+kind: reference
+title: hud
+source:
+  kind: ai:service
+  ref: hud.png
+tags: [screenshot, hud]
+license: own
+content: sha256:296921ff8a7f87b31be701b8bfd0e1bcc4cdcf3dbdf886fd658d60f89118115b

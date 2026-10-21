@@ -1,0 +1,7 @@
+# T-241: SliderTouch, state 'drag'.
+port Volume.min 0
+port Volume.max 100
+port Volume.value 35
+update 0.6
+pointerdown 120 74
+pointermove 250 74

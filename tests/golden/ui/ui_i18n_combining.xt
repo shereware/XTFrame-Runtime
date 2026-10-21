@@ -1,0 +1,17 @@
+<xt>
+  <head>
+    <style>
+      @font-face { font-family: "Noto Sans"; src: "../../fonts/NotoSans-Regular.subset.ttf"; }
+      #a {
+        margin: 16px;
+        width: 220px;
+        font-family: "Noto Sans";
+        font-size: 20px;
+        color: #202020;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="a">e&#x301; a&#x308; n&#x303;</div>
+  </body>
+</xt>

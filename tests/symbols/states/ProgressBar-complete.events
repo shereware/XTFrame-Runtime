@@ -1,0 +1,6 @@
+# T-198: ProgressBar, state 'complete'.
+port Load.value_max 100
+port Load.value 40
+update 0.6
+port Load.value 100
+update 0.5

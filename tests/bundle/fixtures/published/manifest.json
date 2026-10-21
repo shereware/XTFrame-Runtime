@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "bundle": { "id": "mygame", "name": "MyGame UI", "builtAt": "2026-09-22T10:00:00Z", "xtframe": "0.3.0", "irMajor": 2 },
+  "uis": [
+    {
+      "id": "hud", "name": "HUD", "file": "ui/hud.xtir", "flow": "ui/hud.xtflow", "thumb": "thumbs/hud.png",
+      "size": [1280, 720], "tags": ["ingame"],
+      "requires": { "effects": true, "space3d": true, "text": true },
+      "assets": ["assets/a1b2c3d4e5f60718.png", "assets/c3d4e5f607182930.ttf"],
+      "ports": {
+        "in":  [ { "name": "#hpText.setText", "type": "string" }, { "name": "#ammo.setProperty", "type": "number", "params": { "prop": "RotationY" } } ],
+        "out": [ { "name": "#fire.Click", "type": "pulse" }, { "name": "#hpBar.hover", "type": "bool" } ]
+      },
+      "fileHash": 1111
+    },
+    {
+      "id": "pause", "name": "Pause", "file": "ui/pause.xtir", "thumb": "thumbs/pause.png",
+      "size": [1280, 720], "tags": [],
+      "requires": { "effects": false, "space3d": false, "text": true },
+      "assets": ["assets/c3d4e5f607182930.ttf"],
+      "ports": { "in": [], "out": [] },
+      "fileHash": 2222
+    }
+  ],
+  "assets": [
+    { "file": "assets/a1b2c3d4e5f60718.png", "kind": "image", "bytes": 5, "sources": ["hud/img/bar.png"] },
+    { "file": "assets/c3d4e5f607182930.ttf", "kind": "font", "bytes": 5, "sources": ["shared/fonts/ui.ttf"] }
+  ]
+}

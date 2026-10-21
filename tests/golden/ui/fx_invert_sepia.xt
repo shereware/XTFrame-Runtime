@@ -1,0 +1,26 @@
+<xt>
+  <head>
+    <style>
+      body { width: 256px; height: 256px; background-color: #ffffff; }
+      div { position: absolute; width: 56px; height: 56px; }
+      .c0 { background-color: #ff8800; }
+      .c1 { background-color: #2a7fd4; }
+      .c2 { background-color: #33cc66; }
+      .c3 { background-color: #808080; }
+      .r0 { top: 8px; }
+      .r1 { top: 70px; }
+      .r2 { top: 132px; }
+      .r3 { top: 194px; }
+      .k0 { left: 8px; effect: color-adjust(invert(0.5)); }
+      .k1 { left: 70px; effect: color-adjust(invert(100%)); }
+      .k2 { left: 132px; effect: color-adjust(sepia(1)); }
+      .k3 { left: 194px; effect: color-adjust(brightness(0.1) hue-rotate(40deg) invert(0.3) sepia(0.6)); }
+    </style>
+  </head>
+  <body>
+    <div class="c0 r0 k0"></div><div class="c0 r0 k1"></div><div class="c0 r0 k2"></div><div class="c0 r0 k3"></div>
+    <div class="c1 r1 k0"></div><div class="c1 r1 k1"></div><div class="c1 r1 k2"></div><div class="c1 r1 k3"></div>
+    <div class="c2 r2 k0"></div><div class="c2 r2 k1"></div><div class="c2 r2 k2"></div><div class="c2 r2 k3"></div>
+    <div class="c3 r3 k0"></div><div class="c3 r3 k1"></div><div class="c3 r3 k2"></div><div class="c3 r3 k3"></div>
+  </body>
+</xt>

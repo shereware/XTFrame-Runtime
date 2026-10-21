@@ -1,0 +1,486 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Settings</title></head>
+<body><x-dc>
+<helmet><style>
+  body { margin: 0; background: #050505 }
+  .tab { position: relative; width: 279px; height: 66px; flex-shrink: 0 }
+  .tab-band { position: absolute; left: 0px; top: 0px; width: 279px; height: 66px; border-left: 3px solid #5c2320 }
+  .band-tex { position: absolute; left: 0px; top: 0px; width: 100%; height: 100%; object-fit: fill }
+  .tab-sel { opacity: 0 }
+  .sel .tab-sel { opacity: 1 }
+  .tab-hover { opacity: 0; pointer-events: none }
+  .tab-label { position: absolute; left: 33px; top: 0px; height: 66px; line-height: 66px; white-space: nowrap;
+               font-size: 28.5px; letter-spacing: 2.25px; color: #bdb6a8 }
+  .sel .tab-label { color: #f6f1e6 }
+  .panel { width: 756px; display: flex; flex-direction: column }
+  .off { display: none }
+  .panel-heading { font-size: 36px; line-height: 45px; letter-spacing: 3px; color: #f6f1e6; font-weight: 400 }
+  .panel-desc { margin-top: 9px; font-size: 19.5px; line-height: 27px; letter-spacing: 0.75px; color: #a39e93 }
+  .panel-divider { width: 756px; height: 1.5px; margin-top: 24px; margin-bottom: 6px; background-color: #ffffff1f }
+  .row { position: relative; width: 756px; height: 60px; flex-shrink: 0;
+         border-bottom: 1.5px solid #ffffff14; transition: background-color 140ms ease-out }
+  .row.last { border-bottom: 0px solid #ffffff00 }
+  .row:hover { background-color: #ffffff0a }
+  .row-label { position: absolute; left: 9px; top: 0px; height: 60px; line-height: 60px; white-space: nowrap;
+               font-size: 22.5px; letter-spacing: 1.5px; color: #d6d0c2 }
+  .sl-track { position: absolute; left: 420px; top: 28.5px; width: 264px; height: 3px; background-color: #ffffff26 }
+  .sl-fill { position: absolute; left: 0px; top: 0px; height: 3px; background-color: #d6d0c2 }
+  .sl-knob { position: absolute; right: -4.5px; top: -9px; width: 9px; height: 21px; background-color: #f6f1e6 }
+  .sl-value { position: absolute; left: 699px; top: 0px; width: 51px; height: 60px; line-height: 60px;
+              text-align: right; font-size: 21px; color: #e8e2d4 }
+  .sl-hit { position: absolute; left: 420px; top: 12px; width: 264px; height: 36px }
+  .sw-state { position: absolute; left: 420px; top: 0px; width: 48px; height: 60px; line-height: 60px;
+              font-size: 21px; color: #e8e2d4 }
+  .sw { position: absolute; left: 474px; top: 13.5px; width: 63px; height: 33px; border-radius: 16.5px;
+        background-color: #ffffff40 }
+  .sw-knob { position: absolute; left: 4.5px; top: 4.5px; width: 24px; height: 24px; border-radius: 12px;
+             background-color: #f6f1e6; transition: left 140ms ease-out }
+  .on .sw-knob { left: 34.5px }
+  .box { position: absolute; left: 420px; top: 9px; width: 330px; height: 42px;
+         border: 1.5px solid #ffffff40; background-color: #00000066; transition: border-color 140ms ease-out }
+  .box:hover { border-color: #efe8d8 }
+  .box-text { position: absolute; left: 18px; top: 0px; height: 39px; line-height: 39px; white-space: nowrap;
+              font-size: 19.5px; color: #e8e2d4 }
+  .box-cycle { position: absolute; left: 0px; top: 0px; width: 327px; height: 39px; line-height: 39px;
+               text-align: center; white-space: nowrap; font-size: 19.5px; color: #e8e2d4 }
+  .btn { width: 240px }
+  .btn-text { position: absolute; left: 0px; top: 0px; width: 237px; height: 39px; line-height: 39px;
+              text-align: center; white-space: nowrap; font-size: 19.5px; color: #e8e2d4 }
+  .step-arrow { position: absolute; top: 9px; width: 42px; height: 42px }
+  .step-value { position: absolute; left: 465px; top: 0px; width: 240px; height: 60px; line-height: 60px;
+                text-align: center; white-space: nowrap; font-size: 21px; letter-spacing: 1.5px; color: #f6f1e6 }
+  .chip { display: flex; flex-direction: row; align-items: center; gap: 15px; height: 48px;
+          padding-left: 12px; padding-right: 12px; transition: background-color 140ms ease-out }
+  .chip:hover { background-color: #ffffff14 }
+  .sep { width: 1.5px; height: 33px; background-color: #ffffff33 }
+  .key { width: 33px; height: 33px; line-height: 30px; text-align: center; font-size: 18px;
+         border: 1.5px solid #e8e2d4b3; border-radius: 4.5px; color: #e8e2d4 }
+  .hint { font-size: 21px; letter-spacing: 1.5px; color: #d6d0c2; white-space: nowrap }
+</style></helmet>
+<!-- Board 1920x1080 (spec x1.5). Safe area 2.5 % = 48 px left/right, 27 px top/bottom.
+     Tab index (port tab): Audio 0, Gameplay 1, Graphics 2, Controls 3, Accessibility 4, Microphone 5. -->
+<div id="settings" style="position: relative; z-index: 0; width: 1920px; height: 1080px; overflow: hidden; background-color: #00000000;
+     font-family: Georgia, 'Times New Roman', serif; color: #e8e2d4;"
+     data-xt-port="master_volume:number in = 80; music_volume:number in = 60; sfx_volume:number in = 75; dialogue_volume:number in = 90; output_device:string in = &quot;Headphones (Realtek)&quot;; audio_mode:string in = &quot;Night Mode&quot;; subtitles:bool in = true; gp_camera_shake:number in = 60; gp_autosave:bool in = true; gp_hints:bool in = true; gfx_brightness:number in = 50; gfx_vsync:bool in = true; gfx_grain:bool in = false; ctl_sensitivity:number in = 40; ctl_invert_y:bool in = false; acc_contrast:bool in = false; acc_text_size:number in = 50; mic_input_volume:number in = 70; mic_voice_chat:bool in = true; mic_push_to_talk:bool in = false; tab:number in = 0; tab_gameplay:event out; tab_graphics:event out; tab_audio:event out; tab_controls:event out; tab_accessibility:event out; tab_microphone:event out; audio_mode_prev:event out; audio_mode_next:event out; open_output_device:event out; toggle_subtitles:event out; play_test_sound:event out; apply_settings:event out; reset_defaults:event out; back:event out; active:bool in = true"
+     data-xt-trigger="port(active):if eq(1) show() else hide(); if eq(1) play(intro)">
+
+  <img id="settings-bg" src="/_blob/menu-bg.png" alt="" data-xt-editor-only
+       style="position: absolute; left: 0%; top: 0%; width: 100%; height: 100%; object-fit: cover;">
+  <div id="settings-shade" data-xt-editor-only style="position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;
+       background: linear-gradient(90deg, #000000e6 0%, #000000b3 45%, #00000059 100%);"></div>
+
+  <img id="settings-title" src="/_blob/menu-title.png" alt="NPDO"
+       style="position: absolute; left: 60px; top: 54px; width: 450px; height: 150px; object-fit: contain;">
+
+  <div id="settings-location" style="position: absolute; left: 1542px; top: 51px; width: 330px; height: 76.5px;
+       text-align: right; font-size: 16.5px; letter-spacing: 3px; line-height: 25.5px; color: #bdb6a8;
+       border-right: 1.5px solid #ffffff4d; padding-right: 18px;">
+    <div id="location-line-1">ST. REN HOSPITAL</div>
+    <div id="location-line-2">TAIPEI, TAIWAN</div>
+    <div id="location-line-3">1991 - 1997</div>
+  </div>
+
+  <div id="settings-tabs" style="position: absolute; left: 54px; top: 255px; width: 279px; height: 705px;
+       display: flex; flex-direction: column; gap: 6px; padding-top: 21px;
+       background: linear-gradient(90deg, #0a0a0ad9 0%, #0a0a0a73 100%); border: 1.5px solid #ffffff14;"
+       data-xt-timeline="intro: 0 opacity 0, 500 ease-out opacity 1">
+    <div id="tab-gameplay" class="tab" data-xt-bind="class.sel=tab | eq(1)"
+         data-xt-trigger="hover:play(tabhover_gameplay); leave:play(tabhover_gameplay, reverse); click:set(tab, 1); emit(tab_gameplay)"
+         data-xt-sound="hover:ui_hover; click:ui_confirm">
+      <div id="tab-gameplay-sel" class="tab-band tab-sel">
+        <img id="tab-hl-1" class="band-tex" src="/_blob/tab-hl-1.png" alt="">
+      </div>
+      <div id="tab-gameplay-hover" class="tab-band tab-hover"
+           data-xt-timeline="tabhover_gameplay: 0 opacity 0, 160 ease-out opacity 0.6, 0 transform translateX(-21px), 180 ease-out transform translateX(0px)">
+        <img id="tab-hl-1-hover" class="band-tex" src="/_blob/tab-hl-1.png" alt="">
+      </div>
+      <span id="tab-gameplay-label" class="tab-label"
+            data-xt-timeline="tabhover_gameplay: 0 opacity 1, 30 opacity 0.35, 60 opacity 1, 100 opacity 0.6, 140 opacity 1,
+              0 transform translateX(0px), 180 ease-out transform translateX(9px)">Gameplay</span>
+    </div>
+    <div id="tab-graphics" class="tab" data-xt-bind="class.sel=tab | eq(2)"
+         data-xt-trigger="hover:play(tabhover_graphics); leave:play(tabhover_graphics, reverse); click:set(tab, 2); emit(tab_graphics)"
+         data-xt-sound="hover:ui_hover; click:ui_confirm">
+      <div id="tab-graphics-sel" class="tab-band tab-sel">
+        <img id="tab-hl-2" class="band-tex" src="/_blob/tab-hl-2.png" alt="">
+      </div>
+      <div id="tab-graphics-hover" class="tab-band tab-hover"
+           data-xt-timeline="tabhover_graphics: 0 opacity 0, 160 ease-out opacity 0.6, 0 transform translateX(-21px), 180 ease-out transform translateX(0px)">
+        <img id="tab-hl-2-hover" class="band-tex" src="/_blob/tab-hl-2.png" alt="">
+      </div>
+      <span id="tab-graphics-label" class="tab-label"
+            data-xt-timeline="tabhover_graphics: 0 opacity 1, 30 opacity 0.35, 60 opacity 1, 100 opacity 0.6, 140 opacity 1,
+              0 transform translateX(0px), 180 ease-out transform translateX(9px)">Graphics</span>
+    </div>
+    <div id="tab-audio" class="tab sel" data-xt-bind="class.sel=tab | eq(0)"
+         data-xt-trigger="hover:play(tabhover_audio); leave:play(tabhover_audio, reverse); click:set(tab, 0); emit(tab_audio)"
+         data-xt-sound="hover:ui_hover; click:ui_confirm">
+      <div id="tab-audio-sel" class="tab-band tab-sel">
+        <img id="tab-hl-3" class="band-tex" src="/_blob/tab-hl-3.png" alt="">
+      </div>
+      <div id="tab-audio-hover" class="tab-band tab-hover"
+           data-xt-timeline="tabhover_audio: 0 opacity 0, 160 ease-out opacity 0.6, 0 transform translateX(-21px), 180 ease-out transform translateX(0px)">
+        <img id="tab-hl-3-hover" class="band-tex" src="/_blob/tab-hl-3.png" alt="">
+      </div>
+      <span id="tab-audio-label" class="tab-label"
+            data-xt-timeline="tabhover_audio: 0 opacity 1, 30 opacity 0.35, 60 opacity 1, 100 opacity 0.6, 140 opacity 1,
+              0 transform translateX(0px), 180 ease-out transform translateX(9px)">Audio</span>
+    </div>
+    <div id="tab-controls" class="tab" data-xt-bind="class.sel=tab | eq(3)"
+         data-xt-trigger="hover:play(tabhover_controls); leave:play(tabhover_controls, reverse); click:set(tab, 3); emit(tab_controls)"
+         data-xt-sound="hover:ui_hover; click:ui_confirm">
+      <div id="tab-controls-sel" class="tab-band tab-sel">
+        <img id="tab-hl-4" class="band-tex" src="/_blob/tab-hl-4.png" alt="">
+      </div>
+      <div id="tab-controls-hover" class="tab-band tab-hover"
+           data-xt-timeline="tabhover_controls: 0 opacity 0, 160 ease-out opacity 0.6, 0 transform translateX(-21px), 180 ease-out transform translateX(0px)">
+        <img id="tab-hl-4-hover" class="band-tex" src="/_blob/tab-hl-4.png" alt="">
+      </div>
+      <span id="tab-controls-label" class="tab-label"
+            data-xt-timeline="tabhover_controls: 0 opacity 1, 30 opacity 0.35, 60 opacity 1, 100 opacity 0.6, 140 opacity 1,
+              0 transform translateX(0px), 180 ease-out transform translateX(9px)">Controls</span>
+    </div>
+    <div id="tab-accessibility" class="tab" data-xt-bind="class.sel=tab | eq(4)"
+         data-xt-trigger="hover:play(tabhover_accessibility); leave:play(tabhover_accessibility, reverse); click:set(tab, 4); emit(tab_accessibility)"
+         data-xt-sound="hover:ui_hover; click:ui_confirm">
+      <div id="tab-accessibility-sel" class="tab-band tab-sel">
+        <img id="tab-hl-5" class="band-tex" src="/_blob/tab-hl-5.png" alt="">
+      </div>
+      <div id="tab-accessibility-hover" class="tab-band tab-hover"
+           data-xt-timeline="tabhover_accessibility: 0 opacity 0, 160 ease-out opacity 0.6, 0 transform translateX(-21px), 180 ease-out transform translateX(0px)">
+        <img id="tab-hl-5-hover" class="band-tex" src="/_blob/tab-hl-5.png" alt="">
+      </div>
+      <span id="tab-accessibility-label" class="tab-label"
+            data-xt-timeline="tabhover_accessibility: 0 opacity 1, 30 opacity 0.35, 60 opacity 1, 100 opacity 0.6, 140 opacity 1,
+              0 transform translateX(0px), 180 ease-out transform translateX(9px)">Accessibility</span>
+    </div>
+    <div id="tab-microphone" class="tab" data-xt-bind="class.sel=tab | eq(5)"
+         data-xt-trigger="hover:play(tabhover_microphone); leave:play(tabhover_microphone, reverse); click:set(tab, 5); emit(tab_microphone)"
+         data-xt-sound="hover:ui_hover; click:ui_confirm">
+      <div id="tab-microphone-sel" class="tab-band tab-sel">
+        <img id="tab-hl-6" class="band-tex" src="/_blob/tab-hl-6.png" alt="">
+      </div>
+      <div id="tab-microphone-hover" class="tab-band tab-hover"
+           data-xt-timeline="tabhover_microphone: 0 opacity 0, 160 ease-out opacity 0.6, 0 transform translateX(-21px), 180 ease-out transform translateX(0px)">
+        <img id="tab-hl-6-hover" class="band-tex" src="/_blob/tab-hl-6.png" alt="">
+      </div>
+      <span id="tab-microphone-label" class="tab-label"
+            data-xt-timeline="tabhover_microphone: 0 opacity 1, 30 opacity 0.35, 60 opacity 1, 100 opacity 0.6, 140 opacity 1,
+              0 transform translateX(0px), 180 ease-out transform translateX(9px)">Microphone</span>
+    </div>
+  </div>
+
+  <div id="settings-panel" style="position: absolute; left: 345px; top: 255px; width: 840px; height: 705px;
+       padding-top: 36px; padding-bottom: 36px; padding-left: 42px; padding-right: 42px;
+       background-color: #0a0a0ae0; border: 1.5px solid #ffffff1f;"
+       data-xt-timeline="intro: 0 opacity 0, 150 opacity 0, 650 ease-out opacity 1">
+   <div id="panel-gameplay" class="panel off" data-xt-bind="class.off=tab | ne(1)">
+    <span id="panel-gameplay-heading" class="panel-heading">Gameplay</span>
+    <span id="panel-gameplay-desc" class="panel-desc">How the world treats you, and how much it forgives.</span>
+    <div id="panel-gameplay-divider" class="panel-divider"></div>
+    <div id="row-difficulty" class="row">
+      <span id="row-difficulty-label" class="row-label">Difficulty</span>
+      <div id="difficulty-box" class="box">
+        <span id="difficulty-text" class="box-cycle">&lt;&#160;&#160;&#160;Standard&#160;&#160;&#160;&gt;</span>
+      </div>
+    </div>
+    <div id="row-shake" class="row">
+      <span id="row-shake-label" class="row-label">Camera Shake</span>
+      <div id="shake-track" class="sl-track">
+        <div id="shake-fill" class="sl-fill" style="width: 60%;" data-xt-bind="width=gp_camera_shake | range(0,100,0%,100%)">
+          <div id="shake-knob" class="sl-knob"></div>
+        </div>
+      </div>
+      <span id="shake-value" class="sl-value" data-xt-bind="text=gp_camera_shake | round">60</span>
+      <div id="shake-hit" class="sl-hit" data-xt-trigger="drag.value:set(gp_camera_shake, event.value | range(0,1,0,100) | round)"></div>
+    </div>
+    <div id="row-autosave" class="row">
+      <span id="row-autosave-label" class="row-label">Auto-Save</span>
+      <span id="autosave-state" class="sw-state" data-xt-bind="text=gp_autosave | select(true: On, false: Off)">On</span>
+      <div id="autosave-switch" class="sw on" data-xt-bind="class.on=gp_autosave"
+           data-xt-trigger="click:set(gp_autosave, toggle)" data-xt-sound="click:ui_confirm">
+        <div id="autosave-knob" class="sw-knob"></div>
+      </div>
+    </div>
+    <div id="row-hints" class="row">
+      <span id="row-hints-label" class="row-label">Tutorial Hints</span>
+      <span id="hints-state" class="sw-state" data-xt-bind="text=gp_hints | select(true: On, false: Off)">On</span>
+      <div id="hints-switch" class="sw on" data-xt-bind="class.on=gp_hints"
+           data-xt-trigger="click:set(gp_hints, toggle)" data-xt-sound="click:ui_confirm">
+        <div id="hints-knob" class="sw-knob"></div>
+      </div>
+    </div>
+    <div id="row-language" class="row last">
+      <span id="row-language-label" class="row-label">Language</span>
+      <div id="language-box" class="box">
+        <span id="language-text" class="box-cycle">&lt;&#160;&#160;&#160;English&#160;&#160;&#160;&gt;</span>
+      </div>
+    </div>
+   </div>
+   <div id="panel-graphics" class="panel off" data-xt-bind="class.off=tab | ne(2)">
+    <span id="panel-graphics-heading" class="panel-heading">Graphics</span>
+    <span id="panel-graphics-desc" class="panel-desc">Resolution, light and the grain of old film.</span>
+    <div id="panel-graphics-divider" class="panel-divider"></div>
+    <div id="row-resolution" class="row">
+      <span id="row-resolution-label" class="row-label">Resolution</span>
+      <div id="resolution-box" class="box">
+        <span id="resolution-text" class="box-cycle">&lt;&#160;&#160;&#160;1920 x 1080&#160;&#160;&#160;&gt;</span>
+      </div>
+    </div>
+    <div id="row-display" class="row">
+      <span id="row-display-label" class="row-label">Display Mode</span>
+      <div id="display-box" class="box">
+        <span id="display-text" class="box-cycle">&lt;&#160;&#160;&#160;Fullscreen&#160;&#160;&#160;&gt;</span>
+      </div>
+    </div>
+    <div id="row-brightness" class="row">
+      <span id="row-brightness-label" class="row-label">Brightness</span>
+      <div id="brightness-track" class="sl-track">
+        <div id="brightness-fill" class="sl-fill" style="width: 50%;" data-xt-bind="width=gfx_brightness | range(0,100,0%,100%)">
+          <div id="brightness-knob" class="sl-knob"></div>
+        </div>
+      </div>
+      <span id="brightness-value" class="sl-value" data-xt-bind="text=gfx_brightness | round">50</span>
+      <div id="brightness-hit" class="sl-hit" data-xt-trigger="drag.value:set(gfx_brightness, event.value | range(0,1,0,100) | round)"></div>
+    </div>
+    <div id="row-vsync" class="row">
+      <span id="row-vsync-label" class="row-label">VSync</span>
+      <span id="vsync-state" class="sw-state" data-xt-bind="text=gfx_vsync | select(true: On, false: Off)">On</span>
+      <div id="vsync-switch" class="sw on" data-xt-bind="class.on=gfx_vsync"
+           data-xt-trigger="click:set(gfx_vsync, toggle)" data-xt-sound="click:ui_confirm">
+        <div id="vsync-knob" class="sw-knob"></div>
+      </div>
+    </div>
+    <div id="row-grain" class="row last">
+      <span id="row-grain-label" class="row-label">Film Grain</span>
+      <span id="grain-state" class="sw-state" data-xt-bind="text=gfx_grain | select(true: On, false: Off)">Off</span>
+      <div id="grain-switch" class="sw" data-xt-bind="class.on=gfx_grain"
+           data-xt-trigger="click:set(gfx_grain, toggle)" data-xt-sound="click:ui_confirm">
+        <div id="grain-knob" class="sw-knob"></div>
+      </div>
+    </div>
+   </div>
+   <div id="panel-audio" class="panel" data-xt-bind="class.off=tab | ne(0)">
+    <span id="panel-audio-heading" class="panel-heading">Audio</span>
+    <span id="panel-audio-desc" class="panel-desc">Balance the hospital's silence against everything that breaks it.</span>
+    <div id="panel-audio-divider" class="panel-divider"></div>
+    <div id="row-master" class="row">
+      <span id="row-master-label" class="row-label">Master Volume</span>
+      <div id="master-track" class="sl-track">
+        <div id="master-fill" class="sl-fill" style="width: 80%;" data-xt-bind="width=master_volume | range(0,100,0%,100%)">
+          <div id="master-knob" class="sl-knob"></div>
+        </div>
+      </div>
+      <span id="master-value" class="sl-value" data-xt-bind="text=master_volume | round">80</span>
+      <div id="master-hit" class="sl-hit" data-xt-trigger="drag.value:set(master_volume, event.value | range(0,1,0,100) | round)"></div>
+    </div>
+    <div id="row-music" class="row">
+      <span id="row-music-label" class="row-label">Music</span>
+      <div id="music-track" class="sl-track">
+        <div id="music-fill" class="sl-fill" style="width: 60%;" data-xt-bind="width=music_volume | range(0,100,0%,100%)">
+          <div id="music-knob" class="sl-knob"></div>
+        </div>
+      </div>
+      <span id="music-value" class="sl-value" data-xt-bind="text=music_volume | round">60</span>
+      <div id="music-hit" class="sl-hit" data-xt-trigger="drag.value:set(music_volume, event.value | range(0,1,0,100) | round)"></div>
+    </div>
+    <div id="row-sfx" class="row">
+      <span id="row-sfx-label" class="row-label">Sound Effects</span>
+      <div id="sfx-track" class="sl-track">
+        <div id="sfx-fill" class="sl-fill" style="width: 75%;" data-xt-bind="width=sfx_volume | range(0,100,0%,100%)">
+          <div id="sfx-knob" class="sl-knob"></div>
+        </div>
+      </div>
+      <span id="sfx-value" class="sl-value" data-xt-bind="text=sfx_volume | round">75</span>
+      <div id="sfx-hit" class="sl-hit" data-xt-trigger="drag.value:set(sfx_volume, event.value | range(0,1,0,100) | round)"></div>
+    </div>
+    <div id="row-dialogue" class="row">
+      <span id="row-dialogue-label" class="row-label">Dialogue</span>
+      <div id="dialogue-track" class="sl-track">
+        <div id="dialogue-fill" class="sl-fill" style="width: 90%;" data-xt-bind="width=dialogue_volume | range(0,100,0%,100%)">
+          <div id="dialogue-knob" class="sl-knob"></div>
+        </div>
+      </div>
+      <span id="dialogue-value" class="sl-value" data-xt-bind="text=dialogue_volume | round">90</span>
+      <div id="dialogue-hit" class="sl-hit" data-xt-trigger="drag.value:set(dialogue_volume, event.value | range(0,1,0,100) | round)"></div>
+    </div>
+    <div id="row-output" class="row">
+      <span id="row-output-label" class="row-label">Output Device</span>
+      <div id="output-box" class="box" data-xt-trigger="click:emit(open_output_device)" data-xt-sound="click:ui_confirm">
+        <span id="output-text" class="box-text" data-xt-bind="text=output_device">Headphones (Realtek)</span>
+        <svg id="output-chevron" viewBox="0 0 18 18" style="position: absolute; right: 15px; top: 10.5px; width: 18px; height: 18px;">
+          <path id="Chevron" d="M4.5 6.75 L9 11.25 L13.5 6.75" fill="none" stroke="#e8e2d4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+    </div>
+    <div id="row-range" class="row">
+      <span id="row-range-label" class="row-label">Dynamic Range</span>
+      <div id="range-prev" class="step-arrow" style="left: 420px;"
+           data-xt-trigger="click:emit(audio_mode_prev)" data-xt-sound="click:ui_hover">
+        <svg id="range-prev-icon" viewBox="0 0 42 42" style="position: absolute; left: 0px; top: 0px; width: 42px; height: 42px;">
+          <path id="Arrow" d="M24 14 L17 21 L24 28" fill="none" stroke="#e8e2d4" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <span id="range-value" class="step-value" data-xt-bind="text=audio_mode">Night Mode</span>
+      <div id="range-next" class="step-arrow" style="left: 708px;"
+           data-xt-trigger="click:emit(audio_mode_next)" data-xt-sound="click:ui_hover">
+        <svg id="range-next-icon" viewBox="0 0 42 42" style="position: absolute; left: 0px; top: 0px; width: 42px; height: 42px;">
+          <path id="Arrow" d="M18 14 L25 21 L18 28" fill="none" stroke="#e8e2d4" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+    </div>
+    <div id="row-subtitles" class="row">
+      <span id="row-subtitles-label" class="row-label">Subtitles</span>
+      <span id="subtitles-state" class="sw-state" data-xt-bind="text=subtitles | select(true: On, false: Off)">On</span>
+      <div id="subtitles-switch" class="sw on" data-xt-bind="class.on=subtitles"
+           data-xt-trigger="click:set(subtitles, toggle); emit(toggle_subtitles)" data-xt-sound="click:ui_confirm">
+        <div id="subtitles-knob" class="sw-knob"></div>
+      </div>
+    </div>
+    <div id="row-test" class="row last">
+      <span id="row-test-label" class="row-label">Test Audio</span>
+      <div id="test-button" class="box btn" data-xt-trigger="click:emit(play_test_sound)" data-xt-sound="click:ui_confirm">
+        <span id="test-text" class="btn-text">Play Test Sound</span>
+      </div>
+    </div>
+   </div>
+   <div id="panel-controls" class="panel off" data-xt-bind="class.off=tab | ne(3)">
+    <span id="panel-controls-heading" class="panel-heading">Controls</span>
+    <span id="panel-controls-desc" class="panel-desc">Mouse, keyboard and what each key does.</span>
+    <div id="panel-controls-divider" class="panel-divider"></div>
+    <div id="row-sensitivity" class="row">
+      <span id="row-sensitivity-label" class="row-label">Mouse Sensitivity</span>
+      <div id="sensitivity-track" class="sl-track">
+        <div id="sensitivity-fill" class="sl-fill" style="width: 40%;" data-xt-bind="width=ctl_sensitivity | range(0,100,0%,100%)">
+          <div id="sensitivity-knob" class="sl-knob"></div>
+        </div>
+      </div>
+      <span id="sensitivity-value" class="sl-value" data-xt-bind="text=ctl_sensitivity | round">40</span>
+      <div id="sensitivity-hit" class="sl-hit" data-xt-trigger="drag.value:set(ctl_sensitivity, event.value | range(0,1,0,100) | round)"></div>
+    </div>
+    <div id="row-invert" class="row">
+      <span id="row-invert-label" class="row-label">Invert Y Axis</span>
+      <span id="invert-state" class="sw-state" data-xt-bind="text=ctl_invert_y | select(true: On, false: Off)">Off</span>
+      <div id="invert-switch" class="sw" data-xt-bind="class.on=ctl_invert_y"
+           data-xt-trigger="click:set(ctl_invert_y, toggle)" data-xt-sound="click:ui_confirm">
+        <div id="invert-knob" class="sw-knob"></div>
+      </div>
+    </div>
+    <div id="row-forward" class="row">
+      <span id="row-forward-label" class="row-label">Move Forward</span>
+      <div id="forward-box" class="box">
+        <span id="forward-text" class="box-text">W</span>
+      </div>
+    </div>
+    <div id="row-interact" class="row">
+      <span id="row-interact-label" class="row-label">Interact</span>
+      <div id="interact-box" class="box">
+        <span id="interact-text" class="box-text">E</span>
+      </div>
+    </div>
+    <div id="row-flashlight" class="row last">
+      <span id="row-flashlight-label" class="row-label">Flashlight</span>
+      <div id="flashlight-box" class="box">
+        <span id="flashlight-text" class="box-text">F</span>
+      </div>
+    </div>
+   </div>
+   <div id="panel-accessibility" class="panel off" data-xt-bind="class.off=tab | ne(4)">
+    <span id="panel-accessibility-heading" class="panel-heading">Accessibility</span>
+    <span id="panel-accessibility-desc" class="panel-desc">Make the dark easier to read.</span>
+    <div id="panel-accessibility-divider" class="panel-divider"></div>
+    <div id="row-subsize" class="row">
+      <span id="row-subsize-label" class="row-label">Subtitle Size</span>
+      <div id="subsize-box" class="box">
+        <span id="subsize-text" class="box-cycle">&lt;&#160;&#160;&#160;Medium&#160;&#160;&#160;&gt;</span>
+      </div>
+    </div>
+    <div id="row-colourblind" class="row">
+      <span id="row-colourblind-label" class="row-label">Colour Blind Mode</span>
+      <div id="colourblind-box" class="box">
+        <span id="colourblind-text" class="box-cycle">&lt;&#160;&#160;&#160;Off&#160;&#160;&#160;&gt;</span>
+      </div>
+    </div>
+    <div id="row-contrast" class="row">
+      <span id="row-contrast-label" class="row-label">High Contrast</span>
+      <span id="contrast-state" class="sw-state" data-xt-bind="text=acc_contrast | select(true: On, false: Off)">Off</span>
+      <div id="contrast-switch" class="sw" data-xt-bind="class.on=acc_contrast"
+           data-xt-trigger="click:set(acc_contrast, toggle)" data-xt-sound="click:ui_confirm">
+        <div id="contrast-knob" class="sw-knob"></div>
+      </div>
+    </div>
+    <div id="row-textsize" class="row last">
+      <span id="row-textsize-label" class="row-label">Text Size</span>
+      <div id="textsize-track" class="sl-track">
+        <div id="textsize-fill" class="sl-fill" style="width: 50%;" data-xt-bind="width=acc_text_size | range(0,100,0%,100%)">
+          <div id="textsize-knob" class="sl-knob"></div>
+        </div>
+      </div>
+      <span id="textsize-value" class="sl-value" data-xt-bind="text=acc_text_size | round">50</span>
+      <div id="textsize-hit" class="sl-hit" data-xt-trigger="drag.value:set(acc_text_size, event.value | range(0,1,0,100) | round)"></div>
+    </div>
+   </div>
+   <div id="panel-microphone" class="panel off" data-xt-bind="class.off=tab | ne(5)">
+    <span id="panel-microphone-heading" class="panel-heading">Microphone</span>
+    <span id="panel-microphone-desc" class="panel-desc">Input device and voice chat.</span>
+    <div id="panel-microphone-divider" class="panel-divider"></div>
+    <div id="row-indevice" class="row">
+      <span id="row-indevice-label" class="row-label">Input Device</span>
+      <div id="indevice-box" class="box">
+        <span id="indevice-text" class="box-cycle">&lt;&#160;&#160;&#160;Default Microphone&#160;&#160;&#160;&gt;</span>
+      </div>
+    </div>
+    <div id="row-involume" class="row">
+      <span id="row-involume-label" class="row-label">Input Volume</span>
+      <div id="involume-track" class="sl-track">
+        <div id="involume-fill" class="sl-fill" style="width: 70%;" data-xt-bind="width=mic_input_volume | range(0,100,0%,100%)">
+          <div id="involume-knob" class="sl-knob"></div>
+        </div>
+      </div>
+      <span id="involume-value" class="sl-value" data-xt-bind="text=mic_input_volume | round">70</span>
+      <div id="involume-hit" class="sl-hit" data-xt-trigger="drag.value:set(mic_input_volume, event.value | range(0,1,0,100) | round)"></div>
+    </div>
+    <div id="row-voicechat" class="row">
+      <span id="row-voicechat-label" class="row-label">Voice Chat</span>
+      <span id="voicechat-state" class="sw-state" data-xt-bind="text=mic_voice_chat | select(true: On, false: Off)">On</span>
+      <div id="voicechat-switch" class="sw on" data-xt-bind="class.on=mic_voice_chat"
+           data-xt-trigger="click:set(mic_voice_chat, toggle)" data-xt-sound="click:ui_confirm">
+        <div id="voicechat-knob" class="sw-knob"></div>
+      </div>
+    </div>
+    <div id="row-ptt" class="row last">
+      <span id="row-ptt-label" class="row-label">Push to Talk</span>
+      <span id="ptt-state" class="sw-state" data-xt-bind="text=mic_push_to_talk | select(true: On, false: Off)">Off</span>
+      <div id="ptt-switch" class="sw" data-xt-bind="class.on=mic_push_to_talk"
+           data-xt-trigger="click:set(mic_push_to_talk, toggle)" data-xt-sound="click:ui_confirm">
+        <div id="ptt-knob" class="sw-knob"></div>
+      </div>
+    </div>
+   </div>
+  </div>
+
+  <!-- Footer bar flush with the screen bottom (bottom: 0%), full width. -->
+  <div id="settings-footer" style="position: absolute; left: 0%; width: 100%; bottom: 0%; height: 78px;
+       background-color: #000000b3; border-top: 1.5px solid #ffffff14;">
+    <span id="settings-version" style="position: absolute; left: 48px; top: 0px; width: 120px; height: 49.5px; line-height: 49.5px;
+          font-size: 18px; letter-spacing: 1.5px; color: #a39e93;">v1.0.0</span>
+    <div id="settings-hints" style="position: absolute; right: 48px; top: 1.5px; height: 48px;
+         display: flex; flex-direction: row; align-items: center; gap: 21px;">
+      <div id="hint-apply" class="chip" data-xt-trigger="click:emit(apply_settings)" data-xt-sound="hover:ui_hover; click:ui_confirm">
+        <span id="key-a" class="key">A</span><span id="hint-apply-text" class="hint">Apply</span>
+      </div>
+      <div id="sep-1" class="sep"></div>
+      <div id="hint-reset" class="chip" data-xt-trigger="click:set(master_volume, 80); set(music_volume, 60); set(sfx_volume, 75); set(dialogue_volume, 90); set(output_device, &quot;Headphones (Realtek)&quot;); set(audio_mode, &quot;Night Mode&quot;); set(subtitles, true); set(gp_camera_shake, 60); set(gp_autosave, true); set(gp_hints, true); set(gfx_brightness, 50); set(gfx_vsync, true); set(gfx_grain, false); set(ctl_sensitivity, 40); set(ctl_invert_y, false); set(acc_contrast, false); set(acc_text_size, 50); set(mic_input_volume, 70); set(mic_voice_chat, true); set(mic_push_to_talk, false); emit(reset_defaults)" data-xt-sound="hover:ui_hover; click:ui_confirm">
+        <span id="key-r" class="key">R</span><span id="hint-reset-text" class="hint">Reset to Defaults</span>
+      </div>
+      <div id="sep-2" class="sep"></div>
+      <div id="hint-back" class="chip" data-xt-trigger="click:emit(back)" data-xt-sound="hover:ui_hover; click:ui_back">
+        <span id="key-b" class="key">B</span><span id="hint-back-text" class="hint">Back</span>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1920,"height":1080}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script></body></html>

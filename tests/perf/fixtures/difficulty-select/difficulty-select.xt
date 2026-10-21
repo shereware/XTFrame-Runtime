@@ -1,0 +1,279 @@
+<xt>
+  <head>
+    <link href="../shared/base.xts"/>
+    <link href="difficulty-select.xts"/>
+    <title>difficulty-select</title>
+  </head>
+  <body>
+    <div id="difficulty-select">
+      <div id="world">
+        <div id="world-layer">
+          <div id="n-9f586cc4"/>
+          <div id="n-a0586e57"/>
+          <div id="n-a1586fea"/>
+          <div id="n-a258717d"/>
+          <div id="n-9b586678"/>
+          <div id="n-9c58680b"/>
+          <div id="n-9d58699e"/>
+          <div id="n-9e586b31"/>
+          <div id="n-9758602c"/>
+          <div id="n-985861bf"/>
+          <div id="n-d235cc25"/>
+          <div id="n-d135ca92"/>
+          <div id="n-d035c8ff"/>
+          <div id="n-cf35c76c"/>
+          <div id="n-ce35c5d9"/>
+          <div id="n-cd35c446"/>
+        </div>
+      </div>
+      <div id="rain-streaks" class="s-ff4c67">
+        <div id="n-bd34eb70"/>
+        <div id="n-be34ed03"/>
+        <div id="n-bf34ee96"/>
+        <div id="n-c034f029"/>
+        <div id="n-c134f1bc"/>
+        <div id="n-c234f34f"/>
+        <div id="n-c334f4e2"/>
+        <div id="n-c434f675"/>
+        <div id="n-c534f808"/>
+        <div id="n-c634f99b"/>
+        <div id="n-a0516749"/>
+        <div id="n-9f5165b6"/>
+        <div id="n-9e516423"/>
+        <div id="n-9d516290"/>
+        <div id="n-a4516d95"/>
+        <div id="n-a3516c02"/>
+        <div id="n-a2516a6f"/>
+        <div id="n-a15168dc"/>
+        <div id="n-a85173e1"/>
+        <div id="n-a751724e"/>
+        <div id="n-a653af52"/>
+        <div id="n-a753b0e5"/>
+        <div id="n-a453ac2c"/>
+        <div id="n-a553adbf"/>
+        <div id="n-a253a906"/>
+        <div id="n-a353aa99"/>
+      </div>
+      <div id="hud-space">
+        <div id="hud">
+          <div id="header">
+            <img id="n-0ed2823d" src="../shared/img/6b6e4fec86b183a7.svg"/>
+            <h1 id="n-0dd280aa">SELECT DIFFICULTY LEVEL</h1>
+            <div id="n-0cd27f17"/>
+            <div id="n-0bd27d84"/>
+          </div>
+          <div id="n-5c633ebd">NEW CAMPAIGN · PROFILE DEFAULT</div>
+          <div id="difficulty-menu">
+            <div id="n-99c10e13"/>
+            <div id="n-98c10c80"/>
+            <div id="n-9bc11139"/>
+            <div id="n-9ac10fa6"/>
+            <div id="n-9dc1145f"/>
+            <div id="n-9cc112cc">
+              <button id="diff-recruit" class="mi s-2f37a3">
+                <div id="mk-recruit" class="s-ef7c7c"/>
+                <span id="n-b1252f67" class="s-3ffd60">RECRUIT</span>
+                <span id="n-b22530fa" class="s-3cb335">I</span>
+              </button>
+              <button id="diff-soldier" class="mi">
+                <div id="mk-soldier"/>
+                <span id="n-b3ae8acc" class="s-3ffd60">SOLDIER</span>
+                <span id="n-b6ae8f85" class="s-3cb335">II</span>
+              </button>
+              <button id="diff-veteran" class="mi s-2f37a3">
+                <div id="mk-veteran" class="s-ef7c7c"/>
+                <span id="n-86855991" class="s-3ffd60">VETERAN</span>
+                <span id="n-838554d8" class="s-3cb335">III</span>
+              </button>
+              <button id="diff-elite-operative" class="mi s-2f37a3">
+                <div id="mk-elite-operative" class="s-ef7c7c"/>
+                <span id="n-09fd0116" class="s-3ffd60">ELITE OPERATIVE</span>
+                <span id="n-08fcff83" class="s-3cb335">IV</span>
+              </button>
+              <button id="diff-apex" class="mi s-2f37a3">
+                <div id="mk-apex" class="s-ef7c7c"/>
+                <span id="n-dcd3cfdb" class="s-3ffd60">APEX</span>
+                <span id="n-ddd3d16e" class="s-3cb335">V</span>
+              </button>
+            </div>
+            <div id="n-9fc11785">
+              <div id="n-06cdd1ea"/>
+              <span id="n-07cdd37d">HOVER TO PREVIEW · CLICK TO DEPLOY</span>
+            </div>
+          </div>
+          <section id="difficulty-panel">
+            <div id="diff-tab">SOLDIER</div>
+            <div id="n-159916db"/>
+            <div id="n-1699186e"/>
+            <div id="n-17991a01"/>
+            <div id="n-18991b94"/>
+            <div id="n-19991d27">
+              <div id="diff-preview">
+                <div id="diff-sky"/>
+                <img id="n-b5c9058c" src="../shared/img/bcb6c914167f66c2.svg"/>
+                <div id="threat-0"/>
+                <div id="threat-1"/>
+                <div id="threat-2"/>
+                <div id="threat-3"/>
+                <div id="threat-4"/>
+                <div id="threat-5"/>
+                <div id="n-bec913b7"/>
+                <div id="diff-threat">THREAT LEVEL II · 2 HOSTILE SIGNATURES</div>
+              </div>
+              <div id="n-f2b2d30b">
+                <div id="diff-rank">
+                  <div id="rank-4" class="s-a4be2d">
+                    <img id="n-48deeb1c" class="s-441b33" src="../shared/img/99f8e413a8b653a8.svg"/>
+                  </div>
+                  <div id="rank-3" class="s-a4be2d">
+                    <img id="n-6d687c07" class="s-441b33" src="../shared/img/99f8e413a8b653a8.svg"/>
+                  </div>
+                  <div id="rank-2" class="s-a4be2d">
+                    <img id="n-1def6366" class="s-441b33" src="../shared/img/99f8e413a8b653a8.svg"/>
+                  </div>
+                  <div id="rank-1" class="s-262847">
+                    <img id="n-43b628d1" class="s-441b33" src="../shared/img/99f8e413a8b653a8.svg"/>
+                  </div>
+                  <div id="rank-0" class="s-262847">
+                    <img id="n-743dd9b0" class="s-441b33" src="../shared/img/99f8e413a8b653a8.svg"/>
+                  </div>
+                </div>
+                <p id="diff-desc">BALANCED COMBAT. ENEMIES FLANK AND SUPPRESS, BUT A CAREFUL APPROACH CARRIES YOU THROUGH.</p>
+              </div>
+              <div id="n-f3b2d49e">
+                <div id="stat-damage" class="s-3e90e1">
+                  <span id="n-bee17226" class="s-3d6f7d">HOSTILE DAMAGE</span>
+                  <div id="n-bfe173b9" class="s-b48d03">
+                    <div id="stat-damage-fill"/>
+                    <div id="n-40b9cce9" class="s-efab5b"/>
+                    <div id="n-3db9c830" class="s-fe62fd"/>
+                    <div id="n-3eb9c9c3" class="s-1f154f"/>
+                    <div id="n-43b9d1a2" class="s-55ba7d"/>
+                    <div id="n-44b9d335" class="s-ea13cb"/>
+                    <div id="n-41b9ce7c" class="s-299c04"/>
+                    <div id="n-42b9d00f" class="s-9e2bb4"/>
+                    <div id="n-47b9d7ee" class="s-da8eb3"/>
+                    <div id="n-48b9d981" class="s-825632"/>
+                    <div id="n-bd7d799b" class="s-9acd11"/>
+                    <div id="n-bc7d7808" class="s-d55803"/>
+                    <div id="n-bf7d7cc1" class="s-c156c5"/>
+                    <div id="n-be7d7b2e" class="s-79e2b1"/>
+                    <div id="n-c17d7fe7" class="s-1d3cb7"/>
+                    <div id="n-c07d7e54" class="s-d0a5a7"/>
+                  </div>
+                  <span id="stat-damage-value" class="s-ed349d">45%</span>
+                </div>
+                <div id="stat-energy" class="s-3e90e1">
+                  <span id="n-e4a83791" class="s-3d6f7d">SUIT ENERGY</span>
+                  <div id="n-e3a835fe" class="s-b48d03">
+                    <div id="stat-energy-fill"/>
+                    <div id="n-2a45f6b6" class="s-efab5b"/>
+                    <div id="n-2945f523" class="s-fe62fd"/>
+                    <div id="n-2845f390" class="s-1f154f"/>
+                    <div id="n-2f45fe95" class="s-55ba7d"/>
+                    <div id="n-2e45fd02" class="s-ea13cb"/>
+                    <div id="n-2d45fb6f" class="s-299c04"/>
+                    <div id="n-2c45f9dc" class="s-9e2bb4"/>
+                    <div id="n-334604e1" class="s-da8eb3"/>
+                    <div id="n-3246034e" class="s-825632"/>
+                    <div id="n-122314f2" class="s-9acd11"/>
+                    <div id="n-13231685" class="s-d55803"/>
+                    <div id="n-102311cc" class="s-c156c5"/>
+                    <div id="n-1123135f" class="s-79e2b1"/>
+                    <div id="n-0e230ea6" class="s-1d3cb7"/>
+                    <div id="n-0f231039" class="s-d0a5a7"/>
+                  </div>
+                  <span id="stat-energy-value" class="s-ed349d">75%</span>
+                </div>
+                <div id="stat-assist" class="s-3e90e1">
+                  <span id="n-e9d0f9dc" class="s-3d6f7d">AIM ASSIST</span>
+                  <div id="n-ead0fb6f" class="s-b48d03">
+                    <div id="stat-assist-fill"/>
+                    <div id="n-8ef3da63" class="s-efab5b"/>
+                    <div id="n-8ff3dbf6" class="s-fe62fd"/>
+                    <div id="n-90f3dd89" class="s-1f154f"/>
+                    <div id="n-91f3df1c" class="s-55ba7d"/>
+                    <div id="n-92f3e0af" class="s-ea13cb"/>
+                    <div id="n-93f3e242" class="s-299c04"/>
+                    <div id="n-94f3e3d5" class="s-9e2bb4"/>
+                    <div id="n-95f3e568" class="s-da8eb3"/>
+                    <div id="n-96f3e6fb" class="s-825632"/>
+                    <div id="n-5ce0b0a9" class="s-9acd11"/>
+                    <div id="n-5be0af16" class="s-d55803"/>
+                    <div id="n-5ae0ad83" class="s-c156c5"/>
+                    <div id="n-59e0abf0" class="s-79e2b1"/>
+                    <div id="n-60e0b6f5" class="s-1d3cb7"/>
+                    <div id="n-5fe0b562" class="s-d0a5a7"/>
+                  </div>
+                  <span id="stat-assist-value" class="s-ed349d">70%</span>
+                </div>
+              </div>
+            </div>
+          </section>
+          <div id="start-bar">
+            <div id="n-43c249a9"/>
+            <button id="btn-start" class="hb">START WITH DIFFICULTY SOLDIER</button>
+            <div id="n-41c24683"/>
+          </div>
+          <div id="deploy-bar">
+            <div id="deploy-fill"/>
+          </div>
+          <button id="btn-back" class="hb">
+            <img id="n-ed73d35f" src="../shared/img/e24270a6301eb910.svg"/>
+            <span id="n-ec73d1cc">BACK</span>
+          </button>
+          <div id="profile">
+            <div id="n-e8ea74d4">
+              <span id="n-5fdf7fc3">PROFILE</span>
+              <span id="profile-name">DEFAULT</span>
+            </div>
+            <img id="n-e9ea7667" src="../shared/img/56c6610b15464b23.svg"/>
+          </div>
+        </div>
+      </div>
+      <div id="rain-drops" class="s-ff4c67">
+        <div id="n-b29547fa"/>
+        <div id="n-b395498d"/>
+        <div id="n-b09544d4"/>
+        <div id="n-b1954667"/>
+        <div id="n-ae9541ae"/>
+        <div id="n-af954341"/>
+        <div id="n-ac953e88"/>
+        <div id="n-ad95401b"/>
+        <div id="n-aa953b62"/>
+        <div id="n-ab953cf5"/>
+        <div id="n-71031487"/>
+        <div id="n-700312f4"/>
+        <div id="n-730317ad"/>
+        <div id="n-7203161a"/>
+        <div id="n-6d030e3b"/>
+        <div id="n-6c030ca8"/>
+        <div id="n-6f031161"/>
+        <div id="n-6e030fce"/>
+        <div id="n-690307ef"/>
+        <div id="n-6803065c"/>
+        <div id="n-defb72ec"/>
+        <div id="n-dffb747f"/>
+        <div id="n-e0fb7612"/>
+        <div id="n-e1fb77a5"/>
+        <div id="n-dafb6ca0"/>
+        <div id="n-dbfb6e33"/>
+        <div id="n-dcfb6fc6"/>
+        <div id="n-ddfb7159"/>
+        <div id="n-e6fb7f84"/>
+        <div id="n-e7fb8117"/>
+        <div id="n-e4fdbaf5"/>
+        <div id="n-e3fdb962"/>
+        <div id="n-e2fdb7cf"/>
+        <div id="n-e1fdb63c"/>
+        <div id="n-e0fdb4a9"/>
+        <div id="n-dffdb316"/>
+        <div id="n-defdb183"/>
+        <div id="n-ddfdaff0"/>
+        <div id="n-ecfdc78d"/>
+        <div id="n-ebfdc5fa"/>
+      </div>
+      <div id="vignette"/>
+    </div>
+  </body>
+</xt>

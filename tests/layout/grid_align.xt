@@ -1,0 +1,27 @@
+<xt>
+  <head>
+    <style>
+      /* T-338 (06 §6.15): justify-items / align-items start, end, center and stretch on one
+         100 x 60 cell holding an auto-sized item (its max-content is a 40 x 20 child); then
+         justify-content / align-content distributing the free space around 2 x 2 tracks. */
+      .one { display: grid; width: 100px; grid-template-columns: 100px; grid-template-rows: 60px; }
+      .dot { width: 40px; height: 20px; }
+      #j-start { justify-items: start; align-items: start; }
+      #j-end { justify-items: end; align-items: end; }
+      #j-center { justify-items: center; align-items: center; }
+      #j-stretch { justify-items: stretch; align-items: stretch; }
+      .four { display: grid; width: 200px; height: 100px; grid-template-columns: 40px 40px;
+              grid-template-rows: 20px 20px; }
+      #ac1 { justify-content: space-between; align-content: center; }
+      #ac2 { justify-content: end; align-content: space-around; }
+    </style>
+  </head>
+  <body>
+    <div class="one" id="j-start"><div id="s-cell"><div class="dot"></div></div></div>
+    <div class="one" id="j-end"><div id="e-cell"><div class="dot"></div></div></div>
+    <div class="one" id="j-center"><div id="c-cell"><div class="dot"></div></div></div>
+    <div class="one" id="j-stretch"><div id="t-cell"><div class="dot"></div></div></div>
+    <div class="four" id="ac1"><div id="p1"></div><div id="p2"></div><div id="p3"></div><div id="p4"></div></div>
+    <div class="four" id="ac2"><div id="q1"></div><div id="q2"></div><div id="q3"></div><div id="q4"></div></div>
+  </body>
+</xt>

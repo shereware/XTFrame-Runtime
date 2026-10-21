@@ -1,0 +1,34 @@
+<xt>
+  <head>
+    <link href="doc_theme.xts"/>
+    <style>
+      @font-face {
+        font-family: "A";
+        src: "doc_font.ttf";
+        font-weight: 700;
+        font-style: italic;
+      }
+      @keyframes fade {
+        from { opacity: 0 }
+        to { opacity: 1 }
+      }
+      @keyframes half {
+        50% { opacity: .5; animation-timing-function: ease-in; }
+      }
+      div.panel span {
+        opacity: 0.5 !important;
+        transition: opacity 200ms;
+        animation: fade 1s;
+        font-family: "A", sans-serif;
+      }
+    </style>
+    <title>Doc Basic</title>
+  </head>
+  <body>
+    <div id="root" class="a b" style="width: 10px">
+      <span>Hello</span>
+      <img src="../lottie/img/pix.png"/>
+      <anim src="../lottie/min_solid_anim.json" autoplay="true" loop="true"/>
+    </div>
+  </body>
+</xt>

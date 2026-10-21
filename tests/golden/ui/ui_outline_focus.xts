@@ -1,0 +1,18 @@
+/* T-325 (05 §5.9.8): the focused button gets an outline ring outside its border box. The ring
+   has no color of its own, so it takes the button's `color` (outline-color's initial value). */
+button {
+  position: absolute;
+  left: 40px;
+  width: 120px;
+  height: 40px;
+  border-radius: 8px;
+  background-color: #cccccc;
+  color: #0066ff;
+}
+#btn1 { top: 30px; }
+#btn2 { top: 100px; }
+#btn3 { top: 170px; }
+button:focus {
+  outline: 3px solid;
+  outline-offset: 4px;
+}

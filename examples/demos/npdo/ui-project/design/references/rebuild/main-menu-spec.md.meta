@@ -1,0 +1,9 @@
+id: 3a946ab2-b503-403b-b87d-f29bed4b32ff
+kind: reference
+title: main menu spec
+source:
+  kind: ai:service
+  ref: main-menu-spec.md
+tags: [rebuild, spec]
+license: own
+content: sha256:854584d5a335bd623de8c5346f885fee003fd265a8b3b6425f0c6f7495b7c018

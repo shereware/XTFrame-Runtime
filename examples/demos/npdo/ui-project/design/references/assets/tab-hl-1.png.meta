@@ -1,0 +1,9 @@
+id: 1d27996b-c12d-451d-a71c-574ef842957b
+kind: reference
+title: tab-hl-1
+source:
+  kind: ai:service
+  ref: tab-hl-1.png
+tags: [asset, texture]
+license: own
+content: sha256:fc8b411badfb08f6adc26f968a46027658942941e53cb18113763cbb73071482

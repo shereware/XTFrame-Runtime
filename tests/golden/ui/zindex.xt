@@ -1,0 +1,17 @@
+<xt>
+  <head>
+    <style>
+      #stack { position: relative; width: 150px; height: 150px; margin: 40px; }
+      #a { position: absolute; left: 0px; top: 0px; width: 80px; height: 80px; background-color: #ff0000; z-index: 3; }
+      #b { position: absolute; left: 20px; top: 20px; width: 80px; height: 80px; background-color: #00ff00; z-index: 2; }
+      #c { position: absolute; left: 40px; top: 40px; width: 80px; height: 80px; background-color: #0000ff; z-index: 1; }
+    </style>
+  </head>
+  <body>
+    <div id="stack">
+      <div id="a"></div>
+      <div id="b"></div>
+      <div id="c"></div>
+    </div>
+  </body>
+</xt>

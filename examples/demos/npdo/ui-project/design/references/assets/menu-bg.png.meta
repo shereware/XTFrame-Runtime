@@ -1,0 +1,9 @@
+id: 0001367d-a4ee-4b20-adbf-05e17f8e79ab
+kind: reference
+title: menu-bg
+source:
+  kind: ai:service
+  ref: menu-bg.png
+tags: [asset, texture]
+license: own
+content: sha256:e9a8868e05024dbd9e996117413dade4c7c1b3734fc7d3b597335c26e54afb91

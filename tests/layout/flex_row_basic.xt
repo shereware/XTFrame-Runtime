@@ -1,0 +1,17 @@
+<xt>
+  <head>
+    <style>
+      #container { display: flex; width: 400px; height: 100px; }
+      #a { width: 50px; }
+      #b { width: 60px; }
+      #c { width: 70px; }
+    </style>
+  </head>
+  <body>
+    <div id="container">
+      <div id="a"></div>
+      <div id="b"></div>
+      <div id="c"></div>
+    </div>
+  </body>
+</xt>

@@ -1,0 +1,23 @@
+<xt>
+  <head>
+    <style>
+      /* T-338 (06 §6.15): px / fr / auto mixed; repeat() with % and fr tracks, both gaps and
+         auto-placement into a second row (`order` has no effect in a grid); a negative remainder
+         gives the fr track 0 and the implicit auto row follows its tallest item. */
+      #g1 { display: grid; width: 320px; grid-template-columns: 50px 1fr auto 2fr;
+            grid-template-rows: 40px; column-gap: 10px; }
+      #c1 { width: 30px; }
+      #g2 { display: grid; width: 300px; grid-template-columns: repeat(2, 20% 1fr);
+            grid-template-rows: repeat(2, 30px); gap: 10px 20px; }
+      #i5 { order: -1; }
+      #g3 { display: grid; width: 100px; grid-template-columns: 80px 1fr 40px; }
+      #x3 { height: 25px; }
+      #z3 { height: 35px; }
+    </style>
+  </head>
+  <body>
+    <div id="g1"><div id="a1"></div><div id="b1"></div><div id="c1"></div><div id="d1"></div></div>
+    <div id="g2"><div id="i1"></div><div id="i2"></div><div id="i3"></div><div id="i4"></div><div id="i5"></div></div>
+    <div id="g3"><div id="x3"></div><div id="y3"></div><div id="z3"></div></div>
+  </body>
+</xt>

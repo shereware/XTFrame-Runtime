@@ -1,0 +1,2 @@
+# T-177: five entries through a JSON list (listSet: no item-enter).
+port items [{"color":"#e74c3c","w":200},{"color":"#e67e22","w":160},{"color":"#f1c40f","w":120},{"color":"#2ecc71","w":180},{"color":"#3498db","w":140}]

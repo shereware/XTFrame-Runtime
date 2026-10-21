@@ -1,0 +1,19 @@
+{
+  "v": "5.6.5", "fr": 30, "ip": 0, "op": 60, "w": 256, "h": 256,
+  "assets": [
+    {
+      "id": "image_0", "w": 2, "h": 2, "u": "",
+      "p": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFElEQVR42mP4z8DAAMIM/////w8AH+4F+2BscPIAAAAASUVORK5CYII=",
+      "e": 1
+    }
+  ],
+  "layers": [
+    {
+      "ty": 2, "ind": 0, "nm": "Img", "ip": 0, "op": 60, "st": 0, "sr": 1, "refId": "image_0",
+      "ks": {
+        "a": {"a": 0, "k": [0, 0, 0]}, "p": {"a": 0, "k": [64, 64, 0]},
+        "s": {"a": 0, "k": [6400, 6400, 100]}, "r": {"a": 0, "k": 0}, "o": {"a": 0, "k": 100}
+      }
+    }
+  ]
+}

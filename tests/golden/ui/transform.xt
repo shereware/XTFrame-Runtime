@@ -1,0 +1,17 @@
+<xt>
+  <head>
+    <style>
+      #a {
+        width: 80px;
+        height: 80px;
+        margin: 88px;
+        background-color: #ff8800;
+        transform: rotate(45deg);
+        transform-origin: 50% 50%;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="a"></div>
+  </body>
+</xt>

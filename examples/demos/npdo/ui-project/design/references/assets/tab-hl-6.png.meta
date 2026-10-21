@@ -1,0 +1,9 @@
+id: a52a3549-79d4-40df-ad65-954618960ad5
+kind: reference
+title: tab-hl-6
+source:
+  kind: ai:service
+  ref: tab-hl-6.png
+tags: [asset, texture]
+license: own
+content: sha256:e8aa4dabf5506ec929835fec6025cac325254dc410dc761688367a564ea25a22

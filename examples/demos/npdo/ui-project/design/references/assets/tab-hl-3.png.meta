@@ -1,0 +1,9 @@
+id: ce24fb3a-99a5-4692-9269-03d0727308d7
+kind: reference
+title: tab-hl-3
+source:
+  kind: ai:service
+  ref: tab-hl-3.png
+tags: [asset, texture]
+license: own
+content: sha256:8bb49b01bbe75f1ac8c04a1a95942f787d95661e2859de7bbd6458dc495c4626

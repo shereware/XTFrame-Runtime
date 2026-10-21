@@ -1,0 +1,16 @@
+# comment
+version: 1
+assets:
+  - id: health-bar
+    type: image
+    file: shared/img/health bar.png
+    source: "import: figma #12"
+    status: approved
+    license: CC-BY 4.0
+    measured: { w: 64, h: 16, alpha: true, slice: [4, 4, 2, 2] }
+    note: 'it''s "quoted"\n'
+  - id: icon
+    type: vector
+    file: shared/img/icon.svg
+    measured:
+      slice: 1 2 3 4

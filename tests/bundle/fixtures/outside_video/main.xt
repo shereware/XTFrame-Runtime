@@ -1,0 +1,7 @@
+<xt>
+  <body>
+    <div id="panel">
+      <video id="intro" src="../outside_video_clips/intro.webm"/>
+    </div>
+  </body>
+</xt>

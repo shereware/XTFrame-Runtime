@@ -1,0 +1,24 @@
+<xt>
+  <head>
+    <link href="ui_blend_modes.xts"/>
+  </head>
+  <body>
+    <div class="cell" id="c0"><div class="l"></div><div class="r"></div><div class="top normal"></div></div>
+    <div class="cell" id="c1"><div class="l"></div><div class="r"></div><div class="top multiply"></div></div>
+    <div class="cell" id="c2"><div class="l"></div><div class="r"></div><div class="top screen"></div></div>
+    <div class="cell" id="c3"><div class="l"></div><div class="r"></div><div class="top overlay"></div></div>
+    <div class="cell" id="c4"><div class="l"></div><div class="r"></div><div class="top darken"></div></div>
+    <div class="cell" id="c5"><div class="l"></div><div class="r"></div><div class="top lighten"></div></div>
+    <div class="cell" id="c6"><div class="l"></div><div class="r"></div><div class="top color-dodge"></div></div>
+    <div class="cell" id="c7"><div class="l"></div><div class="r"></div><div class="top color-burn"></div></div>
+    <div class="cell" id="c8"><div class="l"></div><div class="r"></div><div class="top hard-light"></div></div>
+    <div class="cell" id="c9"><div class="l"></div><div class="r"></div><div class="top soft-light"></div></div>
+    <div class="cell" id="c10"><div class="l"></div><div class="r"></div><div class="top difference"></div></div>
+    <div class="cell" id="c11"><div class="l"></div><div class="r"></div><div class="top exclusion"></div></div>
+    <div class="cell" id="c12"><div class="l"></div><div class="r"></div><div class="top hue"></div></div>
+    <div class="cell" id="c13"><div class="l"></div><div class="r"></div><div class="top saturation"></div></div>
+    <div class="cell" id="c14"><div class="l"></div><div class="r"></div><div class="top color"></div></div>
+    <div class="cell" id="c15"><div class="l"></div><div class="r"></div><div class="top luminosity"></div></div>
+    <div class="cell" id="c16"><div class="l"></div><div class="r"></div><div class="top add"></div></div>
+  </body>
+</xt>

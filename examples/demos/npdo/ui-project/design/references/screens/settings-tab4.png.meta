@@ -1,0 +1,9 @@
+id: 9fcacc6b-6ed3-43c2-8b92-92f7ea5eb0ed
+kind: reference
+title: settings tab4
+source:
+  kind: ai:service
+  ref: settings-tab4.png
+tags: [screenshot, settings]
+license: own
+content: sha256:e92968b5c5c6f90bfe59c304d0ddcad7b5681bb2abf8fedca7f3f0aa94339948

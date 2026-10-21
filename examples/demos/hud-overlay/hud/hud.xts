@@ -1,0 +1,330 @@
+/* HUD overlay demo: 1920x1080 design (spec.logicalHeight 1080, uiscaleRule height). Nothing here
+   paints the root: the host composites the UI over its own frame, so every panel is translucent
+   and the blend modes and backdrop blur work against whatever the game draws. */
+
+body {
+  width: 100vw;
+  height: 100vh;
+  font-family: "Segoe UI", "Noto Sans", "Helvetica", "DejaVu Sans";
+  color: var(--hud-text, #f2f5f8);
+}
+
+#Screen {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+}
+
+/* The editor-only reference frame (references/make_images.py), stretched over the whole UI. */
+#GameShot {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 100vw;
+  height: 100vh;
+}
+
+/* 7. Damage vignette: multiplied over the frame; `.hurt` on <body> plays the flash once. */
+#Vignette {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 100vw;
+  height: 100vh;
+  background-gradient: radial-gradient(72% 72% at 50% 50%, rgba(180, 0, 0, 0) 55%, rgba(180, 0, 0, 0.55) 100%);
+  mix-blend-mode: multiply;
+  opacity: 0;
+  pointer-events: none;
+}
+
+body.hurt #Vignette {
+  animation: hurt-flash 0.9s linear(0, 0.4 20%, 0.75 45%, 0.93 75%, 1) 1 forwards;
+}
+
+@keyframes hurt-flash {
+  0% { opacity: 0; }
+  30% { opacity: 0.8; }
+  100% { opacity: 0; }
+}
+
+/* 2. Health and stamina, top left. */
+#Status {
+  position: absolute;
+  left: 48px;
+  top: 44px;
+  width: 460px;
+  height: 80px;
+}
+
+.track {
+  position: absolute;
+  left: 0px;
+  background-color: rgba(0, 0, 0, 0.45);
+  border-width: 1px;
+  border-color: rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+#HpTrack { top: 0px; width: 364px; height: 26px; }
+
+#HpFill {
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 356px;
+  height: 18px;
+  border-radius: 5px;
+  background-gradient: linear-gradient(90deg, #b3122a 0%, #ff4d5e 70%, #ff9a8a 100%);
+}
+
+#HpLow {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 362px;
+  height: 24px;
+  border-radius: 7px;
+  background-color: rgba(255, 60, 60, 0.45);
+  animation: hp-pulse 0.9s linear(0, 0.1 25%, 0.5 50%, 0.9 75%, 1) infinite;
+}
+
+@keyframes hp-pulse {
+  0% { opacity: 0.15; }
+  50% { opacity: 1; }
+  100% { opacity: 0.15; }
+}
+
+.value {
+  position: absolute;
+  top: -2px;
+  left: 376px;
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+  text-effect: shadow 0px 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+#StaminaTrack { top: 36px; width: 284px; height: 16px; }
+
+#StaminaFill {
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 276px;
+  height: 8px;
+  border-radius: 4px;
+  background-gradient: linear-gradient(90deg, #2f9e5a 0%, #8be07a 100%);
+}
+
+/* 3. Glass skill bar, bottom left. */
+#Skills {
+  position: absolute;
+  left: 48px;
+  bottom: 48px;
+  display: flex;
+  column-gap: 14px;
+}
+
+.skill {
+  position: relative;
+  width: 76px;
+  height: 76px;
+  border-radius: 14px;
+  border-width: 1px;
+  border-color: rgba(255, 255, 255, 0.22);
+  background-color: var(--hud-glass, rgba(255, 255, 255, 0.08));
+  effect: backdrop-blur(8px);
+  overflow: hidden;
+}
+
+/* The focused slot (autofocus on the second one) shows the focus ring. */
+.skill:focus {
+  outline-width: 3px;
+  outline-style: solid;
+  outline-color: var(--hud-accent, #7fd4ff);
+  outline-offset: 3px;
+}
+
+.icon {
+  position: absolute;
+  left: 22px;
+  top: 18px;
+  width: 32px;
+  height: 32px;
+}
+
+.blade { background-gradient: linear-gradient(135deg, #e8eef5 0%, #7f93a8 100%); transform: rotate(45deg); border-radius: 4px; }
+.shield { background-gradient: linear-gradient(180deg, #7fd4ff 0%, #2a6fd1 100%); border-radius: 6px 6px 16px 16px; }
+.bolt { background-gradient: linear-gradient(180deg, #ffe680 0%, #f5a623 100%); clip-path: polygon(60% 0%, 10% 55%, 45% 55%, 35% 100%, 90% 40%, 55% 40%); }
+.heal { background-gradient: radial-gradient(50% 50% at 50% 50%, #b6ffb0 0%, #2e9a3e 100%); border-radius: 16px; }
+.dash { background-gradient: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, #ffffff 100%); clip-path: polygon(0% 30%, 70% 30%, 70% 10%, 100% 50%, 70% 90%, 70% 70%, 0% 70%); }
+
+/* Cooldown dial: a dark conic wedge clipped to a circle, turned once by the `demo` timeline. */
+#Cooldown {
+  position: absolute;
+  left: -14px;
+  top: -14px;
+  width: 104px;
+  height: 104px;
+  background-gradient: conic-gradient(from 0deg, rgba(0, 0, 0, 0.62) 0%, rgba(0, 0, 0, 0.62) 69%, rgba(0, 0, 0, 0) 69%);
+  clip-path: circle(closest-side at 50% 50%);
+}
+
+.key {
+  position: absolute;
+  right: 6px;
+  bottom: 2px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* 4. Minimap, top right: a circular clip of the map texture, a ring and a screen-blended glow. */
+#MapFrame {
+  position: absolute;
+  right: 52px;
+  top: 44px;
+  width: 248px;
+  height: 248px;
+}
+
+#MapClip {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  width: 240px;
+  height: 240px;
+  clip-path: circle(closest-side at 50% 50%);
+  opacity: 0.85;
+}
+
+#MapImage { width: 240px; height: 240px; }
+
+#MapGlow {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  width: 240px;
+  height: 240px;
+  border-radius: 120px;
+  background-gradient: radial-gradient(50% 50% at 50% 50%, rgba(140, 210, 255, 0.55) 0%, rgba(140, 210, 255, 0) 100%);
+  mix-blend-mode: screen;
+}
+
+#MapRing {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 244px;
+  height: 244px;
+  border-width: 2px;
+  border-color: rgba(255, 255, 255, 0.3);
+  border-radius: 124px;
+}
+
+#MapPlayer {
+  position: absolute;
+  left: 116px;
+  top: 112px;
+  width: 16px;
+  height: 22px;
+  background-color: #ffd166;
+  clip-path: polygon(50% 0%, 100% 100%, 50% 75%, 0% 100%);
+}
+
+/* 5. Crosshair: thin lines in difference mode, readable on bright sky and dark towers alike. */
+#Crosshair {
+  position: absolute;
+  left: 930px;
+  top: 510px;
+  width: 60px;
+  height: 60px;
+  mix-blend-mode: difference;
+}
+
+.hair { position: absolute; background-color: #ffffff; }
+.hair.v { left: 29px; width: 2px; height: 18px; }
+.hair.h { top: 29px; width: 18px; height: 2px; }
+#CrossTop { top: 0px; }
+#CrossBottom { top: 42px; }
+#CrossLeft { left: 0px; }
+#CrossRight { left: 42px; }
+#CrossDot { position: absolute; left: 28px; top: 28px; width: 4px; height: 4px; border-radius: 2px; background-color: #ffffff; }
+
+/* 6. Quest tracker, bottom right: blurred dark glass, underlined uppercase title, clamped lines. */
+#Quests {
+  position: absolute;
+  right: 48px;
+  bottom: 160px;
+  width: 400px;
+  padding: 18px 20px 18px 20px;
+  display: flex;
+  flex-direction: column;
+  row-gap: 10px;
+  border-radius: 12px;
+  background-color: rgba(10, 14, 20, 0.6);
+  effect: backdrop-blur(12px);
+}
+
+#QuestTitle {
+  font-size: 16px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  text-decoration-line: underline;
+  text-decoration-color: var(--hud-accent, #7fd4ff);
+  color: var(--hud-accent, #7fd4ff);
+}
+
+.quest {
+  width: 360px;
+  font-size: 17px;
+  line-height: 24px;
+  line-clamp: 2;
+  color: rgba(242, 245, 248, 0.9);
+}
+
+/* 8. Ammo, bottom centre: icon / count / reserve on a three-column grid. */
+#Ammo {
+  position: absolute;
+  left: 810px;
+  bottom: 40px;
+  width: 300px;
+  height: 84px;
+  display: grid;
+  grid-template-columns: 56px 1fr 80px;
+  align-items: center;
+  column-gap: 8px;
+  border-radius: 14px;
+  background-color: rgba(0, 0, 0, 0.35);
+}
+
+#AmmoIcon { display: flex; column-gap: 4px; justify-content: center; }
+.round { width: 8px; height: 28px; border-radius: 4px 4px 1px 1px; background-gradient: linear-gradient(180deg, #ffd88a 0%, #c08a2a 100%); }
+
+#AmmoCount {
+  font-size: 56px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: #fff4d6;
+  text-effect: glow 6px #ffb347;
+}
+
+#AmmoReserve {
+  font-size: 22px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* The 8 s demo: the markers seed the ports (hit at 1 s, heal at 4.5 s); the HP and stamina bars
+   follow through their bindings' tween; the cooldown wedge turns once from 2 s to 6 s. */
+@timeline demo {
+  duration: 8s;
+  marker: hit 1s, heal 4.5s;
+  #Cooldown { 0s { transform: rotate(0deg) } 2s { transform: rotate(0deg) } 6s linear { transform: rotate(360deg) } }
+}
+
+/* Clears `.hurt` after one flash so the next hit plays it again (#HurtClock is an empty box
+   that only gives the timeline its length). */
+#HurtClock { position: absolute; left: 0px; top: 0px; width: 0px; height: 0px; }
+
+@timeline hurt-clear {
+  #HurtClock { 0s { opacity: 0 } 0.95s { opacity: 0 } }
+}

@@ -1,0 +1,18 @@
+# T-198: DamageNumber, state 'enter'. T-201: a third hit spawned just before the capture.
+update 0.6
+port Dmg.amount 125
+port Dmg.x 20
+port Dmg.y 40
+port Dmg.crit false
+port Dmg.hit 1
+port Dmg.amount 1840
+port Dmg.x 100
+port Dmg.y 10
+port Dmg.crit true
+port Dmg.hit 1
+update 0.16
+port Dmg.amount 57
+port Dmg.x 60
+port Dmg.y 70
+port Dmg.crit false
+port Dmg.hit 1

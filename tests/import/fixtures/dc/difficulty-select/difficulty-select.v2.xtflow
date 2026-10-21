@@ -1,0 +1,902 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "sel",
+      "type": "radio",
+      "params": {
+        "count": 5,
+        "initial": 1
+      }
+    },
+    {
+      "id": "item_recruit",
+      "type": "lookup",
+      "params": {
+        "values": [
+          "color: #f2a31b; background-gradient: linear-gradient(90deg, rgba(242,163,27,0.16) 0%, rgba(242,163,27,0) 100%)",
+          "color: #dcefe9; background-gradient: none",
+          "color: #dcefe9; background-gradient: none",
+          "color: #dcefe9; background-gradient: none",
+          "color: #dcefe9; background-gradient: none"
+        ]
+      }
+    },
+    {
+      "id": "mark_recruit",
+      "type": "lookup",
+      "params": {
+        "values": [
+          "visibility: visible",
+          "visibility: hidden",
+          "visibility: hidden",
+          "visibility: hidden",
+          "visibility: hidden"
+        ]
+      }
+    },
+    {
+      "id": "item_soldier",
+      "type": "lookup",
+      "params": {
+        "values": [
+          "color: #dcefe9; background-gradient: none",
+          "color: #f2a31b; background-gradient: linear-gradient(90deg, rgba(242,163,27,0.16) 0%, rgba(242,163,27,0) 100%)",
+          "color: #dcefe9; background-gradient: none",
+          "color: #dcefe9; background-gradient: none",
+          "color: #dcefe9; background-gradient: none"
+        ]
+      }
+    },
+    {
+      "id": "mark_soldier",
+      "type": "lookup",
+      "params": {
+        "values": [
+          "visibility: hidden",
+          "visibility: visible",
+          "visibility: hidden",
+          "visibility: hidden",
+          "visibility: hidden"
+        ]
+      }
+    },
+    {
+      "id": "item_veteran",
+      "type": "lookup",
+      "params": {
+        "values": [
+          "color: #dcefe9; background-gradient: none",
+          "color: #dcefe9; background-gradient: none",
+          "color: #f2a31b; background-gradient: linear-gradient(90deg, rgba(242,163,27,0.16) 0%, rgba(242,163,27,0) 100%)",
+          "color: #dcefe9; background-gradient: none",
+          "color: #dcefe9; background-gradient: none"
+        ]
+      }
+    },
+    {
+      "id": "mark_veteran",
+      "type": "lookup",
+      "params": {
+        "values": [
+          "visibility: hidden",
+          "visibility: hidden",
+          "visibility: visible",
+          "visibility: hidden",
+          "visibility: hidden"
+        ]
+      }
+    },
+    {
+      "id": "item_elite_operative",
+      "type": "lookup",
+      "params": {
+        "values": [
+          "color: #dcefe9; background-gradient: none",
+          "color: #dcefe9; background-gradient: none",
+          "color: #dcefe9; background-gradient: none",
+          "color: #f2a31b; background-gradient: linear-gradient(90deg, rgba(242,163,27,0.16) 0%, rgba(242,163,27,0) 100%)",
+          "color: #dcefe9; background-gradient: none"
+        ]
+      }
+    },
+    {
+      "id": "mark_elite_operative",
+      "type": "lookup",
+      "params": {
+        "values": [
+          "visibility: hidden",
+          "visibility: hidden",
+          "visibility: hidden",
+          "visibility: visible",
+          "visibility: hidden"
+        ]
+      }
+    },
+    {
+      "id": "item_apex",
+      "type": "lookup",
+      "params": {
+        "values": [
+          "color: #dcefe9; background-gradient: none",
+          "color: #dcefe9; background-gradient: none",
+          "color: #dcefe9; background-gradient: none",
+          "color: #dcefe9; background-gradient: none",
+          "color: #f2a31b; background-gradient: linear-gradient(90deg, rgba(242,163,27,0.16) 0%, rgba(242,163,27,0) 100%)"
+        ]
+      }
+    },
+    {
+      "id": "mark_apex",
+      "type": "lookup",
+      "params": {
+        "values": [
+          "visibility: hidden",
+          "visibility: hidden",
+          "visibility: hidden",
+          "visibility: hidden",
+          "visibility: visible"
+        ]
+      }
+    },
+    {
+      "id": "nameText",
+      "type": "lookup",
+      "params": {
+        "values": [
+          "RECRUIT",
+          "SOLDIER",
+          "VETERAN",
+          "ELITE OPERATIVE",
+          "APEX"
+        ]
+      }
+    },
+    {
+      "id": "descText",
+      "type": "lookup",
+      "params": {
+        "values": [
+          "FOR THOSE NEW TO THE FIGHT. HOSTILES REACT SLOWLY AND YOUR SUIT RECHARGES FAST.",
+          "BALANCED COMBAT. ENEMIES FLANK AND SUPPRESS, BUT A CAREFUL APPROACH CARRIES YOU THROUGH.",
+          "HOSTILES COORDINATE AND PUNISH EXPOSURE. RECOMMENDED ONCE YOU KNOW THE JUNGLE.",
+          "AIM ASSIST IS OFF AND SUIT ENERGY DRAINS FASTER. EVERY MISTAKE IS PAID FOR.",
+          "ONE LIFE. NO MARKERS. CHECKPOINTS DISABLED. THE JUNGLE DOES NOT FORGIVE."
+        ]
+      }
+    },
+    {
+      "id": "threatLine",
+      "type": "lookup",
+      "params": {
+        "values": [
+          "THREAT LEVEL I · 1 HOSTILE SIGNATURE",
+          "THREAT LEVEL II · 2 HOSTILE SIGNATURES",
+          "THREAT LEVEL III · 3 HOSTILE SIGNATURES",
+          "THREAT LEVEL IV · 4 HOSTILE SIGNATURES",
+          "THREAT LEVEL V · 6 HOSTILE SIGNATURES"
+        ]
+      }
+    },
+    {
+      "id": "skyStyle",
+      "type": "lookup",
+      "params": {
+        "values": [
+          "background-gradient: linear-gradient(180deg, #a7dccb 0%, #437f70 100%)",
+          "background-gradient: linear-gradient(180deg, #8fc3b5 0%, #2f5f56 100%)",
+          "background-gradient: linear-gradient(180deg, #7da69c 0%, #27463f 100%)",
+          "background-gradient: linear-gradient(180deg, #8e8c78 0%, #2f3029 100%)",
+          "background-gradient: linear-gradient(180deg, #9a5d4a 0%, #2a1714 100%)"
+        ]
+      }
+    },
+    {
+      "id": "rank1",
+      "type": "lookup",
+      "params": {
+        "values": [
+          "height: 0px",
+          "height: 14px",
+          "height: 14px",
+          "height: 14px",
+          "height: 14px"
+        ]
+      }
+    },
+    {
+      "id": "rank2",
+      "type": "lookup",
+      "params": {
+        "values": [
+          "height: 0px",
+          "height: 0px",
+          "height: 14px",
+          "height: 14px",
+          "height: 14px"
+        ]
+      }
+    },
+    {
+      "id": "rank3",
+      "type": "lookup",
+      "params": {
+        "values": [
+          "height: 0px",
+          "height: 0px",
+          "height: 0px",
+          "height: 14px",
+          "height: 14px"
+        ]
+      }
+    },
+    {
+      "id": "rank4",
+      "type": "lookup",
+      "params": {
+        "values": [
+          "height: 0px",
+          "height: 0px",
+          "height: 0px",
+          "height: 0px",
+          "height: 14px"
+        ]
+      }
+    },
+    {
+      "id": "threat1",
+      "type": "lookup",
+      "params": {
+        "values": [
+          "visibility: hidden",
+          "visibility: visible",
+          "visibility: visible",
+          "visibility: visible",
+          "visibility: visible"
+        ]
+      }
+    },
+    {
+      "id": "threat2",
+      "type": "lookup",
+      "params": {
+        "values": [
+          "visibility: hidden",
+          "visibility: hidden",
+          "visibility: visible",
+          "visibility: visible",
+          "visibility: visible"
+        ]
+      }
+    },
+    {
+      "id": "threat3",
+      "type": "lookup",
+      "params": {
+        "values": [
+          "visibility: hidden",
+          "visibility: hidden",
+          "visibility: hidden",
+          "visibility: visible",
+          "visibility: visible"
+        ]
+      }
+    },
+    {
+      "id": "threat45",
+      "type": "lookup",
+      "params": {
+        "values": [
+          "visibility: hidden",
+          "visibility: hidden",
+          "visibility: hidden",
+          "visibility: hidden",
+          "visibility: visible"
+        ]
+      }
+    },
+    {
+      "id": "damageFill",
+      "type": "lookup",
+      "params": {
+        "values": [
+          "width: 20%; background-color: #f2a31b",
+          "width: 45%; background-color: #f2a31b",
+          "width: 65%; background-color: #f2a31b",
+          "width: 85%; background-color: #ff5a3c",
+          "width: 100%; background-color: #ff5a3c"
+        ]
+      }
+    },
+    {
+      "id": "damageText",
+      "type": "lookup",
+      "params": {
+        "values": [
+          "20%",
+          "45%",
+          "65%",
+          "85%",
+          "100%"
+        ]
+      }
+    },
+    {
+      "id": "energyFill",
+      "type": "lookup",
+      "params": {
+        "values": [
+          "width: 95%",
+          "width: 75%",
+          "width: 55%",
+          "width: 35%",
+          "width: 20%"
+        ]
+      }
+    },
+    {
+      "id": "energyText",
+      "type": "lookup",
+      "params": {
+        "values": [
+          "95%",
+          "75%",
+          "55%",
+          "35%",
+          "20%"
+        ]
+      }
+    },
+    {
+      "id": "assistFill",
+      "type": "lookup",
+      "params": {
+        "values": [
+          "width: 100%",
+          "width: 70%",
+          "width: 35%",
+          "width: 0%",
+          "width: 0%"
+        ]
+      }
+    },
+    {
+      "id": "assistText",
+      "type": "lookup",
+      "params": {
+        "values": [
+          "100%",
+          "70%",
+          "35%",
+          "OFF",
+          "OFF"
+        ]
+      }
+    },
+    {
+      "id": "deployState",
+      "type": "radio",
+      "params": {
+        "count": 2,
+        "initial": 0
+      }
+    },
+    {
+      "id": "deployTimer",
+      "type": "timer",
+      "params": {
+        "interval": 2.4,
+        "autostart": false,
+        "repeat": false
+      }
+    },
+    {
+      "id": "deployBar",
+      "type": "lookup",
+      "params": {
+        "values": [
+          "visibility: hidden",
+          "visibility: visible"
+        ]
+      }
+    },
+    {
+      "id": "deployFill",
+      "type": "lookup",
+      "params": {
+        "values": [
+          "transform: scaleX(0)",
+          "transform: scaleX(1)"
+        ]
+      }
+    },
+    {
+      "id": "startPrefix",
+      "type": "lookup",
+      "params": {
+        "values": [
+          "START WITH DIFFICULTY ",
+          "DEPLOYING · "
+        ]
+      }
+    },
+    {
+      "id": "startLabel",
+      "type": "format",
+      "params": {
+        "format": "{a}{b}"
+      }
+    },
+    {
+      "id": "menuYaw",
+      "type": "math",
+      "params": {
+        "op": "map",
+        "inLo": -1,
+        "inHi": 1,
+        "outLo": 10,
+        "outHi": 26
+      }
+    },
+    {
+      "id": "panelYaw",
+      "type": "math",
+      "params": {
+        "op": "map",
+        "inLo": -1,
+        "inHi": 1,
+        "outLo": -28,
+        "outHi": -12
+      }
+    },
+    {
+      "id": "pitch",
+      "type": "math",
+      "params": {
+        "op": "map",
+        "inLo": -1,
+        "inHi": 1,
+        "outLo": 6,
+        "outHi": -6
+      }
+    },
+    {
+      "id": "worldX",
+      "type": "math",
+      "params": {
+        "op": "map",
+        "inLo": -1,
+        "inHi": 1,
+        "outLo": 30,
+        "outHi": -30
+      }
+    },
+    {
+      "id": "worldY",
+      "type": "math",
+      "params": {
+        "op": "map",
+        "inLo": -1,
+        "inHi": 1,
+        "outLo": 18,
+        "outHi": -18
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "#diff-recruit.PointerEnter",
+      "to": "sel.set0"
+    },
+    {
+      "from": "#diff-recruit.Focus",
+      "to": "sel.set0"
+    },
+    {
+      "from": "#diff-soldier.PointerEnter",
+      "to": "sel.set1"
+    },
+    {
+      "from": "#diff-soldier.Focus",
+      "to": "sel.set1"
+    },
+    {
+      "from": "#diff-veteran.PointerEnter",
+      "to": "sel.set2"
+    },
+    {
+      "from": "#diff-veteran.Focus",
+      "to": "sel.set2"
+    },
+    {
+      "from": "#diff-elite-operative.PointerEnter",
+      "to": "sel.set3"
+    },
+    {
+      "from": "#diff-elite-operative.Focus",
+      "to": "sel.set3"
+    },
+    {
+      "from": "#diff-apex.PointerEnter",
+      "to": "sel.set4"
+    },
+    {
+      "from": "#diff-apex.Focus",
+      "to": "sel.set4"
+    },
+    {
+      "from": "sel.index",
+      "to": "item_recruit.index"
+    },
+    {
+      "from": "item_recruit.out",
+      "to": "#diff-recruit.setStyle"
+    },
+    {
+      "from": "sel.index",
+      "to": "mark_recruit.index"
+    },
+    {
+      "from": "mark_recruit.out",
+      "to": "#mk-recruit.setStyle"
+    },
+    {
+      "from": "sel.index",
+      "to": "item_soldier.index"
+    },
+    {
+      "from": "item_soldier.out",
+      "to": "#diff-soldier.setStyle"
+    },
+    {
+      "from": "sel.index",
+      "to": "mark_soldier.index"
+    },
+    {
+      "from": "mark_soldier.out",
+      "to": "#mk-soldier.setStyle"
+    },
+    {
+      "from": "sel.index",
+      "to": "item_veteran.index"
+    },
+    {
+      "from": "item_veteran.out",
+      "to": "#diff-veteran.setStyle"
+    },
+    {
+      "from": "sel.index",
+      "to": "mark_veteran.index"
+    },
+    {
+      "from": "mark_veteran.out",
+      "to": "#mk-veteran.setStyle"
+    },
+    {
+      "from": "sel.index",
+      "to": "item_elite_operative.index"
+    },
+    {
+      "from": "item_elite_operative.out",
+      "to": "#diff-elite-operative.setStyle"
+    },
+    {
+      "from": "sel.index",
+      "to": "mark_elite_operative.index"
+    },
+    {
+      "from": "mark_elite_operative.out",
+      "to": "#mk-elite-operative.setStyle"
+    },
+    {
+      "from": "sel.index",
+      "to": "item_apex.index"
+    },
+    {
+      "from": "item_apex.out",
+      "to": "#diff-apex.setStyle"
+    },
+    {
+      "from": "sel.index",
+      "to": "mark_apex.index"
+    },
+    {
+      "from": "mark_apex.out",
+      "to": "#mk-apex.setStyle"
+    },
+    {
+      "from": "sel.index",
+      "to": "nameText.index"
+    },
+    {
+      "from": "nameText.out",
+      "to": "#diff-tab.setText"
+    },
+    {
+      "from": "sel.index",
+      "to": "descText.index"
+    },
+    {
+      "from": "descText.out",
+      "to": "#diff-desc.setText"
+    },
+    {
+      "from": "sel.index",
+      "to": "threatLine.index"
+    },
+    {
+      "from": "threatLine.out",
+      "to": "#diff-threat.setText"
+    },
+    {
+      "from": "sel.index",
+      "to": "skyStyle.index"
+    },
+    {
+      "from": "skyStyle.out",
+      "to": "#diff-sky.setStyle"
+    },
+    {
+      "from": "sel.index",
+      "to": "rank1.index"
+    },
+    {
+      "from": "rank1.out",
+      "to": "#rank-1.setStyle"
+    },
+    {
+      "from": "sel.index",
+      "to": "rank2.index"
+    },
+    {
+      "from": "rank2.out",
+      "to": "#rank-2.setStyle"
+    },
+    {
+      "from": "sel.index",
+      "to": "rank3.index"
+    },
+    {
+      "from": "rank3.out",
+      "to": "#rank-3.setStyle"
+    },
+    {
+      "from": "sel.index",
+      "to": "rank4.index"
+    },
+    {
+      "from": "rank4.out",
+      "to": "#rank-4.setStyle"
+    },
+    {
+      "from": "sel.index",
+      "to": "threat1.index"
+    },
+    {
+      "from": "threat1.out",
+      "to": "#threat-1.setStyle"
+    },
+    {
+      "from": "sel.index",
+      "to": "threat2.index"
+    },
+    {
+      "from": "threat2.out",
+      "to": "#threat-2.setStyle"
+    },
+    {
+      "from": "sel.index",
+      "to": "threat3.index"
+    },
+    {
+      "from": "threat3.out",
+      "to": "#threat-3.setStyle"
+    },
+    {
+      "from": "sel.index",
+      "to": "threat45.index"
+    },
+    {
+      "from": "threat45.out",
+      "to": "#threat-4.setStyle"
+    },
+    {
+      "from": "threat45.out",
+      "to": "#threat-5.setStyle"
+    },
+    {
+      "from": "sel.index",
+      "to": "damageFill.index"
+    },
+    {
+      "from": "damageFill.out",
+      "to": "#stat-damage-fill.setStyle"
+    },
+    {
+      "from": "sel.index",
+      "to": "damageText.index"
+    },
+    {
+      "from": "damageText.out",
+      "to": "#stat-damage-value.setText"
+    },
+    {
+      "from": "sel.index",
+      "to": "energyFill.index"
+    },
+    {
+      "from": "energyFill.out",
+      "to": "#stat-energy-fill.setStyle"
+    },
+    {
+      "from": "sel.index",
+      "to": "energyText.index"
+    },
+    {
+      "from": "energyText.out",
+      "to": "#stat-energy-value.setText"
+    },
+    {
+      "from": "sel.index",
+      "to": "assistFill.index"
+    },
+    {
+      "from": "assistFill.out",
+      "to": "#stat-assist-fill.setStyle"
+    },
+    {
+      "from": "sel.index",
+      "to": "assistText.index"
+    },
+    {
+      "from": "assistText.out",
+      "to": "#stat-assist-value.setText"
+    },
+    {
+      "from": "#btn-start.Click",
+      "to": "deployState.set1"
+    },
+    {
+      "from": "#btn-start.Click",
+      "to": "deployTimer.start"
+    },
+    {
+      "from": "#diff-recruit.Click",
+      "to": "deployState.set1"
+    },
+    {
+      "from": "#diff-recruit.Click",
+      "to": "deployTimer.start"
+    },
+    {
+      "from": "#diff-soldier.Click",
+      "to": "deployState.set1"
+    },
+    {
+      "from": "#diff-soldier.Click",
+      "to": "deployTimer.start"
+    },
+    {
+      "from": "#diff-veteran.Click",
+      "to": "deployState.set1"
+    },
+    {
+      "from": "#diff-veteran.Click",
+      "to": "deployTimer.start"
+    },
+    {
+      "from": "#diff-elite-operative.Click",
+      "to": "deployState.set1"
+    },
+    {
+      "from": "#diff-elite-operative.Click",
+      "to": "deployTimer.start"
+    },
+    {
+      "from": "#diff-apex.Click",
+      "to": "deployState.set1"
+    },
+    {
+      "from": "#diff-apex.Click",
+      "to": "deployTimer.start"
+    },
+    {
+      "from": "deployTimer.tick",
+      "to": "deployState.set0"
+    },
+    {
+      "from": "deployState.index",
+      "to": "deployBar.index"
+    },
+    {
+      "from": "deployBar.out",
+      "to": "#deploy-bar.setStyle"
+    },
+    {
+      "from": "deployState.index",
+      "to": "deployFill.index"
+    },
+    {
+      "from": "deployFill.out",
+      "to": "#deploy-fill.setStyle"
+    },
+    {
+      "from": "deployState.index",
+      "to": "startPrefix.index"
+    },
+    {
+      "from": "startPrefix.out",
+      "to": "startLabel.a"
+    },
+    {
+      "from": "nameText.out",
+      "to": "startLabel.b"
+    },
+    {
+      "from": "startLabel.out",
+      "to": "#btn-start.setText"
+    },
+    {
+      "from": "#document.pointerNX",
+      "to": "menuYaw.a"
+    },
+    {
+      "from": "menuYaw.out",
+      "to": "#difficulty-menu.setProperty",
+      "params": {
+        "prop": "RotationY"
+      }
+    },
+    {
+      "from": "#document.pointerNX",
+      "to": "panelYaw.a"
+    },
+    {
+      "from": "panelYaw.out",
+      "to": "#difficulty-panel.setProperty",
+      "params": {
+        "prop": "RotationY"
+      }
+    },
+    {
+      "from": "#document.pointerNY",
+      "to": "pitch.a"
+    },
+    {
+      "from": "pitch.out",
+      "to": "#difficulty-menu.setProperty",
+      "params": {
+        "prop": "RotationX"
+      }
+    },
+    {
+      "from": "pitch.out",
+      "to": "#difficulty-panel.setProperty",
+      "params": {
+        "prop": "RotationX"
+      }
+    },
+    {
+      "from": "#document.pointerNX",
+      "to": "worldX.a"
+    },
+    {
+      "from": "worldX.out",
+      "to": "#world-layer.setProperty",
+      "params": {
+        "prop": "TranslateX"
+      }
+    },
+    {
+      "from": "#document.pointerNY",
+      "to": "worldY.a"
+    },
+    {
+      "from": "worldY.out",
+      "to": "#world-layer.setProperty",
+      "params": {
+        "prop": "TranslateY"
+      }
+    }
+  ]
+}

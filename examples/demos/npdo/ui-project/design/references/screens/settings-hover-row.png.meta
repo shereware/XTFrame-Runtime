@@ -1,0 +1,9 @@
+id: 027cf0f0-a953-4717-875e-be98a4bb765b
+kind: reference
+title: settings hover row
+source:
+  kind: ai:service
+  ref: settings-hover-row.png
+tags: [screenshot, settings]
+license: own
+content: sha256:9395ea48b61dec4e3b9e2d649d179a3aa04a64a3bd47f3828849d36459c51cb0

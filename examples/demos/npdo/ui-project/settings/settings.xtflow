@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "nodes": [
+    { "id": "start", "type": "timer", "params": { "interval": 0.05, "autostart": true, "repeat": false } },
+    { "id": "intro", "type": "timeline", "params": { "name": "intro" } }
+  ],
+  "edges": [
+    { "from": "start.tick", "to": "intro.play" }
+  ]
+}

@@ -1,0 +1,20 @@
+<xt>
+  <head>
+    <style>
+      body { background-color: #202020; }
+      div { position: absolute; top: 100px; width: 40px; height: 40px; background-color: #ff0000; }
+      #a { left: 8px;   opacity: 0; }
+      #b { left: 56px;  opacity: 0.0; }
+      #c { left: 104px; opacity: 0.01; }
+      #d { left: 152px; opacity: 0.5; }
+      #e { left: 200px; opacity: 1; }
+    </style>
+  </head>
+  <body>
+    <div id="a"></div>
+    <div id="b"></div>
+    <div id="c"></div>
+    <div id="d"></div>
+    <div id="e"></div>
+  </body>
+</xt>

@@ -1,0 +1,175 @@
+{
+    "referenceWall": {
+        "items": {
+            "assets/hud-preview-bg": {
+                "x": 0,
+                "y": 0
+            },
+            "assets/menu-bg": {
+                "x": 360,
+                "y": 0
+            },
+            "assets/menu-fog": {
+                "x": 720,
+                "y": 0
+            },
+            "assets/menu-grime": {
+                "x": 1080,
+                "y": 0
+            },
+            "assets/menu-hl-1": {
+                "x": 1440,
+                "y": 0
+            },
+            "assets/menu-hl-2": {
+                "x": 0,
+                "y": 360
+            },
+            "assets/menu-hl-3": {
+                "x": 360,
+                "y": 360
+            },
+            "assets/menu-hl-4": {
+                "x": 720,
+                "y": 360
+            },
+            "assets/menu-hl-5": {
+                "x": 1080,
+                "y": 360
+            },
+            "assets/menu-hl-6": {
+                "x": 1440,
+                "y": 360
+            },
+            "assets/menu-lamp": {
+                "x": 0,
+                "y": 720
+            },
+            "assets/menu-rain": {
+                "x": 360,
+                "y": 720
+            },
+            "assets/menu-title": {
+                "x": 720,
+                "y": 720
+            },
+            "assets/tab-hl-1": {
+                "x": 1080,
+                "y": 720
+            },
+            "assets/tab-hl-2": {
+                "x": 1440,
+                "y": 720
+            },
+            "assets/tab-hl-3": {
+                "x": 0,
+                "y": 1080
+            },
+            "assets/tab-hl-4": {
+                "x": 360,
+                "y": 1080
+            },
+            "assets/tab-hl-5": {
+                "x": 720,
+                "y": 1080
+            },
+            "assets/tab-hl-6": {
+                "x": 1080,
+                "y": 1080
+            },
+            "assets/texture-recipe-tex2": {
+                "x": 1467,
+                "y": 1053
+            },
+            "key-art/af3f1d8f-b44b-402c-8232-d975d9c177a8": {
+                "x": 0,
+                "y": 0
+            },
+            "key-art/d5b9776d-3c07-4237-835b-f79ffc258b9c": {
+                "x": 360,
+                "y": -0.8
+            },
+            "rebuild/hud-spec": {
+                "x": 720,
+                "y": 1440
+            },
+            "rebuild/main-menu-spec": {
+                "x": 1080,
+                "y": 1440
+            },
+            "rebuild/npdo-ui-rebuild-overview": {
+                "x": 1440,
+                "y": 1440
+            },
+            "rebuild/settings-spec": {
+                "x": 0,
+                "y": 1800
+            },
+            "screens/hud": {
+                "x": 720,
+                "y": 1800
+            },
+            "screens/hud-variant-low-hp": {
+                "x": 360,
+                "y": 1800
+            },
+            "screens/main-menu": {
+                "x": 360,
+                "y": 2160
+            },
+            "screens/main-menu-hover-options": {
+                "x": 1080,
+                "y": 1800
+            },
+            "screens/main-menu-intro-0-5s": {
+                "x": 1440,
+                "y": 1800
+            },
+            "screens/main-menu-intro-1-27s-glitch": {
+                "x": 0,
+                "y": 2160
+            },
+            "screens/settings-hover-row": {
+                "x": 720,
+                "y": 2160
+            },
+            "screens/settings-hover-tab": {
+                "x": 1080,
+                "y": 2160
+            },
+            "screens/settings-tab0": {
+                "x": 1440,
+                "y": 2160
+            },
+            "screens/settings-tab1": {
+                "x": 0,
+                "y": 2520
+            },
+            "screens/settings-tab2": {
+                "x": 360,
+                "y": 2520
+            },
+            "screens/settings-tab3": {
+                "x": 720,
+                "y": 2520
+            },
+            "screens/settings-tab4": {
+                "x": 1080,
+                "y": 2520
+            },
+            "screens/settings-tab5": {
+                "x": 1440,
+                "y": 2520
+            },
+            "story/npdo-story-en": {
+                "x": 720,
+                "y": 0
+            },
+            "story/npdo-story-zh": {
+                "x": 1080,
+                "y": 0
+            }
+        },
+        "zoom": 0.698
+    }
+}

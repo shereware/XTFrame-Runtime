@@ -1,0 +1,107 @@
+{
+  "version": 1,
+  "name": "Mobile HUD demo",
+  "id": "mobile-hud",
+  "game": "Mobile HUD demo",
+  "spec": {
+    "platforms": [
+      {
+        "name": "mobile",
+        "resolutions": [
+          [
+            1080,
+            2400
+          ],
+          [
+            1170,
+            2532
+          ],
+          [
+            2560,
+            1600
+          ]
+        ]
+      }
+    ],
+    "safeArea": {
+      "default": 0.04,
+      "console": 0.05
+    },
+    "logicalHeight": 1080,
+    "uiscaleRule": "shortEdge",
+    "input": {
+      "methods": [
+        "touch"
+      ],
+      "players": 1
+    },
+    "languages": [
+      "en"
+    ],
+    "fontFallback": {},
+    "budget": {
+      "frameMs": 4,
+      "effectLayers": 12,
+      "fillRate": 3
+    },
+    "engine": {
+      "name": "",
+      "version": ""
+    }
+  },
+  "uis": [
+    {
+      "id": "hud",
+      "doc": "ui/hud/hud.xt",
+      "size": [
+        1080,
+        2400
+      ],
+      "tags": [
+        "ingame"
+      ]
+    },
+    {
+      "id": "settings",
+      "doc": "ui/settings/settings.xt",
+      "size": [
+        1080,
+        2400
+      ],
+      "tags": [
+        "menu"
+      ]
+    }
+  ],
+  "shared": {
+    "assetRoot": "shared",
+    "fontDirs": [],
+    "styles": [],
+    "templateDirs": [],
+    "symbols": "shared/symbols",
+    "tokens": "shared/tokens.xts",
+    "themes": "shared/themes",
+    "strings": "shared/strings",
+    "recipes": "shared/recipes"
+  },
+  "preview": {
+    "dpr": 1
+  },
+  "target": "engine",
+  "publish": {
+    "outDir": "out",
+    "languages": [],
+    "embedImages": false,
+    "embedFonts": false,
+    "thumbnails": [
+      180,
+      400
+    ],
+    "atlas": {
+      "enabled": false,
+      "maxSize": 4096,
+      "padding": 2,
+      "mipmaps": false
+    }
+  }
+}

@@ -1,0 +1,18 @@
+<xt>
+  <head>
+    <style>
+      body { height: 200px; }
+      /* font-size 10px + FakeTextShaper's monospace metrics: an ASCII glyph advances 6px,
+         a space 3px, the line is 12px high. */
+      #field { position: absolute; left: 0px; top: 0px; width: 200px; height: 30px;
+               font-size: 10px; color: #ff0000; }
+      #preset { position: absolute; left: 0px; top: 40px; width: 200px; height: 30px; font-size: 10px; }
+      #plain { position: absolute; left: 0px; top: 100px; width: 60px; height: 40px; }
+    </style>
+  </head>
+  <body id="body">
+    <input id="field" type="text" />
+    <input id="preset" type="text" value="xy" />
+    <div id="plain"></div>
+  </body>
+</xt>

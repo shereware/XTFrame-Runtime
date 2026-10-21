@@ -1,0 +1,12 @@
+id: 6099deec-e8f7-40c1-a526-55081d10e9d3
+type: image
+title: item-new-icon-gray
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/bd063fbf15d98c8c48806db8c8ba7920
+content: sha256:ce16ce11b50210fa66ee00540e93dfe34608cd6e1bf3188985e20342ba5f94de
+measured:
+  w: 128
+  h: 128
+  alpha: true

@@ -1,0 +1,40 @@
+id: 2d923aa0-4ea6-4734-b8aa-d54d397820d3
+kind: reference
+title: "Key art: hospital corridor"
+status: approved
+source:
+  kind: ai:design-system
+  ref: d5b9776d-3c07-4237-835b-f79ffc258b9c.png
+approved:
+  by: Bigspring
+  at: 2026-10-16T04:02:23Z
+tags: [key-art, interior, title-lockup]
+license: own
+content: sha256:aadfdbd3538b2af742d1171eadd17ca10426461262bb384fda02168c03c39787
+extracted:
+  - value: "#060707"
+    share: 0.4180373
+  - value: "#171716"
+    share: 0.18585527
+  - value: "#1f2425"
+    share: 0.17409083
+  - value: "#66564c"
+    share: 0.09096309
+  - value: "#3d3b39"
+    share: 0.06825658
+  - value: "#dbd7d0"
+    share: 0.023254752
+  - value: "#717679"
+    share: 0.02208973
+  - value: "#b79a83"
+    share: 0.017452486
+links:
+  - rel: illustrates
+    to: ui:main-menu
+  - rel: evidence-for
+    to: text:principles#warm-monochrome-one-red
+  - rel: evidence-for
+    to: text:principles#paperwork-in-the-ruins
+  - rel: evidence-for
+    to: text:principles#respect-the-safe-area
+note: "Corridor: lit doorway, wheelchair, ward signage, floor directory (RF to B2), 1991-1997 blurb bottom right."

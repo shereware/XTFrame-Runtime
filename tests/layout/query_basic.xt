@@ -1,0 +1,17 @@
+<xt>
+  <head>
+    <style>
+      .a { width: 30px; height: 10px; }
+      .b { width: 20px; height: 10px; }
+      #x:hover { height: 11px; }
+    </style>
+  </head>
+  <body id="body">
+    <div id="x" class="a">
+      <span class="b">one</span>
+      <div class="c"><span class="b">two</span></div>
+    </div>
+    <div class="a"><span>three</span></div>
+    <button id="off" disabled="true">no</button>
+  </body>
+</xt>

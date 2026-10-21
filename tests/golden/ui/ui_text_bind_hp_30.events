@@ -1,0 +1,4 @@
+# T-175: 72/100, then 30 (the second frame: shorter bar, :state(Low), new text).
+port hp_max 100
+port hp 72
+port hp 30

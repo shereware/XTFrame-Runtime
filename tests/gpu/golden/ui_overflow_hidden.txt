@@ -1,0 +1,4 @@
+target 256x256 vertices=16 indices=60 cmds=2 passes=1 params=0
+pass 0: target=0 clear=0 copy=0 from=0 view=(0,0,256,256) cmds=2
+  0 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=30 verts=8 clip=(0,0,256,256)
+  1 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=30 verts=8 clip=(40,40,100,80)

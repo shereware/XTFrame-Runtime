@@ -1,0 +1,24 @@
+<xt>
+  <head>
+    <style>
+      /* T-332 (05 §5.9.8, 08 §8.2): point-in-shape before entering an element. Four 100x100
+         shapes in a row, the last one with a child that the shape cuts away. */
+      div { position: absolute; width: 100px; height: 100px; }
+      #inset { left: 0px; top: 0px; clip-path: inset(10px 20px round 30px); }
+      #circle { left: 100px; top: 0px; clip-path: circle(40px at 50% 50%); }
+      #ellipse { left: 200px; top: 0px; clip-path: ellipse(50px 20px); }
+      #polygon { left: 300px; top: 0px; clip-path: polygon(50% 0%, 100% 100%, 0% 100%); }
+      #child { left: 0px; top: 0px; width: 100px; height: 20px; }
+      #rect { left: 0px; top: 150px; width: 400px; height: 100px; overflow: hidden;
+              clip-path: inset(0px 300px 0px 0px); }
+      #rectchild { left: 50px; top: 10px; width: 100px; height: 30px; }
+    </style>
+  </head>
+  <body>
+    <div id="inset"></div>
+    <div id="circle"></div>
+    <div id="ellipse"></div>
+    <div id="polygon"><div id="child"></div></div>
+    <div id="rect"><div id="rectchild"></div></div>
+  </body>
+</xt>

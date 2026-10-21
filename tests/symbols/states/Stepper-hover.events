@@ -1,0 +1,4 @@
+# T-198: Stepper, state 'hover'.
+port Count.value 4
+update 0.6
+pointermove 262 30

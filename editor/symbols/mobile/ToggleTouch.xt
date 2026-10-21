@@ -1,0 +1,63 @@
+<xt>
+  <head>
+    <!-- ToggleTouch: standard mobile symbol (docs/design/23-host-integration.md 23.11.2,
+         30-ui-project.md 30.4), the touch-size Toggle (a copy: symbols have no `extends`).
+         See ../README.md. The switch is --touch-min tall; check / uncheck play `flip`.
+         The switch is the checkbox input, its knob an element inside it. The input's own check /
+         uncheck set the `value` port, and `bind:checked` moves the switch when the host sets
+         `value`. -->
+    <symbol name="ToggleTouch" requires="states: Hover, Focus, Checked, Disabled; slots: label">
+      <div id="Box" port:value="bool in">
+        <span id="Label"><slot name="label">Toggle</slot></span>
+        <input type="checkbox" id="Switch" bind:checked="value"
+               on:check="sound(ui_toggle); set(value, true); play(flip)" on:uncheck="sound(ui_toggle); set(value, false); play(flip)">
+          <div id="Knob"></div>
+        </input>
+      </div>
+    </symbol>
+    <style>
+      symbol(ToggleTouch) {
+        #Box {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          column-gap: var(--space-3);
+          width: 300px;
+          min-height: var(--touch-min);
+          color: var(--color-text);
+          font-family: var(--font-family);
+          font-size: var(--font-size-m);
+        }
+        #Label { white-space: nowrap; }
+        #Switch {
+          display: flex;
+          align-items: center;
+          width: 76px;
+          height: var(--touch-min);
+          padding: 0px 4px;
+          border-width: var(--focus-w);
+          border-color: transparent;
+          border-radius: var(--radius-full);
+          background-color: var(--color-track);
+          transition: background-color var(--motion-fast) linear;
+        }
+        #Knob {
+          width: 32px;
+          height: 32px;
+          border-radius: var(--radius-full);
+          background-color: var(--color-text-dim);
+        }
+        #Box:hover #Switch { background-color: var(--color-border-strong); }
+        #Switch:focus { border-color: var(--color-focus); }
+        #Switch:checked { justify-content: flex-end; background-color: var(--color-accent); }
+        #Switch:checked #Knob { background-color: var(--color-text-on-accent); }
+        #Box:hover #Switch:checked { background-color: var(--color-accent-hover); }
+        :disabled #Switch { background-color: var(--color-disabled-bg) !important; }
+        :disabled #Label { color: var(--color-disabled-text); }
+        @timeline flip {
+          #Knob { 0s { transform: scale(0.8) } 0.15s ease-out { transform: scale(1) } }
+        }
+      }
+    </style>
+  </head>
+</xt>

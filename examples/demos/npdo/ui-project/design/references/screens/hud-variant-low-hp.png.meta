@@ -1,0 +1,9 @@
+id: 71f20514-53a5-4abb-911f-31e87b20e628
+kind: reference
+title: hud variant low hp
+source:
+  kind: ai:service
+  ref: hud-variant-low-hp.png
+tags: [screenshot, hud]
+license: own
+content: sha256:29ad79f6983b49d445706a5ea8700ea13dbebb5ea3d6f669c1ba192c112ce9f4

@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "name": "MyGame UI",
+  "id": "mygame",
+  "uis": [
+    { "id": "hud",   "doc": "hud/hud.xt",     "flow": "hud/hud.xtflow", "size": [1280, 720], "tags": ["ingame"] },
+    { "id": "pause", "doc": "menus/pause.xt", "size": [1280, 720] }
+  ],
+  "shared": { "assetRoot": "shared", "fontDirs": ["shared/fonts"], "styles": ["shared/base.xts"], "templateDirs": ["shared/fx"] },
+  "preview": { "dpr": 1 },
+  "target": "engine",
+  "publish": { "embedImages": false, "embedFonts": false, "thumbnails": [320, 180] }
+}

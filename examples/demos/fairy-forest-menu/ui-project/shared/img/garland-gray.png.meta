@@ -1,0 +1,12 @@
+id: 488cb893-9c31-4fac-bee5-7790bbe50ade
+type: image
+title: garland-gray
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/b473b1b65b1be5cb042ce6a3087739fd
+content: sha256:b0ce86e90d1b24ece96c6fcbf504075597502848501a6ef3e53f7e6538e80b63
+measured:
+  w: 640
+  h: 120
+  alpha: true

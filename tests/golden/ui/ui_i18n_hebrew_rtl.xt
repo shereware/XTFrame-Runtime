@@ -1,0 +1,18 @@
+<xt>
+  <head>
+    <style>
+      @font-face { font-family: "Noto Sans Hebrew"; src: "../../fonts/NotoSansHebrew-Regular.subset.ttf"; }
+      #a {
+        margin: 16px;
+        width: 220px;
+        direction: rtl;
+        font-family: "Noto Sans Hebrew";
+        font-size: 20px;
+        color: #202020;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="a">מספר 123</div>
+  </body>
+</xt>

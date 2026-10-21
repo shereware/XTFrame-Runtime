@@ -1,0 +1,111 @@
+# Asset manifest (docs/design/26-layers-symbols-library.md 26.3.3); xtframe-pack fills `measured`.
+version: 1
+assets:
+  - id: bg-gray
+    type: image
+    file: shared/img/bg-gray.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 1280, h: 720, alpha: false }
+  - id: corner-tr-color
+    type: image
+    file: shared/img/corner-tr-color.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 300, h: 200, alpha: true }
+  - id: corner-tr-gray
+    type: image
+    file: shared/img/corner-tr-gray.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 300, h: 200, alpha: true }
+  - id: fx-fireflies
+    type: image
+    file: shared/img/fx-fireflies.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 2560, h: 1440, alpha: true }
+  - id: fx-light
+    type: image
+    file: shared/img/fx-light.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 1280, h: 720, alpha: true }
+  - id: fx-petals-color
+    type: image
+    file: shared/img/fx-petals-color.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 2560, h: 1440, alpha: true }
+  - id: fx-petals-gray
+    type: image
+    file: shared/img/fx-petals-gray.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 2560, h: 1440, alpha: true }
+  - id: garland-color
+    type: image
+    file: shared/img/garland-color.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 640, h: 120, alpha: true }
+  - id: garland-gray
+    type: image
+    file: shared/img/garland-gray.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 640, h: 120, alpha: true }
+  - id: item-continue-icon-color
+    type: image
+    file: shared/img/item-continue-icon-color.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 128, h: 128, alpha: true }
+  - id: item-continue-icon-gray
+    type: image
+    file: shared/img/item-continue-icon-gray.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 128, h: 128, alpha: true }
+  - id: item-credits-icon-color
+    type: image
+    file: shared/img/item-credits-icon-color.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 128, h: 128, alpha: true }
+  - id: item-credits-icon-gray
+    type: image
+    file: shared/img/item-credits-icon-gray.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 128, h: 128, alpha: true }
+  - id: item-new-icon-color
+    type: image
+    file: shared/img/item-new-icon-color.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 128, h: 128, alpha: true }
+  - id: item-new-icon-gray
+    type: image
+    file: shared/img/item-new-icon-gray.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 128, h: 128, alpha: true }
+  - id: item-option-icon-color
+    type: image
+    file: shared/img/item-option-icon-color.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 128, h: 128, alpha: true }
+  - id: item-option-icon-gray
+    type: image
+    file: shared/img/item-option-icon-gray.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 128, h: 128, alpha: true }
+  - id: trail-3
+    type: image
+    file: shared/img/trail-3.png
+    source: import:claude-design
+    status: draft
+    measured: { w: 1280, h: 720, alpha: false }

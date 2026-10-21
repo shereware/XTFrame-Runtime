@@ -1,0 +1,4 @@
+# T-198: Tabs, state 'hover'.
+port Pages.value 0
+update 0.6
+pointermove 150 36

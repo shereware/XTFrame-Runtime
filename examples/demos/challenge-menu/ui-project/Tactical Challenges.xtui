@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "name": "Tactical Challenges",
+  "id": "tactical-challenges",
+  "game": "",
+  "spec": {
+    "platforms": [],
+    "safeArea": {
+      "default": 0.025,
+      "console": 0.05
+    },
+    "input": {
+      "methods": [],
+      "players": 1
+    },
+    "languages": [],
+    "fontFallback": {},
+    "budget": {
+      "frameMs": 0,
+      "effectLayers": 0,
+      "fillRate": 0
+    },
+    "engine": {
+      "name": "",
+      "version": ""
+    },
+    "logicalHeight": 720
+  },
+  "uis": [
+    {
+      "id": "challenge-menu",
+      "doc": "challenge-menu/challenge-menu.xt",
+      "flow": "challenge-menu/challenge-menu.xtflow",
+      "size": [
+        1280,
+        720
+      ]
+    }
+  ],
+  "shared": {
+    "assetRoot": "shared",
+    "fontDirs": [
+      "shared/fonts"
+    ],
+    "styles": [
+      "shared/base.xts"
+    ],
+    "templateDirs": [],
+    "symbols": "shared/symbols",
+    "tokens": "",
+    "themes": "themes",
+    "strings": "strings",
+    "recipes": "shared/recipes",
+    "design": "design"
+  },
+  "preview": {
+    "dpr": 1
+  },
+  "target": "engine",
+  "publish": {
+    "outDir": "",
+    "languages": [],
+    "embedImages": false,
+    "embedFonts": false,
+    "thumbnails": [
+      320,
+      180
+    ],
+    "atlas": {
+      "enabled": false,
+      "maxSize": 4096,
+      "padding": 2,
+      "mipmaps": false,
+      "scope": "ui"
+    }
+  }
+}

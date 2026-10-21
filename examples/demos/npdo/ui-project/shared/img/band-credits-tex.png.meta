@@ -1,0 +1,12 @@
+id: dccf3e3f-025b-4909-904c-6de9da02a410
+type: image
+title: band-credits-tex
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/menu-hl-5.png
+content: sha256:deb1550a2654775730e6e864ab68d69eafafca16db291f28a07486f920b36d85
+measured:
+  w: 600
+  h: 84
+  alpha: true

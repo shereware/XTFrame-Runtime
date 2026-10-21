@@ -1,0 +1,4 @@
+# T-241: SwipeCard, state 'drag'.
+update 0.6
+pointerdown 156 180
+pointermove 236 180

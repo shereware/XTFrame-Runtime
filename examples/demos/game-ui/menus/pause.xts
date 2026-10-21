@@ -1,0 +1,91 @@
+/* Pause menu of the game-ui bundle. Palette, type scale, panel and button base come from
+   ../shared/base.xts, so this menu matches the HUD; only menu-specific rules are here. */
+
+#scrim {
+  background-color: #0b0f17cc;
+  left: 0;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+}
+
+#halo {
+  animation: halo 3200ms linear infinite;
+  background-color: #1f6feb26;
+  border-radius: 240px;
+  effect: glow(40px #1f6feb 0.5);
+  height: 480px;
+  left: calc(50% - 240px);
+  position: absolute;
+  top: calc(1safe-top + 102px);
+  width: 480px;
+}
+
+#menu {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  left: calc(47.73% - 190.92px);
+  text-align: center;
+  top: calc(1safe-top + 134px);
+  width: 400px;
+}
+
+#heading {
+  font-size: 44px;
+  letter-spacing: 10px;
+  line-height: 52px;
+  margin: 6px 0px 6px 0px;
+}
+
+.wide {
+  margin: 14px 0px 0px 0px;
+  padding: 0px;
+  width: 280px;
+}
+
+.quit {
+  background-color: #3d1a1a;
+  border: 1px #6e2b2b;
+  color: #f85149;
+}
+
+.quit:hover {
+  background-color: #5a2424;
+}
+
+.quit:active {
+  background-color: #7a2f2f;
+}
+
+#hint {
+  font-size: 12px;
+  letter-spacing: 1px;
+  margin: 22px 0px 0px 0px;
+}
+
+@keyframes halo {
+  0% { effect: glow(40px #1f6feb 0.5); }
+  50% { effect: glow(84px #1f6feb 1.1); }
+  100% { effect: glow(40px #1f6feb 0.5); }
+}
+
+/* T-152: the same radar.json as the HUD, at half speed, as a decoration beside the heading.
+   The Lottie file is compiled into each UI's .xtir; it is not a packed asset. */
+
+#headRow {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  margin: 6px 0px 6px 0px;
+}
+
+#headRow #heading {
+  margin: 0px 0px 0px 0px;
+}
+
+#pauseRadar {
+  height: 40px;
+  width: 40px;
+}

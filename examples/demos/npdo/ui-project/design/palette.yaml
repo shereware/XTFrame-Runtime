@@ -1,0 +1,489 @@
+groups:
+  - id: ink
+    name: Ink and cream
+    status: approved
+    source:
+      kind: ai:design-system
+    approved:
+      by: Bigspring
+      at: 2026-10-16T04:02:23Z
+    note: "Warm monochrome: near-black ground, one cream ramp for all type and rules."
+    swatches:
+      - id: void
+        name: Void
+        value: "#050505"
+        role: page-ground
+        status: approved
+        source:
+          kind: ai:design-system
+          ref: shared/base.xts#.s-3e2669
+        approved:
+          by: Bigspring
+          at: 2026-10-16T04:02:23Z
+        links:
+          - rel: derived-from
+            to: decision:0001
+            note: kept as a distinct step of the ramp
+          - rel: derived-from
+            to: ref:key-art/af3f1d8f-b44b-402c-8232-d975d9c177a8
+            note: "#060605, the dominant shadow tone of the key art"
+          - rel: applies-to
+            to: ui:main-menu
+          - rel: applies-to
+            to: ui:settings
+          - rel: applies-to
+            to: ui:hud
+        note: Page ground of every UI.
+      - id: ink
+        name: Ink
+        value: "#0a0a0a"
+        role: on-cream / panel base
+        status: approved
+        source:
+          kind: ai:design-system
+          ref: hud#n-4f64f52c, board accentText
+        approved:
+          by: Bigspring
+          at: 2026-10-16T04:02:23Z
+        links:
+          - rel: derived-from
+            to: decision:0001
+            note: kept as a distinct step of the ramp
+          - rel: applies-to
+            to: ui:main-menu
+          - rel: applies-to
+            to: ui:settings
+          - rel: applies-to
+            to: ui:hud
+        note: Text on cream fills (inventory slot number); base of the panel alphas.
+      - id: cream-bright
+        name: Cream bright
+        value: "#f6f1e6"
+        role: text-strong
+        status: approved
+        source:
+          kind: ai:design-system
+          ref: hud#objective-text, hud#interact-label, settings#panel-heading, settings#mode-value, main-menu .menu-item:hover
+        approved:
+          by: Bigspring
+          at: 2026-10-16T04:02:23Z
+        links:
+          - rel: derived-from
+            to: decision:0001
+            note: kept as a distinct step of the ramp
+          - rel: see-also
+            to: swatch:bone
+            note: bone (#d3cbc4) is the title-lockup white in the art
+          - rel: applies-to
+            to: ui:main-menu
+          - rel: applies-to
+            to: ui:settings
+          - rel: applies-to
+            to: ui:hud
+        note: Headings, objective text, hover and selected labels.
+      - id: cream
+        name: Cream
+        value: "#e8e2d4"
+        role: text
+        status: approved
+        source:
+          kind: ai:design-system
+          ref: shared/base.xts, hud#location-name, hud#interact-key, settings#subtitles-state
+        approved:
+          by: Bigspring
+          at: 2026-10-16T04:02:23Z
+        links:
+          - rel: derived-from
+            to: decision:0001
+            note: kept as a distinct step of the ramp
+          - rel: applies-to
+            to: ui:main-menu
+          - rel: applies-to
+            to: ui:settings
+          - rel: applies-to
+            to: ui:hud
+        note: Default text colour and icon strokes.
+      - id: cream-accent
+        name: Cream accent
+        value: "#efe8d8"
+        role: accent
+        status: approved
+        source:
+          kind: ai:design-system
+          ref: hud#objective-rule, hud#slot-1, settings#tab-audio, main-menu .menu-hl
+        approved:
+          by: Bigspring
+          at: 2026-10-16T04:02:23Z
+        links:
+          - rel: derived-from
+            to: decision:0001
+            note: kept as a distinct step of the ramp
+          - rel: applies-to
+            to: ui:hud
+          - rel: applies-to
+            to: ui:settings
+          - rel: applies-to
+            to: ui:main-menu
+        note: Accent rules, selected-row bars and slot highlight.
+      - id: cream-mid
+        name: Cream mid
+        value: "#d6d0c2"
+        role: text-label
+        status: approved
+        source:
+          kind: ai:design-system
+          ref: hud#objective-head, main-menu .menu-label, settings .row-label
+        approved:
+          by: Bigspring
+          at: 2026-10-16T04:02:23Z
+        links:
+          - rel: applies-to
+            to: ui:hud
+          - rel: applies-to
+            to: ui:settings
+          - rel: applies-to
+            to: ui:main-menu
+        note: Menu items at rest, row labels, HUD labels.
+      - id: cream-dim
+        name: Cream dim
+        value: "#bdb6a8"
+        role: text-quiet
+        status: approved
+        source:
+          kind: ai:design-system
+          ref: hud#location-clock, settings#settings-location, settings .tab-label
+        approved:
+          by: Bigspring
+          at: 2026-10-16T04:02:23Z
+        links:
+          - rel: applies-to
+            to: ui:hud
+          - rel: applies-to
+            to: ui:settings
+        note: Tab labels at rest, clock, location block.
+      - id: stone
+        name: Stone
+        value: "#a39e93"
+        role: text-dim
+        status: approved
+        source:
+          kind: ai:design-system
+          ref: main-menu#menu-version, settings#panel-desc, settings#settings-version
+        approved:
+          by: Bigspring
+          at: 2026-10-16T04:02:23Z
+        links:
+          - rel: applies-to
+            to: ui:settings
+          - rel: applies-to
+            to: ui:main-menu
+        note: Version strings and descriptions.
+  - id: state
+    name: State colours
+    status: approved
+    source:
+      kind: ai:design-system
+    approved:
+      by: Bigspring
+      at: 2026-10-16T04:02:23Z
+    note: Colour is reserved for state; screens are otherwise monochrome.
+    swatches:
+      - id: sage
+        name: Sage
+        value: "#8fbf8a"
+        role: success / low-noise
+        status: approved
+        source:
+          kind: ai:design-system
+          ref: hud#noise-value, hud#Wave
+        approved:
+          by: Bigspring
+          at: 2026-10-16T04:02:23Z
+        links:
+          - rel: applies-to
+            to: ui:hud
+        note: Noise meter when quiet; the only coloured text on screen.
+      - id: danger
+        name: Danger red
+        value: "#a3241c"
+        role: danger / disposal emphasis
+        status: approved
+        source:
+          kind: ai:design-system
+          ref: board/project/ds/xtframe/tokens.json
+        approved:
+          by: Bigspring
+          at: 2026-10-16T04:02:23Z
+        links:
+          - rel: derived-from
+            to: ref:key-art/af3f1d8f-b44b-402c-8232-d975d9c177a8
+            note: "red emphasis word 處分 and title slash (extracted #a01516)"
+          - rel: derived-from
+            to: ref:key-art/d5b9776d-3c07-4237-835b-f79ffc258b9c
+            note: same red tagline
+        note: "Board token #a3241c; matches the key art's red (#a01516) used for 處分 in the tagline and the slash through NPDO. Not used by any screen yet."
+      - id: warning
+        name: Warning amber
+        value: "#c9a24a"
+        role: warning
+        status: approved
+        source:
+          kind: ai:design-system
+          ref: board/project/ds/xtframe/tokens.json
+        approved:
+          by: Bigspring
+          at: 2026-10-16T04:02:23Z
+        links:
+          - rel: applies-to
+            to: ui:main-menu
+          - rel: applies-to
+            to: ui:settings
+          - rel: applies-to
+            to: ui:hud
+        note: Defined by the board design tokens; no screen uses it yet.
+  - id: overlay
+    name: Overlays
+    status: approved
+    source:
+      kind: ai:design-system
+    approved:
+      by: Bigspring
+      at: 2026-10-16T04:02:23Z
+    note: Translucent lines and scrims drawn over the background art.
+    swatches:
+      - id: line-hairline
+        name: Line hairline
+        value: "#ffffff14"
+        role: divider
+        status: approved
+        source:
+          kind: ai:design-system
+          ref: settings#settings-tabs, settings#settings-footer, settings .row
+        approved:
+          by: Bigspring
+          at: 2026-10-16T04:02:23Z
+        links:
+          - rel: applies-to
+            to: ui:settings
+        note: Row dividers, footer top border, tab-strip border.
+      - id: line-border
+        name: Line border
+        value: "#ffffff26"
+        role: border
+        status: approved
+        source:
+          kind: ai:design-system
+          ref: hud .bar-track, board panelBorder
+        approved:
+          by: Bigspring
+          at: 2026-10-16T04:02:23Z
+        links:
+          - rel: applies-to
+            to: ui:main-menu
+          - rel: applies-to
+            to: ui:settings
+          - rel: applies-to
+            to: ui:hud
+        note: Bar track border, panel border in the board tokens.
+      - id: line-rule
+        name: Line rule
+        value: "#ffffff33"
+        role: rule
+        status: approved
+        source:
+          kind: ai:design-system
+          ref: hud#objective-line, hud#location-line, settings .sep
+        approved:
+          by: Bigspring
+          at: 2026-10-16T04:02:23Z
+        links:
+          - rel: applies-to
+            to: ui:hud
+          - rel: applies-to
+            to: ui:settings
+        note: Objective and location rules, footer separators.
+      - id: line-outline
+        name: Line outline
+        value: "#ffffff40"
+        role: outline
+        status: approved
+        source:
+          kind: ai:design-system
+          ref: hud .slot, settings .box, settings#subtitles-switch
+        approved:
+          by: Bigspring
+          at: 2026-10-16T04:02:23Z
+        links:
+          - rel: applies-to
+            to: ui:hud
+          - rel: applies-to
+            to: ui:settings
+        note: Inventory slot and input box outlines, switch track.
+      - id: scrim-strong
+        name: Scrim strong
+        value: "#000000eb"
+        role: scrim
+        status: approved
+        source:
+          kind: ai:design-system
+          ref: main-menu#menu-shade-left, settings#settings-shade
+        approved:
+          by: Bigspring
+          at: 2026-10-16T04:02:23Z
+        links:
+          - rel: applies-to
+            to: ui:settings
+          - rel: applies-to
+            to: ui:main-menu
+        note: Darkest edge of the menu and settings side shades.
+      - id: scrim-mid
+        name: Scrim mid
+        value: "#000000b3"
+        role: scrim
+        status: approved
+        source:
+          kind: ai:design-system
+          ref: settings#settings-footer, settings#settings-shade
+        approved:
+          by: Bigspring
+          at: 2026-10-16T04:02:23Z
+        links:
+          - rel: applies-to
+            to: ui:settings
+        note: Footer bar and mid stop of the side shades.
+      - id: scrim-soft
+        name: Scrim soft
+        value: "#00000073"
+        role: prompt-backing
+        status: approved
+        source:
+          kind: ai:design-system
+          ref: hud#interact-prompt
+        approved:
+          by: Bigspring
+          at: 2026-10-16T04:02:23Z
+        links:
+          - rel: applies-to
+            to: ui:hud
+        note: Backing of the interact prompt.
+      - id: panel
+        name: Panel
+        value: "#0a0a0ae0"
+        role: surface
+        status: approved
+        source:
+          kind: ai:design-system
+          ref: settings#settings-panel
+        approved:
+          by: Bigspring
+          at: 2026-10-16T04:02:23Z
+        links:
+          - rel: applies-to
+            to: ui:settings
+        note: Settings content panel surface.
+  - id: key-art
+    name: Key art ambience
+    status: approved
+    source:
+      kind: ai:design-system
+    approved:
+      by: Bigspring
+      at: 2026-10-16T04:02:23Z
+    note: Measured from the key art (design.extractPalette). The UI does not use them yet; they set the mood the UI chrome sits on.
+    swatches:
+      - id: art-black
+        name: Art black
+        value: "#060605"
+        role: ambient-ground
+        status: approved
+        source:
+          kind: extracted:key-art/af3f1d8f-b44b-402c-8232-d975d9c177a8
+          ref: ref:key-art/af3f1d8f-b44b-402c-8232-d975d9c177a8
+        approved:
+          by: Bigspring
+          at: 2026-10-16T04:02:23Z
+        links:
+          - rel: derived-from
+            to: ref:key-art/af3f1d8f-b44b-402c-8232-d975d9c177a8
+            note: design.extractPalette
+        note: "35 % of the exterior key art: the dominant shadow tone."
+      - id: art-charcoal
+        name: Art charcoal
+        value: "#272827"
+        role: ambient-mid
+        status: approved
+        source:
+          kind: extracted:key-art/af3f1d8f-b44b-402c-8232-d975d9c177a8
+          ref: ref:key-art/af3f1d8f-b44b-402c-8232-d975d9c177a8
+        approved:
+          by: Bigspring
+          at: 2026-10-16T04:02:23Z
+        links:
+          - rel: derived-from
+            to: ref:key-art/af3f1d8f-b44b-402c-8232-d975d9c177a8
+            note: design.extractPalette
+        note: Wet-concrete and foliage mid-shadow of the exterior.
+      - id: art-ash
+        name: Art ash
+        value: "#7d7d81"
+        role: ambient-light
+        status: approved
+        source:
+          kind: extracted:key-art/af3f1d8f-b44b-402c-8232-d975d9c177a8
+          ref: ref:key-art/af3f1d8f-b44b-402c-8232-d975d9c177a8
+        approved:
+          by: Bigspring
+          at: 2026-10-16T04:02:23Z
+        links:
+          - rel: derived-from
+            to: ref:key-art/af3f1d8f-b44b-402c-8232-d975d9c177a8
+            note: design.extractPalette
+        note: Overcast sky and lit concrete.
+      - id: bone
+        name: Bone
+        value: "#d3cbc4"
+        role: title-lockup
+        status: approved
+        source:
+          kind: extracted:key-art/af3f1d8f-b44b-402c-8232-d975d9c177a8
+          ref: ref:key-art/af3f1d8f-b44b-402c-8232-d975d9c177a8
+        approved:
+          by: Bigspring
+          at: 2026-10-16T04:02:23Z
+        links:
+          - rel: derived-from
+            to: ref:key-art/af3f1d8f-b44b-402c-8232-d975d9c177a8
+            note: design.extractPalette
+        note: Distressed NPDO lettering, signage and paper; close to the UI cream ramp.
+      - id: corridor-teal
+        name: Corridor teal
+        value: "#1f2425"
+        role: ambient-cool
+        status: approved
+        source:
+          kind: extracted:key-art/d5b9776d-3c07-4237-835b-f79ffc258b9c
+          ref: ref:key-art/d5b9776d-3c07-4237-835b-f79ffc258b9c
+        approved:
+          by: Bigspring
+          at: 2026-10-16T04:02:23Z
+        links:
+          - rel: derived-from
+            to: ref:key-art/d5b9776d-3c07-4237-835b-f79ffc258b9c
+            note: design.extractPalette
+        note: Cold shadow of the corridor interior.
+      - id: window-glow
+        name: Window glow
+        value: "#b79a83"
+        role: ambient-warm
+        status: approved
+        source:
+          kind: extracted:key-art/d5b9776d-3c07-4237-835b-f79ffc258b9c
+          ref: ref:key-art/d5b9776d-3c07-4237-835b-f79ffc258b9c
+        approved:
+          by: Bigspring
+          at: 2026-10-16T04:02:23Z
+        links:
+          - rel: derived-from
+            to: ref:key-art/d5b9776d-3c07-4237-835b-f79ffc258b9c
+            note: design.extractPalette
+        note: Warm light from the far window of the corridor; the only warm light source.

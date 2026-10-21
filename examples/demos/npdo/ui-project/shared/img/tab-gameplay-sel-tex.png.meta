@@ -1,0 +1,12 @@
+id: 58942614-d6c0-4ea0-964e-ca96136bd471
+type: image
+title: tab-gameplay-sel-tex
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/tab-hl-1.png
+content: sha256:fc8b411badfb08f6adc26f968a46027658942941e53cb18113763cbb73071482
+measured:
+  w: 372
+  h: 88
+  alpha: true

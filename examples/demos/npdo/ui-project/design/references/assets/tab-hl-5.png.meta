@@ -1,0 +1,9 @@
+id: 526a9a79-b70d-4360-b3ed-2a641001cd45
+kind: reference
+title: tab-hl-5
+source:
+  kind: ai:service
+  ref: tab-hl-5.png
+tags: [asset, texture]
+license: own
+content: sha256:2f406e611af7f8c8ba94d5945b84067f792c6e12efa2778649b0266331df023f

@@ -1,0 +1,13 @@
+<xt>
+  <head>
+    <style>
+      #parent { width: 120px; height: 120px; margin: 40px; background-color: #ff0000; visibility: hidden; }
+      #child { width: 60px; height: 60px; background-color: #00aa00; visibility: visible; }
+    </style>
+  </head>
+  <body>
+    <div id="parent">
+      <div id="child"></div>
+    </div>
+  </body>
+</xt>

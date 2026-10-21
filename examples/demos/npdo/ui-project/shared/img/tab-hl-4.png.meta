@@ -1,0 +1,12 @@
+id: ae8dc128-db7b-4d95-b871-ccba1d0e4147
+type: image
+title: tab-hl-4
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/tab-hl-4.png
+content: sha256:33501ebae122ac87d57d1adaba4885e68257ffbcb64c7ac80a348b6346d85e3e
+measured:
+  w: 372
+  h: 88
+  alpha: true

@@ -1,0 +1,21 @@
+<xt>
+  <head>
+    <style>
+      @font-face { font-family: "Noto Sans"; src: "../../fonts/NotoSans-Regular.subset.ttf"; }
+      body { width: 256px; height: 256px; background-color: #283848; font-family: "Noto Sans"; }
+      .hot { color: #ff5050; text-effect: glow 4px #ffd000; }
+      #rich { position: absolute; left: 12px; top: 12px; width: 232px; font-size: 22px; color: #ffffff; }
+      #fx { position: absolute; left: 12px; top: 80px; font-size: 30px; color: #ffffff;
+            text-effect: outline 2px #000000, shadow 3px 3px 2px #000000; }
+      #keys { position: absolute; left: 12px; top: 136px; font-size: 20px; color: #e0e0e0; }
+      #reveal { position: absolute; left: 12px; top: 196px; font-size: 22px; color: #a0ffa0;
+                text-reveal: 0.5; }
+    </style>
+  </head>
+  <body>
+    <div id="rich">Rich <span style="font-size: 30px">big</span> <span class="hot">hot</span> and <span style="color: #60a0ff">blue</span> text</div>
+    <div id="fx">Outlined</div>
+    <div id="keys">Press <glyph key="jump"/> or <glyph key="fire"/> <img inline src="checker.png" height="14"/></div>
+    <div id="reveal">Half shown text</div>
+  </body>
+</xt>

@@ -1,0 +1,28 @@
+<xt>
+  <head>
+    <style>
+      @font-face { font-family: "Noto Sans"; src: "../../fonts/NotoSans-Regular.subset.ttf"; }
+      body { width: 256px; height: 256px; background-color: #ffffff; font-family: "Noto Sans"; }
+      /* T-331 (05 §5.9.8): the same paragraph clamped to 1, 2 and 3 lines (the third through the
+         -webkit- alias), each ending in an ellipsis at its last line's visual end; below, two
+         columns of figures, normal and tabular-nums (the Noto Sans subset's default figures are
+         already tabular, so both columns line up the same way). */
+      .p { position: absolute; left: 12px; width: 232px; font-size: 14px; color: #202020;
+           background-color: #e8eef8; }
+      #c1 { top: 8px; line-clamp: 1; }
+      #c2 { top: 36px; line-clamp: 2; }
+      #c3 { top: 82px; -webkit-line-clamp: 3; }
+      .num { position: absolute; top: 150px; width: 100px; font-size: 20px; color: #203060;
+             background-color: #f0f0e0; text-align: right; }
+      #normal { left: 12px; }
+      #tabular { left: 132px; font-variant-numeric: tabular-nums; }
+    </style>
+  </head>
+  <body>
+    <div id="c1" class="p">Clamp this paragraph of text that wraps onto several lines in the box and then keeps going for a while longer</div>
+    <div id="c2" class="p">Clamp this paragraph of text that wraps onto several lines in the box and then keeps going for a while longer</div>
+    <div id="c3" class="p">Clamp this paragraph of text that wraps onto several lines in the box and then keeps going for a while longer</div>
+    <div id="normal" class="num"><div>1111</div><div>8080</div><div>1234</div></div>
+    <div id="tabular" class="num"><div>1111</div><div>8080</div><div>1234</div></div>
+  </body>
+</xt>

@@ -1,0 +1,14 @@
+<xt>
+  <head>
+    <link rel="stylesheet" href="trim.xts"/>
+  </head>
+  <body>
+    <div id="Trim" class="c_Trim">
+      <svg id="TrimLayer" class="xl c_Trim" viewBox="0 0 256 256" width="256" height="256">
+            <g transform="matrix(1 0 0 1 128 128)">
+              <path id="n2" d="M 0 -80 C 44.1828 -80 80 -44.1828 80 0 C 80 44.1828 44.1828 80 0 80 C -44.1828 80 -80 44.1828 -80 0 C -80 -44.1828 -44.1828 -80 0 -80 Z" fill="none" stroke="#ffffff" stroke-width="10" stroke-linecap="round" stroke-linejoin="miter" stroke-miterlimit="0" path-trim="0 0.1 0"/>
+            </g>
+          </svg>
+    </div>
+  </body>
+</xt>

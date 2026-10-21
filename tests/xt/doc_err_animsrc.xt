@@ -1,0 +1,5 @@
+<xt>
+  <body>
+    <anim src="does-not-exist.json"/>
+  </body>
+</xt>

@@ -1,0 +1,17 @@
+<xt>
+  <head><style>
+    #OffsetIcon { position: absolute; left: 0px; top: 0px; }
+    #MergeIcon { position: absolute; left: 120px; top: 0px; }
+  </style></head>
+  <body>
+    <svg id="OffsetIcon" viewBox="0 0 100 100" width="100" height="100">
+      <path id="A" d="M10 10 L50 10 L50 50 L10 50 Z" fill="#ff0000"/>
+      <xt-offset id="Off" amount="5" join="miter"/>
+    </svg>
+    <svg id="MergeIcon" viewBox="0 0 100 100" width="100" height="100">
+      <path id="B" d="M10 10 L50 10 L50 50 L10 50 Z" fill="#00ff00"/>
+      <path id="C" d="M30 10 L70 10 L70 50 L30 50 Z" fill="#00ff00"/>
+      <xt-merge id="Mrg" mode="add"/>
+    </svg>
+  </body>
+</xt>

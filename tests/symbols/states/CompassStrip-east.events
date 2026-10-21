@@ -1,0 +1,4 @@
+# T-198: CompassStrip, state 'east'.
+port Compass.heading 0
+update 0.6
+port Compass.heading 90

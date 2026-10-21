@@ -1,0 +1,30 @@
+<xt>
+  <head>
+    <style>
+      /* T-218 (31 31.5.1): two buttons with the same inline <svg> icon; the blade takes a token,
+         the hovered button (the right one, see ui_svg_hover.events) recolours it and the ring. */
+      :root { --accent: #2a7fff; }
+      .btn { position: absolute; top: 64px; width: 96px; height: 96px; background-color: #e8e8e8; }
+      #BtnA { left: 16px; }
+      #BtnB { left: 144px; }
+      svg { position: absolute; left: 16px; top: 16px; width: 64px; height: 64px; }
+      #IconA/Blade, #IconB/Blade { fill: var(--accent); }
+      #BtnB:hover #IconB/Blade { fill: #ff5a1f; }
+      #BtnB:hover #IconB/Ring { stroke: #ff5a1f; stroke-width: 4px; }
+    </style>
+  </head>
+  <body>
+    <div id="BtnA" class="btn">
+      <svg id="IconA" width="32" height="32">
+        <circle id="Ring" cx="16" cy="16" r="13" fill="none" stroke="#333333" stroke-width="2"/>
+        <path id="Blade" d="M16 5 L20 16 L16 27 L12 16 Z" fill="#000000"/>
+      </svg>
+    </div>
+    <div id="BtnB" class="btn">
+      <svg id="IconB" width="32" height="32">
+        <circle id="Ring" cx="16" cy="16" r="13" fill="none" stroke="#333333" stroke-width="2"/>
+        <path id="Blade" d="M16 5 L20 16 L16 27 L12 16 Z" fill="#000000"/>
+      </svg>
+    </div>
+  </body>
+</xt>

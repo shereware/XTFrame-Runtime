@@ -1,0 +1,4 @@
+# docs/tasks/T-36.md: wheel over #box. docs/design/08-events.md §8.4: ScrollY += wheelDelta.y *
+# 40 = 120 * 40 = 4800, clamped to [0, scrollHeight - clientHeight] = [0, 200], so #box ends up
+# scrolled all the way to its bottom (#c fully visible, #a fully scrolled past).
+wheel 50 50 0 120

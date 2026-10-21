@@ -1,0 +1,18 @@
+<xt>
+  <head>
+    <style>
+      @font-face { font-family: "Noto Sans SC"; src: "../../fonts/NotoSansSC-Regular.subset.ttf"; }
+      #a {
+        margin: 16px;
+        width: 130px;
+        font-family: "Noto Sans SC";
+        font-size: 28px;
+        line-height: 1.4em;
+        color: #202020;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="a">世界日本世界日本世界</div>
+  </body>
+</xt>

@@ -1,0 +1,12 @@
+id: ab639bf9-d062-467a-adb1-e4ff01db4d93
+type: image
+title: menu-title
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/title.png
+content: sha256:6eb801b955682f5b5de58a3faea4dbeb4d3ef77d9d95b6a3e4714f8de278e038
+measured:
+  w: 2172
+  h: 724
+  alpha: true

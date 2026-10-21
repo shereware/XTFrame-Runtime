@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "timelines": [
+    {
+      "name": "main",
+      "duration": 2,
+      "markers": [],
+      "tracks": []
+    },
+    {
+      "name": "PrecompParent_Comp0",
+      "duration": 2,
+      "markers": [],
+      "tracks": [
+        { "layer": "InnerShape", "prop": "transform", "keys": [[0, "translate(40px, 128px)"], [1, "translate(216px, 128px)", "cubic-bezier(0, 0, 0, 0)"]] }
+      ]
+    }
+  ]
+}

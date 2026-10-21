@@ -1,0 +1,62 @@
+<xt>
+  <head>
+    <!-- Hotbar: standard symbol (docs/design/30-ui-project.md 30.4). See README.md. -->
+    <symbol name="Hotbar" requires="states: Hover, Selected, Empty">
+      <div id="Box" port:slots="list&lt;struct{key: string, count: number, empty: bool}&gt; in"
+           port:selected="number in" port:select="event out">
+        <repeat port="slots" id="Slot">
+          <div id="Cell" bind:state.Selected="index | eq(selected)" bind:state.Empty="item(empty)"
+               on:press="sound(ui_select); emit(select)">
+            <div id="Icon"></div>
+            <span id="Key" bind:text="item(key)"></span>
+            <span id="Count" bind:text="item(count)"></span>
+          </div>
+        </repeat>
+      </div>
+    </symbol>
+    <style>
+      symbol(Hotbar) {
+        #Box { display: flex; font-family: var(--font-family); color: var(--color-text); }
+        #Slot { display: flex; column-gap: var(--space-2); }
+        #Cell {
+          position: relative;
+          flex-shrink: 0;
+          width: 52px;
+          height: 52px;
+          border-width: var(--focus-w);
+          border-color: var(--color-border);
+          border-radius: var(--radius-m);
+          background-color: var(--color-surface-sunken);
+          transition: border-color var(--motion-instant) linear;
+        }
+        #Icon {
+          position: absolute;
+          left: 12px;
+          top: 12px;
+          width: 24px;
+          height: 24px;
+          border-radius: var(--radius-s);
+          background-color: var(--color-text-dim);
+        }
+        #Key {
+          position: absolute;
+          left: 4px;
+          top: 2px;
+          font-size: var(--font-size-xs);
+          color: var(--color-text-dim);
+        }
+        #Count {
+          position: absolute;
+          right: 4px;
+          bottom: 2px;
+          font-size: var(--font-size-xs);
+          font-weight: 700;
+        }
+        #Cell:hover { border-color: var(--color-border-strong); }
+        #Cell:state(Selected) { border-color: var(--color-accent); background-color: var(--color-surface-raised); }
+        #Cell:state(Empty) #Icon { opacity: 0; }
+        #Cell:state(Empty) #Count { opacity: 0; }
+      }
+    </style>
+  </head>
+</xt>

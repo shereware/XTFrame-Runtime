@@ -1,0 +1,14 @@
+<xt>
+  <head>
+    <style>
+      #a { height: 10px; }
+      #b { display: none; height: 100px; }
+      #c { height: 10px; }
+    </style>
+  </head>
+  <body>
+    <div id="a"></div>
+    <div id="b"></div>
+    <div id="c"></div>
+  </body>
+</xt>

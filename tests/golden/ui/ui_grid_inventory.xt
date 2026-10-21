@@ -1,0 +1,53 @@
+<xt>
+  <head>
+    <style>
+      /* T-338 (06 §6.15): a 6 x 4 inventory grid -- fr columns, px rows and gaps, a 2 x 2 item
+         placed by lines, one pinned to the last cell, the rest auto-placed into the free cells;
+         the slots holding a gem center it with justify-items / align-items. */
+      #bag { position: absolute; left: 10px; top: 40px; width: 236px; padding: 0px;
+             display: grid; grid-template-columns: repeat(6, 1fr); grid-template-rows: repeat(4, 36px);
+             gap: 4px; }
+      .slot { background-color: #2b2f3a; border-width: 1px; border-color: #4a5060; border-radius: 4px; }
+      .full { display: grid; justify-items: center; align-items: center;
+              grid-template-columns: 1fr; grid-template-rows: 1fr; }
+      .gem { width: 18px; height: 18px; border-radius: 9px; background-color: #4cc9f0; }
+      .gem.red { background-color: #ef476f; }
+      .gem.gold { background-color: #ffd166; }
+      #sword { grid-column: 1 / span 2; grid-row: 1 / span 2; background-color: #3a7bd5;
+               border-color: #9ec5ff; }
+      #key { grid-column: 6; grid-row: 4; background-color: #6a4c93; border-color: #c3a6ff; }
+      #bar { position: absolute; left: 10px; top: 12px; width: 236px; height: 16px;
+             display: grid; grid-template-columns: 2fr 1fr auto;
+             column-gap: 6px; }
+      #hp { background-color: #ef476f; border-radius: 3px; }
+      #mp { background-color: #4cc9f0; border-radius: 3px; }
+      #coin { width: 16px; background-color: #ffd166; border-radius: 8px; }
+    </style>
+  </head>
+  <body>
+    <div id="bar"><div id="hp"></div><div id="mp"></div><div id="coin"></div></div>
+    <div id="bag">
+      <div class="slot" id="sword"></div>
+      <div class="slot full"><div class="gem"></div></div>
+      <div class="slot"></div>
+      <div class="slot full"><div class="gem red"></div></div>
+      <div class="slot"></div>
+      <div class="slot"></div>
+      <div class="slot full"><div class="gem gold"></div></div>
+      <div class="slot"></div>
+      <div class="slot"></div>
+      <div class="slot"></div>
+      <div class="slot"></div>
+      <div class="slot full"><div class="gem"></div></div>
+      <div class="slot"></div>
+      <div class="slot"></div>
+      <div class="slot"></div>
+      <div class="slot"></div>
+      <div class="slot full"><div class="gem red"></div></div>
+      <div class="slot"></div>
+      <div class="slot"></div>
+      <div class="slot"></div>
+      <div class="slot" id="key"></div>
+    </div>
+  </body>
+</xt>

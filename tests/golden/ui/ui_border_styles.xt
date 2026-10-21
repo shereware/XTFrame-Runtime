@@ -1,0 +1,21 @@
+<xt>
+  <head>
+    <style>
+      /* T-333 (05 §5.9.8): per-side border colors and line styles -- four solid colors, dashed,
+         dotted and a rounded dashed border, one 112 px cell each. */
+      .cell { position: absolute; width: 112px; height: 112px; background-color: #f4f1de; }
+      #colors { left: 8px; top: 8px; border-width: 10px;
+                border-color: #e63946 #2a9d8f #457b9d #f4a261; }
+      #dashed { left: 136px; top: 8px; border: 6px #264653; border-style: dashed; }
+      #dotted { left: 8px; top: 136px; border: 8px #e76f51; border-style: dotted; }
+      #rounded { left: 136px; top: 136px; border: 6px #6a4c93; border-style: dashed;
+                 border-radius: 28px; border-left-color: #1982c4; }
+    </style>
+  </head>
+  <body>
+    <div class="cell" id="colors"></div>
+    <div class="cell" id="dashed"></div>
+    <div class="cell" id="dotted"></div>
+    <div class="cell" id="rounded"></div>
+  </body>
+</xt>

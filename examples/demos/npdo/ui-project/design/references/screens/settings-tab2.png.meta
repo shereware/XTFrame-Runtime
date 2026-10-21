@@ -1,0 +1,9 @@
+id: e7a77f99-7f60-4412-a8d0-9276f9f32440
+kind: reference
+title: settings tab2
+source:
+  kind: ai:service
+  ref: settings-tab2.png
+tags: [screenshot, settings]
+license: own
+content: sha256:1b09418179a1a8638f29be4f95a61eecbc41f940c9198a8ce03efa6d21167d87

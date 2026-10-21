@@ -1,0 +1,25 @@
+<xt>
+  <head>
+    <link href="../shared/base.xts"/>
+    <link href="pause.xts"/>
+    <title>XTFrame pause menu demo</title>
+  </head>
+  <body>
+    <div id="root">
+      <div id="scrim"></div>
+      <div id="halo"></div>
+      <div id="menu" class="panel">
+        <div class="label">MISSION 03 / RELAY</div>
+        <div id="headRow">
+          <anim id="pauseRadar" src="../shared/anim/radar.json" loop="true" speed="0.5"/>
+          <div id="heading">PAUSED</div>
+        </div>
+        <div class="dim">The operation is on hold.</div>
+        <button id="resume" class="btn primary wide">RESUME</button>
+        <button id="options" class="btn wide">OPTIONS</button>
+        <button id="quit" class="btn wide quit">QUIT</button>
+        <div id="hint" class="dim">Second UI of the game-ui bundle</div>
+      </div>
+    </div>
+  </body>
+</xt>

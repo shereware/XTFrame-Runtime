@@ -1,0 +1,10 @@
+id: 3ad3eb0d-b7cd-4f0b-b12d-0ad4f67a4172
+type: image
+status: draft
+source:
+  kind: manual
+content: sha256:3e2076cd6db4463e8c101906a46df7bf6fd5784e40f9d3ce55ed2068b5e7555d
+measured:
+  w: 512
+  h: 512
+  alpha: true

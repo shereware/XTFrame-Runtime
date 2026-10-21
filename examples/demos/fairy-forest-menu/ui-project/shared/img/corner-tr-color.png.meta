@@ -1,0 +1,12 @@
+id: 1b77c07c-61ca-4135-8cc1-c291c269f455
+type: image
+title: corner-tr-color
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/1b0f9c768ba7bf1c2dd86ae0048103f0
+content: sha256:9febcc0379ff46e5e11f104732f9b48acbe874a20f1f4f5fe89869a268bd79e4
+measured:
+  w: 300
+  h: 200
+  alpha: true

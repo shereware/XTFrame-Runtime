@@ -1,0 +1,4 @@
+# T-179: the Traditional Chinese strings of ui_l10n.xt (CJK glyphs via @font-fallback).
+string zh-TW title 這是測試
+string zh-TW hint 日本語 一行
+lang zh-TW

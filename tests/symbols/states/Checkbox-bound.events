@@ -1,0 +1,3 @@
+# T-204: Checkbox, state 'bound' (the host sets Subs.value; bind:checked ticks the box).
+update 0.6
+port Subs.value true

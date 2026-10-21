@@ -1,0 +1,9 @@
+button {
+  background-color: #cccccc;
+}
+button:focus {
+  /* docs/tasks/T-36.md's ":focus { border: 2px solid #06f }" uses a "solid" keyword the `border`
+     shorthand doesn't accept (compile/src/xts/xts_values.cpp's parseBorderShorthand only takes
+     "<width> <color>", matching every other fixture's "border: <width> <color>" usage). */
+  border: 2px #0066ff;
+}

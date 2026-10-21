@@ -1,0 +1,9 @@
+id: a758b2c9-2c08-45be-8fc1-9e22fdcdb2bc
+kind: reference
+title: main menu intro 0 5s
+source:
+  kind: ai:service
+  ref: main-menu-intro-0-5s.png
+tags: [screenshot, main]
+license: own
+content: sha256:11bb9911641c13efe381548d423888fa6622c2d5509952d0b7ad2a0d42f3cc35

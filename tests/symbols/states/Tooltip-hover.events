@@ -1,0 +1,4 @@
+# T-198: Tooltip, state 'hover'.
+update 0.6
+pointermove 28 28
+update 0.5

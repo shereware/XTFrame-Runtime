@@ -1,0 +1,51 @@
+<xt>
+  <head>
+    <!-- In-game HUD built from the standard symbol library, placed by conventions/layouts/hud.xt:
+         status top-left, compass top-centre, minimap top-right, toasts right, prompt and subtitle
+         low-centre, hotbar bottom-centre, abilities bottom-right, crosshair centre. -->
+    <link rel="symbols" href="../../shared/symbols/HealthBar.xt"/>
+    <link rel="symbols" href="../../shared/symbols/Counter.xt"/>
+    <link rel="symbols" href="../../shared/symbols/CompassStrip.xt"/>
+    <link rel="symbols" href="../../shared/symbols/Minimap.xt"/>
+    <link rel="symbols" href="../../shared/symbols/Toast.xt"/>
+    <link rel="symbols" href="../../shared/symbols/Notification.xt"/>
+    <link rel="symbols" href="../../shared/symbols/Crosshair.xt"/>
+    <link rel="symbols" href="../../shared/symbols/DamageNumber.xt"/>
+    <link rel="symbols" href="../../shared/symbols/Subtitle.xt"/>
+    <link rel="symbols" href="../../shared/symbols/Hotbar.xt"/>
+    <link rel="symbols" href="../../shared/symbols/CooldownRing.xt"/>
+    <link rel="symbols" href="../../shared/symbols/InputGlyph.xt"/>
+    <link href="hud.xts"/>
+  </head>
+  <body>
+    <div id="Screen">
+      <div id="Damage"><use symbol="DamageNumber" id="Hits"/></div>
+      <div id="TopLeft">
+        <use symbol="HealthBar" id="Health" slot:label="@hud_health"/>
+        <use symbol="Counter" id="Gold" slot:label="@hud_gold"/>
+      </div>
+      <div id="TopCenter"><use symbol="CompassStrip" id="Compass"/></div>
+      <div id="TopRight">
+        <use symbol="Minimap" id="Map" slot:label="@hud_zone"/>
+        <use symbol="Notification" id="Quest" slot:title="@hud_quest_title" slot:text="@hud_quest_text"/>
+      </div>
+      <div id="Right"><use symbol="Toast" id="Toasts"/></div>
+      <div id="Center"><use symbol="Crosshair" id="Aim"/></div>
+      <div id="LowCenter">
+        <use symbol="InputGlyph" id="Interact" slot:label="@hud_prompt_open"><slot name="glyph"><glyph key="interact"/></slot></use>
+        <use symbol="Subtitle" id="Dialogue"/>
+      </div>
+      <div id="BottomCenter"><use symbol="Hotbar" id="Quickbar"/></div>
+      <div id="BottomRight">
+        <div id="Ability1" class="ability">
+          <use symbol="CooldownRing" id="Dash"/>
+          <use symbol="InputGlyph" id="DashKey" slot:label="@hud_dash"><slot name="glyph"><glyph key="dash"/></slot></use>
+        </div>
+        <div id="Ability2" class="ability">
+          <use symbol="CooldownRing" id="Heal"/>
+          <use symbol="InputGlyph" id="HealKey" slot:label="@hud_heal"><slot name="glyph"><glyph key="heal"/></slot></use>
+        </div>
+      </div>
+    </div>
+  </body>
+</xt>

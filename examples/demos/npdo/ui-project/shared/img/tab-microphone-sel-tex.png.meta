@@ -1,0 +1,12 @@
+id: a965df63-1ef0-4da3-9b9a-4809a13e02ac
+type: image
+title: tab-microphone-sel-tex
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/tab-hl-6.png
+content: sha256:e8aa4dabf5506ec929835fec6025cac325254dc410dc761688367a564ea25a22
+measured:
+  w: 372
+  h: 88
+  alpha: true

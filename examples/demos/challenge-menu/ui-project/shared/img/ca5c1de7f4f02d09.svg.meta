@@ -1,0 +1,10 @@
+id: add703af-bc75-437f-85a4-1571399b4c8e
+type: vector
+status: draft
+source:
+  kind: manual
+content: sha256:c082766456563ebf5a22242ed0bc262da6a1fd15e6b11b76162247f657c2c4bf
+measured:
+  w: 48
+  h: 36
+  alpha: true

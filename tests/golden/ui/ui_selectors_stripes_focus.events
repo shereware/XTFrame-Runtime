@@ -1,0 +1,2 @@
+# T-173: one Tab focuses the only focusable element (.field), so .panel:focus-within applies.
+key Tab

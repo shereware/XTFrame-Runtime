@@ -1,0 +1,4 @@
+# T-198: Tabs, state 'tab3'.
+port Pages.value 0
+update 0.6
+port Pages.value 2

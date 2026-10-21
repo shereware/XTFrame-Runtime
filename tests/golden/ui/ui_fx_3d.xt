@@ -1,0 +1,20 @@
+<xt>
+  <head>
+    <style>
+      #stage { position: absolute; left: 0px; top: 0px; width: 256px; height: 256px; perspective: 400px; }
+      #card {
+        position: absolute;
+        left: 78px;
+        top: 78px;
+        width: 100px;
+        height: 100px;
+        transform: rotateY(45deg);
+        background-color: #3060c0;
+        effect: shadow(10px 0px 6px #00000080);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stage"><div id="card"></div></div>
+  </body>
+</xt>

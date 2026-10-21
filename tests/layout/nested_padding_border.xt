@@ -1,0 +1,12 @@
+<xt>
+  <head>
+    <style>
+      #l1 { padding: 10px; border-width: 2px; }
+      #l2 { padding: 5px; border-width: 1px; transform-origin: 0 0; }
+      #l3 { width: 10px; height: 10px; transform-origin: 0 0; }
+    </style>
+  </head>
+  <body>
+    <div id="l1"><div id="l2"><div id="l3"></div></div></div>
+  </body>
+</xt>

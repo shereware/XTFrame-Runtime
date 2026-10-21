@@ -1,0 +1,39 @@
+<xt>
+  <head>
+    <!-- InputGlyph: standard symbol (docs/design/30-ui-project.md 30.4). See README.md.
+         The key cap shows the host's glyph for an input action (27.7, IGlyphProvider); fill the
+         `glyph` slot with `<glyph key="<action>"/>` to pick the action. -->
+    <symbol name="InputGlyph" requires="slots: glyph, label">
+      <div id="Box">
+        <div id="Cap"><span id="Key"><slot name="glyph"><glyph key="jump"/></slot></span></div>
+        <span id="Label"><slot name="label">Jump</slot></span>
+      </div>
+    </symbol>
+    <style>
+      symbol(InputGlyph) {
+        #Box {
+          display: flex;
+          align-items: center;
+          column-gap: var(--space-2);
+          font-family: var(--font-family);
+          font-size: var(--font-size-s);
+          color: var(--color-text);
+        }
+        #Cap {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 28px;
+          height: 28px;
+          padding: 0px var(--space-1);
+          border-width: var(--border-w);
+          border-color: var(--color-border-strong);
+          border-radius: var(--radius-s);
+          background-color: var(--color-surface-raised);
+        }
+        #Key { color: var(--color-text); font-weight: 700; white-space: nowrap; }
+        #Label { white-space: nowrap; }
+      }
+    </style>
+  </head>
+</xt>

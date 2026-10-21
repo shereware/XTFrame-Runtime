@@ -1,0 +1,19 @@
+<xt>
+  <head>
+    <style>
+      #parent { position: relative; width: 300px; height: 200px; }
+      #c1 { position: absolute; left: 10px; top: 10px; width: 50px; height: 20px; }
+      #c2 { position: absolute; right: 10px; bottom: 10px; width: 40px; height: 15px; }
+      #c3 { position: absolute; left: 20px; right: 20px; top: 5px; height: 10px; }
+      #c4 { position: absolute; top: 0px; width: 80px; height: 12px; }
+    </style>
+  </head>
+  <body>
+    <div id="parent">
+      <div id="c1"></div>
+      <div id="c2"></div>
+      <div id="c3"></div>
+      <div id="c4"></div>
+    </div>
+  </body>
+</xt>

@@ -1,0 +1,12 @@
+<xt>
+  <head>
+    <style>
+      #stage { position: absolute; left: 0px; top: 0px; width: 256px; height: 256px; perspective: 400px; }
+      #hidden { position: absolute; left: 20px; top: 88px; width: 90px; height: 90px; transform: rotateY(180deg); backface-visibility: hidden; background-color: #c03030; }
+      #visible { position: absolute; left: 140px; top: 88px; width: 90px; height: 90px; transform: rotateY(180deg); backface-visibility: visible; background-color: #30a030; }
+    </style>
+  </head>
+  <body>
+    <div id="stage"><div id="hidden"></div><div id="visible"></div></div>
+  </body>
+</xt>

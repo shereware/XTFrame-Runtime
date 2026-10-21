@@ -1,0 +1,16 @@
+<xt>
+  <head>
+    <style>
+      /* T-345 (05 §5.9.9): under uiscale 2 the `ui-scale: none` subtree keeps its px size while
+         the `auto` box next to it doubles. */
+      #fixed { ui-scale: none; position: absolute; left: 10px; top: 10px; width: 100px;
+               padding: 5px; border: 1px black; }
+      #fixed div { width: 20px; height: 10px; margin: 2px; }
+      #scaled { position: absolute; left: 10px; top: 100px; width: 50px; height: 20px; padding: 5px; }
+    </style>
+  </head>
+  <body>
+    <div id="fixed"><div id="a"></div><div id="b"></div></div>
+    <div id="scaled"></div>
+  </body>
+</xt>

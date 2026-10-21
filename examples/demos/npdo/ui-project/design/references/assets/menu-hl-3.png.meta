@@ -1,0 +1,9 @@
+id: 7748482c-f061-483f-829f-6706f6a0dada
+kind: reference
+title: menu-hl-3
+source:
+  kind: ai:service
+  ref: menu-hl-3.png
+tags: [asset, texture]
+license: own
+content: sha256:6e1e279d71f007f62bdb928cf12b7cde5d2b3600fdb6b4c6f972f2f63ada4aee

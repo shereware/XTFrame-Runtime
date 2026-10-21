@@ -1,0 +1,5 @@
+# T-198: Toast, state 'enter'.
+port Toasts.toasts [{"title":"Saved","text":"Progress saved"},{"title":"Achievement","text":"First steps"}]
+update 0.6
+listinsert Toasts.toasts 0 {"title": "Party", "text": "Mira joined"}
+update 0.1

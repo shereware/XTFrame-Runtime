@@ -1,0 +1,74 @@
+<xt>
+  <head>
+    <!-- Slider: standard symbol (docs/design/30-ui-project.md 30.4). See README.md.
+         The track is `draggable="axis-x"`: pressing or dragging along it sets `value` (min..max);
+         with the track focused, left / right (keys, D-pad) emit `decrease` / `increase`. -->
+    <symbol name="Slider" requires="states: Hover, Pressed, Focus, Disabled; slots: label">
+      <div id="Box" port:value="number in" port:min="number in" port:max="number in"
+           port:decrease="event out" port:increase="event out">
+        <div id="Head">
+          <span id="Label"><slot name="label">Value</slot></span>
+          <span id="Readout" bind:text="value | round"></span>
+        </div>
+        <div id="Track" draggable="axis-x"
+             on:drag.value="set(value, event.value | range(0, 1, min, max) | round)"
+             on:nav.value="sound(ui_tick); if lt(0) emit(decrease) else emit(increase)">
+          <div id="Fill" bind:width="value | range(min, max, 0%, 100%)"></div>
+          <div id="Handle" bind:left="value | range(min, max, 0%, 100%)"></div>
+        </div>
+      </div>
+    </symbol>
+    <style>
+      symbol(Slider) {
+        #Box {
+          display: flex;
+          flex-direction: column;
+          row-gap: var(--space-2);
+          width: 240px;
+          padding: var(--space-2) var(--space-3);
+          border-width: var(--focus-w);
+          border-color: transparent;
+          border-radius: var(--radius-m);
+          color: var(--color-text);
+          font-family: var(--font-family);
+          font-size: var(--font-size-s);
+        }
+        #Head { display: flex; justify-content: space-between; }
+        #Readout { color: var(--color-text-dim); }
+        #Track {
+          position: relative;
+          height: 6px;
+          border-radius: var(--radius-full);
+          background-color: var(--color-track);
+        }
+        #Fill {
+          position: absolute;
+          left: 0px;
+          top: 0px;
+          width: 50%;
+          height: 6px;
+          border-radius: var(--radius-full);
+          background-color: var(--color-accent);
+        }
+        #Handle {
+          position: absolute;
+          left: 50%;
+          top: -6px;
+          width: 18px;
+          height: 18px;
+          margin-left: -9px;
+          border-radius: var(--radius-full);
+          background-color: var(--color-text);
+          transition: transform var(--motion-fast) ease-out;
+        }
+        #Box:hover #Handle { transform: scale(1.15); }
+        #Box:active #Handle { background-color: var(--color-accent-pressed); }
+        #Box:focus-within { border-color: var(--color-focus); }
+        #Track:focus #Handle { transform: scale(1.15); }
+        :disabled #Fill { background-color: var(--color-disabled-text) !important; }
+        :disabled #Handle { background-color: var(--color-disabled-text) !important; }
+        :disabled #Label { color: var(--color-disabled-text); }
+      }
+    </style>
+  </head>
+</xt>

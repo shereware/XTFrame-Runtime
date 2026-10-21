@@ -1,0 +1,9 @@
+id: d511d62b-cd53-4621-bace-9c6af17c5ebd
+kind: reference
+title: settings spec
+source:
+  kind: ai:service
+  ref: settings-spec.md
+tags: [rebuild, spec]
+license: own
+content: sha256:c9847cd1f0016b03b592f0de231646f4ee2faa2495ab67914a6d1f6b16899bb3

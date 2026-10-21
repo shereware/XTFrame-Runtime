@@ -1,0 +1,45 @@
+<xt>
+  <head>
+    <!-- Toast: standard symbol (docs/design/30-ui-project.md 30.4). See README.md. -->
+    <symbol name="Toast" requires="states: Hover">
+      <div id="Box" port:toasts="list&lt;struct{title: string, text: string}&gt; in" port:dismiss="event out">
+        <repeat port="toasts" id="Queue" item-enter="play(item-in)" item-exit="play(item-out) then remove">
+          <div id="Card" on:click="emit(dismiss)">
+            <div id="Stripe"></div>
+            <div id="Copy">
+              <span id="Title" bind:text="item(title)"></span>
+              <span id="Text" bind:text="item(text)"></span>
+            </div>
+          </div>
+        </repeat>
+      </div>
+    </symbol>
+    <style>
+      symbol(Toast) {
+        #Box { width: 320px; font-family: var(--font-family); }
+        #Queue { display: flex; flex-direction: column; row-gap: var(--space-2); }
+        #Card {
+          display: flex;
+          column-gap: var(--space-3);
+          padding: var(--space-3);
+          border-width: var(--border-w);
+          border-color: var(--color-border);
+          border-radius: var(--radius-m);
+          background-color: var(--color-surface-raised);
+          effect: shadow(0 6px 16px 0 var(--color-shadow) 1);
+        }
+        #Card:hover { border-color: var(--color-border-strong); }
+        #Stripe { width: 4px; border-radius: var(--radius-full); background-color: var(--color-accent); }
+        #Copy { display: flex; flex-direction: column; row-gap: var(--space-1); }
+        #Title { color: var(--color-text); font-size: var(--font-size-m); font-weight: 600; }
+        #Text { color: var(--color-text-dim); font-size: var(--font-size-s); }
+        @timeline item-in {
+          #Card { 0s { opacity: 0; transform: translateX(24px) } 0.25s ease-out { opacity: 1; transform: translateX(0px) } }
+        }
+        @timeline item-out {
+          #Card { 0s { opacity: 1; transform: translateX(0px) } 0.2s ease-in { opacity: 0; transform: translateX(24px) } }
+        }
+      }
+    </style>
+  </head>
+</xt>

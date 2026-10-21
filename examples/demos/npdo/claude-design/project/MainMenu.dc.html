@@ -1,0 +1,176 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Main Menu</title></head>
+<body><x-dc>
+<helmet><style>
+  body { margin: 0; background: #050505 }
+  .menu-item { position: relative; width: 450px; height: 63px }
+  .menu-band { position: absolute; left: 0px; top: 0px; width: 450px; height: 63px; opacity: 0;
+               border-left: 3px solid #5c2320; transition: opacity 160ms ease-out }
+  .band-tex { position: absolute; left: 0px; top: 0px; width: 100%; height: 100%; object-fit: fill }
+  .menu-label { position: absolute; left: 39px; top: 0px; height: 63px; line-height: 63px; white-space: nowrap;
+                font-size: 34.5px; letter-spacing: 3px; color: #d6d0c2; transition: color 160ms ease-out }
+  .menu-item:hover .menu-band { opacity: 1 }
+  .menu-item:hover .menu-label { color: #f6f1e6 }
+  .key { width: 33px; height: 33px; line-height: 30px; text-align: center; font-size: 18px;
+         border: 1.5px solid #e8e2d4b3; border-radius: 4.5px; color: #e8e2d4 }
+  .hint { font-size: 21px; letter-spacing: 1.5px; color: #d6d0c2; white-space: nowrap }
+</style></helmet>
+<!-- Board 1920x1080 (spec x1.5). Safe area 2.5 % = 48 px left/right, 27 px top/bottom. -->
+<div id="main-menu" style="position: relative; width: 1920px; height: 1080px; overflow: hidden; background-color: #050505;
+     font-family: Georgia, 'Times New Roman', serif; color: #e8e2d4;"
+     data-xt-port="new_game:event out; continue_game:event out; load_game:event out; open_options:event out; open_credits:event out; quit_game:event out; active:bool in = true"
+     data-xt-trigger="port(active):if eq(1) show() else hide(); if eq(1) play(intro); timeline(intro).end:play(idle)">
+
+  <!-- Scene: key art + street-lamp glow, pushed slowly by idle. Full bleed; the image covers any aspect. -->
+  <div id="menu-scene" style="position: absolute; left: 0%; top: 0%; width: 100%; height: 100%; overflow: hidden;"
+       data-xt-timeline="intro: 0 opacity 0, 1200 ease-out opacity 1;
+         idle loop: 0 transform translateX(0px) scale(1), 12000 ease-in-out transform translateX(-21px) scale(1.045),
+           24000 ease-in-out transform translateX(0px) scale(1)">
+    <img id="menu-bg" src="/_blob/menu-bg.png" alt=""
+         style="position: absolute; left: 0px; top: 0px; width: 100%; height: 100%; object-fit: cover;">
+    <img id="menu-lamp" src="/_blob/menu-lamp.png" alt=""
+         style="position: absolute; left: 32.19%; top: 11.39%; width: 480px; height: 480px; opacity: 1;
+                mix-blend-mode: screen; pointer-events: none;"
+         data-xt-timeline="idle loop: 0 opacity 1.0, 2260 opacity 1.0, 2300 opacity 0.7, 2370 opacity 1.0, 6410 opacity 1.0, 6450 opacity 0.25, 6520 opacity 0.9, 6590 opacity 0.4, 6660 opacity 1.0, 9760 opacity 1.0, 9800 opacity 0.75, 9870 opacity 1.0, 13260 opacity 1.0, 13300 opacity 0.5, 13370 opacity 1.0, 17010 opacity 1.0, 17050 opacity 0.1, 17120 opacity 0.85, 17190 opacity 0.3, 17260 opacity 1.0, 20560 opacity 1.0, 20600 opacity 0.7, 20670 opacity 1.0, 24000 opacity 1.0">
+    <!-- Hot core on the bulb: makes the glow readable; flickers in step with menu-lamp. -->
+    <div id="menu-lamp-core"
+         style="position: absolute; left: 37.24%; top: 21.48%; width: 280px; height: 280px; opacity: 0.85;
+                background: radial-gradient(circle, #ffe2b0e6 0%, #ffb8664d 28%, #ff9a4000 70%);
+                mix-blend-mode: screen; pointer-events: none;"
+         data-xt-timeline="idle loop: 0 opacity 0.85, 2260 opacity 0.85, 2300 opacity 0.595, 2370 opacity 0.85, 6410 opacity 0.85, 6450 opacity 0.212, 6520 opacity 0.765, 6590 opacity 0.34, 6660 opacity 0.85, 9760 opacity 0.85, 9800 opacity 0.637, 9870 opacity 0.85, 13260 opacity 0.85, 13300 opacity 0.425, 13370 opacity 0.85, 17010 opacity 0.85, 17050 opacity 0.085, 17120 opacity 0.722, 17190 opacity 0.255, 17260 opacity 0.85, 20560 opacity 0.85, 20600 opacity 0.595, 20670 opacity 0.85, 24000 opacity 0.85"></div>
+  </div>
+
+  <!-- Low fog, tiled horizontally (period 1920), drifting left. -->
+  <div id="menu-fog-layer" style="position: absolute; left: 0%; top: 0%; width: 100%; height: 100%; overflow: hidden; pointer-events: none;">
+    <div id="menu-fog" style="position: absolute; left: 0px; bottom: -30px; width: 5760px; height: 480px; opacity: 0.6;
+         background-image: url('../shared/img/menu-fog.png'); background-repeat: repeat-x; background-size: 1920px 480px;"
+         data-xt-timeline="fog loop: 0 transform translateX(0px), 64000 linear transform translateX(-1920px)"></div>
+  </div>
+
+  <!-- Shades: fixed-size gradients stuck to the screen's left and bottom edges. -->
+  <div id="menu-shade-left" style="position: absolute; left: 0%; top: 0%; width: 100%; height: 100%; pointer-events: none;"
+       data-xt-timeline="idle loop: 0 opacity 1, 1000 ease-in-out opacity 0.93, 17050 opacity 1, 17120 opacity 0.93,
+         17240 opacity 1, 17320 opacity 0.93, 24000 ease-in-out opacity 1">
+    <div id="menu-shade-left-fill" style="position: absolute; left: 0px; top: 0px; width: 1190px; height: 100%;
+         background: linear-gradient(90deg, #000000eb 0%, #000000b8 48.4%, #00000000 100%);"></div>
+  </div>
+  <div id="menu-shade-bottom" style="position: absolute; left: 0%; top: 0%; width: 100%; height: 100%; pointer-events: none;"
+       data-xt-timeline="idle loop: 0 opacity 1, 6000 ease-in-out opacity 0.82, 12000 ease-in-out opacity 1,
+         18000 ease-in-out opacity 0.82, 24000 ease-in-out opacity 1">
+    <div id="menu-shade-bottom-fill" style="position: absolute; left: 0px; right: 0px; bottom: 0px; height: 281px;
+         background: linear-gradient(0deg, #000000bf 0%, #00000000 100%);"></div>
+  </div>
+
+  <img id="menu-grime" src="/_blob/menu-grime.png" alt=""
+       style="position: absolute; left: 0%; top: 0%; width: 100%; height: 100%; object-fit: cover;
+              opacity: 0.5; transform: translate(0px, 0px) scale(1.15); pointer-events: none;"
+       data-xt-timeline="idle loop: 0 opacity 0.45, 8000 ease-in-out opacity 0.7, 16000 ease-in-out opacity 0.45, 24000 opacity 0.45,
+         0 transform translate(0px, 0px) scale(1.15), 12000 ease-in-out transform translate(-67.5px, -45px) scale(1.15),
+         24000 ease-in-out transform translate(0px, 0px) scale(1.15)">
+
+  <!-- Rain, tiled (768 x 768), falling one tile every 0.5 s. -->
+  <div id="menu-rain-layer" style="position: absolute; left: 0%; top: 0%; width: 100%; height: 100%; overflow: hidden; pointer-events: none;">
+    <div id="menu-rain" style="position: absolute; left: 0px; right: 0px; top: -768px; bottom: 0px; opacity: 0.32;
+         background-image: url('../shared/img/menu-rain.png'); background-repeat: repeat; background-size: 768px 768px;"
+         data-xt-timeline="rain loop: 0 transform translateY(0px), 500 linear transform translateY(768px)"></div>
+  </div>
+
+  <img id="menu-title" src="/_blob/menu-title.png" alt="NPDO - National Property Disposal Officer"
+       style="position: absolute; left: 66px; top: 126px; width: 693px; height: 231px; object-fit: contain;"
+       data-xt-timeline="intro: 0 opacity 0, 300 opacity 0, 900 ease-out opacity 1, 1240 opacity 0.45, 1290 opacity 1, 1340 opacity 0.7, 1390 opacity 1,
+         0 transform translateX(0px) scale(1.07), 300 transform translateX(0px) scale(1.07), 1200 ease-out transform translateX(0px) scale(1),
+         1240 transform translateX(-9px) scale(1), 1290 transform translateX(7.5px) scale(1), 1340 transform translateX(-3px) scale(1),
+         1390 transform translateX(0px) scale(1);
+       idle loop: 0 transform translateX(0px) scale(1), 6000 ease-in-out transform translateX(0px) scale(1.012),
+         12000 ease-in-out transform translateX(0px) scale(1), 18000 ease-in-out transform translateX(0px) scale(1.012),
+         24000 ease-in-out transform translateX(0px) scale(1),
+         0 opacity 1, 13940 opacity 1, 13990 opacity 0.6, 14040 opacity 1, 14080 opacity 0.8, 14110 opacity 1, 24000 opacity 1">
+
+  <!-- Menu list: left safe edge, vertically proportional (41.11 %). -->
+  <div id="menu-list" style="position: absolute; left: 96px; top: 41.11%; width: 450px;
+       display: flex; flex-direction: column; gap: 9px;"
+       data-xt-timeline="intro: 0 opacity 0, 900 opacity 0, 1600 ease-out opacity 1">
+    <div id="btn-new-game" class="menu-item"
+         data-xt-trigger="hover:play(hover1); leave:play(hover1, reverse); click:emit(new_game)"
+         data-xt-sound="hover:ui_hover; click:ui_confirm">
+      <div id="band-new-game" class="menu-band"
+           data-xt-timeline="hover1: 0 transform translateX(-33px), 180 ease-out transform translateX(0px)">
+        <img id="menu-hl-1" class="band-tex" src="/_blob/menu-hl-1.png" alt="">
+      </div>
+      <span id="label-new-game" class="menu-label"
+            data-xt-timeline="hover1: 0 opacity 1, 30 opacity 0.35, 60 opacity 1, 100 opacity 0.6, 140 opacity 1,
+              0 transform translateX(0px), 180 ease-out transform translateX(13.5px)">New Game</span>
+    </div>
+    <div id="btn-continue" class="menu-item"
+         data-xt-trigger="hover:play(hover2); leave:play(hover2, reverse); click:emit(continue_game)"
+         data-xt-sound="hover:ui_hover; click:ui_confirm">
+      <div id="band-continue" class="menu-band"
+           data-xt-timeline="hover2: 0 transform translateX(-33px), 180 ease-out transform translateX(0px)">
+        <img id="menu-hl-2" class="band-tex" src="/_blob/menu-hl-2.png" alt="">
+      </div>
+      <span id="label-continue" class="menu-label"
+            data-xt-timeline="hover2: 0 opacity 1, 30 opacity 0.35, 60 opacity 1, 100 opacity 0.6, 140 opacity 1,
+              0 transform translateX(0px), 180 ease-out transform translateX(13.5px)">Continue</span>
+    </div>
+    <div id="btn-load-game" class="menu-item"
+         data-xt-trigger="hover:play(hover3); leave:play(hover3, reverse); click:emit(load_game)"
+         data-xt-sound="hover:ui_hover; click:ui_confirm">
+      <div id="band-load-game" class="menu-band"
+           data-xt-timeline="hover3: 0 transform translateX(-33px), 180 ease-out transform translateX(0px)">
+        <img id="menu-hl-3" class="band-tex" src="/_blob/menu-hl-3.png" alt="">
+      </div>
+      <span id="label-load-game" class="menu-label"
+            data-xt-timeline="hover3: 0 opacity 1, 30 opacity 0.35, 60 opacity 1, 100 opacity 0.6, 140 opacity 1,
+              0 transform translateX(0px), 180 ease-out transform translateX(13.5px)">Load Game</span>
+    </div>
+    <div id="btn-options" class="menu-item"
+         data-xt-trigger="hover:play(hover4); leave:play(hover4, reverse); click:emit(open_options)"
+         data-xt-sound="hover:ui_hover; click:ui_confirm">
+      <div id="band-options" class="menu-band"
+           data-xt-timeline="hover4: 0 transform translateX(-33px), 180 ease-out transform translateX(0px)">
+        <img id="menu-hl-4" class="band-tex" src="/_blob/menu-hl-4.png" alt="">
+      </div>
+      <span id="label-options" class="menu-label"
+            data-xt-timeline="hover4: 0 opacity 1, 30 opacity 0.35, 60 opacity 1, 100 opacity 0.6, 140 opacity 1,
+              0 transform translateX(0px), 180 ease-out transform translateX(13.5px)">Options</span>
+    </div>
+    <div id="btn-credits" class="menu-item"
+         data-xt-trigger="hover:play(hover5); leave:play(hover5, reverse); click:emit(open_credits)"
+         data-xt-sound="hover:ui_hover; click:ui_confirm">
+      <div id="band-credits" class="menu-band"
+           data-xt-timeline="hover5: 0 transform translateX(-33px), 180 ease-out transform translateX(0px)">
+        <img id="menu-hl-5" class="band-tex" src="/_blob/menu-hl-5.png" alt="">
+      </div>
+      <span id="label-credits" class="menu-label"
+            data-xt-timeline="hover5: 0 opacity 1, 30 opacity 0.35, 60 opacity 1, 100 opacity 0.6, 140 opacity 1,
+              0 transform translateX(0px), 180 ease-out transform translateX(13.5px)">Credits</span>
+    </div>
+    <div id="btn-quit" class="menu-item"
+         data-xt-trigger="hover:play(hover6); leave:play(hover6, reverse); click:emit(quit_game)"
+         data-xt-sound="hover:ui_hover; click:ui_back">
+      <div id="band-quit" class="menu-band"
+           data-xt-timeline="hover6: 0 transform translateX(-33px), 180 ease-out transform translateX(0px)">
+        <img id="menu-hl-6" class="band-tex" src="/_blob/menu-hl-6.png" alt="">
+      </div>
+      <span id="label-quit" class="menu-label"
+            data-xt-timeline="hover6: 0 opacity 1, 30 opacity 0.35, 60 opacity 1, 100 opacity 0.6, 140 opacity 1,
+              0 transform translateX(0px), 180 ease-out transform translateX(13.5px)">Quit</span>
+    </div>
+  </div>
+
+  <span id="menu-version" style="position: absolute; left: 48px; top: 1029px; width: 120px; height: 24px; line-height: 24px;
+        font-size: 18px; letter-spacing: 1.5px; color: #a39e93;">v1.0.0</span>
+
+  <div id="menu-hints" style="position: absolute; left: 1482px; top: 1020px; width: 390px; height: 33px;
+       display: flex; flex-direction: row; align-items: center; justify-content: flex-end; gap: 15px;">
+    <span id="key-w" class="key">W</span>
+    <span id="key-s" class="key">S</span>
+    <span id="hint-select" class="hint" style="margin-right: 27px;">Select</span>
+    <span id="key-e" class="key">E</span>
+    <span id="hint-confirm" class="hint">Confirm</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1920,"height":1080}}'>
+class Component extends DCLogic { renderVals(){ return {}; } }
+</script></body></html>

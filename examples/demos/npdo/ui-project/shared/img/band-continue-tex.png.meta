@@ -1,0 +1,12 @@
+id: 936fb838-33b6-40a6-bf12-d6f270d76127
+type: image
+title: band-continue-tex
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/menu-hl-2.png
+content: sha256:9089904b94ae85ffb153bd4fbeb54517f8b4551aae4cf47d52d4ff6965597b9c
+measured:
+  w: 600
+  h: 84
+  alpha: true

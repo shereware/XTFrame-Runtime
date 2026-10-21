@@ -1,0 +1,12 @@
+id: 8ce8ed43-5155-4941-8658-c35693d5e53b
+type: image
+title: item-new-icon-color
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/9fd780c22894b6d173ca9cee13cbb9c8
+content: sha256:600b924577683de6ff88e8f9bc3186a271b52d746a9a0b6539305a6365766208
+measured:
+  w: 128
+  h: 128
+  alpha: true

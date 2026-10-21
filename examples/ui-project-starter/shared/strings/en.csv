@@ -1,0 +1,44 @@
+key,text
+hint_back,Back
+hint_select,Select
+hint_tabs,Switch tab
+hud_dash,Dash
+hud_gold,GOLD
+hud_heal,Heal
+hud_health,HP
+hud_prompt_open,Open the chest
+hud_quest_text,Find the lighthouse keeper.
+hud_quest_title,Quest updated
+hud_zone,Old Harbor
+menu_continue,Continue
+menu_credits,Credits
+menu_new_game,New Game
+menu_news_text,Season two starts this week.
+menu_news_title,News
+menu_quit,Quit
+menu_settings,Settings
+menu_subtitle,A starter UI Project
+menu_title,STARTER
+menu_version,Version 0.1.0
+quit_cancel,Cancel
+quit_confirm,Quit
+quit_text,Unsaved progress will be lost.
+quit_title,Quit the game?
+settings_apply,Apply
+settings_back,Back
+settings_difficulty,Difficulty
+settings_difficulty_help,Changes take effect at the next checkpoint.
+settings_fov,Field of view
+settings_hints,Show hints
+settings_player_name,Player name
+settings_quality,Graphics quality
+settings_shaders,Compiling shaders
+settings_subtitles,Subtitles
+settings_tab_audio,Audio
+settings_tab_controls,Controls
+settings_tab_general,General
+settings_tab_video,Video
+settings_title,Settings
+settings_volume,Master volume
+settings_window_mode,Window mode
+xt_textfield_placeholder,Type here

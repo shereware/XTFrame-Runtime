@@ -1,0 +1,53 @@
+<xt>
+  <head>
+    <!-- Checkbox: standard symbol (docs/design/30-ui-project.md 30.4). See README.md.
+         The box is the checkbox input, its mark an element inside it. The input's own check /
+         uncheck set the `value` port, and `bind:checked` follows a host change of `value`. -->
+    <symbol name="Checkbox" requires="states: Hover, Focus, Checked, Disabled; slots: label">
+      <div id="Box" port:value="bool in">
+        <input type="checkbox" id="Mark" bind:checked="value"
+               on:check="sound(ui_toggle); set(value, true)" on:uncheck="sound(ui_toggle); set(value, false)">
+          <div id="Tick"></div>
+        </input>
+        <span id="Label"><slot name="label">Checkbox</slot></span>
+      </div>
+    </symbol>
+    <style>
+      symbol(Checkbox) {
+        #Box {
+          display: flex;
+          align-items: center;
+          column-gap: var(--space-2);
+          width: 220px;
+          color: var(--color-text);
+          font-family: var(--font-family);
+          font-size: var(--font-size-m);
+        }
+        #Label { white-space: nowrap; }
+        #Mark {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 18px;
+          height: 18px;
+          border-width: var(--focus-w);
+          border-color: var(--color-border-strong);
+          border-radius: var(--radius-s);
+          background-color: var(--color-surface-sunken);
+          transition: background-color var(--motion-instant) linear, border-color var(--motion-instant) linear;
+        }
+        #Box:hover #Mark { border-color: var(--color-accent); }
+        #Mark:focus { border-color: var(--color-focus); }
+        #Tick { width: 8px; height: 8px; border-radius: var(--radius-full); background-color: transparent; }
+        #Mark:checked { border-color: var(--color-accent); background-color: var(--color-accent); }
+        #Mark:checked #Tick { background-color: var(--color-text-on-accent); }
+        #Mark:checked:focus { border-color: var(--color-focus); }
+        :disabled #Mark {
+          background-color: var(--color-disabled-bg) !important;
+          border-color: var(--color-disabled-bg) !important;
+        }
+        :disabled #Label { color: var(--color-disabled-text); }
+      }
+    </style>
+  </head>
+</xt>

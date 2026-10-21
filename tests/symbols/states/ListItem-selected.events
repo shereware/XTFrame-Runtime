@@ -1,0 +1,3 @@
+# T-382: ListItem, state 'selected'.
+port List.items [{"title":"Save 1","subtitle":"Chapter 2 Harbor","badge":"3h","selected":false},{"title":"Save 2","subtitle":"Chapter 3 Tower","badge":"5h","selected":true},{"title":"Autosave","subtitle":"Chapter 3 Gate","badge":"6h","selected":false}]
+update 0.6

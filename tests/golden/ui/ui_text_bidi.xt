@@ -1,0 +1,18 @@
+<xt>
+  <head>
+    <style>
+      @font-face { font-family: "Noto Sans"; src: "../../fonts/NotoSans-Regular.subset.ttf"; }
+      @font-face { font-family: "Noto Naskh Arabic"; src: "../../fonts/NotoNaskhArabic-Regular.subset.ttf"; }
+      #a {
+        margin: 16px;
+        width: 210px;
+        font-family: "Noto Sans", "Noto Naskh Arabic";
+        font-size: 26px;
+        color: #202020;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="a">Hello مرحبا World</div>
+  </body>
+</xt>

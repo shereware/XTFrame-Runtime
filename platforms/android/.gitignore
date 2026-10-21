@@ -1,0 +1,7 @@
+.gradle/
+build/
+app/build/
+app/.cxx/
+local.properties
+# Packed at build time from the example UI Project (app/build.gradle, task packXtBundle).
+app/src/main/assets/

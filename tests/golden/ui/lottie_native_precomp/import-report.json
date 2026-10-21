@@ -1,0 +1,36 @@
+{
+  "diagnostics": [],
+  "highCount": 3,
+  "lowCount": 0,
+  "mediumCount": 0,
+  "mode": "native",
+  "nodeCount": 3,
+  "nodes": [
+    {
+      "fidelity": "high",
+      "out": "Anchor",
+      "source": "\"Anchor\" (ind 1)",
+      "warnings": []
+    },
+    {
+      "fidelity": "high",
+      "out": "PrecompParent_Comp0:InnerShape",
+      "source": "\"InnerShape\" (ind 1) in PrecompParent_Comp0",
+      "warnings": []
+    },
+    {
+      "fidelity": "high",
+      "out": "Comp",
+      "source": "\"Comp\" (ind 2)",
+      "warnings": []
+    }
+  ],
+  "notNative": [],
+  "source": "precomp_parent.json",
+  "timeline": {
+    "duration": 2.0,
+    "markers": 0,
+    "name": "main",
+    "tracks": 1
+  }
+}

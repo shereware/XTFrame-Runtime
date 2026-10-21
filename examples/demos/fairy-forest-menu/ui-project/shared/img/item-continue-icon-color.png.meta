@@ -1,0 +1,12 @@
+id: f075d636-f904-476d-b6f8-dad4531a7c36
+type: image
+title: item-continue-icon-color
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/179378b83369721be189524e3c188a36
+content: sha256:f335d6a3c4e613f742016bc3a0ab7ff2917533da1e33230803581a6d03e63830
+measured:
+  w: 128
+  h: 128
+  alpha: true

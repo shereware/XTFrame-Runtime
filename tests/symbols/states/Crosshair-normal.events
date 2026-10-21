@@ -1,0 +1,4 @@
+# T-198: Crosshair, state 'normal'.
+port Aim.spread 0
+port Aim.on_target false
+update 0.6

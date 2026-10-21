@@ -1,0 +1,60 @@
+/* Mobile HUD demo: design tokens. A copy of the standard symbol library's tokens
+   (editor/symbols/tokens.xts, including the touch sizes --touch-min / --touch-lg). The .xtui
+   names this file as `shared.tokens`, so a UI must not <link> it again. */
+:root {
+  /* Surfaces and text. */
+  --color-bg: #0e1117;
+  --color-surface: #161b22;
+  --color-surface-raised: #1f2630;
+  --color-surface-sunken: #0b0e13;
+  --color-border: #30363d;
+  --color-border-strong: #4a535e;
+  --color-text: #e6edf3;
+  --color-text-dim: #9aa4af;
+  --color-text-on-accent: #0b0e13;
+  /* Accent and states. */
+  --color-accent: #4cc2ff;
+  --color-accent-hover: #7ad3ff;
+  --color-accent-pressed: #2aa3e6;
+  --color-focus: #ffd24c;
+  --color-disabled-bg: #222830;
+  --color-disabled-text: #5c6570;
+  /* Semantic. */
+  --color-danger: #ff5a5f;
+  --color-warning: #ffb547;
+  --color-success: #4cd98a;
+  --color-info: #4cc2ff;
+  /* Overlays and tracks. */
+  --color-scrim: #000000b3;
+  --color-track: #2a313b;
+  --color-shadow: #00000099;
+  /* Type scale. */
+  --font-family: "Segoe UI", "Noto Sans", "Helvetica", "DejaVu Sans";
+  --font-size-xs: 12px;
+  --font-size-s: 14px;
+  --font-size-m: 16px;
+  --font-size-l: 20px;
+  --font-size-xl: 28px;
+  /* Shape and spacing. */
+  --radius-s: 4px;
+  --radius-m: 8px;
+  --radius-l: 12px;
+  --radius-full: 999px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --border-w: 1px;
+  --focus-w: 2px;
+  --control-s: 28px;
+  --control-m: 36px;
+  --control-l: 44px;
+  /* Touch targets (mobile/ symbols, 23 §23.11.2): the minimum hit size and the large one. */
+  --touch-min: 44px;
+  --touch-lg: 88px;
+  /* Motion (contracts/motion-spec.yaml: instant 0-50, fast 100-200, normal 200-300 ms). */
+  --motion-instant: 50ms;
+  --motion-fast: 150ms;
+  --motion-normal: 250ms;
+}

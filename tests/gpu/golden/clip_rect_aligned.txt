@@ -1,0 +1,5 @@
+target 64x64 vertices=24 indices=90 cmds=3 passes=1 params=0
+pass 0: target=0 clear=0 copy=0 from=0 view=(0,0,64,64) cmds=3
+  0 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=30 verts=8 clip=(10,12,20,16)
+  1 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=30 verts=8 clip=(10,12,5,16)
+  2 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=30 verts=8 clip=(0,0,64,64)

@@ -1,0 +1,15 @@
+target 256x192 vertices=28 indices=60 cmds=6 passes=6 params=2
+transient 1: 256x192 rgba8 stencil=1
+transient 2: 256x192 rgba8 stencil=0
+pass 0: target=0 clear=0 copy=0 from=0 view=(0,0,256,192) cmds=2
+  0 Texture SrcOver None ref=0 tex=yes src=0 aux=0 linear idx=6 verts=4 clip=(10,10,64,64)
+  1 Texture SrcOver None ref=0 tex=yes src=0 aux=0 linear idx=6 verts=4 clip=(0,0,256,192)
+pass 1: target=0 clear=0 copy=0 from=0 view=(0,0,256,192) cmds=1
+  2 Texture SrcOver None ref=0 tex=yes src=0 aux=0 linear idx=6 verts=4 clip=(100,100,96,64)
+pass 2: target=1 clear=1 copy=0 from=0 view=(0,0,256,192) cmds=1
+  3 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=30 verts=8 clip=(0,0,256,192)
+pass 3: target=2 clear=0 copy=1 from=0 view=(0,0,256,192) cmds=0
+pass 4: target=0 clear=0 copy=0 from=0 view=(0,0,256,192) cmds=1
+  4 Composite Replace None ref=0 tex=no src=1 aux=2 linear idx=6 verts=4 clip=(0,0,256,192)
+pass 5: target=0 clear=0 copy=0 from=0 view=(0,0,256,192) cmds=1
+  5 Texture SrcOver None ref=0 tex=yes src=0 aux=0 linear idx=6 verts=4 clip=(192,128,64,64)

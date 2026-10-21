@@ -1,0 +1,23 @@
+<xt>
+  <head>
+    <style>
+      #shrinkAll { display: flex; width: 400px; height: 30px; }
+      #shrinkAll > div { width: 200px; }
+      #shrinkFixed { display: flex; width: 400px; height: 30px; }
+      #shrinkFixed > div { width: 200px; }
+      #f2 { flex-shrink: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="shrinkAll">
+      <div id="a1"></div>
+      <div id="a2"></div>
+      <div id="a3"></div>
+    </div>
+    <div id="shrinkFixed">
+      <div id="f1"></div>
+      <div id="f2"></div>
+      <div id="f3"></div>
+    </div>
+  </body>
+</xt>

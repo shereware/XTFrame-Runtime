@@ -1,0 +1,12 @@
+target 256x256 vertices=100 indices=426 cmds=4 passes=4 params=3
+transient 1: 256x256 rgba8 stencil=1
+transient 2: 256x256 rgba8 stencil=1
+transient 3: 256x256 rgba8 stencil=0
+pass 0: target=1 clear=1 copy=0 from=0 view=(0,0,256,256) cmds=1
+  0 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=390 verts=88 clip=(0,0,256,256)
+pass 1: target=2 clear=1 copy=0 from=0 view=(0,0,256,256) cmds=1
+  1 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=30 verts=8 clip=(0,0,256,256)
+pass 2: target=3 clear=0 copy=0 from=0 view=(0,0,256,256) cmds=1
+  2 Effect Replace None ref=0 program=MaskApply tex=no src=2 aux=1 linear idx=6 verts=4 clip=(0,0,256,256)
+pass 3: target=0 clear=0 copy=0 from=0 view=(0,0,256,256) cmds=1
+  3 Composite SrcOver None ref=0 tex=no src=3 aux=0 linear idx=6 verts=4 clip=(0,0,256,256)

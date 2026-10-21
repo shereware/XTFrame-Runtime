@@ -1,0 +1,23 @@
+<xt>
+  <head>
+    <style>
+      #row {
+        display: flex;
+        width: 232px;
+        height: 60px;
+        margin: 12px;
+        background-color: #eeeeee;
+      }
+      #a { flex: 1; height: 60px; background-color: #ff0000; }
+      #b { flex: 2; min-width: 120px; height: 60px; background-color: #00aa00; }
+      #c { flex: 1; height: 60px; background-color: #0000ff; }
+    </style>
+  </head>
+  <body>
+    <div id="row">
+      <div id="a"></div>
+      <div id="b"></div>
+      <div id="c"></div>
+    </div>
+  </body>
+</xt>

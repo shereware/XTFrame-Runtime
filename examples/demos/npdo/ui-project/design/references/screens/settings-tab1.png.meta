@@ -1,0 +1,9 @@
+id: 75fa1578-fcde-44be-87cc-d4efb069e088
+kind: reference
+title: settings tab1
+source:
+  kind: ai:service
+  ref: settings-tab1.png
+tags: [screenshot, settings]
+license: own
+content: sha256:291500e90319399032fa4d89ab05e22f3547af3deea33d138096bbd1190622f6

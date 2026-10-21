@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Demo 3 Main Menu</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body { margin: 0; background: #1c2a20 }
+.menu-item { position: relative; width: 332px; height: 64px; padding: 0px 16px; display: flex; flex-direction: row; align-items: center; gap: 18px;
+             background-color: #ffffff00; border: 0px solid #ffffff00; border-radius: 18px; cursor: pointer }
+.item-hl { position: absolute; left: 0px; top: 0px; width: 100%; height: 100%; border-radius: 18px; background-color: #fff8e2c7;
+           opacity: 0; transition: opacity 160ms linear }
+.menu-item:hover .item-hl { opacity: 1 }
+.icon-wrap { position: relative; width: 52px; height: 52px }
+.icon { position: absolute; left: 0px; top: 0px; width: 52px; height: 52px; object-fit: contain }
+.icon-color { opacity: 0; transition: opacity 160ms linear }
+.menu-item:hover .icon-color { opacity: 1 }
+.label-wrap { position: relative; width: 230px; height: 40px }
+.label { position: absolute; left: 0px; top: 0px; font-family: 'Palatino Linotype', 'Book Antiqua', Georgia, serif; font-size: 30px;
+         line-height: 40px; font-weight: 700; letter-spacing: 1px; white-space: nowrap }
+.label-gray { color: #6e6e6e }
+.label-color { opacity: 0; transition: opacity 160ms linear }
+.menu-item:hover .label-color { opacity: 1 }
+.title { position: absolute; left: 0px; top: 0px; width: 600px; height: 140px; margin: 0; text-align: center; font-size: 112px;
+         line-height: 140px; font-weight: 700; font-style: italic; letter-spacing: 2px; text-shadow: 0 0 8px #ffffffe6, 0 2px 2px #ffffffb3 }
+@keyframes fireflies-rise { from { transform: translateY(0px) } to { transform: translateY(-720px) } }
+@keyframes petals-fall { from { transform: translateY(-720px) } to { transform: translateY(0px) } }
+@media (prefers-reduced-motion: reduce) {
+  #fx-fireflies { animation: fireflies-rise 60s linear 0s infinite paused }
+  #fx-petals { animation: petals-fall 26s linear 0s infinite paused }
+}
+</style>
+</helmet>
+<div id="demo3-menu"
+     data-xt-port="new_game:event out; continue_game:event out; open_options:event out; open_credits:event out"
+     data-xt-trigger="show:play(intro)"
+     style="position: relative; width: 1280px; height: 720px; overflow: hidden; background-color: #1c2a20; font-family: 'Palatino Linotype', 'Book Antiqua', Georgia, serif; color: #3a3a3a;">
+
+  <!-- background: gray scene, the pointer's colour reveal, and the full colour scene the bloom fades in -->
+  <img id="bg-gray" src="/_blob/e388f2f2db478b54caa09bd8627145ac" alt=""
+       style="position: absolute; left: 0px; top: 0px; width: 1280px; height: 720px; object-fit: cover;">
+  <div id="trail-layer" style="position: absolute; left: 0px; top: 0px; width: 1280px; height: 720px; pointer-events: none;">
+    <img id="trail-3" src="/_blob/d149279f7e4929732eb649e709655237" alt=""
+         style="position: absolute; left: 0px; top: 0px; width: 100%; height: 100%; object-fit: cover; visibility: hidden; transition: effect 700ms ease-out;">
+    <img id="trail-2" src="/_blob/d149279f7e4929732eb649e709655237" alt=""
+         style="position: absolute; left: 0px; top: 0px; width: 100%; height: 100%; object-fit: cover; visibility: hidden; transition: effect 320ms ease-out;">
+    <img id="trail-1" src="/_blob/d149279f7e4929732eb649e709655237" alt=""
+         style="position: absolute; left: 0px; top: 0px; width: 100%; height: 100%; object-fit: cover; visibility: hidden; transition: effect 90ms ease-out;">
+  </div>
+  <img id="bg-color" src="/_blob/d149279f7e4929732eb649e709655237" alt=""
+       style="position: absolute; left: 0px; top: 0px; width: 1280px; height: 720px; object-fit: cover; opacity: 0;"
+       data-xt-timeline="bloom: 0 opacity 0, 1800 opacity 1">
+  <div id="vignette" style="position: absolute; left: 0px; top: 0px; width: 1280px; height: 720px; background: radial-gradient(ellipse, #00000000 58%, #00000059 100%); pointer-events: none;"></div>
+
+  <!-- foreground: static light and mist, then the two ambient loops (fireflies, petals) -->
+  <div id="fx-layer" style="position: absolute; left: 0px; top: 0px; width: 1280px; height: 720px; overflow: hidden; pointer-events: none;">
+    <img id="fx-light" src="/_blob/b001fc81890bead32e7cf9ef8d1b22b4" alt=""
+         style="position: absolute; left: 0px; top: 0px; width: 100%; height: 100%; object-fit: cover;">
+    <img id="fx-fireflies" src="/_blob/776f20f1694e9698568ccede56bbf9c4" alt=""
+         style="position: absolute; left: 0px; top: 0px; width: 100%; height: 1440px; object-fit: cover; animation: fireflies-rise 60s linear 0s infinite;">
+    <div id="fx-petals" style="position: absolute; left: 0px; top: 0px; width: 100%; height: 1440px; animation: petals-fall 26s linear 0s infinite;">
+      <img id="fx-petals-gray" src="/_blob/a78a8ec9c99ac37135665e7756dd4c14" alt=""
+           style="position: absolute; left: 0px; top: 0px; width: 100%; height: 100%; object-fit: cover;"
+           data-xt-timeline="bloom: 0 opacity 1, 1800 opacity 0">
+      <img id="fx-petals-color" src="/_blob/d8a520306f042f32a1b86e9267c22d37" alt=""
+           style="position: absolute; left: 0px; top: 0px; width: 100%; height: 100%; object-fit: cover; opacity: 0;"
+           data-xt-timeline="bloom: 0 opacity 0, 1800 opacity 1">
+    </div>
+  </div>
+
+  <div id="title-group" style="position: absolute; left: 340px; top: 36px; width: 600px; height: 230px;"
+       data-xt-timeline="intro: 0 opacity 0, 360 opacity 1">
+    <h1 id="title-gray" class="title" style="color: #3a3a3a;">Demo 3</h1>
+    <h1 id="title-color" class="title" style="color: #2f5f2a; opacity: 0;"
+        data-xt-timeline="bloom: 0 opacity 0, 1800 opacity 1">Demo 3</h1>
+    <img id="garland-gray" src="/_blob/b473b1b65b1be5cb042ce6a3087739fd" alt=""
+         style="position: absolute; left: 60px; top: 132px; width: 480px; height: 90px; object-fit: contain;">
+    <img id="garland-color" src="/_blob/d583db94799dd3993d1cbd7e0b64cd11" alt=""
+         style="position: absolute; left: 60px; top: 132px; width: 480px; height: 90px; object-fit: contain; opacity: 0;"
+         data-xt-timeline="bloom: 200 opacity 0, 1800 opacity 1">
+  </div>
+
+  <nav id="menu-panel" data-xt-role="menu-list"
+       style="position: absolute; left: 96px; top: 300px; width: 380px; height: 340px; padding: 26px 24px; display: flex; flex-direction: column; justify-content: center; gap: 8px; background-color: #efeeeaeb; border: 2px solid #ffffffb3; border-radius: 28px; box-shadow: 0 18px 40px 0 #00000059;"
+       data-xt-timeline="intro: 60 opacity 0, 60 transform translateX(-24px), 420 opacity 1, 420 ease-out transform translateX(0px)">
+    <div id="panel-warm" style="position: absolute; left: 0px; top: 0px; width: 100%; height: 100%; border-radius: 26px; background-color: #fcf5e1f2; opacity: 0;"
+         data-xt-timeline="bloom: 0 opacity 0, 1800 opacity 1"></div>
+
+    <img id="corner-tr-gray" src="/_blob/435af87a85ae463c106234c071a2815e" alt=""
+         style="position: absolute; right: -58px; top: -64px; width: 190px; height: 126px; object-fit: contain;">
+    <img id="corner-tr-color" src="/_blob/1b0f9c768ba7bf1c2dd86ae0048103f0" alt=""
+         style="position: absolute; right: -58px; top: -64px; width: 190px; height: 126px; object-fit: contain; opacity: 0;"
+         data-xt-timeline="bloom: 300 opacity 0, 1800 opacity 1">
+    <img id="corner-bl-gray" src="/_blob/435af87a85ae463c106234c071a2815e" alt=""
+         style="position: absolute; left: -62px; bottom: -58px; width: 190px; height: 126px; object-fit: contain; transform: rotate(180deg);">
+    <img id="corner-bl-color" src="/_blob/1b0f9c768ba7bf1c2dd86ae0048103f0" alt=""
+         style="position: absolute; left: -62px; bottom: -58px; width: 190px; height: 126px; object-fit: contain; transform: rotate(180deg); opacity: 0;"
+         data-xt-timeline="bloom: 500 opacity 0, 1800 opacity 1">
+
+    <button id="item-new" class="menu-item" data-xt-trigger="press:play(bloom, hold); emit(new_game)">
+      <div id="item-new-hl" class="item-hl"></div>
+      <div id="item-new-icon" class="icon-wrap">
+        <img id="item-new-icon-gray" class="icon" src="/_blob/bd063fbf15d98c8c48806db8c8ba7920" alt="">
+        <img id="item-new-icon-color" class="icon icon-color" src="/_blob/9fd780c22894b6d173ca9cee13cbb9c8" alt=""
+             data-xt-timeline="bloom: 0 opacity 1, 1800 opacity 1">
+      </div>
+      <div id="item-new-label" class="label-wrap">
+        <span id="item-new-label-gray" class="label label-gray">New Game</span>
+        <span id="item-new-label-color" class="label label-color" style="color: #3d7a33;"
+              data-xt-timeline="bloom: 0 opacity 1, 1800 opacity 1">New Game</span>
+      </div>
+    </button>
+
+    <button id="item-continue" class="menu-item" data-xt-trigger="press:emit(continue_game)">
+      <div id="item-continue-hl" class="item-hl"></div>
+      <div id="item-continue-icon" class="icon-wrap">
+        <img id="item-continue-icon-gray" class="icon" src="/_blob/fdb172cdd6dd0d2f6072ce721195fce0" alt="">
+        <img id="item-continue-icon-color" class="icon icon-color" src="/_blob/179378b83369721be189524e3c188a36" alt=""
+             data-xt-timeline="bloom: 150 opacity 0, 1800 opacity 1">
+      </div>
+      <div id="item-continue-label" class="label-wrap">
+        <span id="item-continue-label-gray" class="label label-gray">Continue</span>
+        <span id="item-continue-label-color" class="label label-color" style="color: #b06d12;"
+              data-xt-timeline="bloom: 150 opacity 0, 1800 opacity 1">Continue</span>
+      </div>
+    </button>
+
+    <button id="item-option" class="menu-item" data-xt-trigger="press:emit(open_options)">
+      <div id="item-option-hl" class="item-hl"></div>
+      <div id="item-option-icon" class="icon-wrap">
+        <img id="item-option-icon-gray" class="icon" src="/_blob/5ac0bf2f0c404ab1a17e78f7c59c4235" alt="">
+        <img id="item-option-icon-color" class="icon icon-color" src="/_blob/53ab6030cabe22b2c7db2349e72688a3" alt=""
+             data-xt-timeline="bloom: 300 opacity 0, 1800 opacity 1">
+      </div>
+      <div id="item-option-label" class="label-wrap">
+        <span id="item-option-label-gray" class="label label-gray">Option</span>
+        <span id="item-option-label-color" class="label label-color" style="color: #b3352a;"
+              data-xt-timeline="bloom: 300 opacity 0, 1800 opacity 1">Option</span>
+      </div>
+    </button>
+
+    <button id="item-credits" class="menu-item" data-xt-trigger="press:emit(open_credits)">
+      <div id="item-credits-hl" class="item-hl"></div>
+      <div id="item-credits-icon" class="icon-wrap">
+        <img id="item-credits-icon-gray" class="icon" src="/_blob/aa3472217fc43ebf1affd57e0752b994" alt="">
+        <img id="item-credits-icon-color" class="icon icon-color" src="/_blob/ba1c7da016f8c7130016015024836aea" alt=""
+             data-xt-timeline="bloom: 450 opacity 0, 1800 opacity 1">
+      </div>
+      <div id="item-credits-label" class="label-wrap">
+        <span id="item-credits-label-gray" class="label label-gray">Credits</span>
+        <span id="item-credits-label-color" class="label label-color" style="color: #2f68b0;"
+              data-xt-timeline="bloom: 450 opacity 0, 1800 opacity 1">Credits</span>
+      </div>
+    </button>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":720}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

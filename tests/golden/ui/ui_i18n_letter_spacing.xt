@@ -1,0 +1,21 @@
+<xt>
+  <head>
+    <style>
+      @font-face { font-family: "Noto Sans"; src: "../../fonts/NotoSans-Regular.subset.ttf"; }
+      @font-face { font-family: "Noto Naskh Arabic"; src: "../../fonts/NotoNaskhArabic-Regular.subset.ttf"; }
+      div {
+        margin: 8px;
+        width: 220px;
+        letter-spacing: 4px;
+        font-size: 20px;
+        color: #202020;
+      }
+      #latin { font-family: "Noto Sans"; }
+      #arabic { font-family: "Noto Naskh Arabic"; }
+    </style>
+  </head>
+  <body>
+    <div id="latin">abc</div>
+    <div id="arabic">مرحبا</div>
+  </body>
+</xt>

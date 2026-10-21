@@ -1,0 +1,81 @@
+target 512x256 vertices=56 indices=156 cmds=28 passes=30 params=72
+transient 1: 192x160 rgba8 stencil=0
+transient 2: 96x80 rgba8 stencil=0
+transient 3: 96x80 rgba8 stencil=0
+transient 4: 48x40 rgba8 stencil=0
+transient 5: 48x40 rgba8 stencil=0
+transient 6: 24x20 rgba8 stencil=0
+transient 7: 24x20 rgba8 stencil=0
+transient 8: 12x10 rgba8 stencil=0
+transient 9: 12x10 rgba8 stencil=0
+transient 10: 96x64 rgba8 stencil=1
+transient 11: 96x64 rgba8 stencil=0
+transient 12: 96x64 rgba8 stencil=0
+transient 13: 64x64 rgba8 stencil=1
+transient 14: 128x128 rgba8 stencil=0
+transient 15: 64x64 rgba8 stencil=0
+transient 16: 64x64 rgba8 stencil=0
+transient 17: 32x32 rgba8 stencil=0
+transient 18: 32x32 rgba8 stencil=0
+transient 19: 16x16 rgba8 stencil=0
+transient 20: 16x16 rgba8 stencil=0
+transient 21: 64x64 rgba8 stencil=0
+pass 0: target=1 clear=0 copy=1 from=0 view=(4,0,192,160) cmds=0
+pass 1: target=2 clear=0 copy=0 from=0 view=(4,0,192,160) cmds=1
+  0 Effect Replace None ref=0 program=Downsample tex=no src=1 aux=0 linear idx=6 verts=4 clip=(4,0,192,160)
+pass 2: target=3 clear=0 copy=0 from=0 view=(4,0,192,160) cmds=1
+  1 Effect Replace None ref=0 program=Kawase tex=no src=2 aux=0 linear idx=6 verts=4 clip=(4,0,192,160)
+pass 3: target=4 clear=0 copy=0 from=0 view=(4,0,192,160) cmds=1
+  2 Effect Replace None ref=0 program=Downsample tex=no src=3 aux=0 linear idx=6 verts=4 clip=(4,0,192,160)
+pass 4: target=5 clear=0 copy=0 from=0 view=(4,0,192,160) cmds=1
+  3 Effect Replace None ref=0 program=Kawase tex=no src=4 aux=0 linear idx=6 verts=4 clip=(4,0,192,160)
+pass 5: target=6 clear=0 copy=0 from=0 view=(4,0,192,160) cmds=1
+  4 Effect Replace None ref=0 program=Downsample tex=no src=5 aux=0 linear idx=6 verts=4 clip=(4,0,192,160)
+pass 6: target=7 clear=0 copy=0 from=0 view=(4,0,192,160) cmds=1
+  5 Effect Replace None ref=0 program=Kawase tex=no src=6 aux=0 linear idx=6 verts=4 clip=(4,0,192,160)
+pass 7: target=8 clear=0 copy=0 from=0 view=(4,0,192,160) cmds=1
+  6 Effect Replace None ref=0 program=Downsample tex=no src=7 aux=0 linear idx=6 verts=4 clip=(4,0,192,160)
+pass 8: target=9 clear=0 copy=0 from=0 view=(4,0,192,160) cmds=1
+  7 Effect Replace None ref=0 program=Kawase tex=no src=8 aux=0 linear idx=6 verts=4 clip=(4,0,192,160)
+pass 9: target=10 clear=1 copy=0 from=0 view=(20,20,96,64) cmds=1
+  8 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=30 verts=8 clip=(0,0,512,256)
+pass 10: target=11 clear=0 copy=0 from=0 view=(20,20,96,64) cmds=1
+  9 Effect Replace None ref=0 program=LevelMix tex=no src=3 aux=5 linear idx=6 verts=4 clip=(20,20,96,64)
+pass 11: target=12 clear=0 copy=0 from=0 view=(20,20,96,64) cmds=1
+  10 Effect Replace None ref=0 program=Backdrop tex=no src=10 aux=11 linear idx=6 verts=4 clip=(20,20,96,64)
+pass 12: target=0 clear=0 copy=0 from=0 view=(0,0,512,256) cmds=1
+  11 Composite SrcOver None ref=0 tex=no src=12 aux=0 linear idx=6 verts=4 clip=(0,0,512,256)
+pass 13: target=13 clear=1 copy=0 from=0 view=(200,192,64,64) cmds=1
+  12 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=30 verts=8 clip=(0,0,512,256)
+pass 14: target=0 clear=0 copy=0 from=0 view=(0,0,512,256) cmds=1
+  13 Composite SrcOver None ref=0 tex=no src=13 aux=0 linear idx=6 verts=4 clip=(200,192,64,64)
+pass 15: target=10 clear=1 copy=0 from=0 view=(60,40,96,64) cmds=1
+  14 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=30 verts=8 clip=(0,0,512,256)
+pass 16: target=11 clear=0 copy=0 from=0 view=(60,40,96,64) cmds=1
+  15 Effect Replace None ref=0 program=LevelMix tex=no src=7 aux=9 linear idx=6 verts=4 clip=(60,40,96,64)
+pass 17: target=12 clear=0 copy=0 from=0 view=(60,40,96,64) cmds=1
+  16 Effect Replace None ref=0 program=Backdrop tex=no src=10 aux=11 linear idx=6 verts=4 clip=(60,40,96,64)
+pass 18: target=0 clear=0 copy=0 from=0 view=(0,0,512,256) cmds=1
+  17 Composite SrcOver None ref=0 tex=no src=12 aux=0 linear idx=6 verts=4 clip=(0,0,512,256)
+pass 19: target=14 clear=0 copy=1 from=0 view=(368,118,128,128) cmds=0
+pass 20: target=15 clear=0 copy=0 from=0 view=(368,118,128,128) cmds=1
+  18 Effect Replace None ref=0 program=Downsample tex=no src=14 aux=0 linear idx=6 verts=4 clip=(368,118,128,128)
+pass 21: target=16 clear=0 copy=0 from=0 view=(368,118,128,128) cmds=1
+  19 Effect Replace None ref=0 program=Kawase tex=no src=15 aux=0 linear idx=6 verts=4 clip=(368,118,128,128)
+pass 22: target=17 clear=0 copy=0 from=0 view=(368,118,128,128) cmds=1
+  20 Effect Replace None ref=0 program=Downsample tex=no src=16 aux=0 linear idx=6 verts=4 clip=(368,118,128,128)
+pass 23: target=18 clear=0 copy=0 from=0 view=(368,118,128,128) cmds=1
+  21 Effect Replace None ref=0 program=Kawase tex=no src=17 aux=0 linear idx=6 verts=4 clip=(368,118,128,128)
+pass 24: target=19 clear=0 copy=0 from=0 view=(368,118,128,128) cmds=1
+  22 Effect Replace None ref=0 program=Downsample tex=no src=18 aux=0 linear idx=6 verts=4 clip=(368,118,128,128)
+pass 25: target=20 clear=0 copy=0 from=0 view=(368,118,128,128) cmds=1
+  23 Effect Replace None ref=0 program=Kawase tex=no src=19 aux=0 linear idx=6 verts=4 clip=(368,118,128,128)
+pass 26: target=13 clear=1 copy=0 from=0 view=(400,150,64,64) cmds=1
+  24 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=30 verts=8 clip=(0,0,512,256)
+pass 27: target=15 clear=0 copy=0 from=0 view=(400,150,64,64) cmds=1
+  25 Effect Replace None ref=0 program=LevelMix tex=no src=18 aux=20 linear idx=6 verts=4 clip=(400,150,64,64)
+pass 28: target=21 clear=0 copy=0 from=0 view=(400,150,64,64) cmds=1
+  26 Effect Replace None ref=0 program=Backdrop tex=no src=13 aux=15 linear idx=6 verts=4 clip=(400,150,64,64)
+pass 29: target=0 clear=0 copy=0 from=0 view=(0,0,512,256) cmds=1
+  27 Composite SrcOver None ref=0 tex=no src=21 aux=0 linear idx=6 verts=4 clip=(0,0,512,256)
+cache store 0: pass=13 src=13 tex=yes

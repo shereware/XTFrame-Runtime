@@ -1,0 +1,93 @@
+roles:
+  - id: display
+    name: Display
+    family: Georgia, 'Times New Roman', serif
+    weights: [400]
+    status: approved
+    source:
+      kind: ai:design-system
+      ref: design.audit fonts and sizes
+    approved:
+      by: Bigspring
+      at: 2026-10-16T04:02:23Z
+    note: 23px, letter-spacing 2px. Main-menu items (.menu-label).
+  - id: heading
+    name: Heading
+    family: Georgia, 'Times New Roman', serif
+    weights: [400]
+    status: approved
+    source:
+      kind: ai:design-system
+      ref: design.audit fonts and sizes
+    approved:
+      by: Bigspring
+      at: 2026-10-16T04:02:23Z
+    note: 24px, letter-spacing 2px. Settings panel heading.
+  - id: body
+    name: Body
+    family: Georgia, 'Times New Roman', serif
+    weights: [400]
+    status: approved
+    source:
+      kind: ai:design-system
+      ref: design.audit fonts and sizes
+    approved:
+      by: Bigspring
+      at: 2026-10-16T04:02:23Z
+    note: 15px, letter-spacing 1px. Settings row labels, interact prompt label.
+  - id: label
+    name: Label
+    family: Georgia, 'Times New Roman', serif
+    weights: [400]
+    status: approved
+    source:
+      kind: ai:design-system
+      ref: design.audit fonts and sizes
+    approved:
+      by: Bigspring
+      at: 2026-10-16T04:02:23Z
+    note: 11px, letter-spacing 2px, uppercase. HUD vital labels (HEALTH, STAMINA, NOISE), location block.
+  - id: caption
+    name: Caption
+    family: Georgia, 'Times New Roman', serif
+    weights: [400]
+    status: approved
+    source:
+      kind: ai:design-system
+      ref: design.audit fonts and sizes
+    approved:
+      by: Bigspring
+      at: 2026-10-16T04:02:23Z
+    note: 13px, letter-spacing 1px to 2px. Key hints (14), versions (12), HUD clock (13).
+  - id: title-mark
+    name: Title mark
+    family: raster logo
+    weights: [900]
+    status: approved
+    source:
+      kind: ai:design-system
+      ref: key-art title lockup
+    approved:
+      by: Bigspring
+      at: 2026-10-16T04:02:23Z
+    links:
+      - rel: derived-from
+        to: ref:key-art/af3f1d8f-b44b-402c-8232-d975d9c177a8
+    note: NPDO in a distressed heavy slab serif, bone white with a thin red slash. A raster asset (menu-title.png), not live text.
+  - id: cjk-serif
+    name: Traditional Chinese serif
+    family: "'Noto Serif TC', 'PMingLiU', serif"
+    weights: [400]
+    status: approved
+    source:
+      kind: ai:design-system
+      ref: key-art title lockup
+    approved:
+      by: Bigspring
+      at: 2026-10-16T04:02:23Z
+    links:
+      - rel: derived-from
+        to: ref:key-art/af3f1d8f-b44b-402c-8232-d975d9c177a8
+      - rel: derived-from
+        to: decision:0003
+    note: "Proposal, not measured: the art sets 國有財產處置員 and the tagline in a Songti-style serif with wide tracking (about 0.2 em). Georgia has no CJK glyphs and spec.fontFallback is empty."

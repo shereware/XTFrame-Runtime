@@ -1,0 +1,25 @@
+<xt>
+  <head>
+    <link href="ui_focus_ring.xts"/>
+    <style>
+      @font-face { font-family: "TestSans"; src: "../../fonts/NotoSans-Regular.subset.ttf"; }
+      button {
+        position: absolute;
+        left: 20px;
+        width: 120px;
+        height: 40px;
+        font-family: "TestSans";
+        font-size: 16px;
+        color: #202020;
+      }
+      #btn1 { top: 20px; }
+      #btn2 { top: 80px; }
+      #btn3 { top: 140px; }
+    </style>
+  </head>
+  <body>
+    <button id="btn1">One</button>
+    <button id="btn2">Two</button>
+    <button id="btn3">Three</button>
+  </body>
+</xt>

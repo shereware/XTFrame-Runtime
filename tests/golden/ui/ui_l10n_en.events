@@ -1,0 +1,4 @@
+# T-179: the English strings of ui_l10n.xt.
+string en title Test line
+string en hint Hello world
+lang en

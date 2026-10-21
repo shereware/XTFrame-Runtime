@@ -1,0 +1,148 @@
+<xt>
+  <head>
+    <link href="../shared/base.xts"/>
+    <link href="challenge-menu.xts"/>
+    <title>Tactical Challenges</title>
+  </head>
+  <body>
+    <div id="challenge-menu">
+      <div id="scene" class="s-ff4c67">
+        <div id="camera-idle">
+          <div id="world-layer">
+            <img id="world-image" src="../shared/img/d0eebef1d9a7ce8c.png"/>
+          </div>
+          <div id="light-shaft"/>
+          <div id="vignette"/>
+          <div id="mote-field" class="s-ff4c67">
+            <div id="mote-1-depth">
+              <div id="n-26b0c455" class="mote"/>
+            </div>
+            <div id="mote-2-depth">
+              <div id="n-a0e967ca" class="mote"/>
+            </div>
+            <div id="mote-3-depth">
+              <div id="n-d0129c2b" class="mote"/>
+            </div>
+            <div id="mote-4-depth">
+              <div id="n-2aea7100" class="mote"/>
+            </div>
+            <div id="mote-5-depth">
+              <div id="n-fb0223e1" class="mote"/>
+            </div>
+            <div id="mote-6-depth">
+              <div id="n-55d9f8b6" class="mote"/>
+            </div>
+          </div>
+          <div id="diff-list">
+            <div id="diff-list-body">
+              <div id="row-recruit" class="row">
+                <div id="hl-recruit" class="hl"/>
+                <div id="star-recruit" class="star">
+                  <img id="n-8973aa93" class="s-36adad" src="../shared/img/192ad3d5740c1e36.svg"/>
+                </div>
+                <button id="diff-recruit" class="diff-item">Recruit</button>
+              </div>
+              <div id="row-soldier" class="row">
+                <div id="hl-soldier" class="hl"/>
+                <div id="star-soldier" class="star">
+                  <img id="n-a809bf40" class="s-36adad" src="../shared/img/192ad3d5740c1e36.svg"/>
+                </div>
+                <button id="diff-soldier" class="diff-item">Soldier</button>
+              </div>
+              <div id="row-veteran" class="row">
+                <div id="hl-veteran" class="hl"/>
+                <div id="star-veteran" class="star">
+                  <img id="n-4463e2b9" class="s-36adad" src="../shared/img/192ad3d5740c1e36.svg"/>
+                </div>
+                <button id="diff-veteran" class="diff-item">Veteran</button>
+              </div>
+              <div id="row-supersoldier" class="row">
+                <div id="hl-supersoldier" class="hl"/>
+                <div id="star-supersoldier" class="star">
+                  <img id="n-e3e84386" class="s-36adad" src="../shared/img/192ad3d5740c1e36.svg"/>
+                </div>
+                <button id="diff-supersoldier" class="diff-item">Supersoldier</button>
+              </div>
+              <div id="row-posthuman" class="row">
+                <div id="hl-posthuman" class="hl"/>
+                <div id="star-posthuman" class="star">
+                  <img id="n-762a9ebf" class="s-36adad" src="../shared/img/192ad3d5740c1e36.svg"/>
+                </div>
+                <button id="diff-posthuman" class="diff-item">Post-Human Warrior</button>
+              </div>
+              <div id="row-impossible" class="row on">
+                <div id="hl-impossible" class="hl on"/>
+                <div id="star-impossible" class="star on">
+                  <img id="n-95ae360c" class="s-36adad" src="../shared/img/192ad3d5740c1e36.svg"/>
+                </div>
+                <button id="diff-impossible" class="diff-item on">Impossible (Really)</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <section id="panel-preview">
+          <div id="panel-glow"/>
+          <div id="panel-plate"/>
+          <div id="panel-body">
+            <div id="preview-tab"/>
+            <span id="preview-tag" class="text-swap">IMPOSSIBLE</span>
+            <div id="preview-frame" class="frame-swap frame-z">
+              <img id="preview-image" src="../shared/img/56be179abb43289e.png"/>
+              <div id="scan-line"/>
+            </div>
+            <div id="preview-rank-icon">
+              <img id="n-8b1e36b8" src="../shared/img/48cd3971a263efb0.svg"/>
+            </div>
+            <p id="preview-desc" class="text-swap">NOTHING WILL SAVE YOU. EVERY SHOT IS LETHAL, EVERY SHADOW IS HOSTILE.</p>
+            <div id="corner-tl" class="corner">
+              <img id="n-360cf4ee" class="s-319ef8" src="../shared/img/1ef77b988f8077a3.svg"/>
+            </div>
+            <div id="corner-tr" class="corner">
+              <img id="n-6536294f" class="s-319ef8" src="../shared/img/31b7f7983f18b6f3.svg"/>
+            </div>
+            <div id="corner-bl" class="corner">
+              <img id="n-e00e3084" class="s-319ef8" src="../shared/img/4fdd003b92da76b7.svg"/>
+            </div>
+            <div id="corner-br" class="corner">
+              <img id="n-0ee7b305" class="s-319ef8" src="../shared/img/bb6265870ea52967.svg"/>
+            </div>
+          </div>
+        </section>
+      </div>
+      <div id="profile-block">
+        <span id="profile-label">PROFILE</span>
+        <span id="profile-name">DEFAULT</span>
+        <div id="holo-base">
+          <div id="holo-ring"/>
+          <div id="holo-arc"/>
+        </div>
+        <img id="profile-figure" src="../shared/img/27b1b278faad51ee.png"/>
+      </div>
+      <div id="drips">
+        <div id="drip-1"/>
+        <div id="drip-2"/>
+        <div id="drip-3"/>
+        <div id="drip-4"/>
+      </div>
+    </div>
+    <div id="hud">
+      <div id="header">
+        <span id="build-tag">v 1.2.1.1000</span>
+        <div id="header-rule-left" class="rule"/>
+        <div id="header-rule-right" class="rule"/>
+        <div id="logo-mark">
+          <img id="n-2604d934" src="../shared/img/ca5c1de7f4f02d09.svg"/>
+        </div>
+        <div id="logo-divider"/>
+        <h1 id="menu-title">TACTICAL CHALLENGES</h1>
+      </div>
+      <div id="footer-rule" class="rule"/>
+      <p id="hint-text" class="hint-swap">NO SUIT CAN SAVE YOU HERE. WHY ARE YOU TRYING?</p>
+      <div id="back-rule" class="rule"/>
+      <button id="btn-back">« BACK</button>
+      <span id="status-online">[ONLINE]</span>
+      <div id="bottom-rule-right" class="rule"/>
+    </div>
+    <div id="boot-scan"/>
+  </body>
+</xt>

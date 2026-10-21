@@ -1,0 +1,5 @@
+# T-198: Stepper, state 'pressed'.
+port Count.value 4
+update 0.6
+pointermove 262 30
+pointerdown 262 30

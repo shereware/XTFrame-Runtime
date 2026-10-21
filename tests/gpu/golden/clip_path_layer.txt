@@ -1,0 +1,17 @@
+target 64x64 vertices=32 indices=72 cmds=12 passes=3 params=2
+transient 1: 64x64 rgba8 stencil=1
+pass 0: target=0 clear=0 copy=0 from=0 view=(0,0,64,64) cmds=4
+  0 StencilOnly Replace WriteIncrWrap ref=0 tex=no src=0 aux=0 linear idx=12 verts=6 clip=(0,0,64,64)
+  1 StencilOnly Replace ClipPush ref=1 tex=no src=0 aux=0 linear idx=6 verts=4 clip=(0,0,64,64)
+  2 StencilOnly Replace WriteIncrWrap ref=1 tex=no src=0 aux=0 linear idx=12 verts=6 clip=(4,4,40,40)
+  3 StencilOnly Replace ClipPush ref=2 tex=no src=0 aux=0 linear idx=6 verts=4 clip=(4,4,40,40)
+pass 1: target=1 clear=1 copy=0 from=0 view=(0,0,64,64) cmds=5
+  4 StencilOnly Replace WriteIncrWrap ref=0 tex=no src=0 aux=0 linear idx=12 verts=6 clip=(0,0,64,64)
+  5 StencilOnly Replace ClipPush ref=1 tex=no src=0 aux=0 linear idx=6 verts=4 clip=(0,0,64,64)
+  6 StencilOnly Replace WriteIncrWrap ref=1 tex=no src=0 aux=0 linear idx=12 verts=6 clip=(4,4,40,40)
+  7 StencilOnly Replace ClipPush ref=2 tex=no src=0 aux=0 linear idx=6 verts=4 clip=(4,4,40,40)
+  8 Solid SrcOver TestEqualRef ref=2 tex=no src=0 aux=0 linear idx=30 verts=8 clip=(8,8,36,36)
+pass 2: target=0 clear=0 copy=0 from=0 view=(0,0,64,64) cmds=3
+  9 Composite SrcOver None ref=0 tex=no src=1 aux=0 linear idx=6 verts=4 clip=(8,8,36,36)
+  10 StencilOnly Replace ClipPop ref=2 tex=no src=0 aux=0 linear idx=6 verts=4 clip=(4,4,40,40)
+  11 StencilOnly Replace ClipPop ref=1 tex=no src=0 aux=0 linear idx=6 verts=4 clip=(0,0,64,64)

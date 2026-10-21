@@ -1,0 +1,25 @@
+<xt>
+  <head>
+    <style>
+      /* docs/tasks/T-36.md specifies "transform: translateX(...)" keyframes, but animating a
+         transform prop through a CSS `animation` crashes core (XT_ASSERT "value.type ==
+         propertyType(prop)" in property_access.cpp:689 during Animator evaluation/interpolation
+         -- see this task's final report for a minimal repro). `left` is used instead: same
+         visual slide, driven by an already-animatable Length prop (docs/design/06-layout.md),
+         so the fixture doesn't crash xt_golden. */
+      @keyframes slide { from { left: 20px } to { left: 170px } }
+      #box {
+        position: absolute;
+        left: 20px;
+        top: 100px;
+        width: 40px;
+        height: 40px;
+        background-color: #ff0000;
+        animation: slide 1s linear;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="box"></div>
+  </body>
+</xt>

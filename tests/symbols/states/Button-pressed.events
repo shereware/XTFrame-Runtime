@@ -1,0 +1,4 @@
+# T-198: Button, state 'pressed'.
+update 0.6
+pointermove 60 34
+pointerdown 60 34

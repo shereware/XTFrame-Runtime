@@ -1,0 +1,30 @@
+# Lottie golden fixture manifest (docs/tasks/T-17.md). One fixture per line:
+#   <name> <json relative path> <width> <height> <time seconds> [clearColor hex, default 000000]
+lottie_rect_static rect_static.json 256 256 0
+lottie_ellipse_stroke ellipse_stroke.json 256 256 0
+lottie_star_polygon star_polygon.json 256 256 0
+lottie_path_bezier path_bezier.json 256 256 0
+lottie_position_anim position_anim.json 256 256 1.0
+lottie_scale_rotate scale_rotate.json 256 256 0.5
+lottie_opacity_hold opacity_hold.json 256 256 0.75
+lottie_group_transform group_transform.json 256 256 0
+lottie_trim trim.json 256 256 0.5
+lottie_round_corners round_corners.json 256 256 0
+lottie_repeater repeater.json 256 256 0
+lottie_gradient_fill gradient_fill.json 256 256 0
+lottie_gradient_stroke gradient_stroke.json 256 256 0
+lottie_dash dash.json 256 256 0.5
+lottie_mask_add_sub mask_add_sub.json 256 256 0
+lottie_matte_alpha matte_alpha.json 256 256 0
+lottie_matte_luma_inv matte_luma_inv.json 256 256 0
+lottie_precomp_parent precomp_parent.json 256 256 1.0
+lottie_solid_blend solid_blend.json 256 256 0
+lottie_image_embedded image_embedded.json 256 256 0
+lottie_visibility_ip_op visibility_ip_op.json 256 256 0.5
+# T-48 3D golden fixtures (docs/tasks/T-48.md "黃金圖"): reuses T-47b's ddd/camera fixtures, which
+# live in tests/lottie (not tests/golden/lottie) alongside the other *_parser tests' JSON.
+lottie_3d_layer ../../lottie/ddd_shape.json 256 256 0
+lottie_3d_camera_anim ../../lottie/camera_anim.json 256 256 0.5
+# T-55 effect golden fixtures (docs/tasks/T-55.md "黃金圖"; docs/design/18-effects.md §18.9).
+lottie_fx_blur fx_blur.json 256 256 0
+lottie_fx_shadow fx_shadow.json 256 256 0 eeeeee

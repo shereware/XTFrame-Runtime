@@ -1,0 +1,139 @@
+<xt>
+  <head>
+    <style>
+      body { display: flex; flex-wrap: wrap; width: 200px; }
+      .c0 { width: 20px; height: 20px; background-color: #e63946; }
+      .c1 { width: 20px; height: 20px; background-color: #f1fa8c; }
+      .c2 { width: 20px; height: 20px; background-color: #2a9d8f; }
+      .c3 { width: 20px; height: 20px; background-color: #264653; }
+      .c4 { width: 20px; height: 20px; background-color: #f4a261; }
+      .c5 { width: 20px; height: 20px; background-color: #8ecae6; }
+      .c6 { width: 20px; height: 20px; background-color: #a8dadc; }
+      .c7 { width: 20px; height: 20px; background-color: #457b9d; }
+      .c8 { width: 20px; height: 20px; background-color: #e9c46a; }
+      .c9 { width: 20px; height: 20px; background-color: #b5838d; }
+    </style>
+  </head>
+  <body>
+    <div class="row">
+      <div class="cell c0"></div>
+      <div class="cell c1"></div>
+      <div class="cell c2"></div>
+      <div class="cell c3"></div>
+      <div class="cell c4"></div>
+      <div class="cell c5"></div>
+      <div class="cell c6"></div>
+      <div class="cell c7"></div>
+      <div class="cell c8"></div>
+      <div class="cell c9"></div>
+    </div>
+    <div class="row">
+      <div class="cell c1"></div>
+      <div class="cell c2"></div>
+      <div class="cell c3"></div>
+      <div class="cell c4"></div>
+      <div class="cell c5"></div>
+      <div class="cell c6"></div>
+      <div class="cell c7"></div>
+      <div class="cell c8"></div>
+      <div class="cell c9"></div>
+      <div class="cell c0"></div>
+    </div>
+    <div class="row">
+      <div class="cell c2"></div>
+      <div class="cell c3"></div>
+      <div class="cell c4"></div>
+      <div class="cell c5"></div>
+      <div class="cell c6"></div>
+      <div class="cell c7"></div>
+      <div class="cell c8"></div>
+      <div class="cell c9"></div>
+      <div class="cell c0"></div>
+      <div class="cell c1"></div>
+    </div>
+    <div class="row">
+      <div class="cell c3"></div>
+      <div class="cell c4"></div>
+      <div class="cell c5"></div>
+      <div class="cell c6"></div>
+      <div class="cell c7"></div>
+      <div class="cell c8"></div>
+      <div class="cell c9"></div>
+      <div class="cell c0"></div>
+      <div class="cell c1"></div>
+      <div class="cell c2"></div>
+    </div>
+    <div class="row">
+      <div class="cell c4"></div>
+      <div class="cell c5"></div>
+      <div class="cell c6"></div>
+      <div class="cell c7"></div>
+      <div class="cell c8"></div>
+      <div class="cell c9"></div>
+      <div class="cell c0"></div>
+      <div class="cell c1"></div>
+      <div class="cell c2"></div>
+      <div class="cell c3"></div>
+    </div>
+    <div class="row">
+      <div class="cell c5"></div>
+      <div class="cell c6"></div>
+      <div class="cell c7"></div>
+      <div class="cell c8"></div>
+      <div class="cell c9"></div>
+      <div class="cell c0"></div>
+      <div class="cell c1"></div>
+      <div class="cell c2"></div>
+      <div class="cell c3"></div>
+      <div class="cell c4"></div>
+    </div>
+    <div class="row">
+      <div class="cell c6"></div>
+      <div class="cell c7"></div>
+      <div class="cell c8"></div>
+      <div class="cell c9"></div>
+      <div class="cell c0"></div>
+      <div class="cell c1"></div>
+      <div class="cell c2"></div>
+      <div class="cell c3"></div>
+      <div class="cell c4"></div>
+      <div class="cell c5"></div>
+    </div>
+    <div class="row">
+      <div class="cell c7"></div>
+      <div class="cell c8"></div>
+      <div class="cell c9"></div>
+      <div class="cell c0"></div>
+      <div class="cell c1"></div>
+      <div class="cell c2"></div>
+      <div class="cell c3"></div>
+      <div class="cell c4"></div>
+      <div class="cell c5"></div>
+      <div class="cell c6"></div>
+    </div>
+    <div class="row">
+      <div class="cell c8"></div>
+      <div class="cell c9"></div>
+      <div class="cell c0"></div>
+      <div class="cell c1"></div>
+      <div class="cell c2"></div>
+      <div class="cell c3"></div>
+      <div class="cell c4"></div>
+      <div class="cell c5"></div>
+      <div class="cell c6"></div>
+      <div class="cell c7"></div>
+    </div>
+    <div class="row">
+      <div class="cell c9"></div>
+      <div class="cell c0"></div>
+      <div class="cell c1"></div>
+      <div class="cell c2"></div>
+      <div class="cell c3"></div>
+      <div class="cell c4"></div>
+      <div class="cell c5"></div>
+      <div class="cell c6"></div>
+      <div class="cell c7"></div>
+      <div class="cell c8"></div>
+    </div>
+  </body>
+</xt>

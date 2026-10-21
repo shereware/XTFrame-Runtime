@@ -1,0 +1,28 @@
+<xt>
+  <head>
+    <style>
+      #jstart, #jend, #jcenter, #jbetween, #jaround, #jevenly {
+        display: flex;
+        width: 400px;
+        height: 30px;
+      }
+      #jstart > div, #jend > div, #jcenter > div, #jbetween > div, #jaround > div, #jevenly > div {
+        width: 80px;
+      }
+      #jstart { justify-content: flex-start; }
+      #jend { justify-content: flex-end; }
+      #jcenter { justify-content: center; }
+      #jbetween { justify-content: space-between; }
+      #jaround { justify-content: space-around; }
+      #jevenly { justify-content: space-evenly; }
+    </style>
+  </head>
+  <body>
+    <div id="jstart"><div id="s1"></div><div id="s2"></div><div id="s3"></div></div>
+    <div id="jend"><div id="e1"></div><div id="e2"></div><div id="e3"></div></div>
+    <div id="jcenter"><div id="c1"></div><div id="c2"></div><div id="c3"></div></div>
+    <div id="jbetween"><div id="b1"></div><div id="b2"></div><div id="b3"></div></div>
+    <div id="jaround"><div id="r1"></div><div id="r2"></div><div id="r3"></div></div>
+    <div id="jevenly"><div id="v1"></div><div id="v2"></div><div id="v3"></div></div>
+  </body>
+</xt>

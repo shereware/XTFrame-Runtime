@@ -1,0 +1,33 @@
+<xt>
+  <head>
+    <style>
+      #cb { position: relative; width: 300px; height: 200px; }
+      #panel { position: absolute; left: 20px; top: 10px; width: 256px;
+               display: flex; gap: 16px; }
+      #panel > div { width: 64px; height: 32px; }
+      #col { position: absolute; left: 0px; top: 120px; width: 100px; height: 90px;
+             display: flex; flex-direction: column; gap: 10px; }
+      #col > div { width: 40px; height: 20px; }
+      #stretch { position: absolute; left: 0px; right: 0px; top: 60px;
+                 display: flex; gap: 8px; }
+      #stretch > div { width: 30px; height: 25px; }
+    </style>
+  </head>
+  <body>
+    <div id="cb">
+      <div id="panel">
+        <div id="i1"></div>
+        <div id="i2"></div>
+        <div id="i3"></div>
+      </div>
+      <div id="col">
+        <div id="c1"></div>
+        <div id="c2"></div>
+      </div>
+      <div id="stretch">
+        <div id="s1"></div>
+        <div id="s2"></div>
+      </div>
+    </div>
+  </body>
+</xt>

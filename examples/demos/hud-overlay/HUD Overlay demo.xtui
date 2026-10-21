@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "name": "HUD Overlay demo",
+  "id": "hud-overlay",
+  "game": "HUD Overlay demo",
+  "spec": {
+    "platforms": [
+      {
+        "name": "desktop",
+        "resolutions": [
+          [
+            1920,
+            1080
+          ],
+          [
+            2560,
+            1440
+          ],
+          [
+            1280,
+            720
+          ]
+        ]
+      }
+    ],
+    "safeArea": {
+      "default": 0,
+      "console": 0.05
+    },
+    "logicalHeight": 1080,
+    "uiscaleRule": "height",
+    "input": {
+      "methods": [
+        "mouse",
+        "gamepad"
+      ],
+      "players": 1
+    },
+    "languages": [
+      "en"
+    ],
+    "fontFallback": {},
+    "budget": {
+      "frameMs": 4,
+      "effectLayers": 12,
+      "fillRate": 3
+    },
+    "engine": {
+      "name": "",
+      "version": ""
+    }
+  },
+  "uis": [
+    {
+      "id": "hud",
+      "doc": "hud/hud.xt",
+      "size": [
+        1920,
+        1080
+      ],
+      "tags": [
+        "ingame"
+      ]
+    }
+  ],
+  "shared": {
+    "assetRoot": "shared",
+    "fontDirs": [],
+    "styles": [],
+    "templateDirs": [],
+    "symbols": "shared/symbols",
+    "tokens": "shared/tokens.xts",
+    "themes": "shared/themes",
+    "strings": "shared/strings",
+    "recipes": "shared/recipes"
+  },
+  "preview": {
+    "dpr": 1
+  },
+  "target": "engine",
+  "publish": {
+    "outDir": "out",
+    "languages": [],
+    "embedImages": false,
+    "embedFonts": false,
+    "thumbnails": [
+      320,
+      180
+    ],
+    "atlas": {
+      "enabled": false,
+      "maxSize": 4096,
+      "padding": 2,
+      "mipmaps": false
+    }
+  }
+}

@@ -1,0 +1,9 @@
+id: 38ae3f65-fca5-4189-b1fd-12f56d9480c3
+kind: reference
+title: menu-lamp
+source:
+  kind: ai:service
+  ref: menu-lamp.png
+tags: [asset, texture]
+license: own
+content: sha256:542319dcce2f096201099f6a38759daa7fe59cffce45a4417d13351c7ae262dd

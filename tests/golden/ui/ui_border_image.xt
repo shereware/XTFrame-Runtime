@@ -1,0 +1,17 @@
+<xt>
+  <head>
+    <style>
+      div { position: absolute; }
+      #stretch { left: 8px; top: 8px; width: 112px; height: 64px; border-image: url(nine.png) 8 8 8 8; }
+      #fill { left: 136px; top: 8px; width: 112px; height: 64px; border-image: url(nine.png) 8 fill repeat; }
+      #round { left: 8px; top: 88px; width: 112px; height: 64px; border-width: 16px; border-image: url(nine.png) 8 round; }
+      #pct { left: 136px; top: 88px; width: 112px; height: 64px; border-image: url(nine.png) 33.33% fill; }
+    </style>
+  </head>
+  <body>
+    <div id="stretch"></div>
+    <div id="fill"></div>
+    <div id="round"></div>
+    <div id="pct"></div>
+  </body>
+</xt>

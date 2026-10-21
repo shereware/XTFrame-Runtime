@@ -1,0 +1,19 @@
+<xt>
+  <head>
+    <style>
+      #stage { position: absolute; left: 0px; top: 0px; width: 256px; height: 256px; }
+      .box { position: absolute; width: 60px; height: 60px; }
+      #near { left: 98px; top: 30px; transform: translateZ(80px); background-color: #c03030; }
+      #mid { left: 98px; top: 98px; transform: translateZ(0px); background-color: #30a030; }
+      #far { left: 98px; top: 166px; transform: translateZ(-80px); background-color: #3060c0; }
+    </style>
+  </head>
+  <body>
+    <div id="stage">
+      <camera position="128 128 300" target="128 128 0" zoom="300"/>
+      <div id="near" class="box"></div>
+      <div id="mid" class="box"></div>
+      <div id="far" class="box"></div>
+    </div>
+  </body>
+</xt>

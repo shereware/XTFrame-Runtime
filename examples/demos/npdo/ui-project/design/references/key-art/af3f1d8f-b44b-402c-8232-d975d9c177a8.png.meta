@@ -1,0 +1,42 @@
+id: f0aaa8df-156c-4803-9644-c22004356d4a
+kind: reference
+title: "Key art: hospital exterior"
+status: approved
+source:
+  kind: ai:design-system
+  ref: af3f1d8f-b44b-402c-8232-d975d9c177a8.png
+approved:
+  by: Bigspring
+  at: 2026-10-16T04:02:23Z
+tags: [key-art, exterior, title-lockup]
+license: own
+content: sha256:ed3e12f838e0b32703ece392f3714da05cac393a5af61da10ad23e072428e5c6
+extracted:
+  - value: "#060605"
+    share: 0.34987208
+  - value: "#161715"
+    share: 0.17415936
+  - value: "#272827"
+    share: 0.1518412
+  - value: "#3d3d3e"
+    share: 0.13036823
+  - value: "#545356"
+    share: 0.10473776
+  - value: "#7d7d81"
+    share: 0.054093566
+  - value: "#d3cbc4"
+    share: 0.034379568
+  - value: "#a01516"
+    share: 0.0005482456
+links:
+  - rel: illustrates
+    to: ui:main-menu
+  - rel: evidence-for
+    to: text:principles#warm-monochrome-one-red
+  - rel: evidence-for
+    to: text:principles#paperwork-in-the-ruins
+  - rel: evidence-for
+    to: text:principles#respect-the-safe-area
+  - rel: evidence-for
+    to: text:principles#quiet-until-needed
+note: "Exterior: St. Ren Hospital (聖仁醫院) at dusk behind a rusted gate; NPDO title lockup, four-line tagline and the field-survey clipboard."

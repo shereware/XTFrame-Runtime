@@ -1,0 +1,34 @@
+<xt>
+  <head>
+    <style>
+      /* T-194 (08.9): two local players navigate a grid with the d-pad; player 0's focus fills
+         red, player 1's draws a blue border (ui_focus_two_players.events). */
+      button {
+        position: absolute;
+        width: 60px;
+        height: 40px;
+        background-color: #cccccc;
+      }
+      button:focus-player(0) {
+        background-color: #ff4040;
+      }
+      button:focus-player(1) {
+        border: 6px #2060ff;
+      }
+      #a { left: 20px; top: 20px; }
+      #b { left: 100px; top: 20px; }
+      #c { left: 180px; top: 20px; }
+      #d { left: 20px; top: 100px; }
+      #e { left: 100px; top: 100px; }
+      #f { left: 180px; top: 100px; }
+    </style>
+  </head>
+  <body>
+    <button id="a"></button>
+    <button id="b"></button>
+    <button id="c"></button>
+    <button id="d"></button>
+    <button id="e"></button>
+    <button id="f"></button>
+  </body>
+</xt>

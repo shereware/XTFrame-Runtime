@@ -1,0 +1,23 @@
+<xt>
+  <head>
+    <link href="app.xts"/>
+    <title>XTFrame desktop_app example</title>
+  </head>
+  <body>
+    <div id="root">
+      <h1>XTFrame desktop_app example</h1>
+      <div class="panel">
+        <button id="inc">+1</button>
+        <span id="count">0</span>
+      </div>
+      <div class="panel">
+        <input id="name" type="text"/>
+        <span id="echo"></span>
+      </div>
+      <div class="panel">
+        <input id="darkToggle" type="checkbox"/>
+        <span>Dark mode</span>
+      </div>
+    </div>
+  </body>
+</xt>

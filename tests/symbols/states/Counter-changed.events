@@ -1,0 +1,5 @@
+# T-198: Counter, state 'changed'.
+port Gold.value 12450
+update 0.6
+port Gold.value 13100
+update 0.6

@@ -1,0 +1,22 @@
+<xt>
+  <head>
+    <style>
+      #box {
+        width: 180px;
+        height: 180px;
+        margin: 38px;
+        border: 2px #333333;
+      }
+      #clip {
+        width: 160px;
+        height: 160px;
+        object-fit: contain;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="box">
+      <anim id="clip" src="../lottie/scale_rotate.json" autoplay="true" loop="true"/>
+    </div>
+  </body>
+</xt>

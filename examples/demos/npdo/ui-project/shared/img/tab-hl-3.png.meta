@@ -1,0 +1,12 @@
+id: 6bc7a7bb-bda3-4f57-82fb-6bb3f3be288d
+type: image
+title: tab-hl-3
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/tab-hl-3.png
+content: sha256:8bb49b01bbe75f1ac8c04a1a95942f787d95661e2859de7bbd6458dc495c4626
+measured:
+  w: 372
+  h: 88
+  alpha: true

@@ -1,0 +1,14 @@
+<xt>
+  <head>
+    <style>
+      #a-sides { position: absolute; left: 10px; right: 190px; top: 0px; aspect-ratio: 2; }
+      #a-ends { position: absolute; top: 100px; bottom: 100px; left: 0px; aspect-ratio: 3 / 2; }
+      #a-all { position: absolute; left: 0px; right: 0px; top: 0px; bottom: 0px; aspect-ratio: 2; }
+    </style>
+  </head>
+  <body>
+    <div id="a-sides"></div>
+    <div id="a-ends"></div>
+    <div id="a-all"></div>
+  </body>
+</xt>

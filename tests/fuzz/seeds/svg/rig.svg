@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <path id="Arm" d="M60 128 L120 128 L180 128 L180 152 L120 152 L60 152 Z" fill="#3366cc"
+        stroke="#112244" stroke-width="2" xt-skin="Skel" bind:opacity="0.5">
+    <xt-weights bones="A B">0 0:1
+1 0:.5 1:.5
+2 1:1
+3 1:1
+4 0:.5 1:.5
+5 0:1</xt-weights>
+  </path>
+  <xt-skeleton id="Skel">
+    <xt-bone id="A" length="60" translate="60 140">
+      <xt-bone id="B" length="60">
+        <xt-constraint kind="ik" target="#Hand"/>
+      </xt-bone>
+    </xt-bone>
+  </xt-skeleton>
+  <circle id="Hand" cx="0" cy="0" r="5" fill="#dd2222" world-anchor="hand"/>
+</svg>

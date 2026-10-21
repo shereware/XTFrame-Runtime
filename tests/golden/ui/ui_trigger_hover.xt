@@ -1,0 +1,20 @@
+<xt>
+  <head>
+    <style>
+      /* T-174: on:hover plays a @timeline (docs/design/27-interaction.md 27.2); the manifest time
+         samples it half way and at its end (held). */
+      #Card { position: absolute; left: 64px; top: 64px; width: 128px; height: 128px;
+              background-color: #3366cc; border-radius: 16px; }
+      #Glow { position: absolute; left: 32px; top: 32px; width: 64px; height: 64px;
+              background-color: #ffcc33; border-radius: 32px; opacity: 0; }
+      @timeline card-hover {
+        duration: 0.4s;
+        #Card { 0s { transform: scale(1) } 0.4s { transform: scale(1.25) } }
+        #Glow { 0s { opacity: 0 } 0.4s { opacity: 1 } }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="Card" on:hover="play(card-hover)" on:leave="play(card-hover, reverse)"><div id="Glow"></div></div>
+  </body>
+</xt>

@@ -1,0 +1,14 @@
+# Motion spec (docs/design/29-ai-endpoint.md 29.6): calibrated defaults, adjust per project.
+duration:  { instant: [0, 50], fast: [100, 200], normal: [200, 300], close: [200, 450], slow: [300, 500], cinematic: [800, 2000] }
+easing:    { opacity: linear, move: ease-out, exit: ease-in, emphasis: back-out, spring: off }
+selection: snap            # snap (<=50ms, AAA) | soft (100-200ms)
+entrance:  { simultaneous_max: 3, stagger: off, stagger_ms: [40, 80], reveal_ms: [300, 400] }
+ambient:   { hud: 1, menu: 2, other: 1 }          # ambient loops per screen, at most
+particles: { hud: 0, menu: 1, results: 1 }
+celebration_per_screen: 1
+effects:   { backdrop_blur: { hud: 0, menu: 0, pause: 2, panel: 2 }, effect_layers_max: 24, fill_rate_max: 3.0 }
+overlay:   dim                # opening a panel dims, does not blur, by default
+safe_area: { default: 0.025, console: 0.05, applies_to: floating }   # edge-docked bars are fine
+text:      { min_px: 12, hud_default_px: 14, contrast_min: 4.5, font_families_max: 3 }
+animate_only: [transform, opacity]   # animating layout properties -> warning
+reduced_motion: crossfade

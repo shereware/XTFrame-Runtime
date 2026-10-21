@@ -1,0 +1,9 @@
+id: bf7ef721-7516-42ea-bdb9-ae3b0ce0c211
+kind: reference
+title: menu-hl-5
+source:
+  kind: ai:service
+  ref: menu-hl-5.png
+tags: [asset, texture]
+license: own
+content: sha256:deb1550a2654775730e6e864ab68d69eafafca16db291f28a07486f920b36d85

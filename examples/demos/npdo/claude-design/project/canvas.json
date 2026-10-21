@@ -1,0 +1,11 @@
+{
+  "name": "NPDO",
+  "boards": {
+    "MainMenu.dc.html": { "x": 0, "y": 0, "w": 1920, "h": 1080, "title": "Main Menu", "page": "main" },
+    "Settings.dc.html": { "x": 2040, "y": 0, "w": 1920, "h": 1080, "title": "Settings", "page": "main" },
+    "Hud.dc.html": { "x": 4080, "y": 0, "w": 1920, "h": 1080, "title": "In-game HUD", "page": "main" }
+  },
+  "order": ["MainMenu.dc.html", "Settings.dc.html", "Hud.dc.html"],
+  "pages": ["main"],
+  "designSystems": []
+}

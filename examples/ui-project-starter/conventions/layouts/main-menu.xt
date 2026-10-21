@@ -1,0 +1,38 @@
+<xt>
+  <head>
+    <!-- Layout template: main menu, 1280 x 720 (docs/design/30-ui-project.md 30.2 class 4).
+         A vertical list on the left is the most common main-menu layout (36 of 113 surveyed
+         screens, docs/reference/ui-survey-2026-09/report.md); centred lists come second.
+           Left      title, subtitle and the vertical Button list (Size L)
+           Art       key art or a live scene (`<external source="scene-view:menu">`)
+           TopRight  news / notifications
+           BottomLeft  version, BottomRight  input hints (InputGlyph)
+         Replace the guide boxes with standard symbols. -->
+    <style>
+      body { width: 100vw; height: 100vh; font-family: var(--font-family); }
+      #Screen { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
+      .anchor {
+        position: absolute;
+        display: flex;
+        border-width: var(--border-w);
+        border-color: var(--color-border);
+        border-radius: var(--radius-s);
+      }
+      .guide { color: var(--color-text-dim); font-size: var(--font-size-xs); padding: var(--space-1); }
+      #Left { left: 96px; top: 120px; width: 320px; height: 440px; }
+      #Art { left: 480px; top: 96px; width: 640px; height: 480px; }
+      #TopRight { right: var(--safe-x); top: var(--safe-y); width: 340px; height: 72px; }
+      #BottomLeft { left: var(--safe-x); bottom: var(--safe-y); width: 200px; height: 24px; }
+      #BottomRight { right: var(--safe-x); bottom: var(--safe-y); width: 280px; height: 32px; }
+    </style>
+  </head>
+  <body>
+    <div id="Screen">
+      <div id="Left" class="anchor"><span id="LeftGuide" class="guide">Left: title and menu list</span></div>
+      <div id="Art" class="anchor"><span id="ArtGuide" class="guide">Art</span></div>
+      <div id="TopRight" class="anchor"><span id="TopRightGuide" class="guide">TopRight</span></div>
+      <div id="BottomLeft" class="anchor"><span id="BottomLeftGuide" class="guide">BottomLeft</span></div>
+      <div id="BottomRight" class="anchor"><span id="BottomRightGuide" class="guide">BottomRight</span></div>
+    </div>
+  </body>
+</xt>

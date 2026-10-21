@@ -1,0 +1,165 @@
+/* XTFrame HUD demo. Built through the Marionette dev endpoint: see ../build.marionette.json.
+   Palette, type scale, panel and button base live in ../shared/base.xts (shared by the whole
+   game-ui bundle); only HUD-specific rules are here. */
+
+.stage {
+  perspective: 700px;
+  position: absolute;
+}
+
+#stageL {
+  height: 164px;
+  left: calc(1safe-left + 16px);
+  top: calc(1safe-top + 26px);
+  width: 342px;
+}
+
+#stageR {
+  height: 186px;
+  width: 292px;
+  bottom: calc(1safe-bottom + 6px);
+  right: calc(1safe-right + 16px);
+}
+
+#player {
+  left: 0px;
+  top: 0px;
+  transform: rotateY(24deg);
+  transform-origin: 0% 50%;
+  width: 300px;
+}
+
+#ammoPanel {
+  left: 0px;
+  top: 0px;
+  transform: rotateY(-24deg);
+  transform-origin: 100% 50%;
+  transition: effect 250ms;
+  width: 250px;
+}
+
+.bar {
+  background-color: #21262d;
+  border-radius: 6px;
+  height: 12px;
+  overflow: hidden;
+}
+
+.fill {
+  background-color: #3fb950;
+  border-radius: 6px;
+  height: 100%;
+  transition: width 300ms, background-color 300ms;
+  width: 100%;
+}
+
+#player.danger .fill {
+  background-color: #f85149;
+}
+
+.value {
+  font-size: 18px;
+  width: 48px;
+}
+
+.big {
+  font-size: 56px;
+  line-height: 60px;
+  transition: color 200ms;
+}
+
+#ammoPanel.empty .big {
+  color: #f85149;
+}
+
+#ammoPanel.empty {
+  effect: shadow(0 10px 28px 0 #000000 0.55) glow(18px #f85149 1.2);
+}
+
+#skills {
+  display: flex;
+  gap: 16px;
+  left: calc(48.48% - 108.6px);
+  position: absolute;
+  bottom: calc(1safe-bottom + 26px);
+}
+
+.skill {
+  background-color: #161b22;
+  border: 1px #30363d;
+  border-radius: 14px;
+  color: #8b949e;
+  font-size: 24px;
+  height: 64px;
+  line-height: 64px;
+  text-align: center;
+  transition: background-color 120ms;
+  width: 64px;
+}
+
+.skill:hover {
+  background-color: #21262d;
+}
+
+.ready {
+  animation: sweep 2.4s linear infinite;
+  border: 1px #58a6ff;
+  color: #e6edf3;
+  effect: glow(14px #58a6ff 1.1) shine(30deg 36px #ffffff 0.9 0.6 0);
+}
+
+#card {
+  background-color: #161b22e6;
+  border: 1px #30363d;
+  border-radius: 12px;
+  effect: shadow(0 10px 28px 0 #000000 0.55);
+  left: calc(50% - 160px);
+  padding: 14px 0px 16px 0px;
+  position: absolute;
+  text-align: center;
+  top: calc(1safe-top + 34px);
+  transition: transform 800ms ease-in-out;
+  width: 320px;
+}
+
+#card.flipped {
+  transform: rotateY(360deg);
+}
+
+#clock {
+  position: absolute;
+  top: calc(1safe-top + 30px);
+  right: calc(1safe-right + 49.88px);
+}
+
+@keyframes sweep {
+  0% { effect: glow(14px #58a6ff 1.1) shine(30deg 36px #ffffff 0.9 0.6 0); }
+  60% { effect: glow(14px #58a6ff 1.1) shine(30deg 36px #ffffff 0.9 0.6 1); }
+  100% { effect: glow(14px #58a6ff 1.1) shine(30deg 36px #ffffff 0.9 0.6 1); }
+}
+
+/* T-152: Lottie content. #radar plays shared/anim/radar.json in a loop; #alert plays
+   shared/anim/alert.json only while HP is low (driven by hud.xtflow). */
+
+#radar {
+  height: 96px;
+  left: calc(1safe-left + 16px);
+  opacity: 0.8;
+  position: absolute;
+  width: 96px;
+  bottom: calc(1safe-bottom + 30px);
+}
+
+#alert {
+  height: 24px;
+  transition: opacity 200ms;
+  width: 24px;
+}
+
+#alert.hidden {
+  opacity: 0;
+}
+
+#player.flash {
+  border: 1px #f85149;
+}

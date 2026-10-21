@@ -1,0 +1,11 @@
+<xt>
+  <head>
+    <style>
+      #parent { width: 200px; }
+      #child { width: 50%; padding: 10%; }
+    </style>
+  </head>
+  <body>
+    <div id="parent"><div id="child"></div></div>
+  </body>
+</xt>

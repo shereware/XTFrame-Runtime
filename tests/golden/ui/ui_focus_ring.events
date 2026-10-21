@@ -1,0 +1,4 @@
+# docs/tasks/T-36.md: two Tabs from no focus move to #btn1 then #btn2, which gets the
+# button:focus ring from ui_focus_ring.xts.
+key Tab
+key Tab

@@ -1,0 +1,9 @@
+id: e767cd79-a40b-4783-9049-2591ddb19802
+kind: reference
+title: main menu
+source:
+  kind: ai:service
+  ref: main-menu.png
+tags: [screenshot, main]
+license: own
+content: sha256:b3418090df02702fe6d9c772b7b2cb840a85aeae4b7806df8a011252ab3b64f8

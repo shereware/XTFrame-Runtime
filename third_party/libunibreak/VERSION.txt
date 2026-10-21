@@ -1,0 +1,24 @@
+libunibreak
+Source: https://github.com/adah1972/libunibreak
+Tag: libunibreak_6_1
+Commit: 304585d8e2d63187507368d612c3d5fff1486368
+License: zlib (see LICENSE)
+
+Vendored files (src/): linebreak.c/h, linebreakdata.c, linebreakdef.c/h, graphemebreak.c/h,
+graphemebreakdata.c, graphemebreakdef.h, unibreakbase.c/h, unibreakdef.c/h, emojidef.c/h,
+eastasianwidthdef.c/h, as listed in docs/tasks/T-29.md, all unmodified.
+
+Three files beyond the task sheet's literal list were also vendored because the listed files
+need them to link/build:
+
+- indicconjunctbreakdata.c/indicconjunctbreakdef.h and emojidata.c and eastasianwidthdata.c are
+  #included by graphemebreak.c/emojidef.c/eastasianwidthdef.c respectively (data tables compiled
+  as part of the including .c file, not separate translation units).
+- linebreakdata.c (the `lb_prop_supplementary`/`lb_prop_bmp` tables `linebreak.c` declares
+  `extern` and calls into, per `linebreakdef.h`) is, unlike the files above, its own separate
+  translation unit -- nothing #includes it -- so text/CMakeLists.txt's `unibreak` target compiles
+  it directly alongside linebreak.c/linebreakdef.c.
+
+wordbreak.c/h and wordbreakdata.c are NOT vendored: nothing in this task uses libunibreak's
+word-break API (only set_linebreaks_utf8 and set_graphemebreaks_utf8, per
+docs/design/07-text.md §7.3 steps 7-8).

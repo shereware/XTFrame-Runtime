@@ -1,0 +1,145 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "trail1_r",
+      "type": "constant",
+      "params": {
+        "value": 130
+      }
+    },
+    {
+      "id": "trail1_edge",
+      "type": "math",
+      "params": {
+        "op": "add"
+      }
+    },
+    {
+      "id": "trail1_style",
+      "type": "format",
+      "params": {
+        "format": "visibility: visible; effect: gradient-mask(radial, {a}px {b}px, {c}px {b}px, #000000ff 0%, #000000ff 35%, #00000000 100%)",
+        "decimals": 0
+      }
+    },
+    {
+      "id": "trail2_r",
+      "type": "constant",
+      "params": {
+        "value": 170
+      }
+    },
+    {
+      "id": "trail2_edge",
+      "type": "math",
+      "params": {
+        "op": "add"
+      }
+    },
+    {
+      "id": "trail2_style",
+      "type": "format",
+      "params": {
+        "format": "visibility: visible; effect: gradient-mask(radial, {a}px {b}px, {c}px {b}px, #000000b3 0%, #000000b3 35%, #00000000 100%)",
+        "decimals": 0
+      }
+    },
+    {
+      "id": "trail3_r",
+      "type": "constant",
+      "params": {
+        "value": 210
+      }
+    },
+    {
+      "id": "trail3_edge",
+      "type": "math",
+      "params": {
+        "op": "add"
+      }
+    },
+    {
+      "id": "trail3_style",
+      "type": "format",
+      "params": {
+        "format": "visibility: visible; effect: gradient-mask(radial, {a}px {b}px, {c}px {b}px, #00000073 0%, #00000073 35%, #00000000 100%)",
+        "decimals": 0
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "#document.pointerX",
+      "to": "trail1_edge.a"
+    },
+    {
+      "from": "trail1_r.out",
+      "to": "trail1_edge.b"
+    },
+    {
+      "from": "#document.pointerX",
+      "to": "trail1_style.a"
+    },
+    {
+      "from": "#document.pointerY",
+      "to": "trail1_style.b"
+    },
+    {
+      "from": "trail1_edge.out",
+      "to": "trail1_style.c"
+    },
+    {
+      "from": "trail1_style.out",
+      "to": "#trail-1.setStyle"
+    },
+    {
+      "from": "#document.pointerX",
+      "to": "trail2_edge.a"
+    },
+    {
+      "from": "trail2_r.out",
+      "to": "trail2_edge.b"
+    },
+    {
+      "from": "#document.pointerX",
+      "to": "trail2_style.a"
+    },
+    {
+      "from": "#document.pointerY",
+      "to": "trail2_style.b"
+    },
+    {
+      "from": "trail2_edge.out",
+      "to": "trail2_style.c"
+    },
+    {
+      "from": "trail2_style.out",
+      "to": "#trail-2.setStyle"
+    },
+    {
+      "from": "#document.pointerX",
+      "to": "trail3_edge.a"
+    },
+    {
+      "from": "trail3_r.out",
+      "to": "trail3_edge.b"
+    },
+    {
+      "from": "#document.pointerX",
+      "to": "trail3_style.a"
+    },
+    {
+      "from": "#document.pointerY",
+      "to": "trail3_style.b"
+    },
+    {
+      "from": "trail3_edge.out",
+      "to": "trail3_style.c"
+    },
+    {
+      "from": "trail3_style.out",
+      "to": "#trail-3.setStyle"
+    }
+  ]
+}

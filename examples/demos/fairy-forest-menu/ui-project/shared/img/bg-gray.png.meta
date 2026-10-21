@@ -1,0 +1,12 @@
+id: c876a065-4449-42b1-8209-bc7a769c249c
+type: image
+title: bg-gray
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/e388f2f2db478b54caa09bd8627145ac
+content: sha256:456aa25035efb25ffac84c5397f110f4822082bd856d94af039cb49eba07dd0c
+measured:
+  w: 1280
+  h: 720
+  alpha: false

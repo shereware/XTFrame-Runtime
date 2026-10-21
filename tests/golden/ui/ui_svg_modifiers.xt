@@ -1,0 +1,41 @@
+<xt>
+  <head>
+    <style>
+      /* T-225b (31 §31.6.1): runtime shape modifiers written in an inline <svg>. The timeline
+         animates the serial trim's trim-end (0 -> 1) and the repeat's copies (3 -> 12); the
+         manifest samples it at 0.5 s (trim-end 0.5, copies round(7.5) = 8). */
+      svg { position: absolute; left: 0px; top: 0px; width: 256px; height: 256px; }
+      @timeline main {
+        duration: 1s;
+        #Mods/Trim1 { 0s { trim-end: 0 } 1s { trim-end: 1 } }
+        #Mods/Rep1 { 0s { copies: 3 } 1s { copies: 12 } }
+      }
+    </style>
+  </head>
+  <body>
+    <svg id="Mods" viewBox="0 0 256 256" width="256" height="256">
+      <!-- Top left: a circle and a line trimmed serially as one length. -->
+      <g>
+        <circle cx="64" cy="56" r="36" fill="none" stroke="#2266dd" stroke-width="8"/>
+        <path d="M24 112 L104 112" fill="none" stroke="#dd2266" stroke-width="8"/>
+        <xt-trim id="Trim1" trim-start="0" trim-end="1" mode="serial"/>
+      </g>
+      <!-- Top right: a ring of bars, copies animated, fading toward the last copy. -->
+      <g transform="translate(192 64)">
+        <rect x="-4" y="-50" width="8" height="22" fill="#22aa66"/>
+        <xt-repeat id="Rep1" copies="3" repeat-rotation="30" opacity-start="1" opacity-end="0.3"/>
+      </g>
+      <!-- Bottom left: a star Shape, rounded. -->
+      <g>
+        <xt-star cx="64" cy="192" points="5" r="48" r2="22" fill="#ffaa00"/>
+        <xt-round radius="6"/>
+      </g>
+      <!-- Bottom right: a square zigzagged, then twisted about its centre. -->
+      <g>
+        <rect x="164" y="164" width="56" height="56" fill="none" stroke="#8844cc" stroke-width="3"/>
+        <xt-zigzag size="4" ridges="3" points="corner"/>
+        <xt-twist angle="40" center="192 192"/>
+      </g>
+    </svg>
+  </body>
+</xt>

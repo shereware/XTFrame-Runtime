@@ -1,0 +1,4 @@
+# T-198: Hotbar, state 'normal'.
+port Bar.slots [{"key":"1","count":3,"empty":false},{"key":"2","count":1,"empty":false},{"key":"3","count":0,"empty":true},{"key":"4","count":12,"empty":false},{"key":"5","count":0,"empty":true}]
+port Bar.selected 0
+update 0.6

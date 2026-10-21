@@ -1,0 +1,4 @@
+# T-198: CooldownRing, state 'normal'.
+port Dash.ready true
+port Heal.ready false
+update 0.6

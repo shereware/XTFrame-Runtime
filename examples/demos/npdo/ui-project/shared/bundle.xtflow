@@ -1,0 +1,104 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "screen",
+      "type": "radio",
+      "params": {
+        "count": 3.0,
+        "initial": 0.0
+      },
+      "pos": [
+        -34.349075238790306,
+        -7.616823467539838
+      ]
+    },
+    {
+      "id": "show-main-menu",
+      "type": "lookup",
+      "params": {
+        "values": [
+          true,
+          false,
+          false
+        ]
+      },
+      "pos": [
+        329.3367780316808,
+        -197.24873446984768
+      ]
+    },
+    {
+      "id": "show-settings",
+      "type": "lookup",
+      "params": {
+        "values": [
+          false,
+          true,
+          false
+        ]
+      },
+      "pos": [
+        333.807998125974,
+        -110.36891621328374
+      ]
+    },
+    {
+      "id": "show-hud",
+      "type": "lookup",
+      "params": {
+        "values": [
+          false,
+          false,
+          true
+        ]
+      },
+      "pos": [
+        334.10230388100956,
+        -26.83062942812611
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "ui#main-menu.new_game",
+      "to": "screen.set2"
+    },
+    {
+      "from": "ui#main-menu.continue_game",
+      "to": "screen.set2"
+    },
+    {
+      "from": "ui#main-menu.open_options",
+      "to": "screen.set1"
+    },
+    {
+      "from": "ui#settings.back",
+      "to": "screen.set0"
+    },
+    {
+      "from": "screen.index",
+      "to": "show-main-menu.index"
+    },
+    {
+      "from": "screen.index",
+      "to": "show-settings.index"
+    },
+    {
+      "from": "screen.index",
+      "to": "show-hud.index"
+    },
+    {
+      "from": "show-main-menu.out",
+      "to": "ui#main-menu.active"
+    },
+    {
+      "from": "show-settings.out",
+      "to": "ui#settings.active"
+    },
+    {
+      "from": "show-hud.out",
+      "to": "ui#hud.active"
+    }
+  ]
+}

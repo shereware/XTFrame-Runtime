@@ -1,0 +1,12 @@
+id: f41457c8-2bc6-483f-becb-86f29e404e7b
+type: image
+title: fx-fireflies
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/776f20f1694e9698568ccede56bbf9c4
+content: sha256:f0f1ab319360db103d78218b6e6cdaa97287edf2fad2cbe1e469a30130ca1ee9
+measured:
+  w: 2560
+  h: 1440
+  alpha: true

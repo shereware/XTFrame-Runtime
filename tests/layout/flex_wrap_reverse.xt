@@ -1,0 +1,15 @@
+<xt>
+  <head>
+    <style>
+      #wr { display: flex; flex-wrap: wrap-reverse; width: 200px; height: 150px; align-content: flex-start; }
+      #wr > div { width: 80px; height: 30px; }
+      #wr2 { display: flex; flex-wrap: wrap-reverse; width: 200px; align-items: flex-start; }
+      #wr2 > div { width: 80px; height: 30px; }
+      #m { margin-top: 10px; }
+    </style>
+  </head>
+  <body>
+    <div id="wr"><div id="a"></div><div id="b"></div><div id="c"></div></div>
+    <div id="wr2"><div id="m"></div><div id="n"></div><div id="o"></div></div>
+  </body>
+</xt>

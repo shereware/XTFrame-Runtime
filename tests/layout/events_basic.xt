@@ -1,0 +1,25 @@
+<xt>
+  <head>
+    <style>
+      #A { position: absolute; left: 0px; top: 0px; width: 200px; height: 100px; }
+      #a1 { position: absolute; left: 0px; top: 0px; width: 50px; height: 50px; }
+      #a2 { position: absolute; left: 60px; top: 0px; width: 50px; height: 50px; }
+      #hoverable { position: absolute; left: 0px; top: 120px; width: 60px; height: 30px; background-color: #000000; }
+      #hoverable:hover { background-color: #ffffff; }
+      #cursorEl { position: absolute; left: 0px; top: 160px; width: 30px; height: 30px; cursor: pointer; }
+      #btn { position: absolute; left: 0px; top: 200px; width: 40px; height: 20px; }
+      #scrollBoxA { position: absolute; left: 250px; top: 0px; width: 50px; height: 50px; overflow: scroll; }
+      #scrollChildA { width: 20px; height: 200px; }
+      #scrollBoxB { position: absolute; left: 250px; top: 60px; width: 50px; height: 50px; overflow: scroll; }
+      #scrollChildB { width: 20px; height: 200px; }
+    </style>
+  </head>
+  <body id="body">
+    <div id="A"><div id="a1"></div><div id="a2"></div></div>
+    <div id="hoverable"></div>
+    <div id="cursorEl"></div>
+    <div id="btn"></div>
+    <div id="scrollBoxA"><div id="scrollChildA"></div></div>
+    <div id="scrollBoxB"><div id="scrollChildB"></div></div>
+  </body>
+</xt>

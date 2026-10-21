@@ -1,0 +1,116 @@
+/* Borderless window demo: the window is the document (native fit), so every size follows it. */
+
+body {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: #1b1f27;
+  font-family: "Segoe UI", "Noto Sans", "Helvetica", "DejaVu Sans";
+  color: #e8ecf2;
+}
+
+/* The title bar moves the window (23 23.ab); everything inside inherits `drag`. */
+#TitleBar {
+  height: 36px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  background-color: #262b35;
+  app-region: drag;
+}
+
+#Title {
+  flex-grow: 1;
+  padding-left: 12px;
+  font-size: 13px;
+  color: #b8c0cc;
+}
+
+/* The buttons opt out of the drag region, or the OS would take their clicks. */
+.control {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #00000000;
+  app-region: no-drag;
+}
+
+.control:hover {
+  background-color: #343a46;
+}
+
+#Close:hover {
+  background-color: #c42b1c;
+}
+
+.glyph.min {
+  width: 10px;
+  height: 1px;
+  background-color: #e8ecf2;
+}
+
+.glyph.max {
+  width: 10px;
+  height: 10px;
+  border: 1px #e8ecf2;
+}
+
+.glyph.close {
+  font-size: 18px;
+  color: #e8ecf2;
+}
+
+#Content {
+  flex-grow: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#Card {
+  display: flex;
+  flex-direction: column;
+  padding: 24px 32px;
+  background-color: #2a303b;
+  border-radius: 8px;
+}
+
+#Heading {
+  font-size: 22px;
+  margin-bottom: 12px;
+}
+
+.line {
+  font-size: 14px;
+  color: #b8c0cc;
+  margin-top: 4px;
+}
+
+/* T-393: the file drop zone; lit while an OS drag hovers it, outlined green after a drop. */
+#DropZone {
+  margin-top: 16px;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px #4a5262;
+  border-radius: 6px;
+  background-color: #232831;
+}
+
+#DropZone:state(DropHover) {
+  background-color: #2f4a6e;
+  border: 1px #6ea8ff;
+}
+
+#DropZone:state(Dropped) {
+  border: 1px #5fc27a;
+}
+
+#DropLabel {
+  font-size: 14px;
+  color: #b8c0cc;
+}

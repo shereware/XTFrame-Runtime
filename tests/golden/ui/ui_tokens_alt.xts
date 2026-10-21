@@ -1,0 +1,2 @@
+/* Theme "alt": overrides two tokens (docs/tasks/T-170.md). */
+:root { --bg: #00a000; --gap: 40px; }

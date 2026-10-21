@@ -1,0 +1,29 @@
+<xt>
+  <head>
+    <style>
+      #col {
+        display: flex;
+        flex-direction: column;
+        width: 100px;
+        height: 300px;
+      }
+      #col-item { height: 50%; width: 40px; }
+      #row {
+        display: flex;
+        width: 200px;
+        height: 120px;
+        padding: 10px;
+      }
+      #row-item { width: 50px; }
+      #row-child { height: 100%; }
+    </style>
+  </head>
+  <body>
+    <div id="col">
+      <div id="col-item"></div>
+    </div>
+    <div id="row">
+      <div id="row-item"><div id="row-child"></div></div>
+    </div>
+  </body>
+</xt>

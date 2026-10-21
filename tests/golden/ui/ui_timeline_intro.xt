@@ -1,0 +1,27 @@
+<xt>
+  <head>
+    <style>
+      /* T-172: docs/design/28-animation-editing.md §28.1.2's intro example, three layers with
+         staggered opacity/transform tracks and per-key easing. */
+      #Logo { position: absolute; left: 88px; top: 40px; width: 80px; height: 80px;
+              background-color: #3366cc; border-radius: 12px; }
+      #Menu { position: absolute; left: 48px; top: 150px; width: 160px; height: 30px;
+              background-color: #cc6633; }
+      #Item_1 { position: absolute; left: 48px; top: 190px; width: 160px; height: 30px;
+                background-color: #33aa66; }
+      @timeline intro {
+        duration: 1s;
+        marker: logo-in 0.4s, ready 1s;
+        #Logo   { 0s { opacity: 0; transform: translateY(20px) } 0.4s ease-out { opacity: 1; transform: none } }
+        #Menu   { 0.3s { opacity: 0 } 0.7s { opacity: 1 } }
+        #Item_1 { 0.5s { opacity: 0; transform: translateX(-40px) } 0.8s ease-out { opacity: 1; transform: translateX(0px) } }
+        sound   { 0.4s ui_whoosh; 1.0s ui_ready }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="Logo"></div>
+    <div id="Menu"></div>
+    <div id="Item_1"></div>
+  </body>
+</xt>

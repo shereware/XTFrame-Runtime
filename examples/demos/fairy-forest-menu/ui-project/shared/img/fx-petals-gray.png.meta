@@ -1,0 +1,12 @@
+id: 6b8553eb-02ca-41ae-be07-6ee250a88fc2
+type: image
+title: fx-petals-gray
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/a78a8ec9c99ac37135665e7756dd4c14
+content: sha256:657567d788483c0d4621eb6c7458e32c0fb0e8a6610b12df78c3a176325d76e7
+measured:
+  w: 2560
+  h: 1440
+  alpha: true

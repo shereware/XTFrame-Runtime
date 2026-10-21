@@ -1,0 +1,11 @@
+SheenBidi
+Source: https://github.com/Tehreer/SheenBidi
+Tag: v2.8
+Commit: ff3738a15dccec01ce3ac9d461b4a6d1bed71d2f
+License: Apache License 2.0 (see LICENSE)
+
+Note: docs/tasks/T-29.md lists this library's license as MIT; the actual upstream license at
+tag v2.8 is Apache License 2.0 (see LICENSE and the header of every Source/*.c file). Vendored
+verbatim: Headers/ and Source/ directories, unmodified. Source/SheenBidi.c is upstream's own
+single-translation-unit amalgamation entry point (compiled with SB_CONFIG_UNITY defined; it
+#includes the rest of Source/*.c).

@@ -1,0 +1,12 @@
+id: d90a1b47-785e-4e73-bf40-97100927b78c
+type: image
+title: band-new-game-tex
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/menu-hl-1.png
+content: sha256:49d75a37ed432f19dcbb8c6ce4dd7b4fdf3a0b17a7bbcb6220361e5c583c4c25
+measured:
+  w: 600
+  h: 84
+  alpha: true

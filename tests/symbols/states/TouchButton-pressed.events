@@ -1,0 +1,4 @@
+# T-241: TouchButton, state 'pressed'.
+update 0.6
+pointermove 60 60
+pointerdown 60 60

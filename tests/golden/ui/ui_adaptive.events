@@ -1,0 +1,2 @@
+# T-176: a 5 % safe area on a desktop with a mouse.
+device 0.05 desktop mouse

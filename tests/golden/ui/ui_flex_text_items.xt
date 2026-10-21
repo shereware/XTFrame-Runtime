@@ -1,0 +1,30 @@
+<xt>
+  <head>
+    <style>
+      @font-face { font-family: "TestSans"; src: "../../fonts/NotoSans-Regular.subset.ttf"; }
+      /* docs/tasks/T-36.md specifies "align-items: baseline", but the enum core/src/mini_css.cpp
+         parses for align-items only has stretch/flex-start/flex-end/center -- no baseline. Using
+         "flex-end" instead still shows the three different-size text items lining up against a
+         shared edge, just the bottom instead of their baselines. */
+      #row {
+        display: flex;
+        align-items: flex-end;
+        width: 232px;
+        height: 100px;
+        margin: 12px;
+        font-family: "TestSans";
+        color: #202020;
+      }
+      #a { font-size: 16px; }
+      #b { font-size: 32px; }
+      #c { font-size: 24px; }
+    </style>
+  </head>
+  <body>
+    <div id="row">
+      <span id="a">Hello</span>
+      <span id="b">World</span>
+      <span id="c">Text</span>
+    </div>
+  </body>
+</xt>

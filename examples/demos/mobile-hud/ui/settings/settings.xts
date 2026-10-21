@@ -1,0 +1,30 @@
+/* Mobile HUD demo settings layout: portrait, the sheet docked to the bottom safe area. Colors and
+   sizes come from the standard tokens only. */
+
+body {
+  width: 100vw;
+  height: 100vh;
+  background-color: var(--color-bg);
+  font-family: var(--font-family);
+}
+
+#Screen {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+}
+
+#TopSlot {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 100vw;
+  display: flex;
+}
+
+#Sections { display: flex; width: 100%; }
+
+#Vibration/Box, #LeftHanded/Box, #Sensitivity/Box { width: 100%; }
+#Top/Box { width: 100vw; }
+/* Inside the sheet the tab bar does not dock to the screen bottom: no safe-area padding. */
+#Pages/Box { flex-grow: 1; padding-bottom: 0px; }

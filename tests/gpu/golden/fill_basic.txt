@@ -1,0 +1,11 @@
+target 64x64 vertices=42 indices=72 cmds=9 passes=1 params=8
+pass 0: target=0 clear=0 copy=0 from=0 view=(0,0,64,64) cmds=9
+  0 StencilOnly Replace WriteIncrWrap ref=0 tex=no src=0 aux=0 linear idx=12 verts=6 clip=(0,0,64,64)
+  1 Solid SrcOver TestNotEqualZero ref=0 tex=no src=0 aux=0 linear idx=6 verts=4 clip=(0,0,64,64)
+  2 StencilOnly Replace ClearRect ref=0 tex=no src=0 aux=0 linear idx=6 verts=4 clip=(0,0,64,64)
+  3 StencilOnly Replace WriteInvert ref=0 tex=no src=0 aux=0 linear idx=12 verts=6 clip=(0,0,64,64)
+  4 Solid SrcOver TestNotEqualZero ref=0 tex=no src=0 aux=0 linear idx=6 verts=4 clip=(0,0,64,64)
+  5 StencilOnly Replace ClearRect ref=0 tex=no src=0 aux=0 linear idx=6 verts=4 clip=(0,0,64,64)
+  6 StencilOnly Replace WriteIncrWrap ref=0 tex=no src=0 aux=0 linear idx=12 verts=6 clip=(0,0,64,64)
+  7 Gradient SrcOver TestNotEqualZero ref=0 tex=yes src=0 aux=0 linear idx=6 verts=4 clip=(0,0,64,64)
+  8 StencilOnly Replace ClearRect ref=0 tex=no src=0 aux=0 linear idx=6 verts=4 clip=(0,0,64,64)

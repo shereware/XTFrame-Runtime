@@ -1,0 +1,9 @@
+id: 542025df-7a7d-4a57-8fd7-7eec868bea16
+kind: reference
+title: menu-hl-1
+source:
+  kind: ai:service
+  ref: menu-hl-1.png
+tags: [asset, texture]
+license: own
+content: sha256:49d75a37ed432f19dcbb8c6ce4dd7b4fdf3a0b17a7bbcb6220361e5c583c4c25

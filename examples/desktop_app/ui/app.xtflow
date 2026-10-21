@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "nodes": [
+    { "id": "n1", "type": "counter", "params": { "step": 1 } },
+    { "id": "n2", "type": "toString", "params": { "format": "{}" } }
+  ],
+  "edges": [
+    { "from": "#inc.Click", "to": "n1.increment" },
+    { "from": "n1.value", "to": "n2.in" },
+    { "from": "n2.out", "to": "#count.setText" },
+    { "from": "#darkToggle.Change", "to": "#root.toggleClass", "params": { "class": "dark" } }
+  ]
+}

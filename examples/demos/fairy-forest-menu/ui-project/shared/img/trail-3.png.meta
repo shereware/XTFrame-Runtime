@@ -1,0 +1,12 @@
+id: 2f482592-b700-4389-ae2b-a6800e184a20
+type: image
+title: trail-3
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/d149279f7e4929732eb649e709655237
+content: sha256:209c6cbb61aeffd1fe033cc400e800da8ad71624def95a1b981e683d959f4c8f
+measured:
+  w: 1280
+  h: 720
+  alpha: false

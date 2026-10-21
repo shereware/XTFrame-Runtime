@@ -1,0 +1,30 @@
+<xt>
+  <head>
+    <!-- Borderless window demo (examples/demos/README.md "borderless", docs/design/23-host-integration.md
+         23.ab): the whole window is the UI. The 36 px title bar is `app-region: drag` (the OS moves the
+         window, Snap and maximize keep working); its three buttons are `app-region: no-drag` and send
+         the out events winMinimize / winMaximize / winClose, which `xtframe-view --borderless` maps to
+         the window controls. -->
+    <link href="borderless.xts"/>
+  </head>
+  <body port:winMinimize="event out" port:winMaximize="event out" port:winClose="event out">
+    <div id="TitleBar">
+      <span id="Title">XTFrame borderless window</span>
+      <button id="Minimize" class="control" on:click="emit(winMinimize)"><div class="glyph min"></div></button>
+      <button id="Maximize" class="control" on:click="emit(winMaximize)"><div class="glyph max"></div></button>
+      <button id="Close" class="control" on:click="emit(winClose)"><span class="glyph close">×</span></button>
+    </div>
+    <div id="Content">
+      <div id="Card">
+        <span id="Heading">No OS frame</span>
+        <span class="line">Drag the title bar to move the window; drag an edge to resize it.</span>
+        <span class="line">The buttons on the right minimize, maximize / restore and close it.</span>
+        <!-- T-393 (08 8.14): drag files from the file manager onto the zone; it lights up while
+             they hover (DropHover) and xtframe-view prints the dropped paths. -->
+        <div id="DropZone" drop-target on:drag.drop="if external state(Dropped)">
+          <span id="DropLabel">Drop files here</span>
+        </div>
+      </div>
+    </div>
+  </body>
+</xt>

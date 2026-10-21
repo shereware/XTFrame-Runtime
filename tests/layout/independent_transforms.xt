@@ -1,0 +1,23 @@
+<xt>
+  <head>
+    <style>
+      /* T-329 (05 §5.9.8): translate / rotate / scale as independent properties. */
+      @keyframes grow { from { scale: 1; } to { scale: 3 2; } }
+      body { width: 400px; height: 300px; }
+      #center { position: absolute; left: 200px; top: 150px; width: 100px; height: 40px;
+                translate: -50% -50%; }
+      #mixed { position: absolute; left: 0px; top: 0px; width: 80px; height: 20px;
+               translate: 25% 6px; }
+      #combined { position: absolute; left: 0px; top: 200px; width: 20px; height: 20px;
+                  rotate: 90deg; transform: translate(10px, 0px); }
+      #grower { position: absolute; left: 300px; top: 200px; width: 20px; height: 20px;
+                animation: grow 2s linear both; }
+    </style>
+  </head>
+  <body>
+    <div id="center"></div>
+    <div id="mixed"></div>
+    <div id="combined"></div>
+    <div id="grower"></div>
+  </body>
+</xt>

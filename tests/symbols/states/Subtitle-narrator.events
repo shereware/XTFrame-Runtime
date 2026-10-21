@@ -1,0 +1,6 @@
+# T-198: Subtitle, state 'narrator'.
+port Sub.narrator false
+port Sub.speaker Mira
+port Sub.line The gate opens at dawn
+update 0.6
+port Sub.narrator true

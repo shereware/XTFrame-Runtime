@@ -1,0 +1,4 @@
+# T-198: OptionCycler, state 'hover'.
+port Mode.current Borderless
+update 0.6
+pointermove 100 38

@@ -1,0 +1,16 @@
+<xt>
+  <head>
+    <style>
+      body { width: 400px; height: 300px; }
+      div { height: 10px; }
+      #host { width: 300px; }
+      #a { width: 60px; height: 40px; }
+      button { width: 50px; height: 20px; }
+    </style>
+  </head>
+  <body id="body">
+    <div id="host"><div id="first" class="item">one</div></div>
+    <anim id="a" src="../lottie/min_solid_anim.json" autoplay="true" loop="true"/>
+    <button id="btn">OK</button>
+  </body>
+</xt>

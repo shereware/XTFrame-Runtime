@@ -1,0 +1,120 @@
+{
+  "version": 1,
+  "name": "Starter UI Project",
+  "id": "starter",
+  "game": "Starter",
+  "spec": {
+    "platforms": [
+      {
+        "name": "pc",
+        "resolutions": [
+          [
+            1280,
+            720
+          ],
+          [
+            1920,
+            1080
+          ]
+        ]
+      }
+    ],
+    "safeArea": {
+      "default": 0.025,
+      "console": 0.05
+    },
+    "input": {
+      "methods": [
+        "mouse",
+        "gamepad"
+      ],
+      "players": 1
+    },
+    "languages": [
+      "en",
+      "zh-TW"
+    ],
+    "fontFallback": {
+      "zh-TW": [
+        "Microsoft JhengHei",
+        "Noto Sans TC",
+        "Noto Sans CJK TC"
+      ]
+    },
+    "budget": {
+      "frameMs": 2,
+      "effectLayers": 24,
+      "fillRate": 3
+    },
+    "engine": {
+      "name": "",
+      "version": ""
+    }
+  },
+  "uis": [
+    {
+      "id": "hud",
+      "doc": "ui/hud/hud.xt",
+      "size": [
+        1280,
+        720
+      ],
+      "tags": [
+        "ingame"
+      ]
+    },
+    {
+      "id": "main-menu",
+      "doc": "ui/main-menu/main-menu.xt",
+      "size": [
+        1280,
+        720
+      ],
+      "tags": [
+        "menu"
+      ]
+    },
+    {
+      "id": "settings",
+      "doc": "ui/settings/settings.xt",
+      "size": [
+        1280,
+        720
+      ],
+      "tags": [
+        "menu"
+      ]
+    }
+  ],
+  "shared": {
+    "assetRoot": "shared",
+    "fontDirs": [],
+    "styles": [],
+    "templateDirs": [],
+    "symbols": "shared/symbols",
+    "tokens": "shared/tokens.xts",
+    "themes": "shared/themes",
+    "strings": "shared/strings",
+    "recipes": "shared/recipes"
+  },
+  "preview": {
+    "dpr": 1
+  },
+  "target": "engine",
+  "publish": {
+    "outDir": "out",
+    "languages": [],
+    "embedImages": false,
+    "embedFonts": false,
+    "thumbnails": [
+      320,
+      180
+    ],
+    "atlas": {
+      "enabled": false,
+      "maxSize": 4096,
+      "padding": 2,
+      "mipmaps": false
+    }
+  }
+}

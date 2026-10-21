@@ -1,0 +1,23 @@
+<xt>
+  <head>
+    <style>
+      /* T-332 (05 §5.9.8): clip-path basic shapes -- a rounded inset, a circle, an ellipse and a
+         star polygon (even-odd), each clipping its background, border and a child. */
+      .cell { position: absolute; width: 112px; height: 112px; background-color: #3a7bd5;
+              border-width: 6px; border-color: #ffd166; }
+      .child { position: absolute; left: 56px; top: 56px; width: 80px; height: 80px;
+               background-color: #ef476f; }
+      #inset { left: 8px; top: 8px; clip-path: inset(10px 14px round 24px 8px); }
+      #circle { left: 136px; top: 8px; clip-path: circle(closest-side at 50% 50%); }
+      #ellipse { left: 8px; top: 136px; clip-path: ellipse(50% 35% at 50% 50%); }
+      #star { left: 136px; top: 136px;
+              clip-path: polygon(50% 0%, 79% 90%, 2% 35%, 98% 35%, 21% 90%); }
+    </style>
+  </head>
+  <body>
+    <div class="cell" id="inset"><div class="child"></div></div>
+    <div class="cell" id="circle"><div class="child"></div></div>
+    <div class="cell" id="ellipse"><div class="child"></div></div>
+    <div class="cell" id="star"><div class="child"></div></div>
+  </body>
+</xt>

@@ -1,0 +1,25 @@
+<xt>
+<head>
+<style>
+  body { width: 256px; height: 256px; background-color: #101820; }
+  #Sparks { position: absolute; left: 118px; top: 200px; width: 20px; height: 8px; }
+  #Snow { position: absolute; left: 16px; top: 16px; width: 224px; height: 4px;
+          particle-color: #ffffff #8fd0ff00; particle-rotation: 0 90; }
+  #Ring { position: absolute; left: 168px; top: 64px; width: 64px; height: 64px; }
+  #Dot { position: absolute; left: 48px; top: 96px; width: 0px; height: 0px; }
+</style>
+</head>
+<body>
+  <!-- T-202 (03 §3.12.5): four emitters at t = 0.5 s, one per shape; additive solid sparks with
+       gravity and drag, textured snow (.xts color and rotation), a circle and a point burst. -->
+  <particles id="Sparks" shape="rect" rate="60" burst="10" lifetime="0.6 1.2" speed="80 160"
+             direction="-90" spread="40" gravity="200" drag="0.1" size="8 2" color="#ffd27a #ff5a00"
+             rotation="0 360" blend="additive" autoplay></particles>
+  <particles id="Snow" shape="edge" texture="checker.png" rate="30" lifetime="2" speed="20 40"
+             direction="90" spread="20" size="10" autoplay></particles>
+  <particles id="Ring" shape="circle" rate="40" lifetime="1" speed="10 30" direction="0" spread="360"
+             size="6 6" color="#77ccff #3366ff #aa66ff #ff66aa00" autoplay></particles>
+  <particles id="Dot" shape="point" rate="0" burst="24" lifetime="2" speed="40 60" direction="0"
+             spread="360" size="5 5" color="#a0ff80" max="16" autoplay></particles>
+</body>
+</xt>

@@ -1,0 +1,12 @@
+id: ebd593f7-2ce1-4547-a139-688de8a0a90d
+type: image
+title: corner-tr-gray
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/435af87a85ae463c106234c071a2815e
+content: sha256:8a51c1f93f2339ab1d772ccac14ebe2960acf64182f2b111f41a27f9d1493746
+measured:
+  w: 300
+  h: 200
+  alpha: true

@@ -1,0 +1,12 @@
+<xt>
+  <head>
+    <!-- T-263f item 12 fixture: a UI Project whose standard symbols were never fetched. The
+         project's symbol directory is shared/lib (not the default shared/symbols) and holds no
+         TopBar.xt: xtframe-compile and xtframe-view fail on the missing file and print the
+         note. Do not add shared/lib/TopBar.xt. -->
+    <link rel="symbols" href="../../shared/lib/TopBar.xt"/>
+  </head>
+  <body>
+    <div style="width: 10px; height: 10px; background-color: #ff0000"></div>
+  </body>
+</xt>

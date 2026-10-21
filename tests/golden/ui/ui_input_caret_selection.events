@@ -1,0 +1,10 @@
+# docs/tasks/T-36.md: focus #inp (value "hello world"), move to the end, then extend the
+# selection left by 5 code points (one per Left+shift) to select "world" with the caret at
+# its start (byte offset 6).
+focus #inp
+key End
+key Left shift
+key Left shift
+key Left shift
+key Left shift
+key Left shift

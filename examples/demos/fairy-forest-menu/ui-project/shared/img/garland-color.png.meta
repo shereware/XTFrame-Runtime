@@ -1,0 +1,12 @@
+id: bad276f7-01cd-4933-bfed-4ab2b008b57b
+type: image
+title: garland-color
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/d583db94799dd3993d1cbd7e0b64cd11
+content: sha256:fe5ab4b7d03d2aaa4f3cc7c03882c944ed5e785530f604c3fdaaf3ae9b77c23d
+measured:
+  w: 640
+  h: 120
+  alpha: true

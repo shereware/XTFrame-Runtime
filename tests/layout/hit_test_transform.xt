@@ -1,0 +1,10 @@
+<xt>
+  <head>
+    <style>
+      #box { position: absolute; left: 100px; top: 100px; width: 40px; height: 40px; transform: rotate(45deg); }
+    </style>
+  </head>
+  <body>
+    <div id="box"></div>
+  </body>
+</xt>

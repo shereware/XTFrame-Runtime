@@ -1,0 +1,93 @@
+/* HUD layout: the anchors of conventions/layouts/hud.xt, filled with standard symbols. Only
+   layout lives here; every color comes from the symbols' tokens. */
+
+body {
+  width: 100vw;
+  height: 100vh;
+  font-family: var(--font-family);
+}
+
+#Screen {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#TopLeft {
+  position: absolute;
+  left: var(--safe-x);
+  top: var(--safe-y);
+  display: flex;
+  flex-direction: column;
+  row-gap: var(--space-3);
+}
+
+#TopCenter {
+  position: absolute;
+  left: calc(50% - 180px);
+  top: var(--safe-y);
+}
+
+#TopRight {
+  position: absolute;
+  right: var(--safe-x);
+  top: var(--safe-y);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  row-gap: var(--space-3);
+}
+
+#Right {
+  position: absolute;
+  right: var(--safe-x);
+  top: 50%;
+}
+
+#Center {
+  position: absolute;
+  left: calc(50% - 40px);
+  top: calc(50% - 40px);
+}
+
+#Damage {
+  position: absolute;
+  left: calc(50% - 160px);
+  top: calc(42.31% - 84.62px);
+  width: 320px;
+  height: 200px;
+}
+
+#LowCenter {
+  position: absolute;
+  left: calc(1safe-left + 288px);
+  width: 640px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  row-gap: var(--space-3);
+  bottom: calc(1safe-bottom + 142px);
+}
+
+#BottomCenter {
+  position: absolute;
+  left: 36.09%;
+  bottom: var(--safe-y);
+}
+
+#BottomRight {
+  position: absolute;
+  right: var(--safe-x);
+  bottom: var(--safe-y);
+  display: flex;
+  justify-content: flex-end;
+  column-gap: var(--space-4);
+}
+
+.ability {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  row-gap: var(--space-2);
+}

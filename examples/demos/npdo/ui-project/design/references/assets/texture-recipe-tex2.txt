@@ -1,0 +1,142 @@
+"""Second pass on the main-menu textures (Opus).
+
+menu-hl-N  (600x84, 2x of 300x42): smoky dark band, feathered edges, faint warm cracks, a blood stain
+           at the marker end. Text sits on the dark part, so the cream label gains contrast instead of losing it.
+tab-hl-N   (372x88, 2x of 186x44): the same recipe for the settings tabs.
+menu-grime (1280x720): dark stains only at the frame edges; the text column stays clean.
+menu-rain  (512x512): tileable thin rain streaks.
+menu-fog   (1280x320): horizontally tileable low fog.
+menu-lamp  (320x320): warm glow for the street lamp.
+"""
+import os
+import numpy as np
+from PIL import Image, ImageFilter
+
+SRC = r"C:\Users\Bigspring\Downloads\黑白混凝土污痕纹理拼贴.png"
+OUT = r"C:\Users\BIGSPR~1\AppData\Local\Temp\claude\E--coding3-ui-demo-4\4acd9e01-5741-4e7d-8d7a-58c8942c1405\scratchpad\textures2"
+os.makedirs(OUT, exist_ok=True)
+rng = np.random.default_rng(7)
+
+sheet = Image.open(SRC).convert("L")
+W, H = sheet.size
+xs = [(0, 502), (518, 1018), (1036, W)]
+ys = [(0, 504), (520, H)]
+tiles = [sheet.crop((x0 + 6, y0 + 6, x1 - 6, y1 - 6)) for (y0, y1) in ys for (x0, x1) in xs]
+
+INK = np.array([14, 11, 10], np.float32) / 255
+CREAM = np.array([232, 222, 200], np.float32) / 255
+BLOOD = np.array([84, 32, 27], np.float32) / 255
+
+
+def over(dst, rgb, a):
+    """Composite a straight-alpha layer (rgb HxWx3, a HxW) over dst (HxWx4, straight alpha)."""
+    da = dst[..., 3]
+    oa = a + da * (1 - a)
+    safe = np.where(oa > 1e-6, oa, 1)
+    dst[..., :3] = (rgb * a[..., None] + dst[..., :3] * (da * (1 - a))[..., None]) / safe[..., None]
+    dst[..., 3] = oa
+    return dst
+
+
+def smoothstep(e0, e1, x):
+    t = np.clip((x - e0) / (e1 - e0), 0, 1)
+    return t * t * (3 - 2 * t)
+
+
+def best_strip(tile, ratio, pick):
+    w, h = tile.size
+    sh = int(round(w / ratio))
+    a = np.asarray(tile, np.float32) / 255
+    scores = [(a[y:y + sh].std(), y) for y in range(0, h - sh, 6)]
+    scores.sort(reverse=True)
+    y = scores[min(pick, len(scores) - 1)][1]
+    return tile.crop((0, y, w, y + sh))
+
+
+def strip(tile, w, h, pick=0):
+    s = best_strip(tile, w / h, pick).resize((w, h), Image.LANCZOS)
+    g = np.asarray(s, np.float32) / 255                # 1 = clean concrete, 0 = stain / crack
+    x = np.linspace(0, 1, w, dtype=np.float32)[None, :]
+    y = np.linspace(0, 1, h, dtype=np.float32)[:, None]
+    vfeather = smoothstep(0.0, 0.22, y) * smoothstep(1.0, 0.78, y)          # soft top / bottom
+    hfade = smoothstep(1.0, 0.25, x) ** 1.4                                  # long fade to the right
+    out = np.zeros((h, w, 4), np.float32)
+    stain = 1 - g
+    # 1. dim warm band: the texture itself is the band (clean concrete = lit, stains and cracks = dark)
+    WARM = np.array([92, 76, 64], np.float32) / 255
+    col = INK + (WARM - INK) * (g ** 1.6)[..., None]
+    band_a = vfeather * hfade * (0.58 + 0.25 * (1 - g))
+    out = over(out, col, band_a)
+    # 2. a few pale flecks where the concrete is cleanest
+    fleck = np.clip((g - 0.86) / 0.14, 0, 1)
+    out = over(out, np.broadcast_to(CREAM, (h, w, 3)), vfeather * hfade * fleck * 0.22)
+    # 3. blood stain at the marker end, eaten by the texture
+    left = smoothstep(0.13, 0.0, x) ** 1.5
+    blood_a = vfeather * left * np.clip((stain - 0.3) * 2.0, 0, 1) * 0.32
+    out = over(out, np.broadcast_to(BLOOD, (h, w, 3)), blood_a)
+    return Image.fromarray((np.clip(out, 0, 1) * 255).astype(np.uint8), "RGBA")
+
+
+for i, t in enumerate(tiles, 1):
+    strip(t, 600, 84).save(os.path.join(OUT, f"menu-hl-{i}.png"), optimize=True)
+    strip(t, 372, 88, pick=3).save(os.path.join(OUT, f"tab-hl-{i}.png"), optimize=True)
+
+# ---- grime: dark stains only at the frame edges ----------------------------------------------
+d = np.asarray(tiles[4].resize((1280, 1280), Image.LANCZOS).crop((0, 280, 1280, 1000)), np.float32) / 255
+stain = np.clip((0.55 - d) / 0.55, 0, 1) ** 1.2
+yy, xx = np.mgrid[0:720, 0:1280].astype(np.float32)
+nx, ny = (xx - 640) / 640, (yy - 360) / 360
+edge = smoothstep(0.55, 1.15, np.sqrt((nx * 0.9) ** 2 + (ny * 1.1) ** 2))
+text_col = 1 - smoothstep(0.55, 0.15, (xx - 0) / 520) * smoothstep(200, 330, yy) * smoothstep(720, 600, yy)
+a = stain * edge * np.clip(text_col, 0, 1) * 0.85
+rgba = np.dstack([np.broadcast_to(INK, (720, 1280, 3)) * 255, a * 255]).astype(np.uint8)
+Image.fromarray(rgba, "RGBA").save(os.path.join(OUT, "menu-grime.png"), optimize=True)
+
+# ---- rain: tileable thin streaks -----------------------------------------------------------------
+RW, RH = 512, 512
+rain = Image.new("L", (RW * 3, RH * 3), 0)
+from PIL import ImageDraw  # noqa: E402
+dr = ImageDraw.Draw(rain)
+for _ in range(260):
+    x0, y0 = rng.uniform(0, RW), rng.uniform(0, RH)
+    ln = rng.uniform(18, 46)
+    dx = ln * 0.09                                       # ~5 degrees
+    val = int(rng.uniform(40, 150))
+    for ox in (0, RW, 2 * RW):
+        for oy in (0, RH, 2 * RH):
+            dr.line([(x0 + ox, y0 + oy), (x0 + ox + dx, y0 + oy + ln)], fill=val, width=1)
+rain = rain.crop((RW, RH, 2 * RW, 2 * RH)).filter(ImageFilter.GaussianBlur(0.6))
+ra = np.asarray(rain, np.float32) / 255
+rgba = np.dstack([np.full((RH, RW), 214), np.full((RH, RW), 220), np.full((RH, RW), 226), ra * 255]).astype(np.uint8)
+Image.fromarray(rgba, "RGBA").save(os.path.join(OUT, "menu-rain.png"), optimize=True)
+
+
+# ---- fog: FFT noise is periodic, so it tiles horizontally ----------------------------------------
+def fft_noise(h, w, scale):
+    f = np.fft.fft2(rng.standard_normal((h, w)))
+    ky = np.fft.fftfreq(h)[:, None]
+    kx = np.fft.fftfreq(w)[None, :]
+    k = np.sqrt((kx * w / scale) ** 2 + (ky * h / scale * 2.2) ** 2)    # wider than tall
+    f *= np.exp(-k ** 2)
+    n = np.real(np.fft.ifft2(f))
+    return (n - n.min()) / (n.max() - n.min())
+
+
+FH, FW = 320, 1280
+n = 0.65 * fft_noise(FH, FW, 6) + 0.35 * fft_noise(FH, FW, 16)
+yv = np.linspace(0, 1, FH, dtype=np.float32)[:, None]
+fa = smoothstep(0.35, 0.85, n) * smoothstep(0.0, 0.45, yv) * smoothstep(1.0, 0.8, yv) * 0.55
+rgba = np.dstack([np.full((FH, FW), 196), np.full((FH, FW), 200), np.full((FH, FW), 204), fa * 255]).astype(np.uint8)
+Image.fromarray(rgba, "RGBA").save(os.path.join(OUT, "menu-fog.png"), optimize=True)
+
+# ---- lamp glow -----------------------------------------------------------------------------------
+S = 320
+yy, xx = np.mgrid[0:S, 0:S].astype(np.float32)
+r = np.sqrt((xx - S / 2) ** 2 + (yy - S / 2) ** 2) / (S / 2)
+la = np.clip(1 - r, 0, 1) ** 2.6 * 0.55 + np.clip(1 - r * 6, 0, 1) ** 1.5 * 0.45
+col = np.dstack([np.full((S, S), 255), np.full((S, S), 196), np.full((S, S), 128)])
+Image.fromarray(np.dstack([col, np.clip(la, 0, 1) * 255]).astype(np.uint8), "RGBA").save(
+    os.path.join(OUT, "menu-lamp.png"), optimize=True)
+
+for f in sorted(os.listdir(OUT)):
+    print(f, os.path.getsize(os.path.join(OUT, f)) // 1024, "KB")

@@ -1,0 +1,9 @@
+id: 9e106927-d2fc-4cf3-ba3e-b9bab82be523
+kind: reference
+title: main menu intro 1 27s glitch
+source:
+  kind: ai:service
+  ref: main-menu-intro-1-27s-glitch.png
+tags: [screenshot, main]
+license: own
+content: sha256:d5de361e7ef492869fb20d58760230b0b09f00a92ef888c6d45c85635d5e4b1f

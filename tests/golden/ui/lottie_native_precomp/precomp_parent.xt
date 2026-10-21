@@ -1,0 +1,13 @@
+<xt>
+  <head>
+    <link rel="stylesheet" href="precomp_parent.xts"/>
+    <link rel="symbols" href="symbols/precomp_parent_Comp0.xt"/>
+  </head>
+  <body>
+    <div id="PrecompParent" class="c_PrecompParent">
+      <div id="Anchor_T" class="xl c_PrecompParent">
+        <use symbol="PrecompParent_Comp0" id="Comp" class="xl" sync="true"></use>
+      </div>
+    </div>
+  </body>
+</xt>

@@ -1,0 +1,3 @@
+# T-198: OptionCycler, state 'normal'.
+port Mode.current Borderless
+update 0.6

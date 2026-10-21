@@ -1,0 +1,12 @@
+id: 350801c7-4a6b-4f6e-ba3e-c5950cd48087
+type: image
+title: item-continue-icon-gray
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/fdb172cdd6dd0d2f6072ce721195fce0
+content: sha256:04a78b5e880f226a01cbf149bd4af40c33dd9973b019b8f041f431e977c9c0d1
+measured:
+  w: 128
+  h: 128
+  alpha: true

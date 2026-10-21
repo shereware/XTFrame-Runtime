@@ -1,0 +1,78 @@
+<xt>
+  <head>
+    <!-- DamageNumber: standard symbol (docs/design/30-ui-project.md 30.4). See README.md.
+         A field that pops a number per hit: the host sets `amount`, `crit` and the offset `x` / `y`
+         from the field's top-left, then fires `hit`; each hit spawns a DamagePop there (27.2.3
+         `spawn()`), which keeps the values it was spawned with, plays `pop` and is recycled after
+         0.45 s. DamageNumberList below is the list-port alternative (a `<repeat>` whose entries
+         enter and exit with item-enter / item-exit). -->
+    <symbol name="DamageNumber" requires="states: Crit">
+      <div id="Box" port:amount="number in" port:crit="bool in" port:x="number in" port:y="number in"
+           port:hit="event in" on:port(hit)="spawn(DamagePop, at=#Origin, lifetime=0.45s, timeline=pop)">
+        <div id="Origin"></div>
+      </div>
+    </symbol>
+    <!-- One popped number, spawned by DamageNumber (its bindings read DamageNumber's ports). -->
+    <symbol name="DamagePop">
+      <div id="Hit" class="dmg-hit" bind:left="x" bind:top="y" bind:state.Crit="crit">
+        <span id="Amount" class="dmg-amount" bind:text="amount | round | thousands"></span>
+      </div>
+    </symbol>
+    <!-- The list-port alternative: numbers are entries of `numbers` (listInsert shows one,
+         listRemove fades it out and removes it). -->
+    <symbol name="DamageNumberList" requires="states: Crit">
+      <div id="Box" port:numbers="list&lt;struct{amount: number, x: number, y: number, crit: bool}&gt; in">
+        <repeat port="numbers" id="Pop" item-enter="play(pop-in)" item-exit="play(pop-out) then remove">
+          <div id="Hit" class="dmg-hit" bind:left="item(x)" bind:top="item(y)" bind:state.Crit="item(crit)">
+            <span id="Amount" class="dmg-amount" bind:text="item(amount) | round | thousands"></span>
+          </div>
+        </repeat>
+      </div>
+    </symbol>
+    <style>
+      symbol(DamageNumber) {
+        #Box { position: relative; width: 320px; height: 200px; pointer-events: none; font-family: var(--font-family); }
+        #Origin { position: absolute; left: 0px; top: 0px; width: 0px; height: 0px; }
+        /* The spawned DamagePop elements are inside the instance: classes reach them. */
+        .dmg-hit { position: absolute; left: 0px; top: 0px; }
+        .dmg-amount {
+          color: var(--color-text);
+          font-size: var(--font-size-l);
+          font-weight: 700;
+          white-space: nowrap;
+          text-effect: outline 2px var(--color-shadow);
+        }
+        .dmg-hit:state(Crit) .dmg-amount { color: var(--color-warning); font-size: var(--font-size-xl); }
+      }
+      symbol(DamagePop) {
+        @timeline pop {
+          #Hit {
+            0s { opacity: 0; transform: translateY(8px) scale(0.6) }
+            0.12s cubic-bezier(0.34, 1.56, 0.64, 1) { opacity: 1; transform: translateY(0px) scale(1) }
+            0.2s { opacity: 1; transform: translateY(-4px) scale(1) }
+            0.45s ease-in { opacity: 0; transform: translateY(-24px) scale(1) }
+          }
+        }
+      }
+      symbol(DamageNumberList) {
+        #Box { position: relative; width: 320px; height: 200px; pointer-events: none; font-family: var(--font-family); }
+        #Pop { position: relative; }
+        .dmg-hit { position: absolute; left: 0px; top: 0px; }
+        .dmg-amount {
+          color: var(--color-text);
+          font-size: var(--font-size-l);
+          font-weight: 700;
+          white-space: nowrap;
+          text-effect: outline 2px var(--color-shadow);
+        }
+        .dmg-hit:state(Crit) .dmg-amount { color: var(--color-warning); font-size: var(--font-size-xl); }
+        @timeline pop-in {
+          #Hit { 0s { opacity: 0; transform: translateY(8px) scale(0.6) } 0.15s cubic-bezier(0.34, 1.56, 0.64, 1) { opacity: 1; transform: translateY(0px) scale(1) } }
+        }
+        @timeline pop-out {
+          #Hit { 0s { opacity: 1; transform: translateY(0px) scale(1) } 0.3s ease-in { opacity: 0; transform: translateY(-24px) scale(1) } }
+        }
+      }
+    </style>
+  </head>
+</xt>

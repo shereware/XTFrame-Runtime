@@ -1,0 +1,4 @@
+# T-325: two Tabs from no focus move to #btn1 then #btn2, which gets the
+# button:focus outline from ui_outline_focus.xts.
+key Tab
+key Tab

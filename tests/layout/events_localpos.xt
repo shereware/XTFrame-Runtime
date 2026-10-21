@@ -1,0 +1,12 @@
+<xt>
+  <head>
+    <style>
+      #translateBox { position: absolute; left: 0px; top: 0px; width: 100px; height: 100px; transform: translate(30px, 40px); }
+      #rotateBox { position: absolute; left: 200px; top: 0px; width: 100px; height: 100px; transform: rotate(90deg); }
+    </style>
+  </head>
+  <body id="body">
+    <div id="translateBox"></div>
+    <div id="rotateBox"></div>
+  </body>
+</xt>

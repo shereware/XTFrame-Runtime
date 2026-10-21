@@ -1,0 +1,12 @@
+id: 621faa7a-4f54-43eb-a7e5-46cdcdc51dd2
+type: image
+title: band-options-tex
+status: draft
+source:
+  kind: import:claude-design
+  ref: /_blob/menu-hl-4.png
+content: sha256:d15a386cb0956a90c2f56caab4747a059f501c71231c454d4c7baa083e5b0818
+measured:
+  w: 600
+  h: 84
+  alpha: true

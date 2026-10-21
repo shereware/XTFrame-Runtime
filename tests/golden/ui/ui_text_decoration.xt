@@ -1,0 +1,21 @@
+<xt>
+  <head>
+    <style>
+      @font-face { font-family: "Noto Sans"; src: "../../fonts/NotoSans-Regular.subset.ttf"; }
+      body { width: 256px; height: 256px; background-color: #ffffff; font-family: "Noto Sans"; }
+      /* T-324 (05 §5.9.8): one line kind per row, the font's own underline metrics, `auto` and
+         explicit thicknesses, a decoration color, and a run override (<s>) in the last row. */
+      .row { position: absolute; left: 16px; font-size: 24px; color: #202020; }
+      #under { top: 24px; text-decoration: underline; }
+      #over { top: 84px; text-decoration: overline #d02020 3px; }
+      #through { top: 144px; text-decoration-line: line-through; text-decoration-color: #2060d0; }
+      #runs { top: 200px; color: #206020; }
+    </style>
+  </head>
+  <body>
+    <div id="under" class="row">Underline text</div>
+    <div id="over" class="row">Overline text</div>
+    <div id="through" class="row">Strike through</div>
+    <div id="runs" class="row">Plain <s>struck</s> <u>under</u></div>
+  </body>
+</xt>

@@ -1,0 +1,3 @@
+# T-198: Toast, state 'normal'.
+port Toasts.toasts [{"title":"Saved","text":"Progress saved"},{"title":"Achievement","text":"First steps"}]
+update 0.6

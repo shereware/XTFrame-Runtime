@@ -1,0 +1,84 @@
+<xt>
+  <head>
+    <link href="../shared/base.xts"/>
+    <link href="demo3-menu.xts"/>
+    <title>Demo 3 Main Menu</title>
+  </head>
+  <body>
+    <div id="demo3-menu" on:show="play(intro)" port:new_game="event out" port:continue_game="event out" port:open_options="event out" port:open_credits="event out">
+      <img id="bg-gray" src="../shared/img/bg-gray.png"/>
+      <div id="trail-layer">
+        <img id="trail-3" src="../shared/img/trail-3.png"/>
+        <img id="trail-2" src="../shared/img/trail-3.png"/>
+        <img id="trail-1" src="../shared/img/trail-3.png"/>
+      </div>
+      <img id="bg-color" src="../shared/img/trail-3.png"/>
+      <div id="vignette"/>
+      <div id="fx-layer">
+        <img id="fx-light" class="s-0619c7" src="../shared/img/fx-light.png"/>
+        <img id="fx-fireflies" src="../shared/img/fx-fireflies.png"/>
+        <div id="fx-petals">
+          <img id="fx-petals-gray" class="s-0619c7" src="../shared/img/fx-petals-gray.png"/>
+          <img id="fx-petals-color" src="../shared/img/fx-petals-color.png"/>
+        </div>
+      </div>
+      <div id="title-group">
+        <h1 id="title-gray" class="title">Demo 3</h1>
+        <h1 id="title-color" class="title">Demo 3</h1>
+        <img id="garland-gray" src="../shared/img/garland-gray.png"/>
+        <img id="garland-color" src="../shared/img/garland-color.png"/>
+      </div>
+      <div id="menu-panel" data-role="menu-list">
+        <div id="panel-warm"/>
+        <img id="corner-tr-gray" src="../shared/img/corner-tr-gray.png"/>
+        <img id="corner-tr-color" src="../shared/img/corner-tr-color.png"/>
+        <img id="corner-bl-gray" src="../shared/img/corner-tr-gray.png"/>
+        <img id="corner-bl-color" src="../shared/img/corner-tr-color.png"/>
+        <button id="item-new" class="menu-item" on:press="play(bloom, hold); emit(new_game)">
+          <div id="item-new-hl" class="item-hl"/>
+          <div id="item-new-icon" class="icon-wrap">
+            <img id="item-new-icon-gray" class="icon" src="../shared/img/item-new-icon-gray.png"/>
+            <img id="item-new-icon-color" class="icon icon-color" src="../shared/img/item-new-icon-color.png"/>
+          </div>
+          <div id="item-new-label" class="label-wrap">
+            <span id="item-new-label-gray" class="label label-gray">New Game</span>
+            <span id="item-new-label-color" class="label label-color">New Game</span>
+          </div>
+        </button>
+        <button id="item-continue" class="menu-item" on:press="emit(continue_game)">
+          <div id="item-continue-hl" class="item-hl"/>
+          <div id="item-continue-icon" class="icon-wrap">
+            <img id="item-continue-icon-gray" class="icon" src="../shared/img/item-continue-icon-gray.png"/>
+            <img id="item-continue-icon-color" class="icon icon-color" src="../shared/img/item-continue-icon-color.png"/>
+          </div>
+          <div id="item-continue-label" class="label-wrap">
+            <span id="item-continue-label-gray" class="label label-gray">Continue</span>
+            <span id="item-continue-label-color" class="label label-color">Continue</span>
+          </div>
+        </button>
+        <button id="item-option" class="menu-item" on:press="emit(open_options)">
+          <div id="item-option-hl" class="item-hl"/>
+          <div id="item-option-icon" class="icon-wrap">
+            <img id="item-option-icon-gray" class="icon" src="../shared/img/item-option-icon-gray.png"/>
+            <img id="item-option-icon-color" class="icon icon-color" src="../shared/img/item-option-icon-color.png"/>
+          </div>
+          <div id="item-option-label" class="label-wrap">
+            <span id="item-option-label-gray" class="label label-gray">Option</span>
+            <span id="item-option-label-color" class="label label-color">Option</span>
+          </div>
+        </button>
+        <button id="item-credits" class="menu-item" on:press="emit(open_credits)">
+          <div id="item-credits-hl" class="item-hl"/>
+          <div id="item-credits-icon" class="icon-wrap">
+            <img id="item-credits-icon-gray" class="icon" src="../shared/img/item-credits-icon-gray.png"/>
+            <img id="item-credits-icon-color" class="icon icon-color" src="../shared/img/item-credits-icon-color.png"/>
+          </div>
+          <div id="item-credits-label" class="label-wrap">
+            <span id="item-credits-label-gray" class="label label-gray">Credits</span>
+            <span id="item-credits-label-color" class="label label-color">Credits</span>
+          </div>
+        </button>
+      </div>
+    </div>
+  </body>
+</xt>
