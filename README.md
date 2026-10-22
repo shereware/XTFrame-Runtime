@@ -6,7 +6,7 @@ server needs, their tests and the public design chapters. The authoring editor i
 product and is not part of this repository.
 
 > **Read-only snapshot.** This repository is exported from the XTFrame main repository by
-> `tools/export_runtime.sh`; every commit is one snapshot (`Source-Commit:` trailer). Pull
+> `Tools/Scripts/export_runtime.sh`; every commit is one snapshot (`Source-Commit:` trailer). Pull
 > requests cannot be merged here directly; see [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 - An offline compiler turns an HTML/CSS subset (`.xt` / `.xts`) and Lottie JSON into a compact
@@ -15,40 +15,40 @@ product and is not part of this repository.
   loads IR, runs layout, style and the timeline/animation system, and produces a backend-agnostic
   draw **command list**.
 - A host engine renders the command list with its own pipeline, or uses one of the reference
-  backends: a software rasterizer (`xt_sw`) and an OpenGL 3.3 backend (`xt_gl`). `xt_shell` is an
+  Code/Backends: a software rasterizer (`xt_sw`) and an OpenGL 3.3 backend (`xt_gl`). `xt_shell` is an
   SDL2 window and main loop for standalone desktop apps.
 
 ## Modules
 
 ```
-core/      xt_core     IR loading, scene graph, properties, timeline, style, layout, events,
+Code/Runtime/core/      xt_core     IR loading, scene graph, properties, timeline, style, layout, events,
                        command-list output (no third-party dependencies)
-compile/   xt_compile  .xt / .xts / Lottie JSON / SVG parsers -> IR
-flow/      xt_flow     node-graph data logic that ships with a bundle (.xtflow)
-bundle/    xt_bundle   UI Project -> Bundle packing and Bundle loading
-text/      xt_text     reference FontProvider / TextShaper (FreeType, HarfBuzz)
-sw/        xt_sw       software rasterizer backend
-gpu/       xt_gpu      device-neutral GPU frame builder
-gl/        xt_gl       OpenGL 3.3 core-profile backend
-shell/     xt_shell    SDL2 window + main loop for standalone desktop apps
-platforms/android/     Android viewer app (SW presentation)
+Code/Runtime/compile/   xt_compile  .xt / .xts / Lottie JSON / SVG parsers -> IR
+Code/Runtime/flow/      xt_flow     node-graph data logic that ships with a bundle (.xtflow)
+Code/Runtime/bundle/    xt_bundle   UI Project -> Bundle packing and Bundle loading
+Code/Runtime/text/      xt_text     reference FontProvider / TextShaper (FreeType, HarfBuzz)
+Code/Runtime/sw/        xt_sw       software rasterizer backend
+Code/Runtime/gpu/       xt_gpu      device-neutral GPU frame builder
+Code/Runtime/gl/        xt_gl       OpenGL 3.3 core-profile backend
+Code/Runtime/shell/     xt_shell    SDL2 window + main loop for standalone desktop apps
+Code/Runtime/platforms/android/     Android viewer app (SW presentation)
 tools/
   xtframe-compile      .xt / .xts / Lottie JSON -> .xtir
   xtframe-pack         UI Project -> Bundle
   xtframe-view         standalone player (window or headless, screenshots, scripted events)
   xtframe-gpu-probe    GPU frame builder diagnostics
-tests/                 doctest unit tests, golden images, fuzz targets
-examples/              engine_integration, desktop_app, lottie_player, demos, ui-project-starter
-docs/design/           design chapters (the specification; Traditional Chinese)
+Tests/                 doctest unit tests, golden images, fuzz targets
+Examples/              engine_integration, desktop_app, lottie_player, demos, ui-project-starter
+Docs/design/           design chapters (the specification; Traditional Chinese)
 ```
 
-`editor/symbols/` is the standard symbol library that `xtframe-pack` copies next to itself and the
+`Assets/Symbols/` is the standard symbol library that `xtframe-pack` copies next to itself and the
 symbol tests read; it is data, not editor code.
 
 ## Building
 
 Requires CMake 3.24 or newer and a C++20 compiler. Third-party code is vendored under
-`third_party/` or fetched at configure time with `FetchContent` at pinned versions (SDL2, FreeType,
+`Code/SDKs/` or fetched at configure time with `FetchContent` at pinned versions (SDL2, FreeType,
 HarfBuzz); nothing has to be installed system-wide.
 
 Windows (Visual Studio 2022):
@@ -76,7 +76,7 @@ ctest --preset ninja-gcc-debug
 | `XT_BUILD_TEXT` | `ON` | `xt_text` (fetches FreeType and HarfBuzz) |
 | `XT_BUILD_TOOLS` | `ON` | the `xtframe-*` command-line tools |
 | `XT_BUILD_TESTS` | `ON` | the test suites |
-| `XT_BUILD_EXAMPLES` | `ON` | the `examples/` programs |
+| `XT_BUILD_EXAMPLES` | `ON` | the `Examples/` programs |
 | `XT_BUILD_FUZZ` | `OFF` | libFuzzer targets (Clang only) |
 | `XT_RUNTIME_OUTPUT_DIR` | empty | output directory of every `xtframe-*` executable |
 
@@ -109,16 +109,16 @@ The host owns the pixel buffer, the clock (`Context::update(dt)`), input (`Conte
 assets (`AssetResolver`) and fonts (`TextShaper`). `Context::render()` can also fill an
 `xt::DamageList` so only the changed rectangles are redrawn and uploaded.
 
-- [`examples/engine_integration/`](examples/engine_integration/) is a complete, runnable host:
+- [`Examples/engine_integration/`](Examples/engine_integration/) is a complete, runnable host:
   it compiles or loads a document or a Bundle, walks every `xt::CmdKind`, and rasterizes the same
   list with `xt_sw` for a reference image.
-- [`docs/design/23-host-integration.md`](docs/design/23-host-integration.md) is the host contract,
-  [`docs/design/09-command-list.md`](docs/design/09-command-list.md) the command list,
-  [`docs/design/22-bundle.md`](docs/design/22-bundle.md) the Bundle format,
-  [`docs/design/02-ir-format.md`](docs/design/02-ir-format.md) the IR and
-  [`docs/design/43-compatibility-and-versions.md`](docs/design/43-compatibility-and-versions.md)
+- [`Docs/design/23-host-integration.md`](Docs/design/23-host-integration.md) is the host contract,
+  [`Docs/design/09-command-list.md`](Docs/design/09-command-list.md) the command list,
+  [`Docs/design/22-bundle.md`](Docs/design/22-bundle.md) the Bundle format,
+  [`Docs/design/02-ir-format.md`](Docs/design/02-ir-format.md) the IR and
+  [`Docs/design/43-compatibility-and-versions.md`](Docs/design/43-compatibility-and-versions.md)
   the compatibility and version promises. Start at
-  [`docs/design/00-overview.md`](docs/design/00-overview.md).
+  [`Docs/design/00-overview.md`](Docs/design/00-overview.md).
 
 ## Command-line tools
 
@@ -133,8 +133,8 @@ Run a tool without arguments to print its full usage (`xtframe-view --help` as w
 ## License
 
 MIT. See [`LICENSE`](LICENSE). Third-party components and their licenses are listed in
-[`third_party/NOTICE.md`](third_party/NOTICE.md).
+[`Code/SDKs/NOTICE.md`](Code/SDKs/NOTICE.md).
 
 ---
 
-Exported from XTFrame 73d496dcac53 (2026-10-22, version 0.9.0).
+Exported from XTFrame 6c75141289b8 (2026-10-22, version 0.9.0).

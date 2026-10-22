@@ -1,0 +1,12 @@
+{
+  "source": "Examples/demos/npdo/ui-project",
+  "dpr": 1,
+  "fonts": [{"family": "Georgia", "sha256": "38dffcaf1fac89492f7c56c600a14daf36ae42f7c21985cd4134ae113124a58f"}],
+  "frames": [0, 30, 120],
+  "uis": [
+    {"id": "main-menu", "width": 1920, "height": 1080},
+    {"id": "settings", "width": 1920, "height": 1080},
+    {"id": "hud", "width": 1920, "height": 1080}
+  ],
+  "scripts": ["main-menu-options.json"]
+}

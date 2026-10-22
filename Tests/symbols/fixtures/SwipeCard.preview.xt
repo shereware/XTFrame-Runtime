@@ -1,0 +1,24 @@
+<xt>
+  <head>
+    <!-- T-241: preview of the SwipeCard standard mobile symbol (golden states and thumbnail). -->
+    <link href="../../../Assets/Symbols/tokens.xts"/>
+    <link rel="symbols" href="../../../Assets/Symbols/mobile/SwipeCard.xt"/>
+    <style>
+      @font-face { font-family: "Noto Sans"; src: "../../fonts/NotoSans-Regular.subset.ttf"; }
+      body {
+        width: 312px;
+        height: 392px;
+        padding: 16px;
+        display: flex;
+        flex-direction: row;
+        align-items: flex-start;
+        column-gap: 16px;
+        row-gap: 12px;
+        background-color: var(--color-bg);
+      }
+    </style>
+  </head>
+  <body>
+    <use symbol="SwipeCard" id="Card" slot:content="Quest" slot:next="Next"/>
+  </body>
+</xt>

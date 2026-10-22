@@ -1,0 +1,91 @@
+# Chunk coverage check for the fuzz_ir seed corpus (Docs/tasks/T-267b.md, L7). Run after
+# xt_fuzz_corpus by Tests/fuzz/CMakeLists.txt:
+#   cmake -DCORPUS_IR_DIR=<dir of *.xtir> -DCHUNK_HEADER=<Code/Runtime/core/include/xt/ir_pod.h> -P check_corpus.cmake
+# Every chunk type `core` knows (each `kChunk<X> = fourcc(...)` constant in CHUNK_HEADER) must occur
+# in at least one corpus `.xtir`; otherwise this fails and prints the missing tags. A missing kind
+# gets a minimal seed `.xt` under Tests/fuzz/seeds/ir/.
+cmake_minimum_required(VERSION 3.24)
+
+if(NOT DEFINED CORPUS_IR_DIR OR NOT DEFINED CHUNK_HEADER)
+    message(FATAL_ERROR "check_corpus.cmake: pass -DCORPUS_IR_DIR=... and -DCHUNK_HEADER=...")
+endif()
+
+# Known chunk tags, as the hex of their four bytes (the file's byte order).
+file(STRINGS "${CHUNK_HEADER}" chunk_lines REGEX "kChunk[A-Z0-9]+ = fourcc\\(")
+set(known_hex "")
+set(known_names "")
+foreach(line IN LISTS chunk_lines)
+    if(line MATCHES "fourcc\\('(.)', '(.)', '(.)', '(.)'\\)")
+        set(tag "${CMAKE_MATCH_1}${CMAKE_MATCH_2}${CMAKE_MATCH_3}${CMAKE_MATCH_4}")
+        string(HEX "${tag}" tag_hex)
+        string(TOLOWER "${tag_hex}" tag_hex)
+        list(APPEND known_hex "${tag_hex}")
+        list(APPEND known_names "${tag}")
+    endif()
+endforeach()
+list(LENGTH known_hex known_count)
+if(known_count EQUAL 0)
+    message(FATAL_ERROR "check_corpus.cmake: no chunk constants found in ${CHUNK_HEADER}")
+endif()
+
+# Reads the little-endian u32 at byte offset `byte` of the hex string `hex` into `out`.
+function(xt_read_u32 hex byte out)
+    math(EXPR pos "${byte} * 2")
+    string(SUBSTRING "${hex}" ${pos} 8 word)
+    string(SUBSTRING "${word}" 0 2 b0)
+    string(SUBSTRING "${word}" 2 2 b1)
+    string(SUBSTRING "${word}" 4 2 b2)
+    string(SUBSTRING "${word}" 6 2 b3)
+    math(EXPR value "0x${b3}${b2}${b1}${b0}")
+    set(${out} ${value} PARENT_SCOPE)
+endfunction()
+
+file(GLOB ir_files "${CORPUS_IR_DIR}/*.xtir")
+set(seen_hex "")
+foreach(ir IN LISTS ir_files)
+    file(SIZE "${ir}" size)
+    if(size LESS 16)
+        continue()  # gen_ir_seed.cmake's empty placeholder for a seed that does not compile
+    endif()
+    file(READ "${ir}" hex HEX)
+    string(SUBSTRING "${hex}" 0 8 magic)
+    if(NOT magic STREQUAL "58544952")  # "XTIR"
+        continue()
+    endif()
+    xt_read_u32("${hex}" 8 chunk_count)
+    set(offset 16)
+    set(index 0)
+    while(index LESS chunk_count)
+        math(EXPR header_end "${offset} + 12")
+        if(header_end GREATER size)
+            break()
+        endif()
+        math(EXPR pos "${offset} * 2")
+        string(SUBSTRING "${hex}" ${pos} 8 type_hex)
+        list(APPEND seen_hex "${type_hex}")
+        math(EXPR len_at "${offset} + 4")
+        xt_read_u32("${hex}" ${len_at} payload_length)
+        math(EXPR offset "${header_end} + ${payload_length}")
+        math(EXPR index "${index} + 1")
+    endwhile()
+endforeach()
+list(REMOVE_DUPLICATES seen_hex)
+
+set(missing "")
+math(EXPR last "${known_count} - 1")
+foreach(i RANGE ${last})
+    list(GET known_hex ${i} tag_hex)
+    list(FIND seen_hex "${tag_hex}" found)
+    if(found EQUAL -1)
+        list(GET known_names ${i} tag)
+        list(APPEND missing "'${tag}'")
+    endif()
+endforeach()
+
+list(LENGTH ir_files ir_count)
+if(missing)
+    list(JOIN missing ", " missing_text)
+    message(FATAL_ERROR "fuzz corpus: no .xtir in ${CORPUS_IR_DIR} (${ir_count} files) has chunk type(s) "
+                        "${missing_text}; add a minimal seed .xt under Tests/fuzz/seeds/ir/")
+endif()
+message(STATUS "fuzz corpus: all ${known_count} IR chunk types covered by ${ir_count} .xtir files")

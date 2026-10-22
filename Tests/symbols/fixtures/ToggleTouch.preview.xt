@@ -1,0 +1,26 @@
+<xt>
+  <head>
+    <!-- T-241: preview of the ToggleTouch standard mobile symbol (golden states and thumbnail). -->
+    <link href="../../../Assets/Symbols/tokens.xts"/>
+    <link rel="symbols" href="../../../Assets/Symbols/mobile/ToggleTouch.xt"/>
+    <style>
+      @font-face { font-family: "Noto Sans"; src: "../../fonts/NotoSans-Regular.subset.ttf"; }
+      body {
+        width: 340px;
+        height: 170px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        column-gap: 16px;
+        row-gap: 12px;
+        background-color: var(--color-bg);
+      }
+    </style>
+  </head>
+  <body>
+    <use symbol="ToggleTouch" id="Sound" slot:label="Sound"/>
+    <use symbol="ToggleTouch" id="Music" slot:label="Music"/>
+    <use symbol="ToggleTouch" id="Off" disabled="true" slot:label="Voice chat"/>
+  </body>
+</xt>

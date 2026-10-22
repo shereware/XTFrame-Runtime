@@ -1,6 +1,6 @@
-XTFrame runtime export (tools/export_runtime.sh)
-source-commit: 73d496dcac537c51d76079d5fa5ffc1e978c3ed4
-source-short: 73d496dcac53
+XTFrame runtime export (Tools/Scripts/export_runtime.sh)
+source-commit: 6c75141289b8fccdeadf8fb8359af770ac3ebadc
+source-short: 6c75141289b8
 source-date: 2026-10-22
 version: 0.9.0
-files: 2260 exported + 5 generated
+files: 2263 exported + 5 generated

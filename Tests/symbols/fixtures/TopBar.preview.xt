@@ -1,0 +1,24 @@
+<xt>
+  <head>
+    <!-- T-241: preview of the TopBar standard mobile symbol (golden states and thumbnail). -->
+    <link href="../../../Assets/Symbols/tokens.xts"/>
+    <link rel="symbols" href="../../../Assets/Symbols/mobile/TopBar.xt"/>
+    <style>
+      @font-face { font-family: "Noto Sans"; src: "../../fonts/NotoSans-Regular.subset.ttf"; }
+      body {
+        width: 420px;
+        height: 130px;
+        padding: 16px;
+        display: flex;
+        flex-direction: row;
+        align-items: flex-start;
+        column-gap: 16px;
+        row-gap: 12px;
+        background-color: var(--color-bg);
+      }
+    </style>
+  </head>
+  <body>
+    <use symbol="TopBar" id="Top" slot:title="Mission 3"/>
+  </body>
+</xt>

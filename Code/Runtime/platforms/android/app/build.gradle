@@ -1,0 +1,94 @@
+// XTFrame View (T-240, Docs/design/23-host-integration.md §23.11.1): the Android test app.
+// SDL2's SDLActivity shell + libmain.so built by the NDK from ../CMakeLists.txt (the XTFrame
+// runtime with the SW presentation path), plus one directory bundle under assets/bundle/.
+plugins {
+    id 'com.android.application'
+}
+
+// Repository root (Code/Runtime/platforms/android/app -> ../../../../..).
+def xtRoot = file("${projectDir}/../../../../..").canonicalFile
+
+// The UI Project packed into assets/bundle/: -PxtProject=<dir>, else Examples/demos/mobile-hud
+// (T-241) when it exists, else Examples/demos/game-ui.
+def xtProject = project.hasProperty('xtProject') ? file(project.property('xtProject')) :
+        (new File(xtRoot, 'Examples/demos/mobile-hud').isDirectory() ?
+                new File(xtRoot, 'Examples/demos/mobile-hud') : new File(xtRoot, 'Examples/demos/game-ui'))
+// The host xtframe-pack: -PxtPack=<exe>, else $XT_PACK, else the Release build in bin/ (T-430).
+def xtPack = project.hasProperty('xtPack') ? project.property('xtPack') :
+        (System.getenv('XT_PACK') ?: new File(xtRoot, 'bin/win_x64/Release/xtframe-pack.exe').path)
+def bundleOut = file("${projectDir}/src/main/assets/bundle")
+
+tasks.register('packXtBundle', Exec) {
+    description = 'Packs the example UI Project into src/main/assets/bundle with the host xtframe-pack.'
+    inputs.dir(xtProject)
+    outputs.dir(bundleOut)
+    doFirst {
+        if (!new File(xtPack.toString()).isFile()) {
+            throw new GradleException("xtframe-pack not found at '${xtPack}'; build it (cmake --build --preset vs2022-editor-release --target xtframe-pack) or pass -PxtPack=<exe>")
+        }
+        project.delete(bundleOut)
+        bundleOut.parentFile.mkdirs()
+    }
+    commandLine xtPack, xtProject.path, '-o', bundleOut.path, '--no-thumbs'
+}
+preBuild.dependsOn('packXtBundle')
+
+android {
+    namespace 'org.xtframe.view'
+    compileSdk 35
+    ndkVersion '27.3.13750724'
+
+    defaultConfig {
+        applicationId 'org.xtframe.view'
+        minSdk 24
+        targetSdk 35
+        versionCode 1
+        versionName '0.8.0'
+        externalNativeBuild {
+            cmake {
+                arguments '-DANDROID_STL=c++_static',
+                        '-DANDROID_PLATFORM=android-24',
+                        '-DCMAKE_BUILD_PARALLEL_LEVEL=6'
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            // arm64 for phones; x86_64 so an emulator can run the debug APK too.
+            ndk {
+                abiFilters 'arm64-v8a', 'x86_64'
+            }
+            externalNativeBuild {
+                cmake {
+                    // The SW rasterizer is far too slow unoptimized; debug APKs build the native
+                    // code optimized (symbols kept).
+                    arguments '-DCMAKE_BUILD_TYPE=RelWithDebInfo'
+                }
+            }
+        }
+        release {
+            minifyEnabled false
+            ndk {
+                abiFilters 'arm64-v8a'
+            }
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path '../CMakeLists.txt'
+            version '3.31.5'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    lint {
+        abortOnError false
+    }
+}

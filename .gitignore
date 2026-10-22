@@ -1,4 +1,8 @@
 build/
+# T-430 (45 §45.4): executables of every build tree, bin/<platform>_<arch>/<Config>/.
+/bin/
+# T-430 (45 §45.3): fetched third-party sources shared by every build tree (Code/SDKs/versions.cmake).
+/Code/SDKs/_fetched/
 build-*/
 out/
 .vs/
@@ -8,7 +12,7 @@ out/
 CMakeUserPresets.json
 __pycache__/
 debug.log
-# T-267a: a mismatching GPU snapshot's dump (tests/gpu writes it to the build tree; older builds wrote
+# T-267a: a mismatching GPU snapshot's dump (Tests/gpu writes it to the build tree; older builds wrote
 # it next to the snapshots).
 *.actual.txt
 
