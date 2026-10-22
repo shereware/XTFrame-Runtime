@@ -55,7 +55,7 @@ run_one() {
     [ -f "$BUILD_DIR/tests/fuzz/fuzz-bin-dir.txt" ] && bin_dir="$(head -1 "$BUILD_DIR/tests/fuzz/fuzz-bin-dir.txt" | tr -d '\r')"
     local bin="$bin_dir/fuzz_$target"
     local corpus="$BUILD_DIR/tests/fuzz/corpus/$target"
-    local regressions="$ROOT/tests/fuzz/regressions/$target"
+    local regressions="$ROOT/Tests/fuzz/regressions/$target"
     local status=0
 
     if [ ! -x "$bin" ]; then
