@@ -24,8 +24,13 @@ int main(int argc, char** argv) {
     options.vsync = false;
     if (!backend.create(options)) {
         const std::string why = backend.lastError();
+        // T-458: a hosted CI runner has no OpenGL 3.3 driver either (WARP is D3D only), so a GL
+        // context or entry point that cannot be created is a SKIP like a missing WebGPU adapter.
         if (why.find("no WebGPU adapter") != std::string::npos ||
-            why.find("no native handle") != std::string::npos) {
+            why.find("no native handle") != std::string::npos ||
+            why.find("entry point missing") != std::string::npos ||
+            why.find("no GL context") != std::string::npos ||
+            why.find("OpenGL 3.3") != std::string::npos) {
             std::printf("SKIP: backend %s: %s\n", XT_SMOKE_NAME, why.c_str());
             return 0;
         }
