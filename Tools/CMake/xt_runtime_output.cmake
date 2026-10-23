@@ -162,6 +162,87 @@ function(xt_apply_runtime_output_dir)
         set(shown "${XT_RUNTIME_OUTPUT_DIR}")
     endif()
     message(STATUS "XT_RUNTIME_OUTPUT_DIR: ${shown} (${tools}; examples/: ${n_examples}, tests/: ${n_tests})")
+    _xt_copy_shared_libraries_now()
+    _xt_check_no_d3dcompiler()
+endfunction()
+
+# _xt_check_no_d3dcompiler() (T-457): a configure warning when XT_RUNTIME_OUTPUT_DIR, its tests/ or its
+# examples/ holds a D3Dcompiler_47.dll. One there (Qt's, deployed by an editor build before T-457)
+# replaces the system copy for every executable of that directory and cannot compile ps_5_1, so each
+# D3D12 pipeline of xt_wgpu is invalid. The editor's windeployqt step no longer deploys it and removes
+# a stale copy next to its own target; this names the ones it cannot see.
+function(_xt_check_no_d3dcompiler)
+    if(NOT WIN32 OR "${XT_RUNTIME_OUTPUT_DIR}" STREQUAL "")
+        return()
+    endif()
+    set(configs ${CMAKE_CONFIGURATION_TYPES} ${CMAKE_BUILD_TYPE})
+    if(NOT configs)
+        set(configs Debug)
+    endif()
+    list(REMOVE_DUPLICATES configs)
+    foreach(config IN LISTS configs)
+        string(REPLACE "$<CONFIG>" "${config}" dir "${XT_RUNTIME_OUTPUT_DIR}")
+        if(dir MATCHES "\\$<")
+            return()
+        endif()
+        foreach(sub "" "/tests" "/examples")
+            if(EXISTS "${dir}${sub}/D3Dcompiler_47.dll")
+                message(WARNING "${dir}${sub}/D3Dcompiler_47.dll: a D3D compiler in the shared output "
+                                "directory makes every D3D12 pipeline of xt_wgpu invalid there; delete it "
+                                "(the editor's windeployqt step no longer deploys it, T-457)")
+            endif()
+        endforeach()
+    endforeach()
+endfunction()
+
+# -- Shared libraries next to the executables (T-437, Docs/design/10-backends.md §10.10.1) --------
+# A prebuilt third-party shared library (an IMPORTED SHARED target, e.g. xt::wgpu_native) has to sit
+# next to the executables that load it, as the Qt DLLs do (windeployqt, Code/Editor/Qt). Two ways:
+#   - xt_runtime_shared_library(<imported>): copied into XT_RUNTIME_OUTPUT_DIR, its tests/ and its
+#     examples/ for every configuration at the end of the configure step (the deferred
+#     xt_apply_runtime_output_dir()), so bin/<tag>/<Config>/ holds it before anything is built;
+#   - xt_copy_runtime_library(<target> <imported>): copied next to <target> after each build of it
+#     (also when XT_RUNTIME_OUTPUT_DIR is empty, as in a parent project's tree).
+
+# xt_runtime_shared_library(<imported>): registers <imported> for the configure-time copy.
+function(xt_runtime_shared_library imported)
+    set_property(GLOBAL APPEND PROPERTY XT_RUNTIME_SHARED_LIBRARIES ${imported})
+endfunction()
+
+# xt_copy_runtime_library(<target> <imported>): POST_BUILD copy of <imported>'s file next to <target>.
+function(xt_copy_runtime_library target imported)
+    add_custom_command(TARGET ${target} POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:${imported}>" "$<TARGET_FILE_DIR:${target}>"
+        VERBATIM)
+endfunction()
+
+# _xt_copy_shared_libraries_now(): the configure-time copy of every registered library into
+# XT_RUNTIME_OUTPUT_DIR (with `$<CONFIG>` replaced by each configuration), its tests/ and examples/.
+function(_xt_copy_shared_libraries_now)
+    get_property(libs GLOBAL PROPERTY XT_RUNTIME_SHARED_LIBRARIES)
+    if(NOT libs OR "${XT_RUNTIME_OUTPUT_DIR}" STREQUAL "")
+        return()
+    endif()
+    set(configs ${CMAKE_CONFIGURATION_TYPES} ${CMAKE_BUILD_TYPE})
+    if(NOT configs)
+        set(configs Debug)
+    endif()
+    list(REMOVE_DUPLICATES configs)
+    foreach(lib IN LISTS libs)
+        get_target_property(file ${lib} IMPORTED_LOCATION)
+        if(NOT file OR NOT EXISTS "${file}")
+            continue()
+        endif()
+        foreach(config IN LISTS configs)
+            string(REPLACE "$<CONFIG>" "${config}" dir "${XT_RUNTIME_OUTPUT_DIR}")
+            if(dir MATCHES "\\$<")
+                return()  # another generator expression: left to xt_copy_runtime_library
+            endif()
+            foreach(sub "" "/tests" "/examples")
+                file(COPY "${file}" DESTINATION "${dir}${sub}")
+            endforeach()
+        endforeach()
+    endforeach()
 endfunction()
 
 # xt_runtime_output_dir_deferred(): call once from this tree's top-level CMakeLists.txt.

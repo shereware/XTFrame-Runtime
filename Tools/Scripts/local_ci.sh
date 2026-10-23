@@ -28,6 +28,11 @@
 # XT_FUZZ_SMOKE_SECONDS, default 20, seconds; any crash / timeout / leak fails the gate; skipped
 # when WSL has no clang++) and the MSVC SW shell stage (T-267b: the vs2022-sw-shell preset,
 # XT_SHELL_GL=OFF, the Android presentation path; xtframe-view and ctest -R xtframe-view_sw).
+# T-441 (Docs/design/10-backends.md §10.10.3): after MSVC Release, the WebGPU tests (xt_wgpu_tests,
+# xt_golden_wgpu, xt_backends_tests via Tools/Scripts/wgpu_tests.sh) run twice, XT_WGPU_BACKEND=d3d12 and
+# =vulkan; a missing adapter fails. After WSL GCC Debug they run once more on Vulkan over lavapipe
+# (XT_WGPU_FALLBACK=1, the Mesa lavapipe ICD forced), or SKIP with the reason when WSL has no lavapipe.
+# The fuzz build has no wgpu (XT_BUILD_GL=OFF builds no GPU backend).
 set -u
 cd "$(dirname "$0")/../.."
 ROOT="$(pwd)"
@@ -117,6 +122,10 @@ step "MSVC Debug"
 # editor target fails the gate here. (A cache configured with -DXT_BUILD_EDITOR=ON by hand would
 # defeat it; the preset never sets it.)
 cmake --preset vs2022 >/dev/null || fail=1
+# T-441/T-457: Qt's D3Dcompiler_47.dll in the shared bin/win_x64/<Config>/ (or tests/) cannot compile
+# ps_5_1 and makes every D3D12 pipeline of xt_wgpu invalid; the editor's windeployqt step no longer
+# deploys it (Code/Editor/Qt/CMakeLists.txt), so one there is a failure, not something to delete.
+for d3d in bin/win_x64/{Debug,Release}{,/tests}/D3Dcompiler_47.dll; do [ -e "$d3d" ] && { echo "FAIL: $d3d exists (T-457)"; fail=1; }; done
 find bin/win_x64/Debug -name "*.exe" -delete 2>/dev/null
 cmake --build --preset vs2022-debug --parallel $CLEAN 2>&1 | grep -iE " error |warning C" | grep -v "_deps" && fail=1
 # MSBuild occasionally reports success without relinking an executable ("Not Run" in ctest);
@@ -135,6 +144,12 @@ if [ -z "$QUICK" ]; then
   out="$(run_ctest vs2022-release)"
   if echo "$out" | grep -q "Not Run"; then echo "(ctest: missing executable, rebuilding once)"; cmake --build --preset vs2022-release --parallel >/dev/null 2>&1; out="$(run_ctest vs2022-release)"; fi
   echo "$out"; echo "$out" | grep -q "100% tests passed" || fail=1
+
+  # T-441: the WebGPU tests on both Windows backends (a missing adapter fails, unlike plain ctest).
+  step "MSVC wgpu: D3D12 (vs2022-release, Tools/Scripts/wgpu_tests.sh)"
+  XT_WGPU_BACKEND=d3d12 bash Tools/Scripts/wgpu_tests.sh --preset vs2022-release || fail=1
+  step "MSVC wgpu: Vulkan (vs2022-release, XT_WGPU_BACKEND=vulkan)"
+  XT_WGPU_BACKEND=vulkan bash Tools/Scripts/wgpu_tests.sh --preset vs2022-release || fail=1
 
   step "MSVC editor (Qt5)"
   if [ -n "$NO_EDITOR" ]; then
@@ -308,6 +323,18 @@ EOF
     wsl -d Ubuntu-24.04 -- bash -lc "cd '$WROOT' && cmake -S . -B build/wsl-gcc -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=g++ $WSL_EDITOR_DEF >/dev/null && cmake --build build/wsl-gcc 2>&1 | grep -E 'error:|FAILED:' | head -5; cd build/wsl-gcc && ctest --output-on-failure 2>&1 | grep -E 'tests passed|Failed|\*\*\*'" | tee >(cat >&2) | grep -q "100% tests passed" || fail=1
     # A compile or link error inside the WSL build must fail the run even if stale test binaries still pass.
     wsl -d Ubuntu-24.04 -- bash -lc "cd '$WROOT' && cmake --build build/wsl-gcc 2>&1 | grep -qE 'error:|FAILED:'" && { echo "WSL build reported errors"; fail=1; }
+
+    # T-441: Vulkan on lavapipe (the linux CI leg's adapter), forced through the ICD file so a
+    # D3D12-backed WSL GPU driver is not picked instead.
+    step "WSL GCC wgpu: Vulkan on lavapipe (build/wsl-gcc, XT_WGPU_FALLBACK=1)"
+    LVP_ICD="$(wsl -d Ubuntu-24.04 -- bash -lc "ls /usr/share/vulkan/icd.d/lvp_icd*.json 2>/dev/null | head -n 1" | tr -d '\r')"
+    if ! wsl -d Ubuntu-24.04 -- bash -lc "cd '$WROOT/build/wsl-gcc' && ctest -N -R '^xt_wgpu_tests\$' | grep -q 'Total Tests: 1'" 2>/dev/null; then
+      echo "SKIP WSL wgpu: build/wsl-gcc has no xt_wgpu_tests (configured without xt_wgpu: see its 'xt_wgpu:' configure line)"
+    elif [ -z "$LVP_ICD" ]; then
+      echo "SKIP WSL wgpu: lavapipe not installed in WSL (sudo apt install -y mesa-vulkan-drivers)"
+    else
+      wsl -d Ubuntu-24.04 -- bash -lc "cd '$WROOT' && XT_WGPU_BACKEND=vulkan XT_WGPU_FALLBACK=1 VK_DRIVER_FILES='$LVP_ICD' VK_ICD_FILENAMES='$LVP_ICD' bash Tools/Scripts/wgpu_tests.sh --test-dir build/wsl-gcc" || fail=1
+    fi
   else
     echo; echo "(WSL cmake/ninja not found: GCC step skipped. Install with: sudo apt install -y cmake ninja-build clang libx11-dev libxext-dev libgl1-mesa-dev xvfb)"
   fi

@@ -93,6 +93,16 @@ struct CompileOptions {
     /// that place them) are compiled. Symbol definitions and symbol libraries are kept as they
     /// are. No reference warning is raised. Ignored when `stripEditorOnly` is also true.
     bool editorOnlyAsScene = false;
+    /// T-452 (Docs/design/17-editor.md §17.25): when set, asked instead of the disk whether a file
+    /// system entry exists at a UTF-8 path, wherever an asset reference is resolved: the search
+    /// directory probe of `<img src>` / `<anim src>` / `@font-face src` (`searchDirs`) and the "not
+    /// found" check of image and font assets. The editor passes a table it refreshes itself, so a
+    /// recompile after an edit asks the disk nothing. Unset (the default): `std::filesystem::exists`.
+    std::function<bool(std::string_view path)> fileExists;
+    /// T-452: when set, reads the whole file at a UTF-8 path instead of the disk for the files an
+    /// `<anim src>` (Lottie) and an `<img src="*.svg">` name; false = cannot be read (reported as
+    /// before). Unset (the default): the file is read from disk.
+    std::function<bool(std::string_view path, std::vector<uint8_t>& out)> readAssetFile;
 };
 
 /// T-273d: the tail of the warning a published build (CompileOptions::publishAssetNames) gives for

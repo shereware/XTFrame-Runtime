@@ -77,7 +77,25 @@ std::vector<LottieFixture> loadLottieManifest(const std::string& manifestPath) {
     return out;
 }
 
+FrameBackend swFrameBackend() {
+    return [](int width, int height, const xt::Color& clear, const xt::CommandList& cmds,
+              xt::TextShaper* shaper, xt::AssetResolver* assets, const xt::IrView* ir) {
+        std::vector<uint8_t> buf(static_cast<size_t>(width) * static_cast<size_t>(height) * 4, 0);
+        xt::sw::SwRenderer renderer;
+        xt::sw::SwTarget target{buf.data(), width, height, width * 4};
+        renderer.setTarget(target);
+        renderer.clear(clear);
+        renderer.render(cmds, shaper, assets, ir);
+        return buf;
+    };
+}
+
 std::vector<uint8_t> renderLottieFixture(const LottieFixture& fx, const std::string& lottieDir) {
+    return renderLottieFixture(fx, lottieDir, swFrameBackend());
+}
+
+std::vector<uint8_t> renderLottieFixture(const LottieFixture& fx, const std::string& lottieDir,
+                                         const FrameBackend& backend) {
     const fs::path jsonPath = fs::path(lottieDir) / fx.jsonPath;
 
     xt::compile::CompileOptions options;
@@ -119,14 +137,7 @@ std::vector<uint8_t> renderLottieFixture(const LottieFixture& fx, const std::str
 
     xt::CommandList cmds;
     ctx.render(cmds);
-
-    std::vector<uint8_t> buf(static_cast<size_t>(fx.width) * static_cast<size_t>(fx.height) * 4, 0);
-    xt::sw::SwRenderer renderer;
-    xt::sw::SwTarget target{buf.data(), fx.width, fx.height, fx.width * 4};
-    renderer.setTarget(target);
-    renderer.clear(fx.clearColor);
-    renderer.render(cmds, nullptr, &resolver, &doc->ir());
-    return buf;
+    return backend(fx.width, fx.height, fx.clearColor, cmds, nullptr, &resolver, &doc->ir());
 }
 
 }  // namespace xt::golden

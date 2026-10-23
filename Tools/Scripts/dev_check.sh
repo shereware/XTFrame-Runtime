@@ -4,7 +4,7 @@
 # each test suite once with a timeout so a hung process never blocks the caller.
 #   Tools/Scripts/dev_check.sh [--release] [--no-build] [--agent] <target>... -- <suite>...
 #   suites: editor | editor_service | editor_qt | editor_qt_slow | editor_qt_gl | flow | bundle | history | core | golden |
-#           gpu | gl | text | agent | import | lottie | symbols | templates | headers | layering | testtemp | import-py | ctest | corpus | ir |
+#           gpu | gl | wgpu | backends | text | agent | import | lottie | symbols | templates | headers | layering | testtemp | import-py | ctest | corpus | ir |
 #           roundtrip | shape
 #          (ctest = ctest -E '^xt_.*_tests$', the command-line tests (T-267d); headers = Tools/Scripts/check_public_headers.sh, no build;
 #           layering = Tools/Scripts/check_layering.sh (T-274, R never includes / links E) and, since T-267d,
@@ -26,7 +26,13 @@
 #           roundtrip = the doctest suite `roundtrip` of xt_bundle_tests and xt_editor_service_tests (T-410, 43 §43.2:
 #           the frozen cross-version fixtures of Tests/roundtrip read, written back and compared with latest/);
 #           shape = Tools/Scripts/check_file_length.sh (must pass) and Tools/Scripts/check_dupcheck.sh (warns when the duplicate
-#           group count rises, fails only when dupcheck.py fails) (T-415, 14 §14.5), no build)
+#           group count rises, fails only when dupcheck.py fails) (T-415, 14 §14.5), and Tools/Scripts/check_style_groups.sh
+#           (must pass; T-443, 46 §46.4), no build)
+# T-439: backends runs xt_backends_tests (Code/Backends' parts) and the CTest entries of Tests/backends and
+# Examples/backends (backend_smoke_*, xtframe-view_renderer_*, example_minimal_sdl2_wgpu*); a missing WebGPU
+# adapter is a SKIP inside them, not a failure.
+# T-437: wgpu runs xt_wgpu_tests (Docs/design/10-backends.md §10.10.3); its "SKIP: no WebGPU adapter" exit
+# (0, no doctest run) is a failure here, like a missing GL context, unless XT_ALLOW_NO_GL=1.
 # T-267a: XT_REQUIRE_GL=1 is exported for every suite, so `gl` and `editor_qt_gl` FAIL when no GL
 # context can be created. Set XT_ALLOW_NO_GL=1 yourself to get the old "no context = skipped" behaviour.
 # Each doctest suite prints its summary, every failing test case (name + first failing check, at most
@@ -85,6 +91,8 @@ changed_selection() {
       Code/Editor/Core/*)     suites+=(editor editor_service editor_qt);;
       Code/Editor/History/*)  suites+=(history editor_qt);;
       Code/Tools/view/*) suites+=(ctest);;
+      Code/Runtime/wgpu/*|Tests/wgpu/*|Tools/CMake/xt_wgpu.cmake) suites+=(wgpu);;  # T-437
+      Code/Backends/*|Tests/backends/*|Examples/backends/*|Code/Tools/view/view_renderer*) suites+=(backends);;  # T-439
       Assets/Templates/*|Tests/templates/*) suites+=(templates);;  # T-424
       Tests/editor_qt/*) suites+=(editor_qt);;
       Tests/editor_service/*) suites+=(editor_service);;
@@ -130,6 +138,8 @@ for s in "${suites[@]}"; do
     golden)    targets+=(xt_golden);;
     gpu)       targets+=(xt_gpu_tests);;
     gl)        targets+=(xt_gl_tests);;
+    wgpu)      targets+=(xt_wgpu_tests);;  # T-437
+    backends)  targets+=(xt_backends_tests xtframe-view xtframe-pack minimal_sdl2_wgpu);;  # T-439
     text)      targets+=(xt_text_tests);;
     agent)     targets+=(xt_agent_tests);;
     perf)      targets+=(xt_perf);;
@@ -239,9 +249,15 @@ run() {
   if [ "$offscreen" = 1 ]; then out="$(QT_QPA_PLATFORM=offscreen timeout "$limit" "$exe" "$@" 2>&1 </dev/null)"; rc=$?
   else out="$(timeout "$limit" "$exe" "$@" 2>&1 </dev/null)"; rc=$?; fi
   summarize "$out"
+  echo "$out" | tr -d '\r' | grep "^xt_wgpu adapter:" | head -1  # T-437: which adapter xt_wgpu_tests used
   # XT_ALLOW_NO_GL=1 only: the GL suites' own "no GL context ... skipping" exit counts as a pass.
   if [ "${XT_ALLOW_NO_GL:-0}" = 1 ] && [ $rc -eq 0 ] && echo "$out" | grep -q "no GL context.*skipping\|skipped: no usable OpenGL"; then
     echo "$name: skipped, no GL context (XT_ALLOW_NO_GL=1)"; return
+  fi
+  # T-437: likewise xt_wgpu_tests without an adapter (otherwise: no doctest summary = failure).
+  if echo "$out" | grep -q "^SKIP: no WebGPU adapter"; then
+    echo "$out" | tr -d '\r' | grep "^SKIP: no WebGPU adapter"
+    if [ "${XT_ALLOW_NO_GL:-0}" = 1 ] && [ $rc -eq 0 ]; then echo "$name: skipped (XT_ALLOW_NO_GL=1)"; return; fi
   fi
   # 124 is both timeout(1)'s kill and the per-case watchdog of Tests/common/test_watchdog.h (T-267d),
   # which prints the case as "TEST TIMEOUT: ..." first.
@@ -285,6 +301,12 @@ run_suite() {
     gpu)       run gpu 900 1 "$BIN/tests/xt_gpu_tests.exe";;
     text)      run text 900 1 "$BIN/tests/xt_text_tests.exe";;
     gl)        run gl 600 0 "$BIN/tests/xt_gl_tests.exe";;
+    wgpu)      run wgpu 600 0 "$BIN/tests/xt_wgpu_tests.exe";;  # T-437
+    backends)  run backends 600 0 "$BIN/tests/xt_backends_tests.exe"  # T-439
+               out="$(cd "$B" && timeout 900 ctest -C "$CFG" -R '^backend_smoke_|^xtframe-view_renderer_|^example_minimal_sdl2_wgpu' \
+                      --no-tests=error 2>&1 </dev/null)"; rc=$?
+               echo "$out" | tr -d '\r' | grep -E "tests passed|Failed|\*\*\*" | head -20
+               [ $rc -ne 0 ] && { echo "backends: ctest failed (exit $rc)"; fail=1; };;
     agent)     run agent 900 1 "$BIN/tests/xt_agent_tests.exe";;
     perf)      run perf 900 1 "$BIN/tests/xt_perf.exe";;
     # T-410: the cross-version round trips (Tests/roundtrip), in both executables that hold them.
@@ -303,7 +325,8 @@ run_suite() {
     ir)        out="$(bash Tools/Scripts/check_ir_layout.sh 2>&1)"; echo "$out" | tail -12; echo "$out" | grep -q "IR LAYOUT: PASS" || fail=1;;  # T-405
     # T-415: file-length rule (fails) and duplicate-group baseline (warning only).
     shape)     out="$(bash Tools/Scripts/check_file_length.sh 2>&1)"; echo "$out" | tail -12; echo "$out" | grep -q "FILE LENGTH: PASS" || fail=1
-               out="$(bash Tools/Scripts/check_dupcheck.sh 2>&1)"; echo "$out" | tail -6; echo "$out" | grep -q "DUPCHECK: PASS" || fail=1;;
+               out="$(bash Tools/Scripts/check_dupcheck.sh 2>&1)"; echo "$out" | tail -6; echo "$out" | grep -q "DUPCHECK: PASS" || fail=1
+               out="$(bash Tools/Scripts/check_style_groups.sh 2>&1)"; echo "$out" | tail -12; echo "$out" | grep -q "style groups check OK" || fail=1;;
     import-py) out="$(NO_COLOR=1 python -m unittest discover -s Tests/import -p "test_*.py" 2>&1)"; echo "$out" | tail -4; { echo "$out" | grep -q "^Ran [0-9]* test" && ! echo "$out" | grep -q "FAILED"; } || fail=1;;
     # T-267d: the command-line tests only (the xt_add_expect_exit_test entries and the other CTest
     # entries that are not a whole doctest executable); the -E pattern leaves out the whole

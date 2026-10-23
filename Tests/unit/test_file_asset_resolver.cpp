@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "doctest.h"
+#include "file_asset_resolver_access.h"
 #include "file_open_utf8.h"
 #include "test_temp.h"
 #include "xt/asset_resolver.h"
@@ -509,6 +510,9 @@ TEST_CASE("FileAssetResolver::revalidate: a file rewritten under the same name i
         g_decodeCalls = 0;
         CHECK(resolver.imageSize(0, view).x == 17.0f);
         writeText(base / "a.png", gif21);
+        // T-452: the header-only size is compared by the file's stamp like a decode, so the
+        // rewrite (same length) has to move the modification time on, as above.
+        touchLater(base / "a.png");
         CHECK(resolver.imageSize(0, view).x == 17.0f);  // cached
         CHECK(resolver.revalidate() == 0);              // nothing decoded, nothing discarded
         CHECK(resolver.imageSize(0, view).x == 21.0f);
@@ -526,6 +530,112 @@ TEST_CASE("FileAssetResolver::revalidate: a file rewritten under the same name i
         CHECK(resolver.revalidate() == 0);
         CHECK(resolver.imageView(id, embedded.value()) == image);
     }
+    fs::remove_all(base, ec);
+}
+
+// T-452 (Docs/tasks/T-452.md items 1 and 4): the editor calls resetAssetIds() before every
+// recompile. A file decoded before -- or sized from its header only -- is found again by its path
+// without reading it: no readBytes() while nothing changed on disk, and revalidate() asks one file
+// status per cached file. A file rewritten on disk is still read again after revalidate().
+TEST_CASE(
+    "FileAssetResolver: T-452 resetAssetIds() reads no file again; revalidate() still picks up a rewrite") {
+    using Access = FileAssetResolverTestAccess;
+    fs::path base = xt::test::tempDir() / "xt_t452_no_reread";
+    std::error_code ec;
+    fs::remove_all(base, ec);
+    writeText(base / "a.png", "aaa");
+    const std::string gif17 = {'G', 'I', 'F', '8', '9', 'a', 17, 0, 9, 0, 0, 0, 0};
+    const std::string gif21 = {'G', 'I', 'F', '8', '9', 'a', 21, 0, 9, 0, 0, 0, 0};
+    writeText(base / "b.gif", gif17);
+    std::vector<uint8_t> irBytes = irWithExternalAssets({"a.png", "b.gif"});
+    Result<IrView> opened = IrView::open(IrBlob{irBytes.data(), irBytes.size()});
+    REQUIRE(opened.ok());
+    const IrView& view = opened.value();
+    auto touchLater = [&](const fs::path& file) {
+        fs::last_write_time(file, fs::last_write_time(file) + std::chrono::seconds(2));
+    };
+
+    FileAssetResolver resolver(base.string(), fakeDecode);
+    resolver.setFileStatusFn(testFileStatus);
+    const ImageData* a = resolver.imageView(0, view);
+    REQUIRE(a != nullptr);
+    CHECK(resolver.imageSize(1, view).x == 17.0f);  // header only (fakeDecode would say 13)
+    const size_t reads = Access::readBytesCount(resolver);
+    CHECK(reads == 2);
+    CHECK(Access::headerSizeCount(resolver) == 1);
+
+    // Sixty recompiles: the same files, nothing read, nothing asked about.
+    const size_t stats = Access::statCount(resolver);
+    for (int i = 0; i < 60; ++i) {
+        resolver.resetAssetIds();
+        CHECK(resolver.imageSize(0, view).x == 3.0f);
+        CHECK(resolver.imageView(0, view) == a);
+        CHECK(resolver.imageSize(1, view).x == 17.0f);
+    }
+    CHECK(Access::readBytesCount(resolver) == reads);
+    CHECK(Access::statCount(resolver) == stats);
+    // One status query per cached file, nothing discarded, still nothing read.
+    CHECK(resolver.revalidate() == 0);
+    CHECK(Access::statCount(resolver) == stats + 2);
+    resolver.resetAssetIds();
+    CHECK(resolver.imageView(0, view) == a);
+    CHECK(resolver.imageSize(1, view).x == 17.0f);
+    CHECK(Access::readBytesCount(resolver) == reads);
+
+    // Rewritten on disk: the cached results stay until revalidate(), which notices both files;
+    // each is read exactly once afterwards.
+    writeText(base / "a.png", "xyzw");
+    touchLater(base / "a.png");
+    writeText(base / "b.gif", gif21);
+    touchLater(base / "b.gif");
+    resolver.resetAssetIds();
+    CHECK(resolver.imageView(0, view) == a);
+    CHECK(resolver.imageSize(1, view).x == 17.0f);
+    CHECK(resolver.revalidate() == 1);  // the decode; the header-only size is forgotten too
+    resolver.resetAssetIds();
+    const ImageData* a2 = resolver.imageView(0, view);
+    REQUIRE(a2 != nullptr);
+    CHECK(a2->width == 4);
+    CHECK(resolver.imageSize(1, view).x == 21.0f);
+    CHECK(Access::readBytesCount(resolver) == reads + 2);
+    resolver.resetAssetIds();
+    CHECK(resolver.imageView(0, view) == a2);
+    CHECK(resolver.imageSize(1, view).x == 21.0f);
+    CHECK(Access::readBytesCount(resolver) == reads + 2);
+
+    // forgetFile() still means "read it again", for a decode and for a header-only size.
+    resolver.forgetFile("b.gif");
+    resolver.forgetFile("a.png");
+    resolver.resetAssetIds();
+    CHECK(resolver.imageSize(1, view).x == 21.0f);
+    REQUIRE(resolver.imageView(0, view) != nullptr);
+    CHECK(Access::readBytesCount(resolver) == reads + 4);
+    fs::remove_all(base, ec);
+}
+
+// T-452: without a file-status function the decode is still found again by its path after
+// resetAssetIds() (never compared with the disk, T-263e), and no status is ever asked.
+TEST_CASE(
+    "FileAssetResolver: T-452 the decode cache across resetAssetIds() also holds without a file-status "
+    "function") {
+    using Access = FileAssetResolverTestAccess;
+    fs::path base = xt::test::tempDir() / "xt_t452_no_status";
+    std::error_code ec;
+    fs::remove_all(base, ec);
+    writeText(base / "a.png", "aaa");
+    std::vector<uint8_t> irBytes = irWithExternalAssets({"a.png"});
+    Result<IrView> opened = IrView::open(IrBlob{irBytes.data(), irBytes.size()});
+    REQUIRE(opened.ok());
+    FileAssetResolver resolver(base.string(), fakeDecode);
+    const ImageData* a = resolver.imageView(0, opened.value());
+    REQUIRE(a != nullptr);
+    const size_t reads = Access::readBytesCount(resolver);
+    for (int i = 0; i < 10; ++i) {
+        resolver.resetAssetIds();
+        CHECK(resolver.imageView(0, opened.value()) == a);
+    }
+    CHECK(Access::readBytesCount(resolver) == reads);
+    CHECK(Access::statCount(resolver) == 0);
     fs::remove_all(base, ec);
 }
 

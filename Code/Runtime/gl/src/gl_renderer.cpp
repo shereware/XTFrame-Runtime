@@ -106,6 +106,11 @@ struct GlRenderer::Impl {
         }
         device.submit(frame);
         lastWarning = device.takeWarning();  // T-203: a custom shader that failed to compile.
+        if (stats != nullptr) {
+            // T-457: CPU submission time per kind, the meaning xt_wgpu gives them (21 §21.2).
+            stats->effectsMs += device.lastStats().effectsMs;
+            stats->textMs += device.lastStats().textMs;
+        }
 
         if (builder.lastError()[0] != '\0') {
             lastError = builder.lastError();

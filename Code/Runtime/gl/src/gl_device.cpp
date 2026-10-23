@@ -1036,7 +1036,15 @@ void GlDevice::submit(const gpu::GpuFrame& frame) {
             }
             for (uint32_t c = pass.firstCmd; c < pass.firstCmd + pass.cmdCount && c < frame.cmds.size();
                  ++c) {
+                // T-457 (21 §21.2): effect and glyph draws timed apart, as xt_wgpu does.
+                const gpu::Shading shading = frame.cmds[c].shading;
+                const bool timed = shading == gpu::Shading::Effect || shading == gpu::Shading::Glyph;
+                const Clock::time_point c0 = timed ? Clock::now() : Clock::time_point{};
                 drawCmd(frame.cmds[c]);
+                if (timed) {
+                    (shading == gpu::Shading::Effect ? m_cache.stats.effectsMs : m_cache.stats.textMs) +=
+                        msSince(c0);
+                }
                 restoreHostFilter();  // E5: only after a draw that changed a host texture's filter
             }
             while (nextStore < frame.cacheStores.size() && frame.cacheStores[nextStore].pass <= passIndex) {

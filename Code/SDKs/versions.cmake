@@ -6,6 +6,10 @@
 #   xt_sdk(<name> GIT      <repo> <tag>    ...)   fetched git tag (FetchContent, shallow)
 #   xt_sdk(<name> VENDORED <dir>  <version> ...)  committed under Code/SDKs/<dir> (not fetched)
 #   xt_sdk(<name> ASSET    <dir>  <version> ...)  committed data (listed for the notices only)
+#   xt_sdk(<name> PREBUILT <home> <tag> URL_<platform> <url> SHA256_<platform> <sha256> ...)
+#                                                 per-platform prebuilt binary archive (one pair per
+#                                                 bin/ platform tag, e.g. win_x64); unpacked into
+#                                                 Code/SDKs/_fetched/<name>/<platform>/ (xt_sdk_prebuilt)
 # followed by the notice columns TITLE, HOME, VERSION (as shown), LICENSE, USED_BY and PURPOSE,
 # which Tools/Scripts/gen_third_party.py turns into Code/SDKs/NOTICE.md and Legal/THIRD-PARTY.md (rows in
 # the order below).
@@ -67,6 +71,21 @@ xt_sdk(miniz URL https://github.com/richgel999/miniz/releases/download/3.0.2/min
     TITLE "miniz" HOME "https://github.com/richgel999/miniz" VERSION "3.0.2" LICENSE "MIT"
     USED_BY "`Code/Editor/History/`"
     PURPOSE "zlib-compatible deflate/inflate for the history core's loose objects")
+
+# ---- prebuilt binaries (Code/SDKs/_fetched/<name>/<platform>/, Tools/CMake/xt_sdks.cmake xt_sdk_prebuilt)
+# Docs/design/10-backends.md §10.10.1 (T-437): wgpu-native's release zips (headers webgpu/webgpu.h +
+# webgpu/wgpu.h, the shared library and its import library). A platform without a pair here builds
+# without xt_wgpu (XT_BUILD_WGPU turns itself off).
+xt_sdk(wgpu-native PREBUILT https://github.com/gfx-rs/wgpu-native v29.0.1.1
+    URL_win_x64 https://github.com/gfx-rs/wgpu-native/releases/download/v29.0.1.1/wgpu-windows-x86_64-msvc-release.zip
+    SHA256_win_x64 7e67d7445c42aeb85e30f88930fd8d7d83ee769e3390aeb1ada75ebf3cf78132
+    URL_linux_x64 https://github.com/gfx-rs/wgpu-native/releases/download/v29.0.1.1/wgpu-linux-x86_64-release.zip
+    SHA256_linux_x64 95a4d90c071005a98d03eab348beaa6b07e16eb00d1dcdb9f8348f75eb97ec5a
+    URL_mac_arm64 https://github.com/gfx-rs/wgpu-native/releases/download/v29.0.1.1/wgpu-macos-aarch64-release.zip
+    SHA256_mac_arm64 a5797a37b1adf720bcd5dcffb291edbbd5b7b14be0a3874c28e6393a655a7a3e
+    TITLE "wgpu-native" HOME "https://github.com/gfx-rs/wgpu-native" VERSION "v29.0.1.1 (prebuilt release binaries)"
+    LICENSE "MIT / Apache License 2.0 (dual)" USED_BY "`Code/Runtime/wgpu/`"
+    PURPOSE "WebGPU implementation (`webgpu.h` + `wgpu.h`, shared library `wgpu_native`) behind the `xt_wgpu` backend")
 
 # ---- committed test data ---------------------------------------------------------------------
 xt_sdk(noto_fonts ASSET Tests/fonts see-Tests/fonts/README.md

@@ -272,7 +272,9 @@ public:
     /// for names that now mean another file (image meta changed, a file forgotten with
     /// forgetFile()); an IR rebuilt over the same memory and opened again is noticed without it
     /// (T-263c: embedded bytes are checked by hash once per IrView::loadSerial()). Decoded files stay cached
-    /// by file path, so an asset that names the same file resolves without decoding again.
+    /// by file path, so an asset that names the same file resolves without decoding again --
+    /// T-452: and without reading the file again (nor, for a size read from its header only,
+    /// reading the header again); revalidate() is what notices a file changed on disk.
     /// T-263f: the decodes go with their slots, because once the slots are forgotten
     /// releaseSource() of an IR finds nothing of that IR's any more. T-263g: with every slot gone
     /// no live source holds any decode, so each one -- of a file or of an embedded image -- moves
@@ -297,9 +299,10 @@ public:
     /// had resolved to it are looked up afresh; every pointer handed out stays valid, as with
     /// forgetFile()). T-263g: an idle decode (see setIdleDecodeBudget()) is checked like any
     /// other, and freed at once when its file changed.
-    /// Header-only sizes of files not decoded yet are read again too. One file
-    /// status query per cached file: meant for a reload action (a viewer's reload key, an
-    /// editor's recompile), never called by the resolver itself -- no per-frame path asks the
+    /// Header-only sizes of files not decoded yet are compared the same way (T-452; one read
+    /// while no file-status function was set is read again). One file status query per cached
+    /// file: meant for a reload action (a viewer's reload key, the editor's check after an edit,
+    /// at most once a second), never called by the resolver itself -- no per-frame path asks the
     /// disk about a file it has already resolved. Not covered: embedded assets (T-263c checks
     /// those by hash per IR load), files whose reader has no file status (a subclass reading
     /// through its own opener), a file that did not exist when first asked for (resetAssetIds()).
@@ -400,6 +403,19 @@ private:
     /// sharing).
     bool readAssetBytes(AssetId asset, const IrView& view, int variant, std::vector<uint8_t>& out,
                         std::string& fileKey);
+    /// T-452: the files (below the roots) readAssetBytes() tries for the named asset `asset` of
+    /// `view`, in order, appended to `out` (none for an `engine://` asset or a variant with no
+    /// file); false for an embedded asset or one outside the ASST table.
+    bool fileCandidates(AssetId asset, const IrView& view, int variant, std::vector<std::string>& out) const;
+    /// T-452: the `m_entries` index of the decode of the file `key` (a path below the roots, or an
+    /// embedded image's content key); kFailed-like SIZE_MAX when none is cached.
+    size_t cachedFile(std::string_view key) const;
+    /// Decodes `bytes` into a new entry (recording `fileKey` with the file's stamp when non-empty)
+    /// and returns its `Slot::entry` value (index + 1).
+    size_t decodeNew(const std::vector<uint8_t>& bytes, const std::string& fileKey);
+    /// T-452: the header-only size of the first of `files` that exists -- from `m_headerSizes`, or
+    /// read from the file and recorded there; false when none exists or its header tells no size.
+    bool headerSizeOf(const std::vector<std::string>& files, int& width, int& height);
     /// Decodes `bytes` (any decoder format, or DDS) into `entry`.
     void decodeInto(const std::vector<uint8_t>& bytes, Entry& entry);
     /// T-263e / T-263f / T-263g: lets go of the decode of each `Slot::entry` value in `dropped`
@@ -456,6 +472,22 @@ private:
     size_t m_idleBudget = size_t{32} * 1024 * 1024;
     /// T-263g ruling 9: how often an embedded asset's bytes were hashed (Tests/unit measures it).
     size_t m_embeddedHashes = 0;
+    /// T-452: test hooks, not behaviour -- how often readBytes() was called (a whole-file read)
+    /// and how often a file status was asked (fileStamp()).
+    size_t m_readBytesCalls = 0;
+    mutable size_t m_statCalls = 0;
+    /// T-452: the header-only size of a file nobody decoded yet (T-160), kept across
+    /// resetAssetIds() by the file's path with its size and modification time when it was read
+    /// (`hasStamp` false: no status could be asked); revalidate() compares it like a decode.
+    struct HeaderSize {
+        std::string key;
+        int width = 0;
+        int height = 0;
+        bool hasStamp = false;
+        uint64_t size = 0;
+        uint64_t mtime = 0;
+    };
+    std::vector<HeaderSize> m_headerSizes;
     /// T-263c: the size and modification time of `root/name` in the first root that has it;
     /// false when none does. T-263e: asked through `m_fileStatus`; false when none is set.
     bool fileStamp(std::string_view name, uint64_t& size, uint64_t& mtime) const;

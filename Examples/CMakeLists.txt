@@ -44,6 +44,16 @@ if(XT_BUILD_SHELL)
     xt_set_warnings(lottie_player)
 endif()
 
+# T-439 (45 §45.7): the smallest host on Code/Backends -- links one combination library, nothing else
+# of the backends.
+if(TARGET xt_backend_sdl2_wgpu)
+    add_executable(minimal_sdl2_wgpu backends/minimal_sdl2_wgpu/main.cpp)
+    target_link_libraries(minimal_sdl2_wgpu PRIVATE xt_backend_sdl2_wgpu xt_core xt_sw xt_bundle)
+    xt_copy_runtime_library(minimal_sdl2_wgpu xt::wgpu_native)
+    xt_enable_exceptions(minimal_sdl2_wgpu)
+    xt_set_warnings(minimal_sdl2_wgpu)
+endif()
+
 if(XT_BUILD_TESTS)
     # T-267a: exit code 0 and the "done" line (Tests/cmake/expect_exit.cmake), not the line alone.
     include("${PROJECT_SOURCE_DIR}/Tests/cmake/expect_exit.cmake")
@@ -54,6 +64,19 @@ if(XT_BUILD_TESTS)
     xt_add_expect_exit_test(example_engine_integration_json_coexist CODE 0
         OUTPUT "xtframe json: parsed [(]xtframe_abi[)].*engine json:  parsed [(]untagged[)].*done"
         COMMAND $<TARGET_FILE:engine_integration> --json-coexist)
+
+    if(TARGET minimal_sdl2_wgpu AND TARGET xtframe-pack)
+        # Tests/bundle/fixtures/sample packed, then 5 frames of its HUD in a hidden window (no
+        # adapter: the create error, exit 0).
+        set(_minimal_bundle "${CMAKE_BINARY_DIR}/minimal-sdl2-wgpu-bundle")
+        xt_add_expect_exit_test(example_minimal_sdl2_wgpu_pack CODE 0 OUTPUT "wrote 2 UI"
+            COMMAND $<TARGET_FILE:xtframe-pack> "${PROJECT_SOURCE_DIR}/Tests/bundle/fixtures/sample"
+                    -o "${_minimal_bundle}" --no-thumbs)
+        set_tests_properties(example_minimal_sdl2_wgpu_pack PROPERTIES FIXTURES_SETUP minimal_sdl2_wgpu_bundle)
+        xt_add_expect_exit_test(example_minimal_sdl2_wgpu CODE 0 OUTPUT "done \\(sdl2_wgpu\\)|no WebGPU adapter"
+            COMMAND $<TARGET_FILE:minimal_sdl2_wgpu> "${_minimal_bundle}" hud --frames 5)
+        set_tests_properties(example_minimal_sdl2_wgpu PROPERTIES FIXTURES_REQUIRED minimal_sdl2_wgpu_bundle)
+    endif()
 
     if(XT_BUILD_SHELL)
         xt_add_expect_exit_test(example_desktop_app CODE 0 OUTPUT "done"

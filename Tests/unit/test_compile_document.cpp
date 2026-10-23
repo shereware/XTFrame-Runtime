@@ -573,6 +573,58 @@ TEST_CASE("compileDocumentFromStrings: searchDirs -- a miss everywhere reports a
     CHECK(hasWarningContaining(result, "image asset \"gone.png\" not found"));
 }
 
+// T-452 (Docs/design/17-editor.md §17.25): CompileOptions::fileExists / readAssetFile answer the
+// asset questions instead of the disk -- the search directory probe, the "not found" check and
+// the bytes of an `<img src="*.svg">` -- so a host's table can stand in for every one of them.
+TEST_CASE("compileDocumentFromStrings: T-452 fileExists and readAssetFile replace the disk for assets") {
+    fs::path base = freshTempDir("xt_t452_compile_hooks");  // empty: nothing below exists on disk
+    const fs::path near = base / "ui";
+    const fs::path far = base / "shared";
+    SourceFile files[1] = {
+        SourceFile{"main.xt", "<xt><body><img src=\"img/pic.png\"/><img src=\"img/shape.svg\"/></body></xt>"},
+    };
+    CompileOptions options;
+    options.rootDir = base.string();
+    options.searchDirs = {near.string(), far.string()};
+    std::vector<std::string> asked;
+    std::vector<std::string> read;
+    const std::string pic = (far / "img" / "pic.png").string();
+    const std::string shape = (far / "img" / "shape.svg").string();
+    options.fileExists = [&](std::string_view path) {
+        asked.emplace_back(path);
+        return fs::path(std::string(path)) == fs::path(pic) || fs::path(std::string(path)) == fs::path(shape);
+    };
+    options.readAssetFile = [&](std::string_view path, std::vector<uint8_t>& out) {
+        read.emplace_back(path);
+        if (fs::path(std::string(path)) != fs::path(shape)) {
+            return false;
+        }
+        const std::string svg = kTinySvg;
+        out.assign(svg.begin(), svg.end());
+        return true;
+    };
+    CompileResult result = compileDocumentFromStrings(files, "main.xt", options);
+    for (const Diagnostic& d : result.diagnostics) {
+        CAPTURE(d.message);
+        CHECK(d.level != Diagnostic::Level::Error);
+    }
+    REQUIRE(result.ok());
+    CHECK(!hasWarningContaining(result, "not found"));
+    REQUIRE(result.assets.size() == 1);
+    CHECK(fs::path(result.assets[0].resolvedPath) == fs::path(pic));
+    CHECK(!asked.empty());
+    REQUIRE(read.size() == 1);
+    CHECK(fs::path(read[0]) == fs::path(shape));
+
+    // The same document without the hooks asks the disk, where nothing exists.
+    CompileOptions plain;
+    plain.rootDir = base.string();
+    plain.searchDirs = {near.string(), far.string()};
+    CompileResult missing = compileDocumentFromStrings(files, "main.xt", plain);
+    CHECK(hasErrorContaining(missing, "img src \"img/shape.svg\" not found"));
+    CHECK(hasWarningContaining(missing, "image asset \"img/pic.png\" not found"));
+}
+
 // Docs/tasks/T-150.md: `<img src="engine://scene">` is an external (host-bound) texture. The
 // compiler keeps the name verbatim as the ASST entry: no file lookup (so no "not found" warning,
 // even under --strict or with embedImages), no assetNameRewrite call (so a bundle never packs or

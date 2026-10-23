@@ -66,6 +66,8 @@ struct PerfScope {                                    // RAII：建構時取時�
 
 使用者 2026-10-01 回報 SW 預覽（獨立編輯器、宿主窗格、UI 瀏覽器）嚴重卡頓；調查（main@3801d64）：編輯器每幀整幀重畫不用 damage（實際變動 4–22%）、非 premul 目標（半透明 3.0 vs 1.3 ns/px）、放大時算圖尺寸 = 畫布×zoom×DPR、overlay 每 tick 整片重貼、layer／effect 不受 damage 限制、每 widget 各自 50% 節流。修正：A1 `SwPreviewWidget::requestRender()` 先建命令清單、只 `update()` damage 區域、`clearRects` + 帶 damage 的 render、`PreviewSession::renderSerial()` 偵測中途他人 render 則整幀；A3 `PreviewOverlay::refreshIfChanged()`（只在模式／尺寸／transform／選取幾何／EIP／向量模式／錄製／onion／revision 變時重畫，Demo 不重畫）；A4 `Format_RGBA8888_Premultiplied` + `premultiplied=true`（滴管 `pixelColor()` unpremul）；B3 `SwTarget::originX/originY`（命令、damage、clearRects 皆畫布座標，3D 投影還原原點）；A2 影像範圍 = widget ∩ 父窗格，`moveEvent` 重畫、螢幕外 damage 略過；B1 根層 PushLayer／PushEffect 緩衝框與 damage 無交集時整段跳過（巢狀或投影區段照常；mask 隨外層）；B4 `addLine` scratch；A5 選**全域節流預算**（所有 SwPreviewWidget 共用，佔空比 ≤ 50%）——背景執行緒需 per-worker resolver 與 IR 生命週期釘住，列後續。數字（Release、ms/tick）：hud 1080p 10.0→3.4、pause 1080p 18.5→8.9、hud 200% 27.4→0.36、pause 200% 96.4→20.3（效果模糊半徑隨 dpr 放大）。測試 `Tests/editor_qt/test_sw_preview_perf.cpp`（只印數字；斷言 damage < 25%、無變動不 render、他人 render 後整幀）。golden 與 partial_* 逐 byte 不變。宿主窗格的 60 Hz 上限與隱藏不 tick 由各宿主自己處理。
 
+T-450 實作記錄：`FrameStats` 加編輯器分項 `editorDocChangedMs`（`documentChanged()` 仍同步執行的扇出）與 `editorPanelsMs`（預覽畫出編輯之後、合併延後的面板刷新），由編輯器 session 填寫、其他宿主恆為 0，列入 `XT_FRAME_STATS_FLOAT_FIELDS`（`--perf-csv` 與 `perf.*` 因此多兩欄），效能面板時間表顯示這兩列。
+
 ## 21.5 審查修正鏈補記（2026-10-07 審查修正鏈合併；T-270c #291、T-270d #302、T-263d #293）
 
 - `FrameStats::runtimeStrings`、`maxDistinctBindingStrings`；`perf.probe` 的 `document` 物件多 `runtimeStrings`、`maxDistinctBindingStrings`、`unattachedNodes`。綁定每個 port 超過 1024 個不同新字串時記一次警告 `binding "<source>" produces unbounded distinct strings; bind it to text or a String port instead of a class / converter argument`，計數繼續。
@@ -78,3 +80,9 @@ struct PerfScope {                                    // RAII：建構時取時�
 - **預算**（平均 ms／幀，1080p SW 繪製之外）：**典型 ≤ 0.5**、**大圖 ≤ 2.0**。p95 只記錄不設線。超過即開 B17 的 B7（flow 整數化）。
 - **基準（2026-10-21，i5-13600K）**：Windows MSVC 典型 0.141（p95 0.18）、大圖 0.257（p95 0.32）；WSL GCC 典型 0.088（p95 0.11）、大圖 0.167（p95 0.22）。餘裕 3.5～12 倍，B7 不開。報告 `Docs/reviews/2026-10-21-flow-benchmark.md`。
 - ctest `xt_perf_flow_big_large`／`_typical`（標籤 `perf-report`）只印 `--perf` 摘要，不斷言、不是閘門。
+
+## 21.7 `xt_wgpu`（M34；10 §10.10.3）
+
+`FrameStats::renderMs/effectsMs/textMs` 對 `xt_wgpu` 與 GL 同義（CPU 提交時間，不等 GPU）。T-441 把 `xtui-bench` 第五輪加 wgpu 欄，與 GL、SW 並列記在 `Docs/reviews/`；目標：challenge-menu 4x 下 `renderMs` ≤ GL 的 1.2 倍。
+
+> 實作記錄（T-441）：第五輪（`Docs/reviews/2026-10-23-wgpu-bench.md`，`xtframe-view --headless --renderer sw|gl|wgpu --msaa 1|4 --perf-csv`，1280×720）challenge-menu 4x `renderMs` wgpu D3D12 0.87 ms 對 GL 0.56 ms＝1.56 倍，未達標；最大三段為 queue（finish＋submit，wgpu-core 錄製與驗證）0.77、writeBuffer 0.17、FrameBuilder 0.14 ms（probe 分段）；Vulkan 在該場景觸發 uniform 動態位移越界的驗證 panic，另開單。

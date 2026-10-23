@@ -45,6 +45,8 @@ struct GlDeviceStats {
     float drawMs = 0;      ///< the passes: clears, copies, commands, resolves, cache stores
     float endFrameMs = 0;  ///< pool release and eviction at the end of submit
     float stateMs = 0;     ///< GlRenderer's GL state save (glGet*) + restore around the frame
+    float effectsMs = 0;   ///< T-457: CPU time drawing Shading::Effect commands (part of drawMs)
+    float textMs = 0;      ///< T-457: CPU time drawing Shading::Glyph commands (part of drawMs)
     uint32_t cachedTargetCreates = 0;   ///< `acquireCachedTarget` calls that created GL objects
     uint32_t cachedTargetReleases = 0;  ///< `releaseCachedTarget` calls
     uint32_t transientDeletes = 0;      ///< pooled FBOs deleted (idle eviction or resize purge)

@@ -193,3 +193,61 @@ class FileAssetResolver : public AssetResolver { /* 相對某根目錄讀檔 + s
 ## 10.9 Direct 目標模式與帶圖層（2026-10-15；23 §23.aa；T-343）
 
 `FrameBuilder` 與 `xt_sw` 新增 Direct 模式：目標 0 為宿主場景目標、不清除；繪製序切帶（23 §23.aa.2），帶圖層走 `acquireBandTarget`（預設 = T-162 持久目標）；S 元素在 transient 內裁切後以 Composite 貼上，場景目標不需 stencil；backdrop 區域拷貝合併、共用金字塔（18 §18.15）。`GpuDevice` 追加 `supportsDirectTarget`／`acquireBandTarget`／`releaseBandTarget`（皆預設實作，舊裝置不變）。`lastFrameReusable` 在 Direct 模式表示「帶圖層可重用」。
+
+## 10.10 WebGPU 後端 `xt_wgpu`（M34；使用者 2026-10-22「來上點難度吧：wgpu backend」；定案 v1.0，2026-10-23 批准）
+
+**定位**：第三個 `GpuDevice` 實作，與 `xt_gl` 同階——`CommandList` → `FrameBuilder` → `GpuFrame` → `WgpuDevice::submit()`。目的：(1) 一條不靠 OpenGL 的桌面路徑（Windows D3D12、macOS Metal、Linux Vulkan 全由 WebGPU 抽象），(2) 給編輯器第三條預覽路徑（17 §17.34），(3) 作為 45 §45.7 Backends 的 `wgpu` renderer 範例與未來瀏覽器目標的種子。層：R（`Code/Runtime/wgpu/`，MIT）。
+
+### 10.10.1 SDK 與建置
+
+- API 用 `webgpu.h`（WebGPU C 標頭）＋ wgpu-native 的 `wgpu.h` 擴充；實作用 **wgpu-native** 的預建二進位（動態庫 `wgpu_native.{dll,so,dylib}` + 標頭），不用 Dawn（建置太重）。版本釘在 `Code/SDKs/versions.cmake`（每個平台一個 zip URL＋sha256），落在 `Code/SDKs/_fetched/wgpu-native/<platform>/`；授權 MIT／Apache-2 進 `NOTICE.md`。
+- CMake 選項 `XT_BUILD_WGPU`：預設 ON；該平台沒有預建包或 `XT_SDK_OFFLINE` 下缺目錄 → 自動 OFF 並印訊息，不擋整棵樹。動態庫由 `xt_runtime_output.cmake` 複製到 `bin/<tag>/<Config>/`（與 Qt DLL 同一機制）。
+- 公開標頭：`Code/Runtime/wgpu/include/xt/wgpu/{wgpu_device.h, wgpu_renderer.h}`。`WgpuRenderer` 的介面對齊 `GlRenderer`（10.3）：`init(const WgpuInit&)`（給定 `WGPUDevice`／`WGPUQueue`／目標格式／取樣數，或 `WgpuInit::headless()` 自建 instance＋adapter＋device）、`resize`、`render(const CommandList&, FontProvider*, AssetResolver*, WGPUTextureView target)`、`invalidateImages()`、`stats()`；另有 `readback(WGPUTexture, std::span<uint8_t>)`（`copyTextureToBuffer` + `mapAsync`，256 位元組列對齊，供編輯器與測試）。adapter 選不到（無 GPU、無驅動、沙箱）→ `init` 回 false 並填 `lastError()`，**不**中止程式。後端選擇：預設 D3D12／Metal／Vulkan，環境變數 `XT_WGPU_BACKEND=vulkan|d3d12|metal|gl` 覆寫，`XT_WGPU_FALLBACK=1` 允許軟體 adapter（WARP／lavapipe，CI 用）。
+
+### 10.10.2 `GpuFrame` → WebGPU 對應（與 10.5 的語意一一對應，不改 `xt_gpu`）
+
+| `GpuFrame` | WebGPU |
+|---|---|
+| `Vertex` 24 bytes、32 位索引、`baseVertex` | 一個頂點緩衝（`vertexBufferLayout` stride 24：pos×2 f32、w f32、uv×2 f32、rgba u8×4 normalized）、一個索引緩衝；`drawIndexed(count, 1, firstIndex, baseVertex)`。三組緩衝輪替＋CPU 影子只上傳變動區段（同 T-159）。 |
+| `Shading`×`Blend`×`StencilOp`×`DrawKind`×目標格式×取樣數 | **管線快取**：鍵 = 上述組合；fragment shader 依 `Shading` 一支 WGSL（Solid／Gradient／Texture／TextureStraight／Glyph／StencilOnly／Composite 17 種／Effect 12 個 program／Particle×2）；`StencilOnly` 關 color write。 |
+| 8 位 stencil：高 4 位 clip 深度、低 4 位 winding | 深度模板附件 `Stencil8`；`StencilOp::WriteIncrWrap` = front `IncrementWrap`／back `DecrementWrap`、`compare=Equal` 以 `stencilReadMask=0xF0` 閘控深度；`WriteInvert` = `Invert`；`TestNotEqualZero` = `compare=NotEqual` ref 0 mask 0x0F；`TestEqualRef`；`ClearRect` = 畫矩形 `Replace` ref；`ClipPush`／`ClipPop` = `Replace` 寫新深度值（10.5 的一次完成語意）。`setStencilReference` 每命令。 |
+| `Pass{target, viewport, clear, copy}` | 一個 `RenderPassEncoder`；`target 0` = 呼叫者給的 view（或 Direct 模式的宿主 view）；transient = `Rgba8Unorm`／`R32Float` 紋理（`RENDER_ATTACHMENT | TEXTURE_BINDING | COPY_SRC`），MSAA 時 4x 附件 + `resolveTarget`；`copy` = `copyTextureToTexture` 進 `aux`。視窗化 transient（T-151）同 GL：尺寸向上取 32、scissor 與視窗交集。 |
+| `uniform`／`paramIndex` | 一個大 uniform 緩衝（每幀重填）+ bind group 的 **dynamic offset**（256 對齊）；group 0 = 幀常數（ortho、viewport），group 1 = 每命令參數（`GradientParams`／`EffectParams`／composite 模式），group 2 = 紋理＋sampler（src、aux、LUT、atlas）。 |
+| 貼圖、字形 atlas、256×1 LUT | `writeTexture`；atlas R8；`TextureHandle` → 內部表（含宿主給的外部 `WGPUTextureView`，T-150 的 `engine://` 語意）。 |
+| 粒子（10.7） | 實例化：第二個頂點緩衝 `stepMode=Instance`（`ParticleInstance` 40 bytes），每實例 6 個頂點（同 GL；T-438 修正，原寫 `draw(4,…)`）。 |
+| Direct 目標模式（10.9） | `supportsDirectTarget()=true`；`acquireBandTarget` 走持久紋理池；backdrop 區域拷貝 = `copyTextureToTexture`。 |
+| `prepareCustomEffect(glsl…)` | v1：wgpu-native 的 GLSL 前端（`WGPUShaderModuleGLSLDescriptor`，Naga）直接吃 18.7 翻譯器產的 GLSL；v2：40 §40.18 的 HLSL → DXC → SPIR-V → Naga（SPIR-V 入口）。失敗 → 套 `fallback`（同 SW）。 |
+| 池預算（T-163） | 同 GL 的位元組預算池；`maxTextureSize()` 讀 `limits.maxTextureDimension2D`。 |
+
+**T-438 對帳後的修正**：4x 只用在需要 stencil 的 transient（與 GL 的 `acquireDrawTarget` 一致）；自訂效果的頂點階段也走 GLSL 包裝（WGSL 輸出與 GLSL 輸入的插值取樣過不了 wgpu 驗證）；4x 表面未設清除色時先以全螢幕 blit 把宿主內容載入 4x 附件，因此宿主 view 需要 `TEXTURE_BINDING`（Direct 模式同）；bind group 跨幀快取（相關 view 釋放即整批清掉）。效能：challenge-menu 1920×750 render CPU wgpu D3D12 0.50 ms／Vulkan 0.33 ms／GL 0.17 ms，差距在 wgpu-core 的指令錄製（submit 時約 0.30 ms），21 §21.7 的 1.2 倍目標以「render＋等待」計（0.66／0.54 對 GL 0.46 ms）。
+
+與 GL 的刻意差異：沒有 `saveState/restoreState`（WebGPU 無全域狀態）；MSAA resolve 由 pass 的 `resolveTarget` 做，不需 sampler2DMS；premultiplied 管線、LUT、scissor 矩形 clip 全同 10.5。黃金圖：與 GL 同一組 `Tests/golden`，容差同 GL（15 章）。
+
+### 10.10.3 測試、效能、CI
+
+- `Tests/wgpu/`：`xt_wgpu_tests`——headless 建裝置；`GpuFrame` 結構快照（`Tests/gpu/golden/*.txt`）本來就裝置無關，不重做；像素黃金圖以 headless 渲染＋`readback` 比對（GL 容差）；stencil／clip 深度、transient 視窗、Direct 模式、粒子、自訂效果各一案。**找不到 adapter 時整個測試執行檔印 `SKIP: no WebGPU adapter` 並回 0**（CI 的 hosted runner 可能沒有 GPU）；`XT_WGPU_FALLBACK=1` 時改用軟體 adapter 跑完。
+- 效能：`FrameStats::renderMs/effectsMs/textMs` 與 GL 同義（CPU 提交時間）；21 章新增一行 `xt_wgpu` 對照；`xtui-bench` 加 wgpu 欄（第五輪）。
+- CI（15 §15.8）：`windows` 腿多跑 `xt_wgpu_tests`（D3D12；hosted runner 用 `XT_WGPU_FALLBACK=1` 走 WARP）；`linux` 腿裝 `mesa-vulkan-drivers` 用 lavapipe；`macos` Metal；`sanitizers` 腿不建 wgpu（動態庫外部碼）。`local_ci.sh` 同步。
+- 鏡像倉：`xt_wgpu` 屬 R，隨 runtime 匯出；`versions.cmake` 的 wgpu-native 條目一起。
+
+### 10.10.4 分期
+
+| 單 | 內容 |
+|---|---|
+| T-437 | SDK 接入（`versions.cmake`、`_fetched`、`XT_BUILD_WGPU` 守衛、動態庫複製）＋`xt_wgpu` 骨架：裝置／佇列／instance、`createTexture/updateTexture/destroyTexture`、空 `submit`、headless 建立與 `lastError`、`readback`；`xt_wgpu_tests` 的 SKIP 機制 |
+| T-438 | `submit` 全部：管線快取、緩衝輪替、stencil 表、pass／transient／MSAA、Composite 的 aux 拷貝、12 個效果 program 的 WGSL、LUT／atlas／外部貼圖、粒子、Direct 模式、自訂效果 v1（GLSL 前端）、池預算；黃金圖全過 |
+| T-439 | 45 §45.7 Backends：`xt_renderer_wgpu.{h,cpp}`、`xt_backend_sdl2_wgpu.cpp`（SDL 視窗 → `WGPUSurface`：Win32 HWND／X11／Wayland）、`xt_backend_win32_wgpu.cpp`；`xtframe-view --renderer sw\|gl\|wgpu`（執行期選擇已編進來的 renderer；`XT_SHELL_GL` 維持） |
+| T-440 | 編輯器 17 §17.34：`WgpuPreviewWidget`、`--preview-backend`、偏好設定、About、狀態列、退回鏈 |
+| T-441 | 測試與 CI：三個平台的 CI 腿、`local_ci.sh`、21 章對照、`xtui-bench` 第五輪、`Docs/COMPATIBILITY.md` 實驗表加「wgpu 預覽（實驗）」 |
+
+順序：T-437 → T-438 → T-439 ∥ T-440 → T-441。每張 Opus；T-438 是大單，可拆 a（填充／描邊／clip／layer）、b（效果／composite／粒子／Direct）。
+
+> 實作記錄（T-437）：wgpu-native 釘 v29.0.1.1（`versions.cmake` 新增 `PREBUILT` 種類，`xt_sdk_prebuilt` 解到 `_fetched/wgpu-native/<platform>/`，失敗只關 `XT_BUILD_WGPU`）；`xt_wgpu` 骨架（`WgpuInit::headless`、`WgpuDevice` 貼圖／transient 池／4x 附件／pass 清除、`WgpuRenderer::readback`）完成，`submit` 的繪製命令、copy 與 cache store 只回報 `submit: not implemented` 留給 T-438；wgpu-native 未實作 `wgpuDeviceGetAdapterInfo`（呼叫即 panic），adapter 名稱改由 `WgpuInit::adapter` 取得。
+
+> 實作記錄（T-438）：`WgpuDevice::submit` 全部完成——三組輪替緩衝＋影子差異上傳、單一 uniform 緩衝以 dynamic offset 供三個 bind group、管線快取、`Code/Runtime/wgpu/src/shaders/*.wgsl` 逐檔對照 `gl_shaders.h`、stencil 表逐項同 `gl_device.cpp`、只有需 stencil 的 transient 走 4x（同 GL）、`copy` 能用 `copyTextureToTexture` 就用、否則（4x 目的地、表面、異格式）以 blit 繪製、粒子每實例 6 頂點（同 GL，非表中的 4）、自訂效果經 Naga GLSL 前端（片段與頂點都用 GLSL：WGSL 輸出與 GLSL 輸入的插值取樣在 wgpu 驗證下不相容），4x 表面未設清除色時第一個表面 pass 前先以全螢幕 blit 把宿主內容載入 4x 附件（宿主視圖因此與 Direct 模式一樣需 `TEXTURE_BINDING`），`xt_golden --backend wgpu` 159 個 fixture 在 D3D12／Vulkan／WARP 以 GL 容差（16、3%）全過，challenge-menu 1920×750 的 render CPU 時間 D3D12 0.50 ms、Vulkan 0.33 ms、GL 0.17 ms（多出的部分在 wgpu-core 於 finish/submit 時錄製指令）。
+
+> 實作記錄（T-439）：`Code/Backends/xt_renderer_wgpu.{h,cpp}` 以 `WgpuInit::headless()` 建裝置（環境變數只在那裡讀）後在同一個 instance 上建 `WGPUSurface` 並以 `wgpuSurfaceGetCapabilities` 確認 adapter 能呈現，表面取 BGRA8Unorm／RGBA8Unorm（非 sRGB）、Fifo、有 COPY_SRC 就加上以便讀回，每幀都清除所以 4x 表面不需 TEXTURE_BINDING；`xtframe-view --renderer sw|gl|wgpu` 的預設不變（`--headless` 為 sw、視窗為殼層的 gl），`--headless` 下 gl／wgpu 走離屏（隱藏 GL 視窗的 FBO／headless 裝置），hud.xt 640×360 三者截圖兩兩在 GL 容差（16、3%）內；`WgpuRenderer`／`GlRenderer` 未改。
+
+> 實作記錄（T-456）：shader module 與每支 render pipeline 的建立都包在 Validation＋OutOfMemory 兩層 error scope（wgpu-native 不接受 Internal 過濾器，傳入即 panic）裡，失敗的管線鍵快取為「不可用」、由第一個需要它的 `submit` 在 `lastError` 報一次（之後不再重報）、其 `DrawCmd` 略過而其餘照畫，無效管線永遠到不了 `wgpuQueueSubmit`；`WgpuDevice::init`（因此 `WgpuRenderer::init`）先以一支無繫結的最小 WGSL 管線預檢後端的 shader 編譯器，失敗即回 false 並說明（T-440 的 D3Dcompiler ps_5_1 情況由此交給編輯器的退回鏈），預檢 WGSL 可由測試掛點 `WgpuDevice::setProbeShaderForTesting` 替換。
+
+> 實作記錄（T-457）：uniform 緩衝成長時舊緩衝先釋放再建新緩衝，新 `WGPUBuffer` 可能重用舊位址，原本以 handle 比對是否重建 group 0／1 bind group 因此漏判（Vulkan challenge-menu 的「offset 65536 超出 65536 位元組緩衝」panic），改為 `ShadowBuffer::generation` 每次建立遞增、bind group 依代數重建，並在上傳大小超過緩衝時略過該幀繪製；編輯器的 windeployqt 加 `--no-system-d3d-compiler` 並刪除殘留的 `D3Dcompiler_47.dll`，`xt_runtime_output.cmake` 在共用 bin/ 仍有該檔時發 configure 警告；`GlRenderer` 的 `effectsMs`／`textMs` 填入 Effect／Glyph 命令的 CPU 繪製時間（與 xt_wgpu 同義）。

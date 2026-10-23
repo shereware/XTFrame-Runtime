@@ -83,6 +83,12 @@ if(XT_BUILD_GPU AND XT_BUILD_TEXT)
             target_link_libraries(xtframe-gpu-probe PRIVATE SDL2::SDL2main psapi)
         endif()
     endif()
+    # T-438: `--wgpu` runs the frames through xt_wgpu's WgpuRenderer on a headless device.
+    if(TARGET xt_wgpu)
+        target_compile_definitions(xtframe-gpu-probe PRIVATE XT_PROBE_WGPU)
+        target_link_libraries(xtframe-gpu-probe PRIVATE xt_wgpu)
+        xt_copy_runtime_library(xtframe-gpu-probe xt::wgpu_native)
+    endif()
     xt_enable_exceptions(xtframe-gpu-probe)
     xt_set_warnings(xtframe-gpu-probe)
 endif()
@@ -90,6 +96,7 @@ endif()
 if(XT_BUILD_SHELL)
     add_executable(xtframe-view
         view/main.cpp
+        view/view_renderer.cpp
     )
     # xt_bundle (T-135, T-213): Bundle and UI Project inputs are read through xt_bundle (a UI
     # Project is packed with xt::bundle::pack() before it is opened).
@@ -98,6 +105,17 @@ if(XT_BUILD_SHELL)
     # Code/Runtime/shell/CMakeLists.txt for app.cpp/sdl_input.cpp. T-240: not on the SW presentation path.
     if(XT_SHELL_GL)
         target_include_directories(xtframe-view PRIVATE ${PROJECT_SOURCE_DIR}/Code/Runtime/gl/src)
+    endif()
+    # T-439: --renderer sw|gl|wgpu through Code/Backends' part libraries (the renderers this build has).
+    target_link_libraries(xtframe-view PRIVATE xt_platform_sdl2 xt_renderer_sw)
+    if(TARGET xt_renderer_gl3)
+        target_link_libraries(xtframe-view PRIVATE xt_renderer_gl3)
+        target_compile_definitions(xtframe-view PRIVATE XT_VIEW_GL)
+    endif()
+    if(TARGET xt_renderer_wgpu)
+        target_link_libraries(xtframe-view PRIVATE xt_renderer_wgpu)
+        target_compile_definitions(xtframe-view PRIVATE XT_VIEW_WGPU)
+        xt_copy_runtime_library(xtframe-view xt::wgpu_native)
     endif()
     xt_enable_exceptions(xtframe-view)
     xt_set_warnings(xtframe-view)

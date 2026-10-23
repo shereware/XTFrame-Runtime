@@ -63,6 +63,7 @@ with them; clicking the badge opens this page.
 | `depth-layering-3d` | 3D UI depth layering | The 3D panel |
 | `media-axis` | The media axis (video and image-sequence clips and their timeline sync) | Properties: the Clip group of a `<video>` or `<sequence>` |
 | `window-snapshot` | The JSON content of the multi-window document snapshot, `Document::snapshotState()` (its version 1 may change) | Not marked (host API, no editor setting) |
+| `wgpu-preview` | The editor's WebGPU preview (`--preview-backend wgpu`; falls back to OpenGL, then software) | Preferences: the Preview page |
 
 ## 6. Behavior version (`spec.behavior`)
 
@@ -93,7 +94,9 @@ comes with a corpus diff, a migration note and a row in this table.
 If a file looks or behaves differently after an update, please report it with:
 
 1. **The versions**: in the editor, Help > About XTFrame > "Copy version info" (product, Qt, IR
-   format and behavior versions); for the runtime viewer, the output of `xtframe-view --version`.
+   format and behavior versions); for the runtime viewer, the output of `xtframe-view --version`,
+   which also lists the renderers built into it (`renderers: sw gl wgpu`, for example), and the
+   `--renderer` you ran it with.
 2. **The project's behavior version**: `spec.behavior` in `<name>.xtui` (or the "Behavior version" line
    in the UI Project panel, Project tab). Say whether you upgraded it.
 3. **The version that last behaved as expected**, if you know it.

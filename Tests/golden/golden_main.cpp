@@ -4,6 +4,9 @@
 #include <vector>
 
 #include "golden_common.h"
+#ifdef XT_GOLDEN_WGPU
+#include "golden_wgpu.h"
+#endif
 #include "xt/asset_resolver.h"
 #include "xt/compile/ir_writer.h"
 #include "xt/ir.h"
@@ -21,10 +24,17 @@
 /// "compileDocument -> Context -> update(time) -> render -> SwRenderer -> PNG -> compare" pipeline
 /// for every fixture listed in Tests/golden/ui/manifest.txt (Docs/tasks/T-27.md).
 ///
-/// Usage: xt_golden [--update] [--filter <substring>]
+/// Usage: xt_golden [--update] [--filter <substring>] [--backend sw|wgpu]
 ///   --update           Write the rendered image to expected/<name>.png instead of comparing.
 ///   --filter <substr>  Only run fixtures whose name contains <substr>. Applies to both the
 ///                      SceneBuilder fixtures and the Lottie manifest fixtures.
+///   --backend wgpu     T-438 (Docs/design/10-backends.md §10.10.3): draw every fixture with
+///                      xt::wgpu (headless; XT_WGPU_BACKEND / XT_WGPU_FALLBACK apply) and compare it
+///                      against the same SW expected images with the GPU/SW tolerance of 15 §15.3
+///                      (channel 16, ratio 3%; XT_GOLDEN_CHANNEL / XT_GOLDEN_RATIO still override).
+///                      gl-only fixtures (custom effects) run too; the partial-redraw check (SW
+///                      only) and --update do not. Without an adapter: `SKIP: no WebGPU adapter`,
+///                      exit 0.
 /// Environment (T-267d): XT_GOLDEN_CHANNEL (default 2) and XT_GOLDEN_RATIO (default 0) set the
 /// compare tolerance for one run; XT_GOLDEN_VERBOSE=1 adds a [DIFF] line for every fixture that
 /// passes with differing pixels. Every line goes to stdout.
@@ -50,7 +60,7 @@ using namespace xt::golden;
 /// width*height*4 bytes, sized to the fixture's own width/height -- every T-13 fixture uses
 /// dpr == 1, so device pixels equal logical pixels). Returns an empty vector on failure (already
 /// reported).
-std::vector<uint8_t> renderFixture(const GoldenFixture& fx) {
+std::vector<uint8_t> renderFixture(const GoldenFixture& fx, const FrameBackend& backend) {
     compile::IrWriter writer;
     fx.build(writer);
     std::vector<uint8_t> bytes = writer.finish();
@@ -80,18 +90,15 @@ std::vector<uint8_t> renderFixture(const GoldenFixture& fx) {
 
     const int pixelWidth = static_cast<int>(static_cast<float>(fx.width) * fx.dpr);
     const int pixelHeight = static_cast<int>(static_cast<float>(fx.height) * fx.dpr);
-    std::vector<uint8_t> buf(static_cast<size_t>(pixelWidth) * static_cast<size_t>(pixelHeight) * 4, 0);
-
-    sw::SwRenderer renderer;
-    sw::SwTarget target{buf.data(), pixelWidth, pixelHeight, pixelWidth * 4};
-    renderer.setTarget(target);
-    renderer.clear(fx.clearColor);
     // T-245: embedded image assets (scene_image_mesh) resolve through the IR; a fixture without
     // images never asks the resolver anything, so its output is unchanged.
     FileAssetResolver resolver(std::string(XT_GOLDEN_DIR), sw::decodeImageBytes);
-    renderer.render(cmds, nullptr, &resolver, &view);
-    return buf;
+    return backend(pixelWidth, pixelHeight, fx.clearColor, cmds, nullptr, &resolver, &view);
 }
+
+/// T-438: the GPU backend's compare tolerance (15 section 15.3: channel 16, 3% of the pixels)
+/// unless XT_GOLDEN_CHANNEL / XT_GOLDEN_RATIO say otherwise.
+bool g_gpuTolerance = false;
 
 bool matchesFilter(const std::string& name, const std::string& filter) {
     return filter.empty() || name.find(filter) != std::string::npos;
@@ -107,9 +114,7 @@ bool matchesFilter(const std::string& name, const std::string& filter) {
 /// The allowed share of pixels beyond the channel tolerance: the run's ratio (XT_GOLDEN_RATIO, strict 0
 /// when unset; T-267d). The three Lottie fixtures that T-267a had exempted were regenerated at the
 /// 2026-10-07 merge (stale since 211fd93e, T-236), so no fixture is exempt any more.
-float swMaxDiffRatio(const std::string& /*name*/, const SwTolerance& tolerance) {
-    return tolerance.ratio;
-}
+float swMaxDiffRatio(const std::string& /*name*/, const SwTolerance& tolerance) { return tolerance.ratio; }
 
 /// Compares one rendered fixture against its golden and reports the result: [PASS] (plus a [DIFF]
 /// line under XT_GOLDEN_VERBOSE=1 when some pixel differs at all), or [FAIL] with the pixel count
@@ -117,7 +122,12 @@ float swMaxDiffRatio(const std::string& /*name*/, const SwTolerance& tolerance) 
 /// Returns whether the fixture passed.
 bool compareAndReport(const std::string& name, const std::vector<uint8_t>& actual,
                       const std::vector<uint8_t>& expected, int width, int height, const fs::path& outDir) {
-    const SwTolerance tolerance = swTolerance();
+    SwTolerance tolerance = swTolerance();
+    if (g_gpuTolerance) {
+        const SwTolerance defaults;
+        if (tolerance.channel == defaults.channel) tolerance.channel = 16;
+        if (tolerance.ratio == defaults.ratio) tolerance.ratio = 0.03f;
+    }
     const float ratio = swMaxDiffRatio(name, tolerance);
     const GoldenResult result =
         compareRgba(actual.data(), expected.data(), width, height, tolerance.channel, ratio);
@@ -144,10 +154,21 @@ bool compareAndReport(const std::string& name, const std::vector<uint8_t>& actua
 int main(int argc, char** argv) {
     bool update = false;
     std::string filter;
+    std::string backendName = "sw";
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--update") {
             update = true;
+        } else if (arg == "--backend") {
+            if (i + 1 >= argc) {
+                report("xt_golden: --backend requires an argument (sw or wgpu)\n");
+                return 2;
+            }
+            backendName = argv[++i];
+            if (backendName != "sw" && backendName != "wgpu") {
+                report("xt_golden: unknown backend '%s' (sw or wgpu)\n", backendName.c_str());
+                return 2;
+            }
         } else if (arg == "--filter") {
             if (i + 1 >= argc) {
                 report("xt_golden: --filter requires an argument\n");
@@ -160,8 +181,33 @@ int main(int argc, char** argv) {
         }
     }
 
+    FrameBackend backend = swFrameBackend();
+    const bool gpu = backendName == "wgpu";
+    if (gpu) {
+        if (update) {
+            report("xt_golden: --update writes SW images only; drop --backend wgpu\n");
+            return 2;
+        }
+#ifdef XT_GOLDEN_WGPU
+        std::string err;
+        if (!makeWgpuBackend(backend, err)) {
+            report("SKIP: %s\n", err.c_str());
+            return 0;
+        }
+        report("xt_golden: wgpu adapter: %s\n", wgpuAdapterName().c_str());
+        g_gpuTolerance = true;
+#else
+        report("SKIP: no WebGPU adapter (xt_golden was built without xt_wgpu)\n");
+        return 0;
+#endif
+    }
+    const UiBackend uiBackend = [&backend](const UiFixture& f, const CommandList& cmds, TextShaper* shaper,
+                                           AssetResolver* assets, const IrView* ir) {
+        return backend(f.width, f.height, f.clearColor, cmds, shaper, assets, ir);
+    };
+
     const fs::path expectedDir(XT_GOLDEN_DIR);
-    const fs::path outDir = fs::path("build") / "golden-out";
+    const fs::path outDir = fs::path("build") / (gpu ? "golden-out-wgpu" : "golden-out");
 
     int ran = 0;
     int failed = 0;
@@ -172,7 +218,7 @@ int main(int argc, char** argv) {
         }
         ++ran;
 
-        std::vector<uint8_t> actual = renderFixture(fx);
+        std::vector<uint8_t> actual = renderFixture(fx, backend);
         if (actual.empty()) {
             report("[FAIL] %s: fixture could not be rendered\n", fx.name);
             ++failed;
@@ -224,7 +270,7 @@ int main(int argc, char** argv) {
         }
         ++ran;
 
-        std::vector<uint8_t> actual = renderLottieFixture(fx, lottieDir.string());
+        std::vector<uint8_t> actual = renderLottieFixture(fx, lottieDir.string(), backend);
         if (actual.empty()) {
             report("[FAIL] %s: fixture could not be rendered\n", fx.name.c_str());
             ++failed;
@@ -273,14 +319,14 @@ int main(int argc, char** argv) {
         if (!matchesFilter(fx.name, filter)) {
             continue;
         }
-        if (fx.glOnly) {
+        if (fx.glOnly && !gpu) {
             // T-203 (18.7): a custom effect's shader only runs on GL; xt_gl_tests compares it.
             report("[SKIP] %s (gl-only)\n", fx.name.c_str());
             continue;
         }
         ++ran;
 
-        std::vector<uint8_t> actual = renderUiFixture(fx, uiDir.string());
+        std::vector<uint8_t> actual = renderUiFixture(fx, uiDir.string(), uiBackend);
         if (actual.empty()) {
             report("[FAIL] %s: fixture could not be rendered\n", fx.name.c_str());
             ++failed;
@@ -325,9 +371,12 @@ int main(int argc, char** argv) {
 
     // Docs/tasks/T-99.md test 1: partial redraw must match a full redraw byte for byte. Skipped
     // in --update mode, which regenerates expected images and has nothing to compare against.
-    if (!update) {
+    if (!update && !gpu) {
         runPartialRedrawChecks(uiDir.string(), filter, ran, failed);
     }
+#ifdef XT_GOLDEN_WGPU
+    releaseWgpuBackend();
+#endif
 
     // T-267a (review L22): an unreadable manifest or a malformed line drops fixtures; that is a failure.
     if (manifestErrors() > 0) {

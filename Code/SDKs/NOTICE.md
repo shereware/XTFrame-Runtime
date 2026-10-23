@@ -21,6 +21,7 @@ below. None of them are relicensed or modified beyond what each entry notes; see
 | [Clipper2](https://github.com/AngusJohnson/Clipper2) | Clipper2_1.5.4 (commit `ef88ee9`) | Boost Software License 1.0 | `Code/Editor/Core/` | Polygon boolean and offset operations for destructive vector path editing (`USINGZ` on) |
 | [cpp-httplib](https://github.com/yhirose/cpp-httplib) | v0.58.0 | MIT | `Code/Editor/Service/` | Single-header HTTP server for the editor's MCP endpoint (loopback only) |
 | [miniz](https://github.com/richgel999/miniz) | 3.0.2 | MIT | `Code/Editor/History/` | zlib-compatible deflate/inflate for the history core's loose objects |
+| [wgpu-native](https://github.com/gfx-rs/wgpu-native) | v29.0.1.1 (prebuilt release binaries) | MIT / Apache License 2.0 (dual) | `Code/Runtime/wgpu/` | WebGPU implementation (`webgpu.h` + `wgpu.h`, shared library `wgpu_native`) behind the `xt_wgpu` backend |
 | [Noto Sans / Noto Sans SC / Noto Naskh Arabic / Noto Sans Hebrew / Noto Sans Thai / Noto Emoji](https://fonts.google.com/noto) subsets | see `Tests/fonts/README.md` | SIL Open Font License 1.1 | `Tests/fonts/` | Test-only fonts for shaping, bidi, and golden-image fixtures |
 
 ## Vendored vs. fetched
@@ -35,6 +36,13 @@ below. None of them are relicensed or modified beyond what each entry notes; see
   (`Tools/CMake/xt_sdl2.cmake`), Clipper2 (`Tools/CMake/xt_clipper2.cmake`; only `Clipper2Lib`'s engine, offset
   and rectclip sources are compiled), cpp-httplib (`Tools/CMake/xt_httplib.cmake`, header only) and miniz
   (`Tools/CMake/xt_miniz.cmake`, only `miniz.c`).
+- **Prebuilt binaries fetched at configure time** (one release archive per platform, pinned by
+  URL and SHA-256 in `Code/SDKs/versions.cmake`, unpacked into `Code/SDKs/_fetched/<name>/<platform>/`,
+  same `XT_SDK_OFFLINE` rule; `Tools/CMake/xt_sdks.cmake` `xt_sdk_prebuilt`): wgpu-native
+  (`Tools/CMake/xt_wgpu.cmake`; dual licensed MIT or Apache License 2.0, used under either). Only its
+  shared library (`wgpu_native.dll` / `libwgpu_native.so` / `libwgpu_native.dylib`) is linked, by
+  `xt_wgpu`, and is copied next to the executables that use it. A platform without an archive
+  builds without `xt_wgpu`.
 - **Test-only assets** (not linked into any library or tool): the Noto font subsets under
   `Tests/fonts/`, OFL-licensed; see `Tests/fonts/README.md` for how they were produced and their
   per-file registered family names.
@@ -43,7 +51,8 @@ below. None of them are relicensed or modified beyond what each entry notes; see
 
 - MIT, zlib, Apache License 2.0 and Boost Software License 1.0 texts are reproduced in each vendored component's own
   `LICENSE` file (`Code/SDKs/<name>/LICENSE`) or, for FreeType/HarfBuzz/SDL2/Clipper2/cpp-httplib/miniz, in the sources
-  fetched by CMake at `Code/SDKs/_fetched/<name>/`.
+  fetched by CMake at `Code/SDKs/_fetched/<name>/`. wgpu-native's MIT and Apache 2.0 texts are in its
+  repository at the pinned tag (its release archives carry none).
 - The SIL Open Font License 1.1 text for the Noto fonts is at `Tests/fonts/LICENSE`.
 - XTFrame's own MIT license is at the repository root `LICENSE`.
 

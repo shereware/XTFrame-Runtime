@@ -93,6 +93,7 @@ fixture (.xt 或 .json) + 參數 (width, height, dpr, time)
 | `docs-checks` | `check_skill_sync`、`check_ops_doc`、`check_command_ops`、`check_symbols_index`、`check_test_temp`、`check_layering`、`check_public_headers`（無建置） | 必要 |
 | `macos` | `ninja-ci-*` 建置與 ctest；`continue-on-error` | 非必要 |
 | `fuzz` | §15.5 的 libFuzzer 60 s；只在 `workflow_dispatch` 跑 | 非必要 |
+| （M34 T-441）`xt_wgpu_tests` | 併入 `windows`（D3D12，hosted runner `XT_WGPU_FALLBACK=1` 走 WARP）、`linux`（lavapipe）、`macos`（Metal）各腿；無 adapter 時 SKIP 回 0；`sanitizers` 腿不建 wgpu（10 §10.10.3） | 隨所屬腿 |
 
 - `linux` 與 `sanitizers` 的 `runs-on` 讀 repository variable `XT_LINUX_RUNNER`（JSON 標籤陣列，例如 `["self-hosted","xtframe-linux"]`），未設即 `ubuntu-24.04`；self-hosted 時跳過 apt 安裝步驟。登錄步驟見 `Docs/ci/self-hosted-runner.md`。
 - `XT_SANITIZE`（頂層 CMake 快取字串，逗號清單）把 `-fsanitize=<清單> -fno-sanitize=vptr -fno-omit-frame-pointer` 加到所有目標（含 FetchContent 相依）；只限 GCC／Clang，與 `XT_BUILD_FUZZ` 互斥。vptr 檢查關閉的理由同 §15.5（xt_core 無 RTTI）。

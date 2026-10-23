@@ -21,6 +21,10 @@ option(XT_BUILD_GPU "Build the device-neutral GPU frame builder (xt_gpu)" ON)
 if(XT_BUILD_GL AND NOT XT_BUILD_GPU)
     message(FATAL_ERROR "XT_BUILD_GL requires XT_BUILD_GPU=ON (xt_gl is a GpuDevice over xt_gpu, T-147)")
 endif()
+# Docs/design/10-backends.md §10.10 (T-437): the WebGPU device (xt_wgpu) over prebuilt wgpu-native.
+# Turns itself OFF (with a status message, never a configure error) when this platform has no
+# prebuilt archive, or XT_SDK_OFFLINE=ON lacks Code/SDKs/_fetched/wgpu-native/<platform>/.
+option(XT_BUILD_WGPU "Build the WebGPU backend (xt_wgpu, prebuilt wgpu-native)" ON)
 option(XT_BUILD_SHELL "Build SDL2 shell" ON)
 # T-240 (Docs/design/23-host-integration.md §23.11.1): xt_shell presents through xt_gl (ON) or
 # through xt_sw + an SDL_Renderer streaming texture (OFF). Android has no desktop GL: forced OFF.
@@ -110,6 +114,15 @@ endif()
 if(XT_BUILD_TEXT)
     include(Tools/CMake/xt_text_deps.cmake)
 endif()
+if(XT_BUILD_WGPU AND NOT XT_BUILD_GPU)
+    message(STATUS "xt_wgpu: XT_BUILD_GPU=OFF, XT_BUILD_WGPU=OFF (xt_wgpu is a GpuDevice over xt_gpu)")
+    set(XT_BUILD_WGPU OFF)
+elseif(XT_BUILD_WGPU AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Code/Runtime/wgpu/CMakeLists.txt")
+    set(XT_BUILD_WGPU OFF)
+endif()
+if(XT_BUILD_WGPU)
+    include(Tools/CMake/xt_wgpu.cmake)  # may set XT_BUILD_WGPU OFF (no prebuilt for this platform)
+endif()
 
 # MSVC default CMAKE_CXX_FLAGS injects /EHsc. xt_core disables exceptions, so
 # remove it here; non-core targets add /EHsc back explicitly.
@@ -144,6 +157,9 @@ if(XT_BUILD_GPU)
 endif()
 if(XT_BUILD_GL)
     add_subdirectory(Code/Runtime/gl)
+endif()
+if(XT_BUILD_WGPU)
+    add_subdirectory(Code/Runtime/wgpu)
 endif()
 if(XT_BUILD_SHELL)
     add_subdirectory(Code/Runtime/shell)

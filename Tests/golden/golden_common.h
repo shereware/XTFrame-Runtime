@@ -187,6 +187,16 @@ uint32_t addNode(xt::compile::SceneBuilder& scene, xt::NodeKind kind, uint32_t p
 // Lottie JSON file.
 // ---------------------------------------------------------------------------------------------
 
+/// T-438: draws a CommandList into a `width` x `height` target cleared to `clear` and returns its
+/// pixels as tightly packed top-down RGBA8 (empty on failure). `swFrameBackend()` is xt::sw;
+/// xt_golden --backend wgpu passes xt::wgpu's (golden_wgpu.h).
+using FrameBackend = std::function<std::vector<uint8_t>(int width, int height, const xt::Color& clear,
+                                                        const xt::CommandList& cmds, xt::TextShaper* shaper,
+                                                        xt::AssetResolver* assets, const xt::IrView* ir)>;
+
+/// The xt::sw FrameBackend every golden used before T-438.
+FrameBackend swFrameBackend();
+
 struct LottieFixture {
     std::string name;
     std::string jsonPath;  // Relative to the lottie fixtures directory (manifest's own directory).
@@ -207,6 +217,10 @@ std::vector<LottieFixture> loadLottieManifest(const std::string& manifestPath);
 /// Returns an empty vector on failure (already reported to stdout). `lottieDir` is the directory
 /// `fx.jsonPath` is relative to (also used as compileLottie's/FileAssetResolver's rootDir).
 std::vector<uint8_t> renderLottieFixture(const LottieFixture& fx, const std::string& lottieDir);
+
+/// T-438: renderLottieFixture() with `backend` drawing the final CommandList.
+std::vector<uint8_t> renderLottieFixture(const LottieFixture& fx, const std::string& lottieDir,
+                                         const FrameBackend& backend);
 
 // ---------------------------------------------------------------------------------------------
 // UI (`.xt` document) golden fixture loader (Docs/tasks/T-27.md). Like the Lottie loader above,

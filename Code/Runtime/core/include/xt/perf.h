@@ -86,6 +86,12 @@ struct FrameStats {
     float swFxSdfMs = 0;
     /// Per-pixel effect composition loops (color matrix, gradient mask, shine, shadow compose).
     float swFxPixMs = 0;
+    /// T-450 (21 §21.2): the editor's synchronous `documentChanged()` fan-out (the listeners that
+    /// still run inside the edit). Filled by the editor host, not by the core; 0 elsewhere.
+    float editorDocChangedMs = 0;
+    /// T-450: the editor's deferred, coalesced panel refresh (run after the preview has drawn the
+    /// edit). Filled by the editor host, not by the core; 0 elsewhere.
+    float editorPanelsMs = 0;
     /// `xt::gpu::FrameBuilder::build` (Docs/design/10-backends.md §10.5): CommandList -> GpuFrame
     /// CPU time. 0 on frames rendered by another backend.
     float gpuBuildMs = 0;
@@ -181,7 +187,7 @@ struct FrameStats {
     X(layoutMs) X(animateMs) X(transformMs) X(paintMs) X(renderMs) X(effectsMs) X(textMs) X(damageMs)  \
         X(flowMs) X(swPathMs) X(swRasterMs) X(swSpanMs) X(swSpanSolidMs) X(swSpanGradientMs)           \
             X(swSpanImageMs) X(swSpanClippedMs) X(swClipMs) X(swLayerMs) X(swFxBlurMs) X(swFxDilateMs) \
-                X(swFxSdfMs) X(swFxPixMs)
+                X(swFxSdfMs) X(swFxPixMs) X(editorDocChangedMs) X(editorPanelsMs)
 
 /// Every uint32_t workload/memory field of FrameStats (i.e. all but frameIndex), in declaration
 /// order, as `X(name)`. Companion to XT_FRAME_STATS_FLOAT_FIELDS.

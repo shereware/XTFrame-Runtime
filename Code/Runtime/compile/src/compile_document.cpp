@@ -722,7 +722,7 @@ CompileResult compileDocumentImpl(std::string_view mainText, std::string_view ma
         const std::string& src = srcAttr->value;
         fs::path jsonPath = resolveAsset(options, xtDir, src);
         std::vector<uint8_t> jsonBytes;
-        if (!detail::readFileBytes(jsonPath, jsonBytes)) {
+        if (!readAssetFileBytes(options, jsonPath, jsonBytes)) {  // T-452
             sink.error(path, "anim src \"" + src + "\" not found", node.line, node.col);
             continue;
         }
@@ -751,12 +751,13 @@ CompileResult compileDocumentImpl(std::string_view mainText, std::string_view ma
             continue;  // T-150: `engine://x.svg` is an external texture, not a vector file.
         }
         const std::string& src = srcAttr->value;
-        std::string svgText;
         const fs::path svgPath = resolveAsset(options, xtDir, src);
-        if (!readFileText(svgPath, svgText)) {
+        std::vector<uint8_t> svgBytes;
+        if (!readAssetFileBytes(options, svgPath, svgBytes)) {  // T-452
             sink.error(path, "img src \"" + src + "\" not found", node.line, node.col);
             continue;
         }
+        const std::string svgText(svgBytes.begin(), svgBytes.end());
         // T-273c: the scene and its timeline are named by the published reference.
         const std::string sceneName = publishedReference(src, xtDir, options);
         SceneBuilder svgScene;

@@ -1350,8 +1350,7 @@ AssetId ensureImageAsset(IrWriter& writer, const std::string& src, std::string_v
                       line, col);
         }
     }
-    std::error_code ec;
-    bool onDisk = fs::exists(full, ec);
+    bool onDisk = assetPathExists(options, full);  // T-452
     if (!embedded && !onDisk) {
         sink.warn(std::string(fileName), "image asset \"" + src + "\" not found", line, col);
     }
@@ -1705,8 +1704,7 @@ bool emitStyle(const RuleSet& ruleSet, IrWriter& writer, StyleBuilder& style,
                               "failed to embed font asset \"" + ff.src + "\"; kept external");
                 }
             }
-            std::error_code ec;
-            bool onDisk = fs::exists(full, ec);
+            bool onDisk = assetPathExists(options, full);  // T-452
             if (!embedded && !onDisk) {
                 sink.warn(std::string(fileName), "font asset \"" + ff.src + "\" not found");
             }

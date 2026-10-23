@@ -92,7 +92,7 @@
 | Editor Service | op 名與參數 | 加 op；廢止走 alias |
 | skills | `xtui`／`xtui-editor` 的對外說明 | 跟 op 走 |
 
-**實驗**（不在承諾內，UI 與文件標「實驗」）：32 章綁定與變形、31 章修改器的執行期部分、`layer: overlay` 的巢狀順序、3D UI 深度分層、媒體軸、多視窗的 `snapshotState` JSON 內容（版本 1 可變）。
+**實驗**（不在承諾內，UI 與文件標「實驗」）：32 章綁定與變形、31 章修改器的執行期部分、`layer: overlay` 的巢狀順序、3D UI 深度分層、媒體軸、多視窗的 `snapshotState` JSON 內容（版本 1 可變）、編輯器的 WebGPU 預覽。
 
 ## 43.8 beta 相容聲明（C4 的骨架）
 

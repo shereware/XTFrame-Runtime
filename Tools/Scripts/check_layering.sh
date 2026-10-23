@@ -16,6 +16,9 @@
 #      in R_DIRS, E_DIRS or NEUTRAL_DIRS below, and every such Code/Tools/<name>/,
 #      Code/Runtime/<name>/ or Code/Runtime/platforms/<name>/ (SPLIT_DIRS) is in one of them too, so
 #      a new directory cannot slip past checks 1 and 2 unclassified.
+#   5. Code/Backends/ (T-439, 45 §45.7): a quoted include there names a public `xt/...` header or
+#      another Code/Backends file (`xt_backend*.h`, `xt_platform_*.h`, `xt_renderer_*.h`), never a
+#      module's `src/` or private header; host APIs (SDL2, Win32, webgpu.h) come in with <...>.
 # §6.2 point 3 (P features entered through xt::license::has) waits until an xt_pro_* target exists.
 # Prints every violation as `file:line: ...`, then `LAYERING: PASS` or `LAYERING: FAIL (<n>
 # violation(s))`; exits 0 / 1.
@@ -26,7 +29,7 @@ cd "$(dirname "$0")/../.."
 # The R directories of the RELEASE-MAP §6.1 table. Code/Runtime/gpu/ (xt_gpu, the GPU frame builder) is not in
 # the table but is runtime layer, so it is listed too. Code/Tools/bake is filed under E by that
 # table (an E tool may use R, so there is nothing to check for it).
-R_DIRS="Code/Runtime/core Code/Runtime/compile Code/Runtime/sw Code/Runtime/gpu Code/Runtime/gl
+R_DIRS="Code/Runtime/core Code/Runtime/compile Code/Runtime/sw Code/Runtime/gpu Code/Runtime/gl Code/Runtime/wgpu
         Code/Runtime/bundle Code/Runtime/flow Code/Runtime/text Code/Runtime/shell Code/Backends
         Code/Runtime/platforms/android Code/Tools/Common
         Code/Tools/view Code/Tools/compile Code/Tools/pack Code/Tools/gpu-probe
@@ -104,6 +107,15 @@ if [ -f Code/Tools/CMakeLists.txt ]; then
       if (depth < 0) { inside = 0 }
     }
   ' Code/Tools/CMakeLists.txt >>"$viol"
+fi
+
+# 5. Code/Backends/ includes only public headers, its own files and (angle-bracketed) host APIs.
+if [ -d Code/Backends ]; then
+  grep -rnE '^[[:space:]]*#[[:space:]]*include[[:space:]]*"' \
+    --include='*.h' --include='*.hpp' --include='*.c' --include='*.cc' --include='*.cpp' --include='*.mm' \
+    Code/Backends 2>/dev/null |
+    grep -vE '#[[:space:]]*include[[:space:]]*"(xt/[^"]+|xt_(backend|platform|renderer)[A-Za-z0-9_]*\.h)"' |
+    sed 's/$/  [Backends include a private header]/' >>"$viol"
 fi
 
 # 4. Directories (T-267a): tracked and untracked (not ignored) files, so build output never counts.

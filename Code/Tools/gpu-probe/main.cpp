@@ -6,6 +6,12 @@
 //
 //   xtframe-gpu-probe <bundle dir> <ui id> [width height] [frames] [--dump <file>]
 //                   [--gl [--msaa <0|2|4|8>] [--no-finish] [--warmup <frames>]]
+//                   [--wgpu [--msaa <0|4>] [--no-finish] [--warmup <frames>]]
+//
+// `--wgpu` (T-438; built when xt_wgpu is): the same frames through `xt::wgpu::WgpuRenderer` on a
+// headless device (XT_WGPU_BACKEND / XT_WGPU_FALLBACK apply) into an offscreen RGBA8 target; prints
+// the average / p99 / max CPU render time (Docs/design/21 FrameStats::renderMs) and, unless
+// `--no-finish`, render + wait for the queue, over the steady frames.
 //
 // The idea comes from an earlier host-side probe; this copy measures the fill
 // from the frame itself (pass windows and quad extents) instead of estimating it from boundsHint.
@@ -48,6 +54,11 @@
 #include "xt/sw/sw_png.h"
 #include "xt/text/ft_text_shaper.h"
 #include "xt/text/glyph_atlas.h"
+#ifdef XT_PROBE_WGPU
+#include <webgpu/wgpu.h>
+
+#include "xt/wgpu/wgpu_renderer.h"
+#endif
 
 #ifdef XT_PROBE_GL
 #include <SDL.h>
@@ -486,13 +497,108 @@ int runGl(xt::Context& ctx, xt::DocumentHandle doc, xt::text::FtTextShaper& shap
 
 }  // namespace
 
+#ifdef XT_PROBE_WGPU
+namespace {
+
+/// The `--wgpu` run (T-438): frames through WgpuRenderer into an offscreen target. Returns the
+/// exit code.
+int runWgpu(xt::Context& ctx, xt::DocumentHandle doc, xt::text::FtTextShaper& shaper,
+            xt::bundle::Bundle& bundle, int width, int height, int frames, int msaa, bool finish,
+            int warmup) {
+    xt::wgpu::WgpuHeadlessOptions options;
+    options.sampleCount = msaa >= 4 ? 4u : 1u;
+    xt::wgpu::WgpuInit init = xt::wgpu::WgpuInit::headless(options);
+    xt::wgpu::WgpuRenderer renderer;
+    if (!renderer.init(init)) {
+        std::fprintf(stderr, "xtframe-gpu-probe --wgpu: %s\n", renderer.lastError());
+        init.release();
+        return 1;
+    }
+    WGPUTextureDescriptor d = WGPU_TEXTURE_DESCRIPTOR_INIT;
+    d.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_CopySrc;
+    d.size = WGPUExtent3D{uint32_t(width), uint32_t(height), 1};
+    d.format = WGPUTextureFormat_RGBA8Unorm;
+    WGPUTexture target = wgpuDeviceCreateTexture(init.device, &d);
+    WGPUTextureView view = wgpuTextureCreateView(target, nullptr);
+    xt::text::GlyphAtlas atlas(shaper);
+    renderer.setGlyphAtlas(&atlas);
+    renderer.resize(width, height);
+    renderer.setClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    std::printf("WGPU: %s | target %dx%d, %u sample(s)\n", renderer.adapterName(), width, height,
+                options.sampleCount);
+    xt::CommandList list;
+    xt::DamageList damage;
+    std::vector<double> render, total, build, plan, upload, encode, queue;
+    double draws = 0, passes = 0, uploads = 0, reused = 0;
+    for (int f = 0; f < frames; ++f) {
+        ctx.update(1.0f / 60.0f);
+        ctx.render(list, &damage);
+        const xt::Document* pDoc = ctx.document(doc);
+        const auto t0 = std::chrono::steady_clock::now();
+        renderer.render(list, &shaper, &bundle.assets(), view, pDoc ? &pDoc->ir() : nullptr, nullptr,
+                        &damage);
+        const auto t1 = std::chrono::steady_clock::now();
+        if (finish) {
+            wgpuDevicePoll(init.device, 1, nullptr);
+        }
+        const auto t2 = std::chrono::steady_clock::now();
+        if (renderer.lastError()[0] != '\0') {
+            std::fprintf(stderr, "frame %d: %s\n", f, renderer.lastError());
+        }
+        if (f < warmup) {
+            continue;
+        }
+        render.push_back(std::chrono::duration<double, std::milli>(t1 - t0).count());
+        total.push_back(std::chrono::duration<double, std::milli>(t2 - t0).count());
+        const xt::wgpu::WgpuStats s = renderer.stats();
+        build.push_back(s.buildMs);
+        plan.push_back(s.planMs);
+        upload.push_back(s.uploadMs);
+        encode.push_back(s.encodeMs);
+        queue.push_back(s.queueMs);
+        draws += s.drawCalls;
+        passes += s.passes;
+        uploads += double(s.uploadBytes);
+        reused += s.frameReused;
+    }
+    auto report = [](const char* name, std::vector<double> v) {
+        if (v.empty()) return;
+        double sum = 0;
+        for (double x : v) sum += x;
+        std::sort(v.begin(), v.end());
+        const size_t p99 = std::min(v.size() - 1, size_t(double(v.size()) * 0.99));
+        std::printf("  %-22s avg %.3f ms  p99 %.3f ms  max %.3f ms\n", name, sum / double(v.size()), v[p99],
+                    v.back());
+    };
+    const double n = render.empty() ? 1.0 : double(render.size());
+    std::printf("steady state (%zu frames): draws %.1f, passes %.1f, upload %.0f B, reused %.0f%%\n",
+                render.size(), draws / n, passes / n, uploads / n, 100.0 * reused / n);
+    report("render (CPU)", render);
+    report("  build", build);
+    report("  submit: plan", plan);
+    report("  submit: upload", upload);
+    report("  submit: encode", encode);
+    report("  submit: queue", queue);
+    if (finish) report("render + queue wait", total);
+    renderer.setGlyphAtlas(nullptr);
+    renderer.shutdown();
+    wgpuTextureViewRelease(view);
+    wgpuTextureDestroy(target);
+    wgpuTextureRelease(target);
+    init.release();
+    return 0;
+}
+
+}  // namespace
+#endif
+
 static int run(int argc, char** argv) {
     xt::tools::useUtf8Console();  // T-261e
     if (argc < 3) {
-        std::fprintf(
-            stderr,
-            "usage: xtframe-gpu-probe <bundle dir> <ui id> [width height] [frames] [--dump <file>]\n"
-            "                         [--gl [--msaa <0|2|4|8>] [--no-finish] [--warmup <frames>]]\n");
+        std::fprintf(stderr,
+                     "usage: xtframe-gpu-probe <bundle dir> <ui id> [width height] [frames] [--dump <file>]\n"
+                     "                         [--gl [--msaa <0|2|4|8>] [--no-finish] [--warmup <frames>]]\n"
+                     "                         [--wgpu [--msaa <0|4>] [--no-finish] [--warmup <frames>]]\n");
         return 2;
     }
     const std::string dir = argv[1];
@@ -500,12 +606,15 @@ static int run(int argc, char** argv) {
     int width = 1920, height = 1080, frames = 120;
     std::string dumpPath;
     bool useGl = false;
+    bool useWgpu = false;
     bool finish = true;
     int msaa = 0;
     int warmup = 5;
     for (int i = 3; i < argc; ++i) {
         if (std::strcmp(argv[i], "--dump") == 0 && i + 1 < argc) {
             dumpPath = argv[++i];
+        } else if (std::strcmp(argv[i], "--wgpu") == 0) {
+            useWgpu = true;
         } else if (std::strcmp(argv[i], "--gl") == 0) {
             useGl = true;
         } else if (std::strcmp(argv[i], "--no-finish") == 0) {
@@ -556,6 +665,14 @@ static int run(int argc, char** argv) {
     std::printf("memory: after bundle, fonts and document load%s\n", processMemoryNote().c_str());
 #endif
 
+    if (useWgpu) {
+#ifdef XT_PROBE_WGPU
+        return runWgpu(ctx, doc, shaper, *bundle, width, height, frames, msaa, finish, warmup);
+#else
+        std::fprintf(stderr, "xtframe-gpu-probe: --wgpu needs a build with XT_BUILD_WGPU=ON\n");
+        return 2;
+#endif
+    }
     if (useGl) {
 #ifdef XT_PROBE_GL
         return runGl(ctx, doc, shaper, *bundle, width, height, frames, msaa, finish, warmup);

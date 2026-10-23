@@ -23,6 +23,7 @@
 #include "../Common/print_version.h"
 #include "../Common/standard_symbols_note.h"
 #include "view_flow.h"
+#include "view_renderer.h"
 #include "xt/animator.h"
 #include "xt/asset_resolver.h"
 #include "xt/bundle/bundle.h"
@@ -228,6 +229,13 @@
 /// software renderer for exactly --frames frames (default 60) instead, and exits 0 -- used by
 /// CTest, which has no display.
 ///
+/// --renderer sw|gl|wgpu (T-439, view_renderer.h) picks one of the renderers built in (the default is
+/// unchanged: xt_sw under --headless, else the shell's -- gl, or sw for an XT_SHELL_GL=OFF build). Under
+/// --headless gl and wgpu render the frames offscreen (an FBO of a hidden GL window; a headless WebGPU
+/// device) instead of xt_sw; a windowed run with a non-default renderer draws through Code/Backends' files in
+/// an SDL window (no shell extras: --fit, --scene, --second-window, --borderless... are the shell's). An
+/// unknown or missing renderer prints one line and uses the default. --version adds `renderers: <built in>`.
+///
 /// Exit codes: 0 success, 1 a load/compile error, 2 argument error (usage printed to stderr).
 /// --help/-h prints the usage to stdout and exits 0. --version (T-420) prints the version lines
 /// (Code/Tools/Common/print_version.h) to stdout and exits 0, whatever else is on the command line.
@@ -342,6 +350,7 @@ struct Args {
     std::vector<std::string> assetRoots;
     bool help = false;
     bool version = false;        // T-420: --version.
+    std::string renderer;        // T-439: --renderer (empty = the default).
     bool listFonts = false;      // T-426: --list-fonts.
     bool listFontNames = false;  // T-429: --list-fonts=names (families only).
     uint32_t dumpEvery = 0;      // 0 = only at the end of the run.
@@ -743,6 +752,10 @@ bool parseArgs(int argc, char** argv, Args& out) {
             return true;  // Nothing else matters; main() prints the usage and exits 0.
         } else if (arg == "--headless") {
             out.headless = true;
+        } else if (arg == "--renderer") {
+            if (!needValue("--renderer", out.renderer)) {
+                return false;
+            }
         } else if (arg == "--transparent") {
             out.transparent = true;
         } else if (arg == "--scene") {
@@ -1260,7 +1273,8 @@ void printUsage(std::FILE* out) {
         "\n"
         "  --root DIR              asset root (default: the input file's directory)\n"
         "  --width W --height H    viewport size in logical pixels (default 1280x720)\n"
-        "  --msaa N                MSAA samples for the windowed backend (default 4)\n"
+        "  --msaa N                MSAA samples, 4 or 1 (none), for the windowed backend and\n"
+        "                          --renderer gl|wgpu (default 4)\n"
         "  --screenshot PATH       render one frame (or, with --headless, the last one) to a PNG\n"
         "  --flow <file.xtflow>    load and tick a signal graph against the document\n"
         "                          (default: the input's own .xtflow, or a bundle UI's)\n"
@@ -1273,6 +1287,9 @@ void printUsage(std::FILE* out) {
         "  --project DIR           same as the input DIR (a UI Project or Bundle), plus every\n"
         "                          other UI, their flows and the global flow\n"
         "  --headless              no window/GL context; software-render --frames frames\n"
+        "  --renderer sw|gl|wgpu   the renderer (built in: see --version; default: sw with\n"
+        "                          --headless, else the shell's);\n"
+        "                          with --headless gl / wgpu render offscreen on the GPU\n"
         "  --transparent           headless: clear to transparent instead of white, so a\n"
         "                          --screenshot keeps the UI's alpha (what a host composites)\n"
         "  --scene PNG             draw the UI onto this image as the host scene (Direct target\n"
@@ -2172,6 +2189,7 @@ int main(int argc, char** argv) {
     }
     if (args.version) {
         xt::tools::printVersion("xtframe-view", stdout);
+        std::printf("renderers: %s\n", xt::view::builtRenderers().c_str());  // T-439
         return 0;
     }
     if (args.listFonts) {
@@ -2229,7 +2247,39 @@ int main(int argc, char** argv) {
 
     g_stripEditorOnly = !args.scene.empty();  // T-343
     g_strict = args.strict;                   // T-392
-    if (args.headless) {
+    // T-439: --renderer. A renderer other than the shell's (windowed) or other than xt_sw
+    // (headless) draws the frame loop below through a FrameTarget; when it cannot be created the
+    // run goes on with the default path.
+    const xt::view::Renderer chosenRenderer = xt::view::resolveRenderer(args.renderer, args.headless);
+    std::unique_ptr<xt::view::FrameTarget> frameTarget;
+    if (chosenRenderer != xt::view::defaultRenderer(args.headless)) {
+        if (!args.scene.empty() || args.showDamage) {
+            std::fprintf(stderr,
+                         "xtframe-view: --scene / --show-damage use the default renderer path; "
+                         "--renderer %s ignored\n",
+                         xt::view::rendererName(chosenRenderer));
+        } else {
+            xt::view::FrameTargetConfig config;
+            config.width = args.width;
+            config.height = args.height;
+            config.windowed = !args.headless;
+            config.hidden = args.hidden;
+            config.sampleCount = args.msaa >= 4 ? 4u : 1u;  // T-441: --msaa reaches --renderer gl / wgpu
+            config.title = "XTFrame";
+            config.clear = args.headless ? (args.transparent ? xt::Color{0, 0, 0, 0} : xt::Color{1, 1, 1, 1})
+                                         : xt::Color{0.1f, 0.1f, 0.1f, 1.0f};  // the shell's background
+            std::string error;
+            frameTarget = xt::view::createFrameTarget(chosenRenderer, config, error);
+            if (!frameTarget) {
+                std::fprintf(stderr, "xtframe-view: renderer %s unavailable (%s); using %s\n",
+                             xt::view::rendererName(chosenRenderer), error.c_str(),
+                             xt::view::rendererName(xt::view::defaultRenderer(args.headless)));
+            } else {
+                std::fprintf(stderr, "xtframe-view: renderer %s\n", frameTarget->description().c_str());
+            }
+        }
+    }
+    if (args.headless || frameTarget) {
         if (!args.secondWindow.empty()) {
             std::fprintf(stderr, "xtframe-view: --second-window needs a window; ignored with --headless\n");
         }
@@ -2240,6 +2290,11 @@ int main(int argc, char** argv) {
 #ifndef XT_GL_NO_TEXT
         xt::text::FtTextShaper shaper;
         shaper.addSystemFonts();
+#if !defined(XT_BACKEND_NO_TEXT)
+        if (frameTarget) {
+            frameTarget->setTextShaper(&shaper);  // T-439: the GPU renderers' glyph atlas
+        }
+#endif
 #else
         xt::NullTextShaper shaper;
 #endif
@@ -2365,8 +2420,26 @@ int main(int argc, char** argv) {
         float damageAreaSum = 0.0f;
         const float dt = 1.0f / 60.0f;
         uint32_t frameCount = args.frames > 0 ? args.frames : 1;
+        // T-439: a windowed FrameTarget runs until the window closes (or --warmup + 1 frames for a
+        // --screenshot), with the platform's events and clock.
+        const bool windowLoop = frameTarget && frameTarget->windowed();
+        if (windowLoop) {
+            frameCount = args.screenshot.empty() ? UINT32_MAX : args.warmup + 1;
+        }
+        double lastTime = windowLoop ? frameTarget->seconds() : 0.0;
         for (uint32_t frame = 0; frame < frameCount; ++frame) {
             float frameDt = frame == 0 ? 0.0f : dt;
+            if (windowLoop) {
+                if (!frameTarget->pump(ctx)) {
+                    frameCount = frame;
+                    break;
+                }
+                const double now = frameTarget->seconds();
+                frameDt = frame == 0                 ? 0.0f
+                          : !args.screenshot.empty() ? args.warmupDt
+                                                     : static_cast<float>(now - lastTime);
+                lastTime = now;
+            }
             portLogFrame = frame;
             // T-125: queued before update(), which drains and dispatches the queue first.
             applyScriptedInput(args, ctx, handle, frame, systemEvent);
@@ -2386,11 +2459,20 @@ int main(int argc, char** argv) {
             }
             const xt::Document* doc = ctx.document(handle);
             const xt::IrView* irView = doc != nullptr ? &doc->ir() : nullptr;
-            renderer.setTarget(target);
-            if (!scene.empty()) {
+            if (frameTarget) {
+                // T-439: gl / wgpu (or windowed sw) instead of the xt_sw buffer.
+                frameTarget->render(list, &shaper, &assets, irView, &ctx.perf(),
+                                    trackDamage ? &damage : nullptr);
+                const bool keepForShot = windowLoop && !args.screenshot.empty() && frame + 1 == frameCount;
+                if (!keepForShot) {
+                    frameTarget->present();
+                }
+            } else if (!scene.empty()) {
+                renderer.setTarget(target);
                 fillScene();
                 renderer.render(list, &shaper, &assets, irView, &ctx.perf(), trackDamage ? &damage : nullptr);
             } else {
+                renderer.setTarget(target);
                 renderer.clear(args.transparent ? xt::Color{0, 0, 0, 0} : xt::Color{1, 1, 1, 1});
                 renderer.render(list, &shaper, &assets, irView, &ctx.perf());
             }
@@ -2413,9 +2495,24 @@ int main(int argc, char** argv) {
                              frameCount > 0 ? 100.0f * damageAreaSum / static_cast<float>(frameCount) : 0.0f);
         }
         // T-125: --screenshot works headless too -- the software buffer above already holds the
-        // last frame, so nothing needs a GL context.
-        if (!args.screenshot.empty() &&
-            !writeScreenshot(args.screenshot, pixels.data(), args.width, args.height, strideBytes)) {
+        // last frame, so nothing needs a GL context. T-439: a FrameTarget is read back instead.
+        if (!args.screenshot.empty() && frameTarget) {
+            std::vector<uint8_t> shot;
+            int shotW = 0;
+            int shotH = 0;
+            if (!frameTarget->read(shot, shotW, shotH)) {
+                std::fprintf(stderr, "xtframe-view: cannot read the %s frame back for '%s'\n",
+                             xt::view::rendererName(chosenRenderer), args.screenshot.c_str());
+                return 1;
+            }
+            if (windowLoop) {
+                frameTarget->present();
+            }
+            if (!writeScreenshot(args.screenshot, shot.data(), shotW, shotH, shotW * 4)) {
+                return 1;
+            }
+        } else if (!args.screenshot.empty() &&
+                   !writeScreenshot(args.screenshot, pixels.data(), args.width, args.height, strideBytes)) {
             return 1;
         }
         if (args.strict) {
@@ -2454,6 +2551,10 @@ int main(int argc, char** argv) {
             std::string dump;
             xt::dumpCommandList(list, dump);
             std::fwrite(dump.data(), 1, dump.size(), stdout);
+        }
+        if (windowLoop) {
+            std::printf("xtframe-view: window run complete (%u frames)\n", frameCount);
+            return 0;
         }
         std::printf("xtframe-view: headless run complete (%u frames)\n", frameCount);
         return 0;

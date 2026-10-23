@@ -168,6 +168,7 @@ uint64_t embeddedBytesHash(std::span<const uint8_t> bytes) {
 }  // namespace
 
 bool FileAssetResolver::readBytes(std::string_view name, std::vector<uint8_t>& out) {
+    ++m_readBytesCalls;  // T-452: a test hook, not behaviour.
     for (const std::string& root : m_rootDirs) {
         std::string path = root;
         if (!path.empty() && path.back() != '/' && path.back() != '\\') {
@@ -380,50 +381,122 @@ bool FileAssetResolver::readAssetBytes(AssetId asset, const IrView& view, int va
         ++m_embeddedHashes;
         return true;
     }
+    std::vector<std::string> files;
+    fileCandidates(asset, view, variant, files);
+    for (const std::string& file : files) {
+        if (readBytes(file, out)) {
+            fileKey = file;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool FileAssetResolver::fileCandidates(AssetId asset, const IrView& view, int variant,
+                                       std::vector<std::string>& out) const {
+    const bool hiDpi = variant != 0;
+    std::span<const IrAsset> assets = view.assets().assets();
+    const size_t index = static_cast<size_t>(asset);
+    if (index >= assets.size() || assets[index].embedded != 0) {
+        return false;
+    }
+    const std::string_view name = view.string(assets[index].name);
+    if (isExternalAssetName(name)) {
+        return true;  // T-150: an `engine://` asset has no bytes anywhere; never look on disk.
+    }
     const ImageMeta* meta = imageMeta(name);
     if (isAtlasAssetName(name)) {
         // The whole page; the cell comes from the ImageMeta (imageSubUv).
-        std::vector<std::string> candidates;
         if (variant == 2) {
-            return false;  // T-345: atlas pages have no 3x file; the caller falls back to 2x.
+            return true;  // T-345: atlas pages have no 3x file; the caller falls back to 2x.
         }
         if (meta != nullptr && meta->inAtlas) {
-            if (hiDpi) {
-                if (meta->atlasFile2x.empty()) {
-                    return false;
-                }
-                candidates.push_back(meta->atlasFile2x);
-            } else {
-                candidates.push_back(meta->atlasFile);
+            if (!hiDpi) {
+                out.push_back(meta->atlasFile);
+            } else if (!meta->atlasFile2x.empty()) {
+                out.push_back(meta->atlasFile2x);
             }
         } else {
             const std::string page = "atlas/" + std::string(atlasAssetPage(name)) + (hiDpi ? "@2x" : "");
-            candidates.push_back(page + ".png");
-            candidates.push_back(page + ".dds");
+            out.push_back(page + ".png");
+            out.push_back(page + ".dds");
         }
-        for (const std::string& candidate : candidates) {
-            if (readBytes(candidate, out)) {
-                fileKey = candidate;
-                return true;
-            }
-        }
-        return false;
+        return true;
     }
     if (!hiDpi) {
-        fileKey = std::string(name);
-        return readBytes(name, out);
+        out.emplace_back(name);
+        return true;
     }
     const std::string& listed = meta == nullptr ? std::string()
                                 : variant == 2  ? meta->variant3x
                                                 : meta->variant2x;
     if (!listed.empty()) {
-        fileKey = listed;
-        if (readBytes(listed, out)) {
-            return true;
+        out.push_back(listed);
+    }
+    out.push_back(variantName(name, variant == 2 ? "@3x" : "@2x"));
+    return true;
+}
+
+size_t FileAssetResolver::cachedFile(std::string_view key) const {
+    for (const FileEntry& file : m_fileEntry) {
+        if (file.key == key) {
+            return file.entry;
         }
     }
-    fileKey = variantName(name, variant == 2 ? "@3x" : "@2x");
-    return readBytes(fileKey, out);
+    return kFailed;
+}
+
+size_t FileAssetResolver::decodeNew(const std::vector<uint8_t>& bytes, const std::string& fileKey) {
+    // T-263e: an entry releaseSource() emptied is used again before the deque grows.
+    size_t entryIndex = m_entries.size();
+    if (!m_freeEntries.empty()) {
+        entryIndex = m_freeEntries.back();
+        m_freeEntries.pop_back();
+    } else {
+        m_entries.emplace_back();
+    }
+    Entry& entry = m_entries[entryIndex];
+    decodeInto(bytes, entry);
+    if (!fileKey.empty()) {
+        FileEntry file;
+        file.key = fileKey;
+        file.entry = entryIndex;
+        // T-263c ruling 5: what revalidate() compares the disk with. Once per decoded file;
+        // embedded bytes (their key starts with \x01) are not a file.
+        file.hasStamp = fileKey.front() != '\x01' && fileStamp(fileKey, file.size, file.mtime);
+        m_fileEntry.push_back(std::move(file));
+        // T-452: once decoded, the decode is the authority on the size (and the one revalidate()
+        // compares); the header-only size of the file goes.
+        std::erase_if(m_headerSizes, [&fileKey](const HeaderSize& h) { return h.key == fileKey; });
+    }
+    return entryIndex + 1;
+}
+
+bool FileAssetResolver::headerSizeOf(const std::vector<std::string>& files, int& width, int& height) {
+    for (const std::string& file : files) {
+        for (const HeaderSize& known : m_headerSizes) {
+            if (known.key == file) {
+                width = known.width;
+                height = known.height;
+                return true;
+            }
+        }
+        std::vector<uint8_t> bytes;
+        if (!readBytes(file, bytes)) {
+            continue;  // Not there: the next candidate, as readAssetBytes() tries them.
+        }
+        if (!imageSizeFromHeader(bytes, width, height)) {
+            return false;  // Not a format the header tells: the caller decodes.
+        }
+        HeaderSize known;
+        known.key = file;
+        known.width = width;
+        known.height = height;
+        known.hasStamp = fileStamp(file, known.size, known.mtime);
+        m_headerSizes.push_back(std::move(known));
+        return true;
+    }
+    return false;
 }
 
 void FileAssetResolver::decodeInto(const std::vector<uint8_t>& bytes, Entry& entry) {
@@ -537,44 +610,41 @@ const FileAssetResolver::Entry* FileAssetResolver::ensureDecoded(AssetId asset, 
         return nullptr;
     }
     if (resolved->entry == 0) {
-        std::vector<uint8_t> bytes;
-        std::string fileKey;
         size_t slot = kFailed;
-        if (readAssetBytes(asset, view, variant, bytes, fileKey)) {
-            // An atlas page (or any file) already decoded for another asset is shared.
-            if (!fileKey.empty()) {
-                for (const FileEntry& file : m_fileEntry) {
-                    if (file.key == fileKey) {
-                        slot = file.entry + 1;
-                        reviveEntry(file.entry);  // T-263g: an idle decode found again is live.
-                        break;
-                    }
+        std::vector<std::string> files;
+        if (fileCandidates(asset, view, variant, files)) {
+            // Docs/tasks/T-452.md item 1: a file decoded before (for another asset, an atlas
+            // page's other cell, or before resetAssetIds()) is found by its path without reading
+            // it again; revalidate() is what notices that it changed on disk. A candidate with no
+            // decode is read, so a file that appeared since is still found.
+            for (const std::string& file : files) {
+                const size_t cached = cachedFile(file);
+                if (cached != kFailed) {
+                    reviveEntry(cached);  // T-263g: an idle decode found again is live.
+                    slot = cached + 1;
+                    break;
+                }
+                std::vector<uint8_t> bytes;
+                if (readBytes(file, bytes)) {
+                    slot = decodeNew(bytes, file);
+                    break;
                 }
             }
-            if (slot == kFailed) {
-                // T-263e: an entry releaseSource() emptied is used again before the deque grows.
-                size_t entryIndex = m_entries.size();
-                if (!m_freeEntries.empty()) {
-                    entryIndex = m_freeEntries.back();
-                    m_freeEntries.pop_back();
+        } else {
+            std::vector<uint8_t> bytes;
+            std::string fileKey;
+            if (readAssetBytes(asset, view, variant, bytes, fileKey)) {
+                // An image already decoded for another IR (the same embedded bytes) is shared.
+                const size_t cached = cachedFile(fileKey);
+                if (cached != kFailed) {
+                    reviveEntry(cached);
+                    slot = cached + 1;
                 } else {
-                    m_entries.emplace_back();
+                    slot = decodeNew(bytes, fileKey);
                 }
-                Entry& entry = m_entries[entryIndex];
-                decodeInto(bytes, entry);
-                if (!fileKey.empty()) {
-                    FileEntry file;
-                    file.key = fileKey;
-                    file.entry = entryIndex;
-                    // T-263c ruling 5: what revalidate() compares the disk with. Once per
-                    // decoded file; embedded bytes (their key starts with \x01) are not a file.
-                    file.hasStamp = fileKey.front() != '\x01' && fileStamp(fileKey, file.size, file.mtime);
-                    m_fileEntry.push_back(std::move(file));
-                }
-                slot = entryIndex + 1;
             }
         }
-        resolved->entry = slot;  // readAssetBytes()/decodeInto() add no slot: still valid.
+        resolved->entry = slot;  // reading and decoding add no slot: still valid.
     }
     const size_t slot = resolved->entry;
     if (slot == kFailed) {
@@ -790,6 +860,7 @@ void FileAssetResolver::trimIdle() {
 }
 
 void FileAssetResolver::forgetFile(std::string_view file) {
+    std::erase_if(m_headerSizes, [file](const HeaderSize& h) { return h.key == file; });  // T-452
     for (size_t i = 0; i < m_fileEntry.size(); ++i) {
         if (m_fileEntry[i].key != file) {
             continue;
@@ -827,6 +898,7 @@ bool FileAssetResolver::fileStamp(std::string_view name, uint64_t& size, uint64_
         }
         path += name;
         // The path is UTF-8, as readWholeFile() reads it (T-261e).
+        ++m_statCalls;  // T-452: a test hook, not behaviour.
         if (m_fileStatus(path, size, mtime)) {
             return true;
         }
@@ -879,8 +951,21 @@ size_t FileAssetResolver::revalidate() {
         m_fileEntry.erase(m_fileEntry.begin() + static_cast<std::ptrdiff_t>(i));
         ++discarded;
     }
-    // A size read from the header of a file nobody decoded yet (T-160) has no stamp to compare:
-    // it is simply read again.
+    // A size read from the header of a file nobody decoded yet (T-160): T-452 compares the file
+    // like a decoded one (by the size and modification time recorded when the header was read) and
+    // forgets the size when the file changed; one read while no status could be asked is read
+    // again. The slots ask the header table afresh either way.
+    for (size_t i = 0; i < m_headerSizes.size();) {
+        const HeaderSize& known = m_headerSizes[i];
+        uint64_t size = 0;
+        uint64_t mtime = 0;
+        if (known.hasStamp && fileStamp(known.key, size, mtime) && size == known.size &&
+            mtime == known.mtime) {
+            ++i;
+        } else {
+            m_headerSizes.erase(m_headerSizes.begin() + static_cast<std::ptrdiff_t>(i));
+        }
+    }
     for (NamedSlot& named : m_named[0]) {
         if (named.slot.entry == 0) {
             named.slot.headerOk = false;
@@ -935,9 +1020,15 @@ Vec2 FileAssetResolver::imageSize(AssetId asset, const IrView& view) {
             if (irAsset.embedded != 0) {
                 ok = imageSizeFromHeader(view.assets().data(irAsset), w, h);
             } else if (!isExternalAssetName(view.string(irAsset.name))) {
-                std::vector<uint8_t> bytes;
-                std::string fileKey;
-                ok = readAssetBytes(asset, view, false, bytes, fileKey) && imageSizeFromHeader(bytes, w, h);
+                // T-452: a file already decoded (before resetAssetIds()) is sized by its decode
+                // below, without reading it; else the header table, then the file's header.
+                std::vector<std::string> files;
+                fileCandidates(asset, view, 0, files);
+                bool decodedFile = false;
+                for (const std::string& file : files) {
+                    decodedFile = decodedFile || cachedFile(file) != kFailed;
+                }
+                ok = !decodedFile && headerSizeOf(files, w, h);
             }
             if (ok) {
                 slot->headerSize = Vec2{static_cast<float>(w), static_cast<float>(h)};
