@@ -248,6 +248,12 @@ TEST_CASE("compileDocument: missing <link href> file is an error") {
     CHECK(hasErrorContaining(result, "does-not-exist.xts"));
 }
 
+TEST_CASE("compileDocument: <link href> naming a directory is an error, not a huge read (T-461)") {
+    CompileOptions options;
+    CompileResult result = compileDocument(xtPath("doc_err_linkdir.xt"), options);
+    CHECK(!result.ok());
+}
+
 TEST_CASE("compileDocument: unresolved animation-name is an error") {
     CompileOptions options;
     CompileResult result = compileDocument(xtPath("doc_err_animname.xt"), options);

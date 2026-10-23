@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(XTFrame VERSION 0.9.0 LANGUAGES CXX C)
+project(XTFrame VERSION 0.10.0 LANGUAGES CXX C)
 
 # MSBuild compiles one file at a time per project unless /MP is given; apply it globally so the
 # FetchContent dependencies (SDL2, FreeType, HarfBuzz) build in parallel too.
@@ -168,6 +168,11 @@ endif()
 # optional and self-skipping, so the directory is always added when present.
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Code/Backends/CMakeLists.txt")
     add_subdirectory(Code/Backends)
+endif()
+# T-442 (17 §17.9): XT_QT_DIR, else the newest Qt 5.15 / 5.12 under Code/SDKs/Qt (Tools/CMake/xt_qt.cmake).
+if(XT_BUILD_EDITOR)
+    include(Tools/CMake/xt_qt.cmake)
+    xt_qt_select()
 endif()
 if(XT_BUILD_EDITOR AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Code/Editor/CMakeLists.txt")
     add_subdirectory(Code/Editor)

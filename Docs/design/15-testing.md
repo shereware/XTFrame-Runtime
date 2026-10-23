@@ -98,3 +98,11 @@ fixture (.xt 或 .json) + 參數 (width, height, dpr, time)
 - `linux` 與 `sanitizers` 的 `runs-on` 讀 repository variable `XT_LINUX_RUNNER`（JSON 標籤陣列，例如 `["self-hosted","xtframe-linux"]`），未設即 `ubuntu-24.04`；self-hosted 時跳過 apt 安裝步驟。登錄步驟見 `Docs/ci/self-hosted-runner.md`。
 - `XT_SANITIZE`（頂層 CMake 快取字串，逗號清單）把 `-fsanitize=<清單> -fno-sanitize=vptr -fno-omit-frame-pointer` 加到所有目標（含 FetchContent 相依）；只限 GCC／Clang，與 `XT_BUILD_FUZZ` 互斥。vptr 檢查關閉的理由同 §15.5（xt_core 無 RTTI）。
 - `Tools/Scripts/local_ci.sh` 仍是本機閘門；CI 閘門不取代它。
+
+## 15.9 閘門分級（使用者 2026-10-24 裁定：「只在打版本標時才跑完整閘門」）
+
+- **每張任務單**：代理跑 `Tools/Scripts/dev_check.sh <targets> -- <suites>`（增量建置＋受影響套件＋headers／layering／shape），`merge_task.sh` 的 light gate 再做一次 rebase 檢查後合併。**不跑** `local_ci.sh`。
+- **版號單**（RELEASE-MAP §4 第 1 步，T-205／T-238／T-460 這種）：合併前跑一次完整 `local_ci.sh --clean`（MSVC Debug／Release、Qt 編輯器、clang 全檔語法、Qt 5.12 標頭語法、WSL GCC、wgpu D3D12／Vulkan、fuzz smoke、SW shell），全綠才打 tag。
+- **例外**：改動建置系統本身、搬目錄（B18 類）、換工具鏈（T-442 類）的單，也跑一次完整閘門。
+- PR 觸發的 CI（§15.8）待 self-hosted runner 登錄後接手「每張單」那層；在那之前本機就是閘門。
+- 後果：版號之間可能累積幾張只過 dev_check 的單；版號單的完整閘門抓到的問題開修正單（T-457 的模式）。

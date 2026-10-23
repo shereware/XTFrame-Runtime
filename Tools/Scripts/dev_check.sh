@@ -47,12 +47,30 @@
 # idle CPU. --changed adds the targets and suites the changes touch (git diff origin/main...HEAD plus
 # the work tree; see changed_selection below); --dry-run prints the selection and exits.
 #   Tools/Scripts/dev_check.sh --changed            Tools/Scripts/dev_check.sh --changed --dry-run
-# Requires XT_QT_DIR (falls back to the dev machine's Qt 5.12 SDK path when that directory exists).
+# Qt: XT_QT_DIR, else the newest Qt 5.15, then 5.12, under Code/SDKs/Qt (T-442; Code/SDKs/Qt/README.md).
 # Not a C++ file: never run clang-format on it.
 set -u
 cd "$(dirname "$0")/../.."
 CFG=Debug; BUILD=1; PRESET=vs2022-editor
-[ -z "${XT_QT_DIR:-}" ] && [ -d "E:/coding3/CECE_terain_update/Code/SDKs/Qt/5.12.3_pyside2/Qt" ] && export XT_QT_DIR=E:/coding3/CECE_terain_update/Code/SDKs/Qt/5.12.3_pyside2/Qt
+# T-442: the newest Code/SDKs/Qt/<series>*[/Qt] holding lib/cmake/Qt5 and bin/qmake(.exe), as an absolute
+# path; empty when there is none. Same rule as Tools/CMake/xt_qt.cmake (XT_QT_DIR, else 5.15, else 5.12).
+xt_qt_sdk_dir() {
+  local best="" bestv="" d p v
+  for d in Code/SDKs/Qt/"$1"*; do
+    for p in "$d/Qt" "$d"; do
+      [ -d "$p/lib/cmake/Qt5" ] && { [ -f "$p/bin/qmake.exe" ] || [ -f "$p/bin/qmake" ]; } || continue
+      v="$(sed -n 's/^ *set(PACKAGE_VERSION "*\([0-9.]*\)"*).*/\1/p' "$p/lib/cmake/Qt5/Qt5ConfigVersion.cmake" 2>/dev/null | head -n 1)"
+      case "$v" in "$1".*)
+        if [ -z "$bestv" ] || [ "$(printf '%s\n%s\n' "$bestv" "$v" | sort -V | tail -n 1)" = "$v" ]; then best="$p"; bestv="$v"; fi;;
+      esac
+      break
+    done
+  done
+  [ -n "$best" ] && (cd "$best" && { pwd -W 2>/dev/null || pwd; })
+}
+[ -z "${XT_QT_DIR:-}" ] && XT_QT_DIR="$(xt_qt_sdk_dir 5.15)"
+[ -z "${XT_QT_DIR:-}" ] && XT_QT_DIR="$(xt_qt_sdk_dir 5.12)"
+if [ -n "${XT_QT_DIR:-}" ]; then export XT_QT_DIR; else unset XT_QT_DIR; fi
 targets=(); suites=(); CHANGED=0; DRY_RUN=0
 while [ $# -gt 0 ]; do
   case "$1" in
