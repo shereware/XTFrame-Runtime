@@ -245,8 +245,50 @@ function(_xt_copy_shared_libraries_now)
     endforeach()
 endfunction()
 
+# -- The standard symbol library next to the executables (T-198, T-474) ----------------------------
+# xtframe-pack, xtframe-design and xtframe-editor read Assets/Symbols from `<executable dir>/symbols`.
+# With XT_RUNTIME_OUTPUT_DIR set they share one directory, so one custom target, xt_copy_symbols,
+# copies it there once per build and each of them depends on it: separate POST_BUILD copies into the
+# same directory raced under a parallel --clean-first build (copy_directory failed with "No such file
+# or directory"). Without XT_RUNTIME_OUTPUT_DIR (a parent project's tree) the custom target copies
+# next to each registered executable, one after the other.
+
+# xt_copy_standard_symbols(<target>): registers <target> and makes it depend on xt_copy_symbols.
+function(xt_copy_standard_symbols target)
+    set_property(GLOBAL APPEND PROPERTY XT_COPY_SYMBOLS_TARGETS ${target})
+    add_dependencies(${target} xt_copy_symbols)
+endfunction()
+
+# _xt_make_copy_symbols_target(): the deferred definition of xt_copy_symbols (the executables'
+# output directories are only final after xt_apply_runtime_output_dir()).
+function(_xt_make_copy_symbols_target)
+    get_property(targets GLOBAL PROPERTY XT_COPY_SYMBOLS_TARGETS)
+    if(NOT targets)
+        return()
+    endif()
+    get_property(root GLOBAL PROPERTY XT_RUNTIME_OUTPUT_ROOT)
+    set(dirs "")
+    if(NOT "${XT_RUNTIME_OUTPUT_DIR}" STREQUAL "")
+        list(APPEND dirs "${XT_RUNTIME_OUTPUT_DIR}/symbols")
+    else()
+        foreach(target IN LISTS targets)
+            list(APPEND dirs "$<TARGET_FILE_DIR:${target}>/symbols")
+        endforeach()
+    endif()
+    set(commands "")
+    foreach(dir IN LISTS dirs)
+        list(APPEND commands
+            COMMAND "${CMAKE_COMMAND}" -E make_directory "${dir}"
+            COMMAND "${CMAKE_COMMAND}" -E copy_directory "${root}/Assets/Symbols" "${dir}")
+    endforeach()
+    add_custom_target(xt_copy_symbols ${commands}
+        COMMENT "Copying the standard symbol library"
+        VERBATIM)
+endfunction()
+
 # xt_runtime_output_dir_deferred(): call once from this tree's top-level CMakeLists.txt.
 function(xt_runtime_output_dir_deferred)
     set_property(GLOBAL PROPERTY XT_RUNTIME_OUTPUT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
     cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}" CALL xt_apply_runtime_output_dir)
+    cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}" CALL _xt_make_copy_symbols_target)
 endfunction()

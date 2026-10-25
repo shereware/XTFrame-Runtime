@@ -2,10 +2,10 @@
 # Developer/agent check for one worktree: build the given targets with the vs2022-editor preset
 # (configuring first when needed), delete the test executables so MSBuild relinks them, then run
 # each test suite once with a timeout so a hung process never blocks the caller.
-#   Tools/Scripts/dev_check.sh [--release] [--no-build] [--agent] <target>... -- <suite>...
+#   Tools/Scripts/dev_check.sh [--release] [--no-build] [--agent] [--no-qt512] <target>... -- <suite>...
 #   suites: editor | editor_service | editor_qt | editor_qt_slow | editor_qt_gl | flow | bundle | history | core | golden |
 #           gpu | gl | wgpu | backends | text | agent | import | lottie | symbols | templates | headers | layering | testtemp | import-py | ctest | corpus | ir |
-#           roundtrip | shape
+#           roundtrip | shape | qt512 | qt512-all
 #          (ctest = ctest -E '^xt_.*_tests$', the command-line tests (T-267d); headers = Tools/Scripts/check_public_headers.sh, no build;
 #           layering = Tools/Scripts/check_layering.sh (T-274, R never includes / links E) and, since T-267d,
 #           Tools/Scripts/check_test_temp.sh too (both must pass), no build;
@@ -27,7 +27,12 @@
 #           the frozen cross-version fixtures of Tests/roundtrip read, written back and compared with latest/);
 #           shape = Tools/Scripts/check_file_length.sh (must pass) and Tools/Scripts/check_dupcheck.sh (warns when the duplicate
 #           group count rises, fails only when dupcheck.py fails) (T-415, 14 §14.5), and Tools/Scripts/check_style_groups.sh
-#           (must pass; T-443, 46 §46.4), no build)
+#           (must pass; T-443, 46 §46.4) and Tools/Scripts/check_effect_catalog.py (must pass; T-463, 46 §46.13.4), no build;
+#           qt512 = Tools/Scripts/qt512_syntax_check.sh over the Code/Editor .cpp files changed or added relative to
+#           origin/main (git diff origin/main...HEAD plus the work tree; XT_CHANGED_FILES replaces git), flags from this
+#           tree's xt_clang_check lists, against the Qt 5.12 headers (T-470, 17 §17.9; no Qt 5.12 or no clang++: SKIP);
+#           qt512-all = the same over every Code/Editor Qt source of the tree; both no build, but the tree must be configured)
+# T-470: qt512 is added by itself whenever editor_qt is asked for or xtframe-editor is a target (--no-qt512: not).
 # T-439: backends runs xt_backends_tests (Code/Backends' parts) and the CTest entries of Tests/backends and
 # Examples/backends (backend_smoke_*, xtframe-view_renderer_*, example_minimal_sdl2_wgpu*); a missing WebGPU
 # adapter is a SKIP inside them, not a failure.
@@ -71,7 +76,7 @@ xt_qt_sdk_dir() {
 [ -z "${XT_QT_DIR:-}" ] && XT_QT_DIR="$(xt_qt_sdk_dir 5.15)"
 [ -z "${XT_QT_DIR:-}" ] && XT_QT_DIR="$(xt_qt_sdk_dir 5.12)"
 if [ -n "${XT_QT_DIR:-}" ]; then export XT_QT_DIR; else unset XT_QT_DIR; fi
-targets=(); suites=(); CHANGED=0; DRY_RUN=0
+targets=(); suites=(); CHANGED=0; DRY_RUN=0; NO_QT512=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --release) CFG=Release;;
@@ -79,6 +84,7 @@ while [ $# -gt 0 ]; do
     --agent) PRESET=vs2022-agent;;
     --changed) CHANGED=1;;
     --dry-run) DRY_RUN=1;;
+    --no-qt512) NO_QT512=1;;
     --) shift; suites=("$@"); break;;
     *) targets+=("$1");;
   esac
@@ -133,6 +139,10 @@ changed_selection() {
 }
 dedupe() { printf '%s\n' "$@" | awk 'NF && !seen[$0]++'; }
 [ "$CHANGED" = 1 ] && changed_selection
+# T-470: the Qt 5.12 headers leg rides along with the editor's Qt code (MSVC on Qt 5.15 misses what 5.12 needs).
+if [ "$NO_QT512" = 0 ]; then
+  case " ${suites[*]} ${targets[*]} " in *" editor_qt "*|*" xtframe-editor "*) suites+=(qt512);; esac
+fi
 # Every requested suite builds its own executable(s); ctest needs every executable its entries run
 # (the build step deletes every *tests.exe, so one missing here shows up as "Not Run"). T-267d: the
 # whole doctest executables `-E '^xt_.*_tests$'` leaves out are not built for it; xt_tests,
@@ -169,10 +179,10 @@ done
 if [ ${#suites[@]} -gt 0 ]; then mapfile -t suites < <(dedupe "${suites[@]}"); fi
 if [ ${#targets[@]} -gt 0 ]; then mapfile -t targets < <(dedupe "${targets[@]}"); fi
 if [ "$DRY_RUN" = 1 ]; then echo "targets: ${targets[*]}"; echo "suites: ${suites[*]}"; exit 0; fi
-# headers, layering, testtemp, import-py, ir and shape compile nothing; when they are all that was asked for, skip the build.
+# headers, layering, testtemp, import-py, ir, shape, qt512 and qt512-all compile nothing; when they are all that was asked for, skip the build.
 needs_build=0
 for s in "${suites[@]}"; do
-  case "$s" in headers|layering|testtemp|import-py|ir|shape) ;; *) needs_build=1;; esac
+  case "$s" in headers|layering|testtemp|import-py|ir|shape|qt512|qt512-all) ;; *) needs_build=1;; esac
 done
 [ ${#targets[@]} -eq 0 ] && [ "$needs_build" = 0 ] && BUILD=0
 
@@ -344,7 +354,13 @@ run_suite() {
     # T-415: file-length rule (fails) and duplicate-group baseline (warning only).
     shape)     out="$(bash Tools/Scripts/check_file_length.sh 2>&1)"; echo "$out" | tail -12; echo "$out" | grep -q "FILE LENGTH: PASS" || fail=1
                out="$(bash Tools/Scripts/check_dupcheck.sh 2>&1)"; echo "$out" | tail -6; echo "$out" | grep -q "DUPCHECK: PASS" || fail=1
-               out="$(bash Tools/Scripts/check_style_groups.sh 2>&1)"; echo "$out" | tail -12; echo "$out" | grep -q "style groups check OK" || fail=1;;
+               out="$(bash Tools/Scripts/check_style_groups.sh 2>&1)"; echo "$out" | tail -12; echo "$out" | grep -q "style groups check OK" || fail=1
+               out="$(python Tools/Scripts/check_effect_catalog.py 2>&1)"; echo "$out" | tail -12; echo "$out" | grep -q "effect catalog check OK" || fail=1;;
+    # T-470: the Qt 5.12 headers syntax check (Tools/Scripts/qt512_syntax_check.sh), changed files / all files.
+    qt512)     q="$(changed_files | grep -E '^Code/Editor/.*\.cpp$')"
+               if [ -z "$q" ]; then echo "qt512: nothing to check"
+               else out="$(printf '%s\n' "$q" | bash Tools/Scripts/qt512_syntax_check.sh --tree "$B" 2>&1)" || fail=1; echo "$out" | tail -40; fi;;
+    qt512-all) out="$(bash Tools/Scripts/qt512_syntax_check.sh --tree "$B" --all 2>&1)" || fail=1; echo "$out" | tail -40;;
     import-py) out="$(NO_COLOR=1 python -m unittest discover -s Tests/import -p "test_*.py" 2>&1)"; echo "$out" | tail -4; { echo "$out" | grep -q "^Ran [0-9]* test" && ! echo "$out" | grep -q "FAILED"; } || fail=1;;
     # T-267d: the command-line tests only (the xt_add_expect_exit_test entries and the other CTest
     # entries that are not a whole doctest executable); the -E pattern leaves out the whole
@@ -361,7 +377,7 @@ run_suite() {
 }
 # T-361: the suites below run at the same time; the rest (GL contexts, perf / slow timing cases, the
 # agent endpoint and ctest, which runs executables of its own) afterwards, one after the other.
-PARALLEL_SUITES=" core import bundle flow editor editor_service editor_qt history symbols templates lottie golden text gpu headers layering testtemp import-py ir roundtrip shape "
+PARALLEL_SUITES=" core import bundle flow editor editor_service editor_qt history symbols templates lottie golden text gpu headers layering testtemp import-py ir roundtrip shape qt512 "
 OUT="$B/.dev_check_out.$$"; mkdir -p "$OUT"
 trap 'rm -rf "$LOCK" "$OUT"; kill $(jobs -p) 2>/dev/null' EXIT
 i=0; pids=()

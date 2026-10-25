@@ -80,13 +80,14 @@ public:
 | `core.` | `xt::Document`（預覽中的核心文件） | `byId/query`、`ElementRef` 的全部方法（第一引數為元素）、`play/pause/seek/resume/setSpeed/animationTime/animationsOf`、`nodeToScreen/nodeToScreen3/cameraOf/setNodeProperty/setElementState`、`addListener`（事件寫入 `events` 環狀緩衝） |
 | `ctx.` | `xt::Context` | `update`、`pushInput`、`setViewport`、`time`、`textInputRect` |
 | `flow.` | `flow::FlowGraph` / `FlowRuntime` | `get/set`（JSON）、`parse`、`validate`、`values`、`edgeLastFired`、`connectionPoints`、`nodeTypeTable` |
-| `session.` | `EditorSession` | `open/save/saveAs/path/isModified`、`selection/setSelection`、`mode/setMode`、`tick`、`restartDemo`、`flowErrors`、`recordKeyframes/playhead`、`quit`、`crash(kind)`（故意崩潰：`abort` / `av` / `terminate`，用來驗證崩潰紀錄真的會寫檔） |
+| `session.` | `EditorSession` | `open/save/saveAs/path/isModified`、`selection/setSelection`、`space/setSpace`（Canvas／Flow／Design／Demo，T-308 起取代 `mode/setMode`）、`animate/setAnimate`、`tick`、`restartDemo`、`flowErrors`、`recordKeyframes/playhead`、`quit`、`crash(kind)`（故意崩潰：`abort` / `av` / `terminate`，用來驗證崩潰紀錄真的會寫檔） |
 | `fx.` | 效果輔助 | `EffectStack::parse/toText`、`effectParamTable`、模板 `list/load/apply` |
 | `props.` | 反射表 | `table`、`find` |
 | `compile.` | `xt::compile` | `compileDocument`、`compileDocumentFromStrings`、`parseStyleValue`、`parseEffectList`；回診斷 |
 | `fs.` | 檔案系統 | `read/write/list/exists/remove/mkdir`，無路徑限制 |
 | `time.` | 幀迴圈 | `pause`（停編輯器的 `QTimer`，時間只由 `session.tick` 推進）、`resume`、`step(n, dt)` |
 | `events.` | 事件環狀緩衝 | `since(seq)`、`clear` |
+| `svc.` | `EditorService`（29 章）的通用轉接 | `svc.ops`（列出全部 op）、`svc.<op> <json-args>`（任何 op，含 M31～M36 的 `design.*`／`history.*`／`style.*`／`catalog.*`／`layer.*`；不經情境契約、不經保護——提線本來就無保護） |
 
 ## 20.5 傾印（除錯用，`dump.`）
 
@@ -148,3 +149,9 @@ T-71b 與 T-72 都只依賴 T-71a，可平行。這是拋棄式開發工具：�
 ## 20.9 之後的使用者版（不在 0.2.1）
 
 面向使用者的 AI 協作接點到時另立章節重新設計，需要處理本章刻意忽略的事：協定標準化（MCP）、工具粒度與上下文成本、權限與路徑沙箱、唯讀模式、歷史標記與可中斷、說明與 schema、決定性重播、多用戶端。本章的接點目錄與綁定機制可沿用為底層。
+
+## 20.10 修復（T-467，2026-10-24）
+
+自 T-308（2026-10-11）起提線編不過、不在閘門。T-467：`session.space/setSpace/animate/setAnimate` 取代 `mode/setMode`；加 `svc.` 通用轉接讓 M31～M36 的服務 op 都可用；補 M31～M36 停靠窗與面板缺的 objectName；`vs2022-agent` 的建置與 `xt_agent_tests` 加進 `local_ci.sh`（15 §15.9 的完整閘門層），dev_check 的 `--agent` 照舊。
+
+實作記錄（T-467）：`session.space` 輸出標頭名 Canvas／Flow／Project／Demo（`setSpace` 另收 `Design` 為 Project 舊名）；`svc.` 以 `Dispatcher::bindPrefix` 萬用前綴轉給視窗 `EditorWorkspace` 的 `EditorService::call()`（steward、預設 client；headless 無服務回 `no_service`）；另修 `cmd.ReplaceDocument/ReplaceStylesheet` 引數漂移、測試補編 `settings_dialog.cpp`；補名 `design.referenceWall.grid`、`design.assetWorkbench.grid`；`local_ci.sh` 加 `agent_stage`（`XT_CI_STAGE=agent`）；接點共 285（含 `help` 與 `svc.<op>`）。

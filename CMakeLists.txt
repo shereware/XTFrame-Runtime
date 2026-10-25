@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(XTFrame VERSION 0.10.0 LANGUAGES CXX C)
+project(XTFrame VERSION 0.11.0 LANGUAGES CXX C)
 
 # MSBuild compiles one file at a time per project unless /MP is given; apply it globally so the
 # FetchContent dependencies (SDL2, FreeType, HarfBuzz) build in parallel too.

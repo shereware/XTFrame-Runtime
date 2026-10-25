@@ -14,9 +14,9 @@
 #                                Tests/fuzz/regressions. See Docs/design/15-testing.md §15.5,
 #                                Docs/tasks/T-39.md, Docs/tasks/T-267b.md.
 # XT_CI_ANDROID=1 adds an Android build stage (Tools/Scripts/build_android.sh, T-240), off by default.
-# XT_CI_STAGE=fuzz-smoke, XT_CI_STAGE=sw-shell or XT_CI_STAGE=clang (T-442: the clang++ and Qt 5.12 headers
-# syntax checks, over the trees a previous run configured) runs only that stage of the full run and exits
-# (T-267b; for checking one stage without the whole gate).
+# XT_CI_STAGE=fuzz-smoke, XT_CI_STAGE=sw-shell, XT_CI_STAGE=clang (T-442: the clang++ and Qt 5.12 headers
+# syntax checks, over the trees a previous run configured) or XT_CI_STAGE=agent (T-467) runs only that
+# stage of the full run and exits (T-267b; for checking one stage without the whole gate).
 # Steps: MSVC Debug + Release build and ctest (vs2022 preset), MSVC editor build + ctest -R editor
 # against Qt 5.15 (XT_QT_DIR; unset: the newest Code/SDKs/Qt/5.15*, then 5.12*, T-442) and, if installed,
 # Qt 6 (XT_QT6_DIR), clang++ syntax check of every first-party .cpp with the Linux warning set and
@@ -27,7 +27,9 @@
 # (T-267b: WSL clang++ build/wsl-fuzz, every target of FUZZ_SMOKE_TARGETS for
 # XT_FUZZ_SMOKE_SECONDS, default 20, seconds; any crash / timeout / leak fails the gate; skipped
 # when WSL has no clang++) and the MSVC SW shell stage (T-267b: the vs2022-sw-shell preset,
-# XT_SHELL_GL=OFF, the Android presentation path; xtframe-view and ctest -R xtframe-view_sw).
+# XT_SHELL_GL=OFF, the Android presentation path; xtframe-view and ctest -R xtframe-view_sw) and
+# the agent stage (T-467: the vs2022-agent preset, Debug; xtframe-editor and xt_agent_tests built,
+# xt_agent_tests run offscreen; Docs/design/20-agent-interface.md §20.10).
 # T-441 (Docs/design/10-backends.md §10.10.3): after MSVC Release, the WebGPU tests (xt_wgpu_tests,
 # xt_golden_wgpu, xt_backends_tests via Tools/Scripts/wgpu_tests.sh) run twice, XT_WGPU_BACKEND=d3d12 and
 # =vulkan; a missing adapter fails. After WSL GCC Debug they run once more on Vulkan over lavapipe
@@ -110,6 +112,25 @@ sw_shell_stage() {
   local out
   out="$(ctest --preset vs2022-sw-shell-debug -R xtframe-view_sw --no-tests=error --output-on-failure 2>&1 | grep -E "tests passed|Failed|\*\*\*|Not Run|No tests were found")"
   echo "$out"; echo "$out" | grep -q "100% tests passed" || fail=1
+}
+
+# T-467 (Docs/design/20-agent-interface.md §20.10): the developer agent endpoint ("Marionette") --
+# configure vs2022-agent, build xtframe-editor and xt_agent_tests (Debug, into bin/win_x64/Debug-agent/)
+# and run xt_agent_tests offscreen. Needs Qt like the editor stage; --no-editor skips it.
+agent_stage() {
+  step "agent (vs2022-agent Debug: xtframe-editor, xt_agent_tests)"
+  if [ -n "$NO_EDITOR" ]; then echo "SKIP agent: --no-editor"; return 0; fi
+  if [ -z "${XT_QT_DIR:-}" ]; then echo "SKIP agent: XT_QT_DIR not set and no Qt 5.15 / 5.12 under Code/SDKs/Qt"; fail=1; return 0; fi
+  cmake --preset vs2022-agent >/dev/null || { fail=1; return 0; }
+  rm -f bin/win_x64/Debug-agent/xtframe-editor.exe bin/win_x64/Debug-agent/tests/xt_agent_tests.exe
+  cmake --build --preset vs2022-agent-debug --target xtframe-editor xt_agent_tests --parallel $CLEAN 2>&1 | grep -iE " error |warning C" | grep -v "_deps" && fail=1
+  local exe=bin/win_x64/Debug-agent/tests/xt_agent_tests.exe out rc
+  [ -f "$exe" ] || { echo "FAIL: $exe was not built"; fail=1; return 0; }
+  out="$(QT_QPA_PLATFORM=offscreen timeout 900 "$exe" 2>&1 </dev/null)"; rc=$?
+  echo "$out" | tr -d '\r' | grep -E "^\[doctest\] (test cases|assertions|Status)|ERROR|FAILED"
+  echo "$out" | grep -q "Status: SUCCESS" || fail=1
+  [ $rc -ne 0 ] && { echo "xt_agent_tests: exit code $rc"; fail=1; }
+  return 0
 }
 
 # The clang++ syntax check and (T-442) the Qt 5.12 headers syntax check over the configured tree
@@ -200,28 +221,8 @@ clang_stages() {
   elif [ -z "${XT_QT512_DIR:-}" ] || [ ! -d "$XT_QT512_DIR/include/QtCore" ]; then
     echo "SKIP Qt 5.12 headers syntax check: XT_QT512_DIR not set and no Qt 5.12 under Code/SDKs/Qt"
   else
-    Q512="$(cd "$XT_QT512_DIR" && { pwd -W 2>/dev/null || pwd; })"
-    rm -f "$CC_DIR"/*.q512.rsp
-    : > "$CC_DIR/files512.tsv"
-    # <target>.rsp -> <target>.q512.rsp: the Qt prefix (the directory above <prefix>/include/QtCore) is
-    # replaced by the 5.12 one in every argument; a target without Qt in its flags is left out.
-    while IFS=$'\t' read -r rel abs rsp; do
-      case "$rel" in Code/Editor/*) ;; *) continue;; esac
-      q="${rsp%.rsp}.q512.rsp"
-      if [ ! -f "$q" ]; then
-        prefix="$(sed -n 's#^"\(.*\)/include/QtCore"$#\1#p' "$rsp" | head -n 1)"
-        [ -n "$prefix" ] || continue
-        awk -v from="$prefix" -v to="$Q512" '{ i = index($0, from); if (i) $0 = substr($0, 1, i - 1) to substr($0, i + length(from)); print }' "$rsp" > "$q"
-      fi
-      printf '%s\t%s\t%s\n' "$rel" "$abs" "$q" >> "$CC_DIR/files512.tsv"
-    done < "$CC_DIR/files.tsv"
-    n=$(grep -c . "$CC_DIR/files512.tsv")
-    res="$(xargs -P "${XT_CLANG_JOBS:-$(nproc)}" -d '\n' -I{} bash -c 'check_one "$1"' _ {} < "$CC_DIR/files512.tsv")"
-    [ -n "$res" ] && echo "$res"
-    bad=$(echo "$res" | grep -c '^FAIL ')
-    echo "Qt 5.12 headers syntax check: checked $n files, $bad with errors"
-    [ "$n" -eq 0 ] && { echo "FAIL: no Code/Editor file of $CC_TREE carries Qt include directories"; fail=1; }
-    [ "$bad" -ne 0 ] && fail=1
+    # T-470: the check itself lives in Tools/Scripts/qt512_syntax_check.sh (shared with dev_check's qt512 suite).
+    XT_QT512_DIR="$XT_QT512_DIR" XT_CLANG="$CLANG" bash Tools/Scripts/qt512_syntax_check.sh --tree "$CC_TREE" --all || fail=1
   fi
 }
 
@@ -230,7 +231,8 @@ case "${XT_CI_STAGE:-}" in
   fuzz-smoke) fuzz_smoke_stage ;;
   sw-shell) sw_shell_stage ;;
   clang) clang_stages ;;
-  *) echo "unknown XT_CI_STAGE '${XT_CI_STAGE}' (fuzz-smoke | sw-shell | clang)"; exit 2 ;;
+  agent) agent_stage ;;
+  *) echo "unknown XT_CI_STAGE '${XT_CI_STAGE}' (fuzz-smoke | sw-shell | clang | agent)"; exit 2 ;;
 esac
 if [ -n "${XT_CI_STAGE:-}" ]; then
   echo; if [ "$fail" -eq 0 ]; then echo "LOCAL CI ($XT_CI_STAGE): PASS"; else echo "LOCAL CI ($XT_CI_STAGE): FAIL"; fi
@@ -266,6 +268,20 @@ cmake --build --preset vs2022-debug --parallel $CLEAN 2>&1 | grep -iE " error |w
 # MSBuild occasionally reports success without relinking an executable ("Not Run" in ctest);
 # one incremental rebuild fixes that, so retry once before failing.
 # $2 (optional) is a -R filter, e.g. "editor" for the editor-only presets below.
+# T-474: build_editor <preset> -- the editor builds keep their whole output in build/local_ci_<preset>.log.
+# The error lines are printed as before (they set fail); on a failure the tool messages are printed too
+# (a custom step's MSB3073 line only quotes the command, the tool's own message comes before it), then
+# where the full log is.
+build_editor() {
+  local log="build/local_ci_$1.log" errs
+  cmake --build --preset "$1" --parallel $CLEAN > "$log" 2>&1
+  errs="$(grep -iE " error |warning C" "$log" | grep -v "_deps")"
+  [ -z "$errs" ] && return 0
+  echo "$errs"
+  echo "--- tool messages ($log):"
+  grep -iE "error|fail|cannot|unable|denied|not found|no such file" "$log" | grep -vE "MSB3073|_deps|^ *[0-9]+% tests" | head -40
+  return 1
+}
 run_ctest() { local extra=""; [ -n "${2:-}" ] && extra="-R $2"; ctest --preset "$1" --output-on-failure $extra 2>&1 | grep -E "tests passed|Failed|\*\*\*|Not Run"; }
 out="$(run_ctest vs2022-debug)"
 if echo "$out" | grep -q "Not Run"; then echo "(ctest: missing executable, rebuilding once)"; cmake --build --preset vs2022-debug --parallel >/dev/null 2>&1; out="$(run_ctest vs2022-debug)"; fi
@@ -295,13 +311,13 @@ if [ -z "$QUICK" ]; then
   else
     cmake --preset vs2022-editor >/dev/null || fail=1
     find bin/win_x64/Debug -name "*.exe" -delete 2>/dev/null
-    cmake --build --preset vs2022-editor-debug --parallel $CLEAN 2>&1 | grep -iE " error |warning C" | grep -v "_deps" && fail=1
+    build_editor vs2022-editor-debug || fail=1
     out="$(run_ctest vs2022-editor-debug editor)"
     if echo "$out" | grep -q "Not Run"; then echo "(ctest: missing executable, rebuilding once)"; cmake --build --preset vs2022-editor-debug --parallel >/dev/null 2>&1; out="$(run_ctest vs2022-editor-debug editor)"; fi
     echo "$out"; echo "$out" | grep -q "100% tests passed" || fail=1
 
     find bin/win_x64/Release -name "*.exe" -delete 2>/dev/null
-    cmake --build --preset vs2022-editor-release --parallel $CLEAN 2>&1 | grep -iE " error |warning C" | grep -v "_deps" && fail=1
+    build_editor vs2022-editor-release || fail=1
     out="$(run_ctest vs2022-editor-release editor)"
     if echo "$out" | grep -q "Not Run"; then echo "(ctest: missing executable, rebuilding once)"; cmake --build --preset vs2022-editor-release --parallel >/dev/null 2>&1; out="$(run_ctest vs2022-editor-release editor)"; fi
     echo "$out"; echo "$out" | grep -q "100% tests passed" || fail=1
@@ -405,6 +421,7 @@ EOF
 
   fuzz_smoke_stage
   sw_shell_stage
+  agent_stage
 fi
 
 # T-240 (Docs/tasks/T-240.md item 8): the Android test app, opt-in (needs the Android SDK/NDK/JDK

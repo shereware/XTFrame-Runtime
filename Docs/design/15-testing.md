@@ -106,3 +106,4 @@ fixture (.xt 或 .json) + 參數 (width, height, dpr, time)
 - **例外**：改動建置系統本身、搬目錄（B18 類）、換工具鏈（T-442 類）的單，也跑一次完整閘門。
 - PR 觸發的 CI（§15.8）待 self-hosted runner 登錄後接手「每張單」那層；在那之前本機就是閘門。
 - 後果：版號之間可能累積幾張只過 dev_check 的單；版號單的完整閘門抓到的問題開修正單（T-457 的模式）。
+- T-470：Qt 5.12 標頭語法檢查抽成 `Tools/Scripts/qt512_syntax_check.sh`（`local_ci.sh` 以 `--all` 呼叫）；`dev_check.sh` 的 `qt512` 套件只查相對 `origin/main` 改動的 `Code/Editor/**/*.cpp`，要求 `editor_qt` 或目標 `xtframe-editor` 時自動帶入（`--no-qt512` 關閉），`qt512-all` 查全部。

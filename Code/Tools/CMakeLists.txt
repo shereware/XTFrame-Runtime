@@ -25,15 +25,9 @@ target_link_libraries(xtframe-pack PRIVATE xt_core xt_bundle)
 xt_enable_exceptions(xtframe-pack)
 xt_set_warnings(xtframe-pack)
 # T-198 (Docs/design/30-ui-project.md 30.4): the standard symbol library next to the executable,
-# where xtframe-pack looks for it (`<executable dir>/symbols`).
-add_custom_command(TARGET xtframe-pack POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:xtframe-pack>/symbols"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${PROJECT_SOURCE_DIR}/Assets/Symbols"
-        "$<TARGET_FILE_DIR:xtframe-pack>/symbols"
-    COMMENT "Copying the standard symbol library for xtframe-pack"
-    VERBATIM
-)
+# where xtframe-pack looks for it (`<executable dir>/symbols`); one shared copy target (T-474,
+# Tools/CMake/xt_runtime_output.cmake).
+xt_copy_standard_symbols(xtframe-pack)
 
 # T-309 (Docs/design/35-design-system.md §35.7.3): the design system on the command line. Runtime
 # layer: xt_bundle only. The standard symbol library goes next to the executable as for xtframe-pack
@@ -46,14 +40,7 @@ add_executable(xtframe-design
 target_link_libraries(xtframe-design PRIVATE xt_core xt_bundle)
 xt_enable_exceptions(xtframe-design)
 xt_set_warnings(xtframe-design)
-add_custom_command(TARGET xtframe-design POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:xtframe-design>/symbols"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${PROJECT_SOURCE_DIR}/Assets/Symbols"
-        "$<TARGET_FILE_DIR:xtframe-design>/symbols"
-    COMMENT "Copying the standard symbol library for xtframe-design"
-    VERBATIM
-)
+xt_copy_standard_symbols(xtframe-design)
 
 endif()
 
