@@ -45,6 +45,8 @@ class AssetResolver;
 struct ImageData;
 /// Host input-glyph resolver (see xt/context.h, T-178).
 class IGlyphProvider;
+/// A compiled setStyle() text shape (see xt/style_template.h, T-477).
+struct StyleTemplate;
 /// Forward declaration; the class is defined below.
 class Document;
 /// The Context that loaded a Document (see xt/context.h).
@@ -244,6 +246,11 @@ struct ElementRef {
     /// are compile-time only, 05.6; the declaration is ignored, the rest still applies),
     /// kInvalidArgument when a declaration could not be parsed (likewise ignored), else kOk.
     Status setStyle(std::string_view cssDeclarations);
+    /// T-477 (27 §27.4.2 item 4): setStyle(`cssDeclarations`) for a text of `tmpl`'s shape (its
+    /// literals around one number per hole): the declarations are written from the compiled
+    /// template, without the parse, with the same result. kNotFound (nothing done) for a text of
+    /// another shape -- call setStyle() then; otherwise setStyle()'s statuses.
+    Status setStyleTemplate(const StyleTemplate& tmpl, std::string_view cssDeclarations);
 
     /// Writes `prop` directly (`sticky == false`: layer 0, so the next style resolve or animation
     /// frame overwrites it) or as an Animator override (`sticky == true`: layer 3, 04.7, which
@@ -436,8 +443,14 @@ public:
     /// root of a pre-contract UI -- `body`'s only element child, else `body` itself -- whose
     /// cascaded `width` or `height` is a px length. The child is checked before `body`. Invalid
     /// when neither is fixed (the root fills the viewport). Reads the resolved styles, so call it
-    /// after an update().
+    /// after an update(). T-481: the first of fixedRoots() (no board), or invalid.
     ElementRef fixedRoot() const;
+    /// T-481 (25 §25.4.1 item 1 "multiple roots"): every fixed UI root -- the T-210 rules, but with
+    /// several element children of `body`, each one whose px `width` and `height` cover the design
+    /// board (design px; `>= board.x - 1`, `>= board.y - 1`), in document order; `{body}` when
+    /// none and `body` is fixed. The core does not know the design size: without a (positive)
+    /// board no child of several counts. Call it after an update().
+    std::vector<ElementRef> fixedRoots(Vec2 board = Vec2{0, 0}) const;
     /// O(n) linear search; no match (or no element carries `id`) returns an invalid ref.
     ElementRef byId(std::string_view id) const;
     /// DOCT element index -> ElementRef; out-of-range returns an invalid ref.

@@ -52,6 +52,20 @@ struct FrameStats {
     /// (Docs/design/21-perf-tracing.md §21.1; added for Docs/tasks/T-124.md's measurements). 0 in
     /// a run without a flow graph.
     float flowMs = 0;
+    /// T-475 (21 §21.6, 27 §27.4.2 item 6): the flow stages, filled by a FlowRuntime that
+    /// FlowRuntime::setPerfTracker() gave this tracker. Exclusive times (a nested stage pauses the
+    /// outer one), taken wherever the stage runs: inside FlowRuntime::tick() (a sub-phase of
+    /// flowMs) and, for the outputs a Document delivers at once (events, and every output below
+    /// behavior 1), inside the input dispatch (then part of inputMs).
+    /// Delivering document outputs along their edges (deliverPendingSignals(), the delivery part
+    /// of flushSignals(), an output delivered at once).
+    float flowDeliverMs = 0;
+    /// Node evaluation (settleNodes() / evaluateNode()).
+    float flowEvalMs = 0;
+    /// Writes into the Document (applyDocumentInput(): setText, setStyle, set(port), ...).
+    float flowSinkMs = 0;
+    /// pollDocumentOutputs(): the polled `#document.*` and `<anim>` `localTime` ports.
+    float flowPollMs = 0;
 
     // --- SW backend breakdown (Docs/tasks/T-82.md step 1). Sub-phases of renderMs; the four `swFx*`
     // ones are also sub-phases of effectsMs. Only the SW backend fills these in; the GL backend
@@ -174,6 +188,30 @@ struct FrameStats {
     /// T-389 (27 §27.4.1): ElementRef::setStyle() calls this frame (a flow / host / binding
     /// writing styles), counted while the tracker is enabled.
     uint32_t setStyleCalls = 0;
+
+    // --- T-475 (21 §21.6): flow workload, counted by a FlowRuntime with this tracker
+    // (FlowRuntime::setPerfTracker()) over the whole frame, the input dispatch included. ---
+    /// Document outputs entering the flow (FlowRuntime's signalOutput() path).
+    uint32_t flowSignals = 0;
+    /// Of those, value signals that replaced a value already pending for the same port (coalesced
+    /// away, 27 §27.4.1).
+    uint32_t flowSignalsCoalesced = 0;
+    /// evaluateNode() calls.
+    uint32_t flowNodeEvals = 0;
+    /// applyDocumentInput() calls (writes into a Document).
+    uint32_t flowSinkWrites = 0;
+    /// Edges fanOut() delivered along.
+    uint32_t flowFanOutEdges = 0;
+    /// T-477 (27 §27.4.2 item 4): the `set(port)` and `setStyle` sink writes that went in typed
+    /// (Document::setPort() with a Value / ElementRef::setStyleTemplate()) and the ones that went in
+    /// as text (setPortText() / setStyle()). The other sinks are counted in neither.
+    uint32_t flowSinkTyped = 0;
+    uint32_t flowSinkText = 0;
+    /// Heap allocations inside FlowRuntime::tick() (xt::perf::AllocCounter), sink writes into the
+    /// Document included except a `setStyle` that goes in as text (its CSS parse; T-478); 0 unless
+    /// the executable replaces operator new with XT_PERF_ALLOC_COUNT (xt_perf_flow,
+    /// xt_flow_alloc_tests).
+    uint32_t flowAllocs = 0;
 };
 
 // clang-format off
@@ -185,7 +223,7 @@ struct FrameStats {
     X(inputMs)                                                                                         \
     X(styleMs)                                                                                         \
     X(layoutMs) X(animateMs) X(transformMs) X(paintMs) X(renderMs) X(effectsMs) X(textMs) X(damageMs)  \
-        X(flowMs) X(swPathMs) X(swRasterMs) X(swSpanMs) X(swSpanSolidMs) X(swSpanGradientMs)           \
+        X(flowMs) X(flowDeliverMs) X(flowEvalMs) X(flowSinkMs) X(flowPollMs) X(swPathMs) X(swRasterMs) X(swSpanMs) X(swSpanSolidMs) X(swSpanGradientMs)           \
             X(swSpanImageMs) X(swSpanClippedMs) X(swClipMs) X(swLayerMs) X(swFxBlurMs) X(swFxDilateMs) \
                 X(swFxSdfMs) X(swFxPixMs) X(editorDocChangedMs) X(editorPanelsMs)
 
@@ -198,7 +236,9 @@ struct FrameStats {
         X(pathPoints) X(modifierVertices) X(skinnedPoints) X(rigBones) X(imageDraws) X(imageMeshes)         \
             X(meshTriangles) X(swGlyphBitmaps) X(swGlyphOutlines) X(spansPerFrame) X(spanPixelsPerFrame)    \
                 X(arenaNodes) X(commandBytes) X(runtimeStrings) X(maxDistinctBindingStrings)              \
-                    X(bands) X(bandRedraws) X(backdropCopyPx) X(pyramidLevels) X(directFallback) X(setStyleCalls)
+                    X(bands) X(bandRedraws) X(backdropCopyPx) X(pyramidLevels) X(directFallback) X(setStyleCalls) \
+                        X(flowSignals) X(flowSignalsCoalesced) X(flowNodeEvals) X(flowSinkWrites) \
+                            X(flowFanOutEdges) X(flowSinkTyped) X(flowSinkText) X(flowAllocs)
 // clang-format on
 
 /// avg/max over a window of frames, plus that window's average frame rate (§21.2).
@@ -304,5 +344,22 @@ public:
     PerfScope(PerfTracker& t, float FrameStats::* field)
         : PerfFieldScope(t.enabled() ? &(t.current().*field) : nullptr) {}
 };
+
+namespace perf {
+
+/// T-475 (21 §21.6, 27 §27.4.2 item 6): a per-thread heap allocation count for tests. Nothing in
+/// the libraries calls record(): an executable that defines XT_PERF_ALLOC_COUNT replaces the global
+/// operator new and calls it there (Tests/perf/flow_alloc_hook.cpp, xt_perf_flow only), so in every
+/// other program total() stays 0. FlowRuntime::tick() reports the difference as
+/// FrameStats::flowAllocs.
+class AllocCounter {
+public:
+    /// Counts one allocation on the calling thread. Never allocates, never throws.
+    static void record() noexcept;
+    /// Allocations recorded on the calling thread so far.
+    static uint64_t total() noexcept;
+};
+
+}  // namespace perf
 
 }  // namespace xt

@@ -12,6 +12,7 @@ namespace xt::flow {
 BundleContext::BundleContext(Context& context)
     : m_context(context), m_global(std::make_unique<FlowRuntime>()) {
     m_context.addListener(this);
+    m_global->setPerfTracker(&m_context.perf());  // T-475 (21 §21.6).
 }
 
 BundleContext::~BundleContext() {
@@ -159,6 +160,7 @@ Status BundleContext::loadUiFlow(std::string_view uiId, std::string_view json,
         }
         if (!ui.flow) {
             ui.flow = std::make_unique<FlowRuntime>();
+            ui.flow->setPerfTracker(&m_context.perf());  // T-475 (21 §21.6).
         }
         FlowRuntime& flow = *ui.flow;
         // T-260b: the runtime knows the handle, so it re-resolves its Document at every use (and

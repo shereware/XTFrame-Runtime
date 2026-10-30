@@ -669,12 +669,27 @@ void BindingRuntime::notifyListeners(PortEventKind kind, uint32_t index, uint32_
     if (item != nullptr) {
         event.item = *item;
     }
-    std::vector<std::pair<uint32_t, PortListener>> listeners = m_listeners;  // Callbacks may edit the list.
-    for (const auto& [id, fn] : listeners) {
+    // T-478: in place, by index, without copying the list (the copy cloned every std::function on
+    // each port change). Callbacks may edit the list: a listener added meanwhile (appended; the
+    // deque keeps the running callback where it is) is first called by the next notification, one
+    // removed meanwhile (tombstoned, id 0) is not called any more; the outermost call erases the
+    // tombstones when it returns.
+    const size_t count = m_listeners.size();
+    ++m_notifyDepth;
+    for (size_t i = 0; i < count; ++i) {
         if (m_doc.m_unloading) {
             break;  // T-260a: an earlier listener unloaded this Document.
         }
-        fn(event);
+        if (m_listeners[i].first != 0) {
+            m_listeners[i].second(event);
+        }
+    }
+    if (--m_notifyDepth == 0 && m_listenerTombstones) {
+        m_listenerTombstones = false;
+        m_listeners.erase(
+            std::remove_if(m_listeners.begin(), m_listeners.end(),
+                           [](const std::pair<uint32_t, PortListener>& l) { return l.first == 0; }),
+            m_listeners.end());
     }
 }
 

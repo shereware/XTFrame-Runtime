@@ -677,6 +677,19 @@ uint32_t BindingRuntime::addListener(PortListener listener) {
 }
 
 void BindingRuntime::removeListener(uint32_t id) {
+    if (id == 0) {
+        return;  // Never issued (0 marks a tombstone).
+    }
+    if (m_notifyDepth > 0) {
+        // T-478: a notification is iterating the list; notifyListeners() erases it afterwards.
+        for (auto& entry : m_listeners) {
+            if (entry.first == id) {
+                entry.first = 0;
+                m_listenerTombstones = true;
+            }
+        }
+        return;
+    }
     m_listeners.erase(
         std::remove_if(m_listeners.begin(), m_listeners.end(),
                        [id](const std::pair<uint32_t, PortListener>& l) { return l.first == id; }),

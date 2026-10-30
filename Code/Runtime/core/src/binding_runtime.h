@@ -437,8 +437,15 @@ private:
     std::vector<uint32_t> m_afterLayout;
     std::vector<uint32_t> m_bonePorts;  // T-244: the implicit bone output ports' slot indices.
     std::vector<std::pair<std::string, ConverterFn>> m_converters;
-    std::vector<std::pair<uint32_t, PortListener>> m_listeners;
+    /// T-478: port listeners, iterated in place by notifyListeners() (no per-notification copy).
+    /// A deque, so an addListener() from inside a callback appends without moving the callback that
+    /// is running. While a notification runs (m_notifyDepth > 0) removeListener() only tombstones
+    /// the entry (id 0: skipped from then on, its std::function kept alive, it may be the running
+    /// one); the outermost notifyListeners() erases the tombstones when it returns.
+    std::deque<std::pair<uint32_t, PortListener>> m_listeners;
     uint32_t m_nextListener = 1;
+    uint32_t m_notifyDepth = 0;
+    bool m_listenerTombstones = false;
     std::vector<std::string> m_warnedConverters;
     // callPort(): the last emitted value while a call runs.
     bool m_capturing = false;
@@ -451,6 +458,9 @@ private:
     uint32_t m_maxDistinctStrings = 0;  // T-270d: the largest StringGuard::distinct so far.
     // T-389: bindings a port change marked, in marking order, and their flags (by binding index).
     std::vector<uint32_t> m_dirty;
+    /// T-478: flushDirty()'s batch buffer between calls, so m_dirty and the batch trade their
+    /// capacity instead of m_dirty starting empty (and allocating on the next markDirty()) each frame.
+    std::vector<uint32_t> m_dirtySpare;
     std::vector<uint8_t> m_dirtyFlag;
     /// T-389: marks binding `b` for flushDirty().
     void markDirty(uint32_t b);

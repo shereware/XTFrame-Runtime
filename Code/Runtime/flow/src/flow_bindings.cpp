@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <map>
@@ -10,6 +11,7 @@
 #include "xt/charconv.h"
 #include "xt/context.h"
 #include "xt/event.h"
+#include "xt/num_guard.h"
 #include "xt/property.h"
 #include "xt/version.h"
 
@@ -497,45 +499,12 @@ bool coalescesSignals(const DocEndpointState& state) {
 }
 
 std::vector<std::string> outputPortOrder(NodeType type) {
-    switch (type) {
-        case NodeType::Constant:
-            return {"out"};
-        case NodeType::Counter:
-            return {"value"};
-        case NodeType::Toggle:
-            return {"value", "changed"};
-        case NodeType::Timer:
-            return {"tick", "count"};
-        case NodeType::Clock:
-            return {"seconds"};
-        case NodeType::Random:
-            return {"value"};
-        case NodeType::Math:
-            return {"out"};
-        case NodeType::Compare:
-            return {"out", "true", "false"};
-        case NodeType::ToString:
-            return {"out"};
-        case NodeType::Select:
-            return {"out"};
-        case NodeType::Radio:
-            return {"index", "changed"};
-        case NodeType::Lookup:
-        case NodeType::Merge:
-        case NodeType::Format:
-            return {"out"};
-        case NodeType::System:
-            return {"loading",  "paused",      "resumed", "disconnected", "languageChanged",
-                    "platform", "inputDevice", "back",    "reducedMotion"};  // T-330.
-        case NodeType::Timeline:
-            return {"end", "marker"};
-        case NodeType::Sound:
-        case NodeType::Haptic:
-        case NodeType::Spawn:
-        case NodeType::Emit:
-            return {};
+    // T-476: the slot table's output order (flow_slots.h) is the one source.
+    std::vector<std::string> out;
+    for (std::string_view name : nodeSlotTable(type).outputs) {
+        out.emplace_back(name);
     }
-    return {};
+    return out;
 }
 
 bool splitUiEndpoint(const std::string& text, std::string& uiId, std::string& rest, bool& lifecycle,
@@ -1337,6 +1306,12 @@ bool documentEndpointLost(Document& document, const Endpoint& ep, std::vector<st
 
 namespace {
 
+/// The output slot of `<anim>` `elementId`'s "Finished" when it is subscribed, else kNoOutput.
+uint32_t finishedSlot(const DocEndpointState& state, const std::string& elementId) {
+    auto it = state.outputIndex.find(externalKey(Endpoint::Owner::Anim, elementId, "Finished"));
+    return it != state.outputIndex.end() ? it->second : kNoOutput;
+}
+
 /// Registers `<anim>` `elementId`'s "Finished" callback on Animator instance `instanceId`.
 void registerFinishedCallback(DocEndpointState& state, const std::string& elementId, uint32_t instanceId) {
     if (instanceId == 0) {
@@ -1350,19 +1325,22 @@ void registerFinishedCallback(DocEndpointState& state, const std::string& elemen
         if (alive.expired()) {
             return;
         }
-        emitDocumentOutput(*s, Endpoint::Owner::Anim, elementId, "Finished", typedValue(PortType::Pulse),
-                           /*isPulse=*/true);
+        // Looked up when it fires (a rare event): the port may be subscribed after the callback.
+        const uint32_t slot = finishedSlot(*s, elementId);
+        if (slot != kNoOutput) {
+            emitDocumentOutput(*s, slot, typedValue(PortType::Pulse), /*isPulse=*/true);
+        }
     });
 }
 
-void setHover(DocEndpointState& state, const std::string& elementId, bool value) {
+void setHover(DocEndpointState& state, uint32_t slot, bool value) {
     PortValue v = typedValue(PortType::Bool);
     v.b = value;
-    emitDocumentOutput(state, Endpoint::Owner::Element, elementId, "hover", v, false);
+    emitDocumentOutput(state, slot, v, false);
 }
 
-void onChangeEvent(DocEndpointState& state, const std::string& elementId) {
-    ElementRef& ref = state.elementRefs.at(elementId);
+void onChangeEvent(DocEndpointState& state, uint32_t slot) {
+    ElementRef& ref = state.elementRefs.at(state.outputs[slot].elementId);
     if (!ref.valid()) {
         return;
     }
@@ -1374,15 +1352,23 @@ void onChangeEvent(DocEndpointState& state, const std::string& elementId) {
     }
     PortValue v = typedValue(PortType::String);
     v.s = std::move(payload);
-    emitDocumentOutput(state, Endpoint::Owner::Element, elementId, "Change", v, false);
+    emitDocumentOutput(state, slot, v, false);
+}
+
+bool isPointerDocPort(DocPort port) {
+    return port == DocPort::PointerX || port == DocPort::PointerY || port == DocPort::PointerNX ||
+           port == DocPort::PointerNY || port == DocPort::PointerDown;
 }
 
 /// Reports every subscribed pointer port's current value (emitDocumentOutput() drops the
 /// unchanged).
 void pushPointerPorts(DocEndpointState& state) {
-    for (const std::string& port : state.docOutputPorts) {
+    for (size_t i = 0; i < state.docOutputSlots.size(); ++i) {
+        const uint32_t slot = state.docOutputSlots[i];
+        const DocPort port = state.outputs[slot].docPort;
         if (isPointerDocPort(port)) {
-            emitDocumentOutput(state, Endpoint::Owner::Doc, "", port, documentPortValue(state, port), false);
+            documentPortValue(state, port, state.pointerValue);
+            emitDocumentOutput(state, slot, state.pointerValue, false);
         }
     }
 }
@@ -1440,117 +1426,303 @@ void registerDocumentEndpoint(DocEndpointState& state, const Endpoint& ep) {
 
 void applyDocumentInput(DocEndpointState& state, const Endpoint& sink, const PortValue& v,
                         const std::string& param) {
-    Document& doc = *state.doc;
+    applyDocumentInput(state, sink, InputValue{v.type, v.b, v.n, std::string_view(v.s)}, param);
+}
+
+void applyDocumentInput(DocEndpointState& state, const Endpoint& sink, const InputValue& v,
+                        const std::string& param) {
+    SinkCache cache;
+    resolveSink(state, sink, param, cache, /*reused=*/false);
+    applyResolvedInput(state, sink, cache, v, param, nullptr);
+}
+
+namespace {
+
+SinkOp sinkOpOf(Endpoint::Owner owner, const std::string& port) {
+    static const std::pair<const char*, SinkOp> kElement[] = {{"setText", SinkOp::SetText},
+                                                              {"setStyle", SinkOp::SetStyle},
+                                                              {"setValue", SinkOp::SetValue},
+                                                              {"playAnimation", SinkOp::PlayAnimation},
+                                                              {"stopAnimation", SinkOp::StopAnimation},
+                                                              {"focus", SinkOp::Focus},
+                                                              {"addClass", SinkOp::AddClass},
+                                                              {"removeClass", SinkOp::RemoveClass},
+                                                              {"toggleClass", SinkOp::ToggleClass},
+                                                              {"setProperty", SinkOp::SetProperty}};
+    static const std::pair<const char*, SinkOp> kAnim[] = {{"play", SinkOp::AnimPlay},
+                                                           {"pause", SinkOp::AnimPause},
+                                                           {"resume", SinkOp::AnimResume},
+                                                           {"seek", SinkOp::AnimSeek},
+                                                           {"setSpeed", SinkOp::AnimSetSpeed}};
+    if (owner == Endpoint::Owner::Element) {
+        for (const auto& [name, op] : kElement) {
+            if (port == name) {
+                return op;
+            }
+        }
+    } else if (owner == Endpoint::Owner::Anim) {
+        for (const auto& [name, op] : kAnim) {
+            if (port == name) {
+                return op;
+            }
+        }
+    }
+    return SinkOp::None;
+}
+
+/// T-477: the Value a typed write of `v` into a declared port of type `type` sends: the one
+/// setPortText() of the text form applyResolvedInput() used to build would set (a number printed
+/// with 17 digits parses back to the same double; `true` / `false`; an Event port ignores the
+/// value). False where only the text form is equivalent: a String / enum / color / vector port,
+/// a value of another flow type, a number that is not finite.
+bool typedPortValue(PortValueType type, const InputValue& v, Value& out) {
+    switch (type) {
+        case PortValueType::Number:
+            if (v.type != PortType::Number || !std::isfinite(v.n)) {
+                return false;
+            }
+            out = Value::ofFloat(static_cast<float>(v.n));
+            return true;
+        case PortValueType::Entity:
+            if (v.type != PortType::Number || !std::isfinite(v.n)) {
+                return false;
+            }
+            if (v.n < 0.0) {
+                return false;  // setPortText() rejects it (kInvalidArgument): the text path says so.
+            }
+            out = Value::ofEnum(toUint32Sat(v.n));
+            return true;
+        case PortValueType::Bool:
+            if (v.type != PortType::Bool) {
+                return false;
+            }
+            out = Value::ofFloat(v.b ? 1.0f : 0.0f);
+            return true;
+        case PortValueType::Event:
+            out = Value::ofFloat(0.0f);
+            return true;
+        default:
+            return false;
+    }
+}
+
+}  // namespace
+
+bool sinkCacheValid(const SinkCache& cache, const DocEndpointState& state) {
+    return cache.doc != nullptr && cache.doc == state.doc && cache.serial == state.serial;
+}
+
+void resolveSink(const DocEndpointState& state, const Endpoint& sink, const std::string& param,
+                 SinkCache& out, bool reused) {
+    out = SinkCache{};
+    out.doc = state.doc;
+    out.serial = state.serial;
+    if (state.doc == nullptr) {
+        return;
+    }
+    const Document& doc = *state.doc;
     switch (sink.owner) {
         case Endpoint::Owner::Node:
         case Endpoint::Owner::Doc:
         case Endpoint::Owner::Lifecycle:
-            return;  // Not a document input port (the document has none, validated at load time).
+            return;  // Not a document input port (SinkOp::None: nothing is written).
         case Endpoint::Owner::Port: {
-            // T-175: a declared `in` / `call` port; values go in through their text form.
-            PortId port = doc.lookupPort(declaredPortName(sink.elementId, sink.port));
-            if (port == kInvalidPort) {
+            out.port = doc.lookupPort(declaredPortName(sink.elementId, sink.port));
+            if (out.port == kInvalidPort) {
                 return;
             }
-            PortRecord info = doc.portInfo(port);
-            std::string text = v.type == PortType::Bool     ? (v.b ? "true" : "false")
-                               : v.type == PortType::String ? v.s
-                                                            : std::string();
-            if (v.type == PortType::Number) {
-                char buf[64];
-                text.assign(buf, xt::formatFloat(buf, sizeof(buf), v.n, 17));
-            }
-            if (info.dir == PortDir::Call) {
-                if (v.type != PortType::Pulse && info.type != PortValueType::Event) {
-                    doc.setPortText(port, text);
-                }
-                doc.callPort(port, {});
-                return;
-            }
-            doc.setPortText(port, info.type == PortValueType::Event ? std::string() : text);
-            return;
-        }
-        case Endpoint::Owner::Element: {
-            ElementRef& ref = state.elementRefs.at(sink.elementId);
-            if (!ref.valid()) {
-                return;
-            }
-            if (sink.port == "setText") {
-                ref.setText(v.s);
-            } else if (sink.port == "setStyle") {
-                ref.setStyle(v.s);
-            } else if (sink.port == "setValue") {
-                ref.setValue(v.s);
-            } else if (sink.port == "playAnimation") {
-                // T-123: a CSS `animation` declaration is how the runtime plays a `@keyframes`
-                // (there is no direct "play this timeline" API on an ordinary element).
-                ref.setStyle("animation: " + animationDeclarationFor(doc, ref, v.s));
-            } else if (sink.port == "stopAnimation") {
-                ref.setStyle("animation: none");
-            } else if (sink.port == "focus") {
-                ref.focus();
-            } else if (sink.port == "addClass") {
-                ref.addClass(param);
-            } else if (sink.port == "removeClass") {
-                ref.removeClass(param);
-            } else if (sink.port == "toggleClass") {
-                ref.toggleClass(param);
-            } else if (sink.port == "setProperty") {
-                PropId prop = propertyByName(param);
-                if (prop != prop::kInvalidProp) {
-                    ref.setProperty(prop, Value::ofFloat(static_cast<float>(v.n)));
+            const PortRecord info = doc.portInfo(out.port);
+            out.dir = info.dir;
+            out.type = info.type;
+            out.op = info.dir == PortDir::Call ? SinkOp::PortCall : SinkOp::PortSet;
+            // A port of the PORT table keeps its id while this Document lives; a `<repeat>`
+            // instance copy (not listed by ports()) may answer to the name with another id later.
+            out.portStable = !reused;  // Used for one write: nothing to look up again.
+            if (reused) {
+                for (const PortRecord& listed : doc.ports()) {
+                    if (listed.id == out.port) {
+                        out.portStable = true;
+                        break;
+                    }
                 }
             }
             return;
         }
+        case Endpoint::Owner::Element:
         case Endpoint::Owner::Anim: {
-            ElementRef& ref = state.elementRefs.at(sink.elementId);
-            if (!ref.valid()) {
-                return;
+            auto it = state.elementRefs.find(sink.elementId);
+            if (it != state.elementRefs.end()) {
+                out.element = it->second.node;
+                out.elementGen = it->second.generation;
             }
-            uint32_t& inst = state.animInstance[sink.elementId];
-            if (sink.port == "play") {
-                const SceneInstance* si = doc.sceneInstance(ref);
-                if (si == nullptr) {
-                    return;  // Not applicable (Docs/tasks/T-56.md leaves this uncovered): no-op.
-                }
-                PlayParams params;
-                params.timeline = doc.sceneTimeline(si->scene);
-                params.localToArena = si->localToArena.data();
-                params.localCount = static_cast<uint32_t>(si->localToArena.size());
-                params.selfNode = ref.node;
-                inst = doc.play(params);
-                registerFinishedCallback(state, sink.elementId, inst);
-            } else if (sink.port == "pause") {
-                if (inst != 0) {
-                    doc.pause(inst);
-                }
-            } else if (sink.port == "resume") {
-                if (inst != 0) {
-                    doc.resume(inst);
-                }
-            } else if (sink.port == "seek") {
-                if (inst != 0) {
-                    doc.seek(inst, static_cast<float>(v.n));
-                }
-            } else if (sink.port == "setSpeed") {
-                if (inst != 0) {
-                    doc.setSpeed(inst, static_cast<float>(v.n));
-                }
+            out.op = sinkOpOf(sink.owner, sink.port);
+            if (out.op == SinkOp::SetProperty) {
+                out.prop = propertyByName(param);
             }
             return;
         }
     }
 }
 
-void subscribeDocumentOutput(DocEndpointState& state, const Endpoint& source) {
+SinkPath applyResolvedInput(DocEndpointState& state, const Endpoint& sink, const SinkCache& cache,
+                            const InputValue& v, const std::string& param,
+                            const StyleTemplate* styleTemplate) {
+    Document& doc = *state.doc;
+    switch (cache.op) {
+        case SinkOp::None:
+            return SinkPath::Other;
+        case SinkOp::PortSet:
+        case SinkOp::PortCall: {
+            // T-175: a declared `in` / `call` port. T-477: a number / bool / event goes in as a
+            // Value (setPort()), anything else through its text form (setPortText()); both reach
+            // BindingRuntime::set() with the same Value (the typed-vs-text test proves it).
+            PortId port = cache.port;
+            PortDir dir = cache.dir;
+            PortValueType type = cache.type;
+            if (!cache.portStable) {
+                port = doc.lookupPort(declaredPortName(sink.elementId, sink.port));
+                if (port == kInvalidPort) {
+                    return SinkPath::Other;
+                }
+                const PortRecord info = doc.portInfo(port);
+                dir = info.dir;
+                type = info.type;
+            }
+            Value typed;
+            const bool hasTyped = typedPortValue(type, v, typed);
+            char buf[64];
+            std::string_view text = v.type == PortType::Bool     ? std::string_view(v.b ? "true" : "false")
+                                    : v.type == PortType::String ? v.s
+                                                                 : std::string_view();
+            if (!hasTyped && v.type == PortType::Number) {
+                text = std::string_view(buf, xt::formatFloat(buf, sizeof(buf), v.n, 17));
+            }
+            if (dir == PortDir::Call) {
+                SinkPath path = SinkPath::Other;
+                if (v.type != PortType::Pulse && type != PortValueType::Event) {
+                    if (hasTyped) {
+                        doc.setPort(port, typed);
+                        path = SinkPath::Typed;
+                    } else {
+                        doc.setPortText(port, text);
+                        path = SinkPath::Text;
+                    }
+                }
+                doc.callPort(port, {});
+                return path;
+            }
+            if (hasTyped) {
+                doc.setPort(port, typed);  // An Event port: setPortText("") sets Float 0 too.
+                return SinkPath::Typed;
+            }
+            doc.setPortText(port, text);
+            return SinkPath::Text;
+        }
+        default:
+            break;
+    }
+    ElementRef ref{&doc, cache.element, cache.elementGen};
+    if (!ref.valid()) {
+        return SinkPath::Other;
+    }
+    switch (cache.op) {
+        case SinkOp::SetText:
+            ref.setText(v.s);
+            break;
+        case SinkOp::SetStyle:
+            // T-477: a text of the compiled `format` shape is written without the CSS parse.
+            if (styleTemplate != nullptr && ref.setStyleTemplate(*styleTemplate, v.s) != Status::kNotFound) {
+                return SinkPath::Typed;
+            }
+            ref.setStyle(v.s);
+            return SinkPath::Text;
+        case SinkOp::SetValue:
+            ref.setValue(v.s);
+            break;
+        case SinkOp::PlayAnimation:
+            // T-123: a CSS `animation` declaration is how the runtime plays a `@keyframes`
+            // (there is no direct "play this timeline" API on an ordinary element).
+            ref.setStyle("animation: " + animationDeclarationFor(doc, ref, std::string(v.s)));
+            break;
+        case SinkOp::StopAnimation:
+            ref.setStyle("animation: none");
+            break;
+        case SinkOp::Focus:
+            ref.focus();
+            break;
+        case SinkOp::AddClass:
+            ref.addClass(param);
+            break;
+        case SinkOp::RemoveClass:
+            ref.removeClass(param);
+            break;
+        case SinkOp::ToggleClass:
+            ref.toggleClass(param);
+            break;
+        case SinkOp::SetProperty:
+            if (cache.prop != prop::kInvalidProp) {
+                ref.setProperty(cache.prop, Value::ofFloat(static_cast<float>(v.n)));
+            }
+            break;
+        case SinkOp::AnimPlay: {
+            const SceneInstance* si = doc.sceneInstance(ref);
+            if (si == nullptr) {
+                break;  // Not applicable (Docs/tasks/T-56.md leaves this uncovered): no-op.
+            }
+            PlayParams params;
+            params.timeline = doc.sceneTimeline(si->scene);
+            params.localToArena = si->localToArena.data();
+            params.localCount = static_cast<uint32_t>(si->localToArena.size());
+            params.selfNode = ref.node;
+            const uint32_t inst = doc.play(params);
+            state.animInstance[sink.elementId] = inst;
+            registerFinishedCallback(state, sink.elementId, inst);
+            break;
+        }
+        case SinkOp::AnimPause:
+        case SinkOp::AnimResume:
+        case SinkOp::AnimSeek:
+        case SinkOp::AnimSetSpeed: {
+            const uint32_t inst = state.animInstance[sink.elementId];
+            if (inst == 0) {
+                break;
+            }
+            if (cache.op == SinkOp::AnimPause) {
+                doc.pause(inst);
+            } else if (cache.op == SinkOp::AnimResume) {
+                doc.resume(inst);
+            } else if (cache.op == SinkOp::AnimSeek) {
+                doc.seek(inst, static_cast<float>(v.n));
+            } else {
+                doc.setSpeed(inst, static_cast<float>(v.n));
+            }
+            break;
+        }
+        default:
+            break;
+    }
+    return SinkPath::Other;
+}
+
+uint32_t subscribeDocumentOutput(DocEndpointState& state, const Endpoint& source) {
     // T-193: lifecycle outputs are driven by BundleContext, not by a Document listener.
     if (source.owner == Endpoint::Owner::Node || source.owner == Endpoint::Owner::Lifecycle) {
-        return;
+        return kNoOutput;
     }
-    if (!state.subscribed.insert(externalKey(source.owner, source.elementId, source.port)).second) {
-        return;
+    std::string key = externalKey(source.owner, source.elementId, source.port);
+    if (auto it = state.outputIndex.find(key); it != state.outputIndex.end()) {
+        return it->second;
     }
+    // T-476: the port's output slot; every listener below captures it.
+    const auto slot = static_cast<uint32_t>(state.outputs.size());
+    DocOutput output;
+    output.owner = source.owner;
+    output.elementId = source.elementId;
+    output.port = source.port;
+    output.type = source.type;
+    output.docPort = source.owner == Endpoint::Owner::Doc ? docPortOf(source.port) : DocPort::None;
+    state.outputs.push_back(std::move(output));
+    state.outputIndex.emplace(std::move(key), slot);
     Document& doc = *state.doc;
     DocEndpointState* s = &state;
 
@@ -1558,30 +1730,27 @@ void subscribeDocumentOutput(DocEndpointState& state, const Endpoint& source) {
         // T-175: a declared `out` port reports its value when it changes and on every emit().
         PortId port = doc.lookupPort(declaredPortName(source.elementId, source.port));
         if (port == kInvalidPort) {
-            return;
+            return slot;
         }
-        const std::string id = source.elementId;
-        const std::string name = source.port;
         const PortType type = source.type;
         // T-260c: the Document calls a copy of its listener list, so a listener removed by an
         // earlier one in the same emit (a flow load deferred to the end of that one's dispatch)
         // still runs: the liveness token tells it `s` is gone, as for the "finished" callbacks.
         std::weak_ptr<bool> alive = state.aliveToken;
         state.portListenerIds.push_back(
-            doc.addPortListener([s, port, id, name, type, alive](const PortEvent& ev) {
+            doc.addPortListener([s, port, slot, type, alive](const PortEvent& ev) {
                 if (alive.expired() || ev.port != port || ev.kind == PortEventKind::ListChanged) {
                     return;
                 }
-                emitDocumentOutput(*s, Endpoint::Owner::Port, id, name,
-                                   declaredPortValue(*s->doc, port, type), type == PortType::Pulse);
+                emitDocumentOutput(*s, slot, declaredPortValue(*s->doc, port, type), type == PortType::Pulse);
             }));
-        return;
+        return slot;
     }
 
     if (source.owner == Endpoint::Owner::Doc) {
         // Row-3 outputs are polled (pollDocumentOutputs()); the pointer ones are additionally
         // pushed from their event listeners.
-        state.docOutputPorts.push_back(source.port);
+        state.docOutputSlots.push_back(slot);
         // T-77's #document.pointer* ports. PointerMove/Down/Up are dispatched to the hit (or, while
         // a button is held, the active) element and bubble to the root, so a listener on the
         // document root sees every pointer event the core dispatches; a move over nothing at all
@@ -1598,84 +1767,115 @@ void subscribeDocumentOutput(DocEndpointState& state, const Endpoint& source) {
             state.listenerIds.push_back(doc.addListener(
                 root, EventType::PointerUp, [s](Event& ev) { onPointerEvent(*s, ev.pos, true, false); }));
         }
-        return;
+        return slot;
     }
 
     if (source.owner == Endpoint::Owner::Anim && source.port == "localTime") {
-        state.animLocalTimeElements.push_back(source.elementId);  // Polled.
-        return;
+        state.animLocalTimeSlots.push_back(slot);  // Polled.
+        return slot;
     }
     ElementRef& ref = state.elementRefs.at(source.elementId);
     if (!ref.valid()) {
-        return;
+        return slot;
     }
-    const std::string id = source.elementId;
     if (source.owner == Endpoint::Owner::Element) {
         if (source.port == "hover") {
-            state.listenerIds.push_back(
-                doc.addListener(ref, EventType::PointerEnter, [s, id](Event&) { setHover(*s, id, true); }));
-            state.listenerIds.push_back(
-                doc.addListener(ref, EventType::PointerLeave, [s, id](Event&) { setHover(*s, id, false); }));
+            state.listenerIds.push_back(doc.addListener(ref, EventType::PointerEnter,
+                                                        [s, slot](Event&) { setHover(*s, slot, true); }));
+            state.listenerIds.push_back(doc.addListener(ref, EventType::PointerLeave,
+                                                        [s, slot](Event&) { setHover(*s, slot, false); }));
         } else if (source.port == "Change") {
             state.listenerIds.push_back(
-                doc.addListener(ref, EventType::Change, [s, id](Event&) { onChangeEvent(*s, id); }));
+                doc.addListener(ref, EventType::Change, [s, slot](Event&) { onChangeEvent(*s, slot); }));
         } else {
             EventType et = EventType::Click;
             if (pulseEventType(source.port, et)) {
-                std::string port = source.port;
-                state.listenerIds.push_back(doc.addListener(ref, et, [s, id, port](Event&) {
-                    emitDocumentOutput(*s, Endpoint::Owner::Element, id, port, typedValue(PortType::Pulse),
-                                       /*isPulse=*/true);
+                state.listenerIds.push_back(doc.addListener(ref, et, [s, slot](Event&) {
+                    emitDocumentOutput(*s, slot, typedValue(PortType::Pulse), /*isPulse=*/true);
                 }));
             }
         }
     } else if (source.port == "Marker") {
-        state.listenerIds.push_back(doc.addListener(ref, EventType::Marker, [s, id](Event& ev) {
+        state.listenerIds.push_back(doc.addListener(ref, EventType::Marker, [s, slot](Event& ev) {
             PortValue v = typedValue(PortType::String);
             v.s = std::string(s->doc->string(ev.markerName));
-            emitDocumentOutput(*s, Endpoint::Owner::Anim, id, "Marker", v, false);
+            emitDocumentOutput(*s, slot, v, false);
         }));
     }
     // An `<anim>`'s "Finished" is wired via onAnimationFinished (registerDocumentEndpoint() and
     // applyDocumentInput()'s "play").
+    return slot;
 }
 
 void pollDocumentOutputs(DocEndpointState& state) {
     // T-260b: checked before every read -- the Document may be reloaded or unloaded under us,
     // also by a host callback that one of these outputs reaches (then nothing more is read until
     // the next load; BundleContext::removeUi leaves these lists in place for that reason).
-    for (const std::string& port : state.docOutputPorts) {
+    for (size_t i = 0; i < state.docOutputSlots.size(); ++i) {
         if (liveDocument(state) == nullptr) {
             return;
         }
         // documentPortValue() is the single source for every row-3 port's current value.
-        emitDocumentOutput(state, Endpoint::Owner::Doc, "", port, documentPortValue(state, port), false);
+        const uint32_t slot = state.docOutputSlots[i];
+        documentPortValue(state, state.outputs[slot].docPort, state.pollValue);
+        emitDocumentOutput(state, slot, state.pollValue, false);
     }
-    for (const std::string& elementId : state.animLocalTimeElements) {
+    for (size_t i = 0; i < state.animLocalTimeSlots.size(); ++i) {
         if (liveDocument(state) == nullptr) {
             return;
         }
-        auto it = state.animInstance.find(elementId);
-        uint32_t inst = (it != state.animInstance.end()) ? it->second : 0;
-        PortValue pv = typedValue(PortType::Number);
-        pv.n = (inst != 0) ? static_cast<double>(state.doc->animationTime(inst)) : 0.0;
-        emitDocumentOutput(state, Endpoint::Owner::Anim, elementId, "localTime", pv, false);
+        const uint32_t slot = state.animLocalTimeSlots[i];
+        // T-477: the element's Animator instance entry, found once (std::map entries stay put
+        // until resetDocumentTreeState() clears the map, which drops this pointer too).
+        DocOutput& output = state.outputs[slot];
+        if (output.animInstance == nullptr) {
+            auto it = state.animInstance.find(output.elementId);
+            if (it != state.animInstance.end()) {
+                output.animInstance = &it->second;
+            }
+        }
+        const uint32_t inst = output.animInstance != nullptr ? *output.animInstance : 0;
+        state.pollValue.type = PortType::Number;
+        state.pollValue.b = false;
+        state.pollValue.n = (inst != 0) ? static_cast<double>(state.doc->animationTime(inst)) : 0.0;
+        emitDocumentOutput(state, slot, state.pollValue, false);
     }
 }
 
-PortValue documentPortValue(const DocEndpointState& state, const std::string& port) {
-    if (port == "pointerDown") {
-        PortValue v = typedValue(PortType::Bool);
-        v.b = state.pointerDown;
-        return v;
+DocPort docPortOf(const std::string& port) {
+    static const std::pair<const char*, DocPort> kPorts[] = {{"clock", DocPort::Clock},
+                                                             {"viewportWidth", DocPort::ViewportWidth},
+                                                             {"viewportHeight", DocPort::ViewportHeight},
+                                                             {"pointerX", DocPort::PointerX},
+                                                             {"pointerY", DocPort::PointerY},
+                                                             {"pointerNX", DocPort::PointerNX},
+                                                             {"pointerNY", DocPort::PointerNY},
+                                                             {"pointerDown", DocPort::PointerDown}};
+    for (const auto& [name, value] : kPorts) {
+        if (port == name) {
+            return value;
+        }
     }
-    PortValue v = typedValue(PortType::Number);
-    if (port == "clock") {
+    return DocPort::None;
+}
+
+void documentPortValue(const DocEndpointState& state, DocPort port, PortValue& v) {
+    v.s.clear();
+    v.b = false;
+    v.n = 0;
+    if (port == DocPort::PointerDown) {
+        v.type = PortType::Bool;
+        v.b = state.pointerDown;
+        return;
+    }
+    v.type = PortType::Number;
+    if (port == DocPort::Clock) {
         v.n = static_cast<double>(state.clockAccum);
-        return v;
+        return;
     }
     // Everything below is expressed in the viewport box the document lays out into, which is the
-    // root element's border box (the same source viewportWidth/Height already report).
+    // root element's border box (the same source viewportWidth/Height already report). T-478: it
+    // allocates nothing (T-477), so FrameStats::flowAllocs counts it again.
     Rect box = state.doc->root().boundingBox();
     double centerX = static_cast<double>(box.x) + static_cast<double>(box.w) * 0.5;
     double centerY = static_cast<double>(box.y) + static_cast<double>(box.h) * 0.5;
@@ -1684,34 +1884,44 @@ PortValue documentPortValue(const DocEndpointState& state, const std::string& po
     // still reports its real center.
     double px = state.pointerSeen ? static_cast<double>(state.pointerPos.x) : centerX;
     double py = state.pointerSeen ? static_cast<double>(state.pointerPos.y) : centerY;
-    if (port == "viewportWidth") {
-        v.n = static_cast<double>(box.w);
-    } else if (port == "viewportHeight") {
-        v.n = static_cast<double>(box.h);
-    } else if (port == "pointerX") {
-        v.n = px;
-    } else if (port == "pointerY") {
-        v.n = py;
-    } else if (port == "pointerNX") {
-        v.n = normalizedPointer(px, centerX, static_cast<double>(box.w));
-    } else if (port == "pointerNY") {
-        v.n = normalizedPointer(py, centerY, static_cast<double>(box.h));
+    switch (port) {
+        case DocPort::ViewportWidth:
+            v.n = static_cast<double>(box.w);
+            break;
+        case DocPort::ViewportHeight:
+            v.n = static_cast<double>(box.h);
+            break;
+        case DocPort::PointerX:
+            v.n = px;
+            break;
+        case DocPort::PointerY:
+            v.n = py;
+            break;
+        case DocPort::PointerNX:
+            v.n = normalizedPointer(px, centerX, static_cast<double>(box.w));
+            break;
+        case DocPort::PointerNY:
+            v.n = normalizedPointer(py, centerY, static_cast<double>(box.h));
+            break;
+        default:
+            break;
     }
-    return v;
 }
 
-void emitDocumentOutput(DocEndpointState& state, Endpoint::Owner owner, const std::string& elementId,
-                        const std::string& port, const PortValue& v, bool isPulse) {
+void emitDocumentOutput(DocEndpointState& state, uint32_t slot, const PortValue& v, bool isPulse) {
+    if (slot >= state.outputs.size()) {
+        return;
+    }
     if (!isPulse) {
-        std::string key = externalKey(owner, elementId, port);
-        auto it = state.lastOutputs.find(key);
-        if (it != state.lastOutputs.end() && valuesEqual(it->second, v)) {
+        DocOutput& output = state.outputs[slot];
+        if (output.hasLast && valuesEqual(output.last, v)) {
             return;
         }
-        state.lastOutputs[key] = v;
+        output.last = v;  // Reuses the string's capacity.
+        output.hasLast = true;
     }
     if (state.output) {
-        state.output(owner, elementId, port, v);
+        state.output(slot, v);
     }
 }
 
@@ -1743,10 +1953,11 @@ void unbindDocumentEndpoints(DocEndpointState& state, bool removeListeners) {
     // A fresh token silences every "finished" callback registered against the old one, which
     // Document keeps until the instance finishes (see registerFinishedCallback()).
     state.aliveToken = std::make_shared<bool>(true);
-    state.subscribed.clear();
+    state.outputs.clear();
+    state.outputIndex.clear();
     state.pointerSubscribed = false;
-    state.docOutputPorts.clear();
-    state.animLocalTimeElements.clear();
+    state.docOutputSlots.clear();
+    state.animLocalTimeSlots.clear();
 }
 
 void detachDocumentEndpoints(DocEndpointState& state) {
@@ -1770,7 +1981,10 @@ void detachDocumentEndpoints(DocEndpointState& state) {
 void resetDocumentTreeState(DocEndpointState& state) {
     state.elementRefs.clear();
     state.animInstance.clear();
-    state.lastOutputs.clear();
+    for (DocOutput& output : state.outputs) {
+        output.hasLast = false;         // The last reported values.
+        output.animInstance = nullptr;  // T-477: into the map just cleared.
+    }
     state.pointerPos = Vec2{};
     state.pointerSeen = false;
     state.pointerDown = false;
@@ -1788,34 +2002,82 @@ void FlowRuntime::Impl::bindDocumentEndpoints() {
         }
     }
     // Element / `<anim>` outputs first, then the document's own (whose pointer listeners go on
-    // the root last), each in edge order.
-    for (const BoundEdge& e : edges) {
-        if (e.from.owner == Endpoint::Owner::Element || e.from.owner == Endpoint::Owner::Anim ||
-            e.from.owner == Endpoint::Owner::Port) {
-            for (DocEndpointState* state : statesFor(e.from.uiId)) {
-                subscribeDocumentOutput(*state, e.from);
+    // the root last), each in edge order. T-476: each subscribed output gets a source binding.
+    for (size_t i = 0; i < edges.size(); ++i) {
+        const Endpoint& from = edges[i].from;
+        if (from.owner == Endpoint::Owner::Element || from.owner == Endpoint::Owner::Anim ||
+            from.owner == Endpoint::Owner::Port) {
+            for (DocEndpointState* state : statesFor(from.uiId)) {
+                bindSource(*state, subscribeDocumentOutput(*state, from), rtEdges[i].from.external);
             }
         }
     }
-    for (const BoundEdge& e : edges) {
-        if (e.from.owner == Endpoint::Owner::Doc) {
-            for (DocEndpointState* state : statesFor(e.from.uiId)) {
-                subscribeDocumentOutput(*state, e.from);
+    for (size_t i = 0; i < edges.size(); ++i) {
+        const Endpoint& from = edges[i].from;
+        if (from.owner == Endpoint::Owner::Doc) {
+            for (DocEndpointState* state : statesFor(from.uiId)) {
+                bindSource(*state, subscribeDocumentOutput(*state, from), rtEdges[i].from.external);
             }
         }
     }
+    // Room for every binding pending at once and for one batch of all of them: queueing and
+    // delivering a frame's signals then never allocates.
+    pendingList.reserve(sources.size());
+    while (batchStack.size() < sources.size()) {
+        batchStack.emplace_back();
+        batchHomes.push_back(strings.addBuffer());
+    }
+    resolveSinks();
     bindTimelineNodes();
 }
 
-void FlowRuntime::Impl::applyToSink(const BoundEdge& edge, const PortValue& v) {
-    const Endpoint& sink = edge.to;
-    if (sink.owner == Endpoint::Owner::Node) {
+void FlowRuntime::Impl::resolveSinks() {
+    // T-477 (27 §27.4.2 item 4): each document sink against the first endpoint state it reaches
+    // (a global flow edge into a UI with several instances resolves again when the state changes).
+    for (size_t i = 0; i < edges.size(); ++i) {
+        const Endpoint& to = edges[i].to;
+        if (to.owner != Endpoint::Owner::Element && to.owner != Endpoint::Owner::Anim &&
+            to.owner != Endpoint::Owner::Port) {
+            continue;
+        }
+        const std::vector<DocEndpointState*> states = statesFor(to.uiId);
+        if (!states.empty()) {
+            resolveSink(*states.front(), to, edges[i].param, rtEdges[i].sink);
+        }
+    }
+}
+
+void FlowRuntime::Impl::bindSource(DocEndpointState& state, uint32_t slot, uint32_t external) {
+    if (slot >= state.outputs.size() || state.outputs[slot].tag != kNoOutput) {
+        return;
+    }
+    SourceBinding source;
+    source.state = &state;
+    source.external = external;
+    source.valueSignal = externals[external].valueSignal;
+    source.pendingHome = strings.addBuffer();
+    source.nowHome = strings.addBuffer();
+    state.outputs[slot].tag = static_cast<uint32_t>(sources.size());
+    sources.push_back(source);
+}
+
+void FlowRuntime::Impl::applyToSink(uint32_t edgeIndex, const RtValue& v) {
+    RtEdge& edge = rtEdges[edgeIndex];
+    const SlotEndpoint& to = edge.to;
+    if (to.owner == Endpoint::Owner::Node) {
         // Route by the SINK's own port type, not the source's: a pulse sink fires whenever
         // anything arrives (see validateGraph()'s matching comment), even from a value-typed
         // source.
-        deliverToNode(sink.nodeIndex, sink.port, v, sink.type == PortType::Pulse);
+        if (to.slot != kNoSlot) {
+            deliverToNode(to.node, to.slot, v, to.type == PortType::Pulse);
+        }
         return;
     }
+    const Endpoint& sink = externals[to.external].desc;
+    const std::string& param = edges[edgeIndex].param;
+    const InputValue input{
+        v.type == kNoValue ? PortType::Pulse : v.type, v.b, v.n,
+        v.type == PortType::String ? std::string_view(strings.text(v.str)) : std::string_view()};
     // T-193 (27.3.1): an `instance` edge only reaches that instance. T-260b: nor does anything
     // reach a Document that was reloaded or unloaded since the runtime bound it (liveDocument()).
     auto reaches = [&edge](const DocEndpointState& state) {
@@ -1823,16 +2085,55 @@ void FlowRuntime::Impl::applyToSink(const BoundEdge& edge, const PortValue& v) {
         return doc != nullptr &&
                (edge.instance < 0 || static_cast<int64_t>(doc->instanceId()) == edge.instance);
     };
+    // T-477: the sink as resolved at bind time (again only for another state / Document).
+    const StyleTemplate* tmpl =
+        edge.styleTemplate >= 0 ? &styleTemplates[static_cast<size_t>(edge.styleTemplate)] : nullptr;
+    auto write = [&](DocEndpointState& state) {
+        if (!sinkCacheValid(edge.sink, state)) {
+            resolveSink(state, sink, param, edge.sink);
+        }
+        if (perfTracker != nullptr) {
+            applyDocumentInputTimed(state, sink, edge.sink, input, param, tmpl);  // T-475.
+        } else {
+            applyResolvedInput(state, sink, edge.sink, input, param, tmpl);
+        }
+    };
     if (sink.uiId.empty()) {
         if (reaches(docs)) {  // The common case: no allocation per delivery.
-            applyDocumentInput(docs, sink, v, edge.param);
+            write(docs);
         }
         return;
     }
     for (UiDoc& ui : uiDocs) {
         if (ui.uiId == sink.uiId && reaches(*ui.state)) {
-            applyDocumentInput(*ui.state, sink, v, edge.param);
+            write(*ui.state);
         }
+    }
+}
+
+void FlowRuntime::Impl::applyDocumentInputTimed(DocEndpointState& state, const Endpoint& sink,
+                                                const SinkCache& cache, const InputValue& v,
+                                                const std::string& param, const StyleTemplate* tmpl) {
+    perfCount(&FrameStats::flowSinkWrites);
+    StageScope stage(*this, PerfStage::Sink);
+    // T-478: FrameStats::flowAllocs counts the sink writes (the Document's work included: a typed
+    // `set(port)`, a template setStyle and the port listeners it notifies allocate nothing), except
+    // a `setStyle` that went in as text -- the core's CSS parse of a text of no compiled template
+    // shape allocates, which is the text path's known cost (27 §27.4.2 item 4), left out. Only the
+    // outermost such write is measured (a nested one is inside its count already).
+    const bool styleText = cache.op == SinkOp::SetStyle && sinkDepth++ == 0;
+    const uint64_t before = styleText ? xt::perf::AllocCounter::total() : 0;
+    const SinkPath path = applyResolvedInput(state, sink, cache, v, param, tmpl);
+    if (path == SinkPath::Typed) {
+        perfCount(&FrameStats::flowSinkTyped);  // T-477.
+    } else if (path == SinkPath::Text) {
+        perfCount(&FrameStats::flowSinkText);
+    }
+    if (styleText && path == SinkPath::Text) {
+        sinkAllocs += xt::perf::AllocCounter::total() - before;
+    }
+    if (cache.op == SinkOp::SetStyle) {
+        --sinkDepth;
     }
 }
 
@@ -1857,8 +2158,8 @@ void FlowRuntime::Impl::bindTimelineNodes() {
         if (nodes[i].type != NodeType::Timeline) {
             continue;
         }
-        const std::string name = paramStr(nodes[i], "name", std::string());
-        const std::string scope = paramStr(nodes[i], "scope", std::string());
+        const std::string name = paramText(nodes[i], slots::timeline::kName);
+        const std::string scope = paramText(nodes[i], slots::timeline::kScope);
         const std::string uiId = nodes[i].uiId;
         const int index = static_cast<int>(i);
         for (DocEndpointState* state : statesFor(uiId)) {
@@ -1875,18 +2176,17 @@ void FlowRuntime::Impl::bindTimelineNodes() {
                 if (!scope.empty() && ev.target != state->doc->byId(scope).node) {
                     return;
                 }
-                const std::string savedUi = currentUi;
+                const std::string* savedUi = currentUi;
                 const uint32_t savedInstance = currentInstance;
-                currentUi = uiId;
+                currentUi = &uiId;  // This handler's own copy: alive while it runs.
                 currentInstance = state->doc->instanceId();
                 if (ev.type == EventType::TimelineEnd) {
-                    firePulseOutput(index, "end");
+                    firePulseOutput(index, slots::timeline::kEnd);
                 } else {
-                    PortValue marker = typedValue(PortType::String);
-                    if (ev.markerName != kInvalidString) {
-                        marker.s = std::string(state->doc->string(ev.markerName));
-                    }
-                    fireEventOutput(index, "marker", marker);
+                    fireEventText(index, slots::timeline::kMarker,
+                                  ev.markerName != kInvalidString
+                                      ? std::string_view(state->doc->string(ev.markerName))
+                                      : std::string_view());
                 }
                 currentUi = savedUi;
                 currentInstance = savedInstance;

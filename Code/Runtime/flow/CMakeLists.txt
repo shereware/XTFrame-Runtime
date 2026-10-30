@@ -2,6 +2,7 @@ add_library(xt_flow STATIC
     src/flow_graph.cpp
     src/flow_nodes.cpp
     src/flow_runtime.cpp
+    src/flow_signals.cpp
     src/flow_bindings.cpp
     src/flow_ports.cpp
     src/host_ports.cpp

@@ -141,8 +141,11 @@ struct HostPorts::Impl {
     }
 
     Impl() {
-        docs.output = [this](Endpoint::Owner owner, const std::string& elementId, const std::string& port,
-                             const PortValue& v) { deliver(externalKey(owner, elementId, port), v); };
+        // T-476: the layer reports an output slot; its names give the listeners' key.
+        docs.output = [this](uint32_t slot, const PortValue& v) {
+            const DocOutput& output = docs.outputs[slot];
+            deliver(externalKey(output.owner, output.elementId, output.port), v);
+        };
     }
 
     /// Calls every listener on `key`. Collected first: a listener may add or remove listeners.

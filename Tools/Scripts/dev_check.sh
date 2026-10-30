@@ -5,7 +5,7 @@
 #   Tools/Scripts/dev_check.sh [--release] [--no-build] [--agent] [--no-qt512] <target>... -- <suite>...
 #   suites: editor | editor_service | editor_qt | editor_qt_slow | editor_qt_gl | flow | bundle | history | core | golden |
 #           gpu | gl | wgpu | backends | text | agent | import | lottie | symbols | templates | headers | layering | testtemp | import-py | ctest | corpus | ir |
-#           roundtrip | shape | qt512 | qt512-all
+#           roundtrip | shape | skills | qt512 | qt512-all
 #          (ctest = ctest -E '^xt_.*_tests$', the command-line tests (T-267d); headers = Tools/Scripts/check_public_headers.sh, no build;
 #           layering = Tools/Scripts/check_layering.sh (T-274, R never includes / links E) and, since T-267d,
 #           Tools/Scripts/check_test_temp.sh too (both must pass), no build;
@@ -28,6 +28,8 @@
 #           shape = Tools/Scripts/check_file_length.sh (must pass) and Tools/Scripts/check_dupcheck.sh (warns when the duplicate
 #           group count rises, fails only when dupcheck.py fails) (T-415, 14 §14.5), and Tools/Scripts/check_style_groups.sh
 #           (must pass; T-443, 46 §46.4) and Tools/Scripts/check_effect_catalog.py (must pass; T-463, 46 §46.13.4), no build;
+#           skills = Tools/Scripts/sync_skill_mirror.sh --check (T-485: .claude/skills/{xtui,xtui-editor} must equal
+#           Skills/skills/ byte for byte; --changed adds it for every change), no build;
 #           qt512 = Tools/Scripts/qt512_syntax_check.sh over the Code/Editor .cpp files changed or added relative to
 #           origin/main (git diff origin/main...HEAD plus the work tree; XT_CHANGED_FILES replaces git), flags from this
 #           tree's xt_clang_check lists, against the Qt 5.12 headers (T-470, 17 §17.9; no Qt 5.12 or no clang++: SKIP);
@@ -118,6 +120,7 @@ changed_selection() {
       Code/Runtime/wgpu/*|Tests/wgpu/*|Tools/CMake/xt_wgpu.cmake) suites+=(wgpu);;  # T-437
       Code/Backends/*|Tests/backends/*|Examples/backends/*|Code/Tools/view/view_renderer*) suites+=(backends);;  # T-439
       Assets/Templates/*|Tests/templates/*) suites+=(templates);;  # T-424
+      Skills/*|.claude/skills/*|Tools/Scripts/sync_skill_mirror.sh) suites+=(skills);;  # T-485
       Tests/editor_qt/*) suites+=(editor_qt);;
       Tests/editor_service/*) suites+=(editor_service);;
       Tests/editor/*)    suites+=(editor);;
@@ -133,8 +136,8 @@ changed_selection() {
       *.cpp|*.h|*.hpp|*CMakeLists.txt|*.cmake) echo "dev_check --changed: no mapping for $f (add its targets and suites by hand)";;
     esac
   done < <(changed_files)
-  # Any change at all: the two no-build checks every task sheet runs.
-  [ "$any" = 1 ] && suites+=(headers layering)
+  # Any change at all: the no-build checks every task sheet runs (T-485: skills, the skill mirror).
+  [ "$any" = 1 ] && suites+=(headers layering skills)
   return 0
 }
 dedupe() { printf '%s\n' "$@" | awk 'NF && !seen[$0]++'; }
@@ -155,7 +158,7 @@ for s in "${suites[@]}"; do
     editor_service) targets+=(xt_editor_service_tests);;
     editor_qt|editor_qt_gl) targets+=(xt_editor_qt_tests);;
     editor_qt_slow) targets+=(xt_editor_qt_tests_slow);;
-    flow)      targets+=(xt_flow_tests);;
+    flow)      targets+=(xt_flow_tests xt_flow_alloc_tests);;
     bundle)    targets+=(xt_bundle_tests);;
     history)   targets+=(xt_history_tests);;
     symbols)   targets+=(xt_symbols_tests);;
@@ -179,10 +182,10 @@ done
 if [ ${#suites[@]} -gt 0 ]; then mapfile -t suites < <(dedupe "${suites[@]}"); fi
 if [ ${#targets[@]} -gt 0 ]; then mapfile -t targets < <(dedupe "${targets[@]}"); fi
 if [ "$DRY_RUN" = 1 ]; then echo "targets: ${targets[*]}"; echo "suites: ${suites[*]}"; exit 0; fi
-# headers, layering, testtemp, import-py, ir, shape, qt512 and qt512-all compile nothing; when they are all that was asked for, skip the build.
+# headers, layering, testtemp, import-py, ir, shape, skills, qt512 and qt512-all compile nothing; when they are all that was asked for, skip the build.
 needs_build=0
 for s in "${suites[@]}"; do
-  case "$s" in headers|layering|testtemp|import-py|ir|shape|qt512|qt512-all) ;; *) needs_build=1;; esac
+  case "$s" in headers|layering|testtemp|import-py|ir|shape|skills|qt512|qt512-all) ;; *) needs_build=1;; esac
 done
 [ ${#targets[@]} -eq 0 ] && [ "$needs_build" = 0 ] && BUILD=0
 
@@ -222,7 +225,9 @@ if [ "$BUILD" = 1 ]; then
   [ -f "$B/CMakeCache.txt" ] || cmake --preset "$PRESET" >/dev/null || { echo "configure FAILED"; exit 2; }
   BIN="$(bin_dir "$CFG")"  # the cache may be new
   find "$BIN/tests" -name "*tests.exe" -delete 2>/dev/null
-  rm -f "$BIN/xtframe-editor.exe"
+  # T-486: only when the editor is rebuilt here; otherwise a check of other targets would leave
+  # the build tree without an editor.
+  case " ${targets[*]} " in *" xtframe-editor "*) rm -f "$BIN/xtframe-editor.exe";; esac
   args=(); for t in "${targets[@]}"; do args+=(--target "$t"); done
   errs="$(cmake --build --preset "$PRESET-$(echo $CFG | tr A-Z a-z)" --parallel "${args[@]}" 2>&1 | grep -E " error |error LNK|warning C|CMake Error|MSB[0-9]+: " | grep -v _deps | head -20)"
   [ -n "$errs" ] && { echo "$errs"; echo "build FAILED"; exit 2; }
@@ -317,7 +322,8 @@ run_suite() {
     editor_qt_slow) run editor_qt_slow 900 1 "$BIN/tests/xt_editor_qt_tests_slow.exe" --test-suite=slow;;
     # Native platform (no QT_QPA_PLATFORM=offscreen): the cases need a real GL context; their windows stay hidden.
     editor_qt_gl) run editor_qt_gl 600 0 "$BIN/tests/xt_editor_qt_tests.exe" --test-suite=gl;;
-    flow)      run flow 900 1 "$BIN/tests/xt_flow_tests.exe";;
+    flow)      run flow 900 1 "$BIN/tests/xt_flow_tests.exe"
+               run flow_alloc 300 1 "$BIN/tests/xt_flow_alloc_tests.exe";;  # T-476
     bundle)    run bundle 900 1 "$BIN/tests/xt_bundle_tests.exe";;
     history)   run history 900 1 "$BIN/tests/xt_history_tests.exe";;
     symbols)   run symbols 900 1 "$BIN/tests/xt_symbols_tests.exe";;
@@ -356,6 +362,8 @@ run_suite() {
                out="$(bash Tools/Scripts/check_dupcheck.sh 2>&1)"; echo "$out" | tail -6; echo "$out" | grep -q "DUPCHECK: PASS" || fail=1
                out="$(bash Tools/Scripts/check_style_groups.sh 2>&1)"; echo "$out" | tail -12; echo "$out" | grep -q "style groups check OK" || fail=1
                out="$(python Tools/Scripts/check_effect_catalog.py 2>&1)"; echo "$out" | tail -12; echo "$out" | grep -q "effect catalog check OK" || fail=1;;
+    # T-485: the skill mirror (.claude/skills/{xtui,xtui-editor} = Skills/skills/).
+    skills)    out="$(bash Tools/Scripts/sync_skill_mirror.sh --check 2>&1)"; echo "$out" | tail -20; echo "$out" | grep -q "SKILL MIRROR: PASS" || fail=1;;
     # T-470: the Qt 5.12 headers syntax check (Tools/Scripts/qt512_syntax_check.sh), changed files / all files.
     qt512)     q="$(changed_files | grep -E '^Code/Editor/.*\.cpp$')"
                if [ -z "$q" ]; then echo "qt512: nothing to check"
@@ -377,7 +385,7 @@ run_suite() {
 }
 # T-361: the suites below run at the same time; the rest (GL contexts, perf / slow timing cases, the
 # agent endpoint and ctest, which runs executables of its own) afterwards, one after the other.
-PARALLEL_SUITES=" core import bundle flow editor editor_service editor_qt history symbols templates lottie golden text gpu headers layering testtemp import-py ir roundtrip shape qt512 "
+PARALLEL_SUITES=" core import bundle flow editor editor_service editor_qt history symbols templates lottie golden text gpu headers layering testtemp import-py ir roundtrip shape skills qt512 "
 OUT="$B/.dev_check_out.$$"; mkdir -p "$OUT"
 trap 'rm -rf "$LOCK" "$OUT"; kill $(jobs -p) 2>/dev/null' EXIT
 i=0; pids=()

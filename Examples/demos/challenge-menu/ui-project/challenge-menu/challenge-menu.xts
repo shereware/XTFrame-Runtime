@@ -6,7 +6,7 @@
   background-color: #030504;
   color: #cfe3c6;
   font-family: 'Bahnschrift SemiCondensed', 'Bahnschrift', 'Segoe UI', sans-serif;
-  height: 720px;
+  height: 100vh;
   margin-bottom: 0;
   margin-left: 0;
   margin-right: 0;
@@ -15,7 +15,7 @@
   perspective: 1000px;
   perspective-origin: 50% 50%;
   position: relative;
-  width: 1280px;
+  width: 100vw;
 }
 
 /* import: Main.dc.html:1/0/0 */
@@ -419,12 +419,12 @@
 /* import: Main.dc.html:1/1 */
 #profile-block {
   height: 200px;
-  left: 990px;
   pointer-events: none;
   position: absolute;
-  top: 470px;
   transform: translateZ(60px);
   width: 210px;
+  bottom: calc(1safe-bottom + 32px);
+  right: calc(1safe-right + 48px);
 }
 
 /* import: Main.dc.html:1/1/0 */
@@ -499,13 +499,13 @@
 
 /* import: Main.dc.html:1/2 */
 #drips {
-  height: 720px;
-  left: 0px;
+  left: 0;
   pointer-events: none;
   position: absolute;
-  top: 0px;
+  top: 0;
   transform: translateZ(180px);
-  width: 1280px;
+  bottom: 0;
+  right: 0;
 }
 
 /* import: Main.dc.html:1/2/0 */
@@ -556,21 +556,21 @@
 #hud {
   animation: hud-in 900ms ease-out 0s 1 normal both;
   font-family: 'Bahnschrift SemiCondensed', 'Bahnschrift', 'Segoe UI', sans-serif;
-  height: 720px;
+  height: 100vh;
   left: 0px;
   pointer-events: none;
   position: absolute;
   top: 0px;
-  width: 1280px;
+  width: 100vw;
 }
 
 /* import: Main.dc.html:2/0 */
 #header {
   height: 120px;
-  left: 0px;
+  left: 0;
   position: absolute;
-  top: 0px;
-  width: 1280px;
+  top: calc(1safe-top - 18px);
+  right: 0;
 }
 
 /* import: Main.dc.html:2/0/0 */
@@ -641,9 +641,9 @@
 
 /* import: Main.dc.html:2/1 */
 #footer-rule {
-  left: 380px;
-  top: 640px;
+  left: calc(51.35% - 277.29px);
   width: 540px;
+  bottom: calc(1safe-bottom + 61px);
 }
 
 /* import: Main.dc.html:2/2 */
@@ -651,7 +651,7 @@
   color: #dcecd6;
   font-size: 14px;
   font-weight: 600;
-  left: 380px;
+  left: calc(51.35% - 277.29px);
   letter-spacing: 1px;
   line-height: 20px;
   margin-bottom: 0px;
@@ -660,15 +660,15 @@
   margin-top: 0px;
   position: absolute;
   text-align: center;
-  top: 614px;
   width: 540px;
+  bottom: calc(1safe-bottom + 68px);
 }
 
 /* import: Main.dc.html:2/3 */
 #back-rule {
-  left: 76px;
-  top: 668px;
+  left: calc(1safe-left + 44px);
   width: 110px;
+  bottom: calc(1safe-bottom + 33px);
 }
 
 /* import: Main.dc.html:2/4 */
@@ -682,7 +682,7 @@
   font-size: 19px;
   font-weight: 600;
   height: 32px;
-  left: 184px;
+  left: calc(1safe-left + 152px);
   letter-spacing: 2px;
   line-height: 30px;
   padding-bottom: 0px;
@@ -692,8 +692,8 @@
   pointer-events: auto;
   position: absolute;
   text-align: center;
-  top: 652px;
   width: 162px;
+  bottom: calc(1safe-bottom + 18px);
 }
 
 /* import: Main.dc.html:2/5 */
@@ -701,17 +701,17 @@
   animation: blink 1400ms ease-in-out 0s infinite alternate;
   color: #8fa08e;
   font-size: 9px;
-  left: 90px;
+  left: calc(1safe-left + 58px);
   letter-spacing: 1px;
   position: absolute;
-  top: 674px;
+  bottom: calc(1safe-bottom + 17.2px);
 }
 
 /* import: Main.dc.html:2/6 */
 #bottom-rule-right {
-  left: 960px;
-  top: 676px;
   width: 260px;
+  bottom: calc(1safe-bottom + 25px);
+  right: calc(1safe-right + 28px);
 }
 
 /* import: Main.dc.html:3 */
@@ -962,5 +962,12 @@
   top: 190px;
   height: 20px;
 }
+#scene {
+  bottom: 0;
+  left: 0;
+  right: 0;
+  top: 0;
+}
+
 
 

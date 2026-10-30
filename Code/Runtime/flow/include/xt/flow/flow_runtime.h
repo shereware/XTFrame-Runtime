@@ -11,6 +11,10 @@
 #include "xt/flow/flow_graph.h"
 #include "xt/types.h"
 
+namespace xt {
+class PerfTracker;
+}  // namespace xt
+
 /// FlowRuntime: binds a parsed FlowGraph's nodes to each other and to a Document's connection
 /// points (Docs/design/17-editor.md §17.6), then ticks the whole thing per frame with
 /// change-only value propagation. See Docs/tasks/T-56.md.
@@ -156,6 +160,14 @@ public:
     /// Enabled by default; kept across load().
     void setEnabled(bool enabled);
     bool enabled() const;
+
+    /// T-475 (Docs/design/21-perf-tracing.md §21.6): the tracker the flow stages
+    /// (FrameStats::flowDeliverMs / flowEvalMs / flowSinkMs / flowPollMs) and counters
+    /// (flowSignals .. flowAllocs) are written into, while it is enabled; nullptr (the default)
+    /// records nothing. Usually the host Context's perf(); BundleContext sets its Context's on
+    /// every runtime it owns. `tracker` must outlive this runtime or be replaced first. Kept
+    /// across load().
+    void setPerfTracker(PerfTracker* tracker);
 
 private:
     friend class BundleContext;

@@ -10,47 +10,63 @@
 #include "xt/charconv.h"
 #include "xt/num_guard.h"
 
-/// The fourteen signal node types' runtime behavior (Docs/design/17-editor.md §17.6's table,
-/// T-123 adding radio/lookup/merge/format to Docs/tasks/T-56.md's ten), plus the generic
-/// value/pulse propagation machinery (FlowRuntime::Impl::fanOut/applyToSink et al.) they and the
-/// document connection-point bindings (flow_bindings.cpp) both use.
+/// The signal node types' runtime behavior (Docs/design/17-editor.md §17.6's table, T-123 adding
+/// radio/lookup/merge/format to Docs/tasks/T-56.md's ten, T-193 the action / system / timeline
+/// nodes). T-476 (27 §27.4.2 items 1, 3): a node is compiled at load time into slots of the
+/// runtime's RtValue array (compileNode()); evaluation reads and writes slots, never a name.
+/// The propagation machinery (fan-out, the signal batch, values()) is in flow_signals.cpp.
 
 namespace xt::flow {
 
-double paramNum(const NodeRuntime& n, const std::string& name, double def) {
-    auto it = n.params.find(name);
-    if (it == n.params.end()) {
-        return def;
-    }
-    if (it->second.type == PortType::Number) {
-        return it->second.n;
-    }
-    if (it->second.type == PortType::Bool) {
-        return it->second.b ? 1.0 : 0.0;
-    }
-    return def;
+// ---- StringPool, ops, legacy value helpers -----------------------------------------------------
+
+void StringPool::clear() {
+    m_strings.clear();
+    m_interned.clear();
+    m_strings.emplace_back();  // Id 0: "".
+    m_interned.emplace(std::string(), 0u);
 }
 
-bool paramBool(const NodeRuntime& n, const std::string& name, bool def) {
-    auto it = n.params.find(name);
-    if (it == n.params.end()) {
-        return def;
+uint32_t StringPool::intern(std::string_view text) {
+    auto it = m_interned.find(text);
+    if (it != m_interned.end()) {
+        return it->second;
     }
-    if (it->second.type == PortType::Bool) {
-        return it->second.b;
-    }
-    if (it->second.type == PortType::Number) {
-        return it->second.n != 0.0;
-    }
-    return def;
+    const auto id = static_cast<uint32_t>(m_strings.size());
+    m_strings.emplace_back(text);
+    m_interned.emplace(std::string(text), id);
+    return id;
 }
 
-std::string paramStr(const NodeRuntime& n, const std::string& name, const std::string& def) {
-    auto it = n.params.find(name);
-    if (it == n.params.end() || it->second.type != PortType::String) {
-        return def;
+uint32_t StringPool::addBuffer() {
+    const auto id = static_cast<uint32_t>(m_strings.size());
+    m_strings.emplace_back();
+    return id;
+}
+
+MathOp parseMathOp(std::string_view op) {
+    static constexpr std::pair<std::string_view, MathOp> kOps[] = {
+        {"add", MathOp::Add}, {"sub", MathOp::Sub},    {"mul", MathOp::Mul},     {"div", MathOp::Div},
+        {"min", MathOp::Min}, {"max", MathOp::Max},    {"clamp", MathOp::Clamp}, {"map", MathOp::Map},
+        {"abs", MathOp::Abs}, {"round", MathOp::Round}};
+    for (const auto& [name, value] : kOps) {
+        if (name == op) {
+            return value;
+        }
     }
-    return it->second.s;
+    return MathOp::Unknown;
+}
+
+CompareOp parseCompareOp(std::string_view op) {
+    static constexpr std::pair<std::string_view, CompareOp> kOps[] = {
+        {"eq", CompareOp::Eq}, {"ne", CompareOp::Ne}, {"lt", CompareOp::Lt},
+        {"le", CompareOp::Le}, {"gt", CompareOp::Gt}, {"ge", CompareOp::Ge}};
+    for (const auto& [name, value] : kOps) {
+        if (name == op) {
+            return value;
+        }
+    }
+    return CompareOp::Unknown;
 }
 
 bool valuesEqual(const PortValue& a, const PortValue& b) {
@@ -70,75 +86,208 @@ bool valuesEqual(const PortValue& a, const PortValue& b) {
     return false;
 }
 
-bool compareValues(const PortValue& a, const PortValue& b, const std::string& op) {
-    if (a.type == PortType::String && b.type == PortType::String) {
-        if (op == "eq") return a.s == b.s;
-        if (op == "ne") return a.s != b.s;
-        if (op == "lt") return a.s < b.s;
-        if (op == "le") return a.s <= b.s;
-        if (op == "gt") return a.s > b.s;
-        if (op == "ge") return a.s >= b.s;
+namespace {
+
+/// `compare`'s `op` on two operands: strings by content when `strings`, else the numbers.
+bool compareWith(CompareOp op, const std::string& sa, const std::string& sb, bool strings, double av,
+                 double bv) {
+    if (strings) {
+        switch (op) {
+            case CompareOp::Eq:
+                return sa == sb;
+            case CompareOp::Ne:
+                return sa != sb;
+            case CompareOp::Lt:
+                return sa < sb;
+            case CompareOp::Le:
+                return sa <= sb;
+            case CompareOp::Gt:
+                return sa > sb;
+            case CompareOp::Ge:
+                return sa >= sb;
+            case CompareOp::Unknown:
+                return false;
+        }
         return false;
     }
-    double av = a.type == PortType::Bool ? (a.b ? 1.0 : 0.0) : a.n;
-    double bv = b.type == PortType::Bool ? (b.b ? 1.0 : 0.0) : b.n;
-    if (op == "eq") return av == bv;
-    if (op == "ne") return av != bv;
-    if (op == "lt") return av < bv;
-    if (op == "le") return av <= bv;
-    if (op == "gt") return av > bv;
-    if (op == "ge") return av >= bv;
+    switch (op) {
+        case CompareOp::Eq:
+            return av == bv;  // NOLINT: exact, as every value comparison.
+        case CompareOp::Ne:
+            return av != bv;  // NOLINT
+        case CompareOp::Lt:
+            return av < bv;
+        case CompareOp::Le:
+            return av <= bv;
+        case CompareOp::Gt:
+            return av > bv;
+        case CompareOp::Ge:
+            return av >= bv;
+        case CompareOp::Unknown:
+            return false;
+    }
     return false;
 }
 
-std::string formatPortValue(const PortValue& v, const std::map<std::string, PortValue>& params) {
+/// A `compare` operand as a number: Bool as 0/1, anything else its `n`.
+double numericOperand(PortType type, bool b, double n) {
+    return type == PortType::Bool ? (b ? 1.0 : 0.0) : n;
+}
+
+/// Cuts `toString`'s format (`named` false: the first "{}" is input 0) or `format`'s (`named`:
+/// every "{a}".."{d}" is input 0..3) into pieces; any other text is literal.
+void cutFormat(const std::string& text, bool named, std::vector<FormatPiece>& out) {
+    out.clear();
+    auto literal = [&out](size_t from, size_t to) {
+        if (to > from) {
+            out.push_back(FormatPiece{static_cast<uint32_t>(from), static_cast<uint32_t>(to - from), -1});
+        }
+    };
+    if (!named) {
+        const size_t pos = text.find("{}");
+        if (pos == std::string::npos) {
+            literal(0, text.size());  // No placeholder: the value is not shown.
+            return;
+        }
+        literal(0, pos);
+        out.push_back(FormatPiece{0, 0, 0});
+        literal(pos + 2, text.size());
+        return;
+    }
+    size_t start = 0;
+    for (size_t i = 0; i < text.size(); ++i) {
+        if (text[i] == '{' && i + 2 < text.size() && text[i + 2] == '}' && text[i + 1] >= 'a' &&
+            text[i + 1] <= 'd') {
+            literal(start, i);
+            out.push_back(FormatPiece{0, 0, text[i + 1] - 'a'});
+            i += 2;
+            start = i + 1;
+        }
+    }
+    literal(start, text.size());
+}
+
+constexpr RtValue kPulseValue{PortType::Pulse, false, 0.0, 0u};
+
+}  // namespace
+
+// ---- Slot access ---------------------------------------------------------------------------------
+
+double FlowRuntime::Impl::paramNum(const NodeRuntime& n, uint16_t slot, double def) const {
+    const RtValue& p = values[n.paramBase + slot];
+    if (p.type == PortType::Number) {
+        return p.n;
+    }
+    if (p.type == PortType::Bool) {
+        return p.b ? 1.0 : 0.0;
+    }
+    return def;
+}
+
+bool FlowRuntime::Impl::paramBool(const NodeRuntime& n, uint16_t slot, bool def) const {
+    const RtValue& p = values[n.paramBase + slot];
+    if (p.type == PortType::Bool) {
+        return p.b;
+    }
+    if (p.type == PortType::Number) {
+        return p.n != 0.0;
+    }
+    return def;
+}
+
+const std::string& FlowRuntime::Impl::paramText(const NodeRuntime& n, uint16_t slot) const {
+    const RtValue& p = values[n.paramBase + slot];
+    return strings.text(p.type == PortType::String ? p.str : 0u);
+}
+
+void FlowRuntime::Impl::appendFormatted(std::string& out, const RtValue& v, const NodeRuntime& n) const {
     switch (v.type) {
         case PortType::Bool:
-            return v.b ? "true" : "false";
+            out += v.b ? "true" : "false";
+            return;
         case PortType::String:
-            return v.s;
-        case PortType::Pulse:
-            return "";
+            out += strings.text(v.str);
+            return;
         case PortType::Number: {
             char buf[64];
-            auto it = params.find("decimals");
-            if (it != params.end()) {
-                int decimals = static_cast<int>(it->second.n);
-                if (decimals < 0) {
-                    decimals = 0;
-                }
-                return std::string(buf, xt::formatFixed(buf, sizeof(buf), v.n, decimals));
+            const size_t len = n.hasDecimals ? xt::formatFixed(buf, sizeof(buf), v.n, n.decimals)
+                                             : xt::formatFloat(buf, sizeof(buf), v.n, 6);
+            out.append(buf, len);
+            return;
+        }
+        default:
+            return;  // Pulse / no value yet: the empty string.
+    }
+}
+
+// ---- Load-time compilation -------------------------------------------------------------------------
+
+void FlowRuntime::Impl::compileNode(const NodeDesc& nd, NodeRuntime& rt) {
+    const NodeSlotTable table = nodeSlotTable(rt.type);
+    // `radio`'s "set<i>" inputs: room for the largest legal count, so a slot never depends on it.
+    const uint32_t inputs = inputSlotCount(rt.type, 64);
+    rt.inputBase = static_cast<uint32_t>(values.size());
+    rt.inputCount = static_cast<uint16_t>(inputs);
+    values.resize(values.size() + inputs);
+    rt.outputBase = static_cast<uint32_t>(values.size());
+    rt.outputCount = static_cast<uint16_t>(table.outputs.size());
+    values.resize(values.size() + table.outputs.size());
+    rt.paramBase = static_cast<uint32_t>(values.size());
+    rt.paramCount = static_cast<uint16_t>(table.params.size());
+    for (std::string_view name : table.params) {
+        RtValue p;
+        auto it = nd.params.find(std::string(name));
+        if (it != nd.params.end()) {
+            p.type = it->second.type;
+            p.b = it->second.b;
+            p.n = it->second.n;
+            p.str = it->second.type == PortType::String ? strings.intern(it->second.s) : 0u;
+        }
+        values.push_back(p);
+    }
+    if (auto lookup = nd.arrayParams.find("values"); lookup != nd.arrayParams.end()) {
+        for (const PortValue& v : lookup->second) {  // `lookup`'s table (T-123).
+            RtValue entry;
+            entry.type = v.type;
+            entry.b = v.b;
+            entry.n = v.n;
+            entry.str = v.type == PortType::String ? strings.intern(v.s) : 0u;
+            rt.lookup.push_back(entry);
+        }
+    }
+    if (auto ui = nd.params.find("ui"); ui != nd.params.end() && ui->second.type == PortType::String) {
+        rt.uiId = ui->second.s;  // T-193: a global `timeline` node's UI.
+    }
+    switch (rt.type) {
+        case NodeType::Math:
+            rt.op = static_cast<uint8_t>(parseMathOp(paramText(rt, slots::math::kOp)));
+            break;
+        case NodeType::Compare:
+            rt.op = static_cast<uint8_t>(parseCompareOp(paramText(rt, slots::compare::kOp)));
+            break;
+        case NodeType::ToString:
+        case NodeType::Format: {
+            const bool named = rt.type == NodeType::Format;
+            const RtValue& format = values[rt.paramBase + slots::format::kFormat];
+            rt.formatText = format.type == PortType::String ? strings.text(format.str)
+                                                            : std::string(named ? "{a}" : "{}");
+            cutFormat(rt.formatText, named, rt.pieces);
+            const RtValue& decimals = values[rt.paramBase + slots::format::kDecimals];
+            if (decimals.type != kNoValue) {
+                rt.hasDecimals = true;
+                rt.decimals = std::max(0, static_cast<int>(decimals.n));
             }
-            return std::string(buf, xt::formatFloat(buf, sizeof(buf), v.n, 6));
+            break;
         }
+        case NodeType::Radio:
+            rt.radioCount = std::max(2u, static_cast<uint32_t>(paramNum(rt, slots::radio::kCount, 2.0)));
+            break;
+        default:
+            break;
     }
-    return "";
 }
 
-std::string substitutePlaceholder(const std::string& format, const std::string& value) {
-    size_t pos = format.find("{}");
-    if (pos == std::string::npos) {
-        return format;
-    }
-    std::string out = format;
-    out.replace(pos, 2, value);
-    return out;
-}
-
-std::string substituteNamedPlaceholders(const std::string& format, const std::string (&values)[4]) {
-    std::string out;
-    out.reserve(format.size());
-    for (size_t i = 0; i < format.size(); ++i) {
-        if (format[i] == '{' && i + 2 < format.size() && format[i + 2] == '}' && format[i + 1] >= 'a' &&
-            format[i + 1] <= 'd') {
-            out += values[static_cast<size_t>(format[i + 1] - 'a')];
-            i += 2;
-            continue;
-        }
-        out += format[i];
-    }
-    return out;
-}
+// ---- Node behavior -----------------------------------------------------------------------------------
 
 void FlowRuntime::Impl::seedInitialOutputs() {
     for (size_t i = 0; i < nodes.size(); ++i) {
@@ -146,44 +295,36 @@ void FlowRuntime::Impl::seedInitialOutputs() {
         int idx = static_cast<int>(i);
         switch (n.type) {
             case NodeType::Constant: {
-                static const PortValue kZero{};
-                auto it = n.params.find("value");
-                pushRawOutput(idx, "out", it != n.params.end() ? it->second : kZero);
+                RtValue v = values[n.paramBase];  // "value"; absent: a default (Pulse) value.
+                if (v.type == kNoValue) {
+                    v = kPulseValue;
+                }
+                pushRawOutput(idx, 0, v);
                 break;
             }
-            case NodeType::Counter: {
-                double initial = paramNum(n, "initial", 0.0);
-                setCounter(idx, initial);
+            case NodeType::Counter:
+                setCounter(idx, paramNum(n, slots::counter::kInitial, 0.0));
                 break;
-            }
-            case NodeType::Toggle: {
-                n.toggleValue = paramBool(n, "initial", false);
-                pushBoolOutput(idx, "value", n.toggleValue);
+            case NodeType::Toggle:
+                n.toggleValue = paramBool(n, slots::toggle::kInitial, false);
+                pushBoolOutput(idx, slots::toggle::kValue, n.toggleValue);
                 break;
-            }
-            case NodeType::Timer: {
-                n.timerRunning = paramBool(n, "autostart", false);
+            case NodeType::Timer:
+                n.timerRunning = paramBool(n, slots::timer::kAutostart, false);
                 n.timerElapsed = 0;
                 n.timerCount = 0;
-                pushNumberOutput(idx, "count", 0);
+                pushNumberOutput(idx, slots::timer::kCount, 0);
                 break;
-            }
             case NodeType::Clock:
-                pushNumberOutput(idx, "seconds", 0);
+                pushNumberOutput(idx, 0, 0);
                 break;
             case NodeType::Random:
-                pushNumberOutput(idx, "value", paramNum(n, "min", 0.0));
+                pushNumberOutput(idx, slots::random::kValue, paramNum(n, slots::random::kMin, 0.0));
                 break;
-            case NodeType::Radio: {
-                n.radioCount = static_cast<uint32_t>(paramNum(n, "count", 2.0));
-                if (n.radioCount < 2) {
-                    n.radioCount = 2;
-                }
-                double initial = paramNum(n, "initial", 0.0);
+            case NodeType::Radio:
                 n.radioIndex = -1;  // Forces the first setRadio() to push, without a `changed`.
-                setRadio(idx, initial);
+                setRadio(idx, paramNum(n, slots::radio::kInitial, 0.0));
                 break;
-            }
             case NodeType::Merge:
                 break;  // Pulse-only: nothing to seed.
             case NodeType::System:
@@ -207,16 +348,16 @@ void FlowRuntime::Impl::seedInitialOutputs() {
 
 void FlowRuntime::Impl::setCounter(int nodeIndex, double value) {
     NodeRuntime& n = nodes[static_cast<size_t>(nodeIndex)];
-    auto minIt = n.params.find("min");
-    auto maxIt = n.params.find("max");
-    if (minIt != n.params.end()) {
-        value = std::max(value, minIt->second.n);
+    const RtValue& min = values[n.paramBase + slots::counter::kMin];
+    const RtValue& max = values[n.paramBase + slots::counter::kMax];
+    if (min.type != kNoValue) {
+        value = std::max(value, min.n);
     }
-    if (maxIt != n.params.end()) {
-        value = std::min(value, maxIt->second.n);
+    if (max.type != kNoValue) {
+        value = std::min(value, max.n);
     }
     n.counterValue = value;
-    pushNumberOutput(nodeIndex, "value", value);
+    pushNumberOutput(nodeIndex, slots::counter::kValue, value);
 }
 
 void FlowRuntime::Impl::setRadio(int nodeIndex, double index) {
@@ -226,61 +367,57 @@ void FlowRuntime::Impl::setRadio(int nodeIndex, double index) {
     bool changed = clamped != n.radioIndex;  // NOLINT: exact, like every other value comparison.
     bool firstPush = n.radioIndex < 0;
     n.radioIndex = clamped;
-    pushNumberOutput(nodeIndex, "index", clamped);
+    pushNumberOutput(nodeIndex, slots::radio::kIndex, clamped);
     if (changed && !firstPush) {
-        firePulseOutput(nodeIndex, "changed");
+        firePulseOutput(nodeIndex, slots::radio::kChanged);
     }
 }
 
-void FlowRuntime::Impl::handlePulseInput(int nodeIndex, const std::string& port) {
+void FlowRuntime::Impl::handlePulseInput(int nodeIndex, uint16_t slot) {
     NodeRuntime& n = nodes[static_cast<size_t>(nodeIndex)];
     switch (n.type) {
         case NodeType::Counter: {
-            double step = paramNum(n, "step", 1.0);
-            if (port == "increment") {
+            double step = paramNum(n, slots::counter::kStep, 1.0);
+            if (slot == slots::counter::kIncrement) {
                 setCounter(nodeIndex, n.counterValue + step);
-            } else if (port == "decrement") {
+            } else if (slot == slots::counter::kDecrement) {
                 setCounter(nodeIndex, n.counterValue - step);
-            } else if (port == "reset") {
-                setCounter(nodeIndex, paramNum(n, "initial", 0.0));
+            } else if (slot == slots::counter::kReset) {
+                setCounter(nodeIndex, paramNum(n, slots::counter::kInitial, 0.0));
             }
             break;
         }
         case NodeType::Toggle: {
             bool old = n.toggleValue;
-            if (port == "toggle") {
+            if (slot == slots::toggle::kToggle) {
                 n.toggleValue = !n.toggleValue;
-            } else if (port == "setTrue") {
+            } else if (slot == slots::toggle::kSetTrue) {
                 n.toggleValue = true;
-            } else if (port == "setFalse") {
+            } else if (slot == slots::toggle::kSetFalse) {
                 n.toggleValue = false;
             }
             if (n.toggleValue != old) {
-                pushBoolOutput(nodeIndex, "value", n.toggleValue);
-                firePulseOutput(nodeIndex, "changed");
+                pushBoolOutput(nodeIndex, slots::toggle::kValue, n.toggleValue);
+                firePulseOutput(nodeIndex, slots::toggle::kChanged);
             }
             break;
         }
-        case NodeType::Radio: {
-            // "set<i>": everything after "set" is the index (nodePortInfo() already checked that
-            // it is a plain number below `count`).
-            if (port.size() > 3) {
-                double index = 0;  // T-268: xt::fromChars, not the locale's atof.
-                xt::fromChars(port.data() + 3, port.data() + port.size(), index);
-                setRadio(nodeIndex, index);
+        case NodeType::Radio:
+            // "set<i>" is slot 1 + i (validation already checked i < `count`).
+            if (slot > slots::radio::kSet) {
+                setRadio(nodeIndex, static_cast<double>(slot - 1));
             }
             break;
-        }
         case NodeType::Merge:
-            if (port == "in") {
-                firePulseOutput(nodeIndex, "out");
+            if (slot == slots::merge::kIn) {
+                firePulseOutput(nodeIndex, slots::merge::kOut);
             }
             break;
         case NodeType::Timer: {
-            if (port == "start") {
+            if (slot == slots::timer::kStart) {
                 n.timerRunning = true;
                 n.timerElapsed = 0;
-            } else if (port == "stop") {
+            } else if (slot == slots::timer::kStop) {
                 n.timerRunning = false;
             }
             break;
@@ -292,26 +429,26 @@ void FlowRuntime::Impl::handlePulseInput(int nodeIndex, const std::string& port)
         case NodeType::Timeline:
             // T-193: in a helper of its own, so this function's stack frame (on the path of a
             // feedback loop through the document, see fanOut()) does not grow.
-            handleActionPulse(nodeIndex, port);
+            handleActionPulse(nodeIndex, slot);
             break;
         case NodeType::Random: {
-            if (port == "trigger") {
+            if (slot == slots::random::kTrigger) {
                 // T-258a: non-finite bounds are 0 and a reversed range is swapped, so the standard
                 // distributions' `min <= max` precondition holds; integer bounds saturate.
-                double mn = finiteOr(paramNum(n, "min", 0.0), 0.0);
-                double mx = finiteOr(paramNum(n, "max", 1.0), 0.0);
+                double mn = finiteOr(paramNum(n, slots::random::kMin, 0.0), 0.0);
+                double mx = finiteOr(paramNum(n, slots::random::kMax, 1.0), 0.0);
                 if (mn > mx) {
                     std::swap(mn, mx);
                 }
                 double value;
-                if (paramBool(n, "integer", false)) {
+                if (paramBool(n, slots::random::kInteger, false)) {
                     std::uniform_int_distribution<long long> dist(toInt64Sat(mn), toInt64Sat(mx));
                     value = static_cast<double>(dist(n.rng));
                 } else {
                     std::uniform_real_distribution<double> dist(mn, mx);
                     value = dist(n.rng);
                 }
-                pushNumberOutput(nodeIndex, "value", value);
+                pushNumberOutput(nodeIndex, slots::random::kValue, value);
             }
             break;
         }
@@ -320,92 +457,104 @@ void FlowRuntime::Impl::handlePulseInput(int nodeIndex, const std::string& port)
     }
 }
 
-void FlowRuntime::Impl::handleActionPulse(int nodeIndex, const std::string& port) {
-    NodeRuntime& n = nodes[static_cast<size_t>(nodeIndex)];
+void FlowRuntime::Impl::handleActionPulse(int nodeIndex, uint16_t slot) {
+    const NodeRuntime& n = nodes[static_cast<size_t>(nodeIndex)];
+    if (n.type == NodeType::Timeline) {
+        timelineInput(nodeIndex, slot, kPulseValue);
+        return;
+    }
+    if (slot != slots::action::kTrigger) {
+        return;
+    }
     switch (n.type) {
         case NodeType::Sound:
-            if (port == "trigger") {
-                sendHostEvent(FlowHostEventKind::Sound, nodeIndex, paramStr(n, "cue", std::string()),
-                              typedValue(PortType::Pulse), static_cast<float>(paramNum(n, "volume", 1.0)));
-            }
+            sendHostEvent(FlowHostEventKind::Sound, nodeIndex, paramText(n, slots::action::kName),
+                          typedValue(PortType::Pulse),
+                          static_cast<float>(paramNum(n, slots::action::kVolume, 1.0)));
             break;
         case NodeType::Haptic:
-            if (port == "trigger") {
-                sendHostEvent(FlowHostEventKind::Haptic, nodeIndex, paramStr(n, "cue", std::string()),
-                              typedValue(PortType::Pulse), 1.0f);
-            }
+            sendHostEvent(FlowHostEventKind::Haptic, nodeIndex, paramText(n, slots::action::kName),
+                          typedValue(PortType::Pulse), 1.0f);
             break;
         case NodeType::Spawn:
-            if (port == "trigger") {
-                sendHostEvent(FlowHostEventKind::Spawn, nodeIndex, paramStr(n, "symbol", std::string()),
-                              typedValue(PortType::Pulse), 1.0f);
-            }
+            sendHostEvent(FlowHostEventKind::Spawn, nodeIndex, paramText(n, slots::action::kName),
+                          typedValue(PortType::Pulse), 1.0f);
             break;
-        case NodeType::Emit:
-            if (port == "trigger") {
-                auto it = n.inputValues.find("value");
-                sendHostEvent(FlowHostEventKind::Emit, nodeIndex, paramStr(n, "port", std::string()),
-                              it != n.inputValues.end() ? it->second : typedValue(PortType::Pulse), 1.0f);
-            }
+        case NodeType::Emit: {
+            const RtValue& value = values[n.inputBase + slots::action::kEmitValue];
+            sendHostEvent(FlowHostEventKind::Emit, nodeIndex, paramText(n, slots::action::kName),
+                          value.type != kNoValue ? toPortValue(value) : typedValue(PortType::Pulse), 1.0f);
             break;
-        case NodeType::Timeline:
-            timelineInput(nodeIndex, port, typedValue(PortType::Pulse));
-            break;
+        }
         default:
             break;
     }
 }
 
 void FlowRuntime::Impl::evaluateNode(int nodeIndex) {
+    perfCount(&FrameStats::flowNodeEvals);  // T-475.
     NodeRuntime& n = nodes[static_cast<size_t>(nodeIndex)];
+    const RtValue* in = values.data() + n.inputBase;  // An input no edge reached yet: kNoValue, 0.
     switch (n.type) {
         case NodeType::Math: {
-            static const PortValue kZero = typedValue(PortType::Number);
-            auto ai = n.inputValues.find("a");
-            auto bi = n.inputValues.find("b");
-            double a = ai != n.inputValues.end() ? ai->second.n : kZero.n;
-            double b = bi != n.inputValues.end() ? bi->second.n : kZero.n;
-            const std::string op = paramStr(n, "op", std::string());
+            const double a = in[slots::math::kA].n;
+            const double b = in[slots::math::kB].n;
             double out = 0;
-            if (op == "add") {
-                out = a + b;
-            } else if (op == "sub") {
-                out = a - b;
-            } else if (op == "mul") {
-                out = a * b;
-            } else if (op == "div") {
-                out = (b != 0.0) ? a / b : 0.0;
-            } else if (op == "min") {
-                out = std::min(a, b);
-            } else if (op == "max") {
-                out = std::max(a, b);
-            } else if (op == "clamp") {
-                double lo = paramNum(n, "lo", 0.0);
-                double hi = paramNum(n, "hi", 1.0);
-                out = std::min(std::max(a, lo), hi);
-            } else if (op == "map") {
-                double inLo = paramNum(n, "inLo", 0.0);
-                double inHi = paramNum(n, "inHi", 1.0);
-                double outLo = paramNum(n, "outLo", 0.0);
-                double outHi = paramNum(n, "outHi", 1.0);
-                double t = (inHi != inLo) ? (a - inLo) / (inHi - inLo) : 0.0;
-                out = outLo + t * (outHi - outLo);
-            } else if (op == "abs") {
-                out = std::fabs(a);
-            } else if (op == "round") {
-                out = std::round(a);
+            switch (static_cast<MathOp>(n.op)) {
+                case MathOp::Add:
+                    out = a + b;
+                    break;
+                case MathOp::Sub:
+                    out = a - b;
+                    break;
+                case MathOp::Mul:
+                    out = a * b;
+                    break;
+                case MathOp::Div:
+                    out = (b != 0.0) ? a / b : 0.0;
+                    break;
+                case MathOp::Min:
+                    out = std::min(a, b);
+                    break;
+                case MathOp::Max:
+                    out = std::max(a, b);
+                    break;
+                case MathOp::Clamp: {
+                    const double lo = paramNum(n, slots::math::kLo, 0.0);
+                    const double hi = paramNum(n, slots::math::kHi, 1.0);
+                    out = std::min(std::max(a, lo), hi);
+                    break;
+                }
+                case MathOp::Map: {
+                    const double inLo = paramNum(n, slots::math::kInLo, 0.0);
+                    const double inHi = paramNum(n, slots::math::kInHi, 1.0);
+                    const double outLo = paramNum(n, slots::math::kOutLo, 0.0);
+                    const double outHi = paramNum(n, slots::math::kOutHi, 1.0);
+                    const double t = (inHi != inLo) ? (a - inLo) / (inHi - inLo) : 0.0;
+                    out = outLo + t * (outHi - outLo);
+                    break;
+                }
+                case MathOp::Abs:
+                    out = std::fabs(a);
+                    break;
+                case MathOp::Round:
+                    out = std::round(a);
+                    break;
+                case MathOp::Unknown:
+                    break;
             }
-            pushNumberOutput(nodeIndex, "out", out);
+            pushNumberOutput(nodeIndex, slots::math::kOut, out);
             break;
         }
         case NodeType::Compare: {
-            static const PortValue kZero = typedValue(PortType::Number);
-            auto ai = n.inputValues.find("a");
-            auto bi = n.inputValues.find("b");
-            const PortValue& a = ai != n.inputValues.end() ? ai->second : kZero;
-            const PortValue& b = bi != n.inputValues.end() ? bi->second : kZero;
-            bool result = compareValues(a, b, paramStr(n, "op", std::string()));
-            pushBoolOutput(nodeIndex, "out", result);
+            const RtValue& a = in[slots::compare::kA];  // Absent: compares as the number 0.
+            const RtValue& b = in[slots::compare::kB];
+            const bool texts = a.type == PortType::String && b.type == PortType::String;
+            const bool result =
+                compareWith(static_cast<CompareOp>(n.op), strings.text(texts ? a.str : 0u),
+                            strings.text(texts ? b.str : 0u), texts, numericOperand(a.type, a.b, a.n),
+                            numericOperand(b.type, b.b, b.n));
+            pushBoolOutput(nodeIndex, slots::compare::kOut, result);
             bool changed = !n.compareLastValid || result != n.compareLastResult;
             n.compareLastValid = true;
             n.compareLastResult = result;
@@ -416,50 +565,38 @@ void FlowRuntime::Impl::evaluateNode(int nodeIndex) {
             // state after every node has seeded is externally observable, established here
             // without a pulse and compared against from the first real (post-load) evaluation on.
             if (changed && !seeding) {
-                firePulseOutput(nodeIndex, result ? "true" : "false");
+                firePulseOutput(nodeIndex, result ? slots::compare::kTrue : slots::compare::kFalse);
             }
             break;
         }
-        case NodeType::ToString: {
-            static const PortValue kEmpty = typedValue(PortType::String);
-            auto it = n.inputValues.find("in");
-            const PortValue& in = it != n.inputValues.end() ? it->second : kEmpty;
-            std::string formatted = formatPortValue(in, n.params);
-            std::string out = substitutePlaceholder(paramStr(n, "format", std::string("{}")), formatted);
-            pushStringOutput(nodeIndex, "out", out);
+        case NodeType::ToString:
+        case NodeType::Format:
+            // The pieces cut at load time; an unconnected (or not-yet-delivered) placeholder
+            // formats as the empty string.
+            n.scratch.clear();
+            for (const FormatPiece& piece : n.pieces) {
+                if (piece.input < 0) {
+                    n.scratch.append(n.formatText, piece.offset, piece.length);
+                } else {
+                    appendFormatted(n.scratch, in[piece.input], n);
+                }
+            }
+            pushScratchOutput(nodeIndex, slots::format::kOut);
             break;
-        }
         case NodeType::Lookup: {
-            const std::vector<PortValue>& values = n.values;
-            if (values.empty()) {
+            if (n.lookup.empty()) {
                 break;  // FlowGraph::parse() rejects this; a hand-built graph just has no output.
             }
-            auto it = n.inputValues.find("index");
-            double index = it != n.inputValues.end() ? std::round(it->second.n) : 0.0;
-            index = std::max(0.0, std::min(index, static_cast<double>(values.size()) - 1.0));
-            pushRawOutput(nodeIndex, "out", values[static_cast<size_t>(index)]);
-            break;
-        }
-        case NodeType::Format: {
-            std::string parts[4];
-            for (size_t i = 0; i < 4; ++i) {
-                auto it = n.inputValues.find(std::string(1, static_cast<char>('a' + i)));
-                // An unconnected (or not-yet-delivered) placeholder formats as the empty string.
-                parts[i] = it != n.inputValues.end() ? formatPortValue(it->second, n.params) : std::string();
-            }
-            pushStringOutput(nodeIndex, "out",
-                             substituteNamedPlaceholders(paramStr(n, "format", std::string("{a}")), parts));
+            double index = std::round(in[slots::lookup::kIndex].n);
+            index = std::max(0.0, std::min(index, static_cast<double>(n.lookup.size()) - 1.0));
+            pushRawOutput(nodeIndex, slots::lookup::kOut, n.lookup[static_cast<size_t>(index)]);
             break;
         }
         case NodeType::Select: {
-            auto condIt = n.inputValues.find("cond");
-            bool cond = condIt != n.inputValues.end() && condIt->second.b;
-            static const PortValue kDefault{};
-            auto ai = n.inputValues.find("a");
-            auto bi = n.inputValues.find("b");
-            const PortValue& chosen = cond ? (ai != n.inputValues.end() ? ai->second : kDefault)
-                                           : (bi != n.inputValues.end() ? bi->second : kDefault);
-            pushRawOutput(nodeIndex, "out", chosen);
+            const bool cond = in[slots::select::kCond].b;
+            const RtValue& chosen = cond ? in[slots::select::kA] : in[slots::select::kB];
+            // An input that never arrived selects a default (Pulse) value.
+            pushRawOutput(nodeIndex, slots::select::kOut, chosen.type == kNoValue ? kPulseValue : chosen);
             break;
         }
         default:
@@ -467,18 +604,18 @@ void FlowRuntime::Impl::evaluateNode(int nodeIndex) {
     }
 }
 
-void FlowRuntime::Impl::deliverToNode(int nodeIndex, const std::string& port, const PortValue& v,
-                                      bool isPulse) {
+void FlowRuntime::Impl::deliverToNode(int nodeIndex, uint16_t slot, const RtValue& v, bool isPulse) {
     if (isPulse) {
         // T-389: a pulse inside a batch sees the values delivered before it, settled.
         if (batching && dirtyNodes > 0) {
             settleNodes();
         }
-        handlePulseInput(nodeIndex, port);
+        handlePulseInput(nodeIndex, slot);
         return;
     }
     NodeRuntime& n = nodes[static_cast<size_t>(nodeIndex)];
-    n.inputValues[port] = v;
+    const uint32_t input = n.inputBase + slot;
+    assignValue(slotHome(input), values[input], v);
     switch (n.type) {
         case NodeType::Math:
         case NodeType::Compare:
@@ -489,25 +626,27 @@ void FlowRuntime::Impl::deliverToNode(int nodeIndex, const std::string& port, co
             // T-389 (27 §27.4.1): inside a batch the node is evaluated once, after all its inputs.
             if (batching) {
                 markNodeDirty(nodeIndex);
+            } else if (perfTracker != nullptr) {
+                evaluateNodeTimed(nodeIndex);  // T-475.
             } else {
                 evaluateNode(nodeIndex);
             }
             break;
         case NodeType::Counter:
-            if (port == "set") {  // T-123: clamped into min/max like every other counter write.
+            if (slot == slots::counter::kSet) {  // T-123: clamped into min/max like every other write.
                 setCounter(nodeIndex, v.n);
             }
             break;
         case NodeType::Radio:
-            if (port == "set") {
+            if (slot == slots::radio::kSet) {
                 setRadio(nodeIndex, v.n);
             }
             break;
         case NodeType::Timeline:
             // T-193: `seek`. Not while load() seeds: a constant wired to `seek` must not move a
             // timeline just because the graph was loaded.
-            if (port == "seek" && !seeding) {
-                timelineInput(nodeIndex, port, v);
+            if (slot == slots::timeline::kSeek && !seeding) {
+                timelineInput(nodeIndex, slot, v);
             }
             break;
         default:
@@ -515,354 +654,53 @@ void FlowRuntime::Impl::deliverToNode(int nodeIndex, const std::string& port, co
     }
 }
 
-namespace {
-
-/// Docs/tasks/T-124.md: how often one edge may fire inside a single tick window before it is
-/// treated as a feedback loop, and how deep fanOut() may nest. Node-to-node cycles are rejected at
-/// load time, so a loop can only run through the document (a node writing a value back into an
-/// element whose own output port then feeds the node again) -- which recurses, hence the second,
-/// much lower cap: it is what actually keeps the stack from overflowing.
-constexpr uint32_t kMaxEdgeFiresPerTick = 1000;
-constexpr uint32_t kMaxFanOutDepth = 256;
-
-}  // namespace
-
-namespace {
-
-/// externalFanOut's key: externalKey(), prefixed with "<uiId>|" for a `ui#` endpoint (T-193). Kept
-/// to one string for the load() Document: fanOut() recurses through here in a document feedback
-/// loop, so its stack frame stays as small as before.
-std::string fanOutKey(const Endpoint& ep) {
-    if (ep.uiId.empty()) {
-        return externalKey(ep.owner, ep.elementId, ep.port);
-    }
-    std::string key = ep.uiId;
-    key += '|';
-    key += externalKey(ep.owner, ep.elementId, ep.port);
-    return key;
-}
-
-}  // namespace
-
-std::string FlowRuntime::Impl::endpointName(const Endpoint& ep) const {
-    if (ep.owner == Endpoint::Owner::Node) {
-        const bool known = ep.nodeIndex >= 0 && static_cast<size_t>(ep.nodeIndex) < nodes.size();
-        return (known ? nodes[static_cast<size_t>(ep.nodeIndex)].id : std::string("?")) + "." + ep.port;
-    }
-    if (ep.owner == Endpoint::Owner::Lifecycle) {
-        return "ui#" + ep.uiId + "." + ep.port;
-    }
-    const std::string local = (ep.elementId.empty() ? std::string("document") : ep.elementId) + "." + ep.port;
-    return ep.uiId.empty() ? "#" + local : "ui#" + ep.uiId + "." + local;
-}
-
-void FlowRuntime::Impl::buildFanOutIndex() {
-    nodeFanOut.clear();
-    externalFanOut.clear();
-    for (size_t i = 0; i < edges.size(); ++i) {
-        const Endpoint& from = edges[i].from;
-        if (from.owner == Endpoint::Owner::Node) {
-            nodeFanOut[{from.nodeIndex, from.port}].push_back(static_cast<uint32_t>(i));
-        } else {
-            externalFanOut[fanOutKey(from)].push_back(static_cast<uint32_t>(i));
-        }
-    }
-    edgeFireCount.assign(edges.size(), 0u);
-    edgeLoopReported.assign(edges.size(), false);
-    fanOutDepth = 0;
-
-    // T-389: the node evaluation order of a batch (Kahn over the node-to-node edges, which
-    // validateGraph() keeps acyclic; anything left over goes last, in index order).
-    const size_t count = nodes.size();
-    std::vector<uint32_t> indegree(count, 0);
-    std::vector<std::vector<int>> next(count);
-    for (const BoundEdge& e : edges) {
-        if (e.from.owner == Endpoint::Owner::Node && e.to.owner == Endpoint::Owner::Node &&
-            e.from.nodeIndex >= 0 && e.to.nodeIndex >= 0 && static_cast<size_t>(e.from.nodeIndex) < count &&
-            static_cast<size_t>(e.to.nodeIndex) < count) {
-            next[static_cast<size_t>(e.from.nodeIndex)].push_back(e.to.nodeIndex);
-            ++indegree[static_cast<size_t>(e.to.nodeIndex)];
-        }
-    }
-    topoOrder.clear();
-    topoOrder.reserve(count);
-    std::vector<uint8_t> placed(count, 0);
-    for (size_t i = 0; i < count; ++i) {
-        if (indegree[i] == 0) {
-            topoOrder.push_back(static_cast<int>(i));
-            placed[i] = 1;
-        }
-    }
-    for (size_t head = 0; head < topoOrder.size(); ++head) {
-        for (int to : next[static_cast<size_t>(topoOrder[head])]) {
-            if (--indegree[static_cast<size_t>(to)] == 0 && placed[static_cast<size_t>(to)] == 0) {
-                topoOrder.push_back(to);
-                placed[static_cast<size_t>(to)] = 1;
-            }
-        }
-    }
-    for (size_t i = 0; i < count; ++i) {
-        if (placed[i] == 0) {
-            topoOrder.push_back(static_cast<int>(i));
-        }
-    }
-    nodeDirty.assign(count, 0);
-    dirtyNodes = 0;
-}
-
-const std::vector<uint32_t>* FlowRuntime::Impl::fanOutEdges(const Endpoint& source) const {
-    if (source.owner == Endpoint::Owner::Node) {
-        auto it = nodeFanOut.find({source.nodeIndex, source.port});
-        return it == nodeFanOut.end() ? nullptr : &it->second;
-    }
-    auto it = externalFanOut.find(fanOutKey(source));
-    return it == externalFanOut.end() ? nullptr : &it->second;
-}
-
-void FlowRuntime::Impl::reportFeedbackLoop(size_t edgeIndex, const char* reason) {
-    if (edgeIndex >= edgeLoopReported.size() || edgeLoopReported[edgeIndex]) {
-        return;
-    }
-    edgeLoopReported[edgeIndex] = true;
-    const BoundEdge& e = edges[edgeIndex];
-    runtimeErrorList.push_back("flow feedback loop: edge '" + endpointName(e.from) + "' -> '" +
-                               endpointName(e.to) + "' " + reason);
-}
-
-void FlowRuntime::Impl::fanOut(const Endpoint& source, const PortValue& v) {
-    if (!enabled || replacing()) {
-        return;  // T-193 (13.8.3 enableFlow(false)): nothing propagates. T-260c: nor once replaced.
-    }
-    // T-260c: every document, timeline and lifecycle event enters the runtime here; a load asked
-    // for from a callback below runs when the outermost one returns.
-    DispatchGuard dispatch(*this);
-    const std::vector<uint32_t>* list = fanOutEdges(source);
-    if (list == nullptr) {
-        return;
-    }
-    if (fanOutDepth >= kMaxFanOutDepth) {
-        reportFeedbackLoop(list->front(), "nested deeper than 256 pushes; propagation stopped");
-        return;
-    }
-    ++fanOutDepth;
-    // A copy: applyToSink() can re-enter through a document event and push further, and `list`
-    // points into a map this Impl owns -- but never into one that changes during a tick, so the
-    // indices stay valid. (buildFanOutIndex() only runs from load()/rebind().)
-    for (uint32_t i : *list) {
-        if (replacing()) {
-            break;  // T-260c: a callback asked for another graph; the rest of this one stops.
-        }
-        // T-193 (27.3.1): an `instance` edge from a document port only carries that instance's
-        // events (the instance of the event propagating right now, see externalOutput()).
-        const BoundEdge& edge = edges[i];
-        if (edge.instance >= 0 && edge.from.owner != Endpoint::Owner::Node &&
-            static_cast<int64_t>(currentInstance) != edge.instance) {
-            continue;
-        }
-        if (i < edgeFireCount.size() && ++edgeFireCount[i] > kMaxEdgeFiresPerTick) {
-            reportFeedbackLoop(i, "fired more than 1000 times in one tick; propagation stopped");
-            continue;
-        }
-        // load()'s initial seeding is not a delivery (FlowRuntime::edgeLastFired()): it only
-        // establishes each node's starting output, before any runtime time has passed.
-        if (!seeding && i < edgeLastFiredList.size()) {
-            edgeLastFiredList[i] = docs.clockAccum;
-        }
-        applyToSink(edges[i], v);
-    }
-    --fanOutDepth;
-}
-
-void FlowRuntime::Impl::pushRawOutput(int nodeIndex, const std::string& port, const PortValue& v) {
-    NodeRuntime& n = nodes[static_cast<size_t>(nodeIndex)];
-    auto it = n.outputValues.find(port);
-    bool changed = (it == n.outputValues.end()) || !valuesEqual(it->second, v);
-    n.outputValues[port] = v;
+void FlowRuntime::Impl::pushRawOutput(int nodeIndex, uint16_t slot, const RtValue& v) {
+    const uint32_t i = nodes[static_cast<size_t>(nodeIndex)].outputBase + slot;
+    RtValue& current = values[i];
+    const bool changed = current.type == kNoValue || !rtEqual(current, v);
+    assignValue(slotHome(i), current, v);
     markValuesStale(nodeIndex);  // T-389: valueList follows in syncValueList().
     if (changed) {
-        fanOut(Endpoint{Endpoint::Owner::Node, nodeIndex, n.type, "", port, v.type}, v);
+        fanOut(i, current);  // fanOut() delivers a copy of its own.
     }
 }
 
-void FlowRuntime::Impl::pushNumberOutput(int nodeIndex, const std::string& port, double v) {
-    PortValue pv = typedValue(PortType::Number);
-    pv.n = v;
-    pushRawOutput(nodeIndex, port, pv);
+void FlowRuntime::Impl::pushNumberOutput(int nodeIndex, uint16_t slot, double v) {
+    pushRawOutput(nodeIndex, slot, RtValue{PortType::Number, false, v, 0u});
 }
 
-void FlowRuntime::Impl::pushBoolOutput(int nodeIndex, const std::string& port, bool v) {
-    PortValue pv = typedValue(PortType::Bool);
-    pv.b = v;
-    pushRawOutput(nodeIndex, port, pv);
+void FlowRuntime::Impl::pushBoolOutput(int nodeIndex, uint16_t slot, bool v) {
+    pushRawOutput(nodeIndex, slot, RtValue{PortType::Bool, v, 0.0, 0u});
 }
 
-void FlowRuntime::Impl::pushStringOutput(int nodeIndex, const std::string& port, const std::string& v) {
-    PortValue pv = typedValue(PortType::String);
-    pv.s = v;
-    pushRawOutput(nodeIndex, port, pv);
-}
-
-void FlowRuntime::Impl::firePulseOutput(int nodeIndex, const std::string& port) {
+void FlowRuntime::Impl::pushScratchOutput(int nodeIndex, uint16_t slot) {
     NodeRuntime& n = nodes[static_cast<size_t>(nodeIndex)];
-    PortValue pv = typedValue(PortType::Pulse);
-    fanOut(Endpoint{Endpoint::Owner::Node, nodeIndex, n.type, "", port, PortType::Pulse}, pv);
+    const uint32_t i = n.outputBase + slot;
+    RtValue& current = values[i];
+    std::string& home = strings.buffer(slotHome(i));
+    const bool changed = current.type != PortType::String || home != n.scratch;
+    if (changed) {
+        home.swap(n.scratch);  // Both keep their capacity: no allocation once they are large enough.
+        current = RtValue{PortType::String, false, 0.0, slotHome(i)};
+    }
+    markValuesStale(nodeIndex);
+    if (changed) {
+        fanOut(i, current);
+    }
+}
+
+void FlowRuntime::Impl::firePulseOutput(int nodeIndex, uint16_t slot) {
+    fanOut(nodes[static_cast<size_t>(nodeIndex)].outputBase + slot, kPulseValue);
 }
 
 // ---- T-193 (Docs/design/27-interaction.md §27.4.1): actions, timelines, system events ----------
 
-void FlowRuntime::Impl::fireEventOutput(int nodeIndex, const std::string& port, const PortValue& v) {
-    NodeRuntime& n = nodes[static_cast<size_t>(nodeIndex)];
-    n.outputValues[port] = v;
+void FlowRuntime::Impl::fireEventText(int nodeIndex, uint16_t slot, std::string_view text) {
+    const uint32_t i = nodes[static_cast<size_t>(nodeIndex)].outputBase + slot;
+    strings.buffer(slotHome(i)).assign(text);
+    values[i] = RtValue{PortType::String, false, 0.0, slotHome(i)};
     markValuesStale(nodeIndex);  // T-389.
-    fanOut(Endpoint{Endpoint::Owner::Node, nodeIndex, n.type, "", port, v.type}, v);
-}
-
-// ---- T-389 (Docs/design/27-interaction.md §27.4.1): value signals coalesced per frame ----------
-
-namespace {
-
-/// How many deliver-and-settle rounds one flushSignals() / settleNodes() runs. One is the normal
-/// case; more only happen when a sink makes the Document report another value (a loop through the
-/// document), which then waits for the next tick instead of spinning here.
-constexpr int kMaxSignalRounds = 16;
-
-}  // namespace
-
-void FlowRuntime::Impl::queueSignal(const std::string& uiId, DocEndpointState* state, Endpoint::Owner owner,
-                                    const std::string& elementId, const std::string& port,
-                                    const PortValue& v) {
-    std::pair<const DocEndpointState*, std::string> key{state, externalKey(owner, elementId, port)};
-    auto it = pendingSignalIndex.find(key);
-    if (it != pendingSignalIndex.end()) {
-        pendingSignals[it->second].value = v;  // Only the latest value of the frame counts.
-        return;
-    }
-    pendingSignalIndex.emplace(std::move(key), pendingSignals.size());
-    pendingSignals.push_back(PendingSignal{state, uiId, owner, elementId, port, v});
-}
-
-void FlowRuntime::Impl::signalOutput(const std::string& uiId, DocEndpointState* state, Endpoint::Owner owner,
-                                     const std::string& elementId, const std::string& port,
-                                     const PortValue& v) {
-    if (isValueSignal(owner, port, v.type) && coalescesSignals(*state)) {  // T-407: behavior >= 1.
-        queueSignal(uiId, state, owner, elementId, port, v);
-        return;
-    }
-    // A pulse / event: the values reported before it are delivered first, so it sees them.
-    if (!pendingSignals.empty()) {
-        flushSignals();
-    }
-    deliverExternal(uiId, state, owner, elementId, port, v);
-}
-
-void FlowRuntime::Impl::deliverExternal(const std::string& uiId, DocEndpointState* state,
-                                        Endpoint::Owner owner, const std::string& elementId,
-                                        const std::string& port, const PortValue& v) {
-    if (uiId.empty() && state == &docs) {
-        // The load() Document's outputs keep the pre-T-193 stack footprint (see Impl()).
-        const uint32_t savedInstance = currentInstance;
-        currentInstance = docs.doc != nullptr ? docs.doc->instanceId() : 0;
-        fanOut(Endpoint{owner, -1, NodeType::Constant, elementId, port, v.type}, v);
-        currentInstance = savedInstance;
-        return;
-    }
-    externalOutput(uiId, state, owner, elementId, port, v);
-}
-
-void FlowRuntime::Impl::deliverPendingSignals() {
-    if (pendingSignals.empty()) {
-        return;
-    }
-    DispatchGuard dispatch(*this);  // T-260c: a callback's load waits until the batch is done.
-    std::vector<PendingSignal> batch;
-    batch.swap(pendingSignals);
-    pendingSignalIndex.clear();
-    const bool outer = !batching;
-    batching = true;
-    for (const PendingSignal& signal : batch) {
-        if (replacing()) {
-            break;
-        }
-        if (liveDocument(*signal.state) == nullptr) {
-            continue;  // T-260b: reloaded / unloaded / removed since it reported the value.
-        }
-        deliverExternal(signal.uiId, signal.state, signal.owner, signal.elementId, signal.port, signal.value);
-    }
-    if (outer) {
-        batching = false;
-    }
-}
-
-void FlowRuntime::Impl::flushSignals() {
-    DispatchGuard dispatch(*this);
-    const bool outer = !batching;
-    batching = true;
-    for (int round = 0; round < kMaxSignalRounds && !replacing(); ++round) {
-        deliverPendingSignals();
-        settleNodes();
-        if (pendingSignals.empty()) {
-            break;
-        }
-    }
-    if (outer) {
-        batching = false;  // A node left dirty past the round limit is settled by the next tick.
-    }
-}
-
-void FlowRuntime::Impl::markNodeDirty(int nodeIndex) {
-    const size_t i = static_cast<size_t>(nodeIndex);
-    if (i < nodeDirty.size() && nodeDirty[i] == 0) {
-        nodeDirty[i] = 1;
-        ++dirtyNodes;
-    }
-}
-
-void FlowRuntime::Impl::settleNodes() {
-    for (int round = 0; round < kMaxSignalRounds && dirtyNodes > 0; ++round) {
-        // By index into topoOrder: an evaluation only dirties nodes after it (node-to-node edges
-        // are acyclic), except through the document, which the next round picks up.
-        for (size_t k = 0; k < topoOrder.size() && dirtyNodes > 0; ++k) {
-            if (replacing()) {
-                return;
-            }
-            const size_t i = static_cast<size_t>(topoOrder[k]);
-            if (i >= nodeDirty.size() || nodeDirty[i] == 0) {
-                continue;
-            }
-            nodeDirty[i] = 0;
-            --dirtyNodes;
-            evaluateNode(static_cast<int>(i));
-        }
-    }
-}
-
-void FlowRuntime::Impl::markValuesStale(int nodeIndex) {
-    const size_t i = static_cast<size_t>(nodeIndex);
-    if (i >= nodeStale.size()) {
-        nodeStale.resize(nodes.size(), 0);
-    }
-    if (i < nodeStale.size() && nodeStale[i] == 0) {
-        nodeStale[i] = 1;
-        staleNodes.push_back(nodeIndex);
-    }
-}
-
-void FlowRuntime::Impl::syncValueList() {
-    // Only the nodes pushed since the last call: the cost follows the work, not the graph size.
-    for (int nodeIndex : staleNodes) {
-        const size_t i = static_cast<size_t>(nodeIndex);
-        if (i >= nodes.size()) {
-            continue;
-        }
-        nodeStale[i] = 0;
-        for (const auto& [port, value] : nodes[i].outputValues) {
-            auto slot = outputSlot.find({nodeIndex, port});
-            if (slot != outputSlot.end() && slot->second < valueList.size()) {
-                valueList[slot->second] = value;
-            }
-        }
-    }
-    staleNodes.clear();
+    fanOut(i, values[i]);
 }
 
 void FlowRuntime::Impl::sendHostEvent(FlowHostEventKind kind, int nodeIndex, const std::string& name,
@@ -875,7 +713,7 @@ void FlowRuntime::Impl::sendHostEvent(FlowHostEventKind kind, int nodeIndex, con
     event.name = name;
     event.volume = volume;
     event.value = value;
-    event.uiId = currentUi;
+    event.uiId = currentUi != nullptr ? *currentUi : std::string();
     event.instanceId = currentInstance;
     event.nodeId = nodes[static_cast<size_t>(nodeIndex)].id;
     // A copy: the listener may replace itself (setHostEventListener) while being called.
@@ -883,21 +721,23 @@ void FlowRuntime::Impl::sendHostEvent(FlowHostEventKind kind, int nodeIndex, con
     listener(event);
 }
 
-void FlowRuntime::Impl::timelineInput(int nodeIndex, const std::string& port, const PortValue& v) {
+void FlowRuntime::Impl::timelineInput(int nodeIndex, uint16_t slot, const RtValue& v) {
     const NodeRuntime& n = nodes[static_cast<size_t>(nodeIndex)];
-    const std::string name = paramStr(n, "name", std::string());
-    const std::string scope = paramStr(n, "scope", std::string());
+    const std::string name = paramText(n, slots::timeline::kName);
+    const std::string scope = paramText(n, slots::timeline::kScope);
     const std::string nodeId = n.id;
+    const bool loop = paramBool(n, slots::timeline::kLoop, false);
+    const auto rate = static_cast<float>(paramNum(n, slots::timeline::kRate, 1.0));
     for (DocEndpointState* state : statesFor(n.uiId)) {
         Status status = Status::kOk;
-        if (port == "play") {
+        if (slot == slots::timeline::kPlay) {
             PlayOptions options;
-            options.loop = paramBool(n, "loop", false);
-            options.rate = static_cast<float>(paramNum(n, "rate", 1.0));
+            options.loop = loop;
+            options.rate = rate;
             status = state->doc->playTimeline(scope, name, options);
-        } else if (port == "stop") {
+        } else if (slot == slots::timeline::kStop) {
             status = state->doc->stopTimeline(scope, name);
-        } else if (port == "seek") {
+        } else if (slot == slots::timeline::kSeek) {
             status = state->doc->seekTimeline(scope, name, static_cast<float>(v.n));
         }
         if (status == Status::kNotFound && missingTimelines.insert(nodeId).second) {
@@ -907,31 +747,17 @@ void FlowRuntime::Impl::timelineInput(int nodeIndex, const std::string& port, co
     }
 }
 
-void FlowRuntime::Impl::externalOutput(const std::string& uiId, DocEndpointState* state,
-                                       Endpoint::Owner owner, const std::string& elementId,
-                                       const std::string& port, const PortValue& v) {
-    const std::string savedUi = currentUi;
-    const uint32_t savedInstance = currentInstance;
-    currentUi = uiId;
-    // T-260b: a lifecycle event can come from a handle whose Document was replaced since the
-    // runtime bound it (its old Document is gone): liveDocument(), not `state->doc`.
-    const Document* doc = state != nullptr ? liveDocument(*state) : nullptr;
-    currentInstance = doc != nullptr ? doc->instanceId() : 0;
-    Endpoint source{owner, -1, NodeType::Constant, elementId, port, v.type};
-    source.uiId = uiId;
-    fanOut(source, v);
-    currentUi = savedUi;
-    currentInstance = savedInstance;
-}
-
 void FlowRuntime::Impl::lifecycleEvent(const Context* context, DocumentHandle handle, bool shown) {
     if (!loaded) {
         return;
     }
-    for (UiDoc& ui : uiDocs) {
+    for (size_t i = 0; i < uiDocs.size(); ++i) {
+        UiDoc& ui = uiDocs[i];
         if (ui.handle == handle && ui.state->context == context) {  // T-356: handles are per Context.
-            externalOutput(ui.uiId, ui.state.get(), Endpoint::Owner::Lifecycle, "",
-                           shown ? "shown" : "hidden", typedValue(PortType::Pulse));
+            const uint32_t external = shown ? ui.shownExternal : ui.hiddenExternal;
+            if (external != kNoOutput) {
+                deliverExternal(external, ui.state.get(), kPulseValue);
+            }
         }
     }
 }
@@ -952,26 +778,25 @@ Status FlowRuntime::Impl::postSystemEvent(std::string_view kind, std::string_vie
         return Status::kOk;
     }
     DispatchGuard dispatch(*this);  // T-260c.
-    const std::string savedUi = currentUi;
+    const std::string* savedUi = currentUi;
     const uint32_t savedInstance = currentInstance;
-    currentUi.clear();
+    currentUi = nullptr;
     currentInstance = 0;
     const std::string port(kind);
+    const uint16_t slot = slotOf(NodeType::System, SlotKind::Output, kind);
     // T-262b (F12): the port's declared type (nodePortInfo, the table the bindings use) decides
     // pulse or string, not the kind's position in systemEventKinds(). System ports take no params.
     static const NodeDesc kNoParams;
     PortType portType = PortType::String;
     nodePortInfo(NodeType::System, kNoParams, port, /*isSource=*/true, portType);
-    for (size_t i = 0; i < nodes.size(); ++i) {
+    for (size_t i = 0; i < nodes.size() && slot != kNoSlot; ++i) {
         if (nodes[i].type != NodeType::System) {
             continue;
         }
         if (portType == PortType::Pulse) {
-            firePulseOutput(static_cast<int>(i), port);
+            firePulseOutput(static_cast<int>(i), slot);
         } else {
-            PortValue v = typedValue(PortType::String);
-            v.s = std::string(value);
-            fireEventOutput(static_cast<int>(i), port, v);
+            fireEventText(static_cast<int>(i), slot, value);
         }
     }
     currentUi = savedUi;

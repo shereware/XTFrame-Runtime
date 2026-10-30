@@ -29,6 +29,20 @@ xt_set_warnings(xt_perf)
 
 add_test(NAME xt_perf COMMAND xt_perf)
 
+# T-475 (Docs/design/21-perf-tracing.md §21.6, 27-interaction.md §27.4.2 item 6): the headless flow
+# benchmark runner (Tests/perf/flow_big/README.md). Not a doctest executable and not a CTest entry:
+# Tests/perf/flow_big/flow_bench.py --runner drives it. XT_PERF_ALLOC_COUNT makes
+# flow_alloc_hook.cpp replace operator new, so FrameStats::flowAllocs is filled here and nowhere else.
+add_executable(xt_perf_flow
+    flow_perf_main.cpp
+    flow_alloc_hook.cpp
+)
+target_compile_definitions(xt_perf_flow PRIVATE XT_PERF_ALLOC_COUNT)
+target_link_libraries(xt_perf_flow PRIVATE xt_core xt_compile xt_flow xt_bundle)
+xt_enable_exceptions(xt_perf_flow)
+xt_no_rtti(xt_perf_flow)
+xt_set_warnings(xt_perf_flow)
+
 # T-403 (Docs/design/21-perf-tracing.md "flow budget"): the large / typical flow benchmark. Not a
 # gate -- it only prints xtframe-view's --perf summary for CI to collect (no thresholds; it fails
 # only when the fixture no longer loads). Tests/perf/flow_big/flow_bench.py computes the last-480-

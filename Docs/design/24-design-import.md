@@ -134,6 +134,7 @@ Claude Design canvas ──Artifact read──▶ <dump>/canvas.json + *.dc.html
 ## 24.9 AI 標籤字典、再匯入配對與 UI Project 輸出（2026-09-27 定案；對應 27.5、29.8、30）
 
 - **標籤字典**（轉換器讀、不生成 flow）：`data-xt-editor-only`（→ `editor-only`，03 §3.13；2026-10-15）、`data-xt-name`、`data-xt-symbol`、`data-xt-variant`、`data-xt-slot`、`data-xt-state`、`data-xt-trigger`、`data-xt-timeline`、`data-xt-port`、`data-xt-bind`、`data-xt-token`、`data-xt-sound`、`data-xt-anchor`、`data-xt-role`、`data-xt-glyph`、`data-xt-rich`（表見 27.5）。未知標籤警告；標籤與推導衝突時標籤優先；每次新增標籤同步 skill `references/dialect.md`。
+- **`data-xt-uiscale`（T-486，2026-10-26）**：放在板的根元素，值 `height`｜`width`｜`shortEdge`｜`fit`，匯入寫成 `<name>.xtui` 的 `spec.uiscaleRule`；重新匯入時板上有值就以板為準、沒有就保留專案現值。這是 agent 設定縮放規則的唯一正規途徑（ui-project.md 第 4 節：`<project>` 下的檔只經匯入改）；「適應任何視窗」的請求建議 `fit`（兩軸都保證設計可見，寬螢幕留邊、窄螢幕縮小）。
 - **lint**：有觸發無時間軸、狀態無差異、port 未綁定、符號缺契約狀態、未用 token 的字面顏色、浮動元素在安全區外、文字可能溢出（最長翻譯）。
 - **再匯入配對**：以 `data-xt-name`／id 為主鍵；無名時依 AutoGameUI 的訊號排序配對——幾何（位置、尺寸）> 渲染順序 > 階層 > 文字內容；配對結果帶 `matched | new | missing` 與信心值；保留編輯器端的覆寫、時間軸、觸發、port；配對失敗率 > 20% 退回單向匯入並提示（29.8）。
 - **輸出進 UI Project**：符號與變體進 `shared/symbols/`，token 進 `shared/tokens.xts`（與 Claude Design design system tokens 互轉），資產進 `shared/img/` 並登記資產清單（狀態 `draft`），字串鍵進 `strings/`。

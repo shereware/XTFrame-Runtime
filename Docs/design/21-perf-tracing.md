@@ -80,6 +80,9 @@ T-450 實作記錄：`FrameStats` 加編輯器分項 `editorDocChangedMs`（`doc
 - **預算**（平均 ms／幀，1080p SW 繪製之外）：**典型 ≤ 0.5**、**大圖 ≤ 2.0**。p95 只記錄不設線。超過即開 B17 的 B7（flow 整數化）。
 - **基準（2026-10-21，i5-13600K）**：Windows MSVC 典型 0.141（p95 0.18）、大圖 0.257（p95 0.32）；WSL GCC 典型 0.088（p95 0.11）、大圖 0.167（p95 0.22）。餘裕 3.5～12 倍，B7 不開。報告 `Docs/reviews/2026-10-21-flow-benchmark.md`。
 - ctest `xt_perf_flow_big_large`／`_typical`（標籤 `perf-report`）只印 `--perf` 摘要，不斷言、不是閘門。
+- **M37（2026-10-25，27 §27.4.2）**：預算收緊為典型 ≤ 0.2、大圖 ≤ 0.8 ms；新增分段 `flowDeliverMs`／`flowEvalMs`／`flowSinkMs` 與計數 `flowSignals`／`flowNodeEvals`／`flowSinkWrites`／`flowAllocs`（debug）；T-475 記新基線、T-478 記優化後數字。
+- **實作記錄（T-475）**：基線（Release、`xt_perf_flow`、2000 幀）behavior 1 典型 0.088（p95 0.140）、大圖 0.170（p95 0.254）ms，每 tick 配置 299／347 次；fixture 本身是 behavior 0（傳播在輸入派送與 `setPort()` 內，不在 `flowMs`）；前五熱點 fanOut＋deliverToNode、format、math、setStyle 沉降、`syncValueList()`；報告 `Docs/reviews/2026-10-25-flow-perf-baseline.md`。
+- **新基線（T-478，2026-10-25）**：Release behavior 1、`xt_perf_flow`、2000 幀三輪取中：典型 flowMs 0.022（p95 0.046）、flow＋綁定 0.031；大圖 0.043（p95 0.084）、flow＋綁定 0.052 ms；穩態每 tick 配置 0（含沉降寫入，只排除文字路徑 setStyle）。`flow_bench.py --assert`（版號單用，`--keep 1800` 排除暖機）以典型 ≤ 0.2、大圖 ≤ 0.8 斷言 flow＋綁定平均，`--runner` 另斷言量測幀 0 配置；ctest 仍只報告。報告 `Docs/reviews/2026-10-25-flow-perf-after.md`。
 
 ## 21.7 `xt_wgpu`（M34；10 §10.10.3）
 

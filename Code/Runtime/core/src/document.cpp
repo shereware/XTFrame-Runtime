@@ -61,6 +61,12 @@ ElementRef Document::root() const {
 }
 
 ElementRef Document::fixedRoot() const {
+    const std::vector<ElementRef> roots = fixedRoots();
+    return roots.empty() ? ElementRef{} : roots.front();
+}
+
+std::vector<ElementRef> Document::fixedRoots(Vec2 board) const {
+    std::vector<ElementRef> roots;
     ElementRef body = root();
     if (body.valid() && body.tag() != "body") {
         ElementRef child = body.firstChild();
@@ -70,22 +76,34 @@ ElementRef Document::fixedRoot() const {
         body = child;
     }
     if (!body.valid()) {
-        return ElementRef{};
+        return roots;
     }
-    const auto fixed = [](const ElementRef& element) {
-        for (PropId prop : {prop::Width, prop::Height}) {
-            const Value v = element.property(prop);
-            if (v.type == ValueType::Length && v.len.unit == LengthUnit::Px) {
-                return true;
+    const auto isPx = [](const ElementRef& element, PropId prop) {
+        const Value v = element.property(prop);
+        return v.type == ValueType::Length && v.len.unit == LengthUnit::Px;
+    };
+    // T-481: a px length covering `extent` (the design board's edge, less 1 px).
+    const auto covers = [](const ElementRef& element, PropId prop, float extent) {
+        const Value v = element.property(prop);
+        return extent > 0 && v.type == ValueType::Length && v.len.unit == LengthUnit::Px &&
+               v.len.value >= extent - 1.0f;
+    };
+    const ElementRef first = body.firstChild();
+    if (first.valid() && !first.nextSibling().valid()) {
+        if (isPx(first, prop::Width) || isPx(first, prop::Height)) {
+            roots.push_back(first);
+        }
+    } else {
+        for (ElementRef child = first; child.valid(); child = child.nextSibling()) {
+            if (covers(child, prop::Width, board.x) && covers(child, prop::Height, board.y)) {
+                roots.push_back(child);
             }
         }
-        return false;
-    };
-    const ElementRef only = body.firstChild();
-    if (only.valid() && !only.nextSibling().valid() && fixed(only)) {
-        return only;
     }
-    return fixed(body) ? body : ElementRef{};
+    if (roots.empty() && (isPx(body, prop::Width) || isPx(body, prop::Height))) {
+        roots.push_back(body);
+    }
+    return roots;
 }
 
 ElementRef Document::byId(std::string_view id) const {
@@ -1160,14 +1178,20 @@ Vec2 Document::nodeToScreen(NodeId node, Vec2 localPoint) const {
     // the space it introduces: it lies on its parent's plane, and its `world` (already applied as
     // `xf` above) is exactly the `rootXf` its own projection would use, so including it here mapped
     // the point through that transform twice.
+    // T-477: with no root on the way up nothing is built (an MSVC debug std::vector allocates even
+    // when empty; the flow reads `#document.pointer*` through here every tick).
+    bool anyRoot = false;
+    for (NodeId cur = m_arena.parent(node); cur != kInvalidNode && !anyRoot; cur = m_arena.parent(cur)) {
+        anyRoot = m_arena.common(cur).isSpaceRoot != 0;
+    }
+    if (!anyRoot) {
+        return apply(xf, localPoint);  // §19.5: "不在根子樹內 -> world * p".
+    }
     std::vector<NodeId> roots;
     for (NodeId cur = m_arena.parent(node); cur != kInvalidNode; cur = m_arena.parent(cur)) {
         if (m_arena.common(cur).isSpaceRoot != 0) {
             roots.push_back(cur);
         }
-    }
-    if (roots.empty()) {
-        return apply(xf, localPoint);  // §19.5: "不在根子樹內 -> world * p".
     }
     std::vector<project3d::Mapping> innermostFirst;
     innermostFirst.reserve(roots.size());

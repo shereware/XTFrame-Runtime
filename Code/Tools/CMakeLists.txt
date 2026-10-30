@@ -281,6 +281,10 @@ if(XT_BUILD_TESTS)
 
     xt_add_expect_exit_test(xtframe-import_missing_mode CODE 2 OUTPUT "usage: xtframe-import"
         COMMAND $<TARGET_FILE:xtframe-import> "${PROJECT_SOURCE_DIR}/Tests/import/fixtures/figma/wireframe")
+    # T-479 (T-420 convention): --version prints three lines to stdout and exits 0, whatever else is given.
+    xt_add_expect_exit_test(xtframe-import_version CODE 0
+        OUTPUT "^xtframe-import [0-9]+\\.[0-9]+\\.[0-9]+[^a-z]+ir-format 2\\.[0-9]+[^a-z]+behavior [0-9]+"
+        COMMAND $<TARGET_FILE:xtframe-import> dc --version --bogus)
 
     # T-267a (review L20): `dc` has been implemented since T-113; this used to be
     # xtframe-import_dc_not_implemented (any non-zero exit passed). A Figma dump fed to `dc` has no

@@ -266,6 +266,8 @@ def write_project(path, ui_id, name, project_id):
         "version": 1,
         "name": name,
         "id": project_id,
+        # T-476: behavior 1 (43 §43.3), coalesced value signals -- what M37's targets measure.
+        "spec": {"behavior": 1},
         "uis": [{
             "id": ui_id,
             "doc": f"ui/{ui_id}/{ui_id}.xt",

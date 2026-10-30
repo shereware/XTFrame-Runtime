@@ -654,7 +654,11 @@ void BindingRuntime::flushDirty() {
     // A binding that writes a port marks that port's readers again: they are picked up by the
     // next round (bounded, so a cycle between port bindings cannot spin here).
     for (int round = 0; round < 16 && !m_dirty.empty(); ++round) {
-        std::vector<uint32_t> batch;
+        // T-478: the spare buffer becomes m_dirty, the marks taken become the batch, and the batch
+        // goes back as the spare: no allocation in steady state. A nested flushDirty() finds the
+        // spare taken and starts from an empty one; only the capacity reuse depends on it.
+        std::vector<uint32_t> batch = std::move(m_dirtySpare);
+        batch.clear();
         batch.swap(m_dirty);
         for (uint32_t b : batch) {
             if (b < m_dirtyFlag.size()) {
@@ -665,6 +669,9 @@ void BindingRuntime::flushDirty() {
             if (b < m_bindings.size()) {
                 evaluate(b, /*initial=*/false);
             }
+        }
+        if (batch.capacity() > m_dirtySpare.capacity()) {
+            m_dirtySpare = std::move(batch);
         }
     }
 }

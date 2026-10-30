@@ -25,20 +25,9 @@ FlowRuntime::Impl::Impl() {
     // T-389: a value signal is held back until the next tick() (queueSignal()); an event first
     // delivers the held values, then goes out as before -- inline, so a loop through the document
     // recurses through no more frames than it did. T-407: only from behavior 1 on.
-    docs.output = [this](Endpoint::Owner owner, const std::string& elementId, const std::string& port,
-                         const PortValue& v) {
-        if (isValueSignal(owner, port, v.type) && coalescesSignals(docs)) {
-            queueSignal(std::string(), &docs, owner, elementId, port, v);
-            return;
-        }
-        if (!pendingSignals.empty()) {
-            flushSignals();
-        }
-        const uint32_t savedInstance = currentInstance;
-        currentInstance = docs.doc != nullptr ? docs.doc->instanceId() : 0;
-        fanOut(Endpoint{owner, -1, NodeType::Constant, elementId, port, v.type}, v);
-        currentInstance = savedInstance;
-    };
+    // T-476: the listeners report an output slot of `docs`; signalOutput() maps it to its source
+    // binding and external slot.
+    docs.output = [this](uint32_t slot, const PortValue& v) { signalOutput(docs, slot, v); };
 }
 
 void FlowRuntime::Impl::unbindAll(bool removeListeners) {
@@ -116,9 +105,8 @@ Status FlowRuntime::Impl::loadGlobal(const FlowGraph& graph, BundleContext& bund
             ui.state->handle = handle;
             ui.state->serial = document->loadSerial();  // T-260c.
             DocEndpointState* state = ui.state.get();
-            state->output = [this, state, uiId](Endpoint::Owner owner, const std::string& elementId,
-                                                const std::string& port, const PortValue& v) {
-                signalOutput(uiId, state, owner, elementId, port, v);  // T-389.
+            state->output = [this, state](uint32_t slot, const PortValue& v) {
+                signalOutput(*state, slot, v);  // T-389, T-476.
             };
             uiDocs.push_back(std::move(ui));
             uiMap.emplace(uiId, document);  // The first instance answers the validation.
@@ -185,12 +173,28 @@ void FlowRuntime::Impl::resetGraph() {
     loaded = false;
     global = false;
     missingTimelines.clear();
-    currentUi.clear();
+    currentUi = nullptr;
     currentInstance = 0;
     nodes.clear();
     nodeIndexById.clear();
     edges.clear();
-    outputSlot.clear();
+    rtEdges.clear();
+    // T-476: the compiled graph.
+    values.clear();
+    strings.clear();
+    slotHomeBase = 0;
+    externals.clear();
+    styleTemplates.clear();  // T-477.
+    fanOutStart.clear();
+    fanOutEdgeList.clear();
+    externalKeyBase = 0;
+    fanOutHomes.clear();
+    sources.clear();
+    batchStack.clear();
+    batchHomes.clear();
+    batchTop = 0;
+    timedNodes.clear();
+    valuesObserved = false;
     valueList.clear();
     valueNamesList.clear();
     edgeLastFiredList.clear();
@@ -200,8 +204,7 @@ void FlowRuntime::Impl::resetGraph() {
     fanOutDepth = 0;
     docs.clockAccum = 0;
     // T-389: nothing pending survives the graph (the states it points at go with it).
-    pendingSignals.clear();
-    pendingSignalIndex.clear();
+    pendingList.clear();
     batching = false;
     topoOrder.clear();
     nodeDirty.clear();
@@ -226,13 +229,7 @@ Status FlowRuntime::Impl::loadGraph(const FlowGraph& graph, std::vector<std::str
         NodeRuntime rt;
         rt.type = type;
         rt.id = nd.id;
-        rt.params = nd.params;
-        if (auto values = nd.arrayParams.find("values"); values != nd.arrayParams.end()) {
-            rt.values = values->second;  // `lookup`'s table (T-123).
-        }
-        if (auto ui = nd.params.find("ui"); ui != nd.params.end() && ui->second.type == PortType::String) {
-            rt.uiId = ui->second.s;  // T-193: a global `timeline` node's UI.
-        }
+        compileNode(nd, rt);  // T-476: its slots, params, ops and format pieces.
         nodeIndexById[nd.id] = static_cast<int>(nodes.size());
         nodes.push_back(std::move(rt));
     }
@@ -245,21 +242,32 @@ Status FlowRuntime::Impl::loadGraph(const FlowGraph& graph, std::vector<std::str
     if (status != Status::kOk) {
         return status;
     }
+    // T-476: one string buffer per value slot (a slot's strings are copied into its own).
+    slotHomeBase = static_cast<uint32_t>(strings.size());
+    for (size_t i = 0; i < values.size(); ++i) {
+        strings.addBuffer();
+    }
     edges = std::move(boundEdges);
     edgeLastFiredList.assign(edges.size(), -1.0f);
-    buildFanOutIndex();
+    compileEdges();
 
+    // Node i is graph.nodes[i] here (a duplicate id or an unknown type failed above).
     for (size_t i = 0; i < nodes.size(); ++i) {
         NodeDesc paramsOnly;
-        paramsOnly.params = nodes[i].params;
+        paramsOnly.params = graph.nodes[i].params;
+        nodes[i].valueListBase = static_cast<uint32_t>(valueList.size());
         for (const std::string& port : outputPortOrder(nodes[i].type)) {
-            outputSlot[{static_cast<int>(i), port}] = valueList.size();
             valueNamesList.push_back(nodes[i].id + "." + port);
             PortType t = PortType::Number;
             nodePortInfo(nodes[i].type, paramsOnly, port, /*isSource=*/true, t);
             valueList.push_back(typedValue(t));
         }
+        if (nodes[i].type == NodeType::Clock || nodes[i].type == NodeType::Timer) {
+            timedNodes.push_back(static_cast<int>(i));
+        }
     }
+    staleNodes.reserve(nodes.size());
+    nodeStale.assign(nodes.size(), 0);
 
     bindDocumentEndpoints();
     loaded = true;
@@ -283,9 +291,9 @@ Status FlowRuntime::Impl::rebind(Document& document, std::vector<std::string>& w
     unbindDocumentEndpoints(docs, /*removeListeners=*/false);
     docs.doc = &document;
     docs.serial = document.loadSerial();  // T-260c.
-    // T-389: values the previous Document reported and the flow has not delivered yet.
-    pendingSignals.clear();
-    pendingSignalIndex.clear();
+    // T-389: values the previous Document reported and the flow has not delivered yet (the
+    // source bindings themselves are rebuilt by compileEdges() below).
+    pendingList.clear();
 
     // Everything derived from the old tree; node state (counters, toggles, timers, valueList) is
     // kept on purpose.
@@ -309,7 +317,7 @@ Status FlowRuntime::Impl::rebind(Document& document, std::vector<std::string>& w
     }
     edges = std::move(keptEdges);
     edgeLastFiredList = std::move(keptLastFired);
-    buildFanOutIndex();
+    compileEdges();
     bindDocumentEndpoints();
     return Status::kOk;
 }
@@ -331,6 +339,9 @@ void FlowRuntime::Impl::tick(float dt) {
         return;
     }
     DispatchGuard dispatch(*this);  // T-260c.
+    // T-475: the allocations of this tick (FrameStats::flowAllocs; 0 unless the executable counts).
+    const uint64_t allocsBefore = perfStats() != nullptr ? xt::perf::AllocCounter::total() : 0;
+    const uint64_t sinkAllocsBefore = sinkAllocs;  // T-478: text setStyle parses, left out.
     // One tick is one feedback-guard window (Docs/tasks/T-124.md): the counters only have to
     // catch a loop that keeps pushing without the clock ever moving on.
     std::fill(edgeFireCount.begin(), edgeFireCount.end(), 0u);
@@ -350,21 +361,21 @@ void FlowRuntime::Impl::tick(float dt) {
     }
     deliverPendingSignals();
 
-    for (size_t i = 0; i < nodes.size(); ++i) {
-        NodeRuntime& n = nodes[i];
-        int idx = static_cast<int>(i);
+    for (size_t t = 0; t < timedNodes.size(); ++t) {  // T-476: the clock / timer nodes only.
+        const int idx = timedNodes[t];
+        NodeRuntime& n = nodes[static_cast<size_t>(idx)];
         if (n.type == NodeType::Clock) {
-            pushNumberOutput(idx, "seconds", static_cast<double>(docs.clockAccum));
+            pushNumberOutput(idx, 0, static_cast<double>(docs.clockAccum));
         } else if (n.type == NodeType::Timer && n.timerRunning) {
             // T-258a: (0, kMinTimerInterval) runs at kMinTimerInterval; 0, negative and non-finite
             // never fire.
-            const double interval = effectiveTimerInterval(paramNum(n, "interval", 0.0));
+            const double interval = effectiveTimerInterval(paramNum(n, slots::timer::kInterval, 0.0));
             if (interval > 0.0 && std::isfinite(interval)) {
                 n.timerElapsed += dt;
                 // Re-checks timerRunning every iteration so a "stop" pulse delivered synchronously
                 // from a "tick" listener (e.g. a one-shot timer wired tick -> its own stop) takes
                 // effect immediately, even mid-burst.
-                const bool repeat = paramBool(n, "repeat", true);
+                const bool repeat = paramBool(n, slots::timer::kRepeat, true);
                 // T-258a: at most kMaxTimerFiresPerTick ticks per call; past that the elapsed time
                 // is dropped, so a tick that falls far behind cannot spin here.
                 const auto step = static_cast<float>(std::min(interval, static_cast<double>(FLT_MAX)));
@@ -382,8 +393,8 @@ void FlowRuntime::Impl::tick(float dt) {
                         n.timerRunning = false;
                         n.timerElapsed = 0;
                     }
-                    pushNumberOutput(idx, "count", n.timerCount);
-                    firePulseOutput(idx, "tick");
+                    pushNumberOutput(idx, slots::timer::kCount, n.timerCount);
+                    firePulseOutput(idx, slots::timer::kTick);
                 }
             }
         }
@@ -391,9 +402,12 @@ void FlowRuntime::Impl::tick(float dt) {
 
     // The polled `#document.*` and `<anim>` `localTime` connection points (flow_bindings.cpp).
     // T-389: by index, re-reading the size: a callback may load another graph meanwhile.
-    pollDocumentOutputs(docs);
-    for (size_t i = 0; i < uiDocs.size() && !replacing(); ++i) {
-        pollDocumentOutputs(*uiDocs[i].state);
+    {
+        StageScope stage(*this, PerfStage::Poll);  // T-475.
+        pollDocumentOutputs(docs);
+        for (size_t i = 0; i < uiDocs.size() && !replacing(); ++i) {
+            pollDocumentOutputs(*uiDocs[i].state);
+        }
     }
     if (coalesce) {
         flushSignals();  // T-389: what the polls queued, and the dirty nodes.
@@ -402,6 +416,37 @@ void FlowRuntime::Impl::tick(float dt) {
         batching = false;
     }
     syncValueList();  // T-389: values() once per tick, not per push.
+    if (FrameStats* stats = perfStats()) {
+        stats->flowAllocs += static_cast<uint32_t>(xt::perf::AllocCounter::total() - allocsBefore -
+                                                   (sinkAllocs - sinkAllocsBefore));
+    }
+}
+
+void FlowRuntime::Impl::perfSwitch(PerfStage next) {
+    const auto now = std::chrono::steady_clock::now();
+    if (perfStage != PerfStage::None) {
+        if (FrameStats* stats = perfStats()) {
+            const float ms = std::chrono::duration<float, std::milli>(now - perfStageStart).count();
+            switch (perfStage) {
+                case PerfStage::Deliver:
+                    stats->flowDeliverMs += ms;
+                    break;
+                case PerfStage::Eval:
+                    stats->flowEvalMs += ms;
+                    break;
+                case PerfStage::Sink:
+                    stats->flowSinkMs += ms;
+                    break;
+                case PerfStage::Poll:
+                    stats->flowPollMs += ms;
+                    break;
+                case PerfStage::None:
+                    break;
+            }
+        }
+    }
+    perfStage = next;
+    perfStageStart = now;
 }
 
 FlowRuntime::FlowRuntime() : m_impl(std::make_unique<Impl>()) {}
@@ -428,13 +473,18 @@ std::span<const PortValue> FlowRuntime::values() const {
     if (!m_impl->loaded) {
         return {};
     }
-    m_impl->syncValueList();  // T-389: pushes outside tick() (pulse events) show at once too.
+    m_impl->valuesObserved = true;  // T-476: from now on syncValueList() runs every tick.
+    m_impl->syncValueList();        // T-389: pushes outside tick() (pulse events) show at once too.
     return std::span<const PortValue>(m_impl->valueList);
 }
 
 const std::vector<std::string>& FlowRuntime::valueNames() const {
     static const std::vector<std::string> kEmpty;
-    return m_impl->loaded ? m_impl->valueNamesList : kEmpty;
+    if (!m_impl->loaded) {
+        return kEmpty;
+    }
+    m_impl->valuesObserved = true;  // T-476: an observer of the value table.
+    return m_impl->valueNamesList;
 }
 
 const std::vector<std::string>& FlowRuntime::runtimeErrors() const {
@@ -483,5 +533,7 @@ void FlowRuntime::setHostEventListener(FlowHostEventListener listener) {
 void FlowRuntime::setEnabled(bool enabled) { m_impl->enabled = enabled; }
 
 bool FlowRuntime::enabled() const { return m_impl->enabled; }
+
+void FlowRuntime::setPerfTracker(PerfTracker* tracker) { m_impl->perfTracker = tracker; }
 
 }  // namespace xt::flow

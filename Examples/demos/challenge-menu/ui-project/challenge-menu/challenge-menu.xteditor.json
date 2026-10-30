@@ -7,6 +7,63 @@
       "position",
       "top",
       "width"
+    ],
+    "back-rule": [
+      "bottom",
+      "left",
+      "top"
+    ],
+    "bottom-rule-right": [
+      "bottom",
+      "left",
+      "right",
+      "top"
+    ],
+    "btn-back": [
+      "bottom",
+      "left",
+      "top"
+    ],
+    "drips": [
+      "bottom",
+      "height",
+      "left",
+      "right",
+      "top",
+      "width"
+    ],
+    "footer-rule": [
+      "bottom",
+      "left",
+      "top"
+    ],
+    "header": [
+      "left",
+      "right",
+      "top",
+      "width"
+    ],
+    "hint-text": [
+      "bottom",
+      "left",
+      "top"
+    ],
+    "profile-block": [
+      "bottom",
+      "left",
+      "right",
+      "top"
+    ],
+    "scene": [
+      "bottom",
+      "left",
+      "right",
+      "top"
+    ],
+    "status-online": [
+      "bottom",
+      "left",
+      "top"
     ]
   },
   "sounds": {},
@@ -23,7 +80,7 @@
     "playhead": 0.0,
     "scope": ""
   },
-  "v": 1,
+  "version": 1,
   "view": {
     "device": "16:9",
     "mode": "design",

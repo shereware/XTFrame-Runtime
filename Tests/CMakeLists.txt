@@ -124,6 +124,7 @@ add_executable(xt_tests
     unit/test_num_guard.cpp
     unit/test_runtime_bounds.cpp
     unit/test_style_numbers.cpp
+    unit/test_style_template.cpp
     unit/test_json_abi.cpp
     ir/ir_reserialize.cpp
     ir/test_ir_corpus.cpp

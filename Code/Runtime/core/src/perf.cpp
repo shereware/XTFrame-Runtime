@@ -111,3 +111,16 @@ void PerfTracker::reset() {
 }
 
 }  // namespace xt
+
+namespace xt::perf {
+
+namespace {
+// T-475: AllocCounter's count; per thread, so a tick only sees its own thread's allocations.
+thread_local uint64_t t_allocations = 0;
+}  // namespace
+
+void AllocCounter::record() noexcept { ++t_allocations; }
+
+uint64_t AllocCounter::total() noexcept { return t_allocations; }
+
+}  // namespace xt::perf

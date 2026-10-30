@@ -2,6 +2,9 @@
   "version": 1,
   "name": "Flow Big Large",
   "id": "flow-big",
+  "spec": {
+    "behavior": 1
+  },
   "uis": [
     {
       "id": "flow-big",

@@ -394,6 +394,51 @@ TEST_CASE("bindings: lerpColor, count, item and host converters") {
     CHECK(events.size() == 4);
 }
 
+TEST_CASE("T-478: port listeners added and removed while a notification runs") {
+    Ui ui = open(page("", R"X(<div id="P" port:a="number" port:b="number"></div>)X"));
+    std::vector<std::string> calls;
+    uint32_t idSecond = 0;
+    uint32_t idThird = 0;
+    uint32_t idAdded = 0;
+    // The first listener removes the second and itself, and adds one, on the first notification.
+    uint32_t idFirst = 0;
+    idFirst = ui.doc->addPortListener([&](const PortEvent&) {
+        calls.push_back("first");
+        ui.doc->removePortListener(idSecond);
+        ui.doc->removePortListener(idFirst);  // Itself, while it runs.
+        idAdded = ui.doc->addPortListener([&](const PortEvent&) { calls.push_back("added"); });
+    });
+    idSecond = ui.doc->addPortListener([&](const PortEvent&) { calls.push_back("second"); });
+    // The third sets another port from inside the callback: the nested notification sees the
+    // list as edited (no first, no second) and the listener added meanwhile.
+    bool nested = false;
+    idThird = ui.doc->addPortListener([&](const PortEvent& ev) {
+        calls.push_back(ev.port == ui.port("b") ? "third:b" : "third:a");
+        if (!nested) {
+            nested = true;
+            ui.set("b", 2);
+        }
+    });
+    ui.set("a", 1);
+    // first; second skipped (removed); third, whose nested `b` notification calls third and added;
+    // added itself is not called by the outer notification (it was not there when it started).
+    const std::vector<std::string> expected{"first", "third:a", "third:b", "added"};
+    CHECK(calls == expected);
+    calls.clear();
+    ui.set("a", 3);
+    const std::vector<std::string> after{"third:a", "added"};
+    CHECK(calls == after);
+    // Removed outside a notification; ids stay unique.
+    CHECK(idAdded != idFirst);
+    CHECK(idAdded != idSecond);
+    ui.doc->removePortListener(idThird);
+    ui.doc->removePortListener(idAdded);
+    ui.doc->removePortListener(idSecond);  // Already gone: no-op.
+    calls.clear();
+    ui.set("a", 4);
+    CHECK(calls.empty());
+}
+
 // -- Targets ------------------------------------------------------------------------------------
 
 TEST_CASE("bindings: property, visible, state, class and text targets mark only what changed") {

@@ -206,6 +206,30 @@ T-390 實作記錄（XF-065／066／068）：`:state(Disabled)` 在 `.xts` 選�
 
 連接點反射（`#<id>.<port>`：元素的 Click/PointerEnter/PointerLeave/Focus/Blur/AnimationEnd/Change/hover 輸出與 setText/addClass/removeClass/toggleClass/setStyle/setValue/focus/setProperty/playAnimation/stopAnimation 輸入；`<anim>` 的 Marker/localTime/Finished 與 play/pause/resume/seek/setSpeed；文件的 clock/viewport/pointer*）、訊號節點集（constant、counter、toggle、timer、clock、random、math、compare、toString、select、radio、lookup、merge、format）、`.xtflow` JSON 格式、型別與環的規則、`FlowRuntime` 介面——全部維持舊 17.6 的定義（見 git 歷史 `Docs/design/17-editor.md` v0.1 §17.6），本輪只新增：全域流圖、`ui#id.port` 引用、系統事件節點、`spawn`／`haptic`／`sound` 動作節點、多實例 id。
 
+### 27.4.2 flow 執行時效能（M37，2026-10-25 定案；使用者「使用所有合理招式來優化 flow 運作的效能」）
+
+**現況（讀碼，T-403 基線 大圖 0.257 ms／幀、典型 0.141）**：`FlowRuntime::Impl` 從頭到尾以**字串**為鍵——節點的 `params`／`inputValues`／`outputValues` 是 `std::map<std::string, PortValue>`，每次求值 `inputValues.find("a")` 都建一個 `std::string`；`paramStr(n, "op")` 回傳字串複本再逐一 `==` 比對；扇出索引是 `map<pair<int,string>, vector>`；每個文件訊號要組一次 `externalKey()`（三段字串串接）再查 `map<pair<ptr,string>>`／`lastOutputs`；`PortValue` 帶一個 `std::string`，數值也跟著複製；`Endpoint` 每次推送都建構含 `std::string port`。邊界也是文字：`set(port)` 把數字印成 17 位文字再讓核心解析；`format → setStyle` 每幀組 CSS 文字、核心逐字元解析（快取只對相同文字有效，跟著指標走的值永遠 miss）；`elementRefs.at(id)`／`lookupPort(name)` 每次投遞都查字串表；`pollDocumentOutputs` 每 tick 對每個 port 做字串比對與鍵串接；`syncValueList()` 每 tick 複製全部值給編輯器，遊戲裡沒人看。綁定執行時（core）已是槽位索引＋dirty 佇列，不是主要債。
+
+**目標**：同一份語意（§27.4.1 的批次、合併、回饋保護、順序、錯誤、編輯器可見的 `values()`／`edgeLastFired`／面板）不變，格式零變更（43 章），把執行時改成**載入時編譯成整數程式、tick 內零字串零配置**，邊界改走型別化 API。
+
+**裁決（全部做）**：
+
+1. **圖編譯（載入時）**：每種 `NodeType` 有固定的輸入／輸出／參數槽位表（`port → slot` 在編譯期以 `constexpr` 表給出）；`NodeRuntime` 改為 SoA：全 runtime 一個 `std::vector<RtValue> values`，節點只存 `inputBase`／`outputBase`／`paramBase` 偏移；`Math.op`／`Compare.op` 等字串參數在載入時解析成 enum；數值參數快取成 `double`；`Format`／`ToString` 的格式字串在載入時切成段（字面＋槽位），求值時只拼接。扇出改為 CSR：`fanOutStart[(node,outSlot)]` 進 `fanOutEdges[]`；`BoundEdge` 的端點以整數（節點、槽位、外部槽位）表示。
+2. **外部端點槽位化**：綁定時每個被引用的文件端點（元素 port、`#document.*`、`<anim>`、宣告 port、生命週期）配一個 `ExternalSlot` 整數；文件監聽回呼以**閉包捕捉槽位**，不再在回呼裡組 `externalKey`；待送訊號表 = 每槽位一個 `lastValue`＋pending 位元＋槽位索引陣列；`lastOutputs`／`pendingSignalIndex`／`externalFanOut` 三張字串 map 全部消失。
+3. **`RtValue`**：`{type, b, n, StringId}`——字串進 runtime 自己的 interner／短字串池（`FlowGraph` 與編輯器 API 的 `PortValue` 不變，只在 `values()`／`load()` 邊界轉換）；數值路徑不再碰 `std::string`。`Endpoint` 不再含字串。
+4. **型別化邊界**：`set(port)` 沉降點在綁定時快取 `PortId`／`PortDir`／`PortValueType`，數值與布林走 `Document::setPort(PortId, Value)`，字串才走 `setPortText`；元素沉降點快取 `ElementRef`（或 NodeId＋世代）；`setProperty` 快取 `PropId`；**`Format → setStyle` 編譯**：載入時若 format 字串能解析成「單一宣告清單、佔位符只出現在數值位置」（例：`transform: translate({a}px, {b}px)`、`width: {a}%`、`opacity: {a}`），就編成 `TypedStyleWrite{prop, unit, slots}`，求值時直接 `ref.setProperty(prop, Value)`／長度值，不組文字不解析；其他情況維持文字路徑（既有雜湊快取）。
+5. **tick 內零配置**：`fanOut`／`deliverToNode`／`evaluateNode`／`flushSignals`／`pollDocumentOutputs` 在穩態不得呼叫 `new`／`malloc`（debug 建置以配置計數器測試斷言）；`Format`／`ToString` 用節點自有的 scratch 緩衝並以 move 送出；`syncValueList()` 只在有觀察者（編輯器 `values()` 曾被呼叫或面板訂閱）時執行；`Timer`／`Clock` 的參數讀快取值。
+6. **量測**：`FrameStats` 加 `flowSignals`／`flowNodeEvals`／`flowSinkWrites`／`flowAllocs`（debug）與 `flowDeliverMs`／`flowEvalMs`／`flowSinkMs`；`Tests/perf/flow_big` 的 `flow_bench.py` 印分段；21 §21.6 的預算收緊為 **典型 ≤ 0.2、大圖 ≤ 0.8 ms**（基線目標：大圖 ≤ 0.08、典型 ≤ 0.05，即 ≥ 3×），p95 照記。
+7. **不做**：不改 `.xtflow` 格式；不改 §27.4.1 語意；不做多執行緒 flow（圖太小，同步成本高於收益）；不改綁定執行時結構（只量測，有熱點再開小單）。
+
+分期：T-475 量測與計數器 → T-476 圖編譯與槽位化 → T-477 型別化邊界 → T-478 零配置驗證、預算收緊、綁定端量測結論。每張 Opus，依序（同一批檔案）。
+
+> **實作記錄（T-476）**：`flow_slots.h` 的 constexpr 槽位表＋`RtValue`／`StringPool`（常數 intern，動態字串為各儲存位置自有的緩衝，不 intern 以免無界成長）＋SoA 節點（op enum、format 預切段、scratch swap）＋外部槽位（`ExternalSlotInfo` 保留描述子供錯誤訊息與文件綁定；文件層 `DocOutput` 輸出槽位由監聽閉包捕捉、`lastOutputs` 改為槽位陣列；待送表以「來源綁定」=（端點狀態, 外部槽位）為單位，全域 flow 多實例各一）＋CSR 扇出＋`valuesObserved`；`flowAllocs` 只算 flow 自身（文件寫入與文件查詢 `boundingBox` 內的配置另計排除），大／典型 fixture 改 `spec.behavior: 1`，Release behavior 1 flowMs 0.183→0.054／0.088→0.035 ms、穩態 flowAllocs 0（`xt_flow_alloc_tests` Debug 斷言）。
+
+> **實作記錄（T-477）**：`RtEdge::sink`（`SinkCache`：PortId／方向／型別、元素 NodeId＋世代、PropId；綁定時與 `rebind()` 解析，端點狀態的 Document／serial 變了才重解）；`set(port)` 的 number／entity／bool／event 走 `Document::setPort(Value)`（與 17 位文字的 `setPortText()` 經同一 `BindingRuntime::set()`，核心無差異、等價測試在 `test_style_template.cpp`），string／enum／color／vec 仍走文字；`Format`／`ToString → setStyle` 以核心新 API `compileStyleTemplate()`（以哨兵數值探測 mini_css、負值／零各自探測定義域）＋`ElementRef::setStyleTemplate()`（從文字依字面段取回數字直接寫 runtime 宣告，保留 setStyle 的雜湊 no-op 與 `setStyleCalls`，形狀不符回 kNotFound 改走 setStyle）實作「型別化寫入」——不用 `setProperty`，因其層級語意與 setStyle 的 cascade 不同；`<anim>` localTime 輪詢改快取 instance 指標；`Document::nodeToScreen` 無 3D 根時不建 vector；Release behavior 1（交錯 A/B 各兩輪）典型 flowMs 0.049→0.027、flowSinkMs 0.029→0.008，大圖 0.087→0.053／0.044→0.011 ms，`setStyleCalls` 不變，兩 fixture 的 set(port)＋setStyle 寫入 100% typed。
+
+> **實作記錄（T-478）**：`flowAllocs` 重新計入沉降寫入與 `boundingBox()` 讀取，只排除走文字的 `setStyle`（核心 CSS 解析）；計入後浮現的兩處核心配置一併修掉——`BindingRuntime::notifyListeners()` 每次 port 變更複製整份 `std::function` 監聽清單（改為 `std::deque` 就地依索引走訪，通知中移除記墓碑、最外層結束時壓縮，通知中新增者下一次通知才呼叫）、`flushDirty()` 每幀讓 `m_dirty` 歸零容量（改兩個緩衝交換容量）；`xt_flow_alloc_tests` 斷言兩 fixture 200 幀、第 50 幀起每幀 0 配置（含 set(port)／setStyle 寫入，typed 100%）；Release behavior 1（2000 幀、三輪取中）典型 flowMs 0.088→0.022、大圖 0.170→0.043 ms（4.0×／3.9×，達 ≥ 3× 目標）；綁定端 0.009 ms，未達 flowMs 一半（40 %／21 %，bind:width 與宿主 set(port) 觸發的 bind:height 約 3:7），不開 PENDING；報告 `Docs/reviews/2026-10-25-flow-perf-after.md`。
+
 ## 27.5 AI 製作時的標籤（轉換器契約）
 
 AI（skill、Claude Design）產出的 HTML/`.xt` 以 `data-xt-*` 標籤宣告意圖；匯入轉換器讀標籤生成 26/27/28 章的結構，**不生成 flow**。

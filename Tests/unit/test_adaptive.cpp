@@ -529,6 +529,40 @@ TEST_CASE("T-210: Document::fixedRoot() finds a px-sized UI root (body's only ch
     }
 }
 
+TEST_CASE("T-481: Document::fixedRoots() lists every board-sized px child of body") {
+    {
+        // #d is px on both axes but a 1280x3 scan line: not a root.
+        Loaded l(
+            compileDoc("#a{position:relative;width:1280px;height:720px} #b{position:relative;width:100vw;"
+                       "height:100vh} #c{position:absolute;width:1280px;height:720px} "
+                       "#d{position:absolute;width:1280px;height:3px}",
+                       R"(<div id="a"></div><div id="b"></div><div id="c"></div><div id="d"></div>)"),
+            1920, 1080);
+        const std::vector<ElementRef> roots = l.doc->fixedRoots(Vec2{1280, 720});
+        REQUIRE(roots.size() == 2);
+        CHECK(roots[0].id() == "a");
+        CHECK(roots[1].id() == "c");
+        CHECK(l.doc->fixedRoots(Vec2{1281, 721}).size() == 2);  // 1 px tolerance.
+        CHECK(l.doc->fixedRoots(Vec2{1920, 1080}).empty());     // Smaller than the board.
+        CHECK(l.doc->fixedRoots().empty());                     // No board: several children never count.
+        CHECK_FALSE(l.doc->fixedRoot().valid());
+    }
+    {
+        // Several children, none with both sizes px, body px: body is the one root.
+        Loaded l(compileDoc("body{width:1280px} #a{width:10px} #b{height:10px}",
+                            R"(<div id="a"></div><div id="b"></div>)"),
+                 1920, 1080);
+        const std::vector<ElementRef> roots = l.doc->fixedRoots(Vec2{1280, 720});
+        REQUIRE(roots.size() == 1);
+        CHECK(roots[0].tag() == "body");
+    }
+    {
+        Loaded l(compileDoc("#root{position:relative;width:100vw;height:100vh}", R"(<div id="root"></div>)"),
+                 1920, 1080);
+        CHECK(l.doc->fixedRoots().empty());
+    }
+}
+
 TEST_CASE("T-210: a fill-viewport root keeps safe-area anchors on the screen edges at any aspect") {
     const std::string css =
         "#root{position:relative;width:100vw;height:100vh}"

@@ -14,6 +14,7 @@
 #include "mini_css.h"
 #include "repeat_controller.h"
 #include "style_decode.h"
+#include "style_template_internal.h"
 #include "text_edit.h"
 #include "xt/assert.h"
 #include "xt/document.h"
@@ -115,6 +116,31 @@ const std::vector<mini_css::Decl>& parsedStyle(std::string_view text, uint64_t h
     }
     status = cache.lru.front().status;
     return cache.lru.front().decls;
+}
+
+/// The runtime declaration write setStyle() and setStyleTemplate() (T-477) share: `out` replaces
+/// the element's declaration of the same property (keeping its T-270e warning flag) or is
+/// appended. Returns the stored declaration.
+RuntimeStyleDecl& storeRuntimeDecl(ElementData& data, RuntimeStyleDecl out) {
+    if (out.prop == prop::BorderColor) {
+        // T-333 (05 §5.9.8): like CSS's `border-color` shorthand, the one-color form resets
+        // the sides an earlier setStyle gave their own colors.
+        data.runtimeDecls.erase(std::remove_if(data.runtimeDecls.begin(), data.runtimeDecls.end(),
+                                               [](const RuntimeStyleDecl& d) {
+                                                   return d.prop >= prop::BorderTopColor &&
+                                                          d.prop <= prop::BorderLeftColor;
+                                               }),
+                                data.runtimeDecls.end());
+    }
+    for (RuntimeStyleDecl& existing : data.runtimeDecls) {
+        if (existing.prop == out.prop) {
+            out.undeclaredNameWarned = existing.undeclaredNameWarned;
+            existing = out;
+            return existing;
+        }
+    }
+    data.runtimeDecls.push_back(out);
+    return data.runtimeDecls.back();
 }
 
 /// T-270e: the warning for a setStyle value that names what the compiled document does not have,
@@ -549,29 +575,7 @@ Status ElementRef::setStyle(std::string_view cssDeclarations) {
                     known != kInvalidString ? known : doc->setNodeText(node, decl.prop, decl.text);
             }
         }
-        if (out.prop == prop::BorderColor) {
-            // T-333 (05 §5.9.8): like CSS's `border-color` shorthand, the one-color form resets
-            // the sides an earlier setStyle gave their own colors.
-            data.runtimeDecls.erase(std::remove_if(data.runtimeDecls.begin(), data.runtimeDecls.end(),
-                                                   [](const RuntimeStyleDecl& d) {
-                                                       return d.prop >= prop::BorderTopColor &&
-                                                              d.prop <= prop::BorderLeftColor;
-                                                   }),
-                                    data.runtimeDecls.end());
-        }
-        RuntimeStyleDecl* written = nullptr;
-        for (RuntimeStyleDecl& existing : data.runtimeDecls) {
-            if (existing.prop == out.prop) {
-                out.undeclaredNameWarned = existing.undeclaredNameWarned;
-                existing = out;
-                written = &existing;
-                break;
-            }
-        }
-        if (written == nullptr) {
-            data.runtimeDecls.push_back(out);
-            written = &data.runtimeDecls.back();
-        }
+        RuntimeStyleDecl* written = &storeRuntimeDecl(data, out);
         // T-270e: a font family / image the compiled document does not have still does nothing,
         // but says so, once per element and property, here where the value is written.
         if (written->undeclaredNameWarned == 0) {
@@ -594,6 +598,43 @@ Status ElementRef::setStyle(std::string_view cssDeclarations) {
     written.setStyleLength = static_cast<uint32_t>(cssDeclarations.size());
     written.setStyleStatus = static_cast<uint8_t>(status);
     return status;
+}
+
+Status ElementRef::setStyleTemplate(const StyleTemplate& tmpl, std::string_view cssDeclarations) {
+    // Read first: a text of another shape is setStyle()'s, and nothing may have happened then.
+    float numbers[StyleTemplate::kMaxHoles];
+    if (!readStyleTemplateNumbers(tmpl, cssDeclarations, numbers)) {
+        return Status::kNotFound;
+    }
+    if (!acceptsMutation(*this)) {
+        return Status::kInvalidArgument;
+    }
+    if (doc->m_perf->enabled()) {
+        ++doc->m_perf->current().setStyleCalls;  // As setStyle() (T-389, 21 §21.1).
+    }
+    NodeArena& arena = doc->arena();
+    ElementData& data = arena.element(node);
+    // setStyle()'s own shortcut, by the same text hash: this text parses to the template's
+    // declarations with status kOk, which is what setStyle() would have stored for it.
+    const uint64_t hash = styleTextHash(cssDeclarations);
+    if (data.setStyleHash == hash && data.setStyleLength == cssDeclarations.size()) {
+        return static_cast<Status>(data.setStyleStatus);
+    }
+    // Plain values only (compileStyleTemplate()): nothing to intern or pool, no `animation`, and
+    // no T-270e name warning (it needs a name).
+    for (size_t i = 0; i < tmpl.decls.size(); ++i) {
+        RuntimeStyleDecl out;
+        out.prop = tmpl.decls[i].prop;
+        out.important = tmpl.decls[i].important;
+        fillStyleTemplateValue(tmpl, i, numbers, out.value);
+        storeRuntimeDecl(data, out);
+    }
+    markStyleDirtySubtree(arena, node);
+    ElementData& written = arena.element(node);
+    written.setStyleHash = hash;
+    written.setStyleLength = static_cast<uint32_t>(cssDeclarations.size());
+    written.setStyleStatus = static_cast<uint8_t>(Status::kOk);
+    return Status::kOk;
 }
 
 void ElementRef::setProperty(PropId prop, const Value& value, bool sticky) {

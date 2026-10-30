@@ -1381,6 +1381,11 @@ void printPerfSummary(const xt::PerfSummary& s, float damageAreaPercent = -1.0f)
     row("  text", s.avg.textMs, s.max.textMs);
     row("damage", s.avg.damageMs, s.max.damageMs);
     row("flow", s.avg.flowMs, s.max.flowMs);
+    // T-475 (21 §21.6): exclusive flow stages; below behavior 1 they also run inside input.
+    row("  deliver", s.avg.flowDeliverMs, s.max.flowDeliverMs);
+    row("  eval", s.avg.flowEvalMs, s.max.flowEvalMs);
+    row("  sink", s.avg.flowSinkMs, s.max.flowSinkMs);
+    row("  poll", s.avg.flowPollMs, s.max.flowPollMs);
     // SW backend breakdown (T-82); all zero for the GL backend.
     row("  sw:path", s.avg.swPathMs, s.max.swPathMs);
     row("  sw:raster", s.avg.swRasterMs, s.max.swRasterMs);
@@ -1432,6 +1437,14 @@ void printPerfSummary(const xt::PerfSummary& s, float damageAreaPercent = -1.0f)
     count("pyramidLevels", s.avg.pyramidLevels, s.max.pyramidLevels);
     count("directFallback", s.avg.directFallback, s.max.directFallback);
     count("setStyle", s.avg.setStyleCalls, s.max.setStyleCalls);  // T-389
+    count("flowSignals", s.avg.flowSignals, s.max.flowSignals);   // T-475
+    count("flowCoalesced", s.avg.flowSignalsCoalesced, s.max.flowSignalsCoalesced);
+    count("flowEvals", s.avg.flowNodeEvals, s.max.flowNodeEvals);
+    count("flowSinkWrites", s.avg.flowSinkWrites, s.max.flowSinkWrites);
+    count("flowFanOut", s.avg.flowFanOutEdges, s.max.flowFanOutEdges);
+    count("flowSinkTyped", s.avg.flowSinkTyped, s.max.flowSinkTyped);  // T-477
+    count("flowSinkText", s.avg.flowSinkText, s.max.flowSinkText);
+    count("flowAllocs", s.avg.flowAllocs, s.max.flowAllocs);
 }
 
 /// T-343: `--scene` strips the editor-only subtree (the reference frame under a HUD) so the
@@ -2357,6 +2370,7 @@ int main(int argc, char** argv) {
 
         xt::flow::FlowRuntime flowRuntime;
         flowRuntime.setHostEventListener(printFlowEvent);
+        flowRuntime.setPerfTracker(&ctx.perf());  // T-475 (21 §21.6): the flow stages and counters.
         targets.main = &flowRuntime;
         targets.ctx = &ctx;
         bool hasFlow = !args.flow.empty();
@@ -2659,6 +2673,7 @@ int main(int argc, char** argv) {
 
     xt::flow::FlowRuntime flowRuntime;
     flowRuntime.setHostEventListener(printFlowEvent);
+    flowRuntime.setPerfTracker(&app.context().perf());  // T-475 (21 §21.6).
     targets.main = &flowRuntime;
     targets.ctx = &app.context();
     bool hasFlow = !args.flow.empty();
