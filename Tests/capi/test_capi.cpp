@@ -471,3 +471,145 @@ TEST_CASE("capi 11 (T-552, review K4): the stride check is done in size_t; a row
     xt_surface_destroy(s);
     CHECK(xt_bundle_close(b) == XT_STATUS_OK);
 }
+
+namespace {
+
+/// T-561: a run_flow = 0 host's flow executor. Records #card.Click as the queued input is dispatched
+/// inside xt_surface_update and answers it from the update hook, like xt_flow's
+/// `#card.Click -> #card.toggleClass(flipped)` edge in the fixture's .xtflow.
+struct HookExecutor {
+    uint32_t clickId = 0;
+    int clicks = 0;
+    int hookCalls = 0;
+    float lastDt = -1.0f;
+    xt_status pulse = XT_STATUS_OK;
+    xt_status destroyInside = XT_STATUS_OK;
+    static void onPort(xt_surface* /*s*/, const xt_port_event* e, void* user) {
+        auto* self = static_cast<HookExecutor*>(user);
+        if (e->kind == XT_PORT_CONNECTION && e->listener_id == self->clickId) {
+            ++self->clicks;
+        }
+    }
+    static void onUpdate(xt_surface* s, float dt, void* user) {
+        auto* self = static_cast<HookExecutor*>(user);
+        ++self->hookCalls;
+        self->lastDt = dt;
+        for (; self->clicks > 0; --self->clicks) {
+            self->pulse = xt_surface_connection_pulse(s, "#card.toggleClass", "flipped");
+        }
+        self->destroyInside = xt_surface_hot_reload(s);  // Refused inside a callback.
+    }
+};
+
+/// The center pixel of a square surface: r, g, b, a.
+struct Rgba {
+    int r, g, b, a;
+};
+Rgba center(const Pixels& pixels) {
+    const size_t at = (static_cast<size_t>(pixels.height / 2) * static_cast<size_t>(pixels.width) +
+                       static_cast<size_t>(pixels.width / 2)) *
+                      4u;
+    return Rgba{pixels.rgba[at], pixels.rgba[at + 1], pixels.rgba[at + 2], pixels.rgba[at + 3]};
+}
+
+void click(xt_surface* s, float x, float y) {
+    xt_input_event move = pointer(XT_INPUT_POINTER_MOVE, x, y);
+    xt_input_event down = pointer(XT_INPUT_POINTER_DOWN, x, y);
+    xt_input_event up = pointer(XT_INPUT_POINTER_UP, x, y);
+    REQUIRE(xt_surface_push_input(s, &move) == XT_STATUS_OK);
+    REQUIRE(xt_surface_push_input(s, &down) == XT_STATUS_OK);
+    REQUIRE(xt_surface_push_input(s, &up) == XT_STATUS_OK);
+}
+
+}  // namespace
+
+TEST_CASE("capi 12 (T-561): a pulse from the update hook renders like run_flow = 1 in the same frame") {
+    xt_bundle* b = xt_bundle_open(XT_CAPI_TEST_FLIP_BUNDLE);
+    REQUIRE_MESSAGE(b != nullptr, xt_capi_last_error());
+    xt_surface_desc desc = makeDesc(64, 64);
+    xt_surface* flow = xt_surface_create(b, "flip", &desc);  // run_flow = 1: the .xtflow edge.
+    REQUIRE_MESSAGE(flow != nullptr, xt_capi_last_error());
+    desc.run_flow = 0;
+    xt_surface* hooked = xt_surface_create(b, "flip", &desc);  // run_flow = 0: the update hook.
+    REQUIRE_MESSAGE(hooked != nullptr, xt_capi_last_error());
+    HookExecutor exec;
+    REQUIRE(xt_surface_connection_watch(hooked, "#card.Click", &exec.clickId) == XT_STATUS_OK);
+    REQUIRE(xt_surface_set_port_listener(hooked, &HookExecutor::onPort, &exec) == XT_STATUS_OK);
+    REQUIRE(xt_surface_set_update_hook(hooked, &HookExecutor::onUpdate, &exec) == XT_STATUS_OK);
+    CHECK(xt_surface_set_update_hook(nullptr, &HookExecutor::onUpdate, &exec) == XT_STATUS_INVALID_ARGUMENT);
+
+    Pixels flowPixels(64, 64);
+    Pixels hookPixels(64, 64);
+    xt_damage damage{};
+    auto frame = [&](float dt) {
+        REQUIRE(xt_surface_update(flow, dt) == XT_STATUS_OK);
+        REQUIRE(xt_surface_update(hooked, dt) == XT_STATUS_OK);
+        REQUIRE(flowPixels.render(flow, damage) == XT_STATUS_OK);
+        REQUIRE(hookPixels.render(hooked, damage) == XT_STATUS_OK);
+    };
+    frame(0.0f);
+    CHECK(exec.hookCalls == 1);
+    CHECK(exec.lastDt == 0.0f);
+    CHECK(exec.destroyInside == XT_STATUS_UNSUPPORTED);
+    const Rgba before = center(hookPixels);
+    CHECK(before.r > 200);
+    CHECK(before.b < 50);
+    CHECK(flowPixels.rgba == hookPixels.rgba);
+
+    click(flow, 32.0f, 32.0f);
+    click(hooked, 32.0f, 32.0f);
+    frame(0.25f);  // The click, the toggle and its style resolution all in this frame.
+    CHECK(exec.hookCalls == 2);
+    CHECK(exec.lastDt == 0.25f);
+    CHECK(exec.clicks == 0);
+    CHECK(exec.pulse == XT_STATUS_OK);
+    const Rgba flipped = center(hookPixels);
+    INFO("rgba " << flipped.r << " " << flipped.g << " " << flipped.b << " " << flipped.a);
+    CHECK(flipped.b > 200);  // Blue at once; the opacity transition at progress 0.
+    CHECK(flipped.r < 50);
+    CHECK(flipped.a > 200);
+    CHECK(flowPixels.rgba == hookPixels.rgba);
+
+    frame(0.5f);  // Half way through the 1s fade, started at the toggle frame in both.
+    const Rgba half = center(hookPixels);
+    INFO("rgba " << half.r << " " << half.g << " " << half.b << " " << half.a);
+    CHECK(half.a > 64);
+    CHECK(half.a < 192);
+    CHECK(flowPixels.rgba == hookPixels.rgba);
+
+    REQUIRE(xt_surface_set_update_hook(hooked, nullptr, nullptr) == XT_STATUS_OK);  // NULL removes it.
+    frame(0.0f);
+    CHECK(exec.hookCalls == 3);
+    xt_surface_destroy(hooked);
+    xt_surface_destroy(flow);
+    CHECK(xt_bundle_close(b) == XT_STATUS_OK);
+}
+
+TEST_CASE("capi 13 (T-561): a write after xt_surface_update and before render lands at the next update") {
+    xt_bundle* b = xt_bundle_open(XT_CAPI_TEST_FLIP_BUNDLE);
+    REQUIRE_MESSAGE(b != nullptr, xt_capi_last_error());
+    xt_surface_desc desc = makeDesc(64, 64);
+    desc.run_flow = 0;
+    xt_surface* s = xt_surface_create(b, "flip", &desc);
+    REQUIRE_MESSAGE(s != nullptr, xt_capi_last_error());
+    Pixels pixels(64, 64);
+    xt_damage damage{};
+    REQUIRE(xt_surface_update(s, 0.0f) == XT_STATUS_OK);
+    REQUIRE(pixels.render(s, damage) == XT_STATUS_OK);
+    REQUIRE(xt_surface_update(s, 0.25f) == XT_STATUS_OK);
+    REQUIRE(xt_surface_connection_pulse(s, "#card.toggleClass", "flipped") == XT_STATUS_OK);
+    REQUIRE(pixels.render(s, damage) == XT_STATUS_OK);
+    const Rgba still = center(pixels);
+    INFO("rgba " << still.r << " " << still.g << " " << still.b << " " << still.a);
+    CHECK(still.r > 200);  // Only marked dirty: this frame still shows the red card.
+    CHECK(still.b < 50);
+    REQUIRE(xt_surface_update(s, 0.25f) == XT_STATUS_OK);
+    REQUIRE(pixels.render(s, damage) == XT_STATUS_OK);
+    const Rgba next = center(pixels);
+    INFO("rgba " << next.r << " " << next.g << " " << next.b << " " << next.a);
+    CHECK(next.b > 200);  // Resolved at this update: blue, the fade starting now (progress 0).
+    CHECK(next.r < 50);
+    CHECK(next.a > 200);
+    xt_surface_destroy(s);
+    CHECK(xt_bundle_close(b) == XT_STATUS_OK);
+}

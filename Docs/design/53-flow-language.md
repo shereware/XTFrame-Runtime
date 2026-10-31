@@ -380,6 +380,8 @@ flow 在遊戲端由宿主執行（宿主插件內建 `xt_flow`；宿主可關�
 
 測試：`compare: every op`、`compare: true/false pulses only fire when the result actually changes`。
 
+**混型比較（2026-10-31 定案，XTAtrium 空白 2；來源 `flow_nodes.cpp` `case NodeType::Compare`、`numericOperand`、`compareWith`）**：只有 `a` 與 `b` **都是 string** 時以字串比較（`std::string` 的 `==`／`<` 等，位元組序，不做 locale）；否則一律數值比較：number 取值、bool 取 0／1、**string 取 0**（不解析成數字）、未連線取 0。`op` 未知時結果為 false。
+
 ### 53.4.9 `toString`
 
 | 項目 | 定義 |
@@ -391,6 +393,13 @@ flow 在遊戲端由宿主執行（宿主插件內建 `xt_flow`；宿主可關�
 | 成本 | 重算 |
 
 測試：`toString: decimals, shortest representation, format substitution, passthrough`。
+
+**數字的文字形（2026-10-31 定案，XTAtrium 空白 1；來源 `flow_nodes.cpp` 的 `appendValueText` → `xt::formatFloat`／`xt::formatFixed`，`Code/Runtime/core/src/charconv.cpp`）**：
+- 無 `decimals`：`std::to_chars(value, std::chars_format::general, 6)`，即 C 的 `%.6g` 語意——6 位有效數字、尾零與尾小數點去除、指數在 < 1e-4 或 ≥ 1e6 時用科學記號（`1.23457e+07`、`1e-05`）；`12345678` → `1.23457e+07`，`0.5` → `0.5`，`100` → `100`，`1e6` → `1e+06`。
+- 有 `decimals`：`std::to_chars(value, std::chars_format::fixed, decimals)`，即 `%.*f`；`decimals` 只夾下限 0（負值當 0），沒有上限，但輸出緩衝 64 字元，放不下時輸出**空字串**（`formatFixed` 回 0）。
+- 特殊值（`to_chars` 行為）：負零 → `-0`；NaN → `nan`（負號位設定時 `-nan`）；±inf → `inf`／`-inf`。小數點永遠是 `.`（不受 locale 影響；沒有 `to_chars` 的平台走 `printf` 後把 locale 小數點換回 `.`）。
+- bool → `true`／`false`；pulse 或尚無值 → 空字串。
+- `format` 的 `{a}`..`{d}` 與 `toString` 的 `{}` 用同一條規則。
 
 ### 53.4.10 `select`
 
@@ -739,7 +748,7 @@ uiId → `DocumentHandle`（多實例可多個）、擁有全域 runtime 與每 
 
 以實作為準、改文件者（實作有測試且語意合理）：
 
-1. `compare` 的 `a`／`b` 是彈性輸入（任何值型，含 bool）；混型時數值比較（bool 當 0／1、string 讀數）。
+1. `compare` 的 `a`／`b` 是彈性輸入（任何值型，含 bool）；只有兩邊都是 string 才比字串，否則數值比較（bool 當 0／1、**string 當 0，不解析**；§53.4.8）。
 3. 連續標記：只有 `select.cond`（與 `compare` 的 bool 輸出、`lookup` 的輸出）切斷；`select.out` 在 `a` 或 `b` 帶標記時延續——「選兩個連續值之一」仍是連續。27 §27.4.3 正文改。
 4. `state` 的 `enter*`／`exit*` 直接回接自己的事件輸入是 pulse 自環，依一般規則放行；經第二個節點繞回才是環。27 §27.4.4 規則列改。
 5. `state` 的事件名不得與 `set`、`guard`、`state`、`index`、`changed` 衝突。

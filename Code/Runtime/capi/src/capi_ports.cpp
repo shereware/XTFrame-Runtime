@@ -434,4 +434,13 @@ XT_CAPI xt_status xt_surface_set_visibility_listener(xt_surface* s, xt_visibilit
     });
 }
 
+XT_CAPI xt_status xt_surface_set_update_hook(xt_surface* s, xt_update_hook_fn fn, void* user) {
+    XT_CAPI_GUARD("xt_surface_set_update_hook", {
+        XT_CAPI_REQUIRE_SURFACE(s, "xt_surface_set_update_hook");
+        s->updateHookFn = fn;
+        s->updateHookUser = fn != nullptr ? user : nullptr;
+        return XT_STATUS_OK;
+    });
+}
+
 }  // extern "C"

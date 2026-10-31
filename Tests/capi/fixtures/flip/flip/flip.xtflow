@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "nodes": [],
+  "edges": [
+    {
+      "from": "#card.Click",
+      "to": "#card.toggleClass",
+      "params": {
+        "class": "flipped"
+      }
+    }
+  ]
+}

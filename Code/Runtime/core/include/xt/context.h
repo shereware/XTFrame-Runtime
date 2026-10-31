@@ -26,6 +26,7 @@ namespace xt {
 
 class TextShaper;
 class AssetResolver;
+class Context;
 class DispatchGuard;  // Code/Runtime/core/src/dispatch_guard.h (private; T-260a).
 
 /// Borrowed dependencies a Context is constructed with. See Docs/design/13-api.md §13.1.
@@ -175,6 +176,11 @@ public:
     /// languageChanged, platform, inputDevice, back, reducedMotion); xt::flow::BundleContext
     /// forwards it to its flows.
     virtual void onSystemEvent(std::string_view /*kind*/, std::string_view /*value*/) {}
+    /// T-561 (13.8.3): once per Context::update(), after input dispatch (refreshHover, queued
+    /// input) and before every Document::update(). Writes made here (classes, styles, text, ports)
+    /// land where xt_flow's pulse edges do: resolved this frame, transitions start at this frame's
+    /// clock. Unload / reload requested here are deferred like in any other callback (13.9).
+    virtual void onBeforeDocumentUpdate(Context& /*context*/) {}
 };
 
 /// Owns every loaded Document, the shared clock, and the per-frame update/render entry points

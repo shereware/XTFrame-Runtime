@@ -13,6 +13,8 @@
 ```
 每幀：
   host events ──pushInput──▶ Context ──update(dt)──▶ render(list, &damage)
+
+> **寫入的生效時機（T-561，2026-10-31）**：`update(dt)` 內部順序是 輸入派送（hover 重判、事件路由；觸發器與 xt_flow 的**脈衝**邊在這裡同步執行）→ `ContextListener::onBeforeDocumentUpdate` → 各 Document 的樣式解算／animator／layout。`render` **不重解**樣式。所以宿主在 `update` 返回後、`render` 之前做的寫入（class、style、text、port）只標 dirty，**下一次 `update` 才生效**，transition 的起點時鐘也取下一幀；要與 xt_flow 同幀，必須在事件回呼內或 `onBeforeDocumentUpdate`／C ABI `xt_surface_set_update_hook` 內寫。值型訊號（xt_flow 按幀合併）本來就在 update 之後的 tick 送出，兩邊一致。
                                                         │
                         SwRenderer::render(list, ..., &damage) ──▶ RGBA 緩衝（宿主擁有）
                                                         │

@@ -672,3 +672,116 @@ TEST_CASE("reentrancy: Animator iteration / marker callbacks play and stop insta
         CHECK(markers == 1);
     }
 }
+
+// -- T-561: ContextListener::onBeforeDocumentUpdate (13 §13.8.3) ---------------------------------
+
+namespace {
+
+constexpr const char* kFlipStyle = R"X(
+  #card { position: absolute; left: 0px; top: 0px; width: 40px; height: 40px; opacity: 0;
+          transition: opacity 1s linear; }
+  #card.flipped { opacity: 1; }
+)X";
+
+struct BeforeUpdateListener : ContextListener {
+    std::function<void(Context&)> before;
+    int calls = 0;
+    void onBeforeDocumentUpdate(Context& context) override {
+        ++calls;
+        if (before) {
+            before(context);
+        }
+    }
+};
+
+}  // namespace
+
+TEST_CASE(
+    "T-561: a class toggled in onBeforeDocumentUpdate is resolved and starts its transition this frame") {
+    CompileResult r = compileXt(doc(kFlipStyle, "<div id=\"card\"></div>"));
+    REQUIRE(r.ok());
+    Context ctx(ContextConfig{});
+    ctx.setViewport(Rect{0, 0, 200, 100}, 1.0f);
+    Result<DocumentHandle> h = ctx.loadDocument(blobOf(r), false);
+    REQUIRE(h.ok());
+    Document* d = ctx.document(h.value());
+    REQUIRE(d != nullptr);
+    ElementRef card = d->byId("card");
+    REQUIRE(card.valid());
+    ctx.update(0.0f);  // Settled at clock 0: opacity 0, no transition.
+    CHECK(d->animator().transitionCount() == 0);
+
+    BeforeUpdateListener listener;
+    bool toggle = true;
+    listener.before = [&](Context& c) {
+        CHECK(&c == &ctx);
+        if (toggle) {
+            toggle = false;
+            CHECK(card.toggleClass("flipped"));
+        }
+    };
+    ctx.addListener(&listener);
+    ctx.update(0.25f);  // Clock 0.25: the toggle lands before this frame's style resolution.
+    CHECK(listener.calls == 1);
+    CHECK(card.hasClass("flipped"));
+    CHECK(d->animator().transitionCount() == 1);
+    CHECK(card.property(prop::Opacity).f == doctest::Approx(0.0f));  // Progress 0.
+    ctx.update(0.5f);  // Clock 0.75: half way only if the transition started at 0.25.
+    CHECK(listener.calls == 2);
+    CHECK(card.property(prop::Opacity).f == doctest::Approx(0.5f).epsilon(0.02));
+    ctx.removeListener(&listener);
+}
+
+TEST_CASE("T-561: a class toggled after Context::update() starts its transition at the next update") {
+    CompileResult r = compileXt(doc(kFlipStyle, "<div id=\"card\"></div>"));
+    REQUIRE(r.ok());
+    Context ctx(ContextConfig{});
+    ctx.setViewport(Rect{0, 0, 200, 100}, 1.0f);
+    Result<DocumentHandle> h = ctx.loadDocument(blobOf(r), false);
+    REQUIRE(h.ok());
+    Document* d = ctx.document(h.value());
+    REQUIRE(d != nullptr);
+    ElementRef card = d->byId("card");
+    REQUIRE(card.valid());
+    ctx.update(0.0f);
+    ctx.update(0.25f);
+    CHECK(card.toggleClass("flipped"));  // After update(), before render: only marked dirty.
+    CHECK(d->animator().transitionCount() == 0);
+    CHECK(card.property(prop::Opacity).f == doctest::Approx(0.0f));
+    ctx.update(0.5f);  // Clock 0.75: resolved now, so the transition starts at 0.75.
+    CHECK(d->animator().transitionCount() == 1);
+    CHECK(card.property(prop::Opacity).f == doctest::Approx(0.0f));
+    ctx.update(0.5f);  // Clock 1.25: half way.
+    CHECK(card.property(prop::Opacity).f == doctest::Approx(0.5f).epsilon(0.02));
+}
+
+TEST_CASE("T-561: unloadDocument from onBeforeDocumentUpdate is deferred until update() returns") {
+    CompileResult r = compileXt(doc(kFlipStyle, "<div id=\"card\"></div>"));
+    REQUIRE(r.ok());
+    Context ctx(ContextConfig{});
+    ctx.setViewport(Rect{0, 0, 200, 100}, 1.0f);
+    Result<DocumentHandle> h = ctx.loadDocument(blobOf(r), false);
+    REQUIRE(h.ok());
+    const DocumentHandle handle = h.value();
+    ctx.update(0.0f);
+
+    BeforeUpdateListener listener;
+    bool goneAtOnce = false;
+    listener.before = [&](Context& c) {
+        if (c.document(handle) != nullptr) {
+            c.unloadDocument(handle);
+            goneAtOnce = c.document(handle) == nullptr;
+        }
+    };
+    ctx.addListener(&listener);
+    ctx.update(0.1f);
+    CHECK(listener.calls == 1);
+    CHECK(goneAtOnce);
+    CHECK(ctx.document(handle) == nullptr);
+    ctx.update(0.1f);  // Still called with no Document left.
+    CHECK(listener.calls == 2);
+    CommandList cmds;
+    ctx.render(cmds);
+    CHECK(cmds.commands.empty());
+    ctx.removeListener(&listener);
+}

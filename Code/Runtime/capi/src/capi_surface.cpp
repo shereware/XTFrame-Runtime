@@ -50,6 +50,14 @@ void xt_surface::onHidden(xt::DocumentHandle document) {
     xt::capi::callbackGuard("the visibility callback", [&] { visibilityFn(this, 0, visibilityUser); });
 }
 
+void xt_surface::onBeforeDocumentUpdate(xt::Context& context) {
+    // T-561 (50.3): inside xt_surface_update (its DispatchScope is open, so destroy / hot_reload refuse).
+    if (&context != ctx.get() || updateHookFn == nullptr) {
+        return;
+    }
+    xt::capi::callbackGuard("the update hook", [&] { updateHookFn(this, updateDt, updateHookUser); });
+}
+
 namespace xt::capi {
 
 void applyUiScale(xt_surface& s) {
@@ -423,6 +431,7 @@ XT_CAPI xt_status xt_surface_update(xt_surface* s, float dt) {
             return fail(XT_STATUS_INVALID_ARGUMENT, "xt_surface_update: dt must be finite and >= 0");
         }
         xt::capi::DispatchScope scope(*s);
+        s->updateDt = dt;  // T-561: for the update hook, called inside ctx->update().
         s->ctx->update(dt);
         if (s->bundleCtx != nullptr) {
             s->bundleCtx->tick(dt);

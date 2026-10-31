@@ -193,6 +193,8 @@ T-156：`xt::shell` 加 `enum class FitMode { Native, Stretch, Contain, Cover, C
 - `hotReload(bundleDelta)`：manifest／樣式／字串／字型／符號變更不重建 Context，保留 port 值與狀態（22.10）。
 - flow：`FlowRuntime` 可由宿主載入 `bundle.xtflow` 與各 UI 的 `.xtflow`，開關 `enableFlow(bool)`。
 
+**`ContextListener::onBeforeDocumentUpdate(Context&)`（T-561，2026-10-31 定案；XTAtrium conformance 發現）**：`Context::update(dt)` 在輸入派送（`refreshHover`、`drainInput`／`routeInput`）之後、每個 `Document::update(clock)`（樣式解算、animator、layout）之前，對每個 `ContextListener` 呼叫一次；預設實作為空。用途：外部流圖執行器（或任何宿主邏輯）在這裡做的寫入（`ElementRef` 的 class／style／text、`Document::setPort`、`HostPorts::setInput`）與 xt_flow 脈衝邊同步執行的落點**相同**，本幀解算、transition 起點時鐘取本幀。回呼內的規則同其他 listener（13.9 重入：不得 `unload`／`reload`，可延後）。
+
 ### 13.8.4 T-172 實作簽名（#171）
 
 `Context::playTimeline(std::string_view scopePath, std::string_view name, const PlayOptions&) → Status`、`stopTimeline(scopePath, name)`、`seekTimeline(scopePath, name, float t)`（作用於前景起第一個含該群組的文件）；`Document::timelineTime(name)`、`isTimelinePlaying(name)`、`setTimelineListener(TimelineListener*)`（單一 listener；`removeTimelineListener` 之後補）。`PlayOptions { bool reverse, loop, once, hold; std::string_view fromMarker; float rate = 1; }`。

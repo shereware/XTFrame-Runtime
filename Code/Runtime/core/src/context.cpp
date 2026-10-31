@@ -671,6 +671,15 @@ void Context::update(float dt) {
         }
     }
 
+    // T-561 (13.8.3): after input dispatch, before the Documents resolve: a listener's writes land
+    // in this frame like xt_flow's pulse edges. Unload / reload it asks for wait for `dispatch`.
+    if (!m_listeners.empty()) {
+        const std::vector<ContextListener*> listeners = m_listeners;  // Callbacks may edit the list.
+        for (ContextListener* listener : listeners) {
+            listener->onBeforeDocumentUpdate(*this);
+        }
+    }
+
     for (size_t i = 0; i < count; ++i) {  // By index (see `count` above).
         if (Document* doc = liveAt(i)) {
             doc->update(m_clock);

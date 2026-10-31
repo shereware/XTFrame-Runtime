@@ -194,6 +194,11 @@ struct xt_surface : public xt::ContextListener {
     void* timelineUser = nullptr;
     xt_visibility_fn visibilityFn = nullptr;
     void* visibilityUser = nullptr;
+    /// T-561 (50.3 xt_surface_set_update_hook): called from onBeforeDocumentUpdate.
+    xt_update_hook_fn updateHookFn = nullptr;
+    void* updateHookUser = nullptr;
+    /// The dt of the xt_surface_update() running now (handed to the update hook).
+    float updateDt = 0.0f;
     /// Calls running that may call back (50.3: destroy / hot_reload / bundle_close refuse inside).
     uint32_t dispatchDepth = 0;
     uint32_t debugInputCount = 0;
@@ -205,6 +210,7 @@ struct xt_surface : public xt::ContextListener {
 
     void onShown(xt::DocumentHandle document) override;
     void onHidden(xt::DocumentHandle document) override;
+    void onBeforeDocumentUpdate(xt::Context& context) override;
 };
 
 namespace xt::capi {

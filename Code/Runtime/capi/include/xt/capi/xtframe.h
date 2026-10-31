@@ -255,6 +255,14 @@ XT_CAPI xt_status   xt_surface_frame_stats(const xt_surface* s, xt_frame_stats* 
    handed to its Context so far (a TEXT_INPUT event counts once per code point). Not for hosts. */
 XT_CAPI uint32_t xt_debug_surface_input_count(const xt_surface* s);
 
+/* T-561 (Docs/design/50-c-abi.md 50.3; appended, ABI version unchanged): called once inside
+   xt_surface_update, after input dispatch (and xt_flow's pulse edges when run_flow = 1) and before
+   style resolution, so writes made here (port_*, connection_*, play_timeline) take effect this frame.
+   A write after xt_surface_update returns takes effect at the next update. destroy / hot_reload
+   refuse inside it like in any callback. NULL removes it. */
+typedef void (*xt_update_hook_fn)(xt_surface* s, float dt, void* user);
+XT_CAPI xt_status xt_surface_set_update_hook(xt_surface* s, xt_update_hook_fn fn, void* user);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

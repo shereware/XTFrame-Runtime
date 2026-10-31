@@ -1,0 +1,21 @@
+/* Red; flipped: blue at once (no transition on the color) while the opacity fades out over 1s. */
+body {
+  width: 100vw;
+  height: 100vh;
+}
+
+#card {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: #ff0000;
+  opacity: 1;
+  transition: opacity 1s linear;
+}
+
+#card.flipped {
+  background-color: #0000ff;
+  opacity: 0;
+}

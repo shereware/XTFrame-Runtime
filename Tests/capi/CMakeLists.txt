@@ -24,9 +24,11 @@ xt_capi_pack_bundle(XT_CAPI_GAME_UI game-ui "${PROJECT_SOURCE_DIR}/Examples/demo
 xt_capi_pack_bundle(XT_CAPI_HUD_OVERLAY hud-overlay "${PROJECT_SOURCE_DIR}/Examples/demos/hud-overlay")
 # T-552 (capi review K1 / K4): a one-box UI whose color follows `@media (prefers-reduced-motion)`.
 xt_capi_pack_bundle(XT_CAPI_DEVICE device "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/device")
+# T-561: a one-card UI whose flow toggles `flipped` on #card.Click, with an opacity transition.
+xt_capi_pack_bundle(XT_CAPI_FLIP flip "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/flip")
 add_custom_target(xt_capi_test_bundles
     DEPENDS "${XT_CAPI_GAME_UI}/manifest.json" "${XT_CAPI_HUD_OVERLAY}/manifest.json"
-            "${XT_CAPI_DEVICE}/manifest.json")
+            "${XT_CAPI_DEVICE}/manifest.json" "${XT_CAPI_FLIP}/manifest.json")
 
 add_executable(xt_capi_tests
     test_main.cpp
@@ -39,7 +41,8 @@ target_compile_definitions(xt_capi_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)
 target_compile_definitions(xt_capi_tests PRIVATE
     XT_CAPI_TEST_BUNDLE="${XT_CAPI_GAME_UI}"
     XT_CAPI_TEST_PORTS_BUNDLE="${XT_CAPI_HUD_OVERLAY}"
-    XT_CAPI_TEST_DEVICE_BUNDLE="${XT_CAPI_DEVICE}")
+    XT_CAPI_TEST_DEVICE_BUNDLE="${XT_CAPI_DEVICE}"
+    XT_CAPI_TEST_FLIP_BUNDLE="${XT_CAPI_FLIP}")
 # Only the C header (and xt/version.h's macros, for case 1) -- the runtime is reached through the
 # shared library alone. nlohmann reads the packed manifest for case 2.
 target_include_directories(xt_capi_tests PRIVATE ${PROJECT_SOURCE_DIR}/Code/Runtime/core/include)
