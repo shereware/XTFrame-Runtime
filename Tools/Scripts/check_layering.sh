@@ -19,6 +19,10 @@
 #   5. Code/Backends/ (T-439, 45 §45.7): a quoted include there names a public `xt/...` header or
 #      another Code/Backends file (`xt_backend*.h`, `xt_platform_*.h`, `xt_renderer_*.h`), never a
 #      module's `src/` or private header; host APIs (SDL2, Win32, webgpu.h) come in with <...>.
+#   6. miniz (T-500, 14 §14.1; FetchContent pinned, T-552): the target `xt_miniz` (Tools/CMake/xt_miniz.cmake) is linked
+#      only from the CMakeLists.txt files in MINIZ_USERS below (xt_bundle's `.xtsymbols` / `.xtb`
+#      zip and the editor's history core), and `miniz.h` is included only from MINIZ_INCLUDERS
+#      (Code/Runtime/bundle/src/zip_archive.cpp and Code/Editor/History/src/objects.cpp).
 # §6.2 point 3 (P features entered through xt::license::has) waits until an xt_pro_* target exists.
 # Prints every violation as `file:line: ...`, then `LAYERING: PASS` or `LAYERING: FAIL (<n>
 # violation(s))`; exits 0 / 1.
@@ -30,10 +34,10 @@ cd "$(dirname "$0")/../.."
 # the table but is runtime layer, so it is listed too. Code/Tools/bake is filed under E by that
 # table (an E tool may use R, so there is nothing to check for it).
 R_DIRS="Code/Runtime/core Code/Runtime/compile Code/Runtime/sw Code/Runtime/gpu Code/Runtime/gl Code/Runtime/wgpu
-        Code/Runtime/bundle Code/Runtime/flow Code/Runtime/text Code/Runtime/shell Code/Backends
+        Code/Runtime/bundle Code/Runtime/flow Code/Runtime/text Code/Runtime/shell Code/Runtime/capi Code/Backends
         Code/Runtime/platforms/android Code/Tools/Common
-        Code/Tools/view Code/Tools/compile Code/Tools/pack Code/Tools/gpu-probe
-        Code/Tools/design"
+        Code/Tools/view Code/Tools/compile Code/Tools/pack Code/Tools/bench Code/Tools/gpu-probe
+        Code/Tools/design Code/Tools/symbols"
 # The E directories of the same table (an E directory may use R; nothing is checked inside them).
 # Code/Editor/DevTools/ (the throwaway AI endpoint of Docs/design/20-agent-interface.md §20.1, which links the
 # Qt editor) is not in the table; it is filed under E here (T-267a, see its report).
@@ -47,7 +51,10 @@ NEUTRAL_DIRS="Docs Tests Examples Assets Code/SDKs Code/Tools Tools build .githu
 # Code/Runtime/<name>/ a runtime module, Code/Runtime/platforms/<name>/ a platform).
 SPLIT_DIRS="Code Code/Runtime Code/Runtime/platforms Code/Tools"
 # The R tools defined in Code/Tools/CMakeLists.txt (checked per target there).
-R_TOOLS="xtframe-view xtframe-compile xtframe-pack xtframe-gpu-probe xtframe-design"
+R_TOOLS="xtframe-view xtframe-compile xtframe-pack xtframe-gpu-probe xtframe-design xtframe-symbols"
+# Rule 6: who may link xt_miniz / include miniz.h (Code/SDKs/_fetched/ and Tools/CMake/xt_miniz.cmake aside).
+MINIZ_USERS="Code/Runtime/bundle/CMakeLists.txt Code/Editor/History/CMakeLists.txt"
+MINIZ_INCLUDERS="Code/Runtime/bundle/src/zip_archive.cpp Code/Editor/History/src/objects.cpp"
 INCLUDE_RE='^[[:space:]]*#[[:space:]]*include[[:space:]]*[<"]xt/(editor|editor_qt|editor_service|import|pro|ai)/'
 LINK_RE='xt_editor_|xt_import|xt_pro_|xt_ai([^A-Za-z0-9_]|$)|Qt5::|Qt6::'
 
@@ -117,6 +124,22 @@ if [ -d Code/Backends ]; then
     grep -vE '#[[:space:]]*include[[:space:]]*"(xt/[^"]+|xt_(backend|platform|renderer)[A-Za-z0-9_]*\.h)"' |
     sed 's/$/  [Backends include a private header]/' >>"$viol"
 fi
+
+# 6. xt_miniz is linked, and miniz.h included, only where listed (T-500).
+while IFS= read -r f; do
+  case " $MINIZ_USERS " in *" $f "*) ;; *)
+    grep -nE '(^|[^A-Za-z0-9_])xt_miniz([^A-Za-z0-9_]|$)' "$f" | sed "s|^|$f:|; s/\$/  [links xt_miniz outside MINIZ_USERS]/" >>"$viol";;
+  esac
+done < <(grep -rlE '(^|[^A-Za-z0-9_])xt_miniz([^A-Za-z0-9_]|$)' --include='CMakeLists.txt' --include='*.cmake' Code 2>/dev/null |
+         grep -v '^Code/SDKs/')
+while IFS= read -r f; do
+  case " $MINIZ_INCLUDERS " in *" $f "*) ;; *)
+    grep -nE '^[[:space:]]*#[[:space:]]*include[[:space:]]*[<"]miniz\.h[>"]' "$f" |
+      sed "s|^|$f:|; s/\$/  [includes miniz.h outside MINIZ_INCLUDERS]/" >>"$viol";;
+  esac
+done < <(grep -rlE '^[[:space:]]*#[[:space:]]*include[[:space:]]*[<"]miniz\.h[>"]' \
+           --include='*.h' --include='*.hpp' --include='*.c' --include='*.cc' --include='*.cpp' --include='*.mm' \
+           Code Tests Examples 2>/dev/null | grep -v '^Code/SDKs/')
 
 # 4. Directories (T-267a): tracked and untracked (not ignored) files, so build output never counts.
 SRC_RE='(^|/)CMakeLists\.txt$|\.(c|cc|cpp|cxx|h|hh|hpp|hxx|inl|ipp|m|mm)$'

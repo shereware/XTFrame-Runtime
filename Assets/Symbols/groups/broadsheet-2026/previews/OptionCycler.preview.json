@@ -1,0 +1,11 @@
+{
+  "width": 400,
+  "height": 90,
+  "frames": 0,
+  "ports": {
+    "Mode.current": "Borderless"
+  },
+  "events": [
+    "update 0.6"
+  ]
+}

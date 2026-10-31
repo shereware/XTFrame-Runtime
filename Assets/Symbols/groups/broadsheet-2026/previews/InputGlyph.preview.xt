@@ -1,0 +1,26 @@
+<xt>
+  <head>
+    <!-- T-198: preview of the InputGlyph standard symbol (golden states and thumbnail; T-499: moved into the group). -->
+    <link href="../tokens.xts"/>
+    <link rel="symbols" href="../InputGlyph.xt"/>
+    <style>
+      body {
+        width: 240px;
+        height: 80px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        row-gap: 12px;
+        background-color: var(--color-bg);
+      }
+      #Row { display: flex; column-gap: 16px; }
+    </style>
+  </head>
+  <body>
+    <div id="Row">
+      <use symbol="InputGlyph" id="Jump" slot:label="Jump"/>
+      <use symbol="InputGlyph" id="Use" slot:label="Use"><slot name="glyph"><glyph key="interact"/></slot></use>
+    </div>
+  </body>
+</xt>

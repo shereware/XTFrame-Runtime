@@ -1,5 +1,0 @@
-# T-241: PinchZoomView, state 'normal'.
-port Map.min 0.5
-port Map.max 3
-port Map.scale 1
-update 0.6

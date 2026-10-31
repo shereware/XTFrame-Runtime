@@ -11,6 +11,7 @@
 
 #include "damage_internal.h"
 #include "dispatch_guard.h"
+#include "event_dispatcher.h"  // T-552: Context::update() re-judges the hover (refreshHover)
 #include "file_open_utf8.h"
 #include "mini_css.h"
 #include "xt/asset_resolver.h"
@@ -620,6 +621,18 @@ void Context::update(float dt) {
     // callback loads (during input routing or another Document's update; m_documents may
     // reallocate) is updated from the next frame on.
     const size_t count = m_documents.size();
+
+    // T-552 (27 §27.4.1, 2026-10-31 ruling): pointer and hover first, then bindings. The hovered
+    // surface re-judges hover at the still pointer against the geometry the previous frame left (its
+    // bindings, animations, layout): PointerEnter / PointerLeave and their triggers run here, before the
+    // queued input and before this frame's Document::update() evaluates the bindings, which so see this
+    // frame's hover. The geometry this frame's bindings produce is judged at the next update().
+    if (m_hoverSurface != 0) {
+        if (Document* doc = liveAt(m_hoverSurface - 1); doc != nullptr && doc->m_surfaceVisible) {
+            PerfScope inputScope(m_perf, &FrameStats::inputMs);
+            doc->m_events->refreshHover(doc->m_arena, doc->m_root);
+        }
+    }
 
     // Docs/tasks/T-32.md "1.5 步驟2": drain the queue, dispatch each event to the foreground
     // Document, then run every Document's own style/animation/layout update. m_updateEventsScratch

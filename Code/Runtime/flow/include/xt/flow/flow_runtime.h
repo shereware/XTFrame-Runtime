@@ -83,6 +83,19 @@ public:
     /// if any, are dropped and leave the runtime empty); of several such calls only the last runs.
     Status load(const FlowGraph& graph, Document& doc, std::vector<std::string>& errors);
 
+    /// 27 §27.4.3: one line per edge that drives a visual element input (setProperty, setStyle,
+    /// playAnimation) from a continuous source. Computed on the bound graph (needs the endpoint
+    /// kinds), appended to `out`; never fails the load. Format:
+    /// "flow.animatesWithContinuousSignal: edge <from> -> <to> drives a visual property from a
+    ///  continuous signal; author it as a timeline or a bind: instead"
+    /// Recomputed by load() / rebind(); nothing is appended when load() has not last succeeded.
+    void continuityWarnings(std::vector<std::string>& out) const;
+    /// T-546: everything worth printing after a successful load() / rebind(), appended to `out`:
+    /// continuityWarnings() first, then one `#id.setState: the document declares no state "<name>"`
+    /// per distinct undeclared state an `#id.setState` edge names (single-Document mode; a global
+    /// runtime has none). Nothing is appended when load() has not last succeeded.
+    void loadWarnings(std::vector<std::string>& out) const;
+
     /// T-260c: takes every listener off the bound Document(s) (one the Context reloaded or unloaded
     /// meanwhile is not touched) and drops the graph: afterwards the runtime is as constructed,
     /// apart from setEnabled() / setHostEventListener(). Call it before unloading the Document a
@@ -94,7 +107,10 @@ public:
     /// tree, xt::Context::reloadDocument()): listeners are re-added, ports whose owner id no longer
     /// exists (or is no longer an `<anim>` element) are reported in `warnings` -- appended, one per
     /// distinct "#id.port", as "#id.port: element not found" / "#id.port: not an <anim> element" --
-    /// and their edges are dropped; node state (counter values, toggles, timers) is kept.
+    /// and their edges are dropped; an `#id.setState` edge whose "state" param is neither a state `doc`
+    /// declares nor a built-in alias (T-546) adds `#id.setState: the document declares no state
+    /// "<name>"` (edge kept, runtime behavior unchanged; load() has no warnings output, so it does not
+    /// check); node state (counter values, toggles, timers) is kept.
     /// Returns kInvalidArgument when load() has not last succeeded, kOk otherwise (missing ports
     /// are warnings, not errors).
     ///

@@ -11,9 +11,9 @@ This directory is an XTFrame UI Project (docs/design/30-ui-project.md): a starte
   publish settings (`publish.outDir` = `out`).
 - `ui/<name>/<name>.xt` + `.xts`: each UI. The `.xts` holds layout only; every color, size step
   and duration comes from a token.
-- `shared/tokens.xts`: the base token set ("Daylight"). It is `shared.tokens`, so xtframe-pack and
+- `shared/tokens.xts`: the base token set ("Paper"). It is `shared.tokens`, so xtframe-pack and
   the editor load it before every UI; a UI must not `<link>` it again.
-- `shared/themes/dark.xts`: the dark theme (token values only).
+- `shared/themes/dark.xts`: the "Night desk" theme (token values only).
 - `shared/strings/en.csv`, `shared/strings/zh-TW.csv`: the string tables; every visible text in
   the UIs is an `@key`.
 - `shared/symbols/`: project symbols. A UI links a standard symbol as

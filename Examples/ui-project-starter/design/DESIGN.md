@@ -21,11 +21,11 @@ Key numbers and prompts read in under a second at 1280x720, inside the safe area
 
 **Calm by default**
 
-Neutral surfaces carry the layout; colour appears only where it means something.
+Flat newsprint grey carries the layout; ink and the one printing red appear only where they mean something.
 
 **One accent for action**
 
-Teal (`--color-accent`) marks what can be pressed, focused or filled.
+Ink (`--color-accent`) marks what can be pressed, focused or filled.
 
 ## 2 · Voice
 
@@ -47,86 +47,81 @@ Languages: en, zh-TW.
 
 ## 3 · Color
 
-### Brand
+### Paper and ink
 
 | Swatch | Value | Role | Variables |
 | --- | --- | --- | --- |
-| Teal (`teal`) | `#0f7b8a` | primary | 1 |
-| Teal bright (`teal-bright`) | `#12909f` | hover | 1 |
-| Teal deep (`teal-deep`) | `#0b5f6b` | pressed | 1 |
-| Amber (`amber`) | `#c26a00` | focus | 1 |
+| Paper (`paper`) | `#e6e2d6` | background | 2 |
+| Page (`page`) | `#ece8dd` | surface | 1 |
+| Ink (`ink`) | `#1f1c18` | primary | 4 |
+| Kraft (`kraft`) | `#dcd7c8` | track | 2 |
 
-### Neutrals
-
-| Swatch | Value | Role | Variables |
-| --- | --- | --- | --- |
-| White (`white`) | `#ffffff` | surface | 2 |
-| Slate 50 (`slate-50`) | `#f8fafc` | surface | 1 |
-| Slate 100 (`slate-100`) | `#e9edf2` | background | 1 |
-| Slate 150 (`slate-150`) | `#dde3ea` | surface | 1 |
-| Slate 200 (`slate-200`) | `#d5dbe2` | disabled | 1 |
-| Slate 250 (`slate-250`) | `#cfd6de` | track | 1 |
-| Slate 300 (`slate-300`) | `#c3ccd6` | border | 1 |
-| Slate 450 (`slate-450`) | `#8d99a6` | border | 1 |
-| Slate 500 (`slate-500`) | `#8a949e` | disabled | 1 |
-| Slate 700 (`slate-700`) | `#4f5b67` | text | 1 |
-| Slate 900 (`slate-900`) | `#17202a` | text | 1 |
-| Night (`night`) | `#0b0e13` | shadow | 2 |
-
-### States
+### Stamps
 
 | Swatch | Value | Role | Variables |
 | --- | --- | --- | --- |
-| Red (`red`) | `#c62f3a` | danger | 1 |
-| Orange (`orange`) | `#b86e00` | warning | 1 |
-| Green (`green`) | `#23875a` | success | 1 |
-| Blue (`blue`) | `#1f6fb2` | info | 1 |
+| Lamp (`lamp`) | `#3f6b43` | success | 1 |
+| Seal (`seal`) | `#b3281e` | danger | 2 |
+| Ochre (`ochre`) | `#a0761f` | warning | 1 |
+| Blue ink (`blue-ink`) | `#2f4f6f` | info | 1 |
 
-### Variables
+### Night desk
 
-| Variable | Value | dark | From | Description | UIs |
+| Swatch | Value | Role | Variables |
+| --- | --- | --- | --- |
+| Night (`night`) | `#262320` | background | 0 |
+| Lamp night (`lamp-night`) | `#7fa877` | success | 0 |
+| Seal night (`seal-night`) | `#d7493b` | danger | 0 |
+| Ochre night (`ochre-night`) | `#c9a24a` | warning | 0 |
+| Blue ink night (`blue-ink-night`) | `#8fb0cf` | info | 0 |
+
+### Inherited from broadsheet-2026
+
+| Variable | Value | dark | night | From | Description |
 | --- | --- | --- | --- | --- | --- |
-| `--color-bg` | `#e9edf2` | `#0e1117` | `swatch:slate-100` | Screen background behind every panel. | 2 |
-| `--color-surface` | `#f8fafc` | `#161b22` | `swatch:slate-50` | Panel and card background. | 3 |
-| `--color-surface-raised` | `#ffffff` | `#1f2630` | `swatch:white` | Raised surfaces (menus, tooltips, modals). | 3 |
-| `--color-surface-sunken` | `#dde3ea` | `#0b0e13` | `swatch:slate-150` | Sunken wells (tracks, text fields). | 3 |
-| `--color-border` | `#c3ccd6` | `#30363d` | `swatch:slate-300` | Hairlines and control outlines. | 3 |
-| `--color-border-strong` | `#8d99a6` | `#4a535e` | `swatch:slate-450` | Outlines that must stand out. | 3 |
-| `--color-text` | `#17202a` | `#e6edf3` | `swatch:slate-900` | Body text. | 3 |
-| `--color-text-dim` | `#4f5b67` | `#9aa4af` | `swatch:slate-700` | Secondary text and values. | 3 |
-| `--color-text-on-accent` | `#ffffff` | `#0b0e13` | `swatch:white` | Text on an accent fill. | 2 |
-| `--color-accent` | `#0f7b8a` | `#4cc2ff` | `swatch:teal` | Primary interactive colour for buttons, selection and progress. | 3 |
-| `--color-accent-hover` | `#12909f` | `#7ad3ff` | `swatch:teal-bright` | Accent under the pointer. | 2 |
-| `--color-accent-pressed` | `#0b5f6b` | `#2aa3e6` | `swatch:teal-deep` | Accent while pressed. | 2 |
-| `--color-focus` | `#c26a00` | `#ffd24c` | `swatch:amber` | Focus ring for keyboard and gamepad navigation. | 2 |
-| `--color-disabled-bg` | `#d5dbe2` | `#222830` | `swatch:slate-200` | Disabled control fill. | 2 |
-| `--color-disabled-text` | `#8a949e` | `#5c6570` | `swatch:slate-500` | Disabled control text. | 2 |
-| `--color-danger` | `#c62f3a` | `#ff5a5f` | `swatch:red` | Damage, destructive actions and errors. | 2 |
-| `--color-warning` | `#b86e00` | `#ffb547` | `swatch:orange` | Warnings and low resources. | 2 |
-| `--color-success` | `#23875a` | `#4cd98a` | `swatch:green` | Health, confirmations and completed steps. | 2 |
-| `--color-info` | `#1f6fb2` | `#4cc2ff` | `swatch:blue` | Neutral notices and hints. | 2 |
-| `--color-scrim` | `#0b0e13a6` | `#000000b3` | `swatch:night` | Dims the screen behind a modal (night at 65 % alpha). | 2 |
-| `--color-track` | `#cfd6de` | `#2a313b` | `swatch:slate-250` | Slider and progress tracks. | 2 |
-| `--color-shadow` | `#0b0e1340` | `#00000099` | `swatch:night` | Drop shadows (night at 25 % alpha). | 2 |
+| `--color-bg` | `#e6e2d6` | `#262320` | `#262320` | `swatch:paper` | Screen background behind every panel. |
+| `--color-surface` | `#ece8dd` | `#302c27` | `#302c27` | `swatch:page` | Panel and card background. |
+| `--color-surface-raised` | `#ece8dd` | `#38342e` | `#38342e` |  |  |
+| `--color-surface-sunken` | `#dcd7c8` | `#1b1916` | `#1b1916` | `swatch:kraft` | Sunken wells (tracks, text fields). |
+| `--color-border` | `#1f1c18` | `#d9d3c4` | `#d9d3c4` | `swatch:ink` | Hairlines and control outlines. |
+| `--color-border-strong` | `#1f1c18` | `#d9d3c4` | `#d9d3c4` | `swatch:ink` | Outlines that must stand out. |
+| `--color-text` | `#1f1c18` | `#d9d3c4` | `#d9d3c4` | `swatch:ink` | Body text. |
+| `--color-text-dim` | `#4a463f` | `#9a9386` | `#9a9386` |  | Used by `Slider` |
+| `--color-text-on-accent` | `#e6e2d6` | `#262320` | `#262320` | `swatch:paper` | Text on an accent fill. |
+| `--color-accent` | `#1f1c18` | `#d9d3c4` | `#d9d3c4` | `swatch:ink` | Primary interactive colour for buttons, selection and progress. |
+| `--color-accent-hover` | `#4a463f` | `#9a9386` | `#9a9386` |  | Used by `Button` |
+| `--color-accent-pressed` | `#dcd7c8` | `#1b1916` | `#1b1916` |  |  |
+| `--color-focus` | `#b3281e` | `#d7493b` | `#d7493b` | `swatch:seal` | Focus ring for keyboard and gamepad navigation. |
+| `--color-disabled-bg` | `#dcd7c8` | `#1b1916` | `#1b1916` |  | Used by `Button` |
+| `--color-disabled-text` | `#8a857a` | `#5e5950` | `#5e5950` |  | Used by `Button` |
+| `--color-danger` | `#b3281e` | `#d7493b` | `#d7493b` | `swatch:seal` | Damage, destructive actions and errors. |
+| `--color-warning` | `#a0761f` | `#c9a24a` | `#c9a24a` | `swatch:ochre` | Warnings and low resources. |
+| `--color-success` | `#3f6b43` | `#7fa877` | `#7fa877` | `swatch:lamp` | Health, confirmations and completed steps. |
+| `--color-info` | `#2f4f6f` | `#8fb0cf` | `#8fb0cf` | `swatch:blue-ink` | Neutral notices and hints. |
+| `--color-scrim` | `#1f1c18b3` | `#000000cc` | `#000000cc` |  | Used by `Modal` |
+| `--color-track` | `#dcd7c8` | `#1b1916` | `#1b1916` | `swatch:kraft` | Slider and progress tracks. |
+| `--color-shadow` | `#4a463f` | `#9a9386` | `#9a9386` |  | Used by `Button` |
 
 ## 4 · Type
 
-### Variables
+### Inherited from broadsheet-2026
 
-| Variable | Value | Description | UIs |
-| --- | --- | --- | --- |
-| `--font-family` | `"Segoe UI", "Noto Sans", "Helvetica", "DejaVu Sans"` | The UI font stack. | 3 |
-| `--font-size-xs` | `12px` | Fine print and badges. | 2 |
-| `--font-size-s` | `14px` | Secondary labels and HUD values. | 3 |
-| `--font-size-m` | `16px` | Body text and control labels. | 3 |
-| `--font-size-l` | `20px` | Section headings. | 3 |
-| `--font-size-xl` | `28px` | Screen titles. | 2 |
+| Variable | Value | dark | night | From | Description |
+| --- | --- | --- | --- | --- | --- |
+| `--font-display` | `"Noto Serif Display ExtraCondensed", "Noto Serif Display", "Georgia", "Times New Roman"` |  | `"Noto Serif Display ExtraCondensed", "Noto Serif Display", "Georgia", "Times New Roman"` |  | Used by `Button` |
+| `--font-body` | `"Noto Serif", "Georgia", "DejaVu Serif", "Times New Roman"` |  | `"Noto Serif", "Georgia", "DejaVu Serif", "Times New Roman"` |  | Used by `Toggle` |
+| `--font-family` | `"Noto Serif", "Georgia", "DejaVu Serif", "Times New Roman"` |  | `"Noto Serif", "Georgia", "DejaVu Serif", "Times New Roman"` |  |  |
+| `--font-size-xs` | `12px` |  | `12px` |  | Used by `Counter` |
+| `--font-size-s` | `14px` |  | `14px` |  | Used by `Button` |
+| `--font-size-m` | `16px` |  | `16px` |  | Used by `Button` |
+| `--font-size-l` | `20px` |  | `20px` |  | Used by `Button` |
+| `--font-size-xl` | `28px` |  | `28px` |  | Used by `Toast` |
 
 ### Font fallback
 
 | Language | Families |
 | --- | --- |
-| `zh-TW` | Microsoft JhengHei, Noto Sans TC, Noto Sans CJK TC |
+| `zh-TW` | Noto Sans TC |
 
 ## 5 · Space and shape
 
@@ -134,22 +129,37 @@ Languages: en, zh-TW.
 
 | Variable | Category | Value | Description | UIs |
 | --- | --- | --- | --- | --- |
-| `--radius-s` | radius | `4px` | Small corners on tracks and chips. | 3 |
-| `--radius-m` | radius | `8px` | Controls and cards. | 3 |
-| `--radius-l` | radius | `12px` | Panels and modals. | 2 |
-| `--radius-full` | radius | `999px` | Pills and round buttons. | 3 |
-| `--space-1` | space | `4px` | Tight gaps inside a control. | 3 |
-| `--space-2` | space | `8px` | Padding inside a control. | 3 |
-| `--space-3` | space | `12px` | Gaps between related controls. | 3 |
-| `--space-4` | space | `16px` | Panel padding. | 3 |
-| `--space-6` | space | `24px` | Gaps between groups. | 2 |
-| `--border-w` | border | `1px` | Outline width. | 3 |
-| `--focus-w` | border | `2px` | Focus ring width. | 3 |
-| `--control-s` | size | `28px` | Small control height. | 2 |
-| `--control-m` | size | `36px` | Default control height. | 2 |
-| `--control-l` | size | `44px` | Large control height (touch, primary actions). | 2 |
 | `--safe-x` | space | `32px` | Horizontal safe margin at 1280 x 720. | 2 |
 | `--safe-y` | space | `24px` | Vertical safe margin at 1280 x 720. | 2 |
+
+### Inherited from broadsheet-2026
+
+| Variable | Value | dark | night | From | Description |
+| --- | --- | --- | --- | --- | --- |
+| `--letter-display` | `0.5px` |  | `0.5px` |  | Used by `Button` |
+| `--radius-s` | `0px` |  | `0px` |  | Used by `CooldownRing` |
+| `--radius-m` | `0px` |  | `0px` |  |  |
+| `--radius-l` | `0px` |  | `0px` |  |  |
+| `--radius-full` | `999px` |  | `999px` |  | Used by `RadioGroup` |
+| `--space-1` | `4px` |  | `4px` |  | Used by `RadioGroup` |
+| `--space-2` | `8px` |  | `8px` |  | Used by `Checkbox` |
+| `--space-3` | `12px` |  | `12px` |  | Used by `Button` |
+| `--space-4` | `16px` |  | `16px` |  | Used by `Button` |
+| `--space-6` | `24px` |  | `24px` |  | Used by `Button` |
+| `--border-w` | `1px` |  | `1px` |  | Used by `Modal` |
+| `--rule-thin` | `1px` |  | `1px` |  | Used by `Button` |
+| `--rule-thick` | `3px` |  | `3px` |  | Used by `Button` |
+| `--focus-w` | `2px` |  | `2px` |  | Used by `Button` |
+| `--tex-grain` | `url("textures/grain-paper.png")` |  | `url("textures/grain-night.png")` |  | Used by `Dropdown` |
+| `--tex-hatch` | `url("textures/hatch-ink.png")` |  | `url("textures/hatch-night.png")` |  | Used by `Button` |
+| `--tex-dots` | `url("textures/dots-ink.png")` |  | `url("textures/dots-night.png")` |  | Used by `Hotbar` |
+| `--tex-rule-h` | `url("textures/rule-double.png")` |  | `url("textures/rule-double-night.png")` |  | Used by `Modal` |
+| `--tex-rule-v` | `url("textures/rule-double-v.png")` |  | `url("textures/rule-double-v-night.png")` |  |  |
+| `--control-s` | `28px` |  | `28px` |  | Used by `Button` |
+| `--control-m` | `36px` |  | `36px` |  | Used by `Button` |
+| `--control-l` | `44px` |  | `44px` |  | Used by `Button` |
+| `--touch-min` | `44px` |  | `44px` |  | Used by `BottomSheet` |
+| `--touch-lg` | `88px` |  | `88px` |  | Used by `VirtualJoystick` |
 
 ## 6 · Motion
 
@@ -197,13 +207,13 @@ Languages: en, zh-TW.
 | `text.hud_default_px` | 14 |
 | `text.min_px` | 12 |
 
-### Variables
+### Inherited from broadsheet-2026
 
-| Variable | Value | Description |
-| --- | --- | --- |
-| `--motion-instant` | `50ms` | Selection snaps. |
-| `--motion-fast` | `150ms` | Hover and press feedback. |
-| `--motion-normal` | `250ms` | Panels and value changes. |
+| Variable | Value | dark | night | From | Description |
+| --- | --- | --- | --- | --- | --- |
+| `--motion-instant` | `50ms` |  | `50ms` |  | Used by `Checkbox` |
+| `--motion-fast` | `150ms` |  | `150ms` |  | Used by `Button` |
+| `--motion-normal` | `250ms` |  | `250ms` |  | Used by `ProgressBar` |
 
 ## 7 · Layout
 
@@ -282,6 +292,7 @@ Languages: en, zh-TW.
 | `CompassStrip` | hud | Heading strip scrolled by `heading` (degrees). |  | heading (number, in) |
 | `Subtitle` | hud | Subtitle line with speaker; text-reveal intro. | Character, Narrator | speaker (string, in); line (string, in); narrator (bool, in) |
 | `Notification` | hud | Notification card with Info / Warning / Danger tones. | Info, Warning, Danger | tone (number, in) |
+| `Stamp` | hud | Decorative rubber stamp: two red rings around a tilted display-font text (for example CASE CLOSED). |  |  |
 | `InputGlyph` | input | Key cap showing the glyph of an input action plus a label. |  |  |
 | `ButtonPrompt` | input | Rich-text prompt line with inline input glyphs. |  |  |
 | `VirtualJoystick` | mobile | Virtual thumbstick (>= 160 px): drag the pad to write `axis`, release re-centres it. | Idle, Active | axis (vec2, out); knob (vec2, in); dead (number, in); active (bool, in) |

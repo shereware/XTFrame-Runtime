@@ -1,0 +1,87 @@
+<xt>
+  <head>
+    <!-- VirtualJoystick: standard mobile symbol (docs/design/23-host-integration.md 23.11.2,
+         30-ui-project.md 30.4). See ../README.md.
+         Style: Broadsheet (docs/design/47-symbol-visual-style.md).
+         The pad is `draggable="axis-x"`: pressing or dragging across it writes `axis` (x in -1..1,
+         y = 0) for the host and the same value to `knob`, which places the knob (a host may also
+         write `knob`, e.g. from a gamepad); releasing re-centres both and plays `release`. Active
+         is the built-in pressed state (`:active`); the symbol writes `active` on press / release
+         (Toggle convention) and its negation drives the custom Idle state. `dead` (0..1, the host
+         sets 0.15 by default) only draws the dead-zone ring; the host applies it to `axis`.
+         Mode=Floating hides the base ring until the stick is active. -->
+    <symbol name="VirtualJoystick" variants="Mode=Fixed|Floating" requires="states: Idle, Active">
+      <div id="Box" port:axis="vec2 out" port:knob="vec2 in" port:dead="number in"
+           port:active="bool in"
+           bind:state.Idle="active | not"
+           draggable="axis-x"
+           on:press="set(active, true)"
+           on:drag.value="set(axis, event.value | range(0, 1, -1, 1) | vec2(0)); set(knob, event.value | range(0, 1, -1, 1) | vec2(0))"
+           on:release="set(active, false); set(axis, event.value | vec2(0)); set(knob, event.value | vec2(0)); play(release)">
+        <div id="Base">
+          <div id="Dead" bind:scale-x="dead" bind:scale-y="dead"></div>
+          <div id="Knob" bind:translate-x="knob | x | range(-1, 1, -52, 52)"
+               bind:translate-y="knob | y | range(-1, 1, -52, 52)">
+            <div id="Cap"></div>
+          </div>
+        </div>
+      </div>
+    </symbol>
+    <style>
+      symbol(VirtualJoystick) {
+        #Box {
+          width: 168px;
+          height: 168px;
+        }
+        #Base {
+          position: relative;
+          width: 168px;
+          height: 168px;
+          border-width: var(--rule-thin);
+          border-color: var(--color-border);
+          border-radius: var(--radius-full);
+          background-color: var(--color-surface-sunken);
+          background-image: var(--tex-hatch);
+          background-repeat: repeat;
+          background-size: 8px 8px;
+          transition: opacity var(--motion-fast) linear;
+        }
+        #Dead {
+          position: absolute;
+          left: 0px;
+          top: 0px;
+          width: 166px;
+          height: 166px;
+          border-width: var(--rule-thin);
+          border-color: var(--color-text-dim);
+          border-radius: var(--radius-full);
+          transform: scale(0.15);
+        }
+        #Knob {
+          position: absolute;
+          left: 39px;  /* (166 - 88) / 2 inside the 1px border */
+          top: 39px;
+          width: var(--touch-lg);
+          height: var(--touch-lg);
+        }
+        #Cap {
+          width: var(--touch-lg);
+          height: var(--touch-lg);
+          border-radius: var(--radius-full);
+          background-color: var(--color-accent);
+          border-width: var(--rule-thin);
+          border-color: var(--color-border);
+          transition: background-color var(--motion-fast) linear;
+        }
+        #Box:state(Idle) #Cap { background-color: var(--color-accent); }
+        #Box:active #Cap { background-color: var(--color-surface-sunken); border-width: var(--rule-thick); }
+        .v-Mode-Floating #Base { opacity: 0.25; }
+        .v-Mode-Floating #Box:active #Base { opacity: 1; }
+        :disabled #Cap { background-color: var(--color-disabled-bg) !important; border-color: var(--color-disabled-text) !important; }
+        @timeline release {
+          #Cap { 0s { transform: translateY(1px) } 0.15s ease-out { transform: translateY(0px) } }
+        }
+      }
+    </style>
+  </head>
+</xt>

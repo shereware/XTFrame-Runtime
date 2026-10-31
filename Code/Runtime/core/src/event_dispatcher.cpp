@@ -414,12 +414,18 @@ bool EventDispatcher::stillThere(const NodeArena& arena, const PathEntry& entry)
     return arena.alive(entry.node) && arena.generation(entry.node) == entry.generation;
 }
 
-void EventDispatcher::setPointerMove(NodeArena& arena, NodeId root, const InputEvent& input) {
-    m_pointerPos = input.pos;
-    if (m_axisDrag != kInvalidNode) {
-        axisDragValue(arena, input.pos);  // T-201.
+void EventDispatcher::refreshHover(NodeArena& arena, NodeId root) {
+    if (!m_hoverStale) {
+        return;
     }
-    HitResult hit = hitTestDetailed(arena, root, input.pos);
+    m_hoverStale = false;
+    if (m_pointerIn && root != kInvalidNode && arena.alive(root)) {
+        updateHover(arena, root, m_pointerPos);
+    }
+}
+
+void EventDispatcher::updateHover(NodeArena& arena, NodeId root, Vec2 pos) {
+    HitResult hit = hitTestDetailed(arena, root, pos);
     NodeId h = hit.node;
     m_pointerLocalPos = hit.localPos;
     if (h != m_hoverNode) {
@@ -454,7 +460,7 @@ void EventDispatcher::setPointerMove(NodeArena& arena, NodeId root, const InputE
             Event ev;
             ev.type = EventType::PointerLeave;
             ev.target = entry.node;
-            ev.pos = input.pos;
+            ev.pos = pos;
             ev.localPos = m_pointerLocalPos;
             dispatchAt(arena, ev, entry.node);
         }
@@ -470,13 +476,23 @@ void EventDispatcher::setPointerMove(NodeArena& arena, NodeId root, const InputE
             Event ev;
             ev.type = EventType::PointerEnter;
             ev.target = entry.node;
-            ev.pos = input.pos;
+            ev.pos = pos;
             ev.localPos = m_pointerLocalPos;
             dispatchAt(arena, ev, entry.node);
         }
         m_pathStack.resize(oldStart);
         m_hoverNode = h;
     }
+}
+
+void EventDispatcher::setPointerMove(NodeArena& arena, NodeId root, const InputEvent& input) {
+    m_pointerPos = input.pos;
+    m_pointerIn = true;  // T-552.
+    if (m_axisDrag != kInvalidNode) {
+        axisDragValue(arena, input.pos);  // T-201.
+    }
+    updateHover(arena, root, input.pos);
+    const NodeId h = m_hoverNode;
 
     // Docs/tasks/T-33.md "拖曳（active 時 PointerMove）擴選".
     if (m_dragEdit != kInvalidNode && m_activeNode == m_dragEdit) {
@@ -543,6 +559,7 @@ void EventDispatcher::setPointerMove(NodeArena& arena, NodeId root, const InputE
 }
 
 void EventDispatcher::setPointerLeaveWindow(NodeArena& arena) {
+    m_pointerIn = false;  // T-552: no hover to re-judge until the next move.
     if (m_hoverNode == kInvalidNode) {
         return;
     }

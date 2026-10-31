@@ -426,61 +426,6 @@
       "params": {
         "format": "{a}{b}"
       }
-    },
-    {
-      "id": "menuYaw",
-      "type": "math",
-      "params": {
-        "op": "map",
-        "inLo": -1,
-        "inHi": 1,
-        "outLo": 10,
-        "outHi": 26
-      }
-    },
-    {
-      "id": "panelYaw",
-      "type": "math",
-      "params": {
-        "op": "map",
-        "inLo": -1,
-        "inHi": 1,
-        "outLo": -28,
-        "outHi": -12
-      }
-    },
-    {
-      "id": "pitch",
-      "type": "math",
-      "params": {
-        "op": "map",
-        "inLo": -1,
-        "inHi": 1,
-        "outLo": 6,
-        "outHi": -6
-      }
-    },
-    {
-      "id": "worldX",
-      "type": "math",
-      "params": {
-        "op": "map",
-        "inLo": -1,
-        "inHi": 1,
-        "outLo": 30,
-        "outHi": -30
-      }
-    },
-    {
-      "id": "worldY",
-      "type": "math",
-      "params": {
-        "op": "map",
-        "inLo": -1,
-        "inHi": 1,
-        "outLo": 18,
-        "outHi": -18
-      }
     }
   ],
   "edges": [
@@ -835,68 +780,6 @@
     {
       "from": "startLabel.out",
       "to": "#btn-start.setText"
-    },
-    {
-      "from": "#document.pointerNX",
-      "to": "menuYaw.a"
-    },
-    {
-      "from": "menuYaw.out",
-      "to": "#difficulty-menu.setProperty",
-      "params": {
-        "prop": "RotationY"
-      }
-    },
-    {
-      "from": "#document.pointerNX",
-      "to": "panelYaw.a"
-    },
-    {
-      "from": "panelYaw.out",
-      "to": "#difficulty-panel.setProperty",
-      "params": {
-        "prop": "RotationY"
-      }
-    },
-    {
-      "from": "#document.pointerNY",
-      "to": "pitch.a"
-    },
-    {
-      "from": "pitch.out",
-      "to": "#difficulty-menu.setProperty",
-      "params": {
-        "prop": "RotationX"
-      }
-    },
-    {
-      "from": "pitch.out",
-      "to": "#difficulty-panel.setProperty",
-      "params": {
-        "prop": "RotationX"
-      }
-    },
-    {
-      "from": "#document.pointerNX",
-      "to": "worldX.a"
-    },
-    {
-      "from": "worldX.out",
-      "to": "#world-layer.setProperty",
-      "params": {
-        "prop": "TranslateX"
-      }
-    },
-    {
-      "from": "#document.pointerNY",
-      "to": "worldY.a"
-    },
-    {
-      "from": "worldY.out",
-      "to": "#world-layer.setProperty",
-      "params": {
-        "prop": "TranslateY"
-      }
     }
   ]
 }

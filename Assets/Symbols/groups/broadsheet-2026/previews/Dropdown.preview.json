@@ -1,0 +1,26 @@
+{
+  "width": 300,
+  "height": 220,
+  "frames": 0,
+  "ports": {
+    "Quality.options": [
+      {
+        "label": "Low"
+      },
+      {
+        "label": "Medium"
+      },
+      {
+        "label": "High"
+      },
+      {
+        "label": "Ultra"
+      }
+    ],
+    "Quality.value": 2,
+    "Quality.current": "High"
+  },
+  "events": [
+    "update 0.6"
+  ]
+}

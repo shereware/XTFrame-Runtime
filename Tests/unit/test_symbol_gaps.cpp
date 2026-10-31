@@ -380,6 +380,43 @@ TEST_CASE("T-201: bind:translate-x / scale-x / rotate drive the transform withou
     CHECK(b.h == doctest::Approx(20).epsilon(0.01));
 }
 
+TEST_CASE("T-540: bind:rotate-x / rotate-y / translate-z drive the 3D transform components") {
+    const std::string source = R"X(<xt><head><style>
+      #A { position: absolute; left: 0px; top: 0px; width: 10px; height: 10px; }
+    </style></head><body id="Root" port:nx="number in" port:z="number in">
+      <div id="A" bind:rotate-y="nx | range(-1, 1, -8, 8)" bind:rotate-x="nx" bind:translate-z="z"></div>
+    </body></xt>)X";
+    Loaded l = load(source);
+    Result<IrView> view = IrView::open(IrBlob{l.result.ir.data(), l.result.ir.size()});
+    REQUIRE(view.ok());
+    const BindingChunk& bc = view.value().bindings();
+    REQUIRE(bc.bindings().size() == 3);
+    std::vector<uint16_t> targets;
+    for (const IrBinding& b : bc.bindings()) {
+        CHECK(static_cast<BindTarget>(b.target) == BindTarget::Prop);
+        targets.push_back(static_cast<uint16_t>(b.targetId));
+    }
+    CHECK(targets == std::vector<uint16_t>{prop::RotationY, prop::RotationX, prop::TranslateZ});
+
+    l.doc->setPort(l.doc->lookupPort("nx"), Value::ofFloat(1));
+    l.doc->setPort(l.doc->lookupPort("z"), Value::ofFloat(5));
+    l.step(0.01f);
+    CHECK(l.el("A").property(prop::RotationY).f == doctest::Approx(8));
+    CHECK(l.el("A").property(prop::RotationX).f == doctest::Approx(1));
+    CHECK(l.el("A").property(prop::TranslateZ).f == doctest::Approx(5));
+    CHECK(l.box("A").width == doctest::Approx(10));  // Layout untouched.
+
+    // rotate-z is not a component name: still an unknown property.
+    CompileResult bad = compileXt(
+        R"X(<xt><body id="Root" port:r="number in"><div id="A" bind:rotate-z="r"></div></body></xt>)X");
+    CHECK_FALSE(bad.ok());
+    bool unknown = false;
+    for (const Diagnostic& d : bad.diagnostics) {
+        unknown = unknown || d.message.find("unknown or shorthand property") != std::string::npos;
+    }
+    CHECK(unknown);
+}
+
 // -- 8. conic-gradient ---------------------------------------------------------------------------
 
 TEST_CASE("T-201: conic-gradient compiles, resolves and paints a Conic paint") {

@@ -171,6 +171,17 @@ public:
     /// T-201: the position of the last pointer move, press or release (viewport px), for
     /// `spawn(..., at=pointer)`.
     Vec2 pointerPosition() const { return m_lastPointer; }
+    /// T-552 (27 §27.4.1): true between a pointer move over this document and the pointer leaving
+    /// it (PointerLeave): the hover it set still stands at m_pointerPos.
+    bool pointerIn() const { return m_pointerIn; }
+    /// T-552 (27 §27.4.1, 2026-10-31 ruling "pointer and hover first, then bindings"): Document::update()
+    /// laid out or moved something while the pointer stood over the document (markHoverStale());
+    /// refreshHover(), called by Context::update() before the queued input, then re-judges hover at the
+    /// last pointer position against the new geometry, as a move to the same spot would (PointerLeave /
+    /// PointerEnter, the Hover state bit), without a PointerMove event. No-op unless marked stale and the
+    /// pointer is over the document.
+    void markHoverStale() { m_hoverStale = true; }
+    void refreshHover(NodeArena& arena, NodeId root);
 
     /// See Listener's docs; target must be alive and NodeKind::Element. Returns the new listener's
     /// id (== its index into the internal pool).
@@ -306,6 +317,9 @@ private:
     void compact(NodeArena& arena);
 
     void setPointerMove(NodeArena& arena, NodeId root, const InputEvent& input);
+    /// Hit-tests `pos` and moves the hover there (leave / enter chains); setPointerMove() and
+    /// refreshHover() (T-552).
+    void updateHover(NodeArena& arena, NodeId root, Vec2 pos);
     void setPointerLeaveWindow(NodeArena& arena);
     void handlePointerDown(NodeArena& arena, NodeId root, const InputEvent& input);
     void handlePointerUp(NodeArena& arena, NodeId root, const InputEvent& input);
@@ -489,7 +503,9 @@ private:
     // (Docs/tasks/T-33.md "拖曳（active 時 PointerMove）擴選"). Cleared on PointerUp.
     NodeId m_dragEdit = kInvalidNode;
     Vec2 m_pointerPos{};
-    Vec2 m_lastPointer{};  // T-201: see pointerPosition().
+    bool m_pointerIn = false;   // T-552: see pointerIn().
+    bool m_hoverStale = false;  // T-552: see markHoverStale().
+    Vec2 m_lastPointer{};       // T-201: see pointerPosition().
     // T-201: the `draggable="axis-x"` element a pointer press is dragging along (drag_drop.cpp).
     NodeId m_axisDrag = kInvalidNode;
     void axisDragValue(NodeArena& arena, Vec2 pos);

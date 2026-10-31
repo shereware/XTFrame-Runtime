@@ -302,16 +302,28 @@ public:
     /// kIrFormatMajor, and kInvalidArgument when `bundle.id` or `uis` is missing. `decode` is the
     /// image decoder handed to the FileAssetResolver behind assets(); nullptr means images cannot
     /// be decoded. `error`, when non-null, receives a human-readable message (it is cleared
-    /// first); the IR mismatch message names both major versions. 0.3 supports directories only
-    /// (no `.xtb` zip).
+    /// first); the IR mismatch message names both major versions.
+    ///
+    /// T-500 (§22.5 `.xtb`, the minimal form): `dir` may also name an `.xtb` file (a store-mode
+    /// zip of the directory form, `xtframe-pack --zip`). It is unpacked into
+    /// `<system temp>/xtframe-bundle/<content hash>/` (xt/bundle/zip_archive.h, with its entry
+    /// checks and kMaxXtbBytes / kMaxXtbEntries) and read from there like a directory: not read
+    /// in place, and not mapped (22 §22.2's mmap reading of a stored zip is not done yet). An
+    /// unpacked copy whose `manifest.json` exists is reused; dir() then names that directory, and
+    /// reload() re-reads the unpacked manifest, so a rewritten `.xtb` needs a new open(). A bad
+    /// archive is kInvalidArgument with the entry or check in `error`.
     static Result<std::unique_ptr<Bundle>> open(std::string_view dir, ImageDecodeFn decode = nullptr,
                                                 std::string* error = nullptr);
+
+    /// T-500: the limits an `.xtb` is unpacked under (the sum of the entry sizes, the entry count).
+    static constexpr uint64_t kMaxXtbBytes = 1024ull * 1024ull * 1024ull;
+    static constexpr size_t kMaxXtbEntries = 65536;
 
     /// The bundle's stable id (`bundle.id`).
     std::string_view id() const;
     /// The bundle's human-readable name (`bundle.name`).
     std::string_view name() const;
-    /// The directory passed to open().
+    /// The directory passed to open(); for an `.xtb`, the directory it was unpacked into.
     std::string_view dir() const;
 
     /// The UIs, in manifest order.
@@ -326,6 +338,8 @@ public:
     /// T-179 (§22.10 `strings`): the bundle's languages, in manifest order.
     std::span<const StringsInfo> strings() const;
     /// T-179 (§22.10 `fonts.fallback`): the per-language fallback chains, in manifest order.
+    /// T-555 (T-527c): a chain under the empty language key `""` is kept too; it is the default
+    /// chain addBundleFonts() orders the bundle's fonts by.
     std::span<const FontFallbackInfo> fontFallbacks() const;
 
     /// T-183 (§22.10 `project`): the source UI Project's identity; nullptr when the manifest has
@@ -371,6 +385,9 @@ public:
     std::vector<std::string> reload();
 
 private:
+    friend Result<uint32_t> addBundleFonts(const Bundle& bundle, std::string_view uiId, TextShaper& shaper,
+                                           std::vector<std::string>* warnings);
+
     /// T-262a: takes over `manifest`'s content and registers the image meta of its assets and atlas
     /// cells with assets() (manifest slices, `@2x` variants, `atlas:<page>#<asset>` cells); shared
     /// by open() and reload().
@@ -396,6 +413,15 @@ private:
     std::vector<SymbolContract> m_symbols;  // T-200.
     std::vector<GlyphInfo> m_glyphs;        // T-204.
     std::unique_ptr<FileAssetResolver> m_assets;
+    /// T-555: the font assets addBundleFonts() registered, per shaper (dedup across loads and
+    /// reload()). `fontCount` is the shaper's TextShaper::fonts() count right after the last
+    /// registration: a shaper reporting fewer is a new one at a reused address and starts over.
+    struct RegisteredFonts {
+        const TextShaper* shaper = nullptr;
+        size_t fontCount = 0;
+        std::vector<std::string> files;
+    };
+    mutable std::vector<RegisteredFonts> m_registeredFonts;
 };
 
 /// T-204 (Docs/design/13-api.md §13.8.8, 22 §22.10): the default IGlyphProvider of a bundle. It
@@ -457,6 +483,23 @@ Result<DocumentHandle> reloadUi(Context& ctx, Bundle& bundle, DocumentHandle han
 /// reload() picks up changed themes without touching any loaded Document beyond re-resolving the
 /// active theme's users.
 Status loadThemes(Context& ctx, const Bundle& bundle);
+
+/// T-555 (Docs/design/22-bundle.md §22.10.3, 50 §50.8 T-507): registers the `kind=font` assets
+/// of UI `uiId`'s manifest entry (`uis[].assets`) with `shaper` through
+/// TextShaper::addFontMemory(), reading them like every other bundle file (the T-240 reader hook;
+/// an `.xtb` is read from its unpacked directory). Fonts whose family is in the default
+/// `fonts.fallback` chain (language `""`, T-527c) are registered first, in chain order, then the
+/// rest in manifest order -- addFontMemory() appends each font to the shaper's fallback list, so
+/// the chain becomes its fallback order. An asset already registered with this shaper by an
+/// earlier call is skipped (the bundle remembers it, also across reload()), so loading or
+/// reloading a UI again registers nothing twice. Call it before the shaper's system fonts are
+/// added so a bundled family wins over a system font of the same name; system fonts are not
+/// touched. loadUi() and reloadUi() call it with their Context's shaper (Context::textShaper()).
+/// Returns the number of fonts newly registered; kNotFound when the bundle has no such UI. A font
+/// that cannot be read or that the shaper rejects is skipped, with one line appended to `warnings`
+/// (when given); it is tried again by the next call.
+Result<uint32_t> addBundleFonts(const Bundle& bundle, std::string_view uiId, TextShaper& shaper,
+                                std::vector<std::string>* warnings = nullptr);
 
 /// T-170: the `--name: value` declarations of one theme/token `.xts` text, in source order (a
 /// repeated name keeps both; defineTheme() keeps the later). Everything else in the text is

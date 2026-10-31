@@ -420,9 +420,23 @@ std::string colorKey(const std::string& name) {
     return kebabToCamel(name.rfind("color-", 0) == 0 ? name.substr(6) : name);
 }
 
-ordered_json buildTokens(const UiProject& project, const DesignSystem& ds, ExportReport& report) {
-    const Decls baseDecls =
+/// T-498c (49 §49.12 ruling): `tokens.json` carries the inherited part of the project's variables
+/// too -- the implied layer's tokens that `shared.tokens` does not declare, after the project's
+/// own -- and names them in a top-level `inherited` object (`"--name": true`), since a `themes`
+/// value has to stay a plain string for Claude Design and xtframe-import.
+ordered_json buildTokens(const UiProject& project, const DesignSystem& ds,
+                         const detail::ImpliedLayer& implied, ExportReport& report) {
+    Decls baseDecls =
         project.shared.tokens.empty() ? Decls() : readDecls(tokensPath(project), project.shared.tokens);
+    std::set<std::string> inheritedNames;
+    {
+        const DeclMap mine = toMap(baseDecls);
+        for (const auto& [name, value] : implied.tokens) {
+            if (mine.count(name) == 0 && inheritedNames.insert(name).second) {
+                baseDecls.emplace_back(name, value);
+            }
+        }
+    }
     const DeclMap base = toMap(baseDecls);
     DesignSystem synced = ds;
     syncTokenMeta(synced, project, nullptr);
@@ -432,10 +446,23 @@ ordered_json buildTokens(const UiProject& project, const DesignSystem& ds, Expor
     }
     const auto categoryOf = [&](const std::string& name) {
         const auto found = meta.find(name);
-        if (found == meta.end() || isDeprecatedEntry(found->second->base)) {
+        if (found == meta.end()) {
+            // An inherited variable without an `inherited:` entry: the category of its name.
+            return inheritedNames.count(name) != 0 ? detail::guessTokenCategory(name) : std::string();
+        }
+        if (isDeprecatedEntry(found->second->base)) {
             return std::string();
         }
+        if (found->second->category.empty() && inheritedNames.count(name) != 0) {
+            return detail::guessTokenCategory(name);
+        }
         return found->second->category;
+    };
+    ordered_json inheritedJson = ordered_json::object();
+    const auto exported = [&](const std::string& name) {
+        if (inheritedNames.count(name) != 0) {
+            inheritedJson["--" + name] = true;
+        }
     };
     const auto put = [&](ordered_json& object, const std::string& key, ordered_json value,
                          const std::string& what) {
@@ -457,6 +484,7 @@ ordered_json buildTokens(const UiProject& project, const DesignSystem& ds, Expor
             continue;
         }
         put(baseTheme, colorKey(name), resolveValue(value, base, nullptr), "--" + name);
+        exported(name);
     }
     report.colorTokens = static_cast<int>(baseTheme.size());
     themes["base"] = std::move(baseTheme);
@@ -488,6 +516,7 @@ ordered_json buildTokens(const UiProject& project, const DesignSystem& ds, Expor
     std::string family;
     if (const auto found = base.find("font-family"); found != base.end()) {
         family = resolveValue(found->second, base, nullptr);
+        exported("font-family");
     }
     for (const TypeRole& r : synced.typeRoles) {
         if (family.empty() && !r.family.empty() && !isDeprecatedEntry(r.base)) {
@@ -559,6 +588,7 @@ ordered_json buildTokens(const UiProject& project, const DesignSystem& ds, Expor
                         entry[f.field] = std::string(f.field) == "family" ? ordered_json(resolved)
                                                                           : numberOrText(resolved);
                         placed = true;
+                        exported(name);
                     }
                     break;
                 }
@@ -570,6 +600,7 @@ ordered_json buildTokens(const UiProject& project, const DesignSystem& ds, Expor
             double v = 0.0;
             if (parseNumber(resolved, v)) {
                 space.push_back(v);
+                exported(name);
             } else {
                 report.notes.push_back("--" + name + " (space): '" + resolved +
                                        "' is not a number; not exported");
@@ -577,9 +608,11 @@ ordered_json buildTokens(const UiProject& project, const DesignSystem& ds, Expor
         } else if (category == "radius") {
             put(radius, kebabToCamel(name.rfind("radius-", 0) == 0 ? name.substr(7) : name),
                 numberOrText(resolved), "--" + name);
+            exported(name);
         } else if (category == "shadow") {
             put(shadow, kebabToCamel(name.rfind("shadow-", 0) == 0 ? name.substr(7) : name),
                 ordered_json(resolved), "--" + name);
+            exported(name);
         }
     }
     root["font"] = std::move(font);
@@ -606,6 +639,10 @@ ordered_json buildTokens(const UiProject& project, const DesignSystem& ds, Expor
     };
     root["board"] = ordered_json{{"width", numberJson(dimension(board.x, 1280.0))},
                                  {"height", numberJson(dimension(board.y, 720.0))}};
+    report.inheritedTokens = static_cast<int>(inheritedJson.size());
+    if (!inheritedJson.empty()) {
+        root["inherited"] = std::move(inheritedJson);
+    }
     return root;
 }
 
@@ -1312,15 +1349,37 @@ void importTokens(
     const DeclMap declared = project.shared.tokens.empty()
                                  ? DeclMap()
                                  : toMap(readDecls(tokensPath(project), project.shared.tokens));
+    // T-498c: the `inherited` object names the variables the exporting project got from its preset
+    // group; they are not imported (the group supplies them here too), one note for all of them.
+    std::set<std::string> inherited;
+    if (const auto it = tokens.find("inherited"); it != tokens.end() && it->is_object()) {
+        for (auto entry = it->begin(); entry != it->end(); ++entry) {
+            const std::string& key = entry.key();
+            if (entry->is_boolean() && entry->get<bool>() && key.rfind("--", 0) == 0 &&
+                isSafeName(key.substr(2))) {
+                inherited.insert(key);
+            }
+        }
+    }
+    int inheritedSkipped = 0;
     if (const auto base = themes.find("base"); base != themes.end() && base->is_object()) {
         for (const auto& [key, value] : stringMembers(*base, "tokens.json themes.base", report)) {
             const std::string id = "color-" + camelToKebab(key);
+            if (inherited.count("--" + id) != 0) {
+                ++inheritedSkipped;
+                continue;
+            }
             const std::string ref = std::string(kTokensFile) + "#themes.base." + key;
             TokenMeta* meta = nullptr;
             for (TokenMeta& t : ds.tokens) {
                 if (t.base.id == id) {
                     meta = &t;
                 }
+            }
+            if (meta != nullptr && meta->inherited && declared.count(id) == 0) {
+                // The project's own `inherited:` entry: the group supplies the value; nothing to write.
+                ++report.skipped;
+                continue;
             }
             if (meta == nullptr) {
                 TokenMeta t;
@@ -1345,6 +1404,10 @@ void importTokens(
         }
     } else {
         report.notes.push_back("tokens.json: no themes.base; no base variables imported");
+    }
+    if (inheritedSkipped > 0) {
+        report.notes.push_back("tokens.json: " + std::to_string(inheritedSkipped) +
+                               " inherited variable(s) not imported (the preset group supplies them)");
     }
     size_t themeCount = 0;
     for (auto it = themes.begin(); it != themes.end(); ++it) {
@@ -1518,7 +1581,8 @@ Status exportClaudeDesign(const UiProject& project, const DesignSystem& ds, cons
     fs::create_directories(dir, ec);
     const std::pair<const char*, std::string> files[] = {
         {kReadmeFile, buildReadme(project, ds, graph, standardSymbolDir, r.sections)},
-        {kTokensFile, dumpJson(buildTokens(project, ds, r))},
+        {kTokensFile,
+         dumpJson(buildTokens(project, ds, detail::readImpliedLayer(std::string(standardSymbolDir)), r))},
         {kPaletteFile, dumpJson(buildPalette(project, ds, r))},
         {kComponentsFile, buildComponents(project, ds, standardSymbolDir, r)},
     };

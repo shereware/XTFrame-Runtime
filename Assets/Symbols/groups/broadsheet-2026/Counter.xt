@@ -1,0 +1,62 @@
+<xt>
+  <head>
+    <!-- Counter: standard symbol (docs/design/30-ui-project.md 30.4). See README.md.
+         Style: Broadsheet (docs/design/47-symbol-visual-style.md). -->
+    <symbol name="Counter" requires="slots: label, icon">
+      <div id="Box" port:value="number in" port:gain="event in" on:port(gain)="play(hit)">
+        <div id="Icon"><slot name="icon"><div id="IconDot"></div></slot></div>
+        <div id="Copy">
+          <span id="Label"><slot name="label">Gold</slot></span>
+          <span id="Value" bind:text="value | tween(0.4s, ease-out) | round | thousands"></span>
+        </div>
+      </div>
+    </symbol>
+    <style>
+      symbol(Counter) {
+        #Box {
+          display: flex;
+          align-items: center;
+          column-gap: var(--space-2);
+          font-family: var(--font-body);
+          color: var(--color-text);
+        }
+        #Icon { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; }
+        #IconDot {
+          width: 18px;
+          height: 18px;
+          border-width: var(--rule-thin);
+          border-color: var(--color-border);
+          background-color: var(--color-warning);
+        }
+        #Copy { display: flex; flex-direction: column; align-items: flex-start; row-gap: 2px; }
+        #Label {
+          color: var(--color-text-dim);
+          font-family: var(--font-display);
+          font-size: var(--font-size-xs);
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: var(--letter-display);
+        }
+        /* The number box: an ink block inside a double frame (its own 1px border and a 1px outline 2px out). */
+        #Value {
+          margin: 3px;
+          padding: 0px var(--space-2);
+          border-width: var(--rule-thin);
+          border-color: var(--color-border);
+          outline: var(--rule-thin) solid var(--color-border);
+          outline-offset: 2px;
+          background-color: var(--color-accent);
+          color: var(--color-text-on-accent);
+          font-family: var(--font-display);
+          font-size: var(--font-size-l);
+          font-weight: 900;
+          letter-spacing: var(--letter-display);
+          white-space: nowrap;
+        }
+        @timeline hit {
+          #Box { 0s { opacity: 1 } 0.1s linear { opacity: 0.4 } 0.2s linear { opacity: 1 } }
+        }
+      }
+    </style>
+  </head>
+</xt>

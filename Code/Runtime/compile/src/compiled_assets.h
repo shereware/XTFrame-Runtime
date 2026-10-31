@@ -38,19 +38,28 @@ inline bool readAssetFileBytes(const CompileOptions& options, const std::filesys
     return detail::readFileBytes(path, out);
 }
 
-/// Resolves an external asset reference (`<img src>`, `<anim src>`, `@font-face src`) on disk
-/// (Docs/design/22-bundle.md §22.2, Docs/tasks/T-138.md): an absolute `rel` is returned as is;
-/// otherwise each `options.searchDirs[i] / rel` is tried in order and the first that exists wins;
-/// failing all of them, `baseDir / rel` (the `.xt` file's own directory for `compileDocument()`,
+/// Resolves an external asset reference (`<img src>`, `<anim src>`, `@font-face src`,
+/// `background-image`) on disk (Docs/design/22-bundle.md §22.2, 05 §5.9.12, Docs/tasks/T-138.md,
+/// T-490): an absolute `rel` is returned as is; otherwise `sheetDir / rel` -- the directory of the
+/// stylesheet that declared the reference (a `<link href>`ed `.xts`), empty for an inline `<style>`,
+/// an element attribute or an in-memory sheet -- is taken when it exists; then each
+/// `options.searchDirs[i] / rel` is tried in order and the first that exists wins; failing all of
+/// them, `baseDir / rel` (the `.xt` file's own directory for `compileDocument()`,
 /// `options.rootDir` for `compileDocumentFromStrings()`) -- the pre-T-138 behavior -- is returned
-/// whether or not it exists, so a miss reports exactly as before. The probe goes through
+/// whether or not it exists, so a miss reports exactly as before. The probes go through
 /// assetPathExists() (T-452).
 inline std::filesystem::path resolveAsset(const CompileOptions& options, std::string_view baseDir,
-                                          std::string_view rel) {
+                                          std::string_view rel, std::string_view sheetDir) {
     namespace fs = std::filesystem;
     fs::path relPath = pathFromUtf8(rel);
     if (relPath.is_absolute()) {
         return relPath;
+    }
+    if (!sheetDir.empty()) {
+        fs::path candidate = pathFromUtf8(sheetDir) / relPath;
+        if (assetPathExists(options, candidate)) {
+            return candidate;
+        }
     }
     for (const std::string& dir : options.searchDirs) {
         if (dir.empty()) {

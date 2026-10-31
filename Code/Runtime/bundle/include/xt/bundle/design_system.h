@@ -127,6 +127,11 @@ struct TokenMeta {
     std::string category;
     std::string description;
     std::string from;
+    /// T-498c (49 §49.12 ruling): `inherited: --name` in tokens.yaml. The variable is one the
+    /// implied default layer (the preset group's tokens.xts) supplies and `shared.tokens` does not
+    /// declare; the entry records only its links and description, never a value, and
+    /// syncTokenMeta() does not report it as `design.orphanMeta`.
+    bool inherited = false;
 };
 
 /// One type role of `type.yaml` (`roles:` list, §35.3.5).
@@ -261,8 +266,9 @@ Status save(const DesignSystem& ds, std::string* error = nullptr);
 
 /// §35.3.4 sync: every `:root` variable of `shared.tokens` without metadata gets a Draft TokenMeta
 /// (category from its name) and an Info `design.tokenNoMeta`; metadata without a variable gets
-/// `design.orphanMeta` (kept). `issues` may be null. Always kOk (a missing stylesheet has no
-/// variables).
+/// `design.orphanMeta` (kept) unless it is `inherited` (T-498c: the group declares it; such an
+/// entry without a category gets the one its name gives). `issues` may be null. Always kOk (a
+/// missing stylesheet has no variables).
 Status syncTokenMeta(DesignSystem& ds, const UiProject& project, std::vector<Issue>* issues);
 
 /// One edge of the reference graph: `from` refers to / uses / derives from `to`.

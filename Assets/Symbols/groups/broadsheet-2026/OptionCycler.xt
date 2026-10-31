@@ -1,0 +1,85 @@
+<xt>
+  <head>
+    <!-- OptionCycler: standard symbol (docs/design/30-ui-project.md 30.4). See README.md. -->
+    <symbol name="OptionCycler" requires="states: Hover, Focus, Disabled; slots: label">
+      <div id="Box" tabindex="0" port:current="string in" port:prev="event out" port:next="event out"
+           on:key(Left)="sound(ui_tick); emit(prev)" on:key(Right)="sound(ui_tick); emit(next)">
+        <span id="Label"><slot name="label">Option</slot></span>
+        <div id="Picker">
+          <button id="Prev" on:press="sound(ui_tick)" on:click="emit(prev)"><div id="PrevArrow"></div></button>
+          <span id="Current" bind:text="current"></span>
+          <button id="Next" on:press="sound(ui_tick)" on:click="emit(next)"><div id="NextArrow"></div></button>
+        </div>
+      </div>
+    </symbol>
+    <style>
+      symbol(OptionCycler) {
+        #Box {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          column-gap: var(--space-4);
+          width: 360px;
+          height: var(--control-l);
+          padding: 0px var(--space-3);
+          color: var(--color-text);
+          font-family: var(--font-body);
+          font-size: var(--font-size-m);
+          transition: background-color var(--motion-instant) linear, transform var(--motion-fast) ease-out;
+        }
+        #Box:hover { background-color: var(--color-surface-sunken); }
+        #Box:focus {
+          outline: var(--focus-w) solid var(--color-focus);
+          outline-offset: 2px;
+          background-color: var(--color-surface-sunken);
+          transform: rotate(-1.5deg);
+        }
+        #Label { white-space: nowrap; overflow: hidden; }
+        #Picker { display: flex; align-items: center; column-gap: var(--space-2); flex-shrink: 0; }
+        #Current {
+          min-width: 120px;
+          text-align: center;
+          white-space: nowrap;
+          font-family: var(--font-display);
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: var(--letter-display);
+        }
+        #Prev, #Next {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: var(--control-s);
+          height: var(--control-s);
+          border-width: var(--rule-thin);
+          border-style: dashed;
+          border-color: var(--color-border);
+          background-color: transparent;
+          color: var(--color-text);
+        }
+        #Prev:hover, #Next:hover { background-color: var(--color-accent); color: var(--color-text-on-accent); }
+        #Prev:active, #Next:active { background-color: var(--color-surface-sunken); color: var(--color-text); transform: translate(2px, 2px); }
+        #PrevArrow, #NextArrow {
+          width: 8px;
+          height: 8px;
+          border-left-width: 2px;
+          border-bottom-width: 2px;
+          border-color: var(--color-text);
+        }
+        #PrevArrow { transform: rotate(45deg); }
+        #NextArrow { transform: rotate(-135deg); }
+        #Prev:hover #PrevArrow, #Next:hover #NextArrow { border-color: var(--color-text-on-accent); }
+        :disabled #Box { outline: none !important; transform: none !important; }
+        :disabled #Current { color: var(--color-disabled-text); }
+        :disabled #Prev, :disabled #Next {
+          border-color: var(--color-disabled-text) !important;
+          background-color: var(--color-disabled-bg) !important;
+          background-image: var(--tex-hatch) !important;
+          background-repeat: repeat;
+          background-size: 8px 8px;
+        }
+        :disabled #PrevArrow, :disabled #NextArrow { border-color: var(--color-disabled-text) !important; }
+      }
+    </style>
+  </head>
+</xt>

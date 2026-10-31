@@ -36,7 +36,8 @@
 ///                  status, source, approved, tags, links, note, <extra>; a swatch with nothing but an
 ///                  id is written as the bare id (the abbreviated group form)
 ///   tokens.yaml    version, tokens{--name (sorted by name): {name, category, description, from,
-///                  status, source, approved, tags, links, note, <extra>}}, <extra>
+///                  inherited (T-498c: `--name`, only for an inherited variable), status, source,
+///                  approved, tags, links, note, <extra>}}, <extra>
 ///   type.yaml      version, roles[{id, name, family, weights, status, source, approved, tags, links, note,
 ///                  <extra>}], <extra>
 ///   text/*.md      front matter: id, title, name, section, status, source, approved, tags, applies-to,
@@ -762,7 +763,17 @@ void readTokens(const json& root, DesignSystem& ds) {
                 readString(obj, "category", meta.category, meta.base.extra);
                 readString(obj, "description", meta.description, meta.base.extra);
                 readString(obj, "from", meta.from, meta.base.extra);
-                readCommon(obj, meta.base, {"category", "description", "from"});
+                // T-498c: `inherited: --name` (or `true`) marks a variable the implied default
+                // layer supplies; anything else under that key is kept as an unknown key.
+                if (const auto inherited = obj.find("inherited"); inherited != obj.end()) {
+                    if ((inherited->is_string() && inherited->get<std::string>().rfind("--", 0) == 0) ||
+                        (inherited->is_boolean() && inherited->get<bool>())) {
+                        meta.inherited = true;
+                    } else if (!inherited->is_null()) {
+                        putExtraKey(meta.base.extra, "inherited", *inherited);
+                    }
+                }
+                readCommon(obj, meta.base, {"category", "description", "from", "inherited"});
             } else if (!obj.is_null()) {
                 putExtraKey(meta.base.extra, "value", obj);
             }
@@ -777,6 +788,9 @@ ordered_json tokenJson(const TokenMeta& t) {
     putStringDesignIo(o, "category", t.category, t.base.extra);
     putStringDesignIo(o, "description", t.description, t.base.extra);
     putStringDesignIo(o, "from", t.from, t.base.extra);
+    if (t.inherited) {
+        o["inherited"] = "--" + t.base.id;
+    }
     putMiddle(o, t.base);
     putLinks(o, t.base.links, t.base.extra);
     putStringDesignIo(o, "note", t.base.note, t.base.extra);
@@ -1384,8 +1398,13 @@ Status syncTokenMeta(DesignSystem& ds, const UiProject& project, std::vector<Iss
                                     "'" + name + "' has no metadata in tokens.yaml; added as a draft"});
         }
     }
-    for (const TokenMeta& t : ds.tokens) {
-        if (inSheet.count(t.base.id) == 0 && issues != nullptr) {
+    for (TokenMeta& t : ds.tokens) {
+        // T-498c: an `inherited:` entry records links and a description only; its category, when
+        // not written, is the name's (as for a variable without metadata).
+        if (t.inherited && t.category.empty()) {
+            t.category = guessCategory(t.base.id);
+        }
+        if (inSheet.count(t.base.id) == 0 && !t.inherited && issues != nullptr) {
             issues->push_back(Issue{
                 "design.orphanMeta", Severity::Info, entryRef(EntryKind::Token, t.base.id),
                 "tokens.yaml describes '--" + t.base.id + "', which " +
@@ -1512,5 +1531,11 @@ Status upgradeDesign(const UiProject& project, DesignUpgradeReport* report, std:
     }
     return Status::kOk;
 }
+
+namespace detail {
+
+std::string guessTokenCategory(const std::string& name) { return guessCategory(name); }
+
+}  // namespace detail
 
 }  // namespace xt::bundle::design

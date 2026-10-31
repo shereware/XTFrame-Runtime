@@ -1,0 +1,102 @@
+<xt>
+  <head>
+    <!-- Dropdown: standard symbol (docs/design/30-ui-project.md 30.4). See README.md.
+         While Open the field lifts itself (and the list inside it) into the overlay layer with
+         `layer(overlay)`, above any parent clipping; the list is a focus trap. -->
+    <symbol name="Dropdown" requires="states: Hover, Focus, Open, Selected, Disabled; slots: label">
+      <div id="Box" port:options="list&lt;struct{label: string}&gt; in" port:value="number in"
+           port:current="string in" port:select="event out">
+        <span id="Label"><slot name="label">Choice</slot></span>
+        <button id="Field" on:click="sound(ui_open); state(Open, toggle)" on:blur="state(Open, off)"
+                on:state(Open).enter="layer(overlay)" on:state(Open).exit="layer(normal)">
+          <span id="Current" bind:text="current"></span>
+          <div id="Caret"></div>
+          <div id="List" focus-trap>
+            <repeat port="options" id="Item">
+              <div id="Row" bind:state.Selected="index | eq(value)" on:press="sound(ui_select); emit(select)">
+                <span id="RowText" bind:text="item(label)"></span>
+              </div>
+            </repeat>
+          </div>
+        </button>
+      </div>
+    </symbol>
+    <style>
+      symbol(Dropdown) {
+        #Box {
+          display: flex;
+          flex-direction: column;
+          row-gap: var(--space-1);
+          width: 240px;
+          color: var(--color-text);
+          font-family: var(--font-body);
+          font-size: var(--font-size-m);
+        }
+        #Label { color: var(--color-text-dim); font-size: var(--font-size-s); white-space: nowrap; }
+        #Field {
+          position: relative;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          height: var(--control-m);
+          padding: 0px var(--space-3);
+          border-width: var(--rule-thin);
+          border-color: var(--color-border);
+          background-color: var(--color-surface);
+          color: var(--color-text);
+          transition: background-color var(--motion-fast) linear;
+        }
+        #Current { white-space: nowrap; }
+        #Caret {
+          width: 8px;
+          height: 8px;
+          border-right-width: 2px;
+          border-bottom-width: 2px;
+          border-color: var(--color-text);
+          transform: rotate(45deg);
+        }
+        #Field:hover { background-color: var(--color-accent); color: var(--color-text-on-accent); }
+        #Field:hover #Caret, #Field:state(Open) #Caret { border-color: var(--color-text-on-accent); }
+        #Field:focus { outline: var(--focus-w) solid var(--color-focus); outline-offset: 2px; }
+        #Field:state(Open) { background-color: var(--color-accent); color: var(--color-text-on-accent); }
+        #Field:state(Open) #List { visibility: visible; opacity: 1; }
+        #List {
+          position: absolute;
+          left: -1px;
+          top: 100%;
+          width: 240px;
+          margin-top: var(--space-1);
+          border-width: var(--rule-thick) var(--rule-thin) 0px var(--rule-thin);
+          border-color: var(--color-border);
+          background-color: var(--color-surface);
+          background-image: var(--tex-grain);
+          background-repeat: repeat;
+          background-size: 128px 128px;
+          color: var(--color-text);
+          visibility: hidden;
+          opacity: 0;
+          transition: opacity var(--motion-fast) linear;
+        }
+        #Item { display: flex; flex-direction: column; }
+        #Row {
+          padding: var(--space-2) var(--space-3);
+          border-width: 0px 0px var(--rule-thin) 0px;
+          border-color: var(--color-border);
+        }
+        #RowText { white-space: nowrap; }
+        #Row:hover { background-color: var(--color-accent-hover); color: var(--color-text-on-accent); }
+        #Row:state(Selected) { background-color: var(--color-accent); color: var(--color-text-on-accent); }
+        :disabled #Field {
+          background-color: var(--color-disabled-bg) !important;
+          background-image: var(--tex-hatch) !important;
+          background-repeat: repeat;
+          background-size: 8px 8px;
+          color: var(--color-disabled-text) !important;
+          border-color: var(--color-disabled-text) !important;
+          outline: none !important;
+        }
+        :disabled #Caret { border-color: var(--color-disabled-text) !important; }
+      }
+    </style>
+  </head>
+</xt>

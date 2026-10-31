@@ -245,6 +245,9 @@ struct UiFixture {
     // uses a `.xtfx` custom effect, which SW never runs (it applies the fallback), so xt_golden
     // skips it and xt_gl_tests compares it through xt::gl instead.
     bool glOnly = false;
+    // T-491: extra asset roots tried after the .xt's own directory, for fonts that a linked library
+    // stylesheet names relative to itself (the symbols tests pass the preset group directory).
+    std::vector<std::string> assetRoots;
 };
 
 /// Parses `Tests/golden/ui/manifest.txt`: one fixture per non-blank, non-'#'-comment line,

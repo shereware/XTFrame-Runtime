@@ -1,0 +1,8 @@
+<xt>
+  <head>
+    <link href="../shared/tokens.xts"/>
+  </head>
+  <body>
+    <div id="a" class="hero">x</div>
+  </body>
+</xt>

@@ -69,6 +69,32 @@ CompareOp parseCompareOp(std::string_view op) {
     return CompareOp::Unknown;
 }
 
+FilterOp parseFilterOp(std::string_view op) {
+    if (op == "deadband") {
+        return FilterOp::Deadband;
+    }
+    if (op == "quantize") {
+        return FilterOp::Quantize;
+    }
+    if (op == "sample") {
+        return FilterOp::Sample;
+    }
+    return FilterOp::Unknown;
+}
+
+ThrottleUnit parseThrottleUnit(std::string_view unit) {
+    if (unit == "frames") {
+        return ThrottleUnit::Frames;
+    }
+    if (unit == "seconds") {
+        return ThrottleUnit::Seconds;
+    }
+    if (unit == "hz") {
+        return ThrottleUnit::Hz;
+    }
+    return ThrottleUnit::Unknown;
+}
+
 bool valuesEqual(const PortValue& a, const PortValue& b) {
     if (a.type != b.type) {
         return false;
@@ -222,16 +248,86 @@ void FlowRuntime::Impl::appendFormatted(std::string& out, const RtValue& v, cons
 
 // ---- Load-time compilation -------------------------------------------------------------------------
 
+uint16_t stateSlotOf(const NodeRuntime& node, SlotKind kind, std::string_view name) {
+    if (kind == SlotKind::Param) {
+        return slotOf(NodeType::State, kind, name);
+    }
+    if (const uint16_t fixed = slotOf(NodeType::State, kind, name); fixed != kNoSlot) {
+        return fixed;
+    }
+    if (kind == SlotKind::Input) {
+        for (size_t e = 0; e < node.stateEvents.size(); ++e) {
+            if (node.stateEvents[e] == name) {
+                return static_cast<uint16_t>(slots::state::kFirstEvent + e);
+            }
+        }
+        return kNoSlot;
+    }
+    const bool enter = name.size() > 5 && name.substr(0, 5) == "enter";
+    const bool exit = name.size() > 4 && name.substr(0, 4) == "exit";
+    if (!enter && !exit) {
+        return kNoSlot;
+    }
+    const std::string_view stateName = name.substr(enter ? 5 : 4);
+    for (size_t s = 0; s < node.stateNames.size(); ++s) {
+        if (node.stateNames[s] == stateName) {
+            return enter ? slots::state::enterSlot(static_cast<uint32_t>(s))
+                         : slots::state::exitSlot(static_cast<uint32_t>(s));
+        }
+    }
+    return kNoSlot;
+}
+
+void FlowRuntime::Impl::compileStateNode(const NodeDesc& nd, NodeRuntime& rt) {
+    // load() compiles before it validates: a node that fails checkStateNode() stays empty here (its
+    // errors are reported by validateGraph(), which then fails the load).
+    std::vector<std::string> problems;
+    checkStateNode(nd, problems);
+    if (!problems.empty()) {
+        return;
+    }
+    for (const PortValue& v : nd.arrayParams.at("states")) {
+        rt.stateNames.push_back(v.s);
+        rt.stateNameIds.push_back(strings.intern(v.s));
+    }
+    rt.stateEvents = stateEventNames(nd);
+    rt.stateCount = static_cast<uint16_t>(rt.stateNames.size());
+    rt.eventCount = static_cast<uint16_t>(rt.stateEvents.size());
+    auto indexOf = [](const std::vector<std::string>& list, const std::string& name) {
+        return static_cast<int16_t>(std::find(list.begin(), list.end(), name) - list.begin());
+    };
+    rt.stateTrans.assign(static_cast<size_t>(rt.stateCount) * rt.eventCount, int16_t{-1});
+    rt.stateWild.assign(rt.eventCount, int16_t{-1});
+    for (const TransitionDesc& t : nd.transitions) {
+        const int16_t event = indexOf(rt.stateEvents, t.on);
+        const int16_t to = indexOf(rt.stateNames, t.to);
+        if (t.from == "*") {
+            rt.stateWild[static_cast<size_t>(event)] = to;
+        } else {
+            rt.stateTrans[static_cast<size_t>(indexOf(rt.stateNames, t.from)) * rt.eventCount +
+                          static_cast<size_t>(event)] = to;
+        }
+    }
+    if (auto initial = nd.params.find("initial"); initial != nd.params.end()) {
+        rt.stateCurrent = static_cast<uint16_t>(indexOf(rt.stateNames, initial->second.s));
+    }
+}
+
 void FlowRuntime::Impl::compileNode(const NodeDesc& nd, NodeRuntime& rt) {
     const NodeSlotTable table = nodeSlotTable(rt.type);
+    if (rt.type == NodeType::State) {
+        compileStateNode(nd, rt);
+    }
     // `radio`'s "set<i>" inputs: room for the largest legal count, so a slot never depends on it.
-    const uint32_t inputs = inputSlotCount(rt.type, 64);
+    // `state` (T-541): one pulse input per event, an enter / exit output pair per state.
+    const uint32_t inputs = inputSlotCount(rt.type, 64) + rt.eventCount;
+    const uint32_t outputs = static_cast<uint32_t>(table.outputs.size()) + 2u * rt.stateCount;
     rt.inputBase = static_cast<uint32_t>(values.size());
     rt.inputCount = static_cast<uint16_t>(inputs);
     values.resize(values.size() + inputs);
     rt.outputBase = static_cast<uint32_t>(values.size());
-    rt.outputCount = static_cast<uint16_t>(table.outputs.size());
-    values.resize(values.size() + table.outputs.size());
+    rt.outputCount = static_cast<uint16_t>(outputs);
+    values.resize(values.size() + outputs);
     rt.paramBase = static_cast<uint32_t>(values.size());
     rt.paramCount = static_cast<uint16_t>(table.params.size());
     for (std::string_view name : table.params) {
@@ -282,6 +378,15 @@ void FlowRuntime::Impl::compileNode(const NodeDesc& nd, NodeRuntime& rt) {
         case NodeType::Radio:
             rt.radioCount = std::max(2u, static_cast<uint32_t>(paramNum(rt, slots::radio::kCount, 2.0)));
             break;
+        case NodeType::Filter:
+            rt.op = static_cast<uint8_t>(parseFilterOp(paramText(rt, slots::filter::kOp)));
+            rt.filterLastHome = strings.addBuffer();  // T-543: the last sent value's string.
+            break;
+        case NodeType::Throttle:
+            rt.op = static_cast<uint8_t>(parseThrottleUnit(paramText(rt, slots::throttle::kUnit)));
+            rt.throttleTrailing = paramBool(rt, slots::throttle::kTrailing, true);
+            rt.throttlePendingHome = strings.addBuffer();
+            break;
         default:
             break;
     }
@@ -325,6 +430,12 @@ void FlowRuntime::Impl::seedInitialOutputs() {
                 n.radioIndex = -1;  // Forces the first setRadio() to push, without a `changed`.
                 setRadio(idx, paramNum(n, slots::radio::kInitial, 0.0));
                 break;
+            case NodeType::State:
+                // T-541: the initial state is pushed like a `constant`; `enter<initial>` is not fired.
+                if (n.stateCount > 0) {
+                    statePushValues(idx);
+                }
+                break;
             case NodeType::Merge:
                 break;  // Pulse-only: nothing to seed.
             case NodeType::System:
@@ -334,6 +445,11 @@ void FlowRuntime::Impl::seedInitialOutputs() {
             case NodeType::Emit:
             case NodeType::Timeline:
                 break;  // T-193: event-driven only; their outputs start at the typed default.
+            case NodeType::Filter:
+                break;  // T-543: event-driven only.
+            case NodeType::Throttle:
+                pushNumberOutput(idx, slots::throttle::kDropped, 0);
+                break;
             case NodeType::Math:
             case NodeType::Compare:
             case NodeType::ToString:
@@ -370,6 +486,68 @@ void FlowRuntime::Impl::setRadio(int nodeIndex, double index) {
     pushNumberOutput(nodeIndex, slots::radio::kIndex, clamped);
     if (changed && !firstPush) {
         firePulseOutput(nodeIndex, slots::radio::kChanged);
+    }
+}
+
+void FlowRuntime::Impl::statePushValues(int nodeIndex) {
+    NodeRuntime& n = nodes[static_cast<size_t>(nodeIndex)];
+    // The state changed (or is being established), so the string is written and fanned out without
+    // comparing it with the old one: no string comparison and, past the buffer's first growth, no
+    // allocation (like fireEventText()).
+    const uint32_t i = n.outputBase + slots::state::kState;
+    strings.buffer(slotHome(i)).assign(strings.text(n.stateNameIds[n.stateCurrent]));
+    values[i] = RtValue{PortType::String, false, 0.0, slotHome(i)};
+    markValuesStale(nodeIndex);
+    fanOut(i, values[i]);
+    pushNumberOutput(nodeIndex, slots::state::kIndex, static_cast<double>(n.stateCurrent));
+}
+
+void FlowRuntime::Impl::stateTransition(int nodeIndex, uint32_t to) {
+    NodeRuntime& n = nodes[static_cast<size_t>(nodeIndex)];
+    const uint32_t from = n.stateCurrent;
+    if (to == from || to >= n.stateCount) {
+        return;  // A self-transition fires nothing (27 §27.4.4).
+    }
+    firePulseOutput(nodeIndex, slots::state::exitSlot(from));  // Downstream still sees the old state.
+    n.stateCurrent = static_cast<uint16_t>(to);
+    statePushValues(nodeIndex);
+    firePulseOutput(nodeIndex, slots::state::enterSlot(to));  // ... and here the new one.
+    firePulseOutput(nodeIndex, slots::state::kChanged);
+}
+
+void FlowRuntime::Impl::stateEvent(int nodeIndex, uint32_t event) {
+    const NodeRuntime& n = nodes[static_cast<size_t>(nodeIndex)];
+    const RtValue& guard = values[n.inputBase + slots::state::kGuard];
+    if (guard.type == PortType::Bool && !guard.b) {
+        return;  // `guard` false swallows every event (no guard on a missing edge).
+    }
+    if (event >= n.eventCount) {
+        return;
+    }
+    int16_t to = n.stateTrans[static_cast<size_t>(n.stateCurrent) * n.eventCount + event];
+    if (to < 0) {
+        to = n.stateWild[event];  // The explicit (from, on) wins; "*" is the fallback.
+    }
+    if (to >= 0) {
+        stateTransition(nodeIndex, static_cast<uint32_t>(to));
+    }
+}
+
+void FlowRuntime::Impl::stateSet(int nodeIndex, const RtValue& v) {
+    NodeRuntime& n = nodes[static_cast<size_t>(nodeIndex)];
+    if (v.type != PortType::String) {
+        return;
+    }
+    const std::string& name = strings.text(v.str);
+    for (uint32_t s = 0; s < n.stateCount; ++s) {
+        if (n.stateNames[s] == name) {
+            stateTransition(nodeIndex, s);
+            return;
+        }
+    }
+    if (!n.stateSetReported) {  // Once per node: the error path may allocate.
+        n.stateSetReported = true;
+        runtimeErrorList.push_back("node '" + n.id + "': set: unknown state '" + name + "'");
     }
 }
 
@@ -413,6 +591,11 @@ void FlowRuntime::Impl::handlePulseInput(int nodeIndex, uint16_t slot) {
                 firePulseOutput(nodeIndex, slots::merge::kOut);
             }
             break;
+        case NodeType::State:
+            if (slot >= slots::state::kFirstEvent) {
+                stateEvent(nodeIndex, static_cast<uint32_t>(slot - slots::state::kFirstEvent));
+            }
+            break;
         case NodeType::Timer: {
             if (slot == slots::timer::kStart) {
                 n.timerRunning = true;
@@ -430,6 +613,27 @@ void FlowRuntime::Impl::handlePulseInput(int nodeIndex, uint16_t slot) {
             // T-193: in a helper of its own, so this function's stack frame (on the path of a
             // feedback loop through the document, see fanOut()) does not grow.
             handleActionPulse(nodeIndex, slot);
+            break;
+        case NodeType::Filter:
+            if (slot == slots::filter::kReset) {
+                n.filterHasLast = false;
+            } else if (slot == slots::filter::kTrigger && n.op == static_cast<uint8_t>(FilterOp::Sample)) {
+                // `sample`: the current `in`; nothing before the first one.
+                const RtValue& current = values[n.inputBase + slots::filter::kIn];
+                if (current.type != kNoValue && current.type != PortType::Pulse) {
+                    emitPassed(nodeIndex, slots::filter::kOut, current, slots::filter::kPassed);
+                }
+            }
+            break;
+        case NodeType::Throttle:
+            if (slot == slots::throttle::kReset) {
+                // Clears the window and the held value; `dropped` keeps counting (debugging total).
+                n.throttleHasPending = false;
+                n.throttleEmitted = false;
+                n.throttleNextAllowed = 0;
+            } else if (slot == slots::throttle::kIn) {  // A pulse-typed `in`.
+                throttleInput(nodeIndex, kPulseValue);
+            }
             break;
         case NodeType::Random: {
             if (slot == slots::random::kTrigger) {
@@ -642,11 +846,30 @@ void FlowRuntime::Impl::deliverToNode(int nodeIndex, uint16_t slot, const RtValu
                 setRadio(nodeIndex, v.n);
             }
             break;
+        case NodeType::State:
+            // T-541: `set` jumps to the named state. Not while load() seeds: a constant wired to it
+            // must not move the node away from its `initial` just because the graph was loaded.
+            if (slot == slots::state::kSet && !seeding) {
+                stateSet(nodeIndex, v);
+            }
+            break;
         case NodeType::Timeline:
             // T-193: `seek`. Not while load() seeds: a constant wired to `seek` must not move a
             // timeline just because the graph was loaded.
             if (slot == slots::timeline::kSeek && !seeding) {
                 timelineInput(nodeIndex, slot, v);
+            }
+            break;
+        case NodeType::Filter:  // T-543: event-driven, never batched.
+            if (slot == slots::filter::kIn) {
+                filterInput(nodeIndex);
+            }
+            break;
+        case NodeType::Throttle:
+            if (slot == slots::throttle::kIn) {
+                throttleInput(nodeIndex, values[input]);
+            } else if (slot == slots::throttle::kRate) {
+                throttleRateChanged(nodeIndex);
             }
             break;
         default:
@@ -691,6 +914,193 @@ void FlowRuntime::Impl::pushScratchOutput(int nodeIndex, uint16_t slot) {
 
 void FlowRuntime::Impl::firePulseOutput(int nodeIndex, uint16_t slot) {
     fanOut(nodes[static_cast<size_t>(nodeIndex)].outputBase + slot, kPulseValue);
+}
+
+// ---- T-543 (Docs/design/27-interaction.md §27.4.5): filter and throttle -----------------------------
+
+void FlowRuntime::Impl::emitPassed(int nodeIndex, uint16_t slot, const RtValue& v, uint16_t passedSlot) {
+    if (v.type == PortType::Pulse || v.type == kNoValue) {
+        firePulseOutput(nodeIndex, slot);
+    } else {
+        // Every value that passes is sent, even one equal to the output's current value: this
+        // node decides what is worth sending, not the change-only filter of pushRawOutput().
+        const uint32_t i = nodes[static_cast<size_t>(nodeIndex)].outputBase + slot;
+        assignValue(slotHome(i), values[i], v);
+        markValuesStale(nodeIndex);
+        fanOut(i, values[i]);
+    }
+    firePulseOutput(nodeIndex, passedSlot);
+}
+
+void FlowRuntime::Impl::filterInput(int nodeIndex) {
+    NodeRuntime& n = nodes[static_cast<size_t>(nodeIndex)];
+    const RtValue& in = values[n.inputBase + slots::filter::kIn];
+    RtValue send = in;
+    switch (static_cast<FilterOp>(n.op)) {
+        case FilterOp::Deadband: {
+            if (in.type == kNoValue || in.type == PortType::Pulse) {
+                return;
+            }
+            bool pass = !n.filterHasLast || n.filterLast.type != in.type;
+            if (!pass) {
+                if (in.type == PortType::Number) {
+                    const double threshold =
+                        std::max(0.0, finiteOr(paramNum(n, slots::filter::kThreshold, 0.0), 0.0));
+                    pass = !(std::fabs(in.n - n.filterLast.n) < threshold);
+                } else {
+                    pass = !rtEqual(in, n.filterLast);  // bool / string: sent when the value changed.
+                }
+            }
+            if (!pass) {
+                return;
+            }
+            break;
+        }
+        case FilterOp::Quantize: {
+            if (in.type != PortType::Number) {
+                return;  // Load rejects a non-number `in`; a value that gets here anyway is dropped.
+            }
+            const double step = paramNum(n, slots::filter::kStep, 0.0);
+            if (!(step > 0.0) || !std::isfinite(step) || !std::isfinite(in.n)) {
+                return;
+            }
+            const double q = std::round(in.n / step) * step + 0.0;  // "+ 0.0": -0 becomes 0.
+            if (!std::isfinite(q) ||
+                (n.filterHasLast && n.filterLast.type == PortType::Number && q == n.filterLast.n)) {
+                return;
+            }
+            send = RtValue{PortType::Number, false, q, 0u};
+            break;
+        }
+        case FilterOp::Sample:  // `in` only stores; `trigger` sends.
+        case FilterOp::Unknown:
+            return;
+    }
+    assignValue(n.filterLastHome, n.filterLast, send);
+    n.filterHasLast = true;
+    emitPassed(nodeIndex, slots::filter::kOut, send, slots::filter::kPassed);
+}
+
+double FlowRuntime::Impl::throttleNow(const NodeRuntime& n) const {
+    return static_cast<ThrottleUnit>(n.op) == ThrottleUnit::Frames ? static_cast<double>(tickCount)
+                                                                   : tickTime;
+}
+
+double FlowRuntime::Impl::throttleWindow(const NodeRuntime& n) const {
+    const auto unit = static_cast<ThrottleUnit>(n.op);
+    if (unit == ThrottleUnit::Unknown) {
+        return 0.0;
+    }
+    // The `rate` edge's last value wins over the param; either way a non-finite or non-positive
+    // rate does not limit (27 §27.4.5, 14 §14.9).
+    const RtValue& wired = values[n.inputBase + slots::throttle::kRate];
+    const double raw =
+        wired.type == PortType::Number ? wired.n : paramNum(n, slots::throttle::kRateParam, 0.0);
+    const double rate = finiteOr(raw, 0.0);
+    if (!(rate > 0.0)) {
+        return 0.0;
+    }
+    switch (unit) {
+        case ThrottleUnit::Frames:
+            return static_cast<double>(std::max<int32_t>(1, toInt32Sat(rate)));
+        case ThrottleUnit::Seconds:
+            return std::min(rate, kMaxThrottleWindow);
+        case ThrottleUnit::Hz:
+            return std::min(1.0 / rate, kMaxThrottleWindow);
+        case ThrottleUnit::Unknown:
+            break;
+    }
+    return 0.0;
+}
+
+void FlowRuntime::Impl::throttleInput(int nodeIndex, const RtValue& v) {
+    NodeRuntime& n = nodes[static_cast<size_t>(nodeIndex)];
+    const RtValue input = v.type == kNoValue ? kPulseValue : v;  // A copy: `v` may be an input slot.
+    const double window = throttleWindow(n);
+    if (window <= 0.0) {
+        emitPassed(nodeIndex, slots::throttle::kOut, input, slots::throttle::kPassed);  // No limit.
+        return;
+    }
+    const double now = throttleNow(n);
+    if (now + kThrottleTimeSlack >= n.throttleNextAllowed) {
+        if (n.throttleHasPending) {  // Superseded by this newer input.
+            n.throttleHasPending = false;
+            n.throttleDropped += 1.0;
+            pushNumberOutput(nodeIndex, slots::throttle::kDropped, n.throttleDropped);
+        }
+        n.throttleEmitted = true;
+        n.throttleLastEmit = now;
+        n.throttleNextAllowed = now + window;
+        emitPassed(nodeIndex, slots::throttle::kOut, input, slots::throttle::kPassed);
+        return;
+    }
+    // Inside the window: only the last value is kept, and only for the trailing send.
+    if (!n.throttleTrailing || n.throttleHasPending) {
+        n.throttleDropped += 1.0;  // Dropped for good, or overwritten.
+        pushNumberOutput(nodeIndex, slots::throttle::kDropped, n.throttleDropped);
+    }
+    if (!n.throttleTrailing) {
+        return;
+    }
+    assignValue(n.throttlePendingHome, n.throttlePending, input);
+    n.throttleHasPending = true;
+    if (!n.throttleQueued) {
+        n.throttleQueued = true;
+        throttleWaiting.push_back(nodeIndex);  // Reserved for every throttle node at load.
+    }
+}
+
+void FlowRuntime::Impl::throttleSendPending(int nodeIndex) {
+    NodeRuntime& n = nodes[static_cast<size_t>(nodeIndex)];
+    const double window = throttleWindow(n);
+    const double now = throttleNow(n);
+    n.throttleHasPending = false;
+    if (window > 0.0) {
+        n.throttleEmitted = true;
+        n.throttleLastEmit = now;
+        n.throttleNextAllowed = now + window;
+    }
+    const RtValue held = n.throttlePending;  // Its string stays in throttlePendingHome.
+    emitPassed(nodeIndex, slots::throttle::kOut, held, slots::throttle::kPassed);
+}
+
+void FlowRuntime::Impl::throttleRateChanged(int nodeIndex) {
+    NodeRuntime& n = nodes[static_cast<size_t>(nodeIndex)];
+    const double window = throttleWindow(n);
+    if (window > 0.0 && n.throttleEmitted) {
+        n.throttleNextAllowed = n.throttleLastEmit + window;  // The window re-measured, not restarted.
+    }
+    if (n.throttleHasPending &&
+        (window <= 0.0 || throttleNow(n) + kThrottleTimeSlack >= n.throttleNextAllowed)) {
+        throttleSendPending(nodeIndex);
+    }
+}
+
+void FlowRuntime::Impl::flushThrottles() {
+    // Only the waiting nodes are visited. A send may queue another node (appended past `count`,
+    // seen next tick); the loop runs by index since the list can grow under it.
+    const size_t count = throttleWaiting.size();
+    for (size_t k = 0; k < count && k < throttleWaiting.size(); ++k) {
+        const int idx = throttleWaiting[k];
+        NodeRuntime& n = nodes[static_cast<size_t>(idx)];
+        if (!n.throttleHasPending) {
+            continue;  // Sent already, superseded or reset.
+        }
+        const double window = throttleWindow(n);
+        if (window <= 0.0 || throttleNow(n) + kThrottleTimeSlack >= n.throttleNextAllowed) {
+            throttleSendPending(idx);
+        }
+    }
+    size_t kept = 0;
+    for (size_t k = 0; k < throttleWaiting.size(); ++k) {
+        NodeRuntime& n = nodes[static_cast<size_t>(throttleWaiting[k])];
+        if (n.throttleHasPending) {
+            throttleWaiting[kept++] = throttleWaiting[k];
+        } else {
+            n.throttleQueued = false;
+        }
+    }
+    throttleWaiting.resize(kept);
 }
 
 // ---- T-193 (Docs/design/27-interaction.md §27.4.1): actions, timelines, system events ----------

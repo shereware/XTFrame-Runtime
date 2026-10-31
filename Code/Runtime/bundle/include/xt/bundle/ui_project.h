@@ -169,6 +169,9 @@ struct UiProjectPublish {
     bool embedFonts = false;
     Vec2 thumbnail{320, 180};
     AtlasOptions atlas;
+    /// T-527 (22 §22.10.3): `publish.fonts` ("system" | "bundled"; absent = system; any other value
+    /// is a load error). Written only when bundled.
+    FontsMode fonts = FontsMode::kSystem;
     /// T-212: where the project was published, least recent first (the last entry is the "last
     /// target" Publish on save and Publish Current UI use). Written only when non-empty.
     std::vector<PublishTarget> targets;

@@ -63,6 +63,18 @@ void pushAttr(DocBuilder& doc, IrDocElement& el, StringId name, StringId value) 
     ++el.attrCount;
 }
 
+/// Interns `value` before `name`, then pushes the pair. The two interns used to be the arguments of
+/// one pushAttr() call, whose evaluation order C++ leaves unspecified: GCC and MSVC evaluate right to
+/// left, Clang (and so the wasm build) left to right, so the same .xt produced a different string
+/// table (STRT order, DOCT ids) per compiler (T-524). The right-to-left order is kept: it is
+/// the order every existing golden and corpus baseline was written with.
+void pushAttr(DocBuilder& doc, IrDocElement& el, IrWriter& writer, std::string_view name,
+              std::string_view value) {
+    const StringId valueId = writer.intern(value);
+    const StringId nameId = writer.intern(name);
+    pushAttr(doc, el, nameId, valueId);
+}
+
 /// Parses `text` as a single decimal float (`<camera>`'s `zoom`/`near`/`far`/each `position`-
 /// `target` component, Docs/design/19-3d-space.md §19.4). Returns false (leaving `out` untouched)
 /// unless the whole string is one valid float token (T-272: a finite CSS number, exponent included)
@@ -163,7 +175,7 @@ std::vector<std::string> sequenceFrameNames(const CompileOptions& options, std::
         };
         auto exists = [&](const std::string& name) {
             std::error_code ec;
-            return fs::is_regular_file(resolveAsset(options, xtDir, name), ec);
+            return fs::is_regular_file(resolveAsset(options, xtDir, name, {}), ec);
         };
         const int first = exists(nameAt(0)) ? 0 : (exists(nameAt(1)) ? 1 : -1);
         for (int i = first; i >= 0 && i < first + 100000 && exists(nameAt(i)); ++i) {
@@ -172,7 +184,7 @@ std::vector<std::string> sequenceFrameNames(const CompileOptions& options, std::
         return out;
     }
     std::error_code ec;
-    const fs::path dir = resolveAsset(options, xtDir, src);
+    const fs::path dir = resolveAsset(options, xtDir, src, {});
     if (!fs::is_directory(dir, ec)) {
         return out;
     }
@@ -605,7 +617,7 @@ bool emitDoc(const DomTree& dom, IrWriter& writer, StyleBuilder& style, DocBuild
                 } else if (kind == LocalizedText::Key) {
                     key = keyIndex(writer, *l10n, keysByName, value);
                 }
-                pushAttr(doc, el, writer.intern(attr.name), writer.intern(value));
+                pushAttr(doc, el, writer, attr.name, value);
                 l10n->attrKeys.resize(doc.attrPool.size(), 0);
                 l10n->attrKeys.back() = key;
             } else if (attr.name.rfind("nav:", 0) == 0) {
@@ -618,7 +630,7 @@ bool emitDoc(const DomTree& dom, IrWriter& writer, StyleBuilder& style, DocBuild
                 while (!target.empty() && target.back() == ' ') {
                     target.remove_suffix(1);
                 }
-                pushAttr(doc, el, writer.intern(attr.name), writer.intern(target));
+                pushAttr(doc, el, writer, attr.name, target);
             } else if (attr.name == "key-activation" && node.tag == "body") {
                 // T-379 (08.10): the document's keyboard activation switch, kept as a `<body>`
                 // attribute (Document::keyboardActivation() reads it at load).
@@ -628,10 +640,10 @@ bool emitDoc(const DomTree& dom, IrWriter& writer, StyleBuilder& style, DocBuild
                                attr.line, attr.col);
                     ok = false;
                 }
-                pushAttr(doc, el, writer.intern(attr.name), writer.intern(attr.value));
+                pushAttr(doc, el, writer, attr.name, attr.value);
             } else {
                 const std::string text = attrText(node, attr);  // T-273b
-                pushAttr(doc, el, writer.intern(attr.name), writer.intern(text));
+                pushAttr(doc, el, writer, attr.name, text);
             }
         }
 
@@ -655,7 +667,7 @@ bool emitDoc(const DomTree& dom, IrWriter& writer, StyleBuilder& style, DocBuild
                 AssetId assetId = imageAssetFor(srcAttr->value, node.line, node.col);
                 // data-xt-asset = decimal AssetId, so a runtime can look it up before T-27 adds a
                 // dedicated field (Docs/tasks/T-23.md).
-                pushAttr(doc, el, writer.intern("data-xt-asset"), writer.intern(std::to_string(assetId)));
+                pushAttr(doc, el, writer, "data-xt-asset", std::to_string(assetId));
             }
         } else if (node.tag == "video" || node.tag == "sequence" || node.tag == "external") {
             // T-191 (25.3.5b, 05 §5.9.1): external content. Drawn like an `<img>` whose image is
@@ -695,7 +707,7 @@ bool emitDoc(const DomTree& dom, IrWriter& writer, StyleBuilder& style, DocBuild
                 }
                 if (!assetName.empty()) {
                     AssetId assetId = imageAssetFor(assetName, node.line, node.col);
-                    pushAttr(doc, el, writer.intern("data-xt-asset"), writer.intern(std::to_string(assetId)));
+                    pushAttr(doc, el, writer, "data-xt-asset", std::to_string(assetId));
                 }
             } else if (srcAttr == nullptr || srcAttr->value.empty()) {
                 sink.error(file, "<" + node.tag + "> without src", node.line, node.col);
@@ -707,7 +719,7 @@ bool emitDoc(const DomTree& dom, IrWriter& writer, StyleBuilder& style, DocBuild
                     idAttr != nullptr && !idAttr->value.empty() ? idAttr->value : srcAttr->value;
                 AssetId assetId =
                     imageAssetFor(std::string(kExternalAssetScheme) + "video:" + key, node.line, node.col);
-                pushAttr(doc, el, writer.intern("data-xt-asset"), writer.intern(std::to_string(assetId)));
+                pushAttr(doc, el, writer, "data-xt-asset", std::to_string(assetId));
                 // T-273d: a published build does not carry video files, so an outside `src` (and
                 // the key above, when it holds the same path) stays as written: say so, once.
                 if (options.publishAssetNames && assetLeavesProject(srcAttr->value, xtDir, options.rootDir) &&
@@ -730,7 +742,7 @@ bool emitDoc(const DomTree& dom, IrWriter& writer, StyleBuilder& style, DocBuild
                     }
                     positiveAttr("frames");
                     AssetId assetId = imageAssetFor(srcAttr->value, node.line, node.col);
-                    pushAttr(doc, el, writer.intern("data-xt-asset"), writer.intern(std::to_string(assetId)));
+                    pushAttr(doc, el, writer, "data-xt-asset", std::to_string(assetId));
                 } else {
                     const std::vector<std::string> frames =
                         sequenceFrameNames(options, xtDir, srcAttr->value);
@@ -746,7 +758,7 @@ bool emitDoc(const DomTree& dom, IrWriter& writer, StyleBuilder& style, DocBuild
                             }
                             ids += std::to_string(imageAssetFor(frame, node.line, node.col));
                         }
-                        pushAttr(doc, el, writer.intern("data-xt-frames"), writer.intern(ids));
+                        pushAttr(doc, el, writer, "data-xt-frames", ids);
                     }
                 }
             }
@@ -786,7 +798,7 @@ bool emitDoc(const DomTree& dom, IrWriter& writer, StyleBuilder& style, DocBuild
             keywordAttr("simulate-in-editor", {"true", "false"});
             if (const DomAttr* tex = node.attr("texture"); tex != nullptr && !tex->value.empty()) {
                 AssetId assetId = imageAssetFor(tex->value, tex->line, tex->col);
-                pushAttr(doc, el, writer.intern("data-xt-texture"), writer.intern(std::to_string(assetId)));
+                pushAttr(doc, el, writer, "data-xt-texture", std::to_string(assetId));
             }
         } else if (node.tag == "camera") {
             // §19.4 (T-47a): "<camera> 不得有子節點".

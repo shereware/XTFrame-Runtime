@@ -42,7 +42,10 @@ std::string readText(const std::string& path) {
     return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
 }
 
-/// A writable copy of the starter UI Project with its standard symbols pulled in.
+/// A writable copy of the starter UI Project with its standard symbols pulled in. T-498b/T-498c:
+/// the shipped starter declares only its overrides (`--safe-*`); the preset group's tokens.xts is
+/// the implied default layer underneath, which the design tools show as the inherited variables
+/// (49 §49.12 ruling).
 UiProject starterCopy(const std::string& name) {
     const std::string dir = freshDir(name);
     std::error_code ec;
@@ -51,7 +54,8 @@ UiProject starterCopy(const std::string& name) {
     std::string error;
     Result<UiProject> loaded = UiProject::load(dir, &error);
     REQUIRE_MESSAGE(loaded.ok(), error);
-    REQUIRE(pullStandardSymbols(loaded.value(), sourceDir("Assets/Symbols")) == Status::kOk);
+    REQUIRE(pullStandardSymbols(loaded.value(), sourceDir("Assets/Symbols/groups/broadsheet-2026")) ==
+            Status::kOk);
     return loaded.value();
 }
 
@@ -134,7 +138,7 @@ TEST_CASE("T-309 (a): the starter's DESIGN.md: byte-stable, every section, draft
     const UiProject project = starterCopy("doc_starter");
     Loaded l = loadDesign(project);
     BuildOptions options;
-    options.standardSymbolDir = sourceDir("Assets/Symbols");
+    options.standardSymbolDir = sourceDir("Assets/Symbols/groups/broadsheet-2026");
     std::string first;
     std::string second;
     std::vector<Issue> issues;
@@ -159,19 +163,44 @@ TEST_CASE("T-309 (a): the starter's DESIGN.md: byte-stable, every section, draft
     // The texts have no status (= draft); the swatches and variables are approved.
     CHECK(first.find("### Principles (draft)") != std::string::npos);
     CHECK(first.find("### Voice (draft)") != std::string::npos);
-    CHECK(first.find("| Teal (`teal`) | `#0f7b8a` | primary |") != std::string::npos);
+    CHECK(first.find("| Ink (`ink`) | `#1f1c18` | primary |") != std::string::npos);
     CHECK(first.find("`--color-accent` (draft)") == std::string::npos);
-    // Variables with the theme column, contrast-free palette, data sections.
-    CHECK(first.find("| Variable | Value | dark | From | Description | UIs |") != std::string::npos);
-    CHECK(first.find("| `--color-accent` | `#0f7b8a` | `#4cc2ff` | `swatch:teal` |") != std::string::npos);
+    // The project's own variables (`--safe-*` only, T-498b) with the UIs column; the inherited
+    // ones (T-498c, 49 §49.12 ruling) after them, with the project's theme column, then the
+    // group's, `From` and the description of the `inherited:` entry, else the first standard symbol
+    // reading the variable. The swatch table counts the inherited links.
+    CHECK(first.find("| `--safe-x` | space | `32px` | Horizontal safe margin at 1280 x 720. | 2 |") !=
+          std::string::npos);
+    CHECK(first.find("| Variable | Value | dark | From | Description | UIs |") == std::string::npos);
+    CHECK(first.find("### Inherited from broadsheet-2026") != std::string::npos);
+    CHECK(first.find("| Variable | Value | dark | night | From | Description |") != std::string::npos);
+    CHECK(first.find(
+              "| `--color-accent` | `#1f1c18` | `#d9d3c4` | `#d9d3c4` | `swatch:ink` | Primary interactive "
+              "colour for buttons, selection and progress. |") != std::string::npos);
+    CHECK(
+        first.find("| `--color-accent-hover` | `#4a463f` | `#9a9386` | `#9a9386` |  | Used by `Button` |") !=
+        std::string::npos);
+    CHECK(first.find("| `--font-size-m` | `16px` |  | `16px` |  | Used by `Button` |") != std::string::npos);
+    CHECK(first.find(
+              "| `--tex-hatch` | `url(\"textures/hatch-ink.png\")` |  | `url(\"textures/hatch-night.png\")` "
+              "|  | Used by `Button` |") != std::string::npos);
+    CHECK(first.find("| `--motion-fast` | `150ms` |  | `150ms` |  | Used by `Button` |") !=
+          std::string::npos);
+    CHECK(first.find("| Ink (`ink`) | `#1f1c18` | primary | 4 |") != std::string::npos);
+    // An inherited variable is not a project one: no `--color-accent` row in a Variables table and
+    // none without the group.
+    CHECK(first.find("| `--color-accent` | `#1f1c18` | `#d9d3c4` | `swatch:ink` |") == std::string::npos);
+    std::string without;
+    REQUIRE(buildDocument(project, l.ds, l.graph, BuildOptions(), without, nullptr) == Status::kOk);
+    CHECK(without.find("### Inherited from") == std::string::npos);
+    CHECK(without.find("| `--color-accent` |") == std::string::npos);
     CHECK(first.find("| `duration.fast` | [100, 200] |") != std::string::npos);
     CHECK(first.find("`conventions/layouts/hud.xt`") != std::string::npos);
     CHECK(first.find("- Default: 2.5 % of the viewport") != std::string::npos);
     CHECK(first.find("### Standard library") != std::string::npos);
     CHECK(first.find("| `Button` | form |") != std::string::npos);
     CHECK(first.find("History is not enabled for this project.") != std::string::npos);
-    CHECK(first.find("| `zh-TW` | Microsoft JhengHei, Noto Sans TC, Noto Sans CJK TC |") !=
-          std::string::npos);
+    CHECK(first.find("| `zh-TW` | Noto Sans TC |") != std::string::npos);  // T-527d
     // No heading deeper than ### (the §35.16 subset).
     CHECK(first.find("\n#### ") == std::string::npos);
     for (const Issue& issue : issues) {
@@ -406,7 +435,7 @@ TEST_CASE("T-309 (e): audit of Examples/demos/game-ui finds literal colours with
     CHECK(literal(report.colors, "#161b22e6") != nullptr);  // alpha kept
     CHECK(literal(report.sizes, "16px") != nullptr);
     REQUIRE_FALSE(report.fonts.empty());
-    CHECK(report.fonts[0].value.find("Segoe UI") != std::string::npos);
+    CHECK(report.fonts[0].value.find("Noto Sans") != std::string::npos);
     CHECK(report.tokenCoverage >= 0.0f);
     CHECK(report.tokenCoverage <= 1.0f);
     for (size_t i = 1; i < report.colors.size(); ++i) {
@@ -464,31 +493,43 @@ TEST_CASE("T-309 (f): lintDocument: literalColorNotInPalette, contrastLow, draft
     CHECK_FALSE(hasIssue(clean, "design.contrastLow", Severity::Warning));
     CHECK_FALSE(hasIssue(clean, "design.literalColorNotInPalette", Severity::Info));
 
-    // design.contrastLow: slate-250 on white, and a passing pair.
+    // design.contrastLow: kraft on page, and a passing pair.
     l.ds.paletteExtra["contrast"] =
-        json::array({json{{"fg", "swatch:slate-250"}, {"bg", "swatch:white"}, {"min", 4.5}},
+        json::array({json{{"fg", "swatch:kraft"}, {"bg", "swatch:page"}, {"min", 4.5}},
                      json{{"fg", "token:--color-text"}, {"bg", "token:--color-surface"}, {"min", 4.5}}});
-    // design.draftShipped: one variable back to draft.
+    // design.draftShipped: one variable back to draft (an inherited entry never is one).
     for (TokenMeta& t : l.ds.tokens) {
-        if (t.base.id == "space-2") {
+        if (t.base.id == "safe-x" || t.base.id == "color-accent") {
             t.base.status = EntryStatus::Draft;
         }
     }
     const std::vector<Issue> issues = lintDocument(project, l.ds, l.graph);
-    const Issue* contrast = findIssue(issues, "design.contrastLow", "swatch:slate-250");
+    const Issue* contrast = findIssue(issues, "design.contrastLow", "swatch:kraft");
     REQUIRE(contrast != nullptr);
     CHECK(contrast->severity == Severity::Warning);
     CHECK(findIssue(issues, "design.contrastLow", "token:color-text") == nullptr);
-    const Issue* draft = findIssue(issues, "design.draftShipped", "token:space-2");
+    const Issue* draft = findIssue(issues, "design.draftShipped", "token:safe-x");
     REQUIRE(draft != nullptr);
     CHECK(draft->severity == Severity::Warning);
+    CHECK(findIssue(issues, "design.draftShipped", "token:color-accent") == nullptr);
     // The sources changed after the write -> docStale.
     CHECK(hasIssue(issues, "design.docStale", Severity::Info));
-    // The new contrast table is in the document.
+    // The new contrast table is in the document: the inherited pair resolves only with the group
+    // (T-498c), and passes there.
     std::string md;
     REQUIRE(buildDocument(project, l.ds, l.graph, BuildOptions(), md, nullptr) == Status::kOk);
     CHECK(md.find("| Foreground | Background | Ratio | Minimum | Result |") != std::string::npos);
-    CHECK(md.find("| `token:--color-text` | `token:--color-surface` |") != std::string::npos);
+    CHECK(md.find("| `token:--color-text` | `token:--color-surface` |  | 4.50 | unresolved |") !=
+          std::string::npos);
+    BuildOptions withGroup;
+    withGroup.standardSymbolDir = sourceDir("Assets/Symbols/groups/broadsheet-2026");
+    REQUIRE(buildDocument(project, l.ds, l.graph, withGroup, md, nullptr) == Status::kOk);
+    CHECK(md.find("| `token:--color-text` | `token:--color-surface` | ") != std::string::npos);
+    CHECK(md.find("| `token:--color-text` | `token:--color-surface` |  | 4.50 | unresolved |") ==
+          std::string::npos);
+    CHECK(md.find("| 4.50 | pass |") != std::string::npos);
+    CHECK(findIssue(lintDocument(project, l.ds, l.graph, withGroup), "design.contrastLow",
+                    "token:color-text") == nullptr);
 }
 
 TEST_CASE("T-309 (g): game-ui after upgradeDesign: DESIGN.md line count") {
@@ -502,7 +543,7 @@ TEST_CASE("T-309 (g): game-ui after upgradeDesign: DESIGN.md line count") {
     REQUIRE_MESSAGE(upgradeDesign(game.value(), nullptr, &error) == Status::kOk, error);
     Loaded l = loadDesign(game.value());
     BuildOptions options;
-    options.standardSymbolDir = sourceDir("Assets/Symbols");
+    options.standardSymbolDir = sourceDir("Assets/Symbols/groups/broadsheet-2026");
     REQUIRE(writeDocument(game.value(), l.ds, l.graph, options, nullptr, &error) == Status::kOk);
     const std::string md = readText(designDir(game.value()) + "/DESIGN.md");
     CHECK(md.find("## 13 · Assets") != std::string::npos);
@@ -520,15 +561,16 @@ TEST_CASE("T-309 (g): game-ui after upgradeDesign: DESIGN.md line count") {
 
 TEST_CASE("T-309 (h): the starter ships its DESIGN.md, byte-identical to a fresh build") {
     // As `xtframe-design build` and xtframe-pack see it: standard symbols pulled, the standard
-    // library next to the tool (a copy of Assets/Symbols).
+    // library next to the tool (a copy of the preset group, T-498); the inherited tables (T-498c).
     const UiProject project = starterCopy("doc_shipped");
     Loaded l = loadDesign(project);
     BuildOptions options;
-    options.standardSymbolDir = sourceDir("Assets/Symbols");
+    options.standardSymbolDir = sourceDir("Assets/Symbols/groups/broadsheet-2026");
     std::string built;
     REQUIRE(buildDocument(project, l.ds, l.graph, options, built, nullptr) == Status::kOk);
     const std::string shipped = readText(sourceDir("Examples/ui-project-starter/design/DESIGN.md"));
     REQUIRE_FALSE(shipped.empty());
     CHECK(built == shipped);
+    CHECK(shipped.find("### Inherited from broadsheet-2026") != std::string::npos);
     CHECK_FALSE(hasIssue(lintDocument(project, l.ds, l.graph, options), "design.docStale", Severity::Info));
 }

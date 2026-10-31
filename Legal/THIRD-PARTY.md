@@ -26,7 +26,7 @@ the XTFrame licences restricts the rights those licences give you.
 | SDL2 | release-2.30.9 | zlib | `Code/Runtime/gl/` (tests), `Code/Runtime/shell/` | Window, input, and GL context creation | <https://github.com/libsdl-org/SDL> |
 | Clipper2 | Clipper2_1.5.4 (commit `ef88ee9`) | Boost Software License 1.0 | `Code/Editor/Core/` | Polygon boolean and offset operations for destructive vector path editing (`USINGZ` on) | <https://github.com/AngusJohnson/Clipper2> |
 | cpp-httplib | v0.58.0 | MIT | `Code/Editor/Service/` | Single-header HTTP server for the editor's MCP endpoint (loopback only) | <https://github.com/yhirose/cpp-httplib> |
-| miniz | 3.0.2 | MIT | `Code/Editor/History/` | zlib-compatible deflate/inflate for the history core's loose objects | <https://github.com/richgel999/miniz> |
+| miniz | 3.0.2 | MIT | `Code/Runtime/bundle/`, `Code/Editor/History/` | Store-mode ZIP read/write for `.xtsymbols` symbol sets and `.xtb` bundles; zlib-compatible deflate/inflate for the history core's loose objects | <https://github.com/richgel999/miniz> |
 | wgpu-native | v29.0.1.1 (prebuilt release binaries) | MIT / Apache License 2.0 (dual) | `Code/Runtime/wgpu/` | WebGPU implementation (`webgpu.h` + `wgpu.h`, shared library `wgpu_native`) behind the `xt_wgpu` backend | <https://github.com/gfx-rs/wgpu-native> |
 | Noto Sans / Noto Sans SC / Noto Naskh Arabic / Noto Sans Hebrew / Noto Sans Thai / Noto Emoji subsets | see `Tests/fonts/README.md` | SIL Open Font License 1.1 | `Tests/fonts/` | Test-only fonts for shaping, bidi, and golden-image fixtures | <https://fonts.google.com/noto> |
 

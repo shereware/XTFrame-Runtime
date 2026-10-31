@@ -38,8 +38,12 @@ struct BuildOptions {
     /// Only these sections (keys of kDesignSectionKeys or their numbers "1".."13"); empty = all.
     /// Applied after `design.yaml:sections`.
     std::vector<std::string> sections;
-    /// T-309 addition: the standard symbol library (the directory holding its `index.json`) for the
-    /// Components section; empty = the section lists only the project's symbols.
+    /// T-309 addition: the standard symbol group (the directory holding its `index.json`) for the
+    /// Components section; empty = the section lists only the project's symbols. T-498c (49 §49.12
+    /// ruling): also the implied default layer -- its `tokens.xts` and theme files give the
+    /// `### Inherited from <group id>` table after each Variables table (the group's tokens the
+    /// project does not declare), and resolve an inherited variable in the contrast table and the
+    /// lint; empty = no inherited variables.
     std::string standardSymbolDir;
 };
 
@@ -89,8 +93,10 @@ Status audit(const UiProject& project, const DesignSystem& ds, std::string_view 
 /// design.contrastLow (warning: a `palette.yaml:contrast` pair below its `min`, base and each
 /// theme), design.draftShipped (warning: a draft variable), asset.placeholderShipped (T-312a, error:
 /// an asset with status `placeholder`, assets::assetHygiene(); `entry` is its project-relative path)
-/// and design.docStale (info: `DESIGN.md` missing or different from buildDocument() with `options`,
-/// forAi and sections ignored).
+/// design.docStale (info: `DESIGN.md` missing or different from buildDocument() with `options`,
+/// forAi and sections ignored) and token.sameAsDefault (T-498b, warning: a `shared.tokens`
+/// declaration whose value is exactly what the group at `options.standardSymbolDir` declares in its
+/// `tokens.xts`; `entry` is the token).
 std::vector<Issue> lintDocument(const UiProject& project, const DesignSystem& ds, const Graph& graph,
                                 const BuildOptions& options = BuildOptions());
 

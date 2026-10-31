@@ -512,7 +512,7 @@ TEST_CASE("bindings: tween runs a transition on a property and interpolates insi
     CHECK(ui.text("G") == "0");  // Just started.
     CHECK(ui.text("D") == "0");  // Delayed.
     ui.step(0.5f);
-    CHECK(ui.el("Bar").layoutBox().width == doctest::Approx(50.0f).epsilon(0.05));
+    CHECK(ui.el("Bar").layoutBox().width == doctest::Approx(100.0f));  // T-546: the first write is direct.
     CHECK(ui.text("G") == "50");
     CHECK(ui.text("D") == "100");
     ui.step(0.6f);
@@ -520,8 +520,42 @@ TEST_CASE("bindings: tween runs a transition on a property and interpolates insi
     CHECK(ui.text("G") == "100");
     // A change mid-way restarts from the current value.
     ui.set("gold", 0);
+    ui.set("hp", 0);
     ui.step(0.5f);
     CHECK(ui.text("G") == "50");
+    CHECK(ui.el("Bar").layoutBox().width ==
+          doctest::Approx(50.0f).epsilon(0.05));  // The second write tweens.
+}
+
+TEST_CASE("T-546: tween applies the initial value and the first port write directly; the second tweens") {
+    Ui ui = open(page("#Bar { height: 10px; }",
+                      R"X(<div id="P" port:hp="number = 80"></div>
+        <div id="Bar" bind:width="hp | range(0, 100, 0%, 100%) | tween(1s)"></div>)X"));
+    ui.step(0.016f);
+    CHECK(ui.el("Bar").layoutBox().width == doctest::Approx(320.0f));  // Initial: 80% of 400.
+    ui.set("hp", 20);
+    ui.step(0.0f);
+    ui.step(0.016f);
+    CHECK(ui.el("Bar").layoutBox().width == doctest::Approx(80.0f));  // First port write: direct.
+    ui.set("hp", 60);
+    ui.step(0.0f);
+    ui.step(0.5f);
+    CHECK(ui.el("Bar").layoutBox().width == doctest::Approx(160.0f).epsilon(0.05));  // 80 -> 240 midpoint.
+    ui.step(1.0f);
+    CHECK(ui.el("Bar").layoutBox().width == doctest::Approx(240.0f));
+}
+
+TEST_CASE("T-546: a tween binding with no declared default: first set is direct, second tweens") {
+    Ui ui = open(page("#Bar { height: 10px; }",
+                      R"X(<div id="P" port:hp="number"></div>
+        <div id="Bar" bind:width="hp | tween(1s)"></div>)X"));
+    ui.set("hp", 100);
+    ui.step(0.016f);
+    CHECK(ui.el("Bar").layoutBox().width == doctest::Approx(100.0f));
+    ui.set("hp", 0);
+    ui.step(0.0f);
+    ui.step(0.5f);
+    CHECK(ui.el("Bar").layoutBox().width == doctest::Approx(50.0f).epsilon(0.05));
 }
 
 // -- Triggers, emit, call -------------------------------------------------------------------------
@@ -1533,4 +1567,273 @@ TEST_CASE("T-408: an alias compiles; strict and reportDeprecated warn, strict do
       state-groups="Mode: Open|Closed"></div>)X",
                                                true, false, "#P { bogus-prop: 1; }");
     CHECK(!other.ok());
+}
+
+// -- T-544: bind:effect.<effect>.<param> (18 §18.12, 27 §27.3.2) ----------------------------------
+
+namespace {
+
+constexpr const char* kMaskStyle = "effect: gradient-mask(radial, 0px 0px, 0px 0px, #000f 0%, #0000 100%)";
+
+std::string effectBody(std::string_view binds) {
+    return "<div id=\"P\" port:px=\"number\" port:py=\"number\" port:tint=\"color\"></div>"
+           "<div id=\"M\" style=\"width: 100px; height: 100px; " +
+           std::string(kMaskStyle) + "\" " + std::string(binds) + "></div>";
+}
+
+}  // namespace
+
+TEST_CASE("T-544: bind:effect.<name>.<param> and bind:effect.<index>.<param> compile to the effect PropId") {
+    CompileResult byName = compileSrc(page("", effectBody("bind:effect.gradient-mask.p0x=\"px\"")));
+    REQUIRE(byName.ok());
+    Result<IrView> v1 = IrView::open(IrBlob{byName.ir.data(), byName.ir.size()});
+    REQUIRE(v1.ok());
+    REQUIRE(v1.value().bindings().bindings().size() == 1);
+    const IrBinding& b1 = v1.value().bindings().bindings()[0];
+    CHECK(b1.target == static_cast<uint8_t>(BindTarget::Prop));
+    CHECK(b1.targetId == xt::effectParam(0, 1));
+    CHECK(v1.value().string(b1.targetName) == "effect.gradient-mask.p0x");
+
+    CompileResult byIndex = compileSrc(page("", effectBody("bind:effect.0.p0y=\"py\"")));
+    REQUIRE(byIndex.ok());
+    Result<IrView> v2 = IrView::open(IrBlob{byIndex.ir.data(), byIndex.ir.size()});
+    REQUIRE(v2.ok());
+    REQUIRE(v2.value().bindings().bindings().size() == 1);
+    const IrBinding& b2 = v2.value().bindings().bindings()[0];
+    CHECK(b2.target == static_cast<uint8_t>(BindTarget::Prop));
+    CHECK(b2.targetId == xt::effectParam(0, 2));
+}
+
+TEST_CASE("T-544: bind:effect.* reports unresolvable addresses") {
+    // No blur on the element.
+    CHECK(compileError(compileSrc(page("", effectBody("bind:effect.blur.radiusX=\"px\""))),
+                       "bind:effect.blur.radiusX: the element has no such effect"));
+    // No parameter of that name.
+    CHECK(compileError(compileSrc(page("", effectBody("bind:effect.gradient-mask.nope=\"px\""))),
+                       "bind:effect.gradient-mask.nope: unknown effect parameter"));
+    // One segment only.
+    CHECK(compileError(compileSrc(page("", effectBody("bind:effect.gradient-mask=\"px\""))),
+                       "bind:effect.<effect>.<param> needs an effect and a parameter"));
+    // Index out of range.
+    CHECK(compileError(compileSrc(page("", effectBody("bind:effect.3.p0x=\"px\""))),
+                       "effect index out of range"));
+    // An element with no effect at all.
+    CHECK(compileError(compileSrc(page("",
+                                       "<div id=\"P\" port:px=\"number\"></div>"
+                                       "<div id=\"N\" bind:effect.glow.radius=\"px\"></div>")),
+                       "the element has no effect"));
+    // <svg> content does not take effect.*.
+    CHECK(compileError(compileSrc(page("",
+                                       "<div id=\"P\" port:px=\"number\"></div>"
+                                       "<svg id=\"S\" viewBox=\"0 0 10 10\"><rect id=\"R\" width=\"4\" "
+                                       "height=\"4\" bind:effect.glow.radius=\"px\"/></svg>")),
+                       "effect.* does not bind on <svg> content"));
+}
+
+TEST_CASE("T-544: a color effect parameter takes only a color source and a numeric one only a number") {
+    const std::string glowStyle = "effect: glow(8px #2f81f7 1)";
+    auto glowPage = [&](std::string_view binds) {
+        return page("", "<div id=\"P\" port:px=\"number\" port:tint=\"color\"></div><div id=\"M\" style=\"" +
+                            glowStyle + "\" " + std::string(binds) + "></div>");
+    };
+    CHECK(compileError(compileSrc(glowPage("bind:effect.glow.color=\"px\"")),
+                       "a color effect parameter needs a color source"));
+    CHECK(compileSrc(glowPage("bind:effect.glow.color=\"tint\"")).ok());
+    CHECK(compileError(compileSrc(glowPage("bind:effect.glow.radius=\"tint\"")),
+                       "a numeric effect parameter needs a number source"));
+    CHECK(compileSrc(glowPage("bind:effect.glow.radius=\"px\"")).ok());
+}
+
+TEST_CASE("T-544: a port drives the effect parameter, painting only") {
+    Ui ui = open(
+        page("", effectBody("bind:effect.gradient-mask.p0x=\"px\" bind:effect.gradient-mask.p0y=\"py\"")));
+    const NodeId node = ui.el("M").node;
+    auto param = [&](uint32_t i) {
+        const NodeCommon& c = ui.doc->arena().common(node);
+        REQUIRE(c.effectCount == 1);
+        return ui.doc->arena().effects()[c.effectOffset].params[i];
+    };
+    ui.step(0.016f);
+    CHECK(param(0) == doctest::Approx(0.0f));
+    const Rect before = ui.el("M").boundingBox();
+
+    ui.set("px", 120);
+    ui.set("py", 45);
+    ui.step(0.016f);
+    CHECK(param(0) == doctest::Approx(120.0f));
+    CHECK(param(1) == doctest::Approx(45.0f));
+    // No relayout: the box is where it was; a later frame keeps the value and nothing stays dirty.
+    CHECK(ui.el("M").boundingBox().x == doctest::Approx(before.x));
+    CHECK(ui.el("M").boundingBox().w == doctest::Approx(before.w));
+    ui.step(0.016f);
+    CHECK(param(0) == doctest::Approx(120.0f));
+    CHECK(!ui.doc->arena().anyDirty(static_cast<uint8_t>(kDirtyStyle)));
+    CHECK(!ui.doc->arena().anyDirty(static_cast<uint8_t>(kDirtyLayout)));
+}
+
+TEST_CASE("T-544: bind:effect.* on an element whose effect is gone is a no-op with one warning") {
+    Ui ui = open(page(".fx { " + std::string(kMaskStyle) + "; }",
+                      "<div id=\"P\" port:px=\"number\"></div>"
+                      "<div id=\"M\" class=\"fx\" bind:effect.gradient-mask.p0x=\"px\"></div>"));
+    ui.step(0.016f);
+    REQUIRE(ui.doc->arena().common(ui.el("M").node).effectCount == 1);
+    REQUIRE(ui.el("M").removeClass("fx"));
+    ui.step(0.016f);
+    CHECK(ui.doc->arena().common(ui.el("M").node).effectCount == 0);
+    ui.set("px", 10);
+    ui.step(0.016f);
+    ui.set("px", 20);
+    ui.step(0.016f);
+    size_t missing = 0;
+    for (const std::string& w : ui.doc->warnings()) {
+        missing += w == kWarnEffectMissing ? 1u : 0u;
+    }
+    CHECK(missing == 1);
+}
+
+TEST_CASE("T-544: the port default reaches the effect parameter once the style pass assigned the stack") {
+    Ui ui = open(page("", "<div id=\"P\" port:px=\"number in = 77\"></div><div id=\"M\" style=\"" +
+                              std::string(kMaskStyle) + "\" bind:effect.gradient-mask.p0x=\"px\"></div>"));
+    const NodeCommon& c = ui.doc->arena().common(ui.el("M").node);
+    REQUIRE(c.effectCount == 1);
+    CHECK(ui.doc->arena().effects()[c.effectOffset].params[0] == doctest::Approx(77.0f));
+    for (const std::string& w : ui.doc->warnings()) {
+        CHECK(w != kWarnEffectMissing);
+    }
+}
+
+TEST_CASE("T-544: | tween(d) on an effect parameter is a transition from the live value") {
+    Ui ui = open(page("", "<div id=\"P\" port:px=\"number\"></div><div id=\"M\" style=\"" +
+                              std::string(kMaskStyle) +
+                              "\" bind:effect.gradient-mask.p0x=\"px | tween(1s)\"></div>"));
+    const NodeCommon& c = ui.doc->arena().common(ui.el("M").node);
+    REQUIRE(c.effectCount == 1);
+    auto p0x = [&] { return ui.doc->arena().effects()[c.effectOffset].params[0]; };
+    ui.set("px", 100);
+    ui.step(0.016f);
+    ui.step(0.5f);
+    CHECK(p0x() > 5.0f);
+    CHECK(p0x() < 95.0f);
+    ui.step(1.0f);
+    CHECK(p0x() == doctest::Approx(100.0f));
+}
+
+TEST_CASE("T-544: validateBindingTarget accepts effect.<effect>.<param> and rejects other shapes") {
+    std::string error;
+    CHECK(validateBindingTarget("effect.gradient-mask.p0x", error));
+    CHECK(validateBindingTarget("effect.0.radius", error));
+    CHECK(!validateBindingTarget("effect.glow", error));
+    CHECK(!validateBindingTarget("effect.glow.radius.x", error));
+    CHECK(!validateBindingTarget("effect..radius", error));
+}
+
+// -- T-545: bind:effect.* lives in the Animator's override layer (04 §4.7, 18 §18.16) ---------------
+
+namespace {
+
+float effectParam0(Ui& ui, std::string_view id) {
+    const NodeCommon& c = ui.doc->arena().common(ui.el(id).node);
+    REQUIRE(c.effectCount == 1);
+    return ui.doc->arena().effects()[c.effectOffset].params[0];
+}
+
+size_t effectMissingWarnings(const Ui& ui) {
+    size_t n = 0;
+    for (const std::string& w : ui.doc->warnings()) {
+        n += w == kWarnEffectMissing ? 1u : 0u;
+    }
+    return n;
+}
+
+}  // namespace
+
+TEST_CASE("T-545: an idle bound effect parameter does not dirty the node") {
+    Ui ui = open(page("", effectBody("bind:effect.gradient-mask.p0x=\"px\"")));
+    ui.step(0.016f);
+    ui.set("px", 55);
+    ui.step(0.016f);
+    ui.step(0.016f);
+    const NodeId n = ui.el("M").node;
+    // update() clears the dirty bits at its end, so drive the Animator's re-apply directly.
+    NodeArena& arena = ui.doc->arena();
+    arena.clearAllDirty();
+    ui.doc->animator().evaluate(ui.clock + 0.016f, arena);  // same override, same value
+    CHECK((arena.dirty(n) & kDirtyPaint) == 0);
+    CHECK(effectParam0(ui, "M") == doctest::Approx(55.0f));
+    const PropId p0 = effectParam(0, 1);
+    ui.doc->animator().setOverride(n, p0, Value::ofFloat(60.0f));  // a real change still dirties
+    ui.doc->animator().evaluate(ui.clock + 0.032f, arena);
+    CHECK((arena.dirty(n) & kDirtyPaint) != 0);
+    CHECK(effectParam0(ui, "M") == doctest::Approx(60.0f));
+}
+
+TEST_CASE("T-545: a bound effect parameter survives a restyle") {
+    Ui ui = open(page(".x { opacity: 0.5; }", effectBody("bind:effect.gradient-mask.p0x=\"px\"")));
+    ui.step(0.016f);
+    ui.set("px", 120);
+    ui.step(0.016f);
+    CHECK(effectParam0(ui, "M") == doctest::Approx(120.0f));  // before the restyle
+    REQUIRE(ui.el("M").addClass("x"));
+    ui.step(0.016f);
+    CHECK(effectParam0(ui, "M") == doctest::Approx(120.0f));  // after the restyle (T-544: the style value)
+    ui.set("px", 30);
+    ui.step(0.016f);
+    CHECK(effectParam0(ui, "M") == doctest::Approx(30.0f));
+    CHECK(effectMissingWarnings(ui) == 0);
+}
+
+TEST_CASE("T-545: a restyle that rebuilds the effect stack keeps the bound parameter") {
+    Ui ui = open(page(".fx { " + std::string(kMaskStyle) +
+                          "; } .y { effect: gradient-mask(radial, 5px 0px, 0px 0px, #000f 0%, #0000 100%); }",
+                      "<div id=\"P\" port:px=\"number\"></div>"
+                      "<div id=\"M\" class=\"fx\" bind:effect.gradient-mask.p0x=\"px\"></div>"));
+    ui.step(0.016f);
+    ui.set("px", 55);
+    ui.step(0.016f);
+    REQUIRE(ui.el("M").addClass("y"));
+    ui.step(0.016f);
+    CHECK(effectParam0(ui, "M") == doctest::Approx(55.0f));
+}
+
+TEST_CASE("T-545: the port default reaches the effect parameter at the first update, without a warning") {
+    Ui ui = open(page("", "<div id=\"P\" port:px=\"number in = 77\"></div><div id=\"M\" style=\"" +
+                              std::string(kMaskStyle) + "\" bind:effect.gradient-mask.p0x=\"px\"></div>"));
+    CHECK(effectParam0(ui, "M") == doctest::Approx(77.0f));
+    CHECK(effectMissingWarnings(ui) == 0);
+}
+
+TEST_CASE("T-545: | tween(d) tweens the override and a restyle mid-tween does not interrupt it") {
+    Ui ui =
+        open(page(".x { opacity: 0.5; }", "<div id=\"P\" port:px=\"number\"></div><div id=\"M\" style=\"" +
+                                              std::string(kMaskStyle) +
+                                              "\" bind:effect.gradient-mask.p0x=\"px | tween(1s)\"></div>"));
+    ui.step(0.016f);
+    ui.set("px", 100);
+    ui.step(0.0f);  // The tween starts at this clock.
+    ui.step(0.5f);
+    CHECK(effectParam0(ui, "M") == doctest::Approx(50.0f).epsilon(0.02));
+    REQUIRE(ui.el("M").addClass("x"));
+    ui.step(0.25f);
+    CHECK(effectParam0(ui, "M") == doctest::Approx(75.0f).epsilon(0.02));
+    ui.step(1.0f);
+    CHECK(effectParam0(ui, "M") == doctest::Approx(100.0f));
+}
+
+TEST_CASE("T-545: an effect removed by a class warns once; its return applies the override at once") {
+    Ui ui = open(page(".fx { " + std::string(kMaskStyle) + "; }",
+                      "<div id=\"P\" port:px=\"number\"></div>"
+                      "<div id=\"M\" class=\"fx\" bind:effect.gradient-mask.p0x=\"px\"></div>"));
+    ui.step(0.016f);
+    ui.set("px", 42);
+    ui.step(0.016f);
+    CHECK(effectParam0(ui, "M") == doctest::Approx(42.0f));
+    REQUIRE(ui.el("M").removeClass("fx"));
+    ui.step(0.016f);
+    ui.step(0.016f);
+    CHECK(ui.doc->arena().common(ui.el("M").node).effectCount == 0);
+    CHECK(effectMissingWarnings(ui) == 1);
+    REQUIRE(ui.el("M").addClass("fx"));
+    ui.step(0.016f);
+    CHECK(effectParam0(ui, "M") == doctest::Approx(42.0f));
+    CHECK(effectMissingWarnings(ui) == 1);
 }

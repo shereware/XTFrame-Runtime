@@ -4,7 +4,7 @@
 #settings {
   background-color: #00000000;
   color: #e8e2d4;
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: "Noto Serif", serif;
   height: 100vh;
   margin-bottom: 0;
   margin-left: 0;

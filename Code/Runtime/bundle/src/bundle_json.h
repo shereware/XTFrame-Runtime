@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstdio>
 #include <filesystem>
 #include <json.hpp>
 #include <string>
@@ -29,6 +30,9 @@ inline constexpr int kMaxJsonDepth = 32;
 /// `maxDepth` (`error` = "nesting too deep"; the caller names the file).
 json parseBounded(std::string_view text, int maxDepth, std::string& error);
 
+/// T-500: fopen for a UTF-8 `path` (the wide API on Windows, never the ANSI code page); nullptr
+/// when it cannot be opened. The caller closes it. zip_archive.cpp streams archives through it.
+std::FILE* openFileUtf8(const std::string& path, const char* mode);
 /// Reads a whole file into `out`. Returns false when it cannot be opened or read.
 bool readFile(const std::string& path, std::string& out);
 /// Writes `text` verbatim (binary mode, so no CRLF translation). Returns false on failure.

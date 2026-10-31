@@ -193,10 +193,13 @@ TEST_CASE("xtflow: ui# references, lifecycle, instance and the new node types pa
 
     // The node table lists the new types after the fourteen §17.6 ones.
     std::span<const NodeTypeDesc> table = nodeTypeTable();
-    REQUIRE(table.size() == 20);
+    REQUIRE(table.size() == 23);  // T-541 state, T-543 filter and throttle appended.
     CHECK(table[14].type == "system");
     CHECK(table[14].outputs.size() == 9);  // T-330: + reducedMotion.
     CHECK(table[19].type == "timeline");
+    CHECK(table[20].type == "state");  // T-541: only the fixed ports are listed.
+    CHECK(table[20].inputs.size() == 2);
+    CHECK(table[20].outputs.size() == 3);
 }
 
 TEST_CASE("global flow: three-segment ui# references drive one UI from another") {

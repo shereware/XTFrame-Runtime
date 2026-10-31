@@ -28,6 +28,14 @@ struct PortValue {
     std::string s;
 };
 
+/// T-541 (Docs/design/27-interaction.md §27.4.4): one `state` node transition,
+/// `{ "from": "<state>" | "*", "on": "<event>", "to": "<state>" }`.
+struct TransitionDesc {
+    std::string from;
+    std::string on;
+    std::string to;
+};
+
 /// One signal node instance: its stable id, node type name (one of the fourteen types listed in
 /// Docs/design/17-editor.md §17.6) and its literal parameter values.
 struct NodeDesc {
@@ -38,6 +46,9 @@ struct NodeDesc {
     /// instead of in `params`, which only ever holds scalars. Every element of one array has to
     /// carry the same PortType (checked by FlowGraph::parse()).
     std::map<std::string, std::vector<PortValue>> arrayParams;
+    /// T-541: a `state` node's `transitions` param (an array of objects, which neither `params` nor
+    /// `arrayParams` can hold). Its `states` / `events` are string arrays in `arrayParams`.
+    std::vector<TransitionDesc> transitions;
     // --- T-193 (Docs/design/27-interaction.md §27.4): editor-only layout, ignored at run time. ---
     /// True when the `.xtflow` node carries `"pos": [x, y]` (the node canvas position).
     bool hasPos = false;
@@ -135,8 +146,9 @@ struct NodeTypeDesc {
 
 /// The fourteen §17.6 signal node types' static shape, in the table's own order (constant,
 /// counter, toggle, timer, clock, random, math, compare, toString, select, radio, lookup, merge,
-/// format), then T-193's six (system, sound, haptic, spawn, emit, timeline). Ports and their PortType are
-/// obtained from the same nodePortInfo()/outputPortOrder() functions flow_bindings.cpp uses to
+/// format), then T-193's six (system, sound, haptic, spawn, emit, timeline), then T-541's `state`
+/// (only its fixed ports: its event / enter / exit ports depend on the node's own params). Ports and their
+/// PortType are obtained from the same nodePortInfo()/outputPortOrder() functions flow_bindings.cpp uses to
 /// bind a live graph (flow_internal.h), not a separate copy of the port rules.
 std::span<const NodeTypeDesc> nodeTypeTable();
 

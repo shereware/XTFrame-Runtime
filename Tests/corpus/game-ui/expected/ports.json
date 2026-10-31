@@ -1,4 +1,17 @@
 {
-  "hud": [],
+  "hud": [
+    {
+      "name": "nx",
+      "type": "number",
+      "dir": "in",
+      "default": "0"
+    },
+    {
+      "name": "ny",
+      "type": "number",
+      "dir": "in",
+      "default": "0"
+    }
+  ],
   "pause": []
 }

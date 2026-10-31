@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -47,6 +48,19 @@ struct ProjectShared {
     std::vector<std::string> templateDirs;
 };
 
+/// T-527 (Docs/design/22-bundle.md §22.10.3, 12 §12.7.1 `--fonts`): where a bundle's text gets its
+/// fonts. kSystem (the default, T-97): the pack's thumbnail shaper also registers the system fonts
+/// and nothing checks glyph coverage. kBundled: only the bundle's own fonts count -- every packed
+/// UI's text must have a glyph in a font of that UI's bundle (an error otherwise), and an implied
+/// symbol group's `@font-face` fonts are the last fallback.
+enum class FontsMode : uint8_t { kSystem, kBundled };
+
+/// T-527: "system" -> kSystem, "bundled" -> kBundled; false for any other text (`out` unchanged).
+bool parseFontsMode(std::string_view text, FontsMode& out);
+
+/// T-527: the `publish.fonts` / `--fonts` spelling of `mode`.
+const char* fontsModeName(FontsMode mode);
+
 /// The `publish` object: what `xtframe-pack` should produce.
 struct ProjectPublish {
     /// Embed image assets into each `.xtir` instead of referencing `assets/`.
@@ -55,6 +69,8 @@ struct ProjectPublish {
     bool embedFonts = false;
     /// Thumbnail size rendered per UI.
     Vec2 thumbnail{320, 180};
+    /// T-527: `publish.fonts` ("system" | "bundled"; absent = system). Written only when bundled.
+    FontsMode fonts = FontsMode::kSystem;
 };
 
 /// A parsed `bundle.xtproj`. Field order matches §22.2's JSON, which save() reproduces verbatim.
@@ -81,9 +97,9 @@ struct ProjectFile {
 
     /// Reads `<dir>/bundle.xtproj`. Returns kNotFound when the file cannot be read, kIoError when
     /// it is not valid JSON, kUnsupported when `version` != 2, and kInvalidArgument when `id` or
-    /// `uis` is missing, `id` is not `[a-z0-9-]+`, a UI lacks `id`/`doc`, a UI id is malformed, or
-    /// two UIs share an id. `error`, when non-null, receives a human-readable message for the
-    /// editor's message panel (it is cleared first).
+    /// `uis` is missing, `id` is not `[a-z0-9-]+`, a UI lacks `id`/`doc`, a UI id is malformed,
+    /// two UIs share an id, or `publish.fonts` is neither "system" nor "bundled" (T-527). `error`, when
+    /// non-null, receives a human-readable message for the editor's message panel (it is cleared first).
     static Result<ProjectFile> load(std::string_view dir, std::string* error = nullptr);
 
     /// The implied single-UI bundle for a lone `.xt` file (§22.2): `id` and `name` are the file's

@@ -29,6 +29,30 @@
       ]
     },
     {
+      "bytes": 646092,
+      "file": "assets/73acb60d73f4b8d3.ttf",
+      "kind": "font",
+      "sources": [
+        "fonts/NotoSans-BoldItalic.ttf"
+      ]
+    },
+    {
+      "bytes": 631484,
+      "file": "assets/9f2d7f7820bc92c2.ttf",
+      "kind": "font",
+      "sources": [
+        "fonts/NotoSans-Bold.ttf"
+      ]
+    },
+    {
+      "bytes": 621572,
+      "file": "assets/bcb9a6e8677ebb4a.ttf",
+      "kind": "font",
+      "sources": [
+        "fonts/NotoSans-Regular.ttf"
+      ]
+    },
+    {
       "bytes": 1398326,
       "file": "assets/d0eebef1d9a7ce8c.png",
       "kind": "image",
@@ -40,6 +64,14 @@
       },
       "sources": [
         "../shared/img/d0eebef1d9a7ce8c.png"
+      ]
+    },
+    {
+      "bytes": 639124,
+      "file": "assets/e7733c492d3ebae3.ttf",
+      "kind": "font",
+      "sources": [
+        "fonts/NotoSans-Italic.ttf"
       ]
     }
   ],
@@ -153,11 +185,15 @@
       "assets": [
         "assets/d0eebef1d9a7ce8c.png",
         "assets/56be179abb43289e.png",
-        "assets/27b1b278faad51ee.png"
+        "assets/27b1b278faad51ee.png",
+        "assets/bcb9a6e8677ebb4a.ttf",
+        "assets/9f2d7f7820bc92c2.ttf",
+        "assets/73acb60d73f4b8d3.ttf",
+        "assets/e7733c492d3ebae3.ttf"
       ],
-      "contract": "470e5ae7f0e98e05",
+      "contract": "9771a2aa2aabef71",
       "file": "ui/challenge-menu.xtir",
-      "fileHash": 2282179386000320169,
+      "fileHash": 2420252179163369536,
       "fit": "native",
       "flow": "ui/challenge-menu.xtflow",
       "id": "challenge-menu",
@@ -183,6 +219,10 @@
           {
             "name": "#back-rule.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#back-rule.setState",
+            "type": "pulse"
           },
           {
             "name": "#back-rule.setStyle",
@@ -225,6 +265,10 @@
             "type": "number"
           },
           {
+            "name": "#boot-scan.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#boot-scan.setStyle",
             "type": "string"
           },
@@ -263,6 +307,10 @@
           {
             "name": "#bottom-rule-right.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#bottom-rule-right.setState",
+            "type": "pulse"
           },
           {
             "name": "#bottom-rule-right.setStyle",
@@ -305,6 +353,10 @@
             "type": "number"
           },
           {
+            "name": "#btn-back.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#btn-back.setStyle",
             "type": "string"
           },
@@ -343,6 +395,10 @@
           {
             "name": "#build-tag.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#build-tag.setState",
+            "type": "pulse"
           },
           {
             "name": "#build-tag.setStyle",
@@ -385,6 +441,10 @@
             "type": "number"
           },
           {
+            "name": "#camera-idle.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#camera-idle.setStyle",
             "type": "string"
           },
@@ -413,6 +473,22 @@
             "type": "pulse"
           },
           {
+            "name": "#challenge-menu.listShift",
+            "type": "number"
+          },
+          {
+            "name": "#challenge-menu.nx",
+            "type": "number"
+          },
+          {
+            "name": "#challenge-menu.ny",
+            "type": "number"
+          },
+          {
+            "name": "#challenge-menu.panelShift",
+            "type": "number"
+          },
+          {
             "name": "#challenge-menu.playAnimation",
             "type": "string"
           },
@@ -423,6 +499,10 @@
           {
             "name": "#challenge-menu.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#challenge-menu.setState",
+            "type": "pulse"
           },
           {
             "name": "#challenge-menu.setStyle",
@@ -465,6 +545,10 @@
             "type": "number"
           },
           {
+            "name": "#corner-bl.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#corner-bl.setStyle",
             "type": "string"
           },
@@ -503,6 +587,10 @@
           {
             "name": "#corner-br.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#corner-br.setState",
+            "type": "pulse"
           },
           {
             "name": "#corner-br.setStyle",
@@ -545,6 +633,10 @@
             "type": "number"
           },
           {
+            "name": "#corner-tl.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#corner-tl.setStyle",
             "type": "string"
           },
@@ -583,6 +675,10 @@
           {
             "name": "#corner-tr.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#corner-tr.setState",
+            "type": "pulse"
           },
           {
             "name": "#corner-tr.setStyle",
@@ -625,6 +721,10 @@
             "type": "number"
           },
           {
+            "name": "#diff-impossible.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#diff-impossible.setStyle",
             "type": "string"
           },
@@ -663,6 +763,10 @@
           {
             "name": "#diff-list-body.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#diff-list-body.setState",
+            "type": "pulse"
           },
           {
             "name": "#diff-list-body.setStyle",
@@ -705,6 +809,10 @@
             "type": "number"
           },
           {
+            "name": "#diff-list.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#diff-list.setStyle",
             "type": "string"
           },
@@ -743,6 +851,10 @@
           {
             "name": "#diff-posthuman.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#diff-posthuman.setState",
+            "type": "pulse"
           },
           {
             "name": "#diff-posthuman.setStyle",
@@ -785,6 +897,10 @@
             "type": "number"
           },
           {
+            "name": "#diff-recruit.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#diff-recruit.setStyle",
             "type": "string"
           },
@@ -823,6 +939,10 @@
           {
             "name": "#diff-soldier.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#diff-soldier.setState",
+            "type": "pulse"
           },
           {
             "name": "#diff-soldier.setStyle",
@@ -865,6 +985,10 @@
             "type": "number"
           },
           {
+            "name": "#diff-supersoldier.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#diff-supersoldier.setStyle",
             "type": "string"
           },
@@ -903,6 +1027,10 @@
           {
             "name": "#diff-veteran.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#diff-veteran.setState",
+            "type": "pulse"
           },
           {
             "name": "#diff-veteran.setStyle",
@@ -945,6 +1073,10 @@
             "type": "number"
           },
           {
+            "name": "#drip-1.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#drip-1.setStyle",
             "type": "string"
           },
@@ -983,6 +1115,10 @@
           {
             "name": "#drip-2.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#drip-2.setState",
+            "type": "pulse"
           },
           {
             "name": "#drip-2.setStyle",
@@ -1025,6 +1161,10 @@
             "type": "number"
           },
           {
+            "name": "#drip-3.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#drip-3.setStyle",
             "type": "string"
           },
@@ -1063,6 +1203,10 @@
           {
             "name": "#drip-4.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#drip-4.setState",
+            "type": "pulse"
           },
           {
             "name": "#drip-4.setStyle",
@@ -1105,6 +1249,10 @@
             "type": "number"
           },
           {
+            "name": "#drips.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#drips.setStyle",
             "type": "string"
           },
@@ -1143,6 +1291,10 @@
           {
             "name": "#footer-rule.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#footer-rule.setState",
+            "type": "pulse"
           },
           {
             "name": "#footer-rule.setStyle",
@@ -1185,6 +1337,10 @@
             "type": "number"
           },
           {
+            "name": "#header-rule-left.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#header-rule-left.setStyle",
             "type": "string"
           },
@@ -1223,6 +1379,10 @@
           {
             "name": "#header-rule-right.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#header-rule-right.setState",
+            "type": "pulse"
           },
           {
             "name": "#header-rule-right.setStyle",
@@ -1265,6 +1425,10 @@
             "type": "number"
           },
           {
+            "name": "#header.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#header.setStyle",
             "type": "string"
           },
@@ -1303,6 +1467,10 @@
           {
             "name": "#hint-text.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#hint-text.setState",
+            "type": "pulse"
           },
           {
             "name": "#hint-text.setStyle",
@@ -1345,6 +1513,10 @@
             "type": "number"
           },
           {
+            "name": "#hl-impossible.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#hl-impossible.setStyle",
             "type": "string"
           },
@@ -1383,6 +1555,10 @@
           {
             "name": "#hl-posthuman.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#hl-posthuman.setState",
+            "type": "pulse"
           },
           {
             "name": "#hl-posthuman.setStyle",
@@ -1425,6 +1601,10 @@
             "type": "number"
           },
           {
+            "name": "#hl-recruit.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#hl-recruit.setStyle",
             "type": "string"
           },
@@ -1463,6 +1643,10 @@
           {
             "name": "#hl-soldier.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#hl-soldier.setState",
+            "type": "pulse"
           },
           {
             "name": "#hl-soldier.setStyle",
@@ -1505,6 +1689,10 @@
             "type": "number"
           },
           {
+            "name": "#hl-supersoldier.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#hl-supersoldier.setStyle",
             "type": "string"
           },
@@ -1543,6 +1731,10 @@
           {
             "name": "#hl-veteran.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#hl-veteran.setState",
+            "type": "pulse"
           },
           {
             "name": "#hl-veteran.setStyle",
@@ -1585,6 +1777,10 @@
             "type": "number"
           },
           {
+            "name": "#holo-arc.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#holo-arc.setStyle",
             "type": "string"
           },
@@ -1623,6 +1819,10 @@
           {
             "name": "#holo-base.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#holo-base.setState",
+            "type": "pulse"
           },
           {
             "name": "#holo-base.setStyle",
@@ -1665,6 +1865,10 @@
             "type": "number"
           },
           {
+            "name": "#holo-ring.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#holo-ring.setStyle",
             "type": "string"
           },
@@ -1703,6 +1907,10 @@
           {
             "name": "#hud.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#hud.setState",
+            "type": "pulse"
           },
           {
             "name": "#hud.setStyle",
@@ -1745,6 +1953,10 @@
             "type": "number"
           },
           {
+            "name": "#light-shaft.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#light-shaft.setStyle",
             "type": "string"
           },
@@ -1783,6 +1995,10 @@
           {
             "name": "#logo-divider.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#logo-divider.setState",
+            "type": "pulse"
           },
           {
             "name": "#logo-divider.setStyle",
@@ -1825,6 +2041,10 @@
             "type": "number"
           },
           {
+            "name": "#logo-mark.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#logo-mark.setStyle",
             "type": "string"
           },
@@ -1863,6 +2083,10 @@
           {
             "name": "#menu-title.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#menu-title.setState",
+            "type": "pulse"
           },
           {
             "name": "#menu-title.setStyle",
@@ -1905,6 +2129,10 @@
             "type": "number"
           },
           {
+            "name": "#mote-1-depth.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#mote-1-depth.setStyle",
             "type": "string"
           },
@@ -1943,6 +2171,10 @@
           {
             "name": "#mote-2-depth.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#mote-2-depth.setState",
+            "type": "pulse"
           },
           {
             "name": "#mote-2-depth.setStyle",
@@ -1985,6 +2217,10 @@
             "type": "number"
           },
           {
+            "name": "#mote-3-depth.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#mote-3-depth.setStyle",
             "type": "string"
           },
@@ -2023,6 +2259,10 @@
           {
             "name": "#mote-4-depth.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#mote-4-depth.setState",
+            "type": "pulse"
           },
           {
             "name": "#mote-4-depth.setStyle",
@@ -2065,6 +2305,10 @@
             "type": "number"
           },
           {
+            "name": "#mote-5-depth.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#mote-5-depth.setStyle",
             "type": "string"
           },
@@ -2103,6 +2347,10 @@
           {
             "name": "#mote-6-depth.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#mote-6-depth.setState",
+            "type": "pulse"
           },
           {
             "name": "#mote-6-depth.setStyle",
@@ -2145,6 +2393,10 @@
             "type": "number"
           },
           {
+            "name": "#mote-field.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#mote-field.setStyle",
             "type": "string"
           },
@@ -2183,6 +2435,10 @@
           {
             "name": "#n-0ee7b305.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#n-0ee7b305.setState",
+            "type": "pulse"
           },
           {
             "name": "#n-0ee7b305.setStyle",
@@ -2225,6 +2481,10 @@
             "type": "number"
           },
           {
+            "name": "#n-2604d934.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#n-2604d934.setStyle",
             "type": "string"
           },
@@ -2263,6 +2523,10 @@
           {
             "name": "#n-26b0c455.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#n-26b0c455.setState",
+            "type": "pulse"
           },
           {
             "name": "#n-26b0c455.setStyle",
@@ -2305,6 +2569,10 @@
             "type": "number"
           },
           {
+            "name": "#n-2aea7100.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#n-2aea7100.setStyle",
             "type": "string"
           },
@@ -2343,6 +2611,10 @@
           {
             "name": "#n-360cf4ee.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#n-360cf4ee.setState",
+            "type": "pulse"
           },
           {
             "name": "#n-360cf4ee.setStyle",
@@ -2385,6 +2657,10 @@
             "type": "number"
           },
           {
+            "name": "#n-4463e2b9.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#n-4463e2b9.setStyle",
             "type": "string"
           },
@@ -2423,6 +2699,10 @@
           {
             "name": "#n-55d9f8b6.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#n-55d9f8b6.setState",
+            "type": "pulse"
           },
           {
             "name": "#n-55d9f8b6.setStyle",
@@ -2465,6 +2745,10 @@
             "type": "number"
           },
           {
+            "name": "#n-6536294f.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#n-6536294f.setStyle",
             "type": "string"
           },
@@ -2503,6 +2787,10 @@
           {
             "name": "#n-762a9ebf.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#n-762a9ebf.setState",
+            "type": "pulse"
           },
           {
             "name": "#n-762a9ebf.setStyle",
@@ -2545,6 +2833,10 @@
             "type": "number"
           },
           {
+            "name": "#n-8973aa93.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#n-8973aa93.setStyle",
             "type": "string"
           },
@@ -2583,6 +2875,10 @@
           {
             "name": "#n-8b1e36b8.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#n-8b1e36b8.setState",
+            "type": "pulse"
           },
           {
             "name": "#n-8b1e36b8.setStyle",
@@ -2625,6 +2921,10 @@
             "type": "number"
           },
           {
+            "name": "#n-95ae360c.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#n-95ae360c.setStyle",
             "type": "string"
           },
@@ -2663,6 +2963,10 @@
           {
             "name": "#n-a0e967ca.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#n-a0e967ca.setState",
+            "type": "pulse"
           },
           {
             "name": "#n-a0e967ca.setStyle",
@@ -2705,6 +3009,10 @@
             "type": "number"
           },
           {
+            "name": "#n-a809bf40.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#n-a809bf40.setStyle",
             "type": "string"
           },
@@ -2743,6 +3051,10 @@
           {
             "name": "#n-d0129c2b.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#n-d0129c2b.setState",
+            "type": "pulse"
           },
           {
             "name": "#n-d0129c2b.setStyle",
@@ -2785,6 +3097,10 @@
             "type": "number"
           },
           {
+            "name": "#n-e00e3084.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#n-e00e3084.setStyle",
             "type": "string"
           },
@@ -2823,6 +3139,10 @@
           {
             "name": "#n-e3e84386.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#n-e3e84386.setState",
+            "type": "pulse"
           },
           {
             "name": "#n-e3e84386.setStyle",
@@ -2865,6 +3185,10 @@
             "type": "number"
           },
           {
+            "name": "#n-fb0223e1.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#n-fb0223e1.setStyle",
             "type": "string"
           },
@@ -2903,6 +3227,10 @@
           {
             "name": "#panel-body.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#panel-body.setState",
+            "type": "pulse"
           },
           {
             "name": "#panel-body.setStyle",
@@ -2945,6 +3273,10 @@
             "type": "number"
           },
           {
+            "name": "#panel-glow.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#panel-glow.setStyle",
             "type": "string"
           },
@@ -2983,6 +3315,10 @@
           {
             "name": "#panel-plate.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#panel-plate.setState",
+            "type": "pulse"
           },
           {
             "name": "#panel-plate.setStyle",
@@ -3025,6 +3361,10 @@
             "type": "number"
           },
           {
+            "name": "#panel-preview.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#panel-preview.setStyle",
             "type": "string"
           },
@@ -3063,6 +3403,10 @@
           {
             "name": "#preview-desc.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#preview-desc.setState",
+            "type": "pulse"
           },
           {
             "name": "#preview-desc.setStyle",
@@ -3105,6 +3449,10 @@
             "type": "number"
           },
           {
+            "name": "#preview-frame.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#preview-frame.setStyle",
             "type": "string"
           },
@@ -3143,6 +3491,10 @@
           {
             "name": "#preview-image.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#preview-image.setState",
+            "type": "pulse"
           },
           {
             "name": "#preview-image.setStyle",
@@ -3185,6 +3537,10 @@
             "type": "number"
           },
           {
+            "name": "#preview-rank-icon.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#preview-rank-icon.setStyle",
             "type": "string"
           },
@@ -3223,6 +3579,10 @@
           {
             "name": "#preview-tab.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#preview-tab.setState",
+            "type": "pulse"
           },
           {
             "name": "#preview-tab.setStyle",
@@ -3265,6 +3625,10 @@
             "type": "number"
           },
           {
+            "name": "#preview-tag.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#preview-tag.setStyle",
             "type": "string"
           },
@@ -3303,6 +3667,10 @@
           {
             "name": "#profile-block.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#profile-block.setState",
+            "type": "pulse"
           },
           {
             "name": "#profile-block.setStyle",
@@ -3345,6 +3713,10 @@
             "type": "number"
           },
           {
+            "name": "#profile-figure.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#profile-figure.setStyle",
             "type": "string"
           },
@@ -3383,6 +3755,10 @@
           {
             "name": "#profile-label.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#profile-label.setState",
+            "type": "pulse"
           },
           {
             "name": "#profile-label.setStyle",
@@ -3425,6 +3801,10 @@
             "type": "number"
           },
           {
+            "name": "#profile-name.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#profile-name.setStyle",
             "type": "string"
           },
@@ -3463,6 +3843,10 @@
           {
             "name": "#row-impossible.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#row-impossible.setState",
+            "type": "pulse"
           },
           {
             "name": "#row-impossible.setStyle",
@@ -3505,6 +3889,10 @@
             "type": "number"
           },
           {
+            "name": "#row-posthuman.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#row-posthuman.setStyle",
             "type": "string"
           },
@@ -3543,6 +3931,10 @@
           {
             "name": "#row-recruit.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#row-recruit.setState",
+            "type": "pulse"
           },
           {
             "name": "#row-recruit.setStyle",
@@ -3585,6 +3977,10 @@
             "type": "number"
           },
           {
+            "name": "#row-soldier.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#row-soldier.setStyle",
             "type": "string"
           },
@@ -3623,6 +4019,10 @@
           {
             "name": "#row-supersoldier.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#row-supersoldier.setState",
+            "type": "pulse"
           },
           {
             "name": "#row-supersoldier.setStyle",
@@ -3665,6 +4065,10 @@
             "type": "number"
           },
           {
+            "name": "#row-veteran.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#row-veteran.setStyle",
             "type": "string"
           },
@@ -3703,6 +4107,10 @@
           {
             "name": "#scan-line.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#scan-line.setState",
+            "type": "pulse"
           },
           {
             "name": "#scan-line.setStyle",
@@ -3745,6 +4153,10 @@
             "type": "number"
           },
           {
+            "name": "#scene.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#scene.setStyle",
             "type": "string"
           },
@@ -3783,6 +4195,10 @@
           {
             "name": "#star-impossible.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#star-impossible.setState",
+            "type": "pulse"
           },
           {
             "name": "#star-impossible.setStyle",
@@ -3825,6 +4241,10 @@
             "type": "number"
           },
           {
+            "name": "#star-posthuman.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#star-posthuman.setStyle",
             "type": "string"
           },
@@ -3863,6 +4283,10 @@
           {
             "name": "#star-recruit.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#star-recruit.setState",
+            "type": "pulse"
           },
           {
             "name": "#star-recruit.setStyle",
@@ -3905,6 +4329,10 @@
             "type": "number"
           },
           {
+            "name": "#star-soldier.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#star-soldier.setStyle",
             "type": "string"
           },
@@ -3943,6 +4371,10 @@
           {
             "name": "#star-supersoldier.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#star-supersoldier.setState",
+            "type": "pulse"
           },
           {
             "name": "#star-supersoldier.setStyle",
@@ -3985,6 +4417,10 @@
             "type": "number"
           },
           {
+            "name": "#star-veteran.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#star-veteran.setStyle",
             "type": "string"
           },
@@ -4023,6 +4459,10 @@
           {
             "name": "#status-online.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#status-online.setState",
+            "type": "pulse"
           },
           {
             "name": "#status-online.setStyle",
@@ -4065,6 +4505,10 @@
             "type": "number"
           },
           {
+            "name": "#vignette.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#vignette.setStyle",
             "type": "string"
           },
@@ -4105,6 +4549,10 @@
             "type": "number"
           },
           {
+            "name": "#world-image.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#world-image.setStyle",
             "type": "string"
           },
@@ -4143,6 +4591,10 @@
           {
             "name": "#world-layer.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#world-layer.setState",
+            "type": "pulse"
           },
           {
             "name": "#world-layer.setStyle",

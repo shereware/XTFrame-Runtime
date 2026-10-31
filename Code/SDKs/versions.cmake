@@ -69,8 +69,8 @@ xt_sdk(httplib URL https://github.com/yhirose/cpp-httplib/archive/refs/tags/v0.5
 xt_sdk(miniz URL https://github.com/richgel999/miniz/releases/download/3.0.2/miniz-3.0.2.zip
     ada38db0b703a56d3dd6d57bf84a9c5d664921d870d8fea4db153979fb5332c5
     TITLE "miniz" HOME "https://github.com/richgel999/miniz" VERSION "3.0.2" LICENSE "MIT"
-    USED_BY "`Code/Editor/History/`"
-    PURPOSE "zlib-compatible deflate/inflate for the history core's loose objects")
+    USED_BY "`Code/Runtime/bundle/`, `Code/Editor/History/`"
+    PURPOSE "Store-mode ZIP read/write for `.xtsymbols` symbol sets and `.xtb` bundles; zlib-compatible deflate/inflate for the history core's loose objects")
 
 # ---- prebuilt binaries (Code/SDKs/_fetched/<name>/<platform>/, Tools/CMake/xt_sdks.cmake xt_sdk_prebuilt)
 # Docs/design/10-backends.md §10.10.1 (T-437): wgpu-native's release zips (headers webgpu/webgpu.h +

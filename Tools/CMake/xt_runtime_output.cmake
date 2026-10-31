@@ -30,6 +30,10 @@ function(xt_platform_tag out)
         set(platform mac)
     elseif(CMAKE_SYSTEM_NAME STREQUAL "Android")
         set(platform android)
+    elseif(EMSCRIPTEN)
+        # T-503: the Node.js/wasm build of the tools; one tag, there is no second wasm architecture.
+        set(${out} wasm32 PARENT_SCOPE)
+        return()
     else()
         string(TOLOWER "${CMAKE_SYSTEM_NAME}" platform)
     endif()
@@ -245,8 +249,9 @@ function(_xt_copy_shared_libraries_now)
     endforeach()
 endfunction()
 
-# -- The standard symbol library next to the executables (T-198, T-474) ----------------------------
-# xtframe-pack, xtframe-design and xtframe-editor read Assets/Symbols from `<executable dir>/symbols`.
+# -- The preset symbol library next to the executables (T-198, T-474, T-498) ----------------------
+# xtframe-pack, xtframe-design and xtframe-editor read Assets/Symbols (the whole library: library.json
+# and groups/, Docs/design/49-symbol-sets.md 49.2) from `<executable dir>/symbols`.
 # With XT_RUNTIME_OUTPUT_DIR set they share one directory, so one custom target, xt_copy_symbols,
 # copies it there once per build and each of them depends on it: separate POST_BUILD copies into the
 # same directory raced under a parallel --clean-first build (copy_directory failed with "No such file
@@ -282,7 +287,47 @@ function(_xt_make_copy_symbols_target)
             COMMAND "${CMAKE_COMMAND}" -E copy_directory "${root}/Assets/Symbols" "${dir}")
     endforeach()
     add_custom_target(xt_copy_symbols ${commands}
-        COMMENT "Copying the standard symbol library"
+        COMMENT "Copying the preset symbol library"
+        VERBATIM)
+endfunction()
+
+# -- The standard fonts next to the executables (T-527b, 22 §22.10.3) ------------------------------
+# Every executable that gets the symbol library also gets Assets/Fonts (Noto Sans, Noto Serif, Noto Sans TC and
+# their OFL files; not README.md) in `<executable dir>/fonts`, where xtframe-pack's `--fonts-dir`
+# default looks. Same shape as xt_copy_symbols: one shared custom target, xt_copy_fonts.
+
+# xt_copy_standard_fonts(<target>): registers <target> and makes it depend on xt_copy_fonts.
+function(xt_copy_standard_fonts target)
+    set_property(GLOBAL APPEND PROPERTY XT_COPY_FONTS_TARGETS ${target})
+    add_dependencies(${target} xt_copy_fonts)
+endfunction()
+
+# _xt_make_copy_fonts_target(): the deferred definition of xt_copy_fonts.
+function(_xt_make_copy_fonts_target)
+    get_property(targets GLOBAL PROPERTY XT_COPY_FONTS_TARGETS)
+    if(NOT targets)
+        return()
+    endif()
+    get_property(root GLOBAL PROPERTY XT_RUNTIME_OUTPUT_ROOT)
+    file(GLOB files LIST_DIRECTORIES false "${root}/Assets/Fonts/*")
+    list(FILTER files EXCLUDE REGEX "/README\\.md$")
+    list(SORT files)
+    set(dirs "")
+    if(NOT "${XT_RUNTIME_OUTPUT_DIR}" STREQUAL "")
+        list(APPEND dirs "${XT_RUNTIME_OUTPUT_DIR}/fonts")
+    else()
+        foreach(target IN LISTS targets)
+            list(APPEND dirs "$<TARGET_FILE_DIR:${target}>/fonts")
+        endforeach()
+    endif()
+    set(commands "")
+    foreach(dir IN LISTS dirs)
+        list(APPEND commands
+            COMMAND "${CMAKE_COMMAND}" -E make_directory "${dir}"
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different ${files} "${dir}")
+    endforeach()
+    add_custom_target(xt_copy_fonts ${commands}
+        COMMENT "Copying the standard fonts"
         VERBATIM)
 endfunction()
 
@@ -291,4 +336,5 @@ function(xt_runtime_output_dir_deferred)
     set_property(GLOBAL PROPERTY XT_RUNTIME_OUTPUT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
     cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}" CALL xt_apply_runtime_output_dir)
     cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}" CALL _xt_make_copy_symbols_target)
+    cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}" CALL _xt_make_copy_fonts_target)
 endfunction()

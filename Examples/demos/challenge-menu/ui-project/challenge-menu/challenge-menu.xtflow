@@ -159,178 +159,56 @@
    }
   },
   {
-   "id": "clock",
-   "type": "clock"
+   "id": "introT",
+   "type": "timer",
+   "params": {
+    "interval": 0.15,
+    "autostart": true,
+    "repeat": false
+   }
   },
   {
-   "id": "introEnd",
+   "id": "parked",
+   "type": "toggle",
+   "params": {
+    "initial": true
+   }
+  },
+  {
+   "id": "listParked",
    "type": "constant",
    "params": {
-    "value": 0.15
+    "value": -650
    }
   },
   {
-   "id": "introOn",
-   "type": "compare",
-   "params": {
-    "op": "lt"
-   }
-  },
-  {
-   "id": "listX",
-   "type": "math",
-   "params": {
-    "op": "map",
-    "inLo": -1,
-    "inHi": 1,
-    "outLo": 144,
-    "outHi": 116
-   }
-  },
-  {
-   "id": "listY",
-   "type": "math",
-   "params": {
-    "op": "map",
-    "inLo": -1,
-    "inHi": 1,
-    "outLo": 204,
-    "outHi": 188
-   }
-  },
-  {
-   "id": "listPos",
-   "type": "format",
-   "params": {
-    "format": "left: {a}px; top: {b}px; transition: left 700ms cubic-bezier(.2,.7,.2,1), top 700ms cubic-bezier(.2,.7,.2,1)",
-    "decimals": 1
-   }
-  },
-  {
-   "id": "listPark",
+   "id": "listFree",
    "type": "constant",
    "params": {
-    "value": "left: -520px; top: 196px; transition: left 0ms, top 0ms"
+    "value": 0
    }
   },
   {
-   "id": "listStyle",
+   "id": "listShift",
    "type": "select"
   },
   {
-   "id": "panelX",
-   "type": "math",
-   "params": {
-    "op": "map",
-    "inLo": -1,
-    "inHi": 1,
-    "outLo": 670,
-    "outHi": 630
-   }
-  },
-  {
-   "id": "panelY",
-   "type": "math",
-   "params": {
-    "op": "map",
-    "inLo": -1,
-    "inHi": 1,
-    "outLo": 176,
-    "outHi": 156
-   }
-  },
-  {
-   "id": "panelPos",
-   "type": "format",
-   "params": {
-    "format": "left: {a}px; top: {b}px; transition: left 700ms cubic-bezier(.2,.7,.2,1), top 700ms cubic-bezier(.2,.7,.2,1)",
-    "decimals": 1
-   }
-  },
-  {
-   "id": "panelPark",
+   "id": "panelParked",
    "type": "constant",
    "params": {
-    "value": "left: 1400px; top: 166px; transition: left 0ms, top 0ms"
+    "value": 750
    }
   },
   {
-   "id": "panelStyle",
+   "id": "panelFree",
+   "type": "constant",
+   "params": {
+    "value": 0
+   }
+  },
+  {
+   "id": "panelShift",
    "type": "select"
-  },
-  {
-   "id": "worldX",
-   "type": "math",
-   "params": {
-    "op": "map",
-    "inLo": -1,
-    "inHi": 1,
-    "outLo": -66,
-    "outHi": -14
-   }
-  },
-  {
-   "id": "worldY",
-   "type": "math",
-   "params": {
-    "op": "map",
-    "inLo": -1,
-    "inHi": 1,
-    "outLo": -38,
-    "outHi": -10
-   }
-  },
-  {
-   "id": "worldPos",
-   "type": "format",
-   "params": {
-    "format": "left: {a}px; top: {b}px; transition: left 700ms cubic-bezier(.2,.7,.2,1), top 700ms cubic-bezier(.2,.7,.2,1)",
-    "decimals": 1
-   }
-  },
-  {
-   "id": "ringSpin_k",
-   "type": "constant",
-   "params": {
-    "value": 50
-   }
-  },
-  {
-   "id": "ringSpin",
-   "type": "math",
-   "params": {
-    "op": "mul"
-   }
-  },
-  {
-   "id": "ringSpinStyle",
-   "type": "format",
-   "params": {
-    "format": "transform: rotate({a}deg)",
-    "decimals": 2
-   }
-  },
-  {
-   "id": "arcSpin_k",
-   "type": "constant",
-   "params": {
-    "value": -110
-   }
-  },
-  {
-   "id": "arcSpin",
-   "type": "math",
-   "params": {
-    "op": "mul"
-   }
-  },
-  {
-   "id": "arcSpinStyle",
-   "type": "format",
-   "params": {
-    "format": "transform: rotate({a}deg)",
-    "decimals": 2
-   }
   }
  ],
  "edges": [
@@ -869,128 +747,40 @@
    "to": "#preview-image.setStyle"
   },
   {
-   "from": "clock.seconds",
-   "to": "introOn.a"
+   "from": "introT.tick",
+   "to": "parked.setFalse"
   },
   {
-   "from": "introEnd.out",
-   "to": "introOn.b"
+   "from": "parked.value",
+   "to": "listShift.cond"
   },
   {
-   "from": "#document.pointerNX",
-   "to": "listX.a"
+   "from": "listParked.out",
+   "to": "listShift.a"
   },
   {
-   "from": "#document.pointerNY",
-   "to": "listY.a"
+   "from": "listFree.out",
+   "to": "listShift.b"
   },
   {
-   "from": "listX.out",
-   "to": "listPos.a"
+   "from": "listShift.out",
+   "to": "#challenge-menu.listShift"
   },
   {
-   "from": "listY.out",
-   "to": "listPos.b"
+   "from": "parked.value",
+   "to": "panelShift.cond"
   },
   {
-   "from": "introOn.out",
-   "to": "listStyle.cond"
+   "from": "panelParked.out",
+   "to": "panelShift.a"
   },
   {
-   "from": "listPark.out",
-   "to": "listStyle.a"
+   "from": "panelFree.out",
+   "to": "panelShift.b"
   },
   {
-   "from": "listPos.out",
-   "to": "listStyle.b"
-  },
-  {
-   "from": "listStyle.out",
-   "to": "#diff-list.setStyle"
-  },
-  {
-   "from": "#document.pointerNX",
-   "to": "panelX.a"
-  },
-  {
-   "from": "#document.pointerNY",
-   "to": "panelY.a"
-  },
-  {
-   "from": "panelX.out",
-   "to": "panelPos.a"
-  },
-  {
-   "from": "panelY.out",
-   "to": "panelPos.b"
-  },
-  {
-   "from": "introOn.out",
-   "to": "panelStyle.cond"
-  },
-  {
-   "from": "panelPark.out",
-   "to": "panelStyle.a"
-  },
-  {
-   "from": "panelPos.out",
-   "to": "panelStyle.b"
-  },
-  {
-   "from": "panelStyle.out",
-   "to": "#panel-preview.setStyle"
-  },
-  {
-   "from": "#document.pointerNX",
-   "to": "worldX.a"
-  },
-  {
-   "from": "#document.pointerNY",
-   "to": "worldY.a"
-  },
-  {
-   "from": "worldX.out",
-   "to": "worldPos.a"
-  },
-  {
-   "from": "worldY.out",
-   "to": "worldPos.b"
-  },
-  {
-   "from": "worldPos.out",
-   "to": "#world-layer.setStyle"
-  },
-  {
-   "from": "clock.seconds",
-   "to": "ringSpin.a"
-  },
-  {
-   "from": "ringSpin_k.out",
-   "to": "ringSpin.b"
-  },
-  {
-   "from": "ringSpin.out",
-   "to": "ringSpinStyle.a"
-  },
-  {
-   "from": "ringSpinStyle.out",
-   "to": "#holo-ring.setStyle"
-  },
-  {
-   "from": "clock.seconds",
-   "to": "arcSpin.a"
-  },
-  {
-   "from": "arcSpin_k.out",
-   "to": "arcSpin.b"
-  },
-  {
-   "from": "arcSpin.out",
-   "to": "arcSpinStyle.a"
-  },
-  {
-   "from": "arcSpinStyle.out",
-   "to": "#holo-arc.setStyle"
+   "from": "panelShift.out",
+   "to": "#challenge-menu.panelShift"
   }
  ]
 }

@@ -1,5 +1,0 @@
-# T-198: Dropdown, state 'normal'.
-port Quality.options [{"label":"Low"},{"label":"Medium"},{"label":"High"},{"label":"Ultra"}]
-port Quality.value 2
-port Quality.current High
-update 0.6

@@ -695,3 +695,122 @@ TEST_CASE("compileDocumentFromStrings: T-243 a rigged inline <svg> round-trips b
     IrWriter rebuilt = IrWriter::fromView(r.value());
     CHECK(rebuilt.finish() == result.ir);
 }
+
+// Docs/design/05-style-and-css.md §5.9.12, Docs/tasks/T-490.md: an asset path written in a
+// `<link href>`ed stylesheet resolves against that sheet's own directory first, then searchDirs,
+// then the document directory (the old behavior, kept as the fallback).
+namespace {
+
+fs::path linkedFontFixture() { return fs::path(XT_TEST_XT_DIR) / "linked-font"; }
+
+const CompiledAsset* assetNamed(const CompileResult& result, const std::string& sourceName) {
+    for (const CompiledAsset& a : result.assets) {
+        if (a.sourceName == sourceName) {
+            return &a;
+        }
+    }
+    return nullptr;
+}
+
+}  // namespace
+
+TEST_CASE(
+    "compileDocument: a linked sheet's @font-face src and background-image resolve relative to the sheet") {
+    const fs::path root = linkedFontFixture();
+    CompileOptions options;
+    CompileResult result = compileDocument((root / "ui" / "a.xt").string(), options);
+    for (const Diagnostic& d : result.diagnostics) {
+        CAPTURE(d.message);
+    }
+    REQUIRE(result.ok());
+    CHECK(result.diagnostics.empty());
+    CHECK(!hasWarningContaining(result, "not found"));
+    const CompiledAsset* font = assetNamed(result, "fonts/f.ttf");
+    REQUIRE(font != nullptr);
+    CHECK(font->kind == 1);
+    CHECK(fs::path(font->resolvedPath) == root / "shared" / "fonts" / "f.ttf");
+    const CompiledAsset* image = assetNamed(result, "img/bg.png");
+    REQUIRE(image != nullptr);
+    CHECK(image->kind == 0);
+    CHECK(fs::path(image->resolvedPath) == root / "shared" / "img" / "bg.png");
+}
+
+TEST_CASE("compileDocument: a linked sheet's asset falls back to the document directory") {
+    // The same fixture with the font moved next to the document (ui/fonts/f.ttf): the sheet
+    // directory misses, searchDirs is empty, and the document directory still finds it.
+    const fs::path base = freshTempDir("xt_t490_linked_font_fallback");
+    const fs::path src = linkedFontFixture();
+    fs::copy(src / "ui", base / "ui", fs::copy_options::recursive);
+    fs::create_directories(base / "shared");
+    fs::copy_file(src / "shared" / "tokens.xts", base / "shared" / "tokens.xts");
+    writeText(base / "ui" / "fonts" / "f.ttf", "FAKEFONTBYTES");
+    writeText(base / "ui" / "img" / "bg.png", "not really a png");
+
+    CompileOptions options;
+    CompileResult result = compileDocument((base / "ui" / "a.xt").string(), options);
+    REQUIRE(result.ok());
+    CHECK(!hasWarningContaining(result, "not found"));
+    const CompiledAsset* font = assetNamed(result, "fonts/f.ttf");
+    REQUIRE(font != nullptr);
+    CHECK(fs::path(font->resolvedPath) == base / "ui" / "fonts" / "f.ttf");
+    const CompiledAsset* image = assetNamed(result, "img/bg.png");
+    REQUIRE(image != nullptr);
+    CHECK(fs::path(image->resolvedPath) == base / "ui" / "img" / "bg.png");
+}
+
+TEST_CASE("compileDocument: a linked sheet's directory wins over searchDirs and the document directory") {
+    const fs::path base = freshTempDir("xt_t490_linked_font_order");
+    const fs::path src = linkedFontFixture();
+    fs::copy(src, base, fs::copy_options::recursive);
+    writeText(base / "ui" / "fonts" / "f.ttf", "document copy");
+    writeText(base / "search" / "fonts" / "f.ttf", "searchDirs copy");
+
+    CompileOptions options;
+    options.searchDirs = {(base / "search").string()};
+    CompileResult result = compileDocument((base / "ui" / "a.xt").string(), options);
+    REQUIRE(result.ok());
+    CHECK(!hasWarningContaining(result, "not found"));
+    const CompiledAsset* font = assetNamed(result, "fonts/f.ttf");
+    REQUIRE(font != nullptr);
+    CHECK(fs::path(font->resolvedPath) == base / "shared" / "fonts" / "f.ttf");
+}
+
+TEST_CASE("compileDocumentFromStrings: an in-memory linked sheet has no directory, searchDirs still apply") {
+    const fs::path base = freshTempDir("xt_t490_linked_font_memory");
+    writeText(base / "shared" / "fonts" / "f.ttf", "FAKEFONTBYTES");
+
+    SourceFile files[2] = {
+        SourceFile{"ui/a.xt",
+                   "<xt><head><link href=\"../shared/tokens.xts\"/></head><body><div>x</div></body></xt>"},
+        SourceFile{"../shared/tokens.xts", "@font-face { font-family: \"F\"; src: \"fonts/f.ttf\"; }"},
+    };
+    CompileOptions options;
+    options.rootDir = (base / "ui").string();
+    options.searchDirs = {(base / "shared").string()};
+    CompileResult result = compileDocumentFromStrings(files, "ui/a.xt", options);
+    REQUIRE(result.ok());
+    CHECK(!hasWarningContaining(result, "not found"));
+    const CompiledAsset* font = assetNamed(result, "fonts/f.ttf");
+    REQUIRE(font != nullptr);
+    CHECK(fs::path(font->resolvedPath) == base / "shared" / "fonts" / "f.ttf");
+}
+
+// Docs/design/05-style-and-css.md §5.9.12, Docs/tasks/T-497.md: a `background-image` written inside
+// a linked symbol library's `symbol(...)` block keeps the library file's directory when
+// symbol_expand.cpp copies the rule per instance, so the texture resolves next to the library.
+TEST_CASE("compileDocument: a symbol() rule's background-image resolves relative to the library file") {
+    const fs::path root = fs::path(XT_TEST_XT_DIR) / "symbol-texture";
+    CompileOptions options;
+    CompileResult result = compileDocument((root / "ui" / "a.xt").string(), options);
+    for (const Diagnostic& d : result.diagnostics) {
+        CAPTURE(d.message);
+    }
+    REQUIRE(result.ok());
+    CHECK(result.diagnostics.empty());
+    CHECK(!hasWarningContaining(result, "not found"));
+    const CompiledAsset* image = assetNamed(result, "textures/x.png");
+    REQUIRE(image != nullptr);
+    CHECK(image->kind == 0);
+    // Not ui/textures/x.png (the document-directory fallback the pre-T-497 copy fell through to).
+    CHECK(fs::path(image->resolvedPath) == root / "lib" / "textures" / "x.png");
+}

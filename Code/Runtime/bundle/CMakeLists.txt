@@ -30,12 +30,22 @@ add_library(xt_bundle STATIC
     src/project_edit.cpp
     src/migrations/migrations.cpp
     src/symbol_sync.cpp
+    src/symbol_library.cpp
+    src/symbol_lint.cpp
+    src/symbol_set.cpp
+    src/symbol_group_ops.cpp
+    src/symbol_json.cpp
+    src/zip_archive.cpp
 )
 # pack() (T-92) compiles each UI (xt_compile), reflects its connection points (xt_flow) and
 # renders its thumbnail with the software backend (xt_sw, always built).
 target_link_libraries(xt_bundle PUBLIC xt_core xt_compile xt_flow xt_sw)
 # T-199: BC1/BC3/BC7 block encoders for `xtframe-pack --compress` (Code/SDKs/bc7enc, built by Code/Runtime/sw/).
 target_link_libraries(xt_bundle PRIVATE xt_bcn)
+# T-500: miniz (FetchContent pinned, Tools/CMake/xt_miniz.cmake) behind src/zip_archive.cpp
+# (`.xtsymbols` sets and `.xtb` bundles, store mode). PRIVATE: miniz.h never reaches include/xt/bundle/.
+include(${PROJECT_SOURCE_DIR}/Tools/CMake/xt_miniz.cmake)
+target_link_libraries(xt_bundle PRIVATE xt_miniz)
 if(XT_BUILD_TEXT)
     # Thumbnails get real glyphs when the FreeType stack is in the build; otherwise pack() falls
     # back to NullTextShaper. See Docs/tasks/T-92.md step 5.

@@ -1,0 +1,12 @@
+{
+  "width": 120,
+  "height": 120,
+  "frames": 0,
+  "ports": {
+    "Aim.spread": 0,
+    "Aim.on_target": false
+  },
+  "events": [
+    "update 0.6"
+  ]
+}

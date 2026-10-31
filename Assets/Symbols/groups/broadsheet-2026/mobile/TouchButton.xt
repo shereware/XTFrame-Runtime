@@ -1,0 +1,102 @@
+<xt>
+  <head>
+    <!-- TouchButton: standard mobile symbol (docs/design/23-host-integration.md 23.11.2,
+         30-ui-project.md 30.4). See ../README.md.
+         Style: Broadsheet (docs/design/47-symbol-visual-style.md).
+         A large touch face (--touch-lg). Pressing emits `pressed`, sets `held` and starts the
+         looping `repeat` timeline, whose `tick` marker emits `repeat` every 0.25 s while held
+         (the fixed repeat interval); releasing clears `held` and stops it. `cooldown` (0..1, the
+         host counts it down) draws the cooldown shade and the Cooling state. -->
+    <symbol name="TouchButton" requires="states: Hover, Pressed, Disabled, Cooling; slots: icon, label">
+      <button id="Box" port:pressed="event out" port:held="bool out" port:repeat="event out"
+              port:cooldown="number in" bind:state.Cooling="cooldown | gt(0)"
+              on:press="sound(ui_click); set(held, true); emit(pressed); play(press); play(repeat, loop)"
+              on:release="set(held, false); stop(repeat)"
+              on:timeline(repeat).marker(tick)="emit(repeat)">
+        <div id="Face">
+          <div id="Icon"><slot name="icon"><div id="IconDot"></div></slot></div>
+          <span id="Label"><slot name="label">Fire</slot></span>
+        </div>
+        <div id="Shade" bind:scale-y="cooldown"></div>
+      </button>
+    </symbol>
+    <style>
+      symbol(TouchButton) {
+        /* Like Button Secondary: paper face in a double frame (1px border, 1px outline 2px out). */
+        #Box {
+          position: relative;
+          width: var(--touch-lg);
+          height: var(--touch-lg);
+          border-width: var(--rule-thin);
+          border-color: var(--color-border);
+          outline: var(--rule-thin) solid var(--color-border);
+          outline-offset: 2px;
+          background-color: var(--color-surface);
+          color: var(--color-text);
+          font-family: var(--font-display);
+          font-size: var(--font-size-s);
+          transition: background-color var(--motion-fast) linear, transform var(--motion-fast) ease-out;
+        }
+        #Face {
+          position: absolute;
+          left: 0px;
+          top: 0px;
+          width: 100%;
+          height: 100%;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          row-gap: var(--space-1);
+        }
+        #IconDot { width: 24px; height: 24px; background-color: var(--color-accent); }
+        #Label {
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: var(--letter-display);
+          white-space: nowrap;
+        }
+        /* The cooldown shade: a halftone dot screen that grows from the bottom as `cooldown` rises. */
+        #Shade {
+          position: absolute;
+          left: 0px;
+          top: 0px;
+          width: 100%;
+          height: 100%;
+          background-color: var(--color-track);
+          background-image: var(--tex-dots);
+          background-repeat: repeat;
+          background-size: 4px 4px;
+          opacity: 0.85;
+          transform-origin: 50% 100%;
+          transform: scale(1, 0);
+        }
+        #Box:hover { background-color: var(--color-accent); color: var(--color-text-on-accent); }
+        #Box:hover #IconDot { background-color: var(--color-text-on-accent); }
+        #Box:active { background-color: var(--color-surface-sunken); color: var(--color-text); transform: translate(2px, 2px); }
+        #Box:active #IconDot { background-color: var(--color-accent); }
+        #Box:focus { outline: var(--focus-w) solid var(--color-focus); outline-offset: 2px; transform: rotate(-1.5deg); }
+        #Box:state(Cooling) { border-color: var(--color-text-dim); outline-color: var(--color-text-dim); }
+        #Box:state(Cooling) #IconDot { background-color: var(--color-text-dim); }
+        :disabled #Box {
+          background-color: var(--color-disabled-bg) !important;
+          background-image: var(--tex-hatch) !important;
+          background-repeat: repeat;
+          background-size: 8px 8px;
+          color: var(--color-disabled-text) !important;
+          border-color: var(--color-disabled-text) !important;
+          outline: none !important;
+          transform: none !important;
+        }
+        :disabled #IconDot { background-color: var(--color-disabled-text) !important; }
+        @timeline press {
+          #Face { 0s { transform: translateY(1px) } 0.15s ease-out { transform: translateY(0px) } }
+        }
+        @timeline repeat {
+          marker: tick 0.25s;
+          #Face { 0s { opacity: 1 } 0.25s { opacity: 1 } }
+        }
+      }
+    </style>
+  </head>
+</xt>

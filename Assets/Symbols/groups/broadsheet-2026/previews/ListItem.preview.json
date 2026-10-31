@@ -1,0 +1,30 @@
+{
+  "width": 340,
+  "height": 220,
+  "frames": 0,
+  "ports": {
+    "List.items": [
+      {
+        "title": "Save 1",
+        "subtitle": "Chapter 2 Harbor",
+        "badge": "3h",
+        "selected": false
+      },
+      {
+        "title": "Save 2",
+        "subtitle": "Chapter 3 Tower",
+        "badge": "5h",
+        "selected": false
+      },
+      {
+        "title": "Autosave",
+        "subtitle": "Chapter 3 Gate",
+        "badge": "6h",
+        "selected": false
+      }
+    ]
+  },
+  "events": [
+    "update 0.6"
+  ]
+}

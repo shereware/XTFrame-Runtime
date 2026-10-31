@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "id": "broadsheet-2026",
+  "name": "Broadsheet 2026",
+  "description": "The 2026 edition of the newsprint symbol set (Broadsheet v2, Docs/design/47-symbol-visual-style.md): 39 form, HUD, input, mobile and list symbols drawn as a newspaper, with their tokens, fonts, textures and thumbnails.",
+  "source": {
+    "kind": "preset",
+    "set": "xtframe/broadsheet-2026",
+    "setVersion": "2.0.0"
+  },
+  "tokens": "tokens.xts",
+  "themes": [
+    "tokens-night.xts"
+  ],
+  "thumbnail": "thumbnails/group.png"
+}

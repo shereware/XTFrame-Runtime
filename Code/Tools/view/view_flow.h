@@ -52,6 +52,18 @@ inline bool loadFlow(xt::Context& ctx, xt::DocumentHandle handle, const std::str
     return true;
 }
 
+/// T-540 (27 §27.4.3): prints the continuous-signal diagnostics of a loaded `runtime`, one
+/// `xtframe-view: warning: <text>` line each (`xtframe-view: error: <text>` under `strict`).
+/// Returns false when `strict` and there was at least one (the caller exits 2).
+inline bool reportFlowContinuity(const xt::flow::FlowRuntime& runtime, bool strict) {
+    std::vector<std::string> lines;
+    runtime.loadWarnings(lines);
+    for (const std::string& line : lines) {
+        std::fprintf(stderr, "xtframe-view: %s: %s\n", strict ? "error" : "warning", line.c_str());
+    }
+    return !(strict && !lines.empty());
+}
+
 /// R (reload) after the new Document was loaded at `handle` beside the one at `previous`: loads
 /// the flow file at `flowPath` against the new one again when `hasFlow`, then unloads `previous`.
 /// Returns whether a flow graph is loaded afterwards (false: the run goes on without one, the

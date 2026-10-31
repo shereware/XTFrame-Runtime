@@ -4,10 +4,10 @@
     <link href="hud.xts"/>
     <title>XTFrame HUD demo</title>
   </head>
-  <body>
-    <div id="root">
+  <body port:nx="number in" port:ny="number in">
+    <div id="root" on:pointermove="set(nx, pointer.fraction(#root).x | range(0, 1, -1, 1)); set(ny, pointer.fraction(#root).y | range(0, 1, -1, 1))">
       <div id="stageL" class="stage">
-        <div id="player" class="panel">
+        <div id="player" class="panel" bind:rotate-y="nx | range(-1, 1, 32, 16)" bind:rotate-x="ny | range(-1, 1, 7, -7)">
           <div class="label">
   OPERATIVE
 </div>
@@ -32,7 +32,7 @@
         </div>
       </div>
       <div id="stageR" class="stage">
-        <div id="ammoPanel" class="panel">
+        <div id="ammoPanel" class="panel" bind:rotate-y="nx | range(-1, 1, -16, -32)" bind:rotate-x="ny | range(-1, 1, 7, -7)">
           <div class="label">
   AMMO
 </div>

@@ -34,7 +34,10 @@ enum class NodeType : uint8_t {
     Haptic,
     Spawn,
     Emit,
-    Timeline
+    Timeline,
+    State,   // T-541 (27 §27.4.4).
+    Filter,  // T-543.
+    Throttle
 };
 
 /// Which of a node's three slot tables a name is looked up in.
@@ -90,6 +93,17 @@ inline constexpr std::string_view kEmitParams[] = {"port"};
 inline constexpr std::string_view kTimelineIn[] = {"play", "stop", "seek"};
 inline constexpr std::string_view kTimelineOut[] = {"end", "marker"};
 inline constexpr std::string_view kTimelineParams[] = {"name", "scope", "ui", "loop", "rate"};
+// T-541: `state`'s fixed ports. Its event inputs (slot 2 + event index) and enter / exit outputs
+// (slot 3 + 2 * state index, +1 for the exit) are per node: stateSlotOf() (flow_internal.h).
+inline constexpr std::string_view kStateIn[] = {"set", "guard"};
+inline constexpr std::string_view kStateOut[] = {"state", "index", "changed"};
+inline constexpr std::string_view kStateParams[] = {"states", "initial", "transitions", "events"};
+inline constexpr std::string_view kFilterIn[] = {"in", "trigger", "reset"};  // T-543.
+inline constexpr std::string_view kFilterOut[] = {"out", "passed"};
+inline constexpr std::string_view kFilterParams[] = {"op", "threshold", "step"};
+inline constexpr std::string_view kThrottleIn[] = {"in", "rate", "reset"};
+inline constexpr std::string_view kThrottleOut[] = {"out", "passed", "dropped"};
+inline constexpr std::string_view kThrottleParams[] = {"unit", "rate", "trailing"};
 // clang-format on
 }  // namespace slot_names
 
@@ -138,12 +152,20 @@ constexpr NodeSlotTable nodeSlotTable(NodeType type) {
             return {S{kEmitIn}, S{}, S{kEmitParams}};
         case NodeType::Timeline:
             return {S{kTimelineIn}, S{kTimelineOut}, S{kTimelineParams}};
+        case NodeType::State:
+            return {S{kStateIn}, S{kStateOut}, S{kStateParams}};
+        case NodeType::Filter:
+            return {S{kFilterIn}, S{kFilterOut}, S{kFilterParams}};
+        case NodeType::Throttle:
+            return {S{kThrottleIn}, S{kThrottleOut}, S{kThrottleParams}};
     }
     return {};
 }
 
 /// The slot of `name` in `type`'s `kind` table, or kNoSlot. `radio`'s "set<i>" input (no leading
-/// zero, i < 64) is slot 1 + i. Only for loading and the editor API boundary: never on the tick.
+/// zero, i < 64) is slot 1 + i. `state`'s event / enter / exit ports are not found here (they
+/// depend on the node's params; see stateSlotOf()). Only for loading and the editor API boundary:
+/// never on the tick.
 constexpr uint16_t slotOf(NodeType type, SlotKind kind, std::string_view name) {
     const NodeSlotTable table = nodeSlotTable(type);
     const std::span<const std::string_view> names =
@@ -167,7 +189,8 @@ constexpr uint16_t slotOf(NodeType type, SlotKind kind, std::string_view name) {
     return kNoSlot;
 }
 
-/// How many input slots a node of `type` has (`radio`: "set" plus one per "set<i>").
+/// How many input slots a node of `type` has (`radio`: "set" plus one per "set<i>"; `state`: only
+/// its fixed ones, its event inputs come on top).
 constexpr uint32_t inputSlotCount(NodeType type, uint32_t radioCount) {
     return type == NodeType::Radio ? 1 + radioCount
                                    : static_cast<uint32_t>(nodeSlotTable(type).inputs.size());
@@ -235,6 +258,24 @@ inline constexpr uint16_t kPlay = 0, kStop = 1, kSeek = 2;
 inline constexpr uint16_t kEnd = 0, kMarker = 1;
 inline constexpr uint16_t kName = 0, kScope = 1, kUi = 2, kLoop = 3, kRate = 4;
 }  // namespace timeline
+namespace state {
+inline constexpr uint16_t kSet = 0, kGuard = 1, kFirstEvent = 2;
+inline constexpr uint16_t kState = 0, kIndex = 1, kChanged = 2, kFirstStatePort = 3;
+inline constexpr uint16_t kStates = 0, kInitial = 1, kTransitions = 2, kEvents = 3;
+/// The output slot of `enter<state s>` / `exit<state s>`.
+constexpr uint16_t enterSlot(uint32_t s) { return static_cast<uint16_t>(kFirstStatePort + 2 * s); }
+constexpr uint16_t exitSlot(uint32_t s) { return static_cast<uint16_t>(kFirstStatePort + 2 * s + 1); }
+}  // namespace state
+namespace filter {  // T-543 (27 §27.4.5).
+inline constexpr uint16_t kIn = 0, kTrigger = 1, kReset = 2;
+inline constexpr uint16_t kOut = 0, kPassed = 1;
+inline constexpr uint16_t kOp = 0, kThreshold = 1, kStep = 2;
+}  // namespace filter
+namespace throttle {
+inline constexpr uint16_t kIn = 0, kRate = 1, kReset = 2;
+inline constexpr uint16_t kOut = 0, kPassed = 1, kDropped = 2;
+inline constexpr uint16_t kUnit = 0, kRateParam = 1, kTrailing = 2;
+}  // namespace throttle
 }  // namespace slots
 
 // The slot constants above must name the table entries they stand for.
@@ -256,5 +297,22 @@ static_assert(slotOf(NodeType::Emit, SlotKind::Input, "value") == slots::action:
 static_assert(slotOf(NodeType::Sound, SlotKind::Param, "volume") == slots::action::kVolume);
 static_assert(slotOf(NodeType::Timeline, SlotKind::Param, "rate") == slots::timeline::kRate);
 static_assert(slotOf(NodeType::Timeline, SlotKind::Input, "seek") == slots::timeline::kSeek);
+static_assert(slotOf(NodeType::State, SlotKind::Input, "set") == slots::state::kSet);
+static_assert(slotOf(NodeType::State, SlotKind::Input, "guard") == slots::state::kGuard);
+static_assert(nodeSlotTable(NodeType::State).inputs.size() == slots::state::kFirstEvent);
+static_assert(slotOf(NodeType::State, SlotKind::Output, "state") == slots::state::kState);
+static_assert(slotOf(NodeType::State, SlotKind::Output, "index") == slots::state::kIndex);
+static_assert(slotOf(NodeType::State, SlotKind::Output, "changed") == slots::state::kChanged);
+static_assert(nodeSlotTable(NodeType::State).outputs.size() == slots::state::kFirstStatePort);
+static_assert(slotOf(NodeType::State, SlotKind::Param, "states") == slots::state::kStates);
+static_assert(slotOf(NodeType::State, SlotKind::Param, "initial") == slots::state::kInitial);
+static_assert(slotOf(NodeType::State, SlotKind::Param, "transitions") == slots::state::kTransitions);
+static_assert(slotOf(NodeType::State, SlotKind::Param, "events") == slots::state::kEvents);
+static_assert(slotOf(NodeType::Filter, SlotKind::Input, "reset") == slots::filter::kReset);
+static_assert(slotOf(NodeType::Filter, SlotKind::Output, "passed") == slots::filter::kPassed);
+static_assert(slotOf(NodeType::Filter, SlotKind::Param, "step") == slots::filter::kStep);
+static_assert(slotOf(NodeType::Throttle, SlotKind::Input, "rate") == slots::throttle::kRate);
+static_assert(slotOf(NodeType::Throttle, SlotKind::Output, "dropped") == slots::throttle::kDropped);
+static_assert(slotOf(NodeType::Throttle, SlotKind::Param, "trailing") == slots::throttle::kTrailing);
 
 }  // namespace xt::flow

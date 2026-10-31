@@ -48,6 +48,16 @@ struct CompileOptions {
     /// `compileDocumentFromStrings()` takes the text of an in-memory file whose name is exactly the
     /// path instead of reading it (the editor's unsaved copy).
     std::vector<std::string> impliedStylesheets;
+    /// T-498b (Docs/design/49-symbol-sets.md 49.3 ruling): the implied default token layer -- the
+    /// `tokens.xts` of the symbol group a pack resolves the standard symbols in -- parsed before
+    /// `impliedStylesheets` and everything else, in this order. Same path rules and in-memory
+    /// override as `impliedStylesheets`. A token one of these declares that a later sheet (the
+    /// project's `shared.tokens`, a `<link>`, a `<style>`) declares again is not a "declared more
+    /// than once" warning: the later declaration simply wins (the project's own value), and two
+    /// implied files declaring the same token resolve the same way. Their `@font-face src` and
+    /// `url()` values resolve against the file's own directory first (T-490), so the group's fonts
+    /// and textures are found without a copy into the project.
+    std::vector<std::string> impliedTokenFiles;
     /// T-235 (item 8): `compileDocumentFromStrings()` only -- the `.xt` file's directory, the base
     /// every relative path of the document (`<link href>`, `<link rel="symbols">`, `.xtanim.json`,
     /// assets after `searchDirs`) resolves against, as `compileDocument()` uses the file's own

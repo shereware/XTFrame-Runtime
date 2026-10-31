@@ -300,3 +300,28 @@ TEST_CASE(
     click(*doc, "Knob");
     CHECK(seen.size() == 1);
 }
+
+TEST_CASE("T-540: a continuous signal into a declared port is never reported") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc = loadDoc(shaper);
+    const std::string json = R"({
+        "version": 1,
+        "nodes": [
+            { "id": "c", "type": "clock" },
+            { "id": "m", "type": "math", "params": { "op": "map", "inLo": 0, "inHi": 10,
+                                                     "outLo": 0, "outHi": 1 } }
+        ],
+        "edges": [
+            { "from": "c.seconds", "to": "m.a" },
+            { "from": "m.out", "to": "#Hud.hp" }
+        ]
+    })";
+    FlowGraph graph;
+    std::vector<std::string> errors;
+    REQUIRE(FlowGraph::parse(json, graph, errors) == Status::kOk);
+    FlowRuntime rt;
+    REQUIRE(rt.load(graph, *doc, errors) == Status::kOk);
+    std::vector<std::string> warnings;
+    rt.continuityWarnings(warnings);
+    CHECK(warnings.empty());
+}

@@ -25,6 +25,13 @@ function(xt_set_warnings target)
         if(XT_BUILD_FUZZ OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
             target_compile_options(${target} PRIVATE -Wno-missing-field-initializers)
         endif()
+        # T-503 (Docs/design/24-design-import.md §24.13): wasm32 is a 32-bit target, so iterator
+        # arithmetic with a uint32_t index (`begin() + count`) converts to a 32-bit difference_type and
+        # -Wsign-conversion fires in some 50 places that are fine on every 64-bit CI leg. The check
+        # stays on for the native builds; the wasm build only drops this one warning.
+        if(EMSCRIPTEN)
+            target_compile_options(${target} PRIVATE -Wno-sign-conversion)
+        endif()
     endif()
 endfunction()
 
@@ -55,5 +62,10 @@ endfunction()
 function(xt_enable_exceptions target)
     if(XT_MSVC_FRONTEND)
         target_compile_options(${target} PRIVATE /EHsc)
+    elseif(EMSCRIPTEN)
+        # T-503: Emscripten compiles with exceptions off unless asked; native wasm exception
+        # handling (-fwasm-exceptions, Node 17+) needs the flag at compile and link time.
+        target_compile_options(${target} PRIVATE -fwasm-exceptions)
+        target_link_options(${target} PRIVATE -fwasm-exceptions)
     endif()
 endfunction()

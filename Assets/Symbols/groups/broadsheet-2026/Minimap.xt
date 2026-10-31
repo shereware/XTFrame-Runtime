@@ -1,0 +1,87 @@
+<xt>
+  <head>
+    <!-- Minimap: standard symbol (docs/design/30-ui-project.md 30.4). See README.md.
+         Style: Broadsheet (docs/design/47-symbol-visual-style.md).
+         The map itself is external content: the host renders camera `minimap` into it. -->
+    <symbol name="Minimap" requires="slots: label">
+      <div id="Box">
+        <div id="Frame">
+          <external id="View" source="scene-view:minimap"/>
+          <div id="Player"></div>
+          <span id="North">N</span>
+          <div id="CornerTL" class="corner"></div>
+          <div id="CornerTR" class="corner"></div>
+          <div id="CornerBL" class="corner"></div>
+          <div id="CornerBR" class="corner"></div>
+        </div>
+        <div id="Rule"></div>
+        <span id="Zone"><slot name="label">Unknown area</slot></span>
+      </div>
+    </symbol>
+    <style>
+      symbol(Minimap) {
+        #Box {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          row-gap: var(--space-1);
+          font-family: var(--font-body);
+        }
+        #Frame {
+          position: relative;
+          width: 160px;
+          height: 160px;
+          border-width: var(--rule-thin);
+          border-color: var(--color-border);
+          background-color: var(--color-surface);
+          background-image: var(--tex-grain);
+          background-repeat: repeat;
+          background-size: 128px 128px;
+          overflow: hidden;
+        }
+        #View { position: absolute; left: 0px; top: 0px; width: 160px; height: 160px; object-fit: cover; }
+        .corner { position: absolute; width: 14px; height: 14px; border-color: var(--color-border); }
+        #CornerTL { left: 0px; top: 0px; border-width: var(--rule-thick) 0px 0px var(--rule-thick); }
+        #CornerTR { right: 0px; top: 0px; border-width: var(--rule-thick) var(--rule-thick) 0px 0px; }
+        #CornerBL { left: 0px; bottom: 0px; border-width: 0px 0px var(--rule-thick) var(--rule-thick); }
+        #CornerBR { right: 0px; bottom: 0px; border-width: 0px var(--rule-thick) var(--rule-thick) 0px; }
+        #Player {
+          position: absolute;
+          left: 74px;
+          top: 74px;
+          width: 12px;
+          height: 12px;
+          border-width: var(--rule-thin);
+          border-color: var(--color-surface);
+          background-color: var(--color-accent);
+        }
+        #North {
+          position: absolute;
+          left: 74px;
+          top: 8px;
+          width: 12px;
+          text-align: center;
+          color: var(--color-text);
+          font-family: var(--font-display);
+          font-size: var(--font-size-xs);
+          font-weight: 900;
+        }
+        #Rule {
+          width: 162px;
+          height: 7px;
+          background-image: var(--tex-rule-h);
+          background-repeat: repeat-x;
+          background-size: 1px 7px;
+        }
+        #Zone {
+          color: var(--color-text);
+          font-family: var(--font-display);
+          font-size: var(--font-size-xs);
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: var(--letter-display);
+        }
+      }
+    </style>
+  </head>
+</xt>

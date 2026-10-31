@@ -1,0 +1,62 @@
+<xt>
+  <head>
+    <!-- Tooltip: standard symbol (docs/design/30-ui-project.md 30.4). See README.md.
+         The tip shrinks to its text on one line (`white-space: nowrap`); give it a width through
+         its path id (`#<instance>/Tip { width: 220px; white-space: normal; }`) to wrap long tips. -->
+    <symbol name="Tooltip" requires="states: Hover, Focus; slots: anchor, tip">
+      <div id="Box" tabindex="0">
+        <div id="Anchor"><slot name="anchor"><span id="AnchorText">?</span></slot></div>
+        <div id="Tip"><span id="TipText"><slot name="tip">Tooltip</slot></span></div>
+      </div>
+    </symbol>
+    <style>
+      symbol(Tooltip) {
+        #Box { position: relative; display: flex; pointer-watch: true; }
+        #Anchor {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 24px;
+          height: 24px;
+          border-width: var(--rule-thin);
+          border-color: var(--color-border);
+          background-color: var(--color-surface);
+          color: var(--color-text);
+          font-family: var(--font-body);
+          font-size: var(--font-size-s);
+          transition: transform var(--motion-fast) ease-out;
+        }
+        #Box:hover #Anchor { background-color: var(--color-accent); color: var(--color-text-on-accent); }
+        #Box:focus #Anchor { outline: var(--focus-w) solid var(--color-focus); outline-offset: 2px; transform: rotate(-1.5deg); }
+        #Tip {
+          position: absolute;
+          display: flex;
+          left: 0px;
+          top: 100%;
+          margin-top: var(--space-2);
+          padding: var(--space-2) var(--space-3);
+          white-space: nowrap;
+          border-width: var(--rule-thin);
+          border-style: dashed;
+          border-color: var(--color-border);
+          background-color: var(--color-surface);
+          background-image: var(--tex-grain);
+          background-repeat: repeat;
+          background-size: 128px 128px;
+          color: var(--color-text);
+          font-family: var(--font-body);
+          font-size: var(--font-size-s);
+          layer: overlay;
+          pointer-events: none;
+          opacity: 0;
+          transition: opacity var(--motion-fast) linear;
+        }
+        #Box:hover #Tip {
+          opacity: 1;
+          transition: opacity var(--motion-fast) linear 600ms;
+        }
+        #Box:focus #Tip { opacity: 1; }
+      }
+    </style>
+  </head>
+</xt>

@@ -1,0 +1,82 @@
+<xt>
+  <head>
+    <!-- CooldownRing: standard symbol (docs/design/30-ui-project.md 30.4). See README.md.
+         The sweep is three conic-gradient discs: the base shows the right half in accent, a
+         track-coloured half disc rotates off it over the first half of the `cooldown` timeline
+         (0..1 s = 0..100 %), then an accent half disc rotates over the left half. -->
+    <symbol name="CooldownRing" state-groups="Cooldown: Ready|Cooling"
+            requires="states: Ready, Cooling; slots: icon">
+      <div id="Box" port:ready="bool in" bind:state.Ready="ready" bind:state.Cooling="ready | not">
+        <div id="Dial">
+          <div id="Base" class="disc"></div>
+          <div id="Cover" class="disc"></div>
+          <div id="Late" class="disc"></div>
+          <div id="Hole"><slot name="icon"><div id="IconDot"></div></slot></div>
+        </div>
+      </div>
+    </symbol>
+    <style>
+      symbol(CooldownRing) {
+        #Box { width: 56px; height: 56px; }
+        #Dial {
+          position: relative;
+          width: 56px;
+          height: 56px;
+          border-width: var(--rule-thin);
+          border-color: var(--color-border);
+          border-radius: var(--radius-full);
+          background-color: var(--color-track);
+        }
+        .disc {
+          position: absolute;
+          left: 0px;
+          top: 0px;
+          width: 56px;
+          height: 56px;
+          border-radius: var(--radius-full);
+        }
+        #Base { background-gradient: conic-gradient(0deg, var(--color-accent) 0%, var(--color-accent) 50%, transparent 50%, transparent 100%); }
+        #Cover {
+          background-gradient: conic-gradient(0deg, var(--color-track) 0%, var(--color-track) 50%, transparent 50%, transparent 100%);
+          transform: rotate(0deg);
+        }
+        #Late {
+          background-gradient: conic-gradient(0deg, var(--color-accent) 0%, var(--color-accent) 50%, transparent 50%, transparent 100%);
+          transform: rotate(0deg);
+          opacity: 0;
+        }
+        #Hole {
+          position: absolute;
+          left: 6px;
+          top: 6px;
+          width: 44px;
+          height: 44px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: var(--radius-full);
+          background-color: var(--color-surface);
+        }
+        #IconDot { width: 16px; height: 16px; border-radius: var(--radius-s); background-color: var(--color-text-dim); }
+        #Box:state(Ready) #Dial { background-color: var(--color-accent); }
+        #Box:state(Ready) #IconDot { background-color: var(--color-text); }
+        #Box:state(Cooling) #IconDot { background-color: var(--color-text-dim); }
+        #Box:state(Ready) #Cover { opacity: 0; }
+        @timeline cooldown {
+          duration: 1s;
+          #Cover {
+            0s { transform: rotate(0deg); opacity: 1 }
+            0.5s linear { transform: rotate(180deg); opacity: 1 }
+            0.501s { opacity: 0 }
+          }
+          #Late {
+            0s { transform: rotate(0deg); opacity: 0 }
+            0.5s { transform: rotate(0deg); opacity: 0 }
+            0.501s { opacity: 1 }
+            1s linear { transform: rotate(180deg); opacity: 1 }
+          }
+        }
+      }
+    </style>
+  </head>
+</xt>

@@ -1,0 +1,38 @@
+{
+  "width": 360,
+  "height": 90,
+  "frames": 0,
+  "ports": {
+    "Bar.slots": [
+      {
+        "key": "1",
+        "count": 3,
+        "empty": false
+      },
+      {
+        "key": "2",
+        "count": 1,
+        "empty": false
+      },
+      {
+        "key": "3",
+        "count": 0,
+        "empty": true
+      },
+      {
+        "key": "4",
+        "count": 12,
+        "empty": false
+      },
+      {
+        "key": "5",
+        "count": 0,
+        "empty": true
+      }
+    ],
+    "Bar.selected": 0
+  },
+  "events": [
+    "update 0.6"
+  ]
+}

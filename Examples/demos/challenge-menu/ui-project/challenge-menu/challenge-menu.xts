@@ -5,7 +5,7 @@
   background-color: #030504;
   background-color: #030504;
   color: #cfe3c6;
-  font-family: 'Bahnschrift SemiCondensed', 'Bahnschrift', 'Segoe UI', sans-serif;
+  font-family: "Noto Sans", sans-serif;
   height: 100vh;
   margin-bottom: 0;
   margin-left: 0;
@@ -35,7 +35,7 @@
   position: absolute;
   top: -24px;
   transform: translateZ(-500px) scale(1.62);
-  transition: left 1000ms cubic-bezier(.2,.7,.2,1), top 1000ms cubic-bezier(.2,.7,.2,1);
+  transition: left 700ms cubic-bezier(.2,.7,.2,1), top 700ms cubic-bezier(.2,.7,.2,1);
   width: 1360px;
 }
 
@@ -461,6 +461,7 @@
 
 /* import: Main.dc.html:1/1/2/0 */
 #holo-ring {
+  animation: holo-ring-spin 7.2s linear 0s infinite;
   border: 2px #8fffb899;
   border-radius: 60px;
   effect: shadow(0px 0px 14px 0px #5fff9f88);
@@ -474,6 +475,7 @@
 
 /* import: Main.dc.html:1/1/2/1 */
 #holo-arc {
+  animation: holo-arc-spin 3.272727s linear 0s infinite;
   border: 4px #c8ffdcdd;
   border-bottom-width: 0px;
   border-radius: 70px;
@@ -555,7 +557,7 @@
 /* import: Main.dc.html:2 */
 #hud {
   animation: hud-in 900ms ease-out 0s 1 normal both;
-  font-family: 'Bahnschrift SemiCondensed', 'Bahnschrift', 'Segoe UI', sans-serif;
+  font-family: "Noto Sans", sans-serif;
   height: 100vh;
   left: 0px;
   pointer-events: none;
@@ -678,7 +680,7 @@
   border-radius: 16px;
   color: #e8f5e4;
   effect: shadow(0px 0px 12px 0px #6fbf8a33);
-  font-family: 'Bahnschrift SemiCondensed', 'Bahnschrift', 'Segoe UI', sans-serif;
+  font-family: "Noto Sans", sans-serif;
   font-size: 19px;
   font-weight: 600;
   height: 32px;
@@ -857,6 +859,16 @@
   height: 10px;
   border-radius: 5px;
   background-gradient: radial-gradient(7.0711px 7.0711px at 50% 50%, #d8ffe8cc 0%, #9fdcb800 70%);
+}
+
+@keyframes holo-ring-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes holo-arc-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(-360deg); }
 }
 
 @keyframes drift {

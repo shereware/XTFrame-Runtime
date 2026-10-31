@@ -416,3 +416,127 @@ TEST_CASE("T-477: rebind() resolves the sink caches again (element moved, port r
     CHECK(tracker.current().flowSinkText == 0u);
     flow.setPerfTracker(nullptr);
 }
+
+// -- T-547: `setProperty` edges address effect parameters (27 §27.4.1, 18 §18.16) ----------------
+
+namespace {
+
+constexpr const char* kMaskDiv =
+    "<div id=\"M\" style=\"effect: gradient-mask(radial, 0px 0px, 0px 0px, #000f 0%, #0000 100%)\"></div>";
+
+std::string setPropertyGraph(const std::string& target, const std::string& prop) {
+    return R"J({"version":1,"nodes":[],"edges":[{"from":"#document.pointerX","to":")J" + target +
+           R"J(.setProperty","params":{"prop":")J" + prop + R"J("}}]})J";
+}
+
+float effectParams(Document& doc, const char* id, uint32_t slot) {
+    const NodeCommon& c = doc.arena().common(doc.byId(id).node);
+    return doc.arena().effects()[c.effectOffset].params[slot];
+}
+
+std::vector<std::string> loadErrors(Document& doc, const std::string& json) {
+    FlowGraph graph;
+    std::vector<std::string> errors;
+    REQUIRE(FlowGraph::parse(json, graph, errors) == Status::kOk);
+    FlowRuntime flow;
+    errors.clear();
+    CHECK(flow.load(graph, doc, errors) == Status::kInvalidArgument);
+    return errors;
+}
+
+}  // namespace
+
+TEST_CASE("T-547: setProperty prop effect.<name>.<param> writes the parameter and survives a restyle") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc = loadDoc(shaper, std::string(kMaskDiv) + "<div id=\"E1\"></div>");
+    FlowRuntime flow;
+    std::vector<std::string> errors;
+    REQUIRE(flow.load(parseGraph(setPropertyGraph("#M", "effect.gradient-mask.p0x")), *doc, errors) ==
+            Status::kOk);
+    move(*doc, 120.0f, 10.0f);
+    flow.tick(0.016f);
+    doc->update(0.016f);
+    CHECK(effectParams(*doc, "M", 0) == doctest::Approx(120.0f));
+    // A restyle keeps it (layer 4, T-545).
+    REQUIRE(doc->byId("M").addClass("box"));
+    doc->update(0.032f);
+    CHECK(effectParams(*doc, "M", 0) == doctest::Approx(120.0f));
+    move(*doc, 40.0f, 10.0f);
+    flow.tick(0.016f);
+    doc->update(0.048f);
+    CHECK(effectParams(*doc, "M", 0) == doctest::Approx(40.0f));
+}
+
+TEST_CASE("T-547: effect.0.p0y is the same address by stack index") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc = loadDoc(shaper, kMaskDiv);
+    FlowRuntime flow;
+    std::vector<std::string> errors;
+    REQUIRE(flow.load(parseGraph(setPropertyGraph("#M", "effect.0.p0y")), *doc, errors) == Status::kOk);
+    move(*doc, 75.0f, 10.0f);
+    flow.tick(0.016f);
+    doc->update(0.016f);
+    CHECK(effectParams(*doc, "M", 1) == doctest::Approx(75.0f));
+    CHECK(effectParams(*doc, "M", 0) == doctest::Approx(0.0f));
+}
+
+TEST_CASE("T-547: setProperty effect address errors, verbatim") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc = loadDoc(shaper, std::string(kMaskDiv) + "<div id=\"E1\"></div>");
+    auto only = [&](const char* target, const char* prop) {
+        std::vector<std::string> errors = loadErrors(*doc, setPropertyGraph(target, prop));
+        REQUIRE(errors.size() == 1u);
+        return errors[0];
+    };
+    CHECK(only("#E1", "effect.gradient-mask.p0x") == "#E1.setProperty: the element has no effect");
+    CHECK(only("#M", "effect.foo.p0x") == "#M.setProperty: unknown effect \"foo\"");
+    CHECK(only("#M", "effect.blur.radiusX") == "#M.setProperty: the element has no such effect");
+    CHECK(only("#M", "effect.3.p0x") == "#M.setProperty: effect index out of range");
+    CHECK(only("#M", "effect.gradient-mask.nope") == "#M.setProperty: unknown effect parameter");
+
+    // Without a Document only the shape is checked: exactly two non-empty segments.
+    FlowGraph graph;
+    std::vector<std::string> errors;
+    CHECK(FlowGraph::parse(setPropertyGraph("#M", "effect.gradient-mask"), graph, errors) != Status::kOk);
+    REQUIRE(errors.size() == 1u);
+    CHECK(errors[0].find("malformed effect address 'effect.gradient-mask'") != std::string::npos);
+    errors.clear();
+    CHECK(FlowGraph::parse(setPropertyGraph("#M", "effect..p0x"), graph, errors) != Status::kOk);
+    errors.clear();
+    CHECK(FlowGraph::parse(setPropertyGraph("#M", "effect.gradient-mask.p0x"), graph, errors) == Status::kOk);
+}
+
+TEST_CASE("T-547: a color effect parameter is refused (setProperty carries a number)") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc =
+        loadDoc(shaper, "<div id=\"S\" style=\"effect: shadow(0 4px 8px #00000080)\"></div>");
+    std::vector<std::string> errors = loadErrors(*doc, setPropertyGraph("#S", "effect.shadow.color"));
+    REQUIRE(errors.size() == 1u);
+    CHECK(errors[0] == "#S.setProperty: the effect parameter is not a number");
+}
+
+TEST_CASE("T-547: rebind() resolves the effect address again and warns when the effect is gone") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> first = loadDoc(shaper, kMaskDiv);
+    std::unique_ptr<Document> second = loadDoc(shaper, "<div id=\"M\"></div>");
+    std::unique_ptr<Document> third = loadDoc(shaper, std::string("<div id=\"Pad\"></div>") + kMaskDiv);
+    FlowRuntime flow;
+    std::vector<std::string> errors;
+    REQUIRE(flow.load(parseGraph(setPropertyGraph("#M", "effect.gradient-mask.p0x")), *first, errors) ==
+            Status::kOk);
+    std::vector<std::string> warnings;
+    REQUIRE(flow.rebind(*second, warnings) == Status::kOk);
+    REQUIRE(warnings.size() == 1u);
+    CHECK(warnings[0] == "#M.setProperty: the element has no effect");
+    move(*second, 90.0f, 10.0f);  // Writes nothing; must not crash.
+    flow.tick(0.016f);
+    second->update(0.016f);
+
+    warnings.clear();
+    REQUIRE(flow.rebind(*third, warnings) == Status::kOk);
+    CHECK(warnings.empty());
+    move(*third, 64.0f, 10.0f);
+    flow.tick(0.016f);
+    third->update(0.016f);
+    CHECK(effectParams(*third, "M", 0) == doctest::Approx(64.0f));
+}

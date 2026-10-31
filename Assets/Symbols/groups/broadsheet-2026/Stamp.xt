@@ -1,0 +1,56 @@
+<xt>
+  <head>
+    <!-- Stamp: standard symbol (docs/design/30-ui-project.md 30.4, docs/design/47-symbol-visual-style.md 47.13.6).
+         See README.md. A decorative rubber stamp: two red rings and the `text` slot in the display font,
+         tilted like a hand-pressed mark. No ports, no timelines. -->
+    <symbol name="Stamp" requires="slots: text">
+      <div id="Box">
+        <div id="Outer">
+          <div id="Inner">
+            <span id="Text"><slot name="text">Approved</slot></span>
+          </div>
+        </div>
+      </div>
+    </symbol>
+    <style>
+      symbol(Stamp) {
+        #Box {
+          width: 140px;
+          height: 140px;
+          opacity: 0.85;
+          transform: rotate(-14deg);
+        }
+        #Outer {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 138px;
+          height: 138px;
+          border-width: var(--rule-thin);
+          border-color: var(--color-danger);
+          border-radius: var(--radius-full);
+        }
+        #Inner {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 124px;
+          height: 124px;
+          border-width: var(--rule-thin);
+          border-color: var(--color-danger);
+          border-radius: var(--radius-full);
+        }
+        #Text {
+          width: 100px;
+          color: var(--color-danger);
+          font-family: var(--font-display);
+          font-size: var(--font-size-l);
+          font-weight: 900;
+          text-align: center;
+          text-transform: uppercase;
+          letter-spacing: var(--letter-display);
+        }
+      }
+    </style>
+  </head>
+</xt>

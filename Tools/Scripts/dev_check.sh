@@ -3,7 +3,7 @@
 # (configuring first when needed), delete the test executables so MSBuild relinks them, then run
 # each test suite once with a timeout so a hung process never blocks the caller.
 #   Tools/Scripts/dev_check.sh [--release] [--no-build] [--agent] [--no-qt512] <target>... -- <suite>...
-#   suites: editor | editor_service | editor_qt | editor_qt_slow | editor_qt_gl | flow | bundle | history | core | golden |
+#   suites: editor | editor_service | editor_qt | editor_qt_slow | editor_qt_gl | flow | bundle | capi | history | net | ai | core | golden |
 #           gpu | gl | wgpu | backends | text | agent | import | lottie | symbols | templates | headers | layering | testtemp | import-py | ctest | corpus | ir |
 #           roundtrip | shape | skills | qt512 | qt512-all
 #          (ctest = ctest -E '^xt_.*_tests$', the command-line tests (T-267d); headers = Tools/Scripts/check_public_headers.sh, no build;
@@ -23,18 +23,26 @@
 #           entry corpus_check (which skips such a project) is left out of the ctest suite, which would run it again;
 #           ir = Tools/Scripts/check_ir_layout.sh (T-405, 43 §43.5: ir_pod.h sizes and enum limits vs Tests/ir/layout.txt and
 #           02 §2.12, the §2.2 minor, the frozen fixture of that minor), no build;
+#           capi = xt_capi_tests and xt_capi_c_compile (T-504, 50 §50.4: the C ABI shared library xtframe and
+#           its header compiled as C99);
+#           T-552: capi / net / ai are a SKIP, not a failure, when the build tree has the option off (capi:
+#           XT_BUILD_CAPI; net, ai: XT_EDITOR_AI with XT_BUILD_EDITOR or XT_BUILD_EDITOR_CLI); xtframe-service
+#           (and ai's ai_replay_* entries) only with XT_BUILD_EDITOR_CLI;
 #           roundtrip = the doctest suite `roundtrip` of xt_bundle_tests and xt_editor_service_tests (T-410, 43 §43.2:
 #           the frozen cross-version fixtures of Tests/roundtrip read, written back and compared with latest/);
 #           shape = Tools/Scripts/check_file_length.sh (must pass) and Tools/Scripts/check_dupcheck.sh (warns when the duplicate
 #           group count rises, fails only when dupcheck.py fails) (T-415, 14 §14.5), and Tools/Scripts/check_style_groups.sh
 #           (must pass; T-443, 46 §46.4) and Tools/Scripts/check_effect_catalog.py (must pass; T-463, 46 §46.13.4), no build;
 #           skills = Tools/Scripts/sync_skill_mirror.sh --check (T-485: .claude/skills/{xtui,xtui-editor} must equal
-#           Skills/skills/ byte for byte; --changed adds it for every change), no build;
+#           Skills/skills/ byte for byte; --changed adds it for every change) and Tools/Scripts/check_skill_extras.sh
+#           (T-550: the built-in agent's reference copies, tokens.json == xtframe-symbols tokens-json), no build;
 #           qt512 = Tools/Scripts/qt512_syntax_check.sh over the Code/Editor .cpp files changed or added relative to
 #           origin/main (git diff origin/main...HEAD plus the work tree; XT_CHANGED_FILES replaces git), flags from this
 #           tree's xt_clang_check lists, against the Qt 5.12 headers (T-470, 17 §17.9; no Qt 5.12 or no clang++: SKIP);
 #           qt512-all = the same over every Code/Editor Qt source of the tree; both no build, but the tree must be configured)
 # T-470: qt512 is added by itself whenever editor_qt is asked for or xtframe-editor is a target (--no-qt512: not).
+# T-517: net runs xt_net_tests; ai runs xt_ai_tests and the CTest entries ai_replay_* (xtframe-editor --service
+# --agent on a replay script, Docs/design/51-builtin-ai.md §51.7), so it builds xtframe-editor too.
 # T-439: backends runs xt_backends_tests (Code/Backends' parts) and the CTest entries of Tests/backends and
 # Examples/backends (backend_smoke_*, xtframe-view_renderer_*, example_minimal_sdl2_wgpu*); a missing WebGPU
 # adapter is a SKIP inside them, not a failure.
@@ -112,15 +120,19 @@ changed_selection() {
       Code/Editor/Import/*)  suites+=(import);;
       Code/Runtime/bundle/*)          suites+=(bundle editor_service roundtrip);;
       Code/Runtime/flow/*)            suites+=(flow editor_qt);;
+      Code/Runtime/capi/*|Tests/capi/*) suites+=(capi);;  # T-504
       Code/Editor/Service/*)  suites+=(editor_service editor_qt);;
       Code/Editor/Qt/*|Code/Editor/App/*) targets+=(xtframe-editor); suites+=(editor_qt);;
       Code/Editor/Core/*)     suites+=(editor editor_service editor_qt);;
       Code/Editor/History/*)  suites+=(history editor_qt);;
+      Code/Editor/Net/*)      suites+=(net ai);;  # T-517: xt_ai sits on xt_net
+      Code/Editor/AI/*)       suites+=(ai editor_qt);;  # T-517: the AI panel's mode (c) too
+      Code/Editor/Cli/*) targets+=(xtframe-service); suites+=(editor_service ai);;  # T-518: --service, --agent
       Code/Tools/view/*) suites+=(ctest);;
       Code/Runtime/wgpu/*|Tests/wgpu/*|Tools/CMake/xt_wgpu.cmake) suites+=(wgpu);;  # T-437
       Code/Backends/*|Tests/backends/*|Examples/backends/*|Code/Tools/view/view_renderer*) suites+=(backends);;  # T-439
       Assets/Templates/*|Tests/templates/*) suites+=(templates);;  # T-424
-      Skills/*|.claude/skills/*|Tools/Scripts/sync_skill_mirror.sh) suites+=(skills);;  # T-485
+      Skills/*|.claude/skills/*|Tools/Scripts/sync_skill_mirror.sh|Tools/Scripts/check_skill_extras.sh) suites+=(skills);;  # T-485, T-550
       Tests/editor_qt/*) suites+=(editor_qt);;
       Tests/editor_service/*) suites+=(editor_service);;
       Tests/editor/*)    suites+=(editor);;
@@ -128,6 +140,8 @@ changed_selection() {
       Tests/bundle/*)    suites+=(bundle);;
       Tests/flow/*)      suites+=(flow);;
       Tests/history/*)   suites+=(history);;
+      Tests/net/*)       suites+=(net);;  # T-517
+      Tests/ai/*)        suites+=(ai);;   # T-517
       Tests/golden/*)    suites+=(golden);;
       Tests/corpus/*|Tools/Scripts/corpus_check.*|Tools/Scripts/corpus_fonts.*) suites+=(corpus);;  # T-401, T-429
       Tests/roundtrip/*) suites+=(roundtrip);;  # T-410
@@ -160,8 +174,11 @@ for s in "${suites[@]}"; do
     editor_qt_slow) targets+=(xt_editor_qt_tests_slow);;
     flow)      targets+=(xt_flow_tests xt_flow_alloc_tests);;
     bundle)    targets+=(xt_bundle_tests);;
+    capi)      targets+=(xt_capi_tests xt_capi_c_compile);;  # T-504
     history)   targets+=(xt_history_tests);;
-    symbols)   targets+=(xt_symbols_tests);;
+    net)       targets+=(xt_net_tests);;  # T-517
+    ai)        targets+=(xt_ai_tests xtframe-service);;  # T-518: xtframe-service for ai_replay_*
+    symbols)   targets+=(xt_symbols_tests xtframe-symbols);;  # T-499: + the lint of the preset library
     templates) targets+=(xt_templates_tests);;  # T-424
     import)    targets+=(xt_import_tests);;
     lottie)    targets+=(xt_lottie_tests);;
@@ -224,6 +241,39 @@ fail=0
 if [ "$BUILD" = 1 ]; then
   [ -f "$B/CMakeCache.txt" ] || cmake --preset "$PRESET" >/dev/null || { echo "configure FAILED"; exit 2; }
   BIN="$(bin_dir "$CFG")"  # the cache may be new
+fi
+# T-552: options that default to OFF (XT_BUILD_CAPI, XT_BUILD_EDITOR_CLI; 2026-10-31 spec review 7.5) or that a
+# tree turns off (XT_EDITOR_AI): the suites and targets that need them are SKIPped, not failed.
+cache_on() { sed -n "s/^$1:BOOL=//p" "$B/CMakeCache.txt" 2>/dev/null | tr -d '\r' | grep -qiE '^(ON|TRUE|1|YES)$'; }
+SKIPPED=()
+if [ -f "$B/CMakeCache.txt" ]; then
+  editor_layers=0; { cache_on XT_BUILD_EDITOR || cache_on XT_BUILD_EDITOR_CLI; } && editor_layers=1
+  ai_on=0; [ "$editor_layers" = 1 ] && cache_on XT_EDITOR_AI && ai_on=1
+  kept=()
+  for s in "${suites[@]}"; do
+    case "$s" in
+      capi) cache_on XT_BUILD_CAPI || { SKIPPED+=("capi: SKIP (XT_BUILD_CAPI is OFF in $B)"); continue; };;
+      net|ai) [ "$ai_on" = 1 ] || { SKIPPED+=("$s: SKIP (XT_EDITOR_AI or the editor layers are OFF in $B)"); continue; };;
+    esac
+    kept+=("$s")
+  done
+  suites=("${kept[@]}")
+  kept=()
+  for t in "${targets[@]}"; do
+    case "$t" in
+      xt_capi_tests|xt_capi_c_compile) cache_on XT_BUILD_CAPI || continue;;
+      xt_net_tests|xt_ai_tests) [ "$ai_on" = 1 ] || continue;;
+      xtframe-service) cache_on XT_BUILD_EDITOR_CLI || { SKIPPED+=("xtframe-service: SKIP (XT_BUILD_EDITOR_CLI is OFF in $B)"); continue; };;
+    esac
+    kept+=("$t")
+  done
+  targets=("${kept[@]}")
+fi
+for m in "${SKIPPED[@]}"; do echo "$m"; done
+if [ "$BUILD" = 1 ] && [ ${#targets[@]} -eq 0 ]; then
+  BUILD=0  # everything asked for was skipped: never fall through to a build of every target
+fi
+if [ "$BUILD" = 1 ]; then
   find "$BIN/tests" -name "*tests.exe" -delete 2>/dev/null
   # T-486: only when the editor is rebuilt here; otherwise a check of other targets would leave
   # the build tree without an editor.
@@ -325,8 +375,29 @@ run_suite() {
     flow)      run flow 900 1 "$BIN/tests/xt_flow_tests.exe"
                run flow_alloc 300 1 "$BIN/tests/xt_flow_alloc_tests.exe";;  # T-476
     bundle)    run bundle 900 1 "$BIN/tests/xt_bundle_tests.exe";;
+    # T-504: the C ABI (doctest), then the C99 compile check (no doctest summary: its exit code alone).
+    capi)      run capi 600 1 "$BIN/tests/xt_capi_tests.exe"
+               if [ -f "$BIN/tests/xt_capi_c_compile.exe" ]; then
+                 out="$(timeout 60 "$BIN/tests/xt_capi_c_compile.exe" 2>&1 </dev/null)"; rc=$?; echo "$out" | tail -2
+                 [ $rc -ne 0 ] && { echo "capi_c_compile: exit code $rc"; fail=1; }
+               else echo "capi_c_compile: MISSING $BIN/tests/xt_capi_c_compile.exe"; fail=1; fi;;
     history)   run history 900 1 "$BIN/tests/xt_history_tests.exe";;
-    symbols)   run symbols 900 1 "$BIN/tests/xt_symbols_tests.exe";;
+    net)       run net 600 1 "$BIN/tests/xt_net_tests.exe";;  # T-517
+    # T-517: the agent loop suite, then the headless replay runs (ai_replay_<scenario>).
+    ai)        run ai 900 1 "$BIN/tests/xt_ai_tests.exe"
+               # T-552: the replay entries run xtframe-service, which only an XT_BUILD_EDITOR_CLI tree has.
+               if ! cache_on XT_BUILD_EDITOR_CLI; then echo "ai: ai_replay_* SKIP (XT_BUILD_EDITOR_CLI is OFF in $B)"
+               else
+               out="$(cd "$B" && QT_QPA_PLATFORM=offscreen timeout 600 ctest -C "$CFG" -R '^ai_replay_' --no-tests=error 2>&1 </dev/null)"; rc=$?
+               echo "$out" | tr -d '\r' | grep -E "tests passed|Failed|\*\*\*|Not Run" | head -20
+               [ $rc -ne 0 ] && { echo "ai: ctest ai_replay_* failed (exit $rc)"; fail=1; }
+               fi;;
+    symbols)   run symbols 900 1 "$BIN/tests/xt_symbols_tests.exe"
+               # T-499 (49 §49.6): the preset library lints clean (errors fail; warnings are shown).
+               if [ -f "$BIN/xtframe-symbols.exe" ]; then
+                 out="$(timeout 300 "$BIN/xtframe-symbols.exe" lint Assets/Symbols 2>&1 </dev/null)" || { fail=1; echo "$out" | tail -20; }
+                 echo "symbols lint: $(echo "$out" | tail -1)"
+               else echo "symbols: MISSING $BIN/xtframe-symbols.exe"; fail=1; fi;;
     templates) run templates 900 1 "$BIN/tests/xt_templates_tests.exe";;  # T-424
     import)    run import 900 1 "$BIN/tests/xt_import_tests.exe";;
     lottie)    run lottie 900 1 "$BIN/tests/xt_lottie_tests.exe";;
@@ -363,7 +434,8 @@ run_suite() {
                out="$(bash Tools/Scripts/check_style_groups.sh 2>&1)"; echo "$out" | tail -12; echo "$out" | grep -q "style groups check OK" || fail=1
                out="$(python Tools/Scripts/check_effect_catalog.py 2>&1)"; echo "$out" | tail -12; echo "$out" | grep -q "effect catalog check OK" || fail=1;;
     # T-485: the skill mirror (.claude/skills/{xtui,xtui-editor} = Skills/skills/).
-    skills)    out="$(bash Tools/Scripts/sync_skill_mirror.sh --check 2>&1)"; echo "$out" | tail -20; echo "$out" | grep -q "SKILL MIRROR: PASS" || fail=1;;
+    skills)    out="$(bash Tools/Scripts/sync_skill_mirror.sh --check 2>&1)"; echo "$out" | tail -20; echo "$out" | grep -q "SKILL MIRROR: PASS" || fail=1
+               bash Tools/Scripts/check_skill_extras.sh || fail=1;;  # T-550: AI reference copies, tokens-json
     # T-470: the Qt 5.12 headers syntax check (Tools/Scripts/qt512_syntax_check.sh), changed files / all files.
     qt512)     q="$(changed_files | grep -E '^Code/Editor/.*\.cpp$')"
                if [ -z "$q" ]; then echo "qt512: nothing to check"
@@ -385,7 +457,7 @@ run_suite() {
 }
 # T-361: the suites below run at the same time; the rest (GL contexts, perf / slow timing cases, the
 # agent endpoint and ctest, which runs executables of its own) afterwards, one after the other.
-PARALLEL_SUITES=" core import bundle flow editor editor_service editor_qt history symbols templates lottie golden text gpu headers layering testtemp import-py ir roundtrip shape skills qt512 "
+PARALLEL_SUITES=" core import bundle capi flow editor editor_service editor_qt history net symbols templates lottie golden text gpu headers layering testtemp import-py ir roundtrip shape skills qt512 "
 OUT="$B/.dev_check_out.$$"; mkdir -p "$OUT"
 trap 'rm -rf "$LOCK" "$OUT"; kill $(jobs -p) 2>/dev/null' EXIT
 i=0; pids=()

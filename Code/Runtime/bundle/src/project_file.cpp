@@ -94,6 +94,20 @@ std::string sanitizeId(std::string_view stem) {
 
 }  // namespace
 
+bool parseFontsMode(std::string_view text, FontsMode& out) {
+    if (text == "system") {
+        out = FontsMode::kSystem;
+        return true;
+    }
+    if (text == "bundled") {
+        out = FontsMode::kBundled;
+        return true;
+    }
+    return false;
+}
+
+const char* fontsModeName(FontsMode mode) { return mode == FontsMode::kBundled ? "bundled" : "system"; }
+
 Result<ProjectFile> ProjectFile::load(std::string_view dir, std::string* error) {
     setError(error, std::string());
     const std::string path = joinPath(dir, kProjectFileName);
@@ -194,6 +208,13 @@ Result<ProjectFile> ProjectFile::load(std::string_view dir, std::string* error) 
         project.publish.embedFonts = getBool(*publishIt, "embedFonts", false);
         project.publish.thumbnail =
             detail::clampThumbnail(getVec2(*publishIt, "thumbnails", Vec2{320, 180}), Vec2{320, 180});
+        // T-527 (22 §22.10.3): an unknown value is a load error, not silently "system".
+        const auto fontsIt = publishIt->find("fonts");
+        if (fontsIt != publishIt->end() &&
+            (!fontsIt->is_string() || !parseFontsMode(fontsIt->get<std::string>(), project.publish.fonts))) {
+            return fail(Status::kInvalidArgument, error,
+                        "'" + path + "': publish.fonts must be \"system\" or \"bundled\"");
+        }
     }
 
     return Result<ProjectFile>::ok(std::move(project));
@@ -276,6 +297,9 @@ Status ProjectFile::save(std::string* error) const {
     publishObj["embedImages"] = publish.embedImages;
     publishObj["embedFonts"] = publish.embedFonts;
     publishObj["thumbnails"] = writeVec2(publish.thumbnail);
+    if (publish.fonts != FontsMode::kSystem) {
+        publishObj["fonts"] = fontsModeName(publish.fonts);  // T-527: absent = "system".
+    }
     root["publish"] = std::move(publishObj);
 
     // error_handler_t::replace keeps dump() from throwing on invalid UTF-8 in a caller's strings.

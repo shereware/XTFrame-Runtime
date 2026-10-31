@@ -7,28 +7,45 @@ Each directory here is one corpus project (T-401, `Docs/design/43-compatibility-
 
 | Key | Meaning |
 |---|---|
-| `source` | The UI Project directory, relative to the repository root. It is copied to the work directory and packed with `xtframe-pack --strict`. |
+| `source` | The UI Project directory, relative to the repository root. It is copied to the work directory and packed with `xtframe-pack --strict --fonts bundled`. |
 | `dpr` | Device pixel ratio; only `1` is supported. |
-| `fonts` | Optional (T-426). The fonts the `expected/` renders depend on: the family the renderer actually resolves for the first choice of the project's `.xts` `font-family` (a family name as `xtframe-view --list-fonts` prints it: `Bahnschrift SemiCondensed` is a named instance of the variable font whose family is `Bahnschrift`). Each element is either a family name (`"Georgia"`: only the family must be installed) or, since T-429, `{"family": "Georgia", "sha256": "<hex>"}`: the family must also come from a font file with that SHA-256 (see "Font pinning"). |
+| `fonts` | Optional, history (T-426 / T-429): no project here lists it since T-527d; see "History: system fonts". |
 | `frames` | The frames each UI is rendered at. |
 | `uis` | The UI ids with their viewport `width` / `height`. |
 | `scripts` | Behaviour scripts under `scripts/`. |
 
-## Missing fonts
+## Fonts
+
+Since T-527d (`Docs/design/43-compatibility-and-versions.md` §43.4) the checker packs every project
+with `xtframe-pack --strict --fonts bundled`: the bundle carries the standard Noto fonts
+(`Assets/Fonts`, `Docs/design/22-bundle.md` §22.10.3; `xtframe-pack`'s `--fonts-dir` default
+`<exe dir>/fonts`, copied there by the build) and the renders use only those, never the machine's
+system fonts. The `expected/` files are rendered on Windows (MSVC x64,
+`Docs/design/43-compatibility-and-versions.md` §43.4), and the CTest entry `corpus_check` is
+registered on every platform (Release / RelWithDebInfo). A platform whose renders differ shows an
+inconsistency to fix, not a reason to widen the tolerances.
+
+## History: system fonts
+
+The two sections below describe the T-426 / T-429 machinery for corpora whose renders depend on
+system fonts. No project in this directory uses it since T-527d; it stays in
+`Tools/Scripts/corpus_check.py` and `Tools/Scripts/corpus_fonts.py` for external corpora.
+
+### Missing fonts
 
 Before the run the checker asks `xtframe-view --list-fonts` for the installed fonts once.
 When a family a project lists in `fonts` is not installed (or, T-429, is a different build):
 
-- default (strict, `Tools/Scripts/dev_check.sh` suite `corpus`): the project fails with
+- default (strict): the project fails with
   `[FAIL] <name>: font '<family>' is not installed`, so a development machine knows its renders
   cannot match;
-- `--skip-missing-fonts` (the CTest entry `corpus_check`, i.e. CI runners): the project is reported as
+- `--skip-missing-fonts`: the project is reported as
   `[SKIP] <name>: font '<family>' is not installed` and does not count as a failure.
 
-The expected images are rendered with the Windows system fonts, so the CTest entry is registered on
-Windows only (T-422).
+Until T-527d the expected images were rendered with the Windows system fonts and the CTest entry
+was registered on Windows only (T-422).
 
-## Font pinning
+### Font pinning
 
 The same family can ship in different builds (Windows Server 2022 and Windows 11 have different
 `bahnschrift.ttf` files), and a different build moves glyph edges, so a family name alone does not

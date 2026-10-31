@@ -322,9 +322,11 @@ bool isPlainStem(std::string_view stem) {
 /// to `rootDir`), then `rootDir / href` on disk. Unlike resolveLinkedText() there is no file-name
 /// fallback (T-138's search order stays for assets), so a library never resolves to a same-named
 /// file elsewhere, least of all the linking document itself. `self` is set when `href` names
-/// `mainName` (a document may not link itself).
+/// `mainName` (a document may not link itself). T-490 (05 §5.9.12): `outDir` receives the
+/// directory of the file when it was read from disk (the sheet directory its asset references
+/// resolve against first), and is left empty for an in-memory `files` entry.
 bool resolveLinkPath(std::span<const SourceFile> files, const std::string& rootDir, std::string_view mainName,
-                     const std::string& href, std::string& outText, bool& self) {
+                     const std::string& href, std::string& outText, bool& self, std::string& outDir) {
     auto normal = [&](std::string_view name) {
         return genericPathToUtf8(resolveCompileDocument(rootDir, std::string(name)).lexically_normal());
     };
@@ -345,7 +347,12 @@ bool resolveLinkPath(std::span<const SourceFile> files, const std::string& rootD
             return true;
         }
     }
-    return readFileText(resolveCompileDocument(rootDir, href), outText);
+    const fs::path onDisk = resolveCompileDocument(rootDir, href);
+    if (!readFileText(onDisk, outText)) {
+        return false;
+    }
+    outDir = pathToUtf8(onDisk.parent_path().lexically_normal());
+    return true;
 }
 
 /// Warns once per member of `obj` that is not in `known` (Docs/tasks/T-172.md: `.xtanim.json`
@@ -572,6 +579,39 @@ CompileResult compileDocumentImpl(std::string_view mainText, std::string_view ma
     // Docs/design/22-bundle.md §22.2) behaves exactly as if it were listed before the document's
     // own <link>s, so the document still wins on equal specificity.
     RuleSet ruleSet;
+    // T-498b: the implied default token layer (a symbol group's `tokens.xts`) comes first of all,
+    // so every later declaration of one of its tokens wins without a warning (TokenDecl::implied).
+    for (const std::string& implied : options.impliedTokenFiles) {
+        std::string impliedText;
+        bool inMemory = false;
+        for (const SourceFile& f : files) {
+            if (f.name == implied) {
+                impliedText.assign(f.text);
+                inMemory = true;
+                break;
+            }
+        }
+        const size_t before = ruleSet.tokens.size();
+        const size_t facesBefore = ruleSet.fontFaces.size();
+        if (inMemory) {
+            parseXts(impliedText, implied, 1, sink, ruleSet);
+        } else {
+            const fs::path impliedPath = pathFromUtf8(implied).is_absolute()
+                                             ? pathFromUtf8(implied)
+                                             : resolveCompileDocument(options.rootDir, implied);
+            if (!readFileText(impliedPath, impliedText)) {
+                sink.error(implied, "failed to read file \"" + implied + "\"");
+                continue;
+            }
+            parseXts(impliedText, implied, 1, sink, ruleSet, pathToUtf8(impliedPath.parent_path()));
+        }
+        for (size_t i = before; i < ruleSet.tokens.size(); ++i) {
+            ruleSet.tokens[i].implied = true;
+        }
+        for (size_t i = facesBefore; i < ruleSet.fontFaces.size(); ++i) {
+            ruleSet.fontFaces[i].implied = true;
+        }
+    }
     for (const std::string& implied : options.impliedStylesheets) {
         std::string impliedText;
         // T-368: an in-memory file of exactly this name wins over the disk (the editor's unsaved
@@ -585,7 +625,7 @@ CompileResult compileDocumentImpl(std::string_view mainText, std::string_view ma
             }
         }
         if (inMemory) {
-            parseXts(impliedText, implied, 1, sink, ruleSet);
+            parseXts(impliedText, implied, 1, sink, ruleSet);  // T-490: no sheet directory.
             continue;
         }
         fs::path impliedPath = pathFromUtf8(implied).is_absolute()
@@ -595,7 +635,8 @@ CompileResult compileDocumentImpl(std::string_view mainText, std::string_view ma
             sink.error(implied, "failed to read file \"" + implied + "\"");
             continue;
         }
-        parseXts(impliedText, implied, 1, sink, ruleSet);
+        // T-490 (05 §5.9.12): asset references resolve against the sheet's own directory first.
+        parseXts(impliedText, implied, 1, sink, ruleSet, pathToUtf8(impliedPath.parent_path()));
     }
     // T-171: symbol libraries (`<link rel="symbols" href>`), resolved like stylesheet links. Their
     // own `<style>` blocks (where their `symbol(Name){}` rules live) come before the document's
@@ -603,6 +644,7 @@ CompileResult compileDocumentImpl(std::string_view mainText, std::string_view ma
     std::vector<SymbolLibraryFile> symbolLibraries;
     for (const std::string& href : dom.symbolHrefs) {
         std::string libText;
+        std::string libDir;  // T-490: the library file's directory (empty when in memory).
         bool self = false;
         if (isStandardSymbolHref(href)) {
             // T-235: `xt-standard:<Name>` -> `<options.standardSymbolDir>/<Name>.xt`.
@@ -624,7 +666,7 @@ CompileResult compileDocumentImpl(std::string_view mainText, std::string_view ma
                                      options.standardSymbolDir + "\"");
                 continue;
             }
-        } else if (!resolveLinkPath(files, xtDir, mainName, href, libText, self)) {
+        } else if (!resolveLinkPath(files, xtDir, mainName, href, libText, self, libDir)) {
             sink.error(href, self ? "a document cannot link itself (\"" + href + "\")"
                                   : "failed to read file \"" + href + "\"");
             continue;
@@ -639,22 +681,47 @@ CompileResult compileDocumentImpl(std::string_view mainText, std::string_view ma
             stripEditorOnlyNodes(lib.tree, libIds, strippedSymbols);
         }
         for (const auto& [styleText, startLine] : lib.tree.inlineStyles) {
-            parseXts(styleText, href, startLine, sink, ruleSet);
+            parseXts(styleText, href, startLine, sink, ruleSet, libDir);  // T-490
         }
         symbolLibraries.push_back(std::move(lib));
     }
     for (const std::string& href : dom.linkHrefs) {
         std::string linkText;
+        std::string linkDir;  // T-490: the sheet's directory (empty when in memory).
         bool self = false;
-        if (!resolveLinkPath(files, xtDir, mainName, href, linkText, self)) {
+        if (!resolveLinkPath(files, xtDir, mainName, href, linkText, self, linkDir)) {
             sink.error(href, self ? "a document cannot link itself (\"" + href + "\")"
                                   : "failed to read file \"" + href + "\"");
             continue;
         }
-        parseXts(linkText, href, 1, sink, ruleSet);
+        // T-490 (05 §5.9.12): a linked sheet's `@font-face src` / `background-image` resolve
+        // against the sheet's own directory first.
+        parseXts(linkText, href, 1, sink, ruleSet, linkDir);
     }
     for (const auto& [styleText, startLine] : dom.inlineStyles) {
+        // T-490: an inline <style>'s sheet directory is the document directory, which is also the
+        // final fallback, so none is passed (behavior unchanged).
         parseXts(styleText, path, startLine, sink, ruleSet);
+    }
+
+    if (!options.impliedTokenFiles.empty()) {
+        // T-498b: the project's own `@font-face` of a family, weight and style the implied layer
+        // also declares replaces the implied block (the project's file is the one used).
+        std::vector<FontFaceDef> faces;
+        faces.reserve(ruleSet.fontFaces.size());
+        for (const FontFaceDef& face : ruleSet.fontFaces) {
+            bool shadowed = false;
+            if (face.implied) {
+                for (const FontFaceDef& other : ruleSet.fontFaces) {
+                    shadowed = shadowed || (!other.implied && other.family == face.family &&
+                                            other.weight == face.weight && other.italic == face.italic);
+                }
+            }
+            if (!shadowed) {
+                faces.push_back(face);
+            }
+        }
+        ruleSet.fontFaces = std::move(faces);
     }
 
     if (!result.strippedIds.empty() || !strippedSymbols.empty()) {
@@ -720,7 +787,7 @@ CompileResult compileDocumentImpl(std::string_view mainText, std::string_view ma
             continue;
         }
         const std::string& src = srcAttr->value;
-        fs::path jsonPath = resolveAsset(options, xtDir, src);
+        fs::path jsonPath = resolveAsset(options, xtDir, src, {});
         std::vector<uint8_t> jsonBytes;
         if (!readAssetFileBytes(options, jsonPath, jsonBytes)) {  // T-452
             sink.error(path, "anim src \"" + src + "\" not found", node.line, node.col);
@@ -751,7 +818,7 @@ CompileResult compileDocumentImpl(std::string_view mainText, std::string_view ma
             continue;  // T-150: `engine://x.svg` is an external texture, not a vector file.
         }
         const std::string& src = srcAttr->value;
-        const fs::path svgPath = resolveAsset(options, xtDir, src);
+        const fs::path svgPath = resolveAsset(options, xtDir, src, {});
         std::vector<uint8_t> svgBytes;
         if (!readAssetFileBytes(options, svgPath, svgBytes)) {  // T-452
             sink.error(path, "img src \"" + src + "\" not found", node.line, node.col);
@@ -844,7 +911,7 @@ CompileResult compileDocumentImpl(std::string_view mainText, std::string_view ma
                      &repeatScopes);  // T-411: item() / repeat.* set() values.
         BindingBuilder bindings;
         emitBindings(dom, symbolInstances, portScopes, customStates, writer, path, sink, bindings,
-                     &repeatScopes, &svgRig.binds);
+                     &repeatScopes, &svgRig.binds, &ruleSet);
         // T-177: `RPT ` rows (the template roots' item-enter/exit triggers are in TRIG now).
         std::vector<IrRepeat> repeats;
         emitRepeats(dom, repeatDecls, repeatScopes, triggerTables, path, sink, repeats);

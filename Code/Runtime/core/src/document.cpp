@@ -1861,6 +1861,11 @@ void Document::update(float clock) {
         stats.maxDistinctBindingStrings =
             std::max(stats.maxDistinctBindingStrings, m_bindings->maxDistinctStrings());
     }
+    // T-552 (27 §27.4.1): what this frame laid out or moved under a still pointer is hover-judged at
+    // the start of the next Context::update(), before its input and its bindings.
+    if (m_events->pointerIn() && m_arena.anyDirty(static_cast<uint8_t>(kDirtyLayout | kDirtyTransform))) {
+        m_events->markHoverStale();
+    }
     m_arena.clearAllDirty();
     m_forceTransform = false;
     // T-244 (32 §32.8): the bones' output ports, after the dirty bits are cleared so that whatever

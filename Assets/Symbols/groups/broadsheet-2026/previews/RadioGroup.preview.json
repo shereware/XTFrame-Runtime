@@ -1,0 +1,22 @@
+{
+  "width": 240,
+  "height": 150,
+  "frames": 0,
+  "ports": {
+    "Difficulty.options": [
+      {
+        "label": "Story"
+      },
+      {
+        "label": "Normal"
+      },
+      {
+        "label": "Hard"
+      }
+    ],
+    "Difficulty.value": 1
+  },
+  "events": [
+    "update 0.6"
+  ]
+}

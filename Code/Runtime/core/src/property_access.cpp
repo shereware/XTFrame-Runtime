@@ -1462,34 +1462,41 @@ Value getEffectProperty(const NodeArena& arena, NodeId node, PropId prop) {
 /// a keyframe track (`@keyframes` / `@timeline` `effect`) may address an effect the element's stack
 /// does not have (no static `effect`, or a state that removed it); the arena latches it for a
 /// one-shot kWarnEffectMissing document warning.
-void setEffectProperty(NodeArena& arena, NodeId node, PropId prop, const Value& value) {
+bool setEffectProperty(NodeArena& arena, NodeId node, PropId prop, const Value& value) {
     uint32_t effectIndex = rawEffectIndex(prop);
     uint32_t paramIndex = rawEffectParamIndex(prop);
     NodeCommon& common = arena.common(node);
     if (effectIndex >= common.effectCount) {
         arena.noteEffectMissingWritten();
-        return;
+        return false;
     }
     EffectInstance& e = arena.effects()[common.effectOffset + effectIndex];
     if (paramIndex == prop::kEffectParamEnabled) {
-        e.enabled = static_cast<uint8_t>(value.f != 0 ? 1 : 0);
-        return;
+        const uint8_t v = static_cast<uint8_t>(value.f != 0 ? 1 : 0);
+        const bool changed = e.enabled != v;
+        e.enabled = v;
+        return changed;
     }
     if (paramIndex >= 1 && paramIndex <= 8) {
+        const bool changed = e.params[paramIndex - 1] != value.f;
         e.params[paramIndex - 1] = value.f;
-        return;
+        return changed;
     }
     if (paramIndex == prop::kEffectParamColor0) {
+        const bool changed = !(e.colors[0] == value.c);
         e.colors[0] = value.c;
-        return;
+        return changed;
     }
     if (paramIndex == prop::kEffectParamColor1) {
+        const bool changed = !(e.colors[1] == value.c);
         e.colors[1] = value.c;
-        return;
+        return changed;
     }
     XT_ASSERT(paramIndex == prop::kEffectParamOffset);
+    const bool changed = e.params[0] != value.v2.x || e.params[1] != value.v2.y;
     e.params[0] = value.v2.x;
     e.params[1] = value.v2.y;
+    return changed;
 }
 
 }  // namespace
@@ -1860,7 +1867,9 @@ void setProperty(NodeArena& arena, NodeId node, PropId prop, const Value& value)
             break;
         default:
             if (isEffectProp(prop)) {
-                setEffectProperty(arena, node, prop, value);
+                if (!setEffectProperty(arena, node, prop, value)) {
+                    return;  // T-545: unchanged (or missing effect) -> no dirty.
+                }
             } else if (kind == NodeKind::Path) {
                 setPathProperty(arena.path(node), prop, value);
             } else if (kind == NodeKind::Modifier) {

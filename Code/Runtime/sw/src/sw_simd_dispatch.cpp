@@ -13,11 +13,9 @@
 
 namespace xt::sw {
 
-namespace {
-
 /// True when the CPU reports AVX2 (CPUID leaf 7, EBX bit 5) *and* the OS saves YMM state
 /// (CPUID leaf 1: OSXSAVE = ECX bit 27, AVX = ECX bit 28, then XCR0 bits 1 and 2).
-[[maybe_unused]] bool cpuHasAvx2() {
+bool swCpuHasAvx2() {
 #if defined(_M_X64) || defined(__x86_64__) || defined(_M_IX86) || defined(__i386__)
     int regs[4] = {0, 0, 0, 0};
 #if defined(_MSC_VER)
@@ -60,6 +58,8 @@ namespace {
 #endif
 }
 
+namespace {
+
 /// True when environment variable `name` is set to "1". Two are read, both test/measurement
 /// switches: `XT_SW_FORCE_SCALAR` forces the scalar table (Docs/tasks/T-102.md step 3) and
 /// `XT_SW_NO_AVX2` holds the selection at the SSE2 baseline, which is how T-102 measured AVX2
@@ -83,7 +83,7 @@ SwSimdOps selectOps() {
         return simdk::makeOps<simd::f32x4s>("scalar");
     }
 #if XT_SIMD_SSE2
-    if (cpuHasAvx2() && !envFlag("XT_SW_NO_AVX2")) {
+    if (swCpuHasAvx2() && !envFlag("XT_SW_NO_AVX2")) {
         return swSimdAvx2Ops();
     }
     return simdk::makeOps<simd::f32x4>("sse2");

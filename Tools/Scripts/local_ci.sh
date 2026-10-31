@@ -76,9 +76,12 @@ step() { echo; echo "=== $1"; }
 # truncates it (the log ends up NUL-filled).
 # Tests/fuzz is excluded from the clang syntax check: those sources are Linux-only (unistd.h).
 
-# The fuzz build (build/wsl-fuzz, incremental). Non-zero on a configure/build error.
+# The fuzz build (build/wsl-fuzz, incremental). Non-zero on a configure/build error. CMAKE_C_COMPILER=clang
+# (T-556): the C targets (miniz.c) get the fuzz flags as well, which GCC's cc rejects. A tree configured
+# before that with another C compiler has its cache dropped first: CMake's own reset on a compiler change
+# also drops the -D options (XT_BUILD_FUZZ falls back to OFF).
 fuzz_build() {
-  wsl -d Ubuntu-24.04 -- bash -lc "cd '$WROOT' && cmake -S . -B build/wsl-fuzz -G Ninja -DXT_BUILD_FUZZ=ON -DXT_BIN_VARIANT=fuzz -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_COMPILER=clang++ -DXT_BUILD_GL=OFF -DXT_BUILD_SHELL=OFF -DXT_BUILD_TEXT=OFF && cmake --build build/wsl-fuzz"
+  wsl -d Ubuntu-24.04 -- bash -lc "cd '$WROOT' && if [ -f build/wsl-fuzz/CMakeCache.txt ] && ! grep -q '^CMAKE_C_COMPILER:.*clang' build/wsl-fuzz/CMakeCache.txt; then rm -rf build/wsl-fuzz/CMakeCache.txt build/wsl-fuzz/CMakeFiles; fi && cmake -S . -B build/wsl-fuzz -G Ninja -DXT_BUILD_FUZZ=ON -DXT_BIN_VARIANT=fuzz -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DXT_BUILD_GL=OFF -DXT_BUILD_SHELL=OFF -DXT_BUILD_TEXT=OFF && cmake --build build/wsl-fuzz"
 }
 
 # T-267b: the targets the gate's fuzz smoke stage runs (Tests/fuzz/run_fuzz.sh names). A target
@@ -400,7 +403,10 @@ EOF
         echo "SKIP editor (WSL): Qt6 not found (no Qt6Config.cmake via \$Qt6_DIR, qmake6, /usr/lib or /usr/local/lib)"
       fi
     fi
-    wsl -d Ubuntu-24.04 -- bash -lc "cd '$WROOT' && cmake -S . -B build/wsl-gcc -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=g++ $WSL_EDITOR_DEF >/dev/null && cmake --build build/wsl-gcc 2>&1 | grep -E 'error:|FAILED:' | head -5; cd build/wsl-gcc && ctest --output-on-failure 2>&1 | grep -E 'tests passed|Failed|\*\*\*'" | tee >(cat >&2) | grep -q "100% tests passed" || fail=1
+    # T-552 (2026-10-31 spec review 7.5): XT_BUILD_EDITOR_CLI and XT_BUILD_CAPI default to OFF; this Linux leg stands
+    # for the ninja CI presets (CLI) and ninja-ci-release (capi, the only build where its position-independent
+    # static libraries matter), so both are on here.
+    wsl -d Ubuntu-24.04 -- bash -lc "cd '$WROOT' && cmake -S . -B build/wsl-gcc -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=g++ -DXT_BUILD_EDITOR_CLI=ON -DXT_BUILD_CAPI=ON $WSL_EDITOR_DEF >/dev/null && cmake --build build/wsl-gcc 2>&1 | grep -E 'error:|FAILED:' | head -5; cd build/wsl-gcc && ctest --output-on-failure 2>&1 | grep -E 'tests passed|Failed|\*\*\*'" | tee >(cat >&2) | grep -q "100% tests passed" || fail=1
     # A compile or link error inside the WSL build must fail the run even if stale test binaries still pass.
     wsl -d Ubuntu-24.04 -- bash -lc "cd '$WROOT' && cmake --build build/wsl-gcc 2>&1 | grep -qE 'error:|FAILED:'" && { echo "WSL build reported errors"; fail=1; }
 

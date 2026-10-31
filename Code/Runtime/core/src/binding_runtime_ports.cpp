@@ -799,6 +799,9 @@ void BindingRuntime::setInstanceItem(uint32_t binding, uint32_t item) {
     Binding& b = m_bindings[binding];
     b.item = item;
     b.applied = false;
+    if (item == kNoItem) {
+        b.tweened = false;  // T-546: a retired / pooled instance's next first write is direct.
+    }
     b.ticking = false;
     b.last = BVal{};
     b.state.assign(b.steps.size(), StepState{});

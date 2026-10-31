@@ -2,20 +2,23 @@
 """Project-level golden corpus check (T-401, Docs/design/43-compatibility-and-versions.md 43.4).
 
 For every project under Tests/corpus/<project>/ (project.json): copy the source UI Project to a
-work directory, pack it with `xtframe-pack --strict`, render every UI headless (SW path) at the
-listed frames, run the behaviour scripts (one xtframe-view run per step: the events of every step
-so far, a screenshot and the port / flow event lines of the run), dump each UI's port table, and
-compare all of it with Tests/corpus/<project>/expected/: screenshots with the Tests/golden SW rule
-(a pixel differs when a channel moves by more than XT_GOLDEN_CHANNEL, default 2; at most
-XT_GOLDEN_RATIO of the pixels may differ, default 0), manifest.json (normalized), ports.json and
-the script logs byte for byte. A differing screenshot gets a `<name>.diff.png` next to the actual
-image (differing pixels red, the rest the expected image's luminance).
+work directory, pack it with `xtframe-pack --strict --fonts bundled` (T-527d: the bundle carries
+the standard fonts, Docs/design/22-bundle.md 22.10.3, so the renders do not depend on the
+machine's fonts), render every UI headless (SW path) at the listed frames, run the behaviour
+scripts (one xtframe-view run per step: the events of every step so far, a screenshot and the
+port / flow event lines of the run), dump each UI's port table, and compare all of it with
+Tests/corpus/<project>/expected/: screenshots with the Tests/golden SW rule (a pixel differs when
+a channel moves by more than XT_GOLDEN_CHANNEL, default 2; at most XT_GOLDEN_RATIO of the pixels
+may differ, default 0), manifest.json (normalized), ports.json and the script logs byte for byte.
+A differing screenshot gets a `<name>.diff.png` next to the actual image (differing pixels red,
+the rest the expected image's luminance).
 
-T-426: a project.json may list `"fonts": ["<family>", ...]`, the font families its expected/
-renders depend on. Before the run the script asks `xtframe-view --list-fonts` for the installed
-families once; a project that needs a missing family fails (`[FAIL] <name>: font '<family>' is not
-installed`), or, with --skip-missing-fonts (the CTest entry: CI machines), is skipped
-(`[SKIP] ...`, not counted as a failure).
+History (T-426 / T-429): since T-527d no corpus project of this repository lists `fonts`; the
+logic below stays for external corpora that still render system fonts. A project.json may list
+`"fonts": ["<family>", ...]`, the font families its expected/ renders depend on. Before the run
+the script asks `xtframe-view --list-fonts` for the installed families once; a project that needs
+a missing family fails (`[FAIL] <name>: font '<family>' is not installed`), or, with
+--skip-missing-fonts, is skipped (`[SKIP] ...`, not counted as a failure).
 
 T-429: a `fonts` element may also be `{"family": "<family>", "sha256": "<hex>"}`; the family's
 font file (any of them, when it has several) must then have that SHA-256, else the project fails
@@ -317,9 +320,10 @@ class Checker:
         src = os.path.join(work, "source")
         shutil.copytree(os.path.join(REPO, spec["source"]), src)
         bundle = os.path.join(work, "bundle")
-        rc, out, err = run([self.args.pack, "--strict", src, "-o", bundle], runlog)
+        # T-527d (43 §43.4): only the standard fonts the bundle carries are rendered, never system fonts.
+        rc, out, err = run([self.args.pack, "--strict", "--fonts", "bundled", src, "-o", bundle], runlog)
         if rc != 0:
-            self.fail(name, "xtframe-pack --strict exited %d (see %s)" % (rc, runlog))
+            self.fail(name, "xtframe-pack --strict --fonts bundled exited %d (see %s)" % (rc, runlog))
             return
         shutil.copyfile(os.path.join(bundle, "manifest.json"), os.path.join(actual, "manifest.raw.json"))
         with open(os.path.join(actual, "manifest.json"), "w", encoding="utf-8", newline="\n") as f:

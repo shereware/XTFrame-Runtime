@@ -1124,6 +1124,9 @@ private:
                 copy.decls = rule.decls;
                 copy.line = rule.line;
                 copy.file = rule.file;  // T-235: diagnostics point at the symbol's own file.
+                // T-497 (05 §5.9.12): the copy keeps the library file's directory, so a
+                // `background-image` / `border-image-source` inside `symbol(...)` still resolves against it.
+                copy.sheetDir = rule.sheetDir;
                 copy.instanceSite = m_instanceSites[instanceId];
                 for (const Selector& sel : rule.selectors) {
                     rewriteSelector(sel, instanceId, copy.selectors);

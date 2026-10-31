@@ -12,6 +12,7 @@
 #include "xt/compile/dom.h"
 #include "xt/compile/ir_writer.h"
 #include "xt/compile/parse_svg.h"
+#include "xt/compile/style_model.h"
 
 /// Declared ports and data bindings -> the `PORT` and `BIND` chunks (Docs/design/27-interaction.md
 /// §27.3, 03 §3.12.3, 05 §5.9.1, 12 §12.7, Docs/tasks/T-175.md).
@@ -91,12 +92,15 @@ void declareBonePorts(const std::vector<std::pair<std::string, int>>& boneIds, I
 /// `svgBinds` (may be null; emitInlineSvgs()' InlineSvgRig::binds) adds the `bind:` /
 /// `world-anchor` attributes of inline `<svg>` content, each a record on its `<svg>` element with
 /// IrBinding::sceneNode set. There a `bind:` target can only be a property the scene node takes
-/// (appliesToSvgNode()); anything else is an error.
+/// (appliesToSvgNode()); anything else is an error. T-544 (18 §18.12): `ruleSet` (may be null)
+/// resolves `bind:effect.<effect>.<param>` against the element's static `effect` sequence; without
+/// it that target reports "the element has no effect".
 bool emitBindings(const DomTree& dom, const std::vector<ExpandedSymbolInstance>& instances,
                   const PortScopes& scopes, const CustomStateBuilder& states, IrWriter& writer,
                   std::string_view fileName, DiagnosticSink& sink, BindingBuilder& out,
                   const RepeatScopes* repeats = nullptr,
-                  const std::map<uint32_t, std::vector<SvgBindAttr>>* svgBinds = nullptr);
+                  const std::map<uint32_t, std::vector<SvgBindAttr>>* svgBinds = nullptr,
+                  const RuleSet* ruleSet = nullptr);
 
 /// T-201: compiles the converter segments of a `set(<port>, event.value | <converters>)` value
 /// (`converters` is the text after the first `|`, e.g. `range(0, 1, 0, 100) | round`) as seen from

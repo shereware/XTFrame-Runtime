@@ -1,0 +1,82 @@
+/* XTFrame standard symbol library: design tokens, theme "night desk" (docs/design/47-symbol-visual-style.md).
+   Dark theme: same token names as tokens.xts, dark newsprint with light ink.
+   Every standard symbol draws only through these names, so a UI Project re-skins the whole
+   library by redefining them in its own shared/tokens.xts or in a theme (themes/*.xts).
+   This file is the implicit UI Project's token set: link it when a document has no project
+   tokens of its own. A project that defines its own tokens must not also link this file (a token
+   declared twice is a compiler warning). Link exactly one of tokens.xts and tokens-night.xts. */
+@font-face { font-family: "Noto Serif Display ExtraCondensed"; src: "fonts/NotoSerifDisplay-ExtraCondensedBlack.ttf"; font-weight: 900; }
+@font-face { font-family: "Noto Serif Display ExtraCondensed"; src: "fonts/NotoSerifDisplay-ExtraCondensedBold.ttf"; font-weight: 700; }
+@font-face { font-family: "Noto Serif"; src: "fonts/NotoSerif-Regular.ttf"; font-weight: 400; }
+@font-face { font-family: "Noto Serif"; src: "fonts/NotoSerif-Bold.ttf"; font-weight: 700; }
+@font-face { font-family: "Noto Serif"; src: "fonts/NotoSerif-Italic.ttf"; font-weight: 400; font-style: italic; }
+:root {
+  /* Surfaces and text. */
+  --color-bg: #262320;
+  --color-surface: #302c27;
+  --color-surface-raised: #38342e;
+  --color-surface-sunken: #1b1916;
+  --color-border: #d9d3c4;
+  --color-border-strong: #d9d3c4;
+  --color-text: #d9d3c4;
+  --color-text-dim: #9a9386;
+  --color-text-on-accent: #262320;
+  /* Accent and states. */
+  --color-accent: #d9d3c4;
+  --color-accent-hover: #9a9386;
+  --color-accent-pressed: #1b1916;
+  --color-focus: #d7493b;
+  --color-disabled-bg: #1b1916;
+  --color-disabled-text: #5e5950;
+  /* Semantic. */
+  --color-danger: #d7493b;
+  --color-warning: #c9a24a;
+  --color-success: #7fa877;
+  --color-info: #8fb0cf;
+  /* Overlays and tracks. */
+  --color-scrim: #000000cc;
+  --color-track: #1b1916;
+  --color-shadow: #9a9386;
+  /* Type scale. */
+  /* Display: extra-condensed heavy serif (Black 900 / Bold 700), always uppercase. Body: serif. --font-family is the body alias. */
+  --font-display: "Noto Serif Display ExtraCondensed", "Noto Serif Display", "Georgia", "Times New Roman";
+  --font-body: "Noto Serif", "Georgia", "DejaVu Serif", "Times New Roman";
+  --font-family: "Noto Serif", "Georgia", "DejaVu Serif", "Times New Roman";
+  --letter-display: 0.5px;
+  --font-size-xs: 12px;
+  --font-size-s: 14px;
+  --font-size-m: 16px;
+  --font-size-l: 20px;
+  --font-size-xl: 28px;
+  /* Shape and spacing. */
+  --radius-s: 0px;
+  --radius-m: 0px;
+  --radius-l: 0px;
+  --radius-full: 999px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --border-w: 1px;
+  /* Rules (Broadsheet): thin column / table lines, thick masthead / selection bars. */
+  --rule-thin: 1px;
+  --rule-thick: 3px;
+  --focus-w: 2px;
+  /* Textures (Broadsheet v2, 47.13.3): paths relative to this file; made by Tools/Scripts/gen_symbol_textures.py. */
+  --tex-grain: url("textures/grain-night.png");
+  --tex-hatch: url("textures/hatch-night.png");
+  --tex-dots: url("textures/dots-night.png");
+  --tex-rule-h: url("textures/rule-double-night.png");
+  --tex-rule-v: url("textures/rule-double-v-night.png");
+  --control-s: 28px;
+  --control-m: 36px;
+  --control-l: 44px;
+  /* Touch targets (mobile/ symbols, 23 §23.11.2): the minimum hit size and the large one. */
+  --touch-min: 44px;
+  --touch-lg: 88px;
+  /* Motion (contracts/motion-spec.yaml: instant 0-50, fast 100-200, normal 200-300 ms). */
+  --motion-instant: 50ms;
+  --motion-fast: 150ms;
+  --motion-normal: 250ms;
+}

@@ -29,6 +29,12 @@ FileAssetResolver::FileAssetResolver(std::string rootDir, ImageDecodeFn decode)
 FileAssetResolver::FileAssetResolver(std::vector<std::string> rootDirs, ImageDecodeFn decode)
     : m_rootDirs(std::move(rootDirs)), m_decode(decode) {}
 
+void FileAssetResolver::addSearchDir(std::string dir) {
+    if (std::find(m_rootDirs.begin(), m_rootDirs.end(), dir) == m_rootDirs.end()) {
+        m_rootDirs.push_back(std::move(dir));
+    }
+}
+
 namespace {
 
 /// Reads the whole file at `path` (UTF-8, T-261e) into `out`; false (leaving `out` unchanged) if

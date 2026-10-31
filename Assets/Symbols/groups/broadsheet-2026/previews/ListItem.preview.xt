@@ -1,0 +1,34 @@
+<xt>
+  <head>
+    <!-- T-382: preview of the ListItem reference symbol (golden states and thumbnail; T-499: moved into the group), and the
+         minimal list it is made for (docs/design/30-ui-project.md 30.13): a <repeat> over a
+         document list port whose template is one ListItem instance fed through its in-ports
+         (bind:title="item(title)", 27-interaction.md 27.3.4), with slot content that binds the
+         entry itself. The rows come from the host through the port `List.items` (xtframe-view:
+         the port option with List.items=[{"title":"Save 1","selected":true}]). -->
+    <link href="../tokens.xts"/>
+    <link rel="symbols" href="../list/ListItem.xt"/>
+    <style>
+      body {
+        width: 340px;
+        height: 220px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        background-color: var(--color-bg);
+      }
+      #Rows { display: flex; flex-direction: column; row-gap: 8px; }
+    </style>
+  </head>
+  <body>
+    <div id="List" port:items="list&lt;struct{title: string, subtitle: string, badge: string, selected: bool}&gt; in">
+      <repeat port="items" id="Rows">
+        <use symbol="ListItem" id="Item" bind:title="item(title)" bind:subtitle="item(subtitle)"
+             bind:selected="item(selected)">
+          <slot name="trailing"><span id="Badge" bind:text="item(badge)"></span></slot>
+        </use>
+      </repeat>
+    </div>
+  </body>
+</xt>

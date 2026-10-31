@@ -21,6 +21,7 @@
 #include "texture_compress.h"
 #include "xt/asset_resolver.h"
 #include "xt/bundle/migrations.h"
+#include "xt/bundle/symbol_library.h"
 #include "xt/bundle/ui_project.h"
 #include "xt/command_list.h"
 #include "xt/compile/compile.h"
@@ -31,6 +32,7 @@
 #include "xt/document.h"
 #include "xt/flow/flow_graph.h"
 #include "xt/flow/flow_ports.h"
+#include "xt/flow/flow_runtime.h"
 #include "xt/ir.h"
 #include "xt/ir_pod.h"
 #include "xt/node_arena.h"
@@ -213,17 +215,26 @@ const char* portTypeName(flow::PortType type) {
 }
 
 /// The text shaper pack() renders thumbnails with: FreeType when xt_text is in the build (fonts
-/// come from the system font directories plus `shared.fontDirs`), otherwise a NullTextShaper,
-/// which still lays text out as boxes.
+/// come from the system font directories, unless `--fonts bundled`, plus the standard font
+/// directory (T-527b) and `shared.fontDirs`), otherwise a NullTextShaper, which still lays text out
+/// as boxes.
 class PackShaper {
 public:
-    /// Registers the system fonts first (so a UI that names no bundled family still gets glyphs,
-    /// Docs/tasks/T-97.md), then every `.ttf`/`.otf` below each of `project.shared.fontDirs`
-    /// (recursively); a missing directory is skipped. Bundled fonts are registered last, but
-    /// match() resolves an `@font-face` family name ahead of the fallback candidates anyway.
-    explicit PackShaper(const ProjectFile& project) {
+    /// With `systemFonts`, registers the system fonts first (so a UI that names no bundled family
+    /// still gets glyphs, Docs/tasks/T-97.md); T-527 (`--fonts bundled`, 22 §22.10.3) passes false.
+    /// T-527b (22 §22.10.3 standard fonts): then the `.ttf`/`.otf` files directly inside
+    /// `standardFontDir` (none when empty). Then every `.ttf`/`.otf` below each of
+    /// `project.shared.fontDirs` (recursively); a missing directory is skipped. Bundled fonts are
+    /// registered last, but match() resolves an `@font-face` family name ahead of the fallback
+    /// candidates anyway.
+    PackShaper(const ProjectFile& project, bool systemFonts, const std::string& standardFontDir) {
 #ifdef XT_BUNDLE_HAS_TEXT
-        m_shaper.addSystemFonts();
+        if (systemFonts) {
+            m_shaper.addSystemFonts();
+        }
+        if (!standardFontDir.empty()) {
+            m_shaper.addFontDir(standardFontDir, text::FtTextShaper::kMaxSystemFonts);
+        }
         for (const std::string& dir : project.shared.fontDirs) {
             const fs::path root = pathFromUtf8(project.rootDir) / pathFromUtf8(dir);
             std::error_code ec;
@@ -245,6 +256,8 @@ public:
         }
 #else
         (void)project;
+        (void)systemFonts;
+        (void)standardFontDir;
 #endif
     }
 
@@ -349,13 +362,31 @@ std::vector<uint8_t> downscale(const std::vector<uint8_t>& src, int srcW, int sr
     return dst;
 }
 
+/// T-527b (22 §22.10.3): one file of the standard font directory.
+struct StandardFont {
+    /// Absolute path (UTF-8) and file name.
+    std::string path;
+    std::string file;
+    /// Family name from the `name` table, and lowercased (ASCII) for the comparisons.
+    std::string family;
+    std::string lowerFamily;
+    /// `assets/<hash16>.<ext>`, the name rewriteAsset() gives it.
+    std::string contentName;
+    FontFile font;
+};
+
 /// pack()'s working state: one run over one ProjectFile.
 class Packer {
 public:
     /// Borrows `project`/`options` (and `uiProject`, the UI Project `project` was made from, or
     /// nullptr) for the run; all outlive it.
     Packer(const ProjectFile& project, const PackOptions& options, const UiProject* uiProject = nullptr)
-        : m_project(project), m_options(options), m_ui(uiProject), m_shaper(project) {}
+        : m_project(project),
+          m_options(options),
+          m_ui(uiProject),
+          m_bundledFonts(options.fontsMode == FontsMode::kBundled ||
+                         project.publish.fonts == FontsMode::kBundled),
+          m_shaper(project, !m_bundledFonts, options.standardFontDir) {}
 
     /// Runs §22.3/§22.4's algorithm and returns the report.
     PackReport run();
@@ -452,6 +483,33 @@ private:
     /// T-199 (`--font-subset`): rewrites every bundled TrueType font as `fonts/<stem>.subset.ttf`
     /// and lints glyph coverage per language (`i18n`).
     void subsetFonts();
+    /// T-527 (`--fonts bundled`, 22 §22.10.3): remembers the first `font-family` list of `doc`'s
+    /// text that names none of the document's own `@font-face` families (the text a fallback font
+    /// draws), for supplyFonts()'s warning. T-527b: a list naming no `@font-face` family but a
+    /// standard family records that family for the UI instead (its first such name).
+    void recordUnbundledFamilies(const Document& doc, const std::string& uiId);
+    /// T-527: true when a packed UI's document text has a code point that needs a glyph.
+    bool uiHasText(const std::string& uiId) const;
+    /// T-527 / T-527b (22 §22.10.3, the bundled-mode resolution order): for every packed UI with
+    /// text, packs the files of each standard family its text names; with an implied group, the
+    /// group's `@font-face` fonts (appended to every manifest `fonts.fallback` chain, a `""` chain
+    /// when there is none); for text naming no bundled family, one warning naming the group
+    /// families, or -- without group fonts -- the standard "Noto Sans" files and a warning naming
+    /// them; then the code-point coverage top-up from the standard fonts (supplyCoverage()).
+    void supplyFonts();
+    /// T-527b: loads the standard fonts of PackOptions::standardFontDir (`--fonts bundled` only).
+    void loadStandardFonts();
+    /// T-527b: makes standard font `font` an asset of `info`, its manifest source `fonts/<file>`.
+    void addStandardFont(UiInfo& info, const StandardFont& font);
+    /// T-527b: the code points of `info`'s text (document and every packed string table) no font
+    /// of its bundle (pass-1 names) has, filled from the standard fonts that have them, one warning
+    /// per standard font added.
+    void supplyCoverage(UiInfo& info);
+    /// T-527b (factored out of checkBundledFonts()): `uiId`'s code points per language, every packed
+    /// string table added.
+    std::map<std::string, std::set<uint32_t>>& uiChars(const std::string& uiId);
+    /// T-527: the per-UI glyph coverage errors over the fonts each UI's bundle finally holds.
+    void checkBundledFonts();
     /// T-199: pass 2 -- recompiles every packed UI with `m_rewritePass` so its `.xtir` names the
     /// atlas cells (`atlas:<name>#<asset>`) and subset fonts; rewrites `ui/<id>.xtir` and its hash.
     void rewriteUis();
@@ -471,6 +529,19 @@ private:
     /// other directory is warned about and skipped.
     void packGlyphs();
 
+    /// T-498b: decides whether the group at `standardSymbolDir` is this pack's implied default
+    /// layer (PackReport::impliedGroupDir): some UI links a standard symbol. Fills m_implied.
+    void detectImpliedGroup();
+    /// T-498b: the implied layer's `impliedTokenFiles` and `searchDirs` entry on a compile.
+    void applyImpliedLayer(compile::CompileOptions& options) const {
+        if (!m_implied.active) {
+            return;
+        }
+        if (!m_implied.tokensFile.empty()) {
+            options.impliedTokenFiles.push_back(m_implied.tokensFile);
+        }
+        options.searchDirs.push_back(m_implied.group.dir);  // After the project's own directories.
+    }
     /// T-183: the theme / string-table directories, relative to the project root.
     /// T-407: the `.xtui`'s `spec.behavior`; 0 for a `bundle.xtproj` pack (no UI Project).
     uint32_t behavior() const { return m_ui != nullptr ? m_ui->spec.behavior : 0; }
@@ -485,6 +556,8 @@ private:
     const ProjectFile& m_project;
     const PackOptions& m_options;
     const UiProject* m_ui = nullptr;
+    /// T-527: `--fonts bundled` (PackOptions::fontsMode, or the project's `publish.fonts`).
+    bool m_bundledFonts = false;
     PackShaper m_shaper;
     PackReport m_report;
     ManifestData m_manifest;
@@ -512,6 +585,13 @@ private:
     /// Pass 2 (rewriteUis): rewriteAsset() only maps names, writes nothing.
     bool m_rewritePass = false;
     std::string m_currentUi;
+    /// T-498b: the implied default layer (see PackReport::impliedGroupDir).
+    struct ImpliedLayer {
+        bool active = false;
+        SymbolGroup group;
+        /// Absolute path of the group's `tokens.xts`; empty when it names none.
+        std::string tokensFile;
+    } m_implied;
     /// `assets/<hash16>.<ext>` (the content name) -> the file actually written (`.dds` when
     /// compressed, else the same name).
     std::unordered_map<std::string, std::string> m_finalNameOf;
@@ -542,6 +622,22 @@ private:
     std::set<uint32_t> m_charset;
     /// Language -> code points of its string table ("" = the documents' own text).
     std::map<std::string, std::set<uint32_t>> m_langChars;
+    /// T-527 (`--font-subset` or `--fonts bundled`): UI id -> language ("" = the UI's own
+    /// document text) -> code points; checkBundledFonts() adds every packed string table.
+    std::map<std::string, std::map<std::string, std::set<uint32_t>>> m_uiLangChars;
+    /// T-527 (`--fonts bundled`): language -> code points of its packed string table.
+    std::map<std::string, std::set<uint32_t>> m_stringChars;
+    /// T-527: UI id -> the first `font-family` list of its text naming no bundled family.
+    std::map<std::string, std::vector<std::string>> m_unbundledFamilies;
+    /// T-527: UI id -> the implied group and standard fonts supplyFonts() gave it (pass-1 names).
+    std::map<std::string, std::vector<std::string>> m_suppliedFonts;
+    /// T-527b: the UIs recordUnbundledFamilies() has scanned.
+    std::set<std::string> m_familiesScanned;
+    /// T-527b: UI id -> the standard families (lowercase) its text names.
+    std::map<std::string, std::set<std::string>> m_uiStandardFamilies;
+    /// T-527b: the standard fonts (`--fonts bundled` with a standard font directory), the
+    /// `-Regular` files first, then by file name.
+    std::vector<StandardFont> m_standardFonts;
 };
 
 std::string Packer::rewriteAsset(std::string_view sourceName, std::string_view resolvedPath, uint8_t kind,
@@ -778,10 +874,14 @@ void Packer::collectImageUses(const Document& doc, const IrView& view, const std
             mark(image.asset, false);
         }
     }
-    if (m_fontSubset) {
+    if (m_fontSubset || m_bundledFonts) {  // T-527: also per UI, for `--fonts bundled`.
+        std::set<uint32_t>& uiChars = m_uiLangChars[uiId][std::string()];
         for (const IrDocText& text : view.doc().texts()) {
-            appendCodePoints(view.string(text.text), m_charset);
-            appendCodePoints(view.string(text.text), m_langChars[std::string()]);
+            if (m_fontSubset) {
+                appendCodePoints(view.string(text.text), m_charset);
+                appendCodePoints(view.string(text.text), m_langChars[std::string()]);
+            }
+            appendCodePoints(view.string(text.text), uiChars);
         }
     }
 }
@@ -1178,6 +1278,7 @@ void Packer::rewriteUis() {
         compileOptions.embedFonts = m_project.publish.embedFonts || m_options.embed;
         compileOptions.searchDirs = searchDirsFor(ui);                   // T-204
         compileOptions.standardSymbolDir = m_options.standardSymbolDir;  // T-235: `xt-standard:`
+        applyImpliedLayer(compileOptions);                               // T-498b
         compileOptions.publishAssetNames = true;                         // T-273b
         compileOptions.stripEditorOnly = true;                           // T-342 (22 §22.15)
         compileOptions.behavior = behavior();                            // T-407
@@ -1201,6 +1302,17 @@ void Packer::rewriteUis() {
         if (!writeBytes(m_outDir / pathFromUtf8(irRelative), irBytes)) {
             error(ui.id, "cannot write '" + pathToUtf8(m_outDir / pathFromUtf8(irRelative)) + "'");
             continue;
+        }
+        // T-527: the implied group and standard fonts supplyFonts() added stay assets of the UI (under
+        // their subset names) although its `.xtir` need not name them.
+        if (const auto supplied = m_suppliedFonts.find(ui.id); supplied != m_suppliedFonts.end()) {
+            for (const std::string& name : supplied->second) {
+                const auto subset = m_fontSubsetOf.find(name);
+                const std::string& file = subset != m_fontSubsetOf.end() ? subset->second : name;
+                if (std::find(uiAssets.begin(), uiAssets.end(), file) == uiAssets.end()) {
+                    uiAssets.push_back(file);
+                }
+            }
         }
         for (UiInfo& info : m_manifest.uis) {
             if (info.id == ui.id) {
@@ -1272,7 +1384,7 @@ void Packer::describeUi(Context& ctx, AssetResolver& assets, Document& doc, cons
 }
 
 void Packer::pullStandardSymbols(const fs::path& docPath) {
-    if (m_options.standardSymbolDir.empty()) {
+    if (m_options.standardSymbolDir.empty() || !m_options.copyStandardSymbols) {
         return;
     }
     std::string text;
@@ -1326,6 +1438,7 @@ bool Packer::packUi(const ProjectUi& ui, UiInfo& out) {
     compileOptions.embedFonts = m_project.publish.embedFonts || m_options.embed;
     compileOptions.searchDirs = searchDirsFor(ui);                   // T-204
     compileOptions.standardSymbolDir = m_options.standardSymbolDir;  // T-235: `xt-standard:`
+    applyImpliedLayer(compileOptions);                               // T-498b
     // T-273b: no machine path (or `..` out of the project) in the bundle's `.xtir`.
     compileOptions.publishAssetNames = true;
     // T-342 (03 §3.13, 22 §22.15): `editor-only` subtrees are not published; the thumbnail below
@@ -1471,7 +1584,482 @@ bool Packer::packUi(const ProjectUi& ui, UiInfo& out) {
     }
     describeUi(ctx, assets, *doc, ui, out);
     collectImageUses(*doc, doc->ir(), ui.id);  // T-199
+    if (m_bundledFonts) {
+        recordUnbundledFamilies(*doc, ui.id);  // T-527
+    }
+    if (!flowBytes.empty()) {
+        // T-540 (27 §27.4.3): the flow bound against the packed Document; a flow that does not
+        // bind (missing ids, ...) is not this check's business, it reports nothing.
+        flow::FlowGraph graph;
+        std::vector<std::string> problems;
+        flow::FlowRuntime runtime;
+        if (flow::FlowGraph::parse(flowBytes, graph, problems) == Status::kOk &&
+            runtime.load(graph, *doc, problems) == Status::kOk) {
+            std::vector<std::string> lines;
+            runtime.loadWarnings(lines);
+            for (std::string& line : lines) {
+                if (m_options.strict) {
+                    error(ui.id, line);
+                } else {
+                    m_report.flowWarnings.push_back(ui.id + ": " + line);
+                }
+            }
+            runtime.unload();
+            if (m_options.strict && !lines.empty()) {
+                return false;
+            }
+        }
+    }
     return true;
+}
+
+void Packer::detectImpliedGroup() {
+    m_implied = ImpliedLayer();
+    SymbolGroup group;
+    if (!bundle::detectImpliedGroup(m_project.rootDir, m_project.uis, m_options.standardSymbolDir, group)) {
+        return;
+    }
+    const fs::path groupDir = pathFromUtf8(m_options.standardSymbolDir);
+    m_implied.active = true;
+    m_implied.group = std::move(group);
+    if (!m_implied.group.tokensFile.empty()) {
+        m_implied.tokensFile = genericPathToUtf8(groupDir / pathFromUtf8(m_implied.group.tokensFile));
+    }
+    m_report.impliedGroupDir = m_implied.group.dir;
+}
+
+/// T-527: `text` with ASCII letters lowercased (family names compare case-insensitively).
+std::string lowerAscii(std::string_view text) {
+    std::string out(text);
+    for (char& c : out) {
+        if (c >= 'A' && c <= 'Z') {
+            c = static_cast<char>(c - 'A' + 'a');
+        }
+    }
+    return out;
+}
+
+/// T-527: true for a code point the coverage check ignores (controls and the BOM, as the
+/// `--font-subset` coverage lint does).
+bool ignoredCodePoint(uint32_t cp) { return cp < 0x20 || cp == 0xFEFF; }
+
+/// T-527: `families` as one `font-family` text, `A, B, C`.
+std::string joinFamilies(const std::vector<std::string>& families) {
+    std::string out;
+    for (const std::string& family : families) {
+        if (!out.empty()) {
+            out += ", ";
+        }
+        out += family;
+    }
+    return out;
+}
+
+/// T-527: up to 20 of `points` as `U+XXXX U+YYYY`, then ` (+N more)` (22 §22.10.3).
+std::string codePointList(const std::set<uint32_t>& points) {
+    constexpr size_t kListed = 20;  // 22 §22.10.3: at most 20 code points per UI.
+    std::string list;
+    size_t listed = 0;
+    for (uint32_t cp : points) {
+        if (listed == kListed) {
+            break;
+        }
+        char code[16];
+        std::snprintf(code, sizeof(code), "U+%04X", static_cast<unsigned>(cp));
+        list += (listed == 0 ? "" : " ") + std::string(code);
+        ++listed;
+    }
+    if (points.size() > kListed) {
+        list += " (+" + std::to_string(points.size() - kListed) + " more)";
+    }
+    return list;
+}
+
+/// T-527b: the standard family every standard font falls back to (22 §22.10.3 step 4).
+constexpr const char* kStandardFallbackFamily = "Noto Sans";
+
+void Packer::recordUnbundledFamilies(const Document& doc, const std::string& uiId) {
+    if (!m_familiesScanned.insert(uiId).second) {
+        return;
+    }
+    const IrView& view = doc.ir();
+    std::set<std::string> bundled;
+    for (const IrFontFace& face : view.style().fontFaces()) {
+        bundled.insert(lowerAscii(view.string(face.family)));
+    }
+    std::set<std::string> standard;  // T-527b: lowercase standard family names.
+    for (const StandardFont& font : m_standardFonts) {
+        standard.insert(font.lowerFamily);
+    }
+    const std::span<const uint32_t> pool = view.style().fontFamilies();
+    const NodeArena& arena = doc.arena();
+    for (NodeId node = 0; node < arena.capacity(); ++node) {
+        if (!arena.alive(node) || arena.kind(node) != NodeKind::Text) {
+            continue;
+        }
+        std::set<uint32_t> chars;
+        appendCodePoints(doc.string(arena.text(node).text), chars);
+        bool visible = false;
+        for (uint32_t cp : chars) {
+            visible = visible || (cp > 0x20 && !ignoredCodePoint(cp));
+        }
+        const NodeId parent = arena.parent(node);
+        if (!visible || parent == kInvalidNode || arena.kind(parent) != NodeKind::Element) {
+            continue;
+        }
+        const ComputedStyle& style = arena.element(parent).style;
+        if (style.fontFamilyCount == 0) {
+            continue;  // No `font-family` resolved (e.g. a subtree the first update leaves unstyled).
+        }
+        std::vector<std::string> families;
+        bool named = false;
+        std::string standardName;  // T-527b: the list's first standard family (lowercase).
+        for (uint32_t i = 0; i < style.fontFamilyCount; ++i) {
+            const uint32_t index = style.fontFamilyOffset + i;
+            if (index < pool.size()) {
+                families.emplace_back(view.string(pool[index]));
+                const std::string lower = lowerAscii(families.back());
+                named = named || bundled.count(lower) != 0;
+                if (standardName.empty() && standard.count(lower) != 0) {
+                    standardName = lower;
+                }
+            }
+        }
+        if (named) {
+            continue;  // 22 §22.10.3 step 1: the UI's own `@font-face`.
+        }
+        if (!standardName.empty()) {
+            m_uiStandardFamilies[uiId].insert(standardName);  // Step 2.
+            continue;
+        }
+        if (m_unbundledFamilies.count(uiId) == 0) {
+            m_unbundledFamilies.emplace(uiId, std::move(families));
+        }
+    }
+}
+
+bool Packer::uiHasText(const std::string& uiId) const {
+    const auto ui = m_uiLangChars.find(uiId);
+    if (ui == m_uiLangChars.end()) {
+        return false;
+    }
+    const auto own = ui->second.find(std::string());
+    if (own == ui->second.end()) {
+        return false;
+    }
+    for (uint32_t cp : own->second) {
+        if (cp > 0x20 && !ignoredCodePoint(cp)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::map<std::string, std::set<uint32_t>>& Packer::uiChars(const std::string& uiId) {
+    std::map<std::string, std::set<uint32_t>>& langs = m_uiLangChars[uiId];
+    for (const auto& [lang, chars] : m_stringChars) {
+        langs[lang].insert(chars.begin(), chars.end());
+    }
+    return langs;
+}
+
+void Packer::loadStandardFonts() {
+    if (!m_bundledFonts || m_options.standardFontDir.empty()) {
+        return;
+    }
+    const fs::path dir = pathFromUtf8(m_options.standardFontDir);
+    std::error_code ec;
+    if (!fs::is_directory(dir, ec)) {
+        return;  // 22 §22.10.3: no directory = no standard fonts (the T-527 rules alone).
+    }
+    std::vector<fs::path> files;
+    for (fs::directory_iterator it(dir, ec), end; it != end; it.increment(ec)) {
+        if (ec) {
+            break;
+        }
+        const std::string ext = lowerExtension(pathToUtf8(it->path()));
+        if (it->is_regular_file(ec) && (ext == ".ttf" || ext == ".otf")) {
+            files.push_back(it->path());
+        }
+    }
+    for (const fs::path& path : files) {
+        std::string bytes;
+        StandardFont font;
+        if (!readBytes(path, bytes) || !font.font.parse(std::vector<uint8_t>(bytes.begin(), bytes.end()))) {
+            continue;  // Not covered by 22 §22.10.3: an unreadable file is no standard font.
+        }
+        font.family = font.font.familyName();
+        if (font.family.empty()) {
+            continue;
+        }
+        font.lowerFamily = lowerAscii(font.family);
+        font.path = pathToUtf8(path);
+        font.file = pathToUtf8(path.filename());
+        font.contentName = "assets/" + hex16(fnv1a64(bytes)) + lowerExtension(font.file);
+        m_standardFonts.push_back(std::move(font));
+    }
+    // The `-Regular` file of a family first (the one the coverage top-up takes), then by name.
+    auto regular = [](const StandardFont& font) {
+        const std::string stem = pathToUtf8(pathFromUtf8(font.file).stem());
+        return stem.size() >= 8 && lowerAscii(stem.substr(stem.size() - 8)) == "-regular";
+    };
+    std::sort(m_standardFonts.begin(), m_standardFonts.end(),
+              [&](const StandardFont& a, const StandardFont& b) {
+                  const bool ra = regular(a);
+                  const bool rb = regular(b);
+                  return ra != rb ? ra : a.file < b.file;
+              });
+}
+
+void Packer::addStandardFont(UiInfo& info, const StandardFont& font) {
+    if (std::find(info.assets.begin(), info.assets.end(), font.contentName) != info.assets.end()) {
+        return;
+    }
+    const std::string sourceName = "fonts/" + font.file;
+    const std::string name = rewriteAsset(sourceName, font.path, kAssetKindFont, info.assets);
+    if (name.empty()) {
+        return;
+    }
+    m_suppliedFonts[info.id].push_back(name);
+    // 22 §22.10.3: the manifest names the file relative to the standard font directory.
+    const auto index = m_assetIndex.find(name);
+    if (index == m_assetIndex.end()) {
+        return;
+    }
+    std::vector<std::string>& sources = m_manifest.assets[index->second].sources;
+    const std::string listed = manifestSourceName(sourceName, pathFromUtf8(font.path), m_project.rootDir);
+    sources.erase(std::remove(sources.begin(), sources.end(), listed), sources.end());
+    if (std::find(sources.begin(), sources.end(), sourceName) == sources.end()) {
+        sources.push_back(sourceName);
+    }
+}
+
+void Packer::supplyCoverage(UiInfo& info) {
+    if (m_standardFonts.empty()) {
+        return;
+    }
+    std::vector<FontFile> fonts;
+    for (const std::string& asset : info.assets) {
+        const auto index = m_assetIndex.find(asset);
+        if (index == m_assetIndex.end() || m_manifest.assets[index->second].kind != "font") {
+            continue;
+        }
+        std::string bytes;
+        FontFile font;
+        if (readBytes(m_outDir / pathFromUtf8(asset), bytes) &&
+            font.parse(std::vector<uint8_t>(bytes.begin(), bytes.end()))) {
+            fonts.push_back(std::move(font));
+        }
+    }
+    std::set<uint32_t> missing;
+    for (const auto& [lang, chars] : uiChars(info.id)) {
+        for (uint32_t cp : chars) {
+            if (ignoredCodePoint(cp) || missing.count(cp) != 0) {
+                continue;
+            }
+            bool covered = false;
+            for (const FontFile& font : fonts) {
+                covered = covered || font.hasGlyph(cp);
+            }
+            if (!covered) {
+                missing.insert(cp);
+            }
+        }
+    }
+    for (const StandardFont& font : m_standardFonts) {
+        if (missing.empty()) {
+            break;
+        }
+        if (std::find(info.assets.begin(), info.assets.end(), font.contentName) != info.assets.end()) {
+            continue;  // Already bundled: it has none of the missing glyphs.
+        }
+        std::set<uint32_t> covered;
+        for (uint32_t cp : missing) {
+            if (font.font.hasGlyph(cp)) {
+                covered.insert(cp);
+            }
+        }
+        if (covered.empty()) {
+            continue;
+        }
+        addStandardFont(info, font);
+        for (uint32_t cp : covered) {
+            missing.erase(cp);
+        }
+        addWarning(info.id, "fonts: " + info.id + ": " + std::to_string(covered.size()) + " code points (" +
+                                codePointList(covered) + ") covered by standard font \"" + font.family +
+                                "\", bundled");
+        ++m_report.fontsCoverageWarnings;
+    }
+}
+
+void Packer::supplyFonts() {
+    if (!m_bundledFonts) {
+        return;
+    }
+    // T-527: the implied group's `@font-face` fonts (22 §22.10.3 step 3).
+    compile::RuleSet rules;
+    fs::path tokensPath;
+    std::vector<std::string> groupFamilies;  // In `@font-face` order, each once.
+    if (m_implied.active && !m_implied.tokensFile.empty()) {
+        tokensPath = pathFromUtf8(m_implied.tokensFile);
+        std::string text;
+        if (readBytes(tokensPath, text)) {  // Else every compile already reported the unreadable layer.
+            compile::DiagnosticSink sink;
+            compile::parseXts(text, m_implied.tokensFile, 1, sink, rules,
+                              pathToUtf8(tokensPath.parent_path()));
+            for (const compile::FontFaceDef& face : rules.fontFaces) {
+                if (std::find(groupFamilies.begin(), groupFamilies.end(), face.family) ==
+                    groupFamilies.end()) {
+                    groupFamilies.push_back(face.family);
+                }
+            }
+        }
+    }
+    bool groupFontsUsed = false;
+    for (UiInfo& info : m_manifest.uis) {
+        if (std::find(m_report.packedUis.begin(), m_report.packedUis.end(), info.id) ==
+                m_report.packedUis.end() ||
+            !uiHasText(info.id)) {
+            continue;
+        }
+        // T-527b step 2: the standard families the text names, every file of each.
+        if (const auto named = m_uiStandardFamilies.find(info.id); named != m_uiStandardFamilies.end()) {
+            for (const StandardFont& font : m_standardFonts) {
+                if (named->second.count(font.lowerFamily) != 0) {
+                    addStandardFont(info, font);
+                }
+            }
+        }
+        if (!groupFamilies.empty()) {
+            groupFontsUsed = true;
+            for (const compile::FontFaceDef& face : rules.fontFaces) {
+                const fs::path file = tokensPath.parent_path() / pathFromUtf8(face.src);
+                std::string bytes;
+                std::error_code ec;
+                if (!fs::is_regular_file(file, ec) || !readBytes(file, bytes)) {
+                    continue;  // The compile warned "font asset ... not found".
+                }
+                std::string name = "assets/" + hex16(fnv1a64(bytes)) + lowerExtension(face.src);
+                if (std::find(info.assets.begin(), info.assets.end(), name) == info.assets.end()) {
+                    name = rewriteAsset(face.src, pathToUtf8(file), kAssetKindFont, info.assets);
+                }
+                if (!name.empty()) {
+                    m_suppliedFonts[info.id].push_back(name);
+                }
+            }
+        }
+        const auto unbundled = m_unbundledFamilies.find(info.id);
+        if (unbundled != m_unbundledFamilies.end()) {
+            std::string fallback;
+            if (!groupFamilies.empty()) {
+                fallback = joinFamilies(groupFamilies);  // Step 3.
+            } else {
+                // T-527b step 4: the standard "Noto Sans" files.
+                const std::string lower = lowerAscii(kStandardFallbackFamily);
+                for (const StandardFont& font : m_standardFonts) {
+                    if (font.lowerFamily == lower) {
+                        addStandardFont(info, font);
+                        fallback = font.family;
+                    }
+                }
+            }
+            if (!fallback.empty()) {
+                addWarning(info.id, "fonts: " + info.id + ": \"" + joinFamilies(unbundled->second) +
+                                        "\" is not bundled; falling back to \"" + fallback + "\"");
+                ++m_report.fontsFallbackWarnings;
+            }
+        }
+        supplyCoverage(info);  // T-527b: the code-point coverage top-up.
+    }
+    if (!groupFontsUsed) {
+        return;
+    }
+    // 22 §22.10.3: the group's families end every `fonts.fallback` chain.
+    if (m_manifest.fontFallbacks.empty()) {
+        m_manifest.fontFallbacks.push_back(FontFallbackInfo{std::string(), {}});
+    }
+    for (FontFallbackInfo& chain : m_manifest.fontFallbacks) {
+        for (const std::string& family : groupFamilies) {
+            if (std::find(chain.families.begin(), chain.families.end(), family) == chain.families.end()) {
+                chain.families.push_back(family);
+            }
+        }
+    }
+}
+
+void Packer::checkBundledFonts() {
+    if (!m_bundledFonts) {
+        return;
+    }
+    std::unordered_map<std::string, std::string> kindOf;  // Current file name -> manifest kind.
+    for (const ManifestAsset& asset : m_manifest.assets) {
+        kindOf[asset.file] = asset.kind;
+    }
+    for (const UiInfo& info : m_manifest.uis) {
+        if (std::find(m_report.packedUis.begin(), m_report.packedUis.end(), info.id) ==
+                m_report.packedUis.end() ||
+            !uiHasText(info.id)) {
+            continue;
+        }
+        const std::map<std::string, std::set<uint32_t>>& langs = uiChars(info.id);
+        std::vector<FontFile> fonts;
+        std::string unreadable;
+        size_t fontFiles = 0;
+        for (const std::string& asset : info.assets) {
+            const auto subset = m_fontSubsetOf.find(asset);  // A run whose pass 2 did not happen.
+            const std::string& file = subset != m_fontSubsetOf.end() ? subset->second : asset;
+            const auto kind = kindOf.find(file);
+            if (kind == kindOf.end() || kind->second != "font") {
+                continue;
+            }
+            ++fontFiles;
+            std::string bytes;
+            FontFile font;
+            if (!readBytes(m_outDir / pathFromUtf8(file), bytes) ||
+                !font.parse(std::vector<uint8_t>(bytes.begin(), bytes.end()))) {
+                if (unreadable.empty()) {
+                    unreadable = file;
+                }
+                continue;
+            }
+            fonts.push_back(std::move(font));
+        }
+        if (fontFiles == 0) {
+            error(info.id,
+                  "fonts: " + info.id +
+                      " has text but bundles no font (declare @font-face, or pack with --fonts system)");
+            ++m_report.fontsErrors;
+            continue;
+        }
+        if (!unreadable.empty()) {
+            // Not covered by 22 §22.10.3: a font this reader cannot parse leaves the coverage unknown.
+            addWarning(info.id, "fonts: " + info.id + ": cannot read the glyph table of '" + unreadable +
+                                    "'; glyph coverage not checked");
+            continue;
+        }
+        std::set<uint32_t> missing;
+        for (const auto& [lang, chars] : langs) {
+            for (uint32_t cp : chars) {
+                if (ignoredCodePoint(cp) || missing.count(cp) != 0) {
+                    continue;
+                }
+                bool covered = false;
+                for (const FontFile& font : fonts) {
+                    covered = covered || font.hasGlyph(cp);
+                }
+                if (!covered) {
+                    missing.insert(cp);
+                }
+            }
+        }
+        if (missing.empty()) {
+            continue;
+        }
+        error(info.id,
+              "fonts: " + info.id + ": " + codePointList(missing) + " has no glyph in any bundled font");
+        ++m_report.fontsErrors;
+    }
 }
 
 void Packer::packTokens() {
@@ -1484,6 +2072,27 @@ void Packer::packTokens() {
     };
 
     std::map<std::string, std::string> base;  // Later stylesheet wins, as in compileDocument().
+    if (m_implied.active && !m_implied.tokensFile.empty()) {
+        // T-498b: the implied default layer comes first, so the project's declarations win.
+        std::string text;
+        if (readBytes(pathFromUtf8(m_implied.tokensFile), text)) {
+            compile::DiagnosticSink sink;
+            compile::RuleSet rules;
+            compile::parseXts(text, m_implied.tokensFile, 1, sink, rules);
+            for (const compile::TokenDecl& token : rules.tokens) {
+                base[token.name] = token.value;
+            }
+        }
+        if (m_ui != nullptr && !m_ui->shared.tokens.empty()) {
+            // Lint `token.sameAsDefault`: a project token that only repeats the group's default.
+            const fs::path mine = pathFromUtf8(m_project.rootDir) / pathFromUtf8(m_ui->shared.tokens);
+            for (const TokenDefault& token : sameAsDefaultTokens(mine, pathFromUtf8(m_implied.tokensFile))) {
+                warn(m_ui->shared.tokens,
+                     "token.sameAsDefault: " + token.name +
+                         " repeats the preset group's default; delete it to follow the group");
+            }
+        }
+    }
     for (const std::string& style : m_project.shared.styles) {
         std::string text;
         if (!readBytes(pathFromUtf8(m_project.rootDir) / pathFromUtf8(style), text)) {
@@ -1500,25 +2109,51 @@ void Packer::packTokens() {
         m_manifest.tokens.push_back(TokenDef{name, value});
     }
 
+    // T-498b: themes by name -- the implied group's theme files (`tokens-night.xts` -> `night`)
+    // and the project's `<themes dir>/<name>.xts`. A name both have is one theme, the project's
+    // values winning; a name only one has is its own theme (no mapping between different names).
+    struct ThemeSource {
+        std::vector<compile::TokenDecl> implied;
+        std::string impliedFile;  // The group-relative theme file, for the generated header.
+        bool hasProject = false;
+        std::string projectText;  // Copied as written when there is no implied part.
+        std::vector<compile::TokenDecl> project;
+    };
+    std::map<std::string, ThemeSource> themes;
+    if (m_implied.active) {
+        const fs::path groupDir = pathFromUtf8(m_implied.group.dir);
+        for (const std::string& themeFile : m_implied.group.themeFiles) {
+            std::string text;
+            if (!readBytes(groupDir / pathFromUtf8(themeFile), text)) {
+                continue;
+            }
+            const std::string name = themeNameOf(themeFile);
+            if (name.empty()) {
+                continue;
+            }
+            compile::DiagnosticSink sink;
+            compile::RuleSet rules;
+            compile::parseXts(text, themeFile, 1, sink, rules);
+            ThemeSource& theme = themes[name];
+            theme.implied = rules.tokens;
+            theme.impliedFile = themeFile;
+        }
+    }
+
     const fs::path themeDir = pathFromUtf8(m_project.rootDir) / themesDir();
     std::error_code ec;
-    if (!fs::is_directory(themeDir, ec)) {
-        return;
-    }
     std::vector<fs::path> files;
-    for (fs::directory_iterator it(themeDir, ec), end; it != end; it.increment(ec)) {
-        if (ec) {
-            break;
-        }
-        if (it->is_regular_file(ec) && lowerExtension(pathToUtf8(it->path().filename())) == ".xts") {
-            files.push_back(it->path());
+    if (fs::is_directory(themeDir, ec)) {
+        for (fs::directory_iterator it(themeDir, ec), end; it != end; it.increment(ec)) {
+            if (ec) {
+                break;
+            }
+            if (it->is_regular_file(ec) && lowerExtension(pathToUtf8(it->path().filename())) == ".xts") {
+                files.push_back(it->path());
+            }
         }
     }
     std::sort(files.begin(), files.end());
-    if (files.empty()) {
-        return;
-    }
-    fs::create_directories(m_outDir / "themes", ec);
     for (const fs::path& file : files) {
         const std::string relative = "themes/" + pathToUtf8(file.filename());
         std::string text;
@@ -1539,11 +2174,50 @@ void Packer::packTokens() {
         if (rules.tokens.empty()) {
             warn(relative, "theme declares no tokens");
         }
+        ThemeSource& theme = themes[pathToUtf8(file.stem())];
+        theme.hasProject = true;
+        theme.projectText = std::move(text);
+        theme.project = rules.tokens;
+    }
+    if (themes.empty()) {
+        return;
+    }
+    fs::create_directories(m_outDir / "themes", ec);
+    for (const auto& [name, theme] : themes) {
+        const std::string relative = "themes/" + name + ".xts";
+        std::string text;
+        if (theme.implied.empty()) {
+            text = theme.projectText;
+        } else {
+            // Generated: the implied values first, each replaced in place by the project's own
+            // declaration of that name, the project's other tokens after them.
+            text = "/* Theme \"" + name + "\": generated by xtframe-pack from the symbol group " +
+                   m_implied.group.id + " (" + theme.impliedFile + ")" +
+                   (theme.hasProject ? " and the project's " + relative : std::string()) + ". */\n:root {\n";
+            std::map<std::string, std::string> mine;
+            for (const compile::TokenDecl& token : theme.project) {
+                mine[token.name] = token.value;
+            }
+            std::set<std::string> written;
+            for (const compile::TokenDecl& token : theme.implied) {
+                if (!written.insert(token.name).second) {
+                    continue;
+                }
+                const auto own = mine.find(token.name);
+                text += "  " + token.name + ": " + (own != mine.end() ? own->second : token.value) + ";\n";
+            }
+            for (const compile::TokenDecl& token : theme.project) {
+                if (written.insert(token.name).second) {
+                    text += "  " + token.name + ": " + token.value + ";\n";
+                }
+            }
+            text += "}\n";
+        }
         if (!writeBytes(m_outDir / pathFromUtf8(relative), text)) {
             error(m_project.id, "cannot write '" + pathToUtf8(m_outDir / pathFromUtf8(relative)) + "'");
             continue;
         }
-        m_manifest.themes.push_back(ThemeInfo{pathToUtf8(file.stem()), relative});
+        m_manifest.themes.push_back(ThemeInfo{name, relative});
     }
 }
 
@@ -1616,6 +2290,9 @@ void Packer::packStrings(bool incremental, const ManifestData& previous) {
             if (m_fontSubset) {  // T-199: the subset covers every packed language.
                 appendCodePoints(row.text, m_charset);
                 appendCodePoints(row.text, m_langChars[lang]);
+            }
+            if (m_bundledFonts) {  // T-527: every UI's text may show any packed table.
+                appendCodePoints(row.text, m_stringChars[lang]);
             }
         }
         for (const std::string& key : m_usedKeys) {
@@ -1980,6 +2657,9 @@ PackReport Packer::run() {
         }
     }
 
+    detectImpliedGroup();  // T-498b
+    loadStandardFonts();   // T-527b: before the UIs, whose text names standard families.
+
     std::vector<size_t> kept;  // T-262a: indices into m_manifest.uis of entries taken from `previous`.
     for (const ProjectUi& ui : m_project.uis) {
         const UiInfo* keep = nullptr;
@@ -2032,6 +2712,7 @@ PackReport Packer::run() {
     packStrings(incremental, previous);
     packProjectExtras(incremental);
     packGlobalFlow();
+    supplyFonts();  // T-527: before the subsets, so the group and standard fonts are subset as well.
     // T-199: atlas pages and font subsets change the names the `.xtir` files carry, so the UIs
     // are compiled a second time once the pages are known (pass 2, rewriteUis).
     if (m_report.ok && !incremental && (m_atlas || m_fontSubset)) {
@@ -2055,6 +2736,7 @@ PackReport Packer::run() {
         }
         m_pendingRemovals.clear();
     }
+    checkBundledFonts();  // T-527: over each UI's final fonts (subset ones included).
     packSymbolContracts();
     m_manifest.bundleId = m_project.id;
     m_manifest.bundleName = m_project.name;

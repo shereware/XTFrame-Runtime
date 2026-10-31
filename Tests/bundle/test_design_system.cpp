@@ -230,7 +230,10 @@ const Swatch* findSwatch(const DesignSystem& ds, const std::string& id) {
     return nullptr;
 }
 
-/// A writable copy of the starter UI Project with its standard symbols pulled in.
+/// A writable copy of the starter UI Project with its standard symbols pulled in. T-498b/T-498c:
+/// the shipped starter declares only its overrides (`--safe-*`); the preset group's tokens.xts is
+/// the implied default layer underneath, which the design tools show as the inherited variables
+/// (49 §49.12 ruling).
 UiProject starterCopy(const std::string& name) {
     const std::string dir = freshDir(name);
     std::error_code ec;
@@ -239,7 +242,8 @@ UiProject starterCopy(const std::string& name) {
     std::string error;
     Result<UiProject> loaded = UiProject::load(dir, &error);
     REQUIRE_MESSAGE(loaded.ok(), error);
-    REQUIRE(pullStandardSymbols(loaded.value(), sourceDir("Assets/Symbols")) == Status::kOk);
+    REQUIRE(pullStandardSymbols(loaded.value(), sourceDir("Assets/Symbols/groups/broadsheet-2026")) ==
+            Status::kOk);
     return loaded.value();
 }
 
@@ -555,8 +559,8 @@ TEST_CASE("T-305 (e): the starter's graph: --color-accent is used by UIs and sym
     CHECK(contains(accent.symbols, "symbol:Button"));
     CHECK(contains(accent.uis, "ui:main-menu"));
     CHECK(usage(graph, "token:--color-accent").uis == accent.uis);  // the `--` spelling too
-    CHECK(contains(usage(graph, "swatch:teal").entries, "token:color-accent"));
-    const Usage teal = impact(graph, "swatch:teal");
+    CHECK(contains(usage(graph, "swatch:ink").entries, "token:color-accent"));
+    const Usage teal = impact(graph, "swatch:ink");
     CHECK(contains(teal.entries, "token:color-accent"));
     CHECK(contains(teal.uis, "ui:main-menu"));
     CHECK(contains(teal.symbols, "symbol:Button"));
@@ -607,17 +611,17 @@ TEST_CASE(
 
     DesignSystem b = a;
     for (Swatch& s : b.swatches) {
-        if (s.base.id == "teal") {
-            s.value = "#1a8c9c";
-            s.base.links.push_back(Link{"see-also", "swatch:amber", ""});
+        if (s.base.id == "ink") {
+            s.value = "#3a322b";
+            s.base.links.push_back(Link{"see-also", "swatch:ochre", ""});
         }
-        if (s.base.id == "red") {
+        if (s.base.id == "seal") {
             s.base.links.clear();
         }
     }
     for (Swatch& s : a.swatches) {
-        if (s.base.id == "red") {
-            s.base.links.push_back(Link{"see-also", "swatch:orange", ""});
+        if (s.base.id == "seal") {
+            s.base.links.push_back(Link{"see-also", "swatch:lamp", ""});
         }
     }
     for (TokenMeta& t : b.tokens) {
@@ -627,10 +631,10 @@ TEST_CASE(
     }
     for (TextEntry& t : b.texts) {
         if (t.base.id == "principles") {
-            const std::string from = "Neutral surfaces carry the layout";
+            const std::string from = "Flat newsprint grey carries the layout";
             const size_t at = t.body.find(from);
             REQUIRE(at != std::string::npos);
-            t.body.replace(at, from.size(), "Neutral surfaces hold the layout");
+            t.body.replace(at, from.size(), "Flat newsprint grey holds the layout");
         }
     }
     b.references[0].contentHash = "sha256:bbbb";
@@ -642,21 +646,21 @@ TEST_CASE(
          removed = false;
     for (const DiffItem& item : items) {
         MESSAGE((item.entry + " " + item.field + ": " + item.before + " -> " + item.after));
-        if (item.entry == "swatch:teal" && item.field == "value") {
-            value = item.before == "#0f7b8a" && item.after == "#1a8c9c" && item.deltaE > 1.0f &&
+        if (item.entry == "swatch:ink" && item.field == "value") {
+            value = item.before == "#1f1c18" && item.after == "#3a322b" && item.deltaE > 1.0f &&
                     item.deltaE < 20.0f;
         } else if (item.entry == "token:color-accent" && item.field == "description") {
             description = item.after == "The one accent." && item.affectedUis >= 1;
         } else if (item.entry == "text:principles" && item.field == "paragraph") {
             paragraph = item.op == DiffItem::Op::Changed &&
-                        item.before.find("carry the layout") != std::string::npos &&
-                        item.after.find("hold the layout") != std::string::npos;
+                        item.before.find("carries the layout") != std::string::npos &&
+                        item.after.find("holds the layout") != std::string::npos;
         } else if (item.entry == "ref:brand/logo" && item.field == "content") {
             content = item.before == "sha256:aaaa" && item.after == "sha256:bbbb";
-        } else if (item.entry == "swatch:teal" && item.field == "link") {
-            added = item.op == DiffItem::Op::Added && item.after == "see-also swatch:amber";
-        } else if (item.entry == "swatch:red" && item.field == "link") {
-            removed = item.op == DiffItem::Op::Removed && item.before == "see-also swatch:orange";
+        } else if (item.entry == "swatch:ink" && item.field == "link") {
+            added = item.op == DiffItem::Op::Added && item.after == "see-also swatch:ochre";
+        } else if (item.entry == "swatch:seal" && item.field == "link") {
+            removed = item.op == DiffItem::Op::Removed && item.before == "see-also swatch:lamp";
         }
     }
     CHECK(value);

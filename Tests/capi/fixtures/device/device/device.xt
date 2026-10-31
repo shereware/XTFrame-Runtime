@@ -1,0 +1,10 @@
+<xt>
+  <head>
+    <!-- xt_capi_tests (T-552, capi review K1): one box whose color says whether the Context's
+         DeviceInfo has reducedMotion on (`@media (prefers-reduced-motion: reduce)`). -->
+    <link href="device.xts"/>
+  </head>
+  <body>
+    <div id="box"></div>
+  </body>
+</xt>

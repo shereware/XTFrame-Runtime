@@ -132,6 +132,7 @@ T-172：`xtframe-view --play <timeline> [--seek <t>]`（headless 亦可）。
 - `--compress bc1|bc3|bc7|none`（預設 none）：寫 BC1/BC3 FourCC 或 BC7 DX10 DDS（straight alpha、可選 mip 鏈）；帶 alpha 的圖在 `bc1` 下自動改 BC3；`assets.yaml` 的 `compress:` 逐資產覆寫。
 - `--font-subset`：手寫 TrueType 子集器——glyph id 不變（GSUB/GPOS/hmtx/post 原樣），丟棄未用 `glyf` 輪廓（追複合字），重建 `cmap`（format 4 + 12）自文件文字 + 所有 `strings/*.csv` + ASCII 0x20～0x7E；CFF 原樣複製；輸出 `fonts/<stem>.subset.ttf`；`i18n` lint 逐語言列出無字型覆蓋的碼位。限制：執行期才出現的文字（port／綁定）不在集合內。
 - 增量 `--ui` 與 `--atlas`／`--font-subset` 併用會被拒（exit 2）。
+- `--fonts system|bundled`（T-527，2026-10-29 裁決；22 §22.10.3）：`bundled` 時 pack 的縮圖著色器不註冊系統字型，且每個 UI 的文字（文件文字＋所有 `strings/*.csv`）都必須有 bundle 內的字型覆蓋，否則**錯誤**（exit 1）而非 `i18n` 警告；專案 `publish.fonts: "bundled"` 同義，CLI 勝出。預設 `system`（既有行為）。 `--fonts-dir <dir>`（T-527b）：標準字型目錄，預設 `<exe dir>/fonts`（22 §22.10.3「標準字型」）。
 - 修正：打包後 `background-image` 以前不會解析（宣告仍是來源名、ASST 已改寫），現經 `ensureImageAsset` 與最終名替換修好。
 
 ### 12.7.2 `xtframe-view --dump-commands`（T-202 #202）

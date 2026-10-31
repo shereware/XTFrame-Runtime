@@ -1,4 +1,0 @@
-# T-198: RadioGroup, state 'normal'.
-port Difficulty.options [{"label":"Story"},{"label":"Normal"},{"label":"Hard"}]
-port Difficulty.value 1
-update 0.6

@@ -257,6 +257,9 @@ struct ElementRef {
     /// wins over everything until clearOverride()). No-op when `prop` does not apply to an Element
     /// or `value`'s type does not match the property's.
     void setProperty(PropId prop, const Value& value, bool sticky = false);
+    /// T-545 (04 §4.7): `setProperty(prop, value, sticky = true)` whose override tweens to `value`
+    /// over `duration` seconds (Animator::setOverride()). duration <= 0 writes at once.
+    void setPropertyTween(PropId prop, const Value& value, float duration, Easing easing);
     /// Drops the Animator override and marks the element kDirtyStyle, so the next update()
     /// re-resolves the cascade and restores the property's styled value (the override's last
     /// value would otherwise simply stay put -- see the comment in element_ref.cpp).
@@ -400,7 +403,6 @@ public:
     ~Document();
     /// Non-copyable.
     Document(const Document&) = delete;
-    /// Non-copyable.
     Document& operator=(const Document&) = delete;
 
     /// Opens `blob` (IrView::open with verifyCrc = false), then builds the Element/Text tree,

@@ -1,187 +1,61 @@
 version: 1
 tokens:
-  --border-w:
-    category: border
-    description: Outline width.
-    status: approved
   --color-accent:
-    category: color
     description: Primary interactive colour for buttons, selection and progress.
-    from: swatch:teal
-    status: approved
-  --color-accent-hover:
-    category: color
-    description: Accent under the pointer.
-    from: swatch:teal-bright
-    status: approved
-  --color-accent-pressed:
-    category: color
-    description: Accent while pressed.
-    from: swatch:teal-deep
-    status: approved
+    from: swatch:ink
+    inherited: "--color-accent"
   --color-bg:
-    category: color
     description: Screen background behind every panel.
-    from: swatch:slate-100
-    status: approved
+    from: swatch:paper
+    inherited: "--color-bg"
   --color-border:
-    category: color
     description: Hairlines and control outlines.
-    from: swatch:slate-300
-    status: approved
+    from: swatch:ink
+    inherited: "--color-border"
   --color-border-strong:
-    category: color
     description: Outlines that must stand out.
-    from: swatch:slate-450
-    status: approved
+    from: swatch:ink
+    inherited: "--color-border-strong"
   --color-danger:
-    category: color
     description: Damage, destructive actions and errors.
-    from: swatch:red
-    status: approved
-  --color-disabled-bg:
-    category: color
-    description: Disabled control fill.
-    from: swatch:slate-200
-    status: approved
-  --color-disabled-text:
-    category: color
-    description: Disabled control text.
-    from: swatch:slate-500
-    status: approved
+    from: swatch:seal
+    inherited: "--color-danger"
   --color-focus:
-    category: color
     description: Focus ring for keyboard and gamepad navigation.
-    from: swatch:amber
-    status: approved
+    from: swatch:seal
+    inherited: "--color-focus"
   --color-info:
-    category: color
     description: Neutral notices and hints.
-    from: swatch:blue
-    status: approved
-  --color-scrim:
-    category: color
-    description: Dims the screen behind a modal (night at 65 % alpha).
-    from: swatch:night
-    status: approved
-  --color-shadow:
-    category: color
-    description: Drop shadows (night at 25 % alpha).
-    from: swatch:night
-    status: approved
+    from: swatch:blue-ink
+    inherited: "--color-info"
   --color-success:
-    category: color
     description: Health, confirmations and completed steps.
-    from: swatch:green
-    status: approved
+    from: swatch:lamp
+    inherited: "--color-success"
   --color-surface:
-    category: color
     description: Panel and card background.
-    from: swatch:slate-50
-    status: approved
-  --color-surface-raised:
-    category: color
-    description: Raised surfaces (menus, tooltips, modals).
-    from: swatch:white
-    status: approved
+    from: swatch:page
+    inherited: "--color-surface"
   --color-surface-sunken:
-    category: color
     description: Sunken wells (tracks, text fields).
-    from: swatch:slate-150
-    status: approved
+    from: swatch:kraft
+    inherited: "--color-surface-sunken"
   --color-text:
-    category: color
     description: Body text.
-    from: swatch:slate-900
-    status: approved
-  --color-text-dim:
-    category: color
-    description: Secondary text and values.
-    from: swatch:slate-700
-    status: approved
+    from: swatch:ink
+    inherited: "--color-text"
   --color-text-on-accent:
-    category: color
     description: Text on an accent fill.
-    from: swatch:white
-    status: approved
+    from: swatch:paper
+    inherited: "--color-text-on-accent"
   --color-track:
-    category: color
     description: Slider and progress tracks.
-    from: swatch:slate-250
-    status: approved
+    from: swatch:kraft
+    inherited: "--color-track"
   --color-warning:
-    category: color
     description: Warnings and low resources.
-    from: swatch:orange
-    status: approved
-  --control-l:
-    category: size
-    description: Large control height (touch, primary actions).
-    status: approved
-  --control-m:
-    category: size
-    description: Default control height.
-    status: approved
-  --control-s:
-    category: size
-    description: Small control height.
-    status: approved
-  --focus-w:
-    category: border
-    description: Focus ring width.
-    status: approved
-  --font-family:
-    category: type
-    description: The UI font stack.
-    status: approved
-  --font-size-l:
-    category: type
-    description: Section headings.
-    status: approved
-  --font-size-m:
-    category: type
-    description: Body text and control labels.
-    status: approved
-  --font-size-s:
-    category: type
-    description: Secondary labels and HUD values.
-    status: approved
-  --font-size-xl:
-    category: type
-    description: Screen titles.
-    status: approved
-  --font-size-xs:
-    category: type
-    description: Fine print and badges.
-    status: approved
-  --motion-fast:
-    category: motion
-    description: Hover and press feedback.
-    status: approved
-  --motion-instant:
-    category: motion
-    description: Selection snaps.
-    status: approved
-  --motion-normal:
-    category: motion
-    description: Panels and value changes.
-    status: approved
-  --radius-full:
-    category: radius
-    description: Pills and round buttons.
-    status: approved
-  --radius-l:
-    category: radius
-    description: Panels and modals.
-    status: approved
-  --radius-m:
-    category: radius
-    description: Controls and cards.
-    status: approved
-  --radius-s:
-    category: radius
-    description: Small corners on tracks and chips.
-    status: approved
+    from: swatch:ochre
+    inherited: "--color-warning"
   --safe-x:
     category: space
     description: Horizontal safe margin at 1280 x 720.
@@ -189,24 +63,4 @@ tokens:
   --safe-y:
     category: space
     description: Vertical safe margin at 1280 x 720.
-    status: approved
-  --space-1:
-    category: space
-    description: Tight gaps inside a control.
-    status: approved
-  --space-2:
-    category: space
-    description: Padding inside a control.
-    status: approved
-  --space-3:
-    category: space
-    description: Gaps between related controls.
-    status: approved
-  --space-4:
-    category: space
-    description: Panel padding.
-    status: approved
-  --space-6:
-    category: space
-    description: Gaps between groups.
     status: approved

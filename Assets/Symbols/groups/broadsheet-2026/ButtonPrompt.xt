@@ -1,0 +1,33 @@
+<xt>
+  <head>
+    <!-- ButtonPrompt: standard symbol (docs/design/30-ui-project.md 30.4). See README.md.
+         Style: Broadsheet (docs/design/47-symbol-visual-style.md).
+         One rich-text line (07.8): text runs with inline `<glyph key>` input glyphs. -->
+    <symbol name="ButtonPrompt" requires="slots: text">
+      <div id="Box" on:show="play(intro)">
+        <span id="Text"><slot name="text">Press <glyph key="interact"/> to interact</slot></span>
+      </div>
+    </symbol>
+    <style>
+      symbol(ButtonPrompt) {
+        #Box {
+          display: flex;
+          align-items: center;
+          padding: var(--space-2) var(--space-3);
+          border-width: var(--rule-thin);
+          border-style: dashed;
+          border-color: var(--color-border);
+          background-color: var(--color-surface);
+          background-image: var(--tex-grain);
+          background-repeat: repeat;
+          background-size: 128px 128px;
+          font-family: var(--font-body);
+        }
+        #Text { color: var(--color-text); font-size: var(--font-size-m); white-space: nowrap; }
+        @timeline intro {
+          #Box { 0s { opacity: 0; transform: translateY(8px) } 0.25s ease-out { opacity: 1; transform: translateY(0px) } }
+        }
+      }
+    </style>
+  </head>
+</xt>

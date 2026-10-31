@@ -1,6 +1,9 @@
 #include <algorithm>
 #include <chrono>
+#include <cmath>
+#include <cstdio>
 #include <fstream>
+#include <limits>
 #include <memory>
 #include <span>
 #include <sstream>
@@ -780,4 +783,663 @@ TEST_CASE("FlowRuntime: a feedback loop through the document is stopped and repo
     name.setValue("start");
     name.setValue("again");
     CHECK(runtime.runtimeErrors().size() <= graph.edges.size());
+}
+
+// ---- T-540 (27 §27.4.3): flow.animatesWithContinuousSignal --------------------------------------
+
+namespace {
+
+/// Loads `json` against runtime_doc.xt and returns its continuityWarnings().
+std::vector<std::string> continuityOf(const char* json) {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc = loadRuntimeDoc(shaper);
+    FlowGraph graph;
+    std::vector<std::string> errors;
+    REQUIRE(FlowGraph::parse(json, graph, errors) == Status::kOk);
+    FlowRuntime rt;
+    REQUIRE(rt.load(graph, *doc, errors) == Status::kOk);
+    std::vector<std::string> out;
+    rt.continuityWarnings(out);
+    return out;
+}
+
+}  // namespace
+
+TEST_CASE("FlowRuntime::continuityWarnings: continuous sources driving visual inputs are reported") {
+    const std::string tail =
+        " drives a visual property from a continuous signal; author it as a timeline or a bind: instead";
+    {
+        std::vector<std::string> w = continuityOf(R"({
+            "nodes": [ { "id": "m", "type": "math",
+                         "params": { "op": "map", "inLo": -1, "inHi": 1, "outLo": -8, "outHi": 8 } } ],
+            "edges": [ { "from": "#document.pointerNX", "to": "m.a" },
+                       { "from": "m.out", "to": "#bar.setProperty", "params": { "prop": "RotationY" } } ]
+        })");
+        REQUIRE(w.size() == 1);
+        CHECK(w[0] == "flow.animatesWithContinuousSignal: edge m.out -> #bar.setProperty" + tail);
+    }
+    {
+        std::vector<std::string> w = continuityOf(R"({
+            "nodes": [ { "id": "c", "type": "clock" },
+                       { "id": "f", "type": "format", "params": { "format": "{a}" } } ],
+            "edges": [ { "from": "c.seconds", "to": "f.a" }, { "from": "f.out", "to": "#bar.setStyle" } ]
+        })");
+        REQUIRE(w.size() == 1);
+        CHECK(w[0] == "flow.animatesWithContinuousSignal: edge f.out -> #bar.setStyle" + tail);
+    }
+    {
+        std::vector<std::string> w = continuityOf(R"({
+            "nodes": [ { "id": "s", "type": "toString", "params": { "format": "{}" } } ],
+            "edges": [ { "from": "#anim.localTime", "to": "s.in" },
+                       { "from": "s.out", "to": "#spin.playAnimation" } ]
+        })");
+        REQUIRE(w.size() == 1);
+        CHECK(w[0] == "flow.animatesWithContinuousSignal: edge s.out -> #spin.playAnimation" + tail);
+    }
+}
+
+TEST_CASE("FlowRuntime::continuityWarnings: cut, pulse, discrete and non-visual paths report nothing") {
+    // compare cuts the mark; toggleClass is not a visual-property input.
+    CHECK(continuityOf(R"({
+        "nodes": [ { "id": "g", "type": "compare", "params": { "op": "gt" } },
+                   { "id": "z", "type": "constant", "params": { "value": 0 } } ],
+        "edges": [ { "from": "#document.pointerNX", "to": "g.a" }, { "from": "z.out", "to": "g.b" },
+                   { "from": "g.true", "to": "#bar.toggleClass", "params": { "class": "x" } } ]
+    })")
+              .empty());
+    // setText is exempt.
+    CHECK(continuityOf(R"({
+        "nodes": [ { "id": "c", "type": "clock" },
+                   { "id": "s", "type": "toString", "params": { "format": "{}" } } ],
+        "edges": [ { "from": "c.seconds", "to": "s.in" }, { "from": "s.out", "to": "#count.setText" } ]
+    })")
+              .empty());
+    // lookup cuts the mark.
+    CHECK(continuityOf(R"({
+        "nodes": [ { "id": "r", "type": "radio", "params": { "count": 2 } },
+                   { "id": "l", "type": "lookup", "params": { "values": [0.5, 1] } } ],
+        "edges": [ { "from": "#inc.Click", "to": "r.set1" }, { "from": "r.index", "to": "l.index" },
+                   { "from": "l.out", "to": "#bar.setProperty", "params": { "prop": "Opacity" } } ]
+    })")
+              .empty());
+    // select.cond (fed by a compare of a continuous value) is not a value path.
+    CHECK(continuityOf(R"({
+        "nodes": [ { "id": "g", "type": "compare", "params": { "op": "gt" } },
+                   { "id": "z", "type": "constant", "params": { "value": 0 } },
+                   { "id": "a", "type": "constant", "params": { "value": "opacity: 1" } },
+                   { "id": "b", "type": "constant", "params": { "value": "opacity: 0.5" } },
+                   { "id": "sel", "type": "select" } ],
+        "edges": [ { "from": "#document.pointerNX", "to": "g.a" }, { "from": "z.out", "to": "g.b" },
+                   { "from": "g.out", "to": "sel.cond" }, { "from": "a.out", "to": "sel.a" },
+                   { "from": "b.out", "to": "sel.b" }, { "from": "sel.out", "to": "#bar.setStyle" } ]
+    })")
+              .empty());
+    // A pulse edge does not propagate (a pulse cannot reach playAnimation directly, so it goes
+    // through a counter, whose value is discrete).
+    CHECK(continuityOf(R"({
+        "nodes": [ { "id": "t", "type": "timer", "params": { "interval": 1, "autostart": true } },
+                   { "id": "n", "type": "counter", "params": {} },
+                   { "id": "s", "type": "toString", "params": { "format": "{}" } } ],
+        "edges": [ { "from": "t.tick", "to": "n.increment" }, { "from": "n.value", "to": "s.in" },
+                   { "from": "s.out", "to": "#spin.playAnimation" } ]
+    })")
+              .empty());
+    // timer.count is discrete, like counter.value.
+    CHECK(continuityOf(R"({
+        "nodes": [ { "id": "t", "type": "timer", "params": { "interval": 1, "autostart": true } },
+                   { "id": "m", "type": "math", "params": { "op": "map", "inLo": 0, "inHi": 10,
+                                                            "outLo": 0, "outHi": 1 } },
+                   { "id": "s", "type": "toString", "params": { "format": "opacity: {}" } } ],
+        "edges": [ { "from": "t.count", "to": "m.a" }, { "from": "m.out", "to": "s.in" },
+                   { "from": "s.out", "to": "#bar.setStyle" } ]
+    })")
+              .empty());
+}
+
+// ---- T-541 (Docs/design/27-interaction.md §27.4.4): `#id.setState` --------------------------------
+
+namespace {
+
+/// Four buttons and a `#Box` with the state group `Tone: Normal|Warn|Danger` plus the standalone
+/// state `Lit`.
+std::unique_ptr<Document> stateBoxDoc(TextShaper& shaper) {
+    const char* source =
+        "<xt><head><style>body{display:flex;flex-direction:column;} button{width:50px;height:20px;}"
+        "</style></head><body>"
+        "<div id=\"Box\" state-groups=\"Tone: Normal|Warn|Danger; Lit: Lit|Dim\"></div>"
+        "<button id=\"b1\">1</button><button id=\"b2\">2</button><button id=\"b3\">3</button>"
+        "<button id=\"b4\">4</button></body></xt>";
+    std::vector<compile::SourceFile> files{{"main.xt", source}};
+    compile::CompileResult compiled =
+        compile::compileDocumentFromStrings(files, "main.xt", compile::CompileOptions{});
+    for (const compile::Diagnostic& d : compiled.diagnostics) {
+        CAPTURE(d.message);
+        CHECK(d.level != compile::Diagnostic::Level::Error);
+    }
+    REQUIRE(compiled.ok());
+    std::unique_ptr<Document> doc;
+    REQUIRE(Document::load(IrBlob{compiled.ir.data(), compiled.ir.size()}, true, &shaper, nullptr, doc) ==
+            Status::kOk);
+    doc->setViewport(Rect{0, 0, 400, 400});
+    doc->update(0.0f);
+    return doc;
+}
+
+}  // namespace
+
+TEST_CASE("FlowRuntime: setState toggles a custom state, a state group stays exclusive") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc = stateBoxDoc(shaper);
+    FlowGraph graph;
+    std::vector<std::string> errors;
+    const std::string json = R"({"nodes":[],"edges":[
+        {"from":"#b1.Click","to":"#Box.setState","params":{"state":"Warn","mode":"toggle"}},
+        {"from":"#b2.Click","to":"#Box.setState","params":{"state":"Danger"}},
+        {"from":"#b3.Click","to":"#Box.setState","params":{"state":"Danger","mode":"off"}},
+        {"from":"#b4.Click","to":"#Box.setState","params":{"state":"Nope"}}]})";
+    REQUIRE(FlowGraph::parse(json, graph, errors) == Status::kOk);
+    FlowRuntime flow;
+    REQUIRE(flow.load(graph, *doc, errors) == Status::kOk);
+    ElementRef box = doc->byId("Box");
+    REQUIRE(box.valid());
+
+    CHECK_FALSE(doc->hasCustomState(box, "Warn"));
+    click(*doc, "b1");  // toggle -> on
+    CHECK(doc->hasCustomState(box, "Warn"));
+    click(*doc, "b1");  // toggle -> off: twice is back to the start.
+    CHECK_FALSE(doc->hasCustomState(box, "Warn"));
+    click(*doc, "b1");
+    CHECK(doc->hasCustomState(box, "Warn"));
+
+    click(*doc, "b2");  // Danger on clears Warn: the group's rule is Document::setCustomState's.
+    CHECK(doc->hasCustomState(box, "Danger"));
+    CHECK_FALSE(doc->hasCustomState(box, "Warn"));
+    click(*doc, "b2");  // on again: stays on.
+    CHECK(doc->hasCustomState(box, "Danger"));
+    click(*doc, "b3");  // mode off
+    CHECK_FALSE(doc->hasCustomState(box, "Danger"));
+    click(*doc, "b4");  // an undeclared name changes nothing and breaks nothing.
+    CHECK_FALSE(doc->hasCustomState(box, "Danger"));
+    CHECK(flow.runtimeErrors().empty());
+}
+
+TEST_CASE("FlowRuntime: setState reaches the built-in aliases (Disabled)") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc = stateBoxDoc(shaper);
+    FlowGraph graph;
+    std::vector<std::string> errors;
+    const std::string json = R"({"nodes":[],"edges":[
+        {"from":"#b1.Click","to":"#Box.setState","params":{"state":"Disabled","mode":"toggle"}},
+        {"from":"#b2.Click","to":"#Box.setState","params":{"state":"Disabled","mode":"off"}}]})";
+    REQUIRE(FlowGraph::parse(json, graph, errors) == Status::kOk);
+    FlowRuntime flow;
+    REQUIRE(flow.load(graph, *doc, errors) == Status::kOk);
+    ElementRef box = doc->byId("Box");
+    CHECK_FALSE(doc->hasCustomState(box, "Disabled"));
+    click(*doc, "b1");
+    CHECK(doc->hasCustomState(box, "Disabled"));
+    click(*doc, "b2");
+    CHECK_FALSE(doc->hasCustomState(box, "Disabled"));
+}
+
+TEST_CASE("FlowRuntime: a state node drives #Box.setState through enter<Name>") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc = stateBoxDoc(shaper);
+    FlowGraph graph;
+    std::vector<std::string> errors;
+    const std::string json = R"({"nodes":[
+        {"id":"tone","type":"state","params":{"states":["Normal","Warn","Danger"],
+          "transitions":[{"from":"*","on":"warn","to":"Warn"},{"from":"Warn","on":"worse","to":"Danger"},
+                         {"from":"*","on":"calm","to":"Normal"}]}}],
+      "edges":[
+        {"from":"#b1.Click","to":"tone.warn"},{"from":"#b2.Click","to":"tone.worse"},
+        {"from":"#b3.Click","to":"tone.calm"},
+        {"from":"tone.enterWarn","to":"#Box.setState","params":{"state":"Warn"}},
+        {"from":"tone.enterDanger","to":"#Box.setState","params":{"state":"Danger"}},
+        {"from":"tone.enterNormal","to":"#Box.setState","params":{"state":"Normal"}}]})";
+    REQUIRE(FlowGraph::parse(json, graph, errors) == Status::kOk);
+    FlowRuntime flow;
+    REQUIRE(flow.load(graph, *doc, errors) == Status::kOk);
+    ElementRef box = doc->byId("Box");
+    click(*doc, "b1");
+    CHECK(doc->hasCustomState(box, "Warn"));
+    click(*doc, "b2");
+    CHECK(doc->hasCustomState(box, "Danger"));
+    CHECK_FALSE(doc->hasCustomState(box, "Warn"));
+    click(*doc, "b3");
+    CHECK(doc->hasCustomState(box, "Normal"));
+    CHECK_FALSE(doc->hasCustomState(box, "Danger"));
+}
+
+// ---- T-543 (Docs/design/27-interaction.md §27.4.5): throttle -----------------------------------
+
+namespace {
+
+/// Declared out ports a host sets (`Hud.v` number, `Hud.rate` number), two buttons for pulse
+/// inputs (#b1 in, #b2 reset).
+constexpr const char* kThrottleDoc = R"X(<xt><head><style>
+  #b1 { position: absolute; left: 0px; top: 0px; width: 40px; height: 20px; }
+  #b2 { position: absolute; left: 0px; top: 30px; width: 40px; height: 20px; }
+</style></head>
+<body id="Root"><div id="Hud" port:v="number out" port:rate="number out"></div>
+  <div id="b1"></div><div id="b2"></div></body></xt>)X";
+
+std::unique_ptr<Document> throttleDoc(TextShaper& shaper) {
+    const compile::SourceFile file{"throttle.xt", kThrottleDoc};
+    compile::CompileOptions options;
+    options.behavior = 1;
+    compile::CompileResult result = compile::compileDocumentFromStrings({&file, 1}, "throttle.xt", options);
+    REQUIRE(result.ok());
+    std::unique_ptr<Document> doc;
+    REQUIRE(Document::load(IrBlob{result.ir.data(), result.ir.size()}, true, &shaper, nullptr, doc) ==
+            Status::kOk);
+    doc->setViewport(Rect{0, 0, 400, 300});
+    doc->update(0.0f);
+    return doc;
+}
+
+void clickButton(Document& doc, float y) {
+    InputEvent ev;
+    ev.kind = InputEvent::PointerDown;
+    ev.pos = Vec2{20.0f, y};
+    doc.dispatchInput(ev);
+    ev.kind = InputEvent::PointerUp;
+    doc.dispatchInput(ev);
+}
+
+/// Every `emit` of a runtime in order (what it carried and the step it was sent in).
+struct Sent {
+    std::vector<double> values;
+    std::vector<int> steps;
+    int step = 0;
+    void attach(FlowRuntime& rt) {
+        rt.setHostEventListener([this](const FlowHostEvent& ev) {
+            if (ev.kind == FlowHostEventKind::Emit) {
+                values.push_back(ev.value.n);
+                steps.push_back(step);
+            }
+        });
+    }
+};
+
+double numberOf(const FlowRuntime& rt, const std::string& name) {
+    const std::vector<std::string>& names = rt.valueNames();
+    std::span<const PortValue> values = rt.values();
+    for (size_t i = 0; i < names.size() && i < values.size(); ++i) {
+        if (names[i] == name) {
+            return values[i].n;
+        }
+    }
+    FAIL("no such output: " << name);
+    return 0;
+}
+
+constexpr const char* kValueThrottle = R"({
+    "nodes": [
+        { "id": "t", "type": "throttle", "params": { "unit": "hz", "rate": 10, "trailing": TRAILING } },
+        { "id": "e", "type": "emit", "params": { "port": "t" } }
+    ],
+    "edges": [
+        { "from": "#Hud.v", "to": "t.in" },
+        { "from": "t.out", "to": "e.value" }, { "from": "t.passed", "to": "e.trigger" },
+        { "from": "#b2.Click", "to": "t.reset" }
+    ]
+})";
+
+std::string valueThrottleJson(const char* unit, const char* rate, bool trailing) {
+    std::string json = kValueThrottle;
+    auto replace = [&json](const std::string& from, const std::string& to) {
+        const size_t at = json.find(from);
+        REQUIRE(at != std::string::npos);
+        json.replace(at, from.size(), to);
+    };
+    replace("\"hz\"", std::string("\"") + unit + "\"");
+    replace("10", rate);
+    replace("TRAILING", trailing ? "true" : "false");
+    return json;
+}
+
+void loadJson(FlowRuntime& rt, Document& doc, const std::string& json) {
+    FlowGraph graph;
+    std::vector<std::string> errors;
+    REQUIRE(FlowGraph::parse(json, graph, errors) == Status::kOk);
+    REQUIRE(rt.load(graph, doc, errors) == Status::kOk);
+}
+
+}  // namespace
+
+TEST_CASE(
+    "T-543 throttle hz 10, trailing: leading A, B and C held, C sent at the window's end, then silence") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc = throttleDoc(shaper);
+    FlowRuntime rt;
+    Sent sent;
+    sent.attach(rt);
+    loadJson(rt, *doc, valueThrottleJson("hz", "10", true));
+    const PortId v = doc->lookupPort("Hud.v");
+    REQUIRE(v != kInvalidPort);
+
+    // The sheet's A, B, C are 1, 2, 3.
+    std::string timeline;
+    double t = 0;
+    auto step = [&](float inputOrNaN, float dt) {
+        if (!std::isnan(inputOrNaN)) {
+            REQUIRE(doc->setPort(v, Value::ofFloat(inputOrNaN)) == Status::kOk);
+        }
+        rt.tick(dt);
+        t += static_cast<double>(dt);
+        char line[160];
+        std::snprintf(line, sizeof(line), "t=%.2f in=%s sent=%zu out=%g dropped=%g\n", t,
+                      std::isnan(inputOrNaN) ? "-" : std::to_string(static_cast<int>(inputOrNaN)).c_str(),
+                      sent.values.size(), sent.values.empty() ? 0.0 : sent.values.back(),
+                      numberOf(rt, "t.dropped"));
+        timeline += line;
+    };
+    const float none = std::nanf("");
+    step(1.0f, 0.0f);  // t=0: A goes out at once.
+    CHECK(sent.values == std::vector<double>{1.0});
+    step(2.0f, 0.02f);  // t=0.02: B is held.
+    CHECK(sent.values.size() == 1);
+    CHECK(numberOf(rt, "t.dropped") == 0.0);
+    step(3.0f, 0.03f);  // t=0.05: C replaces B.
+    CHECK(sent.values.size() == 1);
+    CHECK(numberOf(rt, "t.dropped") == 1.0);
+    step(none, 0.05f);  // t=0.1: the window ends, C goes out.
+    CHECK(sent.values == std::vector<double>{1.0, 3.0});
+    CHECK(numberOf(rt, "t.out") == 3.0);
+    CHECK(numberOf(rt, "t.dropped") == 1.0);  // The value sent at the end is not a dropped one.
+    for (int i = 0; i < 6; ++i) {             // No input: no output (not a metronome).
+        step(none, 0.05f);
+    }
+    CHECK(sent.values == std::vector<double>{1.0, 3.0});
+    MESSAGE("hz 10 timeline (A=1, B=2, C=3):\n" << timeline);
+}
+
+TEST_CASE(
+    "T-543 throttle hz 10, trailing false: only A, and the first input after the window passes at once") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc = throttleDoc(shaper);
+    FlowRuntime rt;
+    Sent sent;
+    sent.attach(rt);
+    loadJson(rt, *doc, valueThrottleJson("hz", "10", false));
+    const PortId v = doc->lookupPort("Hud.v");
+    auto step = [&](float input, float dt) {
+        REQUIRE(doc->setPort(v, Value::ofFloat(input)) == Status::kOk);
+        rt.tick(dt);
+    };
+    step(1.0f, 0.0f);
+    step(2.0f, 0.02f);
+    step(3.0f, 0.03f);
+    rt.tick(0.05f);  // t=0.1: nothing is held, nothing is sent.
+    CHECK(sent.values == std::vector<double>{1.0});
+    CHECK(numberOf(rt, "t.dropped") == 2.0);
+    step(4.0f, 0.01f);  // t=0.11: a new input, the window is over.
+    CHECK(sent.values == std::vector<double>{1.0, 4.0});
+}
+
+TEST_CASE("T-543 throttle frames 3 on a pulse: sent in ticks 1, 4 and 7; trailing false drops the rest") {
+    for (bool trailing : {true, false}) {
+        CAPTURE(trailing);
+        NullTextShaper shaper;
+        std::unique_ptr<Document> doc = throttleDoc(shaper);
+        FlowRuntime rt;
+        Sent sent;
+        sent.attach(rt);
+        loadJson(rt, *doc,
+                 R"({
+            "nodes": [
+                { "id": "t", "type": "throttle", "params": { "unit": "frames", "rate": 3, "trailing": )" +
+                     std::string(trailing ? "true" : "false") + R"( } },
+                { "id": "e", "type": "emit", "params": { "port": "t" } }
+            ],
+            "edges": [ { "from": "#b1.Click", "to": "t.in" }, { "from": "t.out", "to": "e.trigger" } ]
+        })");
+        for (int tick = 1; tick <= 7; ++tick) {
+            sent.step = tick;
+            rt.tick(1.0f / 60.0f);
+            clickButton(*doc, 10.0f);
+        }
+        CHECK(sent.steps == std::vector<int>{1, 4, 7});
+        if (trailing) {
+            // The click of tick 7 is held and goes out when the next window ends (tick 10).
+            for (int tick = 8; tick <= 12; ++tick) {
+                sent.step = tick;
+                rt.tick(1.0f / 60.0f);
+            }
+            CHECK(sent.steps == std::vector<int>{1, 4, 7, 10});
+        } else {
+            for (int tick = 8; tick <= 12; ++tick) {
+                sent.step = tick;
+                rt.tick(1.0f / 60.0f);
+            }
+            CHECK(sent.steps == std::vector<int>{1, 4, 7});
+            CHECK(numberOf(rt, "t.dropped") == 4.0);
+        }
+    }
+}
+
+TEST_CASE("T-543 throttle seconds: the window is measured in seconds of tick time") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc = throttleDoc(shaper);
+    FlowRuntime rt;
+    Sent sent;
+    sent.attach(rt);
+    loadJson(rt, *doc, valueThrottleJson("seconds", "0.5", true));
+    const PortId v = doc->lookupPort("Hud.v");
+    for (int i = 1; i <= 12; ++i) {  // An input every 0.1 s for 1.2 s.
+        REQUIRE(doc->setPort(v, Value::ofFloat(static_cast<float>(i))) == Status::kOk);
+        rt.tick(0.1f);
+    }
+    // 1 at t=0.1 opens a window to t=0.6; 2..5 are held and 6, arriving as it ends, replaces them;
+    // the next window ends at t=1.1, where 11 replaces 7..10.
+    CHECK(sent.values == std::vector<double>{1.0, 6.0, 11.0});
+}
+
+TEST_CASE("T-543 throttle: the rate edge changes the window while it runs") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc = throttleDoc(shaper);
+    FlowRuntime rt;
+    Sent sent;
+    sent.attach(rt);
+    loadJson(rt, *doc, R"({
+        "nodes": [
+            { "id": "t", "type": "throttle", "params": { "unit": "hz", "rate": 1 } },
+            { "id": "e", "type": "emit", "params": { "port": "t" } }
+        ],
+        "edges": [
+            { "from": "#Hud.v", "to": "t.in" }, { "from": "#Hud.rate", "to": "t.rate" },
+            { "from": "t.out", "to": "e.value" }, { "from": "t.passed", "to": "e.trigger" }
+        ]
+    })");
+    const PortId v = doc->lookupPort("Hud.v");
+    const PortId rate = doc->lookupPort("Hud.rate");
+    REQUIRE(doc->setPort(v, Value::ofFloat(1.0f)) == Status::kOk);
+    rt.tick(0.0f);  // t=0: sent; the 1 Hz window runs to t=1.
+    REQUIRE(doc->setPort(v, Value::ofFloat(2.0f)) == Status::kOk);
+    rt.tick(0.2f);  // t=0.2: held.
+    CHECK(sent.values == std::vector<double>{1.0});
+    // 1 Hz -> 100 Hz with a held value: the window is re-measured from the last send (0 + 0.01),
+    // it is over, and the held value goes out now.
+    REQUIRE(doc->setPort(rate, Value::ofFloat(100.0f)) == Status::kOk);
+    rt.tick(0.0f);
+    CHECK(sent.values == std::vector<double>{1.0, 2.0});
+    // Back to 1 Hz: the window (from the send at t=0.2) is open until t=1.2; a value is held.
+    REQUIRE(doc->setPort(rate, Value::ofFloat(1.0f)) == Status::kOk);
+    rt.tick(0.0f);
+    REQUIRE(doc->setPort(v, Value::ofFloat(3.0f)) == Status::kOk);
+    rt.tick(0.1f);
+    CHECK(sent.values == std::vector<double>{1.0, 2.0});
+    // 0: no limit. The held value is released, and every later input passes at once.
+    REQUIRE(doc->setPort(rate, Value::ofFloat(0.0f)) == Status::kOk);
+    rt.tick(0.0f);
+    CHECK(sent.values == std::vector<double>{1.0, 2.0, 3.0});
+    for (float input : {4.0f, 5.0f, 6.0f}) {
+        REQUIRE(doc->setPort(v, Value::ofFloat(input)) == Status::kOk);
+        rt.tick(0.001f);
+    }
+    CHECK(sent.values == std::vector<double>{1.0, 2.0, 3.0, 4.0, 5.0, 6.0});
+}
+
+TEST_CASE("T-543 throttle: a rate that is NaN, negative or infinite does not limit; frames 0.4 is 1") {
+    struct Case {
+        const char* label;
+        double rate;
+        bool limits;
+    };
+    const Case cases[] = {{"NaN", std::numeric_limits<double>::quiet_NaN(), false},
+                          {"-1", -1.0, false},
+                          {"+inf", std::numeric_limits<double>::infinity(), false},
+                          {"0", 0.0, false},
+                          {"frames 0.4", 0.4, true}};
+    for (const Case& c : cases) {
+        CAPTURE(c.label);
+        NullTextShaper shaper;
+        std::unique_ptr<Document> doc = throttleDoc(shaper);
+        FlowRuntime rt;
+        Sent sent;
+        sent.attach(rt);
+        FlowGraph graph;
+        std::vector<std::string> errors;
+        REQUIRE(FlowGraph::parse(R"({
+            "nodes": [
+                { "id": "t", "type": "throttle", "params": { "unit": "frames", "rate": 1 } },
+                { "id": "e", "type": "emit", "params": { "port": "t" } }
+            ],
+            "edges": [ { "from": "#b1.Click", "to": "t.in" }, { "from": "t.out", "to": "e.trigger" } ]
+        })",
+                                 graph, errors) == Status::kOk);
+        graph.nodes[0].params["rate"].n = c.rate;
+        if (std::string(c.label) != "frames 0.4") {
+            graph.nodes[0].params["unit"].s = "hz";  // Window = 1 / rate for a finite positive one.
+        }
+        REQUIRE(rt.load(graph, *doc, errors) == Status::kOk);
+        rt.tick(0.016f);
+        clickButton(*doc, 10.0f);
+        clickButton(*doc, 10.0f);
+        clickButton(*doc, 10.0f);
+        if (c.limits) {
+            CHECK(sent.values.size() == 1);  // Window of one tick: two held, sent next tick.
+            CHECK(numberOf(rt, "t.dropped") == 1.0);
+            rt.tick(0.016f);
+            CHECK(sent.values.size() == 2);
+        } else {
+            CHECK(sent.values.size() == 3);  // Every input passes.
+            CHECK(numberOf(rt, "t.dropped") == 0.0);
+        }
+    }
+}
+
+TEST_CASE("T-543 throttle reset: clears the window and the held value, keeps `dropped`") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc = throttleDoc(shaper);
+    FlowRuntime rt;
+    Sent sent;
+    sent.attach(rt);
+    loadJson(rt, *doc, valueThrottleJson("hz", "10", true));
+    const PortId v = doc->lookupPort("Hud.v");
+    REQUIRE(doc->setPort(v, Value::ofFloat(1.0f)) == Status::kOk);
+    rt.tick(0.0f);
+    REQUIRE(doc->setPort(v, Value::ofFloat(2.0f)) == Status::kOk);
+    rt.tick(0.01f);
+    REQUIRE(doc->setPort(v, Value::ofFloat(3.0f)) == Status::kOk);
+    rt.tick(0.01f);
+    CHECK(numberOf(rt, "t.dropped") == 1.0);
+    clickButton(*doc, 40.0f);  // reset: 3 is forgotten, the window is open again.
+    rt.tick(0.2f);
+    CHECK(sent.values == std::vector<double>{1.0});
+    CHECK(numberOf(rt, "t.dropped") == 1.0);
+    REQUIRE(doc->setPort(v, Value::ofFloat(4.0f)) == Status::kOk);
+    rt.tick(0.001f);  // Inside what would have been the old window: sent at once.
+    CHECK(sent.values == std::vector<double>{1.0, 4.0});
+}
+
+TEST_CASE("T-543 throttle: a held value goes out once at the window's end, then nothing waits") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc = throttleDoc(shaper);
+    FlowRuntime rt;
+    Sent sent;
+    sent.attach(rt);
+    // Two throttles on one source; the second never gets a second input, so it never waits.
+    loadJson(rt, *doc, R"({
+        "nodes": [
+            { "id": "a", "type": "throttle", "params": { "unit": "hz", "rate": 10 } },
+            { "id": "b", "type": "throttle", "params": { "unit": "hz", "rate": 10 } },
+            { "id": "ea", "type": "emit", "params": { "port": "a" } },
+            { "id": "eb", "type": "emit", "params": { "port": "b" } }
+        ],
+        "edges": [
+            { "from": "#b1.Click", "to": "a.in" }, { "from": "#b2.Click", "to": "b.in" },
+            { "from": "a.out", "to": "ea.trigger" }, { "from": "b.out", "to": "eb.trigger" }
+        ]
+    })");
+    rt.tick(0.0f);
+    clickButton(*doc, 10.0f);
+    clickButton(*doc, 10.0f);  // `a` holds one.
+    clickButton(*doc, 40.0f);  // `b` passes one.
+    CHECK(sent.values.size() == 2);
+    rt.tick(0.05f);
+    CHECK(sent.values.size() == 2);
+    rt.tick(0.05f);  // `a`'s window ends: its held click goes out.
+    CHECK(sent.values.size() == 3);
+    for (int i = 0; i < 10; ++i) {
+        rt.tick(0.1f);
+    }
+    CHECK(sent.values.size() == 3);
+}
+
+TEST_CASE("T-543 continuityWarnings: filter and throttle keep the mark like math; a port write is silent") {
+    {
+        // Positive: pointerNX -> deadband -> setProperty.
+        std::vector<std::string> w = continuityOf(R"({
+            "nodes": [ { "id": "d", "type": "filter", "params": { "op": "deadband", "threshold": 0.02 } } ],
+            "edges": [ { "from": "#document.pointerNX", "to": "d.in" },
+                       { "from": "d.out", "to": "#bar.setProperty", "params": { "prop": "RotationY" } } ]
+        })");
+        REQUIRE(w.size() == 1);
+        CHECK(w[0].find("edge d.out -> #bar.setProperty") != std::string::npos);
+        // `passed` carries no mark (and is a pulse).
+    }
+    {
+        // The mark runs through a throttle too; its `dropped` never carries it.
+        std::vector<std::string> w = continuityOf(R"({
+            "nodes": [ { "id": "d", "type": "filter", "params": { "op": "deadband", "threshold": 0.02 } },
+                       { "id": "t", "type": "throttle", "params": { "unit": "hz", "rate": 10 } } ],
+            "edges": [ { "from": "#document.pointerNX", "to": "d.in" }, { "from": "d.out", "to": "t.in" },
+                       { "from": "t.out", "to": "#bar.setProperty", "params": { "prop": "RotationY" } },
+                       { "from": "t.dropped", "to": "#bar.setProperty", "params": { "prop": "Opacity" } } ]
+        })");
+        REQUIRE(w.size() == 1);
+        CHECK(w[0].find("edge t.out -> #bar.setProperty") != std::string::npos);
+    }
+    {
+        // Negative: pointerNX -> deadband -> throttle -> a declared port is not a visual input.
+        NullTextShaper shaper;
+        const compile::SourceFile file{
+            "cont.xt",
+            "<xt><head><style></style></head><body id=\"Root\"><div id=\"Hud\" port:nx=\"number in\"></div>"
+            "</body></xt>"};
+        compile::CompileOptions options;
+        compile::CompileResult result = compile::compileDocumentFromStrings({&file, 1}, "cont.xt", options);
+        REQUIRE(result.ok());
+        std::unique_ptr<Document> doc;
+        REQUIRE(Document::load(IrBlob{result.ir.data(), result.ir.size()}, true, &shaper, nullptr, doc) ==
+                Status::kOk);
+        doc->setViewport(Rect{0, 0, 400, 400});
+        doc->update(0.0f);
+        FlowGraph graph;
+        std::vector<std::string> errors;
+        REQUIRE(FlowGraph::parse(R"({
+            "nodes": [ { "id": "d", "type": "filter", "params": { "op": "deadband", "threshold": 0.02 } },
+                       { "id": "t", "type": "throttle", "params": { "unit": "hz", "rate": 10 } } ],
+            "edges": [ { "from": "#document.pointerNX", "to": "d.in" }, { "from": "d.out", "to": "t.in" },
+                       { "from": "t.out", "to": "#Hud.nx" } ]
+        })",
+                                 graph, errors) == Status::kOk);
+        FlowRuntime rt;
+        REQUIRE(rt.load(graph, *doc, errors) == Status::kOk);
+        std::vector<std::string> out;
+        rt.continuityWarnings(out);
+        CHECK(out.empty());
+    }
 }

@@ -1,0 +1,13 @@
+{
+  "width": 352,
+  "height": 272,
+  "frames": 0,
+  "ports": {
+    "Map.min": 0.5,
+    "Map.max": 3,
+    "Map.scale": 1
+  },
+  "events": [
+    "update 0.6"
+  ]
+}

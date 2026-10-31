@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <vector>
@@ -7,9 +8,9 @@
 #include "xt/simd.h"
 
 /// Docs/tasks/T-102.md "測試" 1 and 2: every `xt/simd.h` function against its scalar reference on
-/// random input (floats within 2 ulp), and the three dispatched hot spots -- span blending, the
-/// Gaussian blur box passes, float <-> RGBA8 conversion -- SIMD against scalar (bytes equal, or a
-/// channel off by at most 1 for the blur).
+/// random input (bit for bit), and the three dispatched hot spots -- span blending, the Gaussian
+/// blur box passes, float <-> RGBA8 conversion -- SIMD against scalar; then the AVX2 table against
+/// the SSE2 table, byte for byte (Docs/design/23-host-integration.md §23.5, T-529).
 
 using namespace xt;
 
@@ -62,7 +63,7 @@ void toArray(V v, float out[4]) {
 
 }  // namespace
 
-TEST_CASE("simd: every f32x4 function matches its scalar reference within 2 ulp") {
+TEST_CASE("simd: every f32x4 function matches its scalar reference bit for bit") {
     Rng rng;
     for (int iter = 0; iter < 512; ++iter) {
         float a[4];
@@ -88,56 +89,56 @@ TEST_CASE("simd: every f32x4 function matches its scalar reference within 2 ulp"
 
         float gotV[4];
         float gotS[4];
-        auto sameWithin2Ulp = [&](const char* what) {
+        auto sameBits = [&](const char* what) {
             for (int i = 0; i < 4; ++i) {
                 INFO(what << " lane " << i << ": simd=" << gotV[i] << " scalar=" << gotS[i]);
-                CHECK(ulpDiff(gotV[i], gotS[i]) <= 2);
+                CHECK(bits(gotV[i]) == bits(gotS[i]));
             }
         };
 
         toArray(va, gotV);
         toArray(sa, gotS);
-        sameWithin2Ulp("load/store");
+        sameBits("load/store");
 
         toArray(simd::splat(static_cast<const simd::f32x4*>(nullptr), scalarS), gotV);
         toArray(simd::splat(static_cast<const simd::f32x4s*>(nullptr), scalarS), gotS);
-        sameWithin2Ulp("splat");
+        sameBits("splat");
 
         toArray(simd::add(va, vb), gotV);
         toArray(simd::add(sa, sb), gotS);
-        sameWithin2Ulp("add");
+        sameBits("add");
 
         toArray(simd::sub(va, vb), gotV);
         toArray(simd::sub(sa, sb), gotS);
-        sameWithin2Ulp("sub");
+        sameBits("sub");
 
         toArray(simd::mul(va, vb), gotV);
         toArray(simd::mul(sa, sb), gotS);
-        sameWithin2Ulp("mul");
+        sameBits("mul");
 
         toArray(simd::div(va, vb), gotV);
         toArray(simd::div(sa, sb), gotS);
-        sameWithin2Ulp("div");
+        sameBits("div");
 
         toArray(simd::fma(va, vb, vc), gotV);
         toArray(simd::fma(sa, sb, sc), gotS);
-        sameWithin2Ulp("fma");
+        sameBits("fma");
 
         toArray(simd::min(va, vb), gotV);
         toArray(simd::min(sa, sb), gotS);
-        sameWithin2Ulp("min");
+        sameBits("min");
 
         toArray(simd::max(va, vb), gotV);
         toArray(simd::max(sa, sb), gotS);
-        sameWithin2Ulp("max");
+        sameBits("max");
 
         toArray(simd::splatW(va), gotV);
         toArray(simd::splatW(sa), gotS);
-        sameWithin2Ulp("splatW");
+        sameBits("splatW");
 
         toArray(simd::loadU8(static_cast<const simd::f32x4*>(nullptr), bytes), gotV);
         toArray(simd::loadU8(static_cast<const simd::f32x4s*>(nullptr), bytes), gotS);
-        sameWithin2Ulp("loadU8");
+        sameBits("loadU8");
 
         // cmpGt produces a bit mask (NaN when set), so compare the patterns, not the values.
         toArray(simd::cmpGt(va, vb), gotV);
@@ -148,7 +149,7 @@ TEST_CASE("simd: every f32x4 function matches its scalar reference within 2 ulp"
 
         toArray(simd::blend(va, vb, simd::cmpGt(va, vb)), gotV);
         toArray(simd::blend(sa, sb, simd::cmpGt(sa, sb)), gotS);
-        sameWithin2Ulp("blend");
+        sameBits("blend");
 
         uint8_t outV[4];
         uint8_t outS[4];
@@ -237,7 +238,7 @@ TEST_CASE("simd hot spot (a): span blending matches the scalar kernels byte for 
     }
 }
 
-TEST_CASE("simd hot spot (b): blur box passes match the scalar kernels within 1/255") {
+TEST_CASE("simd hot spot (b): blur box passes match the scalar kernels byte for byte") {
     Rng rng;
     const int w = 37;
     const int h = 23;
@@ -252,17 +253,14 @@ TEST_CASE("simd hot spot (b): blur box passes match the scalar kernels within 1/
             std::vector<float> outScalar(n, 0.0f);
             xt::sw::swSimd().boxPassH(src.data(), outSimd.data(), w, h, channels, radius);
             scalarOps().boxPassH(src.data(), outScalar.data(), w, h, channels, radius);
-            for (size_t i = 0; i < n; ++i) {
-                // The blur's tolerance is one 8-bit channel step (Docs/tasks/T-102.md test 2).
-                CHECK(std::abs(outSimd[i] - outScalar[i]) <= 1.0f / 255.0f);
-            }
+            // Same operations in the same order as the scalar kernel, so the floats are identical
+            // (Docs/tasks/T-102.md test 2 allowed one 8-bit channel step; none is needed).
+            CHECK(std::memcmp(outSimd.data(), outScalar.data(), n * sizeof(float)) == 0);
             std::fill(outSimd.begin(), outSimd.end(), 0.0f);
             std::fill(outScalar.begin(), outScalar.end(), 0.0f);
             xt::sw::swSimd().boxPassV(src.data(), outSimd.data(), w, h, channels, radius);
             scalarOps().boxPassV(src.data(), outScalar.data(), w, h, channels, radius);
-            for (size_t i = 0; i < n; ++i) {
-                CHECK(std::abs(outSimd[i] - outScalar[i]) <= 1.0f / 255.0f);
-            }
+            CHECK(std::memcmp(outSimd.data(), outScalar.data(), n * sizeof(float)) == 0);
         }
     }
 }
@@ -292,6 +290,137 @@ TEST_CASE("simd hot spot (c): float <-> RGBA8 conversion matches the scalar kern
             CHECK(ulpDiff(fa[i], fb[i]) <= 2);
         }
     }
+}
+
+#if XT_SIMD_SSE2
+namespace {
+
+/// Premultiplied float pixels for the AVX2-vs-SSE2 case: alpha is 0, 1 or a value in between (one
+/// third each), so the transparent, opaque and blended branches of every kernel are all taken.
+std::vector<float> mixedAlphaPixels(Rng& rng, int n) {
+    std::vector<float> px(static_cast<size_t>(n) * 4);
+    for (int i = 0; i < n; ++i) {
+        const uint32_t pick = rng.next() % 3u;
+        const float a = pick == 0 ? 0.0f : (pick == 1 ? 1.0f : rng.unit());
+        px[static_cast<size_t>(i) * 4 + 0] = rng.unit() * a;
+        px[static_cast<size_t>(i) * 4 + 1] = rng.unit() * a;
+        px[static_cast<size_t>(i) * 4 + 2] = rng.unit() * a;
+        px[static_cast<size_t>(i) * 4 + 3] = a;
+    }
+    return px;
+}
+
+/// RGBA8 pixels with the same alpha mix as `mixedAlphaPixels` (0, 255 or anything in between).
+std::vector<uint8_t> mixedAlphaBytes(Rng& rng, int n) {
+    std::vector<uint8_t> px(static_cast<size_t>(n) * 4);
+    for (int i = 0; i < n; ++i) {
+        const uint32_t pick = rng.next() % 3u;
+        const uint8_t a = pick == 0 ? 0 : (pick == 1 ? 255 : static_cast<uint8_t>(rng.next() & 0xFFu));
+        for (int c = 0; c < 3; ++c) {
+            px[static_cast<size_t>(i) * 4 + static_cast<size_t>(c)] =
+                static_cast<uint8_t>(rng.next() & 0xFFu);
+        }
+        px[static_cast<size_t>(i) * 4 + 3] = a;
+    }
+    return px;
+}
+
+template <class T>
+bool sameBytes(const std::vector<T>& a, const std::vector<T>& b) {
+    return a.size() == b.size() && std::memcmp(a.data(), b.data(), a.size() * sizeof(T)) == 0;
+}
+
+}  // namespace
+#endif
+
+TEST_CASE("simd: the AVX2 table is byte-identical to the SSE2 table") {
+#if XT_SIMD_SSE2
+    if (!xt::sw::swCpuHasAvx2()) {
+        MESSAGE("CPU has no AVX2; the AVX2 table cannot run here, nothing to compare");
+        return;
+    }
+    // Docs/design/23-host-integration.md §23.5 (T-529): no FMA in the AVX2 unit, so the two tables
+    // round identically and a golden image has one set of bytes on every x86 machine.
+    const xt::sw::SwSimdOps& avx2 = xt::sw::swSimdAvx2Ops();
+    static const xt::sw::SwSimdOps sse2 = sw::simdk::makeOps<simd::f32x4>("sse2");
+    Rng rng;
+    const int n = 4099;  // at least 4096 pixels, and not a multiple of any vector width
+    const std::vector<float> src = mixedAlphaPixels(rng, n);
+    const float solid[4] = {0.2f, 0.35f, 0.1f, 0.5f};
+
+    // (a) float spans.
+    {
+        std::vector<float> a = mixedAlphaPixels(rng, n);
+        std::vector<float> b = a;
+        avx2.spanSrcOverF(a.data(), src.data(), n);
+        sse2.spanSrcOverF(b.data(), src.data(), n);
+        CHECK(sameBytes(a, b));
+
+        a = mixedAlphaPixels(rng, n);
+        b = a;
+        avx2.spanSolidOverF(a.data(), n, solid, 0.5f);
+        sse2.spanSolidOverF(b.data(), n, solid, 0.5f);
+        CHECK(sameBytes(a, b));
+    }
+
+    for (int premulTarget = 0; premulTarget < 2; ++premulTarget) {
+        const bool premul = premulTarget != 0;
+        INFO("premultiplied RGBA8: " << premul);
+
+        // (a) RGBA8 spans.
+        std::vector<uint8_t> a = mixedAlphaBytes(rng, n);
+        std::vector<uint8_t> b = a;
+        avx2.spanSrcOverU8(a.data(), src.data(), n, premul);
+        sse2.spanSrcOverU8(b.data(), src.data(), n, premul);
+        CHECK(sameBytes(a, b));
+
+        a = mixedAlphaBytes(rng, n);
+        b = a;
+        avx2.spanSolidOverU8(a.data(), n, solid, 0.5f, premul);
+        sse2.spanSolidOverU8(b.data(), n, solid, 0.5f, premul);
+        CHECK(sameBytes(a, b));
+
+        // (c) float <-> RGBA8.
+        std::vector<uint8_t> ua(static_cast<size_t>(n) * 4, 0);
+        std::vector<uint8_t> ub(static_cast<size_t>(n) * 4, 0);
+        avx2.rowToU8(src.data(), ua.data(), n, premul);
+        sse2.rowToU8(src.data(), ub.data(), n, premul);
+        CHECK(sameBytes(ua, ub));
+
+        const std::vector<uint8_t> bytes = mixedAlphaBytes(rng, n);
+        std::vector<float> fa(static_cast<size_t>(n) * 4, 0.0f);
+        std::vector<float> fb(static_cast<size_t>(n) * 4, 0.0f);
+        avx2.rowFromU8(bytes.data(), fa.data(), n, premul);
+        sse2.rowFromU8(bytes.data(), fb.data(), n, premul);
+        CHECK(sameBytes(fa, fb));
+    }
+
+    // (b) blur box passes over a 67 x 63 image (4221 pixels).
+    const int w = 67;
+    const int h = 63;
+    for (int channels : {1, 4}) {
+        const size_t count = static_cast<size_t>(w) * static_cast<size_t>(h) * static_cast<size_t>(channels);
+        std::vector<float> img(count);
+        for (size_t i = 0; i < count; ++i) {
+            img[i] = rng.unit();
+        }
+        for (int radius : {1, 3, 8}) {
+            INFO("channels " << channels << " radius " << radius);
+            std::vector<float> a(count, 0.0f);
+            std::vector<float> b(count, 0.0f);
+            avx2.boxPassH(img.data(), a.data(), w, h, channels, radius);
+            sse2.boxPassH(img.data(), b.data(), w, h, channels, radius);
+            CHECK(sameBytes(a, b));
+            std::fill(a.begin(), a.end(), 0.0f);
+            std::fill(b.begin(), b.end(), 0.0f);
+            avx2.boxPassV(img.data(), a.data(), w, h, channels, radius);
+            sse2.boxPassV(img.data(), b.data(), w, h, channels, radius);
+            CHECK(sameBytes(a, b));
+        }
+    }
+#else
+    MESSAGE("no SSE2/AVX2 tables in this build, nothing to compare");
+#endif
 }
 
 TEST_CASE("simd: a table is selected and names itself") {

@@ -119,3 +119,95 @@ TEST_CASE("FlowRuntime::rebind: without a successful load it is kInvalidArgument
     CHECK(rt.rebind(*doc, warnings) == Status::kInvalidArgument);
     CHECK(warnings.empty());
 }
+
+TEST_CASE("T-540: continuityWarnings is recomputed by rebind()") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> before = loadDoc(shaper, R"(<div id="a"></div><div id="b"></div>)");
+    std::unique_ptr<Document> after = loadDoc(shaper, R"(<div id="a"></div>)");
+    const std::string json = R"({
+        "version": 1,
+        "nodes": [ { "id": "c", "type": "clock" },
+                   { "id": "s", "type": "toString", "params": { "format": "{}" } } ],
+        "edges": [ { "from": "c.seconds", "to": "s.in" },
+                   { "from": "s.out", "to": "#a.setStyle" },
+                   { "from": "s.out", "to": "#b.setStyle" } ]
+    })";
+    FlowGraph graph;
+    std::vector<std::string> errors;
+    REQUIRE(FlowGraph::parse(json, graph, errors) == Status::kOk);
+    FlowRuntime rt;
+    REQUIRE(rt.load(graph, *before, errors) == Status::kOk);
+    std::vector<std::string> w;
+    rt.continuityWarnings(w);
+    CHECK(w.size() == 2);
+    std::vector<std::string> rebindWarnings;
+    REQUIRE(rt.rebind(*after, rebindWarnings) == Status::kOk);
+    w.clear();
+    rt.continuityWarnings(w);
+    REQUIRE(w.size() == 1);
+    CHECK(w[0].find("-> #a.setStyle") != std::string::npos);
+}
+
+TEST_CASE("T-546: rebind() warns about a setState edge naming a state the document does not declare") {
+    NullTextShaper shaper;
+    const char* withStates =
+        R"(<button id="b">x</button><div id="Box" state-groups="Tone: Warn|Danger"></div>)";
+    const char* withoutStates = R"(<button id="b">x</button><div id="Box"></div>)";
+    std::unique_ptr<Document> declared = loadDoc(shaper, withStates);
+    std::unique_ptr<Document> declaredAgain = loadDoc(shaper, withStates);
+    std::unique_ptr<Document> undeclared = loadDoc(shaper, withoutStates);
+    const std::string json = R"({
+        "version": 1,
+        "nodes": [],
+        "edges": [
+            { "from": "#b.Click", "to": "#Box.setState", "params": { "state": "Warn" } },
+            { "from": "#b.Click", "to": "#Box.setState", "params": { "state": "Disabled", "mode": "toggle" } }
+        ]
+    })";
+    FlowGraph graph;
+    std::vector<std::string> errors;
+    REQUIRE(FlowGraph::parse(json, graph, errors) == Status::kOk);
+
+    FlowRuntime rt;
+    REQUIRE(rt.load(graph, *declared, errors) == Status::kOk);
+    CHECK(errors.empty());
+
+    std::vector<std::string> loaded;
+    rt.loadWarnings(loaded);
+    CHECK(loaded.empty());
+
+    // Declared custom state and built-in alias (Disabled): no warning.
+    std::vector<std::string> warnings;
+    REQUIRE(rt.rebind(*declaredAgain, warnings) == Status::kOk);
+    CHECK(warnings.empty());
+
+    // A document without the state: exactly one line (Disabled is built in), the edge is kept.
+    REQUIRE(rt.rebind(*undeclared, warnings) == Status::kOk);
+    REQUIRE(warnings.size() == 1);
+    CHECK(warnings[0] == "#Box.setState: the document declares no state \"Warn\"");
+    click(*undeclared, "b");  // Runtime behavior is unchanged: an unknown state is ignored.
+    CHECK(undeclared->hasCustomState(undeclared->byId("Box"), "Warn") == false);
+}
+
+TEST_CASE("T-546: loadWarnings() reports an undeclared setState state right after load()") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc = loadDoc(shaper, R"(<button id="b">x</button><div id="Box"></div>)");
+    const std::string json = R"({
+        "version": 1,
+        "nodes": [],
+        "edges": [
+            { "from": "#b.Click", "to": "#Box.setState", "params": { "state": "Nope" } },
+            { "from": "#b.Click", "to": "#Box.setState", "params": { "state": "Nope", "mode": "off" } },
+            { "from": "#b.Click", "to": "#Box.setState", "params": { "state": "Disabled" } }
+        ]
+    })";
+    FlowGraph graph;
+    std::vector<std::string> errors;
+    REQUIRE(FlowGraph::parse(json, graph, errors) == Status::kOk);
+    FlowRuntime rt;
+    REQUIRE(rt.load(graph, *doc, errors) == Status::kOk);
+    std::vector<std::string> lines;
+    rt.loadWarnings(lines);
+    REQUIRE(lines.size() == 1);
+    CHECK(lines[0] == "#Box.setState: the document declares no state \"Nope\"");
+}

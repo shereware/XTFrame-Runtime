@@ -1,7 +1,10 @@
+#include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <limits>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -54,7 +57,7 @@ std::string writeTempXt(const std::string& name, const std::string& source) {
 
 /// A document with six buttons (#b1..#b6) stacked in a column, for driving node pulse inputs via
 /// Document::dispatchInput.
-std::unique_ptr<Document> buttonsDoc(TextShaper& shaper) {
+std::unique_ptr<Document> buttonsDoc(TextShaper& shaper, uint32_t behavior = 0) {
     const std::string source =
         "<xt>\n<head><style>\nbody{display:flex;flex-direction:column;}\n"
         "button{width:50px;height:20px;}\n</style></head>\n<body>\n"
@@ -63,6 +66,7 @@ std::unique_ptr<Document> buttonsDoc(TextShaper& shaper) {
         "</body>\n</xt>\n";
     std::string path = writeTempXt("buttons", source);
     compile::CompileOptions options;
+    options.behavior = behavior;  // T-541: 1 = signals coalesce per frame (T-389).
     compile::CompileResult result = compile::compileDocument(path, options);
     for (const compile::Diagnostic& d : result.diagnostics) {
         CAPTURE(d.message);
@@ -818,4 +822,493 @@ TEST_CASE("T-258a F16: random takes non-finite bounds as 0 and saturates integer
             CHECK(valueOf(rt, "rnd.value") <= 10.0);
         }
     }
+}
+
+// ---- T-541 (Docs/design/27-interaction.md §27.4.4): the `state` node ---------------------------------
+
+namespace {
+
+std::string readFixture(const std::string& name) {
+    std::ifstream in(std::string(XT_TEST_FLOW_DIR) + "/fixtures/" + name, std::ios::binary);
+    REQUIRE(in.good());
+    std::ostringstream text;
+    text << in.rdbuf();
+    return text.str();
+}
+
+}  // namespace
+
+TEST_CASE("state: the game-flow machine walks its transitions and fires enter / exit / changed") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc = buttonsDoc(shaper);
+    FlowRuntime rt;
+    REQUIRE(load(rt, *doc, readFixture("state_machine.xtflow")) == Status::kOk);
+
+    // Loading pushes `initial` and fires no enter.
+    CHECK(stringValueOf(rt, "game.state") == "Menu");
+    CHECK(valueOf(rt, "game.index") == doctest::Approx(0));
+    CHECK(valueOf(rt, "changed.value") == doctest::Approx(0));
+    CHECK(valueOf(rt, "enterMenu.value") == doctest::Approx(0));
+
+    click(*doc, "b2");  // pause in Menu: no transition, no output.
+    CHECK(stringValueOf(rt, "game.state") == "Menu");
+    CHECK(valueOf(rt, "changed.value") == doctest::Approx(0));
+
+    click(*doc, "b1");  // start
+    CHECK(stringValueOf(rt, "game.state") == "Playing");
+    CHECK(valueOf(rt, "game.index") == doctest::Approx(1));
+    click(*doc, "b2");  // pause
+    CHECK(stringValueOf(rt, "game.state") == "Paused");
+    CHECK(valueOf(rt, "game.index") == doctest::Approx(2));
+    click(*doc, "b2");  // pause again in Paused: nothing.
+    CHECK(stringValueOf(rt, "game.state") == "Paused");
+    click(*doc, "b3");  // resume
+    CHECK(stringValueOf(rt, "game.state") == "Playing");
+    click(*doc, "b4");  // quit, the "*" fallback
+    CHECK(stringValueOf(rt, "game.state") == "Menu");
+
+    CHECK(valueOf(rt, "changed.value") == doctest::Approx(4));
+    CHECK(valueOf(rt, "enterPaused.value") == doctest::Approx(1));
+    CHECK(valueOf(rt, "exitPaused.value") == doctest::Approx(1));
+    CHECK(valueOf(rt, "exitMenu.value") == doctest::Approx(1));
+    CHECK(valueOf(rt, "enterMenu.value") == doctest::Approx(1));
+}
+
+TEST_CASE("state: a self-transition fires nothing, an explicit (from, on) beats the \"*\" fallback") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc = buttonsDoc(shaper);
+    FlowRuntime rt;
+    const std::string json = R"({
+        "nodes": [
+            { "id": "s", "type": "state", "params": {
+                "states": ["A", "B", "C"],
+                "transitions": [
+                    { "from": "A", "on": "stay", "to": "A" },
+                    { "from": "*", "on": "go", "to": "C" },
+                    { "from": "A", "on": "go", "to": "B" }
+                ] } },
+            { "id": "changed", "type": "counter" },
+            { "id": "enterA", "type": "counter" }
+        ],
+        "edges": [
+            { "from": "#b1.Click", "to": "s.stay" },
+            { "from": "#b2.Click", "to": "s.go" },
+            { "from": "s.changed", "to": "changed.increment" },
+            { "from": "s.enterA", "to": "enterA.increment" }
+        ]
+    })";
+    REQUIRE(load(rt, *doc, json) == Status::kOk);
+    CHECK(stringValueOf(rt, "s.state") == "A");  // `initial` defaults to states[0].
+    click(*doc, "b1");
+    CHECK(valueOf(rt, "changed.value") == doctest::Approx(0));
+    CHECK(valueOf(rt, "enterA.value") == doctest::Approx(0));
+    click(*doc, "b2");  // (A, go) -> B wins over (*, go) -> C.
+    CHECK(stringValueOf(rt, "s.state") == "B");
+    click(*doc, "b2");  // (B, go) falls back to (*, go) -> C.
+    CHECK(stringValueOf(rt, "s.state") == "C");
+    CHECK(valueOf(rt, "changed.value") == doctest::Approx(2));
+}
+
+TEST_CASE("state: guard false swallows the events (but not set); a missing edge means true") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc = buttonsDoc(shaper);
+    FlowRuntime rt;
+    REQUIRE(load(rt, *doc, readFixture("state_machine.xtflow")) == Status::kOk);
+    click(*doc, "b5");  // gate -> false
+    click(*doc, "b1");  // start: swallowed
+    CHECK(stringValueOf(rt, "game.state") == "Menu");
+    CHECK(valueOf(rt, "changed.value") == doctest::Approx(0));
+    click(*doc, "b5");  // gate -> true
+    click(*doc, "b1");
+    CHECK(stringValueOf(rt, "game.state") == "Playing");
+
+    // No `guard` edge at all: events pass (the "valid minimal graph" of the first test already ran).
+    const std::string json = R"({
+        "nodes": [ { "id": "s", "type": "state", "params": {
+            "states": ["A", "B"], "transitions": [ { "from": "A", "on": "go", "to": "B" } ] } } ],
+        "edges": [ { "from": "#b1.Click", "to": "s.go" } ]
+    })";
+    std::unique_ptr<Document> doc2 = buttonsDoc(shaper);
+    FlowRuntime other;  // After its Document, so it is destroyed first.
+    REQUIRE(load(other, *doc2, json) == Status::kOk);
+    click(*doc2, "b1");
+    CHECK(stringValueOf(other, "s.state") == "B");
+}
+
+TEST_CASE("state: set jumps without the transition table; an unknown name is ignored and reported once") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc = buttonsDoc(shaper);
+    FlowRuntime rt;
+    REQUIRE(load(rt, *doc, readFixture("state_machine.xtflow")) == Status::kOk);
+    CHECK(rt.runtimeErrors().empty());
+
+    click(*doc, "b6");  // pick = 1 -> lookup "Paused" -> set, from Menu.
+    CHECK(stringValueOf(rt, "game.state") == "Paused");
+    CHECK(valueOf(rt, "exitMenu.value") == doctest::Approx(1));
+    CHECK(valueOf(rt, "enterPaused.value") == doctest::Approx(1));
+    CHECK(valueOf(rt, "changed.value") == doctest::Approx(1));
+
+    click(*doc, "b6");  // pick = 2 -> "Nope": no output, one runtime error.
+    CHECK(stringValueOf(rt, "game.state") == "Paused");
+    CHECK(valueOf(rt, "changed.value") == doctest::Approx(1));
+    REQUIRE(rt.runtimeErrors().size() == 1);
+    CHECK(rt.runtimeErrors()[0].find("'Nope'") != std::string::npos);
+    CHECK(rt.runtimeErrors()[0].find("'game'") != std::string::npos);
+    click(*doc, "b6");  // pick stays clamped at 2: no new value, so nothing more.
+    CHECK(rt.runtimeErrors().size() == 1);
+}
+
+TEST_CASE("state: exit<s> reaches its downstream before state is rewritten, enter<to> after") {
+    // `state` feeds both emit nodes; exitMenu triggers `before`, enterPlaying triggers `after`. The
+    // emit nodes report the `state` value they hold when triggered: the old state for the exit
+    // pulse, the new one for the enter pulse (the pulse sees the values delivered before it,
+    // 27 §27.4.1 -- the batch rule and the node's own output order agree). Both with signals
+    // coalescing per frame (behavior 1) and without, driven by a click and by a timer inside tick().
+    const std::string json = R"({
+        "nodes": [
+            { "id": "s", "type": "state", "params": {
+                "states": ["Menu", "Playing"],
+                "transitions": [ { "from": "Menu", "on": "start", "to": "Playing" } ] } },
+            { "id": "t", "type": "timer", "params": { "interval": 0.1, "autostart": false, "repeat": false } },
+            { "id": "text", "type": "toString" },
+            { "id": "before", "type": "emit", "params": { "port": "before" } },
+            { "id": "after", "type": "emit", "params": { "port": "after" } }
+        ],
+        "edges": [
+            { "from": "#b1.Click", "to": "s.start" },
+            { "from": "#b2.Click", "to": "t.start" },
+            { "from": "t.tick", "to": "s.start" },
+            { "from": "s.state", "to": "before.value" },
+            { "from": "s.state", "to": "text.in" },
+            { "from": "text.out", "to": "after.value" },
+            { "from": "s.exitMenu", "to": "before.trigger" },
+            { "from": "s.enterPlaying", "to": "after.trigger" }
+        ]
+    })";
+    for (uint32_t behavior : {0u, 1u}) {
+        for (bool byTimer : {false, true}) {
+            CAPTURE(behavior);
+            CAPTURE(byTimer);
+            NullTextShaper shaper;
+            std::unique_ptr<Document> doc = buttonsDoc(shaper, behavior);
+            CHECK(doc->behavior() == behavior);
+            FlowRuntime rt;
+            std::vector<std::pair<std::string, std::string>> seen;  // (emit port, value text)
+            rt.setHostEventListener([&seen](const FlowHostEvent& e) {
+                if (e.kind == FlowHostEventKind::Emit) {
+                    seen.emplace_back(e.name, e.value.s);
+                }
+            });
+            REQUIRE(load(rt, *doc, json) == Status::kOk);
+            if (byTimer) {
+                click(*doc, "b2");
+                rt.tick(0.2f);
+            } else {
+                click(*doc, "b1");
+                rt.tick(0.0f);
+            }
+            REQUIRE(seen.size() == 2);
+            CHECK(seen[0] == std::make_pair(std::string("before"), std::string("Menu")));
+            CHECK(seen[1] == std::make_pair(std::string("after"), std::string("Playing")));
+        }
+    }
+}
+
+TEST_CASE("state: events feeding back through enter / exit are the general cycle rule") {
+    // A pulse edge from a node to itself is not a cycle (timer.tick -> timer.stop): same here.
+    const std::string self = R"({
+        "nodes": [ { "id": "s", "type": "state", "params": {
+            "states": ["A", "B"], "transitions": [ { "from": "A", "on": "go", "to": "B" },
+                                                    { "from": "B", "on": "back", "to": "A" } ] } } ],
+        "edges": [ { "from": "s.enterB", "to": "s.back" } ]
+    })";
+    FlowGraph graph;
+    std::vector<std::string> errors;
+    CHECK(FlowGraph::parse(self, graph, errors) == Status::kOk);
+    // Through a second node it is a loop.
+    const std::string loop = R"({
+        "nodes": [ { "id": "s", "type": "state", "params": {
+            "states": ["A", "B"], "transitions": [ { "from": "A", "on": "go", "to": "B" } ] } },
+                   { "id": "m", "type": "merge" } ],
+        "edges": [ { "from": "s.enterB", "to": "m.in" }, { "from": "m.out", "to": "s.go" } ]
+    })";
+    errors.clear();
+    CHECK(FlowGraph::parse(loop, graph, errors) == Status::kInvalidArgument);
+    REQUIRE(errors.size() == 1);
+    CHECK(errors[0] == "cycle detected in the node graph");
+}
+
+// ---- T-543 (Docs/design/27-interaction.md §27.4.5): filter -------------------------------------
+
+namespace {
+
+/// Declared out ports a host sets (`Hud.v` number, `Hud.flag` bool, `Hud.name` string) and three
+/// buttons for the pulse inputs. A declared port only reports a change, so a value is repeated by
+/// a `sample` filter whose `trigger` is a button.
+constexpr const char* kFilterDoc = R"X(<xt><head><style>
+  #b1 { position: absolute; left: 0px; top: 0px; width: 40px; height: 20px; }
+  #b2 { position: absolute; left: 0px; top: 30px; width: 40px; height: 20px; }
+</style></head>
+<body id="Root"><div id="Hud" port:v="number out" port:flag="bool out" port:name="string out"></div>
+  <div id="b1"></div><div id="b2"></div></body></xt>)X";
+
+std::unique_ptr<Document> filterDoc(TextShaper& shaper) {
+    const compile::SourceFile file{"filter.xt", kFilterDoc};
+    compile::CompileOptions options;
+    options.behavior = 1;
+    compile::CompileResult result = compile::compileDocumentFromStrings({&file, 1}, "filter.xt", options);
+    REQUIRE(result.ok());
+    std::unique_ptr<Document> doc;
+    REQUIRE(Document::load(IrBlob{result.ir.data(), result.ir.size()}, true, &shaper, nullptr, doc) ==
+            Status::kOk);
+    doc->setViewport(Rect{0, 0, 400, 300});
+    doc->update(0.0f);
+    return doc;
+}
+
+void clickAt(Document& doc, float x, float y) {
+    InputEvent ev;
+    ev.kind = InputEvent::PointerDown;
+    ev.pos = Vec2{x, y};
+    doc.dispatchInput(ev);
+    ev.kind = InputEvent::PointerUp;
+    doc.dispatchInput(ev);
+}
+
+/// Every `emit` event of a runtime, in order: which node sent it and the value it carried.
+struct EmitLog {
+    struct Entry {
+        std::string port;
+        PortValue value;
+    };
+    std::vector<Entry> entries;
+    void attach(FlowRuntime& rt) {
+        rt.setHostEventListener([this](const FlowHostEvent& ev) {
+            if (ev.kind == FlowHostEventKind::Emit) {
+                entries.push_back(Entry{ev.name, ev.value});
+            }
+        });
+    }
+    /// The numbers sent by the `emit` named `port`.
+    std::vector<double> numbers(const std::string& port) const {
+        std::vector<double> out;
+        for (const Entry& e : entries) {
+            if (e.port == port) {
+                out.push_back(e.value.n);
+            }
+        }
+        return out;
+    }
+    size_t count(const std::string& port) const {
+        size_t n = 0;
+        for (const Entry& e : entries) {
+            n += e.port == port ? 1u : 0u;
+        }
+        return n;
+    }
+};
+
+bool sameNumbers(const std::vector<double>& got, const std::vector<double>& want) {
+    if (got.size() != want.size()) {
+        return false;
+    }
+    for (size_t i = 0; i < got.size(); ++i) {
+        if (std::abs(got[i] - want[i]) > 1e-6) {
+            return false;
+        }
+    }
+    return true;
+}
+
+}  // namespace
+
+TEST_CASE(
+    "T-543 filter deadband 0.1: 0, 0.05, 0.2, 0.25, 0.31 send 0, 0.2, 0.31; reset sends the next input") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc = filterDoc(shaper);
+    FlowRuntime rt;
+    EmitLog log;
+    log.attach(rt);
+    // `f` is fed by the port directly; `s` -> `g` repeats the port's current value on every
+    // click of #b1 (a declared port does not report an unchanged value), reset by #b2.
+    const std::string json = R"({
+        "nodes": [
+            { "id": "f", "type": "filter", "params": { "op": "deadband", "threshold": 0.1 } },
+            { "id": "s", "type": "filter", "params": { "op": "sample" } },
+            { "id": "g", "type": "filter", "params": { "op": "deadband", "threshold": 0.1 } },
+            { "id": "ef", "type": "emit", "params": { "port": "f" } },
+            { "id": "eg", "type": "emit", "params": { "port": "g" } }
+        ],
+        "edges": [
+            { "from": "#Hud.v", "to": "f.in" },
+            { "from": "f.out", "to": "ef.value" }, { "from": "f.passed", "to": "ef.trigger" },
+            { "from": "#Hud.v", "to": "s.in" }, { "from": "#b1.Click", "to": "s.trigger" },
+            { "from": "s.out", "to": "g.in" }, { "from": "#b2.Click", "to": "g.reset" },
+            { "from": "g.out", "to": "eg.value" }, { "from": "g.passed", "to": "eg.trigger" }
+        ]
+    })";
+    REQUIRE(load(rt, *doc, json) == Status::kOk);
+    const PortId v = doc->lookupPort("Hud.v");
+    REQUIRE(v != kInvalidPort);
+    // The port starts at 0 and reports changes only, so 0.7 first gives both filters a last value;
+    // then the inputs 0, 0.05, 0.2, 0.25, 0.31.
+    for (float input : {0.7f, 0.0f, 0.05f, 0.2f, 0.25f, 0.31f}) {
+        REQUIRE(doc->setPort(v, Value::ofFloat(input)) == Status::kOk);
+        rt.tick(1.0f / 60.0f);
+        clickAt(*doc, 20.0f, 10.0f);  // s -> g sees the same input.
+    }
+    CHECK(sameNumbers(log.numbers("f"), {0.7, 0.0, 0.2, 0.31}));
+    CHECK(sameNumbers(log.numbers("g"), {0.7, 0.0, 0.2, 0.31}));
+
+    // The same value again: not sent, until `reset` makes the next input count.
+    clickAt(*doc, 20.0f, 10.0f);
+    CHECK(log.count("g") == 4);
+    clickAt(*doc, 20.0f, 40.0f);  // reset
+    CHECK(log.count("g") == 4);
+    clickAt(*doc, 20.0f, 10.0f);
+    REQUIRE(log.count("g") == 5);
+    CHECK(sameNumbers({log.numbers("g").back()}, {0.31}));
+    CHECK(valueOf(rt, "g.out") == doctest::Approx(0.31));
+}
+
+TEST_CASE("T-543 filter deadband: bool and string send only when the value changed") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc = filterDoc(shaper);
+    FlowRuntime rt;
+    EmitLog log;
+    log.attach(rt);
+    const std::string json = R"({
+        "nodes": [
+            { "id": "sb", "type": "filter", "params": { "op": "sample" } },
+            { "id": "fb", "type": "filter", "params": { "op": "deadband", "threshold": 5 } },
+            { "id": "ss", "type": "filter", "params": { "op": "sample" } },
+            { "id": "fs", "type": "filter", "params": { "op": "deadband", "threshold": 0 } },
+            { "id": "eb", "type": "emit", "params": { "port": "b" } },
+            { "id": "es", "type": "emit", "params": { "port": "s" } }
+        ],
+        "edges": [
+            { "from": "#Hud.flag", "to": "sb.in" }, { "from": "#b1.Click", "to": "sb.trigger" },
+            { "from": "sb.out", "to": "fb.in" },
+            { "from": "fb.out", "to": "eb.value" }, { "from": "fb.passed", "to": "eb.trigger" },
+            { "from": "#Hud.name", "to": "ss.in" }, { "from": "#b1.Click", "to": "ss.trigger" },
+            { "from": "ss.out", "to": "fs.in" },
+            { "from": "fs.out", "to": "es.value" }, { "from": "fs.passed", "to": "es.trigger" }
+        ]
+    })";
+    REQUIRE(load(rt, *doc, json) == Status::kOk);
+    const PortId flag = doc->lookupPort("Hud.flag");
+    const PortId name = doc->lookupPort("Hud.name");
+    REQUIRE(flag != kInvalidPort);
+    REQUIRE(name != kInvalidPort);
+    // true, true, false: the second `true` is a repeat of the sent value.
+    for (float b : {1.0f, 1.0f, 0.0f}) {
+        REQUIRE(doc->setPort(flag, Value::ofFloat(b)) == Status::kOk);
+        rt.tick(0.0f);
+        clickAt(*doc, 20.0f, 10.0f);
+    }
+    REQUIRE(log.count("b") == 2);
+    CHECK(log.entries[0].port == "b");
+    CHECK(log.entries[0].value.type == PortType::Bool);
+    CHECK(log.entries[0].value.b);
+    CHECK_FALSE(log.entries.back().value.b);
+    // Strings: the clicks above found no name yet (nothing to sample), then two names.
+    CHECK(log.count("s") == 0);
+    for (const char* text : {"ada", "ada", "bob"}) {
+        REQUIRE(doc->setPortText(name, text) == Status::kOk);
+        rt.tick(0.0f);
+        clickAt(*doc, 20.0f, 10.0f);
+    }
+    REQUIRE(log.count("s") == 2);
+    std::vector<std::string> sent;
+    for (const EmitLog::Entry& e : log.entries) {
+        if (e.port == "s") {
+            REQUIRE(e.value.type == PortType::String);
+            sent.push_back(e.value.s);
+        }
+    }
+    CHECK(sent == std::vector<std::string>{"ada", "bob"});
+}
+
+TEST_CASE("T-543 filter quantize 0.5: 0.1, 0.2, 0.3, 0.76 send 0, 0.5, 1.0") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc = filterDoc(shaper);
+    FlowRuntime rt;
+    EmitLog log;
+    log.attach(rt);
+    const std::string json = R"({
+        "nodes": [
+            { "id": "q", "type": "filter", "params": { "op": "quantize", "step": 0.5 } },
+            { "id": "e", "type": "emit", "params": { "port": "q" } }
+        ],
+        "edges": [
+            { "from": "#document.pointerX", "to": "q.in" },
+            { "from": "q.out", "to": "e.value" }, { "from": "q.passed", "to": "e.trigger" }
+        ]
+    })";
+    REQUIRE(load(rt, *doc, json) == Status::kOk);
+    // The initial reading (the viewport center, 200) quantizes to 200: the first value sent.
+    rt.tick(0.0f);
+    log.entries.clear();
+    // 0.1 -> 0, 0.2 -> 0 (same as the last sent), 0.3 -> 0.5, 0.76 -> 1.0 (the pointer moves in
+    // float pixels; 0.5 steps are exact in binary).
+    for (float x : {0.1f, 0.2f, 0.3f, 0.76f}) {
+        InputEvent ev;
+        ev.kind = InputEvent::PointerMove;
+        ev.pos = Vec2{x, 10.0f};
+        doc->dispatchInput(ev);
+        rt.tick(1.0f / 60.0f);
+    }
+    CHECK(sameNumbers(log.numbers("q"), {0.0, 0.5, 1.0}));
+    CHECK(valueOf(rt, "q.out") == doctest::Approx(1.0));
+}
+
+TEST_CASE("T-543 filter sample: `in` stores, `trigger` sends the current value every time") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc = filterDoc(shaper);
+    FlowRuntime rt;
+    EmitLog log;
+    log.attach(rt);
+    const std::string json = R"({
+        "nodes": [
+            { "id": "s", "type": "filter", "params": { "op": "sample" } },
+            { "id": "e", "type": "emit", "params": { "port": "s" } }
+        ],
+        "edges": [
+            { "from": "#Hud.v", "to": "s.in" }, { "from": "#b1.Click", "to": "s.trigger" },
+            { "from": "s.out", "to": "e.value" }, { "from": "s.passed", "to": "e.trigger" }
+        ]
+    })";
+    REQUIRE(load(rt, *doc, json) == Status::kOk);
+    clickAt(*doc, 20.0f, 10.0f);  // No value has reached `in` yet: nothing to send.
+    CHECK(log.entries.empty());
+    const PortId v = doc->lookupPort("Hud.v");
+    for (float input : {1.0f, 2.0f, 3.0f}) {
+        REQUIRE(doc->setPort(v, Value::ofFloat(input)) == Status::kOk);
+        rt.tick(1.0f / 60.0f);
+    }
+    CHECK(log.entries.empty());  // `in` alone sends nothing.
+    clickAt(*doc, 20.0f, 10.0f);
+    clickAt(*doc, 20.0f, 10.0f);  // The same value again is still sent.
+    CHECK(sameNumbers(log.numbers("s"), {3.0, 3.0}));
+}
+
+TEST_CASE("T-543 filter: FlowRuntime::load() repeats the edge checks on a hand-edited graph") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc = filterDoc(shaper);
+    FlowRuntime rt;
+    FlowGraph graph;
+    std::vector<std::string> errors;
+    REQUIRE(FlowGraph::parse(R"({
+        "nodes": [ { "id": "f", "type": "filter", "params": { "op": "deadband", "threshold": 1 } },
+                   { "id": "b", "type": "toggle" } ],
+        "edges": [ { "from": "b.value", "to": "f.in" } ]
+    })",
+                             graph, errors) == Status::kOk);
+    graph.nodes[0].params["op"].s = "quantize";
+    graph.nodes[0].params["step"].type = PortType::Number;
+    graph.nodes[0].params["step"].n = 1;
+    errors.clear();
+    CHECK(rt.load(graph, *doc, errors) == Status::kInvalidArgument);
+    REQUIRE(errors.size() == 1);
+    CHECK(errors[0] == "filter f: quantize takes a number");
 }

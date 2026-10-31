@@ -4,7 +4,8 @@ One `radio` holds the selected difficulty. Per row, a `compare` against the row 
 removes class `on` (the board's CSS transitions fade the highlight and star in; the row itself stays
 put so the hovered hit area never moves). Every per-level value is one `lookup`. Each selection
 change toggles class `flip` on the preview parts, which swaps their animation name and replays it.
-The pointer shifts the layers by depth (gaze parallax, via left/top); selection never moves them.
+The pointer shifts the layers by depth (gaze parallax: a pointermove trigger plus bind:left/top in
+challenge-menu.xt); selection never moves them.
 """
 import json
 import os
@@ -92,56 +93,26 @@ table("descText", [lv["desc"] for lv in LEVELS], "#preview-desc.setText")
 table("hintText", [lv["hint"] for lv in LEVELS], "#hint-text.setText")
 table("imageTone", [f"opacity: {lv['tone']:.2f}" for lv in LEVELS], "#preview-image.setStyle")
 
-# --- Gaze parallax and fly-in ------------------------------------------------------------------
-# Only the pointer moves these layers; selection never does. Each layer's `left`/`top` is its
-# authored position plus a small offset for its depth, the way things in front of you shift when
-# your eyes move: the two panels against the gaze, the far background a little with it. The values
-# go through setStyle, and the board's `transition` on left/top glides each layer to the new spot.
-# (Transforms are not an option here: the flow's setProperty TranslateX/Y/Z never renders, and a
-# transform set from a style string renders wrong inside the 3D scene.)
-#
-# The intro uses the same path: for the first 0.15 s the two panels are parked off-screen with the
-# transition switched off, then the normal position takes over and the transition slides them in.
-node("clock", "clock")
-node("introEnd", "constant", value=0.15)
-node("introOn", "compare", op="lt")
-edge("clock.seconds", "introOn.a")
-edge("introEnd.out", "introOn.b")
-
-GLIDE = "transition: left 700ms cubic-bezier(.2,.7,.2,1), top 700ms cubic-bezier(.2,.7,.2,1)"
-GAZE = [
-    # key, node, rest x, rest y, x shift, y shift (px at the screen edge), parked-off-screen x
-    ("list", "#diff-list", 130, 196, 14, 8, -520),
-    ("panel", "#panel-preview", 650, 166, 20, 10, 1400),
-    ("world", "#world-layer", -40, -24, -26, -14, None),
-]
-for key, target, x0, y0, rx, ry, park in GAZE:
-    node(f"{key}X", "math", op="map", inLo=-1, inHi=1, outLo=x0 + rx, outHi=x0 - rx)
-    node(f"{key}Y", "math", op="map", inLo=-1, inHi=1, outLo=y0 + ry, outHi=y0 - ry)
-    edge("#document.pointerNX", f"{key}X.a")
-    edge("#document.pointerNY", f"{key}Y.a")
-    node(f"{key}Pos", "format", format="left: {a}px; top: {b}px; " + GLIDE, decimals=1)
-    edge(f"{key}X.out", f"{key}Pos.a")
-    edge(f"{key}Y.out", f"{key}Pos.b")
-    out = f"{key}Pos.out"
-    if park is not None:
-        node(f"{key}Park", "constant", value=f"left: {park}px; top: {y0}px; transition: left 0ms, top 0ms")
-        node(f"{key}Style", "select")
-        edge("introOn.out", f"{key}Style.cond")
-        edge(f"{key}Park.out", f"{key}Style.a")
-        edge(out, f"{key}Style.b")
-        out = f"{key}Style.out"
-    edge(out, f"{target}.setStyle")
-
-# Hologram rings: spun from the clock, counter-rotating, inside the board's scaleY wrapper.
-for nid, target, speed in (("ringSpin", "#holo-ring", 50), ("arcSpin", "#holo-arc", -110)):
-    node(f"{nid}_k", "constant", value=speed)
-    node(nid, "math", op="mul")
-    edge("clock.seconds", f"{nid}.a")
-    edge(f"{nid}_k.out", f"{nid}.b")
-    node(f"{nid}Style", "format", format="transform: rotate({a}deg)", decimals=2)
-    edge(f"{nid}.out", f"{nid}Style.a")
-    edge(f"{nid}Style.out", f"{target}.setStyle")
+# --- Fly-in -----------------------------------------------------------------------------------
+# The gaze parallax and the hologram spin are not in the flow: the flow only triggers and selects
+# (Docs/design/27-interaction.md 27.4.3). The root's `on:pointermove` writes the `nx` / `ny` ports,
+# `bind:left` / `bind:top` on the layers read them (challenge-menu.xt), and the rings spin through
+# `animation` declarations (challenge-menu.xts). What stays here is the intro: for the first 0.15 s
+# the two panels are parked off-screen (the `listShift` / `panelShift` ports start at the parked
+# offset), then the timer's single tick releases them to 0 and the board's `transition` on left/top
+# slides them in.
+node("introT", "timer", interval=0.15, autostart=True, repeat=False)
+node("parked", "toggle", initial=True)
+edge("introT.tick", "parked.setFalse")
+# key, port, parked-off-screen offset of `left` from the rest position
+for key, shift in (("list", -650), ("panel", 750)):
+    node(f"{key}Parked", "constant", value=shift)
+    node(f"{key}Free", "constant", value=0)
+    node(f"{key}Shift", "select")
+    edge("parked.value", f"{key}Shift.cond")
+    edge(f"{key}Parked.out", f"{key}Shift.a")
+    edge(f"{key}Free.out", f"{key}Shift.b")
+    edge(f"{key}Shift.out", f"#challenge-menu.{key}Shift")
 
 out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "challenge-menu.xtflow")
 with open(out, "w", encoding="utf-8") as f:

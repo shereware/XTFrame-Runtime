@@ -16,9 +16,12 @@
 #include "test_temp.h"
 #include "xt/asset_resolver.h"
 #include "xt/bundle/pack.h"
+#include "xt/bundle/symbol_library.h"
+#include "xt/bundle/symbol_lint.h"
 #include "xt/bundle/ui_project.h"
 #include "xt/command_list.h"
 #include "xt/compile/compile.h"
+#include "xt/compile/utf8_path.h"
 #include "xt/context.h"
 #include "xt/document.h"
 #include "xt/ir.h"
@@ -26,7 +29,8 @@
 #include "xt/sw/sw_renderer.h"
 #include "xt/text_shaper.h"
 
-/// T-198 (Docs/tasks/T-198.md goal 4): the standard symbol library (`Assets/Symbols`,
+/// T-198 (Docs/tasks/T-198.md goal 4): the standard symbol library (T-498: the preset group
+/// `Assets/Symbols/groups/broadsheet-2026`,
 /// Docs/design/30-ui-project.md 30.4) and the starter UI Project (`Examples/ui-project-starter`).
 ///   - index.json lists exactly the library's files and repeats each symbol's contract;
 ///   - every symbol compiles with --strict (its `requires` contract is checked by the compiler)
@@ -84,16 +88,32 @@ std::vector<std::string> symbolNames() {
     return names;
 }
 
+/// T-499: the previews live in the group (`previews/<Name>.preview.xt` and `.preview.json`).
 fs::path fixturePath(const std::string& name) {
-    return fs::path(XT_SYMBOLS_TEST_DIR) / "fixtures" / (name + ".preview.xt");
+    return fs::path(XT_SYMBOLS_DIR) / "previews" / (name + ".preview.xt");
 }
 
-compile::CompileResult compileStrict(const fs::path& xt, std::vector<std::string> implied = {}) {
+compile::CompileResult compileStrict(const fs::path& xt, std::vector<std::string> implied = {},
+                                     std::vector<std::string> impliedTokens = {}) {
     compile::CompileOptions options;
     options.rootDir = xt.parent_path().string();
     options.strict = true;
+    // T-497: like the golden harness's assetRoots (T-491), the library root supplies the textures a
+    // `mobile/` or `list/` library file names through the tokens' `url("textures/...")`.
+    options.searchDirs = {XT_SYMBOLS_DIR};
     options.impliedStylesheets = std::move(implied);
+    options.impliedTokenFiles = std::move(impliedTokens);  // T-498b: the group's default layer.
     return compile::compileDocument(xt.string(), options);
+}
+
+/// T-498b: the seven shipped UI Projects (starter, the five templates, the mobile-hud demo).
+std::vector<fs::path> shippedProjects() {
+    const fs::path templates = fs::path(XT_STARTER_DIR) / ".." / ".." / "Assets" / "Templates" / "projects";
+    std::vector<fs::path> dirs{fs::path(XT_STARTER_DIR), fs::path(XT_MOBILE_HUD_DIR)};
+    for (const char* id : {"dialog", "hud", "loading", "main-menu", "settings"}) {
+        dirs.push_back(templates / id);
+    }
+    return dirs;
 }
 
 std::string diagnosticsText(const compile::CompileResult& result) {
@@ -104,84 +124,46 @@ std::string diagnosticsText(const compile::CompileResult& result) {
     return text;
 }
 
+/// T-499: the golden fixtures of the `normal` states (`night` = the night-theme previews of Button,
+/// ListItem, Modal and HealthBar) from `previews/<Name>.preview.json` of the preset group: the
+/// preview's size, `time` 0, and its ports and events as an event script (the same text
+/// `xtframe-symbols thumbnails` runs) written under the temp directory.
+std::vector<golden::UiFixture> previewFixtures(bool night) {
+    std::vector<golden::UiFixture> out;
+    const fs::path scripts = xt::test::tempDir() / "xt_symbols_previews";
+    std::error_code ec;
+    fs::create_directories(scripts, ec);
+    const std::vector<std::string> nightNames{"Button", "ListItem", "Modal", "HealthBar"};
+    for (const bundle::PreviewSpec& spec : bundle::thumbnailSpecs(XT_SYMBOLS_DIR)) {
+        if (night && std::find(nightNames.begin(), nightNames.end(), spec.name) == nightNames.end()) {
+            continue;
+        }
+        const fs::path script = scripts / (spec.name + ".events");
+        {
+            std::ofstream file(script, std::ios::binary);
+            file << bundle::previewEventScript(spec);
+        }
+        golden::UiFixture fx;
+        fx.name = "sym_" + spec.name + (night ? "_night" : "_normal");
+        fx.xtPath =
+            (fs::path(XT_SYMBOLS_DIR) / (night ? "previews/night" : "previews") / (spec.name + ".preview.xt"))
+                .string();
+        fx.width = spec.width;
+        fx.height = spec.height;
+        fx.time = 0;
+        fx.clearColor = night ? Color{0x26 / 255.0f, 0x23 / 255.0f, 0x20 / 255.0f, 1.0f}
+                              : Color{0xe6 / 255.0f, 0xe2 / 255.0f, 0xd6 / 255.0f, 1.0f};
+        fx.eventsPath = script.string();
+        out.push_back(std::move(fx));
+    }
+    return out;
+}
+
 /// The id of the first `<use symbol="<name>">` in `text`.
 std::string firstInstanceId(const std::string& text, const std::string& name) {
     const std::regex use("<use symbol=\"" + name + "\" id=\"([A-Za-z0-9_]+)\"");
     std::smatch match;
     return std::regex_search(text, match, use) ? match[1].str() : std::string();
-}
-
-/// The `<style>` bodies and `style="..."` attributes of an `.xt`, or the whole text of an `.xts`.
-std::vector<std::string> styleRegions(const fs::path& path) {
-    const std::string text = readText(path);
-    if (path.extension() == ".xts") {
-        return {text};
-    }
-    std::vector<std::string> out;
-    const std::regex style("<style>([\\s\\S]*?)</style>|style=\"([^\"]*)\"");
-    for (std::sregex_iterator it(text.begin(), text.end(), style), end; it != end; ++it) {
-        out.push_back((*it)[1].matched ? (*it)[1].str() : (*it)[2].str());
-    }
-    return out;
-}
-
-/// Declaration values in a stylesheet region with a literal color: `#hex`, `rgb[a]()`, `hsl()` or
-/// one of 05 §5.3's named colors.
-std::vector<std::string> literalColors(const std::string& css) {
-    static const std::regex comment("/\\*[\\s\\S]*?\\*/");
-    static const std::regex decl("([A-Za-z-]+)\\s*:\\s*([^;{}]+)");
-    static const std::regex hex("#[0-9a-fA-F]{3,8}\\b|\\brgba?\\(|\\bhsla?\\(");
-    static const std::regex named(
-        "(^|[\\s,(])(black|silver|gray|white|maroon|red|purple|fuchsia|green|lime|olive|yellow|navy|blue|"
-        "teal|"
-        "aqua|orange)($|[\\s,)])");
-    const std::string clean = std::regex_replace(css, comment, " ");
-    std::vector<std::string> out;
-    for (std::sregex_iterator it(clean.begin(), clean.end(), decl), end; it != end; ++it) {
-        const std::string value = (*it)[2].str();
-        if (std::regex_search(value, hex) || std::regex_search(value, named)) {
-            out.push_back((*it)[1].str() + ": " + value);
-        }
-    }
-    return out;
-}
-
-struct TimelineInfo {
-    std::string name;
-    float lastTime = 0;
-    std::set<std::string> props;
-};
-
-/// Every `@timeline` block of a stylesheet text: its last key time and animated properties.
-std::vector<TimelineInfo> timelines(const std::string& text) {
-    std::vector<TimelineInfo> out;
-    static const std::regex head("@timeline\\s+([A-Za-z0-9_-]+)\\s*\\{");
-    static const std::regex time("(^|[\\s{};])([0-9]+(\\.[0-9]+)?)(ms|s)\\b");
-    static const std::regex prop("([a-z-]+)\\s*:");
-    for (std::sregex_iterator it(text.begin(), text.end(), head), end; it != end; ++it) {
-        TimelineInfo info;
-        info.name = (*it)[1].str();
-        size_t pos = static_cast<size_t>(it->position() + it->length());
-        int depth = 1;
-        const size_t start = pos;
-        while (pos < text.size() && depth > 0) {
-            depth += text[pos] == '{' ? 1 : text[pos] == '}' ? -1 : 0;
-            ++pos;
-        }
-        const std::string body = text.substr(start, pos - start);
-        for (std::sregex_iterator t(body.begin(), body.end(), time), tend; t != tend; ++t) {
-            const float value = std::stof((*t)[2].str()) * ((*t)[4].str() == "ms" ? 0.001f : 1.0f);
-            info.lastTime = std::max(info.lastTime, value);
-        }
-        for (std::sregex_iterator p(body.begin(), body.end(), prop), pend; p != pend; ++p) {
-            const std::string name = (*p)[1].str();
-            if (name != "duration" && name != "marker") {
-                info.props.insert(name);
-            }
-        }
-        out.push_back(std::move(info));
-    }
-    return out;
 }
 
 /// T-241: every `.xt` of the library: the root and its `mobile/` subset (T-382: and `list/`).
@@ -229,6 +211,16 @@ std::set<std::string> linkedSymbols(const fs::path& root) {
 
 }  // namespace
 
+/// The findings of a lint report, one per line.
+std::string issuesText(const bundle::LintReport& report) {
+    std::string text;
+    for (const bundle::LintIssue& issue : report.issues) {
+        text += std::string(issue.level == bundle::LintLevel::Error ? "error " : "warning ") + issue.symbol +
+                ": " + issue.code + ": " + issue.message + "\n";
+    }
+    return text;
+}
+
 TEST_CASE("symbols: index.json lists every library file and repeats its contract") {
     const json& index = symbolIndex();
     CHECK(index["version"] == 1);
@@ -239,16 +231,21 @@ TEST_CASE("symbols: index.json lists every library file and repeats its contract
         files.insert(file.stem().string());
     }
     const std::vector<std::string> names = symbolNames();
-    CHECK(names.size() == 26 + 11 + 1);  // T-241: 11 in mobile/; T-382: ListItem in list/.
+    CHECK(names.size() == 26 + 11 + 1 + 1);  // T-241: 11 in mobile/; T-382: ListItem in list/; T-495: Stamp.
     CHECK(std::set<std::string>(names.begin(), names.end()) == files);
+
+    // T-499: the checks of the index against the files (listing, contract, ports, timelines, token
+    // defaults, fonts and textures, thumbnails, content hashes), the strict compile of every
+    // preview, the literal colours and the motion spec are bundle::lintGroup() now.
+    const bundle::LintReport report = bundle::lintGroup(XT_SYMBOLS_DIR);
+    CHECK_MESSAGE(report.issues.empty(), issuesText(report));
+    CHECK(report.symbols == names.size());
 
     for (const json& entry : index["symbols"]) {
         const std::string name = entry["name"];
         CAPTURE(name);
-        const std::string text = readText(fs::path(XT_SYMBOLS_DIR) / entry["file"].get<std::string>());
-        CHECK(text.find("<symbol name=\"" + name + "\"") != std::string::npos);
-        CHECK(fs::exists(fs::path(XT_SYMBOLS_DIR) / entry["thumbnail"].get<std::string>()));
         CHECK(fs::exists(fixturePath(name)));
+        CHECK(fs::exists(fs::path(XT_SYMBOLS_DIR) / "previews" / (name + ".preview.json")));
         const std::string category = entry["category"];
         CHECK((category == "form" || category == "hud" || category == "input" || category == "mobile" ||
                category == "list"));
@@ -257,60 +254,6 @@ TEST_CASE("symbols: index.json lists every library file and repeats its contract
         CHECK((entry["file"].get<std::string>().rfind("mobile/", 0) == 0) == (category == "mobile"));
         CHECK((entry["file"].get<std::string>().rfind("list/", 0) == 0) == (category == "list"));
         CHECK(!entry["description"].get<std::string>().empty());
-
-        // The contract in index.json is the one the symbol declares.
-        std::smatch match;
-        REQUIRE(std::regex_search(text, match, std::regex("requires=\"([^\"]*)\"")));
-        std::string expected;
-        const json& states = entry["requires"]["states"];
-        const json& slotList = entry["requires"]["slots"];
-        auto join = [](const json& list) {
-            std::string out;
-            for (const json& item : list) {
-                out += (out.empty() ? "" : ", ") + item.get<std::string>();
-            }
-            return out;
-        };
-        if (!states.empty()) {
-            expected = "states: " + join(states);
-        }
-        if (!slotList.empty()) {
-            expected += (expected.empty() ? "" : "; ") + std::string("slots: ") + join(slotList);
-        }
-        CHECK(match[1].str() == expected);
-        for (const json& port : entry["ports"]) {
-            std::string type = port["type"];
-            type = std::regex_replace(type, std::regex("<"), "&lt;");
-            type = std::regex_replace(type, std::regex(">"), "&gt;");
-            const std::string decl = "port:" + port["name"].get<std::string>() + "=\"" + type + " " +
-                                     port["dir"].get<std::string>() + "\"";
-            CHECK_MESSAGE(text.find(decl) != std::string::npos, decl);
-        }
-        for (const json& timeline : entry["timelines"]) {
-            CHECK(text.find("@timeline " + timeline.get<std::string>() + " ") != std::string::npos);
-        }
-        for (const json& token : entry["tokens"]) {
-            CHECK(text.find("var(--" + token.get<std::string>() + ")") != std::string::npos);
-        }
-    }
-}
-
-TEST_CASE("symbols: every symbol compiles with --strict and keeps its contract") {
-    for (const std::string& name : symbolNames()) {
-        CAPTURE(name);
-        const compile::CompileResult result = compileStrict(fixturePath(name));
-        CHECK_MESSAGE(result.ok(), diagnosticsText(result));
-        CHECK_MESSAGE(result.diagnostics.empty(), diagnosticsText(result));
-        if (!result.ok()) {
-            continue;
-        }
-        Result<IrView> view = IrView::open(IrBlob{result.ir.data(), result.ir.size()});
-        REQUIRE(view.ok());
-        bool instanced = false;
-        for (const IrSymbolInstance& instance : view.value().symbols().instances()) {
-            instanced = instanced || view.value().string(instance.symbol) == name;
-        }
-        CHECK(instanced);
     }
 }
 
@@ -331,7 +274,7 @@ TEST_CASE("symbols: the mobile subset has touch sizes, a timeline and a full con
         CAPTURE(name);
         mobile.insert(name);
         CHECK(entry["file"] == "mobile/" + name + ".xt");
-        CHECK(entry["thumbnail"] == "mobile/" + name + ".png");
+        CHECK(entry["thumbnail"] == "thumbnails/" + name + ".png");  // T-498
         CHECK(!entry["timelines"].empty());
         CHECK(!entry["notes"].get<std::string>().empty());
         CHECK((!entry["requires"]["states"].empty() || !entry["requires"]["slots"].empty()));
@@ -405,25 +348,36 @@ TEST_CASE("symbols: no literal colors outside the token files") {
     CHECK(files.size() >= 37 + 6 + 3);
     for (const fs::path& file : files) {
         CAPTURE(file.string());
-        for (const std::string& region : styleRegions(file)) {
-            const std::vector<std::string> found = literalColors(region);
+        std::string text = readText(file);
+        for (const std::string& region : bundle::styleRegions(text, file.extension() == ".xts")) {
+            const std::vector<std::string> found = bundle::findLiteralColors(region);
             CHECK_MESSAGE(found.empty(), (found.empty() ? std::string() : found.front()));
         }
     }
     // The scanner itself finds what it must.
-    CHECK(literalColors("a { color: #fff; }").size() == 1);
-    CHECK(literalColors("a { border: 1px solid red; background-color: rgba(0, 0, 0, 0.5); }").size() == 2);
-    CHECK(literalColors("#Box { color: var(--color-text); border-color: transparent; }").empty());
+    CHECK(bundle::findLiteralColors("a { color: #fff; }").size() == 1);
+    CHECK(bundle::findLiteralColors("a { border: 1px solid red; background-color: rgba(0, 0, 0, 0.5); }")
+              .size() == 2);
+    CHECK(bundle::findLiteralColors("#Box { color: var(--color-text); border-color: transparent; }").empty());
 }
 
 TEST_CASE("symbols: every state matches its golden and differs from the normal state") {
     const std::string dir = XT_SYMBOLS_TEST_DIR;
-    const std::vector<golden::UiFixture> fixtures = golden::loadUiManifest(dir + "/manifest.txt");
+    // T-499: the `normal` and `night` states come from the group's previews (`previews/<Name>.
+    // preview.json`: size, ports, events; `previews/night/<Name>.preview.xt` for the night theme),
+    // listed first; the other states stay in manifest.txt with their event scripts.
+    std::vector<golden::UiFixture> fixtures = previewFixtures(false);
+    const std::vector<golden::UiFixture> nights = previewFixtures(true);
+    const std::vector<golden::UiFixture> listed = golden::loadUiManifest(dir + "/manifest.txt");
     REQUIRE(golden::manifestErrors() == 0);  // T-267a: no fixture dropped by a bad manifest line.
+    fixtures.insert(fixtures.end(), listed.begin(), listed.end());
+    fixtures.insert(fixtures.end(), nights.begin(), nights.end());
+    CHECK(fixtures.size() == 39 + 57 + 4);
     const bool update = updateGoldens();
     std::map<std::string, std::vector<uint8_t>> normal;
     std::set<std::string> covered;
-    for (const golden::UiFixture& fx : fixtures) {
+    for (golden::UiFixture fx : fixtures) {
+        fx.assetRoots = {XT_SYMBOLS_DIR};  // T-491: the library tokens' @font-face paths.
         CAPTURE(fx.name);
         const std::vector<uint8_t> actual = golden::renderUiFixture(fx, dir);
         REQUIRE(!actual.empty());
@@ -513,7 +467,7 @@ TEST_CASE("symbols: timelines stay inside the motion spec") {
     }
     size_t count = 0;
     for (const fs::path& file : files) {
-        for (const TimelineInfo& t : timelines(readText(file))) {
+        for (const bundle::TimelineScan& t : bundle::scanTimelines(readText(file))) {
             CAPTURE(file.string());
             CAPTURE(t.name);
             ++count;
@@ -531,12 +485,15 @@ TEST_CASE("symbols: timelines stay inside the motion spec") {
 }
 
 TEST_CASE("symbols: conventions/layouts templates compile with the starter tokens") {
+    // T-498b: the starter declares only its overrides; the preset group's tokens.xts is the implied
+    // default layer underneath, as xtframe-pack and xtframe-view supply it.
     const fs::path starter(XT_STARTER_DIR);
     const std::string tokens = (starter / "shared" / "tokens.xts").string();
+    const std::string implied = (fs::path(XT_SYMBOLS_DIR) / "tokens.xts").string();
     for (const char* layout : {"hud.xt", "main-menu.xt", "inventory.xt"}) {
         CAPTURE(layout);
         const compile::CompileResult result =
-            compileStrict(starter / "conventions" / "layouts" / layout, {tokens});
+            compileStrict(starter / "conventions" / "layouts" / layout, {tokens}, {implied});
         CHECK_MESSAGE(result.ok(), diagnosticsText(result));
         CHECK_MESSAGE(result.diagnostics.empty(), diagnosticsText(result));
     }
@@ -589,10 +546,14 @@ TEST_CASE("symbols: the starter UI Project packs strictly and pulls in only the 
         }
     }
 
-    // The manifest carries the theme, both string tables and the motion spec.
+    // The manifest carries the project's theme and the preset group's (T-498b: `tokens-night.xts`
+    // is the implied theme `night`; `dark` is the project's own, a different name), both string
+    // tables and the motion spec.
     const json manifest = json::parse(readText(root / "out" / "manifest.json"));
-    CHECK(manifest["themes"].size() == 1);
+    CHECK(manifest["themes"].size() == 2);
     CHECK(manifest["themes"][0]["name"] == "dark");
+    CHECK(manifest["themes"][1]["name"] == "night");
+    CHECK(report.impliedGroupDir == compile::genericPathToUtf8(fs::path(XT_SYMBOLS_DIR).lexically_normal()));
     CHECK(manifest["strings"].contains("en"));
     CHECK(manifest["strings"].contains("zh-TW"));
     CHECK(manifest.contains("motionSpec"));
@@ -667,10 +628,18 @@ TEST_CASE("symbols: the mobile-hud demo packs strictly with the mobile symbols a
     CHECK(project.value().spec.logicalHeight == doctest::Approx(1080.0f));
     REQUIRE(project.value().spec.platforms.size() == 1);
     CHECK(project.value().spec.platforms[0].name == "mobile");
-    // The project's tokens are the standard ones.
-    const std::string standard = readText(fs::path(XT_SYMBOLS_DIR) / "tokens.xts");
-    const std::string own = readText(dir / "shared" / "tokens.xts");
-    CHECK(own.substr(own.find(":root")) == standard.substr(standard.find(":root")));
+    // T-498b (49 §49.3 ruling): the project's token set holds only its overrides -- no shipped
+    // project repeats a value of the preset group's default layer (lint `token.sameAsDefault`),
+    // and none ships the group's fonts or textures.
+    for (const fs::path& shipped : shippedProjects()) {
+        CAPTURE(shipped.string());
+        const std::vector<bundle::TokenDefault> same = bundle::sameAsDefaultTokens(
+            shipped / "shared" / "tokens.xts", fs::path(XT_SYMBOLS_DIR) / "tokens.xts");
+        CHECK_MESSAGE(same.empty(), (same.empty() ? std::string() : same.front().name));
+        CHECK_FALSE(fs::exists(shipped / "shared" / "fonts"));
+        CHECK_FALSE(fs::exists(shipped / "shared" / "textures"));
+        CHECK(readText(shipped / "shared" / "tokens.xts").find("@font-face {") == std::string::npos);
+    }
 
     bundle::PackOptions options;
     options.outDir = (dir / "out").string();

@@ -1,5 +1,38 @@
 {
-  "assets": [],
+  "assets": [
+    {
+      "bytes": 646092,
+      "file": "assets/73acb60d73f4b8d3.ttf",
+      "kind": "font",
+      "sources": [
+        "fonts/NotoSans-BoldItalic.ttf"
+      ]
+    },
+    {
+      "bytes": 631484,
+      "file": "assets/9f2d7f7820bc92c2.ttf",
+      "kind": "font",
+      "sources": [
+        "fonts/NotoSans-Bold.ttf"
+      ]
+    },
+    {
+      "bytes": 621572,
+      "file": "assets/bcb9a6e8677ebb4a.ttf",
+      "kind": "font",
+      "sources": [
+        "fonts/NotoSans-Regular.ttf"
+      ]
+    },
+    {
+      "bytes": 639124,
+      "file": "assets/e7733c492d3ebae3.ttf",
+      "kind": "font",
+      "sources": [
+        "fonts/NotoSans-Italic.ttf"
+      ]
+    }
+  ],
   "bundle": {
     "id": "demo-game",
     "irMajor": 2,
@@ -107,10 +140,15 @@
   },
   "uis": [
     {
-      "assets": [],
-      "contract": "470e5ae7f0e98e05",
+      "assets": [
+        "assets/bcb9a6e8677ebb4a.ttf",
+        "assets/9f2d7f7820bc92c2.ttf",
+        "assets/73acb60d73f4b8d3.ttf",
+        "assets/e7733c492d3ebae3.ttf"
+      ],
+      "contract": "6bce21e1d6d11d83",
       "file": "ui/hud.xtir",
-      "fileHash": 13008797974063987213,
+      "fileHash": 8854934997607863199,
       "fit": "native",
       "flow": "ui/hud.xtflow",
       "id": "hud",
@@ -158,6 +196,10 @@
             "type": "number"
           },
           {
+            "name": "#alert.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#alert.setStyle",
             "type": "string"
           },
@@ -196,6 +238,10 @@
           {
             "name": "#ammo.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#ammo.setState",
+            "type": "pulse"
           },
           {
             "name": "#ammo.setStyle",
@@ -238,6 +284,10 @@
             "type": "number"
           },
           {
+            "name": "#ammoButtons.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#ammoButtons.setStyle",
             "type": "string"
           },
@@ -276,6 +326,10 @@
           {
             "name": "#ammoPanel.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#ammoPanel.setState",
+            "type": "pulse"
           },
           {
             "name": "#ammoPanel.setStyle",
@@ -318,6 +372,10 @@
             "type": "number"
           },
           {
+            "name": "#ammoRow.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#ammoRow.setStyle",
             "type": "string"
           },
@@ -356,6 +414,10 @@
           {
             "name": "#card.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#card.setState",
+            "type": "pulse"
           },
           {
             "name": "#card.setStyle",
@@ -398,6 +460,10 @@
             "type": "number"
           },
           {
+            "name": "#clock.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#clock.setStyle",
             "type": "string"
           },
@@ -436,6 +502,10 @@
           {
             "name": "#fire.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#fire.setState",
+            "type": "pulse"
           },
           {
             "name": "#fire.setStyle",
@@ -478,6 +548,10 @@
             "type": "number"
           },
           {
+            "name": "#heal.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#heal.setStyle",
             "type": "string"
           },
@@ -516,6 +590,10 @@
           {
             "name": "#hpBar.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#hpBar.setState",
+            "type": "pulse"
           },
           {
             "name": "#hpBar.setStyle",
@@ -558,6 +636,10 @@
             "type": "number"
           },
           {
+            "name": "#hpFill.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#hpFill.setStyle",
             "type": "string"
           },
@@ -596,6 +678,10 @@
           {
             "name": "#hpRow.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#hpRow.setState",
+            "type": "pulse"
           },
           {
             "name": "#hpRow.setStyle",
@@ -638,6 +724,10 @@
             "type": "number"
           },
           {
+            "name": "#hpText.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#hpText.setStyle",
             "type": "string"
           },
@@ -678,6 +768,10 @@
             "type": "number"
           },
           {
+            "name": "#name.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#name.setStyle",
             "type": "string"
           },
@@ -716,6 +810,10 @@
           {
             "name": "#player.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#player.setState",
+            "type": "pulse"
           },
           {
             "name": "#player.setStyle",
@@ -778,6 +876,10 @@
             "type": "number"
           },
           {
+            "name": "#radar.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#radar.setStyle",
             "type": "string"
           },
@@ -816,6 +918,10 @@
           {
             "name": "#reload.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#reload.setState",
+            "type": "pulse"
           },
           {
             "name": "#reload.setStyle",
@@ -858,6 +964,10 @@
             "type": "number"
           },
           {
+            "name": "#root.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#root.setStyle",
             "type": "string"
           },
@@ -896,6 +1006,10 @@
           {
             "name": "#skill1.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#skill1.setState",
+            "type": "pulse"
           },
           {
             "name": "#skill1.setStyle",
@@ -938,6 +1052,10 @@
             "type": "number"
           },
           {
+            "name": "#skill2.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#skill2.setStyle",
             "type": "string"
           },
@@ -976,6 +1094,10 @@
           {
             "name": "#skill3.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#skill3.setState",
+            "type": "pulse"
           },
           {
             "name": "#skill3.setStyle",
@@ -1018,6 +1140,10 @@
             "type": "number"
           },
           {
+            "name": "#skills.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#skills.setStyle",
             "type": "string"
           },
@@ -1056,6 +1182,10 @@
           {
             "name": "#stageL.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#stageL.setState",
+            "type": "pulse"
           },
           {
             "name": "#stageL.setStyle",
@@ -1098,6 +1228,10 @@
             "type": "number"
           },
           {
+            "name": "#stageR.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#stageR.setStyle",
             "type": "string"
           },
@@ -1116,6 +1250,14 @@
           {
             "name": "#stageR.toggleClass",
             "type": "pulse"
+          },
+          {
+            "name": "document.nx",
+            "type": "number"
+          },
+          {
+            "name": "document.ny",
+            "type": "number"
           }
         ],
         "out": [
@@ -1960,10 +2102,15 @@
       "thumb": "thumbs/hud.png"
     },
     {
-      "assets": [],
+      "assets": [
+        "assets/bcb9a6e8677ebb4a.ttf",
+        "assets/9f2d7f7820bc92c2.ttf",
+        "assets/73acb60d73f4b8d3.ttf",
+        "assets/e7733c492d3ebae3.ttf"
+      ],
       "contract": "470e5ae7f0e98e05",
       "file": "ui/pause.xtir",
-      "fileHash": 2665694989475681435,
+      "fileHash": 13427725878334650713,
       "fit": "native",
       "flow": "",
       "id": "pause",
@@ -1989,6 +2136,10 @@
           {
             "name": "#halo.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#halo.setState",
+            "type": "pulse"
           },
           {
             "name": "#halo.setStyle",
@@ -2031,6 +2182,10 @@
             "type": "number"
           },
           {
+            "name": "#headRow.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#headRow.setStyle",
             "type": "string"
           },
@@ -2069,6 +2224,10 @@
           {
             "name": "#heading.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#heading.setState",
+            "type": "pulse"
           },
           {
             "name": "#heading.setStyle",
@@ -2111,6 +2270,10 @@
             "type": "number"
           },
           {
+            "name": "#hint.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#hint.setStyle",
             "type": "string"
           },
@@ -2151,6 +2314,10 @@
             "type": "number"
           },
           {
+            "name": "#menu.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#menu.setStyle",
             "type": "string"
           },
@@ -2189,6 +2356,10 @@
           {
             "name": "#options.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#options.setState",
+            "type": "pulse"
           },
           {
             "name": "#options.setStyle",
@@ -2251,6 +2422,10 @@
             "type": "number"
           },
           {
+            "name": "#pauseRadar.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#pauseRadar.setStyle",
             "type": "string"
           },
@@ -2289,6 +2464,10 @@
           {
             "name": "#quit.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#quit.setState",
+            "type": "pulse"
           },
           {
             "name": "#quit.setStyle",
@@ -2331,6 +2510,10 @@
             "type": "number"
           },
           {
+            "name": "#resume.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#resume.setStyle",
             "type": "string"
           },
@@ -2371,6 +2554,10 @@
             "type": "number"
           },
           {
+            "name": "#root.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#root.setStyle",
             "type": "string"
           },
@@ -2409,6 +2596,10 @@
           {
             "name": "#scrim.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#scrim.setState",
+            "type": "pulse"
           },
           {
             "name": "#scrim.setStyle",

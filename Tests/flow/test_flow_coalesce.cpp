@@ -5,6 +5,7 @@
 
 #include "doctest.h"
 #include "xt/compile/compile.h"
+#include "xt/context.h"
 #include "xt/document.h"
 #include "xt/flow/flow_graph.h"
 #include "xt/flow/flow_runtime.h"
@@ -343,4 +344,135 @@ TEST_CASE("T-407: behavior 0 -- a declared value port reaches the flow within it
     }
     REQUIRE(sink.writes.size() == 5);
     CHECK(sink.writes.back() == "5");
+}
+
+TEST_CASE("T-543: 100 pointer moves in one frame reach a throttle once (T-389 coalescing comes first)") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc = loadDoc(shaper);
+    FlowRuntime rt;
+    // `rate` is absent: the throttle does not limit, so `seen` counts what reached its `in`.
+    loadGraph(rt, *doc, R"({
+        "version": 1,
+        "nodes": [
+            { "id": "t", "type": "throttle", "params": { "unit": "frames" } },
+            { "id": "seen", "type": "counter" },
+            { "id": "d", "type": "filter", "params": { "op": "deadband", "threshold": 0 } },
+            { "id": "dseen", "type": "counter" }
+        ],
+        "edges": [
+            { "from": "#document.pointerX", "to": "t.in" },
+            { "from": "t.passed", "to": "seen.increment" },
+            { "from": "#document.pointerY", "to": "d.in" },
+            { "from": "d.passed", "to": "dseen.increment" }
+        ]
+    })");
+    rt.tick(0.0f);  // The initial (viewport-center) reading.
+    const double before = valueOf(rt, "seen.value");
+    const double dBefore = valueOf(rt, "dseen.value");
+    for (int i = 0; i < 100; ++i) {
+        move(*doc, 300.0f + static_cast<float>(i), 200.0f + static_cast<float>(i));
+    }
+    CHECK(valueOf(rt, "seen.value") == doctest::Approx(before));  // Nothing during the dispatch.
+    rt.tick(1.0f / 60.0f);
+    CHECK(valueOf(rt, "seen.value") == doctest::Approx(before + 1.0));
+    CHECK(valueOf(rt, "dseen.value") == doctest::Approx(dBefore + 1.0));
+}
+
+// -- T-552 (27 §27.4.1, 2026-10-31 ruling): pointer and hover first, then bindings -------------------
+
+namespace {
+
+/// #Hot moves with the port `shift` (`bind:left`); its hover / leave triggers set `hot`, which #Probe's
+/// width is bound to. The flow reads `#Hot.hover` into a toString node.
+constexpr const char* kHoverBindDoc = R"X(<xt><head><style>
+  #Hot { position: absolute; left: 0px; top: 0px; width: 100px; height: 100px; }
+  #Probe { position: absolute; left: 0px; top: 300px; width: 10px; height: 10px; }
+</style></head>
+<body id="Root" port:shift="number in" port:hot="number in">
+  <div id="Hot" bind:left="shift | range(0, 1, 0px, 200px)" on:hover="set(hot, 1)" on:leave="set(hot, 0)"></div>
+  <div id="Probe" bind:width="hot | range(0, 1, 10px, 50px)"></div>
+</body></xt>)X";
+
+}  // namespace
+
+TEST_CASE(
+    "T-552: a binding sees the hover of its own frame; geometry a binding moves is hover-judged next frame") {
+    NullTextShaper shaper;
+    const compile::SourceFile file{"hover_bind.xt", kHoverBindDoc};
+    compile::CompileOptions options;
+    options.behavior = 1;
+    compile::CompileResult result = compile::compileDocumentFromStrings({&file, 1}, "hover_bind.xt", options);
+    for (const compile::Diagnostic& d : result.diagnostics) {
+        CAPTURE(d.message);
+        CHECK(d.level != compile::Diagnostic::Level::Error);
+    }
+    REQUIRE(result.ok());
+    Context ctx{ContextConfig{&shaper, nullptr}};
+    ctx.setViewport(Rect{0, 0, 400, 400}, 1.0f);
+    Result<DocumentHandle> loaded = ctx.loadDocument(IrBlob{result.ir.data(), result.ir.size()}, true);
+    REQUIRE(loaded.ok());
+    Document* doc = ctx.document(loaded.value());
+    REQUIRE(doc != nullptr);
+    FlowRuntime rt;
+    loadGraph(rt, *doc, R"({
+        "version": 1,
+        "nodes": [ { "id": "ts", "type": "toString" } ],
+        "edges": [ { "from": "#Hot.hover", "to": "ts.in" } ]
+    })");
+    const PortId shift = doc->lookupPort("shift");
+    const PortId hot = doc->lookupPort("hot");
+    REQUIRE(shift != kInvalidPort);
+    REQUIRE(hot != kInvalidPort);
+    const float dt = 1.0f / 60.0f;
+    auto frame = [&]() {
+        ctx.update(dt);
+        rt.tick(dt);
+    };
+    auto probeWidth = [&]() { return doc->byId("Probe").layoutBox().width; };
+    frame();
+
+    // The pointer comes to rest at (250, 50), right of #Hot.
+    InputEvent move;
+    move.kind = InputEvent::PointerMove;
+    move.pos = Vec2{250.0f, 50.0f};
+    ctx.pushInput(move);
+    frame();
+    CHECK(doc->getPort(hot).f == 0.0f);
+    CHECK(probeWidth() == doctest::Approx(10.0f));
+
+    // The host moves #Hot under the still pointer. This frame's binding moves it; the hover of this
+    // frame was judged against the geometry before it, so nothing is hovered yet.
+    REQUIRE(doc->setPort(shift, Value::ofFloat(1.0f)) == Status::kOk);
+    frame();
+    CHECK(doc->byId("Hot").boundingBox().x == doctest::Approx(200.0f));
+    CHECK(doc->getPort(hot).f == 0.0f);
+    CHECK(probeWidth() == doctest::Approx(10.0f));
+
+    // Next frame, no input: hover is judged first (PointerEnter, `set(hot, 1)`), then the bindings --
+    // #Probe's width follows in this same frame.
+    ctx.update(dt);
+    CHECK(doc->getPort(hot).f == 1.0f);
+    CHECK(probeWidth() == doctest::Approx(50.0f));
+    rt.tick(dt);
+    CHECK(textOf(rt, "ts.out") == "true");  // The flow gets that hover at this frame's tick.
+
+    // And away again: the binding moves #Hot back this frame, the leave and #Probe follow the next.
+    REQUIRE(doc->setPort(shift, Value::ofFloat(0.0f)) == Status::kOk);
+    frame();
+    CHECK(doc->getPort(hot).f == 1.0f);
+    ctx.update(dt);
+    CHECK(doc->getPort(hot).f == 0.0f);
+    CHECK(probeWidth() == doctest::Approx(10.0f));
+    rt.tick(dt);
+    CHECK(textOf(rt, "ts.out") == "false");
+
+    // A pointer that left the window is not re-judged: #Hot comes back under (250, 50), nothing hovers.
+    InputEvent leave;
+    leave.kind = InputEvent::PointerLeave;
+    ctx.pushInput(leave);
+    frame();
+    REQUIRE(doc->setPort(shift, Value::ofFloat(1.0f)) == Status::kOk);
+    frame();
+    frame();
+    CHECK(doc->getPort(hot).f == 0.0f);
 }

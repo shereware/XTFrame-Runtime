@@ -1,0 +1,22 @@
+<xt>
+  <head>
+    <!-- T-198: preview of the Hotbar standard symbol (golden states and thumbnail; T-499: moved into the group). -->
+    <link href="../tokens.xts"/>
+    <link rel="symbols" href="../Hotbar.xt"/>
+    <style>
+      body {
+        width: 360px;
+        height: 90px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        row-gap: 12px;
+        background-color: var(--color-bg);
+      }
+    </style>
+  </head>
+  <body>
+    <use symbol="Hotbar" id="Bar"/>
+  </body>
+</xt>

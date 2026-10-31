@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # Public header check for the host contract in Docs/design/23-host-integration.md §23.6
-# (Docs/tasks/T-100.md). Two greps, no compiler:
+# (Docs/tasks/T-100.md). Three greps, no compiler:
 #   1. every header <xt/xt.h> aggregates may only include standard headers and other public
 #      core headers -- never a `*_internal.h` and never a header that lives under a module's
 #      `src/` (i.e. one that does not exist under Code/Runtime/core/include/).
 #   2. Examples/engine_integration/main.cpp may only include the §23.6 surface: <xt/xt.h>, the
 #      three non-core headers of the table, the few public tooling headers listed below, the shared
 #      Examples/common/example_args.h, and standard headers.
+#   3. the C ABI header Code/Runtime/capi/include/xt/capi/xtframe.h (Docs/design/50-c-abi.md §50.2,
+#      Docs/tasks/T-504.md) is pure C99: its only includes are <stdint.h> and <stddef.h>, never an
+#      `xt/` header.
 # Prints every offending line with its line number and exits 1.
 # Not a C++ file: never run clang-format on it.
 set -u
@@ -79,6 +82,22 @@ $(includes "$EXAMPLE")
 EOT
 else
   echo "$EXAMPLE: missing" >>"$viol"
+fi
+
+# --- 3. the C ABI header --------------------------------------------------------------------
+CAPI_HEADER="Code/Runtime/capi/include/xt/capi/xtframe.h"
+if [ -f "$CAPI_HEADER" ]; then
+  while IFS="$(printf '\t')" read -r ln open target; do
+    [ -n "$ln" ] || continue
+    case "$open$target" in
+      "<stdint.h" | "<stddef.h") ;;
+      *) echo "$CAPI_HEADER:$ln: includes \"$target\"; only <stdint.h> and <stddef.h> are allowed (pure C99)" >>"$viol" ;;
+    esac
+  done <<EOT
+$(includes "$CAPI_HEADER")
+EOT
+else
+  echo "$CAPI_HEADER: missing" >>"$viol"
 fi
 
 if [ -s "$viol" ]; then

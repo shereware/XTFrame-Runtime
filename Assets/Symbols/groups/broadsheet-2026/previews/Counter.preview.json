@@ -1,0 +1,11 @@
+{
+  "width": 220,
+  "height": 80,
+  "frames": 0,
+  "ports": {
+    "Gold.value": 12450
+  },
+  "events": [
+    "update 0.6"
+  ]
+}

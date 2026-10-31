@@ -1,0 +1,97 @@
+<xt>
+  <head>
+    <!-- SwipeCard: standard mobile symbol (docs/design/23-host-integration.md 23.11.2,
+         30-ui-project.md 30.4). See ../README.md.
+         Style: Broadsheet (docs/design/47-symbol-visual-style.md).
+         Two stacked cards. The top card follows a horizontal drag (`draggable="axis-x"`, local
+         `offset` -1..1) and snaps back on release (`snap-back`); a left / right swipe gesture
+         writes `direction` (-1 / 1), emits `swipe` and flies the card out (`fly-left` /
+         `fly-right`). The host swaps the card content afterwards and plays `intro`. -->
+    <symbol name="SwipeCard" requires="states: Pressed; slots: content, next">
+      <div id="Box" port:swipe="event out" port:direction="number out" port:offset="number in">
+        <div id="Back"><span id="BackText"><slot name="next">Next</slot></span></div>
+        <div id="Card" draggable="axis-x" bind:translate-x="offset | range(-1, 1, -96, 96)"
+             bind:rotate="offset | range(-1, 1, -8, 8)"
+             on:drag.value="set(offset, event.value | range(0, 1, -1, 1))"
+             on:release="set(offset, 0); play(snap-back)"
+             on:gesture(swipe(left))="sound(ui_select); set(direction, -1); emit(swipe); play(fly-left)"
+             on:gesture(swipe(right))="sound(ui_select); set(direction, 1); emit(swipe); play(fly-right)">
+          <div id="Front"><span id="FrontText"><slot name="content">Swipe me</slot></span></div>
+        </div>
+      </div>
+    </symbol>
+    <style>
+      symbol(SwipeCard) {
+        #Box {
+          position: relative;
+          width: 280px;
+          height: 360px;
+          font-family: var(--font-body);
+          font-size: var(--font-size-l);
+          color: var(--color-text);
+        }
+        #Back {
+          position: absolute;
+          left: 12px;
+          top: 16px;
+          width: 256px;
+          height: 336px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background-color: var(--color-surface-sunken);
+          background-image: var(--tex-hatch);
+          background-repeat: repeat;
+          background-size: 8px 8px;
+          border-width: var(--rule-thin);
+          border-style: dashed;
+          border-color: var(--color-border);
+          color: var(--color-text-dim);
+        }
+        #Card {
+          position: absolute;
+          left: 0px;
+          top: 0px;
+          width: 280px;
+          height: 344px;
+        }
+        #Front {
+          width: 280px;
+          height: 344px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background-color: var(--color-surface);
+          background-image: var(--tex-grain);
+          background-repeat: repeat;
+          background-size: 128px 128px;
+          border-width: var(--rule-thin);
+          border-style: dashed;
+          border-color: var(--color-border);
+        }
+        #FrontText {
+          padding: var(--space-2) var(--space-4);
+          border-width: var(--rule-thick) 0px var(--rule-thin) 0px;
+          border-color: var(--color-border);
+          font-family: var(--font-display);
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: var(--letter-display);
+        }
+        #Card:active #Front { background-color: var(--color-surface-sunken); background-image: none; }
+        @timeline snap-back {
+          #Front { 0s { transform: translateY(1px) } 0.15s ease-out { transform: translateY(0px) } }
+        }
+        @timeline fly-left {
+          #Front { 0s { transform: translateX(0px); opacity: 1 } 0.3s ease-in { transform: translateX(-360px) rotate(-12deg); opacity: 0 } }
+        }
+        @timeline fly-right {
+          #Front { 0s { transform: translateX(0px); opacity: 1 } 0.3s ease-in { transform: translateX(360px) rotate(12deg); opacity: 0 } }
+        }
+        @timeline intro {
+          #Front { 0s { transform: translateY(8px); opacity: 0 } 0.25s ease-out { transform: translateY(0px); opacity: 1 } }
+        }
+      }
+    </style>
+  </head>
+</xt>

@@ -697,6 +697,23 @@ void BindingRuntime::apply(Binding& b, const BVal& r, bool initial) {
             }
             const PropId prop = static_cast<PropId>(ir.targetId);
             const ValueType vt = propertyType(prop);
+            if (isEffectProp(prop)) {
+                // T-545 (18 §18.16, 04 §4.7): `bind:effect.<effect>.<param>` is a data-driven write,
+                // so it lives in the Animator's override layer: it survives a restyle (which
+                // rebuilds the effect stack), is re-applied every frame (a missing effect is a
+                // no-op plus one kWarnEffectMissing), and `| tween(d)` tweens the override itself.
+                Value ev;
+                if (vt == ValueType::Float && (r.kind == Kind::Num || r.kind == Kind::Len)) {
+                    ev = Value::ofFloat(static_cast<float>(toNum(r)));
+                } else if (vt == ValueType::Color && r.kind == Kind::Color) {
+                    ev = r.v;
+                } else {
+                    return;
+                }
+                const float duration = b.transitionTween && !initial ? b.tweenDuration : 0.0f;
+                doc.m_animator.setOverride(b.node, prop, ev, duration, b.tweenEasing);
+                return;
+            }
             Value pv;
             bool typed = false;
             if ((prop == xt::prop::TranslateX || prop == xt::prop::TranslateY) &&
@@ -729,7 +746,14 @@ void BindingRuntime::apply(Binding& b, const BVal& r, bool initial) {
                 ref.setStyle(styleText());
                 return;
             }
+            // T-546 (27 §27.3.3): the first write of a `tween` binding applies directly.
+            // Initial evaluation and the first port-driven write are both direct; tweening starts
+            // from the second port-driven change.
+            const bool firstTweenWrite = b.transitionTween && !b.tweened;
             if (b.transitionTween && !initial) {
+                b.tweened = true;
+            }
+            if (b.transitionTween && !initial && !firstTweenWrite) {
                 // 04 §4.10.4: a tween on the property is a transition from its current final value.
                 Value from = ref.property(prop);
                 const bool sameShape =

@@ -1,0 +1,22 @@
+<xt>
+  <head>
+    <!-- T-198: preview of the Slider standard symbol (golden states and thumbnail; T-499: moved into the group). -->
+    <link href="../tokens.xts"/>
+    <link rel="symbols" href="../Slider.xt"/>
+    <style>
+      body {
+        width: 300px;
+        height: 110px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        row-gap: 12px;
+        background-color: var(--color-bg);
+      }
+    </style>
+  </head>
+  <body>
+    <use symbol="Slider" id="Volume" slot:label="Volume"/>
+  </body>
+</xt>

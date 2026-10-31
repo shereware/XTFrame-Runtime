@@ -780,32 +780,35 @@
    "id": "n096_compare",
    "type": "compare",
    "params": {
-    "op": "ge"
+    "op": "gt"
    }
   },
   {
-   "id": "n097_format",
-   "type": "format",
-   "params": {
-    "format": "{a}:{b}",
-    "decimals": 1
-   }
-  },
-  {
-   "id": "n098_math",
+   "id": "n097_math",
    "type": "math",
    "params": {
-    "op": "clamp",
-    "lo": 0,
-    "hi": 500
+    "op": "round"
    }
   },
   {
-   "id": "n099_format",
-   "type": "format",
+   "id": "n098_select",
+   "type": "select",
+   "params": {}
+  },
+  {
+   "id": "n099_lookup",
+   "type": "lookup",
    "params": {
-    "format": "{a}:{b}",
-    "decimals": 1
+    "values": [
+     "idle",
+     "walk",
+     "run",
+     "jump",
+     "fall",
+     "hit",
+     "dash",
+     "rest"
+    ]
    }
   },
   {
@@ -817,11 +820,19 @@
    }
   },
   {
-   "id": "n101_format",
-   "type": "format",
+   "id": "n101_lookup",
+   "type": "lookup",
    "params": {
-    "format": "{a}:{b}",
-    "decimals": 1
+    "values": [
+     "idle",
+     "walk",
+     "run",
+     "jump",
+     "fall",
+     "hit",
+     "dash",
+     "rest"
+    ]
    }
   },
   {
@@ -832,16 +843,41 @@
     "inLo": 0,
     "inHi": 1280,
     "outLo": 0,
+    "outHi": 360
+   }
+  },
+  {
+   "id": "n103_math",
+   "type": "math",
+   "params": {
+    "op": "abs"
+   }
+  },
+  {
+   "id": "n104_compare",
+   "type": "compare",
+   "params": {
+    "op": "ge"
+   }
+  },
+  {
+   "id": "n105_math",
+   "type": "math",
+   "params": {
+    "op": "map",
+    "inLo": 0,
+    "inHi": 1280,
+    "outLo": 0,
     "outHi": 100
    }
   },
   {
-   "id": "n103_select",
+   "id": "n106_select",
    "type": "select",
    "params": {}
   },
   {
-   "id": "n104_format",
+   "id": "n107_format",
    "type": "format",
    "params": {
     "format": "{a}:{b}",
@@ -849,7 +885,7 @@
    }
   },
   {
-   "id": "n105_lookup",
+   "id": "n108_lookup",
    "type": "lookup",
    "params": {
     "values": [
@@ -865,7 +901,7 @@
    }
   },
   {
-   "id": "n106_format",
+   "id": "n109_format",
    "type": "format",
    "params": {
     "format": "{a}:{b}",
@@ -873,7 +909,7 @@
    }
   },
   {
-   "id": "n107_format",
+   "id": "n110_format",
    "type": "format",
    "params": {
     "format": "{a}:{b}",
@@ -881,62 +917,50 @@
    }
   },
   {
-   "id": "n108_math",
+   "id": "n111_math",
    "type": "math",
    "params": {
     "op": "round"
    }
   },
   {
-   "id": "n109_compare",
-   "type": "compare",
+   "id": "n112_lookup",
+   "type": "lookup",
    "params": {
-    "op": "le"
+    "values": [
+     "idle",
+     "walk",
+     "run",
+     "jump",
+     "fall",
+     "hit",
+     "dash",
+     "rest"
+    ]
    }
   },
   {
-   "id": "n110_compare",
-   "type": "compare",
-   "params": {
-    "op": "ne"
-   }
-  },
-  {
-   "id": "n111_format",
+   "id": "n113_format",
    "type": "format",
    "params": {
     "format": "{a}:{b}",
     "decimals": 1
-   }
-  },
-  {
-   "id": "n112_format",
-   "type": "format",
-   "params": {
-    "format": "{a}:{b}",
-    "decimals": 1
-   }
-  },
-  {
-   "id": "n113_compare",
-   "type": "compare",
-   "params": {
-    "op": "eq"
    }
   },
   {
    "id": "n114_math",
    "type": "math",
    "params": {
-    "op": "max"
+    "op": "clamp",
+    "lo": 0,
+    "hi": 500
    }
   },
   {
-   "id": "n115_format",
-   "type": "format",
+   "id": "n115_compare",
+   "type": "compare",
    "params": {
-    "format": "{a}:{b}",
-    "decimals": 1
+    "op": "le"
    }
   },
   {
@@ -956,119 +980,29 @@
    }
   },
   {
-   "id": "n117_math",
-   "type": "math",
+   "id": "n117_compare",
+   "type": "compare",
    "params": {
-    "op": "max"
+    "op": "eq"
    }
   },
   {
    "id": "n118_math",
    "type": "math",
    "params": {
-    "op": "clamp",
-    "lo": 0,
-    "hi": 500
-   }
-  },
-  {
-   "id": "n119_math",
-   "type": "math",
-   "params": {
-    "op": "round"
-   }
-  },
-  {
-   "id": "n120_math",
-   "type": "math",
-   "params": {
-    "op": "round"
-   }
-  },
-  {
-   "id": "n121_select",
-   "type": "select",
-   "params": {}
-  },
-  {
-   "id": "n122_compare",
-   "type": "compare",
-   "params": {
-    "op": "ge"
-   }
-  },
-  {
-   "id": "n123_math",
-   "type": "math",
-   "params": {
     "op": "max"
    }
   },
   {
-   "id": "n124_select",
-   "type": "select",
-   "params": {}
-  },
-  {
-   "id": "n125_lookup",
-   "type": "lookup",
+   "id": "n119_format",
+   "type": "format",
    "params": {
-    "values": [
-     0,
-     10,
-     20,
-     35,
-     50,
-     65,
-     80,
-     100
-    ]
+    "format": "{a}:{b}",
+    "decimals": 1
    }
   },
   {
-   "id": "n126_math",
-   "type": "math",
-   "params": {
-    "op": "add"
-   }
-  },
-  {
-   "id": "n127_math",
-   "type": "math",
-   "params": {
-    "op": "sub"
-   }
-  },
-  {
-   "id": "n128_select",
-   "type": "select",
-   "params": {}
-  },
-  {
-   "id": "n129_lookup",
-   "type": "lookup",
-   "params": {
-    "values": [
-     0,
-     10,
-     20,
-     35,
-     50,
-     65,
-     80,
-     100
-    ]
-   }
-  },
-  {
-   "id": "n130_math",
-   "type": "math",
-   "params": {
-    "op": "add"
-   }
-  },
-  {
-   "id": "n131_lookup",
+   "id": "n120_lookup",
    "type": "lookup",
    "params": {
     "values": [
@@ -1084,112 +1018,254 @@
    }
   },
   {
-   "id": "n132_format",
-   "type": "format",
-   "params": {
-    "format": "{a}:{b}",
-    "decimals": 1
-   }
-  },
-  {
-   "id": "n133_compare",
-   "type": "compare",
-   "params": {
-    "op": "le"
-   }
-  },
-  {
-   "id": "n134_math",
-   "type": "math",
-   "params": {
-    "op": "sub"
-   }
-  },
-  {
-   "id": "n135_math",
-   "type": "math",
-   "params": {
-    "op": "min"
-   }
-  },
-  {
-   "id": "n136_math",
-   "type": "math",
-   "params": {
-    "op": "map",
-    "inLo": 0,
-    "inHi": 1280,
-    "outLo": 0,
-    "outHi": 100
-   }
-  },
-  {
-   "id": "n137_select",
-   "type": "select",
-   "params": {}
-  },
-  {
-   "id": "n138_math",
-   "type": "math",
-   "params": {
-    "op": "round"
-   }
-  },
-  {
-   "id": "n139_math",
-   "type": "math",
-   "params": {
-    "op": "abs"
-   }
-  },
-  {
-   "id": "n140_select",
-   "type": "select",
-   "params": {}
-  },
-  {
-   "id": "n141_math",
+   "id": "n121_math",
    "type": "math",
    "params": {
     "op": "max"
    }
   },
   {
-   "id": "n142_math",
+   "id": "n122_lookup",
+   "type": "lookup",
+   "params": {
+    "values": [
+     "idle",
+     "walk",
+     "run",
+     "jump",
+     "fall",
+     "hit",
+     "dash",
+     "rest"
+    ]
+   }
+  },
+  {
+   "id": "n123_compare",
+   "type": "compare",
+   "params": {
+    "op": "eq"
+   }
+  },
+  {
+   "id": "n124_compare",
+   "type": "compare",
+   "params": {
+    "op": "ne"
+   }
+  },
+  {
+   "id": "n125_compare",
+   "type": "compare",
+   "params": {
+    "op": "ge"
+   }
+  },
+  {
+   "id": "n126_compare",
+   "type": "compare",
+   "params": {
+    "op": "ne"
+   }
+  },
+  {
+   "id": "n127_math",
+   "type": "math",
+   "params": {
+    "op": "min"
+   }
+  },
+  {
+   "id": "n128_math",
+   "type": "math",
+   "params": {
+    "op": "sub"
+   }
+  },
+  {
+   "id": "n129_math",
+   "type": "math",
+   "params": {
+    "op": "add"
+   }
+  },
+  {
+   "id": "n130_math",
+   "type": "math",
+   "params": {
+    "op": "sub"
+   }
+  },
+  {
+   "id": "n131_select",
+   "type": "select",
+   "params": {}
+  },
+  {
+   "id": "n132_lookup",
+   "type": "lookup",
+   "params": {
+    "values": [
+     0,
+     10,
+     20,
+     35,
+     50,
+     65,
+     80,
+     100
+    ]
+   }
+  },
+  {
+   "id": "n133_math",
+   "type": "math",
+   "params": {
+    "op": "add"
+   }
+  },
+  {
+   "id": "n134_lookup",
+   "type": "lookup",
+   "params": {
+    "values": [
+     "idle",
+     "walk",
+     "run",
+     "jump",
+     "fall",
+     "hit",
+     "dash",
+     "rest"
+    ]
+   }
+  },
+  {
+   "id": "n135_format",
+   "type": "format",
+   "params": {
+    "format": "{a}:{b}",
+    "decimals": 1
+   }
+  },
+  {
+   "id": "n136_compare",
+   "type": "compare",
+   "params": {
+    "op": "le"
+   }
+  },
+  {
+   "id": "n137_math",
+   "type": "math",
+   "params": {
+    "op": "sub"
+   }
+  },
+  {
+   "id": "n138_math",
+   "type": "math",
+   "params": {
+    "op": "min"
+   }
+  },
+  {
+   "id": "n139_select",
+   "type": "select",
+   "params": {}
+  },
+  {
+   "id": "n140_lookup",
+   "type": "lookup",
+   "params": {
+    "values": [
+     "idle",
+     "walk",
+     "run",
+     "jump",
+     "fall",
+     "hit",
+     "dash",
+     "rest"
+    ]
+   }
+  },
+  {
+   "id": "n141_lookup",
+   "type": "lookup",
+   "params": {
+    "values": [
+     0,
+     10,
+     20,
+     35,
+     50,
+     65,
+     80,
+     100
+    ]
+   }
+  },
+  {
+   "id": "n142_lookup",
+   "type": "lookup",
+   "params": {
+    "values": [
+     0,
+     10,
+     20,
+     35,
+     50,
+     65,
+     80,
+     100
+    ]
+   }
+  },
+  {
+   "id": "n143_lookup",
+   "type": "lookup",
+   "params": {
+    "values": [
+     0,
+     10,
+     20,
+     35,
+     50,
+     65,
+     80,
+     100
+    ]
+   }
+  },
+  {
+   "id": "n144_lookup",
+   "type": "lookup",
+   "params": {
+    "values": [
+     "idle",
+     "walk",
+     "run",
+     "jump",
+     "fall",
+     "hit",
+     "dash",
+     "rest"
+    ]
+   }
+  },
+  {
+   "id": "n145_math",
    "type": "math",
    "params": {
     "op": "abs"
    }
   },
   {
-   "id": "n143_format",
-   "type": "format",
-   "params": {
-    "format": "{a}:{b}",
-    "decimals": 1
-   }
-  },
-  {
-   "id": "n144_compare",
+   "id": "n146_compare",
    "type": "compare",
    "params": {
-    "op": "lt"
-   }
-  },
-  {
-   "id": "n145_format",
-   "type": "format",
-   "params": {
-    "format": "{a}:{b}",
-    "decimals": 1
-   }
-  },
-  {
-   "id": "n146_format",
-   "type": "format",
-   "params": {
-    "format": "{a}:{b}",
-    "decimals": 1
+    "op": "ge"
    }
   },
   {
@@ -1197,14 +1273,14 @@
    "type": "lookup",
    "params": {
     "values": [
-     "idle",
-     "walk",
-     "run",
-     "jump",
-     "fall",
-     "hit",
-     "dash",
-     "rest"
+     0,
+     10,
+     20,
+     35,
+     50,
+     65,
+     80,
+     100
     ]
    }
   },
@@ -1217,15 +1293,18 @@
    }
   },
   {
-   "id": "n149_select",
-   "type": "select",
-   "params": {}
+   "id": "n149_format",
+   "type": "format",
+   "params": {
+    "format": "{a}:{b}",
+    "decimals": 1
+   }
   },
   {
-   "id": "n150_math",
-   "type": "math",
+   "id": "n150_compare",
+   "type": "compare",
    "params": {
-    "op": "add"
+    "op": "lt"
    }
   },
   {
@@ -1237,40 +1316,44 @@
    }
   },
   {
-   "id": "n152_format",
-   "type": "format",
+   "id": "n152_math",
+   "type": "math",
    "params": {
-    "format": "{a}:{b}",
-    "decimals": 1
+    "op": "map",
+    "inLo": 0,
+    "inHi": 1280,
+    "outLo": 0,
+    "outHi": 360
    }
   },
   {
-   "id": "n153_compare",
-   "type": "compare",
+   "id": "n153_math",
+   "type": "math",
    "params": {
-    "op": "ne"
+    "op": "abs"
    }
   },
   {
-   "id": "n154_format",
-   "type": "format",
+   "id": "n154_math",
+   "type": "math",
    "params": {
-    "format": "{a}:{b}",
-    "decimals": 1
+    "op": "clamp",
+    "lo": 0,
+    "hi": 1000
    }
   },
   {
    "id": "n155_math",
    "type": "math",
    "params": {
-    "op": "sub"
+    "op": "round"
    }
   },
   {
-   "id": "n156_compare",
-   "type": "compare",
+   "id": "n156_math",
+   "type": "math",
    "params": {
-    "op": "lt"
+    "op": "round"
    }
   },
   {
@@ -1281,25 +1364,43 @@
    }
   },
   {
-   "id": "n158_math",
-   "type": "math",
+   "id": "n158_filter",
+   "type": "filter",
    "params": {
-    "op": "abs"
+    "op": "deadband",
+    "threshold": 0.01
    }
   },
   {
-   "id": "n159_format",
-   "type": "format",
+   "id": "n159_throttle",
+   "type": "throttle",
    "params": {
-    "format": "{a}:{b}",
-    "decimals": 1
+    "unit": "frames",
+    "rate": 3,
+    "trailing": true
    }
   },
   {
-   "id": "n160_math",
-   "type": "math",
+   "id": "n160_state",
+   "type": "state",
    "params": {
-    "op": "add"
+    "states": [
+     "idle",
+     "busy"
+    ],
+    "initial": "idle",
+    "transitions": [
+     {
+      "from": "idle",
+      "on": "tick",
+      "to": "busy"
+     },
+     {
+      "from": "busy",
+      "on": "tick",
+      "to": "idle"
+     }
+    ]
    }
   },
   {
@@ -2397,7 +2498,7 @@
    "to": "n091_lookup.index"
   },
   {
-   "from": "n051_math.out",
+   "from": "n074_math.out",
    "to": "n092_math.a"
   },
   {
@@ -2409,7 +2510,7 @@
    "to": "n093_format.a"
   },
   {
-   "from": "#document.src2",
+   "from": "#document.viewportWidth",
    "to": "n093_format.b"
   },
   {
@@ -2429,539 +2530,479 @@
    "to": "n095_math.a"
   },
   {
-   "from": "#document.src5",
+   "from": "n074_math.out",
    "to": "n095_math.b"
   },
   {
-   "from": "n086_lookup.out",
+   "from": "n074_math.out",
    "to": "n096_compare.a"
   },
   {
-   "from": "n086_lookup.out",
+   "from": "n033_lookup.out",
    "to": "n096_compare.b"
   },
   {
-   "from": "n084_compare.out",
-   "to": "n097_format.a"
+   "from": "n086_lookup.out",
+   "to": "n097_math.a"
   },
   {
-   "from": "n081_math.out",
-   "to": "n097_format.b"
-  },
-  {
-   "from": "n081_math.out",
-   "to": "n098_math.a"
-  },
-  {
-   "from": "n045_math.out",
-   "to": "n098_math.b"
-  },
-  {
-   "from": "n070_compare.out",
-   "to": "n099_format.a"
-  },
-  {
-   "from": "#document.src8",
-   "to": "n099_format.b"
-  },
-  {
-   "from": "n083_math.out",
-   "to": "n100_format.a"
-  },
-  {
-   "from": "n033_lookup.out",
-   "to": "n100_format.b"
-  },
-  {
-   "from": "n071_select.out",
-   "to": "n101_format.a"
-  },
-  {
-   "from": "#hv8.hover",
-   "to": "n101_format.b"
-  },
-  {
-   "from": "n076_math.out",
-   "to": "n102_math.a"
-  },
-  {
-   "from": "n074_math.out",
-   "to": "n102_math.b"
+   "from": "n024_math.out",
+   "to": "n097_math.b"
   },
   {
    "from": "n079_compare.out",
-   "to": "n103_select.cond"
-  },
-  {
-   "from": "n056_math.out",
-   "to": "n103_select.a"
-  },
-  {
-   "from": "#document.pointerX",
-   "to": "n103_select.b"
-  },
-  {
-   "from": "n084_compare.out",
-   "to": "n104_format.a"
-  },
-  {
-   "from": "n020_compare.out",
-   "to": "n104_format.b"
-  },
-  {
-   "from": "n092_math.out",
-   "to": "n105_lookup.index"
-  },
-  {
-   "from": "n083_math.out",
-   "to": "n106_format.a"
-  },
-  {
-   "from": "n035_select.out",
-   "to": "n106_format.b"
-  },
-  {
-   "from": "n075_math.out",
-   "to": "n107_format.a"
-  },
-  {
-   "from": "#hv8.hover",
-   "to": "n107_format.b"
+   "to": "n098_select.cond"
   },
   {
    "from": "n072_lookup.out",
-   "to": "n108_math.a"
+   "to": "n098_select.a"
   },
   {
-   "from": "n066_math.out",
-   "to": "n108_math.b"
-  },
-  {
-   "from": "n086_lookup.out",
-   "to": "n109_compare.a"
-  },
-  {
-   "from": "n045_math.out",
-   "to": "n109_compare.b"
-  },
-  {
-   "from": "n092_math.out",
-   "to": "n110_compare.a"
-  },
-  {
-   "from": "n026_lookup.out",
-   "to": "n110_compare.b"
-  },
-  {
-   "from": "n082_compare.out",
-   "to": "n111_format.a"
-  },
-  {
-   "from": "n092_math.out",
-   "to": "n111_format.b"
-  },
-  {
-   "from": "n087_select.out",
-   "to": "n112_format.a"
-  },
-  {
-   "from": "n051_math.out",
-   "to": "n112_format.b"
-  },
-  {
-   "from": "n081_math.out",
-   "to": "n113_compare.a"
+   "from": "n031_math.out",
+   "to": "n098_select.b"
   },
   {
    "from": "n078_math.out",
-   "to": "n113_compare.b"
-  },
-  {
-   "from": "n092_math.out",
-   "to": "n114_math.a"
-  },
-  {
-   "from": "#document.src16",
-   "to": "n114_math.b"
+   "to": "n099_lookup.index"
   },
   {
    "from": "n081_math.out",
-   "to": "n115_format.a"
+   "to": "n100_format.a"
   },
   {
-   "from": "#document.clock",
-   "to": "n115_format.b"
-  },
-  {
-   "from": "n105_lookup.out",
-   "to": "n116_lookup.index"
-  },
-  {
-   "from": "n108_math.out",
-   "to": "n117_math.a"
-  },
-  {
-   "from": "n019_math.out",
-   "to": "n117_math.b"
-  },
-  {
-   "from": "n098_math.out",
-   "to": "n118_math.a"
-  },
-  {
-   "from": "#document.src17",
-   "to": "n118_math.b"
-  },
-  {
-   "from": "n114_math.out",
-   "to": "n119_math.a"
-  },
-  {
-   "from": "n017_math.out",
-   "to": "n119_math.b"
-  },
-  {
-   "from": "n114_math.out",
-   "to": "n120_math.a"
-  },
-  {
-   "from": "#document.src17",
-   "to": "n120_math.b"
-  },
-  {
-   "from": "n096_compare.out",
-   "to": "n121_select.cond"
-  },
-  {
-   "from": "n059_lookup.out",
-   "to": "n121_select.a"
-  },
-  {
-   "from": "n081_math.out",
-   "to": "n121_select.b"
-  },
-  {
-   "from": "n108_math.out",
-   "to": "n122_compare.a"
-  },
-  {
-   "from": "#document.pointerY",
-   "to": "n122_compare.b"
-  },
-  {
-   "from": "n114_math.out",
-   "to": "n123_math.a"
-  },
-  {
-   "from": "#document.src11",
-   "to": "n123_math.b"
-  },
-  {
-   "from": "n110_compare.out",
-   "to": "n124_select.cond"
-  },
-  {
-   "from": "n026_lookup.out",
-   "to": "n124_select.a"
+   "from": "n034_math.out",
+   "to": "n100_format.b"
   },
   {
    "from": "n083_math.out",
-   "to": "n124_select.b"
+   "to": "n101_lookup.index"
   },
   {
-   "from": "n102_math.out",
-   "to": "n125_lookup.index"
+   "from": "n083_math.out",
+   "to": "n102_math.a"
   },
   {
-   "from": "n102_math.out",
-   "to": "n126_math.a"
+   "from": "n017_math.out",
+   "to": "n102_math.b"
+  },
+  {
+   "from": "n083_math.out",
+   "to": "n103_math.a"
+  },
+  {
+   "from": "n066_math.out",
+   "to": "n103_math.b"
+  },
+  {
+   "from": "n083_math.out",
+   "to": "n104_compare.a"
+  },
+  {
+   "from": "#document.src2",
+   "to": "n104_compare.b"
+  },
+  {
+   "from": "n076_math.out",
+   "to": "n105_math.a"
+  },
+  {
+   "from": "n006_math.out",
+   "to": "n105_math.b"
+  },
+  {
+   "from": "n079_compare.out",
+   "to": "n106_select.cond"
+  },
+  {
+   "from": "n056_math.out",
+   "to": "n106_select.a"
+  },
+  {
+   "from": "#document.pointerX",
+   "to": "n106_select.b"
+  },
+  {
+   "from": "n084_compare.out",
+   "to": "n107_format.a"
+  },
+  {
+   "from": "n020_compare.out",
+   "to": "n107_format.b"
+  },
+  {
+   "from": "n083_math.out",
+   "to": "n108_lookup.index"
+  },
+  {
+   "from": "n076_math.out",
+   "to": "n109_format.a"
+  },
+  {
+   "from": "#hv12.hover",
+   "to": "n109_format.b"
+  },
+  {
+   "from": "n075_math.out",
+   "to": "n110_format.a"
+  },
+  {
+   "from": "#hv8.hover",
+   "to": "n110_format.b"
+  },
+  {
+   "from": "n072_lookup.out",
+   "to": "n111_math.a"
+  },
+  {
+   "from": "n056_math.out",
+   "to": "n111_math.b"
+  },
+  {
+   "from": "n078_math.out",
+   "to": "n112_lookup.index"
+  },
+  {
+   "from": "n088_compare.out",
+   "to": "n113_format.a"
+  },
+  {
+   "from": "n086_lookup.out",
+   "to": "n113_format.b"
+  },
+  {
+   "from": "n108_lookup.out",
+   "to": "n114_math.a"
+  },
+  {
+   "from": "#document.viewportWidth",
+   "to": "n114_math.b"
+  },
+  {
+   "from": "n097_math.out",
+   "to": "n115_compare.a"
   },
   {
    "from": "n095_math.out",
-   "to": "n126_math.b"
+   "to": "n115_compare.b"
+  },
+  {
+   "from": "n105_math.out",
+   "to": "n116_lookup.index"
+  },
+  {
+   "from": "n105_math.out",
+   "to": "n117_compare.a"
+  },
+  {
+   "from": "n078_math.out",
+   "to": "n117_compare.b"
+  },
+  {
+   "from": "n097_math.out",
+   "to": "n118_math.a"
+  },
+  {
+   "from": "n105_math.out",
+   "to": "n118_math.b"
+  },
+  {
+   "from": "n105_math.out",
+   "to": "n119_format.a"
+  },
+  {
+   "from": "#document.clock",
+   "to": "n119_format.b"
+  },
+  {
+   "from": "n111_math.out",
+   "to": "n120_lookup.index"
+  },
+  {
+   "from": "n103_math.out",
+   "to": "n121_math.a"
+  },
+  {
+   "from": "n025_math.out",
+   "to": "n121_math.b"
+  },
+  {
+   "from": "n102_math.out",
+   "to": "n122_lookup.index"
+  },
+  {
+   "from": "n108_lookup.out",
+   "to": "n123_compare.a"
+  },
+  {
+   "from": "n076_math.out",
+   "to": "n123_compare.b"
+  },
+  {
+   "from": "n103_math.out",
+   "to": "n124_compare.a"
+  },
+  {
+   "from": "n083_math.out",
+   "to": "n124_compare.b"
+  },
+  {
+   "from": "n092_math.out",
+   "to": "n125_compare.a"
+  },
+  {
+   "from": "n081_math.out",
+   "to": "n125_compare.b"
+  },
+  {
+   "from": "n092_math.out",
+   "to": "n126_compare.a"
+  },
+  {
+   "from": "#document.pointerY",
+   "to": "n126_compare.b"
   },
   {
    "from": "n095_math.out",
    "to": "n127_math.a"
   },
   {
-   "from": "n040_math.out",
+   "from": "n019_math.out",
    "to": "n127_math.b"
   },
   {
-   "from": "n109_compare.out",
-   "to": "n128_select.cond"
+   "from": "n102_math.out",
+   "to": "n128_math.a"
   },
   {
-   "from": "n075_math.out",
-   "to": "n128_select.a"
+   "from": "n051_math.out",
+   "to": "n128_math.b"
   },
   {
-   "from": "n019_math.out",
-   "to": "n128_select.b"
+   "from": "n103_math.out",
+   "to": "n129_math.a"
   },
   {
    "from": "n095_math.out",
-   "to": "n129_lookup.index"
+   "to": "n129_math.b"
   },
   {
    "from": "n095_math.out",
    "to": "n130_math.a"
   },
   {
-   "from": "#document.src9",
+   "from": "n040_math.out",
    "to": "n130_math.b"
   },
   {
-   "from": "n098_math.out",
-   "to": "n131_lookup.index"
-  },
-  {
-   "from": "n098_math.out",
-   "to": "n132_format.a"
-  },
-  {
-   "from": "n068_compare.out",
-   "to": "n132_format.b"
-  },
-  {
-   "from": "n098_math.out",
-   "to": "n133_compare.a"
-  },
-  {
-   "from": "n074_math.out",
-   "to": "n133_compare.b"
-  },
-  {
-   "from": "n105_lookup.out",
-   "to": "n134_math.a"
-  },
-  {
-   "from": "n066_math.out",
-   "to": "n134_math.b"
-  },
-  {
-   "from": "n108_math.out",
-   "to": "n135_math.a"
+   "from": "n096_compare.out",
+   "to": "n131_select.cond"
   },
   {
    "from": "n075_math.out",
-   "to": "n135_math.b"
-  },
-  {
-   "from": "n105_lookup.out",
-   "to": "n136_math.a"
+   "to": "n131_select.a"
   },
   {
    "from": "n019_math.out",
-   "to": "n136_math.b"
+   "to": "n131_select.b"
   },
   {
-   "from": "n109_compare.out",
-   "to": "n137_select.cond"
+   "from": "n092_math.out",
+   "to": "n132_lookup.index"
   },
   {
-   "from": "#document.pointerX",
-   "to": "n137_select.a"
+   "from": "n095_math.out",
+   "to": "n133_math.a"
   },
   {
-   "from": "n064_math.out",
-   "to": "n137_select.b"
+   "from": "#document.src9",
+   "to": "n133_math.b"
+  },
+  {
+   "from": "n097_math.out",
+   "to": "n134_lookup.index"
   },
   {
    "from": "n102_math.out",
-   "to": "n138_math.a"
+   "to": "n135_format.a"
   },
   {
-   "from": "#document.pointerY",
-   "to": "n138_math.b"
+   "from": "n068_compare.out",
+   "to": "n135_format.b"
   },
   {
-   "from": "n119_math.out",
-   "to": "n139_math.a"
+   "from": "n121_math.out",
+   "to": "n136_compare.a"
   },
   {
-   "from": "n072_lookup.out",
-   "to": "n139_math.b"
+   "from": "n074_math.out",
+   "to": "n136_compare.b"
   },
   {
-   "from": "n133_compare.out",
-   "to": "n140_select.cond"
-  },
-  {
-   "from": "#document.viewportHeight",
-   "to": "n140_select.a"
-  },
-  {
-   "from": "n120_math.out",
-   "to": "n140_select.b"
-  },
-  {
-   "from": "n126_math.out",
-   "to": "n141_math.a"
-  },
-  {
-   "from": "n076_math.out",
-   "to": "n141_math.b"
-  },
-  {
-   "from": "n127_math.out",
-   "to": "n142_math.a"
+   "from": "n132_lookup.out",
+   "to": "n137_math.a"
   },
   {
    "from": "n066_math.out",
-   "to": "n142_math.b"
+   "to": "n137_math.b"
   },
   {
-   "from": "n121_select.out",
-   "to": "n143_format.a"
+   "from": "n133_math.out",
+   "to": "n138_math.a"
   },
   {
-   "from": "#document.src19",
-   "to": "n143_format.b"
+   "from": "n128_math.out",
+   "to": "n138_math.b"
   },
   {
-   "from": "n126_math.out",
-   "to": "n144_compare.a"
+   "from": "n123_compare.out",
+   "to": "n139_select.cond"
   },
   {
-   "from": "n098_math.out",
-   "to": "n144_compare.b"
+   "from": "n069_math.out",
+   "to": "n139_select.a"
   },
   {
-   "from": "n136_math.out",
-   "to": "n145_format.a"
+   "from": "n111_math.out",
+   "to": "n139_select.b"
   },
   {
-   "from": "#document.src7",
-   "to": "n145_format.b"
+   "from": "n132_lookup.out",
+   "to": "n140_lookup.index"
+  },
+  {
+   "from": "n121_math.out",
+   "to": "n141_lookup.index"
+  },
+  {
+   "from": "n121_math.out",
+   "to": "n142_lookup.index"
+  },
+  {
+   "from": "n128_math.out",
+   "to": "n143_lookup.index"
   },
   {
    "from": "n130_math.out",
-   "to": "n146_format.a"
+   "to": "n144_lookup.index"
   },
   {
-   "from": "n122_compare.out",
-   "to": "n146_format.b"
+   "from": "n128_math.out",
+   "to": "n145_math.a"
   },
   {
-   "from": "n126_math.out",
-   "to": "n147_lookup.index"
+   "from": "#document.viewportHeight",
+   "to": "n145_math.b"
   },
   {
-   "from": "n129_lookup.out",
-   "to": "n148_format.a"
-  },
-  {
-   "from": "#hv15.hover",
-   "to": "n148_format.b"
-  },
-  {
-   "from": "n122_compare.out",
-   "to": "n149_select.cond"
-  },
-  {
-   "from": "n059_lookup.out",
-   "to": "n149_select.a"
-  },
-  {
-   "from": "n129_lookup.out",
-   "to": "n149_select.b"
-  },
-  {
-   "from": "n117_math.out",
-   "to": "n150_math.a"
-  },
-  {
-   "from": "n134_math.out",
-   "to": "n150_math.b"
-  },
-  {
-   "from": "n119_math.out",
-   "to": "n151_format.a"
-  },
-  {
-   "from": "n036_math.out",
-   "to": "n151_format.b"
-  },
-  {
-   "from": "n116_lookup.out",
-   "to": "n152_format.a"
-  },
-  {
-   "from": "n107_format.out",
-   "to": "n152_format.b"
-  },
-  {
-   "from": "n125_lookup.out",
-   "to": "n153_compare.a"
+   "from": "n130_math.out",
+   "to": "n146_compare.a"
   },
   {
    "from": "#document.src2",
-   "to": "n153_compare.b"
-  },
-  {
-   "from": "n123_math.out",
-   "to": "n154_format.a"
-  },
-  {
-   "from": "#hv8.hover",
-   "to": "n154_format.b"
+   "to": "n146_compare.b"
   },
   {
    "from": "n127_math.out",
-   "to": "n155_math.a"
+   "to": "n147_lookup.index"
   },
   {
-   "from": "n053_lookup.out",
-   "to": "n155_math.b"
+   "from": "n130_math.out",
+   "to": "n148_format.a"
   },
   {
-   "from": "n120_math.out",
-   "to": "n156_compare.a"
+   "from": "n066_math.out",
+   "to": "n148_format.b"
   },
   {
-   "from": "n016_math.out",
-   "to": "n156_compare.b"
-  },
-  {
-   "from": "n127_math.out",
-   "to": "n157_math.a"
+   "from": "n119_format.out",
+   "to": "n149_format.a"
   },
   {
    "from": "#document.src19",
+   "to": "n149_format.b"
+  },
+  {
+   "from": "n130_math.out",
+   "to": "n150_compare.a"
+  },
+  {
+   "from": "n097_math.out",
+   "to": "n150_compare.b"
+  },
+  {
+   "from": "n114_math.out",
+   "to": "n151_format.a"
+  },
+  {
+   "from": "n010_compare.out",
+   "to": "n151_format.b"
+  },
+  {
+   "from": "n118_math.out",
+   "to": "n152_math.a"
+  },
+  {
+   "from": "n024_math.out",
+   "to": "n152_math.b"
+  },
+  {
+   "from": "n130_math.out",
+   "to": "n153_math.a"
+  },
+  {
+   "from": "n051_math.out",
+   "to": "n153_math.b"
+  },
+  {
+   "from": "n118_math.out",
+   "to": "n154_math.a"
+  },
+  {
+   "from": "n013_lookup.out",
+   "to": "n154_math.b"
+  },
+  {
+   "from": "n121_math.out",
+   "to": "n155_math.a"
+  },
+  {
+   "from": "n006_math.out",
+   "to": "n155_math.b"
+  },
+  {
+   "from": "n121_math.out",
+   "to": "n156_math.a"
+  },
+  {
+   "from": "n128_math.out",
+   "to": "n156_math.b"
+  },
+  {
+   "from": "n129_math.out",
+   "to": "n157_math.a"
+  },
+  {
+   "from": "n086_lookup.out",
    "to": "n157_math.b"
   },
   {
-   "from": "n123_math.out",
-   "to": "n158_math.a"
+   "from": "#document.pointerNX",
+   "to": "n158_filter.in"
   },
   {
-   "from": "n108_math.out",
-   "to": "n158_math.b"
+   "from": "n158_filter.out",
+   "to": "n159_throttle.in"
   },
   {
-   "from": "n132_format.out",
-   "to": "n159_format.a"
+   "from": "n159_throttle.passed",
+   "to": "n160_state.tick"
   },
   {
-   "from": "#document.src3",
-   "to": "n159_format.b"
-  },
-  {
-   "from": "n123_math.out",
-   "to": "n160_math.a"
-  },
-  {
-   "from": "n016_math.out",
-   "to": "n160_math.b"
-  },
-  {
-   "from": "n160_math.out",
+   "from": "n154_math.out",
    "to": "n161_format.a"
   },
   {
-   "from": "#document.src18",
+   "from": "#document.pointerNX",
    "to": "n161_format.b"
   },
   {
@@ -2969,7 +3010,7 @@
    "to": "#st0.setStyle"
   },
   {
-   "from": "n141_math.out",
+   "from": "n138_math.out",
    "to": "n162_format.a"
   },
   {
@@ -2977,7 +3018,7 @@
    "to": "#st1.setStyle"
   },
   {
-   "from": "n141_math.out",
+   "from": "n141_lookup.out",
    "to": "n163_format.a"
   },
   {
@@ -2985,11 +3026,11 @@
    "to": "#st2.setStyle"
   },
   {
-   "from": "n157_math.out",
+   "from": "n156_math.out",
    "to": "n164_format.a"
   },
   {
-   "from": "n066_math.out",
+   "from": "n153_math.out",
    "to": "n164_format.b"
   },
   {
@@ -2997,7 +3038,7 @@
    "to": "#st3.setStyle"
   },
   {
-   "from": "n155_math.out",
+   "from": "n147_lookup.out",
    "to": "n165_format.a"
   },
   {
@@ -3005,11 +3046,11 @@
    "to": "#st4.setStyle"
   },
   {
-   "from": "n142_math.out",
+   "from": "n141_lookup.out",
    "to": "n166_format.a"
   },
   {
-   "from": "#document.src19",
+   "from": "n040_math.out",
    "to": "n166_format.b"
   },
   {
@@ -3017,7 +3058,7 @@
    "to": "#st5.setStyle"
   },
   {
-   "from": "n155_math.out",
+   "from": "n138_math.out",
    "to": "n167_format.a"
   },
   {
@@ -3025,7 +3066,7 @@
    "to": "#st6.setStyle"
   },
   {
-   "from": "n141_math.out",
+   "from": "n152_math.out",
    "to": "n168_format.a"
   },
   {
@@ -3033,11 +3074,11 @@
    "to": "#st7.setStyle"
   },
   {
-   "from": "n157_math.out",
+   "from": "n141_lookup.out",
    "to": "n169_format.a"
   },
   {
-   "from": "n024_math.out",
+   "from": "#document.viewportWidth",
    "to": "n169_format.b"
   },
   {
@@ -3045,7 +3086,7 @@
    "to": "#st8.setStyle"
   },
   {
-   "from": "n155_math.out",
+   "from": "n141_lookup.out",
    "to": "n170_format.a"
   },
   {
@@ -3053,11 +3094,11 @@
    "to": "#st9.setStyle"
   },
   {
-   "from": "n150_math.out",
+   "from": "n143_lookup.out",
    "to": "n171_format.a"
   },
   {
-   "from": "n056_math.out",
+   "from": "n143_lookup.out",
    "to": "n171_format.b"
   },
   {
@@ -3065,7 +3106,7 @@
    "to": "#st10.setStyle"
   },
   {
-   "from": "n142_math.out",
+   "from": "n141_lookup.out",
    "to": "n172_format.a"
   },
   {
@@ -3073,7 +3114,7 @@
    "to": "#st11.setStyle"
   },
   {
-   "from": "n155_math.out",
+   "from": "n143_lookup.out",
    "to": "n173_format.a"
   },
   {
@@ -3081,11 +3122,11 @@
    "to": "#st12.setStyle"
   },
   {
-   "from": "n160_math.out",
+   "from": "n143_lookup.out",
    "to": "n174_format.a"
   },
   {
-   "from": "n040_math.out",
+   "from": "#document.src4",
    "to": "n174_format.b"
   },
   {
@@ -3093,7 +3134,7 @@
    "to": "#st13.setStyle"
   },
   {
-   "from": "n150_math.out",
+   "from": "n152_math.out",
    "to": "n175_format.a"
   },
   {
@@ -3101,11 +3142,11 @@
    "to": "#st14.setStyle"
   },
   {
-   "from": "n158_math.out",
+   "from": "n145_math.out",
    "to": "n176_format.a"
   },
   {
-   "from": "n074_math.out",
+   "from": "n128_math.out",
    "to": "n176_format.b"
   },
   {
@@ -3113,7 +3154,7 @@
    "to": "#st15.setStyle"
   },
   {
-   "from": "n160_math.out",
+   "from": "n142_lookup.out",
    "to": "n177_format.a"
   },
   {
@@ -3121,11 +3162,11 @@
    "to": "#tx0.setText"
   },
   {
-   "from": "n157_math.out",
+   "from": "n138_math.out",
    "to": "n178_format.a"
   },
   {
-   "from": "n114_math.out",
+   "from": "n082_compare.out",
    "to": "n178_format.b"
   },
   {
@@ -3133,15 +3174,15 @@
    "to": "#tx1.setText"
   },
   {
-   "from": "n142_math.out",
+   "from": "n142_lookup.out",
    "to": "n179_format.a"
   },
   {
-   "from": "n142_math.out",
+   "from": "n066_math.out",
    "to": "n179_format.b"
   },
   {
-   "from": "n030_select.out",
+   "from": "n105_math.out",
    "to": "n179_format.c"
   },
   {
@@ -3149,7 +3190,7 @@
    "to": "#tx2.setText"
   },
   {
-   "from": "n144_compare.out",
+   "from": "n137_math.out",
    "to": "n180_format.a"
   },
   {
@@ -3157,11 +3198,11 @@
    "to": "#tx3.setText"
   },
   {
-   "from": "n156_compare.out",
+   "from": "n150_compare.out",
    "to": "n181_format.a"
   },
   {
-   "from": "n126_math.out",
+   "from": "n027_lookup.out",
    "to": "n181_format.b"
   },
   {
@@ -3169,15 +3210,15 @@
    "to": "#tx4.setText"
   },
   {
-   "from": "n157_math.out",
+   "from": "n136_compare.out",
    "to": "n182_format.a"
   },
   {
-   "from": "n026_lookup.out",
+   "from": "n076_math.out",
    "to": "n182_format.b"
   },
   {
-   "from": "n053_lookup.out",
+   "from": "#document.src2",
    "to": "n182_format.c"
   },
   {
@@ -3185,7 +3226,7 @@
    "to": "#tx5.setText"
   },
   {
-   "from": "n151_format.out",
+   "from": "n147_lookup.out",
    "to": "n183_format.a"
   },
   {
@@ -3193,11 +3234,11 @@
    "to": "#tx6.setText"
   },
   {
-   "from": "n142_math.out",
+   "from": "n150_compare.out",
    "to": "n184_format.a"
   },
   {
-   "from": "#document.pointerY",
+   "from": "n035_select.out",
    "to": "n184_format.b"
   },
   {
@@ -3205,15 +3246,15 @@
    "to": "#tx7.setText"
   },
   {
-   "from": "n139_math.out",
+   "from": "n150_compare.out",
    "to": "n185_format.a"
   },
   {
-   "from": "#document.pointerX",
+   "from": "n024_math.out",
    "to": "n185_format.b"
   },
   {
-   "from": "n138_math.out",
+   "from": "n056_math.out",
    "to": "n185_format.c"
   },
   {
@@ -3221,7 +3262,7 @@
    "to": "#tx8.setText"
   },
   {
-   "from": "n159_format.out",
+   "from": "n155_math.out",
    "to": "n186_format.a"
   },
   {
@@ -3229,11 +3270,11 @@
    "to": "#tx9.setText"
   },
   {
-   "from": "n153_compare.out",
+   "from": "n146_compare.out",
    "to": "n187_format.a"
   },
   {
-   "from": "n102_math.out",
+   "from": "n005_math.out",
    "to": "n187_format.b"
   },
   {
@@ -3241,15 +3282,15 @@
    "to": "#tx10.setText"
   },
   {
-   "from": "n139_math.out",
+   "from": "n160_state.state",
    "to": "n188_format.a"
   },
   {
-   "from": "n146_format.out",
+   "from": "n017_math.out",
    "to": "n188_format.b"
   },
   {
-   "from": "n089_format.out",
+   "from": "n002_select.out",
    "to": "n188_format.c"
   },
   {
@@ -3257,7 +3298,7 @@
    "to": "#tx11.setText"
   },
   {
-   "from": "n150_math.out",
+   "from": "n143_lookup.out",
    "to": "n189_math.a"
   },
   {
@@ -3265,7 +3306,7 @@
    "to": "#document.in0"
   },
   {
-   "from": "n157_math.out",
+   "from": "n155_math.out",
    "to": "n190_math.a"
   },
   {
@@ -3273,7 +3314,7 @@
    "to": "#document.in1"
   },
   {
-   "from": "n142_math.out",
+   "from": "n145_math.out",
    "to": "n191_math.a"
   },
   {
@@ -3281,7 +3322,7 @@
    "to": "#document.in2"
   },
   {
-   "from": "n142_math.out",
+   "from": "n147_lookup.out",
    "to": "n192_math.a"
   },
   {
@@ -3289,7 +3330,7 @@
    "to": "#document.in3"
   },
   {
-   "from": "n150_math.out",
+   "from": "n154_math.out",
    "to": "n193_math.a"
   },
   {
@@ -3297,7 +3338,7 @@
    "to": "#document.in4"
   },
   {
-   "from": "n155_math.out",
+   "from": "n156_math.out",
    "to": "n194_math.a"
   },
   {
@@ -3305,7 +3346,7 @@
    "to": "#document.in5"
   },
   {
-   "from": "n157_math.out",
+   "from": "n153_math.out",
    "to": "n195_math.a"
   },
   {
@@ -3313,7 +3354,7 @@
    "to": "#document.in6"
   },
   {
-   "from": "n142_math.out",
+   "from": "n138_math.out",
    "to": "n196_math.a"
   },
   {
@@ -3321,7 +3362,7 @@
    "to": "#document.in7"
   },
   {
-   "from": "n142_math.out",
+   "from": "n157_math.out",
    "to": "n197_math.a"
   },
   {
@@ -3329,7 +3370,7 @@
    "to": "#document.in8"
   },
   {
-   "from": "n150_math.out",
+   "from": "n157_math.out",
    "to": "n198_math.a"
   },
   {
@@ -3337,7 +3378,7 @@
    "to": "#document.in9"
   },
   {
-   "from": "n155_math.out",
+   "from": "n156_math.out",
    "to": "n199_math.a"
   },
   {
@@ -3345,7 +3386,7 @@
    "to": "#document.in10"
   },
   {
-   "from": "n139_math.out",
+   "from": "n160_state.index",
    "to": "n200_math.a"
   },
   {

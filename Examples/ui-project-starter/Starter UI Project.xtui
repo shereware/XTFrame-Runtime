@@ -36,9 +36,7 @@
     ],
     "fontFallback": {
       "zh-TW": [
-        "Microsoft JhengHei",
-        "Noto Sans TC",
-        "Noto Sans CJK TC"
+        "Noto Sans TC"
       ]
     },
     "budget": {

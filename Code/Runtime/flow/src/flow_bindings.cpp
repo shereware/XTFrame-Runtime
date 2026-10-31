@@ -10,6 +10,7 @@
 #include "flow_internal.h"
 #include "xt/charconv.h"
 #include "xt/context.h"
+#include "xt/effect_utils.h"  // T-547: effectKindByName() / effectParamIndexByName().
 #include "xt/event.h"
 #include "xt/num_guard.h"
 #include "xt/property.h"
@@ -64,6 +65,12 @@ bool parseNodeType(std::string_view name, NodeType& out) {
         out = NodeType::Emit;
     } else if (name == "timeline") {
         out = NodeType::Timeline;
+    } else if (name == "state") {
+        out = NodeType::State;  // T-541.
+    } else if (name == "filter") {
+        out = NodeType::Filter;
+    } else if (name == "throttle") {
+        out = NodeType::Throttle;
     } else {
         return false;
     }
@@ -104,6 +111,130 @@ PortType lookupValueType(const NodeDesc& node) {
         return PortType::Number;
     }
     return it->second.front().type;
+}
+
+// ---- T-541 (27 §27.4.4): the `state` node's params ---------------------------------------------
+
+bool isStateIdent(std::string_view text) {
+    if (text.empty()) {
+        return false;
+    }
+    for (size_t i = 0; i < text.size(); ++i) {
+        const char c = text[i];
+        const bool alpha = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+        const bool digit = c >= '0' && c <= '9';
+        if (!(alpha || (digit && i > 0))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+namespace {
+
+/// The names of a `state` node's `states` array (String elements only), in order.
+std::vector<std::string> stateNameList(const NodeDesc& node) {
+    std::vector<std::string> out;
+    if (auto it = node.arrayParams.find("states"); it != node.arrayParams.end()) {
+        for (const PortValue& v : it->second) {
+            if (v.type == PortType::String) {
+                out.push_back(v.s);
+            }
+        }
+    }
+    return out;
+}
+
+bool isStateFixedPort(std::string_view name) {
+    return name == "set" || name == "guard" || name == "state" || name == "index" || name == "changed";
+}
+
+bool contains(const std::vector<std::string>& list, std::string_view name) {
+    return std::find(list.begin(), list.end(), name) != list.end();
+}
+
+}  // namespace
+
+std::vector<std::string> stateEventNames(const NodeDesc& node) {
+    std::vector<std::string> out;
+    if (auto it = node.arrayParams.find("events"); it != node.arrayParams.end()) {
+        for (const PortValue& v : it->second) {
+            if (v.type == PortType::String) {
+                out.push_back(v.s);
+            }
+        }
+        return out;
+    }
+    for (const TransitionDesc& t : node.transitions) {
+        if (!contains(out, t.on)) {
+            out.push_back(t.on);
+        }
+    }
+    return out;
+}
+
+void checkStateNode(const NodeDesc& node, std::vector<std::string>& errors) {
+    const std::string prefix = "state " + node.id + ": ";
+    const std::vector<std::string> states = stateNameList(node);
+    bool statesOk = false;
+    if (auto it = node.arrayParams.find("states"); it != node.arrayParams.end() &&
+                                                   it->second.size() == states.size() && states.size() >= 2 &&
+                                                   states.size() <= 64) {
+        statesOk = true;
+        for (size_t i = 0; i < states.size(); ++i) {
+            if (!isStateIdent(states[i]) || std::find(states.begin(), states.begin() + static_cast<long>(i),
+                                                      states[i]) != states.begin() + static_cast<long>(i)) {
+                statesOk = false;
+                break;
+            }
+        }
+    }
+    if (!statesOk) {
+        errors.push_back(prefix + "states must be 2..64 unique identifiers");
+        return;  // Every other check refers to the states.
+    }
+    if (auto it = node.params.find("initial"); it != node.params.end()) {
+        const bool known = it->second.type == PortType::String && contains(states, it->second.s);
+        if (!known) {
+            errors.push_back(prefix + "initial \"" +
+                             (it->second.type == PortType::String ? it->second.s : "") +
+                             "\" is not one of states");
+        }
+    }
+    std::set<std::pair<std::string, std::string>> seen;
+    for (const TransitionDesc& t : node.transitions) {
+        if (t.from != "*" && !contains(states, t.from)) {
+            errors.push_back(prefix + "transition from \"" + t.from + "\" is not \"*\" or one of states");
+        }
+        if (!contains(states, t.to)) {
+            errors.push_back(prefix + "transition to \"" + t.to + "\" is not one of states");
+        }
+        if (!isStateIdent(t.on)) {
+            errors.push_back(prefix + "transition event \"" + t.on + "\" is not an identifier");
+        }
+        if (!seen.emplace(t.from, t.on).second) {
+            errors.push_back(prefix + "duplicate transition (" + t.from + ", " + t.on + ")");
+        }
+    }
+    const std::vector<std::string> events = stateEventNames(node);
+    std::set<std::string> eventSeen;
+    for (const std::string& e : events) {
+        if (isStateFixedPort(e)) {
+            errors.push_back(prefix + "event \"" + e + "\" collides with a fixed port");
+        } else if (node.arrayParams.count("events") != 0 && !isStateIdent(e)) {
+            errors.push_back(prefix + "event \"" + e + "\" is not an identifier");  // `on` names: above.
+        } else if (!eventSeen.insert(e).second) {
+            errors.push_back(prefix + "duplicate event \"" + e + "\"");
+        }
+    }
+    if (node.arrayParams.count("events") != 0) {
+        std::set<std::string> reported;
+        for (const TransitionDesc& t : node.transitions) {
+            if (!contains(events, t.on) && reported.insert(t.on).second) {
+                errors.push_back(prefix + "transition event \"" + t.on + "\" is missing from events");
+            }
+        }
+    }
 }
 
 namespace {
@@ -395,6 +526,87 @@ bool nodePortInfo(NodeType type, const NodeDesc& node, const std::string& port, 
                 return true;
             }
             return false;
+        case NodeType::State:
+            // T-541 (27 §27.4.4): the event inputs and enter<Name> / exit<Name> outputs come from
+            // the node's own params.
+            if (!isSource) {
+                if (port == "set") {
+                    outType = PortType::String;
+                    return true;
+                }
+                if (port == "guard") {
+                    outType = PortType::Bool;
+                    return true;
+                }
+                if (!isStateFixedPort(port) && contains(stateEventNames(node), port)) {
+                    outType = PortType::Pulse;
+                    return true;
+                }
+                return false;
+            }
+            if (port == "state") {
+                outType = PortType::String;
+                return true;
+            }
+            if (port == "index") {
+                outType = PortType::Number;
+                return true;
+            }
+            if (port == "changed") {
+                outType = PortType::Pulse;
+                return true;
+            }
+            if ((port.compare(0, 5, "enter") == 0 && contains(stateNameList(node), port.substr(5))) ||
+                (port.compare(0, 4, "exit") == 0 && contains(stateNameList(node), port.substr(4)))) {
+                outType = PortType::Pulse;
+                return true;
+            }
+            return false;
+        case NodeType::Filter:
+            // T-543: "in" / "out" carry one and the same type, inferred from the edge reaching
+            // "in" (inferValueTypes()); the placeholder is what a caller without that sees.
+            if (!isSource) {
+                if (port == "in") {
+                    outType = PortType::Number;
+                    return true;
+                }
+                if (port == "trigger" || port == "reset") {
+                    outType = PortType::Pulse;
+                    return true;
+                }
+                return false;
+            }
+            if (port == "out") {
+                outType = PortType::Number;
+                return true;
+            }
+            if (port == "passed") {
+                outType = PortType::Pulse;
+                return true;
+            }
+            return false;
+        case NodeType::Throttle:
+            // T-543: as `filter`, but "in" may also be a pulse (then "out" is one).
+            if (!isSource) {
+                if (port == "in" || port == "rate") {
+                    outType = PortType::Number;
+                    return true;
+                }
+                if (port == "reset") {
+                    outType = PortType::Pulse;
+                    return true;
+                }
+                return false;
+            }
+            if (port == "out" || port == "dropped") {
+                outType = PortType::Number;
+                return true;
+            }
+            if (port == "passed") {
+                outType = PortType::Pulse;
+                return true;
+            }
+            return false;
     }
     return false;
 }
@@ -422,7 +634,7 @@ bool elementPortInfo(const std::string& port, bool isSource, PortType& outType) 
         return true;
     }
     if (port == "addClass" || port == "removeClass" || port == "toggleClass" || port == "focus" ||
-        port == "stopAnimation") {
+        port == "stopAnimation" || port == "setState") {  // T-541: setState.
         outType = PortType::Pulse;
         return true;
     }
@@ -503,6 +715,17 @@ std::vector<std::string> outputPortOrder(NodeType type) {
     std::vector<std::string> out;
     for (std::string_view name : nodeSlotTable(type).outputs) {
         out.emplace_back(name);
+    }
+    return out;
+}
+
+std::vector<std::string> outputPortOrder(NodeType type, const NodeDesc& node) {
+    std::vector<std::string> out = outputPortOrder(type);
+    if (type == NodeType::State) {  // T-541: enter<Name>, exit<Name> per state.
+        for (const std::string& name : stateNameList(node)) {
+            out.push_back("enter" + name);
+            out.push_back("exit" + name);
+        }
     }
     return out;
 }
@@ -733,7 +956,8 @@ bool sourceTypeForInference(const std::string& text, const FlowGraph& graph,
     if (!parseNodeType(node.type, type)) {
         return false;
     }
-    if (type == NodeType::Select && port == "out") {
+    if ((type == NodeType::Select || type == NodeType::Filter || type == NodeType::Throttle) &&
+        port == "out") {
         auto sel = selectTypes.find(it->second);
         if (sel == selectTypes.end()) {
             return false;
@@ -757,14 +981,23 @@ void inferSelectTypes(const FlowGraph& graph, const std::map<std::string, int>& 
         bool changed = false;
         for (size_t i = 0; i < graph.nodes.size(); ++i) {
             NodeType type;
-            if (!parseNodeType(graph.nodes[i].type, type) || type != NodeType::Select) {
+            if (!parseNodeType(graph.nodes[i].type, type) ||
+                (type != NodeType::Select && type != NodeType::Filter && type != NodeType::Throttle)) {
                 continue;
             }
             int index = static_cast<int>(i);
             if (out.count(index) != 0) {
                 continue;
             }
-            for (const char* port : {"a", "b"}) {
+            // T-543: `filter` / `throttle` take their type from "in"; only `throttle` may be a pulse.
+            // (Two fixed arrays: a conditional between initializer_lists would dangle.)
+            static constexpr const char* kSelectInputs[] = {"a", "b"};
+            static constexpr const char* kValueInputs[] = {"in"};
+            const bool isSelect = type == NodeType::Select;
+            const char* const* inputs = isSelect ? kSelectInputs : kValueInputs;
+            const size_t inputCount = isSelect ? 2u : 1u;
+            for (size_t p = 0; p < inputCount; ++p) {
+                const char* port = inputs[p];
                 for (const EdgeDesc& e : graph.edges) {
                     std::string sinkId, sinkPort;
                     if (!splitNodePort(e.to, sinkId, sinkPort) || sinkId != graph.nodes[i].id ||
@@ -773,7 +1006,7 @@ void inferSelectTypes(const FlowGraph& graph, const std::map<std::string, int>& 
                     }
                     PortType t{};
                     if (sourceTypeForInference(e.from, graph, nodeIndexById, out, t) &&
-                        t != PortType::Pulse) {
+                        (t != PortType::Pulse || type == NodeType::Throttle)) {
                         out[index] = t;
                         changed = true;
                         break;
@@ -882,7 +1115,18 @@ bool resolveEndpoint(const std::string& text, bool isSource, const FlowGraph& gr
             t = sel->second;
         }
     }
+    const bool valueThrough =
+        (type == NodeType::Filter || type == NodeType::Throttle) && (port == "in" || port == "out");
+    if (valueThrough) {
+        auto inferred = selectTypes.find(idx);
+        if (inferred != selectTypes.end()) {
+            t = inferred->second;
+        }
+    }
     out = Endpoint{Endpoint::Owner::Node, idx, type, "", port, t};
+    // T-543: a type that could not be worked out (a declared port of a Document not bound yet)
+    // is checked when the Document is.
+    out.anyType = valueThrough && selectTypes.count(idx) == 0;
     return true;
 }
 
@@ -911,6 +1155,14 @@ Status validateGraph(const FlowGraph& graph, Document* doc, std::vector<std::str
             }
         } else if (doc != nullptr && hasUi) {
             errors.push_back("node '" + node.id + "': 'ui' is only valid in the global flow");
+        }
+    }
+
+    // T-541: a `state` node's params (the states, transitions and events its ports come from).
+    for (const NodeDesc& node : graph.nodes) {
+        NodeType type;
+        if (parseNodeType(node.type, type) && type == NodeType::State) {
+            checkStateNode(node, errors);
         }
     }
 
@@ -958,6 +1210,29 @@ Status validateGraph(const FlowGraph& graph, Document* doc, std::vector<std::str
         }
         if (!fromOk || !toOk) {
             continue;
+        }
+
+        // T-543 (27 §27.4.5): what only the edges of a `filter` can show.
+        if (to.owner == Endpoint::Owner::Node && to.nodeType == NodeType::Filter) {
+            const NodeDesc& filter = graph.nodes[static_cast<size_t>(to.nodeIndex)];
+            FilterOp op = FilterOp::Unknown;
+            if (auto opParam = filter.params.find("op");
+                opParam != filter.params.end() && opParam->second.type == PortType::String) {
+                op = parseFilterOp(opParam->second.s);
+            }
+            if (to.port == "in" && from.type == PortType::Pulse && !from.anyType) {
+                errors.push_back("filter " + filter.id + ": \"in\" takes a value, not a pulse");
+                continue;
+            }
+            if (to.port == "in" && op == FilterOp::Quantize && from.type != PortType::Number &&
+                !from.anyType) {
+                errors.push_back("filter " + filter.id + ": quantize takes a number");
+                continue;
+            }
+            if (to.port == "trigger" && op != FilterOp::Sample) {
+                errors.push_back("filter " + filter.id + ": \"trigger\" is only used by sample");
+                continue;
+            }
         }
 
         // A pulse sink fires whenever anything arrives, regardless of the source's payload type
@@ -1027,7 +1302,29 @@ Status validateGraph(const FlowGraph& graph, Document* doc, std::vector<std::str
         }
 
         std::string param;
-        if (to.owner != Endpoint::Owner::Node) {
+        uint8_t mode = 0;
+        if (to.owner == Endpoint::Owner::Element && to.port == "setState") {
+            // T-541 (27 §27.4.4): `state` (required: a custom state or built-in alias) and `mode`.
+            auto stateIt = e.params.find("state");
+            if (stateIt == e.params.end() || stateIt->second.empty()) {
+                errors.push_back("#" + to.elementId + ".setState needs a \"state\" edge param");
+                continue;
+            }
+            param = stateIt->second;
+            if (auto modeIt = e.params.find("mode"); modeIt != e.params.end()) {
+                if (modeIt->second == "on") {
+                    mode = static_cast<uint8_t>(SetStateMode::On);
+                } else if (modeIt->second == "off") {
+                    mode = static_cast<uint8_t>(SetStateMode::Off);
+                } else if (modeIt->second == "toggle") {
+                    mode = static_cast<uint8_t>(SetStateMode::Toggle);
+                } else {
+                    errors.push_back("#" + to.elementId + ".setState has an invalid \"mode\" edge param \"" +
+                                     modeIt->second + "\" (expected on, off or toggle)");
+                    continue;
+                }
+            }
+        } else if (to.owner != Endpoint::Owner::Node) {
             const char* paramName = documentInputParamName(to.port);
             const std::string* value = nullptr;
             if (paramName != nullptr) {
@@ -1043,10 +1340,28 @@ Status validateGraph(const FlowGraph& graph, Document* doc, std::vector<std::str
             if (value != nullptr) {
                 param = *value;
             }
+            if (to.port == "setProperty" && isEffectPropText(param)) {
+                // T-547: against the target Document, when there is one (not in parse()).
+                Document* target = to.uiId.empty() ? doc : nullptr;
+                if (!to.uiId.empty() && uiDocs != nullptr) {
+                    if (auto uiIt = uiDocs->find(to.uiId); uiIt != uiDocs->end()) {
+                        target = uiIt->second;
+                    }
+                }
+                if (target != nullptr) {
+                    std::string effectErr;
+                    PropId resolved = prop::kInvalidProp;
+                    if (!resolveEffectProp(*target, target->byId(to.elementId), param, effectErr, resolved)) {
+                        errors.push_back("#" + to.elementId + ".setProperty: " + effectErr);
+                        continue;
+                    }
+                }
+            }
         }
 
         BoundEdge bound{from, to, param};
         bound.instance = instance;
+        bound.mode = mode;
         built.push_back(std::move(bound));
     }
 
@@ -1251,7 +1566,139 @@ const char* documentInputParamName(const std::string& port) {
     if (port == "setProperty") {
         return "prop";
     }
+    if (port == "setState") {  // T-541; `mode` is the second, optional one (validateGraph()).
+        return "state";
+    }
     return nullptr;
+}
+
+namespace {
+
+constexpr std::string_view kEffectPrefix = "effect.";
+
+/// T-547: splits an `effect.<effect>.<param>` prop into its two segments; false unless there are
+/// exactly two, both non-empty.
+bool splitEffectProp(std::string_view prop, std::string_view& effect, std::string_view& param) {
+    if (prop.substr(0, kEffectPrefix.size()) != kEffectPrefix) {
+        return false;
+    }
+    const std::string_view rest = prop.substr(kEffectPrefix.size());
+    const size_t dot = rest.find('.');
+    if (dot == std::string_view::npos || dot == 0 || dot + 1 >= rest.size() ||
+        rest.find('.', dot + 1) != std::string_view::npos) {
+        return false;
+    }
+    effect = rest.substr(0, dot);
+    param = rest.substr(dot + 1);
+    return true;
+}
+
+}  // namespace
+
+bool isEffectPropText(const std::string& prop) {
+    return std::string_view(prop).substr(0, kEffectPrefix.size()) == kEffectPrefix;
+}
+
+bool resolveEffectProp(const Document& document, const ElementRef& element, const std::string& prop,
+                       std::string& error, PropId& out) {
+    std::string_view effectName, paramName;
+    if (!splitEffectProp(prop, effectName, paramName)) {
+        error = "malformed effect address '" + prop + "' (expected effect.<effect>.<param>)";
+        return false;
+    }
+    const uint32_t count = element.effectCount();
+    if (count == 0) {
+        error = "the element has no effect";
+        return false;
+    }
+    uint32_t index = 0;
+    if (effectName.find_first_not_of("0123456789") == std::string_view::npos) {
+        uint64_t value = 0;
+        for (size_t i = 0; i < effectName.size() && value <= count; ++i) {
+            value = value * 10 + static_cast<uint64_t>(effectName[i] - '0');
+        }
+        if (value >= count) {
+            error = "effect index out of range";
+            return false;
+        }
+        index = static_cast<uint32_t>(value);
+    } else {
+        EffectKind kind = EffectKind::None;
+        if (!effectKindByName(effectName, kind)) {
+            error = "unknown effect \"" + std::string(effectName) + "\"";
+            return false;
+        }
+        bool found = false;
+        for (uint32_t i = 0; i < count && !found; ++i) {
+            if (element.effect(i).kind == kind) {
+                index = i;
+                found = true;
+            }
+        }
+        if (!found) {
+            error = "the element has no such effect";
+            return false;
+        }
+    }
+    const EffectInstance instance = element.effect(index);
+    uint32_t paramIndex = 0;
+    bool paramOk = false;
+    if (instance.kind == EffectKind::Custom) {
+        // The compiled document carries a custom effect's parameter names, not its header name,
+        // so a custom effect is addressed by index only (the parameter by its declared name).
+        const ShaderRef* ref = document.shaderRef(instance.shader);
+        if (paramName == "enabled") {
+            paramIndex = prop::kEffectParamEnabled;
+            paramOk = true;
+        } else if (ref != nullptr && ref->paramCount <= 16) {
+            uint8_t types[16] = {};
+            uint8_t slots[16] = {};
+            const std::span<const ShaderParamDesc> params = document.shaderParams();
+            if (static_cast<size_t>(ref->paramOffset) + ref->paramCount <= params.size()) {
+                for (uint32_t i = 0; i < ref->paramCount; ++i) {
+                    types[i] = params[ref->paramOffset + i].type;
+                }
+                if (customParamSlots(types, ref->paramCount, slots)) {
+                    const std::string_view names =
+                        document.shaderText().substr(ref->namesOffset, ref->namesLength);
+                    size_t pos = 0;
+                    for (uint32_t i = 0; i < ref->paramCount && pos < names.size(); ++i) {
+                        const size_t end = names.find('\0', pos);
+                        const std::string_view name =
+                            names.substr(pos, end == std::string_view::npos ? end : end - pos);
+                        pos = end == std::string_view::npos ? names.size() : end + 1;
+                        if (name != paramName) {
+                            continue;
+                        }
+                        if (types[i] == 0) {
+                            paramIndex = 1u + slots[i];
+                            paramOk = true;
+                        } else if (types[i] == 2) {
+                            paramIndex = prop::kEffectParamColor0 + slots[i];
+                            paramOk = true;
+                        } else if (slots[i] == 0) {
+                            paramIndex = prop::kEffectParamOffset;
+                            paramOk = true;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+    } else {
+        paramOk = effectParamIndexByName(instance.kind, paramName, paramIndex);
+    }
+    if (!paramOk) {
+        error = "unknown effect parameter";
+        return false;
+    }
+    if (paramIndex > 8) {
+        // `setProperty` carries a number; a color (or a composite Vec2) parameter has no source type.
+        error = "the effect parameter is not a number";
+        return false;
+    }
+    out = effectParam(index, paramIndex);
+    return true;
 }
 
 bool checkDocumentInputParam(const std::string& port, const std::string* param, const std::string& subject,
@@ -1263,6 +1710,16 @@ bool checkDocumentInputParam(const std::string& port, const std::string* param, 
     if (param == nullptr || param->empty()) {
         err = subject + " is missing the '" + name + "' param";
         return false;
+    }
+    if (port == "setProperty" && isEffectPropText(*param)) {
+        // T-547: shape only here; the effect itself is resolved against a Document at bind time.
+        std::string_view effectName, paramName;
+        if (!splitEffectProp(*param, effectName, paramName)) {
+            err = subject + " has a malformed effect address '" + *param +
+                  "' (expected effect.<effect>.<param>)";
+            return false;
+        }
+        return true;
     }
     if (port == "setProperty" && propertyByName(*param) == prop::kInvalidProp) {
         err = subject + " names an unknown property '" + *param + "'";
@@ -1302,6 +1759,42 @@ bool documentEndpointLost(Document& document, const Endpoint& ep, std::vector<st
         warnings.push_back(name + ": " + reason);
     }
     return true;
+}
+
+void checkSetPropertyEffect(Document& document, const BoundEdge& edge, std::vector<std::string>& warnings,
+                            std::set<std::string>& warned) {
+    if (edge.to.owner != Endpoint::Owner::Element || edge.to.port != "setProperty" ||
+        !isEffectPropText(edge.param)) {
+        return;
+    }
+    std::string error;
+    PropId resolved = prop::kInvalidProp;
+    if (resolveEffectProp(document, document.byId(edge.to.elementId), edge.param, error, resolved)) {
+        return;
+    }
+    std::string line = "#" + edge.to.elementId + ".setProperty: " + error;
+    if (warned.insert(line).second) {
+        warnings.push_back(std::move(line));
+    }
+}
+
+void checkSetStateDeclared(const Document& document, const BoundEdge& edge,
+                           std::vector<std::string>& warnings, std::set<std::string>& warned) {
+    if (edge.to.owner != Endpoint::Owner::Element || edge.to.port != "setState" || edge.param.empty() ||
+        builtinStateAlias(edge.param) != 0) {
+        return;
+    }
+    const IrView& ir = document.ir();
+    for (uint32_t name : ir.customStates().names()) {
+        if (ir.string(name) == edge.param) {
+            return;
+        }
+    }
+    std::string line =
+        "#" + edge.to.elementId + ".setState: the document declares no state \"" + edge.param + "\"";
+    if (warned.insert(line).second) {
+        warnings.push_back(std::move(line));
+    }
 }
 
 namespace {
@@ -1448,7 +1941,8 @@ SinkOp sinkOpOf(Endpoint::Owner owner, const std::string& port) {
                                                               {"addClass", SinkOp::AddClass},
                                                               {"removeClass", SinkOp::RemoveClass},
                                                               {"toggleClass", SinkOp::ToggleClass},
-                                                              {"setProperty", SinkOp::SetProperty}};
+                                                              {"setProperty", SinkOp::SetProperty},
+                                                              {"setState", SinkOp::SetState}};
     static const std::pair<const char*, SinkOp> kAnim[] = {{"play", SinkOp::AnimPlay},
                                                            {"pause", SinkOp::AnimPause},
                                                            {"resume", SinkOp::AnimResume},
@@ -1513,7 +2007,7 @@ bool sinkCacheValid(const SinkCache& cache, const DocEndpointState& state) {
 }
 
 void resolveSink(const DocEndpointState& state, const Endpoint& sink, const std::string& param,
-                 SinkCache& out, bool reused) {
+                 SinkCache& out, bool reused, SetStateMode mode) {
     out = SinkCache{};
     out.doc = state.doc;
     out.serial = state.serial;
@@ -1557,8 +2051,22 @@ void resolveSink(const DocEndpointState& state, const Endpoint& sink, const std:
             }
             out.op = sinkOpOf(sink.owner, sink.port);
             if (out.op == SinkOp::SetProperty) {
-                out.prop = propertyByName(param);
+                if (isEffectPropText(param)) {
+                    // T-547: resolved here, at bind time, never per write (T-476); a failure leaves
+                    // kInvalidProp (the write is a no-op; load() / rebind() reported it).
+                    std::string effectErr;
+                    PropId resolved = prop::kInvalidProp;
+                    auto ref = state.elementRefs.find(sink.elementId);
+                    if (ref != state.elementRefs.end() &&
+                        resolveEffectProp(doc, ref->second, param, effectErr, resolved)) {
+                        out.prop = resolved;
+                    }
+                } else {
+                    out.prop = propertyByName(param);
+                }
+                out.stickyProp = isEffectProp(out.prop);
             }
+            out.mode = mode;  // T-541: only SetState reads it.
             return;
         }
     }
@@ -1659,9 +2167,17 @@ SinkPath applyResolvedInput(DocEndpointState& state, const Endpoint& sink, const
         case SinkOp::ToggleClass:
             ref.toggleClass(param);
             break;
+        case SinkOp::SetState: {
+            // T-541 (27 §27.4.4): always Document::setCustomState, which owns the state groups'
+            // exclusion and the enter / exit triggers (27.1). An unknown name changes nothing.
+            const bool on = cache.mode == SetStateMode::On ||
+                            (cache.mode == SetStateMode::Toggle && !doc.hasCustomState(ref, param));
+            doc.setCustomState(ref, param, on);
+            break;
+        }
         case SinkOp::SetProperty:
             if (cache.prop != prop::kInvalidProp) {
-                ref.setProperty(cache.prop, Value::ofFloat(static_cast<float>(v.n)));
+                ref.setProperty(cache.prop, Value::ofFloat(static_cast<float>(v.n)), cache.stickyProp);
             }
             break;
         case SinkOp::AnimPlay: {
@@ -2042,7 +2558,8 @@ void FlowRuntime::Impl::resolveSinks() {
         }
         const std::vector<DocEndpointState*> states = statesFor(to.uiId);
         if (!states.empty()) {
-            resolveSink(*states.front(), to, edges[i].param, rtEdges[i].sink);
+            resolveSink(*states.front(), to, edges[i].param, rtEdges[i].sink, /*reused=*/true,
+                        static_cast<SetStateMode>(edges[i].mode));
         }
     }
 }
@@ -2090,7 +2607,8 @@ void FlowRuntime::Impl::applyToSink(uint32_t edgeIndex, const RtValue& v) {
         edge.styleTemplate >= 0 ? &styleTemplates[static_cast<size_t>(edge.styleTemplate)] : nullptr;
     auto write = [&](DocEndpointState& state) {
         if (!sinkCacheValid(edge.sink, state)) {
-            resolveSink(state, sink, param, edge.sink);
+            resolveSink(state, sink, param, edge.sink, /*reused=*/true,
+                        static_cast<SetStateMode>(edges[edgeIndex].mode));
         }
         if (perfTracker != nullptr) {
             applyDocumentInputTimed(state, sink, edge.sink, input, param, tmpl);  // T-475.

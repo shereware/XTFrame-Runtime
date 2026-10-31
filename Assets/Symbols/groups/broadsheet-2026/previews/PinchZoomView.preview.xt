@@ -1,0 +1,23 @@
+<xt>
+  <head>
+    <!-- T-241: preview of the PinchZoomView standard mobile symbol (golden states and thumbnail; T-499: moved into the group). -->
+    <link href="../tokens.xts"/>
+    <link rel="symbols" href="../mobile/PinchZoomView.xt"/>
+    <style>
+      body {
+        width: 352px;
+        height: 272px;
+        padding: 16px;
+        display: flex;
+        flex-direction: row;
+        align-items: flex-start;
+        column-gap: 16px;
+        row-gap: 12px;
+        background-color: var(--color-bg);
+      }
+    </style>
+  </head>
+  <body>
+    <use symbol="PinchZoomView" id="Map"/>
+  </body>
+</xt>

@@ -1,0 +1,91 @@
+<xt>
+  <head>
+    <!-- Button: standard symbol (docs/design/30-ui-project.md 30.4). See README.md.
+         Style: Broadsheet (docs/design/47-symbol-visual-style.md). -->
+    <symbol name="Button" origin="center" variants="Kind=Primary|Secondary|Ghost, Size=S|M|L"
+            requires="states: Hover, Pressed, Focus, Disabled; slots: label">
+      <button id="Box" port:pressed="event out"
+              on:hover="play(hover-in)" on:leave="play(hover-out)"
+              on:press="sound(ui_click); play(press)" on:click="emit(pressed)">
+        <span id="Label"><slot name="label">Button</slot></span>
+      </button>
+    </symbol>
+    <style>
+      symbol(Button) {
+        #Box {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 128px;
+          height: var(--control-m);
+          padding: 0px var(--space-4);
+          border-width: var(--rule-thin) var(--rule-thick) var(--rule-thick) var(--rule-thin);
+          border-color: var(--color-shadow);
+          background-color: var(--color-accent);
+          color: var(--color-text-on-accent);
+          font-family: var(--font-display);
+          font-size: var(--font-size-m);
+          transition: background-color var(--motion-fast) linear, transform var(--motion-fast) ease-out;
+        }
+        #Label {
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: var(--letter-display);
+          white-space: nowrap;
+          flex-shrink: 0;
+        }
+        #Box:hover { background-color: var(--color-accent-hover); }
+        #Box:active {
+          border-width: var(--rule-thin);
+          border-color: var(--color-border);
+          background-color: var(--color-surface-sunken);
+          color: var(--color-text);
+          transform: translate(2px, 2px);
+        }
+        #Box:focus { outline: var(--focus-w) solid var(--color-focus); outline-offset: 2px; transform: rotate(-1.5deg); }
+        .v-Kind-Secondary #Box {
+          border-width: var(--rule-thin);
+          border-color: var(--color-border);
+          outline: var(--rule-thin) solid var(--color-border);
+          outline-offset: 2px;
+          background-color: var(--color-surface);
+          color: var(--color-text);
+        }
+        .v-Kind-Secondary #Box:hover { background-color: var(--color-accent); color: var(--color-text-on-accent); }
+        .v-Kind-Secondary #Box:active { background-color: var(--color-surface-sunken); color: var(--color-text); }
+        .v-Kind-Secondary #Box:focus { outline: var(--focus-w) solid var(--color-focus); outline-offset: 2px; }
+        .v-Kind-Ghost #Box {
+          border-width: var(--rule-thin);
+          border-style: dashed;
+          border-color: var(--color-border);
+          background-color: transparent;
+          color: var(--color-text);
+        }
+        .v-Kind-Ghost #Box:hover { background-color: var(--color-accent); color: var(--color-text-on-accent); }
+        .v-Kind-Ghost #Box:active { background-color: var(--color-surface-sunken); color: var(--color-text); }
+        .v-Size-S #Box { min-width: 88px; height: var(--control-s); padding: 0px var(--space-3); font-size: var(--font-size-s); }
+        .v-Size-L #Box { min-width: 200px; height: var(--control-l); padding: 0px var(--space-6); font-size: var(--font-size-l); }
+        :disabled #Box {
+          border-width: var(--rule-thin) !important;
+          border-color: var(--color-disabled-text) !important;
+          background-color: var(--color-disabled-bg) !important;
+          background-image: var(--tex-hatch) !important;
+          background-repeat: repeat;
+          background-size: 8px 8px;
+          color: var(--color-disabled-text) !important;
+          outline: none !important;
+          transform: none !important;
+        }
+        @timeline hover-in {
+          #Box { 0s { opacity: 1 } 0.15s linear { opacity: 1 } }
+        }
+        @timeline hover-out {
+          #Box { 0s { opacity: 1 } 0.15s linear { opacity: 1 } }
+        }
+        @timeline press {
+          #Box { 0s { transform: translateY(1px) } 0.15s ease-out { transform: translateY(0px) } }
+        }
+      }
+    </style>
+  </head>
+</xt>

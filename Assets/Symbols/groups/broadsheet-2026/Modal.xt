@@ -1,0 +1,85 @@
+<xt>
+  <head>
+    <!-- Modal: standard symbol (docs/design/30-ui-project.md 30.4). See README.md. -->
+    <symbol name="Modal" requires="slots: title, body, actions">
+      <div id="Box" port:dismiss="event out" focus-trap
+           on:show="play(intro)" on:hide="play(outro) then hide" on:key(Escape)="sound(ui_back); emit(dismiss)">
+        <div id="Scrim"></div>
+        <div id="Panel">
+          <span id="Title"><slot name="title">Title</slot></span>
+          <div id="Rule"></div>
+          <div id="Body"><slot name="body"><span id="BodyText">Body text.</span></slot></div>
+          <div id="Actions"><slot name="actions"></slot></div>
+        </div>
+      </div>
+    </symbol>
+    <style>
+      symbol(Modal) {
+        #Box {
+          position: absolute;
+          left: 0px;
+          top: 0px;
+          width: 100%;
+          height: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-family: var(--font-body);
+        }
+        #Scrim {
+          position: absolute;
+          left: 0px;
+          top: 0px;
+          width: 100%;
+          height: 100%;
+          background-color: var(--color-scrim);
+        }
+        #Panel {
+          position: relative;
+          display: flex;
+          flex-direction: column;
+          row-gap: var(--space-4);
+          width: 420px;
+          padding: var(--space-6);
+          border-width: var(--border-w);
+          border-color: var(--color-border);
+          background-color: var(--color-surface);
+          background-image: var(--tex-grain);
+          background-repeat: repeat;
+          background-size: 128px 128px;
+        }
+        #Title {
+          display: flex;
+          padding: var(--space-2) 0px;
+          border-width: var(--rule-thick) 0px 0px 0px;
+          border-color: var(--color-border);
+          color: var(--color-text);
+          font-family: var(--font-display);
+          font-size: var(--font-size-l);
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: var(--letter-display);
+          white-space: nowrap;
+        }
+        #Rule {
+          height: 7px;
+          margin-top: -12px;
+          background-image: var(--tex-rule-h);
+          background-repeat: repeat-x;
+          background-size: 1px 7px;
+        }
+        #Body { color: var(--color-text-dim); font-size: var(--font-size-m); }
+        #Actions { display: flex; justify-content: flex-end; column-gap: var(--space-2); }
+        #Box:focus-within #Panel { border-color: var(--color-border-strong); }
+        @timeline intro {
+          #Scrim { 0s { opacity: 0 } 0.2s linear { opacity: 1 } }
+          #Panel { 0s { opacity: 0; transform: translateY(8px) } 0.25s ease-out { opacity: 1; transform: translateY(0px) } }
+        }
+        @timeline outro {
+          #Scrim { 0s { opacity: 1 } 0.2s linear { opacity: 0 } }
+          #Panel { 0s { opacity: 1; transform: translateY(0px) } 0.2s ease-in { opacity: 0; transform: translateY(8px) } }
+        }
+      }
+    </style>
+  </head>
+</xt>

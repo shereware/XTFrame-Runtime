@@ -1,6 +1,8 @@
 #include <cstdio>
 #include <fstream>
 #include <memory>
+#include <new>
+#include <span>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -82,10 +84,17 @@ struct BigFlow {
 };
 
 /// T-478 (Docs/tasks/T-478.md item 1): 200 frames; from frame 50 on every tick allocates nothing,
-/// its sink writes included.
-void checkSteadyStateAllocs(const char* dir, const char* name) {
+/// its sink writes included. T-552: the fixture's control chain (filter -> throttle (frames 3,
+/// trailing) -> state, gen_flow_big.py) drives the port `controlPort`; its value flips with every
+/// throttle pass, so the flips show that the chain -- the throttle's trailing flushes included --
+/// ran inside the measured ticks.
+void checkSteadyStateAllocs(const char* dir, const char* name, const char* controlPort) {
     BigFlow big;
     big.load(std::string(XT_TEST_FLOW_DIR) + "/../perf/flow_big/" + dir, name);
+    const PortId control = big.doc->lookupPort(controlPort);
+    REQUIRE(control != 0);
+    float lastControl = big.doc->getPort(control).f;
+    uint32_t controlFlips = 0;
     PerfTracker tracker;
     tracker.setEnabled(true);
     big.flow.setPerfTracker(&tracker);
@@ -102,6 +111,9 @@ void checkSteadyStateAllocs(const char* dir, const char* name) {
         if (f < kSteadyFrom) {
             continue;
         }
+        const float controlValue = big.doc->getPort(control).f;
+        controlFlips += controlValue != lastControl ? 1u : 0u;
+        lastControl = controlValue;
         evals += stats.flowNodeEvals;
         typed += stats.flowSinkTyped;
         text += stats.flowSinkText;
@@ -116,6 +128,20 @@ void checkSteadyStateAllocs(const char* dir, const char* name) {
     CHECK(typed > 0u);  // ... and wrote `set(port)` / setStyle sinks into the Document,
     CHECK(text == 0u);  // all of them typed (the one excluded path is not taken).
     CHECK(allocFrames == 0u);
+    // T-552: 150 measured frames, one throttle window per 3 frames, each pass flips the state.
+    CAPTURE(controlFlips);
+    CHECK(controlFlips >= 40u);
+    // The throttle absorbed values (held for its trailing send), read once the run is over.
+    const std::vector<std::string>& names = big.flow.valueNames();
+    const std::span<const PortValue> values = big.flow.values();
+    bool sawDropped = false;
+    for (size_t i = 0; i < names.size() && i < values.size(); ++i) {
+        if (names[i].find("_throttle.dropped") != std::string::npos) {
+            sawDropped = true;
+            CHECK(values[i].n > 0.0);
+        }
+    }
+    CHECK(sawDropped);
 }
 
 }  // namespace
@@ -195,15 +221,212 @@ TEST_CASE("T-478: a port write that notifies port listeners allocates nothing") 
 }
 
 TEST_CASE("T-476: the allocation hook counts") {
+    // A new-expression whose result never escapes may be elided (clang does so), so call the
+    // replaced ::operator new directly and park the pointer in a volatile sink before freeing it.
+    static void* volatile sink = nullptr;
     const uint64_t before = xt::perf::AllocCounter::total();
-    auto probe = std::make_unique<int>(1);
-    CHECK(xt::perf::AllocCounter::total() > before);
+    sink = ::operator new(sizeof(int));
+    const uint64_t after = xt::perf::AllocCounter::total();
+    ::operator delete(sink);
+    sink = nullptr;
+    CHECK(after > before);
 }
 
 TEST_CASE("T-476: a steady-state tick of the large flow fixture allocates nothing") {
-    checkSteadyStateAllocs("large", "flow-big");
+    checkSteadyStateAllocs("large", "flow-big", "in29");
 }
 
 TEST_CASE("T-476: a steady-state tick of the typical flow fixture allocates nothing") {
-    checkSteadyStateAllocs("typical", "flow-typical");
+    checkSteadyStateAllocs("typical", "flow-typical", "in11");
+}
+
+TEST_CASE("T-541: a state node fed an event every frame, with setState sinks, allocates nothing") {
+    compile::CompileOptions options;
+    options.behavior = 1;
+    options.emitMeta = true;
+    std::vector<compile::SourceFile> files{
+        {"main.xt",
+         "<xt><head><style></style></head><body id=\"Root\">"
+         "<div id=\"Box\" state-groups=\"Tone: Cool|Hot\"></div></body></xt>"}};
+    compile::CompileResult compiled = compile::compileDocumentFromStrings(files, "main.xt", options);
+    REQUIRE(compiled.ok());
+    std::unique_ptr<Document> doc;
+    REQUIRE(Document::load(IrBlob{compiled.ir.data(), compiled.ir.size()}, false, nullptr, nullptr, doc) ==
+            Status::kOk);
+    doc->setViewport(Rect{0, 0, 400, 400});
+    doc->update(0.0f);
+
+    FlowGraph graph;
+    std::vector<std::string> errors;
+    // 0.016 s against a 1/60 s frame: the timer fires at least once every frame.
+    const std::string json = R"JSON({"version":1,
+      "nodes":[
+        {"id":"beat","type":"timer","params":{"interval":0.016,"autostart":true,"repeat":true}},
+        {"id":"tone","type":"state","params":{"states":["Cool","Hot"],"transitions":[
+          {"from":"Cool","on":"go","to":"Hot"},{"from":"Hot","on":"go","to":"Cool"}]}},
+        {"id":"flips","type":"counter"},
+        {"id":"label","type":"toString"}],
+      "edges":[
+        {"from":"beat.tick","to":"tone.go"},
+        {"from":"tone.changed","to":"flips.increment"},
+        {"from":"tone.index","to":"label.in"},
+        {"from":"tone.enterHot","to":"#Box.setState","params":{"state":"Hot"}},
+        {"from":"tone.enterCool","to":"#Box.setState","params":{"state":"Cool"}}]})JSON";
+    REQUIRE(FlowGraph::parse(json, graph, errors) == Status::kOk);
+    FlowRuntime flow;
+    REQUIRE(flow.load(graph, *doc, errors) == Status::kOk);
+
+    PerfTracker tracker;
+    tracker.setEnabled(true);
+    flow.setPerfTracker(&tracker);
+    constexpr uint32_t kFrames = 200;
+    constexpr uint32_t kSteadyFrom = 50;
+    uint32_t allocFrames = 0;
+    uint32_t fanOut = 0;
+    uint32_t sinkWrites = 0;
+    for (uint32_t f = 0; f < kFrames; ++f) {
+        tracker.beginFrame(0.0f);
+        doc->update(1.0f / 60.0f);
+        flow.tick(1.0f / 60.0f);
+        const FrameStats& stats = tracker.current();
+        if (f < kSteadyFrom) {
+            continue;
+        }
+        fanOut += stats.flowFanOutEdges;
+        sinkWrites += stats.flowSinkWrites;
+        if (stats.flowAllocs != 0) {
+            CAPTURE(f);
+            CAPTURE(stats.flowAllocs);
+            CHECK(stats.flowAllocs == 0u);
+            ++allocFrames;
+        }
+    }
+    CHECK(fanOut > 0u);      // The events moved the machine ...
+    CHECK(sinkWrites > 0u);  // ... and enter<Name> wrote the element's state.
+    CHECK(allocFrames == 0u);
+}
+
+TEST_CASE("T-543: pointerNX -> deadband -> throttle(hz 20) -> set(port) allocates nothing from frame 50") {
+    compile::CompileOptions options;
+    options.behavior = 1;
+    options.emitMeta = true;
+    std::vector<compile::SourceFile> files{
+        {"main.xt",
+         "<xt><head><style></style></head><body id=\"Root\"><div id=\"Hud\" port:nx=\"number in\" "
+         "port:dropped=\"number in\"></div></body></xt>"}};
+    compile::CompileResult compiled = compile::compileDocumentFromStrings(files, "main.xt", options);
+    REQUIRE(compiled.ok());
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc;
+    REQUIRE(Document::load(IrBlob{compiled.ir.data(), compiled.ir.size()}, true, &shaper, nullptr, doc) ==
+            Status::kOk);
+    doc->setViewport(Rect{0, 0, 1280, 720});
+    doc->update(0.0f);
+    FlowGraph graph;
+    std::vector<std::string> errors;
+    REQUIRE(FlowGraph::parse(R"({
+        "version": 1,
+        "nodes": [
+            { "id": "d", "type": "filter", "params": { "op": "deadband", "threshold": 0.02 } },
+            { "id": "t", "type": "throttle", "params": { "unit": "hz", "rate": 20 } }
+        ],
+        "edges": [
+            { "from": "#document.pointerNX", "to": "d.in" },
+            { "from": "d.out", "to": "t.in" },
+            { "from": "t.out", "to": "#Hud.nx" },
+            { "from": "t.dropped", "to": "#Hud.dropped" }
+        ]
+    })",
+                             graph, errors) == Status::kOk);
+    FlowRuntime flow;
+    REQUIRE(flow.load(graph, *doc, errors) == Status::kOk);
+    PerfTracker tracker;
+    tracker.setEnabled(true);
+    flow.setPerfTracker(&tracker);
+    const PortId nx = doc->lookupPort("Hud.nx");
+    REQUIRE(nx != kInvalidPort);
+    uint32_t allocFrames = 0;
+    uint32_t written = 0;
+    const uint32_t listener = doc->addPortListener([&written, nx](const PortEvent& ev) {
+        written += ev.port == nx && ev.kind == PortEventKind::Changed ? 1u : 0u;
+    });
+    (void)listener;
+    for (uint32_t f = 0; f < 200; ++f) {
+        tracker.beginFrame(0.0f);
+        InputEvent ev;
+        ev.kind = InputEvent::PointerMove;
+        // A sweep across the viewport: most frames move the pointer past the dead zone.
+        const float t = static_cast<float>(f % 90) / 90.0f;
+        ev.pos = Vec2{1280.0f * t, 360.0f};
+        doc->dispatchInput(ev);
+        doc->update(1.0f / 60.0f);
+        flow.tick(1.0f / 60.0f);
+        if (f < 50) {
+            continue;
+        }
+        if (tracker.current().flowAllocs != 0) {
+            CAPTURE(f);
+            CAPTURE(tracker.current().flowAllocs);
+            CHECK(tracker.current().flowAllocs == 0u);
+            ++allocFrames;
+        }
+    }
+    CHECK(allocFrames == 0u);
+    CHECK(written > 10u);  // The graph did write the port, through the throttle.
+}
+
+TEST_CASE("T-547: pointerNX -> setProperty(effect.gradient-mask.p0x) allocates nothing from frame 50") {
+    compile::CompileOptions options;
+    options.behavior = 1;
+    options.emitMeta = true;
+    std::vector<compile::SourceFile> files{
+        {"main.xt",
+         "<xt><head><style></style></head><body id=\"Root\"><div id=\"M\" style=\"effect: "
+         "gradient-mask(radial, 0px 0px, 0px 0px, #000f 0%, #0000 100%)\"></div></body></xt>"}};
+    compile::CompileResult compiled = compile::compileDocumentFromStrings(files, "main.xt", options);
+    REQUIRE(compiled.ok());
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc;
+    REQUIRE(Document::load(IrBlob{compiled.ir.data(), compiled.ir.size()}, true, &shaper, nullptr, doc) ==
+            Status::kOk);
+    doc->setViewport(Rect{0, 0, 1280, 720});
+    doc->update(0.0f);
+    FlowGraph graph;
+    std::vector<std::string> errors;
+    REQUIRE(FlowGraph::parse(R"({
+        "version": 1,
+        "nodes": [],
+        "edges": [
+            { "from": "#document.pointerX", "to": "#M.setProperty", "params": { "prop": "effect.gradient-mask.p0x" } }
+        ]
+    })",
+                             graph, errors) == Status::kOk);
+    FlowRuntime flow;
+    REQUIRE(flow.load(graph, *doc, errors) == Status::kOk);
+    PerfTracker tracker;
+    tracker.setEnabled(true);
+    flow.setPerfTracker(&tracker);
+    uint32_t allocFrames = 0;
+    uint32_t writes = 0;
+    for (uint32_t f = 0; f < 200; ++f) {
+        tracker.beginFrame(0.0f);
+        InputEvent ev;
+        ev.kind = InputEvent::PointerMove;
+        ev.pos = Vec2{1.0f + static_cast<float>(f), 360.0f};
+        doc->dispatchInput(ev);
+        doc->update(1.0f / 60.0f);
+        flow.tick(1.0f / 60.0f);
+        writes += tracker.current().flowSinkWrites;
+        if (f < 50) {
+            continue;
+        }
+        if (tracker.current().flowAllocs != 0) {
+            CAPTURE(f);
+            CAPTURE(tracker.current().flowAllocs);
+            CHECK(tracker.current().flowAllocs == 0u);
+            ++allocFrames;
+        }
+    }
+    CHECK(allocFrames == 0u);
+    CHECK(writes > 100u);  // The edge wrote the parameter every frame.
 }

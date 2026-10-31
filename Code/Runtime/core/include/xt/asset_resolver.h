@@ -236,6 +236,11 @@ public:
     /// Multi-root form (T-138): `readBytes` tries `rootDirs[0]/name`, `rootDirs[1]/name`, ... in
     /// order. The single-root constructor delegates here with a one-element list.
     FileAssetResolver(std::vector<std::string> rootDirs, ImageDecodeFn decode);
+    /// T-528 (49 §49.3, 2026-10-29 ruling): appends `dir` to the roots `readBytes()` tries, after
+    /// the existing ones (the implied symbol group's directory, as `xtframe-pack` adds it to the
+    /// compile's search directories); a root already in the list is not added again. A name looked
+    /// up and not found before the call stays unresolved until resetAssetIds().
+    void addSearchDir(std::string dir);
 
     /// See AssetResolver::readBytes; reads `root/name` from the first root that has it.
     bool readBytes(std::string_view name, std::vector<uint8_t>& out) override;

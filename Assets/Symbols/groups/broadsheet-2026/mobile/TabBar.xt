@@ -1,0 +1,91 @@
+<xt>
+  <head>
+    <!-- TabBar: standard mobile symbol (docs/design/23-host-integration.md 23.11.2,
+         30-ui-project.md 30.4). See ../README.md.
+         Style: Broadsheet (docs/design/47-symbol-visual-style.md).
+         A bottom tab bar of 3 to 5 tabs (variant Count) inside the bottom safe area. A tap writes
+         `value` (0-4) and emits `select` from that tab; the host (or flow) may also set
+         `value`. The current tab is the Bar1..Bar5 state of the group TabBar. -->
+    <symbol name="TabBar" variants="Count=3|4|5" state-groups="TabBar: Bar1|Bar2|Bar3|Bar4|Bar5"
+            requires="states: Hover, Bar1, Bar2, Bar3, Bar4, Bar5; slots: tab1, tab2, tab3, tab4, tab5">
+      <div id="Box" port:value="number in" port:select="event out"
+           bind:state.Bar1="value | eq(0)" bind:state.Bar2="value | eq(1)" bind:state.Bar3="value | eq(2)"
+           bind:state.Bar4="value | eq(3)" bind:state.Bar5="value | eq(4)">
+        <button id="B1" class="tab" on:click="sound(ui_tab); set(value, 0); emit(select); play(tab-change)"><div id="B1Dot" class="dot"></div><span id="B1Text" class="name"><slot name="tab1">Home</slot></span></button>
+        <button id="B2" class="tab" on:click="sound(ui_tab); set(value, 1); emit(select); play(tab-change)"><div id="B2Dot" class="dot"></div><span id="B2Text" class="name"><slot name="tab2">Play</slot></span></button>
+        <button id="B3" class="tab" on:click="sound(ui_tab); set(value, 2); emit(select); play(tab-change)"><div id="B3Dot" class="dot"></div><span id="B3Text" class="name"><slot name="tab3">Shop</slot></span></button>
+        <button id="B4" class="tab" on:click="sound(ui_tab); set(value, 3); emit(select); play(tab-change)"><div id="B4Dot" class="dot"></div><span id="B4Text" class="name"><slot name="tab4">Friends</slot></span></button>
+        <button id="B5" class="tab" on:click="sound(ui_tab); set(value, 4); emit(select); play(tab-change)"><div id="B5Dot" class="dot"></div><span id="B5Text" class="name"><slot name="tab5">Profile</slot></span></button>
+      </div>
+    </symbol>
+    <style>
+      symbol(TabBar) {
+        #Box {
+          display: flex;
+          flex-grow: 1;
+          padding: 0px 0px 0px 0px;
+          padding-bottom: 1safe-bottom;
+          border-width: var(--rule-thick) 0px var(--rule-thin) 0px;
+          border-color: var(--color-border);
+          background-color: var(--color-surface);
+          background-image: var(--tex-grain);
+          background-repeat: repeat;
+          background-size: 128px 128px;
+          font-family: var(--font-display);
+          font-size: var(--font-size-xs);
+        }
+        .tab {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          flex-grow: 1;
+          flex-basis: 0px;
+          row-gap: var(--space-1);
+          min-height: 56px;
+          min-width: var(--touch-min);
+          background-color: transparent;
+          color: var(--color-text);
+          transition: background-color var(--motion-instant) linear, transform var(--motion-fast) ease-out;
+        }
+        #B2, #B3, #B4, #B5 {
+          border-width: 0px 0px 0px var(--rule-thin);
+          border-color: var(--color-border);
+        }
+        .dot {
+          width: 24px;
+          height: 24px;
+          border-width: var(--rule-thin);
+          border-color: var(--color-border);
+          background-color: var(--color-surface-sunken);
+        }
+        .name {
+          font-family: var(--font-display);
+          font-size: 10px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0px;
+          white-space: nowrap;
+        }
+        .tab:hover { background-color: var(--color-accent); color: var(--color-text-on-accent); }
+        .tab:active { background-color: var(--color-surface-sunken); color: var(--color-text); transform: translate(2px, 2px); }
+        .tab:focus { outline: var(--focus-w) solid var(--color-focus); outline-offset: 2px; transform: rotate(-1.5deg); }
+        .v-Count-3 #B4, .v-Count-3 #B5, .v-Count-4 #B5 { display: none; }
+        #Box:state(Bar1) #B1, #Box:state(Bar2) #B2, #Box:state(Bar3) #B3, #Box:state(Bar4) #B4, #Box:state(Bar5) #B5 {
+          background-color: var(--color-accent);
+          color: var(--color-text-on-accent);
+        }
+        #Box:state(Bar1) #B1Dot, #Box:state(Bar2) #B2Dot, #Box:state(Bar3) #B3Dot, #Box:state(Bar4) #B4Dot, #Box:state(Bar5) #B5Dot {
+          background-color: var(--color-text-on-accent);
+        }
+        @timeline tab-change {
+          #B1Dot { 0s { transform: translateY(1px) } 0.15s ease-out { transform: translateY(0px) } }
+          #B2Dot { 0s { transform: translateY(1px) } 0.15s ease-out { transform: translateY(0px) } }
+          #B3Dot { 0s { transform: translateY(1px) } 0.15s ease-out { transform: translateY(0px) } }
+          #B4Dot { 0s { transform: translateY(1px) } 0.15s ease-out { transform: translateY(0px) } }
+          #B5Dot { 0s { transform: translateY(1px) } 0.15s ease-out { transform: translateY(0px) } }
+        }
+      }
+    </style>
+  </head>
+</xt>

@@ -192,6 +192,61 @@ if(TARGET xtframe-design)
         COMMAND $<TARGET_FILE:xtframe-design> audit "${PROJECT_SOURCE_DIR}/Examples/demos/game-ui" --scope uis)
 endif()
 
+# T-499: `xtframe-symbols` (Docs/design/49-symbol-sets.md 49.5, 49.6). The preset library lints clean,
+# a path that is no group is an error (1), a bad command line is a usage error (2), `libraries` lists
+# the presets and the user library it creates under the build tree.
+if(TARGET xtframe-symbols)
+    include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/expect_exit.cmake")
+    xt_add_expect_exit_test(xtframe-symbols_lint_preset CODE 0
+        OUTPUT "lint: 0 error\\(s\\), 0 warning\\(s\\) in 1 group\\(s\\)"
+        COMMAND $<TARGET_FILE:xtframe-symbols> lint "${PROJECT_SOURCE_DIR}/Assets/Symbols")
+    xt_add_expect_exit_test(xtframe-symbols_lint_missing CODE 1 OUTPUT "group\\.notFound"
+        COMMAND $<TARGET_FILE:xtframe-symbols> lint "${CMAKE_CURRENT_BINARY_DIR}/no-such-group")
+    xt_add_expect_exit_test(xtframe-symbols_usage CODE 2 OUTPUT "usage: xtframe-symbols"
+        COMMAND $<TARGET_FILE:xtframe-symbols> bogus)
+    xt_add_expect_exit_test(xtframe-symbols_version CODE 0
+        OUTPUT "^xtframe-symbols [0-9]+\\.[0-9]+\\.[0-9]+[^a-z]+ir-format 2\\.[0-9]+[^a-z]+behavior [0-9]+"
+        COMMAND $<TARGET_FILE:xtframe-symbols> --version)
+    xt_add_expect_exit_test(xtframe-symbols_tokens_json CODE 0 OUTPUT "\"displayFamily\""
+        COMMAND $<TARGET_FILE:xtframe-symbols> tokens-json
+                "${PROJECT_SOURCE_DIR}/Assets/Symbols/groups/broadsheet-2026")
+    set(T499_USER "${CMAKE_CURRENT_BINARY_DIR}/t499_user")
+    add_test(NAME t499_symbols_clean COMMAND ${CMAKE_COMMAND} -E rm -rf "${T499_USER}")
+    set_tests_properties(t499_symbols_clean PROPERTIES FIXTURES_SETUP t499_clean)
+    xt_add_expect_exit_test(xtframe-symbols_libraries CODE 0 OUTPUT "preset\tpreset\tread-only"
+        COMMAND $<TARGET_FILE:xtframe-symbols> libraries --user-data "${T499_USER}"
+                --presets "${PROJECT_SOURCE_DIR}/Assets/Symbols")
+    set_tests_properties(xtframe-symbols_libraries PROPERTIES FIXTURES_REQUIRED t499_clean)
+    # T-500: `-o x.xtsymbols` writes the zip form of the set; `import --url` is validated and refused
+    # (the runtime layer downloads nothing: the editor service does, T-502).
+    set(T500_DIR "${CMAKE_CURRENT_BINARY_DIR}/t500_symbols")
+    add_test(NAME t500_symbols_clean COMMAND ${CMAKE_COMMAND} -E rm -rf "${T500_DIR}")
+    set_tests_properties(t500_symbols_clean PROPERTIES FIXTURES_SETUP t500_clean)
+    xt_add_expect_exit_test(xtframe-symbols_export_xtsymbols CODE 0
+        OUTPUT "exported xtframe/broadsheet-2026 [0-9.]+ \\(license CC0-1\\.0\\) to .*set\\.xtsymbols: [0-9]+ file"
+        COMMAND $<TARGET_FILE:xtframe-symbols> export "${PROJECT_SOURCE_DIR}/Assets/Symbols/groups/broadsheet-2026"
+                -o "${T500_DIR}/set.xtsymbols")
+    set_tests_properties(xtframe-symbols_export_xtsymbols PROPERTIES FIXTURES_REQUIRED t500_clean)
+    xt_add_expect_exit_test(xtframe-symbols_import_url CODE 2 OUTPUT "use the editor or download the file first"
+        COMMAND $<TARGET_FILE:xtframe-symbols> import --url "https://example.com/set.xtsymbols"
+                --user-data "${T500_DIR}/user")
+    xt_add_expect_exit_test(xtframe-symbols_import_url_http CODE 2 OUTPUT "https:// addresses only"
+        COMMAND $<TARGET_FILE:xtframe-symbols> import --url "http://example.com/set.xtsymbols"
+                --user-data "${T500_DIR}/user")
+endif()
+
+# T-500 (22 §22.5): `xtframe-pack --zip` writes the published directory as `<out>.xtb` too.
+if(TARGET xtframe-pack)
+    include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/expect_exit.cmake")
+    set(T500_PACK "${CMAKE_CURRENT_BINARY_DIR}/t500_pack")
+    add_test(NAME t500_pack_clean COMMAND ${CMAKE_COMMAND} -E rm -rf "${T500_PACK}" "${T500_PACK}.xtb")
+    set_tests_properties(t500_pack_clean PROPERTIES FIXTURES_SETUP t500_pack_clean)
+    xt_add_expect_exit_test(xtframe-pack_zip CODE 0 OUTPUT "xtframe-pack: wrote .*t500_pack\\.xtb"
+        COMMAND $<TARGET_FILE:xtframe-pack> "${CMAKE_CURRENT_SOURCE_DIR}/bundle/fixtures/sample"
+                -o "${T500_PACK}" --no-thumbs --zip)
+    set_tests_properties(xtframe-pack_zip PROPERTIES FIXTURES_REQUIRED t500_pack_clean)
+endif()
+
 # T-316: `xtframe-design export --claude-design` from a staged starter, then `import --claude-design`
 # into a second staged copy (its variables and swatches exist already, so only text entries are added).
 if(TARGET xtframe-design)
@@ -207,7 +262,7 @@ if(TARGET xtframe-design)
     set_tests_properties(t316_claude_design_stage t316_claude_design_stage_target
                          PROPERTIES FIXTURES_REQUIRED t316_clean FIXTURES_SETUP t316_staged)
     xt_add_expect_exit_test(xtframe-design_export_claude_design CODE 0
-        OUTPUT "wrote Claude Design design system to .*\\(4 files, [0-9]+ README sections, 22 colour tokens, 2 themes, 20 swatches"
+        OUTPUT "wrote Claude Design design system to .*\\(4 files, [0-9]+ README sections, 22 colour tokens, [0-9]+ inherited, 2 themes, 13 swatches"
         COMMAND $<TARGET_FILE:xtframe-design> export "${T316_DIR}/starter" --claude-design "${T316_DIR}/cd")
     set_tests_properties(xtframe-design_export_claude_design
                          PROPERTIES FIXTURES_REQUIRED t316_staged FIXTURES_SETUP t316_exported)
@@ -221,6 +276,10 @@ add_subdirectory(golden)
 add_subdirectory(perf)
 add_subdirectory(flow)
 add_subdirectory(bundle)
+# T-504 (50 §50.4): the C ABI shared library xtframe.
+if(XT_BUILD_CAPI)
+    add_subdirectory(capi)
+endif()
 add_subdirectory(symbols)
 # T-424: the template UI Projects (Assets/Templates/projects, editor layer; not in the runtime export).
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/templates/CMakeLists.txt")
@@ -250,13 +309,20 @@ endif()
 if(XT_BUILD_FUZZ)
     add_subdirectory(fuzz)
 endif()
-if(XT_BUILD_EDITOR AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/editor/CMakeLists.txt")
+# T-518 (17 §17.8b): the zero-Qt editor suites build with XT_BUILD_EDITOR_CLI as well (no Qt needed).
+if((XT_BUILD_EDITOR OR XT_BUILD_EDITOR_CLI) AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/editor/CMakeLists.txt")
     add_subdirectory(editor)
     add_subdirectory(editor_service)
-    add_subdirectory(editor_qt)
     if(XT_EDITOR_HISTORY)
         add_subdirectory(history)
     endif()
+    if(XT_EDITOR_AI)
+        add_subdirectory(net)
+        add_subdirectory(ai)
+    endif()
+endif()
+if(XT_BUILD_EDITOR AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/editor/CMakeLists.txt")
+    add_subdirectory(editor_qt)
 
     # Docs/tasks/T-66a.md: xtframe-editor's headless Demo mode, run against a copy of the desktop_app
     # example whose .xtflow is the timer fixture. The copy exists because FlowRuntime's graph has to
@@ -383,26 +449,35 @@ if(XT_BUILD_EDITOR AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/editor/CMakeLists.txt
              COMMAND ${CMAKE_COMMAND} -DCASE=mcp "-DTOOL=$<TARGET_FILE:xtframe-mcp>" "-DWORK=${T261F_WORK}"
                      "-DSOURCE=${PROJECT_SOURCE_DIR}" -P "${T261F_SCRIPT}")
 endif()
+# T-518: the same for the Qt-free xtframe-service (`--schemas` without a leading `--service`).
+if(TARGET xtframe-service)
+    add_test(NAME t261f_service_schemas
+             COMMAND ${CMAKE_COMMAND} -DCASE=service_schemas "-DTOOL=$<TARGET_FILE:xtframe-service>"
+                     "-DWORK=${CMAKE_CURRENT_BINARY_DIR}/t261f-utf8-args" "-DSOURCE=${PROJECT_SOURCE_DIR}"
+                     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/t261f_utf8_args.cmake")
+endif()
 
 # T-401 (Docs/design/43-compatibility-and-versions.md 43.4): the project-level golden corpus
 # (Tests/corpus). Tools/Scripts/corpus_check.sh is a thin wrapper of Tools/Scripts/corpus_check.py; CTest runs the
 # Python script directly so it never depends on which `bash` the PATH holds. Its packs and renders
 # go to the build tree; Tools/Scripts/dev_check.sh runs it as its own suite `corpus`.
-# T-422: the expected screenshots are rendered with the Windows system fonts the corpus projects
-# name (Bahnschrift, Segoe UI, Palatino Linotype, Georgia), so the test is registered on Windows
-# only; cross-platform rendering is the golden suite's job (Tests/golden, with tolerances). A Debug
-# run takes over 30 minutes on a hosted runner, so the test is limited to the optimised
-# configurations (ctest -C Release / RelWithDebInfo).
-# T-426: each project.json lists the font families it needs (`fonts`); a runner without one of them
-# skips that project (--skip-missing-fonts) instead of failing on its screenshots. Tools/Scripts/dev_check.sh
-# runs the strict mode (a missing font fails).
-if(WIN32 AND TARGET xtframe-view AND TARGET xtframe-pack)
+# T-527d (43 §43.4, replacing the T-422 Windows-only registration): the corpus packs with
+# `--fonts bundled`, so every render uses the standard fonts the bundle carries (Assets/Fonts,
+# 22 §22.10.3) and none of the machine's system fonts; the expected images are rendered on Linux
+# and the test is registered on every platform. A platform whose renders differ is an
+# inconsistency to fix (23 §23.5, 14 §14.10), not a reason to widen the tolerances. A Debug run
+# takes over 30 minutes on a hosted runner, so the test is limited to the optimised configurations
+# (ctest -C Release / RelWithDebInfo).
+# T-426 (history): a project.json may still list the system fonts it needs (`fonts`), for external
+# corpora (corpus_check.py --skip-missing-fonts skips such a project on a runner without them). No
+# project in Tests/corpus lists any since T-527d, so the CTest entry runs without that flag.
+if(TARGET xtframe-view AND TARGET xtframe-pack)
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_Interpreter_FOUND)
         add_test(NAME corpus_check
                  COMMAND Python3::Interpreter "${PROJECT_SOURCE_DIR}/Tools/Scripts/corpus_check.py"
                          --view $<TARGET_FILE:xtframe-view> --pack $<TARGET_FILE:xtframe-pack>
-                         --work "${CMAKE_CURRENT_BINARY_DIR}/corpus_work" --skip-missing-fonts
+                         --work "${CMAKE_CURRENT_BINARY_DIR}/corpus_work"
                  CONFIGURATIONS Release RelWithDebInfo)
         set_tests_properties(corpus_check PROPERTIES TIMEOUT 1800)
     endif()

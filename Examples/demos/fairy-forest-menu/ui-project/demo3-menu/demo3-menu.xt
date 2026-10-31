@@ -5,12 +5,18 @@
     <title>Demo 3 Main Menu</title>
   </head>
   <body>
-    <div id="demo3-menu" on:show="play(intro)" port:new_game="event out" port:continue_game="event out" port:open_options="event out" port:open_credits="event out">
+    <div id="demo3-menu" on:show="play(intro)" port:new_game="event out" port:continue_game="event out" port:open_options="event out" port:open_credits="event out" port:px="number in = -1000" port:py="number in = -1000" on:pointermove="set(px, pointer.local(#demo3-menu).x); set(py, pointer.local(#demo3-menu).y)">
       <img id="bg-gray" src="../shared/img/bg-gray.png"/>
       <div id="trail-layer">
-        <img id="trail-3" src="../shared/img/trail-3.png"/>
-        <img id="trail-2" src="../shared/img/trail-3.png"/>
-        <img id="trail-1" src="../shared/img/trail-3.png"/>
+        <img id="trail-3" src="../shared/img/trail-3.png"
+             bind:effect.gradient-mask.p0x="px | tween(700ms, ease-out)" bind:effect.gradient-mask.p0y="py | tween(700ms, ease-out)"
+             bind:effect.gradient-mask.p1x="px | offset(210) | tween(700ms, ease-out)" bind:effect.gradient-mask.p1y="py | tween(700ms, ease-out)"/>
+        <img id="trail-2" src="../shared/img/trail-3.png"
+             bind:effect.gradient-mask.p0x="px | tween(320ms, ease-out)" bind:effect.gradient-mask.p0y="py | tween(320ms, ease-out)"
+             bind:effect.gradient-mask.p1x="px | offset(170) | tween(320ms, ease-out)" bind:effect.gradient-mask.p1y="py | tween(320ms, ease-out)"/>
+        <img id="trail-1" src="../shared/img/trail-3.png"
+             bind:effect.gradient-mask.p0x="px | tween(90ms, ease-out)" bind:effect.gradient-mask.p0y="py | tween(90ms, ease-out)"
+             bind:effect.gradient-mask.p1x="px | offset(130) | tween(90ms, ease-out)" bind:effect.gradient-mask.p1y="py | tween(90ms, ease-out)"/>
       </div>
       <img id="bg-color" src="../shared/img/trail-3.png"/>
       <div id="vignette"/>

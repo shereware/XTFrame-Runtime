@@ -22,6 +22,11 @@ public:
     bool isCff() const { return m_cff; }
     /// True when the font maps `codePoint` to a glyph other than .notdef.
     bool hasGlyph(uint32_t codePoint) const;
+    /// T-527b (22 §22.10.3 standard fonts): the family name from the `name` table -- nameID 16
+    /// (typographic family) when present, else nameID 1 -- preferring a Windows/Unicode record
+    /// (UTF-16BE, high bytes dropped: the names compared are ASCII) over a Mac one. Empty when the
+    /// font has no readable `name` table or neither record.
+    std::string familyName() const;
     /// Number of glyphs (`maxp.numGlyphs`).
     uint16_t glyphCount() const { return m_numGlyphs; }
     /// Number of glyphs with an outline (non-empty `glyf` entry); 0 for CFF.

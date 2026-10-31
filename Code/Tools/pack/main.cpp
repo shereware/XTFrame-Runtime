@@ -13,7 +13,9 @@
 #include "xt/bundle/gen_ports.h"
 #include "xt/bundle/pack.h"
 #include "xt/bundle/project_file.h"
+#include "xt/bundle/symbol_library.h"
 #include "xt/bundle/ui_project.h"
+#include "xt/bundle/zip_archive.h"
 #include "xt/compile/diagnostics.h"
 #include "xt/compile/utf8_path.h"
 
@@ -23,7 +25,7 @@
 ///
 /// Usage: xtframe-pack <project-dir | name.xtui | ui-project.json | bundle.xtproj | file.xt> [-o <out-dir>]
 ///                   [--ui <id>]... [--strict] [--no-thumbs] [--embed] [--prune] [--lang <list>]
-///                   [--allow-placeholders]
+///                   [--allow-placeholders] [--zip] [--fonts system|bundled] [--fonts-dir <dir>]
 ///        xtframe-pack --upgrade <bundle-dir>
 ///        xtframe-pack --version
 ///
@@ -44,6 +46,25 @@
 /// disabled, with the compiler's `vector.unbakedModifier` warning (a failure under --strict), which
 /// this tool prints with a bake hint appended.
 ///
+/// --zip (T-500, Docs/design/22-bundle.md §22.5): after a successful pack, the published directory
+/// is also written as the store-mode zip `<out-dir>.xtb` (xt::bundle::zipDirectory(); a file that
+/// is there is replaced), which Bundle::open(), xtframe-view and the browser open like the
+/// directory. One `xtframe-pack: wrote <file>.xtb` line; a failed archive exits 1.
+///
+/// --fonts system|bundled (T-527, Docs/design/22-bundle.md §22.10.3, 12-compiler.md §12.7.1):
+/// `bundled` makes the bundle's text depend only on its own fonts (PackOptions::fontsMode): a UI
+/// whose text a bundled font does not cover, or that bundles no font, is an error (exit 1, the
+/// bundle is still written); an implied symbol group's fonts are the last fallback, with one
+/// warning per UI that falls back. The UI Project's `publish.fonts` gives the default; the flag wins
+/// (`--fonts system` overrides `publish.fonts: "bundled"`). Default `system`.
+///
+/// --fonts-dir <dir> (T-527b, 22 §22.10.3 "standard fonts"): the standard font directory
+/// (PackOptions::standardFontDir), default `<executable dir>/fonts` (the build's copy of
+/// `Assets/Fonts`). Under `--fonts bundled` a UI whose text names one of its families (Noto Sans,
+/// Noto Sans TC) gets that family's files, text naming no bundled family falls back to Noto Sans
+/// (one warning), and code points no bundled font has are taken from it (one warning per font).
+/// `--fonts-dir ""` turns the standard fonts off.
+///
 /// --lang (T-179, Docs/design/12-compiler.md §12.7): a comma-separated list of languages; only
 /// their `strings/<lang>.csv` tables are packed (and linted). May be repeated.
 ///
@@ -54,9 +75,9 @@
 /// project root or under `shared/`) is validated and packed automatically (manifest `flows.global`).
 ///
 /// T-198 (Docs/design/30-ui-project.md 30.4): the standard symbol library is read from
-/// `<executable dir>/symbols` (copied there by the build); a UI's `<link rel="symbols">` to a
-/// missing `<shared.symbols>/<Name>.xt` gets that standard file copied into the project first
-/// (PackOptions::standardSymbolDir), one `copied standard symbol` line each.
+/// `<executable dir>/symbols` (copied there by the build; T-498: its default group); a UI's `<link
+/// rel="symbols">` to a missing `<shared.symbols>/<Name>.xt` gets that standard file copied into the project
+/// first (PackOptions::standardSymbolDir), one `copied standard symbol` line each.
 ///
 /// A lone `.xt` file is packed as the implied single-UI bundle of §22.2
 /// (ProjectFile::implied), so the same command works before a project has a `bundle.xtproj`.
@@ -101,7 +122,8 @@ void printUsage() {
                  "[-o <out-dir>] "
                  "[--ui <id>]... [--strict] [--no-thumbs] [--embed] [--prune] [--lang <list>] "
                  "[--gen-ports cpp|cs <out>] [--atlas] [--atlas-scope ui|bundle] "
-                 "[--compress bc7|bc3|bc1|none] [--font-subset] [--allow-placeholders]\n"
+                 "[--compress bc7|bc3|bc1|none] [--font-subset] [--fonts system|bundled] [--fonts-dir <dir>] "
+                 "[--allow-placeholders] [--zip]\n"
                  "       xtframe-pack --upgrade <bundle-dir>\n"
                  "       xtframe-pack --version\n");
 }
@@ -173,6 +195,10 @@ int packMain(int argc, char** argv) {
     xt::bundle::PackOptions options;
     bool sawInput = false;
     bool genPorts = false;
+    bool zip = false;                                                  // T-500
+    xt::bundle::FontsMode fontsFlag = xt::bundle::FontsMode::kSystem;  // T-527
+    bool sawFontsFlag = false;
+    bool sawFontsDir = false;  // T-527b
     xt::bundle::PortsLanguage portsLanguage = xt::bundle::PortsLanguage::Cpp;
     std::string portsOut;
 
@@ -277,8 +303,28 @@ int packMain(int argc, char** argv) {
             options.compress = format;
         } else if (arg == "--font-subset") {
             options.fontSubset = true;
+        } else if (arg == "--fonts") {
+            // T-527 (22 §22.10.3): applied after the project is loaded, so the flag wins over it.
+            if (i + 1 >= argc || !xt::bundle::parseFontsMode(argv[i + 1], fontsFlag)) {
+                std::fprintf(stderr, "xtframe-pack: --fonts requires system or bundled\n");
+                printUsage();
+                return 2;
+            }
+            ++i;
+            sawFontsFlag = true;
+        } else if (arg == "--fonts-dir") {
+            // T-527b (22 §22.10.3): the standard font directory; "" = off.
+            if (i + 1 >= argc) {
+                std::fprintf(stderr, "xtframe-pack: --fonts-dir requires a directory\n");
+                printUsage();
+                return 2;
+            }
+            options.standardFontDir = argv[++i];
+            sawFontsDir = true;
         } else if (arg == "--allow-placeholders") {
             options.allowPlaceholders = true;  // T-312a
+        } else if (arg == "--zip") {
+            zip = true;  // T-500
         } else if (arg == "--strict") {
             options.strict = true;
         } else if (arg == "--no-thumbs") {
@@ -339,6 +385,11 @@ int packMain(int argc, char** argv) {
         project = std::move(loaded.value());
     }
 
+    if (sawFontsFlag) {  // T-527: the flag wins over `publish.fonts`.
+        project.publish.fonts = fontsFlag;
+        options.fontsMode = fontsFlag;
+    }
+
     if (options.outDir.empty() && !project.publish.outDir.empty()) {
         options.outDir =
             genericPathToUtf8(pathFromUtf8(project.rootDir) / pathFromUtf8(project.publish.outDir));
@@ -356,13 +407,17 @@ int packMain(int argc, char** argv) {
         }
     }
 
-    // T-198 (Docs/design/30-ui-project.md 30.4, 30.8): the standard symbol library ships next to
-    // the executable (`<applicationDirPath>/symbols`).
+    // T-198 (Docs/design/30-ui-project.md 30.4, 30.8): the preset symbol library ships next to
+    // the executable (`<applicationDirPath>/symbols`); T-498 (49 §49.8): the standard symbols are
+    // its default group (`library.json`'s `default`).
     {
         std::error_code ec;
         const fs::path symbols = fs::absolute(pathFromUtf8(argv[0]), ec).parent_path() / "symbols";
-        if (fs::is_directory(symbols, ec)) {
-            options.standardSymbolDir = pathToUtf8(symbols);
+        options.standardSymbolDir = xt::bundle::defaultGroupDir(pathToUtf8(symbols));
+        // T-527b (22 §22.10.3): the standard fonts ship next to the executable as well.
+        if (!sawFontsDir) {
+            options.standardFontDir =
+                pathToUtf8(fs::absolute(pathFromUtf8(argv[0]), ec).parent_path() / "fonts");
         }
     }
     // T-312a: the asset manifest is generated from the metas once the project has asset identity.
@@ -391,6 +446,9 @@ int packMain(int argc, char** argv) {
     designWarnings(project, options.standardSymbolDir);
     for (const xt::compile::Diagnostic& d : report.diagnostics) {
         printDiagnostic(d);
+    }
+    for (const std::string& line : report.flowWarnings) {
+        std::fprintf(stderr, "xtframe-pack: warning: %s\n", line.c_str());  // T-540
     }
     if (!report.ok) {
         std::fprintf(stderr, "xtframe-pack: failed to pack '%s'\n", input.c_str());
@@ -428,6 +486,19 @@ int packMain(int argc, char** argv) {
     }
     if (report.globalFlowWritten) {
         std::printf("xtframe-pack: packed global flow bundle.xtflow\n");
+    }
+    if (zip) {  // T-500: the published directory as a store-mode `.xtb` next to it.
+        fs::path outPath = pathFromUtf8(options.outDir);
+        if (!outPath.has_filename()) {
+            outPath = outPath.parent_path();
+        }
+        const fs::path archive = fs::path(outPath).concat(".xtb");
+        std::string error;
+        if (xt::bundle::zipDirectory(outPath, archive, {}, &error) != xt::Status::kOk) {
+            std::fprintf(stderr, "xtframe-pack: --zip: %s\n", error.c_str());
+            return 1;
+        }
+        std::printf("xtframe-pack: wrote %s\n", genericPathToUtf8(archive).c_str());
     }
     if (genPorts) {
         const std::string text = xt::bundle::generatePortHeader(portsLanguage, report.portTables);

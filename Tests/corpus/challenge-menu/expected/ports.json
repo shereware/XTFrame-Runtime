@@ -1,3 +1,28 @@
 {
-  "challenge-menu": []
+  "challenge-menu": [
+    {
+      "name": "nx",
+      "type": "number",
+      "dir": "in",
+      "default": "0"
+    },
+    {
+      "name": "ny",
+      "type": "number",
+      "dir": "in",
+      "default": "0"
+    },
+    {
+      "name": "listShift",
+      "type": "number",
+      "dir": "in",
+      "default": "-650"
+    },
+    {
+      "name": "panelShift",
+      "type": "number",
+      "dir": "in",
+      "default": "750"
+    }
+  ]
 }

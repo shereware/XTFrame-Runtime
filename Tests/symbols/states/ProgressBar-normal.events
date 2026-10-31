@@ -1,4 +1,0 @@
-# T-198: ProgressBar, state 'normal'.
-port Load.value_max 100
-port Load.value 40
-update 0.6

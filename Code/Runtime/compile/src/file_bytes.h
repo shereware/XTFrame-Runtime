@@ -3,14 +3,15 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
-#include <system_error>
 #include <fstream>
 #include <ios>
+#include <system_error>
 #include <vector>
 
 /// Private: a whole file read into memory, shared by the compiler's sources (compile_document.cpp,
 /// compile_lottie.cpp, style_emit.cpp, lottie/lottie_assets.cpp each had a copy; T-414 C2d). It
-/// lives in compile, not Code/Runtime/core/include/xt/util, because core never includes <filesystem> (14 §14.10).
+/// lives in compile, not Code/Runtime/core/include/xt/util, because core never includes <filesystem> (14
+/// §14.10).
 
 namespace xt::compile::detail {
 
@@ -38,7 +39,7 @@ inline bool readFileBytes(const std::filesystem::path& path, std::vector<uint8_t
     in.seekg(0, std::ios::beg);
     out.resize(static_cast<size_t>(size));
     if (size > 0) {
-        in.read(reinterpret_cast<char*>(out.data()), size);
+        in.read(reinterpret_cast<char*>(out.data()), static_cast<std::streamsize>(size));
     }
     return static_cast<bool>(in) || in.eof();
 }

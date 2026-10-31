@@ -1,0 +1,67 @@
+<xt>
+  <head>
+    <!-- Toast: standard symbol (docs/design/30-ui-project.md 30.4). See README.md. -->
+    <symbol name="Toast" requires="states: Hover">
+      <div id="Box" port:toasts="list&lt;struct{title: string, text: string}&gt; in" port:dismiss="event out">
+        <repeat port="toasts" id="Queue" item-enter="play(item-in)" item-exit="play(item-out) then remove">
+          <div id="Card" on:click="emit(dismiss)">
+            <span id="Mark">!</span>
+            <div id="Stripe"></div>
+            <div id="Copy">
+              <span id="Title" bind:text="item(title)"></span>
+              <span id="Text" bind:text="item(text)"></span>
+            </div>
+          </div>
+        </repeat>
+      </div>
+    </symbol>
+    <style>
+      symbol(Toast) {
+        #Box { width: 320px; font-family: var(--font-body); }
+        #Queue { display: flex; flex-direction: column; row-gap: var(--space-2); }
+        #Card {
+          display: flex;
+          column-gap: var(--space-3);
+          padding: var(--space-3);
+          border-width: var(--rule-thin);
+          border-style: dashed;
+          border-color: var(--color-border);
+          background-color: var(--color-surface);
+          background-image: var(--tex-grain);
+          background-repeat: repeat;
+          background-size: 128px 128px;
+        }
+        #Card:hover { background-color: var(--color-surface-sunken); background-image: none; }
+        #Mark {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 24px;
+          color: var(--color-text);
+          font-family: var(--font-display);
+          font-size: var(--font-size-xl);
+          font-weight: 900;
+          white-space: nowrap;
+        }
+        #Stripe { width: var(--rule-thin); background-color: var(--color-border); }
+        #Copy { display: flex; flex-direction: column; row-gap: var(--space-1); }
+        #Title {
+          color: var(--color-text);
+          font-family: var(--font-display);
+          font-size: var(--font-size-m);
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: var(--letter-display);
+          white-space: nowrap;
+        }
+        #Text { color: var(--color-text-dim); font-size: var(--font-size-s); }
+        @timeline item-in {
+          #Card { 0s { opacity: 0; transform: translateX(24px) } 0.25s ease-out { opacity: 1; transform: translateX(0px) } }
+        }
+        @timeline item-out {
+          #Card { 0s { opacity: 1; transform: translateX(0px) } 0.2s ease-in { opacity: 0; transform: translateX(24px) } }
+        }
+      }
+    </style>
+  </head>
+</xt>

@@ -6,6 +6,7 @@
 
 #include "flow_internal.h"
 #include "xt/flow/bundle_context.h"
+#include "xt/num_guard.h"
 
 /// FlowRuntime's public surface (ctor/dtor/load/tick/values/valueNames) and its per-frame tick()
 /// loop: clock/timer node advancement plus the polled `<anim>` `localTime` and `#document.*`
@@ -194,6 +195,9 @@ void FlowRuntime::Impl::resetGraph() {
     batchHomes.clear();
     batchTop = 0;
     timedNodes.clear();
+    tickCount = 0;  // T-543.
+    tickTime = 0;
+    throttleWaiting.clear();
     valuesObserved = false;
     valueList.clear();
     valueNamesList.clear();
@@ -211,6 +215,8 @@ void FlowRuntime::Impl::resetGraph() {
     dirtyNodes = 0;
     staleNodes.clear();
     nodeStale.clear();
+    continuityList.clear();
+    setStateList.clear();
 }
 
 Status FlowRuntime::Impl::loadGraph(const FlowGraph& graph, std::vector<std::string>& errors,
@@ -247,6 +253,18 @@ Status FlowRuntime::Impl::loadGraph(const FlowGraph& graph, std::vector<std::str
     for (size_t i = 0; i < values.size(); ++i) {
         strings.addBuffer();
     }
+    // T-552 (27 §27.4.2 item 5): a format's text ping-pongs between its scratch and its output slot's
+    // buffer (pushScratchOutput()), both grow-only. They start with room for the literal text and 32
+    // characters per placeholder, so a longer value first seen late (a combination of inputs a warm-up
+    // never reached) does not allocate inside tick(); only a text past that room still grows them once.
+    constexpr size_t kFormatPieceRoom = 32;
+    for (NodeRuntime& n : nodes) {
+        if (n.type == NodeType::Format || n.type == NodeType::ToString) {
+            const size_t room = n.formatText.size() + n.pieces.size() * kFormatPieceRoom;
+            n.scratch.reserve(room);
+            strings.buffer(slotHome(n.outputBase + slots::format::kOut)).reserve(room);
+        }
+    }
     edges = std::move(boundEdges);
     edgeLastFiredList.assign(edges.size(), -1.0f);
     compileEdges();
@@ -255,8 +273,11 @@ Status FlowRuntime::Impl::loadGraph(const FlowGraph& graph, std::vector<std::str
     for (size_t i = 0; i < nodes.size(); ++i) {
         NodeDesc paramsOnly;
         paramsOnly.params = graph.nodes[i].params;
+        if (nodes[i].type == NodeType::State) {  // T-541: its enter / exit outputs follow its states.
+            paramsOnly.arrayParams = graph.nodes[i].arrayParams;
+        }
         nodes[i].valueListBase = static_cast<uint32_t>(valueList.size());
-        for (const std::string& port : outputPortOrder(nodes[i].type)) {
+        for (const std::string& port : outputPortOrder(nodes[i].type, graph.nodes[i])) {
             valueNamesList.push_back(nodes[i].id + "." + port);
             PortType t = PortType::Number;
             nodePortInfo(nodes[i].type, paramsOnly, port, /*isSource=*/true, t);
@@ -268,6 +289,12 @@ Status FlowRuntime::Impl::loadGraph(const FlowGraph& graph, std::vector<std::str
     }
     staleNodes.reserve(nodes.size());
     nodeStale.assign(nodes.size(), 0);
+    // T-543: room for every throttle node to wait at once, so queueing never allocates.
+    size_t throttles = 0;
+    for (const NodeRuntime& n : nodes) {
+        throttles += n.type == NodeType::Throttle ? 1 : 0;
+    }
+    throttleWaiting.reserve(throttles);
 
     bindDocumentEndpoints();
     loaded = true;
@@ -312,6 +339,8 @@ Status FlowRuntime::Impl::rebind(Document& document, std::vector<std::string>& w
         if (fromLost || toLost) {
             continue;
         }
+        checkSetStateDeclared(document, e, warnings, warned);   // T-546
+        checkSetPropertyEffect(document, e, warnings, warned);  // T-547
         keptEdges.push_back(e);
         keptLastFired.push_back(edgeLastFiredList[i]);
     }
@@ -349,6 +378,9 @@ void FlowRuntime::Impl::tick(float dt) {
     for (UiDoc& ui : uiDocs) {
         ui.state->clockAccum += dt;  // T-193: each UI's `document.clock`.
     }
+    // T-543: the tick clock `throttle` windows are measured on (the same `dt` the timers get).
+    ++tickCount;
+    tickTime += std::max(0.0, finiteOr(static_cast<double>(dt), 0.0));
     // T-389 (27 §27.4.1): the whole tick is one batch. The value signals the input dispatch
     // reported since the last tick go in first (their latest values only), then the clocks,
     // timers and polled ports; every node they reach is evaluated once at the end.
@@ -412,6 +444,12 @@ void FlowRuntime::Impl::tick(float dt) {
     if (coalesce) {
         flushSignals();  // T-389: what the polls queued, and the dirty nodes.
     }
+    if (!throttleWaiting.empty()) {  // T-543: only the throttles holding a trailing value.
+        flushThrottles();
+        if (coalesce) {
+            flushSignals();  // What the sent values reached.
+        }
+    }
     if (outerBatch) {
         batching = false;
     }
@@ -463,6 +501,21 @@ Status FlowRuntime::load(const FlowGraph& graph, Document& doc, std::vector<std:
 
 Status FlowRuntime::rebind(Document& doc, std::vector<std::string>& warnings) {
     return m_impl->rebind(doc, warnings);
+}
+
+void FlowRuntime::continuityWarnings(std::vector<std::string>& out) const {
+    if (!m_impl->loaded) {
+        return;
+    }
+    out.insert(out.end(), m_impl->continuityList.begin(), m_impl->continuityList.end());
+}
+
+void FlowRuntime::loadWarnings(std::vector<std::string>& out) const {
+    if (!m_impl->loaded) {
+        return;
+    }
+    out.insert(out.end(), m_impl->continuityList.begin(), m_impl->continuityList.end());
+    out.insert(out.end(), m_impl->setStateList.begin(), m_impl->setStateList.end());
 }
 
 void FlowRuntime::unload() { m_impl->unload(); }

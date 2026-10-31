@@ -1,0 +1,12 @@
+{
+  "width": 320,
+  "height": 90,
+  "frames": 0,
+  "ports": {
+    "Hp.hp_max": 100,
+    "Hp.hp": 72
+  },
+  "events": [
+    "update 0.6"
+  ]
+}

@@ -20,6 +20,14 @@ setText sink, a `math clamp` (0..100) for each set(port) sink, which writes a `n
 `inN` whose `bind:width` the binding runtime re-evaluates. The 20 source ports are bound too
 (`bind:height`), so every frame also has 20 host-driven binding re-evaluations.
 
+T-552 (27 §27.4.4 / §27.4.5, spec review 7.7): three of the nodes are the event-driven ones the
+zero-allocation test and `flow_bench.py --assert` must also cover -- a chain that feeds the last
+set(port) sink: `#document.pointerNX -> filter (deadband) -> throttle (frames 3, trailing)`, whose
+`passed` pulse drives a two-state `state` node (`tick`: idle <-> busy); the state's `index` is that
+sink's clamp input and its `state` string feeds the last setText sink's format. pointerNX changes
+every frame under --synth-pointer, so the throttle holds a trailing value two frames out of three
+and flushes it at the end of each window (the pending-trailing path of `tick()`).
+
 Deterministic: a fixed seed per fixture and sorted output; re-running rewrites identical files.
 Python 3 standard library only. Run: python3 Tests/perf/flow_big/gen_flow_big.py
 """
@@ -156,6 +164,26 @@ def build_general_node(g, layer, type_):
         raise ValueError(type_)
 
 
+CONTROL_NODES = 3  # T-552: filter, throttle, state (see the module docstring)
+
+
+def build_control_chain(g):
+    """T-552: pointerNX -> filter -> throttle -> state; returns the state node's id."""
+    filt = g.node("filter", 1, {"op": "deadband", "threshold": 0.01})
+    g.edge("#document.pointerNX", f"{filt}.in")
+    thr = g.node("throttle", 2, {"unit": "frames", "rate": 3, "trailing": True})
+    g.edge(f"{filt}.out", f"{thr}.in")
+    g.pools["num"].append((f"{thr}.out", 2))
+    state = g.node("state", 3, {
+        "states": ["idle", "busy"],
+        "initial": "idle",
+        "transitions": [{"from": "idle", "on": "tick", "to": "busy"},
+                        {"from": "busy", "on": "tick", "to": "idle"}],
+    })
+    g.edge(f"{thr}.passed", f"{state}.tick")
+    return state
+
+
 def build_graph(seed, total_nodes, sinks):
     n_style, n_text, n_port = sinks
     n_sinks = n_style + n_text + n_port
@@ -169,7 +197,7 @@ def build_graph(seed, total_nodes, sinks):
     for i in range(HOVER_CELLS):
         g.add_source(f"#hv{i}.hover", "bool")
 
-    general = total_nodes - n_sinks
+    general = total_nodes - n_sinks - CONTROL_NODES
     weights = [w for w, _ in NODE_MIX]
     kinds = [k for _, k in NODE_MIX]
     for layer in range(1, LAYERS):
@@ -179,6 +207,7 @@ def build_graph(seed, total_nodes, sinks):
             # A select needs a bool below it; layer 1 always has the hover / pointerDown sources.
             build_general_node(g, layer, type_)
     assert not g.unused["num"] and not g.unused["bool"], g.unused
+    control = build_control_chain(g)
 
     # Layer 8: one node per sink, reading the layer-7 outputs (and anything below).
     style_sinks, text_sinks, port_sinks = [], [], []
@@ -193,7 +222,8 @@ def build_graph(seed, total_nodes, sinks):
     for i in range(n_text):
         template = TEXT_TEMPLATES[i % len(TEXT_TEMPLATES)]
         nid = g.node("format", LAYERS, {"format": template, "decimals": 1})
-        g.edge(g.pick_any(LAYERS, True), f"{nid}.a")
+        # T-552: the last setText shows the control chain's state name.
+        g.edge(f"{control}.state" if i == n_text - 1 else g.pick_any(LAYERS, True), f"{nid}.a")
         for port in ("b", "c"):
             if "{" + port + "}" in template:
                 g.edge(g.pick_any(LAYERS), f"{nid}.{port}")
@@ -201,7 +231,8 @@ def build_graph(seed, total_nodes, sinks):
         text_sinks.append(f"tx{i}")
     for i in range(n_port):
         nid = g.node("math", LAYERS, {"op": "clamp", "lo": 0, "hi": 100})
-        g.edge(g.pick("num", LAYERS, True), f"{nid}.a")
+        # T-552: the last set(port) sink is driven by the control chain's state index.
+        g.edge(f"{control}.index" if i == n_port - 1 else g.pick("num", LAYERS, True), f"{nid}.a")
         g.edge(f"{nid}.out", f"#document.in{i}")
         port_sinks.append(f"in{i}")
     assert len(g.nodes) == total_nodes, len(g.nodes)

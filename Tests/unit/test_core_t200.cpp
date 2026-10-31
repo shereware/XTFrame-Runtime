@@ -421,6 +421,24 @@ TEST_CASE("t200: hotReload of a recompiled Document keeps ports, states, focus a
     CHECK(n.byId("New").valid());
 }
 
+TEST_CASE("T-546: the first write of a tween binding after hotReload applies directly") {
+    const std::string v1 = page("#Bar { height: 10px; }",
+                                R"X(<div id="P" port:hp="number = 30"></div>
+<div id="Bar" bind:width="hp | tween(1s)"></div>)X");
+    auto h = open(v1);
+    h->step(0.016f);
+    CHECK(h->doc().byId("Bar").layoutBox().width == doctest::Approx(30));
+    REQUIRE(h->doc().setPort(h->port("hp"), Value::ofFloat(200)) == Status::kOk);
+    h->step(2.0f);
+    CHECK(h->doc().byId("Bar").layoutBox().width == doctest::Approx(200));
+    std::vector<uint8_t> ir2 = compileOrFail(v1);
+    BundleDelta delta;
+    delta.ir.push_back(IrReload{h->handle, IrBlob{ir2.data(), ir2.size()}, false});
+    REQUIRE(h->ctx.hotReload(delta) == Status::kOk);
+    h->step(0.016f);
+    CHECK(h->doc().byId("Bar").layoutBox().width == doctest::Approx(200));  // Carried port, no 30 -> 200.
+}
+
 TEST_CASE("t391: hotReload carries a list port's nested lists and rebuilds the nested repeats") {
     const std::string v1 = R"X(<xt><body id="Root">
 <div id="Hud" port:groups="list<struct{name: string, rows: list<struct{t: string}>}>"></div>

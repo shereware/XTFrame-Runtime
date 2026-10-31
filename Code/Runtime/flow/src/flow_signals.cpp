@@ -115,7 +115,10 @@ void FlowRuntime::Impl::compileEdges() {
         out.type = ep.type;
         if (ep.owner == Endpoint::Owner::Node) {
             out.node = ep.nodeIndex;
-            out.slot = slotOf(ep.nodeType, isSource ? SlotKind::Output : SlotKind::Input, ep.port);
+            const SlotKind kind = isSource ? SlotKind::Output : SlotKind::Input;
+            out.slot = ep.nodeType == NodeType::State
+                           ? stateSlotOf(nodes[static_cast<size_t>(ep.nodeIndex)], kind, ep.port)  // T-541.
+                           : slotOf(ep.nodeType, kind, ep.port);
         } else {
             out.external = externalOf(ep);
         }
@@ -210,6 +213,103 @@ void FlowRuntime::Impl::compileEdges() {
     }
     nodeDirty.assign(count, 0);
     dirtyNodes = 0;
+    computeContinuityWarnings();
+}
+
+void FlowRuntime::Impl::computeContinuityWarnings() {
+    continuityList.clear();
+    // 27 §27.4.3: a continuous source is marked, the mark flows along value edges through
+    // math / toString / format / select (a, b only); compare, lookup and select.cond cut it.
+    auto isContinuousSource = [](const Endpoint& ep) {
+        switch (ep.owner) {
+            case Endpoint::Owner::Doc:
+                return ep.port == "clock" || ep.port == "viewportWidth" || ep.port == "viewportHeight" ||
+                       ep.port == "pointerX" || ep.port == "pointerY" || ep.port == "pointerNX" ||
+                       ep.port == "pointerNY";
+            case Endpoint::Owner::Element:
+                return ep.port == "hover";
+            case Endpoint::Owner::Anim:
+                return ep.port == "localTime";
+            default:
+                return false;
+        }
+    };
+    std::vector<uint8_t> marked(nodes.size(), 0);  // The node's "out" carries a continuous value.
+    auto edgeMarked = [&](const BoundEdge& e) {
+        if (e.from.type == PortType::Pulse) {
+            return false;
+        }
+        if (e.from.owner != Endpoint::Owner::Node) {
+            return isContinuousSource(e.from);
+        }
+        if (e.from.nodeIndex < 0 || static_cast<size_t>(e.from.nodeIndex) >= nodes.size()) {
+            return false;
+        }
+        switch (e.from.nodeType) {
+            case NodeType::Clock:
+                return e.from.port == "seconds";
+            case NodeType::Math:
+            case NodeType::ToString:
+            case NodeType::Format:
+            case NodeType::Select:
+                return marked[static_cast<size_t>(e.from.nodeIndex)] != 0;
+            case NodeType::Filter:  // T-543: like `math`; `passed` / `dropped` never carry the mark.
+            case NodeType::Throttle:
+                return e.from.port == "out" && marked[static_cast<size_t>(e.from.nodeIndex)] != 0;
+            default:
+                return false;
+        }
+    };
+    for (int n : topoOrder) {
+        const NodeType type = nodes[static_cast<size_t>(n)].type;
+        if (type != NodeType::Math && type != NodeType::ToString && type != NodeType::Format &&
+            type != NodeType::Select && type != NodeType::Filter && type != NodeType::Throttle) {
+            continue;
+        }
+        for (const BoundEdge& e : edges) {
+            if (e.to.owner != Endpoint::Owner::Node || e.to.nodeIndex != n) {
+                continue;
+            }
+            if (type == NodeType::Select && e.to.port == "cond") {
+                continue;
+            }
+            if ((type == NodeType::Filter || type == NodeType::Throttle) && e.to.port != "in") {
+                continue;  // T-543: only `in` is the value path (`rate` is a setting).
+            }
+            if (edgeMarked(e)) {
+                marked[static_cast<size_t>(n)] = 1;
+                break;
+            }
+        }
+    }
+    for (const BoundEdge& e : edges) {
+        if (e.to.owner != Endpoint::Owner::Element ||
+            (e.to.port != "setProperty" && e.to.port != "setStyle" && e.to.port != "playAnimation")) {
+            continue;
+        }
+        if (!edgeMarked(e)) {
+            continue;
+        }
+        std::string line = "flow.animatesWithContinuousSignal: edge " + endpointName(e.from) + " -> " +
+                           endpointName(e.to) +
+                           " drives a visual property from a continuous signal; author it as a timeline "
+                           "or a bind: instead";
+        bool seen = false;
+        for (const std::string& prev : continuityList) {
+            seen = seen || prev == line;
+        }
+        if (!seen) {
+            continuityList.push_back(std::move(line));
+        }
+    }
+    // T-546: the bind-time setState check of the single-Document mode, for loadWarnings().
+    setStateList.clear();
+    if (docs.doc != nullptr) {
+        std::set<std::string> warned;
+        for (const BoundEdge& e : edges) {
+            checkSetStateDeclared(*docs.doc, e, setStateList, warned);
+        }
+    }
 }
 
 void FlowRuntime::Impl::compileStyleTemplates() {

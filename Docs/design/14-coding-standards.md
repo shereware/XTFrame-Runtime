@@ -11,7 +11,8 @@
 - 不得 include `<format>`、`<print>`（格式化用 `snprintf` 或 `std::to_string`）。`<chrono>` 可用（`perf.h`、gl、shell 已依賴）；它在 libstdc++ 14 會拉進 `<format>`，Clang 15 編不過，所以 CI 的 clang 腿用發行版的 `clang`（24.04 為 18）而不是 clang-15（2026-10-21 runtime 鏡像倉 CI 首跑的教訓）。
 - `.clang-format` 於 repo 根：`BasedOnStyle: Google`，`IndentWidth: 4`，`ColumnLimit: 110`，`DerivePointerAlignment: false`，`PointerAlignment: Left`。提交前必須格式化。
 - CMake：每個模組一個 `CMakeLists.txt`，目標名 `xt_core` 等，`target_include_directories(PUBLIC include)`。頂層選項 `XT_BUILD_GL`、`XT_BUILD_SHELL`、`XT_BUILD_TOOLS`、`XT_BUILD_TESTS`，預設 ON。
-- 第三方：`Code/SDKs/` 內 vendored 單一標頭（doctest 2.4.11、stb_image / stb_image_write、nlohmann/json 3.11.3、bc7enc/bc7decomp/rgbcx（MIT／公有，`xt_bcn`，僅貼圖壓縮與 DDS 解碼）），每個附 `VERSION` 檔記錄來源 URL 與版本；SheenBidi（Apache-2.0，附 NOTICE）與 libunibreak（zlib）以 vendored 原始碼放 `Code/SDKs/`（僅 `xt_text` 使用）；FreeType/HarfBuzz/SDL2 以 `FetchContent` 固定版本標籤；cpp-httplib（MIT，單標頭，僅 `xt_editor_service` 的 MCP 伺服器使用）以 `FetchContent` + SHA-256 固定（`Tools/CMake/xt_httplib.cmake`）。**不得**依賴系統安裝的函式庫，不用 glad。
+- 第三方：`Code/SDKs/` 內 vendored 單一標頭（doctest 2.4.11、stb_image / stb_image_write、nlohmann/json 3.11.3、bc7enc/bc7decomp/rgbcx（MIT／公有，`xt_bcn`，僅貼圖壓縮與 DDS 解碼）），每個附 `VERSION` 檔記錄來源 URL 與版本；SheenBidi（Apache-2.0，附 NOTICE）與 libunibreak（zlib）以 vendored 原始碼放 `Code/SDKs/`（僅 `xt_text` 使用）；FreeType/HarfBuzz/SDL2 以 `FetchContent` 固定版本標籤；cpp-httplib（MIT，單標頭，僅 `xt_editor_service` 的 MCP 伺服器使用）以 `FetchContent` + SHA-256 固定（`Tools/CMake/xt_httplib.cmake`）；**miniz 3.0.2**（MIT）以 `FetchContent` 固定版本＋SHA-256 取得（`Tools/CMake/xt_miniz.cmake`、`Code/SDKs/versions.cmake`）；`xt_history` 的 deflate（T-307）與 `xt_bundle` 的 `.xtsymbols`／`.xtb` zip 讀寫（store 模式，49 §49.4、22 §22.5）共用這一份（2026-10-31 審查 §7.2：T-500 曾改為 `Code/SDKs/miniz/` 的 `miniz.c`＋`miniz.h` 雙檔 vendored，不合「vendored 單一標頭或 FetchContent 固定版本」，退回 FetchContent；程式碼改回是後續任務）。**不得**依賴系統安裝的函式庫，不用 glad。
+- **網路與 TLS（51 章，2026-10-27）**：編輯器層的 HTTPS 只經 `xt_net`（`Code/Editor/Net/`），實作為**作業系統原生**堆疊——Windows `winhttp.dll`、macOS `NSURLSession`（Foundation／Security，與 `dbghelp`、`ws2_32` 同屬 OS 元件，不算第三方）；Linux 是唯一例外：**執行期 `dlopen`** 發行版的 `libssl.so.3`／`libcrypto.so.3`（不是建置相依、不連結、找不到即功能退化並說明），這是「不得依賴系統安裝的函式庫」在 Linux TLS 上的明文例外。倉庫**不得**引入任何 TLS 函式庫（OpenSSL、mbedTLS、wolfSSL、BoringSSL…）作為 vendored 或 FetchContent；R 層（`Code/Runtime/`）不得做網路。
 
 ## 14.2 命名
 
@@ -114,5 +115,6 @@ Code/Runtime/core/
 ## 14.10 數字文字與路徑（2026-10-07 審查修正鏈合併；T-268 #323、T-261d～f）
 
 - 數字文字不依賴行程 locale：解析走 `xt::fromChars`／`css_number::read`，輸出走 `xt::formatFloat`（`%g`）或 `xt::formatFixed`（`%.<n>f`）；進入檔案、IR、JSON 的文字不用 `strtof` 家族與 printf 家族的浮點轉換；每個 Qt 程式在建立 application 物件後把 `LC_NUMERIC` 固定為 "C"。
+- 浮點運算不得 contraction（2026-10-29，T-529 之後的裁決）：全樹 `-ffp-contract=off`（頂層 CMake；MSVC 預設 `/fp:precise` 本來就不融合），因為 GCC／Clang 在基線就有 FMA 的目標（AArch64：Apple silicon、Android arm64）預設把 `a*b+c` 融合成一次捨入，SW 光柵的像素會與 x86 差一個位元；渲染輸出要在所有平台位元組相同（23 §23.5）。不得在任何目標加 `-ffast-math`／`/fp:fast`／`-mfma`。
 - 路徑字串一律 UTF-8；`std::filesystem::path` 只經 `compile::pathFromUtf8`／`pathToUtf8`／`genericPathToUtf8` 建立與轉回；`Code/Runtime/core/` 不得 include `<filesystem>`（`Tools/Scripts/check_layering.sh` 規則 3）；測試不得直接呼叫 `temp_directory_path()`（`Tools/Scripts/check_test_temp.sh`）。
 - CSS 值解析只有 core 一份：`Code/Runtime/core/src/css_values.{h,cpp}` 由執行期 `mini_css` 與編譯器 `xts_values*` 共用，兩邊只加各自的屬性表、診斷與 `.xts` 專屬語法，不再各寫一份（T-413）。

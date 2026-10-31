@@ -1,0 +1,65 @@
+<xt>
+  <head>
+    <!-- Checkbox: standard symbol (docs/design/30-ui-project.md 30.4). See README.md.
+         The box is the checkbox input, its mark an element inside it. The input's own check /
+         uncheck set the `value` port, and `bind:checked` follows a host change of `value`. -->
+    <symbol name="Checkbox" requires="states: Hover, Focus, Checked, Disabled; slots: label">
+      <div id="Box" port:value="bool in">
+        <input type="checkbox" id="Mark" bind:checked="value"
+               on:check="sound(ui_toggle); set(value, true)" on:uncheck="sound(ui_toggle); set(value, false)">
+          <div id="Tick"></div>
+        </input>
+        <span id="Label"><slot name="label">Checkbox</slot></span>
+      </div>
+    </symbol>
+    <style>
+      symbol(Checkbox) {
+        #Box {
+          display: flex;
+          align-items: center;
+          column-gap: var(--space-2);
+          width: 220px;
+          color: var(--color-text);
+          font-family: var(--font-body);
+          font-size: var(--font-size-m);
+        }
+        #Label { white-space: nowrap; }
+        #Mark {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 18px;
+          height: 18px;
+          border-width: var(--rule-thin);
+          border-color: var(--color-border);
+          background-color: var(--color-surface);
+          transition: background-color var(--motion-instant) linear, transform var(--motion-fast) ease-out;
+        }
+        #Box:hover #Mark { background-color: var(--color-surface-sunken); }
+        #Mark:focus { outline: var(--focus-w) solid var(--color-focus); outline-offset: 2px; transform: rotate(-1.5deg); }
+        #Tick {
+          width: 10px;
+          height: 5px;
+          border-left-width: 2px;
+          border-bottom-width: 2px;
+          border-color: transparent;
+          transform: rotate(-45deg);
+        }
+        #Mark:checked { background-color: var(--color-accent); }
+        #Mark:checked #Tick { border-color: var(--color-text-on-accent); }
+        #Box:hover #Mark:checked { background-color: var(--color-accent-hover); }
+        :disabled #Mark {
+          background-color: var(--color-disabled-bg) !important;
+          background-image: var(--tex-hatch) !important;
+          background-repeat: repeat;
+          background-size: 8px 8px;
+          border-color: var(--color-disabled-text) !important;
+          outline: none !important;
+          transform: none !important;
+        }
+        :disabled #Mark:checked #Tick { border-color: var(--color-disabled-text) !important; }
+        :disabled #Label { color: var(--color-disabled-text); }
+      }
+    </style>
+  </head>
+</xt>

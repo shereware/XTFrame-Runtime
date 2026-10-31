@@ -81,6 +81,23 @@ void emitTimelineGroups(const RuleSet& ruleSet, const DomTree& dom, IrWriter& wr
                         std::unordered_map<std::string, TimelineId>& keyframesByName, DiagnosticSink& sink,
                         TimelineGroupBuilder& out);
 
+/// T-544 (18 §18.12): resolves the effect address `<effectName>.<param>` (`effectName` an effect
+/// name, a custom effect's header name, or a stack index written as digits) against the effect
+/// sequence `seq` (may be null) into the 18.2 effect PropId `out`; `isColor` is true for a color
+/// parameter. On failure `error` holds the message (no prefix) and false is returned. Shared by
+/// `@timeline` (emitTimelineGroups) and `bind:effect.<effect>.<param>` (bind_emit.cpp).
+bool resolveEffectAddress(const IrWriter& writer, std::string_view effectName, std::string_view param,
+                          const std::vector<EffectDeclEntry>* seq, std::string& error, PropId& out,
+                          bool& isColor);
+
+/// T-544: the element's state-less `effect` sequence as far as the compiler can tell (the winning
+/// `effect` declaration among the rules whose selectors carry no pseudo-class, then the inline
+/// `style` attribute); nullptr when none. `scratch` backs the parsed inline declarations and must
+/// outlive the returned pointer.
+const std::vector<EffectDeclEntry>* staticEffectSequence(const RuleSet& ruleSet, const DomTree& dom,
+                                                         uint32_t element, std::string_view fileName,
+                                                         std::vector<StyleDecl>& scratch);
+
 /// T-174: true when `sel` matches `element` in the state-less (base) cascade the compiler can
 /// know: any compound carrying a pseudo-class or `:state()` never matches. Used for `.xts`
 /// trigger declarations (trigger_emit.cpp), like the static `effect` lookup of 18.12.
@@ -117,10 +134,13 @@ std::string publishedReference(const std::string& src, std::string_view xtDir, c
 /// `writer.assets()`). Resolves the file per resolveAsset(), embeds it when
 /// `options.embedImages`, runs `options.assetNameRewrite`, and gives an `engine://` name its
 /// verbatim entry (T-150). A rewritten name of the form `atlas:<n>#<asset>` gets ASST kind 3
-/// (AtlasImage). `line`/`col` locate the warnings ("not found", "failed to embed").
+/// (AtlasImage). `line`/`col` locate the warnings ("not found", "failed to embed"). T-490 (05
+/// §5.9.12): `sheetDir` is the directory of the `<link>`ed stylesheet that declared `src`
+/// (StyleRule::sheetDir), tried first by resolveAsset(); empty for an element attribute, an inline
+/// `<style>` or an in-memory sheet.
 AssetId ensureImageAsset(IrWriter& writer, const std::string& src, std::string_view xtDir,
                          std::string_view fileName, int line, int col, const CompileOptions& options,
-                         DiagnosticSink& sink);
+                         DiagnosticSink& sink, std::string_view sheetDir = {});
 
 /// T-203 (Docs/design/18-effects.md §18.7): the ASST Shader entry (kind 2) and `SHDR` entry for
 /// the `.xtfx` asset `src` of a `custom("<src>")` effect, created on first use (resolved like any

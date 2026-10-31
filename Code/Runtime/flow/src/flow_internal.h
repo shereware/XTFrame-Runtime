@@ -95,6 +95,8 @@ struct BoundEdge {
     /// T-193: the edge's `instance` param (27.3.1 multi-instance), -1 when absent: a document
     /// source only fires from that instance, a document sink only reaches that instance.
     int64_t instance = -1;
+    /// T-541: `#id.setState`'s `mode` edge param (a SetStateMode); the state name is `param`.
+    uint8_t mode = 0;
 };
 
 // ---- Fixed §17.6 port tables (no Document needed) --------------------------------------------
@@ -112,6 +114,15 @@ uint32_t radioCount(const NodeDesc& node);
 /// `lookup`'s `values` array element type (Docs/design/17-editor.md §17.6), i.e. its `out` port's
 /// type. PortType::Number for an absent/empty array (FlowGraph::parse() rejects both).
 PortType lookupValueType(const NodeDesc& node);
+/// T-541 (27 §27.4.4): true for a `state` node's state / event name: a letter or '_' followed by
+/// letters, digits or '_' (it becomes part of the `enter<Name>` / `exit<Name>` port names).
+bool isStateIdent(std::string_view text);
+/// T-541: a `state` node's events, in port order: its `events` param when given, else the `on` names
+/// of its `transitions`, each once, in order of first appearance.
+std::vector<std::string> stateEventNames(const NodeDesc& node);
+/// T-541: the load-time checks of one `state` node (27 §27.4.4), appended to `errors` as
+/// "state <id>: ...".
+void checkStateNode(const NodeDesc& node, std::vector<std::string>& errors);
 /// True if `port` is a §17.6 row-1 ("有 id 的元素") port in the requested direction.
 bool elementPortInfo(const std::string& port, bool isSource, PortType& outType);
 /// True if `port` is a §17.6 row-2 ("<anim> 元素") port in the requested direction.
@@ -132,6 +143,9 @@ bool isValueSignal(Endpoint::Owner owner, const std::string& port, PortType type
 /// A node type's output ports, in Docs/tasks/T-56.md table order (used by values()/valueNames()).
 /// T-476: nodeSlotTable(type).outputs as strings.
 std::vector<std::string> outputPortOrder(NodeType type);
+/// T-541: the same for one node, which for `state` adds its enter / exit outputs (per state, in
+/// `states` order: enter<Name>, exit<Name>) after the fixed ones.
+std::vector<std::string> outputPortOrder(NodeType type, const NodeDesc& node);
 
 /// Shared validator (Docs/tasks/T-56.md "規則"): edge endpoint resolution, type matching
 /// (`toString.in`/`compare.a`/`compare.b`/`select.a`/`select.b` accept any non-pulse type), value-
@@ -284,6 +298,27 @@ bool checkDocumentInputParam(const std::string& port, const std::string* param, 
 bool documentEndpointLost(Document& document, const Endpoint& ep, std::vector<std::string>& warnings,
                           std::set<std::string>& warned);
 
+/// T-546 (27 §27.4.4): when `edge` is an `#id.setState` edge whose "state" names neither one of
+/// `document`'s declared custom states nor a built-in alias (builtinStateAlias()), appends
+/// `#<id>.setState: the document declares no state "<name>"` to `warnings` (once per distinct
+/// line, tracked in `warned`). Warning only; the runtime behavior of the edge is unchanged.
+void checkSetStateDeclared(const Document& document, const BoundEdge& edge,
+                           std::vector<std::string>& warnings, std::set<std::string>& warned);
+
+/// T-547 (27 §27.4.1): true when a `setProperty` edge's `prop` is an `effect.<effect>.<param>` address.
+bool isEffectPropText(const std::string& prop);
+/// T-547: resolves `prop` (`effect.<effect>.<param>`; `<effect>` a built-in effect name or a stack
+/// index) against `element`'s current effect stack into the 18.2 effect PropId `out`. On failure
+/// `error` holds the message (T-544's strings, no prefix) and false is returned. Number
+/// parameters only. Called at bind time, never per write.
+bool resolveEffectProp(const Document& document, const ElementRef& element, const std::string& prop,
+                       std::string& error, PropId& out);
+/// T-547: when `edge` is an `#id.setProperty` edge with an `effect.` prop that `document` cannot
+/// resolve, appends `#<id>.setProperty: <error>` to `warnings` (once per line, via `warned`).
+/// Warning only; the edge is kept and writes nothing.
+void checkSetPropertyEffect(Document& document, const BoundEdge& edge, std::vector<std::string>& warnings,
+                            std::set<std::string>& warned);
+
 /// Caches `ep`'s ElementRef (element / `<anim>` endpoints only) and, for an `<anim>` element, its
 /// default Animator instance plus that instance's "Finished" callback.
 void registerDocumentEndpoint(DocEndpointState& state, const Endpoint& ep);
@@ -315,8 +350,12 @@ enum class SinkOp : uint8_t {
     AnimPause,
     AnimResume,
     AnimSeek,
-    AnimSetSpeed
+    AnimSetSpeed,
+    SetState  ///< T-541: `#id.setState` (Document::setCustomState).
 };
+
+/// T-541: `setState`'s `mode` edge param.
+enum class SetStateMode : uint8_t { On, Off, Toggle };
 
 /// T-477: one document sink resolved against one endpoint state, once (bind time; rebind() and a
 /// state change resolve it again), so a write no longer looks the port, the element or the
@@ -338,6 +377,11 @@ struct SinkCache {
     uint32_t elementGen = 0;
     /// SinkOp::SetProperty: the edge's `prop` param.
     PropId prop = prop::kInvalidProp;
+    /// T-545: `prop` is an effect-parameter PropId: written as a sticky (layer 4) override so a
+    /// restyle keeps it. Decided at bind time, not per write.
+    bool stickyProp = false;
+    /// SinkOp::SetState: the edge's `mode` param (the state name is the edge's `param`).
+    SetStateMode mode = SetStateMode::On;
 };
 
 /// Which way one sink write went (FrameStats::flowSinkTyped / flowSinkText).
@@ -348,7 +392,7 @@ bool sinkCacheValid(const SinkCache& cache, const DocEndpointState& state);
 /// Resolves `sink` (registerDocumentEndpoint() first) with edge parameter `param` against `state`.
 /// `reused` false: for one write only (the port-table stability check is skipped).
 void resolveSink(const DocEndpointState& state, const Endpoint& sink, const std::string& param,
-                 SinkCache& out, bool reused = true);
+                 SinkCache& out, bool reused = true, SetStateMode mode = SetStateMode::On);
 /// Sends `v` into the sink `cache` describes (resolveSink() against `state`). `styleTemplate`
 /// (SinkOp::SetStyle only, may be null) is the compiled shape of the texts this sink receives
 /// (ElementRef::setStyleTemplate()). Returns which way the value went.
@@ -451,6 +495,18 @@ enum class MathOp : uint8_t { Unknown, Add, Sub, Mul, Div, Min, Max, Clamp, Map,
 enum class CompareOp : uint8_t { Unknown, Eq, Ne, Lt, Le, Gt, Ge };
 MathOp parseMathOp(std::string_view op);
 CompareOp parseCompareOp(std::string_view op);
+/// T-543 (27 §27.4.5): `filter`'s `op` and `throttle`'s `unit`, parsed at load (an unknown or absent
+/// one is Unknown: a `filter` then sends nothing, a `throttle` does not limit).
+enum class FilterOp : uint8_t { Unknown, Deadband, Quantize, Sample };
+enum class ThrottleUnit : uint8_t { Unknown, Frames, Seconds, Hz };
+FilterOp parseFilterOp(std::string_view op);
+ThrottleUnit parseThrottleUnit(std::string_view unit);
+/// T-543: the slack when a time is compared with a throttle's next allowed time, seconds. The
+/// clock is a double sum of float `dt`s, so a window that is exactly N frames long must not be
+/// missed by their rounding error.
+inline constexpr double kThrottleTimeSlack = 1e-6;
+/// T-543: the longest throttle window, seconds (`hz` below ~1e-9 would otherwise overflow it).
+inline constexpr double kMaxThrottleWindow = 1e9;
 
 // ---- Runtime node state ------------------------------------------------------------------------
 
@@ -477,6 +533,16 @@ struct NodeRuntime {
     int decimals = 0;
     uint32_t radioCount = 2;  // `radio`: its `count` param.
     double radioIndex = 0;    // `radio`: its current index.
+    // `state` (T-541): names for the slot lookup at load time, the transition table as indices.
+    std::vector<std::string> stateNames;
+    std::vector<std::string> stateEvents;
+    std::vector<uint32_t> stateNameIds;  // StringPool constants, one per state.
+    std::vector<int16_t> stateTrans;     // [state * eventCount + event] -> target state, -1 none.
+    std::vector<int16_t> stateWild;      // [event] -> target state of the "*" transition, -1 none.
+    uint16_t stateCount = 0;
+    uint16_t eventCount = 0;
+    uint16_t stateCurrent = 0;
+    bool stateSetReported = false;  // An unknown `set` name was already reported for this node.
     double counterValue = 0;
     bool toggleValue = false;
     bool timerRunning = false;
@@ -484,8 +550,27 @@ struct NodeRuntime {
     double timerCount = 0;
     bool compareLastValid = false;
     bool compareLastResult = false;
+    // T-543 `filter` (op in `op`): the last sent value (deadband / quantize), its string buffer.
+    bool filterHasLast = false;
+    RtValue filterLast;
+    uint32_t filterLastHome = 0;
+    // T-543 `throttle` (unit in `op`): the window state, in ticks (`frames`) or seconds.
+    bool throttleTrailing = true;
+    bool throttleEmitted = false;     // Something was sent since load / reset: throttleLastEmit is valid.
+    double throttleLastEmit = 0;      // When the last value was sent.
+    double throttleNextAllowed = 0;   // The earliest time the next input passes at once.
+    bool throttleHasPending = false;  // `throttlePending` waits for the window's end (trailing).
+    bool throttleQueued = false;      // The node is in Impl::throttleWaiting.
+    RtValue throttlePending;
+    uint32_t throttlePendingHome = 0;
+    double throttleDropped = 0;
     std::mt19937 rng{std::random_device{}()};
 };
+
+/// T-541: the slot of `name` in `node`'s `kind` table, for a `state` node: its fixed ports, then
+/// the event inputs (2 + event index) and enter<Name> / exit<Name> outputs (3 + 2 * state index,
+/// +1 for exit). kNoSlot for an unknown name. Load time only.
+uint16_t stateSlotOf(const NodeRuntime& node, SlotKind kind, std::string_view name);
 
 /// T-476: an edge endpoint of the running graph -- a node slot or an external slot.
 struct SlotEndpoint {
@@ -580,6 +665,8 @@ struct xt::flow::FlowRuntime::Impl {
                      const std::map<std::string, Document*>* uiMap);
     /// T-476: builds node `nd`'s slots (values, params, format pieces, ops) as node `index`.
     void compileNode(const NodeDesc& nd, NodeRuntime& rt);
+    /// T-541: a `state` node's names, interned state names and transition table (compileNode()).
+    void compileStateNode(const NodeDesc& nd, NodeRuntime& rt);
     /// Unbinds every endpoint state (removing listeners only when `removeListeners`).
     void unbindAll(bool removeListeners);
     /// T-260b (BundleContext::removeUi): unbinds every instance of `uiId` and detaches it (no
@@ -594,7 +681,7 @@ struct xt::flow::FlowRuntime::Impl {
         return perfTracker != nullptr && perfTracker->enabled() ? &perfTracker->current() : nullptr;
     }
     /// Adds one to `field` of the frame being recorded (no-op without one).
-    void perfCount(uint32_t FrameStats::* field) {
+    void perfCount(uint32_t FrameStats::*field) {
         if (FrameStats* stats = perfStats()) {
             ++(stats->*field);
         }
@@ -829,6 +916,33 @@ struct xt::flow::FlowRuntime::Impl {
     /// The `clock` / `timer` nodes, in node order (tick() advances them).
     std::vector<int> timedNodes;
 
+    // ---- T-543 (27 §27.4.5): `throttle` -----------------------------------------------------
+    /// The flow's tick clock: ticks run and the sum of their `dt` (seconds), both since the load.
+    /// `frames` windows count the first, `seconds` / `hz` windows measure the second.
+    uint64_t tickCount = 0;
+    double tickTime = 0;
+    /// The `throttle` nodes holding a trailing value, in the order they started to wait. Reserved
+    /// for every `throttle` node at load, so queueing allocates nothing; tick() visits only these.
+    std::vector<int> throttleWaiting;
+    /// The window of throttle node `n`, in its unit's time (tickCount or tickTime): 0 when it does
+    /// not limit (rate non-finite or <= 0).
+    double throttleWindow(const NodeRuntime& n) const;
+    /// The current time in `n`'s unit.
+    double throttleNow(const NodeRuntime& n) const;
+    /// An input (a value, or a pulse as RtValue{Pulse}) reaching throttle node `nodeIndex`.
+    void throttleInput(int nodeIndex, const RtValue& v);
+    /// Sends throttle node `nodeIndex`'s pending value now and opens the next window.
+    void throttleSendPending(int nodeIndex);
+    /// The `rate` input of throttle node `nodeIndex` changed.
+    void throttleRateChanged(int nodeIndex);
+    /// tick(): sends the pending values whose window has ended.
+    void flushThrottles();
+    /// `filter` node `nodeIndex` got a new `in` value.
+    void filterInput(int nodeIndex);
+    /// Stores `v` in output `slot` of node `nodeIndex` and fans it out, whether it changed or not
+    /// (a pulse only fans out), then fires the `passed` pulse `passedSlot`.
+    void emitPassed(int nodeIndex, uint16_t slot, const RtValue& v, uint16_t passedSlot);
+
     Status load(const FlowGraph& graph, Document& document, std::vector<std::string>& errors);
     /// T-193: FlowRuntime::loadGlobal().
     Status loadGlobal(const FlowGraph& graph, BundleContext& bundle, std::vector<std::string>& errors);
@@ -858,12 +972,26 @@ struct xt::flow::FlowRuntime::Impl {
     /// `radio` (T-123): clamps `index` into 0..count-1, stores it and pushes `index`, firing
     /// `changed` when it actually moved.
     void setRadio(int nodeIndex, double index);
+    /// `state` (T-541): event input `event` of node `nodeIndex` (guard, transition table, outputs).
+    void stateEvent(int nodeIndex, uint32_t event);
+    /// `state`: moves to state `to` when it differs: exit<old>, state / index, enter<to>, changed.
+    void stateTransition(int nodeIndex, uint32_t to);
+    /// `state`: pushes `state` / `index` for the current state (no pulses).
+    void statePushValues(int nodeIndex);
+    /// `state`'s `set` input.
+    void stateSet(int nodeIndex, const RtValue& v);
     /// Delivers `v` along every edge leaving fan-out key `key` (see fanOutStart).
     void fanOut(uint32_t key, const RtValue& v);
     /// Appends one "flow feedback loop: ..." entry for `edgeIndex`, at most once per edge.
     void reportFeedbackLoop(size_t edgeIndex, const char* reason);
     /// A "<nodeId>.<port>" / "#<elementId>.<port>" / "#document.<port>" name, for diagnostics.
     std::string endpointName(const Endpoint& ep) const;
+    /// T-540 (27 §27.4.3): recomputes continuityList from `edges` and topoOrder (compileEdges()).
+    void computeContinuityWarnings();
+    /// T-540: FlowRuntime::continuityWarnings()' cached lines.
+    std::vector<std::string> continuityList;
+    /// T-546: `#id.setState` edges naming an undeclared state (loadWarnings(); computed with the above).
+    std::vector<std::string> setStateList;
     /// Output slot `slot` of node `nodeIndex`: stores `v` and fans it out when it changed.
     void pushRawOutput(int nodeIndex, uint16_t slot, const RtValue& v);
     void pushNumberOutput(int nodeIndex, uint16_t slot, double v);

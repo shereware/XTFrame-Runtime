@@ -38,7 +38,7 @@ json parseBounded(std::string_view text, int maxDepth, std::string& error) {
 namespace {
 
 /// fopen wrapper: MSVC deprecates plain fopen under /W4 /WX. `path` is UTF-8 (T-237): Windows
-/// opens it through the wide API, never the ANSI code page.
+/// opens it through the wide API, never the ANSI code page. T-500: openFileUtf8() in the header.
 std::FILE* openFile(const std::string& path, const char* mode) {
     std::FILE* file = nullptr;
 #if defined(_WIN32)
@@ -67,6 +67,8 @@ float jsonFloat(const json& v) {
 }
 
 }  // namespace
+
+std::FILE* openFileUtf8(const std::string& path, const char* mode) { return openFile(path, mode); }
 
 namespace {
 
@@ -355,7 +357,8 @@ std::vector<std::pair<std::string, std::vector<std::string>>> getFontFallbacks(c
     }
     for (auto entry = it->begin(); entry != it->end(); ++entry) {
         std::vector<std::string> families = getStringArray(*it, entry.key().c_str());
-        if (!entry.key().empty() && !families.empty()) {
+        // T-555 (T-527c): the empty key is the default chain and is kept.
+        if (!families.empty()) {
             out.emplace_back(entry.key(), std::move(families));
         }
     }

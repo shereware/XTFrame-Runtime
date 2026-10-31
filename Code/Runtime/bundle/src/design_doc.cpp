@@ -17,6 +17,7 @@
 #include "design_internal.h"
 #include "xt/bundle/asset_meta.h"
 #include "xt/bundle/design_color.h"
+#include "xt/bundle/symbol_library.h"
 #include "xt/compile/diagnostics.h"
 #include "xt/compile/dom.h"
 #include "xt/compile/parse_xt.h"
@@ -37,6 +38,14 @@
 /// for a draft) and every other heading a bold line, so the document never goes below `###` (the
 /// §35.16 subset has headings 1-3 only). A text entry without a `section` (and not under
 /// `text/screens/`) is not placed anywhere.
+///
+/// T-498c (Docs/design/49-symbol-sets.md §49.12 ruling): the implied default layer -- the preset
+/// group at BuildOptions::standardSymbolDir -- is the inherited part of the project's variables.
+/// Each Variables table is followed by `### Inherited from <group id>`: the group's tokens the
+/// project does not declare, read-only, values from the group's `tokens.xts` and theme files (a
+/// project theme of the same name wins), `From` and `Description` from an `inherited:` entry of
+/// `tokens.yaml` when there is one, else the first standard symbol that reads the variable. The
+/// contrast table and the type scale resolve an inherited variable the same way.
 
 namespace xt::bundle::design {
 
@@ -213,9 +222,15 @@ struct ProjectData {
     std::vector<std::map<std::string, std::string>> themes;
     /// `ds` with syncTokenMeta() applied (every declared variable has metadata).
     DesignSystem synced;
+    /// T-498c: the implied default layer (empty `id` without one) and, of its tokens, the ones
+    /// `shared.tokens` does not declare: (name, value) in the group's order, and by name.
+    detail::ImpliedLayer implied;
+    std::vector<std::pair<std::string, std::string>> inheritedOrder;
+    std::map<std::string, std::string> inheritedValues;
 };
 
-void loadProjectData(const UiProject& project, const DesignSystem& ds, ProjectData& data) {
+void loadProjectData(const UiProject& project, const DesignSystem& ds, const std::string& groupDir,
+                     ProjectData& data) {
     data.root = pathFromUtf8(project.rootDir);
     if (!project.shared.tokens.empty()) {
         data.tokenOrder = readTokenDecls(pathToUtf8(data.root / pathFromUtf8(project.shared.tokens)),
@@ -235,11 +250,34 @@ void loadProjectData(const UiProject& project, const DesignSystem& ds, ProjectDa
     }
     data.synced = ds;
     syncTokenMeta(data.synced, project, nullptr);
+    data.implied = detail::readImpliedLayer(groupDir);
+    for (const auto& [name, value] : data.implied.tokens) {
+        if (data.tokenValues.count(name) == 0 && data.inheritedValues.emplace(name, value).second) {
+            data.inheritedOrder.emplace_back(name, value);
+        }
+    }
+}
+
+/// The value of an inherited variable `id` in theme `theme` of the implied layer; empty when the
+/// layer has no such theme or the theme does not set it.
+std::string impliedThemeValue(const detail::ImpliedLayer& implied, const std::string& theme,
+                              const std::string& id) {
+    for (const auto& [name, values] : implied.themes) {
+        if (name != theme) {
+            continue;
+        }
+        for (const auto& [token, value] : values) {
+            if (token == id) {
+                return value;
+            }
+        }
+    }
+    return std::string();
 }
 
 /// A colour reference (`token:--x`, `token:x`, `swatch:x`, `#hex`) as `#hex`, with `theme`
-/// overrides (may be null) over the base variables; follows `var(--x)` up to 8 levels. Empty when it
-/// does not resolve.
+/// overrides (may be null) over the base variables (the project's, else the inherited ones);
+/// follows `var(--x)` up to 8 levels. Empty when it does not resolve.
 std::string resolveColor(const std::string& ref, const DesignSystem& ds, const ProjectData& data,
                          const std::map<std::string, std::string>* theme) {
     std::string current = util::trim(ref);
@@ -281,9 +319,12 @@ std::string resolveColor(const std::string& ref, const DesignSystem& ds, const P
                 continue;
             }
         }
-        const auto found = data.tokenValues.find(token);
+        auto found = data.tokenValues.find(token);
         if (found == data.tokenValues.end()) {
-            return std::string();
+            found = data.inheritedValues.find(token);  // T-498c: the implied default layer.
+            if (found == data.inheritedValues.end()) {
+                return std::string();
+            }
         }
         current = found->second;
     }
@@ -432,7 +473,7 @@ public:
     DocBuilder(const UiProject& project, const DesignSystem& ds, const Graph& graph,
                const BuildOptions& options)
         : m_project(project), m_ds(ds), m_graph(graph), m_options(options) {
-        loadProjectData(project, ds, m_data);
+        loadProjectData(project, ds, options.standardSymbolDir, m_data);
         m_texts = ds.texts;
         std::sort(m_texts.begin(), m_texts.end(),
                   [](const TextEntry& a, const TextEntry& b) { return a.path < b.path; });
@@ -450,8 +491,23 @@ public:
             }
         }
         for (const TokenMeta& t : m_data.synced.tokens) {
+            if (t.inherited && m_data.tokenValues.count(t.base.id) == 0) {
+                // T-498c: an `inherited:` entry describes a group variable; it is not a project one.
+                m_inheritedMeta[t.base.id] = &t;
+                continue;
+            }
             if (seen.insert(t.base.id).second) {
                 m_tokens.push_back(&t);
+            }
+        }
+        // T-498c: the theme columns of the inherited tables -- the project's themes, then the
+        // group's that the project does not have.
+        m_inheritedThemes = m_data.themeNames;
+        for (const auto& [name, values] : m_data.implied.themes) {
+            (void)values;
+            if (std::find(m_inheritedThemes.begin(), m_inheritedThemes.end(), name) ==
+                m_inheritedThemes.end()) {
+                m_inheritedThemes.push_back(name);
             }
         }
     }
@@ -605,9 +661,78 @@ private:
         }
     }
 
+    /// The project's value of `id`, else the inherited one (T-498c), else empty.
     std::string tokenValue(const std::string& id) const {
-        const auto found = m_data.tokenValues.find(id);
-        return found == m_data.tokenValues.end() ? std::string() : found->second;
+        auto found = m_data.tokenValues.find(id);
+        if (found == m_data.tokenValues.end()) {
+            found = m_data.inheritedValues.find(id);
+            if (found == m_data.inheritedValues.end()) {
+                return std::string();
+            }
+        }
+        return found->second;
+    }
+
+    /// T-498c (49 §49.12 ruling): `### Inherited from <group id>` -- the implied layer's variables
+    /// of these categories (an `inherited:` entry's category, else the name's) that the project does
+    /// not declare, in the group's order: value, each theme's value (the project's theme first,
+    /// then the group's), `From` and `Description` from the entry, the description falling back to
+    /// the first standard symbol that reads the variable. Nothing without an implied layer.
+    void inherited(std::initializer_list<const char*> categories, Lines& out) {
+        if (m_data.implied.id.empty()) {
+            return;
+        }
+        std::vector<std::vector<std::string>> rows;
+        for (const auto& [name, value] : m_data.inheritedOrder) {
+            const auto metaIt = m_inheritedMeta.find(name);
+            const TokenMeta* meta = metaIt == m_inheritedMeta.end() ? nullptr : metaIt->second;
+            const std::string category = meta != nullptr && !meta->category.empty()
+                                             ? meta->category
+                                             : detail::guessTokenCategory(name);
+            bool match = false;
+            for (const char* c : categories) {
+                match = match || category == c;
+            }
+            if (!match) {
+                continue;
+            }
+            std::vector<std::string> row{code("--" + name), code(value)};
+            for (const std::string& theme : m_inheritedThemes) {
+                std::string themeValue;
+                for (size_t t = 0; t < m_data.themeNames.size(); ++t) {
+                    if (m_data.themeNames[t] == theme) {
+                        const auto found = m_data.themes[t].find(name);
+                        if (found != m_data.themes[t].end()) {
+                            themeValue = found->second;
+                        }
+                    }
+                }
+                if (themeValue.empty()) {
+                    themeValue = impliedThemeValue(m_data.implied, theme, name);
+                }
+                row.push_back(code(themeValue));
+            }
+            row.push_back(meta == nullptr || meta->from.empty() ? std::string() : code(meta->from));
+            std::string description = meta == nullptr ? std::string() : meta->description;
+            if (description.empty()) {
+                for (const auto& [token, symbol] : m_data.implied.firstUser) {
+                    if (token == name) {
+                        description = "Used by " + code(symbol);
+                        break;
+                    }
+                }
+            }
+            row.push_back(description);
+            rows.push_back(std::move(row));
+        }
+        if (rows.empty()) {
+            return;
+        }
+        headingDesignDoc(out, "Inherited from " + m_data.implied.id);
+        std::vector<std::string> headers{"Variable", "Value"};
+        headers.insert(headers.end(), m_inheritedThemes.begin(), m_inheritedThemes.end());
+        headers.insert(headers.end(), {"From", "Description"});
+        table(out, headers, rows);
     }
 
     size_t uiCount(const std::string& tokenId) const {
@@ -816,6 +941,7 @@ private:
             }
             table(out, headers, rows);
         }
+        inherited({"color"}, out);
 
         const std::vector<ContrastPair> pairs = contrastPairs(m_ds);
         if (!pairs.empty()) {
@@ -876,6 +1002,7 @@ private:
             }
             table(out, {"Variable", "Value", "Description", "UIs"}, rows);
         }
+        inherited({"type"}, out);
         if (!m_project.spec.fontFallback.empty()) {
             headingDesignDoc(out, "Font fallback");
             std::vector<std::vector<std::string>> rows;
@@ -914,6 +1041,7 @@ private:
             }
             table(out, {"Variable", "Category", "Value", "Description", "UIs"}, rows);
         }
+        inherited({"space", "radius", "border", "shadow", "size", "other"}, out);
     }
 
     void motion(Lines& out) {
@@ -937,6 +1065,7 @@ private:
             }
             table(out, {"Variable", "Value", "Description"}, rows);
         }
+        inherited({"motion"}, out);
         // Timeline names of conventions/*.yaml (a `timelines` key: a list, or a mapping by name).
         std::vector<std::vector<std::string>> rows;
         for (const fs::path& file : filesIn(m_data.root / "conventions", ".yaml", false)) {
@@ -1362,6 +1491,10 @@ private:
     std::vector<TextEntry> m_texts;
     std::vector<TextEntry> m_decisions;
     std::vector<const TokenMeta*> m_tokens;
+    /// T-498c: the `inherited:` entries of tokens.yaml by variable id, and the theme columns of the
+    /// inherited tables.
+    std::map<std::string, const TokenMeta*> m_inheritedMeta;
+    std::vector<std::string> m_inheritedThemes;
     Lines m_deprecated[kSectionCount];
     json m_index;
 };
@@ -1375,7 +1508,7 @@ std::vector<Issue> lintRules(const UiProject& project, const DesignSystem& ds, c
                              const BuildOptions& options, bool withDocStale) {
     std::vector<Issue> out;
     ProjectData data;
-    loadProjectData(project, ds, data);
+    loadProjectData(project, ds, options.standardSymbolDir, data);
 
     // design.literalColorNotInPalette (info).
     bool palette = false;
@@ -1434,6 +1567,24 @@ std::vector<Issue> lintRules(const UiProject& project, const DesignSystem& ds, c
             if ((!fgId.empty() && data.themes[t].count(fgId) != 0) ||
                 (!bgId.empty() && data.themes[t].count(bgId) != 0)) {
                 check(&data.themes[t], data.themeNames[t]);
+            }
+        }
+    }
+
+    // token.sameAsDefault (warning, T-498b, 49 §49.3 ruling): a `shared.tokens` declaration that
+    // repeats the value the preset group's `tokens.xts` gives the same name -- the implied default
+    // layer already supplies it, so the project should delete it and follow the group.
+    if (!options.standardSymbolDir.empty() && !project.shared.tokens.empty()) {
+        SymbolGroup group;
+        if (loadGroup(pathFromUtf8(options.standardSymbolDir), group) == Status::kOk &&
+            !group.tokensFile.empty()) {
+            const fs::path mine = pathFromUtf8(project.rootDir) / pathFromUtf8(project.shared.tokens);
+            const fs::path theirs = pathFromUtf8(group.dir) / pathFromUtf8(group.tokensFile);
+            for (const TokenDefault& token : sameAsDefaultTokens(mine, theirs)) {
+                addIssueDesignDoc(
+                    out, "token.sameAsDefault", Severity::Warning,
+                    entryRef(EntryKind::Token, token.name.substr(2)),
+                    token.name + " repeats the preset group's default; delete it to follow the group");
             }
         }
     }
@@ -1563,6 +1714,39 @@ std::vector<std::pair<std::string, std::string>> readTokenDecls(const std::strin
             out.emplace_back(name, util::trim(t.value));
         } else {
             out[found->second].second = util::trim(t.value);
+        }
+    }
+    return out;
+}
+
+ImpliedLayer readImpliedLayer(const std::string& groupDir) {
+    ImpliedLayer out;
+    if (groupDir.empty()) {
+        return out;
+    }
+    SymbolGroup group;
+    if (loadGroup(pathFromUtf8(groupDir), group) != Status::kOk || group.tokensFile.empty()) {
+        return out;
+    }
+    const fs::path root = pathFromUtf8(group.dir);
+    out.tokens = readTokenDecls(pathToUtf8(root / pathFromUtf8(group.tokensFile)), group.tokensFile);
+    if (out.tokens.empty()) {
+        return out;
+    }
+    out.id = group.id;
+    for (const std::string& file : group.themeFiles) {
+        const std::string name = themeNameOf(file);
+        if (name.empty()) {
+            continue;
+        }
+        out.themes.emplace_back(name, readTokenDecls(pathToUtf8(root / pathFromUtf8(file)), file));
+    }
+    std::set<std::string> seen;
+    for (const SymbolEntry& symbol : group.symbols) {
+        for (const TokenDefault& token : symbol.tokens) {
+            if (token.name.size() > 2 && seen.insert(token.name).second) {
+                out.firstUser.emplace_back(token.name.substr(2), symbol.name);
+            }
         }
     }
     return out;

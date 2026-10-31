@@ -5,6 +5,9 @@ body {
   width: 100vw;
   height: 100vh;
   background-color: var(--color-bg);
+  background-image: var(--tex-grain);
+  background-repeat: repeat;
+  background-size: 128px 128px;
   font-family: var(--font-family);
 }
 

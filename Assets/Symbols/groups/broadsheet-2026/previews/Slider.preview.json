@@ -1,0 +1,13 @@
+{
+  "width": 300,
+  "height": 110,
+  "frames": 0,
+  "ports": {
+    "Volume.min": 0,
+    "Volume.max": 100,
+    "Volume.value": 35
+  },
+  "events": [
+    "update 0.6"
+  ]
+}

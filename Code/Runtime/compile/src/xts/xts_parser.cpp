@@ -329,8 +329,9 @@ bool triggerTokensToText(const std::vector<Token>& tokens, std::string& out) {
 
 class Parser {
 public:
-    Parser(std::string_view text, std::string_view fileName, int lineOffset, DiagnosticSink& sink)
-        : m_lexer(text), m_fileName(fileName), m_lineOffset(lineOffset), m_sink(sink) {
+    Parser(std::string_view text, std::string_view fileName, int lineOffset, DiagnosticSink& sink,
+           std::string_view sheetDir = {})
+        : m_lexer(text), m_fileName(fileName), m_sheetDir(sheetDir), m_lineOffset(lineOffset), m_sink(sink) {
         advance();
     }
 
@@ -370,6 +371,8 @@ private:
     Token m_cur;
     Lexer m_lexer;
     std::string m_fileName;
+    /// T-490: the stylesheet file's directory, stamped on rules and `@font-face` blocks.
+    std::string m_sheetDir;
     int m_lineOffset;
     DiagnosticSink& m_sink;
     bool m_hadError = false;
@@ -881,6 +884,7 @@ private:
         rule.selectors = std::move(selectors);
         rule.line = ruleLine;
         rule.file = m_fileName;
+        rule.sheetDir = m_sheetDir;  // T-490
         bool sawEnd = false;
         m_inRule = true;
         m_triggersOut = &rule.triggers;
@@ -2366,6 +2370,7 @@ private:
         }
         advance();
         FontFaceDef def;
+        def.sheetDir = m_sheetDir;  // T-490
         bool sawFamily = false, sawSrc = false;
         Token startTok = m_cur;
         while (m_cur.kind != TokenKind::RBrace) {
@@ -2462,8 +2467,8 @@ private:
 }  // namespace
 
 bool parseXts(std::string_view text, std::string_view fileName, int lineOffset, DiagnosticSink& sink,
-              RuleSet& out) {
-    Parser parser(text, fileName, lineOffset, sink);
+              RuleSet& out, std::string_view sheetDir) {
+    Parser parser(text, fileName, lineOffset, sink, sheetDir);
     return parser.parseStylesheet(out);
 }
 

@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "game",
+      "type": "state",
+      "params": {
+        "initial": "Menu",
+        "states": ["Menu", "Playing", "Paused"],
+        "transitions": [
+          { "from": "Menu", "on": "start", "to": "Playing" },
+          { "from": "Playing", "on": "pause", "to": "Paused" },
+          { "from": "Paused", "on": "resume", "to": "Playing" },
+          { "from": "*", "on": "quit", "to": "Menu" }
+        ]
+      }
+    },
+    { "id": "gate", "type": "toggle", "params": { "initial": true } },
+    { "id": "changed", "type": "counter" },
+    { "id": "enterPaused", "type": "counter" },
+    { "id": "exitPaused", "type": "counter" },
+    { "id": "enterMenu", "type": "counter" },
+    { "id": "exitMenu", "type": "counter" },
+    { "id": "pick", "type": "counter", "params": { "max": 2 } },
+    { "id": "which", "type": "radio", "params": { "count": 3, "initial": 0 } },
+    { "id": "names", "type": "lookup", "params": { "values": ["Menu", "Paused", "Nope"] } }
+  ],
+  "edges": [
+    { "from": "#b1.Click", "to": "game.start" },
+    { "from": "#b2.Click", "to": "game.pause" },
+    { "from": "#b3.Click", "to": "game.resume" },
+    { "from": "#b4.Click", "to": "game.quit" },
+    { "from": "#b5.Click", "to": "gate.toggle" },
+    { "from": "gate.value", "to": "game.guard" },
+    { "from": "#b6.Click", "to": "pick.increment" },
+    { "from": "pick.value", "to": "which.set" },
+    { "from": "which.index", "to": "names.index" },
+    { "from": "names.out", "to": "game.set" },
+    { "from": "game.changed", "to": "changed.increment" },
+    { "from": "game.enterPaused", "to": "enterPaused.increment" },
+    { "from": "game.exitPaused", "to": "exitPaused.increment" },
+    { "from": "game.enterMenu", "to": "enterMenu.increment" },
+    { "from": "game.exitMenu", "to": "exitMenu.increment" }
+  ]
+}

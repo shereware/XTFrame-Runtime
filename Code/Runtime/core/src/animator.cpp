@@ -362,16 +362,50 @@ bool Animator::hasOverride(NodeId node, PropId prop) const {
     return it != m_overrides.end() && it->node == node && it->prop == prop;
 }
 
-void Animator::setOverride(NodeId node, PropId prop, const Value& value) {
+namespace {
+
+bool overrideTweenable(ValueType t) {
+    return t == ValueType::Float || t == ValueType::Length || t == ValueType::Color || t == ValueType::Vec2;
+}
+
+bool sameTweenShape(const Value& a, const Value& b) {
+    return a.type == b.type && (a.type != ValueType::Length || a.len.unit == b.len.unit);
+}
+
+}  // namespace
+
+void Animator::setOverride(NodeId node, PropId prop, const Value& value, float duration, Easing easing) {
     uint64_t key = packKey(node, prop);
     auto it = std::lower_bound(m_overrides.begin(), m_overrides.end(), key,
                                [](const Override& o, uint64_t k) { return packKey(o.node, o.prop) < k; });
-    if (it != m_overrides.end() && it->node == node && it->prop == prop) {
-        it->value = value;
-        return;
+    const bool existed = it != m_overrides.end() && it->node == node && it->prop == prop;
+    if (!existed) {
+        it = m_overrides.insert(it, Override{});
+        it->node = node;
+        it->prop = prop;
+        growPendingCapacity(size_t{1});
     }
-    m_overrides.insert(it, Override{node, prop, value});
-    growPendingCapacity(size_t{1});
+    Override& ov = *it;
+    const bool tween = duration > 0.0f && std::isfinite(duration) && overrideTweenable(value.type);
+    if (tween) {
+        // Restart from what was last shown (the tweened value mid-tween); with nothing shown yet
+        // keep the pending start; with no entry at all the live value is read at evaluate().
+        if (existed && ov.shownValid) {
+            ov.from = ov.shown;
+            ov.fromKnown = true;
+        } else if (!existed) {
+            ov.fromKnown = false;
+        }
+        ov.duration = duration;
+        ov.easing = easing;
+        ov.tweenState = 1;
+    } else {
+        ov.tweenState = 0;
+        ov.fromKnown = false;
+        ov.shown = value;
+        ov.shownValid = true;
+    }
+    ov.value = value;
 }
 
 void Animator::clearOverride(NodeId node, PropId prop) {
@@ -899,9 +933,32 @@ void Animator::evaluate(float clock, NodeArena& arena) {
         }
     }
 
-    // Step 4: Overrides.
-    for (const Override& ov : m_overrides) {
+    // Step 4: Overrides (T-545: a tweening one writes the interpolated value).
+    for (Override& ov : m_overrides) {
         Value value = ov.value;
+        if (ov.tweenState == 1) {
+            ov.startClock = clock;
+            if (!ov.fromKnown && arena.alive(ov.node) && propertyApplies(arena.kind(ov.node), ov.prop) &&
+                (!isEffectProp(ov.prop) ||
+                 ((static_cast<uint32_t>(ov.prop) >> 8) & 0xFu) < arena.common(ov.node).effectCount)) {
+                ov.from = getProperty(arena, ov.node, ov.prop);
+                ov.fromKnown = true;
+            }
+            ov.tweenState = ov.fromKnown && sameTweenShape(ov.from, ov.value) ? 2 : 0;
+        }
+        if (ov.tweenState == 2) {
+            const float p = (clock - ov.startClock) / ov.duration;
+            if (p >= 1.0f) {
+                ov.tweenState = 0;
+            } else if (p > 0.0f) {
+                value =
+                    lerpValue(ov.from, ov.value, evalEasing(ov.easing, p, m_easingPoints), nullptr, nullptr);
+            } else {
+                value = ov.from;
+            }
+        }
+        ov.shown = value;
+        ov.shownValid = true;
         scaleElementPx(arena, ov.node, ov.prop, value);  // T-345
         m_pending.push_back(Pending{ov.node, ov.prop, value});
         noteMotion(arena, ov.node, ov.prop);

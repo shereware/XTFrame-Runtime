@@ -1,0 +1,25 @@
+<xt>
+  <head>
+    <!-- T-241: preview of the TouchButton standard mobile symbol (golden states and thumbnail; T-499: moved into the group). -->
+    <link href="../tokens.xts"/>
+    <link rel="symbols" href="../mobile/TouchButton.xt"/>
+    <style>
+      body {
+        width: 340px;
+        height: 130px;
+        padding: 16px;
+        display: flex;
+        flex-direction: row;
+        align-items: flex-start;
+        column-gap: 16px;
+        row-gap: 12px;
+        background-color: var(--color-bg);
+      }
+    </style>
+  </head>
+  <body>
+    <use symbol="TouchButton" id="Fire" slot:label="Fire"/>
+    <use symbol="TouchButton" id="Jump" slot:label="Jump"/>
+    <use symbol="TouchButton" id="Off" disabled="true" slot:label="Skill"/>
+  </body>
+</xt>

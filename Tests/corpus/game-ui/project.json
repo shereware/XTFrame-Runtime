@@ -1,7 +1,6 @@
 {
   "source": "Examples/demos/game-ui",
   "dpr": 1,
-  "fonts": [{"family": "Segoe UI", "sha256": "704eada12961a27fd271f7d3b09e2066520e758390c1776744eff430fee30f6e"}],
   "frames": [0, 30, 120],
   "uis": [
     {"id": "hud", "width": 1280, "height": 720},

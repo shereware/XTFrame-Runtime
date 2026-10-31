@@ -356,6 +356,10 @@ struct StyleRule {
     std::vector<TriggerDecl> triggers;
     /// Source file name of the rule (for trigger diagnostics); empty when unknown.
     std::string file;
+    /// T-490 (05 §5.9.12): the directory of the stylesheet file the rule was read from, the first
+    /// base its `background-image` / `border-image-source` resolve against; empty for an inline
+    /// `<style>` or an in-memory sheet.
+    std::string sheetDir;
     /// T-171: the `<Name>` of the enclosing `symbol(<Name>) { ... }` block (Docs/design/26-layers-
     /// symbols-library.md §26.2.1), or empty for an ordinary document-wide rule. A scoped rule's
     /// selectors are relative to the symbol; symbol_expand.cpp rewrites them per instance.
@@ -402,6 +406,12 @@ struct FontFaceDef {
     uint16_t weight = 400;
     /// True if `font-style: italic`.
     bool italic = false;
+    /// T-490 (05 §5.9.12): the directory of the stylesheet file this block was read from, the
+    /// first base `src` resolves against; empty for an inline `<style>` or an in-memory sheet.
+    std::string sheetDir;
+    /// T-498b: declared by one of `CompileOptions::impliedTokenFiles`; a later block of the same
+    /// family, weight and style replaces it.
+    bool implied = false;
 };
 
 /// T-179 (07.8): one `@font-fallback <lang> { font-family: A, B, C; }` block -- the families text
@@ -511,6 +521,9 @@ struct TokenDecl {
     /// Source file and 1-based line, for diagnostics.
     std::string file;
     int line = 0;
+    /// T-498b: declared by one of `CompileOptions::impliedTokenFiles` (the symbol group's default
+    /// layer); a later declaration of the same name overrides it silently.
+    bool implied = false;
 };
 
 /// Result of parsing one `.xts` stylesheet (or `<style>` block): all rules, `@keyframes` and

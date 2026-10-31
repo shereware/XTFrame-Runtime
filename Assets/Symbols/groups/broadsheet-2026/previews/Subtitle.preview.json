@@ -1,0 +1,13 @@
+{
+  "width": 480,
+  "height": 120,
+  "frames": 0,
+  "ports": {
+    "Sub.narrator": false,
+    "Sub.speaker": "Mira",
+    "Sub.line": "The gate opens at dawn"
+  },
+  "events": [
+    "update 0.6"
+  ]
+}

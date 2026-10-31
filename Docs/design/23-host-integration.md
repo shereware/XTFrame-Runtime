@@ -73,7 +73,7 @@ GL 後端不做局部重繪（stencil-then-cover 整張畫本來就便宜）；`
 
 目標：HUD demo 1280×720 Release `render` ≤ 5 ms（T-82 後 13.5 ms）。手段（依量測）：
 - 內部像素改 **premultiplied float**：source-over 變成 `dst = src + dst * (1 - srcA)`，少一次除法與分支；輸出時才 unpremultiply 成 RGBA8（宿主要 premultiplied 時提供 `SwTarget.premultiplied = true` 直接輸出）。
-- **SIMD**：SSE2 為基線（MSVC x64 預設可用），AVX2 以執行期偵測派發（`__cpuid`）；三個熱點：span 混合、高斯模糊的水平/垂直 pass、float→RGBA8 轉換。跨平台以 `xt/simd.h` 薄封裝（16 個函式內），無 SIMD 時退回純量，黃金圖容差內相同。
+- **SIMD**：SSE2 為基線（MSVC x64 預設可用），AVX2 以執行期偵測派發（`__cpuid`）；三個熱點：span 混合、高斯模糊的水平/垂直 pass、float→RGBA8 轉換。跨平台以 `xt/simd.h` 薄封裝（16 個函式內），無 SIMD 時退回純量。**三張表（純量／SSE2／AVX2）的輸出位元組必須相同**（2026-10-29 裁決，T-529）：AVX2 單元不得以 FMA 建（GCC／Clang 不給 `-mfma`；MSVC `/arch:AVX2` 下保持 `/fp:precise`，不開 contraction），因為融合乘加少一次捨入，在效果重的場景（challenge-menu、fairy-forest）會讓同一份黃金在有 AVX2 的機器上變成另一組位元組，而 AVX2 相對 SSE2 只快約 2%。`Tests/unit/test_simd.cpp` 以位元組相等斷言守住；wasm 的 SIMD128 後端（見 `claude/web-wasm` 的 52 §52.2）同受此規則約束。同一條規則推到全樹：頂層 CMake `-ffp-contract=off`（14 §14.10），否則 AArch64 的純量程式碼本身就會被融合。
 - 局部重繪（23.3）在互動時額外省的部分不算在 5 ms 目標內（目標以整張重繪量）。
 
 ## 23.6 穩定介面清單（T-100，併回 13 章）
@@ -92,6 +92,7 @@ GL 後端不做局部重繪（stencil-then-cover 整張畫本來就便宜）；`
 | `xt/sw/sw_renderer.h` | `SwRenderer`、`SwTarget` |
 | `xt/bundle/bundle.h` | `Bundle`、`loadUi`、`reloadUi` |
 | `xt/flow/flow_runtime.h` | `FlowRuntime`（宿主想跑流圖時） |
+| `xt/capi/xtframe.h` | C ABI（50 章；純 C99，`xt_bundle_*`／`xt_surface_*`；FFI 宿主如 Unity 的唯一接點；ABI 版本獨立於 major） |
 
 規則：以上標頭不得包含 `*_internal.h`、不得暴露第三方型別；新增成員只能加在結尾且有預設值；刪除或改語意 → major +1。`Examples/engine_integration` 只允許包含這份清單的標頭（CI 用 grep 檢查）。
 

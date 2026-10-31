@@ -180,7 +180,7 @@ TEST_CASE("FlowGraph::toJson: round-trips Examples/desktop_app/ui/app.xtflow") {
 TEST_CASE("nodeTypeTable: the fourteen §17.6 node types, ports matching the shared port rules") {
     std::span<const NodeTypeDesc> table = nodeTypeTable();
     // T-193 appended six types (system, sound, haptic, spawn, emit, timeline; test_flow_global.cpp).
-    REQUIRE(table.size() == 20);
+    REQUIRE(table.size() == 23);  // T-541 state, T-543 filter and throttle appended.
 
     std::set<std::string> names;
     for (const NodeTypeDesc& d : table.first(14)) {
@@ -537,4 +537,329 @@ TEST_CASE("T-406 .xtflow version: missing = 1, newer refused, malformed rejected
           Status::kInvalidArgument);
     CHECK(FlowGraph{}.toJson().find("\"version\": " + std::to_string(kFlowFormatVersion)) !=
           std::string::npos);
+}
+
+// ---- T-541 (Docs/design/27-interaction.md §27.4.4): the `state` node and `#id.setState` -------------
+
+namespace {
+
+/// A `state` node `s` with `params` (a JSON object body) and no edges.
+std::string stateGraph(const std::string& params) {
+    return R"({"nodes":[{"id":"s","type":"state","params":)" + params + R"(}],"edges":[]})";
+}
+
+/// The errors FlowGraph::parse() reports for `json` (empty on success).
+std::vector<std::string> parseErrors(const std::string& json) {
+    FlowGraph graph;
+    std::vector<std::string> errors;
+    (void)FlowGraph::parse(json, graph, errors);
+    return errors;
+}
+
+}  // namespace
+
+TEST_CASE("state node: a valid minimal graph parses, toJson() reproduces it, ports follow the params") {
+    const std::string json = stateGraph(R"({"states":["Menu","Playing"],"initial":"Playing",
+        "transitions":[{"from":"Menu","on":"start","to":"Playing"},{"from":"*","on":"quit","to":"Menu"}]})");
+    FlowGraph graph;
+    std::vector<std::string> errors;
+    REQUIRE(FlowGraph::parse(json, graph, errors) == Status::kOk);
+    REQUIRE(graph.nodes.size() == 1);
+    CHECK(graph.nodes[0].arrayParams.at("states").size() == 2);
+    CHECK(graph.nodes[0].params.at("initial").s == "Playing");
+    REQUIRE(graph.nodes[0].transitions.size() == 2);
+    CHECK(graph.nodes[0].transitions[1].from == "*");
+    CHECK(graph.nodes[0].transitions[1].on == "quit");
+
+    FlowGraph again;
+    REQUIRE(FlowGraph::parse(graph.toJson(), again, errors) == Status::kOk);
+    CHECK(again.toJson() == graph.toJson());  // flow.get returns what flow.set stored.
+    REQUIRE(again.nodes[0].transitions.size() == 2);
+    CHECK(again.nodes[0].transitions[0].to == "Playing");
+
+    // Events default to the transitions' `on` names; enter / exit exist per state.
+    const std::string wired = R"({"nodes":[
+        {"id":"s","type":"state","params":{"states":["Menu","Playing"],
+          "transitions":[{"from":"Menu","on":"start","to":"Playing"}]}},
+        {"id":"c","type":"counter"}],
+      "edges":[{"from":"#go.Click","to":"s.start"},{"from":"s.enterPlaying","to":"c.increment"},
+               {"from":"s.exitMenu","to":"c.increment"},{"from":"s.changed","to":"c.increment"},
+               {"from":"s.index","to":"c.set"}]})";
+    CHECK(parseErrors(wired).empty());
+    // Ports that do not exist: an event nobody declared, a state nobody has, a number into `set`.
+    CHECK_FALSE(parseErrors(R"({"nodes":[
+        {"id":"s","type":"state","params":{"states":["Menu","Playing"],
+          "transitions":[{"from":"Menu","on":"start","to":"Playing"}]}}],
+      "edges":[{"from":"#go.Click","to":"s.nope"}]})")
+                    .empty());
+    CHECK_FALSE(parseErrors(R"({"nodes":[
+        {"id":"s","type":"state","params":{"states":["A","B"],"transitions":[]}},
+        {"id":"c","type":"counter"}],"edges":[{"from":"s.enterZ","to":"c.increment"}]})")
+                    .empty());
+    CHECK_FALSE(parseErrors(R"({"nodes":[
+        {"id":"s","type":"state","params":{"states":["A","B"],"transitions":[]}},
+        {"id":"c","type":"counter"}],"edges":[{"from":"c.value","to":"s.set"}]})")
+                    .empty());  // `set` is a string input.
+}
+
+TEST_CASE("state node: every load-time error, verbatim") {
+    auto only = [](const std::string& params) {
+        std::vector<std::string> errors = parseErrors(stateGraph(params));
+        REQUIRE(errors.size() == 1);
+        return errors[0];
+    };
+    const std::string uniqueMsg = "state s: states must be 2..64 unique identifiers";
+    CHECK(only(R"({"states":["A"]})") == uniqueMsg);
+    CHECK(only(R"({"states":[]})") == uniqueMsg);
+    CHECK(only(R"({"states":["A","A"]})") == uniqueMsg);
+    CHECK(only(R"({"states":["A","not ok"]})") == uniqueMsg);
+    CHECK(only(R"({"states":["A",1]})") == uniqueMsg);
+    CHECK(only(R"({"states":"A"})") == uniqueMsg);
+    CHECK(only(R"({})") == uniqueMsg);
+    std::string many = R"({"states":[)";
+    for (int i = 0; i < 65; ++i) {
+        many += (i > 0 ? ",\"S" : "\"S") + std::to_string(i) + "\"";
+    }
+    CHECK(only(many + "]}") == uniqueMsg);
+    std::string sixtyFour = R"({"states":[)";
+    for (int i = 0; i < 64; ++i) {
+        sixtyFour += (i > 0 ? ",\"S" : "\"S") + std::to_string(i) + "\"";
+    }
+    CHECK(parseErrors(stateGraph(sixtyFour + "]}")).empty());
+
+    CHECK(only(R"({"states":["A","B"],"initial":"C"})") == "state s: initial \"C\" is not one of states");
+    CHECK(only(R"({"states":["A","B"],"transitions":[
+        {"from":"A","on":"go","to":"B"},{"from":"A","on":"go","to":"A"}]})") ==
+          "state s: duplicate transition (A, go)");
+    CHECK(only(R"({"states":["A","B"],"transitions":[
+        {"from":"*","on":"go","to":"B"},{"from":"*","on":"go","to":"A"}]})") ==
+          "state s: duplicate transition (*, go)");
+    CHECK(only(R"({"states":["A","B"],"transitions":[{"from":"Z","on":"go","to":"B"}]})") ==
+          "state s: transition from \"Z\" is not \"*\" or one of states");
+    CHECK(only(R"({"states":["A","B"],"transitions":[{"from":"A","on":"go","to":"Z"}]})") ==
+          "state s: transition to \"Z\" is not one of states");
+    CHECK(only(R"({"states":["A","B"],"transitions":[{"from":"A","on":"g o","to":"B"}]})") ==
+          "state s: transition event \"g o\" is not an identifier");
+    CHECK(only(R"({"states":["A","B"],"transitions":[{"from":"A","on":"go"}]})") ==
+          "state s: transitions must be an array of {from, on, to} strings");
+    CHECK(only(R"({"states":["A","B"],"transitions":{}})") ==
+          "state s: transitions must be an array of {from, on, to} strings");
+
+    for (const char* fixed : {"set", "guard", "state", "index", "changed"}) {
+        const std::string name = fixed;
+        CHECK(only(R"({"states":["A","B"],"transitions":[{"from":"A","on":")" + name + R"(","to":"B"}]})") ==
+              "state s: event \"" + name + "\" collides with a fixed port");
+        CHECK(only(R"({"states":["A","B"],"events":[")" + name + R"("]})") ==
+              "state s: event \"" + name + "\" collides with a fixed port");
+    }
+    // `events` given: it has to cover every `on`; extra events are fine.
+    CHECK(only(R"({"states":["A","B"],"events":["x"],"transitions":[{"from":"A","on":"go","to":"B"}]})") ==
+          "state s: transition event \"go\" is missing from events");
+    CHECK(parseErrors(stateGraph(R"({"states":["A","B"],"events":["go","extra"],
+        "transitions":[{"from":"A","on":"go","to":"B"}]})"))
+              .empty());
+    CHECK(only(R"({"states":["A","B"],"events":"go"})") == "state s: events must be an array of identifiers");
+}
+
+TEST_CASE("setState edge: needs a `state` param, `mode` is on / off / toggle") {
+    auto edge = [](const std::string& params) {
+        return R"({"nodes":[{"id":"k","type":"toggle"}],"edges":[{"from":"k.changed","to":"#box.setState")" +
+               (params.empty() ? std::string() : R"(,"params":)" + params) + "}]}";
+    };
+    CHECK(parseErrors(edge(R"({"state":"Warn"})")).empty());
+    CHECK(parseErrors(edge(R"({"state":"Warn","mode":"on"})")).empty());
+    CHECK(parseErrors(edge(R"({"state":"Warn","mode":"off"})")).empty());
+    CHECK(parseErrors(edge(R"({"state":"Warn","mode":"toggle"})")).empty());
+    std::vector<std::string> errors = parseErrors(edge(""));
+    REQUIRE(errors.size() == 1);
+    CHECK(errors[0] == "#box.setState needs a \"state\" edge param");
+    errors = parseErrors(edge(R"({"mode":"on"})"));
+    REQUIRE(errors.size() == 1);
+    CHECK(errors[0] == "#box.setState needs a \"state\" edge param");
+    errors = parseErrors(edge(R"({"state":"Warn","mode":"flip"})"));
+    REQUIRE(errors.size() == 1);
+    CHECK(errors[0].find("invalid \"mode\"") != std::string::npos);
+}
+
+TEST_CASE("T-543 filter: a well-formed node of each op parses and its types follow `in`") {
+    FlowGraph graph;
+    CHECK(parseOk(R"({
+        "nodes": [ { "id": "k", "type": "constant", "params": { "value": 0.5 } },
+                   { "id": "d", "type": "filter", "params": { "op": "deadband", "threshold": 0.1 } },
+                   { "id": "q", "type": "filter", "params": { "op": "quantize", "step": 0.25 } },
+                   { "id": "s", "type": "filter", "params": { "op": "sample" } },
+                   { "id": "p", "type": "toggle" },
+                   { "id": "c1", "type": "counter" }, { "id": "c2", "type": "counter" },
+                   { "id": "c3", "type": "counter" }, { "id": "ts", "type": "toString" } ],
+        "edges": [ { "from": "k.out", "to": "d.in" }, { "from": "k.out", "to": "q.in" },
+                   { "from": "k.out", "to": "s.in" }, { "from": "p.changed", "to": "d.reset" },
+                   { "from": "p.changed", "to": "s.trigger" },
+                   { "from": "d.out", "to": "c1.set" }, { "from": "q.out", "to": "c2.set" },
+                   { "from": "s.out", "to": "ts.in" }, { "from": "ts.out", "to": "#t.setText" },
+                   { "from": "d.passed", "to": "c3.increment" } ]
+    })",
+                  graph) == Status::kOk);
+    REQUIRE(graph.nodes.size() == 9);
+    CHECK(graph.nodes[1].type == "filter");
+
+    // A string through a deadband stays a string: it does not fit a number sink.
+    CHECK(rejectedWith(R"({
+        "nodes": [ { "id": "k", "type": "constant", "params": { "value": "x" } },
+                   { "id": "d", "type": "filter", "params": { "op": "deadband", "threshold": 0 } },
+                   { "id": "c", "type": "counter" } ],
+        "edges": [ { "from": "k.out", "to": "d.in" }, { "from": "d.out", "to": "c.set" } ]
+    })",
+                       "type mismatch"));
+}
+
+TEST_CASE("T-543 filter: every load error, verbatim") {
+    // "in" takes a value, not a pulse.
+    CHECK(parseErrors(R"({
+        "nodes": [ { "id": "f1", "type": "filter", "params": { "op": "deadband", "threshold": 0.1 } },
+                   { "id": "c", "type": "toggle" } ],
+        "edges": [ { "from": "c.changed", "to": "f1.in" } ]
+    })") == std::vector<std::string>{"filter f1: \"in\" takes a value, not a pulse"});
+    // quantize takes a number.
+    CHECK(parseErrors(R"({
+        "nodes": [ { "id": "q1", "type": "filter", "params": { "op": "quantize", "step": 0.5 } },
+                   { "id": "k", "type": "constant", "params": { "value": "text" } } ],
+        "edges": [ { "from": "k.out", "to": "q1.in" } ]
+    })") == std::vector<std::string>{"filter q1: quantize takes a number"});
+    CHECK(parseErrors(R"({
+        "nodes": [ { "id": "q1", "type": "filter", "params": { "op": "quantize", "step": 0.5 } },
+                   { "id": "k", "type": "constant", "params": { "value": true } } ],
+        "edges": [ { "from": "k.out", "to": "q1.in" } ]
+    })") == std::vector<std::string>{"filter q1: quantize takes a number"});
+    // "trigger" is only used by sample.
+    CHECK(parseErrors(R"({
+        "nodes": [ { "id": "d1", "type": "filter", "params": { "op": "deadband", "threshold": 0.1 } },
+                   { "id": "c", "type": "toggle" } ],
+        "edges": [ { "from": "c.changed", "to": "d1.trigger" } ]
+    })") == std::vector<std::string>{"filter d1: \"trigger\" is only used by sample"});
+    CHECK(parseErrors(R"({
+        "nodes": [ { "id": "q2", "type": "filter", "params": { "op": "quantize", "step": 1 } },
+                   { "id": "c", "type": "toggle" } ],
+        "edges": [ { "from": "c.changed", "to": "q2.trigger" } ]
+    })") == std::vector<std::string>{"filter q2: \"trigger\" is only used by sample"});
+
+    // Params (the existing node-error format).
+    CHECK(parseErrors(R"({ "nodes": [ { "id": "f", "type": "filter" } ], "edges": [] })") ==
+          std::vector<std::string>{"node 'f' is missing required param 'op'"});
+    CHECK(parseErrors(R"({ "nodes": [ { "id": "f", "type": "filter", "params": { "op": "smooth" } } ],
+                           "edges": [] })") == std::vector<std::string>{"node 'f' has an invalid 'op'"});
+    CHECK(parseErrors(R"({ "nodes": [ { "id": "f", "type": "filter", "params": { "op": "deadband" } } ],
+                           "edges": [] })") ==
+          std::vector<std::string>{"node 'f' is missing required param 'threshold'"});
+    CHECK(parseErrors(R"({ "nodes": [ { "id": "f", "type": "filter",
+                           "params": { "op": "deadband", "threshold": -0.1 } } ], "edges": [] })") ==
+          std::vector<std::string>{"node 'f' has an invalid 'threshold'"});
+    CHECK(parseErrors(R"({ "nodes": [ { "id": "f", "type": "filter",
+                           "params": { "op": "deadband", "threshold": "big" } } ], "edges": [] })") ==
+          std::vector<std::string>{"node 'f' has an invalid 'threshold'"});
+    CHECK(parseErrors(R"({ "nodes": [ { "id": "f", "type": "filter", "params": { "op": "quantize" } } ],
+                           "edges": [] })") ==
+          std::vector<std::string>{"node 'f' is missing required param 'step'"});
+    CHECK(parseErrors(R"({ "nodes": [ { "id": "f", "type": "filter",
+                           "params": { "op": "quantize", "step": 0 } } ], "edges": [] })") ==
+          std::vector<std::string>{"node 'f' has an invalid 'step'"});
+    // deadband 0 is legal (no dead zone); sample needs neither.
+    CHECK(parseErrors(R"({ "nodes": [ { "id": "f", "type": "filter",
+                           "params": { "op": "deadband", "threshold": 0 } },
+                           { "id": "s", "type": "filter", "params": { "op": "sample" } } ],
+                           "edges": [] })")
+              .empty());
+}
+
+TEST_CASE("T-543 throttle: pulses pass through `in`, types follow it, every load error verbatim") {
+    FlowGraph graph;
+    CHECK(parseOk(R"({
+        "nodes": [ { "id": "k", "type": "constant", "params": { "value": 3 } },
+                   { "id": "tp", "type": "throttle", "params": { "unit": "frames", "rate": 15, "trailing": false } },
+                   { "id": "tv", "type": "throttle", "params": { "unit": "hz", "rate": 10 } },
+                   { "id": "r", "type": "constant", "params": { "value": 30 } },
+                   { "id": "c", "type": "counter" }, { "id": "n", "type": "counter" },
+                   { "id": "m", "type": "counter" }, { "id": "tg", "type": "toggle" } ],
+        "edges": [ { "from": "#b.Click", "to": "tp.in" }, { "from": "tp.out", "to": "c.increment" },
+                   { "from": "tp.passed", "to": "c.reset" },
+                   { "from": "k.out", "to": "tv.in" }, { "from": "r.out", "to": "tv.rate" },
+                   { "from": "tv.out", "to": "n.set" }, { "from": "tv.dropped", "to": "m.set" },
+                   { "from": "tg.changed", "to": "tv.reset" } ]
+    })",
+                  graph) == Status::kOk);
+
+    // A pulse `out` fits only a pulse-accepting sink; a value one only a value sink of its type.
+    CHECK(rejectedWith(R"({
+        "nodes": [ { "id": "tp", "type": "throttle", "params": { "unit": "frames", "rate": 2 } },
+                   { "id": "ts", "type": "toString" } ],
+        "edges": [ { "from": "#b.Click", "to": "tp.in" }, { "from": "tp.out", "to": "ts.in" } ]
+    })",
+                       "cannot connect a pulse output"));
+
+    // Params.
+    CHECK(parseErrors(R"({ "nodes": [ { "id": "t", "type": "throttle", "params": { "rate": 10 } } ],
+                           "edges": [] })") ==
+          std::vector<std::string>{"node 't' is missing required param 'unit'"});
+    CHECK(parseErrors(R"({ "nodes": [ { "id": "t", "type": "throttle",
+                           "params": { "unit": "minutes", "rate": 10 } } ], "edges": [] })") ==
+          std::vector<std::string>{"node 't' has an invalid 'unit'"});
+    CHECK(parseErrors(R"({ "nodes": [ { "id": "t", "type": "throttle",
+                           "params": { "unit": "hz", "rate": "fast" } } ], "edges": [] })") ==
+          std::vector<std::string>{"node 't' has an invalid 'rate'"});
+    CHECK(parseErrors(R"({ "nodes": [ { "id": "t", "type": "throttle",
+                           "params": { "unit": "hz", "rate": 10, "trailing": 1 } } ], "edges": [] })") ==
+          std::vector<std::string>{"node 't' has an invalid 'trailing'"});
+    // `rate` may come from an edge instead of the param.
+    CHECK(parseErrors(R"({ "nodes": [ { "id": "t", "type": "throttle", "params": { "unit": "hz" } } ],
+                           "edges": [] })")
+              .empty());
+}
+
+TEST_CASE("T-543 filter and throttle: toJson() round-trips and the node table lists them") {
+    const std::string json = R"({
+        "version": 1,
+        "nodes": [ { "id": "k", "type": "constant", "params": { "value": 0.5 } },
+                   { "id": "d", "type": "filter", "params": { "op": "deadband", "threshold": 0.02 } },
+                   { "id": "q", "type": "filter", "params": { "op": "quantize", "step": 0.25 } },
+                   { "id": "t", "type": "throttle",
+                     "params": { "unit": "hz", "rate": 10, "trailing": false } } ],
+        "edges": [ { "from": "k.out", "to": "d.in" }, { "from": "d.out", "to": "t.in" },
+                   { "from": "k.out", "to": "q.in" } ]
+    })";
+    FlowGraph first;
+    std::vector<std::string> errors;
+    REQUIRE(FlowGraph::parse(json, first, errors) == Status::kOk);
+    FlowGraph second;
+    REQUIRE(FlowGraph::parse(first.toJson(), second, errors) == Status::kOk);
+    CHECK(errors.empty());
+    CHECK(second.toJson() == first.toJson());
+    REQUIRE(second.nodes.size() == first.nodes.size());
+    for (size_t i = 0; i < first.nodes.size(); ++i) {
+        CHECK(second.nodes[i].id == first.nodes[i].id);
+        CHECK(second.nodes[i].type == first.nodes[i].type);
+        CHECK(second.nodes[i].params.size() == first.nodes[i].params.size());
+    }
+    CHECK(second.nodes[3].params.at("trailing").type == PortType::Bool);
+    CHECK_FALSE(second.nodes[3].params.at("trailing").b);
+    CHECK(second.edges.size() == 3);
+    CHECK(first.toJson().find("\"version\": " + std::to_string(kFlowFormatVersion)) != std::string::npos);
+
+    std::span<const NodeTypeDesc> table = nodeTypeTable();
+    const NodeTypeDesc* filter = nullptr;
+    const NodeTypeDesc* throttle = nullptr;
+    for (const NodeTypeDesc& d : table) {
+        filter = d.type == "filter" ? &d : filter;
+        throttle = d.type == "throttle" ? &d : throttle;
+    }
+    REQUIRE(filter != nullptr);
+    REQUIRE(throttle != nullptr);
+    CHECK(filter->params == std::vector<std::string>{"op", "threshold", "step"});
+    REQUIRE(filter->inputs.size() == 3);
+    CHECK(filter->inputs[1].name == "trigger");
+    CHECK(filter->inputs[1].type == PortType::Pulse);
+    REQUIRE(filter->outputs.size() == 2);
+    CHECK(filter->outputs[1].name == "passed");
+    CHECK(throttle->params == std::vector<std::string>{"unit", "rate", "trailing"});
+    REQUIRE(throttle->outputs.size() == 3);
+    CHECK(throttle->outputs[2].name == "dropped");
+    CHECK(throttle->outputs[2].type == PortType::Number);
 }

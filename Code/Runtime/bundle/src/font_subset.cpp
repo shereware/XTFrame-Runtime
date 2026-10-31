@@ -25,6 +25,7 @@ constexpr uint32_t kHead = tagOf('h', 'e', 'a', 'd');
 constexpr uint32_t kMaxp = tagOf('m', 'a', 'x', 'p');
 constexpr uint32_t kLoca = tagOf('l', 'o', 'c', 'a');
 constexpr uint32_t kGlyf = tagOf('g', 'l', 'y', 'f');
+constexpr uint32_t kName = tagOf('n', 'a', 'm', 'e');
 
 uint16_t be16FontSubset(const uint8_t* p) { return static_cast<uint16_t>((p[0] << 8) | p[1]); }
 uint32_t be32FontSubset(const uint8_t* p) {
@@ -340,6 +341,43 @@ bool FontFile::hasGlyph(uint32_t codePoint) const {
         std::lower_bound(m_cmap.begin(), m_cmap.end(), codePoint,
                          [](const std::pair<uint32_t, uint16_t>& e, uint32_t cp) { return e.first < cp; });
     return it != m_cmap.end() && it->first == codePoint && it->second != 0 && it->second < m_numGlyphs;
+}
+
+std::string FontFile::familyName() const {
+    const Table* name = find(kName);
+    if (name == nullptr || name->length < 6) {
+        return std::string();
+    }
+    const uint8_t* base = m_bytes.data() + name->offset;
+    const uint32_t count = be16FontSubset(base + 2);
+    const uint32_t strings = be16FontSubset(base + 4);
+    std::string best[2];  // [0] nameID 16, [1] nameID 1.
+    int bestScore[2] = {-1, -1};
+    for (uint32_t i = 0; i < count && 6u + (i + 1) * 12u <= name->length; ++i) {
+        const uint8_t* rec = base + 6 + i * 12;
+        const uint16_t platform = be16FontSubset(rec);
+        const uint16_t id = be16FontSubset(rec + 6);
+        const uint32_t length = be16FontSubset(rec + 8);
+        const uint32_t offset = strings + be16FontSubset(rec + 10);
+        const int slot = id == 16 ? 0 : (id == 1 ? 1 : -1);
+        if (slot < 0 || length == 0 || offset > name->length || length > name->length - offset) {
+            continue;
+        }
+        const bool wide = platform == 3 || platform == 0;
+        const int score = platform == 3 ? 2 : (platform == 0 ? 1 : 0);
+        if (score <= bestScore[slot]) {
+            continue;
+        }
+        std::string value;
+        for (uint32_t b = wide ? 1 : 0; b < length; b += wide ? 2 : 1) {
+            value.push_back(static_cast<char>(base[offset + b]));
+        }
+        if (!value.empty()) {
+            best[slot] = std::move(value);
+            bestScore[slot] = score;
+        }
+    }
+    return !best[0].empty() ? best[0] : best[1];
 }
 
 uint32_t FontFile::outlineCount() const {

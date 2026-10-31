@@ -1,0 +1,46 @@
+<xt>
+  <head>
+    <!-- TextField: standard symbol (docs/design/30-ui-project.md 30.4). See README.md. -->
+    <symbol name="TextField" requires="states: Hover, Focus, Disabled; slots: label">
+      <div id="Box" port:submit="event out">
+        <span id="Label"><slot name="label">Name</slot></span>
+        <input type="text" id="Field" placeholder="@xt_textfield_placeholder" value=""
+               on:key(Enter)="sound(ui_confirm); emit(submit)"/>
+      </div>
+    </symbol>
+    <style>
+      symbol(TextField) {
+        #Box {
+          display: flex;
+          flex-direction: column;
+          row-gap: var(--space-1);
+          width: 280px;
+          color: var(--color-text);
+          font-family: var(--font-body);
+          font-size: var(--font-size-m);
+        }
+        #Label { color: var(--color-text-dim); font-size: var(--font-size-s); white-space: nowrap; }
+        #Field {
+          height: var(--control-m);
+          padding: var(--space-2) var(--space-3);
+          border-width: 0px 0px var(--rule-thin) 0px;
+          border-color: var(--color-border);
+          background-color: var(--color-surface);
+          color: var(--color-text);
+          transition: background-color var(--motion-fast) linear;
+        }
+        #Field:hover { background-color: var(--color-surface-sunken); }
+        #Field:focus { border-bottom-width: var(--rule-thick); outline: var(--focus-w) solid var(--color-focus); outline-offset: 2px; }
+        :disabled #Field {
+          background-color: var(--color-disabled-bg) !important;
+          background-image: var(--tex-hatch) !important;
+          background-repeat: repeat;
+          background-size: 8px 8px;
+          color: var(--color-disabled-text) !important;
+          border-color: var(--color-disabled-text) !important;
+          outline: none !important;
+        }
+      }
+    </style>
+  </head>
+</xt>

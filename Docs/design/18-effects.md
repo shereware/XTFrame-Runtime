@@ -276,3 +276,8 @@ float  xtTime;                         // Context 時鐘（秒）
 - **backdrop 金字塔**：一幀內所有 `backdrop-blur` 共用：合併讀取區域 → 降採樣鏈（層數依最大 σ）→ 每個面板依自己的 σ 取層（相鄰兩層線性混合）→ 面板自己的 saturation／brightness。`EffectInstance` 參數不變。
 - **場景靜止快取**：宿主 `setSceneStatic(true)` 時金字塔與面板結果快取到帶圖層，直到場景或面板變動。
 - damage：S 元素的讀取外擴照 `effectReadExpand`；金字塔每層的邊界多取一個 texel。
+
+## 18.16 效果參數的資料驅動寫入走 Override 層（2026-10-30 定案；T-545）
+
+T-544 把 `bind:effect.<效果>.<參數>` 做在第 0 層（`setProperty` 直寫 + `effectPending` 補套一次），結果 restyle 重建效果堆疊時綁定值遺失。使用者裁決只走正解：**綁定與 flow 對效果參數的寫入一律走 04 §4.7 的第 4 層 Override**（`sticky = true`），`| tween(d)` 以「Override 帶補間」實作（04 §4.7 補充），`effectPending` 機制移除（Animator 每幀重套本來就涵蓋「載入時效果尚未建立」的情況）。`@timeline`／`animation` 對效果參數仍是第 2／3 層，被綁定的 Override 蓋掉——與一般屬性相同的規則，不另例外。宿主 `Document::setEffectParam()` 維持第 0 層（文件註解已說明等價於 `sticky = false`）；要持久的宿主寫入自己用 `setProperty(effectParam(...), v, true)`。
+

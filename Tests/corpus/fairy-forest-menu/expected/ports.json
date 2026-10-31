@@ -23,6 +23,18 @@
       "type": "event",
       "dir": "out",
       "default": ""
+    },
+    {
+      "name": "px",
+      "type": "number",
+      "dir": "in",
+      "default": "-1000"
+    },
+    {
+      "name": "py",
+      "type": "number",
+      "dir": "in",
+      "default": "-1000"
     }
   ]
 }

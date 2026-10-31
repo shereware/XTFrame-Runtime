@@ -91,39 +91,6 @@
       }
     },
     {
-      "id": "tiltLY",
-      "type": "math",
-      "params": {
-        "op": "map",
-        "inLo": -1,
-        "inHi": 1,
-        "outLo": 32,
-        "outHi": 16
-      }
-    },
-    {
-      "id": "tiltRY",
-      "type": "math",
-      "params": {
-        "op": "map",
-        "inLo": -1,
-        "inHi": 1,
-        "outLo": -16,
-        "outHi": -32
-      }
-    },
-    {
-      "id": "tiltX",
-      "type": "math",
-      "params": {
-        "op": "map",
-        "inLo": -1,
-        "inHi": 1,
-        "outLo": 7,
-        "outHi": -7
-      }
-    },
-    {
       "id": "endName",
       "type": "constant",
       "params": {
@@ -269,46 +236,6 @@
       "to": "#card.toggleClass",
       "params": {
         "class": "flipped"
-      }
-    },
-    {
-      "from": "#document.pointerNX",
-      "to": "tiltLY.a"
-    },
-    {
-      "from": "tiltLY.out",
-      "to": "#player.setProperty",
-      "params": {
-        "prop": "RotationY"
-      }
-    },
-    {
-      "from": "#document.pointerNX",
-      "to": "tiltRY.a"
-    },
-    {
-      "from": "tiltRY.out",
-      "to": "#ammoPanel.setProperty",
-      "params": {
-        "prop": "RotationY"
-      }
-    },
-    {
-      "from": "#document.pointerNY",
-      "to": "tiltX.a"
-    },
-    {
-      "from": "tiltX.out",
-      "to": "#player.setProperty",
-      "params": {
-        "prop": "RotationX"
-      }
-    },
-    {
-      "from": "tiltX.out",
-      "to": "#ammoPanel.setProperty",
-      "params": {
-        "prop": "RotationX"
       }
     },
     {

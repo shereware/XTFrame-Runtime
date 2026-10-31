@@ -1,180 +1,124 @@
 version: 1
 groups:
-  - id: brand
-    name: Brand
+  - id: paper
+    name: Paper and ink
     status: approved
     source:
       kind: manual
     swatches:
-      - id: teal
-        name: Teal
-        value: "#0f7b8a"
-        role: primary
-        status: approved
-        source:
-          kind: manual
-        note: Interactive elements, selection and progress.
-      - id: teal-bright
-        name: Teal bright
-        value: "#12909f"
-        role: hover
-        status: approved
-        source:
-          kind: manual
-        note: Teal under the pointer.
-      - id: teal-deep
-        name: Teal deep
-        value: "#0b5f6b"
-        role: pressed
-        status: approved
-        source:
-          kind: manual
-        note: Teal while pressed.
-      - id: amber
-        name: Amber
-        value: "#c26a00"
-        role: focus
-        status: approved
-        source:
-          kind: manual
-        note: The focus ring; never a fill.
-  - id: neutral
-    name: Neutrals
-    status: approved
-    source:
-      kind: manual
-    swatches:
-      - id: white
-        name: White
-        value: "#ffffff"
-        role: surface
-        status: approved
-        source:
-          kind: manual
-        note: Raised surfaces and text on teal.
-      - id: slate-50
-        name: Slate 50
-        value: "#f8fafc"
-        role: surface
-        status: approved
-        source:
-          kind: manual
-        note: Panels.
-      - id: slate-100
-        name: Slate 100
-        value: "#e9edf2"
+      - id: paper
+        name: Paper
+        value: "#e6e2d6"
         role: background
         status: approved
         source:
           kind: manual
-        note: The screen behind every panel.
-      - id: slate-150
-        name: Slate 150
-        value: "#dde3ea"
+        note: Screen background, grey-white newsprint.
+      - id: page
+        name: Page
+        value: "#ece8dd"
         role: surface
         status: approved
         source:
           kind: manual
-        note: Sunken wells and tracks.
-      - id: slate-200
-        name: Slate 200
-        value: "#d5dbe2"
-        role: disabled
+        note: Panels and cards, brighter paper.
+      - id: ink
+        name: Ink
+        value: "#1f1c18"
+        role: primary
         status: approved
         source:
           kind: manual
-        note: Disabled fills.
-      - id: slate-250
-        name: Slate 250
-        value: "#cfd6de"
+        note: Type, rules and ink blocks for interactive elements, selection and progress.
+      - id: kraft
+        name: Kraft
+        value: "#dcd7c8"
         role: track
         status: approved
         source:
           kind: manual
-        note: Slider and progress tracks.
-      - id: slate-300
-        name: Slate 300
-        value: "#c3ccd6"
-        role: border
-        status: approved
-        source:
-          kind: manual
-        note: Hairlines and control outlines.
-      - id: slate-450
-        name: Slate 450
-        value: "#8d99a6"
-        role: border
-        status: approved
-        source:
-          kind: manual
-        note: Outlines that must stand out.
-      - id: slate-500
-        name: Slate 500
-        value: "#8a949e"
-        role: disabled
-        status: approved
-        source:
-          kind: manual
-        note: Disabled text.
-      - id: slate-700
-        name: Slate 700
-        value: "#4f5b67"
-        role: text
-        status: approved
-        source:
-          kind: manual
-        note: Secondary text.
-      - id: slate-900
-        name: Slate 900
-        value: "#17202a"
-        role: text
-        status: approved
-        source:
-          kind: manual
-        note: Body text.
-      - id: night
-        name: Night
-        value: "#0b0e13"
-        role: shadow
-        status: approved
-        source:
-          kind: manual
-        note: Scrims and shadows, always with alpha.
+        note: Second-tone newsprint for tracks, sunken wells and the pressed state.
   - id: state
-    name: States
+    name: Stamps
     status: approved
     source:
       kind: manual
     swatches:
-      - id: red
-        name: Red
-        value: "#c62f3a"
-        role: danger
-        status: approved
-        source:
-          kind: manual
-        note: Damage, destructive actions, errors.
-      - id: orange
-        name: Orange
-        value: "#b86e00"
-        role: warning
-        status: approved
-        source:
-          kind: manual
-        note: Warnings and low resources.
-      - id: green
-        name: Green
-        value: "#23875a"
+      - id: lamp
+        name: Lamp
+        value: "#3f6b43"
         role: success
         status: approved
         source:
           kind: manual
         note: Health and completed steps.
-      - id: blue
-        name: Blue
-        value: "#1f6fb2"
+      - id: seal
+        name: Seal
+        value: "#b3281e"
+        role: danger
+        status: approved
+        source:
+          kind: manual
+        note: Printing red for damage, errors and the focus ring.
+      - id: ochre
+        name: Ochre
+        value: "#a0761f"
+        role: warning
+        status: approved
+        source:
+          kind: manual
+        note: Warnings and low resources.
+      - id: blue-ink
+        name: Blue ink
+        value: "#2f4f6f"
         role: info
         status: approved
         source:
           kind: manual
         note: Neutral notices and hints.
+  - id: night
+    name: Night desk
+    status: approved
+    source:
+      kind: manual
+    swatches:
+      - id: night
+        name: Night
+        value: "#262320"
+        role: background
+        status: approved
+        source:
+          kind: manual
+        note: Night desk background and text on newsprint.
+      - id: lamp-night
+        name: Lamp night
+        value: "#7fa877"
+        role: success
+        status: approved
+        source:
+          kind: manual
+        note: Lamp on the night desk.
+      - id: seal-night
+        name: Seal night
+        value: "#d7493b"
+        role: danger
+        status: approved
+        source:
+          kind: manual
+        note: Seal on the night desk.
+      - id: ochre-night
+        name: Ochre night
+        value: "#c9a24a"
+        role: warning
+        status: approved
+        source:
+          kind: manual
+        note: Ochre on the night desk.
+      - id: blue-ink-night
+        name: Blue ink night
+        value: "#8fb0cf"
+        role: info
+        status: approved
+        source:
+          kind: manual
+        note: Blue ink on the night desk.

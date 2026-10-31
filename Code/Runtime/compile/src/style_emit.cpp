@@ -22,9 +22,10 @@
 #include "xt/compile/svg_path.h"  // T-218: scene-target `d`.
 #include "xt/compile/utf8_path.h"
 #include "xt/compile/xtfx.h"
-#include "xt/node.h"        // EffectKind (18-effects.md §18.2).
-#include "xt/property.h"    // effectParam()/prop::kEffectParam* (18-effects.md §18.2).
-#include "xts/xts_props.h"  // styleprop::Effect (T-51a).
+#include "xt/effect_utils.h"  // T-547: effectKindByName() / effectParamIndexByName().
+#include "xt/node.h"          // EffectKind (18-effects.md §18.2).
+#include "xt/property.h"      // effectParam()/prop::kEffectParam* (18-effects.md §18.2).
+#include "xts/xts_props.h"    // styleprop::Effect (T-51a).
 
 /// See Docs/design/02-ir-format.md §2.6, §2.9, Docs/design/12-compiler.md §12.3, Docs/tasks/T-23.md,
 /// Docs/design/18-effects.md §18.4 (T-51a, `effect`'s STYL encoding and its `@keyframes` expansion).
@@ -395,9 +396,15 @@ void emitTokens(const RuleSet& ruleSet, IrWriter& writer, DiagnosticSink& sink, 
     for (const TokenDecl& token : ruleSet.tokens) {
         auto it = raw.find(token.name);
         if (it != raw.end()) {
-            sink.warn(token.file,
-                      "token \"" + token.name + "\" is declared more than once; the last declaration wins",
-                      token.line);
+            // T-498b: a token of the implied default layer (CompileOptions::impliedTokenFiles) is
+            // meant to be overridden by the project; only a repeat among the project's own
+            // declarations is worth a warning.
+            if (!it->second->implied) {
+                sink.warn(
+                    token.file,
+                    "token \"" + token.name + "\" is declared more than once; the last declaration wins",
+                    token.line);
+            }
             it->second = &token;
         } else {
             raw.emplace(token.name, &token);
@@ -1319,7 +1326,7 @@ std::string publishedReference(const std::string& src, std::string_view xtDir,
 
 AssetId ensureImageAsset(IrWriter& writer, const std::string& src, std::string_view xtDir,
                          std::string_view fileName, int line, int col, const CompileOptions& options,
-                         DiagnosticSink& sink) {
+                         DiagnosticSink& sink, std::string_view sheetDir) {
     const std::vector<AssetBuilder>& existing = writer.assets();
     for (size_t i = 0; i < existing.size(); ++i) {
         const AssetBuilder& ab = existing[i];
@@ -1338,7 +1345,7 @@ AssetId ensureImageAsset(IrWriter& writer, const std::string& src, std::string_v
         ab.name = writer.intern(src);
         return writer.addAsset(std::move(ab));
     }
-    fs::path full = resolveAsset(options, xtDir, src);
+    fs::path full = resolveAsset(options, xtDir, src, sheetDir);  // T-490
     bool embedded = false;
     if (options.embedImages) {
         std::vector<uint8_t> bytes;
@@ -1438,7 +1445,7 @@ AssetId ensureShaderAsset(IrWriter& writer, const std::string& src, std::string_
                                                                              : kInvalidAsset;
         }
     }
-    fs::path full = resolveAsset(options, xtDir, src);
+    fs::path full = resolveAsset(options, xtDir, src, {});
     std::vector<uint8_t> bytes;
     AssetBuilder ab;
     ab.kind = 2;  // Shader (Docs/design/02-ir-format.md §2.5).
@@ -1600,7 +1607,8 @@ bool emitStyle(const RuleSet& ruleSet, IrWriter& writer, StyleBuilder& style,
         for (const StyleDecl& decl : rule.decls) {
             if ((decl.prop == styleprop::BorderImageSource || decl.prop == styleprop::BackgroundImage) &&
                 decl.value.kind == StyleValueKind::String && decl.value.str != "none") {
-                ensureImageAsset(writer, decl.value.str, xtDir, fileName, decl.line, 0, options, sink);
+                ensureImageAsset(writer, decl.value.str, xtDir, fileName, decl.line, 0, options, sink,
+                                 rule.sheetDir);  // T-490
             }
         }
     }
@@ -1691,8 +1699,8 @@ bool emitStyle(const RuleSet& ruleSet, IrWriter& writer, StyleBuilder& style,
             assetId = cached->second;
         } else {
             AssetBuilder ab;
-            ab.kind = 1;  // Font.
-            fs::path full = resolveAsset(options, xtDir, ff.src);
+            ab.kind = 1;                                                        // Font.
+            fs::path full = resolveAsset(options, xtDir, ff.src, ff.sheetDir);  // T-490
             bool embedded = false;
             if (options.embedFonts) {
                 std::vector<uint8_t> bytes;
@@ -1817,10 +1825,10 @@ bool selectorMatchesFrom(const Selector& sel, size_t partIndex, const DomTree& d
 // declaration among the rules whose selectors carry no pseudo-class, then the inline `style`
 // attribute). nullptr when no such declaration exists. 18.12's effect-name addressing needs it to
 // turn `effect.<name>` into a stack index.
-const std::vector<EffectDeclEntry>* staticEffectSequence(const RuleSet& ruleSet, const DomTree& dom,
-                                                         uint32_t element,
-                                                         std::vector<StyleDecl>& inlineScratch,
-                                                         std::string_view fileName) {
+const std::vector<EffectDeclEntry>* staticEffectSequenceImpl(const RuleSet& ruleSet, const DomTree& dom,
+                                                             uint32_t element,
+                                                             std::vector<StyleDecl>& inlineScratch,
+                                                             std::string_view fileName) {
     const StyleDecl* best = nullptr;
     uint64_t bestKey = 0;
     uint64_t order = 0;
@@ -1857,115 +1865,29 @@ const std::vector<EffectDeclEntry>* staticEffectSequence(const RuleSet& ruleSet,
     return best != nullptr ? &best->value.effects : nullptr;
 }
 
-bool effectKindByName(std::string_view name, EffectKind& out) {
-    struct Entry {
-        const char* name;
-        EffectKind kind;
-    };
-    static constexpr Entry kTable[] = {
-        {"shadow", EffectKind::DropShadow},
-        {"glow", EffectKind::Glow},
-        {"blur", EffectKind::Blur},
-        {"color-adjust", EffectKind::ColorAdjust},
-        {"gradient-mask", EffectKind::GradientMask},
-        {"shine", EffectKind::Shine},
-        {"outline", EffectKind::Outline},
-        {"backdrop-blur", EffectKind::BackdropBlur},
-    };
-    for (const Entry& e : kTable) {
-        if (name == e.name) {
-            out = e.kind;
-            return true;
-        }
-    }
-    return false;
-}
+}  // namespace
 
-// Docs/design/18-effects.md §18.2-18.3: parameter name -> paramIndex for `kind` (`enabled` = 0,
-// params[i] = i + 1, `color` = 16). Returns false for a name `kind` does not define.
-bool effectParamIndexByName(EffectKind kind, std::string_view param, uint32_t& out) {
-    if (param == "enabled") {
-        out = xt::prop::kEffectParamEnabled;
-        return true;
-    }
-    static constexpr const char* kShadow[] = {"offsetX", "offsetY", "blur", "spread", "opacity", "inset"};
-    static constexpr const char* kGlow[] = {"radius", "intensity", "inner"};
-    static constexpr const char* kBlur[] = {"radiusX", "radiusY"};
-    static constexpr const char* kColorAdjust[] = {"brightness", "contrast", "saturation", "hue",
-                                                   "opacity",    "invert",   "sepia"};
-    static constexpr const char* kGradientMask[] = {"p0x", "p0y", "p1x", "p1y", "radial", "invert"};
-    static constexpr const char* kShine[] = {"position", "width", "softness", "angle", "intensity"};
-    static constexpr const char* kOutline[] = {"radius", "softness", "position"};
-    static constexpr const char* kBackdrop[] = {"radius", "saturation", "brightness"};
-    const char* const* names = nullptr;
-    size_t count = 0;
-    bool hasColor = false;
-    switch (kind) {
-        case EffectKind::DropShadow:
-            names = kShadow, count = 6, hasColor = true;
-            break;
-        case EffectKind::Glow:
-            names = kGlow, count = 3, hasColor = true;
-            break;
-        case EffectKind::Blur:
-            names = kBlur, count = 2;
-            break;
-        case EffectKind::ColorAdjust:
-            names = kColorAdjust, count = 7;
-            break;
-        case EffectKind::GradientMask:
-            names = kGradientMask, count = 6;
-            break;
-        case EffectKind::Shine:
-            names = kShine, count = 5, hasColor = true;
-            break;
-        case EffectKind::Outline:
-            names = kOutline, count = 3, hasColor = true;
-            break;
-        case EffectKind::BackdropBlur:
-            names = kBackdrop, count = 3;
-            break;
-        default:
-            return false;
-    }
-    if (param == "color") {
-        if (!hasColor) {
-            return false;
-        }
-        out = xt::prop::kEffectParamColor0;
-        return true;
-    }
-    for (size_t i = 0; i < count; ++i) {
-        if (param == names[i]) {
-            out = static_cast<uint32_t>(i + 1);
-            return true;
-        }
-    }
-    return false;
-}
-
-// Resolves one `effect.<effect>.<param>` declaration against `element`'s effect sequence into a
-// StyleDecl on the 18.2 effect PropId. Reports an error and returns false when it cannot.
-bool resolveTimelineEffectDecl(const IrWriter& writer, const TimelineEffectDecl& fx,
-                               const std::vector<EffectDeclEntry>* seq, const std::string& path,
-                               std::string_view fileName, DiagnosticSink& sink, StyleDecl& out) {
-    std::string where = "effect." + fx.effect + "." + fx.param + " on #" + path;
+// T-544: the shared 18.12 effect addressing (declared in style_emit.h).
+bool resolveEffectAddress(const IrWriter& writer, std::string_view effectName, std::string_view param,
+                          const std::vector<EffectDeclEntry>* seq, std::string& error, PropId& out,
+                          bool& isColor) {
     if (seq == nullptr || seq->empty()) {
-        sink.error(std::string(fileName), "@timeline " + where + ": the element has no effect", fx.line);
+        error = "the element has no effect";
         return false;
     }
     uint32_t index = 0;
-    bool isIndex = !fx.effect.empty() && fx.effect.find_first_not_of("0123456789") == std::string::npos;
+    bool isIndex =
+        !effectName.empty() && effectName.find_first_not_of("0123456789") == std::string_view::npos;
     if (isIndex) {
-        index = static_cast<uint32_t>(std::strtoul(fx.effect.c_str(), nullptr, 10));
+        index = static_cast<uint32_t>(std::strtoul(std::string(effectName).c_str(), nullptr, 10));
         if (index >= seq->size()) {
-            sink.error(std::string(fileName), "@timeline " + where + ": effect index out of range", fx.line);
+            error = "effect index out of range";
             return false;
         }
     } else {
         EffectKind kind = EffectKind::None;
         bool found = false;
-        if (!effectKindByName(fx.effect, kind)) {
+        if (!effectKindByName(effectName, kind)) {
             // T-203 (18.12): a custom effect is named by its `.xtfx` header `name:` (else the
             // file's stem).
             for (size_t i = 0; i < seq->size() && !found; ++i) {
@@ -1974,14 +1896,13 @@ bool resolveTimelineEffectDecl(const IrWriter& writer, const TimelineEffectDecl&
                 }
                 const ShaderBuilder* shader =
                     writer.shaderForAsset(findShaderAsset(writer, (*seq)[i].customAsset));
-                if (shader != nullptr && shader->name == fx.effect) {
+                if (shader != nullptr && shader->name == effectName) {
                     index = static_cast<uint32_t>(i);
                     found = true;
                 }
             }
             if (!found) {
-                sink.error(std::string(fileName),
-                           "@timeline " + where + ": unknown effect \"" + fx.effect + "\"", fx.line);
+                error = "unknown effect \"" + std::string(effectName) + "\"";
                 return false;
             }
         }
@@ -1993,8 +1914,7 @@ bool resolveTimelineEffectDecl(const IrWriter& writer, const TimelineEffectDecl&
             }
         }
         if (!found) {
-            sink.error(std::string(fileName), "@timeline " + where + ": the element has no such effect",
-                       fx.line);
+            error = "the element has no such effect";
             return false;
         }
     }
@@ -2003,15 +1923,41 @@ bool resolveTimelineEffectDecl(const IrWriter& writer, const TimelineEffectDecl&
     if ((*seq)[index].kind == EffectKind::Custom) {
         const ShaderBuilder* shader =
             writer.shaderForAsset(findShaderAsset(writer, (*seq)[index].customAsset));
-        paramOk = shader != nullptr && xtfxParamIndex(xtfxParamsOf(*shader), fx.param, paramIndex);
+        paramOk = shader != nullptr && xtfxParamIndex(xtfxParamsOf(*shader), param, paramIndex);
     } else {
-        paramOk = effectParamIndexByName((*seq)[index].kind, fx.param, paramIndex);
+        paramOk = effectParamIndexByName((*seq)[index].kind, param, paramIndex);
     }
     if (!paramOk) {
-        sink.error(std::string(fileName), "@timeline " + where + ": unknown effect parameter", fx.line);
+        error = "unknown effect parameter";
         return false;
     }
-    out.prop = xt::effectParam(index, paramIndex);
+    out = xt::effectParam(index, paramIndex);
+    isColor = paramIndex == xt::prop::kEffectParamColor0 || paramIndex == xt::prop::kEffectParamColor1;
+    return true;
+}
+
+const std::vector<EffectDeclEntry>* staticEffectSequence(const RuleSet& ruleSet, const DomTree& dom,
+                                                         uint32_t element, std::string_view fileName,
+                                                         std::vector<StyleDecl>& scratch) {
+    return staticEffectSequenceImpl(ruleSet, dom, element, scratch, fileName);
+}
+
+namespace {
+
+// Resolves one `effect.<effect>.<param>` declaration against `element`'s effect sequence into a
+// StyleDecl on the 18.2 effect PropId. Reports an error and returns false when it cannot.
+bool resolveTimelineEffectDecl(const IrWriter& writer, const TimelineEffectDecl& fx,
+                               const std::vector<EffectDeclEntry>* seq, const std::string& path,
+                               std::string_view fileName, DiagnosticSink& sink, StyleDecl& out) {
+    std::string where = "effect." + fx.effect + "." + fx.param + " on #" + path;
+    std::string error;
+    PropId prop = 0;
+    bool isColor = false;
+    if (!resolveEffectAddress(writer, fx.effect, fx.param, seq, error, prop, isColor)) {
+        sink.error(std::string(fileName), "@timeline " + where + ": " + error, fx.line);
+        return false;
+    }
+    out.prop = prop;
     out.value = fx.value;
     out.line = fx.line;
     return true;
@@ -2158,7 +2104,7 @@ void emitTimelineGroups(const RuleSet& ruleSet, const DomTree& dom, IrWriter& wr
                     }
                     for (const TimelineEffectDecl& fx : key.effectDecls) {
                         if (!effectsLooked) {
-                            effects = staticEffectSequence(ruleSet, dom, element, inlineScratch, fileName);
+                            effects = staticEffectSequence(ruleSet, dom, element, fileName, inlineScratch);
                             effectsLooked = true;
                         }
                         StyleDecl d;

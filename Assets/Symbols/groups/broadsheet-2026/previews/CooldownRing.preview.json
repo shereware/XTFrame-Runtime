@@ -1,0 +1,12 @@
+{
+  "width": 200,
+  "height": 100,
+  "frames": 0,
+  "ports": {
+    "Dash.ready": true,
+    "Heal.ready": false
+  },
+  "events": [
+    "update 0.6"
+  ]
+}

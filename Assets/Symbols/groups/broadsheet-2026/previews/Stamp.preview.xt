@@ -1,0 +1,22 @@
+<xt>
+  <head>
+    <!-- T-495: preview of the Stamp standard symbol (golden states and thumbnail; T-499: moved into the group). -->
+    <link href="../tokens.xts"/>
+    <link rel="symbols" href="../Stamp.xt"/>
+    <style>
+      body {
+        width: 200px;
+        height: 160px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        row-gap: 12px;
+        background-color: var(--color-bg);
+      }
+    </style>
+  </head>
+  <body>
+    <use symbol="Stamp" id="Mark" slot:text="CASE CLOSED"/>
+  </body>
+</xt>

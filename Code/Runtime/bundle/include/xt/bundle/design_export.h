@@ -22,7 +22,10 @@
 ///     (`name`, `version`, `themes{<theme>{<key>: value}}`, `font{family, <role>{size, weight, ...}}`,
 ///     `space[]`, `radius{}`, `shadow{}`, `board{}`). `themes.base` holds every colour variable of
 ///     `shared.tokens` (`--color-` dropped, kebab-case to camelCase); every `shared.themes/*.xts`
-///     is one more theme listing only the colour variables it overrides.
+///     is one more theme listing only the colour variables it overrides. T-498c (49 §49.12
+///     ruling): the inherited variables -- the preset group's tokens the project does not declare
+///     -- are exported too, after the project's own, and a top-level `inherited` object names them
+///     (`"--color-accent": true, ...`); the import leaves those out again.
 ///   - `palette.json` (an XTFrame addition): the colour library's groups and swatches.
 ///   - `components.md`: the symbol library (name, states, slots, ports, usage notes).
 ///
@@ -47,6 +50,8 @@ struct ExportReport {
     std::vector<std::string> themes;
     /// Colour variables in `themes.base`.
     int colorTokens = 0;
+    /// T-498c: variables of `tokens.json` that came from the implied layer (the `inherited` object).
+    int inheritedTokens = 0;
     /// Swatches in `palette.json`.
     int swatches = 0;
     /// Symbols in `components.md`.
@@ -59,10 +64,11 @@ struct ExportReport {
 
 /// Writes the exchange folder of `ds` (loaded from `project`; `graph` = buildGraph() of the two)
 /// into `outDir` (created when missing; only the four files above are written, each atomically).
-/// `standardSymbolDir` (T-316 addition, may be empty) is the standard symbol library (the directory
-/// holding its `index.json`), read for the Components section and `components.md` as by
-/// BuildOptions::standardSymbolDir. kInvalidArgument for an unnamed project or an empty `outDir`,
-/// kIoError when a file cannot be written (`report->error` says which; `report` may be null).
+/// `standardSymbolDir` (T-316 addition, may be empty) is the standard symbol group (the directory
+/// holding its `index.json` and `tokens.xts`), read for the Components section, `components.md`
+/// and (T-498c) the inherited variables, as by BuildOptions::standardSymbolDir. kInvalidArgument
+/// for an unnamed project or an empty `outDir`, kIoError when a file cannot be written
+/// (`report->error` says which; `report` may be null).
 Status exportClaudeDesign(const UiProject& project, const DesignSystem& ds, const Graph& graph,
                           std::string_view outDir, ExportReport* report,
                           std::string_view standardSymbolDir = std::string_view());
@@ -114,7 +120,9 @@ struct ImportReport {
 ///     title -> identity), `ref: README.md#<anchor>`. Text before the first section is not imported.
 ///   - `tokens.json`: `themes.base` -> draft variable metadata (category color) and, for variables
 ///     the stylesheet lacks, values; every other theme -> `<shared.themes>/<theme>.xts` (an existing
-///     file only gains the variables it lacks). Keys go back as `--color-<kebab-case>`.
+///     file only gains the variables it lacks). Keys go back as `--color-<kebab-case>`. T-498c: a
+///     variable the file's `inherited` object names, or one the project's tokens.yaml marks
+///     `inherited`, gets no metadata and no value (noted / counted as skipped).
 ///   - `palette.json`: groups and swatches (drafts).
 ///   - `components.md`: one text entry (`section: components`, `ref: components.md`).
 /// The project needs a design directory (kNotFound otherwise: run upgradeDesign() first).

@@ -49,6 +49,10 @@ struct PackOptions {
     /// "shared/symbols" for a legacy bundle) is filled from here when this directory has a file of
     /// that name; empty = off.
     std::string standardSymbolDir;
+    /// T-498b: false keeps `standardSymbolDir` for resolving (`xt-standard:` links, the implied
+    /// token layer below) but copies no symbol file into the project (`xtframe-view`, which must
+    /// not write into the project it opens, T-263f).
+    bool copyStandardSymbols = true;
     /// T-199 (26 §26.3.4, 12.7 `--atlas`): pack the bundle's bitmap images into atlas pages
     /// (`atlas/<name>.png`, manifest `atlas[]`, `.xtir` names `atlas:<name>#<asset>`). Also on
     /// when the UI Project's `publish.atlas.enabled` is set. Needs a full run (no `--ui`).
@@ -64,6 +68,28 @@ struct PackOptions {
     /// `fonts/<stem>.subset.ttf` keeping only the glyphs the UIs' text and string tables use
     /// (plus ASCII); missing glyphs are reported as `i18n` warnings. Needs a full run.
     bool fontSubset = false;
+    /// T-527 (22 §22.10.3, 12 §12.7.1 `--fonts system|bundled`): kBundled makes the bundle's text
+    /// depend only on the bundle's own fonts -- the thumbnail shaper registers no system font, every
+    /// packed UI's text (its document text and every packed `strings/*.csv`) must have a glyph in a
+    /// font of that UI's bundle (errors `fonts: <ui>: U+XXXX ... has no glyph in any bundled font`,
+    /// `fonts: <ui> has text but bundles no font ...`), and when the project has an implied group
+    /// (PackReport::impliedGroupDir) the group's `@font-face` fonts go into every UI with text and
+    /// end every manifest `fonts.fallback` chain (one `fonts: <ui>: "..." is not bundled; falling
+    /// back to "..."` warning per UI whose text names no bundled family). Also on when the
+    /// project's `publish.fonts` is "bundled" (ProjectPublish::fonts); the CLI clears that field for
+    /// an explicit `--fonts system`. `strict` changes none of these levels.
+    FontsMode fontsMode = FontsMode::kSystem;
+    /// T-527b (22 §22.10.3 "standard fonts", 12 §12.7.1 `--fonts-dir`): the standard font directory
+    /// (`<exe dir>/fonts` for xtframe-pack, a copy of `Assets/Fonts`); empty = off. Its `.ttf`/`.otf`
+    /// files are registered with the thumbnail shaper (after the system fonts, before
+    /// `shared.fontDirs`). Under kBundled a UI whose text names a standard family (any name of a
+    /// `font-family` list, case-insensitively, with no `@font-face` family in that list) gets that
+    /// family's files; text naming neither (and no implied group font to fall back to) gets the
+    /// "Noto Sans" files with a `fonts: <ui>: "..." is not bundled; falling back to "Noto Sans"`
+    /// warning; code points no bundled font covers are taken from the standard fonts that have
+    /// them, with a `fonts: <ui>: N code points (...) covered by standard font "...", bundled`
+    /// warning. Manifest `assets[].sources` names such a file `fonts/<file>`.
+    std::string standardFontDir;
     /// T-312a (35 §35.15, `--allow-placeholders`): a `manifest/assets.yaml` entry with status
     /// `placeholder` is an error (`asset.placeholderShipped`) unless this is set; then it is a
     /// warning.
@@ -99,6 +125,16 @@ struct PackReport {
     /// T-198: standard symbol files copied into the project's symbol directory this run (paths
     /// relative to the project root, '/' separators).
     std::vector<std::string> standardSymbolsCopied;
+    /// T-498b (49 §49.3 ruling, the implied default layer): when a UI of the project links a
+    /// standard symbol (`xt-standard:<Name>`, or a `<shared.symbols>` file the group also has),
+    /// the group `standardSymbolDir` names supplies every compile's
+    /// `CompileOptions::impliedTokenFiles` (its `tokens.xts`, before the project's
+    /// `shared.tokens`, the project's values winning), a `searchDirs` entry for its fonts and
+    /// textures, the manifest's base `tokens` and its theme files (`tokens-night.xts` -> theme
+    /// `night`, merged with a project theme of the same name, the project's values winning).
+    /// This is that group's directory (UTF-8, '/'); empty when no UI links a standard symbol or
+    /// `standardSymbolDir` is empty. Nothing is written into the project for it.
+    std::string impliedGroupDir;
     /// T-199: atlas pages written and entries placed; `atlasPixelsUsed` / `atlasPixelsTotal` =
     /// entry pixels over page pixels (the packing efficiency).
     uint32_t atlasPages = 0;
@@ -113,6 +149,19 @@ struct PackReport {
     uint32_t variants3x = 0;
     /// T-199: fonts rewritten as subsets.
     uint32_t fontsSubset = 0;
+    /// T-527 (`--fonts bundled`): `fonts: <ui>: "..." is not bundled; falling back to "..."`
+    /// warnings issued (one per UI at most).
+    uint32_t fontsFallbackWarnings = 0;
+    /// T-527 (`--fonts bundled`): `fonts:` coverage errors issued (at most one per UI).
+    uint32_t fontsErrors = 0;
+    /// T-527b (`--fonts bundled`): `fonts: <ui>: N code points (...) covered by standard font
+    /// "...", bundled` warnings issued (one per standard font a UI takes for coverage).
+    uint32_t fontsCoverageWarnings = 0;
+    /// T-540 (27 §27.4.3): one "<ui id>: flow.animatesWithContinuousSignal: ..." line per edge of
+    /// a packed UI's flow that drives a visual property from a continuous signal (the flow bound
+    /// against the packed Document). Under `PackOptions::strict` each is an error diagnostic
+    /// instead and is not listed here.
+    std::vector<std::string> flowWarnings;
 };
 
 /// Packs `project` into `options.outDir` per §22.3/§22.4. With a non-empty `options.onlyUis` and an

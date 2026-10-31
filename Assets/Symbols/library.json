@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "id": "preset",
+  "name": "XTFrame presets",
+  "readOnly": true,
+  "default": "broadsheet-2026",
+  "groups": [
+    "broadsheet-2026"
+  ]
+}

@@ -17,8 +17,8 @@ constexpr const char* kElementOutputs[] = {
     "Click", "PointerEnter", "PointerLeave", "Focus", "Blur", "AnimationEnd", "Change", "hover",
 };
 constexpr const char* kElementInputs[] = {
-    "setText",     "setStyle", "setValue",    "addClass",      "removeClass",
-    "toggleClass", "focus",    "setProperty", "playAnimation", "stopAnimation",
+    "setText",  "setStyle", "setValue",    "addClass",      "removeClass",   "toggleClass",
+    "setState", "focus",    "setProperty", "playAnimation", "stopAnimation",
 };
 constexpr const char* kAnimOutputs[] = {"Marker", "localTime", "Finished"};
 constexpr const char* kAnimInputs[] = {"play", "pause", "resume", "seek", "setSpeed"};

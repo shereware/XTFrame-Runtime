@@ -1,0 +1,69 @@
+<xt>
+  <head>
+    <!-- CompassStrip: standard symbol (docs/design/30-ui-project.md 30.4). See README.md.
+         Style: Broadsheet (docs/design/47-symbol-visual-style.md).
+         `heading` (degrees, 0 = north, clockwise) scrolls a strip of 45-degree marks (60 px each); the strip
+         repeats north so every heading 0..360 has a full window. -->
+    <symbol name="CompassStrip" requires="slots: marker">
+      <div id="Box" port:heading="number in">
+        <div id="RuleTop"></div>
+        <div id="Window">
+          <div id="Strip" bind:translate-x="heading | clamp(0, 360) | range(0, 360, 30, -450)">
+            <span id="S0" class="mark">W</span>
+            <span id="S1" class="mark">NW</span>
+            <span id="S2" class="mark major">N</span>
+            <span id="S3" class="mark">NE</span>
+            <span id="S4" class="mark">E</span>
+            <span id="S5" class="mark">SE</span>
+            <span id="S6" class="mark">S</span>
+            <span id="S7" class="mark">SW</span>
+            <span id="S8" class="mark">W</span>
+            <span id="S9" class="mark">NW</span>
+            <span id="S10" class="mark major">N</span>
+            <span id="S11" class="mark">NE</span>
+            <span id="S12" class="mark">E</span>
+            <span id="S13" class="mark">SE</span>
+          </div>
+          <div id="Needle"></div>
+        </div>
+        <div id="RuleBottom"></div>
+        <div id="Marker"><slot name="marker"></slot></div>
+      </div>
+    </symbol>
+    <style>
+      symbol(CompassStrip) {
+        #Box { display: flex; flex-direction: column; align-items: center; font-family: var(--font-body); }
+        #RuleTop, #RuleBottom {
+          width: 360px;
+          height: 7px;
+          background-image: var(--tex-rule-h);
+          background-repeat: repeat-x;
+          background-size: 1px 7px;
+        }
+        #Window {
+          position: relative;
+          width: 360px;
+          height: 32px;
+          overflow: hidden;
+        }
+        #Strip { position: absolute; left: 0px; top: 6px; display: flex; }
+        .mark {
+          flex-shrink: 0;
+          width: 60px;
+          text-align: center;
+          color: var(--color-text-dim);
+          font-size: var(--font-size-xs);
+        }
+        .major { color: var(--color-text); font-family: var(--font-display); font-weight: 900; }
+        #Needle {
+          position: absolute;
+          left: 179px;
+          top: 0px;
+          width: 2px;
+          height: 32px;
+          background-color: var(--color-focus);
+        }
+      }
+    </style>
+  </head>
+</xt>

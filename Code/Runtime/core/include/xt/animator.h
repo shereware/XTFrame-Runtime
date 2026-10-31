@@ -174,7 +174,14 @@ public:
     bool hasOverride(NodeId node, PropId prop) const;
     /// The Value's external data (Path/FloatArray/Stops) must stay alive for as long as the
     /// override is set; the caller guarantees it.
-    void setOverride(NodeId node, PropId prop, const Value& value);
+    /// 04 §4.7 (T-545): a layer-4 override that may tween. duration <= 0 writes `value` at once.
+    /// With duration > 0 the override animates from the current override value (or, when there is
+    /// none, from the property's live value) to `value`; a new call during a tween restarts from
+    /// the tweened value. The stored override is always the target; clearOverride() drops the
+    /// tween with it. Only Float/Length/Color/Vec2 values tween (others are written at once), and
+    /// the tween starts at the clock of the next evaluate().
+    void setOverride(NodeId node, PropId prop, const Value& value, float duration = 0.0f,
+                     Easing easing = Easing::linear());
     /// Removes an override previously set with `setOverride`. No-op if none is set.
     void clearOverride(NodeId node, PropId prop);
     /// Drops every transition and override targeting `node`, without firing onTransitionEnd.
@@ -279,7 +286,16 @@ private:
     struct Override {
         NodeId node;
         PropId prop;
-        Value value;
+        Value value;  // The target.
+        // T-545 tween state; all in the entry, so a tween allocates nothing.
+        Value from;   // Valid when fromKnown.
+        Value shown;  // The value the last evaluate() applied (valid when shownValid).
+        float startClock = 0;
+        float duration = 0;
+        Easing easing{};
+        uint8_t tweenState = 0;  // 0 = none, 1 = starts at the next evaluate(), 2 = running.
+        bool fromKnown = false;
+        bool shownValid = false;
     };
 
     struct Pending {

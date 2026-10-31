@@ -191,6 +191,29 @@ Result<DocumentHandle> reloadUi(Context&, Bundle&, DocumentHandle, std::string_v
 - `symbols[]`（有符號時才寫，位於 `fonts` 後、`flows` 前）：`{name, source, requires{states, slots}, stateGroups[{name, states}], slots, ports[{name, type, dir}]}`；來源為專案符號目錄（`shared.symbols`，檔名排序）再各 UI 文件，同名以先定義者為準。API：`Bundle::symbolContracts()`、`readSymbolContracts(xt, sourceName)`、`symbolContractSummary()`（C++ 欄位 `slotNames`，因 `slots` 與 Qt 巨集衝突；JSON 鍵仍是 `slots`）。
 - `bundle::irFileHash(span<const uint8_t>)`：FNV-1a 64，將 META `compileTimeUnix` 與 META 區塊標頭 CRC 歸零後計算；`packUi` 與圖集重寫皆用它，修掉 `test_ui_project` 的 flaky；`.xtir` 位元組本身仍含時間，未加 `--deterministic`。
 
+### 22.10.3 字型確定性：`--fonts bundled`（T-527，2026-10-29 裁決）
+
+問題（見 `claude/web-wasm` 的 52 §52.10 第 8 項）：三個示範專案都沒有 `@font-face`，文字全靠宿主的系統字型——同一個 bundle 在 Windows、Linux、macOS 畫出不同的字（fallback 不同），在沒有系統字型的平台（Web、主機）則一個字都沒有。bundle 是發佈物，像素必須只取決於 bundle 自己的內容。
+
+定案：
+- **`xtframe-pack --fonts bundled`**（`PackOptions::fontsMode`，`publish.fonts: "bundled"` 同義）：縮圖著色器只註冊 `shared.fontDirs` 與 `@font-face` 的字型（不呼叫 `addSystemFonts()`）；收集每個 UI 的文件文字與所有 `strings/*.csv` 的碼位（與 `--font-subset` 同一條收集路徑，但不做子集），逐 UI 檢查「每個碼位至少有一個該 UI bundle 內的字型有字形」，缺者為**錯誤** `fonts: <ui>: U+XXXX … has no glyph in any bundled font`（最多列 20 個），有文字但 bundle 內零字型為錯誤 `fonts: <ui> has text but bundles no font (declare @font-face, or pack with --fonts system)`。exit 1，bundle 仍寫出（與其他錯誤同），manifest `uis[].requires.text` 不變。
+- **隱含預設層的字型是最後一道 fallback**：專案命中隱含群組（T-498b `detectImpliedGroup`）時，群組 `tokens.xts` 的 `@font-face` 字型在 `bundled` 模式下**一律進 bundle**（即使專案文字沒有直接指名那個家族），並接到每個 UI 的 `fonts.fallback` 鏈末端（§22.10 `fonts.fallback[lang]`，沒有鏈就建一條空語言鏈）；pack 印一則警告 `fonts: <ui>: "<family stack>" is not bundled; falling back to "<group family>"`，讓作者知道畫出來的是群組字型。沒有隱含群組又沒有 `@font-face` → 上一條的錯誤。
+- ~~執行時不變~~ → **執行時必須註冊 bundle 內的字型資產（T-555，2026-10-31 裁決；T-554 實測：Windows 上 `--fonts bundled` 的 Noto 對畫面零作用，刪掉 `.ttf` 重畫逐位元組相同——打包只寫進 manifest `uis[].assets`，`.xtir` 不寫 `@font-face`，而執行時只註冊 IR 的 `@font-face` 與系統字型，`Bundle::fontFallbacks()` 從無呼叫者）**：R 層 `bundle::addBundleFonts(const Bundle&, uiId, TextShaper&)`（50 §50.8 T-507 列的 API）在載入 UI 時對該 UI manifest 內 `kind=font` 的資產呼叫 `addFontMemory`（以檔名／family 去重，重載不重複註冊），並把 `fonts.fallback` 的語言鏈（含 `""` 預設鏈，T-527c：`Bundle::fontFallbacks()` 接受空語言鍵）交給 shaper；呼叫點：`xtframe-view` 的載入、`Bundle::loadUi`／`host::Surface`、C ABI `xt_bundle_open`／`xt_surface_create`、CE `CSurface::Open`（CE-63）。`system_fonts` 開關照舊只管系統字型。測試：`Tests/bundle` 以只含 bundle 字型、無系統字型的 shaper 載入語料庫 bundle，文字 run 的字型來源為 bundle 資產；語料庫在無系統 Noto 的機器上像素與 expected 相同。`xtframe-player`（見 `claude/web-wasm` 的 52 §52.9）與 `check_wasm.sh` 的示範 bundle 以 `--fonts bundled` 打包。
+- `--fonts system`（預設）維持 T-97 的行為；`--strict` 不改變本模式的錯誤／警告分級。
+
+**標準字型（T-527b，2026-10-29 使用者：「統一用 Noto 家族吧」）**：
+- `Assets/Fonts/` 是隨工具出貨的標準字型：Noto Sans（Regular／Bold／Italic／BoldItalic）、Noto Serif（Regular／Bold／Italic，與群組同檔，T-527d）與 Noto Sans TC（Regular，CJK），皆 OFL；建置時複製到每個工具的 `<exe dir>/fonts`（與 `symbols/` 同一套 `xt_copy_*` 機制），wasm 的 `dist/fonts` 與 `xtframe-data.zip` 的 `fonts/` 亦含。Noto Serif／Noto Serif Display 留在符號庫群組。
+- `PackOptions::standardFontDir`（CLI `--fonts-dir <dir>`，預設 `<exe dir>/fonts`；空字串 = 關）。**`bundled` 模式的解析順序**，逐 UI：(1) UI 自己的 `@font-face`；(2) 文字 `font-family` 堆疊裡任一名字（不分大小寫）等於標準字型的家族名 → 該家族的檔案（全部字重／斜體）進 bundle，**不**警告——這是正常路徑，示範專案就靠它；(3) 命中隱含群組時群組的 `@font-face` 字型（原規則，警告）；(4) 都沒有 → 標準字型的 **Noto Sans** 進 bundle，警告 `fonts: <ui>: "<family stack>" is not bundled; falling back to "Noto Sans"`。
+- **碼位覆蓋補字型**：覆蓋檢查發現沒有任何 bundle 內字型有字形的碼位時，先在標準字型裡找有字形的檔（Noto Sans TC），有就進 bundle 並印一則警告 `fonts: <ui>: N code points (U+XXXX …) covered by standard font "Noto Sans TC", bundled`，仍沒有才是錯誤。starter 的 `zh-TW.csv` 因此過。
+- 進 bundle 的標準字型與 `@font-face` 字型一樣走 `--font-subset`（有開時）；manifest `assets[].sources` 寫 `fonts/<file>`（標準字型目錄相對路徑）。
+- `system` 模式（預設）不受影響：標準字型目錄只是縮圖著色器多註冊的一個目錄（排在系統字型之後、`shared.fontDirs` 之前）。
+- 示範專案與 starter 統一用 Noto：示範的 `font-family` 堆疊改為 Noto：game-ui、challenge-menu `"Noto Sans", sans-serif`；原本是 serif 設計的 fairy-forest-menu（Palatino）與 npdo（Georgia）`"Noto Serif", serif`（T-527d；T-527b 先把 fairy-forest 改成了 Noto Sans）；starter 的 `--font-family` 已是群組的 Noto Serif，`@font-fallback zh-TW` 改為 `"Noto Sans TC"`。`build_wasm.sh`／`check_wasm.sh`／`wasm_bench.sh`／`Tests/player/smoke.mjs` 的示範 bundle 改用 `--fonts bundled`。
+
+T-527 實作後的補充（2026-10-29）：
+- 三個示範專案（`game-ui`、`challenge-menu`、`fairy-forest-menu`）都沒有符號連結，隱含群組不會啟動，`--fonts bundled` 下是「有文字但零字型」錯誤；它們的 `font-family` 是各自的系統字型堆疊（Segoe UI／Bahnschrift／Palatino）。**不**把 fallback 觸發條件放寬到「沒有群組也補群組字型」——那會把 HUD 畫成 Noto Serif，字體是示範的視覺決定，由使用者決定要加 `@font-face`（哪個 OFL 字型）還是加符號連結；（2026-10-29 使用者裁定統一用 Noto 家族 → 上方「標準字型」段，T-527b。）
+- `Bundle::fontFallbacks()`（`bundle_json.cpp`）略過語言鍵為空的鏈，所以本節「沒有鏈就建語言 `""` 的一條」目前只寫進 manifest、執行時讀不到；補字型本身有效（`@font-face` 家族可直接指名），但「接到 fallback 鏈末端」在沒有語言鏈的 UI 上要等 `Bundle` 接受 `""` 作預設鏈（候選 T-527c，主線）。
+- 覆蓋檢查涵蓋所有 `strings/*.csv` 是刻意的：`ui-project-starter` 的 `zh-TW.csv` 有 113 個 CJK 碼位、群組只有 Noto Serif，所以 starter 在 `bundled` 模式下會錯——一個帶 zh-TW 字串卻沒有 CJK 字型的 bundle 在 Web 上就是沒有中文，報錯是對的；要過就得補一個 CJK 字型（內容決定）。
+
 ### 22.10.2 T-204（#203）：manifest `glyphs`
 
 - 掃描 `<assetRoot>/glyphs/<device>/<key>.<ext>` 再 `<root>/glyphs/...`，同 device/key 先找到者為準；device 只接受 mouse、gamepad、touch、keyboard（其他目錄警告後略過）；只收點陣圖，`@2x` 隨 1x 打包；**glyph 圖不進圖集**（執行期依名稱解析，`Document::resolveGlyphs` 只比對 kind 0 名稱）。

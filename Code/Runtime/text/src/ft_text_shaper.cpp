@@ -245,10 +245,10 @@ uint32_t FtTextShaper::addFontDir(std::string_view dir, uint32_t maxFiles) {
     if (ec) {
         return 0;
     }
+    // T-524: the entries are sorted before they are added, so the fallback order does not
+    // depend on the file system's listing order (see addSystemFonts()).
+    std::vector<std::string> files;
     for (const std::filesystem::directory_entry& entry : it) {
-        if (added >= maxFiles) {
-            break;
-        }
         if (!entry.is_regular_file(ec)) {
             continue;
         }
@@ -259,8 +259,15 @@ uint32_t FtTextShaper::addFontDir(std::string_view dir, uint32_t maxFiles) {
         if (ext != ".ttf" && ext != ".otf") {
             continue;
         }
+        files.push_back(pathToUtf8(entry.path()));
+    }
+    std::sort(files.begin(), files.end());
+    for (const std::string& file : files) {
+        if (added >= maxFiles) {
+            break;
+        }
         std::lock_guard<std::mutex> lock(impl_->mutex);
-        if (impl_->fonts.addFontFileDeferred(pathToUtf8(entry.path()))) {
+        if (impl_->fonts.addFontFileDeferred(file)) {
             // Directory fonts (system fonts) are fallback candidates so that any family request
             // and any script can resolve to a font that has the glyph (07.3 step 3).
             impl_->fonts.addFallbackFont(impl_->fonts.fontCount() - 1);
@@ -305,6 +312,10 @@ uint32_t FtTextShaper::addSystemFonts(uint32_t maxFiles) {
                 dirs.push_back(pathToUtf8(entry.path()));
             }
         }
+        // T-524: directory_iterator order is whatever the file system returns (raw readdir
+        // natively, sorted under Node's NODERAWFS), and the first family registered wins a fallback, so
+        // the fallback font of the same machine differed between hosts. Sorted = the same on every host.
+        std::sort(dirs.begin(), dirs.end());
         for (const std::string& d : dirs) {
             if (added >= maxFiles) {
                 return added;

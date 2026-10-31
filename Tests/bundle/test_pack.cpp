@@ -2,6 +2,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <json.hpp>
 #include <memory>
 #include <set>
 #include <string>
@@ -13,6 +14,7 @@
 #include "xt/bundle/bundle.h"
 #include "xt/bundle/pack.h"
 #include "xt/bundle/project_file.h"
+#include "xt/bundle/ui_project.h"
 #include "xt/command_list.h"
 #include "xt/compile/utf8_path.h"
 #include "xt/context.h"
@@ -695,7 +697,8 @@ TEST_CASE("pack: an xt-standard: symbol link resolves in the standard symbol lib
     PackOptions options;
     options.outDir = outDir("xt_standard");
     options.onlyUis.push_back("hud");
-    options.standardSymbolDir = std::string(XT_TEST_BUNDLE_DIR) + "/../../Assets/Symbols";
+    options.standardSymbolDir =
+        std::string(XT_TEST_BUNDLE_DIR) + "/../../Assets/Symbols/groups/broadsheet-2026";
     const PackReport report = pack(project, options);
     CHECK(report.ok);
     CHECK(report.standardSymbolsCopied.empty());  // Nothing is copied for the scheme.
@@ -1831,4 +1834,514 @@ TEST_CASE("pack: editor-only subtrees are not published (T-342)") {
     REQUIRE(sw::readPng(out + "/thumbs/hud.png", rgba, width, height));
     REQUIRE(width == 320);
     CHECK(textPixels(rgba, width, 160, 90, 160, 90) == 0);
+}
+
+// --- T-498b: the implied default token layer (Docs/design/49-symbol-sets.md 49.3 ruling) -------
+
+namespace {
+
+const fs::path kPresetGroupT498b =
+    fs::path(XT_TEST_BUNDLE_DIR) / ".." / ".." / "Assets" / "Symbols" / "groups" / "broadsheet-2026";
+
+void writeTextT498b(const fs::path& path, const std::string& text) {
+    std::error_code ec;
+    fs::create_directories(path.parent_path(), ec);
+    std::ofstream(path, std::ios::binary | std::ios::trunc) << text;
+}
+
+std::string readTextT498b(const fs::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+}
+
+/// A fresh UI Project whose one UI (`main`) is `document`, with `shared/tokens.xts` = `tokens`.
+UiProject projectT498b(const std::string& name, const std::string& document, const std::string& tokens) {
+    const fs::path dir = xt::test::tempDir() / ("xt_pack_t498b_" + name);
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    UiProject project;
+    std::string error;
+    REQUIRE_MESSAGE(createUiProject(compile::genericPathToUtf8(dir), "T498b", "t498b", "", &project,
+                                    &error) == Status::kOk,
+                    error);
+    writeTextT498b(dir / "main" / "main.xt", document);
+    writeTextT498b(dir / "shared" / "tokens.xts", tokens);
+    Result<UiProject> loaded = UiProject::load(compile::genericPathToUtf8(dir), &error);
+    REQUIRE_MESSAGE(loaded.ok(), error);
+    return loaded.value();
+}
+
+std::string diagnosticsT498b(const PackReport& report) {
+    std::string text;
+    for (const compile::Diagnostic& d : report.diagnostics) {
+        text += d.file + ": " + d.message + "\n";
+    }
+    return text;
+}
+
+std::string tokenValueT498b(const Bundle& bundle, std::string_view name) {
+    for (const TokenDef& token : bundle.tokens()) {
+        if (token.name == name) {
+            return token.value;
+        }
+    }
+    return std::string();
+}
+
+constexpr const char* kButtonDocT498b =
+    "<xt><head><link rel=\"symbols\" href=\"xt-standard:Button\"/></head>\n"
+    "<body><use symbol=\"Button\" id=\"Go\" slot:label=\"Go\"/></body></xt>\n";
+
+}  // namespace
+
+TEST_CASE(
+    "pack: the preset group is the implied token layer; the project declares only its overrides (T-498b)") {
+    // No @font-face, no --tex-*, none of the 57 standard tokens but one override: the group supplies
+    // the rest (tokens, fonts, textures) and the pack is strict-clean.
+    const UiProject project =
+        projectT498b("implied", kButtonDocT498b, ":root { --color-accent: #ff0000; }\n");
+    PackOptions options;
+    options.thumbnails = false;
+    options.strict = true;
+    options.outDir = outDir("t498b_implied");
+    options.standardSymbolDir = compile::genericPathToUtf8(kPresetGroupT498b);
+    const PackReport report = pack(project, options);
+    REQUIRE_MESSAGE(report.ok, diagnosticsT498b(report));
+    CHECK_MESSAGE(report.diagnostics.empty(), diagnosticsT498b(report));
+    CHECK(report.impliedGroupDir == compile::genericPathToUtf8(kPresetGroupT498b.lexically_normal()));
+    CHECK(report.standardSymbolsCopied.empty());  // An `xt-standard:` link copies nothing.
+
+    std::string error;
+    Result<std::unique_ptr<Bundle>> opened = Bundle::open(options.outDir, nullptr, &error);
+    REQUIRE_MESSAGE(opened.ok(), error);
+    const Bundle& bundle = *opened.value();
+    CHECK(tokenValueT498b(bundle, "--color-accent") == "#ff0000");  // The project wins.
+    CHECK(tokenValueT498b(bundle, "--tex-grain") == "url(\"textures/grain-paper.png\")");  // Implied.
+    CHECK(tokenValueT498b(bundle, "--color-bg") == "#e6e2d6");
+    CHECK(bundle.tokens().size() >= 57);
+    // The group's theme file is the bundle's `night` theme, generated from its tokens only.
+    REQUIRE(bundle.themes().size() == 1);
+    CHECK(bundle.themes()[0].name == "night");
+    CHECK(bundle.themes()[0].file == "themes/night.xts");
+    const std::string night = readTextT498b(fs::path(options.outDir) / "themes" / "night.xts");
+    CHECK(night.find("--color-bg: #262320;") != std::string::npos);
+    CHECK(night.find("@font-face") == std::string::npos);
+    // Button's fonts and texture come from the group through searchDirs / the sheet directory.
+    size_t fonts = 0;
+    size_t images = 0;
+    for (const AssetInfo& asset : bundle.assetTable()) {
+        if (asset.kind == "font") ++fonts;
+        if (asset.kind == "image") ++images;
+    }
+    CHECK(fonts == 5);  // Every @font-face of the group's tokens.xts, as a project declaring them packed.
+    CHECK(images >= 1);
+    // Nothing was written into the project for it.
+    const fs::path root = compile::pathFromUtf8(project.rootDir);
+    CHECK_FALSE(fs::exists(root / "shared" / "fonts"));
+    CHECK_FALSE(fs::exists(root / "shared" / "textures"));
+    CHECK(readTextT498b(root / "shared" / "tokens.xts") == ":root { --color-accent: #ff0000; }\n");
+}
+
+TEST_CASE(
+    "pack: a project theme of the same name merges over the implied theme; other names stay apart (T-498b)") {
+    UiProject project = projectT498b("themes", kButtonDocT498b, ":root { --color-accent: #ff0000; }\n");
+    const fs::path root = compile::pathFromUtf8(project.rootDir);
+    writeTextT498b(root / "shared" / "themes" / "night.xts",
+                   ":root { --color-accent: #00ff00; --mine: 1px; }\n");
+    writeTextT498b(root / "shared" / "themes" / "dark.xts", "/* own */\n:root { --color-bg: #000000; }\n");
+    PackOptions options;
+    options.thumbnails = false;
+    options.strict = true;
+    options.outDir = outDir("t498b_themes");
+    options.standardSymbolDir = compile::genericPathToUtf8(kPresetGroupT498b);
+    const PackReport report = pack(project, options);
+    REQUIRE_MESSAGE(report.ok, diagnosticsT498b(report));
+    std::string error;
+    Result<std::unique_ptr<Bundle>> opened = Bundle::open(options.outDir, nullptr, &error);
+    REQUIRE_MESSAGE(opened.ok(), error);
+    REQUIRE(opened.value()->themes().size() == 2);
+    CHECK(opened.value()->themes()[0].name == "dark");
+    CHECK(opened.value()->themes()[1].name == "night");
+    // `dark` is the project's file as written; `night` is the implied theme with the project's
+    // values in place and its extra token after them.
+    CHECK(readTextT498b(fs::path(options.outDir) / "themes" / "dark.xts") ==
+          "/* own */\n:root { --color-bg: #000000; }\n");
+    const std::string night = readTextT498b(fs::path(options.outDir) / "themes" / "night.xts");
+    CHECK(night.find("--color-accent: #00ff00;") != std::string::npos);
+    CHECK(night.find("--color-accent: #d9d3c4;") == std::string::npos);
+    CHECK(night.find("--color-bg: #262320;") != std::string::npos);
+    CHECK(night.find("--mine: 1px;") != std::string::npos);
+    CHECK(night.find("--mine") > night.find("--motion-normal"));
+}
+
+TEST_CASE(
+    "pack: no standard symbol linked -> no implied layer; token.sameAsDefault warns on a repeated default "
+    "(T-498b)") {
+    {
+        const UiProject project = projectT498b("plain", "<xt><body><div id=\"a\"/></body></xt>\n",
+                                               ":root { --color-bg: #e6e2d6; }\n");
+        PackOptions options;
+        options.thumbnails = false;
+        options.strict = true;
+        options.outDir = outDir("t498b_plain");
+        options.standardSymbolDir = compile::genericPathToUtf8(kPresetGroupT498b);
+        const PackReport report = pack(project, options);
+        REQUIRE_MESSAGE(report.ok, diagnosticsT498b(report));
+        CHECK(report.impliedGroupDir.empty());
+        CHECK(report.diagnostics.empty());  // No implied layer: nothing to repeat.
+        std::string error;
+        Result<std::unique_ptr<Bundle>> opened = Bundle::open(options.outDir, nullptr, &error);
+        REQUIRE_MESSAGE(opened.ok(), error);
+        CHECK(opened.value()->tokens().size() == 1);
+        CHECK(opened.value()->themes().empty());
+    }
+    {
+        // The same value as the group's default is the lint warning; the pack still succeeds.
+        const UiProject project = projectT498b("same", kButtonDocT498b,
+                                               ":root { --color-bg: #e6e2d6; --color-accent: #ff0000; }\n");
+        PackOptions options;
+        options.thumbnails = false;
+        options.strict = true;
+        options.outDir = outDir("t498b_same");
+        options.standardSymbolDir = compile::genericPathToUtf8(kPresetGroupT498b);
+        const PackReport report = pack(project, options);
+        REQUIRE_MESSAGE(report.ok, diagnosticsT498b(report));
+        REQUIRE(report.diagnostics.size() == 1);
+        CHECK(report.diagnostics[0].level == compile::Diagnostic::Level::Warning);
+        CHECK(report.diagnostics[0].file == "shared/tokens.xts");
+        CHECK(report.diagnostics[0].message ==
+              "token.sameAsDefault: --color-bg repeats the preset group's default; delete it to follow the "
+              "group");
+    }
+}
+
+TEST_CASE("pack: copyStandardSymbols off resolves the group but writes no symbol into the project (T-498b)") {
+    const UiProject project =
+        projectT498b("nocopy",
+                     "<xt><head><link rel=\"symbols\" href=\"../shared/symbols/Button.xt\"/></head>\n"
+                     "<body><use symbol=\"Button\" id=\"Go\" slot:label=\"Go\"/></body></xt>\n",
+                     ":root { --color-accent: #ff0000; }\n");
+    const fs::path root = compile::pathFromUtf8(project.rootDir);
+    PackOptions options;
+    options.thumbnails = false;
+    options.outDir = outDir("t498b_nocopy");
+    options.standardSymbolDir = compile::genericPathToUtf8(kPresetGroupT498b);
+    options.copyStandardSymbols = false;
+    const PackReport report = pack(project, options);
+    CHECK_FALSE(report.ok);  // The link names a file that is not there (xtframe-view's T-263f note).
+    CHECK(report.standardSymbolsCopied.empty());
+    CHECK_FALSE(fs::exists(root / "shared" / "symbols" / "Button.xt"));
+    CHECK(report.impliedGroupDir == compile::genericPathToUtf8(kPresetGroupT498b.lexically_normal()));
+    // With the copy on, the same project packs and the file is pulled in.
+    options.copyStandardSymbols = true;
+    const PackReport again = pack(project, options);
+    CHECK_MESSAGE(again.ok, diagnosticsT498b(again));
+    CHECK(again.standardSymbolsCopied == std::vector<std::string>{"shared/symbols/Button.xt"});
+}
+
+// --- T-527: `--fonts bundled` (Docs/design/22-bundle.md §22.10.3) --------------------------------
+
+namespace {
+
+const fs::path kTestFontsT527 = fs::path(XT_TEST_BUNDLE_DIR) / ".." / "fonts";
+
+/// A fresh UI Project whose one UI (`main`) is `document`; `withFont` copies
+/// Tests/fonts/NotoSans-Regular.subset.ttf to `main/fonts/` for an `@font-face`.
+UiProject projectT527(const std::string& name, const std::string& document, bool withFont = false) {
+    const fs::path dir = xt::test::tempDir() / ("xt_pack_t527_" + name);
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    std::string error;
+    REQUIRE_MESSAGE(
+        createUiProject(compile::genericPathToUtf8(dir), "T527", "t527", "", nullptr, &error) == Status::kOk,
+        error);
+    writeTextT498b(dir / "main" / "main.xt", document);
+    if (withFont) {
+        fs::create_directories(dir / "main" / "fonts", ec);
+        fs::copy_file(kTestFontsT527 / "NotoSans-Regular.subset.ttf",
+                      dir / "main" / "fonts" / "NotoSans-Regular.subset.ttf", ec);
+        REQUIRE(ec.value() == 0);
+    }
+    Result<UiProject> loaded = UiProject::load(compile::genericPathToUtf8(dir), &error);
+    REQUIRE_MESSAGE(loaded.ok(), error);
+    return loaded.value();
+}
+
+/// The diagnostics whose message starts with "fonts: ", one per line.
+std::string fontsDiagnosticsT527(const PackReport& report) {
+    std::string text;
+    for (const compile::Diagnostic& d : report.diagnostics) {
+        if (d.message.rfind("fonts: ", 0) == 0) {
+            text += std::string(d.level == compile::Diagnostic::Level::Error ? "error: " : "warning: ") +
+                    d.message + "\n";
+        }
+    }
+    return text;
+}
+
+constexpr const char* kPlainTextDocT527 =
+    "<xt><head><style>\n.t { font-family: \"Nowhere Sans\"; }\n</style></head>\n"
+    "<body><div class=\"t\">Hello</div></body></xt>\n";
+
+std::string fontFaceDocT527(const std::string& text) {
+    return "<xt><head><style>\n"
+           "@font-face { font-family: \"Test Sans\"; src: \"fonts/NotoSans-Regular.subset.ttf\"; }\n"
+           ".t { font-family: \"Test Sans\"; }\n</style></head>\n"
+           "<body><div class=\"t\">" +
+           text + "</div></body></xt>\n";
+}
+
+}  // namespace
+
+TEST_CASE("pack --fonts bundled: text without any bundled font is an error; --fonts system is not (T-527)") {
+    const UiProject project = projectT527("nofont", kPlainTextDocT527);
+    PackOptions options;
+    options.thumbnails = false;
+    options.outDir = outDir("t527_nofont_system");
+    const PackReport system = pack(project, options);
+    CHECK_MESSAGE(system.ok, diagnosticsT498b(system));
+    CHECK(fontsDiagnosticsT527(system).empty());
+    CHECK(system.fontsErrors == 0);
+
+    options.fontsMode = FontsMode::kBundled;
+    options.outDir = outDir("t527_nofont_bundled");
+    const PackReport bundled = pack(project, options);
+    CHECK_FALSE(bundled.ok);
+    CHECK(fontsDiagnosticsT527(bundled) ==
+          "error: fonts: main has text but bundles no font (declare @font-face, or pack with --fonts "
+          "system)\n");
+    CHECK(bundled.fontsErrors == 1);
+    CHECK(bundled.fontsFallbackWarnings == 0);
+    CHECK(fs::exists(fs::path(options.outDir) / "manifest.json"));  // The bundle is still written.
+}
+
+TEST_CASE("pack --fonts bundled: a project @font-face covering all text is clean (T-527)") {
+    const UiProject project = projectT527("covered", fontFaceDocT527("Hello"), /*withFont=*/true);
+    PackOptions options;
+    options.thumbnails = false;
+    options.fontsMode = FontsMode::kBundled;
+    options.outDir = outDir("t527_covered");
+    const PackReport report = pack(project, options);
+    REQUIRE_MESSAGE(report.ok, diagnosticsT498b(report));
+    CHECK(fontsDiagnosticsT527(report).empty());
+    CHECK(report.fontsErrors == 0);
+    CHECK(report.fontsFallbackWarnings == 0);
+}
+
+TEST_CASE("pack --fonts bundled: a code point no bundled font has is listed (T-527)") {
+    const UiProject project =
+        projectT527("missing", fontFaceDocT527("Hello \xE4\xB8\xAD"), /*withFont=*/true);  // U+4E2D
+    PackOptions options;
+    options.thumbnails = false;
+    options.fontsMode = FontsMode::kBundled;
+    options.outDir = outDir("t527_missing");
+    const PackReport report = pack(project, options);
+    CHECK_FALSE(report.ok);
+    CHECK(fontsDiagnosticsT527(report) == "error: fonts: main: U+4E2D has no glyph in any bundled font\n");
+    CHECK(report.fontsErrors == 1);
+
+    // Also with --font-subset: the check reads the subset fonts the bundle finally holds.
+    options.fontSubset = true;
+    options.outDir = outDir("t527_missing_subset");
+    const PackReport subset = pack(project, options);
+    CHECK(subset.fontsSubset == 1);
+    CHECK(fontsDiagnosticsT527(subset) == "error: fonts: main: U+4E2D has no glyph in any bundled font\n");
+}
+
+TEST_CASE("pack --fonts bundled: the implied group's fonts are the last fallback, with one warning (T-527)") {
+    const UiProject project = projectT527(
+        "implied",
+        "<xt><head><link rel=\"symbols\" href=\"xt-standard:Button\"/>\n"
+        "<style>\n.t { font-family: \"Nowhere Sans\", sans-serif; }\n</style></head>\n"
+        "<body><use symbol=\"Button\" id=\"Go\" slot:label=\"Go\"/><div class=\"t\">Hi</div></body></xt>\n");
+    PackOptions options;
+    options.thumbnails = false;
+    options.fontsMode = FontsMode::kBundled;
+    options.standardSymbolDir = compile::genericPathToUtf8(kPresetGroupT498b);
+    options.outDir = outDir("t527_implied");
+    const PackReport report = pack(project, options);
+    REQUIRE_MESSAGE(report.ok, diagnosticsT498b(report));
+    CHECK(fontsDiagnosticsT527(report) ==
+          "warning: fonts: main: \"Nowhere Sans, sans-serif\" is not bundled; falling back to \"Noto Serif "
+          "Display ExtraCondensed, Noto Serif\"\n");
+    CHECK(report.fontsFallbackWarnings == 1);
+    CHECK(report.fontsErrors == 0);
+
+    std::string error;
+    Result<std::unique_ptr<Bundle>> opened = Bundle::open(options.outDir, nullptr, &error);
+    REQUIRE_MESSAGE(opened.ok(), error);
+    const Bundle& bundle = *opened.value();
+    size_t fonts = 0;
+    for (const AssetInfo& asset : bundle.assetTable()) {
+        fonts += asset.kind == "font" ? 1u : 0u;
+    }
+    CHECK(fonts == 5);  // The group's five @font-face files, each once.
+    const std::span<const UiInfo> uis = bundle.uis();
+    REQUIRE(uis.size() == 1);
+    size_t uiFonts = 0;
+    for (const std::string& file : uis[0].assets) {
+        for (const AssetInfo& asset : bundle.assetTable()) {
+            uiFonts += (asset.file == file && asset.kind == "font") ? 1u : 0u;
+        }
+    }
+    CHECK(uiFonts == 5);
+    // No chain declared: one "" chain is made (read from the manifest itself; Bundle::fontFallbacks()
+    // lists language-tagged chains only).
+    const nlohmann::json manifest =
+        nlohmann::json::parse(readTextT498b(fs::path(options.outDir) / "manifest.json"));
+    REQUIRE(manifest.contains("fonts"));
+    CHECK(manifest["fonts"]["fallback"] ==
+          nlohmann::json::parse(R"({"": ["Noto Serif Display ExtraCondensed", "Noto Serif"]})"));
+}
+
+TEST_CASE("pack: publish.fonts \"bundled\" is --fonts bundled; an unknown value fails the load (T-527)") {
+    UiProject project = projectT527("publish", kPlainTextDocT527);
+    project.publish.fonts = FontsMode::kBundled;
+    std::string error;
+    REQUIRE_MESSAGE(project.save(&error) == Status::kOk, error);
+    Result<UiProject> reloaded = UiProject::load(project.rootDir, &error);
+    REQUIRE_MESSAGE(reloaded.ok(), error);
+    CHECK(reloaded.value().publish.fonts == FontsMode::kBundled);
+    CHECK(readTextT498b(compile::pathFromUtf8(reloaded.value().path())).find("\"fonts\": \"bundled\"") !=
+          std::string::npos);
+
+    PackOptions options;  // fontsMode stays kSystem: the project's setting turns the check on.
+    options.thumbnails = false;
+    options.outDir = outDir("t527_publish");
+    const PackReport report = pack(reloaded.value(), options);
+    CHECK_FALSE(report.ok);
+    CHECK(fontsDiagnosticsT527(report) ==
+          "error: fonts: main has text but bundles no font (declare @font-face, or pack with --fonts "
+          "system)\n");
+
+    // The CLI's `--fonts system` clears the project's setting (main.cpp): the check is off again.
+    UiProject systemCopy = reloaded.value();
+    systemCopy.publish.fonts = FontsMode::kSystem;
+    options.outDir = outDir("t527_publish_system");
+    CHECK(pack(systemCopy, options).ok);
+
+    std::string text = readTextT498b(compile::pathFromUtf8(reloaded.value().path()));
+    const size_t at = text.find("\"bundled\"");
+    REQUIRE(at != std::string::npos);
+    text.replace(at, 9, "\"embedded\"");
+    writeTextT498b(compile::pathFromUtf8(reloaded.value().path()), text);
+    Result<UiProject> bad = UiProject::load(project.rootDir, &error);
+    CHECK(bad.status() == Status::kInvalidArgument);
+    CHECK(error.find("publish.fonts must be \"system\" or \"bundled\"") != std::string::npos);
+}
+
+// --- T-527b: the standard fonts (Docs/design/22-bundle.md §22.10.3 "standard fonts") -------------
+
+namespace {
+
+const fs::path kStandardFontsT527b = fs::path(XT_TEST_BUNDLE_DIR) / ".." / ".." / "Assets" / "Fonts";
+
+/// The manifest `sources` of every font asset of the bundle at `outDir`, sorted.
+std::vector<std::string> fontSourcesT527b(const std::string& outDir) {
+    const nlohmann::json manifest = nlohmann::json::parse(readTextT498b(fs::path(outDir) / "manifest.json"));
+    std::vector<std::string> sources;
+    for (const nlohmann::json& asset : manifest["assets"]) {
+        if (asset["kind"] == "font") {
+            for (const nlohmann::json& source : asset["sources"]) {
+                sources.push_back(source.get<std::string>());
+            }
+        }
+    }
+    std::sort(sources.begin(), sources.end());
+    return sources;
+}
+
+constexpr const char* kNotoSansDocT527b =
+    "<xt><head><style>\n.t { font-family: \"noto sans\", sans-serif; }\n</style></head>\n"
+    "<body><div class=\"t\">Hello</div></body></xt>\n";
+
+}  // namespace
+
+TEST_CASE("pack --fonts bundled: a standard family named by the text is bundled, all its files (T-527b)") {
+    const UiProject project = projectT527("standard", kNotoSansDocT527b);
+    PackOptions options;
+    options.thumbnails = false;
+    options.fontsMode = FontsMode::kBundled;
+    options.standardFontDir = compile::genericPathToUtf8(kStandardFontsT527b);
+    options.outDir = outDir("t527b_standard");
+    const PackReport report = pack(project, options);
+    REQUIRE_MESSAGE(report.ok, diagnosticsT498b(report));
+    CHECK(fontsDiagnosticsT527(report).empty());
+    CHECK(report.fontsErrors == 0);
+    CHECK(report.fontsFallbackWarnings == 0);
+    CHECK(report.fontsCoverageWarnings == 0);
+    CHECK(fontSourcesT527b(options.outDir) ==
+          std::vector<std::string>{"fonts/NotoSans-Bold.ttf", "fonts/NotoSans-BoldItalic.ttf",
+                                   "fonts/NotoSans-Italic.ttf", "fonts/NotoSans-Regular.ttf"});
+
+    std::string error;
+    Result<std::unique_ptr<Bundle>> opened = Bundle::open(options.outDir, nullptr, &error);
+    REQUIRE_MESSAGE(opened.ok(), error);
+    const std::span<const UiInfo> uis = opened.value()->uis();
+    REQUIRE(uis.size() == 1);
+    size_t uiFonts = 0;
+    for (const std::string& file : uis[0].assets) {
+        for (const AssetInfo& asset : opened.value()->assetTable()) {
+            uiFonts += (asset.file == file && asset.kind == "font") ? 1u : 0u;
+        }
+    }
+    CHECK(uiFonts == 4);
+
+    // A text naming no bundled family falls back to the standard "Noto Sans", with one warning.
+    const UiProject other = projectT527("standard_fallback", kPlainTextDocT527);
+    options.outDir = outDir("t527b_standard_fallback");
+    const PackReport fallback = pack(other, options);
+    REQUIRE_MESSAGE(fallback.ok, diagnosticsT498b(fallback));
+    CHECK(fontsDiagnosticsT527(fallback) ==
+          "warning: fonts: main: \"Nowhere Sans\" is not bundled; falling back to \"Noto Sans\"\n");
+    CHECK(fallback.fontsFallbackWarnings == 1);
+    CHECK(fontSourcesT527b(options.outDir).size() == 4);
+}
+
+TEST_CASE(
+    "pack --fonts bundled: code points Noto Sans lacks are covered by Noto Sans TC, with a warning "
+    "(T-527b)") {
+    const UiProject project =
+        projectT527("cjk",
+                    "<xt><head><style>\n.t { font-family: \"Noto Sans\"; }\n</style></head>\n"
+                    "<body><div class=\"t\">Hello \xE4\xB8\xAD</div></body></xt>\n");  // U+4E2D
+    PackOptions options;
+    options.thumbnails = false;
+    options.fontsMode = FontsMode::kBundled;
+    options.standardFontDir = compile::genericPathToUtf8(kStandardFontsT527b);
+    options.outDir = outDir("t527b_cjk");
+    const PackReport report = pack(project, options);
+    REQUIRE_MESSAGE(report.ok, diagnosticsT498b(report));
+    CHECK(
+        fontsDiagnosticsT527(report) ==
+        "warning: fonts: main: 1 code points (U+4E2D) covered by standard font \"Noto Sans TC\", bundled\n");
+    CHECK(report.fontsErrors == 0);
+    CHECK(report.fontsCoverageWarnings == 1);
+    CHECK(report.fontsFallbackWarnings == 0);
+    const std::vector<std::string> sources = fontSourcesT527b(options.outDir);
+    CHECK(sources.size() == 5);
+    CHECK(std::find(sources.begin(), sources.end(), "fonts/NotoSansTC-Regular.ttf") != sources.end());
+
+    // With --font-subset the standard fonts are subset too, and the coverage still holds.
+    options.fontSubset = true;
+    options.outDir = outDir("t527b_cjk_subset");
+    const PackReport subset = pack(project, options);
+    REQUIRE_MESSAGE(subset.ok, diagnosticsT498b(subset));
+    CHECK(subset.fontsSubset == 5);
+    CHECK(subset.fontsErrors == 0);
+    CHECK(fs::exists(fs::path(options.outDir) / "fonts" / "NotoSansTC-Regular.subset.ttf"));
+}
+
+TEST_CASE("pack --fonts bundled: an empty standardFontDir keeps the T-527 error (T-527b)") {
+    const UiProject project = projectT527("standard_off", kNotoSansDocT527b);
+    PackOptions options;
+    options.thumbnails = false;
+    options.fontsMode = FontsMode::kBundled;
+    options.outDir = outDir("t527b_standard_off");
+    const PackReport report = pack(project, options);
+    CHECK_FALSE(report.ok);
+    CHECK(fontsDiagnosticsT527(report) ==
+          "error: fonts: main has text but bundles no font (declare @font-face, or pack with --fonts "
+          "system)\n");
+    CHECK(report.fontsErrors == 1);
 }

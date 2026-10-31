@@ -195,6 +195,9 @@ public:
     Context(const Context&) = delete;
     Context& operator=(const Context&) = delete;
 
+    /// T-555: the shaper this Context was built with (ContextConfig::shaper); may be null.
+    TextShaper* textShaper() const { return m_config.shaper; }
+
     /// `takeOwnership == false` requires the host to keep `blob` alive for as long as the returned
     /// Document lives.
     Result<DocumentHandle> loadDocument(IrBlob blob, bool takeOwnership);

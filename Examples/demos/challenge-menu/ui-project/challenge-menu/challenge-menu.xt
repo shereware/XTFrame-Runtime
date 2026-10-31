@@ -5,10 +5,10 @@
     <title>Tactical Challenges</title>
   </head>
   <body>
-    <div id="challenge-menu">
+    <div id="challenge-menu" port:nx="number in" port:ny="number in" port:listShift="number in = -650" port:panelShift="number in = 750" on:pointermove="set(nx, pointer.fraction(#challenge-menu).x | range(0, 1, -1, 1)); set(ny, pointer.fraction(#challenge-menu).y | range(0, 1, -1, 1))">
       <div id="scene" class="s-ff4c67">
         <div id="camera-idle">
-          <div id="world-layer">
+          <div id="world-layer" bind:left="nx | range(-1, 1, -66, -14)" bind:top="ny | range(-1, 1, -38, -10)">
             <img id="world-image" src="../shared/img/d0eebef1d9a7ce8c.png"/>
           </div>
           <div id="light-shaft"/>
@@ -33,7 +33,7 @@
               <div id="n-55d9f8b6" class="mote"/>
             </div>
           </div>
-          <div id="diff-list">
+          <div id="diff-list" bind:left="nx | range(-1, 1, 144, 116) | offset(listShift)" bind:top="ny | range(-1, 1, 204, 188)">
             <div id="diff-list-body">
               <div id="row-recruit" class="row">
                 <div id="hl-recruit" class="hl"/>
@@ -80,7 +80,7 @@
             </div>
           </div>
         </div>
-        <section id="panel-preview">
+        <section id="panel-preview" bind:left="nx | range(-1, 1, 670, 630) | offset(panelShift)" bind:top="ny | range(-1, 1, 176, 156)">
           <div id="panel-glow"/>
           <div id="panel-plate"/>
           <div id="panel-body">

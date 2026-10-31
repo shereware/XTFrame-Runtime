@@ -58,7 +58,7 @@
             "name": "ninja-ci-release",
             "inherits": "ninja-base",
             "binaryDir": "${sourceDir}/build/ci-release",
-            "cacheVariables": { "CMAKE_CXX_COMPILER": "$penv{CXX}", "CMAKE_BUILD_TYPE": "Release" }
+            "cacheVariables": { "CMAKE_CXX_COMPILER": "$penv{CXX}", "CMAKE_BUILD_TYPE": "Release", "XT_BUILD_CAPI": "ON" }
         },
         {
             "name": "ninja-ci-asan",

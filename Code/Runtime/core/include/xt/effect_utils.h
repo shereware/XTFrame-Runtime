@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cstdint>
+#include <string_view>
+
 #include "xt/command_list.h"  // ShaderRef (T-203).
 #include "xt/node.h"
 #include "xt/types.h"
@@ -65,5 +68,14 @@ int backdropPyramidLevels(float maxSigma);
 /// blended linearly with its neighbour"): `lower` <= `upper` <= `levels`, `t` in [0, 1] is the
 /// weight of `upper`. A sigma beyond the top level takes that level alone.
 void backdropPyramidMix(float sigma, int levels, int& lower, int& upper, float& t);
+
+/// T-547 (Docs/design/18-effects.md §18.12): the built-in effect named `name` ("shadow", "glow",
+/// "blur", "color-adjust", "gradient-mask", "shine", "outline", "backdrop-blur"); false for any
+/// other name (a custom effect is not in this table).
+bool effectKindByName(std::string_view name, EffectKind& out);
+
+/// T-547 (18.2-18.3): parameter name -> paramIndex for built-in `kind` (`enabled` = 0,
+/// params[i] = i + 1, `color` = 16). False for a name `kind` does not define.
+bool effectParamIndexByName(EffectKind kind, std::string_view param, uint32_t& out);
 
 }  // namespace xt

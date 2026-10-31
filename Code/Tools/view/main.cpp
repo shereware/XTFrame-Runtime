@@ -30,6 +30,7 @@
 #include "xt/bundle/pack.h"
 #include "xt/bundle/project_file.h"
 #include "xt/bundle/project_runtime.h"
+#include "xt/bundle/symbol_library.h"
 #include "xt/bundle/ui_project.h"
 #include "xt/command_list.h"
 #include "xt/compile/compile.h"
@@ -181,7 +182,8 @@
 /// <path>`; an invalid one exits 2). --dump-flow-values also prints the global flow's values, and
 /// every flow action node event (sound / haptic / spawn / emit) prints as `xtframe-view: flow event
 /// <kind> <name> ui=<id> instance=<n>`. Not covered: R (reload) reloads the main UI only and then
-/// reloads the global flow.
+/// reloads the global flow (T-546: after each reload the flow diagnostics print again; --strict
+/// does not exit on a reload).
 ///
 /// --gamepad (T-194, Docs/design/08-events.md §8.9) opens SDL game controllers in the windowed
 /// mode (one player slot each, in connection order). --players N (1..8) limits the slots to N and
@@ -309,6 +311,13 @@ struct ScriptedPointer {
 struct Args {
     std::string input;
     std::string root;
+    /// T-498b: the preset symbol library's default group next to the executable (empty when
+    /// none): resolves `xt-standard:` links and supplies the implied token layer when a UI
+    /// Project is packed (PackOptions::standardSymbolDir with copyStandardSymbols off).
+    std::string standardSymbolDir;
+    /// T-527d (22 §22.10.3): the standard fonts next to the executable (`<exe dir>/fonts`, the
+    /// same root as `standardSymbolDir`), PackOptions::standardFontDir of that pack.
+    std::string standardFontDir;
     int width = 1280;
     int height = 720;
     int msaa = 4;
@@ -385,6 +394,8 @@ struct Args {
     std::vector<std::array<std::string, 3>> otherUis;
     std::string globalFlow;   // T-213: the Bundle's `flows.global`, as a path; empty = none.
     bool loadFailed = false;  // T-213: resolveInput() failed on the content (exit 1, not 2).
+    // T-555: the Bundle the input resolved to, kept open for addBundleFonts(); null for a lone file.
+    std::shared_ptr<xt::bundle::Bundle> bundle;
 };
 
 /// T-194: `--event "... press <button>"` button names -> GamepadButton.
@@ -988,7 +999,8 @@ uint64_t pathHash(const std::string& text) {
 /// the project). An old `ui-project.json` / `bundle.xtproj` is upgraded in memory only; the atlas is off
 /// because this viewer's resolver does not know atlas cells. Prints the diagnostics; false (after its own
 /// stderr line) when the project cannot be read or no UI could be packed.
-bool packProject(const std::string& dir, const std::string& outDir) {
+bool packProject(const std::string& dir, const std::string& outDir, const std::string& standardSymbolDir,
+                 const std::string& standardFontDir) {
     std::string error;
     xt::Result<xt::bundle::UiProject> loaded = xt::bundle::UiProject::load(dir, &error);
     if (!loaded.ok()) {
@@ -1004,14 +1016,20 @@ bool packProject(const std::string& dir, const std::string& outDir) {
     options.thumbnails = false;
     options.prune = true;
     options.writeAssetsManifest = false;
+    // T-498b: the preset group resolves `xt-standard:` links and is the implied token layer (the
+    // group's tokens, fonts and textures), as in xtframe-pack -- but nothing is copied into the
+    // project (T-263f).
+    options.standardSymbolDir = standardSymbolDir;
+    options.copyStandardSymbols = false;
+    options.standardFontDir = standardFontDir;  // T-527d
     const xt::bundle::PackReport report = xt::bundle::pack(project, options);
     for (const xt::compile::Diagnostic& d : report.diagnostics) {
         printDiagnostic(d);
     }
     {
-        // T-263f: this pack copies no standard symbol into the project (no standardSymbolDir), so
-        // a project that was never opened in the editor or packed with xtframe-pack fails on the
-        // missing files; say what fetches them. pack() prefixes a UI's diagnostics "<ui id>: ".
+        // T-263f: this pack copies no standard symbol into the project (copyStandardSymbols off),
+        // so a project that was never opened in the editor or packed with xtframe-pack fails on
+        // the missing files; say what fetches them. pack() prefixes a UI's diagnostics "<ui id>: ".
         std::vector<xt::tools::NoteDocument> documents;
         for (const xt::bundle::ProjectUi& ui : project.uis) {
             std::error_code ec;
@@ -1058,6 +1076,8 @@ bool resolveInput(Args& args) {
         }
     } else if (inputPath.filename() == "manifest.json") {
         bundleDir = inputPath.parent_path().empty() ? fs::path(".") : inputPath.parent_path();
+    } else if (inputPath.extension() == ".xtb" && fs::is_regular_file(inputPath, ec)) {
+        bundleDir = inputPath;  // T-500: Bundle::open() unpacks it; bundle.dir() is the unpacked copy.
     } else if (xt::bundle::isUiProjectFilePath(args.input)) {
         projectDir = inputPath.parent_path().empty() ? fs::path(".") : inputPath.parent_path();
         projectInput = args.input;
@@ -1095,7 +1115,8 @@ bool resolveInput(Args& args) {
         std::snprintf(hash, sizeof(hash), "%016llx", static_cast<unsigned long long>(pathHash(absolute)));
         bundleDir = fs::temp_directory_path(ec) / "xtframe-view" / pathFromUtf8(id + "-" + hash);
         args.packSource = projectInput;
-        if (!packProject(args.packSource, pathToUtf8(bundleDir))) {
+        if (!packProject(args.packSource, pathToUtf8(bundleDir), args.standardSymbolDir,
+                         args.standardFontDir)) {
             args.loadFailed = true;
             return false;
         }
@@ -1113,7 +1134,9 @@ bool resolveInput(Args& args) {
             args.loadFailed = true;
             return false;
         }
-        const xt::bundle::Bundle& bundle = *opened.value();
+        args.bundle = std::shared_ptr<xt::bundle::Bundle>(std::move(opened.value()));  // T-555.
+        const xt::bundle::Bundle& bundle = *args.bundle;
+        bundleDir = pathFromUtf8(std::string(bundle.dir()));  // T-500: the unpacked directory for an .xtb.
         // T-207 (Docs/design/17-editor.md §17.4.1 item 5): without --safe, the safe area is the
         // manifest's spec.safeArea (`console` for --platform console), as in the editor and a host.
         // T-210 (25 §25.4.1 item 2): its spec.logicalHeight gives uiscale = output height / it.
@@ -2143,6 +2166,27 @@ xt::bundle::ProjectRuntimeOptions projectOptions(const Args& args, const std::st
 
 /// T-193 --project: loads every other UI of the Bundle into `ctx` (before the main UI, so that
 /// one stays the foreground Document). False (after its own stderr line) on a load failure.
+/// T-555 (Docs/design/22-bundle.md §22.10.3): registers the bundled fonts of the main UI and of
+/// --project's other UIs with `shaper` (bundle::addBundleFonts(); an asset registered before is
+/// skipped). Called before the system fonts, so a bundled family wins over a system font of the
+/// same name; again after R re-packs (new assets only).
+void addBundleFonts(const Args& args, xt::TextShaper& shaper) {
+    if (!args.bundle) {
+        return;
+    }
+    std::vector<std::string> ids{args.mainUi};
+    for (const std::array<std::string, 3>& other : args.otherUis) {
+        ids.push_back(other[0]);
+    }
+    for (const std::string& id : ids) {
+        std::vector<std::string> warnings;
+        (void)xt::bundle::addBundleFonts(*args.bundle, id, shaper, &warnings);
+        for (const std::string& warning : warnings) {
+            std::fprintf(stderr, "xtframe-view: %s\n", warning.c_str());
+        }
+    }
+}
+
 bool loadOtherUis(const Args& args, xt::Context& ctx, const std::string& rootDir, FlowTargets& targets) {
     if (!args.wholeProject) {
         return true;
@@ -2243,6 +2287,15 @@ int main(int argc, char** argv) {
         printUsage(stdout);
         return 0;
     }
+    {
+        // T-498b: the preset symbol library ships next to the executable (`<exe dir>/symbols`);
+        // its default group is what a UI Project's pack resolves the standard symbols in.
+        std::error_code ec;
+        const fs::path symbols = fs::absolute(pathFromUtf8(argv[0]), ec).parent_path() / "symbols";
+        args.standardSymbolDir = xt::bundle::defaultGroupDir(pathToUtf8(symbols));
+        // T-527d (22 §22.10.3): the standard fonts ship next to it (`<exe dir>/fonts`).
+        args.standardFontDir = pathToUtf8(fs::absolute(pathFromUtf8(argv[0]), ec).parent_path() / "fonts");
+    }
     if (!resolveInput(args)) {
         return args.loadFailed ? 1 : 2;
     }
@@ -2302,6 +2355,7 @@ int main(int argc, char** argv) {
         // screenshot used to come out with no text at all because this path had NullTextShaper.
 #ifndef XT_GL_NO_TEXT
         xt::text::FtTextShaper shaper;
+        addBundleFonts(args, shaper);  // T-555: before the system fonts.
         shaper.addSystemFonts();
 #if !defined(XT_BACKEND_NO_TEXT)
         if (frameTarget) {
@@ -2379,9 +2433,16 @@ int main(int argc, char** argv) {
         }
         if (hasFlow) {
             announceFlow();
+            if (!xt::tools::view::reportFlowContinuity(flowRuntime, args.strict)) {  // T-540
+                return 2;
+            }
         }
         if (!setupProjectFlows(args, ctx, handle, targets)) {
             return 2;
+        }
+        if (targets.project.bundle && targets.project.bundle->flowRuntime().isGlobal() &&
+            !xt::tools::view::reportFlowContinuity(targets.project.bundle->flowRuntime(), args.strict)) {
+            return 2;  // T-546: the global flow's diagnostics, as the main flow's above.
         }
         auto systemEvent = [&targets](const ScriptedEvent& event) { postSystemEvent(targets, event); };
 
@@ -2615,6 +2676,7 @@ int main(int argc, char** argv) {
     // decoded files with the disk through this (after setAssetRoot, which replaces the resolver).
     app.assetResolver().setFileStatusFn(&xt::fileStatusUtf8);
 #ifndef XT_GL_NO_TEXT
+    addBundleFonts(args, app.textShaper());  // T-555: before the system fonts.
     app.addSystemFonts();
 #endif
     // T-150: after setAssetRoot (which replaces the resolver), before the first update().
@@ -2682,9 +2744,16 @@ int main(int argc, char** argv) {
     }
     if (hasFlow) {
         announceFlow();
+        if (!xt::tools::view::reportFlowContinuity(flowRuntime, args.strict)) {  // T-540
+            return 2;
+        }
     }
     if (!setupProjectFlows(args, app.context(), handle, targets)) {
         return 2;
+    }
+    if (targets.project.bundle && targets.project.bundle->flowRuntime().isGlobal() &&
+        !xt::tools::view::reportFlowContinuity(targets.project.bundle->flowRuntime(), args.strict)) {
+        return 2;  // T-546: the global flow's diagnostics, as the main flow's above.
     }
     auto systemEvent = [&targets](const ScriptedEvent& event) { postSystemEvent(targets, event); };
 
@@ -2791,8 +2860,15 @@ int main(int argc, char** argv) {
                     targets.project.bundle.reset();
                     // T-213: a UI Project input is packed again, so R shows its edited sources.
                     if (!args.packSource.empty()) {
-                        packProject(args.packSource, args.bundleDir);
+                        packProject(args.packSource, args.bundleDir, args.standardSymbolDir,
+                                    args.standardFontDir);
                     }
+#ifndef XT_GL_NO_TEXT
+                    if (args.bundle) {
+                        (void)args.bundle->reload();  // T-555: a font the re-packed UI newly names.
+                        addBundleFonts(args, app.textShaper());
+                    }
+#endif
                     // T-263c: an image file rewritten under the same name is decoded again.
                     // T-263e: and a file that did not exist when it was first asked for is
                     // looked for again (a failed lookup has no file to revalidate).
@@ -2809,9 +2885,20 @@ int main(int argc, char** argv) {
                         // the run without a graph rather than killing the window.
                         hasFlow = xt::tools::view::reloadFlow(app.context(), previous, handle, args.flow,
                                                               hasFlow, flowRuntime);
+                        if (hasFlow) {
+                            // T-546: the reloaded main flow's diagnostics print again, as at the
+                            // first load; under --strict they print as errors but never exit
+                            // (this is an interactive session), so the result is ignored.
+                            (void)xt::tools::view::reportFlowContinuity(flowRuntime, args.strict);
+                        }
                     }
                     if (args.wholeProject && !setupProjectFlows(args, app.context(), handle, targets)) {
                         targets.project.bundle.reset();  // Run on without the project flows.
+                    }
+                    if (targets.project.bundle && targets.project.bundle->flowRuntime().isGlobal()) {
+                        // T-546: likewise for the reloaded global flow.
+                        (void)xt::tools::view::reportFlowContinuity(targets.project.bundle->flowRuntime(),
+                                                                    args.strict);
                     }
                     break;
                 }

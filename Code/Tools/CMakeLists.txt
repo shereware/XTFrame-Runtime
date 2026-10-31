@@ -28,6 +28,35 @@ xt_set_warnings(xtframe-pack)
 # where xtframe-pack looks for it (`<executable dir>/symbols`); one shared copy target (T-474,
 # Tools/CMake/xt_runtime_output.cmake).
 xt_copy_standard_symbols(xtframe-pack)
+xt_copy_standard_fonts(xtframe-pack)  # T-527b: `<executable dir>/fonts`, the --fonts-dir default
+
+# xtframe-bench (52 §52.11): frame-time benchmark of one UI over the C ABI, pure C99 on
+# xt/capi/xtframe.h so the native and the Node.js/wasm builds measure the identical code path.
+if(TARGET xt_capi AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/bench/main.c")
+    add_executable(xtframe-bench bench/main.c)
+    set_target_properties(xtframe-bench PROPERTIES C_STANDARD 99 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+    target_link_libraries(xtframe-bench PRIVATE xt_capi)
+    if(NOT WIN32)
+        target_link_libraries(xtframe-bench PRIVATE m)
+    endif()
+    if(XT_MSVC_FRONTEND)
+        target_compile_options(xtframe-bench PRIVATE /W4 /WX)
+    else()
+        target_compile_options(xtframe-bench PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    endif()
+    if(WIN32)
+        # The shared library is loaded from the executable's directory.
+        add_custom_command(TARGET xtframe-bench POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:xt_capi>" "$<TARGET_FILE_DIR:xtframe-bench>"
+            VERBATIM)
+    endif()
+    if(EMSCRIPTEN)
+        # The C ABI's objects are built with -fwasm-exceptions (xt_enable_exceptions); the link of a
+        # C executable has to say so too, or wasm-ld misses __cpp_exception.
+        target_link_options(xtframe-bench PRIVATE -fwasm-exceptions)
+        xt_wasm_node_cli(xtframe-bench createXtframeBench)  # 52 §52.11
+    endif()
+endif()
 
 # T-309 (Docs/design/35-design-system.md §35.7.3): the design system on the command line. Runtime
 # layer: xt_bundle only. The standard symbol library goes next to the executable as for xtframe-pack
@@ -41,7 +70,28 @@ target_link_libraries(xtframe-design PRIVATE xt_core xt_bundle)
 xt_enable_exceptions(xtframe-design)
 xt_set_warnings(xtframe-design)
 xt_copy_standard_symbols(xtframe-design)
+xt_copy_standard_fonts(xtframe-design)  # T-527b
 
+endif()
+
+# T-499 (Docs/design/49-symbol-sets.md 49.5, 49.6): symbol libraries, groups and sets on the command
+# line. Runtime layer: xt_bundle plus the headless render of symbols/preview_render.cpp (the pipeline
+# of Tests/golden's renderUiFixture: xt_compile, xt_sw and, when the build has it, xt_text). The preset
+# library goes next to the executable as for xtframe-pack.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/symbols/main.cpp")
+add_executable(xtframe-symbols
+    symbols/main.cpp
+    symbols/preview_render.cpp
+)
+target_link_libraries(xtframe-symbols PRIVATE xt_core xt_compile xt_sw xt_bundle xt_nlohmann)
+if(TARGET xt_text)
+    target_link_libraries(xtframe-symbols PRIVATE xt_text)
+    target_compile_definitions(xtframe-symbols PRIVATE XT_SYMBOLS_HAS_TEXT)
+endif()
+xt_enable_exceptions(xtframe-symbols)
+xt_set_warnings(xtframe-symbols)
+xt_copy_standard_symbols(xtframe-symbols)
+xt_copy_standard_fonts(xtframe-symbols)  # T-527b
 endif()
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/import/main.cpp")
@@ -51,6 +101,17 @@ add_executable(xtframe-import
 target_link_libraries(xtframe-import PRIVATE xt_core xt_import)
 xt_enable_exceptions(xtframe-import)
 xt_set_warnings(xtframe-import)
+if(EMSCRIPTEN)
+    # T-503 (Docs/design/24-design-import.md §24.13): the Node.js build of the converter. One
+    # xtframe-import.js + xtframe-import.wasm pair, loaded by Code/Tools/import-wasm/bin/. NODERAWFS
+    # reads and writes the host file system directly (the dump and the project directory are real
+    # paths, no virtual FS staging); the stack matches the 1 MB the depth limits of 24 §24.12 were
+    # measured against, with headroom; EXIT_RUNTIME hands main()'s return value to the wrapper.
+    target_link_options(xtframe-import PRIVATE
+        -sNODERAWFS=1 -sENVIRONMENT=node -sMODULARIZE=1 -sEXPORT_NAME=createXtframeImport
+        -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=4MB -sEXIT_RUNTIME=1 -sINVOKE_RUN=0
+        -sEXPORTED_RUNTIME_METHODS=callMain)
+endif()
 endif()
 
 # T-151: offline GPU-frame shape probe (FrameBuilder over a counting device, no GPU).
@@ -106,6 +167,9 @@ if(XT_BUILD_SHELL)
     endif()
     xt_enable_exceptions(xtframe-view)
     xt_set_warnings(xtframe-view)
+    # T-527d: a UI Project input is packed (PackOptions::standardFontDir = `<executable dir>/fonts`),
+    # and the corpus runs xtframe-view next to xtframe-pack; both find the standard fonts there.
+    xt_copy_standard_fonts(xtframe-view)
 endif()
 
 if(XT_BUILD_TESTS)

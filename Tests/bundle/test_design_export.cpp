@@ -50,7 +50,10 @@ bool contains(const std::string& text, const std::string& part) {
     return text.find(part) != std::string::npos;
 }
 
-/// A writable copy of the starter UI Project with its standard symbols pulled in.
+/// A writable copy of the starter UI Project with its standard symbols pulled in. T-498b/T-498c:
+/// the shipped starter declares only its overrides (`--safe-*`); the preset group's tokens.xts is
+/// the implied default layer underneath, which the design tools show as the inherited variables
+/// (49 §49.12 ruling).
 UiProject starterCopy(const std::string& name) {
     const std::string dir = freshDir(name);
     std::error_code ec;
@@ -59,7 +62,8 @@ UiProject starterCopy(const std::string& name) {
     std::string error;
     Result<UiProject> loaded = UiProject::load(dir, &error);
     REQUIRE_MESSAGE(loaded.ok(), error);
-    REQUIRE(pullStandardSymbols(loaded.value(), sourceDir("Assets/Symbols")) == Status::kOk);
+    REQUIRE(pullStandardSymbols(loaded.value(), sourceDir("Assets/Symbols/groups/broadsheet-2026")) ==
+            Status::kOk);
     return loaded.value();
 }
 
@@ -86,9 +90,9 @@ ExportReport exportTo(const UiProject& project, const std::string& outDir) {
     std::string error;
     REQUIRE_MESSAGE(buildGraph(project, ds, graph, &error) == Status::kOk, error);
     ExportReport report;
-    REQUIRE_MESSAGE(
-        exportClaudeDesign(project, ds, graph, outDir, &report, sourceDir("Assets/Symbols")) == Status::kOk,
-        report.error);
+    REQUIRE_MESSAGE(exportClaudeDesign(project, ds, graph, outDir, &report,
+                                       sourceDir("Assets/Symbols/groups/broadsheet-2026")) == Status::kOk,
+                    report.error);
     return report;
 }
 
@@ -133,8 +137,7 @@ TEST_CASE("T-316 export: the four files, the tokens.json shape, a README in the 
     // tokens.json keeps the shape of Skills/skills/xtui/references/tokens.json.
     // The runtime export (Tools/Scripts/export_runtime.sh, T-400) leaves Skills/ out: no reference there.
     const json tokens = json::parse(readText(out + "/tokens.json"));
-    const std::string referencePath =
-        sourceDir("Skills/skills/xtui/references/tokens.json");
+    const std::string referencePath = sourceDir("Skills/skills/xtui/references/tokens.json");
     if (fs::is_regular_file(referencePath)) {
         const json reference = json::parse(readText(referencePath));
         for (auto it = reference.begin(); it != reference.end(); ++it) {
@@ -151,14 +154,24 @@ TEST_CASE("T-316 export: the four files, the tokens.json shape, a README in the 
     }
     CHECK(themes == std::vector<std::string>{"base", "dark"});
     CHECK(report.themes == themes);
+    // T-498c (49 §49.12 ruling): the base theme carries the inherited colour variables too (the
+    // slimmed starter declares none of its own), named in the `inherited` object.
     CHECK(tokens["themes"]["base"].size() == 22);
     CHECK(report.colorTokens == 22);
-    CHECK(tokens["themes"]["base"]["accent"] == "#0f7b8a");
-    CHECK(tokens["themes"]["base"]["textOnAccent"] == "#ffffff");
-    CHECK(tokens["themes"]["base"]["surfaceRaised"] == "#ffffff");
-    CHECK(tokens["themes"]["dark"]["accent"] == "#4cc2ff");
+    REQUIRE(tokens["inherited"].is_object());
+    CHECK(tokens["inherited"]["--color-accent"] == true);
+    CHECK(tokens["inherited"]["--font-family"] == true);
+    CHECK(tokens["inherited"]["--space-1"] == true);
+    CHECK(tokens["inherited"]["--radius-full"] == true);
+    CHECK_FALSE(tokens["inherited"].contains("--safe-x"));
+    CHECK(report.inheritedTokens == static_cast<int>(tokens["inherited"].size()));
+    CHECK(report.inheritedTokens > 22);
+    CHECK(tokens["themes"]["base"]["accent"] == "#1f1c18");
+    CHECK(tokens["themes"]["base"]["textOnAccent"] == "#e6e2d6");
+    CHECK(tokens["themes"]["base"]["surfaceRaised"] == "#ece8dd");
+    CHECK(tokens["themes"]["dark"]["accent"] == "#d9d3c4");
     CHECK(tokens["themes"]["dark"].size() == 22);
-    CHECK(contains(tokens["font"]["family"].get<std::string>(), "Segoe UI"));
+    CHECK(contains(tokens["font"]["family"].get<std::string>(), "Noto Serif"));
     CHECK(tokens["font"]["m"]["size"] == 16);
     CHECK(tokens["font"]["xl"]["size"] == 28);
     REQUIRE(tokens["space"].is_array());
@@ -167,7 +180,7 @@ TEST_CASE("T-316 export: the four files, the tokens.json shape, a README in the 
         CHECK(tokens["space"][i - 1].get<double>() < tokens["space"][i].get<double>());
     }
     CHECK(tokens["space"] == json::array({4, 8, 12, 16, 24, 32}));  // --safe-x / --safe-y are space too
-    CHECK(tokens["radius"]["s"] == 4);
+    CHECK(tokens["radius"]["s"] == 0);
     CHECK(tokens["radius"]["full"] == 999);
     CHECK(tokens["board"] == json({{"width", 1280}, {"height", 720}}));
 
@@ -202,19 +215,21 @@ TEST_CASE("T-316 export: the four files, the tokens.json shape, a README in the 
         CHECK_MESSAGE(line.rfind("####", 0) != 0, line);
         pos = nl == std::string::npos ? readme.size() : nl + 1;
     }
-    CHECK(contains(readme, "| `--color-accent` | `#0f7b8a` | `#4cc2ff` | `swatch:teal` |"));
+    CHECK(contains(readme, "### Inherited from broadsheet-2026"));
+    CHECK(contains(readme, "| `--color-accent` | `#1f1c18` | `#d9d3c4` | `#d9d3c4` | `swatch:ink` |"));
+    CHECK(contains(readme, "| `--safe-x` | space | `32px` | Horizontal safe margin at 1280 x 720. |"));
 
     // palette.json and components.md.
     const json palette = json::parse(readText(out + "/palette.json"));
     REQUIRE(palette["groups"].size() == 3);
-    CHECK(palette["groups"][0]["id"] == "brand");
+    CHECK(palette["groups"][0]["id"] == "paper");
     CHECK(palette["groups"][0]["swatches"][0] ==
-          json({{"id", "teal"},
-                {"name", "Teal"},
-                {"value", "#0f7b8a"},
-                {"role", "primary"},
-                {"note", "Interactive elements, selection and progress."}}));
-    CHECK(report.swatches == 20);
+          json({{"id", "paper"},
+                {"name", "Paper"},
+                {"value", "#e6e2d6"},
+                {"role", "background"},
+                {"note", "Screen background, grey-white newsprint."}}));
+    CHECK(report.swatches == 13);
     const std::string components = readText(out + "/components.md");
     CHECK(contains(components, "### Button"));
     CHECK(contains(components, "- Slots: label"));
@@ -241,27 +256,27 @@ TEST_CASE("T-316 round trip: export the starter, import into a blank project, im
     CHECK(r.files == std::vector<std::string>{"README.md", "tokens.json", "palette.json", "components.md"});
     CHECK(r.textsAdded == static_cast<int>(exported.sections.size()) + 1);
     CHECK(r.textsUpdated == 0);
-    CHECK(r.tokensAdded == 22);
-    CHECK(r.swatchesAdded == 20);
+    // T-498c: the 22 base colours are inherited from the preset group (the `inherited` object), so
+    // they get neither metadata nor a value here; the dark theme's overrides are the project's own.
+    CHECK(r.tokensAdded == 0);
+    CHECK(r.swatchesAdded == 13);
     CHECK(r.groupsAdded == 3);
-    CHECK(r.valuesWritten == 22);
+    CHECK(r.valuesWritten == 0);
     CHECK(r.themeValuesWritten == 22);
     CHECK(r.skipped == 0);
-    CHECK(r.added() == r.textsAdded + 22 + 20 + 3);
+    CHECK(r.added() == r.textsAdded + 13 + 3);
+    CHECK(std::any_of(r.notes.begin(), r.notes.end(), [](const std::string& n) {
+        return contains(n, "22 inherited variable(s) not imported");
+    }));
 
     const DesignSystem after = loadDs(blank);
     CHECK(after.texts.size() == before.texts.size() + exported.sections.size() + 1);
     CHECK(importedCount(after.texts) == static_cast<int>(exported.sections.size()) + 1);
-    CHECK(after.tokens.size() == before.tokens.size() + 22);
-    CHECK(after.swatches.size() == 20);
+    CHECK(after.tokens.size() == before.tokens.size());
+    CHECK(after.swatches.size() == 13);
     CHECK(after.groups.size() == 3);
     for (const TextEntry& t : after.texts) {
         CHECK(t.base.status == EntryStatus::Draft);
-    }
-    for (const TokenMeta& t : after.tokens) {
-        CHECK(t.base.status == EntryStatus::Draft);
-        CHECK(t.category == "color");
-        CHECK(t.base.source.kind == kClaudeDesignSourceKind);
     }
     for (const Swatch& s : after.swatches) {
         CHECK(s.base.status == EntryStatus::Draft);
@@ -287,11 +302,10 @@ TEST_CASE("T-316 round trip: export the starter, import into a blank project, im
     CHECK_FALSE(contains(readText(blank.rootDir + "/design/tokens.yaml"), "approved"));
 
     const std::string sheet = readText(blank.rootDir + "/shared/tokens.xts");
-    CHECK(contains(sheet, "--color-accent: #0f7b8a;"));
-    CHECK(contains(sheet, "--color-text-on-accent: #ffffff;"));
+    CHECK_FALSE(contains(sheet, "--color-accent"));
     const std::string dark = readText(blank.rootDir + "/shared/themes/dark.xts");
-    CHECK(contains(dark, "--color-accent: #4cc2ff;"));
-    CHECK(xt::bundle::design::detail::sharedTokenNames(blank).size() == 22);
+    CHECK(contains(dark, "--color-accent: #d9d3c4;"));
+    CHECK(xt::bundle::design::detail::sharedTokenNames(blank).empty());
 
     // Again: nothing new, nothing changed, still drafts, the stylesheets untouched.
     ImportReport again;
@@ -317,7 +331,7 @@ TEST_CASE("T-316 round trip: export the starter, import into a blank project, im
         }
     }
     for (Swatch& s : approved.swatches) {
-        if (s.base.id == "teal") {
+        if (s.base.id == "ink") {
             s.base.status = EntryStatus::Approved;
         }
     }
@@ -352,7 +366,7 @@ TEST_CASE("T-316 import never overwrites existing values or entries it did not w
     CHECK(r.groupsAdded == 0);
     CHECK(r.valuesWritten == 0);
     CHECK(r.themeValuesWritten == 0);
-    CHECK(r.skipped == 22 + 20);
+    CHECK(r.skipped == 13);  // T-498c: the 22 inherited colours are left out before any count.
     CHECK(r.textsAdded > 0);
     CHECK(readText(starter.rootDir + "/shared/tokens.xts") == sheetBefore);
     CHECK(readText(starter.rootDir + "/shared/themes/dark.xts") == darkBefore);
@@ -362,20 +376,22 @@ TEST_CASE("T-316 import never overwrites existing values or entries it did not w
     CHECK(fs::is_regular_file(fs::path(starter.rootDir) / "design/text/voice.md"));
     CHECK(fs::is_regular_file(fs::path(starter.rootDir) / "design/text/imported/voice.md"));
 
-    // A theme file that exists only gains what it lacks.
+    // A theme file that exists only gains what it lacks. `accent` is not marked inherited in this
+    // file, but the starter's tokens.yaml has the `inherited:` entry (T-498c): no value is written.
     writeText(out + "/tokens.json",
               R"({"themes": {"base": {"accent": "#000000", "brandNew": "#123456"},
                              "dark": {"accent": "#ffffff", "brandNew": "#654321"}}})");
     ImportReport more;
     REQUIRE_MESSAGE(importClaudeDesign(starter, out, &more) == Status::kOk, more.error);
     CHECK(more.tokensAdded == 1);
+    CHECK(more.skipped == 1 + 13);  // `accent` and the 13 swatches read again
     CHECK(more.valuesWritten == 1);
     CHECK(more.themeValuesWritten == 1);
     const std::string sheet = readText(starter.rootDir + "/shared/tokens.xts");
-    CHECK(contains(sheet, "--color-accent: #0f7b8a;"));
+    CHECK_FALSE(contains(sheet, "--color-accent"));
     CHECK(contains(sheet, "--color-brand-new: #123456;"));
     const std::string dark = readText(starter.rootDir + "/shared/themes/dark.xts");
-    CHECK(contains(dark, "--color-accent: #4cc2ff;"));
+    CHECK(contains(dark, "--color-accent: #d9d3c4;"));
     CHECK(contains(dark, "--color-brand-new: #654321;"));
     const std::vector<std::string> names = xt::bundle::design::detail::sharedTokenNames(starter);
     CHECK(std::find(names.begin(), names.end(), "--color-brand-new") != names.end());

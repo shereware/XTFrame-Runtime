@@ -1,0 +1,20 @@
+<xt>
+  <head>
+    <!-- T-497 (05 §5.9.12): a texture named inside a `symbol(...)` rule of a linked library file
+         resolves against this file's directory (lib/textures/x.png), not the linking document's. -->
+    <symbol name="Panel">
+      <div id="Box"><slot name="body">Panel</slot></div>
+    </symbol>
+    <style>
+      symbol(Panel) {
+        #Box {
+          display: flex;
+          width: 40px;
+          height: 20px;
+          background-image: url("textures/x.png");
+          background-repeat: repeat;
+        }
+      }
+    </style>
+  </head>
+</xt>

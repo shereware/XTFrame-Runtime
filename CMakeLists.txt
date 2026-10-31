@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(XTFrame VERSION 0.12.0 LANGUAGES CXX C)
+project(XTFrame VERSION 0.13.0 LANGUAGES CXX C)
 
 # MSBuild compiles one file at a time per project unless /MP is given; apply it globally so the
 # FetchContent dependencies (SDL2, FreeType, HarfBuzz) build in parallel too.
@@ -14,6 +14,15 @@ endif()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Docs/design/23-host-integration.md §23.5 and 14 §14.10: no floating-point contraction anywhere in the
+# tree. GCC and Clang fuse a*b+c into one FMA by default on targets whose baseline has it (AArch64:
+# Apple silicon, Android arm64), which would make the software renderer's pixels there differ from
+# x86's by one rounding; the AVX2 unit learnt this the hard way (T-529). MSVC does not contract under
+# its default /fp:precise.
+if(NOT MSVC)
+    add_compile_options(-ffp-contract=off)
+endif()
 
 option(XT_BUILD_GL "Build OpenGL backend" ON)
 # Docs/design/10-backends.md §10.5: the device-neutral GPU frame builder (no GL/D3D inside).
@@ -40,9 +49,20 @@ option(XT_BUILD_TESTS "Build tests" ON)
 option(XT_BUILD_TEXT "Build the xt_text FreeType/HarfBuzz TextShaper" ON)
 option(XT_BUILD_FUZZ "Build libFuzzer targets (clang only)" OFF)
 option(XT_BUILD_EXAMPLES "Build examples" ON)
+# Docs/design/50-c-abi.md §50.2 (T-504): the C ABI shared library `xtframe` (Code/Runtime/capi, xt_capi)
+# for FFI hosts. Off by default (2026-10-31 spec review 7.5, T-552); the `ninja-ci-release` preset and the
+# release export turn it on. Its static dependencies go into a shared library: Code/Runtime/capi sets
+# POSITION_INDEPENDENT_CODE on the targets xt_capi links (xt_capi_make_pic), not on the whole tree.
+option(XT_BUILD_CAPI "Build the C ABI shared library xtframe (xt_capi)" OFF)
 # Docs/design/17-editor.md §17.1: the editor libraries and app are off by default; the Qt-facing
 # targets (Code/Editor/Qt, Code/Editor/App) are added by T-60.
 option(XT_BUILD_EDITOR "Build the editor libraries and app" OFF)
+# Docs/design/17-editor.md §17.8b, Docs/tasks/T-518.md: the Qt-free Editor Service / built-in agent executable
+# (Code/Editor/Cli) and the zero-Qt editor layers it needs (Core, Service, Mcp, History, Net, AI) with their test
+# suites; independent of XT_BUILD_EDITOR, so a machine without Qt builds them too. Off by default (2026-10-31 spec
+# review 7.5, T-552); the editor presets and the ninja CI presets turn it on. With XT_BUILD_EDITOR alone the zero-Qt
+# layers still build (xtframe-editor needs them), xtframe-service does not.
+option(XT_BUILD_EDITOR_CLI "Build the Qt-free editor service executable xtframe-service and the zero-Qt editor layers" OFF)
 # Docs/design/36-history.md, Docs/tasks/T-307.md: the history core (Code/Editor/History, xt_history; needs
 # XT_BUILD_EDITOR). On by default; the beta repository of 40 §40.10.1 turns it off.
 option(XT_EDITOR_HISTORY "Build the history core (Code/Editor/History)" ON)
@@ -51,6 +71,18 @@ option(XT_EDITOR_HISTORY "Build the history core (Code/Editor/History)" ON)
 if(XT_EDITOR_HISTORY AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Code/Editor/History/CMakeLists.txt")
     message(STATUS "XT_EDITOR_HISTORY: OFF (the history core directory is absent)")
     set(XT_EDITOR_HISTORY OFF)
+endif()
+# Docs/design/51-builtin-ai.md §51.2, Docs/tasks/T-516a.md: the built-in AI agent (Code/Editor/AI, xt_ai) and the
+# network layer (Code/Editor/Net, xt_net); needs XT_BUILD_EDITOR. On by default; the beta repository of 40 §40.10.1
+# turns it off. T-515: both directories must exist (with their CMakeLists.txt), else the layer is off.
+option(XT_EDITOR_AI "Build the built-in AI agent and the network layer (Code/Editor/AI, Code/Editor/Net)" ON)
+if(XT_EDITOR_AI AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Code/Editor/Net/CMakeLists.txt")
+    message(STATUS "XT_EDITOR_AI: OFF (the network layer directory Code/Editor/Net is absent)")
+    set(XT_EDITOR_AI OFF)
+endif()
+if(XT_EDITOR_AI AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Code/Editor/AI/CMakeLists.txt")
+    message(STATUS "XT_EDITOR_AI: OFF (the built-in agent directory Code/Editor/AI is absent)")
+    set(XT_EDITOR_AI OFF)
 endif()
 # Docs/design/20-agent-interface.md §20.1: the throwaway developer AI endpoint (Code/Editor/DevTools/agent).
 # Off by default; the `vs2022-agent` preset turns it on on top of the editor preset.
@@ -146,6 +178,10 @@ endif()
 add_subdirectory(Code/Runtime/sw)
 # xt_bundle's pack() links xt_compile/xt_flow/xt_sw (and xt_text), so it comes after them.
 add_subdirectory(Code/Runtime/bundle)
+# T-504 (50 §50.2): the C ABI over core / bundle / flow / sw (and text), so it comes after them.
+if(XT_BUILD_CAPI)
+    add_subdirectory(Code/Runtime/capi)
+endif()
 # xt_import writes a bundle source tree and verifies it with the compiler, so it comes after both.
 # T-400: the guards on editor-layer directories let the runtime export (Tools/Scripts/export_runtime.sh),
 # which leaves them out, configure from this same file.
@@ -174,7 +210,7 @@ if(XT_BUILD_EDITOR)
     include(Tools/CMake/xt_qt.cmake)
     xt_qt_select()
 endif()
-if(XT_BUILD_EDITOR AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Code/Editor/CMakeLists.txt")
+if((XT_BUILD_EDITOR OR XT_BUILD_EDITOR_CLI) AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Code/Editor/CMakeLists.txt")
     add_subdirectory(Code/Editor)
 endif()
 if(XT_BUILD_AGENT AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Code/Editor/DevTools/agent/CMakeLists.txt")

@@ -1,0 +1,12 @@
+{
+  "width": 420,
+  "height": 210,
+  "frames": 0,
+  "ports": {
+    "Stick.dead": 0.15,
+    "Float.dead": 0.15
+  },
+  "events": [
+    "update 0.6"
+  ]
+}

@@ -208,4 +208,92 @@ void backdropPyramidMix(float sigma, int levels, int& lower, int& upper, float& 
     }
 }
 
+// T-547: moved from compile/style_emit.cpp so the flow runtime can resolve the same names.
+bool effectKindByName(std::string_view name, EffectKind& out) {
+    struct Entry {
+        const char* name;
+        EffectKind kind;
+    };
+    static constexpr Entry kTable[] = {
+        {"shadow", EffectKind::DropShadow},
+        {"glow", EffectKind::Glow},
+        {"blur", EffectKind::Blur},
+        {"color-adjust", EffectKind::ColorAdjust},
+        {"gradient-mask", EffectKind::GradientMask},
+        {"shine", EffectKind::Shine},
+        {"outline", EffectKind::Outline},
+        {"backdrop-blur", EffectKind::BackdropBlur},
+    };
+    for (const Entry& e : kTable) {
+        if (name == e.name) {
+            out = e.kind;
+            return true;
+        }
+    }
+    return false;
+}
+
+// Docs/design/18-effects.md §18.2-18.3: parameter name -> paramIndex for `kind` (`enabled` = 0,
+// params[i] = i + 1, `color` = 16). Returns false for a name `kind` does not define.
+bool effectParamIndexByName(EffectKind kind, std::string_view param, uint32_t& out) {
+    if (param == "enabled") {
+        out = prop::kEffectParamEnabled;
+        return true;
+    }
+    static constexpr const char* kShadow[] = {"offsetX", "offsetY", "blur", "spread", "opacity", "inset"};
+    static constexpr const char* kGlow[] = {"radius", "intensity", "inner"};
+    static constexpr const char* kBlur[] = {"radiusX", "radiusY"};
+    static constexpr const char* kColorAdjust[] = {"brightness", "contrast", "saturation", "hue",
+                                                   "opacity",    "invert",   "sepia"};
+    static constexpr const char* kGradientMask[] = {"p0x", "p0y", "p1x", "p1y", "radial", "invert"};
+    static constexpr const char* kShine[] = {"position", "width", "softness", "angle", "intensity"};
+    static constexpr const char* kOutline[] = {"radius", "softness", "position"};
+    static constexpr const char* kBackdrop[] = {"radius", "saturation", "brightness"};
+    const char* const* names = nullptr;
+    size_t count = 0;
+    bool hasColor = false;
+    switch (kind) {
+        case EffectKind::DropShadow:
+            names = kShadow, count = 6, hasColor = true;
+            break;
+        case EffectKind::Glow:
+            names = kGlow, count = 3, hasColor = true;
+            break;
+        case EffectKind::Blur:
+            names = kBlur, count = 2;
+            break;
+        case EffectKind::ColorAdjust:
+            names = kColorAdjust, count = 7;
+            break;
+        case EffectKind::GradientMask:
+            names = kGradientMask, count = 6;
+            break;
+        case EffectKind::Shine:
+            names = kShine, count = 5, hasColor = true;
+            break;
+        case EffectKind::Outline:
+            names = kOutline, count = 3, hasColor = true;
+            break;
+        case EffectKind::BackdropBlur:
+            names = kBackdrop, count = 3;
+            break;
+        default:
+            return false;
+    }
+    if (param == "color") {
+        if (!hasColor) {
+            return false;
+        }
+        out = prop::kEffectParamColor0;
+        return true;
+    }
+    for (size_t i = 0; i < count; ++i) {
+        if (param == names[i]) {
+            out = static_cast<uint32_t>(i + 1);
+            return true;
+        }
+    }
+    return false;
+}
+
 }  // namespace xt

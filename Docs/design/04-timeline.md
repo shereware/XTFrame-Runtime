@@ -183,6 +183,8 @@ struct Transition {
 
 實作：Animator 每幀依上表順序依次呼叫 `setProperty`。不做混合（blend/weight），第一版不需要。
 
+> **2026-10-30 補充（T-545；使用者裁決「效果參數綁定在 restyle 後遺失」只走正解）**：第 4 層 Override 是唯一在樣式重解析（class／狀態變化重建效果堆疊）後仍存在的層，所以**所有「資料驅動」的寫入都走第 4 層**：`bind:` 的目標（含 `bind:effect.<效果>.<參數>`，18 §18.16）與 flow 的 `#id.setProperty`／型別化 `setStyle` 寫入，一律 `sticky = true`；Animator 每幀重套，restyle 後效果堆疊重建也不會丟。為了讓 `| tween(d)` 與 Override 並存（第 1 層 Transition 會被第 4 層蓋掉），**Override 可帶補間**：`Animator::setOverride(node, prop, value, duration = 0, easing)`——duration > 0 時從目前 Override 值（沒有則從現值）補間到新值，補間中再設定即從目前補間值重新起算；Override 的值永遠是「目標值」，`clearOverride` 連補間一起清。效果 PropId（0x8000+）在 Override 表裡與一般 PropId 同樣以 `(node, prop)` 為鍵；效果當下不存在時每幀的重套為 T-211 的 no-op（警告每份文件一次），效果回來即生效。一般 `Document::setProperty(..., sticky=false)` 第 0 層語意不變。
+
 ## 4.8 Animator 介面（核心內部）
 
 ```cpp

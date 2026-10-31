@@ -85,6 +85,9 @@ foreach(name IN LISTS t261f_names)
     elseif(CASE STREQUAL "editor_service_schemas")
         t261f_run(0 "" "${TOOL}" --service --schemas "${dir}/${name}")
         t261f_expect_file("${dir}/${name}/index.json")
+    elseif(CASE STREQUAL "service_schemas")
+        t261f_run(0 "" "${TOOL}" --schemas "${dir}/${name}")
+        t261f_expect_file("${dir}/${name}/index.json")
     elseif(CASE STREQUAL "mcp")
         # A service file naming a port nothing listens on: the adapter reads it (so it reports that
         # port, not "no running xtframe-editor found"), probes it, and ends at the empty stdin.

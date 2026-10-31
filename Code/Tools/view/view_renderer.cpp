@@ -40,8 +40,10 @@ backend::Sdl2Options windowOptions(const FrameTargetConfig& config, backend::Sdl
     return o;
 }
 
-/// The window's pixel size (offscreen targets keep the configured size).
-void targetSize(const backend::PlatformSdl2& platform, const FrameTargetConfig& config, int& w, int& h) {
+/// The window's pixel size (offscreen targets keep the configured size). Only the GL and WebGPU
+/// targets size themselves this way, so a build with both off (the SW shell) does not call it.
+[[maybe_unused]] void targetSize(const backend::PlatformSdl2& platform, const FrameTargetConfig& config,
+                                 int& w, int& h) {
     if (config.windowed) {
         platform.pixelSize(w, h);
     } else {

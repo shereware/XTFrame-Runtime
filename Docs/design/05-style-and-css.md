@@ -462,3 +462,11 @@ struct ComputedStyle {
 編譯：StyleProp 276，`ComputedStyle::hitSlop`（四個 float，邏輯像素，`em`／`%` 以元素自身解析）；IR 不升版。
 
 實作記錄（T-386，2026-10-20）：IR 值為四個 f32（Color 編碼，上右下左）：≥ 0 為 px；(−65536, 0) 為百分比 −f（f = 百分比 / 100）；≤ −65536 為 `em`，存 −(65536 + em)（`xt::kHitSlopEmBias`）；負值長度、其他單位為無效值。`xts` 與 `mini_css`（`setStyle`）同一編碼。樣式引擎把 px／em 乘上元素的 ui-scale 存進 `ComputedStyle::hitSlop`；`%` 留為 −f，命中測試以元素自身 border-box 寬（左右）／高（上下）解析。`hit_test.cpp`：元素自身的命中矩形改為擴大後矩形（有 `clip-path` 時不擴）；元素裁切溢出時點在 padding box 外但在擴大矩形內只命中元素本身、不進子孫。`computedStyleValue(276)` 回傳 Color（上、右、下、左）。焦點導覽評分、damage、版面與繪製不讀它（golden 不變）。偏離：`ComputedStyle::hitSlop` 的 `%` 以負值保留到命中時才解析（樣式階段尚無 box 大小）。
+
+### 5.9.12 連結樣式表內的資產路徑相對於該樣式表（2026-10-27；47 §47.4；T-490）
+
+T-489 實測：`@font-face { src: "fonts/x.ttf" }` 寫在 `<link href>` 進來的 `.xts`（符號庫 `Assets/Symbols/tokens.xts`）時，`src` 以**連結它的文件**目錄為基準（`resolveAsset(options, xtDir, …)`），不是以該 `.xts` 自己的目錄——符號庫因此不能自帶字型，預覽與金樣永遠看不到 Oswald／Libre Baskerville。裁定：依 CSS 語意，**連結樣式表內的相對資產路徑（`@font-face src`、`background-image`、`border-image`）先以該樣式表所在目錄為基準**；順序改為：絕對路徑原樣 → 該樣式表目錄 / rel（存在才取）→ `options.searchDirs[i]` / rel（存在才取）→ 文件目錄 / rel（既有 fallback，不論存在與否）。文件內嵌 `<style>` 的樣式表目錄 = 文件目錄，行為不變；`compileDocumentFromStrings()` 的樣式表沒有目錄 → 跳過第一步。`xtframe-pack` 複製資產的路徑用同一個解析（22 §22.2）。T-490 實作；`FontFaceDef`／背景圖宣告需帶來源樣式表目錄（`RuleSet` 已知每條規則來自哪個 `<link>`，若否，在解析 `<link>` 時記下）。
+
+**實作記錄 T-490（2026-10-27）**：`resolveAsset(options, baseDir, rel, sheetDir)`；`StyleRule::sheetDir`／`FontFaceDef::sheetDir` 由 `parseXts(..., sheetDir)` 蓋章，`resolveLinkPath()` 回傳磁碟檔的目錄；`<link rel="symbols">` 的符號庫 `<style>` 亦取該庫檔目錄（裁定：同屬「連結樣式表」）。記憶體 `files` 條目（編輯器未存檔的樣式表、`compileDocumentFromStrings`）的 sheetDir 為空 → 跳過第一步（編輯器存檔前的即時編譯仍以文件目錄解析；若要與磁碟一致可改以 `rootDir/href` 推目錄，待有需求再開單）。`custom()` 著色器與 T-273 發佈名仍以文件目錄為準。`xtframe-pack` 沒有第二份解析（走 `resolvedPath`）。夾具 `Tests/xt/linked-font/`，測試在 `Tests/unit/test_compile_document.cpp`。
+
+**實作記錄 T-497（2026-10-27）**：`symbol_expand.cpp` `rewriteRules()` 的每實例規則副本帶 `sheetDir`，`symbol(...)` 內的 `background-image`／`border-image-source` 以符號庫檔目錄解析；`@font-face` 不經符號展開，無需改。夾具 `Tests/xt/symbol-texture/`。`mobile/`、`list/` 子目錄的庫檔直接被文件連結且無 `searchDirs` 時仍找不到 `textures/`（token 值相對庫根）——專案走 `shared.assetRoot`，符號測試 harness 以 `searchDirs = {XT_SYMBOLS_DIR}` 補。

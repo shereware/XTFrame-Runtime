@@ -1,0 +1,8 @@
+/* T-490 (05 §5.9.12): a linked sheet's asset paths are relative to this file, not to ui/a.xt. */
+@font-face {
+  font-family: "F";
+  src: "fonts/f.ttf";
+}
+.hero {
+  background-image: url("img/bg.png");
+}

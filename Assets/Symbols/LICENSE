@@ -5,11 +5,17 @@ XTFrame standard symbol library — licence: CC0-1.0 (Creative Commons Zero v1.0
 SPDX-License-Identifier: CC0-1.0
 
 The XTFrame author dedicates every file in this directory and its subdirectories (the symbol
-`.xt` files, `tokens.xts`, `index.json`, `README.md` and the `.png` thumbnails) to the public
+`.xt` files, `tokens.xts`, `tokens-night.xts`, `index.json`, `README.md`, the `.png` thumbnails and the
+`.png` textures in `textures/`, which Tools/Scripts/gen_symbol_textures.py generates) to the public
 domain under CC0 1.0 Universal, whose full legal text follows. You may copy, modify, distribute
 and use these files, including in commercial products, without asking permission and without
 attribution. This applies to the files themselves; the XTFrame editor that ships them is covered
 by Legal/EULA.md, and the XTFrame name and logo are not licensed by this dedication.
+
+Exception: the font files in fonts/ (Noto Serif Display and Noto Serif) are not part of this dedication.
+They are third-party works under the SIL Open Font License 1.1, each family with its own notice
+(fonts/OFL-NotoSerifDisplay.txt, fonts/OFL-NotoSerif.txt; see fonts/README.md). They stay under the OFL
+in every copy, including the copies in project shared/fonts/ directories.
 
 ------------------------------------------------------------------------------
 

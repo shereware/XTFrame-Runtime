@@ -1,0 +1,12 @@
+{
+  "width": 360,
+  "height": 90,
+  "frames": 0,
+  "ports": {
+    "Load.value_max": 100,
+    "Load.value": 40
+  },
+  "events": [
+    "update 0.6"
+  ]
+}

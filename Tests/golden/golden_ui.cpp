@@ -847,6 +847,9 @@ std::vector<uint8_t> renderUiFixture(const UiFixture& fx, const std::string& uiD
     xt::compile::CompileOptions options;
     options.rootDir = xtPath.parent_path().string();
     options.strict = false;
+    // The extra asset roots (T-491) serve the compiler too, so a library texture one directory
+    // above a `mobile/` symbol resolves at compile time instead of only through the runtime resolver.
+    options.searchDirs = fx.assetRoots;
 
     xt::compile::CompileResult result = xt::compile::compileDocument(xtPath.string(), options);
     for (const xt::compile::Diagnostic& d : result.diagnostics) {
@@ -865,7 +868,9 @@ std::vector<uint8_t> renderUiFixture(const UiFixture& fx, const std::string& uiD
     xt::NullTextShaper shaper;
 #endif
     scriptLocalization().table.clear();  // T-179.
-    xt::FileAssetResolver resolver(xtPath.parent_path().string(), xt::sw::decodeImageBytes);
+    std::vector<std::string> assetRoots{xtPath.parent_path().string()};
+    assetRoots.insert(assetRoots.end(), fx.assetRoots.begin(), fx.assetRoots.end());
+    xt::FileAssetResolver resolver(std::move(assetRoots), xt::sw::decodeImageBytes);
     xt::Context ctx(xt::ContextConfig{&shaper, &resolver});
     ctx.setViewport(xt::Rect{0, 0, static_cast<float>(fx.width), static_cast<float>(fx.height)}, 1.0f);
 

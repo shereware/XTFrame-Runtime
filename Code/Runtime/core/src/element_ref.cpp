@@ -652,6 +652,17 @@ void ElementRef::setProperty(PropId prop, const Value& value, bool sticky) {
     xt::setProperty(doc->arena(), node, prop, value);
 }
 
+void ElementRef::setPropertyTween(PropId prop, const Value& value, float duration, Easing easing) {
+    if (!acceptsMutation(*this)) {
+        return;
+    }
+    if (!propertyApplies(NodeKind::Element, prop) || value.type != propertyType(prop)) {
+        return;
+    }
+    doc->animator().setOverride(node, prop, value, duration, easing);
+    doc->arena().markDirty(node, propertyDirtyBits(prop));
+}
+
 void ElementRef::clearOverride(PropId prop) {
     if (!acceptsMutation(*this) || !propertyApplies(NodeKind::Element, prop)) {
         return;

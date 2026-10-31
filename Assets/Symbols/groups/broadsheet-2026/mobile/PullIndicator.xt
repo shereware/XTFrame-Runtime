@@ -1,0 +1,73 @@
+<xt>
+  <head>
+    <!-- PullIndicator: standard mobile symbol (docs/design/23-host-integration.md 23.11.2,
+         30-ui-project.md 30.4). See ../README.md.
+         Style: Broadsheet (docs/design/47-symbol-visual-style.md).
+         Pull-to-refresh indicator. The host writes `progress` (0..1 while pulling; 1 = release
+         to refresh): the arrow turns with it, Pulling / Ready follow, and reaching 1 plays the
+         looping `spin` (the host stops it with stopTimeline when the refresh is done). -->
+    <symbol name="PullIndicator" state-groups="Pull: Pulling|Ready"
+            requires="states: Pulling, Ready; slots: label">
+      <div id="Box" port:progress="number in"
+           bind:state.Ready="progress | ge(1)" bind:state.Pulling="progress | lt(1)"
+           on:port(progress)="if ge(1) play(spin, loop)">
+        <div id="Disc">
+          <div id="Arrow" bind:rotate="progress | clamp(0, 1) | range(0, 1, 0, 180)">
+            <div id="Head"></div>
+            <div id="Stem"></div>
+          </div>
+        </div>
+        <span id="Label"><slot name="label">Pull to refresh</slot></span>
+      </div>
+    </symbol>
+    <style>
+      symbol(PullIndicator) {
+        #Box {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          row-gap: var(--space-2);
+          width: 200px;
+          font-family: var(--font-body);
+          font-size: var(--font-size-s);
+          color: var(--color-text-dim);
+        }
+        #Disc {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: var(--touch-min);
+          height: var(--touch-min);
+          background-color: var(--color-surface);
+          background-image: var(--tex-grain);
+          background-repeat: repeat;
+          background-size: 128px 128px;
+          border-width: var(--rule-thin);
+          border-style: dashed;
+          border-color: var(--color-border);
+        }
+        #Arrow {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          width: 4px;
+          height: 20px;
+        }
+        #Head { display: none; }
+        #Stem { width: 4px; height: 20px; background-color: var(--color-accent); }
+        #Label {
+          font-family: var(--font-display);
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: var(--letter-display);
+        }
+        #Box:state(Ready) #Disc { background-color: var(--color-accent); background-image: none; }
+        #Box:state(Ready) #Stem { background-color: var(--color-text-on-accent); }
+        #Box:state(Ready) #Label { color: var(--color-text); }
+        @timeline spin {
+          #Stem { 0s { transform: rotate(0deg) } 0.5s { transform: rotate(360deg) } }
+        }
+      }
+    </style>
+  </head>
+</xt>

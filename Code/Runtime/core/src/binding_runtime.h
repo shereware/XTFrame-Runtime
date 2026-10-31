@@ -287,6 +287,9 @@ private:
         bool transitionTween = false;
         float tweenDuration = 0;
         Easing tweenEasing{};
+        // T-546 (27 §27.3.3): false until the first write of a transitionTween binding; that write
+        // applies directly. Reset when a `<repeat>` instance is retired (item = kNoItem).
+        bool tweened = false;
         bool usesCustom = false;
         bool usesLocalize = false;
         bool applied = false;

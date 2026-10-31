@@ -80,6 +80,14 @@ fixture (.xt 或 .json) + 參數 (width, height, dpr, time)
 - **fuzz**（§15.5）：11 個 libFuzzer 目標（ir、xt、lottie、xtcl、xts、svg、xtfx、yaml、image、bundle_json、import；多格式目標以第一個 byte 選擇）；語料在建置時產生，缺任何 IR chunk 類型即建置失敗；已修的發現是每次執行前重放的迴歸檔，未修的放 `findings/` 並從 smoke 清單移除；`--fuzz` 每目標 60 s；完整閘門在 WSL GCC 與 MSVC SW shell 測試之後跑 20 s smoke。Editor Service 的 JSON 不 fuzz（需 Qt）。
 - `local_ci.sh`：clang 階段加 `-Itests/common` 與兩個 define；`Code/Editor/DevTools/` 歸 E，`Code/Tools/Common/` 歸 R。
 
+## 15.10 跨編譯器／跨宿主位元組一致（2026-10-29，T-524／T-529／T-531 之後）
+
+同一棵樹的兩個建置必須產出相同的位元組：`.xtir`（遮 META 的編譯時間與 CRC，即 `irFileHash()` 不算的部分）、bundle（遮 manifest `builtAt`）、SW 光柵的像素（`xtframe-bench` 末幀 FNV，SSE2 表）。守衛：
+- `Tools/Scripts/check_compilers.sh --a <bin> --b <bin>`：兩個原生建置（例如 GCC 與 `-DCMAKE_CXX_COMPILER=clang++ -DXT_BIN_VARIANT=clang` 的 Clang）比 `Tests/xt/*.xt` 全部、三個示範 bundle、三個場景的像素。2026-10-29 Linux GCC 13 vs Clang 18 全部相同。
+- `Tools/Scripts/check_wasm.sh`（見 `claude/web-wasm` 的 52 §52.5）：原生 vs wasm，同一套遮罩加 `pixels` 段。
+- 遮罩只有一份：`Tools/Scripts/xt_normalize.js`。
+- 原則：浮點不 contraction（14 §14.10）、SIMD 表位元組相同（23 §23.5）、求值順序不依賴編譯器（T-524 的 `pushAttr`）、目錄列舉先排序（T-524 的字型目錄）。未實測的平台：MSVC、AArch64——在那些機器跑 `check_compilers.sh` 的任一半（`xtframe-bench --json` 的 `pixels_fnv` 對 Linux 的值）即可補上。CI 尚未加 GCC-vs-Clang 腿（需在一個 job 內建兩份工具；待使用者決定）。
+
 ## 15.8 CI 閘門（T-402，44 §44.5.1 P0）
 
 `.github/workflows/ci.yml` 在每個到 main 的 PR 與 main 的 push 上跑（另可 `workflow_dispatch`）；第一個 job `changes` 以 `git diff --name-only`（PR：base..head；push：before..after）判斷：改動全在 `Docs/**` 或 `*.md` 時輸出 `code=false`，`windows`／`linux`／`sanitizers`／`runtime-export` 仍執行並成功，但每個步驟以 `if:` 跳過（整個 job 被跳過時必要檢查不會回報）；手動執行、新分支或基準不明時一律 `code=true`。`docs-checks.yml` 不設路徑過濾，每個 PR／push 都跑。合併閘門＝下表「必要」各 job 全過（branch protection 依名稱勾選）。
@@ -87,7 +95,7 @@ fixture (.xt 或 .json) + 參數 (width, height, dpr, time)
 | job | 內容 | 必要 |
 |---|---|---|
 | `windows` | MSVC `vs2022` Debug＋Release 建置與 ctest | 必要 |
-| `linux`（`g++-12`、`clang` 18 兩條腿） | `ninja-ci-debug`／`ninja-ci-release` 建置與 `xvfb-run` ctest | 必要 |
+| `linux`（`g++-12`、`clang` 18 兩條腿） | `ninja-ci-debug`／`ninja-ci-release` 建置與 `xvfb-run` ctest；Release 腿含 `corpus_check`（43 §43.4，T-527d；Ninja 單設定樹的 test preset 必須帶 `"configuration"`，否則 `CONFIGURATIONS Release` 的測試被 ctest 靜默略過——2026-10-30 使用者「開開」後補上） | 必要 |
 | `sanitizers` | clang Debug、`XT_SANITIZE=address,undefined`（preset `ninja-ci-asan`，GL／shell／編輯器關）；整棵樹的 ctest（xt_tests、flow、bundle、golden 容差不變、CLI 測試），`ASAN_OPTIONS=detect_leaks=1`、`UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1`；標 `XT_SKIP_UNDER_ASAN` 的測試由 test preset 排除 | 必要 |
 | `runtime-export` | `Tools/Scripts/export_runtime.sh --verify`：R 層匯出獨立建置與 ctest（T-400） | 必要 |
 | `docs-checks` | `check_skill_sync`、`check_ops_doc`、`check_command_ops`、`check_symbols_index`、`check_test_temp`、`check_layering`、`check_public_headers`（無建置） | 必要 |

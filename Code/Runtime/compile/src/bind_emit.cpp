@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "css_number.h"  // Code/Runtime/core/src: the CSS number (T-272).
+#include "style_emit.h"  // T-544: resolveEffectAddress() / staticEffectSequence().
 #include "xt/compile/aliases.h"
 #include "xt/compile/parse_xt.h"
 #include "xt/compile/validate.h"
@@ -659,7 +660,8 @@ bool transformComponent(std::string_view name, uint16_t& out) {
     static constexpr Entry kComponents[] = {
         {"translate-x", xt::prop::TranslateX}, {"translate-y", xt::prop::TranslateY},
         {"scale-x", xt::prop::ScaleX},         {"scale-y", xt::prop::ScaleY},
-        {"rotate", xt::prop::Rotation},
+        {"rotate", xt::prop::Rotation},        {"rotate-x", xt::prop::RotationX},
+        {"rotate-y", xt::prop::RotationY},     {"translate-z", xt::prop::TranslateZ},
     };
     for (const Entry& e : kComponents) {
         if (name == e.name) {
@@ -674,8 +676,9 @@ class Binder {
 public:
     Binder(const DomTree& dom, const std::vector<ExpandedSymbolInstance>& instances, const PortScopes& scopes,
            const CustomStateBuilder& states, IrWriter& writer, std::string_view fileName,
-           DiagnosticSink& sink, const RepeatScopes* repeats)
+           DiagnosticSink& sink, const RepeatScopes* repeats, const RuleSet* ruleSet = nullptr)
         : m_dom(dom),
+          m_ruleSet(ruleSet),
           m_scopes(scopes),
           m_repeats(repeats),
           m_states(states),
@@ -779,6 +782,8 @@ public:
 
 private:
     const DomTree& m_dom;
+    const RuleSet* m_ruleSet;  // T-544: the static `effect` lookup of `bind:effect.*` (may be null).
+    std::vector<StyleDecl> m_effectScratch;
     const PortScopes& m_scopes;
     const RepeatScopes* m_repeats;
     const CustomStateBuilder& m_states;
@@ -1755,6 +1760,41 @@ private:
         out.bindings.push_back(b);
     }
 
+    /// T-544: a color effect parameter takes only a color source, a numeric one only a number. The
+    /// source type is known statically for a bare port (`m_primary`, no converter) or when the last
+    /// converter has a fixed result type; any other chain is not checked here.
+    bool effectSourceMatches(bool wantColor, const std::string& lastConverter, std::string& err) const {
+        enum class Got { Unknown, Number, Color, Other } got = Got::Unknown;
+        if (lastConverter.empty()) {
+            if (m_primary >= 0 && m_deps.size() <= 1) {
+                const PortValueType t =
+                    static_cast<PortValueType>(m_scopes.ports[static_cast<size_t>(m_primary)].type);
+                got = t == PortValueType::Number  ? Got::Number
+                      : t == PortValueType::Color ? Got::Color
+                                                  : Got::Other;
+            }
+        } else if (lastConverter == "range" || lastConverter == "clamp" || lastConverter == "round" ||
+                   lastConverter == "abs" || lastConverter == "scale" || lastConverter == "offset") {
+            got = Got::Number;
+        } else if (lastConverter == "lerpColor") {
+            got = Got::Color;
+        } else if (lastConverter == "format" || lastConverter == "thousands" || lastConverter == "fixed" ||
+                   lastConverter == "percent" || lastConverter == "time" || lastConverter == "upper" ||
+                   lastConverter == "lower" || lastConverter == "concat" || lastConverter == "localize" ||
+                   lastConverter == "glyph" || lastConverter == "lt" || lastConverter == "le" ||
+                   lastConverter == "gt" || lastConverter == "ge" || lastConverter == "eq" ||
+                   lastConverter == "ne" || lastConverter == "between" || lastConverter == "not" ||
+                   lastConverter == "and" || lastConverter == "or") {
+            got = Got::Other;
+        }
+        if (got == Got::Unknown || (wantColor && got == Got::Color) || (!wantColor && got == Got::Number)) {
+            return true;
+        }
+        err = wantColor ? "a color effect parameter needs a color source"
+                        : "a numeric effect parameter needs a number source";
+        return false;
+    }
+
     void compileBinding(uint32_t element, const DomAttr& attr, BindingBuilder& out,
                         const SvgBindAttr* scene = nullptr) {
         const std::string target = attr.name.substr(5);
@@ -1766,8 +1806,14 @@ private:
         b.element = element;
         b.targetName = kInvalidString;
         b.sceneNode = kBindElementSelf;
+        bool effectBind = false;     // T-544: `bind:effect.<effect>.<param>`.
+        bool effectIsColor = false;  // ... and the parameter is a color slot.
         if (scene != nullptr) {
             // T-243 (32 §32.4): on <svg> content only a property the scene node takes binds.
+            if (target.rfind("effect.", 0) == 0) {
+                fail("effect.* does not bind on <svg> content");  // T-544
+                return;
+            }
             const NodeKind kind = static_cast<NodeKind>(scene->kind);
             uint16_t prop = 0;
             if (!transformComponent(target, prop)) {
@@ -1864,6 +1910,32 @@ private:
             }
             b.target = static_cast<uint8_t>(BindTarget::Variant);
             b.targetName = m_writer.intern("v-" + prop + "-");
+        } else if (target.rfind("effect.", 0) == 0) {
+            // T-544 (18 §18.12): `bind:effect.<effect>.<param>` -> the 18.2 effect PropId of the
+            // element's static effect sequence (the address `@timeline` uses).
+            const std::string rest = target.substr(7);
+            const size_t dot = rest.find('.');
+            if (dot == std::string::npos || dot == 0 || dot + 1 >= rest.size() ||
+                rest.find('.', dot + 1) != std::string::npos) {
+                fail("bind:effect.<effect>.<param> needs an effect and a parameter");
+                return;
+            }
+            const std::vector<EffectDeclEntry>* seq =
+                m_ruleSet != nullptr
+                    ? staticEffectSequence(*m_ruleSet, m_dom, element, m_fileName, m_effectScratch)
+                    : nullptr;
+            std::string error;
+            PropId prop = 0;
+            if (!resolveEffectAddress(m_writer, std::string_view(rest).substr(0, dot),
+                                      std::string_view(rest).substr(dot + 1), seq, error, prop,
+                                      effectIsColor)) {
+                fail(error);
+                return;
+            }
+            effectBind = true;
+            b.target = static_cast<uint8_t>(BindTarget::Prop);
+            b.targetId = prop;
+            b.targetName = m_writer.intern(target);
         } else if (uint16_t component = 0; transformComponent(target, component)) {
             // T-201: a transform component (the PropId `transform` expands into); no relayout.
             b.target = static_cast<uint8_t>(BindTarget::Prop);
@@ -1894,6 +1966,7 @@ private:
             fail(err);
             return;
         }
+        std::string lastConverter;  // T-544: the last value-changing converter's name.
         for (size_t i = 1; i < segments.size(); ++i) {
             Call c;
             if (!parseCallText(segments[i], c, err) || !converter(c, steps, err)) {
@@ -1903,8 +1976,15 @@ private:
                 fail(err);
                 return;
             }
+            if (c.name != "tween" && c.name != "delay") {
+                lastConverter = c.name;
+            }
         }
         if (!checkNeedField(err)) {
+            fail(err);
+            return;
+        }
+        if (effectBind && !effectSourceMatches(effectIsColor, lastConverter, err)) {
             fail(err);
             return;
         }
@@ -2497,8 +2577,9 @@ void declareSystemPorts(const DomTree& dom, IrWriter& writer, PortBuilder& out, 
 bool emitBindings(const DomTree& dom, const std::vector<ExpandedSymbolInstance>& instances,
                   const PortScopes& scopes, const CustomStateBuilder& states, IrWriter& writer,
                   std::string_view fileName, DiagnosticSink& sink, BindingBuilder& out,
-                  const RepeatScopes* repeats, const std::map<uint32_t, std::vector<SvgBindAttr>>* svgBinds) {
-    Binder binder(dom, instances, scopes, states, writer, fileName, sink, repeats);
+                  const RepeatScopes* repeats, const std::map<uint32_t, std::vector<SvgBindAttr>>* svgBinds,
+                  const RuleSet* ruleSet) {
+    Binder binder(dom, instances, scopes, states, writer, fileName, sink, repeats, ruleSet);
 
     return binder.run(out, svgBinds);
 }
@@ -2575,6 +2656,16 @@ bool validateBindingTarget(std::string_view target, std::string& error) {
     if (suffix("class.", rest)) {
         if (rest.empty()) {
             error = "empty class name";
+            return false;
+        }
+        return true;
+    }
+    if (suffix("effect.", rest)) {
+        // T-544: exactly `<effect>.<param>`; the effect itself resolves at compile time.
+        const size_t dot = rest.find('.');
+        if (dot == std::string::npos || dot == 0 || dot + 1 >= rest.size() ||
+            rest.find('.', dot + 1) != std::string::npos) {
+            error = "bind:effect.<effect>.<param> needs an effect and a parameter";
             return false;
         }
         return true;

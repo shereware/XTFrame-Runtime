@@ -408,7 +408,7 @@ namespace {
 constexpr const char* kBundleProjectFileName = "bundle.xtproj";
 
 /// ASCII lower-case copy.
-std::string lowerAscii(std::string_view text) {
+std::string lowerAsciiUiProject(std::string_view text) {
     std::string out(text);
     for (char& c : out) {
         if (c >= 'A' && c <= 'Z') {
@@ -421,7 +421,8 @@ std::string lowerAscii(std::string_view text) {
 /// True when `fileName` ends in ".xtui" (any case).
 bool hasXtuiExtension(std::string_view fileName) {
     const std::string_view ext = kUiProjectExtension;
-    return fileName.size() > ext.size() && lowerAscii(fileName.substr(fileName.size() - ext.size())) == ext;
+    return fileName.size() > ext.size() &&
+           lowerAsciiUiProject(fileName.substr(fileName.size() - ext.size())) == ext;
 }
 
 /// The `*.xtui` regular files directly in `dir`, sorted by name.
@@ -475,7 +476,7 @@ bool usableFileStem(std::string_view name) {
         }
     }
     // Windows device names, alone or before an extension ("CON", "com1.txt").
-    std::string stem = lowerAscii(name.substr(0, name.find('.')));
+    std::string stem = lowerAsciiUiProject(name.substr(0, name.find('.')));
     while (!stem.empty() && stem.back() == ' ') {
         stem.pop_back();
     }
@@ -689,6 +690,13 @@ Result<UiProject> UiProject::load(std::string_view input, std::string* error) {
     if (project.publish.atlas.scope != "bundle") {
         project.publish.atlas.scope = "ui";
     }
+    // T-527 (22 §22.10.3): an unknown value is a load error, not silently "system".
+    if (const auto fonts = publish.find("fonts"); fonts != publish.end()) {
+        if (!fonts->is_string() || !parseFontsMode(fonts->get<std::string>(), project.publish.fonts)) {
+            return failUiProject(Status::kInvalidArgument, error,
+                                 "'" + path + "': publish.fonts must be \"system\" or \"bundled\"");
+        }
+    }
     // T-212: publish.targets[] -- entries without a kind or path are dropped. T-304: the retired
     // second kind older editors wrote reads as "dir" (same path); when an entry then matches an
     // earlier one (same kind and path), the one with the later lastPublished is kept, at the later
@@ -744,8 +752,8 @@ Result<UiProject> UiProject::load(std::string_view input, std::string* error) {
         }
     }
     project.assets.extraJson = extraKeys(assets, {"sourceFolders"});
-    project.extraPublishJson = extraKeys(
-        publish, {"outDir", "languages", "embedImages", "embedFonts", "thumbnails", "atlas", "targets"});
+    project.extraPublishJson = extraKeys(publish, {"outDir", "languages", "embedImages", "embedFonts",
+                                                   "thumbnails", "atlas", "fonts", "targets"});
 
     project.extraJson = extraKeys(root, {"version", "name", "id", "game", "spec", "uis", "shared", "preview",
                                          "target", "publish", "assets"});
@@ -772,6 +780,7 @@ UiProject UiProject::fromBundleProject(const ProjectFile& source) {
     project.publish.embedImages = source.publish.embedImages;
     project.publish.embedFonts = source.publish.embedFonts;
     project.publish.thumbnail = source.publish.thumbnail;
+    project.publish.fonts = source.publish.fonts;  // T-527
     project.rootDir = source.rootDir;
     return project;
 }
@@ -863,6 +872,9 @@ Status UiProject::save(std::string* error) const {
     atlasObj["mipmaps"] = publish.atlas.mipmaps;
     atlasObj["scope"] = publish.atlas.scope;
     publishObj["atlas"] = std::move(atlasObj);
+    if (publish.fonts != FontsMode::kSystem) {
+        publishObj["fonts"] = fontsModeName(publish.fonts);  // T-527: absent = "system".
+    }
     if (!publish.targets.empty()) {
         ordered_json targetArray = ordered_json::array();
         for (const PublishTarget& published : publish.targets) {
@@ -911,7 +923,7 @@ Status UiProject::save(std::string* error) const {
     std::error_code ec;
     for (const fs::path& file : existing) {
         const std::string current = pathToUtf8(file.filename());
-        if (current != targetName && lowerAscii(current) == lowerAscii(targetName)) {
+        if (current != targetName && lowerAsciiUiProject(current) == lowerAsciiUiProject(targetName)) {
             // In two steps: a rename that only changes the case is a no-op on some file systems
             // (exFAT keeps the old spelling).
             const fs::path via = pathFromUtf8(path + ".renaming");
@@ -937,7 +949,7 @@ Status UiProject::save(std::string* error) const {
         return Status::kIoError;
     }
     for (const fs::path& file : existing) {
-        if (lowerAscii(pathToUtf8(file.filename())) != lowerAscii(targetName)) {
+        if (lowerAsciiUiProject(pathToUtf8(file.filename())) != lowerAsciiUiProject(targetName)) {
             fs::remove(file, ec);
         }
     }
@@ -970,6 +982,7 @@ ProjectFile UiProject::toBundleProject() const {
     project.publish.embedImages = publish.embedImages;
     project.publish.embedFonts = publish.embedFonts;
     project.publish.thumbnail = publish.thumbnail;
+    project.publish.fonts = publish.fonts;  // T-527
     project.rootDir = rootDir;
     return project;
 }

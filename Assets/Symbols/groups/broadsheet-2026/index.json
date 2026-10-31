@@ -1,0 +1,4590 @@
+{
+  "version": 1,
+  "description": "XTFrame standard symbol library (docs/design/30-ui-project.md 30.4). One symbol per <Name>.xt; every symbol draws only through the tokens of tokens.xts.",
+  "license": "CC0-1.0 (see LICENSE): free for any use, including commercial, no attribution required.",
+  "tokens": "tokens.xts",
+  "categories": {
+    "form": "Forms and settings",
+    "hud": "HUD",
+    "input": "Input prompts",
+    "mobile": "Mobile (touch)",
+    "list": "Lists"
+  },
+  "symbols": [
+    {
+      "name": "Button",
+      "category": "form",
+      "file": "Button.xt",
+      "thumbnail": "thumbnails/Button.png",
+      "description": "Push button with Kind and Size variants; emits `pressed` on click.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Pressed",
+          "Focus",
+          "Disabled"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "variants": {
+        "Kind": [
+          "Primary",
+          "Secondary",
+          "Ghost"
+        ],
+        "Size": [
+          "S",
+          "M",
+          "L"
+        ]
+      },
+      "ports": [
+        {
+          "name": "pressed",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [
+        "hover-in",
+        "hover-out",
+        "press"
+      ],
+      "triggers": [
+        "hover: play(hover-in)",
+        "leave: play(hover-out)",
+        "press: sound(ui_click); play(press)",
+        "click: emit(pressed)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-accent-hover",
+          "default": "#4a463f"
+        },
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-disabled-bg",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--color-disabled-text",
+          "default": "#8a857a"
+        },
+        {
+          "name": "--color-focus",
+          "default": "#b3281e"
+        },
+        {
+          "name": "--color-shadow",
+          "default": "#4a463f"
+        },
+        {
+          "name": "--color-surface",
+          "default": "#ece8dd"
+        },
+        {
+          "name": "--color-surface-sunken",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-text-on-accent",
+          "default": "#e6e2d6"
+        },
+        {
+          "name": "--control-l",
+          "default": "44px"
+        },
+        {
+          "name": "--control-m",
+          "default": "36px"
+        },
+        {
+          "name": "--control-s",
+          "default": "28px"
+        },
+        {
+          "name": "--focus-w",
+          "default": "2px"
+        },
+        {
+          "name": "--font-display",
+          "default": "\"Noto Serif Display ExtraCondensed\", \"Noto Serif Display\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-l",
+          "default": "20px"
+        },
+        {
+          "name": "--font-size-m",
+          "default": "16px"
+        },
+        {
+          "name": "--font-size-s",
+          "default": "14px"
+        },
+        {
+          "name": "--letter-display",
+          "default": "0.5px"
+        },
+        {
+          "name": "--motion-fast",
+          "default": "150ms"
+        },
+        {
+          "name": "--rule-thick",
+          "default": "3px"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-3",
+          "default": "12px"
+        },
+        {
+          "name": "--space-4",
+          "default": "16px"
+        },
+        {
+          "name": "--space-6",
+          "default": "24px"
+        },
+        {
+          "name": "--tex-hatch",
+          "default": "url(\"textures/hatch-ink.png\")"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerifDisplay-ExtraCondensedBlack.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBold.ttf"
+      ],
+      "textures": [
+        "textures/hatch-ink.png",
+        "textures/hatch-night.png"
+      ],
+      "content": "sha256:31fa5e562d2749d385dfc95a071df962616e9790b18fa817da6c5de9e20b8689",
+      "previousContent": [
+        "sha256:416b02cf81b9fdfc045d41339d335a7dd890fcd892f54731fd78b324c417227e",
+        "sha256:50b5a58007a1ee3bb8def378f14ce62af61cf72b73649c34608aaa223c6aad72",
+        "sha256:1f289ce1c3deb13a094bec8e1b8d50a64e83edea508c3b33747a5656b0a20f8e",
+        "sha256:8781953d3f9c48a09122d67e2f2d3edc39e5d555d5de7c8fe7622b57262c14b0"
+      ]
+    },
+    {
+      "name": "Toggle",
+      "category": "form",
+      "file": "Toggle.xt",
+      "thumbnail": "thumbnails/Toggle.png",
+      "description": "On/off switch with a label.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Focus",
+          "Checked",
+          "Disabled"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "ports": [
+        {
+          "name": "value",
+          "type": "bool",
+          "dir": "in"
+        }
+      ],
+      "timelines": [],
+      "triggers": [
+        "check: sound(ui_toggle); set(value, true)",
+        "uncheck: sound(ui_toggle); set(value, false)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-accent-hover",
+          "default": "#4a463f"
+        },
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-disabled-bg",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--color-disabled-text",
+          "default": "#8a857a"
+        },
+        {
+          "name": "--color-focus",
+          "default": "#b3281e"
+        },
+        {
+          "name": "--color-surface",
+          "default": "#ece8dd"
+        },
+        {
+          "name": "--color-surface-sunken",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-text-on-accent",
+          "default": "#e6e2d6"
+        },
+        {
+          "name": "--focus-w",
+          "default": "2px"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"DejaVu Serif\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-m",
+          "default": "16px"
+        },
+        {
+          "name": "--motion-fast",
+          "default": "150ms"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-3",
+          "default": "12px"
+        },
+        {
+          "name": "--tex-hatch",
+          "default": "url(\"textures/hatch-ink.png\")"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [
+        "textures/hatch-ink.png",
+        "textures/hatch-night.png"
+      ],
+      "notes": "The switch is the checkbox input with its knob inside; its check / uncheck set the `value` port (`set(value, true|false)`). A host change of `value` does not move the switch (no `checked` binding target); the host sets that with setAttribute(\"checked\").",
+      "content": "sha256:97b4a1ced6eb835bd94ba0125d9bc09ada8988e6e1f7f468ff3e7ee34c5319bb",
+      "previousContent": [
+        "sha256:f396f0187bab1970d26e5a72e9891d59d75f4a5d7facf1a46de853ee36d3d371",
+        "sha256:d82490f191a345798af4d96c83ce31ec0dfa8690c099567c50213e73cd4f7e64",
+        "sha256:3e59a995c007b93c7c456f4bbc4ac3bd8889bad53ab0bfe518d2c63f006e0b4f",
+        "sha256:cfad81c5d5ab79f6eb39540034bb0ab27797a8fb413b5e7397a8aee86893f31f"
+      ]
+    },
+    {
+      "name": "Checkbox",
+      "category": "form",
+      "file": "Checkbox.xt",
+      "thumbnail": "thumbnails/Checkbox.png",
+      "description": "Check box with a label.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Focus",
+          "Checked",
+          "Disabled"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "ports": [
+        {
+          "name": "value",
+          "type": "bool",
+          "dir": "in"
+        }
+      ],
+      "timelines": [],
+      "triggers": [
+        "check: sound(ui_toggle); set(value, true)",
+        "uncheck: sound(ui_toggle); set(value, false)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-accent-hover",
+          "default": "#4a463f"
+        },
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-disabled-bg",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--color-disabled-text",
+          "default": "#8a857a"
+        },
+        {
+          "name": "--color-focus",
+          "default": "#b3281e"
+        },
+        {
+          "name": "--color-surface",
+          "default": "#ece8dd"
+        },
+        {
+          "name": "--color-surface-sunken",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-text-on-accent",
+          "default": "#e6e2d6"
+        },
+        {
+          "name": "--focus-w",
+          "default": "2px"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"DejaVu Serif\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-m",
+          "default": "16px"
+        },
+        {
+          "name": "--motion-fast",
+          "default": "150ms"
+        },
+        {
+          "name": "--motion-instant",
+          "default": "50ms"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        },
+        {
+          "name": "--tex-hatch",
+          "default": "url(\"textures/hatch-ink.png\")"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [
+        "textures/hatch-ink.png",
+        "textures/hatch-night.png"
+      ],
+      "notes": "Same as Toggle: the box is the checkbox input with its mark inside; its check / uncheck set the `value` port.",
+      "content": "sha256:22ca19cccf68ae866acc464f761509f5324b0f8dcae1a13a1f825cda44c9f946",
+      "previousContent": [
+        "sha256:7f90fbb880932ae5672d7adb417db17d733508caeabfe2c0c32fe4c5af2b54d7",
+        "sha256:0c0fb742312f86a9e342a35a72c4c7b5ebdeb2a495487b2c537aac76d3dc5349",
+        "sha256:32e11211a66b6543f25f76049e7c1434a48ac8a8a032687101e5d686842234ce",
+        "sha256:79867bbacc770c9829cc40edbd5750bc3e9a30affd494b324c8fa375148f692a",
+        "sha256:2920f7aca94d8d8dcae554df9254e2ec69c353c9b930c7ba894722d4bf533cd9"
+      ]
+    },
+    {
+      "name": "RadioGroup",
+      "category": "form",
+      "file": "RadioGroup.xt",
+      "thumbnail": "thumbnails/RadioGroup.png",
+      "description": "Single choice from a list of options (`<repeat>`).",
+      "requires": {
+        "states": [
+          "Hover",
+          "Focus",
+          "Selected",
+          "Disabled"
+        ],
+        "slots": []
+      },
+      "ports": [
+        {
+          "name": "options",
+          "type": "list<struct{label: string}>",
+          "dir": "in"
+        },
+        {
+          "name": "value",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "select",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [],
+      "triggers": [
+        "press: sound(ui_select); emit(select)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-disabled-bg",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--color-disabled-text",
+          "default": "#8a857a"
+        },
+        {
+          "name": "--color-focus",
+          "default": "#b3281e"
+        },
+        {
+          "name": "--color-surface",
+          "default": "#ece8dd"
+        },
+        {
+          "name": "--color-surface-sunken",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--focus-w",
+          "default": "2px"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"DejaVu Serif\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-m",
+          "default": "16px"
+        },
+        {
+          "name": "--motion-fast",
+          "default": "150ms"
+        },
+        {
+          "name": "--radius-full",
+          "default": "999px"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-1",
+          "default": "4px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        },
+        {
+          "name": "--tex-hatch",
+          "default": "url(\"textures/hatch-ink.png\")"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [
+        "textures/hatch-ink.png",
+        "textures/hatch-night.png"
+      ],
+      "notes": "Controlled: the host sets `value` (selected index) on `select`; a trigger cannot set a state on a sibling, so the group cannot select locally.",
+      "content": "sha256:1a85d8d658ffa8d3e8aa9ad29a9348ed354a94ea88b588609e655172fb00cea5",
+      "previousContent": [
+        "sha256:715939ab27258b2b339c8c84c0de1335ded5681cf992ca7a3ef94fbd36ab976e",
+        "sha256:0985bed1e5de313e39710dd89da62c8e26678f4b1a7948896dbc25e6c0643509",
+        "sha256:0b99d2bd85cbbfd3a442c2619e548b68472acc4d4cc28bc665bed6acc0fb5364",
+        "sha256:840af080d68483d8787e3625e8e32c09f81900929d7431cb45caa7e3e35b4fb8"
+      ]
+    },
+    {
+      "name": "Slider",
+      "category": "form",
+      "file": "Slider.xt",
+      "thumbnail": "thumbnails/Slider.png",
+      "description": "Horizontal value slider with a readout.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Pressed",
+          "Focus",
+          "Disabled"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "ports": [
+        {
+          "name": "value",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "min",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "max",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "decrease",
+          "type": "event",
+          "dir": "out"
+        },
+        {
+          "name": "increase",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [],
+      "triggers": [
+        "drag.value: set(value, event.value | range(0, 1, min, max) | round)",
+        "nav.value: sound(ui_tick); if lt(0) emit(decrease) else emit(increase)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-disabled-bg",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--color-disabled-text",
+          "default": "#8a857a"
+        },
+        {
+          "name": "--color-focus",
+          "default": "#b3281e"
+        },
+        {
+          "name": "--color-surface",
+          "default": "#ece8dd"
+        },
+        {
+          "name": "--color-surface-sunken",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-text-dim",
+          "default": "#4a463f"
+        },
+        {
+          "name": "--color-track",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--focus-w",
+          "default": "2px"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"DejaVu Serif\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-s",
+          "default": "14px"
+        },
+        {
+          "name": "--motion-fast",
+          "default": "150ms"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        },
+        {
+          "name": "--space-3",
+          "default": "12px"
+        },
+        {
+          "name": "--tex-hatch",
+          "default": "url(\"textures/hatch-ink.png\")"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [
+        "textures/hatch-ink.png",
+        "textures/hatch-night.png"
+      ],
+      "notes": "The track is `draggable=\"axis-x\"`: a press or drag along it sets `value` (min..max, rounded); with the track focused, Left/Right keys and the gamepad d-pad emit `decrease` / `increase` (nav.value).",
+      "content": "sha256:8f52a8946ffee460fcc7f2a940e283f2e155d41823db209e16ddde191a2b59d1",
+      "previousContent": [
+        "sha256:be3002a9fd815234ff2c46f641afe73b4df10dfe6f7aa1fb3c6e3eca8d15832a",
+        "sha256:389148ad77c56ef46159b2b205ec3f586f94c5231af10efc0e50951ef1b20dda",
+        "sha256:3c62a26d455fce4f283114fabb3a1e16c1c3cdb87c55b68ec765a5710ff074ab",
+        "sha256:6a6fff251f368f212f8ff001f8b2eedb8e568f1e13f648bfd537f15c32b69afe"
+      ]
+    },
+    {
+      "name": "Stepper",
+      "category": "form",
+      "file": "Stepper.xt",
+      "thumbnail": "thumbnails/Stepper.png",
+      "description": "Minus / value / plus control.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Pressed",
+          "Focus",
+          "Disabled"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "ports": [
+        {
+          "name": "value",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "decrease",
+          "type": "event",
+          "dir": "out"
+        },
+        {
+          "name": "increase",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [],
+      "triggers": [
+        "press: sound(ui_tick)",
+        "click: emit(decrease)",
+        "press: sound(ui_tick)",
+        "click: emit(increase)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-disabled-bg",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--color-disabled-text",
+          "default": "#8a857a"
+        },
+        {
+          "name": "--color-focus",
+          "default": "#b3281e"
+        },
+        {
+          "name": "--color-surface",
+          "default": "#ece8dd"
+        },
+        {
+          "name": "--color-surface-sunken",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-text-on-accent",
+          "default": "#e6e2d6"
+        },
+        {
+          "name": "--control-s",
+          "default": "28px"
+        },
+        {
+          "name": "--focus-w",
+          "default": "2px"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"DejaVu Serif\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-display",
+          "default": "\"Noto Serif Display ExtraCondensed\", \"Noto Serif Display\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-m",
+          "default": "16px"
+        },
+        {
+          "name": "--letter-display",
+          "default": "0.5px"
+        },
+        {
+          "name": "--motion-fast",
+          "default": "150ms"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        },
+        {
+          "name": "--space-4",
+          "default": "16px"
+        },
+        {
+          "name": "--tex-hatch",
+          "default": "url(\"textures/hatch-ink.png\")"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBlack.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBold.ttf"
+      ],
+      "textures": [
+        "textures/hatch-ink.png",
+        "textures/hatch-night.png"
+      ],
+      "notes": "Controlled: `decrease` / `increase` events, the host sets `value`.",
+      "content": "sha256:f74adc9991f136f95aeae023748c00612971ac6a2c45b282621d465e7f49702c",
+      "previousContent": [
+        "sha256:41097b061a013519fd503f9d6c0f2378d37cd1da488e03e6686b5bd59066b410",
+        "sha256:961794f26c9fbed0e13e1439a50294f048c648133e1110b61631f3624c3cbc95",
+        "sha256:4df71c31ff7204b70d1d198c2464c2ca22f1471c713553ae69cea7ded2c6b10c",
+        "sha256:6fdb34040d21e7d5fe62e9492bbcf00d6a754beae7f31eb460762fb42eed70b0"
+      ]
+    },
+    {
+      "name": "Dropdown",
+      "category": "form",
+      "file": "Dropdown.xt",
+      "thumbnail": "thumbnails/Dropdown.png",
+      "description": "Closed field that opens an option list on the overlay layer.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Focus",
+          "Open",
+          "Selected",
+          "Disabled"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "ports": [
+        {
+          "name": "options",
+          "type": "list<struct{label: string}>",
+          "dir": "in"
+        },
+        {
+          "name": "value",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "current",
+          "type": "string",
+          "dir": "in"
+        },
+        {
+          "name": "select",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [],
+      "triggers": [
+        "click: sound(ui_open); state(Open, toggle)",
+        "blur: state(Open, off)",
+        "state(Open).enter: layer(overlay)",
+        "state(Open).exit: layer(normal)",
+        "press: sound(ui_select); emit(select)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-accent-hover",
+          "default": "#4a463f"
+        },
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-disabled-bg",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--color-disabled-text",
+          "default": "#8a857a"
+        },
+        {
+          "name": "--color-focus",
+          "default": "#b3281e"
+        },
+        {
+          "name": "--color-surface",
+          "default": "#ece8dd"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-text-dim",
+          "default": "#4a463f"
+        },
+        {
+          "name": "--color-text-on-accent",
+          "default": "#e6e2d6"
+        },
+        {
+          "name": "--control-m",
+          "default": "36px"
+        },
+        {
+          "name": "--focus-w",
+          "default": "2px"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"DejaVu Serif\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-m",
+          "default": "16px"
+        },
+        {
+          "name": "--font-size-s",
+          "default": "14px"
+        },
+        {
+          "name": "--motion-fast",
+          "default": "150ms"
+        },
+        {
+          "name": "--rule-thick",
+          "default": "3px"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-1",
+          "default": "4px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        },
+        {
+          "name": "--space-3",
+          "default": "12px"
+        },
+        {
+          "name": "--tex-grain",
+          "default": "url(\"textures/grain-paper.png\")"
+        },
+        {
+          "name": "--tex-hatch",
+          "default": "url(\"textures/hatch-ink.png\")"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [
+        "textures/grain-paper.png",
+        "textures/hatch-ink.png",
+        "textures/grain-night.png",
+        "textures/hatch-night.png"
+      ],
+      "notes": "The list sits inside the field, shown by the custom state Open; while Open the field is lifted into the overlay layer (`layer(overlay)` on state(Open).enter). The list is a `focus-trap`.",
+      "content": "sha256:44880f25d1a066b35413f074e74e6f4891b34accca273d146164f71021b84d4e",
+      "previousContent": [
+        "sha256:56aed37c1e6a7f910a1fd04245415a6b0cfc1c7eb5e87e4ccb919e7e180a3c11",
+        "sha256:d040fda70f84888e92406c9cdf3115f330fbad7b3279c902a702034a62253955",
+        "sha256:48749756cb1725ccda1bb5e15307eed4807d97c0d1280169b26bd931931dc0e4",
+        "sha256:3e624277e33a3ceeacbca70320819d5cade507d954b97fce17890606474b1866",
+        "sha256:073022e84f65e66a3a6e001fe7af09041847537b39b4a30635ea6e9642dd2902"
+      ]
+    },
+    {
+      "name": "OptionCycler",
+      "category": "form",
+      "file": "OptionCycler.xt",
+      "thumbnail": "thumbnails/OptionCycler.png",
+      "description": "Left/right option switcher (settings row).",
+      "requires": {
+        "states": [
+          "Hover",
+          "Focus",
+          "Disabled"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "ports": [
+        {
+          "name": "current",
+          "type": "string",
+          "dir": "in"
+        },
+        {
+          "name": "prev",
+          "type": "event",
+          "dir": "out"
+        },
+        {
+          "name": "next",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [],
+      "triggers": [
+        "key(Left): sound(ui_tick); emit(prev)",
+        "key(Right): sound(ui_tick); emit(next)",
+        "press: sound(ui_tick)",
+        "click: emit(prev)",
+        "press: sound(ui_tick)",
+        "click: emit(next)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-disabled-bg",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--color-disabled-text",
+          "default": "#8a857a"
+        },
+        {
+          "name": "--color-focus",
+          "default": "#b3281e"
+        },
+        {
+          "name": "--color-surface-sunken",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-text-on-accent",
+          "default": "#e6e2d6"
+        },
+        {
+          "name": "--control-l",
+          "default": "44px"
+        },
+        {
+          "name": "--control-s",
+          "default": "28px"
+        },
+        {
+          "name": "--focus-w",
+          "default": "2px"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"DejaVu Serif\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-display",
+          "default": "\"Noto Serif Display ExtraCondensed\", \"Noto Serif Display\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-m",
+          "default": "16px"
+        },
+        {
+          "name": "--letter-display",
+          "default": "0.5px"
+        },
+        {
+          "name": "--motion-fast",
+          "default": "150ms"
+        },
+        {
+          "name": "--motion-instant",
+          "default": "50ms"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        },
+        {
+          "name": "--space-3",
+          "default": "12px"
+        },
+        {
+          "name": "--space-4",
+          "default": "16px"
+        },
+        {
+          "name": "--tex-hatch",
+          "default": "url(\"textures/hatch-ink.png\")"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBlack.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBold.ttf"
+      ],
+      "textures": [
+        "textures/hatch-ink.png",
+        "textures/hatch-night.png"
+      ],
+      "notes": "Controlled: `prev` / `next` events, the host sets `current`.",
+      "content": "sha256:049df4f9d0cd4397ee56ddc85ae4e0650b5da2f72f55d0764b3d5dfc22a22445",
+      "previousContent": [
+        "sha256:b83d50ef20dda3ddf79f54209a68863f9f53a445a1b6f49082f3ae5a2dd279ad",
+        "sha256:53a1aa3ccca90f9f481e20d8ca2cbc7c20fd08ba9b05238d4750ea1e53fe4656",
+        "sha256:86185c37c244deae7646a4b4bf9229aa4756e06a52bfdf3b3a72548860284207",
+        "sha256:da67e03ba205aba2b9c8e90fbb3c011593af15d57b6e40402b15050e68aebca1",
+        "sha256:92446a007fca173a0f9fbdda7411b2c27e9fc3a7fb32c0a2e8fc6df7a3d8e5aa",
+        "sha256:bec423a033b689a3e0af7a8299662d469b5ad2e5b97390e727ca4f65e9b0167d"
+      ]
+    },
+    {
+      "name": "TextField",
+      "category": "form",
+      "file": "TextField.xt",
+      "thumbnail": "thumbnails/TextField.png",
+      "description": "Single-line text input with a label and a localized placeholder.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Focus",
+          "Disabled"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "ports": [
+        {
+          "name": "submit",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [],
+      "triggers": [
+        "key(Enter): sound(ui_confirm); emit(submit)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-disabled-bg",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--color-disabled-text",
+          "default": "#8a857a"
+        },
+        {
+          "name": "--color-focus",
+          "default": "#b3281e"
+        },
+        {
+          "name": "--color-surface",
+          "default": "#ece8dd"
+        },
+        {
+          "name": "--color-surface-sunken",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-text-dim",
+          "default": "#4a463f"
+        },
+        {
+          "name": "--control-m",
+          "default": "36px"
+        },
+        {
+          "name": "--focus-w",
+          "default": "2px"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"DejaVu Serif\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-m",
+          "default": "16px"
+        },
+        {
+          "name": "--font-size-s",
+          "default": "14px"
+        },
+        {
+          "name": "--motion-fast",
+          "default": "150ms"
+        },
+        {
+          "name": "--rule-thick",
+          "default": "3px"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-1",
+          "default": "4px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        },
+        {
+          "name": "--space-3",
+          "default": "12px"
+        },
+        {
+          "name": "--tex-hatch",
+          "default": "url(\"textures/hatch-ink.png\")"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [
+        "textures/hatch-ink.png",
+        "textures/hatch-night.png"
+      ],
+      "notes": "The placeholder is the key @xt_textfield_placeholder; Enter emits `submit`.",
+      "content": "sha256:0076f990b2ed84e50198928421321af7bf6c2e083a0765c9729282e59e1dae00",
+      "previousContent": [
+        "sha256:978b8077ecb76f307ef57a1c54e312eee3ada8ad6fdc5afb00d742dacba0941f",
+        "sha256:d403e6f1a2c8c4206a8e13f0c5bb62c4230d8b5fb7968f2e5083c60a3e559caa",
+        "sha256:9b43d9f20bfe0b92c2b8b965dd1b344b9265e6ba706eef43f7945397a01cc69d",
+        "sha256:17c1c0d3b7ef645dbcd558f857342241084b4c1ed589a84cb630f2035faa3d85"
+      ]
+    },
+    {
+      "name": "Tabs",
+      "category": "form",
+      "file": "Tabs.xt",
+      "thumbnail": "thumbnails/Tabs.png",
+      "description": "Four tabs driven by the Tab state group.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Focus",
+          "Tab1",
+          "Tab2",
+          "Tab3",
+          "Tab4"
+        ],
+        "slots": [
+          "tab1",
+          "tab2",
+          "tab3",
+          "tab4"
+        ]
+      },
+      "stateGroups": {
+        "Tab": [
+          "Tab1",
+          "Tab2",
+          "Tab3",
+          "Tab4"
+        ]
+      },
+      "ports": [
+        {
+          "name": "value",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "select",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [],
+      "triggers": [
+        "click: sound(ui_tab); state(Tab1, on, target=#Box); emit(select)",
+        "click: sound(ui_tab); state(Tab2, on, target=#Box); emit(select)",
+        "click: sound(ui_tab); state(Tab3, on, target=#Box); emit(select)",
+        "click: sound(ui_tab); state(Tab4, on, target=#Box); emit(select)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-focus",
+          "default": "#b3281e"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-text-on-accent",
+          "default": "#e6e2d6"
+        },
+        {
+          "name": "--focus-w",
+          "default": "2px"
+        },
+        {
+          "name": "--font-display",
+          "default": "\"Noto Serif Display ExtraCondensed\", \"Noto Serif Display\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-m",
+          "default": "16px"
+        },
+        {
+          "name": "--letter-display",
+          "default": "0.5px"
+        },
+        {
+          "name": "--motion-fast",
+          "default": "150ms"
+        },
+        {
+          "name": "--motion-instant",
+          "default": "50ms"
+        },
+        {
+          "name": "--rule-thick",
+          "default": "3px"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-1",
+          "default": "4px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        },
+        {
+          "name": "--space-4",
+          "default": "16px"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerifDisplay-ExtraCondensedBlack.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBold.ttf"
+      ],
+      "textures": [],
+      "notes": "A click selects its tab directly (`state(TabN, on, target=#Box)`) and emits `select` from that tab's element; `value` (0-3) also selects the Tab1..Tab4 state.",
+      "content": "sha256:bbaf509471a1b9cbd494e5d0145a5c92aee27e9d19760ffbc52f81d52a11679a",
+      "previousContent": [
+        "sha256:f560fa79090c663ec319a3d1b9809f47f18d57a9fb4ab76026e716ed5d864e23",
+        "sha256:ff3636e6a816b5592c368dd5d19c238adfee2467c120432588084a7a2f3ec153",
+        "sha256:8636044fd482ebf8ad23574676e5afc42f75afa7e6e1d6ad9117d4a0f9e5af0f"
+      ]
+    },
+    {
+      "name": "Tooltip",
+      "category": "form",
+      "file": "Tooltip.xt",
+      "thumbnail": "thumbnails/Tooltip.png",
+      "description": "Anchor with a tip shown on the overlay layer after a 600 ms hover.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Focus"
+        ],
+        "slots": [
+          "anchor",
+          "tip"
+        ]
+      },
+      "ports": [],
+      "timelines": [],
+      "triggers": [],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-focus",
+          "default": "#b3281e"
+        },
+        {
+          "name": "--color-surface",
+          "default": "#ece8dd"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-text-on-accent",
+          "default": "#e6e2d6"
+        },
+        {
+          "name": "--focus-w",
+          "default": "2px"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"DejaVu Serif\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-s",
+          "default": "14px"
+        },
+        {
+          "name": "--motion-fast",
+          "default": "150ms"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        },
+        {
+          "name": "--space-3",
+          "default": "12px"
+        },
+        {
+          "name": "--tex-grain",
+          "default": "url(\"textures/grain-paper.png\")"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [
+        "textures/grain-paper.png",
+        "textures/grain-night.png"
+      ],
+      "notes": "The 600 ms hover delay is a transition delay (the tip fades in on :hover).",
+      "content": "sha256:09e940f0f6ea3056d0b19bc7fd6855b38ac29e43ca842bc0c05aa3cc476639c5",
+      "previousContent": [
+        "sha256:1f883fe1c9a160b2dddaae01f0df9a5c3f01ff064cb14d18261026fc42248e32",
+        "sha256:b267d144c8e785f4e6e8feb9df8b85befb77754c56b712e080f562b205b2d9f3",
+        "sha256:267fb90ba8d3509342758e5e2641c8f26445d394e71c34199aa08606ae409cda",
+        "sha256:890f630d71b7712896accd5711c3807a6ab532511c2100e71f3c15597cd75de6"
+      ]
+    },
+    {
+      "name": "Modal",
+      "category": "form",
+      "file": "Modal.xt",
+      "thumbnail": "thumbnails/Modal.png",
+      "description": "Centered dialog over a scrim with title, body and action slots.",
+      "requires": {
+        "states": [],
+        "slots": [
+          "title",
+          "body",
+          "actions"
+        ]
+      },
+      "ports": [
+        {
+          "name": "dismiss",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [
+        "intro",
+        "outro"
+      ],
+      "triggers": [
+        "show: play(intro)",
+        "hide: play(outro) then hide",
+        "key(Escape): sound(ui_back); emit(dismiss)"
+      ],
+      "tokens": [
+        {
+          "name": "--border-w",
+          "default": "1px"
+        },
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-border-strong",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-scrim",
+          "default": "#1f1c18b3"
+        },
+        {
+          "name": "--color-surface",
+          "default": "#ece8dd"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-text-dim",
+          "default": "#4a463f"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"DejaVu Serif\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-display",
+          "default": "\"Noto Serif Display ExtraCondensed\", \"Noto Serif Display\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-l",
+          "default": "20px"
+        },
+        {
+          "name": "--font-size-m",
+          "default": "16px"
+        },
+        {
+          "name": "--letter-display",
+          "default": "0.5px"
+        },
+        {
+          "name": "--rule-thick",
+          "default": "3px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        },
+        {
+          "name": "--space-4",
+          "default": "16px"
+        },
+        {
+          "name": "--space-6",
+          "default": "24px"
+        },
+        {
+          "name": "--tex-grain",
+          "default": "url(\"textures/grain-paper.png\")"
+        },
+        {
+          "name": "--tex-rule-h",
+          "default": "url(\"textures/rule-double.png\")"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBlack.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBold.ttf"
+      ],
+      "textures": [
+        "textures/grain-paper.png",
+        "textures/rule-double.png",
+        "textures/grain-night.png",
+        "textures/rule-double-night.png"
+      ],
+      "notes": "The panel box is a `focus-trap` (navigation stays inside); intro plays on show, outro on hide (then hides).",
+      "content": "sha256:4d2077e6f84e6d9353d54f482542ae9e1a40ba2a0e78b41ccfadf83526fd15a8",
+      "previousContent": [
+        "sha256:3b64cc5a57bd9475e7ba5cbf7bd726269c25bc9957693e2f2012d82f70217c78",
+        "sha256:0c85222b3ad3e512eb27b20bc1b04f7a369d0323c04f7519ff57664fe5dfeb56",
+        "sha256:a2336fdd0fd4a99c8cf64484e9535f7c402213b0a211d27490eeeab601ac5956"
+      ]
+    },
+    {
+      "name": "Toast",
+      "category": "form",
+      "file": "Toast.xt",
+      "thumbnail": "thumbnails/Toast.png",
+      "description": "Toast queue: a `<repeat>` whose entries slide in and out.",
+      "requires": {
+        "states": [
+          "Hover"
+        ],
+        "slots": []
+      },
+      "ports": [
+        {
+          "name": "toasts",
+          "type": "list<struct{title: string, text: string}>",
+          "dir": "in"
+        },
+        {
+          "name": "dismiss",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [
+        "item-in",
+        "item-out"
+      ],
+      "triggers": [
+        "click: emit(dismiss)",
+        "item-enter: play(item-in)",
+        "item-exit: play(item-out) then remove"
+      ],
+      "tokens": [
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-surface",
+          "default": "#ece8dd"
+        },
+        {
+          "name": "--color-surface-sunken",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-text-dim",
+          "default": "#4a463f"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"DejaVu Serif\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-display",
+          "default": "\"Noto Serif Display ExtraCondensed\", \"Noto Serif Display\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-m",
+          "default": "16px"
+        },
+        {
+          "name": "--font-size-s",
+          "default": "14px"
+        },
+        {
+          "name": "--font-size-xl",
+          "default": "28px"
+        },
+        {
+          "name": "--letter-display",
+          "default": "0.5px"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-1",
+          "default": "4px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        },
+        {
+          "name": "--space-3",
+          "default": "12px"
+        },
+        {
+          "name": "--tex-grain",
+          "default": "url(\"textures/grain-paper.png\")"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBlack.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBold.ttf"
+      ],
+      "textures": [
+        "textures/grain-paper.png",
+        "textures/grain-night.png"
+      ],
+      "notes": "Entries come and go with listInsert / listRemove; item-enter / item-exit play the item-in / item-out timelines.",
+      "content": "sha256:731baf23389d1d1e71dff9876aa33439818a32361e8f4d9c06d6e377ee6c27ea",
+      "previousContent": [
+        "sha256:0f13f48fcc43fcdf35fa9d181d81d57f708275c9eee9e95919e493b75a0c2c10",
+        "sha256:d0ef987e18343da814ea86a4feb178d34de1c043a6474038d3a9d9db496369f7",
+        "sha256:35c21050665045ad197b67c5b1a2728d067e9d861734b208430009da260b8b6a"
+      ]
+    },
+    {
+      "name": "ProgressBar",
+      "category": "form",
+      "file": "ProgressBar.xt",
+      "thumbnail": "thumbnails/ProgressBar.png",
+      "description": "Labelled progress bar; value mapped with range().",
+      "requires": {
+        "states": [
+          "Running",
+          "Complete"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "stateGroups": {
+        "Progress": [
+          "Running",
+          "Complete"
+        ]
+      },
+      "ports": [
+        {
+          "name": "value",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "value_max",
+          "type": "number",
+          "dir": "in"
+        }
+      ],
+      "timelines": [],
+      "triggers": [],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-text-dim",
+          "default": "#4a463f"
+        },
+        {
+          "name": "--color-text-on-accent",
+          "default": "#e6e2d6"
+        },
+        {
+          "name": "--color-track",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"DejaVu Serif\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-display",
+          "default": "\"Noto Serif Display ExtraCondensed\", \"Noto Serif Display\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-s",
+          "default": "14px"
+        },
+        {
+          "name": "--letter-display",
+          "default": "0.5px"
+        },
+        {
+          "name": "--motion-normal",
+          "default": "250ms"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-1",
+          "default": "4px"
+        },
+        {
+          "name": "--tex-hatch",
+          "default": "url(\"textures/hatch-ink.png\")"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBlack.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBold.ttf"
+      ],
+      "textures": [
+        "textures/hatch-ink.png",
+        "textures/hatch-night.png"
+      ],
+      "content": "sha256:bacddf713f2afede4b04c32419ed7ecea80a69d6de522cc0b42ae7d19c5eca7c",
+      "previousContent": [
+        "sha256:2a605400db73f4fea4a1e2c559e8dc68cd3237a5ede065c901f9e95f49b5c34f",
+        "sha256:7c88e9abd898cffced3cc34817e2e7955f2fee5167676188fd7f85186f6d6a6c",
+        "sha256:aae5e2dd4f7dcd3951700f8eb88647ea4a22daf71a810fb3df439244ee8fc58b"
+      ]
+    },
+    {
+      "name": "CooldownRing",
+      "category": "form",
+      "file": "CooldownRing.xt",
+      "thumbnail": "thumbnails/CooldownRing.png",
+      "description": "Radial cooldown indicator around an icon slot.",
+      "requires": {
+        "states": [
+          "Ready",
+          "Cooling"
+        ],
+        "slots": [
+          "icon"
+        ]
+      },
+      "stateGroups": {
+        "Cooldown": [
+          "Ready",
+          "Cooling"
+        ]
+      },
+      "ports": [
+        {
+          "name": "ready",
+          "type": "bool",
+          "dir": "in"
+        }
+      ],
+      "timelines": [
+        "cooldown"
+      ],
+      "triggers": [],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-surface",
+          "default": "#ece8dd"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-text-dim",
+          "default": "#4a463f"
+        },
+        {
+          "name": "--color-track",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--radius-full",
+          "default": "999px"
+        },
+        {
+          "name": "--radius-s",
+          "default": "0px"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        }
+      ],
+      "fonts": [],
+      "textures": [],
+      "notes": "The sweep is three stacked conic-gradient discs (no clipping); the host drives the `cooldown` timeline (1 s = 0-100 %) with playTimeline / seekTimeline. The sweep colours are tokens substituted at compile time (a theme recolours the dial and the ready state, not the sweep).",
+      "content": "sha256:2a3e94fb6dbd3cba3a42481e0fb2b992bd0706468a90fdbdf016ddeb28665b99",
+      "previousContent": [
+        "sha256:ebecef342f83923049206d11b00fad995b646e4df2290ba6b8d46f6ecdf010c6"
+      ]
+    },
+    {
+      "name": "HealthBar",
+      "category": "hud",
+      "file": "HealthBar.xt",
+      "thumbnail": "thumbnails/HealthBar.png",
+      "description": "Health bar with a tweened fill and a Low state below 25 %.",
+      "requires": {
+        "states": [
+          "Normal",
+          "Low"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "stateGroups": {
+        "Level": [
+          "Normal",
+          "Low"
+        ]
+      },
+      "ports": [
+        {
+          "name": "hp",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "hp_max",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "hit",
+          "type": "event",
+          "dir": "in"
+        }
+      ],
+      "timelines": [
+        "hit"
+      ],
+      "triggers": [
+        "port(hit): play(hit)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-danger",
+          "default": "#b3281e"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-text-dim",
+          "default": "#4a463f"
+        },
+        {
+          "name": "--color-track",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"DejaVu Serif\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-display",
+          "default": "\"Noto Serif Display ExtraCondensed\", \"Noto Serif Display\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-s",
+          "default": "14px"
+        },
+        {
+          "name": "--letter-display",
+          "default": "0.5px"
+        },
+        {
+          "name": "--motion-normal",
+          "default": "250ms"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-1",
+          "default": "4px"
+        },
+        {
+          "name": "--tex-hatch",
+          "default": "url(\"textures/hatch-ink.png\")"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBlack.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBold.ttf"
+      ],
+      "textures": [
+        "textures/hatch-ink.png",
+        "textures/hatch-night.png"
+      ],
+      "notes": "The fill scales on x (`bind:scale-x`, transform-origin at its left edge) and tweens; no relayout.",
+      "content": "sha256:857918dd617f298e9f82a87e75c5663c74f53413e807d8be1144a07cacdfd3ef",
+      "previousContent": [
+        "sha256:5248a611fdc64b4523d9d560faa474909f4b4f7358103e1b2468e582f513fc9f",
+        "sha256:7817e33d46727600ee74280e16ad6e07947c0092cfa97b2b77e2805d73310a89",
+        "sha256:12874d26ab6dc567e8d9d492d11a3892ce6e82e1f1dc75e4fb1a0839a228789d"
+      ]
+    },
+    {
+      "name": "Counter",
+      "category": "hud",
+      "file": "Counter.xt",
+      "thumbnail": "thumbnails/Counter.png",
+      "description": "Resource counter whose number tweens and uses thousands separators.",
+      "requires": {
+        "states": [],
+        "slots": [
+          "label",
+          "icon"
+        ]
+      },
+      "ports": [
+        {
+          "name": "value",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "gain",
+          "type": "event",
+          "dir": "in"
+        }
+      ],
+      "timelines": [
+        "hit"
+      ],
+      "triggers": [
+        "port(gain): play(hit)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-text-dim",
+          "default": "#4a463f"
+        },
+        {
+          "name": "--color-text-on-accent",
+          "default": "#e6e2d6"
+        },
+        {
+          "name": "--color-warning",
+          "default": "#a0761f"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"DejaVu Serif\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-display",
+          "default": "\"Noto Serif Display ExtraCondensed\", \"Noto Serif Display\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-l",
+          "default": "20px"
+        },
+        {
+          "name": "--font-size-xs",
+          "default": "12px"
+        },
+        {
+          "name": "--letter-display",
+          "default": "0.5px"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBlack.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBold.ttf"
+      ],
+      "textures": [],
+      "content": "sha256:cd3201fc895fea16fb1421d5bfe807e7f3fdd0b0699e80ef75dea5a9bd954900",
+      "previousContent": [
+        "sha256:359c8d10818beecba57a7db02c2a3f6ea9cfadf8898aafb894f84bdcaeacd624",
+        "sha256:0625e0eddfebfbf20fc8a139abdce314263d92ea96cf6e9eb290e0b0fd99f26f",
+        "sha256:65defe7570495bd58a2db33154568a0d8bef674d3a094d424e99979813dd2e42"
+      ]
+    },
+    {
+      "name": "Hotbar",
+      "category": "hud",
+      "file": "Hotbar.xt",
+      "thumbnail": "thumbnails/Hotbar.png",
+      "description": "Row of quick slots (`<repeat>`) with a selected slot.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Selected",
+          "Empty"
+        ],
+        "slots": []
+      },
+      "ports": [
+        {
+          "name": "slots",
+          "type": "list<struct{key: string, count: number, empty: bool}>",
+          "dir": "in"
+        },
+        {
+          "name": "selected",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "select",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [],
+      "triggers": [
+        "press: sound(ui_select); emit(select)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-accent-hover",
+          "default": "#4a463f"
+        },
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-focus",
+          "default": "#b3281e"
+        },
+        {
+          "name": "--color-surface",
+          "default": "#ece8dd"
+        },
+        {
+          "name": "--color-surface-sunken",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-text-dim",
+          "default": "#4a463f"
+        },
+        {
+          "name": "--color-text-on-accent",
+          "default": "#e6e2d6"
+        },
+        {
+          "name": "--focus-w",
+          "default": "2px"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"DejaVu Serif\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-display",
+          "default": "\"Noto Serif Display ExtraCondensed\", \"Noto Serif Display\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-xs",
+          "default": "12px"
+        },
+        {
+          "name": "--letter-display",
+          "default": "0.5px"
+        },
+        {
+          "name": "--motion-fast",
+          "default": "150ms"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--tex-dots",
+          "default": "url(\"textures/dots-ink.png\")"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBlack.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBold.ttf"
+      ],
+      "textures": [
+        "textures/dots-ink.png",
+        "textures/dots-night.png"
+      ],
+      "notes": "Controlled: `selected` (index) from the host; a click emits `select` with the entry index.",
+      "content": "sha256:504c915492ba83fb99f516b10b5a40ed010b8df4f5edec644f23e65f7e3997bd",
+      "previousContent": [
+        "sha256:914fff11deaac4acf8d126c13da82cf379b926f18dfd159cc33545f85d9dda82",
+        "sha256:312755d30438327cba19ded0fa9f3162200916fdb2fd3eecb715bef1b01307d8",
+        "sha256:d3431cd02d99dae410e59d4080312dc8945d966904e44de9b785203a81ba647f",
+        "sha256:104d75d4c6892c64abdb2eba6e3dee1f7d20f7fb3cb8139517fca747da645bd4"
+      ]
+    },
+    {
+      "name": "Crosshair",
+      "category": "hud",
+      "file": "Crosshair.xt",
+      "thumbnail": "thumbnails/Crosshair.png",
+      "description": "Reticle whose gap follows `spread`; Target state and hit flash.",
+      "requires": {
+        "states": [
+          "Idle",
+          "Target"
+        ],
+        "slots": []
+      },
+      "stateGroups": {
+        "Aim": [
+          "Idle",
+          "Target"
+        ]
+      },
+      "ports": [
+        {
+          "name": "spread",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "on_target",
+          "type": "bool",
+          "dir": "in"
+        },
+        {
+          "name": "hit",
+          "type": "event",
+          "dir": "in"
+        }
+      ],
+      "timelines": [
+        "hit"
+      ],
+      "triggers": [
+        "port(hit): play(hit)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-focus",
+          "default": "#b3281e"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--focus-w",
+          "default": "2px"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        }
+      ],
+      "fonts": [],
+      "textures": [],
+      "notes": "The hit flash is the `hit` timeline, playable from the host until symbol-scope play() works.",
+      "content": "sha256:12b25a696793598a58b53df1b3a89afa4466b9e09380d2a304393bbbec2f2348",
+      "previousContent": [
+        "sha256:c6dbb89fb6e299be616d825d700634a305dba9de35f70025e6bac2838b457865",
+        "sha256:573beb4c8e6110d6359b1c7c190cc45bd9ae8aa76c19cf43ce270502f2f54583"
+      ]
+    },
+    {
+      "name": "DamageNumber",
+      "category": "hud",
+      "file": "DamageNumber.xt",
+      "thumbnail": "thumbnails/DamageNumber.png",
+      "description": "Floating damage numbers (normal and critical), one spawned per hit.",
+      "requires": {
+        "states": [
+          "Crit"
+        ],
+        "slots": []
+      },
+      "ports": [
+        {
+          "name": "amount",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "crit",
+          "type": "bool",
+          "dir": "in"
+        },
+        {
+          "name": "x",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "y",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "hit",
+          "type": "event",
+          "dir": "in"
+        }
+      ],
+      "timelines": [],
+      "triggers": [
+        "port(hit): spawn(DamagePop, at=#Origin, lifetime=0.45s, timeline=pop)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-danger",
+          "default": "#b3281e"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--font-display",
+          "default": "\"Noto Serif Display ExtraCondensed\", \"Noto Serif Display\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-l",
+          "default": "20px"
+        },
+        {
+          "name": "--font-size-xl",
+          "default": "28px"
+        },
+        {
+          "name": "--letter-display",
+          "default": "0.5px"
+        },
+        {
+          "name": "--space-1",
+          "default": "4px"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerifDisplay-ExtraCondensedBlack.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBold.ttf"
+      ],
+      "textures": [],
+      "notes": "Set amount / crit / x / y (offset from the field's top-left), then fire `hit`: each hit spawns a DamagePop (its `pop` timeline, 0.45 s) that keeps the values it was spawned with. The file also defines DamageNumberList, the list-port alternative (`numbers: list<struct{amount, x, y, crit}>`, item-enter / item-exit).",
+      "content": "sha256:0d1e9c3f400665decf074770b4104bc2506fe5307dd7d393865b223a9c2098a5",
+      "previousContent": [
+        "sha256:669ee3ae72e2767c045b3a46b4daea75dcdb917211895b1735580fd9f309ee46",
+        "sha256:6508d615d6859d190e98abc86ca32714ed547a22cd4cd91d7e3ea0004cd5f9e1",
+        "sha256:6f51b3388e3fa29cefccc2a78bbc2531e52de61fa24444621df9a68b1a473700",
+        "sha256:82afaf1d00286021e5a89f96941eba82651f87e116b2b8a22f51468121b9fd6d",
+        "sha256:88d6f3e8b0fb77927f5cddebfa249f5c6c657d653e44414c22500d0d32fa27a7"
+      ]
+    },
+    {
+      "name": "Minimap",
+      "category": "hud",
+      "file": "Minimap.xt",
+      "thumbnail": "thumbnails/Minimap.png",
+      "description": "Round minimap frame around external content (`scene-view:minimap`).",
+      "requires": {
+        "states": [],
+        "slots": [
+          "label"
+        ]
+      },
+      "ports": [],
+      "timelines": [],
+      "triggers": [],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-surface",
+          "default": "#ece8dd"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"DejaVu Serif\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-display",
+          "default": "\"Noto Serif Display ExtraCondensed\", \"Noto Serif Display\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-xs",
+          "default": "12px"
+        },
+        {
+          "name": "--letter-display",
+          "default": "0.5px"
+        },
+        {
+          "name": "--rule-thick",
+          "default": "3px"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-1",
+          "default": "4px"
+        },
+        {
+          "name": "--tex-grain",
+          "default": "url(\"textures/grain-paper.png\")"
+        },
+        {
+          "name": "--tex-rule-h",
+          "default": "url(\"textures/rule-double.png\")"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBlack.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBold.ttf"
+      ],
+      "textures": [
+        "textures/grain-paper.png",
+        "textures/rule-double.png",
+        "textures/grain-night.png",
+        "textures/rule-double-night.png"
+      ],
+      "notes": "The map is `<external source=\"scene-view:minimap\">`; the round frame does not clip external content to its radius.",
+      "content": "sha256:1e65b2612f50a556aad8f9069246a2dee6ada7f0fbd3288a69d3d66acbdac500",
+      "previousContent": [
+        "sha256:3321a757145634625bbc2ad625607f5aaa055d5f2a1e31763d9a715a65ce8f63",
+        "sha256:44bb27fab2f3b65e4fcabc5a637f751a4ebfa6a410468d8d39c42791df548b96",
+        "sha256:b111e76e94fccd2cf05ecfc2abff82c86e78561838efde35b5b101f77a9180df"
+      ]
+    },
+    {
+      "name": "CompassStrip",
+      "category": "hud",
+      "file": "CompassStrip.xt",
+      "thumbnail": "thumbnails/CompassStrip.png",
+      "description": "Heading strip scrolled by `heading` (degrees).",
+      "requires": {
+        "states": [],
+        "slots": [
+          "marker"
+        ]
+      },
+      "ports": [
+        {
+          "name": "heading",
+          "type": "number",
+          "dir": "in"
+        }
+      ],
+      "timelines": [],
+      "triggers": [],
+      "tokens": [
+        {
+          "name": "--color-focus",
+          "default": "#b3281e"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-text-dim",
+          "default": "#4a463f"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"DejaVu Serif\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-display",
+          "default": "\"Noto Serif Display ExtraCondensed\", \"Noto Serif Display\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-xs",
+          "default": "12px"
+        },
+        {
+          "name": "--tex-rule-h",
+          "default": "url(\"textures/rule-double.png\")"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBlack.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBold.ttf"
+      ],
+      "textures": [
+        "textures/rule-double.png",
+        "textures/rule-double-night.png"
+      ],
+      "notes": "The strip scrolls with `bind:translate-x` (a transform component; no relayout).",
+      "content": "sha256:78318b7cb760fba6350b1b2776de24e11f75fc3eaac39eebf81b8b52d8480501",
+      "previousContent": [
+        "sha256:ca0b45fc13d09a5fb8cb139c9c83058005bca8fd8b6019f94fb90557c326ab41",
+        "sha256:6c424a2be6ebd989b5037d4851c8287f8cef43f4b0ab3b719aeeb2857f76a771",
+        "sha256:19513eb93563fe21e8b9583282e0aafd07e0aaf6dd15bb41bf2828dc8f396b1f"
+      ]
+    },
+    {
+      "name": "Subtitle",
+      "category": "hud",
+      "file": "Subtitle.xt",
+      "thumbnail": "thumbnails/Subtitle.png",
+      "description": "Subtitle line with speaker; text-reveal intro.",
+      "requires": {
+        "states": [
+          "Character",
+          "Narrator"
+        ],
+        "slots": []
+      },
+      "stateGroups": {
+        "Voice": [
+          "Character",
+          "Narrator"
+        ]
+      },
+      "ports": [
+        {
+          "name": "speaker",
+          "type": "string",
+          "dir": "in"
+        },
+        {
+          "name": "line",
+          "type": "string",
+          "dir": "in"
+        },
+        {
+          "name": "narrator",
+          "type": "bool",
+          "dir": "in"
+        }
+      ],
+      "timelines": [
+        "intro",
+        "outro"
+      ],
+      "triggers": [
+        "port(line): play(intro)",
+        "hide: play(outro) then hide"
+      ],
+      "tokens": [
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-surface",
+          "default": "#ece8dd"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-text-dim",
+          "default": "#4a463f"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"DejaVu Serif\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-display",
+          "default": "\"Noto Serif Display ExtraCondensed\", \"Noto Serif Display\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-m",
+          "default": "16px"
+        },
+        {
+          "name": "--font-size-s",
+          "default": "14px"
+        },
+        {
+          "name": "--letter-display",
+          "default": "0.5px"
+        },
+        {
+          "name": "--rule-thick",
+          "default": "3px"
+        },
+        {
+          "name": "--space-1",
+          "default": "4px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        },
+        {
+          "name": "--space-4",
+          "default": "16px"
+        },
+        {
+          "name": "--tex-grain",
+          "default": "url(\"textures/grain-paper.png\")"
+        },
+        {
+          "name": "--tex-rule-h",
+          "default": "url(\"textures/rule-double.png\")"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBlack.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBold.ttf"
+      ],
+      "textures": [
+        "textures/grain-paper.png",
+        "textures/rule-double.png",
+        "textures/grain-night.png",
+        "textures/rule-double-night.png"
+      ],
+      "notes": "The intro (text-reveal) runs from the host API until symbol-scope play() works; the Narrator voice hides the speaker.",
+      "content": "sha256:d73f9953cfc1bf758658d82282431ad08dea492832180dc93df965e5e7f8b470",
+      "previousContent": [
+        "sha256:57b02ad0ce276793e40df7033cf55d33f304514f7b7be71afbb5d7918517ebec",
+        "sha256:fe9d87d00425722ca150d801f706685b86b018f98409dc57a88b433a163cb778",
+        "sha256:681f9753c4c75828f6332ba8f4e4338bab6f417db3ade84506dee92514362c8c"
+      ]
+    },
+    {
+      "name": "Notification",
+      "category": "hud",
+      "file": "Notification.xt",
+      "thumbnail": "thumbnails/Notification.png",
+      "description": "Notification card with Info / Warning / Danger tones.",
+      "requires": {
+        "states": [
+          "Info",
+          "Warning",
+          "Danger"
+        ],
+        "slots": [
+          "title",
+          "text"
+        ]
+      },
+      "stateGroups": {
+        "Tone": [
+          "Info",
+          "Warning",
+          "Danger"
+        ]
+      },
+      "ports": [
+        {
+          "name": "tone",
+          "type": "number",
+          "dir": "in"
+        }
+      ],
+      "timelines": [
+        "intro",
+        "outro"
+      ],
+      "triggers": [
+        "show: sound(ui_notify); play(intro)",
+        "hide: play(outro) then hide"
+      ],
+      "tokens": [
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-danger",
+          "default": "#b3281e"
+        },
+        {
+          "name": "--color-info",
+          "default": "#2f4f6f"
+        },
+        {
+          "name": "--color-surface",
+          "default": "#ece8dd"
+        },
+        {
+          "name": "--color-text-dim",
+          "default": "#4a463f"
+        },
+        {
+          "name": "--color-warning",
+          "default": "#a0761f"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"DejaVu Serif\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-display",
+          "default": "\"Noto Serif Display ExtraCondensed\", \"Noto Serif Display\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-m",
+          "default": "16px"
+        },
+        {
+          "name": "--font-size-s",
+          "default": "14px"
+        },
+        {
+          "name": "--font-size-xl",
+          "default": "28px"
+        },
+        {
+          "name": "--letter-display",
+          "default": "0.5px"
+        },
+        {
+          "name": "--rule-thick",
+          "default": "3px"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-3",
+          "default": "12px"
+        },
+        {
+          "name": "--space-4",
+          "default": "16px"
+        },
+        {
+          "name": "--tex-grain",
+          "default": "url(\"textures/grain-paper.png\")"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBlack.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBold.ttf"
+      ],
+      "textures": [
+        "textures/grain-paper.png",
+        "textures/grain-night.png"
+      ],
+      "content": "sha256:a94d986888f5a9fda109ae1461eb09f67eac14c2ea0b61cec0c3c7d99f0c1149",
+      "previousContent": [
+        "sha256:0953e9e00c5e7910ed59d85be19b0f8f8bb1f6f70772d88d0eb1b82ae33bca6c",
+        "sha256:d4d8070932e7d12ea3995c5004e04a48107664f609a0fd256f3bf829456da37c",
+        "sha256:cab3395f5a5c2605f08d99b33a3652113bb672b840b6e657338c199e1818584c"
+      ]
+    },
+    {
+      "name": "Stamp",
+      "category": "hud",
+      "file": "Stamp.xt",
+      "thumbnail": "thumbnails/Stamp.png",
+      "description": "Decorative rubber stamp: two red rings around a tilted display-font text (for example CASE CLOSED).",
+      "requires": {
+        "states": [],
+        "slots": [
+          "text"
+        ]
+      },
+      "ports": [],
+      "timelines": [],
+      "triggers": [],
+      "tokens": [
+        {
+          "name": "--color-danger",
+          "default": "#b3281e"
+        },
+        {
+          "name": "--font-display",
+          "default": "\"Noto Serif Display ExtraCondensed\", \"Noto Serif Display\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-l",
+          "default": "20px"
+        },
+        {
+          "name": "--letter-display",
+          "default": "0.5px"
+        },
+        {
+          "name": "--radius-full",
+          "default": "999px"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerifDisplay-ExtraCondensedBlack.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBold.ttf"
+      ],
+      "textures": [],
+      "notes": "Purely decorative: no ports, no timelines. The whole mark is tilted -14 degrees and drawn at 85% opacity; the ring colour is `--color-danger`.",
+      "content": "sha256:55df5c49f83903c11f5aa6953b8f5673c291a01ad9bea42f742dddd5f88df0d9",
+      "previousContent": [
+        "sha256:0b197a38d3d7304b4963332b6250bee284d07354846efea7d6c4a4222fc1045d"
+      ]
+    },
+    {
+      "name": "InputGlyph",
+      "category": "input",
+      "file": "InputGlyph.xt",
+      "thumbnail": "thumbnails/InputGlyph.png",
+      "description": "Key cap showing the glyph of an input action plus a label.",
+      "requires": {
+        "states": [],
+        "slots": [
+          "glyph",
+          "label"
+        ]
+      },
+      "ports": [],
+      "timelines": [],
+      "triggers": [],
+      "tokens": [
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-shadow",
+          "default": "#4a463f"
+        },
+        {
+          "name": "--color-surface",
+          "default": "#ece8dd"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"DejaVu Serif\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-display",
+          "default": "\"Noto Serif Display ExtraCondensed\", \"Noto Serif Display\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-s",
+          "default": "14px"
+        },
+        {
+          "name": "--letter-display",
+          "default": "0.5px"
+        },
+        {
+          "name": "--rule-thick",
+          "default": "3px"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-1",
+          "default": "4px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBlack.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBold.ttf"
+      ],
+      "textures": [],
+      "notes": "Fill the `glyph` slot with `<glyph key=\"<action>\"/>`; without a glyph provider the action name shows as text.",
+      "content": "sha256:0963b5cb6736427a1a17effadca5f6aacd0730b53e4a85f6d4d980a46e389da3",
+      "previousContent": [
+        "sha256:44c76f981d537d78f9255471eda8062947f1715bff8f48d6c8cc6cd209670577",
+        "sha256:478c19d18d9cadccbcdcbef3da28166d495d33438f133a4dd7eea40b0e703027"
+      ]
+    },
+    {
+      "name": "ButtonPrompt",
+      "category": "input",
+      "file": "ButtonPrompt.xt",
+      "thumbnail": "thumbnails/ButtonPrompt.png",
+      "description": "Rich-text prompt line with inline input glyphs.",
+      "requires": {
+        "states": [],
+        "slots": [
+          "text"
+        ]
+      },
+      "ports": [],
+      "timelines": [
+        "intro"
+      ],
+      "triggers": [
+        "show: play(intro)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-surface",
+          "default": "#ece8dd"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"DejaVu Serif\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-m",
+          "default": "16px"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        },
+        {
+          "name": "--space-3",
+          "default": "12px"
+        },
+        {
+          "name": "--tex-grain",
+          "default": "url(\"textures/grain-paper.png\")"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [
+        "textures/grain-paper.png",
+        "textures/grain-night.png"
+      ],
+      "notes": "Fill the `text` slot with text and `<glyph key>` elements.",
+      "content": "sha256:a0e43057dcf841c3745aa594048d5cf6a76a53e501998764141d6ccb894160ed",
+      "previousContent": [
+        "sha256:ceb16a7661e3674106f811472de4f9caa34bdadd7069096be09d1afeb4fa415f",
+        "sha256:d10ad1171ef92c47f4821e52bf45f34b7ede2d35227ac95ed338231f5a7a94ae",
+        "sha256:6d696561b1d2b37f36a382c79719de03b0fabe69438d853f0bd30a5c6fd19648"
+      ]
+    },
+    {
+      "name": "VirtualJoystick",
+      "category": "mobile",
+      "file": "mobile/VirtualJoystick.xt",
+      "thumbnail": "thumbnails/VirtualJoystick.png",
+      "description": "Virtual thumbstick (>= 160 px): drag the pad to write `axis`, release re-centres it.",
+      "requires": {
+        "states": [
+          "Idle",
+          "Active"
+        ],
+        "slots": []
+      },
+      "variants": {
+        "Mode": [
+          "Fixed",
+          "Floating"
+        ]
+      },
+      "ports": [
+        {
+          "name": "axis",
+          "type": "vec2",
+          "dir": "out"
+        },
+        {
+          "name": "knob",
+          "type": "vec2",
+          "dir": "in"
+        },
+        {
+          "name": "dead",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "active",
+          "type": "bool",
+          "dir": "in"
+        }
+      ],
+      "timelines": [
+        "release"
+      ],
+      "triggers": [
+        "press: set(active, true)",
+        "drag.value: set(axis, event.value | range(0, 1, -1, 1) | vec2(0)); set(knob, event.value | range(0, 1, -1, 1) | vec2(0))",
+        "release: set(active, false); set(axis, event.value | vec2(0)); set(knob, event.value | vec2(0)); play(release)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-disabled-bg",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--color-disabled-text",
+          "default": "#8a857a"
+        },
+        {
+          "name": "--color-surface-sunken",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--color-text-dim",
+          "default": "#4a463f"
+        },
+        {
+          "name": "--motion-fast",
+          "default": "150ms"
+        },
+        {
+          "name": "--radius-full",
+          "default": "999px"
+        },
+        {
+          "name": "--rule-thick",
+          "default": "3px"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--tex-hatch",
+          "default": "url(\"textures/hatch-ink.png\")"
+        },
+        {
+          "name": "--touch-lg",
+          "default": "88px"
+        }
+      ],
+      "fonts": [],
+      "textures": [
+        "textures/hatch-ink.png",
+        "textures/hatch-night.png"
+      ],
+      "notes": "The pad is `draggable=\"axis-x\"`, so a drag writes only the x component (`axis` = (x, 0), x in -1..1); there is no vertical drag value yet, so `axis.y` stays 0 unless the host writes it. `dead` (the host sets 0.15) draws the dead-zone ring; the host applies the dead zone. Mode=Floating fades the base until active; the base does not move to the touch point (no pointer position in triggers).",
+      "content": "sha256:224f2ccde010b0e3ca3c4cef6cbf4864e2a3e1baf92b188ff824d675636dc497",
+      "previousContent": [
+        "sha256:1f07adc19aede3c06378c5f22a29aa79847ce99831746f9119d6c16a537166dc",
+        "sha256:acf9566b42ebec3c57b86c71c9ce78daf58d8e5b9c0ba607c65d83ebe5fdd7c2",
+        "sha256:296980508e4b8162bd6ac808fed5644f657e3d00b4ea1a79db9aede9a8eeaaa1"
+      ]
+    },
+    {
+      "name": "TouchButton",
+      "category": "mobile",
+      "file": "mobile/TouchButton.xt",
+      "thumbnail": "thumbnails/TouchButton.png",
+      "description": "Large round touch button (--touch-lg) with hold, auto-repeat and a cooldown shade.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Pressed",
+          "Disabled",
+          "Cooling"
+        ],
+        "slots": [
+          "icon",
+          "label"
+        ]
+      },
+      "ports": [
+        {
+          "name": "pressed",
+          "type": "event",
+          "dir": "out"
+        },
+        {
+          "name": "held",
+          "type": "bool",
+          "dir": "out"
+        },
+        {
+          "name": "repeat",
+          "type": "event",
+          "dir": "out"
+        },
+        {
+          "name": "cooldown",
+          "type": "number",
+          "dir": "in"
+        }
+      ],
+      "timelines": [
+        "press",
+        "repeat"
+      ],
+      "triggers": [
+        "press: sound(ui_click); set(held, true); emit(pressed); play(press); play(repeat, loop)",
+        "release: set(held, false); stop(repeat)",
+        "timeline(repeat).marker(tick): emit(repeat)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-disabled-bg",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--color-disabled-text",
+          "default": "#8a857a"
+        },
+        {
+          "name": "--color-focus",
+          "default": "#b3281e"
+        },
+        {
+          "name": "--color-surface",
+          "default": "#ece8dd"
+        },
+        {
+          "name": "--color-surface-sunken",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-text-dim",
+          "default": "#4a463f"
+        },
+        {
+          "name": "--color-text-on-accent",
+          "default": "#e6e2d6"
+        },
+        {
+          "name": "--color-track",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--focus-w",
+          "default": "2px"
+        },
+        {
+          "name": "--font-display",
+          "default": "\"Noto Serif Display ExtraCondensed\", \"Noto Serif Display\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-s",
+          "default": "14px"
+        },
+        {
+          "name": "--letter-display",
+          "default": "0.5px"
+        },
+        {
+          "name": "--motion-fast",
+          "default": "150ms"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-1",
+          "default": "4px"
+        },
+        {
+          "name": "--tex-dots",
+          "default": "url(\"textures/dots-ink.png\")"
+        },
+        {
+          "name": "--tex-hatch",
+          "default": "url(\"textures/hatch-ink.png\")"
+        },
+        {
+          "name": "--touch-lg",
+          "default": "88px"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerifDisplay-ExtraCondensedBlack.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBold.ttf"
+      ],
+      "textures": [
+        "textures/dots-ink.png",
+        "textures/hatch-ink.png",
+        "textures/dots-night.png",
+        "textures/hatch-night.png"
+      ],
+      "notes": "Press emits `pressed`, sets `held` and loops the `repeat` timeline whose `tick` marker emits `repeat` every 0.25 s (a fixed interval: a symbol cannot take a `repeat-ms` attribute); `cooldown` (0..1, host-driven) scales a vertical shade rather than a conic ring and sets Cooling.",
+      "content": "sha256:2a90a8f5dc4d8b8cbcc9447eeb62bb91132f7d6090c2d893476ebd7abccad954",
+      "previousContent": [
+        "sha256:4cb06dc73ca22ce31c8e2798f4c1a6b53592c7d47c2abdfac1069589f3c6bdeb",
+        "sha256:bd5ff645aa577c330cda850957fb13814ee79c379cbfd7f4dd1d9ab26b01bc18",
+        "sha256:7c3fa77a7890acfae451803b1e61cf6444c3b6d6d0c405ae16adfff12b70d188"
+      ]
+    },
+    {
+      "name": "DPad",
+      "category": "mobile",
+      "file": "mobile/DPad.xt",
+      "thumbnail": "thumbnails/DPad.png",
+      "description": "Four-way touch D-pad emitting `dir` with `direction` (0 up, 1 right, 2 down, 3 left) and `axis`.",
+      "requires": {
+        "states": [
+          "Pressed",
+          "Disabled"
+        ],
+        "slots": []
+      },
+      "ports": [
+        {
+          "name": "dir",
+          "type": "event",
+          "dir": "out"
+        },
+        {
+          "name": "axis",
+          "type": "vec2",
+          "dir": "out"
+        },
+        {
+          "name": "direction",
+          "type": "number",
+          "dir": "out"
+        }
+      ],
+      "timelines": [
+        "press"
+      ],
+      "triggers": [
+        "press: sound(ui_tick); set(direction, 0); set(axis, event.value | vec2(-1)); emit(dir); play(press)",
+        "release: set(axis, event.value | vec2(0))",
+        "press: sound(ui_tick); set(direction, 1); set(axis, event.value | offset(1) | vec2(0)); emit(dir); play(press)",
+        "release: set(axis, event.value | vec2(0))",
+        "press: sound(ui_tick); set(direction, 2); set(axis, event.value | vec2(1)); emit(dir); play(press)",
+        "release: set(axis, event.value | vec2(0))",
+        "press: sound(ui_tick); set(direction, 3); set(axis, event.value | offset(-1) | vec2(0)); emit(dir); play(press)",
+        "release: set(axis, event.value | vec2(0))"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-disabled-bg",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--color-disabled-text",
+          "default": "#8a857a"
+        },
+        {
+          "name": "--color-focus",
+          "default": "#b3281e"
+        },
+        {
+          "name": "--color-shadow",
+          "default": "#4a463f"
+        },
+        {
+          "name": "--color-surface",
+          "default": "#ece8dd"
+        },
+        {
+          "name": "--color-surface-sunken",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--color-text-on-accent",
+          "default": "#e6e2d6"
+        },
+        {
+          "name": "--focus-w",
+          "default": "2px"
+        },
+        {
+          "name": "--motion-fast",
+          "default": "150ms"
+        },
+        {
+          "name": "--motion-instant",
+          "default": "50ms"
+        },
+        {
+          "name": "--rule-thick",
+          "default": "3px"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--tex-dots",
+          "default": "url(\"textures/dots-ink.png\")"
+        },
+        {
+          "name": "--tex-hatch",
+          "default": "url(\"textures/hatch-ink.png\")"
+        }
+      ],
+      "fonts": [],
+      "textures": [
+        "textures/dots-ink.png",
+        "textures/hatch-ink.png",
+        "textures/dots-night.png",
+        "textures/hatch-night.png"
+      ],
+      "notes": "Each arrow writes `direction` and `axis` (unit vector, y down) before emitting `dir`; release writes `axis` = (0, 0).",
+      "content": "sha256:fd8a89621bcc8cf0b3e53a32d6032a90b9c0e8cf5012a9d3b8c8a83a984386ed",
+      "previousContent": [
+        "sha256:d2f2660df5ade07bac060400d208ff551bb76c6ea2a076eb1d8ebe2cd0ddd1b0",
+        "sha256:28aab7535629e22b82a983c9bc00e79e75437639a464deeafe3e0ebe6c3f1a7b",
+        "sha256:ae42fbc96c9ccf2351cf530b91ae34c02357c7f1b49c2b0e605a0184506b4b18"
+      ]
+    },
+    {
+      "name": "SwipeCard",
+      "category": "mobile",
+      "file": "mobile/SwipeCard.xt",
+      "thumbnail": "thumbnails/SwipeCard.png",
+      "description": "Stacked swipe card: a left / right swipe emits `swipe` with `direction` -1 / 1 and flies the card out.",
+      "requires": {
+        "states": [
+          "Pressed"
+        ],
+        "slots": [
+          "content",
+          "next"
+        ]
+      },
+      "ports": [
+        {
+          "name": "swipe",
+          "type": "event",
+          "dir": "out"
+        },
+        {
+          "name": "direction",
+          "type": "number",
+          "dir": "out"
+        },
+        {
+          "name": "offset",
+          "type": "number",
+          "dir": "in"
+        }
+      ],
+      "timelines": [
+        "snap-back",
+        "fly-left",
+        "fly-right",
+        "intro"
+      ],
+      "triggers": [
+        "drag.value: set(offset, event.value | range(0, 1, -1, 1))",
+        "release: set(offset, 0); play(snap-back)",
+        "gesture(swipe(left)): sound(ui_select); set(direction, -1); emit(swipe); play(fly-left)",
+        "gesture(swipe(right)): sound(ui_select); set(direction, 1); emit(swipe); play(fly-right)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-surface",
+          "default": "#ece8dd"
+        },
+        {
+          "name": "--color-surface-sunken",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-text-dim",
+          "default": "#4a463f"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"DejaVu Serif\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-display",
+          "default": "\"Noto Serif Display ExtraCondensed\", \"Noto Serif Display\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-l",
+          "default": "20px"
+        },
+        {
+          "name": "--letter-display",
+          "default": "0.5px"
+        },
+        {
+          "name": "--rule-thick",
+          "default": "3px"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        },
+        {
+          "name": "--space-4",
+          "default": "16px"
+        },
+        {
+          "name": "--tex-grain",
+          "default": "url(\"textures/grain-paper.png\")"
+        },
+        {
+          "name": "--tex-hatch",
+          "default": "url(\"textures/hatch-ink.png\")"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBlack.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBold.ttf"
+      ],
+      "textures": [
+        "textures/grain-paper.png",
+        "textures/hatch-ink.png",
+        "textures/grain-night.png",
+        "textures/hatch-night.png"
+      ],
+      "notes": "The top card follows a horizontal drag through the local `offset` port and snaps back on release; the swipe gestures play `fly-left` / `fly-right`; the host swaps the content and plays `intro`.",
+      "content": "sha256:564aa41dccbfd630eb2eab77511ceff0df00757a631d10947a8522256f782234",
+      "previousContent": [
+        "sha256:6c75ab36c0051333027ee138363668e8590206302a7eb6e63e866acd42427942",
+        "sha256:1b34b5688e9b2c99ab1bb2ce4cd4dbbb52ecb352ce08343d88240300f727ac32",
+        "sha256:e2cdf9e84b6fb226c6164ed89c9f8c90c15d7ad144610f6a34ffddea7b56c62d"
+      ]
+    },
+    {
+      "name": "BottomSheet",
+      "category": "mobile",
+      "file": "mobile/BottomSheet.xt",
+      "thumbnail": "thumbnails/BottomSheet.png",
+      "description": "Bottom sheet docked to the bottom safe area; tap or swipe the grip to expand / collapse.",
+      "requires": {
+        "states": [
+          "Collapsed",
+          "Expanded"
+        ],
+        "slots": [
+          "title",
+          "content"
+        ]
+      },
+      "stateGroups": {
+        "Sheet": [
+          "Collapsed",
+          "Expanded"
+        ]
+      },
+      "ports": [
+        {
+          "name": "open",
+          "type": "bool",
+          "dir": "in"
+        }
+      ],
+      "timelines": [
+        "expand",
+        "collapse"
+      ],
+      "triggers": [
+        "port(open): if gt(0) play(expand) else play(collapse)",
+        "click: sound(ui_open); set(open, toggle)",
+        "gesture(swipe(up)): set(open, true)",
+        "gesture(swipe(down)): sound(ui_back); set(open, false)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-accent-hover",
+          "default": "#4a463f"
+        },
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-surface",
+          "default": "#ece8dd"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"DejaVu Serif\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-display",
+          "default": "\"Noto Serif Display ExtraCondensed\", \"Noto Serif Display\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-l",
+          "default": "20px"
+        },
+        {
+          "name": "--letter-display",
+          "default": "0.5px"
+        },
+        {
+          "name": "--rule-thick",
+          "default": "3px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        },
+        {
+          "name": "--space-3",
+          "default": "12px"
+        },
+        {
+          "name": "--space-4",
+          "default": "16px"
+        },
+        {
+          "name": "--tex-grain",
+          "default": "url(\"textures/grain-paper.png\")"
+        },
+        {
+          "name": "--tex-rule-h",
+          "default": "url(\"textures/rule-double.png\")"
+        },
+        {
+          "name": "--touch-min",
+          "default": "44px"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBlack.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBold.ttf"
+      ],
+      "textures": [
+        "textures/grain-paper.png",
+        "textures/rule-double.png",
+        "textures/grain-night.png",
+        "textures/rule-double-night.png"
+      ],
+      "notes": "The symbol writes `open` itself (Toggle convention) and plays `expand` / `collapse` on every change; closing by dragging is approximated by the swipe(down) gesture (there is no vertical drag value).",
+      "content": "sha256:d4cca281dbbd8fb6e485c682aa6c4c549551abd7d49a37854dc38dec9379ca97",
+      "previousContent": [
+        "sha256:5eee14d606fe878f562fb94ba68a8e86e3656ab6999a51c2963b739026ebb187",
+        "sha256:d063bd7914329a2ea8f2253433d909ccf9097d7c2509377b30686d7e45603ccf",
+        "sha256:eae666d7b7642af5f6ddb86218862c11e76d05c818d1a2a193de179427fba61f"
+      ]
+    },
+    {
+      "name": "TabBar",
+      "category": "mobile",
+      "file": "mobile/TabBar.xt",
+      "thumbnail": "thumbnails/TabBar.png",
+      "description": "Bottom tab bar with 3-5 tabs (variant Count) inside the bottom safe area.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Bar1",
+          "Bar2",
+          "Bar3",
+          "Bar4",
+          "Bar5"
+        ],
+        "slots": [
+          "tab1",
+          "tab2",
+          "tab3",
+          "tab4",
+          "tab5"
+        ]
+      },
+      "variants": {
+        "Count": [
+          "3",
+          "4",
+          "5"
+        ]
+      },
+      "stateGroups": {
+        "TabBar": [
+          "Bar1",
+          "Bar2",
+          "Bar3",
+          "Bar4",
+          "Bar5"
+        ]
+      },
+      "ports": [
+        {
+          "name": "value",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "select",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [
+        "tab-change"
+      ],
+      "triggers": [
+        "click: sound(ui_tab); set(value, 0); emit(select); play(tab-change)",
+        "click: sound(ui_tab); set(value, 1); emit(select); play(tab-change)",
+        "click: sound(ui_tab); set(value, 2); emit(select); play(tab-change)",
+        "click: sound(ui_tab); set(value, 3); emit(select); play(tab-change)",
+        "click: sound(ui_tab); set(value, 4); emit(select); play(tab-change)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-focus",
+          "default": "#b3281e"
+        },
+        {
+          "name": "--color-surface",
+          "default": "#ece8dd"
+        },
+        {
+          "name": "--color-surface-sunken",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-text-on-accent",
+          "default": "#e6e2d6"
+        },
+        {
+          "name": "--focus-w",
+          "default": "2px"
+        },
+        {
+          "name": "--font-display",
+          "default": "\"Noto Serif Display ExtraCondensed\", \"Noto Serif Display\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-xs",
+          "default": "12px"
+        },
+        {
+          "name": "--motion-fast",
+          "default": "150ms"
+        },
+        {
+          "name": "--motion-instant",
+          "default": "50ms"
+        },
+        {
+          "name": "--rule-thick",
+          "default": "3px"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-1",
+          "default": "4px"
+        },
+        {
+          "name": "--tex-grain",
+          "default": "url(\"textures/grain-paper.png\")"
+        },
+        {
+          "name": "--touch-min",
+          "default": "44px"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerifDisplay-ExtraCondensedBlack.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBold.ttf"
+      ],
+      "textures": [
+        "textures/grain-paper.png",
+        "textures/grain-night.png"
+      ],
+      "notes": "A tap writes `value` and emits `select`; `value` (0-4) selects the Bar1..Bar5 state of the TabBar group.",
+      "content": "sha256:4431f3d17acfdc6ca07b7eb74a8eea1c5aaffa13c31ae45a2fffa3b6dd0cbd74",
+      "previousContent": [
+        "sha256:211365cdb60035f205082a85118c299b5a2658f46c314520da117e56d4c75a49",
+        "sha256:6cd8d51b2fdddfe5d7cab69a0e2bdf180f92333a19b3ed2a62f7380583214df3",
+        "sha256:be8b5e41d1c24b6b41c51a5b6f1fc270c10ab0092c5c1f7d2b182a0bdbdea3fb",
+        "sha256:cc273d973e47a9ad6a857c506976cd185a212ea66da6a5848bd35d30d8431d02",
+        "sha256:b7ec28a0b4cdcbab412b9cbac40de195b3c4e64a14cd397a75d0ff96b43c01c5",
+        "sha256:157d7945bc38f92f83b23a8be3dd2e5ce5cbd44460012ee9a154ae625ef3b7ae",
+        "sha256:55182865c29c1109b67ea9c8484f5de97a54412c9d854b4c8cd480b501c0025d"
+      ]
+    },
+    {
+      "name": "TopBar",
+      "category": "mobile",
+      "file": "mobile/TopBar.xt",
+      "thumbnail": "thumbnails/TopBar.png",
+      "description": "Top app bar that clears the status bar (top safe-area padding), with left / title / right slots.",
+      "requires": {
+        "states": [],
+        "slots": [
+          "title",
+          "left",
+          "right"
+        ]
+      },
+      "ports": [],
+      "timelines": [
+        "intro"
+      ],
+      "triggers": [],
+      "tokens": [
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-surface",
+          "default": "#ece8dd"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"DejaVu Serif\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-display",
+          "default": "\"Noto Serif Display ExtraCondensed\", \"Noto Serif Display\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-l",
+          "default": "20px"
+        },
+        {
+          "name": "--letter-display",
+          "default": "0.5px"
+        },
+        {
+          "name": "--rule-thick",
+          "default": "3px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        },
+        {
+          "name": "--space-3",
+          "default": "12px"
+        },
+        {
+          "name": "--tex-grain",
+          "default": "url(\"textures/grain-paper.png\")"
+        },
+        {
+          "name": "--tex-rule-h",
+          "default": "url(\"textures/rule-double.png\")"
+        },
+        {
+          "name": "--touch-min",
+          "default": "44px"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBlack.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBold.ttf"
+      ],
+      "textures": [
+        "textures/grain-paper.png",
+        "textures/rule-double.png",
+        "textures/grain-night.png",
+        "textures/rule-double-night.png"
+      ],
+      "notes": "Its top padding is `1safe-top`; `intro` slides the bar in.",
+      "content": "sha256:d6e7ad481ea818f40da560dce258d38749e2616322e753e7d4cacf455b7927aa",
+      "previousContent": [
+        "sha256:d97e9e39d282ba789c0af0e0d3905074a8bc9b68e70f9f5e0476e9870ff9e916",
+        "sha256:fef9255ec7279dbd3ef769ef47a706032e28c689df8ab2a20da9b1f8b73e3539",
+        "sha256:8d093140d9b77a3c4a75e31569695ed63a52ee7eaa3c92bd954ad3bde215133a"
+      ]
+    },
+    {
+      "name": "PullIndicator",
+      "category": "mobile",
+      "file": "mobile/PullIndicator.xt",
+      "thumbnail": "thumbnails/PullIndicator.png",
+      "description": "Pull-to-refresh indicator driven by `progress` (0..1); reaching 1 loops `spin`.",
+      "requires": {
+        "states": [
+          "Pulling",
+          "Ready"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "stateGroups": {
+        "Pull": [
+          "Pulling",
+          "Ready"
+        ]
+      },
+      "ports": [
+        {
+          "name": "progress",
+          "type": "number",
+          "dir": "in"
+        }
+      ],
+      "timelines": [
+        "spin"
+      ],
+      "triggers": [
+        "port(progress): if ge(1) play(spin, loop)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-surface",
+          "default": "#ece8dd"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-text-dim",
+          "default": "#4a463f"
+        },
+        {
+          "name": "--color-text-on-accent",
+          "default": "#e6e2d6"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"DejaVu Serif\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-display",
+          "default": "\"Noto Serif Display ExtraCondensed\", \"Noto Serif Display\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-s",
+          "default": "14px"
+        },
+        {
+          "name": "--letter-display",
+          "default": "0.5px"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        },
+        {
+          "name": "--tex-grain",
+          "default": "url(\"textures/grain-paper.png\")"
+        },
+        {
+          "name": "--touch-min",
+          "default": "44px"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBlack.ttf",
+        "fonts/NotoSerifDisplay-ExtraCondensedBold.ttf"
+      ],
+      "textures": [
+        "textures/grain-paper.png",
+        "textures/grain-night.png"
+      ],
+      "notes": "The host writes `progress` while the list is pulled and stops `spin` (stopTimeline) when the refresh is done.",
+      "content": "sha256:95b4e630191700da4ea3a36bce97e3692c271b2eae5f7ce9c9c2eebc8246f1ab",
+      "previousContent": [
+        "sha256:f67c4818f3a405a6aac3e0fbd3ce12b90503b504680d0110dbcc2c40a1572f81",
+        "sha256:f437b2816addd3ef15df7104dea122c775fc5dae77be128a8a23237e1d56eedb",
+        "sha256:691f35c3d78bc7a3669fa42c4e1b07881356d621e2f0818db03a98e8d4ec3e4a"
+      ]
+    },
+    {
+      "name": "ToggleTouch",
+      "category": "mobile",
+      "file": "mobile/ToggleTouch.xt",
+      "thumbnail": "thumbnails/ToggleTouch.png",
+      "description": "Touch-size Toggle: the switch is --touch-min tall.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Focus",
+          "Checked",
+          "Disabled"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "ports": [
+        {
+          "name": "value",
+          "type": "bool",
+          "dir": "in"
+        }
+      ],
+      "timelines": [
+        "flip"
+      ],
+      "triggers": [
+        "check: sound(ui_toggle); set(value, true); play(flip)",
+        "uncheck: sound(ui_toggle); set(value, false); play(flip)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-accent-hover",
+          "default": "#4a463f"
+        },
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-disabled-bg",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--color-disabled-text",
+          "default": "#8a857a"
+        },
+        {
+          "name": "--color-focus",
+          "default": "#b3281e"
+        },
+        {
+          "name": "--color-surface",
+          "default": "#ece8dd"
+        },
+        {
+          "name": "--color-surface-sunken",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-text-on-accent",
+          "default": "#e6e2d6"
+        },
+        {
+          "name": "--focus-w",
+          "default": "2px"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"DejaVu Serif\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-m",
+          "default": "16px"
+        },
+        {
+          "name": "--motion-fast",
+          "default": "150ms"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-3",
+          "default": "12px"
+        },
+        {
+          "name": "--tex-hatch",
+          "default": "url(\"textures/hatch-ink.png\")"
+        },
+        {
+          "name": "--touch-min",
+          "default": "44px"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [
+        "textures/hatch-ink.png",
+        "textures/hatch-night.png"
+      ],
+      "notes": "A copy of Toggle (symbols have no `extends`); check / uncheck also play `flip`.",
+      "content": "sha256:3498b50da82470bab4e5c7cb9c47dc662c36579506637e114cc287029a32e17b",
+      "previousContent": [
+        "sha256:a6b4799825233a342a23fa79b105233bddef441b96e371dedde25032a7146a7b",
+        "sha256:fe2b74ddae8d45d9bc086424ada682bd1397e40f71a77475f8e9b21f359f81c2",
+        "sha256:fcafa27514db267ec4e10d8a523a9185e3056219c48bc09e483f423b3cd0009f"
+      ]
+    },
+    {
+      "name": "SliderTouch",
+      "category": "mobile",
+      "file": "mobile/SliderTouch.xt",
+      "thumbnail": "thumbnails/SliderTouch.png",
+      "description": "Touch-size Slider: a --touch-min track and handle.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Pressed",
+          "Focus",
+          "Disabled"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "ports": [
+        {
+          "name": "value",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "min",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "max",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "decrease",
+          "type": "event",
+          "dir": "out"
+        },
+        {
+          "name": "increase",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [
+        "grab"
+      ],
+      "triggers": [
+        "press: play(grab)",
+        "drag.value: set(value, event.value | range(0, 1, min, max) | round)",
+        "nav.value: sound(ui_tick); if lt(0) emit(decrease) else emit(increase)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-disabled-bg",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--color-disabled-text",
+          "default": "#8a857a"
+        },
+        {
+          "name": "--color-focus",
+          "default": "#b3281e"
+        },
+        {
+          "name": "--color-surface",
+          "default": "#ece8dd"
+        },
+        {
+          "name": "--color-surface-sunken",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-text-dim",
+          "default": "#4a463f"
+        },
+        {
+          "name": "--color-track",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--focus-w",
+          "default": "2px"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"DejaVu Serif\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-m",
+          "default": "16px"
+        },
+        {
+          "name": "--motion-fast",
+          "default": "150ms"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        },
+        {
+          "name": "--space-3",
+          "default": "12px"
+        },
+        {
+          "name": "--tex-hatch",
+          "default": "url(\"textures/hatch-ink.png\")"
+        },
+        {
+          "name": "--touch-min",
+          "default": "44px"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [
+        "textures/hatch-ink.png",
+        "textures/hatch-night.png"
+      ],
+      "notes": "A copy of Slider (symbols have no `extends`); pressing the track plays `grab`.",
+      "content": "sha256:a7f879ed28f9bbfcc33e7ac52fe21bd6f5966f498c615360f0d00d4f7b5547f8",
+      "previousContent": [
+        "sha256:a72e7940eb7910900c12190ffbdd2b894a70cf7d1999b2feb0a6aef78fec2c51",
+        "sha256:16ef10d0bf661af6b6a631c2e12fa66377421a46ad8d60cc89278d41ad14b96a",
+        "sha256:9279da2bb3cb929b5ac8bbda22581bd6b237cd88968492ad77229098137d1f97"
+      ]
+    },
+    {
+      "name": "PinchZoomView",
+      "category": "mobile",
+      "file": "mobile/PinchZoomView.xt",
+      "thumbnail": "thumbnails/PinchZoomView.png",
+      "description": "Clipping container whose content is scaled by `scale` (clamped to min..max); pinch emits `pinch`.",
+      "requires": {
+        "states": [
+          "Zoomed"
+        ],
+        "slots": [
+          "content"
+        ]
+      },
+      "ports": [
+        {
+          "name": "scale",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "min",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "max",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "pinch",
+          "type": "event",
+          "dir": "out"
+        },
+        {
+          "name": "reset",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [
+        "zoom"
+      ],
+      "triggers": [
+        "gesture(pinch): emit(pinch)",
+        "gesture(doubletap): sound(ui_select); emit(reset); play(zoom)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-success",
+          "default": "#3f6b43"
+        },
+        {
+          "name": "--color-surface",
+          "default": "#ece8dd"
+        },
+        {
+          "name": "--color-surface-sunken",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-text-dim",
+          "default": "#4a463f"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"DejaVu Serif\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-xs",
+          "default": "12px"
+        },
+        {
+          "name": "--rule-thick",
+          "default": "3px"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        },
+        {
+          "name": "--tex-grain",
+          "default": "url(\"textures/grain-paper.png\")"
+        },
+        {
+          "name": "--tex-hatch",
+          "default": "url(\"textures/hatch-ink.png\")"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [
+        "textures/grain-paper.png",
+        "textures/hatch-ink.png",
+        "textures/grain-night.png",
+        "textures/hatch-night.png"
+      ],
+      "notes": "The gesture scale is not a trigger event value, so the host turns `pinch` into a new `scale` and resets it on `reset` (double tap).",
+      "content": "sha256:5fbce9ace34d05bc64cc74722492186cf72c10ac6da9a88a92d4c794f9168e8a",
+      "previousContent": [
+        "sha256:373ce773235714baa26288d19f5ae487734647c4d7cf6519440ecd1b56af27e3",
+        "sha256:a5ecda5df543a22b14850a4b0cddb4e65247f9b7b4af6b9cf8e980d2016f6291",
+        "sha256:49a3ee62c5d6dd6241bfaa2761bc794ad7ad98b20aa890ac6893d26196384540"
+      ]
+    },
+    {
+      "name": "ListItem",
+      "category": "list",
+      "file": "list/ListItem.xt",
+      "thumbnail": "thumbnails/ListItem.png",
+      "description": "Reference list entry to copy (30.13): title / subtitle / selected in-ports, a trailing slot, a Selected state; emits `activate` and `dblactivate`.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Focus",
+          "Selected"
+        ],
+        "slots": [
+          "trailing"
+        ]
+      },
+      "ports": [
+        {
+          "name": "title",
+          "type": "string",
+          "dir": "in"
+        },
+        {
+          "name": "subtitle",
+          "type": "string",
+          "dir": "in"
+        },
+        {
+          "name": "selected",
+          "type": "bool",
+          "dir": "in"
+        },
+        {
+          "name": "activate",
+          "type": "event",
+          "dir": "out"
+        },
+        {
+          "name": "dblactivate",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [],
+      "triggers": [
+        "click: sound(ui_select); emit(activate)",
+        "dblclick: emit(dblactivate)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-border",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-focus",
+          "default": "#b3281e"
+        },
+        {
+          "name": "--color-surface",
+          "default": "#ece8dd"
+        },
+        {
+          "name": "--color-surface-sunken",
+          "default": "#dcd7c8"
+        },
+        {
+          "name": "--color-text",
+          "default": "#1f1c18"
+        },
+        {
+          "name": "--color-text-dim",
+          "default": "#4a463f"
+        },
+        {
+          "name": "--color-text-on-accent",
+          "default": "#e6e2d6"
+        },
+        {
+          "name": "--control-l",
+          "default": "44px"
+        },
+        {
+          "name": "--focus-w",
+          "default": "2px"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"DejaVu Serif\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-m",
+          "default": "16px"
+        },
+        {
+          "name": "--font-size-s",
+          "default": "14px"
+        },
+        {
+          "name": "--motion-fast",
+          "default": "150ms"
+        },
+        {
+          "name": "--rule-thick",
+          "default": "3px"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-1",
+          "default": "4px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        },
+        {
+          "name": "--space-3",
+          "default": "12px"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [],
+      "notes": "The list-entry pattern: values through in-ports (`bind:title=\"item(title)\"` on the <use> in a <repeat> template), free content through the `trailing` slot (slot content may bind item() and document ports), states through bind:state (Selected follows `selected`). From a <repeat> entry the events carry the entry index.",
+      "content": "sha256:c582b7118daa09bb0849537f7e37ba26628f9749b496218a02ca93cabe8cff08",
+      "previousContent": [
+        "sha256:f0321bdb94d03413e1acdc1d6614ad9c998803d49f7d958d7e5e60f0f29e9ee0",
+        "sha256:e392401f0375a5df12addb9d4da7d4cd6dda4302945596488d6e5d6db798a322",
+        "sha256:bdaa1fe62dca388f8f633e8a60616164a79c27aafbf6371417135cf92d59ea01"
+      ]
+    }
+  ]
+}

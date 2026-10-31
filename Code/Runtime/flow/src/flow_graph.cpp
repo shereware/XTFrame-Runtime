@@ -97,6 +97,70 @@ void assignParamValue(nlohmann::ordered_json& slot, const PortValue& v) {
     slot = nullptr;
 }
 
+/// T-541 (27 §27.4.4): a `state` node's array params -- `states` / `events` (strings) into
+/// NodeDesc::arrayParams, `transitions` (objects with string from / on / to) into
+/// NodeDesc::transitions. A malformed one is an error here; the values themselves are checked by
+/// checkStateNode() (flow_bindings.cpp), which FlowRuntime::load() runs too.
+void stateParamsFromJson(const json& obj, NodeDesc& node, std::vector<std::string>& errors) {
+    const std::string prefix = "state " + node.id + ": ";
+    auto stringArray = [](const json& value, std::vector<PortValue>& out) {
+        if (!value.is_array()) {
+            return false;
+        }
+        for (const json& element : value) {
+            if (!element.is_string()) {
+                return false;
+            }
+            PortValue item;
+            item.type = PortType::String;
+            item.s = element.get<std::string>();
+            out.push_back(std::move(item));
+        }
+        return true;
+    };
+    for (const char* key : {"states", "events"}) {
+        auto it = obj.find(key);
+        if (it == obj.end()) {
+            continue;
+        }
+        std::vector<PortValue> items;
+        if (stringArray(*it, items)) {
+            node.arrayParams[key] = std::move(items);
+        } else if (std::string_view(key) == "states") {
+            errors.push_back(prefix + "states must be 2..64 unique identifiers");
+        } else {
+            errors.push_back(prefix + "events must be an array of identifiers");
+        }
+    }
+    if (auto it = obj.find("transitions"); it != obj.end()) {
+        bool ok = it->is_array();
+        std::vector<TransitionDesc> items;
+        for (size_t i = 0; ok && i < it->size(); ++i) {
+            const json& entry = (*it)[i];
+            ok = entry.is_object();
+            if (!ok) {
+                break;
+            }
+            TransitionDesc t;
+            std::string* const targets[3] = {&t.from, &t.on, &t.to};
+            const char* const keys[3] = {"from", "on", "to"};
+            for (int k = 0; k < 3; ++k) {
+                auto field = entry.find(keys[k]);
+                ok = ok && field != entry.end() && field->is_string();
+                if (ok) {
+                    *targets[k] = field->get<std::string>();
+                }
+            }
+            items.push_back(std::move(t));
+        }
+        if (ok) {
+            node.transitions = std::move(items);
+        } else {
+            errors.push_back(prefix + "transitions must be an array of {from, on, to} strings");
+        }
+    }
+}
+
 bool requireParam(const NodeDesc& node, const char* name, std::vector<std::string>& errors) {
     if (node.params.count(name) == 0) {
         errors.push_back("node '" + node.id + "' is missing required param '" + std::string(name) + "'");
@@ -196,7 +260,16 @@ Status FlowGraph::parse(std::string_view jsonText, FlowGraph& out, std::vector<s
             if (!nodeJson["params"].is_object()) {
                 errors.push_back("node '" + node.id + "' 'params' must be an object");
             } else {
-                paramsFromJson(nodeJson["params"], node.id, node.params, node.arrayParams, errors);
+                if (type == NodeType::State) {  // T-541: its arrays are strings / objects.
+                    json scalars = nodeJson["params"];
+                    for (const char* key : {"states", "events", "transitions"}) {
+                        scalars.erase(key);
+                    }
+                    paramsFromJson(scalars, node.id, node.params, node.arrayParams, errors);
+                    stateParamsFromJson(nodeJson["params"], node, errors);
+                } else {
+                    paramsFromJson(nodeJson["params"], node.id, node.params, node.arrayParams, errors);
+                }
             }
         }
         switch (type) {
@@ -226,6 +299,43 @@ Status FlowGraph::parse(std::string_view jsonText, FlowGraph& out, std::vector<s
                     }
                 }
                 break;
+            case NodeType::Filter:
+                // T-543 (27 §27.4.5): `op` decides which of `threshold` / `step` is needed.
+                checkOp(node, {"deadband", "quantize", "sample"}, errors);
+                if (auto op = node.params.find("op");
+                    op != node.params.end() && op->second.type == PortType::String) {
+                    if (op->second.s == "deadband" && requireParam(node, "threshold", errors)) {
+                        const PortValue& threshold = node.params.at("threshold");
+                        if (threshold.type != PortType::Number || !std::isfinite(threshold.n) ||
+                            threshold.n < 0) {
+                            errors.push_back("node '" + node.id + "' has an invalid 'threshold'");
+                        }
+                    } else if (op->second.s == "quantize" && requireParam(node, "step", errors)) {
+                        const PortValue& step = node.params.at("step");
+                        if (step.type != PortType::Number || !std::isfinite(step.n) || step.n <= 0) {
+                            errors.push_back("node '" + node.id + "' has an invalid 'step'");
+                        }
+                    }
+                }
+                break;
+            case NodeType::Throttle: {
+                // T-543 (27 §27.4.5): `rate` may come from an edge instead, so only its type is checked.
+                if (auto unit = node.params.find("unit"); requireParam(node, "unit", errors)) {
+                    if (unit->second.type != PortType::String ||
+                        parseThrottleUnit(unit->second.s) == ThrottleUnit::Unknown) {
+                        errors.push_back("node '" + node.id + "' has an invalid 'unit'");
+                    }
+                }
+                if (auto rate = node.params.find("rate");
+                    rate != node.params.end() && rate->second.type != PortType::Number) {
+                    errors.push_back("node '" + node.id + "' has an invalid 'rate'");
+                }
+                if (auto trailing = node.params.find("trailing");
+                    trailing != node.params.end() && trailing->second.type != PortType::Bool) {
+                    errors.push_back("node '" + node.id + "' has an invalid 'trailing'");
+                }
+                break;
+            }
             case NodeType::Lookup:
                 // §17.6 (T-123): `values` is the lookup table; its element type is `out`'s type,
                 // so an empty or mixed-type array (rejected by paramsFromJson()) has none.
@@ -336,7 +446,7 @@ std::string FlowGraph::toJson() const {
         ordered_json nj;
         nj["id"] = n.id;
         nj["type"] = n.type;
-        if (!n.params.empty() || !n.arrayParams.empty()) {
+        if (!n.params.empty() || !n.arrayParams.empty() || !n.transitions.empty()) {
             ordered_json params;
             for (const auto& [key, value] : n.params) {
                 assignParamValue(params[key], value);
@@ -349,6 +459,17 @@ std::string FlowGraph::toJson() const {
                     items.push_back(std::move(item));
                 }
                 params[key] = std::move(items);
+            }
+            if (!n.transitions.empty()) {  // T-541.
+                ordered_json items = ordered_json::array();
+                for (const TransitionDesc& t : n.transitions) {
+                    ordered_json item;
+                    item["from"] = t.from;
+                    item["on"] = t.on;
+                    item["to"] = t.to;
+                    items.push_back(std::move(item));
+                }
+                params["transitions"] = std::move(items);
             }
             nj["params"] = std::move(params);
         }
@@ -423,6 +544,13 @@ std::span<const NodeTypeDesc> nodeTypeTable() {
         {NodeType::Spawn,    "spawn",    {"symbol"}, {"trigger"}},
         {NodeType::Emit,     "emit",     {"port"}, {"trigger", "value"}},
         {NodeType::Timeline, "timeline", {"name", "scope", "ui", "loop", "rate"}, {"play", "stop", "seek"}},
+        // T-541 (27 §27.4.4): only the fixed ports; the event / enter / exit ones depend on the params.
+        // (nodeTypeTable() lists the scalar params, as with `lookup`.)
+        // Its `states` / `events` / `transitions` are arrays (like `lookup`'s `values`): not listed.
+        {NodeType::State,    "state",    {"initial"}, {"set", "guard"}},
+        // T-543 (Docs/design/27-interaction.md §27.4.5).
+        {NodeType::Filter,   "filter",   {"op", "threshold", "step"}, {"in", "trigger", "reset"}},
+        {NodeType::Throttle, "throttle", {"unit", "rate", "trailing"}, {"in", "rate", "reset"}},
     };
     // clang-format on
 

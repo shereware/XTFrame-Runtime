@@ -58,4 +58,28 @@ std::vector<std::pair<std::string, std::string>> readTokenDecls(const std::strin
 /// (design_export.cpp).
 std::vector<std::pair<std::string, std::filesystem::path>> themeFiles(const UiProject& project);
 
+/// §35.3.4: the category of a variable without metadata, from its name without `--` (the rule
+/// syncTokenMeta() applies; design_io.cpp). T-498c: design_doc.cpp and design_export.cpp place the
+/// inherited variables with it.
+std::string guessTokenCategory(const std::string& name);
+
+/// T-498c (49 §49.12 ruling): the implied default layer as the design tools see it -- the group at
+/// BuildOptions::standardSymbolDir (loadGroup()), read with readTokenDecls(). Empty `id` when
+/// `groupDir` is empty or holds no readable group with a `tokens.xts`.
+struct ImpliedLayer {
+    /// The group id (`broadsheet-2026`).
+    std::string id;
+    /// Every `--name: value` of the group's `tokens.xts` (name without `--`, source order).
+    std::vector<std::pair<std::string, std::string>> tokens;
+    /// The group's theme files (`group.json` `themes[]`, in that order) by theme name
+    /// (themeNameOf(): `tokens-night.xts` -> `night`): name -> value.
+    std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::string>>>> themes;
+    /// Token name (without `--`) -> the first `index.json` symbol that reads it.
+    std::vector<std::pair<std::string, std::string>> firstUser;
+};
+
+/// Reads the implied layer of `groupDir` (UTF-8; may be empty). Never fails: an unreadable group
+/// gives an empty `id`.
+ImpliedLayer readImpliedLayer(const std::string& groupDir);
+
 }  // namespace xt::bundle::design::detail

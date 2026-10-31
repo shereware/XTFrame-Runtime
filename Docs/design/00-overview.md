@@ -110,6 +110,11 @@ xtframe/
 | 35-design-system.md | UI Project 的設計文件 part（原「設計系統」；2026-10-14 降為 30 章 part 細節）：三層（參考／決定／執行）、`design/` 目錄、條目與連結、色彩庫是參考知識而非變數、生成的權威文件 `DESIGN.md`、版本、`design.*` op 與 S0 四入口、設計系統模式 |
 | 36-history.md | 歷史：存檔點與方案（定案 2026-10-11）：美術詞彙（存檔點、主線、方案、採用、比較、整理）↔ git；歷史面板與畫布牌子；AI 在方案上；底層 40 §40.3 |
 | 40-product-blueprint-v2.md | 產品藍圖 v2（草案 2026-10-01）：專案系統與 meta、git 相容內建歷史與語意 diff／合併、AI 分支工作流與專案記憶、契約綁定與 flow 生成、3D UI 與世界整合、媒體、主機、商業層；排在 BACKLOG C 之後 |
+| 47-symbol-visual-style.md | 標準符號庫的視覺風格：報紙／偵探（Broadsheet；2026-10-27）、newsprint v2（§47.13）、字型與 token |
+| 48-editor-broadsheet-theme.md | 編輯器的 Broadsheet 主題（paper／night-desk、圖示調色；2026-10-27） |
+| 49-symbol-sets.md | 符號庫、組與集（Photoshop 筆刷模型）：預設庫、掛載、`.xtsymbols` 匯入匯出、`xtframe-symbols`、`symbols.*` ops（2026-10-27） |
+| 50-c-abi.md | C ABI 宿主契約 `xt_capi`（共享庫 `xtframe`）與 Unity 插件 `com.xtframe.runtime`（2026-10-28） |
+| 51-builtin-ai.md | 內建 AI 代理與網路層（定案 2026-10-27）：`xt_net`（作業系統原生 TLS、`SecretStore`）、`xt_ai`（Anthropic／OpenAI 相容供應商、`AgentRunner`、工具 = Editor Service op）、AI 面板 (c) 模式、無頭 `--agent`、契約 `model`／`budget.tokens` 欄位；M41 T-515～T-517 |
 | 18-effects.md | 效果與 shader（0.2）：內建效果、模板、自訂 HLSL 片段、後端與引擎整合 |
 | 19-3d-space.md | 3D 空間（0.2）：AE 式 2.5D 圖層、攝影機、深度排序、投影繪製 |
 

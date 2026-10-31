@@ -192,3 +192,23 @@ Claude Design canvas ──Artifact read──▶ <dump>/canvas.json + *.dc.html
 **資料裡的路徑**：board key、`<img src>`、`/_blob/` id、Figma 的 `images`／`rasters`／`vectors` 目錄都先過 `resolveInside(root, path)`：空、絕對、帶磁碟機、含 `..`、或正規化後離開根目錄者拒絕；blob id 必須是單一路徑段。被拒的項目當作缺少的資產並回報 `path outside the import dump: <value>`。
 
 **`Tools/Scripts/figma_fetch.py` 下載**：只取 `https://`；以 64 KiB 分塊讀、上限 64 MiB、每次嘗試 120 秒期限；違反者不重試。
+
+## 24.13 Node.js 版轉換器：同一份 C++ 編成 WebAssembly（2026-10-28 使用者定案；T-503）
+
+**需求**：npm 技能套件（RELEASE-MAP 第 4 步的轉換器套件）在沒有對應平台執行檔的地方——雲端 session、沙箱、只有 Node 的機器——也要能跑 `xtframe-import dc`，讓 xtui 技能的 deliver mode 退場。
+
+**取捨**：不做純 JavaScript 改寫。dc 路徑約 11,000 行 C++，而且寫出前的兩段仰賴執行時本體：每個 UI 以 `xt_compile` 編譯驗證（24.3），自動錨定（24.11、T-210）與再匯入配對（24.10）以 `layoutRects()`——編譯後由 `Document` 真的排版——量測盒子。JS 改寫等於永遠 `--no-auto-anchor` 且不驗證，輸出與桌機版不同，還要雙份維護。改用 **Emscripten 把現有程式編成 wasm**：單一程式碼來源，輸出逐位元相同。
+
+**形態**：
+- 建置：同一棵 CMake 樹經 `emcmake` 設定，`XT_BUILD_GL/GPU/WGPU/SHELL/TEXT/TESTS/EXAMPLES/EDITOR=OFF`，只建目標 `xtframe-import`；輸出 `bin/wasm32/<Config>/xtframe-import.js`（Emscripten 載入器）＋ `xtframe-import.wasm`（約 5 MB，Release）。平台標籤 `wasm32`（`xt_platform_tag`）。`XT_BUILD_TEXT=OFF` 不影響匯入輸出：寫出器的編譯驗證與量測本來就用 `NullTextShaper`。
+- 連結旗標（`Code/Tools/CMakeLists.txt`）：`-sNODERAWFS=1`（直接讀寫宿主檔案系統的真實路徑，不經虛擬 FS 暫存）、`-sENVIRONMENT=node`、`-sMODULARIZE=1 -sEXPORT_NAME=createXtframeImport -sINVOKE_RUN=0 -sEXPORTED_RUNTIME_METHODS=callMain`（包裝器自己呼叫 main、拿回傳值）、`-sEXIT_RUNTIME=1`（`exit(n)` 傳到包裝器）、`-sALLOW_MEMORY_GROWTH=1`、`-sSTACK_SIZE=4MB`（24.12 的深度上限以 1 MB 堆疊實測；Emscripten 預設只有 64 KB）。
+- 例外：`xt_enable_exceptions()` 在 Emscripten 下加 `-fwasm-exceptions`（編譯與連結；Node 17+ 原生支援）。允許例外的層照舊，`xt_core` 仍 `-fno-exceptions`。
+- 警告：wasm32 是 32 位元目標，`begin() + uint32_t` 這類迭代器算術轉成 32 位元 `difference_type` 時觸發 `-Wsign-conversion`，約 50 處、在所有 64 位元 CI 腿都無事。`xt_set_warnings()` 只對 Emscripten 關掉這一個警告，其餘 `-Werror` 照舊；`file_bytes.h` 的 `streamoff → streamsize` 補明確轉型。`xt_sw` 的 AVX2 單元在 Emscripten 下不編（它回報 x86 處理器但沒有 AVX2）。
+- 包裝：`Code/Tools/import-wasm/`（npm 套件目錄；`package.json`、`bin/xtframe-import.js`、`README.md`；`dist/` 由建置產生、不入倉）。`bin/xtframe-import.js` 載入 `dist/xtframe-import.js`，以 `noInitialRun` 建立模組後 `callMain(argv)`，退出碼從 `onExit`／`ExitStatus`／回傳值取得。命令列、寫出的檔案、診斷與退出碼與原生工具相同。
+- 腳本：`Tools/Scripts/build_wasm_import.sh`（設定＋建置＋複製到 `dist/`；找 `emcmake`，否則 `EMSDK`／`EMSCRIPTEN_ROOT`）；`Tools/Scripts/check_wasm_import.sh`（原生 vs wasm：`--version`、22 張 dc fixture 板的 `dc` 轉換與兩張板的 `--lint`，比退出碼、stdout／stderr（輸出目錄名正規化）、整個專案目錄逐位元；`*.meta` 的隨機 UUID 行先剔除——原生版自己跑兩次也不同）。2026-10-28 實測：22 板全部一致。
+- 套件：名稱 `@xtframe/import-wasm`（npm scope `@xtframe`，2026-10-26 使用者定案；2026-10-31 審查 §2.5 改正）；`private: true`——本倉不 `npm publish`，發佈由技能倉做；`version` 跟主倉版號，由版號單更新（RELEASE-MAP §4）；授權是編輯器 EULA（匯入器屬 E 層，非 MIT 執行時），`LICENSE` 由技能倉打包時從 `Legal/EULA.md` 複製。打包仍由 `shereware/xtframe-skills` 做（先跑 `build_wasm_import.sh` 再 `npm pack`），本目錄是唯一來源。
+- CI：`ci.yml` 新增 `wasm` 工作（GitHub-hosted；setup-emsdk 固定 6.0.13、原生 Release 的 `xtframe-import`、`build_wasm_import.sh`、`check_wasm_import.sh`）。不在必要工作清單，由使用者決定是否加入分支保護。
+
+**限制**：wasm 內沒有網路，但匯入器本來就不下載（字型由 `--fonts-dir` 提供）；啟動多一次 wasm 實例化（數十毫秒）；只支援 Node 18+（`engines`）。
+
+**後續（未排）**：同法把 `xtframe-compile` 與 `xtframe-view --headless`（軟體渲染器）編成 wasm，verify.md 的編譯與截圖步驟就能在雲端跑，技能的 deliver mode 可以整個移除；屆時 `check_wasm_import.sh` 擴成三個工具。

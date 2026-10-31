@@ -31,14 +31,21 @@ add_library(xt_sw STATIC
 # Docs/tasks/T-102.md step 3: one translation unit holds the AVX2 build of the shared kernel
 # templates. Only reached after a run-time __cpuid check, so the rest of the library stays at the
 # SSE2 baseline.
+# T-529 (Docs/design/23-host-integration.md §23.5): the scalar, SSE2 and AVX2 tables must write
+# byte-identical pixels, so this unit is built without FMA: no -mfma (no fused multiply-add
+# instructions at all) and -ffp-contract=off (GCC's default `fast` contraction stays off as well);
+# MSVC keeps /fp:precise under /arch:AVX2, which does not contract. AVX2 only changes the encoding
+# (VEX) and allows 256-bit registers; a fused a*b+c rounds once instead of twice and changed the
+# bytes of effect-heavy scenes for a ~2% speed-up over SSE2.
 # T-240: x86 only (an ARM build, e.g. Android arm64, has no SSE2/AVX2 table; sw_simd_dispatch.cpp
-# then never references it).
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i[3-6]86|x86|X86)$")
+# then never references it). Emscripten reports an x86 processor but has no AVX2 (T-503), so wasm32
+# stays on the scalar/SSE2-baseline kernels as well.
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i[3-6]86|x86|X86)$" AND NOT EMSCRIPTEN)
     target_sources(xt_sw PRIVATE src/sw_simd_avx2.cpp)
     if(MSVC)
-        set_source_files_properties(src/sw_simd_avx2.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
+        set_source_files_properties(src/sw_simd_avx2.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX2;/fp:precise")
     else()
-        set_source_files_properties(src/sw_simd_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma")
+        set_source_files_properties(src/sw_simd_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-ffp-contract=off")
     endif()
 endif()
 target_link_libraries(xt_sw PUBLIC xt_core)

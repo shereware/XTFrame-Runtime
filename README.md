@@ -31,6 +31,7 @@ Code/Runtime/sw/        xt_sw       software rasterizer backend
 Code/Runtime/gpu/       xt_gpu      device-neutral GPU frame builder
 Code/Runtime/gl/        xt_gl       OpenGL 3.3 core-profile backend
 Code/Runtime/shell/     xt_shell    SDL2 window + main loop for standalone desktop apps
+Code/Runtime/capi/      xt_capi     C ABI shared library (xtframe) for FFI hosts (Unity, ...)
 Code/Runtime/platforms/android/     Android viewer app (SW presentation)
 tools/
   xtframe-compile      .xt / .xts / Lottie JSON -> .xtir
@@ -42,8 +43,8 @@ Examples/              engine_integration, desktop_app, lottie_player, demos, ui
 Docs/design/           design chapters (the specification; Traditional Chinese)
 ```
 
-`Assets/Symbols/` is the standard symbol library that `xtframe-pack` copies next to itself and the
-symbol tests read; it is data, not editor code.
+`Assets/Symbols/` is the preset symbol library (its default group holds the standard symbols) that
+`xtframe-pack` copies next to itself and the symbol tests read; it is data, not editor code.
 
 ## Building
 
@@ -137,4 +138,4 @@ MIT. See [`LICENSE`](LICENSE). Third-party components and their licenses are lis
 
 ---
 
-Exported from XTFrame 44298e5af984 (2026-10-31, version 0.12.0).
+Exported from XTFrame b2028027dbcf (2026-10-31, version 0.13.0).

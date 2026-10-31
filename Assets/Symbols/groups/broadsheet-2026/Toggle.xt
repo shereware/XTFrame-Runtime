@@ -1,0 +1,65 @@
+<xt>
+  <head>
+    <!-- Toggle: standard symbol (docs/design/30-ui-project.md 30.4). See README.md.
+         The switch is the checkbox input, its knob an element inside it. The input's own check /
+         uncheck set the `value` port, and `bind:checked` moves the switch when the host sets
+         `value`. -->
+    <symbol name="Toggle" requires="states: Hover, Focus, Checked, Disabled; slots: label">
+      <div id="Box" port:value="bool in">
+        <span id="Label"><slot name="label">Toggle</slot></span>
+        <input type="checkbox" id="Switch" bind:checked="value"
+               on:check="sound(ui_toggle); set(value, true)" on:uncheck="sound(ui_toggle); set(value, false)">
+          <div id="Knob"></div>
+        </input>
+      </div>
+    </symbol>
+    <style>
+      symbol(Toggle) {
+        #Box {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          column-gap: var(--space-3);
+          width: 220px;
+          color: var(--color-text);
+          font-family: var(--font-body);
+          font-size: var(--font-size-m);
+        }
+        #Label { white-space: nowrap; }
+        #Switch {
+          display: flex;
+          align-items: center;
+          width: 44px;
+          height: 24px;
+          padding: 0px 2px;
+          border-width: var(--rule-thin);
+          border-color: var(--color-border);
+          background-color: var(--color-surface-sunken);
+          background-image: var(--tex-hatch);
+          background-repeat: repeat;
+          background-size: 8px 8px;
+          transition: background-color var(--motion-fast) linear, transform var(--motion-fast) ease-out;
+        }
+        #Knob {
+          width: 16px;
+          height: 16px;
+          background-color: var(--color-accent);
+        }
+        #Box:hover #Switch { background-color: var(--color-surface); }
+        #Switch:focus { outline: var(--focus-w) solid var(--color-focus); outline-offset: 2px; transform: rotate(-1.5deg); }
+        #Switch:checked { justify-content: flex-end; background-color: var(--color-accent); background-image: none; }
+        #Switch:checked #Knob { background-color: var(--color-text-on-accent); }
+        #Box:hover #Switch:checked { background-color: var(--color-accent-hover); }
+        :disabled #Switch {
+          background-color: var(--color-disabled-bg) !important;
+          background-image: var(--tex-hatch) !important;
+          border-color: var(--color-disabled-text) !important;
+          outline: none !important;
+          transform: none !important;
+        }
+        :disabled #Knob { background-color: var(--color-disabled-text) !important; }
+        :disabled #Label { color: var(--color-disabled-text); }
+      }
+    </style>
+  </head>
+</xt>

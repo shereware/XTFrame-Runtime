@@ -1,0 +1,88 @@
+<xt>
+  <head>
+    <!-- Notification: standard symbol (docs/design/30-ui-project.md 30.4). See README.md.
+         Style: Broadsheet (docs/design/47-symbol-visual-style.md). -->
+    <symbol name="Notification" state-groups="Tone: Info|Warning|Danger"
+            requires="states: Info, Warning, Danger; slots: title, text">
+      <div id="Box" port:tone="number in"
+           bind:state.Info="tone | eq(0)" bind:state.Warning="tone | eq(1)" bind:state.Danger="tone | eq(2)"
+           on:show="sound(ui_notify); play(intro)" on:hide="play(outro) then hide">
+        <div id="Mark"><span id="Bang">!</span><div id="Cross"><div id="CrossA"></div><div id="CrossB"></div></div></div>
+        <div id="Copy">
+          <span id="Title"><slot name="title">Notification</slot></span>
+          <span id="Text"><slot name="text">Details.</slot></span>
+        </div>
+      </div>
+    </symbol>
+    <style>
+      symbol(Notification) {
+        #Box {
+          display: flex;
+          align-items: center;
+          column-gap: var(--space-3);
+          width: 340px;
+          padding: 0px var(--space-4) 0px 0px;
+          border-width: var(--rule-thick) 0px var(--rule-thin) 0px;
+          border-color: var(--color-border);
+          background-color: var(--color-surface);
+          background-image: var(--tex-grain);
+          background-repeat: repeat;
+          background-size: 128px 128px;
+          font-family: var(--font-body);
+        }
+        /* The tone block: a big glyph (a CSS cross for Danger: the preview font has no cross) split off by a column rule. */
+        #Mark {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          align-self: stretch;
+          width: 48px;
+          border-width: 0px var(--rule-thin) 0px 0px;
+          border-color: var(--color-border);
+          color: var(--color-info);
+        }
+        #Bang {
+          font-family: var(--font-display);
+          font-size: var(--font-size-xl);
+          font-weight: 900;
+          white-space: nowrap;
+        }
+        #Cross { display: none; position: relative; width: 18px; height: 18px; }
+        #CrossA, #CrossB {
+          position: absolute;
+          left: -2px;
+          top: 7px;
+          width: 22px;
+          height: 4px;
+          background-color: var(--color-danger);
+        }
+        #CrossA { transform: rotate(45deg); }
+        #CrossB { transform: rotate(-45deg); }
+        #Copy { display: flex; flex-direction: column; row-gap: 2px; padding: var(--space-3) 0px; }
+        #Title {
+          color: var(--color-info);
+          font-family: var(--font-display);
+          font-size: var(--font-size-m);
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: var(--letter-display);
+        }
+        #Text { color: var(--color-text-dim); font-size: var(--font-size-s); }
+        #Box:state(Info) #Mark { color: var(--color-info); }
+        #Box:state(Info) #Title { color: var(--color-info); }
+        #Box:state(Warning) #Mark { color: var(--color-warning); }
+        #Box:state(Warning) #Title { color: var(--color-warning); }
+        #Box:state(Danger) #Mark { color: var(--color-danger); }
+        #Box:state(Danger) #Bang { display: none; }
+        #Box:state(Danger) #Cross { display: block; }
+        #Box:state(Danger) #Title { color: var(--color-danger); }
+        @timeline intro {
+          #Box { 0s { opacity: 0; transform: translateY(8px) } 0.25s ease-out { opacity: 1; transform: translateY(0px) } }
+        }
+        @timeline outro {
+          #Box { 0s { opacity: 1; transform: translateY(0px) } 0.2s ease-in { opacity: 0; transform: translateY(8px) } }
+        }
+      }
+    </style>
+  </head>
+</xt>

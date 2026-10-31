@@ -13,7 +13,8 @@ Each subdirectory has a `VERSION.txt` file recording the exact version/commit an
 
 FreeType, HarfBuzz, SDL2, Clipper2, cpp-httplib and miniz are not vendored here; they are fetched
 and built from source by `Tools/CMake/xt_text_deps.cmake`, `Tools/CMake/xt_sdl2.cmake`, `Tools/CMake/xt_clipper2.cmake`,
-`Tools/CMake/xt_httplib.cmake` and `Tools/CMake/xt_miniz.cmake` (FetchContent), see Docs/tasks/T-29.md.
+`Tools/CMake/xt_httplib.cmake` and `Tools/CMake/xt_miniz.cmake` (FetchContent), see Docs/tasks/T-29.md. miniz
+(target `xt_miniz`) is linked by `xt_bundle` and the editor's history core only.
 
 `versions.cmake` lists every component above and every fetched one (version, source, hash or tag,
 licence); it is the single source of `NOTICE.md` and `Legal/THIRD-PARTY.md`

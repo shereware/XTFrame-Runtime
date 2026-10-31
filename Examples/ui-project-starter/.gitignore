@@ -3,3 +3,5 @@ out/
 # xtframe-pack copies the standard symbols a UI references into shared/symbols/ on first pack
 # (docs/design/30-ui-project.md 30.4); this example keeps no project symbols of its own.
 shared/symbols/*.xt
+# Reference preview cache (Docs/design/35-design-system.md 35.3.1).
+design/.cache/

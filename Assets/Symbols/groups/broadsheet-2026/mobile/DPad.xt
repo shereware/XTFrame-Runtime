@@ -1,0 +1,98 @@
+<xt>
+  <head>
+    <!-- DPad: standard mobile symbol (docs/design/23-host-integration.md 23.11.2,
+         30-ui-project.md 30.4). See ../README.md.
+         Style: Broadsheet (docs/design/47-symbol-visual-style.md).
+         Four touch arrows. A press writes `direction` (0 up, 1 right, 2 down, 3 left) and `axis`
+         (the unit vector, y down), then emits `dir`; a release writes `axis` back to (0, 0). -->
+    <symbol name="DPad" requires="states: Pressed, Disabled">
+      <div id="Box" port:dir="event out" port:axis="vec2 out" port:direction="number out">
+        <button id="Up" class="arrow"
+                on:press="sound(ui_tick); set(direction, 0); set(axis, event.value | vec2(-1)); emit(dir); play(press)"
+                on:release="set(axis, event.value | vec2(0))"><div id="UpMark" class="mark"></div></button>
+        <button id="Right" class="arrow"
+                on:press="sound(ui_tick); set(direction, 1); set(axis, event.value | offset(1) | vec2(0)); emit(dir); play(press)"
+                on:release="set(axis, event.value | vec2(0))"><div id="RightMark" class="mark"></div></button>
+        <button id="Down" class="arrow"
+                on:press="sound(ui_tick); set(direction, 2); set(axis, event.value | vec2(1)); emit(dir); play(press)"
+                on:release="set(axis, event.value | vec2(0))"><div id="DownMark" class="mark"></div></button>
+        <button id="Left" class="arrow"
+                on:press="sound(ui_tick); set(direction, 3); set(axis, event.value | offset(-1) | vec2(0)); emit(dir); play(press)"
+                on:release="set(axis, event.value | vec2(0))"><div id="LeftMark" class="mark"></div></button>
+        <div id="Hub"></div>
+      </div>
+    </symbol>
+    <style>
+      symbol(DPad) {
+        #Box {
+          position: relative;
+          width: 168px;
+          height: 168px;
+        }
+        /* Letterpress keys: thin ink top / left, thick shadow-ink right / bottom; a press drops the key 2px. */
+        .arrow {
+          position: absolute;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 56px;
+          height: 56px;
+          border-width: var(--rule-thin) var(--rule-thick) var(--rule-thick) var(--rule-thin);
+          border-top-color: var(--color-border);
+          border-left-color: var(--color-border);
+          border-right-color: var(--color-shadow);
+          border-bottom-color: var(--color-shadow);
+          background-color: var(--color-surface);
+          transition: background-color var(--motion-instant) linear, transform var(--motion-fast) ease-out;
+        }
+        #Up { left: 56px; top: 0px; }
+        #Right { left: 112px; top: 56px; }
+        #Down { left: 56px; top: 112px; }
+        #Left { left: 0px; top: 56px; }
+        #Hub {
+          position: absolute;
+          left: 56px;
+          top: 56px;
+          width: 56px;
+          height: 56px;
+          background-color: var(--color-surface-sunken);
+          background-image: var(--tex-dots);
+          background-repeat: repeat;
+          background-size: 4px 4px;
+        }
+        .mark {
+          width: 16px;
+          height: 16px;
+          background-color: var(--color-accent);
+        }
+        .arrow:hover { background-color: var(--color-accent); }
+        .arrow:hover .mark { background-color: var(--color-text-on-accent); }
+        .arrow:active {
+          border-width: var(--rule-thin);
+          border-color: var(--color-border);
+          background-color: var(--color-surface-sunken);
+          transform: translate(2px, 2px);
+        }
+        .arrow:active .mark { background-color: var(--color-accent); }
+        .arrow:focus { outline: var(--focus-w) solid var(--color-focus); outline-offset: 2px; transform: rotate(-1.5deg); }
+        :disabled .arrow {
+          border-width: var(--rule-thin) !important;
+          border-color: var(--color-disabled-text) !important;
+          background-color: var(--color-disabled-bg) !important;
+          background-image: var(--tex-hatch) !important;
+          background-repeat: repeat;
+          background-size: 8px 8px;
+          outline: none !important;
+          transform: none !important;
+        }
+        :disabled .mark { background-color: var(--color-disabled-text) !important; }
+        @timeline press {
+          #Up { 0s { transform: translateY(1px) } 0.15s ease-out { transform: translateY(0px) } }
+          #Right { 0s { transform: translateY(1px) } 0.15s ease-out { transform: translateY(0px) } }
+          #Down { 0s { transform: translateY(1px) } 0.15s ease-out { transform: translateY(0px) } }
+          #Left { 0s { transform: translateY(1px) } 0.15s ease-out { transform: translateY(0px) } }
+        }
+      }
+    </style>
+  </head>
+</xt>

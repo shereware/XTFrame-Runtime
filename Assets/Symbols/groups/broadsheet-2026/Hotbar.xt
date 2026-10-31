@@ -1,0 +1,82 @@
+<xt>
+  <head>
+    <!-- Hotbar: standard symbol (docs/design/30-ui-project.md 30.4). See README.md.
+         Style: Broadsheet (docs/design/47-symbol-visual-style.md). -->
+    <symbol name="Hotbar" requires="states: Hover, Selected, Empty">
+      <div id="Box" port:slots="list&lt;struct{key: string, count: number, empty: bool}&gt; in"
+           port:selected="number in" port:select="event out">
+        <repeat port="slots" id="Slot">
+          <div id="Cell" bind:state.Selected="index | eq(selected)" bind:state.Empty="item(empty)"
+               on:press="sound(ui_select); emit(select)">
+            <div id="Icon"></div>
+            <span id="Key" bind:text="item(key)"></span>
+            <span id="Count" bind:text="item(count)"></span>
+          </div>
+        </repeat>
+      </div>
+    </symbol>
+    <style>
+      symbol(Hotbar) {
+        #Box { display: flex; font-family: var(--font-body); color: var(--color-text); }
+        #Slot {
+          display: flex;
+          border-width: var(--rule-thin) 0px var(--rule-thin) var(--rule-thin);
+          border-color: var(--color-border);
+        }
+        #Cell {
+          position: relative;
+          flex-shrink: 0;
+          width: 52px;
+          height: 52px;
+          border-width: 0px var(--rule-thin) 0px 0px;
+          border-color: var(--color-border);
+          background-color: var(--color-surface);
+          color: var(--color-text);
+          transition: background-color var(--motion-fast) linear, transform var(--motion-fast) ease-out;
+        }
+        #Icon {
+          position: absolute;
+          left: 12px;
+          top: 12px;
+          width: 24px;
+          height: 24px;
+          background-color: var(--color-text-dim);
+        }
+        #Key {
+          position: absolute;
+          left: 4px;
+          top: 2px;
+          color: var(--color-text-dim);
+          font-family: var(--font-display);
+          font-size: var(--font-size-xs);
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: var(--letter-display);
+        }
+        #Count {
+          position: absolute;
+          right: 4px;
+          bottom: 2px;
+          font-size: var(--font-size-xs);
+          font-weight: 700;
+        }
+        #Cell:state(Empty) {
+          background-color: var(--color-surface-sunken);
+          background-image: var(--tex-dots);
+          background-repeat: repeat;
+          background-size: 4px 4px;
+        }
+        #Cell:hover { background-color: var(--color-accent); background-image: none; color: var(--color-text-on-accent); }
+        #Cell:hover #Icon { background-color: var(--color-text-on-accent); }
+        #Cell:hover #Key { color: var(--color-text-on-accent); }
+        #Cell:state(Selected) { background-color: var(--color-accent); background-image: none; color: var(--color-text-on-accent); }
+        #Cell:state(Selected) #Icon { background-color: var(--color-text-on-accent); }
+        #Cell:state(Selected) #Key { color: var(--color-text-on-accent); }
+        #Cell:state(Selected):hover { background-color: var(--color-accent-hover); }
+        #Cell:focus { outline: var(--focus-w) solid var(--color-focus); outline-offset: 2px; transform: rotate(-1.5deg); }
+        #Cell:state(Empty) #Icon { opacity: 0; }
+        #Cell:state(Empty) #Count { opacity: 0; }
+      }
+    </style>
+  </head>
+</xt>

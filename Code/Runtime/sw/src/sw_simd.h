@@ -11,8 +11,9 @@
 ///       two conversions inline, fused with the blend).
 ///
 /// Every kernel exists three times from one template body (sw_simd_kernels.h): a scalar reference,
-/// an SSE2 build and an AVX2 build (a separate translation unit compiled with /arch:AVX2, so the
-/// same source becomes VEX-encoded and FMA-contracted). `swSimd()` picks one table once, on first
+/// an SSE2 build and an AVX2 build (a separate translation unit compiled with /arch:AVX2 but without
+/// FMA or contraction, so the same source becomes VEX-encoded and writes the same bytes as the SSE2
+/// build, Docs/design/23-host-integration.md §23.5). `swSimd()` picks one table once, on first
 /// use, from `__cpuid`; `XT_SW_FORCE_SCALAR=1` in the environment forces the scalar table, which is
 /// what the SIMD-vs-scalar tests compare against, and `XT_SW_NO_AVX2=1` holds it at SSE2.
 ///
@@ -50,7 +51,12 @@ struct SwSimdOps {
 /// The table chosen for this process. Thread-safe (initialized once by a function-local static).
 const SwSimdOps& swSimd();
 
-/// The AVX2 table, built in sw_simd_avx2.cpp. Only `swSimd()` should call this.
+/// The AVX2 table, built in sw_simd_avx2.cpp. Only `swSimd()` should call this (and the test that
+/// checks it against the SSE2 table, after `swCpuHasAvx2()`).
 const SwSimdOps& swSimdAvx2Ops();
+
+/// True when the CPU reports AVX2 and the OS saves YMM state, i.e. when `swSimdAvx2Ops()` may run.
+/// Always false on non-x86 targets.
+bool swCpuHasAvx2();
 
 }  // namespace xt::sw

@@ -29,6 +29,14 @@
       ]
     },
     {
+      "bytes": 542056,
+      "file": "assets/1a64acf333c414fb.ttf",
+      "kind": "font",
+      "sources": [
+        "fonts/NotoSerif-Italic.ttf"
+      ]
+    },
+    {
       "bytes": 14527,
       "file": "assets/3204658ff226ef50.png",
       "kind": "image",
@@ -141,6 +149,14 @@
       ]
     },
     {
+      "bytes": 513172,
+      "file": "assets/a9700e9ba972d714.ttf",
+      "kind": "font",
+      "sources": [
+        "fonts/NotoSerif-Regular.ttf"
+      ]
+    },
+    {
       "bytes": 280920,
       "file": "assets/acc8194d31f71544.png",
       "kind": "image",
@@ -239,6 +255,14 @@
       ]
     },
     {
+      "bytes": 515088,
+      "file": "assets/fda67ab8189ac961.ttf",
+      "kind": "font",
+      "sources": [
+        "fonts/NotoSerif-Bold.ttf"
+      ]
+    },
+    {
       "bytes": 29236,
       "file": "assets/ff35aaf2967cff04.png",
       "kind": "image",
@@ -292,11 +316,14 @@
         "assets/efbc855ea0ec8db5.png",
         "assets/1157cfa7dd016b62.png",
         "assets/8f0fcdaca3f36de9.png",
-        "assets/5effaab195cb8179.png"
+        "assets/5effaab195cb8179.png",
+        "assets/a9700e9ba972d714.ttf",
+        "assets/fda67ab8189ac961.ttf",
+        "assets/1a64acf333c414fb.ttf"
       ],
-      "contract": "01c04f2bcac0f723",
+      "contract": "e2a7c05333c2dbef",
       "file": "ui/demo3-menu.xtir",
-      "fileHash": 18369816124196561583,
+      "fileHash": 7410948297750201355,
       "fit": "native",
       "flow": "ui/demo3-menu.xtflow",
       "id": "demo3-menu",
@@ -322,6 +349,10 @@
           {
             "name": "#bg-color.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#bg-color.setState",
+            "type": "pulse"
           },
           {
             "name": "#bg-color.setStyle",
@@ -364,6 +395,10 @@
             "type": "number"
           },
           {
+            "name": "#bg-gray.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#bg-gray.setStyle",
             "type": "string"
           },
@@ -402,6 +437,10 @@
           {
             "name": "#corner-bl-color.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#corner-bl-color.setState",
+            "type": "pulse"
           },
           {
             "name": "#corner-bl-color.setStyle",
@@ -444,6 +483,10 @@
             "type": "number"
           },
           {
+            "name": "#corner-bl-gray.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#corner-bl-gray.setStyle",
             "type": "string"
           },
@@ -482,6 +525,10 @@
           {
             "name": "#corner-tr-color.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#corner-tr-color.setState",
+            "type": "pulse"
           },
           {
             "name": "#corner-tr-color.setStyle",
@@ -524,6 +571,10 @@
             "type": "number"
           },
           {
+            "name": "#corner-tr-gray.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#corner-tr-gray.setStyle",
             "type": "string"
           },
@@ -556,12 +607,24 @@
             "type": "string"
           },
           {
+            "name": "#demo3-menu.px",
+            "type": "number"
+          },
+          {
+            "name": "#demo3-menu.py",
+            "type": "number"
+          },
+          {
             "name": "#demo3-menu.removeClass",
             "type": "pulse"
           },
           {
             "name": "#demo3-menu.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#demo3-menu.setState",
+            "type": "pulse"
           },
           {
             "name": "#demo3-menu.setStyle",
@@ -604,6 +667,10 @@
             "type": "number"
           },
           {
+            "name": "#fx-fireflies.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#fx-fireflies.setStyle",
             "type": "string"
           },
@@ -642,6 +709,10 @@
           {
             "name": "#fx-layer.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#fx-layer.setState",
+            "type": "pulse"
           },
           {
             "name": "#fx-layer.setStyle",
@@ -684,6 +755,10 @@
             "type": "number"
           },
           {
+            "name": "#fx-light.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#fx-light.setStyle",
             "type": "string"
           },
@@ -722,6 +797,10 @@
           {
             "name": "#fx-petals-color.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#fx-petals-color.setState",
+            "type": "pulse"
           },
           {
             "name": "#fx-petals-color.setStyle",
@@ -764,6 +843,10 @@
             "type": "number"
           },
           {
+            "name": "#fx-petals-gray.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#fx-petals-gray.setStyle",
             "type": "string"
           },
@@ -802,6 +885,10 @@
           {
             "name": "#fx-petals.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#fx-petals.setState",
+            "type": "pulse"
           },
           {
             "name": "#fx-petals.setStyle",
@@ -844,6 +931,10 @@
             "type": "number"
           },
           {
+            "name": "#garland-color.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#garland-color.setStyle",
             "type": "string"
           },
@@ -882,6 +973,10 @@
           {
             "name": "#garland-gray.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#garland-gray.setState",
+            "type": "pulse"
           },
           {
             "name": "#garland-gray.setStyle",
@@ -924,6 +1019,10 @@
             "type": "number"
           },
           {
+            "name": "#item-continue-hl.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#item-continue-hl.setStyle",
             "type": "string"
           },
@@ -962,6 +1061,10 @@
           {
             "name": "#item-continue-icon-color.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#item-continue-icon-color.setState",
+            "type": "pulse"
           },
           {
             "name": "#item-continue-icon-color.setStyle",
@@ -1004,6 +1107,10 @@
             "type": "number"
           },
           {
+            "name": "#item-continue-icon-gray.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#item-continue-icon-gray.setStyle",
             "type": "string"
           },
@@ -1042,6 +1149,10 @@
           {
             "name": "#item-continue-icon.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#item-continue-icon.setState",
+            "type": "pulse"
           },
           {
             "name": "#item-continue-icon.setStyle",
@@ -1084,6 +1195,10 @@
             "type": "number"
           },
           {
+            "name": "#item-continue-label-color.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#item-continue-label-color.setStyle",
             "type": "string"
           },
@@ -1122,6 +1237,10 @@
           {
             "name": "#item-continue-label-gray.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#item-continue-label-gray.setState",
+            "type": "pulse"
           },
           {
             "name": "#item-continue-label-gray.setStyle",
@@ -1164,6 +1283,10 @@
             "type": "number"
           },
           {
+            "name": "#item-continue-label.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#item-continue-label.setStyle",
             "type": "string"
           },
@@ -1202,6 +1325,10 @@
           {
             "name": "#item-continue.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#item-continue.setState",
+            "type": "pulse"
           },
           {
             "name": "#item-continue.setStyle",
@@ -1244,6 +1371,10 @@
             "type": "number"
           },
           {
+            "name": "#item-credits-hl.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#item-credits-hl.setStyle",
             "type": "string"
           },
@@ -1282,6 +1413,10 @@
           {
             "name": "#item-credits-icon-color.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#item-credits-icon-color.setState",
+            "type": "pulse"
           },
           {
             "name": "#item-credits-icon-color.setStyle",
@@ -1324,6 +1459,10 @@
             "type": "number"
           },
           {
+            "name": "#item-credits-icon-gray.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#item-credits-icon-gray.setStyle",
             "type": "string"
           },
@@ -1362,6 +1501,10 @@
           {
             "name": "#item-credits-icon.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#item-credits-icon.setState",
+            "type": "pulse"
           },
           {
             "name": "#item-credits-icon.setStyle",
@@ -1404,6 +1547,10 @@
             "type": "number"
           },
           {
+            "name": "#item-credits-label-color.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#item-credits-label-color.setStyle",
             "type": "string"
           },
@@ -1442,6 +1589,10 @@
           {
             "name": "#item-credits-label-gray.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#item-credits-label-gray.setState",
+            "type": "pulse"
           },
           {
             "name": "#item-credits-label-gray.setStyle",
@@ -1484,6 +1635,10 @@
             "type": "number"
           },
           {
+            "name": "#item-credits-label.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#item-credits-label.setStyle",
             "type": "string"
           },
@@ -1522,6 +1677,10 @@
           {
             "name": "#item-credits.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#item-credits.setState",
+            "type": "pulse"
           },
           {
             "name": "#item-credits.setStyle",
@@ -1564,6 +1723,10 @@
             "type": "number"
           },
           {
+            "name": "#item-new-hl.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#item-new-hl.setStyle",
             "type": "string"
           },
@@ -1602,6 +1765,10 @@
           {
             "name": "#item-new-icon-color.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#item-new-icon-color.setState",
+            "type": "pulse"
           },
           {
             "name": "#item-new-icon-color.setStyle",
@@ -1644,6 +1811,10 @@
             "type": "number"
           },
           {
+            "name": "#item-new-icon-gray.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#item-new-icon-gray.setStyle",
             "type": "string"
           },
@@ -1682,6 +1853,10 @@
           {
             "name": "#item-new-icon.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#item-new-icon.setState",
+            "type": "pulse"
           },
           {
             "name": "#item-new-icon.setStyle",
@@ -1724,6 +1899,10 @@
             "type": "number"
           },
           {
+            "name": "#item-new-label-color.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#item-new-label-color.setStyle",
             "type": "string"
           },
@@ -1762,6 +1941,10 @@
           {
             "name": "#item-new-label-gray.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#item-new-label-gray.setState",
+            "type": "pulse"
           },
           {
             "name": "#item-new-label-gray.setStyle",
@@ -1804,6 +1987,10 @@
             "type": "number"
           },
           {
+            "name": "#item-new-label.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#item-new-label.setStyle",
             "type": "string"
           },
@@ -1842,6 +2029,10 @@
           {
             "name": "#item-new.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#item-new.setState",
+            "type": "pulse"
           },
           {
             "name": "#item-new.setStyle",
@@ -1884,6 +2075,10 @@
             "type": "number"
           },
           {
+            "name": "#item-option-hl.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#item-option-hl.setStyle",
             "type": "string"
           },
@@ -1922,6 +2117,10 @@
           {
             "name": "#item-option-icon-color.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#item-option-icon-color.setState",
+            "type": "pulse"
           },
           {
             "name": "#item-option-icon-color.setStyle",
@@ -1964,6 +2163,10 @@
             "type": "number"
           },
           {
+            "name": "#item-option-icon-gray.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#item-option-icon-gray.setStyle",
             "type": "string"
           },
@@ -2002,6 +2205,10 @@
           {
             "name": "#item-option-icon.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#item-option-icon.setState",
+            "type": "pulse"
           },
           {
             "name": "#item-option-icon.setStyle",
@@ -2044,6 +2251,10 @@
             "type": "number"
           },
           {
+            "name": "#item-option-label-color.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#item-option-label-color.setStyle",
             "type": "string"
           },
@@ -2082,6 +2293,10 @@
           {
             "name": "#item-option-label-gray.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#item-option-label-gray.setState",
+            "type": "pulse"
           },
           {
             "name": "#item-option-label-gray.setStyle",
@@ -2124,6 +2339,10 @@
             "type": "number"
           },
           {
+            "name": "#item-option-label.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#item-option-label.setStyle",
             "type": "string"
           },
@@ -2162,6 +2381,10 @@
           {
             "name": "#item-option.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#item-option.setState",
+            "type": "pulse"
           },
           {
             "name": "#item-option.setStyle",
@@ -2204,6 +2427,10 @@
             "type": "number"
           },
           {
+            "name": "#menu-panel.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#menu-panel.setStyle",
             "type": "string"
           },
@@ -2242,6 +2469,10 @@
           {
             "name": "#panel-warm.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#panel-warm.setState",
+            "type": "pulse"
           },
           {
             "name": "#panel-warm.setStyle",
@@ -2284,6 +2515,10 @@
             "type": "number"
           },
           {
+            "name": "#title-color.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#title-color.setStyle",
             "type": "string"
           },
@@ -2322,6 +2557,10 @@
           {
             "name": "#title-gray.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#title-gray.setState",
+            "type": "pulse"
           },
           {
             "name": "#title-gray.setStyle",
@@ -2364,6 +2603,10 @@
             "type": "number"
           },
           {
+            "name": "#title-group.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#title-group.setStyle",
             "type": "string"
           },
@@ -2402,6 +2645,10 @@
           {
             "name": "#trail-1.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#trail-1.setState",
+            "type": "pulse"
           },
           {
             "name": "#trail-1.setStyle",
@@ -2444,6 +2691,10 @@
             "type": "number"
           },
           {
+            "name": "#trail-2.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#trail-2.setStyle",
             "type": "string"
           },
@@ -2482,6 +2733,10 @@
           {
             "name": "#trail-3.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#trail-3.setState",
+            "type": "pulse"
           },
           {
             "name": "#trail-3.setStyle",
@@ -2524,6 +2779,10 @@
             "type": "number"
           },
           {
+            "name": "#trail-layer.setState",
+            "type": "pulse"
+          },
+          {
             "name": "#trail-layer.setStyle",
             "type": "string"
           },
@@ -2562,6 +2821,10 @@
           {
             "name": "#vignette.setProperty",
             "type": "number"
+          },
+          {
+            "name": "#vignette.setState",
+            "type": "pulse"
           },
           {
             "name": "#vignette.setStyle",

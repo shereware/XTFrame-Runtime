@@ -809,3 +809,45 @@ TEST_CASE("T-257b: crossing fewer iterations than the bound reports every one of
         CHECK(iterations[i] == i + 1);
     }
 }
+
+TEST_CASE(
+    "Animator: T-545 an override can tween, restart from the tweened value, and clears with its tween") {
+    Fixture fx;
+    Animator anim;
+    setProperty(fx.arena, fx.n1, prop::Opacity, Value::ofFloat(0.0f));
+
+    anim.setOverride(fx.n1, prop::Opacity, Value::ofFloat(1.0f), 0.5f, Easing::linear());
+    CHECK(anim.hasOverride(fx.n1, prop::Opacity));
+    anim.evaluate(0.0f, fx.arena);  // The tween starts at this clock, from the live value.
+    CHECK(getProperty(fx.arena, fx.n1, prop::Opacity).f == doctest::Approx(0.0f));
+    anim.evaluate(0.25f, fx.arena);
+    CHECK(getProperty(fx.arena, fx.n1, prop::Opacity).f == doctest::Approx(0.5f));
+
+    // A new target mid-tween restarts from the tweened value (0.5), at the next evaluate().
+    anim.setOverride(fx.n1, prop::Opacity, Value::ofFloat(0.0f), 1.0f, Easing::linear());
+    anim.evaluate(0.25f, fx.arena);
+    CHECK(getProperty(fx.arena, fx.n1, prop::Opacity).f == doctest::Approx(0.5f));
+    anim.evaluate(0.75f, fx.arena);
+    CHECK(getProperty(fx.arena, fx.n1, prop::Opacity).f == doctest::Approx(0.25f));
+    anim.evaluate(1.5f, fx.arena);
+    CHECK(getProperty(fx.arena, fx.n1, prop::Opacity).f == doctest::Approx(0.0f));
+
+    // The finished value is the target and stays.
+    anim.setOverride(fx.n1, prop::Opacity, Value::ofFloat(1.0f), 0.5f, Easing::linear());
+    anim.evaluate(2.0f, fx.arena);
+    anim.evaluate(2.5f, fx.arena);
+    CHECK(getProperty(fx.arena, fx.n1, prop::Opacity).f == doctest::Approx(1.0f));
+    anim.evaluate(9.0f, fx.arena);
+    CHECK(getProperty(fx.arena, fx.n1, prop::Opacity).f == doctest::Approx(1.0f));
+
+    // duration 0 writes at once; clearOverride drops the override (and a running tween with it).
+    anim.setOverride(fx.n1, prop::Opacity, Value::ofFloat(0.3f));
+    anim.evaluate(9.0f, fx.arena);
+    CHECK(getProperty(fx.arena, fx.n1, prop::Opacity).f == doctest::Approx(0.3f));
+    anim.setOverride(fx.n1, prop::Opacity, Value::ofFloat(0.9f), 1.0f, Easing::linear());
+    anim.clearOverride(fx.n1, prop::Opacity);
+    CHECK(!anim.hasOverride(fx.n1, prop::Opacity));
+    setProperty(fx.arena, fx.n1, prop::Opacity, Value::ofFloat(0.7f));  // What the restyle restores.
+    anim.evaluate(9.5f, fx.arena);
+    CHECK(getProperty(fx.arena, fx.n1, prop::Opacity).f == doctest::Approx(0.7f));
+}

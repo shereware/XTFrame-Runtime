@@ -1,0 +1,22 @@
+<xt>
+  <head>
+    <!-- T-198: preview of the HealthBar standard symbol (golden states and thumbnail; T-499: moved into the group). -->
+    <link href="../tokens.xts"/>
+    <link rel="symbols" href="../HealthBar.xt"/>
+    <style>
+      body {
+        width: 320px;
+        height: 90px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        row-gap: 12px;
+        background-color: var(--color-bg);
+      }
+    </style>
+  </head>
+  <body>
+    <use symbol="HealthBar" id="Hp"/>
+  </body>
+</xt>

@@ -1,3 +1,9 @@
 # script pointer-trail.json (ui demo3-menu)
 ## step 1: frame 40 pointer to 320,260
+xtframe-view: port changed px = 320 (frame 20)
+xtframe-view: port changed py = 260 (frame 20)
 ## step 2: frame 70 pointer to 900,480
+xtframe-view: port changed px = 320 (frame 20)
+xtframe-view: port changed py = 260 (frame 20)
+xtframe-view: port changed px = 900 (frame 50)
+xtframe-view: port changed py = 480 (frame 50)

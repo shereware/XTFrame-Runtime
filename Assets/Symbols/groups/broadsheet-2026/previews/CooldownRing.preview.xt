@@ -1,0 +1,26 @@
+<xt>
+  <head>
+    <!-- T-198: preview of the CooldownRing standard symbol (golden states and thumbnail; T-499: moved into the group). -->
+    <link href="../tokens.xts"/>
+    <link rel="symbols" href="../CooldownRing.xt"/>
+    <style>
+      body {
+        width: 200px;
+        height: 100px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        row-gap: 12px;
+        background-color: var(--color-bg);
+      }
+      #Row { display: flex; column-gap: 16px; }
+    </style>
+  </head>
+  <body>
+    <div id="Row">
+      <use symbol="CooldownRing" id="Dash"/>
+      <use symbol="CooldownRing" id="Heal"/>
+    </div>
+  </body>
+</xt>

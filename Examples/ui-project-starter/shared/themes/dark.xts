@@ -1,27 +1,27 @@
-/* Starter UI Project: "dark" theme. Only token declarations; activating the theme (xtframe-pack
+/* Starter UI Project: "Night desk" theme (id "dark"). Only token declarations; activating the theme (xtframe-pack
    lists it in the manifest's `themes[]`, the host calls loadThemes / Context::setTheme("dark"))
    swaps these values without recompiling. */
 :root {
-  --color-bg: #0e1117;
-  --color-surface: #161b22;
-  --color-surface-raised: #1f2630;
-  --color-surface-sunken: #0b0e13;
-  --color-border: #30363d;
-  --color-border-strong: #4a535e;
-  --color-text: #e6edf3;
-  --color-text-dim: #9aa4af;
-  --color-text-on-accent: #0b0e13;
-  --color-accent: #4cc2ff;
-  --color-accent-hover: #7ad3ff;
-  --color-accent-pressed: #2aa3e6;
-  --color-focus: #ffd24c;
-  --color-disabled-bg: #222830;
-  --color-disabled-text: #5c6570;
-  --color-danger: #ff5a5f;
-  --color-warning: #ffb547;
-  --color-success: #4cd98a;
-  --color-info: #4cc2ff;
-  --color-scrim: #000000b3;
-  --color-track: #2a313b;
-  --color-shadow: #00000099;
+  --color-bg: #262320;
+  --color-surface: #302c27;
+  --color-surface-raised: #38342e;
+  --color-surface-sunken: #1b1916;
+  --color-border: #d9d3c4;
+  --color-border-strong: #d9d3c4;
+  --color-text: #d9d3c4;
+  --color-text-dim: #9a9386;
+  --color-text-on-accent: #262320;
+  --color-accent: #d9d3c4;
+  --color-accent-hover: #9a9386;
+  --color-accent-pressed: #1b1916;
+  --color-focus: #d7493b;
+  --color-disabled-bg: #1b1916;
+  --color-disabled-text: #5e5950;
+  --color-danger: #d7493b;
+  --color-warning: #c9a24a;
+  --color-success: #7fa877;
+  --color-info: #8fb0cf;
+  --color-scrim: #000000cc;
+  --color-track: #1b1916;
+  --color-shadow: #9a9386;
 }

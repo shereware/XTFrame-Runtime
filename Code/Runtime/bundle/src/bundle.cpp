@@ -1,15 +1,22 @@
 #include "xt/bundle/bundle.h"
 
+#include <algorithm>
+#include <cstdio>
+#include <filesystem>
 #include <json.hpp>
 #include <string>
+#include <system_error>
 #include <utility>
 
 #include "bundle_json.h"
 #include "bundle_paths.h"
+#include "font_subset.h"
+#include "xt/bundle/zip_archive.h"
 #include "xt/compile/diagnostics.h"
 #include "xt/compile/parse_xts.h"
 #include "xt/compile/utf8_path.h"
 #include "xt/ir_pod.h"
+#include "xt/text_shaper.h"
 
 /// Bundle: reading a published bundle's `manifest.json`. See Docs/design/22-bundle.md §22.3 and
 /// §22.5, Docs/tasks/T-90.md, Docs/tasks/T-93.md (loadUi/reloadUi).
@@ -320,6 +327,76 @@ Status readManifestBundle(std::string_view dir, Manifest& out, std::string* erro
     return Status::kOk;
 }
 
+/// T-500: `path` is a regular file named `*.xtb`.
+bool isXtbFile(std::string_view path) {
+    if (path.size() < 5 || path.substr(path.size() - 4) != ".xtb") {
+        return false;
+    }
+    std::error_code ec;
+    return std::filesystem::is_regular_file(compile::pathFromUtf8(path), ec);
+}
+
+/// T-500: FNV-1a of the whole file, read in 64 KB pieces; false when it cannot be read.
+bool hashFileContent(const std::string& path, uint64_t& hash) {
+    std::FILE* file = detail::openFileUtf8(path, "rb");
+    if (file == nullptr) {
+        return false;
+    }
+    hash = 14695981039346656037ULL;
+    char buffer[64 * 1024];
+    for (;;) {
+        const size_t n = std::fread(buffer, 1, sizeof(buffer), file);
+        for (size_t i = 0; i < n; ++i) {
+            hash ^= static_cast<uint64_t>(static_cast<unsigned char>(buffer[i]));
+            hash *= 1099511628211ULL;
+        }
+        if (n < sizeof(buffer)) {
+            break;
+        }
+    }
+    const bool ok = std::ferror(file) == 0;
+    std::fclose(file);
+    return ok;
+}
+
+/// T-500 (§22.5, the minimal `.xtb` form): unpacks the archive `file` into
+/// `<system temp>/xtframe-bundle/<content hash>/` unless that copy already holds a manifest.json,
+/// and returns the directory in `outDir`. Not read in place and not mapped: the host reads the
+/// unpacked directory as any other bundle.
+Status unpackXtb(std::string_view file, std::string& outDir, std::string* error) {
+    namespace fs = std::filesystem;
+    const std::string utf8(file);
+    uint64_t hash = 0;
+    if (!hashFileContent(utf8, hash)) {
+        setErrorBundle(error, "cannot read " + utf8);
+        return Status::kNotFound;
+    }
+    char hex[17];
+    std::snprintf(hex, sizeof(hex), "%016llx", static_cast<unsigned long long>(hash));
+    std::error_code ec;
+    const fs::path root = fs::temp_directory_path(ec);
+    if (ec) {
+        setErrorBundle(error, "no temporary directory to unpack " + utf8 + " into");
+        return Status::kIoError;
+    }
+    const fs::path dir = root / "xtframe-bundle" / hex;
+    if (!fs::is_regular_file(dir / "manifest.json", ec)) {
+        fs::remove_all(dir, ec);
+        fs::create_directories(dir.parent_path(), ec);
+        ZipReadOptions limits;
+        limits.maxBytes = Bundle::kMaxXtbBytes;
+        limits.maxEntries = Bundle::kMaxXtbEntries;
+        std::string zipError;
+        const Status status = unzipToDirectory(compile::pathFromUtf8(utf8), dir, limits, &zipError);
+        if (status != Status::kOk) {
+            setErrorBundle(error, utf8 + ": " + zipError);
+            return status;
+        }
+    }
+    outDir = compile::genericPathToUtf8(dir);
+    return Status::kOk;
+}
+
 }  // namespace
 
 Bundle::Bundle() = default;
@@ -327,6 +404,13 @@ Bundle::~Bundle() = default;
 
 Result<std::unique_ptr<Bundle>> Bundle::open(std::string_view dir, ImageDecodeFn decode, std::string* error) {
     setErrorBundle(error, std::string());
+    std::string unpacked;
+    if (isXtbFile(dir)) {  // T-500
+        if (const Status status = unpackXtb(dir, unpacked, error); status != Status::kOk) {
+            return Result<std::unique_ptr<Bundle>>::error(status);
+        }
+        dir = unpacked;
+    }
     Manifest manifest;
     const Status status = readManifestBundle(dir, manifest, error);
     if (status != Status::kOk) {
@@ -554,8 +638,108 @@ Result<DocumentHandle> loadUi(Context& ctx, Bundle& bundle, std::string_view uiI
     if (!detail::readFile(path, bytes)) {
         return Result<DocumentHandle>::error(Status::kIoError);
     }
+    // T-555 (22 §22.10.3): the UI's bundled fonts, before its Document shapes any text.
+    if (TextShaper* shaper = ctx.textShaper()) {
+        (void)addBundleFonts(bundle, uiId, *shaper);
+    }
     const IrBlob blob{reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size()};
     return ctx.loadDocument(blob, /*takeOwnership=*/true);
+}
+
+Result<uint32_t> addBundleFonts(const Bundle& bundle, std::string_view uiId, TextShaper& shaper,
+                                std::vector<std::string>* warnings) {
+    const UiInfo* ui = bundle.ui(uiId);
+    if (ui == nullptr) {
+        return Result<uint32_t>::error(Status::kNotFound);
+    }
+    auto warn = [warnings](std::string text) {
+        if (warnings != nullptr) {
+            warnings->push_back(std::move(text));
+        }
+    };
+    auto shaperFontCount = [&shaper]() {
+        std::vector<FontDesc> fonts;
+        shaper.fonts(fonts);
+        return fonts.size();
+    };
+
+    // The dedup record of this shaper; a shaper reporting fewer fonts than were there after the last
+    // registration is a different object at a reused address, so its record starts over.
+    Bundle::RegisteredFonts* record = nullptr;
+    for (Bundle::RegisteredFonts& entry : bundle.m_registeredFonts) {
+        if (entry.shaper == &shaper) {
+            record = &entry;
+        }
+    }
+    if (record == nullptr) {
+        bundle.m_registeredFonts.push_back(Bundle::RegisteredFonts{&shaper, 0, {}});
+        record = &bundle.m_registeredFonts.back();
+    } else if (shaperFontCount() < record->fontCount) {
+        record->fontCount = 0;
+        record->files.clear();
+    }
+
+    // The default chain (language "", T-527c).
+    std::span<const std::string> chain;
+    for (const FontFallbackInfo& fallback : bundle.fontFallbacks()) {
+        if (fallback.lang.empty()) {
+            chain = std::span<const std::string>(fallback.families);
+        }
+    }
+
+    struct Pending {
+        std::string file;
+        std::vector<uint8_t> bytes;
+        size_t rank = 0;  // Index of the family in the default chain; chain.size() = not in it.
+    };
+    std::vector<Pending> pending;
+    for (const std::string& file : ui->assets) {
+        if (std::find(record->files.begin(), record->files.end(), file) != record->files.end()) {
+            continue;
+        }
+        const auto row = std::find_if(bundle.assetTable().begin(), bundle.assetTable().end(),
+                                      [&file](const AssetInfo& info) { return info.file == file; });
+        if (row == bundle.assetTable().end() || row->kind != "font") {
+            continue;
+        }
+        std::string text;
+        if (!detail::readFile(joinPath(bundle.dir(), file), text)) {
+            warn("bundle fonts: " + std::string(uiId) + ": cannot read the font asset '" + file + "'");
+            continue;
+        }
+        Pending font;
+        font.file = file;
+        font.bytes.assign(text.begin(), text.end());
+        font.rank = chain.size();
+        if (!chain.empty()) {
+            FontFile parsed;
+            const std::string family = parsed.parse(font.bytes) ? parsed.familyName() : std::string();
+            for (size_t i = 0; i < chain.size(); ++i) {
+                if (!family.empty() && chain[i] == family) {
+                    font.rank = i;
+                    break;
+                }
+            }
+        }
+        pending.push_back(std::move(font));
+    }
+    std::stable_sort(pending.begin(), pending.end(),
+                     [](const Pending& a, const Pending& b) { return a.rank < b.rank; });
+
+    uint32_t added = 0;
+    for (Pending& font : pending) {
+        if (!shaper.addFontMemory(std::move(font.bytes))) {
+            warn("bundle fonts: " + std::string(uiId) + ": the shaper rejected the font asset '" + font.file +
+                 "'");
+            continue;
+        }
+        record->files.push_back(std::move(font.file));
+        ++added;
+    }
+    if (added > 0) {
+        record->fontCount = shaperFontCount();
+    }
+    return Result<uint32_t>::ok(added);
 }
 
 std::vector<TokenDef> parseThemeTokens(std::string_view xtsText) {
@@ -593,6 +777,10 @@ Result<DocumentHandle> reloadUi(Context& ctx, Bundle& bundle, DocumentHandle han
     std::string bytes;
     if (!detail::readFile(path, bytes)) {
         return Result<DocumentHandle>::error(Status::kIoError);
+    }
+    // T-555: a font asset the rebuilt UI newly names; the ones registered before are skipped.
+    if (TextShaper* shaper = ctx.textShaper()) {
+        (void)addBundleFonts(bundle, uiId, *shaper);
     }
     const IrBlob blob{reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size()};
     // takeOwnership: the new Document copies the blob, so `bytes` can die with this call.
