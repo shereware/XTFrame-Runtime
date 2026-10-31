@@ -115,6 +115,7 @@ xtframe/
 | 49-symbol-sets.md | 符號庫、組與集（Photoshop 筆刷模型）：預設庫、掛載、`.xtsymbols` 匯入匯出、`xtframe-symbols`、`symbols.*` ops（2026-10-27） |
 | 50-c-abi.md | C ABI 宿主契約 `xt_capi`（共享庫 `xtframe`）與 Unity 插件 `com.xtframe.runtime`（2026-10-28） |
 | 51-builtin-ai.md | 內建 AI 代理與網路層（定案 2026-10-27）：`xt_net`（作業系統原生 TLS、`SecretStore`）、`xt_ai`（Anthropic／OpenAI 相容供應商、`AgentRunner`、工具 = Editor Service op）、AI 面板 (c) 模式、無頭 `--agent`、契約 `model`／`budget.tokens` 欄位；M41 T-515～T-517 |
+| 53-flow-language.md | Flow 語言規格（T-559 整理，2026-10-31）：`.xtflow` 格式與反推 JSON Schema、型別、23 種節點目錄、連接點反射、規則與錯誤字串、宿主介面與 C ABI 對應、conformance 測試集、文件與實作不一致表 |
 | 18-effects.md | 效果與 shader（0.2）：內建效果、模板、自訂 HLSL 片段、後端與引擎整合 |
 | 19-3d-space.md | 3D 空間（0.2）：AE 式 2.5D 圖層、攝影機、深度排序、投影繪製 |
 
