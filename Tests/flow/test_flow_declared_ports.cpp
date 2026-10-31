@@ -1,3 +1,5 @@
+#include <fstream>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <vector>
@@ -29,8 +31,8 @@ constexpr const char* kDoc = R"X(<xt><head><style>#Btn { width: 40px; height: 40
     bind:text="format('{0} {1}', hp, label)" on:port(ask)="emit(score)"></div>
   <div id="Btn" on:click="emit(hit); emit(score)"></div></body></xt>)X";
 
-std::unique_ptr<Document> loadDoc(TextShaper& shaper) {
-    const compile::SourceFile file{"ports.xt", kDoc};
+std::unique_ptr<Document> loadDoc(TextShaper& shaper, const char* source = kDoc) {
+    const compile::SourceFile file{"ports.xt", source};
     compile::CompileOptions options;
     compile::CompileResult result = compile::compileDocumentFromStrings({&file, 1}, "ports.xt", options);
     for (const compile::Diagnostic& d : result.diagnostics) {
@@ -324,4 +326,69 @@ TEST_CASE("T-540: a continuous signal into a declared port is never reported") {
     std::vector<std::string> warnings;
     rt.continuityWarnings(warnings);
     CHECK(warnings.empty());
+}
+
+namespace {
+
+/// T-560: a file of Tests/flow/fixtures (shared with the xtframe-view CTest entries).
+std::string readFixture(const char* name) {
+    std::ifstream in(std::string(XT_TEST_FLOW_DIR) + "/fixtures/" + name, std::ios::binary);
+    REQUIRE(in);
+    return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+}
+
+}  // namespace
+
+TEST_CASE("T-560: two edges into one event in port pass parse() and load(), both sources fire") {
+    NullTextShaper shaper;
+    const std::string source = readFixture("t560_event_fanin.xt");
+    std::unique_ptr<Document> doc = loadDoc(shaper, source.c_str());
+    FlowGraph graph;
+    std::vector<std::string> errors;
+    CHECK(FlowGraph::parse(readFixture("t560_event_fanin.xtflow"), graph, errors) == Status::kOk);
+    CHECK(errors.empty());
+    FlowRuntime rt;
+    REQUIRE(rt.load(graph, *doc, errors) == Status::kOk);
+    CHECK(errors.empty());
+
+    auto shots = [&]() {
+        const std::vector<std::string>& names = rt.valueNames();
+        for (size_t i = 0; i < names.size(); ++i) {
+            if (names[i] == "shots.value") {
+                return rt.values()[i].n;
+            }
+        }
+        return -1.0;
+    };
+    CHECK(shots() == 0.0);
+    click(*doc, "A");
+    doc->update(0.0f);
+    CHECK(shots() == 1.0);
+    click(*doc, "B");
+    doc->update(0.0f);
+    CHECK(shots() == 2.0);
+
+    // The global flow's `ui#<id>.<port>` form is not fan-in checked by parse() either.
+    FlowGraph global;
+    errors.clear();
+    CHECK(FlowGraph::parse(R"({"version":1,"nodes":[],"edges":[
+        {"from":"ui#menu.Start.Click","to":"ui#hud.Hud.fire"},
+        {"from":"ui#menu.Quit.Click","to":"ui#hud.Hud.fire"}]})",
+                           global, errors) == Status::kOk);
+    CHECK(errors.empty());
+}
+
+TEST_CASE("T-560: two edges into one number in port pass parse() and are refused by load()") {
+    NullTextShaper shaper;
+    const std::string source = readFixture("t560_event_fanin.xt");
+    std::unique_ptr<Document> doc = loadDoc(shaper, source.c_str());
+    FlowGraph graph;
+    std::vector<std::string> errors;
+    CHECK(FlowGraph::parse(readFixture("t560_number_fanin.xtflow"), graph, errors) == Status::kOk);
+    CHECK(errors.empty());
+    FlowRuntime rt;
+    CHECK(rt.load(graph, *doc, errors) == Status::kInvalidArgument);
+    REQUIRE(errors.size() == 1);
+    CHECK(errors[0] == "value input '#Hud.hits' has more than one incoming edge");
+    CHECK(rt.valueNames().empty());  // T-260c: a failed load leaves the runtime empty.
 }

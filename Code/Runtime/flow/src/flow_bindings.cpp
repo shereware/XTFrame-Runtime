@@ -1272,7 +1272,10 @@ Status validateGraph(const FlowGraph& graph, Document* doc, std::vector<std::str
         }
 
         bool multiEdgeSink = to.owner == Endpoint::Owner::Element && to.port == "setStyle";
-        if (to.type != PortType::Pulse && !multiEdgeSink) {
+        // T-560 (53 §53.99.1 item 2): a declared port resolved without a Document has no type yet
+        // (an `event` port is a pulse and takes several edges), so its fan-in is checked by load().
+        bool untypedDeclaredPort = to.owner == Endpoint::Owner::Port && to.anyType;
+        if (to.type != PortType::Pulse && !multiEdgeSink && !untypedDeclaredPort) {
             // `setProperty` is one port per element but addresses a different target per `prop`
             // edge parameter, so RotationX and RotationY may each have their own source (§17.6).
             std::string identity = sinkIdentity(to);

@@ -1,0 +1,11 @@
+{
+    "version": 1,
+    "nodes": [
+        { "id": "shots", "type": "counter", "params": {} }
+    ],
+    "edges": [
+        { "from": "#A.Click", "to": "#Hud.fire" },
+        { "from": "#B.Click", "to": "#Hud.fire" },
+        { "from": "#Hud.shot", "to": "shots.increment" }
+    ]
+}

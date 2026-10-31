@@ -1,0 +1,11 @@
+{
+    "version": 1,
+    "nodes": [
+        { "id": "k1", "type": "constant", "params": { "value": 1 } },
+        { "id": "k2", "type": "constant", "params": { "value": 2 } }
+    ],
+    "edges": [
+        { "from": "k1.out", "to": "#Hud.hits" },
+        { "from": "k2.out", "to": "#Hud.hits" }
+    ]
+}

@@ -43,3 +43,20 @@ xt_no_rtti(xt_flow_alloc_tests)
 xt_set_warnings(xt_flow_alloc_tests)
 
 add_test(NAME xt_flow_alloc_tests COMMAND xt_flow_alloc_tests)
+
+# T-560 (53 §53.99.1 item 2): xtframe-view loads a graph with two edges into one `event in` port
+# (parse() leaves declared-port fan-in to load(), which knows the type); two edges into a
+# `number in` port are still refused by load(), with the same message.
+if(TARGET xtframe-view)
+    include("${PROJECT_SOURCE_DIR}/Tests/cmake/expect_exit.cmake")
+    xt_add_expect_exit_test(xtframe-view_t560_event_fanin CODE 0 OUTPUT "shots\\.value = 0"
+        REJECT "more than one incoming edge"
+        COMMAND $<TARGET_FILE:xtframe-view> "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/t560_event_fanin.xt"
+                --flow "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/t560_event_fanin.xtflow"
+                --headless --frames 1 --dump-flow-values)
+    xt_add_expect_exit_test(xtframe-view_t560_number_fanin CODE 2
+        OUTPUT "flow: value input '#Hud\\.hits' has more than one incoming edge"
+        COMMAND $<TARGET_FILE:xtframe-view> "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/t560_event_fanin.xt"
+                --flow "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/t560_number_fanin.xtflow"
+                --headless --frames 1)
+endif()

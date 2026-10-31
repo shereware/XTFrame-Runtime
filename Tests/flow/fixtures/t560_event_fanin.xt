@@ -1,0 +1,5 @@
+<xt><head><style>#A { width: 40px; height: 40px; } #B { width: 40px; height: 40px; }</style></head>
+<body id="Root"><div id="Hud" port:fire="event in" port:hits="number in" port:shot="event out"
+    on:port(fire)="emit(shot)"></div>
+  <div id="A"></div>
+  <div id="B"></div></body></xt>
