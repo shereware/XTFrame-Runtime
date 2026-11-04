@@ -640,6 +640,8 @@ TEST_CASE("triggers: sound / haptic / emit reach the Context listener") {
     Result<DocumentHandle> h = ctx.loadDocument(IrBlob{r.ir.data(), r.ir.size()}, false);
     REQUIRE(h.ok());
     ctx.update(0.0f);
+    REQUIRE(rec.log == std::vector<std::string>{"shown#1"});  // T-603 (53 §53.102 item 8): the initial show.
+    rec.log.clear();
     InputEvent down;
     down.kind = InputEvent::PointerDown;
     down.pos = Vec2{20, 20};
@@ -669,6 +671,8 @@ TEST_CASE("triggers: requestHide waits for `then hide`, reports OnHidden, reques
     ctx.update(0.0f);
     CHECK(d.byId("Root").hasClass("shown"));  // The first update fires the surface's `show`.
     CHECK(ctx.isVisible(h.value()));
+    REQUIRE(rec.log == std::vector<std::string>{"shown#1"});  // T-603 (53 §53.102 item 8): the initial show.
+    rec.log.clear();
 
     REQUIRE(ctx.requestHide(h.value()) == Status::kOk);
     CHECK(ctx.isHiding(h.value()));
@@ -741,6 +745,8 @@ TEST_CASE("T-349: a root div's `then hide` belongs to the surface") {
     REQUIRE(h.ok());
     Document& d = *ctx.document(h.value());
     ctx.update(0.0f);
+    REQUIRE(rec.log == std::vector<std::string>{"shown#1"});  // T-603 (53 §53.102 item 8): the initial show.
+    rec.log.clear();
 
     REQUIRE(ctx.requestHide(h.value()) == Status::kOk);
     CHECK(ctx.isHiding(h.value()));
@@ -802,6 +808,10 @@ struct Surface {
             REQUIRE(ctx.setVisible(handle, false) == Status::kOk);  // T-373: before the first frame.
         }
         ctx.update(0.0f);
+        // T-603 (53 §53.102 item 8): a surface visible at its first update reports OnShown once.
+        CHECK(rec.log == (startHidden ? std::vector<std::string>{}
+                                      : std::vector<std::string>{"shown#" + std::to_string(handle)}));
+        rec.log.clear();
     }
     ~Surface() { ctx.removeListener(&rec); }
     size_t count(const std::string& entry) const {

@@ -19,6 +19,7 @@
 #include "file_bytes.h"
 #include "json_bounded.h"
 #include "repeat_emit.h"
+#include "section_sources.h"
 #include "style_emit.h"
 #include "svg_timeline.h"
 #include "symbol_expand.h"
@@ -643,9 +644,35 @@ CompileResult compileDocumentImpl(std::string_view mainText, std::string_view ma
     // own `<style>` blocks (where their `symbol(Name){}` rules live) come before the document's
     // stylesheets, so the document still wins on equal specificity.
     std::vector<SymbolLibraryFile> symbolLibraries;
+    // T-587 (54 §54.7, D9): a v2 library's own `<symbols src>` load too, relative to the library
+    // file (appended here with that directory; a library already loaded is not loaded again).
+    std::vector<std::pair<std::string, std::string>> libraryHrefs;  // (href, base directory)
     for (const std::string& href : dom.symbolHrefs) {
+        libraryHrefs.emplace_back(href, std::string());
+    }
+    const FragmentReader readFragment = [&](const std::string& href, std::string& text, std::string& dir,
+                                            std::string& message) {
+        bool self = false;
+        if (resolveLinkPath(files, xtDir, mainName, href, text, self, dir)) {
+            return true;
+        }
+        message = self ? "a document cannot link itself (\"" + href + "\")"
+                       : "failed to read file \"" + href + "\"";
+        return false;
+    };
+    for (size_t libIndex = 0; libIndex < libraryHrefs.size(); ++libIndex) {
+        const bool nested = libIndex >= dom.symbolHrefs.size();
+        const std::string href =
+            isStandardSymbolHref(libraryHrefs[libIndex].first)
+                ? libraryHrefs[libIndex].first
+                : joinSectionHref(libraryHrefs[libIndex].second, libraryHrefs[libIndex].first);
+        if (nested && std::any_of(symbolLibraries.begin(), symbolLibraries.end(),
+                                  [&](const SymbolLibraryFile& loaded) { return loaded.name == href; })) {
+            continue;
+        }
         std::string libText;
-        std::string libDir;  // T-490: the library file's directory (empty when in memory).
+        std::string libDir;   // T-490: the library file's directory (empty when in memory).
+        std::string libBase;  // T-587: what the library's own `src` paths are relative to.
         bool self = false;
         if (isStandardSymbolHref(href)) {
             // T-235: `xt-standard:<Name>` -> `<options.standardSymbolDir>/<Name>.xt`.
@@ -660,9 +687,14 @@ CompileResult compileDocumentImpl(std::string_view mainText, std::string_view ma
             }
             // T-241: the library root, then its `mobile/` subset (23 §23.11.2); T-382: `list/`.
             const fs::path standardDir = pathFromUtf8(options.standardSymbolDir);
-            if (!readFileText(standardDir / pathFromUtf8(stem + ".xt"), libText) &&
-                !readFileText(standardDir / "mobile" / pathFromUtf8(stem + ".xt"), libText) &&
-                !readFileText(standardDir / "list" / pathFromUtf8(stem + ".xt"), libText)) {
+            bool found = false;
+            for (const fs::path& dir : {standardDir, standardDir / "mobile", standardDir / "list"}) {
+                if (!found && readFileText(dir / pathFromUtf8(stem + ".xt"), libText)) {
+                    found = true;
+                    libBase = genericPathToUtf8(dir.lexically_normal());
+                }
+            }
+            if (!found) {
                 sink.error(href, "standard symbol \"" + stem + "\" not found in \"" +
                                      options.standardSymbolDir + "\"");
                 continue;
@@ -671,6 +703,8 @@ CompileResult compileDocumentImpl(std::string_view mainText, std::string_view ma
             sink.error(href, self ? "a document cannot link itself (\"" + href + "\")"
                                   : "failed to read file \"" + href + "\"");
             continue;
+        } else {
+            libBase = !libDir.empty() ? libDir : genericPathToUtf8(pathFromUtf8(href).parent_path());
         }
         SymbolLibraryFile lib;
         lib.name = href;
@@ -683,6 +717,15 @@ CompileResult compileDocumentImpl(std::string_view mainText, std::string_view ma
         }
         for (const auto& [styleText, startLine] : lib.tree.inlineStyles) {
             parseXts(styleText, href, startLine, sink, ruleSet, libDir);  // T-490
+        }
+        if (lib.tree.formatVersion >= 2) {
+            // T-587: the library's sections, relative to the library file, and its own libraries.
+            parseSheetSections(lib.tree, SectionOwner{href, libBase, libDir}, readFragment,
+                               options.lintLayoutSubjectId, sink, ruleSet);
+            lowerPathTriggers(lib.tree, href, sink, ruleSet);
+            for (const std::string& nestedHref : lib.tree.symbolHrefs) {
+                libraryHrefs.emplace_back(nestedHref, libBase);
+            }
         }
         symbolLibraries.push_back(std::move(lib));
     }
@@ -703,6 +746,12 @@ CompileResult compileDocumentImpl(std::string_view mainText, std::string_view ma
         // T-490: an inline <style>'s sheet directory is the document directory, which is also the
         // final fallback, so none is passed (behavior unchanged).
         parseXts(styleText, path, startLine, sink, ruleSet);
+    }
+    if (dom.formatVersion >= 2) {
+        // T-587 (54 §54.3): the v2 sections in file order, then `on:<event>@<path>` as rule triggers.
+        parseSheetSections(dom, SectionOwner{path, std::string(), std::string()}, readFragment,
+                           options.lintLayoutSubjectId, sink, ruleSet);
+        lowerPathTriggers(dom, path, sink, ruleSet);
     }
 
     if (!options.impliedTokenFiles.empty()) {

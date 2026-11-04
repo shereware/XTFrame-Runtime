@@ -104,7 +104,7 @@ void printUsage() {
     std::fprintf(stderr,
                  "usage: xtframe-compile <input.json | input.xt> -o <out.xtir> [--root DIR] "
                  "[--embed-images] [--embed-fonts] [--strict] [--no-meta] [--standard-symbols DIR]\n"
-                 "                       [--diagnostics FILE]\n"
+                 "                       [--diagnostics FILE] [--lint --layout-subject-id]\n"
                  "       xtframe-compile --version\n");
 }
 
@@ -143,6 +143,8 @@ static int run(int argc, char** argv) {
     bool embedFonts = false;
     bool strict = false;
     bool emitMeta = true;
+    bool lint = false;             // T-587
+    bool layoutSubjectId = false;  // T-587: with --lint, the lint layout.subjectNotId.
 
     // T-420: --version wins over every other argument.
     for (int i = 1; i < argc; ++i) {
@@ -191,6 +193,10 @@ static int run(int argc, char** argv) {
             strict = true;
         } else if (arg == "--no-meta") {
             emitMeta = false;
+        } else if (arg == "--lint") {
+            lint = true;
+        } else if (arg == "--layout-subject-id") {
+            layoutSubjectId = true;
         } else if (!arg.empty() && arg[0] == '-') {
             std::fprintf(stderr, "xtframe-compile: unknown option '%s'\n", arg.c_str());
             printUsage();
@@ -215,6 +221,7 @@ static int run(int argc, char** argv) {
     options.embedFonts = embedFonts;
     options.strict = strict;
     options.emitMeta = emitMeta;
+    options.lintLayoutSubjectId = lint && layoutSubjectId;  // T-587 (54 §54.13)
     options.standardSymbolDir = standardSymbols;
     if (standardSymbols.empty()) {
         std::error_code ec;

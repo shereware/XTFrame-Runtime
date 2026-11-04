@@ -232,7 +232,10 @@ TEST_CASE("T-374 global flow: a radio drives the UIs' root div show() / hide() t
     CHECK(ctx.isVisible(mainMenu));
     CHECK_FALSE(ctx.isVisible(settings));  // active = false from the radio's initial 0.
     CHECK_FALSE(ctx.isVisible(hud));
-    CHECK(vis.log.empty());
+    // T-603 (53 §53.102 item 8): only main-menu is visible at its first update; settings and hud
+    // were parked (setVisible(false)) before theirs.
+    CHECK(vis.log == std::vector<std::string>{"shown#" + std::to_string(mainMenu)});
+    vis.log.clear();
     Document* settingsDoc = ctx.document(settings);
     REQUIRE(settingsDoc != nullptr);
     CHECK_FALSE(settingsDoc->isTimelinePlaying("", "intro"));

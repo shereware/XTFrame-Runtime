@@ -109,6 +109,10 @@ struct CompileOptions {
     /// that place them) are compiled. Symbol definitions and symbol libraries are kept as they
     /// are. No reference warning is raised. Ignored when `stripEditorOnly` is also true.
     bool editorOnlyAsScene = false;
+    /// T-587 (Docs/design/54-source-format-v2.md §54.1 item 3, §54.13): the lint
+    /// `layout.subjectNotId` (a v2 `<layout>` rule whose subject has no `#id` is a warning); off by
+    /// default, `xtframe-compile --lint --layout-subject-id` turns it on.
+    bool lintLayoutSubjectId = false;
     /// T-452 (Docs/design/17-editor.md §17.25): when set, asked instead of the disk whether a file
     /// system entry exists at a UTF-8 path, wherever an asset reference is resolved: the search
     /// directory probe of `<img src>` / `<anim src>` / `@font-face src` (`searchDirs`) and the "not

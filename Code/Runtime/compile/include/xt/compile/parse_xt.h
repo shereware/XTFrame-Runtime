@@ -19,8 +19,11 @@ inline constexpr int kMaxXtDepth = 256;
 /// T-406 (Docs/design/43-compatibility-and-versions.md §43.2): the `.xt` format version, the root's
 /// `<xt version="1">`. A missing `version` reads as 1; a value that is not a positive integer, or
 /// one newer than this, is an error ("... a newer XTFrame is needed"). The attribute never reaches
-/// the IR.
-inline constexpr int kXtFormatVersion = 1;
+/// the IR. T-587 (Docs/design/54-source-format-v2.md): 2 reads the v2 sections -- `<ports>`,
+/// `<layout>`, `<style>`, `<timelines>` and `<symbol>` as direct children of `<xt>`, a `<head>`
+/// with only `<title>` and `<symbols src>`, `on:<event>@<path>` -- into DomTree's section fields;
+/// 1 (or no version) reads exactly as before.
+inline constexpr int kXtFormatVersion = 2;
 
 /// Parses `text` (the contents of a `.xt` file named `fileName`, used only for diagnostics) into
 /// `out`. Returns false and leaves `out` in an unspecified state if any error diagnostic is

@@ -672,8 +672,8 @@ public:
     void setHostEventListener(HostEventListener listener);
     /// Told when the surface finished showing (true, `OnShown`) or hiding (false, `OnHidden`).
     void setVisibilityListener(std::function<void(bool visible)> listener);
-    /// T-601 (53 §53.102 item 7): more observers (id never 0): true with OnShown and at the first
-    /// update() that finds the surface visible (before its timelines step), false with OnHidden.
+    /// T-601 (53 §53.102 item 7): more observers (id never 0): true with OnShown (T-603: just before
+    /// the initial one, before the host's update hook and the timelines step), false with OnHidden.
     uint32_t addSurfaceListener(std::function<void(bool shown)> listener);
     void removeSurfaceListener(uint32_t id);
 
@@ -1164,10 +1164,10 @@ private:
     void hideElement(NodeId node);
     void finishSurfaceHide();
     void finishPendingHides();
-    /// T-349 (27.2.4): fires the surface's `show` (true) or `hide` (false) triggers on the
-    /// surface element and, when it is `<body>`, on each of its direct Element children in
-    /// document order, all in one trigger run.
+    /// T-349 (27.2.4): the surface's `show` (true) / `hide` (false) triggers on the surface element
+    /// and, when it is `<body>`, on each direct Element child in document order, in one trigger run.
     void fireSurfaceEvent(bool show);
+    void notifyInitialShow(float clock);  // T-603 (53 §53.102 item 8): lifecycle.shown, OnShown; once.
     // T-397 (08 §8.17): requestShow() / requestHide() made while dispatching wait for the end of
     // the outermost dispatching call; trigger actions call applyShow() / applyHide() directly.
     static constexpr uint8_t kSurfaceRequestNone = 0;
@@ -1248,8 +1248,8 @@ private:
     bool surfaceChildShown(NodeId node) const;
     bool m_surfaceVisible = true;
     bool m_surfaceHiding = false;
-    bool m_shownOnce = false;         // The first update() fires the surface's `show`.
-    std::vector<NodeId> m_autofocus;  // T-194: `autofocus` elements, document order.
+    bool m_shownOnce = false, m_initialShown = false;  // First update(): `show`; notifyInitialShow().
+    std::vector<NodeId> m_autofocus;                   // T-194: `autofocus` elements, document order.
     /// T-194: focuses the first focusable `autofocus` element for player 0 when nothing has the
     /// focus (first show and requestShow()).
     void applyAutofocus();

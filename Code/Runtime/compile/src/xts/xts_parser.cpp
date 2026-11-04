@@ -12,6 +12,7 @@
 #include "xt/node.h"  // ElementState bits (kStateHover etc.), reused for SelectorPart::stateMask.
 #include "xts_lexer.h"
 #include "xts_props.h"
+#include "xts_sections.h"
 
 /// Rule / at-rule grammar. See Docs/design/05-style-and-css.md §5.3, Docs/tasks/T-22.md.
 
@@ -358,6 +359,23 @@ public:
         return !m_hadError;
     }
 
+    // T-587 (54 §54.5, §54.7): one v2 section in `mode`; a non-empty `symbol` reads the text as the
+    // body of `symbol(<symbol>) { ... }`, exactly as parseSymbolBlock() reads one.
+    bool parseSection(RuleSet& out, XtsSectionMode mode, std::string_view symbol) {
+        m_mode = mode;
+        if (symbol.empty()) {
+            return parseStylesheet(out);
+        }
+        m_tokensOut = &out.tokens;
+        m_easingPoints = &out.easingPoints;
+        m_inSymbol = true;
+        while (m_cur.kind != TokenKind::End) {
+            parseSymbolBlockItem(out, std::string(symbol));
+        }
+        m_inSymbol = false;
+        return !m_hadError;
+    }
+
     bool parseDeclarationList(std::vector<StyleDecl>& out) {
         bool sawEnd = false;
         parseDecls(out, /*insideBraces=*/false, sawEnd);
@@ -398,6 +416,8 @@ private:
     // T-176: inside a `symbol()` block / an `@media` block right now.
     bool m_inSymbol = false;
     bool m_inMedia = false;
+    // T-587: the v2 section being parsed (Full for every v1 stylesheet and attribute).
+    XtsSectionMode m_mode = XtsSectionMode::Full;
     // T-322: the `transition` / `transition-*` declarations of the block parseDecls() is reading,
     // in source order. `declIndex` is decls.size() when the declaration was read; `emitted` is how
     // many StyleDecls a shorthand produced there (longhands produce none until the merge).
@@ -757,6 +777,9 @@ private:
                 return;
             }
 
+            if (m_mode != XtsSectionMode::Full && m_inRule && !sectionAdmits(nameTok, valueToks, isTrigger)) {
+                continue;  // T-587: reported by sectionAdmits(), dropped.
+            }
             if (nameTok.text.size() > 2 && nameTok.text.compare(0, 2, "--") == 0) {
                 // T-170 (05.9.2): a design token. Document-wide whatever the selector; no
                 // element-level cascade, so a `style` attribute cannot declare one.
@@ -834,6 +857,87 @@ private:
         }
     }
 
+    // T-587 (54 §54.13): a section error with its code and fix.
+    void sectionError(const Token& tok, const std::string& msg, const char* code, const std::string& fix) {
+        m_sink.error(m_fileName, msg, reportLine(tok.line), tok.col, code, fix);
+        m_hadError = true;
+    }
+
+    // T-587 (54 §54.5): whether the current section admits the declaration `nameTok: valueToks`;
+    // reports the error when it does not.
+    bool sectionAdmits(const Token& nameTok, const std::vector<Token>& valueToks, bool isTrigger) {
+        const std::string& name = nameTok.text;
+        const bool trigger = isTrigger || name == "state-enter" || name == "state-exit";
+        if (m_mode == XtsSectionMode::LayoutOnly) {
+            std::string canonical = name;
+            if (const NameAlias* alias = findNameAlias(AliasKind::Property, name)) {
+                canonical = alias->replacement;
+            }
+            if (!trigger && isLayoutSectionProperty(canonical)) {
+                return true;
+            }
+            sectionError(nameTok, "\"" + name + "\" is not a layout property; <layout> only takes geometry",
+                         "layout.notGeometry",
+                         trigger ? "write the trigger as on:<event> on the element in <body>"
+                                 : "move \"" + name + "\" to a <style> section");
+            return false;
+        }
+        if (trigger) {
+            const std::string event =
+                isTrigger ? name.substr(3)
+                          : std::string(name == "state-enter" ? "state(X).enter" : "state(X).exit");
+            sectionError(nameTok, "\"" + name + "\" triggers are written on elements in version 2",
+                         "style.triggerInStyle",
+                         "write on:" + event + " on the element (on:" + event +
+                             "@<path> on its <use> for an element "
+                             "inside a symbol instance)");
+            return false;
+        }
+        std::string canonical = name;
+        if (const NameAlias* alias = findNameAlias(AliasKind::Property, name)) {
+            canonical = alias->replacement;
+        }
+        if (!isLayoutSectionProperty(canonical)) {
+            return true;
+        }
+        if (canonical == "display" && valueToks.size() == 1 && valueToks[0].kind == TokenKind::Ident &&
+            valueToks[0].text == "none") {
+            return true;  // 54 §54.5 D19: `display: none` may be written in <style>.
+        }
+        sectionError(nameTok, "\"" + name + "\" is geometry and belongs in <layout>", "style.geometryInStyle",
+                     canonical == "display"
+                         ? "move \"display\" to a <layout> section (only \"display: none\" may "
+                           "stay in <style>)"
+                         : "move \"" + name + "\" to a <layout> section");
+        return false;
+    }
+
+    // T-587: whether the current section admits the at-rule `@<name>`; reports when it does not.
+    bool sectionAdmitsAtRule(const Token& atTok, const std::string& name) {
+        if (m_mode == XtsSectionMode::Full) {
+            return true;
+        }
+        const bool timeline = name == "timeline";
+        if (m_mode == XtsSectionMode::LayoutOnly && !timeline && name != "media") {
+            sectionError(atTok, "@" + name + " is not allowed in <layout>", "layout.notGeometry",
+                         "move the @" + name + " block to a <style> section");
+            return false;
+        }
+        if (timeline && m_mode != XtsSectionMode::TimelinesOnly) {
+            sectionError(
+                atTok, "@timeline belongs in <timelines>",
+                m_mode == XtsSectionMode::LayoutOnly ? "layout.notGeometry" : "style.timelineInStyle",
+                "move the @timeline to a <timelines> section");
+            return false;
+        }
+        if (m_mode == XtsSectionMode::TimelinesOnly && !timeline) {
+            sectionError(atTok, "only @timeline blocks are allowed in <timelines>", "",
+                         "move the @" + name + " block to a <style> section");
+            return false;
+        }
+        return true;
+    }
+
     // T-174: records one `on-<event>: <actions>` (event already without `on-`) or
     // `state-enter|state-exit: <Name> <actions>` declaration into the current rule.
     void addTriggerDecl(const Token& nameTok, std::string event, const std::vector<Token>& valueToks) {
@@ -868,6 +972,19 @@ private:
     }
 
     void parseRule(RuleSet& out) {
+        if (m_mode == XtsSectionMode::TimelinesOnly) {
+            // T-587 (54 §54.8): `<timelines>` takes @timeline blocks only.
+            sectionError(m_cur, "only @timeline blocks are allowed in <timelines>", "",
+                         "move the rule to a <layout> or <style> section");
+            RuleSet scratch;
+            std::vector<TokenDecl>* tokens = m_tokensOut;
+            m_tokensOut = &scratch.tokens;
+            m_mode = XtsSectionMode::Full;
+            parseRule(scratch);
+            m_mode = XtsSectionMode::TimelinesOnly;
+            m_tokensOut = tokens;
+            return;
+        }
         int ruleLine = reportLine(m_cur.line);
         std::vector<Selector> selectors;
         m_listHadRoot = false;
@@ -1372,24 +1489,29 @@ private:
                 m_inSymbol = false;
                 return;
             }
-            if (m_cur.kind == TokenKind::At) {
-                // T-190 (26.2.1, 28 §28.4): an `@timeline` inside `symbol()` is symbol-scoped
-                // (rewritten per instance by symbol_expand.cpp); other at-rules stay document-wide.
-                size_t timelinesBefore = out.timelines.size();
-                parseAtRule(out);
-                for (size_t i = timelinesBefore; i < out.timelines.size(); ++i) {
-                    out.timelines[i].symbol = name;
-                }
-                continue;
-            }
-            size_t before = out.rules.size();
-            parseRule(out);
-            for (size_t i = before; i < out.rules.size(); ++i) {
-                out.rules[i].symbol = name;
-            }
+            parseSymbolBlockItem(out, name);
         }
         m_inSymbol = false;
         advance();  // '}'
+    }
+
+    // One rule or at-rule inside `symbol(<name>) { ... }`.
+    void parseSymbolBlockItem(RuleSet& out, const std::string& name) {
+        if (m_cur.kind == TokenKind::At) {
+            // T-190 (26.2.1, 28 §28.4): an `@timeline` inside `symbol()` is symbol-scoped
+            // (rewritten per instance by symbol_expand.cpp); other at-rules stay document-wide.
+            size_t timelinesBefore = out.timelines.size();
+            parseAtRule(out);
+            for (size_t i = timelinesBefore; i < out.timelines.size(); ++i) {
+                out.timelines[i].symbol = name;
+            }
+            return;
+        }
+        size_t before = out.rules.size();
+        parseRule(out);
+        for (size_t i = before; i < out.rules.size(); ++i) {
+            out.rules[i].symbol = name;
+        }
     }
 
     void parseAtRule(RuleSet& out) {
@@ -1402,6 +1524,10 @@ private:
         }
         std::string name = m_cur.text;
         advance();
+        if (!sectionAdmitsAtRule(atTok, name)) {
+            skipAtRuleRest();  // T-587: reported, dropped.
+            return;
+        }
         if (name == "keyframes") {
             parseKeyframes(out);
         } else if (name == "font-face") {
@@ -1414,15 +1540,20 @@ private:
             parseMedia(atTok, out);
         } else {
             warn(atTok, "unknown at-rule \"@" + name + "\", ignored");
-            while (m_cur.kind != TokenKind::LBrace && m_cur.kind != TokenKind::End &&
-                   m_cur.kind != TokenKind::Semicolon) {
-                advance();
-            }
-            if (m_cur.kind == TokenKind::LBrace) {
-                skipBracedBlock();
-            } else if (m_cur.kind == TokenKind::Semicolon) {
-                advance();
-            }
+            skipAtRuleRest();
+        }
+    }
+
+    // Skips the rest of an at-rule: up to and including its `{ ... }` block or its ';'.
+    void skipAtRuleRest() {
+        while (m_cur.kind != TokenKind::LBrace && m_cur.kind != TokenKind::End &&
+               m_cur.kind != TokenKind::Semicolon) {
+            advance();
+        }
+        if (m_cur.kind == TokenKind::LBrace) {
+            skipBracedBlock();
+        } else if (m_cur.kind == TokenKind::Semicolon) {
+            advance();
         }
     }
 
@@ -2545,6 +2676,12 @@ bool parseXts(std::string_view text, std::string_view fileName, int lineOffset, 
               RuleSet& out, std::string_view sheetDir) {
     Parser parser(text, fileName, lineOffset, sink, sheetDir);
     return parser.parseStylesheet(out);
+}
+
+bool parseXtsSection(std::string_view text, std::string_view fileName, int lineOffset, XtsSectionMode mode,
+                     DiagnosticSink& sink, RuleSet& out, std::string_view sheetDir, std::string_view symbol) {
+    Parser parser(text, fileName, lineOffset, sink, sheetDir);
+    return parser.parseSection(out, mode, symbol);
 }
 
 bool parseDeclarations(std::string_view text, std::string_view fileName, int line, DiagnosticSink& sink,

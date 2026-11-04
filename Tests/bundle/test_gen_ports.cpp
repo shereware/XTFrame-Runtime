@@ -199,6 +199,32 @@ TEST_CASE("gen-ports: C++ and C# output for a UI's declared ports") {
     CHECK(!parsePortsLanguage("java", language));
 }
 
+TEST_CASE("T-587 gen-ports: a v2 <ports> section gives the output and contract of v1 port: attributes") {
+    // v1 declares the document's ports on <body>, which is what a v2 <ports> section stands for
+    // (Docs/design/54-source-format-v2.md §54.4).
+    const std::string v1 = R"X(<xt><body port:hp="number in = 0.5" port:rarity="enum(common|rare) out"
+      port:items="list&lt;struct{name: string, count: number}&gt;" port:stats="struct{hits: number, alive: bool}"
+      port:hit="event out"><div id="Hud"></div></body></xt>)X";
+    const std::string v2 = R"X(<xt version="2">
+  <ports>
+    hp: number in = 0.5
+    rarity: enum(common|rare) out
+    // a list of records
+    items: list<struct{name: string,
+                       count: number}>
+    stats: struct{hits: number, alive: bool}
+    hit: event out
+  </ports>
+  <body><div id="Hud"></div></body>
+</xt>)X";
+    std::vector<UiPortTable> a{UiPortTable{"hud-main", portsOf(v1.c_str()), ""}};
+    std::vector<UiPortTable> b{UiPortTable{"hud-main", portsOf(v2.c_str()), ""}};
+    REQUIRE(a[0].ports.size() == 5);
+    CHECK(generatePortHeader(PortsLanguage::Cpp, a) == generatePortHeader(PortsLanguage::Cpp, b));
+    CHECK(generatePortHeader(PortsLanguage::CSharp, a) == generatePortHeader(PortsLanguage::CSharp, b));
+    CHECK(contractHash(*documentOf(v1)) == contractHash(*documentOf(v2)));
+}
+
 TEST_CASE("gen-ports: names are sanitized and made unique") {
     std::vector<UiPortTable> tables;
     UiPortTable table;

@@ -21,6 +21,10 @@ struct DomAttr {
     int line = 0;
     /// 1-based source column of the attribute.
     int col = 0;
+    /// T-587 (54 §54.4): a `port:<name>` attribute lowered from a v2 `<ports>` declaration that
+    /// ends in `hidden` (the port is not exposed, as `expose:false` would make it). Always false
+    /// for an attribute written in the source.
+    bool portHidden = false;
 };
 
 /// Kinds of DomTextRun::inlineKind (T-178).
@@ -88,6 +92,11 @@ struct DomNode {
     std::string svgSource;
     /// 1-based line of the `<svg>` start tag in its source file (for SVG diagnostics).
     int svgLine = 0;
+    /// T-587: byte range `[sourceBegin, sourceEnd)` of the element in its source text, from the
+    /// start tag's '<' to one past the end tag's '>' (the canonical writer copies `<body>` and
+    /// symbol elements verbatim). Both 0 for a node that did not come from source text.
+    uint32_t sourceBegin = 0;
+    uint32_t sourceEnd = 0;
 
     /// Returns the first attribute named `name`, or nullptr if none exists.
     const DomAttr* attr(std::string_view name) const {
@@ -98,6 +107,36 @@ struct DomNode {
         }
         return nullptr;
     }
+};
+
+/// T-587 (Docs/design/54-source-format-v2.md §54.3, §54.8): one `<layout>`, `<style>` or
+/// `<timelines>` section of a v2 `.xt` file, either inline text or a `src` fragment.
+struct XtSheetSection {
+    /// The section's raw content (empty when `src` is set).
+    std::string text;
+    /// The `src` attribute: a `.xts` fragment path relative to the owning file; empty for inline.
+    std::string src;
+    /// 1-based file line and column of the first content character (inline); of the start tag
+    /// (`src`).
+    int lineOffset = 0;
+    int colOffset = 0;
+    /// Position of the section among every `<layout>`/`<style>`/`<timelines>` section of the file
+    /// (document level and symbol level together): the merge order.
+    uint32_t order = 0;
+    /// The `name` of the `<symbol>` the section belongs to (its rules are implicitly inside
+    /// `symbol(<name>) { ... }`); empty for a document-level section.
+    std::string symbol;
+};
+
+/// T-587 (54 §54.4, §54.7): the raw text of one `<ports>` section.
+struct XtPortsSection {
+    /// The section's raw content.
+    std::string text;
+    /// 1-based file line and column of the first content character.
+    int lineOffset = 0;
+    int colOffset = 0;
+    /// The owning `<symbol>`'s `name`; empty for the document's own `<ports>`.
+    std::string symbol;
 };
 
 /// The full tree produced by `parseXt()`, plus the document-level references gathered while
@@ -118,8 +157,21 @@ struct DomTree {
     /// elsewhere is an ordinary child of its parent. symbol_expand.cpp removes all of them.
     std::vector<uint32_t> symbolDefs;
     /// T-171: `<link rel="symbols" href>` values (symbol libraries), in appearance order. These
-    /// are not stylesheets and are not in `linkHrefs`.
+    /// are not stylesheets and are not in `linkHrefs`. T-587: in a v2 file, the `<symbols src>`
+    /// values of `<head>` (54 §54.7), resolved the same way.
     std::vector<std::string> symbolHrefs;
+    /// T-587 (43 §43.2, 54 §54.3): the root's `<xt version>`, 1 when missing.
+    int formatVersion = 1;
+    /// T-587: a v2 file's `<layout>`, `<style>` and `<timelines>` sections (document and symbol
+    /// level), each list in appearance order; XtSheetSection::order interleaves the three.
+    std::vector<XtSheetSection> layoutSheets;
+    std::vector<XtSheetSection> styleSheets;
+    std::vector<XtSheetSection> timelineSheets;
+    /// T-587: a v2 file's `<ports>` sections (the document's, then each symbol's, in appearance
+    /// order). parseXt() has already lowered every declaration into a `port:<name>` attribute of
+    /// `<body>` (document) or of the symbol's first element (symbol), so emitPorts() reads them as
+    /// it reads v1's attributes; the text is kept for the canonical writer.
+    std::vector<XtPortsSection> portSections;
 };
 
 }  // namespace xt::compile

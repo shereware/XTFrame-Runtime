@@ -1780,13 +1780,13 @@ void Document::update(float clock) {
     m_clock = clock;
     // T-174 (27.2.4): the surface appears with its first frame, so its `show` triggers fire once.
     if (!m_shownOnce) {
+        // T-601 / T-603 (53 §53.102 items 7a, 8): the surface's first show, before this frame's
+        // timelines step, so a `lifecycle.shown` / OnShown `play(intro)` paints the intro's first
+        // frame. Context::update() already sent it before the host's update hook; this covers a
+        // Document updated on its own.
+        notifyInitialShow(clock);
         m_shownOnce = true;
         if (m_surfaceVisible) {
-            // T-601 (53 §53.102 item 7a): the surface's first show, before this frame's timelines
-            // step, so a flow `lifecycle.shown -> timeline.play` paints the intro's first frame.
-            if (!m_unloading) {
-                m_triggers->notifySurface(true);
-            }
             fireSurfaceEvent(true);  // T-349: `<body>` and its direct children.
             applyAutofocus();        // T-194 (27.7): the surface's initial focus.
         }

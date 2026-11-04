@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "life",
+      "type": "lifecycle"
+    },
+    {
+      "id": "intro",
+      "type": "timeline",
+      "params": {
+        "name": "intro"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "life.shown",
+      "to": "intro.play"
+    }
+  ]
+}

@@ -4,6 +4,9 @@ add_library(xt_compile STATIC
     src/diagnostic_report.cpp
     src/ir_writer.cpp
     src/parse_xt.cpp
+    src/ports_section.cpp
+    src/section_sources.cpp
+    src/xt_canonical_writer.cpp
     src/compile_lottie.cpp
     src/compile_document.cpp
     src/style_emit.cpp
@@ -29,6 +32,7 @@ add_library(xt_compile STATIC
     src/xts/xts_props.cpp
     src/xts/xts_lexer.cpp
     src/xts/xts_parser.cpp
+    src/xts/xts_sections.cpp
     src/xts/xts_values.cpp
     src/xts/xts_values_basic.cpp
     src/xts/xts_values_lists.cpp
@@ -59,3 +63,7 @@ set_source_files_properties(src/bind_emit.cpp src/xts/xts_values.cpp src/xts/xts
     src/xts/xts_values_lists.cpp src/xts/xts_values_effect.cpp src/xts/xts_values_gradient.cpp
     src/xts/xts_values_transform.cpp src/xts/xts_values_shorthand.cpp src/xts/xts_values_grid.cpp
     src/xts/xts_values_calc.cpp PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
+# T-587: the v2 sources stay out of the batches too, so adding them does not regroup the batches
+# above (whose files share anonymous-namespace names such as kPi).
+set_source_files_properties(src/ports_section.cpp src/section_sources.cpp src/xt_canonical_writer.cpp
+    src/xts/xts_sections.cpp PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)

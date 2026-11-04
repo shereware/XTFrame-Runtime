@@ -15,7 +15,7 @@
 
 /// T-601 (Docs/design/53-flow-language.md §53.102): the UI flow's `lifecycle` node (`shown` /
 /// `hidden`, delivered before the first update of the frame the UI is shown in) and the static lint
-/// `flow.introByTimer`.
+/// `flow.introByTimer`. T-603 (item 8): the initial OnShown and the global flow's `ui#<id>.shown`.
 
 using namespace xt;
 using namespace xt::flow;
@@ -254,6 +254,112 @@ TEST_CASE("lifecycle: the global flow rejects it (ui#<id>.shown is its form ther
           Status::kOk);
     REQUIRE(errors.size() == 1);
     CHECK(errors[0].find("node 'l': lifecycle is only valid in a UI's own flow") == 0);
+}
+
+namespace {
+
+/// T-603 (53 §53.102 item 8): the host's view of the initial show. Records OnShown / the update
+/// hook, with the UI flow's and the global flow's counters as each OnShown saw them.
+struct ShowRecorder : ContextListener {
+    std::vector<std::string> log;
+    const FlowRuntime* uiFlow = nullptr;
+    const FlowRuntime* globalFlow = nullptr;
+    Document* playOnShown = nullptr;
+    void onShown(DocumentHandle d) override {
+        std::string entry = "shown#" + std::to_string(d);
+        if (uiFlow != nullptr) {
+            entry += " ui=" + std::to_string(static_cast<int>(count(*uiFlow, "shown.value")));
+        }
+        if (globalFlow != nullptr) {
+            entry += " global=" + std::to_string(static_cast<int>(count(*globalFlow, "c.value")));
+        }
+        log.push_back(entry);
+        if (playOnShown != nullptr) {
+            REQUIRE(playOnShown->playTimeline("", "intro") == Status::kOk);
+        }
+    }
+    void onHidden(DocumentHandle d) override { log.push_back("hidden#" + std::to_string(d)); }
+    void onBeforeDocumentUpdate(Context& /*context*/) override { log.push_back("hook"); }
+};
+
+}  // namespace
+
+TEST_CASE("T-603: the initial OnShown comes once, after lifecycle.shown and before the update hook") {
+    NullTextShaper shaper;
+    SUBCASE("visible at the first update") {
+        Context ctx{ContextConfig{&shaper, nullptr}};
+        const DocumentHandle h = loadIntroUi(ctx);
+        Document& doc = *ctx.document(h);
+        FlowRuntime runtime;
+        loadFlow(runtime, doc, R"({"nodes":[{"id":"life","type":"lifecycle"},{"id":"shown","type":"counter"}],
+            "edges":[{"from":"life.shown","to":"shown.increment"}]})");
+        ShowRecorder rec;
+        rec.uiFlow = &runtime;
+        rec.playOnShown = &doc;  // The host plays the intro from OnShown.
+        ctx.addListener(&rec);
+        ctx.update(0.016f);  // Frame 0.
+        const std::string shown = "shown#" + std::to_string(h);
+        REQUIRE(rec.log == std::vector<std::string>{shown + " ui=1", "hook"});
+        CHECK(doc.isTimelinePlaying("", "intro"));
+        CHECK(titleOpacity(doc) == doctest::Approx(0.0f));  // The intro's frame 0, as from xt_flow.
+        ctx.update(0.016f);
+        ctx.update(0.016f);
+        CHECK(rec.log == std::vector<std::string>{shown + " ui=1", "hook", "hook", "hook"});  // Once.
+        // requestShow / requestHide keep their T-174 behavior.
+        REQUIRE(ctx.requestShow(h) == Status::kOk);  // Already visible: nothing.
+        REQUIRE(ctx.requestHide(h) == Status::kOk);
+        REQUIRE(ctx.requestShow(h) == Status::kOk);
+        CHECK(rec.log.size() == 6);
+        CHECK(rec.log[4] == "hidden#" + std::to_string(h));
+        CHECK(rec.log[5] == shown + " ui=1");  // applyShow(): OnShown, then lifecycle.shown (T-601).
+        CHECK(count(runtime, "shown.value") == 2);
+        ctx.removeListener(&rec);
+    }
+    SUBCASE("setVisible(true) before the first update counts; setVisible(false) defers to requestShow") {
+        Context ctx{ContextConfig{&shaper, nullptr}};
+        const DocumentHandle visible = loadIntroUi(ctx);
+        const DocumentHandle parked = loadIntroUi(ctx);
+        REQUIRE(ctx.setVisible(visible, true) == Status::kOk);
+        REQUIRE(ctx.setVisible(parked, false) == Status::kOk);
+        ShowRecorder rec;
+        ctx.addListener(&rec);
+        ctx.update(0.016f);
+        ctx.update(0.016f);
+        CHECK(rec.log == std::vector<std::string>{"shown#" + std::to_string(visible), "hook", "hook"});
+        REQUIRE(ctx.requestShow(parked) == Status::kOk);
+        REQUIRE(rec.log.size() == 4);
+        CHECK(rec.log[3] == "shown#" + std::to_string(parked));
+        ctx.update(0.016f);
+        CHECK(rec.log.size() == 5);  // Only the hook: the first show was requestShow's.
+        ctx.removeListener(&rec);
+    }
+}
+
+TEST_CASE("T-603: the global flow's ui#<id>.shown fires on the initial show, after the host's OnShown") {
+    NullTextShaper shaper;
+    Context ctx{ContextConfig{&shaper, nullptr}};
+    const DocumentHandle h = loadIntroUi(ctx);
+    ShowRecorder rec;
+    ctx.addListener(&rec);  // Registered before the BundleContext: called first.
+    BundleContext bundle(ctx);
+    REQUIRE(bundle.addUi("intro", h) == Status::kOk);
+    std::vector<std::string> errors;
+    REQUIRE_MESSAGE(bundle.loadGlobalFlow(R"({"nodes":[{"id":"c","type":"counter"}],
+        "edges":[{"from":"ui#intro.shown","to":"c.increment"}]})",
+                                          errors) == Status::kOk,
+                    joinedLines(errors));
+    rec.globalFlow = &bundle.flowRuntime();
+    CHECK(count(bundle.flowRuntime(), "c.value") == 0);
+    ctx.update(0.016f);
+    CHECK(rec.log == std::vector<std::string>{"shown#" + std::to_string(h) + " global=0", "hook"});
+    CHECK(count(bundle.flowRuntime(), "c.value") == 1);  // Before the hook, in the same fan-out.
+    bundle.tick(0.016f);
+    ctx.update(0.016f);
+    CHECK(count(bundle.flowRuntime(), "c.value") == 1);  // Once.
+    REQUIRE(ctx.requestHide(h) == Status::kOk);
+    REQUIRE(ctx.requestShow(h) == Status::kOk);
+    CHECK(count(bundle.flowRuntime(), "c.value") == 2);  // requestShow: as before.
+    ctx.removeListener(&rec);
 }
 
 TEST_CASE("lint flow.introByTimer: autostart timer into timeline.play warns; lifecycle.shown does not") {

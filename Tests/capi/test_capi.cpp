@@ -613,3 +613,63 @@ TEST_CASE("capi 13 (T-561): a write after xt_surface_update and before render la
     xt_surface_destroy(s);
     CHECK(xt_bundle_close(b) == XT_STATUS_OK);
 }
+
+namespace {
+
+/// T-603 (53 §53.102 item 8): what a run_flow = 0 host sees on the first xt_surface_update.
+struct IntroHost {
+    std::vector<std::string> log;
+    xt_status play = XT_STATUS_INTERNAL;
+    static void onVisibility(xt_surface* s, int visible, void* user) {
+        auto* self = static_cast<IntroHost*>(user);
+        self->log.push_back(visible != 0 ? "shown" : "hidden");
+        if (visible != 0) {
+            self->play = xt_surface_play_timeline(s, "", "intro", nullptr);
+        }
+    }
+    static void onUpdate(xt_surface* /*s*/, float /*dt*/, void* user) {
+        static_cast<IntroHost*>(user)->log.push_back("hook");
+    }
+};
+
+}  // namespace
+
+TEST_CASE("capi 14 (T-603): the initial show reaches the visibility listener before the update hook") {
+    xt_bundle* b = xt_bundle_open(XT_CAPI_TEST_FLIP_BUNDLE);
+    REQUIRE_MESSAGE(b != nullptr, xt_capi_last_error());
+    xt_surface_desc desc = makeDesc(64, 64);
+    xt_surface* flow = xt_surface_create(b, "intro", &desc);  // run_flow = 1: lifecycle.shown -> intro.
+    REQUIRE_MESSAGE(flow != nullptr, xt_capi_last_error());
+    desc.run_flow = 0;
+    xt_surface* hosted = xt_surface_create(b, "intro", &desc);  // run_flow = 0: the host plays it.
+    REQUIRE_MESSAGE(hosted != nullptr, xt_capi_last_error());
+    IntroHost host;
+    REQUIRE(xt_surface_set_visibility_listener(hosted, &IntroHost::onVisibility, &host) == XT_STATUS_OK);
+    REQUIRE(xt_surface_set_update_hook(hosted, &IntroHost::onUpdate, &host) == XT_STATUS_OK);
+
+    Pixels flowPixels(64, 64);
+    Pixels hostPixels(64, 64);
+    xt_damage damage{};
+    auto frame = [&](float dt) {
+        REQUIRE(xt_surface_update(flow, dt) == XT_STATUS_OK);
+        REQUIRE(xt_surface_update(hosted, dt) == XT_STATUS_OK);
+        REQUIRE(flowPixels.render(flow, damage) == XT_STATUS_OK);
+        REQUIRE(hostPixels.render(hosted, damage) == XT_STATUS_OK);
+    };
+    frame(0.0f);  // Frame 0.
+    CHECK(host.log == std::vector<std::string>{"shown", "hook"});
+    CHECK(host.play == XT_STATUS_OK);
+    CHECK(xt_surface_is_timeline_playing(hosted, "", "intro") == 1);
+    const Rgba first = center(hostPixels);
+    INFO("rgba " << first.r << " " << first.g << " " << first.b << " " << first.a);
+    CHECK(first.a > 40);  // The intro's time 0 (opacity 0.25), not the final opaque card.
+    CHECK(first.a < 90);
+    CHECK(flowPixels.rgba == hostPixels.rgba);  // The same frame as the lifecycle.shown edge.
+
+    frame(0.25f);
+    CHECK(host.log == std::vector<std::string>{"shown", "hook", "hook"});  // Once.
+    CHECK(flowPixels.rgba == hostPixels.rgba);
+    xt_surface_destroy(hosted);
+    xt_surface_destroy(flow);
+    CHECK(xt_bundle_close(b) == XT_STATUS_OK);
+}

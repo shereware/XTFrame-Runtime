@@ -28,21 +28,28 @@ struct Diagnostic {
     /// T-568 (24 §24.15.4): a stable diagnostics code (`bind.*`, `compile.*`...) when the message
     /// has one of its own; "" files it under `compile.error` / `compile.warning`.
     std::string code = {};
+    /// T-587 (54 §54.13): what to change to cure the diagnostic, as one sentence; "" when the
+    /// code has none. fromCompileDiagnostic() writes it as the `fix` detail.
+    std::string fix = {};
 };
 
 /// Accumulates diagnostics produced by a single compile/parse call.
 class DiagnosticSink {
 public:
-    /// Records a warning at `file:line:col`; `code` (T-568) is Diagnostic::code.
-    void warn(std::string file, std::string message, int line = 0, int col = 0, std::string code = {}) {
+    /// Records a warning at `file:line:col`; `code` (T-568) is Diagnostic::code, `fix` (T-587)
+    /// Diagnostic::fix.
+    void warn(std::string file, std::string message, int line = 0, int col = 0, std::string code = {},
+              std::string fix = {}) {
         m_diagnostics.push_back(Diagnostic{Diagnostic::Level::Warning, std::move(file), line, col,
-                                           std::move(message), std::move(code)});
+                                           std::move(message), std::move(code), std::move(fix)});
     }
 
-    /// Records an error at `file:line:col`; `code` (T-568) is Diagnostic::code.
-    void error(std::string file, std::string message, int line = 0, int col = 0, std::string code = {}) {
+    /// Records an error at `file:line:col`; `code` (T-568) is Diagnostic::code, `fix` (T-587)
+    /// Diagnostic::fix.
+    void error(std::string file, std::string message, int line = 0, int col = 0, std::string code = {},
+               std::string fix = {}) {
         m_diagnostics.push_back(Diagnostic{Diagnostic::Level::Error, std::move(file), line, col,
-                                           std::move(message), std::move(code)});
+                                           std::move(message), std::move(code), std::move(fix)});
     }
 
     /// T-408 (43 §43.6): whether deprecated() records anything (CompileOptions::strict or

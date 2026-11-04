@@ -58,6 +58,8 @@ add_executable(xt_tests
     unit/test_base64.cpp
     unit/test_lottie_masks_assets.cpp
     unit/test_parse_xt.cpp
+    unit/test_parse_xt_v2.cpp
+    unit/test_ports_section.cpp
     unit/test_parse_xts.cpp
     unit/test_xts_values.cpp
     unit/test_xtfx.cpp
@@ -145,6 +147,8 @@ target_link_libraries(xt_tests PRIVATE xt_core xt_compile)
 target_link_libraries(xt_tests PRIVATE xt_nlohmann)
 # test_sw_raster.cpp exercises the internal Rasterizer directly.
 target_include_directories(xt_tests PRIVATE ${PROJECT_SOURCE_DIR}/Code/Runtime/sw/src)
+# T-587: test_ports_section.cpp exercises the compiler's internal ports_section.h directly.
+target_include_directories(xt_tests PRIVATE ${PROJECT_SOURCE_DIR}/Code/Runtime/compile/src)
 # test_xts_values.cpp exercises xts_props.h's internal StyleProp/enum constants directly.
 target_include_directories(xt_tests PRIVATE ${PROJECT_SOURCE_DIR}/Code/Runtime/compile/src/xts)
 # test_selector_match.cpp/test_style_engine.cpp exercise core's internal selector_match.h directly.

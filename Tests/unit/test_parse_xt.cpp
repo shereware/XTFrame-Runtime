@@ -371,7 +371,8 @@ TEST_CASE("T-406 <xt version>: missing = 1, newer or malformed is an error, neve
     {
         DiagnosticSink sink;
         DomTree tree;
-        CHECK_FALSE(parseXt(std::string("<xt version=\"2\">") + body, "v.xt", sink, tree));
+        // T-587: 2 is the current version (54 §54.12), so 3 is the newer one.
+        CHECK_FALSE(parseXt(std::string("<xt version=\"3\">") + body, "v.xt", sink, tree));
         CHECK(hasErrorContaining(sink, "a newer XTFrame is needed"));
     }
     for (const char* bad :
@@ -394,5 +395,5 @@ TEST_CASE("T-406 <xt version>: missing = 1, newer or malformed is an error, neve
     REQUIRE(a.ok());
     REQUIRE(b.ok());
     CHECK(a.ir == b.ir);
-    CHECK(kXtFormatVersion == 1);
+    CHECK(kXtFormatVersion == 2);
 }

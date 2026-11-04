@@ -1,0 +1,11 @@
+<xt>
+  <head>
+    <link href="hud.xts"/>
+  </head>
+  <body port:hp="number in = 100">
+    <div id="Panel">
+      <span id="Label">HP</span>
+      <span id="HpText" bind:text="hp | round(0)" bind:class.low="hp | lt(30)">--</span>
+    </div>
+  </body>
+</xt>

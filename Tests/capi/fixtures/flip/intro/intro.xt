@@ -1,0 +1,11 @@
+<xt>
+  <head>
+    <!-- xt_capi_tests (T-603): one card whose intro fades it from 0.25 to 1. Its flow plays the
+         intro from lifecycle.shown (run_flow = 1); a run_flow = 0 host plays it from the
+         visibility callback of the first xt_surface_update. -->
+    <link href="intro.xts"/>
+  </head>
+  <body>
+    <div id="card"></div>
+  </body>
+</xt>

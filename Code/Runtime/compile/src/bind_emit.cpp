@@ -2428,7 +2428,9 @@ bool emitPorts(const DomTree& dom, const std::vector<ExpandedSymbolInstance>& in
             port.name = writer.intern(name);
             port.type = static_cast<uint8_t>(type.type);
             port.dir = static_cast<uint8_t>(dir);
-            const bool exposed = !exposeOff(element) && (scope == kNoPortScope || !exposeOff(scope));
+            // T-587 (54 §54.4): a v2 `<ports>` declaration's `hidden` is a per-port expose:false.
+            const bool exposed =
+                !attr.portHidden && !exposeOff(element) && (scope == kNoPortScope || !exposeOff(scope));
             port.flags = exposed ? kPortExpose : 0;
             port.entryType = type.entryType;  // T-381
             port.element = element;

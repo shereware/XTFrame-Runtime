@@ -1,0 +1,60 @@
+# intro_snippets (T-596): keeps Docs/intro/for-programmers.md and the compiled examples in step.
+#   cmake -DDOC=<for-programmers.md> -DWHOLE=<file;...> -DMARKED=<file;...> -P check_snippets.cmake
+# WHOLE files must appear in the document in full; of each MARKED file, the lines between the
+# `snippet:begin` and `snippet:end` marker lines, with their common indent removed. Line endings
+# are compared as LF.
+
+function(intro_read path out)
+    file(READ "${path}" text)
+    string(REPLACE "\r\n" "\n" text "${text}")
+    set(${out} "${text}" PARENT_SCOPE)
+endfunction()
+
+intro_read("${DOC}" doc)
+set(failed 0)
+
+foreach(path IN LISTS WHOLE)
+    intro_read("${path}" text)
+    string(REGEX REPLACE "\n+$" "" text "${text}")
+    string(FIND "${doc}" "${text}" at)
+    if(at EQUAL -1)
+        message(SEND_ERROR "intro_snippets: ${path} is not in ${DOC} word for word")
+        set(failed 1)
+    endif()
+endforeach()
+
+foreach(path IN LISTS MARKED)
+    intro_read("${path}" text)
+    string(FIND "${text}" "snippet:begin" b)
+    string(FIND "${text}" "snippet:end" e)
+    if(b EQUAL -1 OR e EQUAL -1 OR e LESS b)
+        message(SEND_ERROR "intro_snippets: ${path} has no snippet:begin / snippet:end pair")
+        set(failed 1)
+        continue()
+    endif()
+    # From the line after `snippet:begin` to the end of the line before `snippet:end`.
+    string(SUBSTRING "${text}" ${b} -1 tail)
+    string(FIND "${tail}" "\n" nl)
+    math(EXPR start "${b} + ${nl} + 1")
+    string(SUBSTRING "${text}" 0 ${e} head)
+    string(FIND "${head}" "\n" nl REVERSE)
+    math(EXPR len "${nl} - ${start}")
+    string(SUBSTRING "${text}" ${start} ${len} body)
+    string(REGEX MATCH "^ *" indent "${body}")
+    string(LENGTH "${indent}" n)
+    if(n GREATER 0)
+        set(body "\n${body}")
+        string(REPLACE "\n${indent}" "\n" body "${body}")
+        string(SUBSTRING "${body}" 1 -1 body)
+    endif()
+    string(FIND "${doc}" "${body}" at)
+    if(at EQUAL -1)
+        message(SEND_ERROR "intro_snippets: the snippet of ${path} is not in ${DOC} word for word")
+        set(failed 1)
+    endif()
+endforeach()
+
+if(failed)
+    message(FATAL_ERROR "intro_snippets: update Docs/intro/for-programmers.md or the example")
+endif()
+message(STATUS "intro_snippets: every example is in the document")

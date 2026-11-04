@@ -162,7 +162,8 @@ public:
     virtual ~ContextListener() = default;
     /// A trigger's `sound` / `haptic` / `emit` action (HostEvent::document is set).
     virtual void onHostEvent(const HostEvent& /*event*/) {}
-    /// requestShow() made a hidden surface visible again (`OnShown`).
+    /// `OnShown`: requestShow() made a hidden surface visible again, or (T-603, 53 §53.102 item 8)
+    /// a surface visible at its first update (once, before onBeforeDocumentUpdate).
     virtual void onShown(DocumentHandle /*document*/) {}
     /// A surface finished hiding (`OnHidden`): at once, or after its `then hide` outro.
     virtual void onHidden(DocumentHandle /*document*/) {}

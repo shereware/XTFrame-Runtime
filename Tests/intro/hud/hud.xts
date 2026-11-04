@@ -1,0 +1,21 @@
+body {
+  width: 100vw;
+  height: 100vh;
+}
+
+#Panel {
+  position: absolute;
+  left: 24px;
+  top: 24px;
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background-color: #10141ccc;
+  font-size: 24px;
+  color: #f2f5f8;
+}
+
+#HpText.low {
+  color: #ff5a4f;
+}

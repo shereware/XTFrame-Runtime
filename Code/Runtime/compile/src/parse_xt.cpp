@@ -8,6 +8,7 @@
 #include <string_view>
 #include <vector>
 
+#include "ports_section.h"
 #include "xt/util/text.h"
 
 /// Hand-written recursive-descent `.xt` parser. See Docs/design/05-style-and-css.md §5.1-5.2,
@@ -262,7 +263,9 @@ public:
                       attr.line, attr.col);
                 return !m_hadError;
             }
+            m_version = static_cast<int>(version);  // T-587: 2 reads the v2 sections (54 §54.3).
         }
+        m_tree.formatVersion = m_version;
         DomNode root;
         root.tag = "xt";
         root.attrs = std::move(attrs);
@@ -273,6 +276,7 @@ public:
         if (!selfClosed) {
             parseGenericContent(0, "xt", rootLine, rootCol, /*isRoot=*/true);
         }
+        lowerPendingPorts(0);
         if (m_requireBody && !m_aborted && m_tree.body == 0xFFFFFFFFu) {
             error("missing <body> element", rootLine, rootCol);
         }
@@ -291,6 +295,13 @@ private:
     bool m_aborted = false;  // T-257: the nesting limit was hit; stop parsing.
     bool m_hadError = false;
     bool m_requireBody = true;
+    int m_version = 1;  // T-587: the root's `<xt version>`.
+    /// T-587: offset of the '<' of the start tag being parsed (DomNode::sourceBegin).
+    size_t m_tagStart = 0;
+    /// T-587: the next XtSheetSection::order, and the `<ports>` sections not lowered yet with the
+    /// node that owns them (0 = the root, else a `<symbol>`).
+    uint32_t m_sectionOrder = 0;
+    std::vector<std::pair<size_t, uint32_t>> m_pendingPorts;
 
     bool eof() const { return m_pos >= m_text.size(); }
 
@@ -551,8 +562,10 @@ private:
                 const bool isTrigger = attrName == "on";
                 attrName.push_back(':');
                 advance();
-                while (!eof() &&
-                       (isPrefixedAttrNameChar(peek()) || (isTrigger && (peek() == '(' || peek() == ')')))) {
+                // T-587 (54 §54.6): v2's `on:<event>@<path>` names a symbol instance's inner element.
+                while (!eof() && (isPrefixedAttrNameChar(peek()) ||
+                                  (isTrigger &&
+                                   (peek() == '(' || peek() == ')' || (peek() == '@' && m_version >= 2))))) {
                     attrName.push_back(peek());
                     advance();
                 }
@@ -763,6 +776,163 @@ private:
         m_tree.title = foldWhitespace(decoded);
     }
 
+    // ---- T-587: source format v2 (Docs/design/54-source-format-v2.md) -------------------------
+
+    /// A v2 `<head>` child: `<title>` and `<symbols src>` only; anything else (v1's `<link>`,
+    /// `<style>`, `<symbol>` included) is `head.legacyChild` and its content is skipped.
+    void handleHeadChildV2(const std::string& lower, const std::vector<DomAttr>& attrs, bool selfClosed,
+                           int line, int col) {
+        if (lower == "title") {
+            handleTitle(selfClosed, line, col);
+            return;
+        }
+        if (lower == "symbols") {
+            const DomAttr* src = findAttrV2(attrs, "src");
+            if (src != nullptr) {
+                m_tree.symbolHrefs.push_back(src->value);
+            } else {
+                warn("<symbols> missing src attribute, ignored", line, col);
+            }
+        } else {
+            m_hadError = true;
+            m_sink.error(
+                m_file, "<" + lower + "> is not allowed in a version 2 <head>; run xtframe-compile --migrate",
+                line, col, "head.legacyChild",
+                lower == "symbol" ? "move the <symbol> to a direct child of <xt>"
+                                  : "run xtframe-compile --migrate (<link href> becomes <style src>, "
+                                    "<style> splits into <layout>, <style> and <timelines>)");
+        }
+        if (selfClosed) {
+            return;
+        }
+        if (lower == "style" || lower == "link") {
+            rawScanUntilClosingTag(lower, line, col);
+        } else {
+            ++m_depth;
+            if (checkDepth(line, col)) {
+                skipElementContent(lower, line, col);
+            }
+            --m_depth;
+        }
+    }
+
+    static const DomAttr* findAttrV2(const std::vector<DomAttr>& attrs, std::string_view name) {
+        for (const DomAttr& a : attrs) {
+            if (a.name == name) {
+                return &a;
+            }
+        }
+        return nullptr;
+    }
+
+    /// `<ports>`, `<layout>`, `<style>` or `<timelines>` as a direct child of `<xt>` or of a
+    /// `<symbol>` (`owner`): the content is scanned raw like `<style>`'s. False for other tags.
+    bool handleSectionV2(const std::string& lower, const std::vector<DomAttr>& attrs, bool selfClosed,
+                         int line, int col, uint32_t owner) {
+        const bool ports = lower == "ports";
+        if (!ports && lower != "layout" && lower != "style" && lower != "timelines") {
+            return false;
+        }
+        const DomAttr* src = findAttrV2(attrs, "src");
+        const DomAttr* nameAttr = owner == 0 ? nullptr : m_tree.nodes[owner].attr("name");
+        const std::string symbol = nameAttr != nullptr ? nameAttr->value : std::string();
+        const int contentLine = m_line;
+        const int contentCol = m_col;
+        std::string content = selfClosed ? std::string() : rawScanUntilClosingTag(lower, line, col);
+        if (ports) {
+            for (const auto& pending : m_pendingPorts) {
+                if (pending.second == owner) {
+                    error("duplicate <ports> section", line, col);
+                    return true;
+                }
+            }
+            if (src != nullptr) {
+                error("<ports> cannot have a src attribute", src->line, src->col);
+            }
+            m_pendingPorts.emplace_back(m_tree.portSections.size(), owner);
+            m_tree.portSections.push_back(
+                XtPortsSection{std::move(content), contentLine, contentCol, symbol});
+            return true;
+        }
+        XtSheetSection section;
+        section.order = m_sectionOrder++;
+        section.symbol = symbol;
+        if (src != nullptr) {
+            section.src = src->value;
+            section.lineOffset = line;
+            section.colOffset = col;
+            if (content.find_first_not_of(" \t\r\n") != std::string::npos) {
+                m_hadError = true;
+                m_sink.error(
+                    m_file, "<" + lower + " src> cannot also have content", line, col,
+                    "section.srcWithContent",
+                    "split it into two <" + lower + "> elements, one with src and one with the content");
+            }
+        } else {
+            section.text = std::move(content);
+            section.lineOffset = contentLine;
+            section.colOffset = contentCol;
+        }
+        (lower == "layout"  ? m_tree.layoutSheets
+         : lower == "style" ? m_tree.styleSheets
+                            : m_tree.timelineSheets)
+            .push_back(std::move(section));
+        return true;
+    }
+
+    /// A v2 element's `port:` attributes are `ports.onElement` errors (and dropped).
+    void rejectPortAttributes(std::vector<DomAttr>& attrs) {
+        for (size_t i = 0; i < attrs.size();) {
+            if (attrs[i].name.size() <= 5 || attrs[i].name.compare(0, 5, "port:") != 0) {
+                ++i;
+                continue;
+            }
+            m_hadError = true;
+            const std::string declaration = attrs[i].name.substr(5) + ": " + attrs[i].value;
+            m_sink.error(
+                m_file,
+                "\"" + attrs[i].name + "\" is not allowed on an element in version 2; declare it in <ports>",
+                attrs[i].line, attrs[i].col, "ports.onElement",
+                "move it to <ports> as \"" + declaration + "\"");
+            attrs.erase(attrs.begin() + static_cast<std::ptrdiff_t>(i));
+        }
+    }
+
+    /// Lowers the pending `<ports>` sections of `owner` into `port:<name>` attributes of the node
+    /// that declares them in v1 terms: `<body>` for the root, the first element of a `<symbol>`.
+    void lowerPendingPorts(uint32_t owner) {
+        for (size_t p = 0; p < m_pendingPorts.size();) {
+            if (m_pendingPorts[p].second != owner) {
+                ++p;
+                continue;
+            }
+            const XtPortsSection& section = m_tree.portSections[m_pendingPorts[p].first];
+            m_pendingPorts.erase(m_pendingPorts.begin() + static_cast<std::ptrdiff_t>(p));
+            std::vector<PortsDecl> decls;
+            if (!parsePortsSection(section.text, section.lineOffset, section.colOffset, m_file, m_sink,
+                                   decls)) {
+                m_hadError = true;
+            }
+            uint32_t target = owner == 0 ? m_tree.body : 0xFFFFFFFFu;
+            if (owner != 0 && !m_tree.nodes[owner].children.empty()) {
+                target = m_tree.nodes[owner].children.front();
+            }
+            if (target == 0xFFFFFFFFu) {
+                if (!decls.empty()) {
+                    error(owner == 0 ? "<ports> needs a <body> to declare its ports on"
+                                     : "<ports> needs an element in the <symbol> to declare its ports on",
+                          section.lineOffset, section.colOffset);
+                }
+                continue;
+            }
+            for (PortsDecl& decl : decls) {
+                DomAttr attr{"port:" + decl.name, std::move(decl.value), decl.line, decl.col};
+                attr.portHidden = decl.hidden;
+                m_tree.nodes[target].attrs.push_back(std::move(attr));
+            }
+        }
+    }
+
     void parseHeadContent(int headLine, int headCol) {
         ++m_depth;
         checkDepth(headLine, headCol);
@@ -803,6 +973,7 @@ private:
                 }
                 int line = m_line;
                 int col = m_col;
+                const size_t tagStart = m_pos;
                 advance();  // '<'
                 std::string name;
                 std::vector<DomAttr> attrs;
@@ -810,8 +981,11 @@ private:
                 if (!parseStartTagRest(name, attrs, selfClosed, line, col)) {
                     break;
                 }
+                m_tagStart = tagStart;
                 std::string lower = toLowerCopy(name);
-                if (lower == "link") {
+                if (m_version >= 2) {
+                    handleHeadChildV2(lower, attrs, selfClosed, line, col);
+                } else if (lower == "link") {
                     handleLink(std::move(attrs), selfClosed, line, col);
                 } else if (lower == "style") {
                     handleStyle(selfClosed, line, col);
@@ -894,6 +1068,10 @@ private:
     /// recurses into its content. Returns the new node's index.
     uint32_t parseElement(const std::string& originalName, std::vector<DomAttr>&& attrs, bool selfClosed,
                           int line, int col) {
+        const auto sourceBegin = static_cast<uint32_t>(m_tagStart);
+        if (m_version >= 2) {
+            rejectPortAttributes(attrs);
+        }
         std::string lower = toLowerCopy(originalName);
         std::string finalTag = lower;
         if (!isKnownTag(lower)) {
@@ -906,10 +1084,13 @@ private:
         node.attrs = std::move(attrs);
         node.line = line;
         node.col = col;
+        node.sourceBegin = sourceBegin;
         uint32_t index = static_cast<uint32_t>(m_tree.nodes.size());
         if (finalTag == "svg") {
             // Kept out of line: this function recurses per nesting level (T-190).
-            return parseInlineSvg(std::move(node), selfClosed, line, col);
+            parseInlineSvg(std::move(node), selfClosed, line, col);
+            m_tree.nodes[index].sourceEnd = static_cast<uint32_t>(m_pos);
+            return index;
         }
         m_tree.nodes.push_back(std::move(node));
         if (!selfClosed) {
@@ -918,6 +1099,10 @@ private:
                 parseGenericContent(index, lower, line, col, /*isRoot=*/false);
             }
             --m_depth;
+        }
+        m_tree.nodes[index].sourceEnd = static_cast<uint32_t>(m_pos);
+        if (m_version >= 2 && finalTag == "symbol") {
+            lowerPendingPorts(index);  // T-587: the symbol's `<ports>` onto its first element.
         }
         if (finalTag == "glyph") {
             // T-178 (5.9.1 "行內或獨立"): a `<glyph>` element's own text is its inline glyph, so
@@ -1186,6 +1371,7 @@ private:
                 }
                 int childLine = m_line;
                 int childCol = m_col;
+                const size_t tagStart = m_pos;
                 advance();  // '<'
                 std::string name;
                 std::vector<DomAttr> attrs;
@@ -1193,12 +1379,17 @@ private:
                 if (!parseStartTagRest(name, attrs, selfClosed, childLine, childCol)) {
                     break;
                 }
+                m_tagStart = tagStart;
                 std::string lower = toLowerCopy(name);
                 if (isRoot && lower == "head") {
                     if (!selfClosed) {
                         parseHeadContent(childLine, childCol);
                     }
                     continue;
+                }
+                if (m_version >= 2 && (isRoot || m_tree.nodes[nodeIndex].tag == "symbol") &&
+                    handleSectionV2(lower, attrs, selfClosed, childLine, childCol, nodeIndex)) {
+                    continue;  // T-587: a v2 section (54 §54.3), no element.
                 }
                 uint32_t childIndex = parseElement(name, std::move(attrs), selfClosed, childLine, childCol);
                 m_tree.nodes[nodeIndex].children.push_back(childIndex);

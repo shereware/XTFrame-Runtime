@@ -1501,6 +1501,26 @@ Status Document::applyShow() {
     return Status::kOk;
 }
 
+void Document::notifyInitialShow(float clock) {
+    // T-603 (53 §53.102 item 8): a surface visible at its first update() is shown once, in the
+    // order lifecycle.shown -> OnShown (the Context's listeners: the host, a BundleContext's global
+    // flow `ui#<id>.shown`). A surface hidden then is first shown by requestShow() (applyShow()).
+    if (m_shownOnce || m_initialShown || !m_surfaceVisible || m_unloading) {
+        return;
+    }
+    m_initialShown = true;
+    // A play() from these callbacks starts at the clock of the update() it precedes (its time 0 is
+    // that frame); update() still flushes the held-back input at the clock it arrived at (T-389).
+    const float savedClock = m_clock;
+    m_clock = clock;
+    m_triggers->notifySurface(true);
+    if (m_visibilityListener && !m_unloading) {  // T-260a: no OnShown when unloading.
+        std::function<void(bool)> listener = m_visibilityListener;
+        listener(true);
+    }
+    m_clock = savedClock;
+}
+
 void Document::setInitialVisibility(bool visible) {
     m_surfaceHiding = false;
     m_surfaceVisible = visible;

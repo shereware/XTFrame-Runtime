@@ -155,6 +155,9 @@ ReportDiagnostic fromCompileDiagnostic(const Diagnostic& diagnostic) {
     item.source = diagnostic.file;
     item.line = diagnostic.line;
     item.col = diagnostic.col;
+    if (!diagnostic.fix.empty()) {
+        item.detail.emplace_back("fix", diagnostic.fix);  // T-587: as T-601's flow findings do.
+    }
     return item;
 }
 

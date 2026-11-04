@@ -25,6 +25,23 @@ class DiagnosticSink;
 bool parseXts(std::string_view text, std::string_view fileName, int lineOffset, DiagnosticSink& sink,
               RuleSet& out, std::string_view sheetDir = {});
 
+/// T-587 (Docs/design/54-source-format-v2.md §54.5, §54.8): what a v2 section admits.
+enum class XtsSectionMode : uint8_t {
+    Full = 0,           ///< Everything (`.xts` linked by a v1 document, v1 `<style>`).
+    LayoutOnly = 1,     ///< `<layout>`: geometry properties and `@media` only (`layout.notGeometry`).
+    StyleOnly = 2,      ///< `<style>`: no geometry except `display: none`, no `@timeline`, no triggers.
+    TimelinesOnly = 3,  ///< `<timelines>`: `@timeline` blocks only (also inside `symbol(X){}`).
+};
+
+/// parseXts() for one v2 section (or `src` fragment) in `mode`: a declaration or at-rule the mode
+/// does not admit is an error with its 54 §54.13 code and a `fix` (`layout.notGeometry`,
+/// `style.geometryInStyle`, `style.timelineInStyle`, `style.triggerInStyle`) and is dropped. A
+/// non-empty `symbol` parses `text` as the body of `symbol(<symbol>) { ... }` (a `<symbol>`'s own
+/// section, 54 §54.7). Returns false if any error-level diagnostic was raised.
+bool parseXtsSection(std::string_view text, std::string_view fileName, int lineOffset, XtsSectionMode mode,
+                     DiagnosticSink& sink, RuleSet& out, std::string_view sheetDir = {},
+                     std::string_view symbol = {});
+
 /// Parses a bare declaration list, e.g. `style="width:10px; color:#000"` or T-35's `setStyle`
 /// argument. Same error recovery as parseXts's rule body. Returns false on error. T-335: a
 /// `linear()` easing appends its points to `easingPoints` (rejected when null).
