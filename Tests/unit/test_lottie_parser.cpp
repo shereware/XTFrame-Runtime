@@ -561,7 +561,7 @@ TEST_CASE("lottie: ef[] Drop Shadow (ty:25) maps offset/blur/opacity/color per 1
     CHECK(eff.colors[0].a == doctest::Approx(1.0f));
 }
 
-TEST_CASE("lottie: ef[] Drop Shadow distance animation produces an effectParam(0,18) Vec2 track") {
+TEST_CASE("lottie: ef[] Drop Shadow distance animation produces an effectParam(0,64) Vec2 track") {
     ParsedFixture pf = parseBytes(loadFixture("fx_shadow_anim.json"));
     REQUIRE(pf.result.ok);
     REQUIRE(pf.view.ok());
@@ -569,7 +569,7 @@ TEST_CASE("lottie: ef[] Drop Shadow distance animation produces an effectParam(0
     const TimelineChunk& tl = pf.view.value().timeline(pf.result.timeline);
     const IrTrack* offsetTrack = nullptr;
     for (const IrTrack& t : tl.tracks()) {
-        if (t.prop == effectParam(0, prop::kEffectParamOffset)) {
+        if (t.prop == effectParam(0, prop::kEffectParamVec2Base)) {
             offsetTrack = &t;
         }
     }

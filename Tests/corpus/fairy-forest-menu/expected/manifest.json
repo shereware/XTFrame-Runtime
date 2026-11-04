@@ -279,7 +279,7 @@
   ],
   "bundle": {
     "id": "demo-3-fairy-forest-menu",
-    "irMajor": 2,
+    "irMajor": 3,
     "name": "Demo 3 Fairy Forest Menu"
   },
   "project": {
@@ -323,7 +323,7 @@
       ],
       "contract": "e2a7c05333c2dbef",
       "file": "ui/demo3-menu.xtir",
-      "fileHash": 16116864875603624340,
+      "fileHash": 17183465868133161074,
       "fit": "native",
       "flow": "ui/demo3-menu.xtflow",
       "flowInterface": {

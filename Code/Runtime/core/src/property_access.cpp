@@ -25,8 +25,23 @@ namespace {
 uint32_t rawEffectIndex(PropId prop) { return (prop >> 8) & 0x7Fu; }
 
 /// Decodes an effect-parameter PropId's paramIndex (0-255; propertyDefined() checks it against
-/// the actual defined set {0, 1..8, 16, 17, 18}).
+/// the actual defined set {0, 1..16, 32..35, 64..78}).
 uint32_t rawEffectParamIndex(PropId prop) { return prop & 0xFFu; }
+
+/// 18.2 (T-534): paramIndex 1..16 -> params[0..15].
+bool isEffectFloatParam(uint32_t p) {
+    return p >= prop::kEffectParamFloatBase && p < prop::kEffectParamFloatBase + prop::kEffectParamFloatCount;
+}
+
+/// 18.2 (T-534): paramIndex 32..35 -> colors[0..3].
+bool isEffectColorParam(uint32_t p) {
+    return p >= prop::kEffectParamColorBase && p < prop::kEffectParamColorBase + prop::kEffectParamColorCount;
+}
+
+/// 18.2 (T-534): paramIndex 64..78 -> the composite Vec2 (params[s], params[s + 1]).
+bool isEffectVec2Param(uint32_t p) {
+    return p >= prop::kEffectParamVec2Base && p < prop::kEffectParamVec2Base + prop::kEffectParamVec2Count;
+}
 
 /// Docs/design/18-effects.md §18.3's per-(kind, paramIndex) parameter name, or nullptr when kind
 /// does not define paramIndex (the caller then falls back to the generic "param<p>" form).
@@ -34,7 +49,7 @@ const char* effectParamNameForKind(EffectKind kind, uint32_t paramIndex) {
     if (paramIndex == prop::kEffectParamEnabled) {
         return "enabled";
     }
-    if (paramIndex == prop::kEffectParamColor0) {
+    if (paramIndex == prop::kEffectParamColorBase) {
         switch (kind) {
             case EffectKind::DropShadow:
             case EffectKind::Glow:
@@ -45,13 +60,14 @@ const char* effectParamNameForKind(EffectKind kind, uint32_t paramIndex) {
                 return nullptr;  // 18.3: Blur/ColorAdjust/GradientMask/BackdropBlur define no colors.
         }
     }
-    if (paramIndex == prop::kEffectParamOffset) {
-        // 18.2: the composite Vec2 is specifically the DropShadow offset; params[0..1] mean
-        // something else (radius/intensity, brightness/contrast, ...) for every other kind.
+    if (paramIndex == prop::kEffectParamVec2Base) {
+        // 18.2: the composite Vec2 at slot 0 is specifically the DropShadow offset; params[0..1]
+        // mean something else (radius/intensity, brightness/contrast, ...) for every other kind.
         return kind == EffectKind::DropShadow ? "offset" : nullptr;
     }
     if (paramIndex < 1 || paramIndex > 8) {
-        return nullptr;  // paramIndex 17 (colors[1]): no kind defines a second color.
+        // colors[1..3], params[8..15] and the other Vec2 slots: no built-in kind names them.
+        return nullptr;
     }
     switch (kind) {
         case EffectKind::DropShadow: {
@@ -126,8 +142,8 @@ bool propertyDefined(PropId prop) {
             return false;
         }
         uint32_t p = rawEffectParamIndex(prop);
-        return p == prop::kEffectParamEnabled || (p >= 1 && p <= 8) || p == prop::kEffectParamColor0 ||
-               p == prop::kEffectParamColor1 || p == prop::kEffectParamOffset;
+        return p == prop::kEffectParamEnabled || isEffectFloatParam(p) || isEffectColorParam(p) ||
+               isEffectVec2Param(p);
     }
     if (prop <= prop::AutoOrient) {
         return true;  // 0-14
@@ -226,13 +242,13 @@ ValueType propertyType(PropId prop) {
     XT_ASSERT(propertyDefined(prop));
     if (isEffectProp(prop)) {
         uint32_t p = rawEffectParamIndex(prop);
-        if (p == prop::kEffectParamColor0 || p == prop::kEffectParamColor1) {
+        if (isEffectColorParam(p)) {
             return ValueType::Color;
         }
-        if (p == prop::kEffectParamOffset) {
+        if (isEffectVec2Param(p)) {
             return ValueType::Vec2;
         }
-        return ValueType::Float;  // kEffectParamEnabled (0) and params[0..7] (1..8).
+        return ValueType::Float;  // kEffectParamEnabled (0) and params[0..15] (1..16).
     }
     switch (prop) {
         case prop::Opacity:
@@ -1425,10 +1441,10 @@ Value getPathProperty(const PaintData& path, PropId prop) {
 /// Type-appropriate default for an effect parameter (18.2's "effectIndex 不存在 -> get 回傳型別
 /// 預設值" rule): 0 for Float, transparent for Color, (0, 0) for the composite Vec2.
 Value defaultEffectParamValue(uint32_t paramIndex) {
-    if (paramIndex == prop::kEffectParamColor0 || paramIndex == prop::kEffectParamColor1) {
+    if (isEffectColorParam(paramIndex)) {
         return Value::ofColor(Color{0, 0, 0, 0});
     }
-    if (paramIndex == prop::kEffectParamOffset) {
+    if (isEffectVec2Param(paramIndex)) {
         return Value::ofVec2(Vec2{0, 0});
     }
     return Value::ofFloat(0);
@@ -1445,17 +1461,15 @@ Value getEffectProperty(const NodeArena& arena, NodeId node, PropId prop) {
     if (paramIndex == prop::kEffectParamEnabled) {
         return Value::ofFloat(e.enabled != 0 ? 1.0f : 0.0f);
     }
-    if (paramIndex >= 1 && paramIndex <= 8) {
-        return Value::ofFloat(e.params[paramIndex - 1]);
+    if (isEffectFloatParam(paramIndex)) {
+        return Value::ofFloat(e.params[paramIndex - prop::kEffectParamFloatBase]);
     }
-    if (paramIndex == prop::kEffectParamColor0) {
-        return Value::ofColor(e.colors[0]);
+    if (isEffectColorParam(paramIndex)) {
+        return Value::ofColor(e.colors[paramIndex - prop::kEffectParamColorBase]);
     }
-    if (paramIndex == prop::kEffectParamColor1) {
-        return Value::ofColor(e.colors[1]);
-    }
-    XT_ASSERT(paramIndex == prop::kEffectParamOffset);
-    return Value::ofVec2(Vec2{e.params[0], e.params[1]});
+    XT_ASSERT(isEffectVec2Param(paramIndex));
+    const uint32_t s = paramIndex - prop::kEffectParamVec2Base;  // 0..14, so s + 1 <= 15
+    return Value::ofVec2(Vec2{e.params[s], e.params[s + 1]});
 }
 
 /// 18.2's "effectIndex 不存在 -> set 忽略" rule. T-211: a no-op in every build (no Debug assert) --
@@ -1477,25 +1491,23 @@ bool setEffectProperty(NodeArena& arena, NodeId node, PropId prop, const Value& 
         e.enabled = v;
         return changed;
     }
-    if (paramIndex >= 1 && paramIndex <= 8) {
-        const bool changed = e.params[paramIndex - 1] != value.f;
-        e.params[paramIndex - 1] = value.f;
+    if (isEffectFloatParam(paramIndex)) {
+        float& slot = e.params[paramIndex - prop::kEffectParamFloatBase];
+        const bool changed = slot != value.f;
+        slot = value.f;
         return changed;
     }
-    if (paramIndex == prop::kEffectParamColor0) {
-        const bool changed = !(e.colors[0] == value.c);
-        e.colors[0] = value.c;
+    if (isEffectColorParam(paramIndex)) {
+        Color& slot = e.colors[paramIndex - prop::kEffectParamColorBase];
+        const bool changed = !(slot == value.c);
+        slot = value.c;
         return changed;
     }
-    if (paramIndex == prop::kEffectParamColor1) {
-        const bool changed = !(e.colors[1] == value.c);
-        e.colors[1] = value.c;
-        return changed;
-    }
-    XT_ASSERT(paramIndex == prop::kEffectParamOffset);
-    const bool changed = e.params[0] != value.v2.x || e.params[1] != value.v2.y;
-    e.params[0] = value.v2.x;
-    e.params[1] = value.v2.y;
+    XT_ASSERT(isEffectVec2Param(paramIndex));
+    const uint32_t s = paramIndex - prop::kEffectParamVec2Base;  // 0..14, so s + 1 <= 15
+    const bool changed = e.params[s] != value.v2.x || e.params[s + 1] != value.v2.y;
+    e.params[s] = value.v2.x;
+    e.params[s + 1] = value.v2.y;
     return changed;
 }
 

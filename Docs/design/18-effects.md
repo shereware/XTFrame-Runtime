@@ -36,16 +36,18 @@ enum class EffectKind : uint8_t {
     None = 0, DropShadow = 1, Glow = 2, Blur = 3, ColorAdjust = 4,
     GradientMask = 5, Shine = 6, Outline = 7, Custom = 128,
 };
-struct EffectInstance {            // 80 bytes（4 + 4 + 32 + 32 + 8），IR 的 IrEffect 與此同佈局
+struct EffectInstance {            // 144 bytes（4 + 4 + 64 + 64 + 8），IR 的 IrEffect 與此同佈局；2026-10-30（T-534，IR 3.0）自 80 bytes（params[8]、colors[2]）擴充
     EffectKind kind;
     uint8_t    enabled;            // paramIndex 0；0 = 略過
     uint8_t    _pad[2];
     AssetId    shader;             // Custom：Shader 資產；否則 kInvalidAsset
-    float      params[8];          // paramIndex 1..8，依 kind 的參數表（18.3）
-    Color      colors[2];          // paramIndex 16/17
+    float      params[16];         // paramIndex 1..16，依 kind 的參數表（18.3）；內建效果只用前 8 格
+    Color      colors[4];          // paramIndex 32..35；內建效果只用前 2 格
     uint32_t   stopOffset, stopCount;   // GradientMask：漸層停靠點；指向所屬池（NodeArena::effectStops / CommandList::stops / IR 區塊的 stops）
 };
 ```
+
+> 2026-10-30 定案（使用者：「給 shader 預留 slot」「還沒 beta，現在改」）：槽位從 8 float + 2 color 擴成 **16 float + 4 color**，給自訂 shader 用（四個 vec2 + 八個純量 + 四色夠放，再多拆成兩個效果）。`IrEffect`、`PackedEffectInstance`（09 的 `.xtcl`）、`gpu::CustomEffectParams`、CE 的 `SXuiEffect` 同步加大；IR major 2 → 3（02 §2.2；43 §43.1 的 beta 承諾尚未啟動）。
 
 節點資料：`NodeCommon` 在 19.3 的 3D 欄位之後新增 `uint32_t effectOffset, effectCount;`，指向 `NodeArena::effects`（`std::vector<EffectInstance>`）；停靠點在 `NodeArena::effectStops`（`std::vector<GradientStop>`）。上限：每節點 16 個效果（編譯錯誤）、每個 GradientMask 16 個停靠點。
 
@@ -57,7 +59,16 @@ struct EffectInstance {            // 80 bytes（4 + 4 + 32 + 32 + 8），IR 的
 PropId effectParam(effectIndex, paramIndex) = 0x8000 | (effectIndex << 8) | paramIndex
 ```
 
-`effectIndex` 0–15、`paramIndex`：`0` = enabled（Float 0/1，離散插值）、`1..8` = `params[0..7]`（Float）、`16/17` = `colors[0/1]`（Color）、`18` = 合成 Vec2 `(params[0], params[1])`（DropShadow 位移的空間貝茲用）。`propertyApplies(kind, prop)` 對 `prop ≥ 0x8000`：節點 `effectCount > effectIndex` 且該效果的 kind 定義了該參數 → true。`getProperty/setProperty` 分派到效果池；Track、transition、override 對這類 PropId 一律照舊。`PropId` 型別維持 `uint16_t`。
+`effectIndex` 0–15、`paramIndex`（**2026-10-30 重編，T-534；舊編碼 1..8／16／17／18 隨 IR 2 一起作廢**）：
+
+| paramIndex | 內容 | 型別 |
+|---|---|---|
+| 0 | enabled | Float 0/1，離散插值 |
+| 1..16 | `params[0..15]` | Float |
+| 32..35 | `colors[0..3]` | Color |
+| 64..78 | 合成 Vec2 `(params[s], params[s+1])`，s = paramIndex − 64 | Vec2；DropShadow 位移 = 64（空間貝茲用）；自訂 shader 的 vec2 參數整體定址（18.13） |
+
+常數：`prop::kEffectParamEnabled = 0`、`kEffectParamFloatBase = 1`、`kEffectParamColorBase = 32`、`kEffectParamVec2Base = 64`（`kEffectParamColor0`、`kEffectParamOffset` 兩個舊名作廢）。`propertyApplies(kind, prop)` 對 `prop ≥ 0x8000`：節點 `effectCount > effectIndex` 且該效果的 kind 定義了該參數 → true。`getProperty/setProperty` 分派到效果池；Track、transition、override 對這類 PropId 一律照舊。`PropId` 型別維持 `uint16_t`。
 
 ## 18.3 內建效果
 
@@ -86,7 +97,7 @@ PropId effectParam(effectIndex, paramIndex) = 0x8000 | (effectIndex << 8) | para
 - **BackdropBlur**（T-130）：唯一會讀取「圖層之下」的效果。`PushEffect` 時後端先把目前目標（根或上一層圖層）在 `boundsHint` 外擴 3σ 的區域複製成 backdrop 緩衝，高斯模糊（σ = radius/2，同 Blur 的上限 64 裝置 px）並套 saturation/brightness（同 ColorAdjust 公式）；圖層內容畫完後，`PopEffect` 合成（premultiplied）：`out = src + backdropBlurred · alpha(src) · (1 − alpha(src))`，也就是先以內容的 alpha 為遮罩鋪上模糊背景、內容再蓋在上面；`out` 再以一般 srcOver 進目標。內容的不透明部分不受影響，半透明部分透出模糊後的背景，全透明部分什麼都不畫（背景原樣保留）。SW：backdrop 從 `Target` 直接讀；GL：`glBlitFramebuffer` 目前 FBO 的區域到暫存紋理。效果序列中 BackdropBlur 必須是第一個（編譯錯誤「backdrop-blur must come first」），且只讀取到 push 當時的內容（同一 stack 內後面的兄弟不算）。髒矩形（23.2）：帶 BackdropBlur 的節點其 `boundsHint` 外擴 3σ 已含在 effectExpand 的讀取範圍；此外只要其下方任何命令變動就必須重畫它——`computeDamage` 把 BackdropBlur 節點的矩形與任何相交的髒矩形聯集（保守）。
 - **Outline**：`sdf` = alpha ≥ 0.5 的有號距離（內負外正，18.6）；outer：`m = 1 − smoothstep(radius, radius + softness, sdf)` 且 `sdf > 0`；inner：`m = 1 − smoothstep(radius, radius + softness, −sdf)` 且 `sdf ≤ 0`；center：`m = 1 − smoothstep(radius/2, radius/2 + softness, |sdf|)`；`line = (color.rgb, m · color.a)`；outer 與 center：`dst = srcOver(line, src)`（線在下）；inner：`dst = srcOver(src, line)`（線在上）。
 
-所有 Float 參數可動畫（線性插值）；`kind`、`shader`、停靠點不可動畫。
+所有 Float 參數可動畫（線性插值）；`kind`、`shader`、停靠點不可動畫。內建效果只使用 `params[0..7]`／`colors[0..1]`；`params[8..15]`／`colors[2..3]` 保留給自訂 shader（18.7）。
 
 ## 18.4 CSS 語法（修訂 05）
 
@@ -161,6 +172,7 @@ struct ShaderRef {                        // 0.3 使用；0.2 定義結構、序
 ```
 // header：每行一個宣告；以 "---" 結束
 name: Ripple
+blurb: 水波紋扭曲                         // 可選（T-532）：效果目錄的一句話；缺則顯示檔名
 param amplitude float 4 [0, 32]          // param <name> <float|vec2|color> <default> [<min>, <max>]
 param speed float 1.5 [0, 10]
 param tint color #ffffff
@@ -202,7 +214,7 @@ float  xtTime;                         // Context 時鐘（秒）
 ```
 
 - `effects`：18.4 的 `effect:` 值。
-- `animations[].param`：`"<堆疊索引>.<參數名>"`，參數名為 18.3 表的名稱（`color` 為 `color0`、第二色 `color1`）；`keyframes` 為 `[offset 0..1, value]`；展開為 `@keyframes <模板名>-<n>` + `animation: <name> <duration>s <easing> [infinite]` 寫入樣式表。
+- `animations[].param`：`"<堆疊索引>.<參數名>"`，參數名為 18.3 表的名稱（`color` 為 `color0`、第二色 `color1`）；`keyframes` 為 `[offset 0..1, value]`，`value` 為數字或（顏色參數）`"#rrggbb[aa]"` 字串（2026-10-30 起，T-535；之前只收數字，顏色動畫被略過）；~~展開為 `@keyframes <模板名>-<n>` + `animation: <name> <duration>s <easing> [infinite]` 寫入樣式表~~ → 18.12「模板動畫」：寫成具名時間軸。
 - 核心不知道模板；編輯器的模板庫（內建 + 專案）於 17 章。
 
 ## 18.9 Lottie 效果映射（修訂 11）
@@ -243,7 +255,7 @@ float  xtTime;                         // Context 時鐘（秒）
 ## 18.12 編輯器藍圖新增（2026-09-27 定案）
 
 - **效果參數定址**：`@timeline` 與 `bind:` 可寫 `effect.<索引或效果名>.<參數名>`（18.3 表的名稱；同名效果多個時用索引），對應既有 PropId 0x8000+；序列本身不可動畫（18.4 規則不變）。
-- **模板動畫**：`.xtfxp` 的 `animations` 套用時改寫成一條具名時間軸 `<id>-fx-<模板名>`（可 `loop`），不再產生匿名 `@keyframes`；模板縮圖以動畫中段渲染。
+- **模板動畫**：`.xtfxp` 的 `animations` 套用時改寫成一條具名時間軸 `<id>-fx-<模板名>`（可 `loop`），不再產生匿名 `@keyframes`；模板縮圖以動畫中段渲染。**T-533 實作細則**：時間軸名 `<id>-fx-<slug(模板名)>`，寫入目前範圍；每個 `animations[i]` 的 `param`（`"<堆疊索引>.<參數名>"`，`color0`→`color`）→ 該元素的一條 `effect.<堆疊索引>.<參數名>` 軌，`keyframes` 的 offset × duration 為絕對時間，`easing` 寫在每個到達幀；`loop` 時模板套用同時寫一條觸發 `on:show="play(<時間軸名>, loop)"`（27.2.3 的播放動作；若元素已有 `on:show` 則不寫並回報）。同名時間軸已存在 → 整條取代（一個 undo 步）。
 - **自訂效果 `.xtfx`**（18.7）分兩步：M23 先做核心子集——**格式與子集以 18.7 為準**（HLSL 子集、`xtMain(XtInput)`、header 參數表、`fallback`、`expand`；自有子集解析器驗證，GL 翻譯為 GLSL 330，SW 一律套 `fallback`，CE 直接包 HLSL body），參數表由檔案宣告、效果面板自動生成 UI；UX（節點式或即時編輯）之後。（本條原寫的 GLSL ES 子集與 `uParams[8]` 作廢，2026-09-27 修訂。）
 - **`mix-blend-mode`**（0.6；**2026-10-14 M32 T-326 改為全部**）：`normal | multiply | screen | overlay | darken | lighten | color-dodge | color-burn | hard-light | soft-light | difference | exclusion | hue | saturation | color | luminosity | add`（`additive` 為 `add` 別名），元素層級，不繼承、不可動畫；走 18.1 的 `PushLayer(opacity, blend)`（blend != Normal 才多一層離屏）；damage 比照 18.3 BackdropBlur 與下方內容聯集；SW 與 GL 後端的 Layer 合成已有全部模式（場景節點既用）。
 - **`clip-path`**（0.6）：`inset() | circle() | polygon()`；繪製走 stencil／mask，命中測試用多邊形（08）。
@@ -255,7 +267,14 @@ float  xtTime;                         // Context 時鐘（秒）
 - **解析**：`Code/Runtime/compile/src/xtfx/{xtfx_parse, hlsl_subset, glsl_emit}.cpp`、`Code/Runtime/compile/include/xt/compile/xtfx.h`；`custom()` 載入資產、寫 ASST kind 2 與 SHDR（02 §2.v）；參數預設值寫進 `EffectInstance`，`custom()` 覆寫並檢查型別。
 - **強制的子集**（18.7 之外的細則）：`%` 只限 int；swizzle 檢查元件範圍且 xyzw 與 rgba 不混用；內建函式逐一檢查參數個數與型別；`for` 計數器必須 `int n = 常數`、條件 `n <|<=|>|>= 常數`、步進 `++/--/+=c/-=c` 非 0、模擬次數 ≤ 64；拒絕 struct、陣列與索引、Texture/Sampler 與 `.Sample`、discard、while/do/switch/break/continue、**三元運算子**、`xtMain` 以外的函式、全域宣告、對參數或 `xtTime` 賦值、迴圈本體改計數器、與 GLSL 保留字或 wrapper 名相撞的識別字。錯誤附整檔行列。~~已知缺口：純量 swizzle（`f.x`）能過檢查但 GLSL 330 不支援~~ → T-208（#206）：純量 swizzle 為附行列的編譯錯誤。
 - **翻譯**：18.7 表逐條有測試；`fmod → xtFmod`（float 與 vecN 重載）、`xtSample → texture(uLayer, xtTexCoord(uv))`（[0,1] 外回 0，FBO 預乘色轉回非預乘）；int 變數包 `float()`、純量在向量語境包 `vecN()`。module 自行宣告 `uTexelSize/uLayerSize`；wrapper 定義 `xtTexCoord`（y 翻轉）並把輸出 clamp 後預乘；`XtInput.uv` 由上往下。
-- **參數槽位與 PropId**：依宣告順序，float 佔 `params[s]`、vec2 佔 `params[s..s+1]`、color 佔 `colors[c]`；上限 8 個 float 分量與 2 個顏色（超過為 header 錯誤）。PropId：float `1+s`、color `16+c`；vec2 只有在槽 0 時可整體定址（PropId 18），其他 vec2 無法用 `effect.*` 定址。`effect.<名>` 取 header `name:`，缺則檔名主幹。
+- **參數槽位與 PropId**：依宣告順序，float 佔 `params[s]`、vec2 佔 `params[s..s+1]`、color 佔 `colors[c]`；上限 8 個 float 分量與 2 個顏色（超過為 header 錯誤）。PropId（**2026-10-30 第二次定案，T-534；取代 T-532 的「不擴充編碼」**）：float 槽 s → `kEffectParamFloatBase + s`（1..16）、color 槽 c → `kEffectParamColorBase + c`（32..35）、vec2 自槽 s 起 → **整體** `kEffectParamVec2Base + s`（64..78，Vec2 軌）或 **分量** `.x` → `1+s`、`.y` → `2+s`（Float 軌）。上限 **16 個 float 分量與 4 個顏色**（超過為 header 錯誤）。
+
+**AE 式的預設（使用者 2026-10-30：「AE 有這種麻煩嗎？」→ 照 AE）**：vec2 參數預設是一個屬性、一個關鍵幀、一條緩動（AE 的 Point 參數）；`.x`／`.y` 是「Separate Dimensions」，要 x、y 不同緩動時手動用。同一條時間軸對同一個 vec2 同時用整體與分量是編譯錯誤「vec2 parameter addressed both whole and by component」（T-532 已做）。效果面板上 vec2 是一列一顆菱形，記錄模式寫一筆 Vec2 鍵（T-535）。
+
+**定址語法**（`@timeline`、`.xtanim.json`、`bind:`；`parseEffectAddress`）：
+- 名字：`effect.<效果>.<參數名>[.x|.y]`（T-532）。值的型別在 **emit 階段**依 header 決定（解析器先存原文 token；T-532 時「只有名字叫 `color` 才當顏色」的檢查作廢）：float／分量 → 一個數字；color → 顏色；vec2 整體 → 兩個數字（`<x> <y>`，可帶 px）。
+- 槽位：`effect.<效果>.p<n>`（float 槽 n，0..15）、`effect.<效果>.c<n>`（color 槽 n，0..3）、`effect.<效果>.v<n>`（自槽 n 起的 vec2 整體，0..14）。型別由前綴決定，不需 header；對內建效果也合法（`effect.shadow.v0` = 位移）。slot 名與 header 參數名撞名時 header 名優先（header 參數名不得是 `p<n>`／`c<n>`／`v<n>` 形式，否則 header 錯誤「reserved parameter name」）。
+- `.x`／`.y` 只對 vec2 合法（float／color → 錯誤「parameter has no components」）。`effect.<名>` 取 header `name:`，缺則檔名主幹。
 - **fallback 限制**：不可為 gradient-mask（停靠點無處存）或 backdrop-blur（必須排堆疊第一）。
 - **ShaderRef**（18.5）尾端新增 `glslOffset, glslLength, namesOffset, namesLength`（names 為 NUL 分隔的參數名，放 `shaderText`，供 GL 當 uniform 名）；`PackedShaderRef` 同步；`CommandList::time` 尾端新增、不序列化；Painter 把 ShaderRef 複製進 CommandList（每資產一份）；Custom 的 boundsHint = `max(expand×s, fallback 自身擴張)`。
 - **GPU／GL**：`EffectProgram::Custom = 13`、`CustomEffectParams`、`GpuDevice::prepareCustomEffect`（預設回 0）接介面尾端；實作在 `Code/Runtime/gpu/src/{frame_builder, gpu_effects}.cpp` 與 `Code/Runtime/gl/src/{gl_effects, gl_device}.cpp`（任務單寫的 `effect_pass.cpp` 不存在）；program 以 GLSL 文字為快取 key；編譯失敗由 `GlRenderer::lastWarning()` 警告一次後套 fallback；含 custom 的區段不進 T-162 快取；時鐘前進時 custom 效果矩形列入 damage（23 §23.2）。~~已知缺口：transition 比較效果序列只比 kind~~ → T-208（#206）：`style_engine.cpp` 的 `applyEffectCascade()` 對 Custom 一併比 `shader`，不同 shader 整段替換（`NodeArena::assignEffects()` 的 `sameSequence` 只管原地覆寫，本就複製 shader，未改）。
@@ -289,3 +308,31 @@ T-544 把 `bind:effect.<效果>.<參數>` 做在第 0 層（`setProperty` 直寫
 - `brightness()`／`hue-rotate()` 維持 §18.3 的定義（不改成 CSS 矩陣）；匯入器對 CSS 寫法發 `degraded: brightness is additive in XTFrame (18 §18.3)`。
 
 **T-572 實作記錄（#544，2026-11-04；偏差主模型核准）**：F24 根因＝SW inset 陰影寫非預乘像素到預乘 src-over（既有黃金圖全黑看不出），改走 `writeTinted()`；F25 圓角 overflow 用既有 `PushClipPath`（09 章 `ClipRectCmd` 無半徑欄位，命令格式不動），方角仍 `PushClipRect`；F32 根因＝`rotateY(0deg)` 的正面不是 3D 圖層、2D 節點從不做背面判定，修法在 `Painter::enterNode` 對空間根子樹內 `backfaceHidden` 的 2D 節點以合成矩陣判定。新黃金圖 5 張（`ui_3d_flip_90` 取 0.48 s 因恰好 90° 全黑），既有零張改變；SW／GL 對照全過。未做（候選）：命中測試仍用方形 padding box、翻到背面的 2D 正面仍可點、無空間根的 flattened 3D 不判背面。
+
+## 18.17 效果段與 shader 編輯體驗（2026-10-30 定案；T-532／T-533；雲端分支原編號 §18.16，主線 2026-11-04 移植時改號，§18.16 已是 T-545；文中「18.13 的 AE 式預設」指 §18.7 的「AE 式的預設」段）
+
+使用者 2026-10-30：shader 參數要能用關鍵幀控制；效果面板「很不好看，像是被什麼關著一樣」。研究結論：核心（18.2 PropId）、編譯器（`@timeline` 的 `effect.<名|索引>.<參數>`，含 `.xtfx` header 名）、GL／CE 後端（`CustomEffectParams` 每幀上傳）都已支援，缺的是編輯器。現況的病根：`PropertyPanel::addEffectsSection()` 把整個 `EffectsPanel`（內層堆疊 `QListWidget` + 參數 `QScrollArea` + 範本 `QListWidget` + 兩顆鈕，各 stretch 1）當一列塞進屬性面板的效果群組框並硬設 360 px 高——捲動區裡的群組框裡再包三個框。本節取代 17 §17.5「效果」列與 46 §46.5 對效果段的描述。
+
+### 18.17.1 效果段 = 堆疊式單位（46 §46.5 的規則真正套到效果）
+
+- 效果鏈裡每個效果一個**單位**：標頭列 + 參數列。沒有內層清單、內層捲動區、固定高度；高度隨內容，捲動交給屬性面板。
+- **標頭列**：啟用勾選 ＋ 目錄圖示（46 §46.13.4 的 `icon`）＋「目錄名 · 摘要」（T-466 的 `effectName`／`effectSummary`）＋ 右端「⋯」選單：上移、下移、複製、重設為預設、另存為範本…、刪除。拖曳標頭列重排（既有 InternalMove 的語意搬到標頭）。摺疊 `▸／▾` 狀態記 `properties/collapsed/effects.<索引>`。
+- **參數列**：走 17 §17.26.2 的三欄格線（碼表欄 | 標籤 | 值），由屬性面板的 `addRow()` 建列，列名用 T-466 的 `kEffectParamRows`。碼表欄放關鍵幀菱形與前後鍵（同 `property_panel_keyframes.cpp` 的三顆鈕），只在記錄開或時間軸選中時出現（同屬性列規則）。
+- **自訂 shader 單位**：標頭顯示 header `name:`（缺則檔名主幹）與檔名（暗色小字）；參數列由 header 生成：float → `DragSpinBox`（範圍來自 header 的 `[min, max]`；不再另放 `QSlider`）、vec2 → 兩欄 X／Y、color → `ColorButton`；之後兩列暗色唯讀：「SW 替代」= fallback 原文、「擴張」= expand。「⋯」多兩項：「在原始碼面板開啟」（`EditorWorkspace::openFile`）、「重新載入」（重讀 header、重建參數列；header 解析失敗時單位顯示錯誤列而非整段消失）。
+- **範本**不在效果段：套用走效果目錄的 `template:<name>`，另存走「⋯」。`EffectsPanel` 的範本清單、Apply／Save 鈕刪除；`templateList()` 介面改為 `templates()`（名稱清單）供目錄使用。
+- **獨立效果停靠窗**（17 §17.5）顯示同一個 widget（不嵌群組框），上方多一列「目標：<圖層名>」。
+
+### 18.17.2 關鍵幀
+
+- 菱形行為同屬性面板：點一下在播放頭加／刪該參數的關鍵幀（`SetKeyframe`），軌道名 `effect.<定址>.<參數名>`；`<定址>` 用效果名（內建：18.4 函式名；自訂：header name），同種效果在鏈上出現兩次以上時改用堆疊索引（與 `planPaste` 的路徑規則一致）。
+- **記錄模式**（`recordKeyframes()` 且狀態 Normal）下改參數：推 `SetKeyframe` 而不是整串 `SetStyle`；vec2 推 `.x`／`.y` 兩筆（一個 macro）；拖曳中仍 `applyLive`。啟用勾選、重排、增刪效果不受記錄影響，永遠寫靜態 `effect:`（序列不可動畫，18.4）。
+- `effect` 這個 StyleProp 本身不加 `kAnimatable`（整串效果不能進 `@timeline`）。
+- **vec2 的整體／分量選擇（2026-10-30，T-535 回報 1 的裁決）**：面板預設寫整體鍵（18.13 的 AE 式預設）。但若選中的時間軸對該元素、該 vec2 **已有任一分量軌**（自訂 `<名>.x`／`.y`，或投影的 `offsetX`／`offsetY`——Lottie 匯入器寫的形式），面板改寫分量鍵（兩筆一個 macro），菱形狀態也看分量軌；反之已有整體軌時一律寫整體。與 AE 一致：一旦 Separate Dimensions 就維持分開。不自動轉換既有軌道。
+- 編輯器讀 `.xts` 的 `@timeline` 時，`effect.` 開頭的屬性名**只有第一段**小寫化，其餘保留大小寫（header name 區分大小寫；`timeline_ops.cpp` 現在把整個名字小寫，是 bug，T-533 修）。
+
+### 18.17.3 加 shader 的入口
+
+- 效果目錄（46 §46.13.4）`custom` 項分成兩項：**自訂 shader…**（開檔）、**新建 shader…**（在 `<assetRoot>/fx/<名>.xtfx` 寫起手檔——`Assets/Fx/starter.xtfx`，問名字、檢查不重名——加進鏈尾並在原始碼面板開啟）。
+- **內建範例** `Assets/Fx/`：`ripple.xtfx`（18.7 範例）、`swirl.xtfx`（T-203 fixture 的 vec2＋for）、`starter.xtfx`（最小：一個 `strength` float，`return xtSample(i.uv)` 乘 tint）。目錄「效果」分類列為 `shader:<檔名主幹>`，名稱取 header `name:`，一句話取 header 新增的可選行 `blurb: <文字>`（18.7 header 多一個可選宣告；缺則顯示檔名）。套用 = 複製到 `<assetRoot>/fx/`（T-273 既有規則）+ 加進鏈尾。隨編輯器安裝（`xt_copy_standard_*` 同款，`<exe dir>/fx`）。
+- 拖 `.xtfx` 到效果段（既有 T-203）保留。
+- **開啟 shader 原始碼**（使用者 2026-10-30：「先用外部」）：自訂單位的「在原始碼面板開啟」改為 `QDesktopServices::openUrl`（系統預設程式），存檔回來按「重新載入」。編輯器內的 shader 原始碼分頁列入之後的 shader UX 單；屆時先檢查其他分支既有的文字編輯器／Markdown 閱讀器能否重用（使用者提示）。

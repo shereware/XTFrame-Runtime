@@ -1,3 +1,4 @@
+#include <cstring>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -7,12 +8,15 @@
 #include "xt/compile/compile.h"
 #include "xt/compile/diagnostic_report.h"
 #include "xt/compile/diagnostics.h"
+#include "xt/compile/ir_writer.h"
 #include "xt/document.h"
 #include "xt/ir.h"
+#include "xt/ir_pod.h"
 #include "xt/types.h"
 
 /// T-568 (Docs/design/27-interaction.md §27.8; Docs/reviews/2026-11-01-midnight-grid-report-triage.md
 /// R13 / R16 / F42 / F43 / F110): binding diagnostics, number text and the floor / ceil converters.
+/// T-585 (03 §3.12.11): converter sub-chains as format() / select() / step() arguments (BCHN).
 
 using namespace xt;
 using namespace xt::compile;
@@ -74,36 +78,187 @@ Ui open(const std::string& xt) {
 
 }  // namespace
 
-TEST_CASE("T-568 F88: a format() argument chain warns and stays literal text") {
+TEST_CASE("T-585 F88: a format() argument chain is a sub-chain, evaluated before format()") {
+    // 03 §3.12.11: the second value compiles into a BCHN sub-chain; the old warning is gone.
     const std::string src =
         page("",
-             "<div id=\"P\" port:target_hp=\"number\" port:dmg_final=\"number\"></div>"
-             "<span id=\"T\" bind:text=\"format('{0} -> {1}', target_hp, dmg_final | scale(-1) | "
+             "<div id=\"P\" port:target_hp=\"number\" port:dmg=\"number\"></div>"
+             "<span id=\"T\" bind:text=\"format('{0} \xE2\x86\x92 {1}', target_hp, dmg | scale(-1) | "
              "offset(target_hp) | round(0))\"></span>");
     const CompileResult r = compileSrc(src);
     REQUIRE(r.ok());
-    const std::vector<Diagnostic> found =
-        withMessage(r, "bind: format() argument chains are not evaluated before IR 3.0");
-    REQUIRE(found.size() == 1);
-    CHECK(found[0].level == Diagnostic::Level::Warning);
-    CHECK(found[0].code == "bind.formatChain");
-    CHECK(found[0].line == 1);
-    CHECK(fromCompileDiagnostic(found[0]).code == "bind.formatChain");
-    // No behaviour change: the chain is still the literal text.
+    for (const Diagnostic& d : r.diagnostics) {
+        CHECK(d.code != "bind.formatChain");
+    }
+    Result<IrView> view = IrView::open(IrBlob{r.ir.data(), r.ir.size()});
+    REQUIRE(view.ok());
+    const BindingChunk& bc = view.value().bindings();
+    REQUIRE(bc.chainsPresent());
+    REQUIRE(bc.chains().size() == 1);
+    CHECK(bc.chains()[0].input == 1u);      // dmg
+    CHECK(bc.chains()[0].stepCount == 3u);  // scale, offset, round
+    REQUIRE(bc.bindings().size() == 1);
+    const IrBinding& b = bc.bindings()[0];
+    REQUIRE(b.sourceCount == 2);  // target_hp (the input), then dmg (the sub-chain's port).
+    CHECK(bc.sources()[b.sourceOffset] == 0u);
+    CHECK(bc.sources()[b.sourceOffset + 1] == 1u);
+    const IrConverterStep& format = bc.steps()[b.stepOffset];
+    CHECK(format.op == static_cast<uint8_t>(ConverterOp::Format));
+    CHECK(converterArgKind(format, 1) == ConverterArg::SubChain);
+    IrWriter again = IrWriter::fromView(view.value());
+    CHECK(again.finish() == r.ir);  // BCHN round-trips.
+
     Ui ui = open(src);
     ui.set("target_hp", 70);
-    CHECK(ui.text("T") == "70 -> dmg_final | scale(-1) | offset(target_hp) | round(0)");
-    // A converter-form format() argument too; plain ports and literals do not warn.
-    CHECK(withMessage(compileSrc(page("",
-                                      "<div port:a=\"number\" port:b=\"number\"></div>"
-                                      "<span bind:text=\"a | format('{0}/{1}', b | round(0))\"></span>")),
-                      "bind: format() argument chains are not evaluated before IR 3.0")
-              .size() == 1);
-    CHECK(withMessage(compileSrc(page("",
-                                      "<div port:a=\"number\" port:b=\"number\"></div>"
-                                      "<span bind:text=\"format('{0} | {1}', a, 'x | y', b)\"></span>")),
-                      "bind: format() argument chains are not evaluated before IR 3.0")
-              .empty());
+    ui.set("dmg", 40);
+    CHECK(ui.text("T") == "70 \xE2\x86\x92 30");
+    ui.set("dmg", 10);  // Only the sub-chain reads dmg: it is a dependency of the binding.
+    CHECK(ui.text("T") == "70 \xE2\x86\x92 60");
+    ui.set("target_hp", 100);
+    CHECK(ui.text("T") == "100 \xE2\x86\x92 90");
+}
+
+TEST_CASE("T-585: sub-chains in format() / select() / step() arguments and the outer input") {
+    const std::string src =
+        page("",
+             "<div port:a=\"number\" port:b=\"number\" port:mode=\"string\"></div>"
+             "<span id=\"F\" bind:text=\"a | format('{0}/{1}', b | scale(2))\"></span>"
+             "<span id=\"O\" bind:text=\"a | format('{0}={1}', scale(2) | round(0))\"></span>"
+             "<span id=\"S\" bind:text=\"mode | select(x: b | offset(1), default: 'none')\"></span>"
+             "<span id=\"P\" bind:text=\"a | step(10: port(b) | scale(3), default: 0)\"></span>"
+             "<span id=\"Q\" bind:text=\"format('{0} | {1}', a, 'x | y')\"></span>");
+    Ui ui = open(src);
+    ui.set("a", 3.4f);
+    ui.set("b", 5);
+    CHECK(ui.text("F") == "3.4/10");
+    CHECK(ui.text("O") == "3.4=7");        // The sub-chain starts from the outer chain's input.
+    CHECK(ui.text("Q") == "3.4 | x | y");  // A quoted argument is still a literal.
+    CHECK(ui.text("P") == "0");
+    ui.set("a", 12);
+    CHECK(ui.text("P") == "15");
+    CHECK(ui.text("O") == "12=24");
+    ui.set("b", 2);  // The sub-chain ports re-evaluate their bindings.
+    CHECK(ui.text("F") == "12/4");
+    CHECK(ui.text("P") == "6");
+    REQUIRE(ui.doc->setPortText(ui.doc->lookupPort("mode"), "x") == Status::kOk);
+    CHECK(ui.text("S") == "3");
+    REQUIRE(ui.doc->setPortText(ui.doc->lookupPort("mode"), "y") == Status::kOk);
+    CHECK(ui.text("S") == "none");
+}
+
+namespace {
+
+/// `a | format('{0}{1}', <level 2>)` ... down to `a | round(0)` at level `depth`.
+std::string nestedChain(int level, int depth) {
+    if (level == depth) {
+        return "a | round(0)";
+    }
+    return "a | format('{0}{1}', " + nestedChain(level + 1, depth) + ")";
+}
+
+std::string nestedPage(int depth) {
+    return page("", "<div port:a=\"number\"></div><span id=\"T\" bind:text=\"format('{0}{1}', a, " +
+                        nestedChain(1, depth) + ")\"></span>");
+}
+
+}  // namespace
+
+TEST_CASE("T-585: converter argument chains nest at most 4 deep") {
+    const CompileResult four = compileSrc(nestedPage(4));
+    REQUIRE(four.ok());
+    Ui ui = open(nestedPage(4));
+    ui.set("a", 1);
+    CHECK(ui.text("T") == "11111");
+    const CompileResult five = compileSrc(nestedPage(5));
+    CHECK(!five.ok());
+    CHECK(withMessage(five, "bind: converter argument chains nest deeper than 4").size() == 1);
+    // tween / delay keep per-step state: not inside a sub-chain.
+    const CompileResult tween = compileSrc(
+        page("", "<div port:a=\"number\"></div><span bind:text=\"format('{0}', a, a | tween(1s))\"></span>"));
+    CHECK(!tween.ok());
+}
+
+TEST_CASE("T-585: IrView::open validates the BCHN pool") {
+    const CompileResult r = compileSrc(nestedPage(2));
+    REQUIRE(r.ok());
+    Result<IrView> view = IrView::open(IrBlob{r.ir.data(), r.ir.size()});
+    REQUIRE(view.ok());
+    const BindingChunk& bc = view.value().bindings();
+    REQUIRE(bc.chains().size() == 2);  // The inner chain first (index 0), named by chain 1.
+    auto reopen = [&](auto mutate) {
+        BindingBuilder bb;
+        bb.bindings.assign(bc.bindings().begin(), bc.bindings().end());
+        bb.sources.assign(bc.sources().begin(), bc.sources().end());
+        bb.steps.assign(bc.steps().begin(), bc.steps().end());
+        bb.chains.assign(bc.chains().begin(), bc.chains().end());
+        bb.chainSteps.assign(bc.chainSteps().begin(), bc.chainSteps().end());
+        mutate(bb);
+        IrWriter w = IrWriter::fromView(view.value());
+        w.setBindings(bb);
+        const std::vector<uint8_t> blob = w.finish();
+        return IrView::open(IrBlob{blob.data(), blob.size()}).ok();
+    };
+    // Points `bb`'s SubChain argument in chain `chain` at `target`.
+    auto retarget = [](BindingBuilder& bb, size_t chain, uint32_t target) {
+        const IrSubChain& c = bb.chains[chain];
+        for (uint32_t s = c.stepOffset; s < c.stepOffset + c.stepCount; ++s) {
+            for (uint32_t k = 0; k < 4; ++k) {
+                if (converterArgKind(bb.chainSteps[s], k) == ConverterArg::SubChain) {
+                    std::memcpy(&bb.chainSteps[s].args[k], &target, sizeof(target));
+                }
+            }
+        }
+    };
+    CHECK(reopen([](BindingBuilder&) {}));
+    CHECK(!reopen([&](BindingBuilder& bb) { retarget(bb, 1, 1); }));  // Self-reference.
+    CHECK(!reopen([&](BindingBuilder& bb) { retarget(bb, 1, 7); }));  // Past the pool.
+    CHECK(!reopen([](BindingBuilder& bb) { bb.chains[0].input = 99; }));
+    CHECK(!reopen([](BindingBuilder& bb) { bb.chains[0].stepCount = 99; }));
+    CHECK(!reopen([&](BindingBuilder& bb) {
+        // A cycle 0 -> 1 -> 0: chain 0 gets a SubChain argument naming chain 1.
+        IrConverterStep& step = bb.chainSteps[bb.chains[0].stepOffset];
+        const uint32_t one = 1;
+        step.argCount = 1;
+        step.argKinds = static_cast<uint16_t>(ConverterArg::SubChain);
+        std::memcpy(&step.args[0], &one, sizeof(one));
+    }));
+    CHECK(!reopen([](BindingBuilder& bb) {
+        // A BIND step naming a chain without a BCHN chunk.
+        bb.chains.clear();
+        bb.chainSteps.clear();
+    }));
+    // Depth 5 built by hand (the compiler refuses it): chains 0..4, each naming the previous one.
+    CHECK(!reopen([](BindingBuilder& bb) {
+        const IrSubChain inner = bb.chains[0];
+        const IrSubChain outer = bb.chains[1];
+        const std::vector<IrConverterStep> outerSteps(
+            bb.chainSteps.begin() + outer.stepOffset,
+            bb.chainSteps.begin() + outer.stepOffset + outer.stepCount);
+        bb.chains.assign(1, inner);
+        for (uint32_t level = 1; level < 5; ++level) {
+            IrSubChain c = outer;
+            c.stepOffset = static_cast<uint32_t>(bb.chainSteps.size());
+            for (IrConverterStep step : outerSteps) {
+                for (uint32_t k = 0; k < 4; ++k) {
+                    if (converterArgKind(step, k) == ConverterArg::SubChain) {
+                        const uint32_t prev = level - 1;
+                        std::memcpy(&step.args[k], &prev, sizeof(prev));
+                    }
+                }
+                bb.chainSteps.push_back(step);
+            }
+            bb.chains.push_back(c);
+        }
+        // The binding's own chain names the outermost (index 4).
+        for (IrConverterStep& step : bb.steps) {
+            for (uint32_t k = 0; k < 4; ++k) {
+                if (converterArgKind(step, k) == ConverterArg::SubChain) {
+                    const uint32_t top = 4;
+                    std::memcpy(&step.args[k], &top, sizeof(top));
+                }
+            }
+        }
+    }));
 }
 
 TEST_CASE("T-573: a binding that reads an out port warns (bind.outPortSource)") {
@@ -135,24 +290,94 @@ TEST_CASE("T-573: a binding that reads an out port warns (bind.outPortSource)") 
     CHECK(ui.text("T") == "42");
 }
 
-TEST_CASE("T-568 F104: a calc() value bound to a length property warns") {
+TEST_CASE("T-586 F104: a static calc() bound to a length property is a CALC program") {
     const std::string body =
         "<div id=\"P\" port:step=\"number\"></div><div id=\"M\" style=\"left: 600px\" "
         "bind:left=\"step | step(1: 'calc(50% - 40px)', 2: 'calc(100% - 280px)', 3: 1000px)\">"
         "</div>";
+    const std::string src = page("#M { position: absolute; width: 10px; height: 10px; }", body);
+    const CompileResult r = compileSrc(src);
+    REQUIRE(r.ok());
+    CHECK(withMessage(r, "bind: calc() is not evaluated at runtime (05 §5.4)").empty());
+    // Both values are Calc arguments into the document's CALC pool.
+    Result<IrView> view = IrView::open(IrBlob{r.ir.data(), r.ir.size()});
+    REQUIRE(view.ok());
+    int calcArgs = 0;
+    for (const IrConverterStep& step : view.value().bindings().steps()) {
+        for (uint32_t i = 0; i < 4; ++i) {
+            if (converterArgKind(step, i) == ConverterArg::Calc) {
+                uint32_t index = 0;
+                std::memcpy(&index, &step.args[i], sizeof(index));
+                CHECK(index < view.value().calcs().calcs().size());
+                ++calcArgs;
+            }
+        }
+    }
+    CHECK(calcArgs == 2);
+    // Each value applies; a calc() re-evaluates when the viewport changes (layout reruns it).
+    Ui ui = open(src);
+    auto left = [&ui]() {
+        ui.doc->update(ui.clock);
+        return ui.doc->arena().element(ui.el("M").node).box.x;
+    };
+    ui.set("step", 1);
+    CHECK(left() == doctest::Approx(400 * 0.5f - 40));
+    ui.doc->setViewport(Rect{0, 0, 800, 200});
+    CHECK(left() == doctest::Approx(800 * 0.5f - 40));
+    ui.set("step", 2);
+    CHECK(left() == doctest::Approx(800 - 280));
+    ui.doc->setViewport(Rect{0, 0, 600, 200});
+    CHECK(left() == doctest::Approx(600 - 280));
+    ui.set("step", 3);
+    CHECK(left() == doctest::Approx(1000));
+    ui.set("step", 1);
+    CHECK(left() == doctest::Approx(600 * 0.5f - 40));
+}
+
+TEST_CASE("T-586: a calc() with a port in it still warns bind.calcNotEvaluated") {
+    const std::string body =
+        "<div id=\"P\" port:x=\"number\"></div><div id=\"M\" "
+        "bind:left=\"x | select(1: 'calc(port(x) + 10px)', default: 'calc(10px + 5%)')\"></div>";
     const CompileResult r = compileSrc(page("#M { position: absolute; }", body));
     REQUIRE(r.ok());
     const std::vector<Diagnostic> found =
-        withMessage(r, "bind: calc() is not evaluated at runtime before IR 3.0 (05 §5.4)");
+        withMessage(r, "bind: calc() is not evaluated at runtime (05 §5.4)");
     REQUIRE(found.size() == 1);
     CHECK(found[0].level == Diagnostic::Level::Warning);
     CHECK(found[0].code == "bind.calcNotEvaluated");
-    // Not on a text binding.
+    // Static calc() only: no warning; not on a text binding either.
+    CHECK(withMessage(compileSrc(page("#M { position: absolute; }",
+                                      "<div port:a=\"number\"></div><div id=\"M\" bind:width=\"a | "
+                                      "select(1: calc(10px + 5%), default: 'calc(100% - 1em)')\"></div>")),
+                      "bind: calc() is not evaluated at runtime (05 §5.4)")
+              .empty());
     CHECK(withMessage(compileSrc(page("",
                                       "<div port:a=\"number\"></div><span bind:text=\"a | "
                                       "select(1: 'calc(1px)', default: 'x')\"></span>")),
-                      "bind: calc() is not evaluated at runtime before IR 3.0 (05 §5.4)")
+                      "bind: calc() is not evaluated at runtime (05 §5.4)")
               .empty());
+}
+
+TEST_CASE("T-586: IR validation rejects a Calc converter argument outside the CALC pool") {
+    const CompileResult r = compileSrc(page("",
+                                            "<div port:a=\"number\"></div><div id=\"M\" bind:width=\"a | "
+                                            "select(1: 'calc(10px + 5%)', default: 4px)\"></div>"));
+    REQUIRE(r.ok());
+    std::vector<uint8_t> bytes = r.ir;
+    Result<IrView> view = IrView::open(IrBlob{bytes.data(), bytes.size()});
+    REQUIRE(view.ok());
+    const uint32_t calcCount = static_cast<uint32_t>(view.value().calcs().calcs().size());
+    size_t offset = bytes.size();
+    for (const IrConverterStep& step : view.value().bindings().steps()) {
+        for (uint32_t i = 0; i < 4; ++i) {
+            if (converterArgKind(step, i) == ConverterArg::Calc) {
+                offset = static_cast<size_t>(reinterpret_cast<const uint8_t*>(&step.args[i]) - bytes.data());
+            }
+        }
+    }
+    REQUIRE(offset < bytes.size());
+    std::memcpy(bytes.data() + offset, &calcCount, sizeof(calcCount));
+    CHECK(IrView::open(IrBlob{bytes.data(), bytes.size()}).status() == Status::kInvalidIr);
 }
 
 TEST_CASE("T-568 F107: a bare argument that is both an enum value and a port warns") {

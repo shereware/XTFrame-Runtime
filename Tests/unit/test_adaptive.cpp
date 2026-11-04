@@ -837,7 +837,7 @@ TEST_CASE("T-335: the IR carries easingPoints[], minor 6, and round-trips") {
     IrHeader header{};
     std::memcpy(&header, ir.data(), sizeof header);
     CHECK(header.minor == kIrFormatMinor);
-    CHECK(kIrFormatMinor >= 7);  // T-405: 8.
+    CHECK((kIrFormatMajor >= 3 || kIrFormatMinor >= 7));  // T-405: 2.8; T-534: 3.0 has every 2.x tail.
     Result<IrView> view = IrView::open(IrBlob{ir.data(), ir.size()}, IrReadOptions{});
     REQUIRE(view.ok());
     const StyleChunk& style = view.value().style();

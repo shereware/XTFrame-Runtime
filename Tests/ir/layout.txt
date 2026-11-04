@@ -1,7 +1,7 @@
 limit kBindTargetLast 14
 limit kConverterOpLast 43
 limit kIfTermLast 6
-limit kIrFormatMinor 9
+limit kIrFormatMinor 0
 limit kIrSelCondLast 17
 limit kPortTypeLast 12
 limit kSetSourceLast 10
@@ -26,7 +26,7 @@ struct IrDecl 24
 struct IrDocElement 48
 struct IrDocText 8
 struct IrEasing 20
-struct IrEffect 80
+struct IrEffect 144
 struct IrFontFace 12
 struct IrFontFallback 12
 struct IrGradient 32
@@ -57,11 +57,12 @@ struct IrRule 20
 struct IrSceneNode 96
 struct IrSelPart 16
 struct IrShaderParam 32
-struct IrShaderRef 112
+struct IrShaderRef 176
 struct IrShapeData 188
 struct IrSkinData 20
 struct IrSourceEntry 12
 struct IrStateGroup 8
+struct IrSubChain 12
 struct IrSymbolPath 8
 struct IrTendon 28
 struct IrTextInline 16

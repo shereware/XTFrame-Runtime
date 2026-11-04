@@ -1493,6 +1493,9 @@ Status Document::applyShow() {
         std::function<void(bool)> listener = m_visibilityListener;
         listener(true);
     }
+    if (wasHidden && !m_unloading) {
+        m_triggers->notifySurface(true);  // T-601: with OnShown.
+    }
     fireSurfaceEvent(true);  // T-349: `<body>` and its direct children.
     applyAutofocus();        // T-194 (27.7).
     return Status::kOk;
@@ -1575,6 +1578,9 @@ void Document::finishSurfaceHide() {
     if (m_visibilityListener && !m_unloading) {  // T-260a: no OnHidden when unloading.
         std::function<void(bool)> listener = m_visibilityListener;
         listener(false);
+    }
+    if (!m_unloading) {
+        m_triggers->notifySurface(false);  // T-601: with OnHidden.
     }
 }
 
@@ -1692,6 +1698,36 @@ void Document::setHostEventListener(HostEventListener listener) { m_hostEventLis
 
 void Document::setVisibilityListener(std::function<void(bool visible)> listener) {
     m_visibilityListener = std::move(listener);
+}
+
+uint32_t Document::addSurfaceListener(std::function<void(bool shown)> listener) {
+    return m_triggers->addSurfaceListener(std::move(listener));
+}
+
+void Document::removeSurfaceListener(uint32_t id) { m_triggers->removeSurfaceListener(id); }
+
+uint32_t TriggerRuntime::addSurfaceListener(std::function<void(bool shown)> listener) {
+    const uint32_t id = m_nextSurfaceListener++;
+    m_surfaceListeners.emplace_back(id, std::move(listener));
+    return id;
+}
+
+void TriggerRuntime::removeSurfaceListener(uint32_t id) {
+    std::erase_if(m_surfaceListeners, [id](const auto& entry) { return entry.first == id; });
+}
+
+void TriggerRuntime::notifySurface(bool shown) {
+    if (m_surfaceListeners.empty()) {
+        return;
+    }
+    // A copy: a listener may add or remove listeners (a flow load / unload) while being called.
+    const std::vector<std::pair<uint32_t, std::function<void(bool)>>> listeners = m_surfaceListeners;
+    for (const auto& entry : listeners) {
+        if (m_doc.m_unloading) {
+            break;  // T-260a: an unloading Document makes no further callback.
+        }
+        entry.second(shown);
+    }
 }
 
 }  // namespace xt

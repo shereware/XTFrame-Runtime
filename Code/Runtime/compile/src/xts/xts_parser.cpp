@@ -31,10 +31,10 @@ bool parseAndExpandDecl(const PropInfo* info, const std::vector<Token>& tokens, 
 bool parseEasingValue(const std::vector<Token>& tokens, Easing& out, bool* stepsClamped = nullptr,
                       std::vector<EasingPoint>* easingPoints = nullptr);
 
-// Implemented in xts_values.cpp (T-172): an `@timeline` time point (s/ms, bare 0) and an
-// `effect.<effect>.<param>` value. Both return false on failure without reporting.
+// Implemented in xts_values.cpp (T-172): an `@timeline` time point (s/ms, bare 0). Returns false on
+// failure without reporting. (T-534: an `effect.<effect>.<param>` value is kept as text and parsed by
+// the emitter once the parameter's type is known, parseEffectParamText().)
 bool parseTimelineTime(const Token& tok, float& seconds);
-bool parseEffectParamValue(const std::vector<Token>& tokens, bool isColor, StyleValue& out);
 // Implemented in xts_values.cpp (T-170, 05.9.2): whether a value holds `var(`; the tokens
 // re-serialized as `.xts` text; and a declaration whose value holds `var()` -- kept as a VarRef
 // when it is a plain longhand's whole value, else deferred as a VarSubst.
@@ -331,7 +331,12 @@ class Parser {
 public:
     Parser(std::string_view text, std::string_view fileName, int lineOffset, DiagnosticSink& sink,
            std::string_view sheetDir = {})
-        : m_lexer(text), m_fileName(fileName), m_sheetDir(sheetDir), m_lineOffset(lineOffset), m_sink(sink) {
+        : m_text(text),
+          m_lexer(text),
+          m_fileName(fileName),
+          m_sheetDir(sheetDir),
+          m_lineOffset(lineOffset),
+          m_sink(sink) {
         advance();
     }
 
@@ -368,6 +373,8 @@ public:
     }
 
 private:
+    /// T-534: the text being parsed (an `effect.<fx>.<param>` value is kept as its source text).
+    std::string_view m_text;
     Token m_cur;
     Lexer m_lexer;
     std::string m_fileName;
@@ -2195,6 +2202,7 @@ private:
                 valueToks.push_back(m_cur);
                 advance();
             }
+            const Token valueEnd = m_cur;  // T-534: where an effect value's source text ends.
             if (m_cur.kind == TokenKind::Semicolon) {
                 advance();
             } else if (m_cur.kind == TokenKind::End && insideBraces) {
@@ -2205,10 +2213,24 @@ private:
             int line = reportLine(nameTok.line);
             if (isEffect) {
                 fx.line = line;
-                if (!parseEffectParamValue(valueToks, fx.param == "color", fx.value)) {
+                // T-534 (18.13): the value's type follows the parameter (the `.xtfx` header or the
+                // slot prefix), known only at emit time: keep the source text. Only an empty value
+                // or a lexer error is rejected here.
+                bool lexOk = !valueToks.empty();
+                for (const Token& t : valueToks) {
+                    lexOk = lexOk && t.kind != TokenKind::Unknown;
+                }
+                if (!lexOk) {
                     error(nameTok, "invalid value for \"effect." + fx.effect + "." + fx.param + "\"");
                     continue;
                 }
+                const size_t from = textOffset(valueToks.front().line, valueToks.front().col);
+                const size_t to = textOffset(valueEnd.line, valueEnd.col);
+                std::string_view raw = m_text.substr(from, to > from ? to - from : 0);
+                while (!raw.empty() && std::isspace(static_cast<unsigned char>(raw.back()))) {
+                    raw.remove_suffix(1);
+                }
+                fx.valueText = std::string(raw);
                 key.effectDecls.push_back(std::move(fx));
                 continue;
             }
@@ -2249,7 +2271,21 @@ private:
         }
     }
 
-    // `.<effect>.<param>` after `effect` (18.12); `<effect>` is an effect name or a stack index.
+    // T-534: the byte offset in m_text of a token's 1-based (line, col) (the lexer counts bytes).
+    size_t textOffset(int line, int col) const {
+        size_t pos = 0;
+        for (int l = 1; l < line; ++l) {
+            const size_t nl = m_text.find('\n', pos);
+            if (nl == std::string_view::npos) {
+                return m_text.size();
+            }
+            pos = nl + 1;
+        }
+        return std::min(m_text.size(), pos + static_cast<size_t>(col > 0 ? col - 1 : 0));
+    }
+
+    // `.<effect>.<param>[.x|.y]` after `effect` (18.12, T-532); `<effect>` is an effect name or a
+    // stack index.
     // The lexer reads `.3` as the number 0.3, so an index is recovered from its digit count (the
     // token's column span up to the following '.').
     bool parseEffectAddress(TimelineEffectDecl& fx) {
@@ -2285,8 +2321,23 @@ private:
             error(m_cur, "expected effect.<name|index>.<param>");
             return false;
         }
+        Token paramTok = m_cur;
         fx.param = m_cur.text;
         advance();
+        // T-532 (18.13): an optional `.x` / `.y` component right after the parameter name (same
+        // line, no whitespace), for a custom effect's vec2 parameter.
+        if (m_cur.kind == TokenKind::Dot && m_cur.line == paramTok.line &&
+            m_cur.col == paramTok.col + static_cast<int>(paramTok.text.size())) {
+            Token dotTok = m_cur;
+            advance();
+            if (m_cur.kind != TokenKind::Ident || m_cur.line != dotTok.line || m_cur.col != dotTok.col + 1 ||
+                (m_cur.text != "x" && m_cur.text != "y")) {
+                error(m_cur.kind == TokenKind::Ident ? m_cur : dotTok, "expected .x or .y");
+                return false;
+            }
+            fx.param += "." + m_cur.text;
+            advance();
+        }
         return true;
     }
 

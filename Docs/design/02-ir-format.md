@@ -8,16 +8,16 @@
 - 所有陣列以「count (uint32) + 元素」形式存放，元素緊密排列，結構欄位無隱含填充（規格中明確標出 `_pad`）。
 - 讀取器對每個偏移與 count 做邊界檢查；失敗回傳 `Status::kInvalidIr`。
 - 讀取器**不修改**IR 記憶體；執行時資料另外複製到 NodeArena/Timeline。字串表則直接借用。
-- 版本：`major` 不同拒絕載入；`minor` 較新則忽略未知區塊型別。**1.x 檔案不再支援**（`major` 必須為 2，否則 `IrView::open` 回傳 `kInvalidIr`；T-42c 起）。
-- 相容規則（2.8 起一律，43 §43.5）：讀較舊 `minor` 時**缺少的尾段視為空**（陣列為 0 筆、選用欄位取預設值）；讀較新 `minor` 時**未知區塊型別忽略**，已知區塊的新尾段依該區塊的規定（PORT `nested[]` 由 minor ≤ 7 讀取器略過、META `behavior` 之後的位元組忽略），未知的列舉碼（觸發事件、動作、StyleProp）不是錯誤（觸發不發生、動作略過、宣告忽略）。`ir_pod.h` 的任何版面或列舉變更 → `kIrFormatMinor` +1、本章同一提交（含 §2.12 表）、`Tests/ir/fixtures/v2.<minor>.xtir` 加一個凍結檔；`Tools/Scripts/check_ir_layout.sh` 檢查（CI）。
+- 版本：`major` 不同拒絕載入；`minor` 較新則忽略未知區塊型別。**1.x 與 2.x 檔案不再支援**（`major` 必須為 3，否則 `IrView::open` 回傳 `kInvalidIr`；1.x 自 T-42c、2.x 自 T-534 2026-10-30 起——beta 承諾（43 §43.1）尚未啟動，`.xtir` 為衍生物，由來源重編即可；`Tests/ir/fixtures/v2.*.xtir` 改為「被明確拒收」的測試）。
+- 相容規則（2.8 起一律，43 §43.5）：讀較舊 `minor` 時**缺少的尾段視為空**（陣列為 0 筆、選用欄位取預設值）；讀較新 `minor` 時**未知區塊型別忽略**，已知區塊的新尾段依該區塊的規定（PORT `nested[]` 由 minor ≤ 7 讀取器略過、META `behavior` 之後的位元組忽略），未知的列舉碼（觸發事件、動作、StyleProp）不是錯誤（觸發不發生、動作略過、宣告忽略）。`ir_pod.h` 的任何版面或列舉變更 → `kIrFormatMinor` +1、本章同一提交（含 §2.12 表）、`Tests/ir/fixtures/v<major>.<minor>.xtir` 加一個凍結檔；`Tools/Scripts/check_ir_layout.sh` 檢查（CI）。
 
 ## 2.2 標頭（16 位元組）
 
 | 偏移 | 型別 | 內容 |
 |---|---|---|
 | 0 | char[4] | `"XTIR"` |
-| 4 | uint16 | major = 2 |
-| 6 | uint16 | minor = **9**（T-411：`SetSource` 追加 Port 9、Item 10，Number／String 的 set() 值可帶轉換器步驟（§2.v.1）；版面不變）；歷史：0 無 gradientPool → 1 gradientPool（T-115）→ 2 STYL `floatPool[]`（T-218）→ 3 SCEN `modifiers[]`／`shapes[]`（T-225）→ 4 筆畫漸細欄位（T-233）→ 5 綁定與變形尾段（T-243）→ 6 STYL `easingPoints[]` + `LengthUnit::Rem = 14`（T-335）→ 7 PORT `defaults[]`（T-358）→ 8 T-380～T-399 的欄位與列舉正式化（版面不變）、`hit-slop` 改寫為 StyleProp 277～280 的 Length 宣告（§2.6.2）、`META` 選用的 `behavior` 尾段（§2.10）（T-405，43 §43.5）→ 9。讀取端對較舊 minor 以「缺少的尾段視為空」處理（`IrView::formatMinor()` 供需要依 minor 分支的讀取點，目前只有 §2.6.2 的 `hit-slop`）；較新 minor 依 §2.1 規則忽略未知區塊與尾段，但含 `Rem` 的宣告會被 minor ≤ 5 的驗證器拒收，含 `SetSource` 9／10 的 Set 動作會被 minor ≤ 8 的驗證器拒收 |
+| 4 | uint16 | major = **3**（T-534，2026-10-30：`IrEffect` 80 → 144 bytes、效果參數 PropId 重編（18 §18.2）；2.x 檔拒收）；歷史：2（T-42c）|
+| 6 | uint16 | minor = **0**（3.0，T-534；2.x 的 minor 歷史保留如下供考古）。2.x：minor = **9**（T-411：`SetSource` 追加 Port 9、Item 10，Number／String 的 set() 值可帶轉換器步驟（§2.v.1）；版面不變）；歷史：0 無 gradientPool → 1 gradientPool（T-115）→ 2 STYL `floatPool[]`（T-218）→ 3 SCEN `modifiers[]`／`shapes[]`（T-225）→ 4 筆畫漸細欄位（T-233）→ 5 綁定與變形尾段（T-243）→ 6 STYL `easingPoints[]` + `LengthUnit::Rem = 14`（T-335）→ 7 PORT `defaults[]`（T-358）→ 8 T-380～T-399 的欄位與列舉正式化（版面不變）、`hit-slop` 改寫為 StyleProp 277～280 的 Length 宣告（§2.6.2）、`META` 選用的 `behavior` 尾段（§2.10）（T-405，43 §43.5）→ 9。讀取端對較舊 minor 以「缺少的尾段視為空」處理（`IrView::formatMinor()` 供需要依 minor 分支的讀取點，目前只有 §2.6.2 的 `hit-slop`）；較新 minor 依 §2.1 規則忽略未知區塊與尾段，但含 `Rem` 的宣告會被 minor ≤ 5 的驗證器拒收，含 `SetSource` 9／10 的 Set 動作會被 minor ≤ 8 的驗證器拒收 |
 | 8 | uint32 | 區塊數 |
 | 12 | uint32 | 檔案總長度（含標頭） |
 
@@ -159,13 +159,13 @@ IrFontFace (12 bytes):
   u8  italic
   u8  _pad
 
-IrEffect (80 bytes，T-42c 起；佈局同 18-effects.md §18.2 EffectInstance，STYL/SCEN 共用此型別):
-  u8  kind               // EffectKind，合法範圍 {0..7, 128}
+IrEffect (144 bytes，3.0 起（T-534）；2.x 為 80 bytes（params[8]、colors[2]）；佈局同 18-effects.md §18.2 EffectInstance，STYL/SCEN 共用此型別):
+  u8  kind               // EffectKind，合法範圍 {0..8, 128}
   u8  enabled             // 0 或 1
   u8  _pad[2]
   u32 shader              // AssetId（ASST kind = Shader）或 0xFFFFFFFF
-  f32 params[8]
-  Color colors[2]         // 32 bytes
+  f32 params[16]
+  Color colors[4]         // 64 bytes
   u32 stopOffset, stopCount  // 指向所屬 chunk 的 stop pool（STYL 為 effectStops[]，SCEN 為 stopPool[]）
 ```
 
@@ -475,6 +475,10 @@ IrTriggerAction (20 bytes):
 
 `IrPortField[m]` 之後追加 `u32 d, IrPortDefault{u32 port, u8 type, u8 pad[3], u8 value[16]}[d]`（24 B；`value` 依 `type`：Number f32、Bool u8、Color 4 bytes 依序 R,G,B,A、String u32 StringId、Vec2 2×f32、Vec3 3×f32、Enum u32 名 StringId、**List** u32 StringId（JSON 陣列文字，T-383）、**Struct** u32 StringId（JSON 物件文字，T-385）；其餘型別（Entity、Texture、Event）不可有預設值）。List／Struct 的文字在載入時以 `Document::setPortText()` 同一套規則解析；`value` 其餘位元組為 0。只列有預設值的埠；`type` 必須等於該埠的 `IrPort.type`；舊讀取器把缺少的尾段視為空。minor 7（List／Struct 文字於 minor 7 期間加入，2.8 正式化）。
 
+### 2.s.4 `BCHN` 子鏈池（IR 3.0；T-585 #559，2026-11-04；03 §3.12.11）
+
+選用區塊，只在有綁定用到子鏈時寫出，位置緊接 BIND 之後（讀取時 DOCT 之後任意位置、至多一次）。版面：`u32 chainCount`、`IrSubChain chains[chainCount]`、`u32 stepCount`、`IrConverterStep steps[stepCount]`（步驟版面同 BIND 的鏈）。`IrSubChain`（12 B）：`u32 input`（PORT 索引，或 `kSubChainOuterInput = 0xFFFFFFFF` = 外層鏈的起始輸入）、`u32 stepOffset`、`u32 stepCount`（指向本區塊自己的 steps）。`ConverterArg::SubChain = 10`（索引以位元存在 float 槽；`Calc = 11` 為 T-586）；`kMaxSubChainDepth = 4`。驗證（`validSubChains`）：SubChain 參數只准出現在 BIND 與 BCHN 的步驟（TRIG 條件內無效）；索引在池內、input 合法、步驟範圍在池內、不得自我引用、巢狀高度 ≤ 4（記憶化、遞迴有界，長環也拒）。編譯器：`format()`（頭或轉換器形）與 `select()`／`step()` 的未加引號轉換器鏈編成子鏈；子鏈以自己的 port 起頭，或第一段是轉換器時以外層鏈的起始輸入起頭；子鏈的 port 併入綁定的 `sources[]`；深度 > 4 → `bind: converter argument chains nest deeper than 4`；子鏈內不准 `tween`／`delay`（有逐步狀態）；`bind.formatChain` 警告移除。`lookup()` 是 flow 節點不是綁定轉換器，不在此列；觸發 `set()` 的值維持字面文字。執行期：`argValue` 先經 `subChainValue` 求子鏈值再當字面參數（`EvalCtx::input` 帶起始輸入）。IR 版本不變（3.0 內容）。
+
 ### 2.s.3 PORT／BIND 完整版面（2.8 正式化，T-405）
 
 PORT payload（尾段依序選用；缺 = 空）：
@@ -534,7 +538,7 @@ flags：`kBindAfterLayout` 1、`kBindNoPrimary` 2、`kBindRepeatItem` 4。`Conve
 
 ```
 uint32 shaderCount; IrShaderRef shaders[]   // 112 B: asset, sourceOffset/Length, glslOffset/Length,
-                                            //   paramOffset/Count, float expandPx, IrEffect fallback (80 B)
+                                            //   paramOffset/Count, float expandPx, IrEffect fallback (144 B；3.0 起，IrShaderRef 共 176 B)
 uint32 paramCount;  IrShaderParam params[]  // 32 B: name (StringId), u8 type (0 float / 1 vec2 / 2 color), pad[3],
                                             //   float defaultValue[4], minValue, maxValue (無範圍時皆 0)
 uint32 textLength;  uint8 text[]            // UTF-8；source 與 glsl 都是它的切片
@@ -589,7 +593,7 @@ uint32 textLength;  uint8 text[]            // UTF-8；source 與 glsl 都是它
 | limit | `kBindTargetLast` | 14 |
 | limit | `kConverterOpLast` | 43 |
 | limit | `kIfTermLast` | 6 |
-| limit | `kIrFormatMinor` | 9 |
+| limit | `kIrFormatMinor` | 0 |
 | limit | `kIrSelCondLast` | 17 |
 | limit | `kPortTypeLast` | 12 |
 | limit | `kSetSourceLast` | 10 |
@@ -614,7 +618,7 @@ uint32 textLength;  uint8 text[]            // UTF-8；source 與 glsl 都是它
 | struct | `IrDocElement` | 48 |
 | struct | `IrDocText` | 8 |
 | struct | `IrEasing` | 20 |
-| struct | `IrEffect` | 80 |
+| struct | `IrEffect` | 144 |
 | struct | `IrFontFace` | 12 |
 | struct | `IrFontFallback` | 12 |
 | struct | `IrGradient` | 32 |
@@ -645,7 +649,8 @@ uint32 textLength;  uint8 text[]            // UTF-8；source 與 glsl 都是它
 | struct | `IrSceneNode` | 96 |
 | struct | `IrSelPart` | 16 |
 | struct | `IrShaderParam` | 32 |
-| struct | `IrShaderRef` | 112 |
+| struct | `IrShaderRef` | 176 |
+| struct | `IrSubChain` | 12 |
 | struct | `IrShapeData` | 188 |
 | struct | `IrSkinData` | 20 |
 | struct | `IrSourceEntry` | 12 |
@@ -666,3 +671,5 @@ uint32 textLength;  uint8 text[]            // UTF-8；source 與 glsl 都是它
 | struct | `IrTriggerTable` | 12 |
 | struct | `IrVar` | 24 |
 <!-- ir-layout:end -->
+
+**IR 3.0 落地記錄（#553，2026-11-04）**：`kIrFormatMajor = 3`、`kIrFormatMinor = 0`；`IrEffect` 144 B、`IrShaderRef` 176 B（`layout.txt`）；2.x 檔 `IrView::open` 回 `kInvalidIr`；bundle `manifest.json` 的 `irMajor` 由常數帶出（3）；語料庫 4 專案 `fileHash` 重產、截圖逐位元組相同。T-585（`BCHN` 子鏈池）與 T-586（綁定 Calc 池）在 3.0 內追加（03 §3.12.11）。CE 同步 CE-64。

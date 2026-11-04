@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <span>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -532,13 +533,22 @@ public:
     std::span<const uint32_t> sources() const { return m_sources; }
     /// Converter steps referenced by `IrBinding::stepOffset/stepCount`.
     std::span<const IrConverterStep> steps() const { return m_steps; }
+    /// T-585: whether the optional `BCHN` chunk (the sub-chain pool) was present.
+    bool chainsPresent() const { return m_chainsPresent; }
+    /// T-585: the sub-chains a ConverterArg::SubChain argument names (empty without `BCHN`).
+    std::span<const IrSubChain> chains() const { return m_chains; }
+    /// T-585: converter steps referenced by `IrSubChain::stepOffset/stepCount`.
+    std::span<const IrConverterStep> chainSteps() const { return m_chainSteps; }
 
 private:
     friend class IrView;
     bool m_present = false;
+    bool m_chainsPresent = false;
     std::span<const IrBinding> m_bindings;
     std::span<const uint32_t> m_sources;
     std::span<const IrConverterStep> m_steps;
+    std::span<const IrSubChain> m_chains;
+    std::span<const IrConverterStep> m_chainSteps;
     /// T-243: an IR minor < 5 file's 24-byte records widened (sceneNode = kBindElementSelf);
     /// m_bindings then points into this instead of into the blob.
     std::shared_ptr<const std::vector<IrBinding>> m_widenedBindings;
@@ -643,6 +653,12 @@ public:
     /// malformed/adversarial input.
     static Result<IrView> open(IrBlob blob, IrReadOptions options = {});
 
+    /// T-534 (02 §2.1): why open() rejects `blob` for its format version -- an `.xtir` header
+    /// whose major is not kIrFormatMajor, e.g. "IR major 2 is not supported (this runtime reads IR
+    /// major 3); recompile the source" -- or an empty string when the blob is no `.xtir` header
+    /// at all or its major is the supported one (open() may still reject it for another reason).
+    static std::string versionError(IrBlob blob);
+
     /// Returns the original blob this view was opened from.
     IrBlob blob() const { return m_blob; }
 
@@ -685,9 +701,10 @@ public:
     const DocChunk& doc() const { return m_doc; }
     /// Returns the optional `META` chunk.
     const MetaChunk& meta() const { return m_meta; }
-    /// T-405: the blob's IrHeader::minor (kIrFormatMinor for a default-constructed view). Readers
-    /// branch on it where an older minor encodes a value differently (02 §2.2: a minor < 8 file's
-    /// biased `hit-slop` StyleProp 276).
+    /// T-405: the blob's IrHeader::minor (kIrFormatMinor for a default-constructed view), for
+    /// readers that branch where an older minor of the current major encodes a value differently.
+    /// T-534: no reader branches on it in IR 3.0 (the 2.x minors' branches, e.g. 2.7's biased
+    /// `hit-slop` StyleProp 276, ended with 2.x).
     uint16_t formatMinor() const { return m_formatMinor; }
     /// Returns the optional `SYMB` symbol source table (T-171); `present()` is false when the
     /// document instantiates no symbol.
@@ -767,6 +784,8 @@ private:
     static bool parseLocalization(const uint8_t* payload, size_t payloadSize, LocalizationChunk& out);
     static bool parsePorts(const uint8_t* payload, size_t payloadSize, PortChunk& out);
     static bool parseBindings(const uint8_t* payload, size_t payloadSize, uint16_t minor, BindingChunk& out);
+    /// T-585: the `BCHN` sub-chain pool into `out` (the BindingChunk).
+    static bool parseSubChains(const uint8_t* payload, size_t payloadSize, BindingChunk& out);
     static bool parseRepeats(const uint8_t* payload, size_t payloadSize, RepeatChunk& out);
     static bool parseShaders(const uint8_t* payload, size_t payloadSize, ShaderChunk& out);
     static bool parseClipShapes(const uint8_t* payload, size_t payloadSize, ClipShapeChunk& out);

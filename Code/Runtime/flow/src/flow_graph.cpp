@@ -552,6 +552,8 @@ std::span<const NodeTypeDesc> nodeTypeTable() {
         // T-543 (Docs/design/27-interaction.md §27.4.5).
         {NodeType::Filter,   "filter",   {"op", "threshold", "step"}, {"in", "trigger", "reset"}},
         {NodeType::Throttle, "throttle", {"unit", "rate", "trailing"}, {"in", "rate", "reset"}},
+        // T-601 (53 §53.102): the UI's own shown / hidden; no inputs, no params.
+        {NodeType::Lifecycle, "lifecycle", {}, {}},
     };
     // clang-format on
 

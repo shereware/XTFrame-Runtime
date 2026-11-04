@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "xt/compile/style_model.h"  // EffectDeclEntry (the header's `fallback:`).
+#include "xt/effect_utils.h"         // EffectSlotName / effectSlotParamIndex (T-534).
 
 /// `.xtfx` custom effect assets (Docs/design/18-effects.md §18.7, Docs/tasks/T-203.md): the
 /// header (`name:`, `param`, `fallback:`, `expand:`, `---`), the HLSL-subset body parser and the
@@ -32,6 +33,13 @@ struct XtfxParam {
     uint8_t slot = 0;
 };
 
+/// A parse/translation error with its 1-based position in the `.xtfx` text.
+struct XtfxError {
+    std::string message;
+    int line = 0;
+    int col = 0;
+};
+
 /// The header block above `---`.
 struct XtfxHeader {
     /// `name:` (may be empty; the compiler then uses the asset file's stem).
@@ -42,13 +50,11 @@ struct XtfxHeader {
     EffectDeclEntry fallback;
     /// `expand:` in local px (0 when absent).
     float expandPx = 0;
-};
-
-/// A parse/translation error with its 1-based position in the `.xtfx` text.
-struct XtfxError {
-    std::string message;
-    int line = 0;
-    int col = 0;
+    /// T-532 (18.7): `blurb:`, the effect catalog's one-line description (trimmed, UTF-8; empty
+    /// when absent; the last line wins). Read by the editor only: not in the IR or `ShaderRef`.
+    std::string blurb;
+    /// Non-fatal header problems (a repeated `blurb:`, reported once), in line order.
+    std::vector<XtfxError> warnings;
 };
 
 /// `compileXtfx` output.
@@ -88,15 +94,22 @@ bool translateHlslSubset(std::string_view body, int firstLine, std::span<const X
 /// `parseXtfxHeader` + `translateHlslSubset` over a whole `.xtfx` text.
 XtfxResult compileXtfx(std::string_view text);
 
-/// The `effectParam()` paramIndex (Docs/design/18-effects.md §18.2) that addresses parameter
-/// `name` of a custom effect (`effect.<fx>.<name>`, 18.12): a Float -> `1 + slot`, a Color ->
-/// `16 + slot`, a Vec2 -> 18 (the composite `(params[0], params[1])`) -- only when it occupies
-/// slots 0-1; any other Vec2 has no single PropId. `enabled` -> 0. False for an unknown name or
-/// an unaddressable Vec2.
+/// The `effectParam()` paramIndex (Docs/design/18-effects.md §18.2, T-534 encoding) that
+/// addresses parameter `name` of a custom effect (`effect.<fx>.<name>`, 18.13): a Float ->
+/// `kEffectParamFloatBase + slot`, a Color -> `kEffectParamColorBase + slot`, a Vec2 as a whole ->
+/// `kEffectParamVec2Base + slot` (a Vec2 track, any slot). `<name>.x` / `<name>.y` -> the Float
+/// `kEffectParamFloatBase + slot` / `+ slot + 1` of a Vec2. `enabled` -> 0. False for an unknown
+/// name or a component on a Float / Color. Slot names (`p<n>` etc.) are not handled here: see
+/// effectSlotParamIndex().
 bool xtfxParamIndex(std::span<const XtfxParam> params, std::string_view name, uint32_t& paramIndex);
 
-/// Writes the header defaults of `params` into an effect's `params[8]`/`colors[2]` (RGBA floats,
+/// T-534 (18.13): slot addressing lives in xt_core (xt/effect_utils.h) so the flow runtime shares
+/// it (cloud review 2026-10-31 §2.7).
+using xt::EffectSlotName;
+using xt::effectSlotParamIndex;
+
+/// Writes the header defaults of `params` into an effect's `params[16]`/`colors[4]` (RGBA floats,
 /// `colors` as 4 floats each) per their slots.
-void applyXtfxDefaults(std::span<const XtfxParam> params, float outParams[8], float outColors[2][4]);
+void applyXtfxDefaults(std::span<const XtfxParam> params, float outParams[16], float outColors[4][4]);
 
 }  // namespace xt::compile

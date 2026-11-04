@@ -1,6 +1,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -153,7 +154,7 @@ TEST_CASE("xtfx header: vec2 params, fallback none, no name") {
     CHECK(r.header.expandPx == 0);
     uint32_t index = 0;
     CHECK(xtfxParamIndex(r.header.params, "center", index));
-    CHECK(index == prop::kEffectParamOffset);
+    CHECK(index == prop::kEffectParamVec2Base);  // T-534: the whole vec2 from slot 0
     CHECK(xtfxParamIndex(r.header.params, "k", index));
     CHECK(index == 3);
     CHECK(xtfxParamIndex(r.header.params, "enabled", index));
@@ -180,9 +181,17 @@ TEST_CASE("xtfx header: errors carry the offending line") {
         {"fallback: blur(2px) glow(2px #fff)\n---\n", 1, "fallback"},
         {"expand: -2px\n---\n", 1, "expand"},
         {"param xtTime float 1\n---\n", 1, "reserved"},
-        {"param a vec2 1 1\nparam b vec2 1 1\nparam c vec2 1 1\nparam d vec2 1 1\nparam e float 1\n---\n", 6,
-         "too many parameters"},
-        {"param a color #fff\nparam b color #fff\nparam c color #fff\n---\n", 4, "too many parameters"},
+        // T-534: 16 float components and 4 colors at most.
+        {"param a vec2 1 1\nparam b vec2 1 1\nparam c vec2 1 1\nparam d vec2 1 1\nparam e vec2 1 1\n"
+         "param f vec2 1 1\nparam g vec2 1 1\nparam h vec2 1 1\nparam i float 1\n---\n",
+         10, "too many parameters"},
+        {"param a color #fff\nparam b color #fff\nparam c color #fff\nparam d color #fff\nparam e color "
+         "#fff\n---\n",
+         6, "too many parameters"},
+        // T-534 (18.13): `p<n>` / `c<n>` / `v<n>` are slot addresses.
+        {"param k float 1\nparam p3 float 1\n---\n", 2, "reserved parameter name"},
+        {"param c0 color #fff\n---\n", 1, "reserved parameter name"},
+        {"param v12 vec2 0 0\n---\n", 1, "reserved parameter name"},
     };
     for (const Case& c : cases) {
         const std::string text = c.text;
@@ -489,6 +498,438 @@ TEST_CASE("xtframe-compile: @timeline addresses effect.<header name>.<param> (18
         }
     }
     CHECK(found);
+}
+
+// T-532 (Docs/design/18-effects.md §18.13): every vec2 parameter of a custom effect is
+// addressable by component, `.x` -> PropId `1 + slot`, `.y` -> `2 + slot`.
+namespace {
+
+const char* const kWobble =
+    "name: Wobble\n"
+    "param a float 1\n"
+    "param b float 2\n"
+    "param c vec2 0 0\n"
+    "---\n"
+    "float4 xtMain(XtInput i) { return xtSample(i.uv + c * (a * b) * i.texelSize); }\n";
+
+const char* const kShiftFx =
+    "name: Shift\n"
+    "param o vec2 0 0\n"
+    "param k float 1\n"
+    "---\n"
+    "float4 xtMain(XtInput i) { return xtSample(i.uv + o * k * i.texelSize); }\n";
+
+std::string effectDoc(const std::string& effect, const std::string& timeline) {
+    return "<xt><head><style>#a { position: absolute; left: 0px; top: 0px; width: 40px; height: 40px;"
+           " background-color: #ff0000; effect: " +
+           effect + "; }" + timeline + "</style></head><body><div id=\"a\"></div></body></xt>";
+}
+
+bool hasTrack(const CompileResult& result, PropId prop) {
+    Result<IrView> view = IrView::open(IrBlob{result.ir.data(), result.ir.size()}, IrReadOptions{});
+    REQUIRE(view.ok());
+    for (uint32_t t = 0; t < view.value().timelineCount(); ++t) {
+        for (const IrTrack& track : view.value().timeline(t).tracks()) {
+            if (track.prop == prop) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+void checkNoErrors(const CompileResult& result) {
+    for (const Diagnostic& d : result.diagnostics) {
+        CAPTURE(d.message);
+        CHECK(d.level != Diagnostic::Level::Error);
+    }
+}
+
+}  // namespace
+
+TEST_CASE("xtframe-compile: T-532 @timeline addresses a vec2 parameter by component (18.13)") {
+    CompileResult result =
+        compileWithAsset("xt_t532_component",
+                         effectDoc("custom(\"wobble.xtfx\")",
+                                   "@timeline wob { #a { 0s { effect.Wobble.c.x: 0; effect.Wobble.c.y: 0; }"
+                                   " 1s { effect.Wobble.c.x: 10; effect.Wobble.c.y: 20; } } }"),
+                         "wobble.xtfx", kWobble);
+    checkNoErrors(result);
+    REQUIRE(result.ok());
+    CHECK(hasTrack(result, effectParam(0, 3)));  // c occupies params[2..3]: .x -> 1 + 2
+    CHECK(hasTrack(result, effectParam(0, 4)));  // .y -> 2 + 2
+    CHECK_FALSE(hasTrack(result, effectParam(0, prop::kEffectParamVec2Base + 2)));
+
+    std::unique_ptr<Document> doc;
+    REQUIRE(Document::load(IrBlob{result.ir.data(), result.ir.size()}, false, nullptr, nullptr, doc) ==
+            Status::kOk);
+    doc->setViewport(Rect{0, 0, 64, 64});
+    doc->update(0.0f);
+    ElementRef a = doc->byId("a");
+    REQUIRE(a.effectCount() == 1);
+    PlayOptions hold;
+    hold.hold = true;
+    REQUIRE(doc->playTimeline("", "wob", hold) == Status::kOk);
+    doc->update(0.5f);
+    CHECK(a.effect(0).params[2] == doctest::Approx(5.0f));
+    CHECK(a.effect(0).params[3] == doctest::Approx(10.0f));
+    CHECK(a.effect(0).params[0] == doctest::Approx(1.0f));  // a and b are untouched.
+    CHECK(a.effect(0).params[1] == doctest::Approx(2.0f));
+}
+
+TEST_CASE("xtframe-compile: T-532 a slot-0 vec2: component, whole, and both is an error") {
+    CompileResult component = compileWithAsset(
+        "xt_t532_slot0_x",
+        effectDoc("custom(\"shift.xtfx\")",
+                  "@timeline s { #a { 0s { effect.Shift.o.x: 0; } 1s { effect.Shift.o.x: 4; } } }"),
+        "shift.xtfx", kShiftFx);
+    checkNoErrors(component);
+    REQUIRE(component.ok());
+    CHECK(hasTrack(component, effectParam(0, 1)));
+
+    // T-534: the whole vec2 takes `<x> <y>` and is a Vec2 track on kEffectParamVec2Base + 0.
+    CompileResult whole = compileWithAsset(
+        "xt_t532_slot0_whole",
+        effectDoc("custom(\"shift.xtfx\")",
+                  "@timeline s { #a { 0s { effect.Shift.o: 0 0; } 1s { effect.Shift.o: 4px 8px; } } }"),
+        "shift.xtfx", kShiftFx);
+    checkNoErrors(whole);
+    REQUIRE(whole.ok());
+    CHECK(hasTrack(whole, effectParam(0, prop::kEffectParamVec2Base)));
+
+    CompileResult both = compileWithAsset(
+        "xt_t532_slot0_both",
+        effectDoc("custom(\"shift.xtfx\")",
+                  "@timeline s { #a { 0s { effect.Shift.o: 0 0; } 1s { effect.Shift.o.y: 4; } } }"),
+        "shift.xtfx", kShiftFx);
+    CHECK_FALSE(both.ok());
+    CHECK(hasError(both, "vec2 parameter addressed both whole and by component"));
+}
+
+TEST_CASE("xtframe-compile: T-532 component errors") {
+    CompileResult onFloat = compileWithAsset(
+        "xt_t532_err_float",
+        effectDoc("custom(\"wobble.xtfx\")", "@timeline w { #a { 0s { effect.Wobble.a.x: 0; } } }"),
+        "wobble.xtfx", kWobble);
+    CHECK(hasError(onFloat, "parameter has no components"));
+
+    CompileResult badComponent = compileWithAsset(
+        "xt_t532_err_z",
+        effectDoc("custom(\"wobble.xtfx\")", "@timeline w { #a { 0s { effect.Wobble.c.z: 0; } } }"),
+        "wobble.xtfx", kWobble);
+    CHECK(hasError(badComponent, "expected .x or .y"));
+
+    CompileResult unknown = compileWithAsset(
+        "xt_t532_err_unknown",
+        effectDoc("custom(\"wobble.xtfx\")", "@timeline w { #a { 0s { effect.Wobble.nope.x: 0; } } }"),
+        "wobble.xtfx", kWobble);
+    CHECK(hasError(unknown, "unknown effect parameter"));
+
+    CompileResult builtin = compileWithAsset(
+        "xt_t532_err_builtin",
+        effectDoc("glow(8px #ffffff 0.2)", "@timeline w { #a { 0s { effect.glow.radius.x: 0; } } }"),
+        "unused.xtfx", kWobble);
+    CHECK(hasError(builtin, "unknown effect parameter"));
+
+    uint32_t index = 0;
+    XtfxResult r = run(kWobble);
+    REQUIRE(r.ok);
+    CHECK(xtfxParamIndex(r.header.params, "c.x", index));
+    CHECK(index == 3);
+    CHECK(xtfxParamIndex(r.header.params, "c.y", index));
+    CHECK(index == 4);
+    CHECK(xtfxParamIndex(r.header.params, "c", index));  // T-534: a whole vec2 from any slot
+    CHECK(index == prop::kEffectParamVec2Base + 2);
+    CHECK_FALSE(xtfxParamIndex(r.header.params, "a.x", index));
+    CHECK_FALSE(xtfxParamIndex(r.header.params, "nope.y", index));
+}
+
+TEST_CASE("xtframe-compile: T-532 .xtanim.json tracks address a vec2 component") {
+    fs::path dir = freshTempDir("xt_t532_xtanim");
+    writeText(dir / "wobble.xtfx", kWobble);
+    const std::string json = R"({ "v": 1, "timelines": [ { "name": "main", "tracks": [
+        { "layer": "a", "prop": "effect.Wobble.c.y", "keys": [[0, 0], [1, 20]] } ] } ] })";
+    const std::string xt = effectDoc("custom(\"wobble.xtfx\")", "@timeline wob from \"x.xtanim.json#main\";");
+    SourceFile files[2] = {SourceFile{"main.xt", xt}, SourceFile{"x.xtanim.json", json}};
+    CompileOptions options;
+    options.rootDir = dir.string();
+    options.emitMeta = false;
+    CompileResult result = compileDocumentFromStrings(files, "main.xt", options);
+    checkNoErrors(result);
+    REQUIRE(result.ok());
+    CHECK(hasTrack(result, effectParam(0, 4)));
+}
+
+// T-534 (Docs/design/18-effects.md §18.2, §18.13): 16 float + 4 color slots, the whole vec2 from
+// any slot, slot addressing `p<n>` / `c<n>` / `v<n>`, and the value typed by the parameter.
+namespace {
+
+// 16 float components (three vec2: c at 2, center at 6, g at 9) and 4 colors.
+const char* const kFull =
+    "name: Fx\n"
+    "param a float 1\n"
+    "param b float 2\n"
+    "param c vec2 3 4\n"
+    "param d float 5\n"
+    "param e float 6\n"
+    "param center vec2 7 8\n"
+    "param f float 9\n"
+    "param g vec2 10 11\n"
+    "param h float 12\n"
+    "param n float 13\n"
+    "param j float 14\n"
+    "param k float 15\n"
+    "param l float 16\n"
+    "param tint color #ff8800\n"
+    "param t1 color #00ff00\n"
+    "param t2 color #0000ff\n"
+    "param t3 color #ffffff80\n"
+    "---\n"
+    "float4 xtMain(XtInput i) { return xtSample(i.uv + center * i.texelSize) * tint; }\n";
+
+CompileResult compileFull(const char* dirName, const std::string& timeline) {
+    return compileWithAsset(dirName, effectDoc("custom(\"fx.xtfx\")", timeline), "fx.xtfx", kFull);
+}
+
+/// The type of `prop`'s track (0xFF when there is none).
+uint8_t trackType(const CompileResult& result, PropId prop) {
+    Result<IrView> view = IrView::open(IrBlob{result.ir.data(), result.ir.size()}, IrReadOptions{});
+    REQUIRE(view.ok());
+    for (uint32_t t = 0; t < view.value().timelineCount(); ++t) {
+        for (const IrTrack& track : view.value().timeline(t).tracks()) {
+            if (track.prop == prop) {
+                return track.type;
+            }
+        }
+    }
+    return 0xFF;
+}
+
+}  // namespace
+
+TEST_CASE("xtfx header: T-534 16 float components + 4 colors fit; applyXtfxDefaults fills every slot") {
+    XtfxResult r = run(kFull);
+    REQUIRE_MESSAGE(r.ok, r.error.message);
+    REQUIRE(r.header.params.size() == 17);
+    float params[16] = {};
+    float colors[4][4] = {};
+    applyXtfxDefaults(r.header.params, params, colors);
+    for (int i = 0; i < 16; ++i) {
+        CAPTURE(i);
+        CHECK(params[i] == doctest::Approx(static_cast<float>(i + 1)));  // defaults 1..16 in slot order
+    }
+    CHECK(colors[0][0] == doctest::Approx(1.0f));
+    CHECK(colors[0][1] == doctest::Approx(0x88 / 255.0f));
+    CHECK(colors[1][1] == doctest::Approx(1.0f));
+    CHECK(colors[2][2] == doctest::Approx(1.0f));
+    CHECK(colors[3][3] == doctest::Approx(0x80 / 255.0f));
+
+    uint32_t index = 0;
+    CHECK(xtfxParamIndex(r.header.params, "center", index));
+    CHECK(index == prop::kEffectParamVec2Base + 6);
+    CHECK(xtfxParamIndex(r.header.params, "center.x", index));
+    CHECK(index == prop::kEffectParamFloatBase + 6);
+    CHECK(xtfxParamIndex(r.header.params, "g.y", index));
+    CHECK(index == prop::kEffectParamFloatBase + 10);
+    CHECK(xtfxParamIndex(r.header.params, "l", index));
+    CHECK(index == 16);
+    CHECK(xtfxParamIndex(r.header.params, "t3", index));
+    CHECK(index == prop::kEffectParamColorBase + 3);
+
+    // One more float component, or a fifth color, is a header error.
+    const std::string body = "---\nfloat4 xtMain(XtInput i) { return xtSample(i.uv); }\n";
+    const std::string full(kFull);
+    const std::string head = full.substr(0, full.find("---\n"));
+    XtfxResult floats17 = run(head + "param m float 17\n" + body);
+    CHECK_FALSE(floats17.ok);
+    CHECK(contains(floats17.error.message, "too many parameters (at most 16 float components and 4 colors)"));
+    XtfxResult colors5 = run(head + "param t4 color #000\n" + body);
+    CHECK_FALSE(colors5.ok);
+    CHECK(contains(colors5.error.message, "too many parameters"));
+
+    // And it compiles: the custom effect's IrEffect carries all 16 + 4 defaults.
+    CompileResult result = compileFull("xt_t534_full", "");
+    checkNoErrors(result);
+    REQUIRE(result.ok());
+    Result<IrView> view = IrView::open(IrBlob{result.ir.data(), result.ir.size()}, IrReadOptions{});
+    REQUIRE(view.ok());
+    bool found = false;
+    for (const IrEffect& fx : view.value().style().effects()) {
+        if (fx.kind == static_cast<uint8_t>(EffectKind::Custom)) {
+            found = true;
+            CHECK(fx.params[15] == doctest::Approx(16.0f));
+            CHECK(fx.params[6] == doctest::Approx(7.0f));
+            CHECK(fx.colors[3].a == doctest::Approx(0x80 / 255.0f));
+        }
+    }
+    CHECK(found);
+}
+
+TEST_CASE("xtframe-compile: T-534 a vec2 in slot 6 addressed whole, by component, and both") {
+    CompileResult whole = compileFull(
+        "xt_t534_whole6",
+        "@timeline m { #a { 0s { effect.Fx.center: 0 0; } 1s { effect.Fx.center: 10px 20px; } } }");
+    checkNoErrors(whole);
+    REQUIRE(whole.ok());
+    CHECK(trackType(whole, effectParam(0, prop::kEffectParamVec2Base + 6)) ==
+          static_cast<uint8_t>(ValueType::Vec2));
+
+    std::unique_ptr<Document> doc;
+    REQUIRE(Document::load(IrBlob{whole.ir.data(), whole.ir.size()}, false, nullptr, nullptr, doc) ==
+            Status::kOk);
+    doc->setViewport(Rect{0, 0, 64, 64});
+    doc->update(0.0f);
+    ElementRef a = doc->byId("a");
+    REQUIRE(a.effectCount() == 1);
+    PlayOptions hold;
+    hold.hold = true;
+    REQUIRE(doc->playTimeline("", "m", hold) == Status::kOk);
+    doc->update(0.5f);
+    CHECK(a.effect(0).params[6] == doctest::Approx(5.0f));
+    CHECK(a.effect(0).params[7] == doctest::Approx(10.0f));
+    CHECK(a.effect(0).params[5] == doctest::Approx(6.0f));  // neighbours untouched
+    CHECK(a.effect(0).params[8] == doctest::Approx(9.0f));
+
+    CompileResult component =
+        compileFull("xt_t534_comp6",
+                    "@timeline m { #a { 0s { effect.Fx.center.x: 0; } 1s { effect.Fx.center.x: 4; } } }");
+    checkNoErrors(component);
+    REQUIRE(component.ok());
+    CHECK(trackType(component, effectParam(0, prop::kEffectParamFloatBase + 6)) ==
+          static_cast<uint8_t>(ValueType::Float));
+
+    CompileResult both =
+        compileFull("xt_t534_both6",
+                    "@timeline m { #a { 0s { effect.Fx.center: 0 0; } 1s { effect.Fx.center.y: 4; } } }");
+    CHECK_FALSE(both.ok());
+    CHECK(hasError(both, "vec2 parameter addressed both whole and by component"));
+}
+
+TEST_CASE("xtframe-compile: T-534 slot addressing p<n> / c<n> / v<n>") {
+    CompileResult slots =
+        compileFull("xt_t534_slots",
+                    "@timeline m { #a { 0s { effect.Fx.p9: 0; effect.Fx.c2: #000000; effect.Fx.v2: 0 0; }"
+                    " 1s { effect.Fx.p9: 3; effect.Fx.c2: #ff0000; effect.Fx.v2: 1 2; } } }");
+    checkNoErrors(slots);
+    REQUIRE(slots.ok());
+    CHECK(trackType(slots, effectParam(0, prop::kEffectParamFloatBase + 9)) ==
+          static_cast<uint8_t>(ValueType::Float));
+    CHECK(trackType(slots, effectParam(0, prop::kEffectParamColorBase + 2)) ==
+          static_cast<uint8_t>(ValueType::Color));
+    CHECK(trackType(slots, effectParam(0, prop::kEffectParamVec2Base + 2)) ==
+          static_cast<uint8_t>(ValueType::Vec2));
+
+    // Built-in effects take slots too: `v0` is DropShadow's offset, `p1` its offsetY.
+    const char* shadow = "shadow(1px 2px 3px #000000)";
+    CompileResult v0 = compileWithAsset(
+        "xt_t534_shadow_v0",
+        effectDoc(shadow,
+                  "@timeline m { #a { 0s { effect.shadow.v0: 0 0; } 1s { effect.shadow.v0: 4px 4px; } } }"),
+        "unused.xtfx", kFull);
+    checkNoErrors(v0);
+    REQUIRE(v0.ok());
+    CHECK(trackType(v0, effectParam(0, prop::kEffectParamVec2Base)) == static_cast<uint8_t>(ValueType::Vec2));
+    CompileResult offset = compileWithAsset(
+        "xt_t534_shadow_offset",
+        effectDoc(
+            shadow,
+            "@timeline m { #a { 0s { effect.shadow.offset: 0 0; } 1s { effect.shadow.offset: 4px 4px; } } }"),
+        "unused.xtfx", kFull);
+    checkNoErrors(offset);
+    REQUIRE(offset.ok());
+    CHECK(trackType(offset, effectParam(0, prop::kEffectParamVec2Base)) ==
+          static_cast<uint8_t>(ValueType::Vec2));
+    CompileResult p1 = compileWithAsset(
+        "xt_t534_shadow_p1",
+        effectDoc(shadow, "@timeline m { #a { 0s { effect.shadow.p1: 0; } 1s { effect.shadow.p1: 2px; } } }"),
+        "unused.xtfx", kFull);
+    checkNoErrors(p1);
+    REQUIRE(p1.ok());
+    CHECK(trackType(p1, effectParam(0, 2)) == static_cast<uint8_t>(ValueType::Float));
+
+    for (const char* bad : {"p16", "c4", "v15"}) {
+        CAPTURE(bad);
+        CompileResult r = compileFull("xt_t534_range",
+                                      std::string("@timeline m { #a { 0s { effect.Fx.") + bad + ": 1; } } }");
+        CHECK_FALSE(r.ok());
+        CHECK(hasError(r, "slot out of range"));
+    }
+
+    XtfxResult reserved = run("param p3 float 1\n---\nfloat4 xtMain(XtInput i) { return xtSample(i.uv); }\n");
+    CHECK_FALSE(reserved.ok);
+    CHECK(contains(reserved.error.message, "reserved parameter name"));
+}
+
+TEST_CASE("xtframe-compile: T-534 the value's type follows the parameter") {
+    CompileResult tint = compileFull(
+        "xt_t534_tint",
+        "@timeline m { #a { 0s { effect.Fx.tint: #000000ff; } 1s { effect.Fx.tint: #ff8800ff; } } }");
+    checkNoErrors(tint);
+    REQUIRE(tint.ok());
+    CHECK(trackType(tint, effectParam(0, prop::kEffectParamColorBase)) ==
+          static_cast<uint8_t>(ValueType::Color));
+
+    CompileResult tintNumber =
+        compileFull("xt_t534_tint3", "@timeline m { #a { 0s { effect.Fx.tint: 3; } } }");
+    CHECK_FALSE(tintNumber.ok());
+    CHECK(hasError(tintNumber, "value does not match parameter type"));
+
+    CompileResult centerNumber =
+        compileFull("xt_t534_center5", "@timeline m { #a { 0s { effect.Fx.center: 5; } } }");
+    CHECK_FALSE(centerNumber.ok());
+    CHECK(hasError(centerNumber, "value does not match parameter type"));
+
+    CompileResult floatPair = compileFull("xt_t534_a12", "@timeline m { #a { 0s { effect.Fx.a: 1 2; } } }");
+    CHECK_FALSE(floatPair.ok());
+    CHECK(hasError(floatPair, "value does not match parameter type"));
+}
+
+TEST_CASE("xtframe-compile: T-534 shadow offset @keyframes expand to the Vec2 track 64") {
+    CompileResult result = compileWithAsset(
+        "xt_t534_kf_shadow",
+        "<xt><head><style>@keyframes k { from { effect: shadow(0 0 4px #000000); }"
+        " to { effect: shadow(6px 8px 4px #000000); } }"
+        "#a { width: 40px; height: 40px; effect: shadow(0 0 4px #000000); animation: k 1s; }</style></head>"
+        "<body><div id=\"a\"></div></body></xt>",
+        "unused.xtfx", kFull);
+    checkNoErrors(result);
+    REQUIRE(result.ok());
+    CHECK(trackType(result, effectParam(0, prop::kEffectParamVec2Base)) ==
+          static_cast<uint8_t>(ValueType::Vec2));
+    CHECK(trackType(result, effectParam(0, 1)) == 0xFF);  // no separate offsetX / offsetY tracks
+    CHECK(trackType(result, effectParam(0, 2)) == 0xFF);
+}
+
+TEST_CASE("IrView: T-534 a 2.x header is rejected and versionError() says to recompile") {
+    CompileResult result = compileFull("xt_t534_major", "");
+    REQUIRE(result.ok());
+    std::vector<uint8_t> bytes = result.ir;
+    CHECK(IrView::versionError(IrBlob{bytes.data(), bytes.size()}).empty());
+    bytes[4] = 2;  // IrHeader::major (u16 at offset 4)
+    bytes[5] = 0;
+    CHECK(IrView::open(IrBlob{bytes.data(), bytes.size()}, IrReadOptions{}).status() == Status::kInvalidIr);
+    const std::string why = IrView::versionError(IrBlob{bytes.data(), bytes.size()});
+    CHECK(contains(why, "IR major 2"));
+    CHECK(contains(why, "recompile the source"));
+}
+
+TEST_CASE("xtfx header: T-532 blurb") {
+    const std::string body = "---\nfloat4 xtMain(XtInput i) { return xtSample(i.uv); }\n";
+    XtfxResult r = run("name: Ripple\nblurb:   \xE6\xB0\xB4\xE6\xB3\xA2\xE7\xB4\x8B ripple  \n" + body);
+    REQUIRE_MESSAGE(r.ok, r.error.message);
+    CHECK(r.header.blurb == "\xE6\xB0\xB4\xE6\xB3\xA2\xE7\xB4\x8B ripple");
+    CHECK(r.header.warnings.empty());
+
+    XtfxResult none = run("name: Ripple\n" + body);
+    REQUIRE(none.ok);
+    CHECK(none.header.blurb.empty());
+
+    XtfxResult repeated = run("blurb: first\nblurb: second\nblurb: third\n" + body);
+    REQUIRE_MESSAGE(repeated.ok, repeated.error.message);
+    CHECK(repeated.header.blurb == "third");
+    REQUIRE(repeated.header.warnings.size() == 1);  // warned once
+    CHECK(repeated.header.warnings[0].line == 2);
+    CHECK(contains(repeated.header.warnings[0].message, "blurb"));
 }
 
 TEST_CASE("Document::shaderRef and the SW fallback (18.7)") {

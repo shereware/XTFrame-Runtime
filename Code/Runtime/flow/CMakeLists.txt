@@ -6,6 +6,7 @@ add_library(xt_flow STATIC
     src/flow_bindings.cpp
     src/flow_ports.cpp
     src/flow_interface.cpp
+    src/flow_lint.cpp
     src/host_ports.cpp
     src/bundle_context.cpp
     src/flow_late_binding.cpp

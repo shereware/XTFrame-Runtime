@@ -499,6 +499,14 @@ std::vector<uint8_t> IrWriter::finish() const {
         appendArray(payload, m_bindings.steps);
         appendChunk(body, kChunkBIND, std::move(payload));
     }
+    // T-585: the sub-chain pool, right after BIND.
+    const bool hasSubChains = !m_bindings.chains.empty();
+    if (hasSubChains) {
+        std::vector<uint8_t> payload;
+        appendArray(payload, m_bindings.chains);
+        appendArray(payload, m_bindings.chainSteps);
+        appendChunk(body, kChunkBCHN, std::move(payload));
+    }
     // T-177: `<repeat>` templates, last.
     const bool hasRepeats = !m_repeats.empty();
     if (hasRepeats) {
@@ -573,7 +581,7 @@ std::vector<uint8_t> IrWriter::finish() const {
         (m_hasSourceMap ? 1u : 0u) + (m_hasMeta ? 1u : 0u) + (m_symbols.empty() ? 0u : 1u) +
         (hasTimelineGroups ? 1u : 0u) + (hasVars ? 1u : 0u) + (hasCalcs ? 1u : 0u) + (hasMedia ? 1u : 0u) +
         (hasStates ? 1u : 0u) + (hasTriggers ? 1u : 0u) + (hasLocalization ? 1u : 0u) + (hasPorts ? 1u : 0u) +
-        (hasBindings ? 1u : 0u) + (hasRepeats ? 1u : 0u) + (hasShaders ? 1u : 0u) +
+        (hasBindings ? 1u : 0u) + (hasSubChains ? 1u : 0u) + (hasRepeats ? 1u : 0u) + (hasShaders ? 1u : 0u) +
         (hasClipShapes ? 1u : 0u) + (hasGrid ? 1u : 0u);
 
     IrHeader header{};
@@ -773,6 +781,8 @@ IrWriter IrWriter::fromView(const IrView& view) {
         bb.bindings = toVector(view.bindings().bindings());
         bb.sources = toVector(view.bindings().sources());
         bb.steps = toVector(view.bindings().steps());
+        bb.chains = toVector(view.bindings().chains());  // T-585
+        bb.chainSteps = toVector(view.bindings().chainSteps());
         writer.setBindings(std::move(bb));
     }
     if (view.repeats().present()) {

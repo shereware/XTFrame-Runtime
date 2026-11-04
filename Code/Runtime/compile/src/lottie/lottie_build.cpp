@@ -462,8 +462,8 @@ float sampleLinearAtFrame(const AnimatedValue<float>& av, float frame) {
     return av.keys.back().value;  // Unreachable given the clamps above; defensive.
 }
 
-/// Builds the DropShadow offset Track (effectParam(i,18), a composite Vec2): 18.9's rule is that
-/// distance/direction share one Vec2 offset track, sampled on the union of their own keyframe times
+/// Builds the DropShadow offset Track (effectParam(i, kEffectParamVec2Base), a composite Vec2): 18.9's rule
+/// is that distance/direction share one Vec2 offset track, sampled on the union of their own keyframe times
 /// (linear interpolation, see sampleLinearAtFrame) whenever either is animated.
 void buildShadowOffsetTrack(BuildCtx& ctx, const LottieEffect& eff, TimeMap map, uint32_t target,
                             uint32_t effectIndex) {
@@ -500,7 +500,7 @@ void buildShadowOffsetTrack(BuildCtx& ctx, const LottieEffect& eff, TimeMap map,
     }
     IrTrack track{};
     track.target = target;
-    track.prop = effectParam(effectIndex, prop::kEffectParamOffset);
+    track.prop = effectParam(effectIndex, prop::kEffectParamVec2Base);
     track.type = static_cast<uint8_t>(ValueType::Vec2);
     track.kfOffset = kfOffset;
     track.kfCount = static_cast<uint32_t>(times.size());
@@ -508,7 +508,7 @@ void buildShadowOffsetTrack(BuildCtx& ctx, const LottieEffect& eff, TimeMap map,
 }
 
 /// Builds every animated Track for one already-emitted Drop Shadow effect: the combined offset
-/// (effectParam(i,18)), softness (p=3), opacity (p=5, scaled 0..255 -> 0..1) and color (p=16).
+/// (effectParam(i, 64)), softness (p=3), opacity (p=5, scaled 0..255 -> 0..1) and color (p=32).
 void buildShadowTracks(BuildCtx& ctx, const LottieLayer& layer, const LottieEffect& eff, TimeMap map,
                        uint32_t target, uint32_t effectIndex) {
     buildShadowOffsetTrack(ctx, eff, map, target, effectIndex);
@@ -521,8 +521,8 @@ void buildShadowTracks(BuildCtx& ctx, const LottieLayer& layer, const LottieEffe
                         "Shadow opacity", 1.0f / 255.0f);
     }
     if (eff.shadowColor.animated) {
-        buildColorTrack(ctx, eff.shadowColor, target, effectParam(effectIndex, prop::kEffectParamColor0), map,
-                        layer, "Shadow color");
+        buildColorTrack(ctx, eff.shadowColor, target, effectParam(effectIndex, prop::kEffectParamColorBase),
+                        map, layer, "Shadow color");
     }
 }
 

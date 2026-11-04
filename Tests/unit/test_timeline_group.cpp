@@ -137,9 +137,11 @@ TEST_CASE("@timeline: path ids, effect addresses, transform expansion, duration 
     CHECK(k0.effectDecls[0].effect == "glow");
     CHECK(k0.effectDecls[0].param == "intensity");
     CHECK(t.tracks[0].keys[1].effectDecls[0].effect == "0");
-    CHECK(t.tracks[0].keys[1].effectDecls[0].value.f == doctest::Approx(4.0f));
+    // T-534 (18.13): the value stays source text; the emitter parses it by the parameter's type.
+    CHECK(k0.effectDecls[0].valueText == "0");
+    CHECK(t.tracks[0].keys[1].effectDecls[0].valueText == "4px");
     CHECK(t.tracks[1].keys[0].effectDecls[0].effect == "12");
-    CHECK(t.tracks[1].keys[0].effectDecls[0].value.kind == StyleValueKind::Color);
+    CHECK(t.tracks[1].keys[0].effectDecls[0].valueText == "#ff0000");
     CHECK(rs.timelines[1].fromFile == "ui.xtanim.json");
     CHECK(rs.timelines[1].fromName == "main");
 }

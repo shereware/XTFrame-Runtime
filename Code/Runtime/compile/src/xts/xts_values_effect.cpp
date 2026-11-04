@@ -224,8 +224,7 @@ bool parseEffectList(const std::vector<Tok>& toks, std::string_view fileName, in
             ok = result == css_values::EffectFnResult::Ok;
             entry.kind = parsed.kind;
             std::copy(std::begin(parsed.params), std::end(parsed.params), std::begin(entry.params));
-            entry.colors[0] = parsed.colors[0];
-            entry.colors[1] = parsed.colors[1];
+            std::copy(std::begin(parsed.colors), std::end(parsed.colors), std::begin(entry.colors));
             entry.stops = std::move(stops);
         }
         if (!ok) {

@@ -487,14 +487,14 @@ struct MaskApplyParams {
 /// `Custom` (T-203): `program` = the device's custom program id (exact as a float below 2^24);
 /// `time` = `CommandList::time` (`xtTime`); `layerW/H` = the pass window in surface pixels
 /// (`XtInput.layerSize`, `texelSize` = its reciprocal); `params`/`colors` = the effect's
-/// EffectInstance `params[8]` and `colors[2]` (RGBA), from which the device fills the parameter
-/// uniforms per xt::customParamSlots().
+/// EffectInstance `params[16]` and `colors[4]` (RGBA; T-534), from which the device fills the
+/// parameter uniforms per xt::customParamSlots().
 struct CustomEffectParams {
     float program;
     float time;
     float layerW, layerH;
-    float params[8];
-    float colors[8];
+    float params[16];
+    float colors[16];
 };
 
 /// T-202 `DrawKind::Particles`: `xf` = (a, b, c, d, e, f) maps particle space to surface pixels

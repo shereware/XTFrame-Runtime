@@ -35,7 +35,7 @@ inline constexpr uint32_t fourcc(char a, char b, char c, char d) {
 
 /// The `.xtir` format's major version: what the writer stamps into IrHeader::major and the only
 /// value IrView::open accepts. Hosts compare against it (e.g. xt_bundle's manifest `irMajor`).
-inline constexpr uint16_t kIrFormatMajor = 2;
+inline constexpr uint16_t kIrFormatMajor = 3;
 
 /// `STRT` chunk type: the string table. Required.
 inline constexpr uint32_t kChunkSTRT = fourcc('S', 'T', 'R', 'T');
@@ -79,6 +79,12 @@ inline constexpr uint32_t kChunkPORT = fourcc('P', 'O', 'R', 'T');
 /// `BIND` chunk type: data bindings and their converter chains (27.3.2-27.3.3, 03 §3.12.3,
 /// T-175). Optional; written after every other chunk.
 inline constexpr uint32_t kChunkBIND = fourcc('B', 'I', 'N', 'D');
+/// `BCHN` chunk type (T-585, IR 3.0, 03 §3.12.11): the converter sub-chain pool of the binding
+/// table -- the chains a ConverterArg::SubChain argument names. Optional; written right after
+/// `BIND`, only when a binding uses a sub-chain. Payload: `u32 chainCount, IrSubChain chains[]`,
+/// `u32 stepCount, IrConverterStep steps[]` (each chain is a range of `steps[]`, laid out as a
+/// binding's chain).
+inline constexpr uint32_t kChunkBCHN = fourcc('B', 'C', 'H', 'N');
 /// `RPT ` chunk type: `<repeat>` list templates (Docs/design/27-interaction.md §27.3.4, 03 §3.12.4,
 /// 12 §12.7, T-177). Optional; written after every other chunk.
 inline constexpr uint32_t kChunkRPT = fourcc('R', 'P', 'T', ' ');
@@ -469,6 +475,13 @@ enum class ConverterArg : uint8_t {
     OuterItem = 8,
     /// T-391: `outer.index`, the enclosing `<repeat>`'s entry index.
     OuterIndex = 9,
+    /// T-585 (IR 3.0, 03 §3.12.11): the value of a converter sub-chain, an index into the `BCHN`
+    /// chunk's chains[] stored bit-for-bit in the float slot (BIND chains and sub-chains only).
+    SubChain = 10,
+    /// T-586 (03 §3.12.11, IR 3.0): a static `calc()` value, an index into the document's `CALC`
+    /// pool stored bit-for-bit in the float slot; it evaluates to Length{index, LengthUnit::Calc}.
+    /// Only a binding of a Length property carries one.
+    Calc = 11,
 };
 
 /// `IrDecl::valueType` of a `var(--name[, fallback])` reference (05.9.2, T-170). Not a
@@ -561,12 +574,14 @@ enum class MediaFeature : uint8_t {
 /// §43.5): the T-380..T-399 fields made formal (no layout change), `hit-slop` written as the four
 /// Length longhands StyleProp 277-280 instead of the biased StyleProp 276 (read only from a minor
 /// < 8 file), and the optional META `behavior` tail; 9 = T-411's SetSource Port / Item (27
-/// §27.2.3) and converter steps on Number / String set() values.
-inline constexpr uint16_t kIrFormatMinor = 9;
+/// §27.2.3) and converter steps on Number / String set() values. 3.0 (T-534, 18 §18.2): IrEffect
+/// grows to 16 float + 4 color slots and the effect-parameter PropIds are re-encoded; the minor
+/// restarts at 0 and 2.x files are rejected.
+inline constexpr uint16_t kIrFormatMinor = 0;
 
 /// T-405 (02 §2.6): the highest StyleProp number an IR of this minor may carry (Code/Runtime/core/src/
-/// style_decode.h and Code/Runtime/compile/src/xts/xts_props.h static_assert their last StyleProp against it).
-/// A larger number is not an error: the declaration is ignored.
+/// style_decode.h and Code/Runtime/compile/src/xts/xts_props.h static_assert their last StyleProp against
+/// it). A larger number is not an error: the declaration is ignored.
 inline constexpr uint16_t kStylePropLast = 280;
 
 /// `.xtir` file header (§2.2, 16 bytes).
@@ -906,7 +921,7 @@ struct IrFontFace {
 static_assert(sizeof(IrFontFace) == 12);
 
 /// Compiled visual effect instance, shared by `STYL::effects[]` and `SCEN::effects[]` (§2.6/§2.7,
-/// 80 bytes). Layout matches Docs/design/18-effects.md §18.2's EffectInstance.
+/// 144 bytes since IR 3.0, T-534). Layout matches Docs/design/18-effects.md §18.2's EffectInstance.
 struct IrEffect {
     /// EffectKind (18-effects.md); valid range {0..8, 128}.
     uint8_t kind;
@@ -915,16 +930,17 @@ struct IrEffect {
     uint8_t _pad[2];  ///< Padding, unused.
     /// AssetId of a Shader asset (ASST kind = Shader), or 0xFFFFFFFF when not used by `kind`.
     uint32_t shader;
-    /// Effect-kind-specific numeric parameters.
-    float params[8];
-    /// Effect-kind-specific colors.
-    Color colors[2];
+    /// Effect-kind-specific numeric parameters (built-in effects use the first 8; the rest are
+    /// custom-shader slots).
+    float params[16];
+    /// Effect-kind-specific colors (built-in effects use the first 2).
+    Color colors[4];
     /// Offset/count into the owning chunk's stop pool (STYL's `effectStops[]` or SCEN's
     /// `stopPool[]`), for effect kinds that use a gradient (e.g. GradientMask).
     uint32_t stopOffset;  ///< Offset into the owning chunk's stop pool.
     uint32_t stopCount;   ///< Count of stops.
 };
-static_assert(sizeof(IrEffect) == 80);
+static_assert(sizeof(IrEffect) == 144);
 
 /// Compiled `background-gradient` (§2.6's `gradientPool[]`, Docs/design/05-style-and-css.md §5.5c,
 /// T-115, 32 bytes). Referenced by an `IrDecl`'s `ListRef` value when `prop == 190`; the color
@@ -1774,6 +1790,31 @@ static_assert(sizeof(IrBinding) == 28);
 inline constexpr size_t kIrBindingSizeV4 = 24;
 
 // -------------------------------------------------------------------------------------------
+// BCHN (T-585, IR 3.0, 03 §3.12.11). Payload:
+//   uint32 chainCount; IrSubChain chains[]
+//   uint32 stepCount;  IrConverterStep steps[]
+// A sub-chain is evaluated before the argument that names it is used; its value then stands as
+// a literal argument. Nesting (a sub-chain argument naming another sub-chain) is at most
+// kMaxSubChainDepth deep, and a chain never names itself.
+// -------------------------------------------------------------------------------------------
+
+/// IrSubChain::input of a sub-chain whose input is the enclosing chain's input.
+inline constexpr uint32_t kSubChainOuterInput = 0xFFFFFFFFu;
+/// T-585: the deepest sub-chain nesting (a binding's own chain is level 0).
+inline constexpr uint32_t kMaxSubChainDepth = 4;
+
+/// One converter sub-chain (12 bytes).
+struct IrSubChain {
+    /// PORT index of the chain's own input (`dmg | scale(-1)`, `port(dmg) | ...`), or
+    /// kSubChainOuterInput: the input of the chain the argument belongs to.
+    uint32_t input;
+    /// Range into the BCHN chunk's steps[].
+    uint32_t stepOffset;
+    uint32_t stepCount;
+};
+static_assert(sizeof(IrSubChain) == 12);
+
+// -------------------------------------------------------------------------------------------
 // SHDR (Docs/design/18-effects.md 18.5/18.7, T-203). Optional, after DOCT; at most once. Payload:
 //   uint32 shaderCount; IrShaderRef shaders[]
 //   uint32 paramCount;  IrShaderParam params[]
@@ -1801,7 +1842,7 @@ struct IrShaderParam {
 };
 static_assert(sizeof(IrShaderParam) == 32);
 
-/// One custom effect asset (112 bytes).
+/// One custom effect asset (176 bytes since IR 3.0).
 struct IrShaderRef {
     /// ASST index of the `.xtfx` asset (kind 2).
     uint32_t asset;
@@ -1817,7 +1858,7 @@ struct IrShaderRef {
     /// shader) applies instead; `kind == None` = apply nothing.
     IrEffect fallback;
 };
-static_assert(sizeof(IrShaderRef) == 112);
+static_assert(sizeof(IrShaderRef) == 176);
 
 // -------------------------------------------------------------------------------------------
 // CLIP (Docs/design/05-style-and-css.md §5.9.8, T-332). Optional, after DOCT; at most once.

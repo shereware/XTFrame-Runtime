@@ -447,6 +447,8 @@ void FlowRuntime::Impl::seedInitialOutputs() {
                 break;  // T-193: event-driven only; their outputs start at the typed default.
             case NodeType::Filter:
                 break;  // T-543: event-driven only.
+            case NodeType::Lifecycle:
+                break;  // T-601: event-driven only.
             case NodeType::Throttle:
                 pushNumberOutput(idx, slots::throttle::kDropped, 0);
                 break;
@@ -1198,6 +1200,41 @@ void FlowRuntime::Impl::lifecycleEvent(const Context* context, DocumentHandle ha
             }
         }
     }
+}
+
+void FlowRuntime::Impl::bindLifecycleNodes() {
+    const auto isLifecycle = [](const NodeRuntime& n) { return n.type == NodeType::Lifecycle; };
+    if (docs.doc == nullptr || std::none_of(nodes.begin(), nodes.end(), isLifecycle)) {
+        return;
+    }
+    // The Document calls a copy of its listener list, so a listener removed by an earlier one in
+    // the same notification (a flow load deferred to the end of that dispatch) still runs: the
+    // liveness token tells it the binding is gone, as for the port listeners.
+    std::weak_ptr<bool> alive = docs.aliveToken;
+    docs.surfaceListenerIds.push_back(docs.doc->addSurfaceListener([this, alive](bool shown) {
+        if (!alive.expired()) {
+            lifecycleNodes(shown);
+        }
+    }));
+}
+
+void FlowRuntime::Impl::lifecycleNodes(bool shown) {
+    if (!loaded || !enabled) {
+        return;
+    }
+    DispatchGuard dispatch(*this);  // T-260c: a load asked for below runs once this returns.
+    const std::string* savedUi = currentUi;
+    const uint32_t savedInstance = currentInstance;
+    currentUi = nullptr;
+    currentInstance = docs.doc != nullptr ? docs.doc->instanceId() : 0;
+    const uint16_t slot = shown ? slots::lifecycle::kShown : slots::lifecycle::kHidden;
+    for (size_t i = 0; i < nodes.size(); ++i) {
+        if (nodes[i].type == NodeType::Lifecycle) {
+            firePulseOutput(static_cast<int>(i), slot);
+        }
+    }
+    currentUi = savedUi;
+    currentInstance = savedInstance;
 }
 
 Status FlowRuntime::Impl::postSystemEvent(std::string_view kind, std::string_view value) {

@@ -201,7 +201,7 @@ if(XT_BUILD_TESTS)
 
     # T-420: --version prints three lines to stdout and exits 0, whatever else is given.
     xt_add_expect_exit_test(xtframe-compile_version CODE 0
-        OUTPUT "^xtframe-compile [0-9]+\\.[0-9]+\\.[0-9]+[^a-z]+ir-format 2\\.[0-9]+[^a-z]+behavior [0-9]+"
+        OUTPUT "^xtframe-compile [0-9]+\\.[0-9]+\\.[0-9]+[^a-z]+ir-format 3\\.[0-9]+[^a-z]+behavior [0-9]+"
         COMMAND $<TARGET_FILE:xtframe-compile> --version --bogus)
 
     # T-23: `.xt` input via compileDocument.
@@ -248,7 +248,7 @@ if(XT_BUILD_TESTS)
 
     # T-420: --version prints three lines to stdout and exits 0, whatever else is given.
     xt_add_expect_exit_test(xtframe-pack_version CODE 0
-        OUTPUT "^xtframe-pack [0-9]+\\.[0-9]+\\.[0-9]+[^a-z]+ir-format 2\\.[0-9]+[^a-z]+behavior [0-9]+"
+        OUTPUT "^xtframe-pack [0-9]+\\.[0-9]+\\.[0-9]+[^a-z]+ir-format 3\\.[0-9]+[^a-z]+behavior [0-9]+"
         COMMAND $<TARGET_FILE:xtframe-pack> --upgrade --version)
 
     # T-274 (Docs/RELEASE-MAP.md §6.1): xtframe-pack is runtime layer and no longer bakes vectors.
@@ -377,7 +377,7 @@ if(XT_BUILD_TESTS)
         COMMAND $<TARGET_FILE:xtframe-import> "${PROJECT_SOURCE_DIR}/Tests/import/fixtures/figma/wireframe")
     # T-479 (T-420 convention): --version prints three lines to stdout and exits 0, whatever else is given.
     xt_add_expect_exit_test(xtframe-import_version CODE 0
-        OUTPUT "^xtframe-import [0-9]+\\.[0-9]+\\.[0-9]+[^a-z]+ir-format 2\\.[0-9]+[^a-z]+behavior [0-9]+"
+        OUTPUT "^xtframe-import [0-9]+\\.[0-9]+\\.[0-9]+[^a-z]+ir-format 3\\.[0-9]+[^a-z]+behavior [0-9]+"
         COMMAND $<TARGET_FILE:xtframe-import> dc --version --bogus)
 
     # T-267a (review L20): `dc` has been implemented since T-113; this used to be
@@ -510,7 +510,7 @@ if(XT_BUILD_TESTS)
         xt_add_expect_exit_test(xtframe-view_help CODE 0 OUTPUT "usage: xtframe-view" COMMAND ${XT_VIEW} --help)
         # T-420: --version prints three lines to stdout and exits 0, whatever else is given.
         xt_add_expect_exit_test(xtframe-view_version CODE 0
-            OUTPUT "^xtframe-view [0-9]+\\.[0-9]+\\.[0-9]+[^a-z]+ir-format 2\\.[0-9]+[^a-z]+behavior [0-9]+"
+            OUTPUT "^xtframe-view [0-9]+\\.[0-9]+\\.[0-9]+[^a-z]+ir-format 3\\.[0-9]+[^a-z]+behavior [0-9]+"
             COMMAND ${XT_VIEW} --width nope --version)
 
         # T-261f item 2: a document, a screenshot and a Bundle in a directory the ANSI code page

@@ -77,7 +77,7 @@
   ],
   "bundle": {
     "id": "tactical-challenges",
-    "irMajor": 2,
+    "irMajor": 3,
     "name": "Tactical Challenges"
   },
   "motionSpec": {
@@ -193,7 +193,7 @@
       ],
       "contract": "520900aafcd96523",
       "file": "ui/challenge-menu.xtir",
-      "fileHash": 10261637721751225135,
+      "fileHash": 11836817131708516121,
       "fit": "native",
       "flow": "ui/challenge-menu.xtflow",
       "flowInterface": {

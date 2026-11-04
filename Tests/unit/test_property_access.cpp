@@ -437,26 +437,27 @@ TEST_CASE("Path node: PathData/DashArray/FillGradientStops/FillOpacity") {
 TEST_CASE("effectParam: encode/decode and isEffectProp") {
     CHECK(effectParam(0, 0) == static_cast<PropId>(0x8000));
     CHECK(effectParam(3, 5) == static_cast<PropId>(0x8000 | (3 << 8) | 5));
-    CHECK(effectParam(15, prop::kEffectParamOffset) == static_cast<PropId>(0x8000 | (15 << 8) | 18));
+    CHECK(effectParam(15, prop::kEffectParamVec2Base) == static_cast<PropId>(0x8000 | (15 << 8) | 64));
+    CHECK(effectParam(2, prop::kEffectParamVec2Base + 14) == static_cast<PropId>(0x8000 | (2 << 8) | 78));
     CHECK(isEffectProp(effectParam(0, 0)));
     CHECK(isEffectProp(static_cast<PropId>(0x8000)));
     CHECK_FALSE(isEffectProp(static_cast<PropId>(0x7FFF)));
     CHECK_FALSE(isEffectProp(prop::Opacity));
 }
 
-TEST_CASE("propertyDefined: effect params -- valid set, p = 9/19 and i = 16 are undefined") {
-    CHECK(propertyDefined(effectParam(0, prop::kEffectParamEnabled)));
-    for (uint32_t p = 1; p <= 8; ++p) {
+TEST_CASE("propertyDefined: effect params -- T-534 set {0, 1..16, 32..35, 64..78}, i = 16 undefined") {
+    for (uint32_t p = 0; p < 256; ++p) {
         CAPTURE(p);
-        CHECK(propertyDefined(effectParam(0, p)));
+        const bool expected = p <= 16 || (p >= 32 && p <= 35) || (p >= 64 && p <= 78);
+        CHECK(propertyDefined(effectParam(0, p)) == expected);
     }
-    CHECK(propertyDefined(effectParam(0, prop::kEffectParamColor0)));
-    CHECK(propertyDefined(effectParam(0, prop::kEffectParamColor1)));
-    CHECK(propertyDefined(effectParam(0, prop::kEffectParamOffset)));
     CHECK(propertyDefined(effectParam(15, 0)));  // Highest valid effectIndex.
 
-    CHECK_FALSE(propertyDefined(effectParam(0, 9)));
-    CHECK_FALSE(propertyDefined(effectParam(0, 19)));
+    // The pre-T-534 colors / offset (16, 17, 18) are no longer defined.
+    CHECK_FALSE(propertyDefined(effectParam(0, 17)));
+    CHECK_FALSE(propertyDefined(effectParam(0, 18)));
+    CHECK_FALSE(propertyDefined(effectParam(0, 36)));
+    CHECK_FALSE(propertyDefined(effectParam(0, 79)));
     // effectIndex = 16: effectParam() itself masks effectIndex to 0-15, so build the PropId
     // directly to exercise propertyDefined()'s "i <= 15" check.
     PropId badIndex = static_cast<PropId>(0x8000 | (16 << 8) | 0);
@@ -466,12 +467,15 @@ TEST_CASE("propertyDefined: effect params -- valid set, p = 9/19 and i = 16 are 
 TEST_CASE("propertyType/propertyDirtyBits: effect params") {
     CHECK(propertyType(effectParam(0, prop::kEffectParamEnabled)) == ValueType::Float);
     CHECK(propertyType(effectParam(0, 3)) == ValueType::Float);
-    CHECK(propertyType(effectParam(0, prop::kEffectParamColor0)) == ValueType::Color);
-    CHECK(propertyType(effectParam(0, prop::kEffectParamColor1)) == ValueType::Color);
-    CHECK(propertyType(effectParam(0, prop::kEffectParamOffset)) == ValueType::Vec2);
+    CHECK(propertyType(effectParam(0, 16)) == ValueType::Float);
+    CHECK(propertyType(effectParam(0, prop::kEffectParamColorBase)) == ValueType::Color);
+    CHECK(propertyType(effectParam(0, prop::kEffectParamColorBase + 3)) == ValueType::Color);
+    CHECK(propertyType(effectParam(0, prop::kEffectParamVec2Base)) == ValueType::Vec2);
+    CHECK(propertyType(effectParam(0, prop::kEffectParamVec2Base + 14)) == ValueType::Vec2);
 
     CHECK(propertyDirtyBits(effectParam(0, 0)) == kDirtyPaint);
-    CHECK(propertyDirtyBits(effectParam(2, prop::kEffectParamColor0)) == kDirtyPaint);
+    CHECK(propertyDirtyBits(effectParam(2, prop::kEffectParamColorBase)) == kDirtyPaint);
+    CHECK(propertyDirtyBits(effectParam(2, prop::kEffectParamVec2Base + 6)) == kDirtyPaint);
 }
 
 TEST_CASE("propertyApplies: effect params apply to every drawable kind, not Camera/Free") {
@@ -511,26 +515,44 @@ TEST_CASE("Effect params: get/set round trip on a Group with 2 effects, out-of-r
     CHECK(arena.effects()[base].params[3] == doctest::Approx(2.5f));
 
     // colors[1] on effect index 1.
-    setProperty(arena, g, effectParam(1, prop::kEffectParamColor1),
+    setProperty(arena, g, effectParam(1, prop::kEffectParamColorBase + 1),
                 Value::ofColor(Color{0.1f, 0.2f, 0.3f, 0.4f}));
-    Value c1 = getProperty(arena, g, effectParam(1, prop::kEffectParamColor1));
+    Value c1 = getProperty(arena, g, effectParam(1, prop::kEffectParamColorBase + 1));
     CHECK(c1.c.r == doctest::Approx(0.1f));
     CHECK(c1.c.g == doctest::Approx(0.2f));
     CHECK(arena.effects()[base + 1].colors[1].b == doctest::Approx(0.3f));
 
+    // T-534: colors[3] and params[15] (custom-shader slots).
+    setProperty(arena, g, effectParam(1, prop::kEffectParamColorBase + 3),
+                Value::ofColor(Color{0.5f, 0.6f, 0.7f, 0.8f}));
+    CHECK(arena.effects()[base + 1].colors[3].a == doctest::Approx(0.8f));
+    setProperty(arena, g, effectParam(1, prop::kEffectParamFloatBase + 15), Value::ofFloat(9.5f));
+    CHECK(arena.effects()[base + 1].params[15] == doctest::Approx(9.5f));
+    CHECK(getProperty(arena, g, effectParam(1, 16)).f == doctest::Approx(9.5f));
+
     // Composite Vec2 offset (params[0..1]) on effect index 0.
-    setProperty(arena, g, effectParam(0, prop::kEffectParamOffset), Value::ofVec2(Vec2{3, 4}));
-    Value offset = getProperty(arena, g, effectParam(0, prop::kEffectParamOffset));
+    setProperty(arena, g, effectParam(0, prop::kEffectParamVec2Base), Value::ofVec2(Vec2{3, 4}));
+    Value offset = getProperty(arena, g, effectParam(0, prop::kEffectParamVec2Base));
     CHECK(offset.v2.x == doctest::Approx(3));
     CHECK(offset.v2.y == doctest::Approx(4));
     CHECK(arena.effects()[base].params[0] == doctest::Approx(3));
     CHECK(arena.effects()[base].params[1] == doctest::Approx(4));
 
+    // T-534: the Vec2 from slot 14 is (params[14], params[15]); slot 6 is (params[6], params[7]).
+    setProperty(arena, g, effectParam(0, prop::kEffectParamVec2Base + 14), Value::ofVec2(Vec2{7, 8}));
+    CHECK(arena.effects()[base].params[14] == doctest::Approx(7));
+    CHECK(arena.effects()[base].params[15] == doctest::Approx(8));
+    setProperty(arena, g, effectParam(0, prop::kEffectParamVec2Base + 6), Value::ofVec2(Vec2{-1, -2}));
+    Value v6 = getProperty(arena, g, effectParam(0, prop::kEffectParamVec2Base + 6));
+    CHECK(v6.v2.x == doctest::Approx(-1));
+    CHECK(v6.v2.y == doctest::Approx(-2));
+    CHECK(arena.effects()[base].params[7] == doctest::Approx(-2));
+
     // effectIndex = 5 doesn't exist on this node (effectCount == 2) -> type-appropriate default.
     CHECK(getProperty(arena, g, effectParam(5, 3)).f == doctest::Approx(0));
-    Value defColor = getProperty(arena, g, effectParam(5, prop::kEffectParamColor0));
+    Value defColor = getProperty(arena, g, effectParam(5, prop::kEffectParamColorBase));
     CHECK(defColor.c.a == doctest::Approx(0));
-    Value defOffset = getProperty(arena, g, effectParam(5, prop::kEffectParamOffset));
+    Value defOffset = getProperty(arena, g, effectParam(5, prop::kEffectParamVec2Base));
     CHECK(defOffset.v2.x == doctest::Approx(0));
     CHECK(defOffset.v2.y == doctest::Approx(0));
     // Note: setProperty() on an out-of-range effectIndex is a Debug-build XT_ASSERT (not silently
@@ -543,6 +565,13 @@ TEST_CASE("Effect params: get/set round trip on a Group with 2 effects, out-of-r
     CHECK(std::strcmp(propertyName(arena, g, effectParam(0, 3)), "effect[0].blur") == 0);
     // Glow (effect index 1) paramIndex 1 -> "radius".
     CHECK(std::strcmp(propertyName(arena, g, effectParam(1, 1)), "effect[1].radius") == 0);
+    // T-534: DropShadow's Vec2 slot 0 is "offset"; another slot has no 18.3 name.
+    CHECK(std::strcmp(propertyName(arena, g, effectParam(0, prop::kEffectParamVec2Base)),
+                      "effect[0].offset") == 0);
+    CHECK(std::strcmp(propertyName(arena, g, effectParam(0, prop::kEffectParamColorBase)),
+                      "effect[0].color") == 0);
+    CHECK(std::strcmp(propertyName(arena, g, effectParam(0, prop::kEffectParamVec2Base + 2)),
+                      "effect[0].param66") == 0);
     // effectIndex = 5 doesn't exist on this node -> falls back to the generic form too.
     CHECK(std::strcmp(propertyName(arena, g, effectParam(5, 3)), "effect[5].param3") == 0);
 }

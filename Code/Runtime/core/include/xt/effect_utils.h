@@ -75,7 +75,39 @@ void backdropPyramidMix(float sigma, int levels, int& lower, int& upper, float& 
 bool effectKindByName(std::string_view name, EffectKind& out);
 
 /// T-547 (18.2-18.3): parameter name -> paramIndex for built-in `kind` (`enabled` = 0,
-/// params[i] = i + 1, `color` = 16). False for a name `kind` does not define.
+/// params[i] = kEffectParamFloatBase + i, `color` = kEffectParamColorBase; T-534: DropShadow's
+/// `offset` = kEffectParamVec2Base, the offset as one Vec2). False for a name `kind` does not
+/// define.
 bool effectParamIndexByName(EffectKind kind, std::string_view param, uint32_t& out);
+
+/// T-534 (18.13) slot addressing: what effectSlotParamIndex() made of a name.
+enum class EffectSlotName : uint8_t {
+    NotSlot,     ///< Not of the form `p<n>` / `c<n>` / `v<n>` (n one or two digits).
+    Ok,          ///< A slot within range; `paramIndex` is set.
+    OutOfRange,  ///< The form matches but n is past the last slot (p 15, c 3, v 14).
+};
+
+/// T-534 (18.13): `p<n>` -> float slot n (`kEffectParamFloatBase + n`, n 0..15), `c<n>` -> color
+/// slot n (`kEffectParamColorBase + n`, 0..3), `v<n>` -> the Vec2 whole from float slot n
+/// (`kEffectParamVec2Base + n`, 0..14); the form is `^[pcv][0-9]{1,2}$`. Valid on every effect
+/// kind (the slot's meaning follows 18.3 for a built-in one). A `.xtfx` header must not name a
+/// parameter in this form ("reserved parameter name").
+EffectSlotName effectSlotParamIndex(std::string_view name, uint32_t& paramIndex);
+
+/// What matchCustomEffectParam() made of an address against one declared parameter.
+enum class CustomParamMatch : uint8_t {
+    NoMatch,       ///< `param` does not name this parameter.
+    Ok,            ///< `paramIndex` is set.
+    NoComponents,  ///< `param` is `<name>.x` / `<name>.y` but this parameter is not a Vec2.
+};
+
+/// T-534 (18.13; cloud review 2026-10-31 §2.7, the address shared by `@timeline`, `bind:effect`
+/// and flow `setProperty`): matches the address `param` against one custom-shader parameter
+/// declared as `name` with `type` (ShaderParamDesc::type: 0 Float, 1 Vec2, 2 Color) at `slot`
+/// (customParamSlots()): a Float -> `kEffectParamFloatBase + slot`, a Color ->
+/// `kEffectParamColorBase + slot`, a Vec2 whole -> `kEffectParamVec2Base + slot`, `<name>.x` /
+/// `<name>.y` of a Vec2 -> the Float `kEffectParamFloatBase + slot` / `+ slot + 1`.
+CustomParamMatch matchCustomEffectParam(std::string_view param, std::string_view name, uint8_t type,
+                                        uint8_t slot, uint32_t& paramIndex);
 
 }  // namespace xt

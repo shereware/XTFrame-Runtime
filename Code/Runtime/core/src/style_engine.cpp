@@ -206,21 +206,6 @@ float resolveHitSlopLength(float value, LengthUnit unit, float fontSizeSelfPx, f
     }
 }
 
-/// T-386 (05 §5.9.11): one encoded `hit-slop` side of an IR of minor <= 7 (StyleProp 276,
-/// xt::kHitSlopEmBias) -> ComputedStyle::hitSlop, as resolveHitSlopLength().
-float resolveHitSlopSide(float encoded, float fontSizeSelfPx, float pxScale) {
-    if (!std::isfinite(encoded)) {
-        return 0.0f;
-    }
-    if (encoded >= 0.0f) {
-        return encoded * pxScale;
-    }
-    if (encoded <= -kHitSlopEmBias) {
-        return (-encoded - kHitSlopEmBias) * fontSizeSelfPx * pxScale;
-    }
-    return encoded;
-}
-
 /// Applies one non-font-size declaration onto `next` (or, for transform-origin, onto
 /// `originX`/`originY`, staged the same way `next.base` is and committed by the caller). Must run
 /// after the font-size pass so `fontSizeSelfPx` is final.
@@ -372,13 +357,9 @@ void applyGeneralDecl(const IrView& ir, ComputedStyle& next, Length& originX, Le
         return;
     }
     if (decl.prop == style_decode::styleprop::HitSlop) {  // T-386 (05 §5.9.11).
-        // T-405: the biased encoding exists only in an IR of minor <= 7; a newer file never writes
-        // StyleProp 276 (the longhands below), so a stray one is ignored.
-        if (ir.formatMinor() < 8) {
-            for (int i = 0; i < 4; ++i) {
-                next.hitSlop[i] = resolveHitSlopSide(irValueF32(decl.value, i), fontSizeSelfPx, pxScale);
-            }
-        }
+        // T-405: the biased encoding existed only in an IR of minor <= 7; a 2.8+ file never writes
+        // StyleProp 276 (the longhands below), so a stray one is ignored. T-534: 2.x files are no
+        // longer opened, so the 2.7 decode is gone.
         return;
     }
     if (decl.prop >= style_decode::styleprop::HitSlopTop &&
@@ -799,13 +780,17 @@ void applyAnimationDiff(Animator& animator, const IrView& ir,
     next.lastAnimationCount = next.animationCount;
 }
 
-/// Effect-parameter PropId's paramIndex list that's animatable (18-effects.md §18.2/§18.3):
-/// params[0..7] (paramIndex 1-8), colors[0/1] (16/17) and the composite Vec2 offset (18).
+/// Effect-parameter PropId's paramIndex list that's animatable (18-effects.md §18.2/§18.3, T-534
+/// encoding): params[0..15] (paramIndex 1-16), colors[0..3] (32-35) and the composite Vec2 at slot
+/// 0 (64, DropShadow's offset; the other Vec2 slots alias float slots already listed here).
 /// paramIndex 0 (`enabled`) is deliberately excluded even though propertyType() reports it as
 /// Float: 18.2 calls it out as "0 = enabled（Float 0/1，離散插值）" -- discrete, not a linear
 /// tween -- unlike every other Float paramIndex here (see the T-51b report's uncovered case).
-constexpr uint32_t kAnimatableEffectParams[] = {
-    1, 2, 3, 4, 5, 6, 7, 8, prop::kEffectParamColor0, prop::kEffectParamColor1, prop::kEffectParamOffset};
+constexpr uint32_t kAnimatableEffectParams[] = {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
+                                                12, 13, 14, 15, 16, 32, 33, 34, 35, 64};
+static_assert(prop::kEffectParamFloatBase == 1 && prop::kEffectParamFloatCount == 16 &&
+              prop::kEffectParamColorBase == 32 && prop::kEffectParamColorCount == 4 &&
+              prop::kEffectParamVec2Base == 64);
 constexpr size_t kAnimatableEffectParamCount =
     sizeof(kAnimatableEffectParams) / sizeof(kAnimatableEffectParams[0]);
 
@@ -885,11 +870,12 @@ bool resolveEffectSequence(const IrView& ir, const std::vector<EffectInstance>* 
             dst.kind = static_cast<EffectKind>(src.kind);
             dst.enabled = src.enabled;
             dst.shader = src.shader;
-            for (size_t p = 0; p < 8; ++p) {
+            for (size_t p = 0; p < 16; ++p) {
                 dst.params[p] = src.params[p];
             }
-            dst.colors[0] = src.colors[0];
-            dst.colors[1] = src.colors[1];
+            for (size_t c = 0; c < 4; ++c) {
+                dst.colors[c] = src.colors[c];
+            }
             uint32_t base = stopCursor;
             if (!copyEffectStops<IrGradientStop>(irStops, src.stopOffset, src.stopCount, scratchStops,
                                                  scratchStopsCap, stopCursor)) {

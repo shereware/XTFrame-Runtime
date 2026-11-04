@@ -138,7 +138,7 @@ TEST_CASE("bundle: rejects missing and incompatible manifests") {
         Result<std::unique_ptr<Bundle>> result = Bundle::open(dir, nullptr, &error);
         CHECK(result.status() == Status::kUnsupported);
         CHECK(error.find("99") != std::string::npos);
-        CHECK(error.find("2") != std::string::npos);
+        CHECK(error.find(std::to_string(kIrFormatMajor)) != std::string::npos);
     }
     SUBCASE("not JSON") {
         writeManifest(dir, "}{ not json");
@@ -161,7 +161,7 @@ TEST_CASE("bundle: reload() reports changed and new UIs") {
 
     writeManifest(dir, R"({
       "version": 1,
-      "bundle": { "id": "mygame", "name": "MyGame UI", "irMajor": 2 },
+      "bundle": { "id": "mygame", "name": "MyGame UI", "irMajor": 3 },
       "uis": [
         { "id": "hud",   "name": "HUD",   "file": "ui/hud.xtir",   "fileHash": 9999 },
         { "id": "pause", "name": "Pause", "file": "ui/pause.xtir", "fileHash": 2222 },

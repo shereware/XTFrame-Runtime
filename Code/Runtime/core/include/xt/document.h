@@ -672,6 +672,10 @@ public:
     void setHostEventListener(HostEventListener listener);
     /// Told when the surface finished showing (true, `OnShown`) or hiding (false, `OnHidden`).
     void setVisibilityListener(std::function<void(bool visible)> listener);
+    /// T-601 (53 §53.102 item 7): more observers (id never 0): true with OnShown and at the first
+    /// update() that finds the surface visible (before its timelines step), false with OnHidden.
+    uint32_t addSurfaceListener(std::function<void(bool shown)> listener);
+    void removeSurfaceListener(uint32_t id);
 
     // Ports and bindings (Docs/design/27-interaction.md §27.3, 13-api.md §13.8.1, T-175). Values
     // by port type: Number Float; String / Texture StringRef (this Document's StringId); Bool
@@ -1209,8 +1213,7 @@ private:
     StyleEngine m_styleEngine;
     LayoutEngine m_layoutEngine;
     Painter m_painter;
-    /// T-203: the IR's SHDR chunk, unpacked at load (shaderRef()).
-    ShaderTable m_shaderTable;
+    ShaderTable m_shaderTable;  // T-203: the IR's SHDR chunk, unpacked at load (shaderRef()).
     std::unique_ptr<EventDispatcher> m_events;
     // Docs/design/08-events.md §8.5's one exception to §1.7's immutable-string rule: the runtime,
     // mutable value of every editable `input`, indexed by TextNodeData::editIndex. Held behind a
@@ -1237,11 +1240,9 @@ private:
     // it is freed once the outermost dispatching call returns. From the moment this is set the
     // Document is dead to the host: every host callback it would emit is skipped.
     bool m_unloading = false;
-    /// T-260a: sets m_unloading and silences the element listeners (EventDispatcher).
-    void markUnloading();
+    void markUnloading();  // T-260a: sets m_unloading, silences the element listeners.
     uint32_t m_instanceId = 0;
-    /// T-374: lastHideSource().
-    std::string m_lastHideSource;
+    std::string m_lastHideSource;  // T-374: lastHideSource().
     /// T-374: a direct child of `<body>` counts as shown for the member rule (27.2.4): not hidden
     /// or hiding by a `hide` action, `visibility` not hidden, `display` not none.
     bool surfaceChildShown(NodeId node) const;
@@ -1324,8 +1325,7 @@ private:
     /// a unit's px value changed; re-evaluates `@media`.
     void refreshLengthEnv(bool force);
     bool m_forceTransform = true;  // First frame, or since the last setViewport() call.
-    /// T-397 (08 §8.17): update() skipped layout for a hidden surface since the last layout.
-    bool m_layoutSkipped = false;
+    bool m_layoutSkipped = false;  // T-397 (08 §8.17): layout skipped while hidden since the last.
     /// T-397: after skipped layouts, marks the whole tree kDirtyLayout and forces the transforms.
     void restoreSkippedLayout();
     /// T-399 (08 §8.18): applies the pending ElementRef::focus() and validates the focus after the

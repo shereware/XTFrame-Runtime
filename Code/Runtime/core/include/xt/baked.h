@@ -16,7 +16,7 @@
 /// "`.xtcl`", Docs/tasks/T-49.md.
 ///
 /// File layout:
-///   Header (28 bytes): char magic[4] = "XTCL"; u16 major = 1; u16 minor = 4; u32 frameCount;
+///   Header (28 bytes): char magic[4] = "XTCL"; u16 major = 2; u16 minor = 4; u32 frameCount;
 ///                       f32 fps; f32 width; f32 height; f32 dpr.
 ///   Per frame: u32 frameIndex; u32 payloadLength; then payloadLength bytes of payload.
 ///   Payload: for each CommandList vector, in this order --
@@ -27,6 +27,10 @@
 ///     already POD/no-padding types).
 ///   Not stored (T-263f): particles, particleInstances, imageMeshes, meshVertices, meshIndices --
 ///   BakedWriter::writeFrame refuses a list with a DrawParticles or DrawImageMesh command.
+///
+/// `major` 2 (T-534, IR 3.0): PackedEffectInstance grew to 16 params + 4 colors (18 §18.2); a
+/// `major` 1 file is rejected (`.xtcl` is derived output -- re-bake it). The minor history below
+/// carries over unchanged.
 ///
 /// `minor == 0` files (written before Docs/tasks/T-49.md) end after `dashes`; BakedPlayer::load
 /// accepts them and frame() leaves `projections`/`transforms3`/`imageQuads` empty for every frame
@@ -43,6 +47,9 @@
 /// follows the explicit field list (28 bytes) as the more authoritative of the two -- see the
 /// T-37 report's "uncovered cases".
 namespace xt {
+
+/// The `.xtcl` major version BakedWriter stamps and the only one BakedPlayer::load accepts (T-534).
+inline constexpr uint16_t kBakedFormatMajor = 2;
 
 #pragma pack(push, 1)
 
@@ -239,14 +246,13 @@ struct PackedImageQuadCmd {
 
 /// Packed mirror of EffectInstance (Docs/design/18-effects.md §18.2).
 struct PackedEffectInstance {
-    uint8_t kind;                              ///< EffectInstance::kind (EffectKind).
-    uint8_t enabled;                           ///< EffectInstance::enabled.
-    uint32_t shader;                           ///< EffectInstance::shader (AssetId).
-    float params[8];                           ///< EffectInstance::params.
-    float color0r, color0g, color0b, color0a;  ///< EffectInstance::colors[0].
-    float color1r, color1g, color1b, color1a;  ///< EffectInstance::colors[1].
-    uint32_t stopOffset;                       ///< EffectInstance::stopOffset.
-    uint32_t stopCount;                        ///< EffectInstance::stopCount.
+    uint8_t kind;         ///< EffectInstance::kind (EffectKind).
+    uint8_t enabled;      ///< EffectInstance::enabled.
+    uint32_t shader;      ///< EffectInstance::shader (AssetId).
+    float params[16];     ///< EffectInstance::params.
+    float colors[4][4];   ///< EffectInstance::colors, RGBA each.
+    uint32_t stopOffset;  ///< EffectInstance::stopOffset.
+    uint32_t stopCount;   ///< EffectInstance::stopCount.
 };
 
 /// Packed mirror of EffectCmd (Docs/design/18-effects.md §18.5).

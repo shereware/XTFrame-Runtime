@@ -855,12 +855,22 @@ bool parseTimelineTime(const Token& lexed, float& seconds) {
     return seconds >= 0;
 }
 
-// Docs/design/18-effects.md §18.12 (T-172): the value of an `effect.<effect>.<param>` timeline
-// declaration. A color parameter takes any `<color>`; every other parameter is one number, unitless
-// or in the unit 18.3 gives it (px for lengths, deg for angles), stored as a plain Float.
-bool parseEffectParamValue(const std::vector<Token>& lexed, bool isColor, StyleValue& out) {
+// Docs/design/18-effects.md §18.12 (T-172) / §18.13 (T-534): the value of an
+// `effect.<effect>.<param>` timeline declaration, parsed by the type of the parameter it resolved
+// to. A Color takes any `<color>`; a Float is one number, unitless or in the unit 18.3 gives it
+// (px for lengths, deg for angles); a Vec2 is two such numbers, unitless or px. Declared where it
+// is used (style_emit.cpp), like parseAndExpandDecl.
+bool parseEffectParamText(std::string_view text, ValueType type, StyleValue& out) {
+    Lexer lexer(text);
+    std::vector<Token> lexed;
+    for (Token t = lexer.next(); t.kind != TokenKind::End; t = lexer.next()) {
+        if (t.kind == TokenKind::Unknown) {
+            return false;
+        }
+        lexed.push_back(t);
+    }
     const std::vector<Tok> tokens = toValueTokens(lexed);
-    if (isColor) {
+    if (type == ValueType::Color) {
         Color c;
         if (!parseColorTokens(tokens, c)) {
             return false;
@@ -869,7 +879,21 @@ bool parseEffectParamValue(const std::vector<Token>& lexed, bool isColor, StyleV
         out.color = c;
         return true;
     }
-    if (tokens.size() != 1 || tokens[0].kind != TokKind::Number) {
+    if (type == ValueType::Vec2) {
+        if (tokens.size() != 2) {
+            return false;
+        }
+        out.floats.clear();
+        for (const Tok& t : tokens) {
+            if (t.kind != TokKind::Number || !(t.unit.empty() || t.unit == "px")) {
+                return false;
+            }
+            out.floats.push_back(t.num);
+        }
+        out.kind = StyleValueKind::Vec2;
+        return true;
+    }
+    if (type != ValueType::Float || tokens.size() != 1 || tokens[0].kind != TokKind::Number) {
         return false;
     }
     const Tok& t = tokens[0];

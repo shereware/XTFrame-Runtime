@@ -165,6 +165,25 @@ struct FlowGraph {
     Status hostInterface(FlowHostInterface& out) const;
 };
 
+/// T-601 (Docs/design/53-flow-language.md §53.102 item 3, 24 §24.15.4): one finding of
+/// lintFlowGraph(). Reported as a warning through the diagnostics contract (ReportDiagnostic) by
+/// xtframe-compile (the `.xt`'s sibling `.xtflow`) and the importer's lint (`--lint`, the Problems
+/// panel's diagnostics files).
+struct FlowLintFinding {
+    std::string code;                  ///< "flow.introByTimer".
+    std::string nodeId;                ///< The node it is about (the timer).
+    std::vector<std::string> targets;  ///< The inputs reached ("intro.play"), in edge order.
+    std::string timeline;              ///< The first reached timeline's `name` ("" when none).
+    std::string message;               ///< The documented message (53 §53.102 item 3).
+    std::string fix;                   ///< What to do instead, one line.
+};
+
+/// T-601: the static lint of a graph parse() accepted (no Document needed). `flow.introByTimer`:
+/// the `tick` of a `timer` with `autostart: true` and `repeat: false` reaching `timeline.play` /
+/// `timeline.seek` or an input of a `state` node, directly or through the pulse-only relays
+/// (`merge`, a pulse-typed `throttle`); one finding per timer, in node order. Appends to `out`.
+void lintFlowGraph(const FlowGraph& graph, std::vector<FlowLintFinding>& out);
+
 /// One node port in nodeTypeTable(): its name and PortType (Docs/design/17-editor.md §17.6's
 /// signal node table).
 struct NodeTypePort {
@@ -185,7 +204,8 @@ struct NodeTypeDesc {
 /// The fourteen §17.6 signal node types' static shape, in the table's own order (constant,
 /// counter, toggle, timer, clock, random, math, compare, toString, select, radio, lookup, merge,
 /// format), then T-193's six (system, sound, haptic, spawn, emit, timeline), then T-541's `state`
-/// (only its fixed ports: its event / enter / exit ports depend on the node's own params). Ports and their
+/// (only its fixed ports: its event / enter / exit ports depend on the node's own params), T-543's
+/// `filter` and `throttle`, and T-601's `lifecycle` (outputs `shown` / `hidden`). Ports and their
 /// PortType are obtained from the same nodePortInfo()/outputPortOrder() functions flow_bindings.cpp uses to
 /// bind a live graph (flow_internal.h), not a separate copy of the port rules.
 std::span<const NodeTypeDesc> nodeTypeTable();

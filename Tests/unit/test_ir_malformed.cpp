@@ -559,10 +559,15 @@ TEST_CASE("malformed: header basics") {
     badMajor[5] = 0;
     CHECK(openStatus(badMajor) == Status::kInvalidIr);
 
-    std::vector<uint8_t> badMajor3 = good;
-    badMajor3[4] = 3;
-    badMajor3[5] = 0;
-    CHECK(openStatus(badMajor3) == Status::kInvalidIr);
+    // T-534: 2.x files are no longer supported either; a future major is rejected too.
+    std::vector<uint8_t> badMajor2 = good;
+    badMajor2[4] = 2;
+    badMajor2[5] = 0;
+    CHECK(openStatus(badMajor2) == Status::kInvalidIr);
+    std::vector<uint8_t> badMajor4 = good;
+    badMajor4[4] = 4;
+    badMajor4[5] = 0;
+    CHECK(openStatus(badMajor4) == Status::kInvalidIr);
 
     std::vector<uint8_t> lenPlus = good;
     writeU32(lenPlus, 12, readU32(good, 12) + 1);

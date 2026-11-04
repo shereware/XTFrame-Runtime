@@ -349,7 +349,7 @@ TEST_CASE("T-255 A4 resolver: an asset id outside the ASST table never sizes the
 TEST_CASE("T-255 A5: a .xtcl frameCount the file cannot hold is rejected before it allocates") {
     BakedHeader header{};
     std::memcpy(header.magic, "XTCL", 4);
-    header.major = 1;
+    header.major = kBakedFormatMajor;
     header.minor = 4;
     header.fps = 30.0f;
     header.dpr = 1.0f;

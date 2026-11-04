@@ -331,10 +331,52 @@ function(_xt_make_copy_fonts_target)
         VERBATIM)
 endfunction()
 
+# -- The built-in shader examples next to the editor (T-533, 18 §18.16.3) ------------------------
+# xtframe-editor and xtframe-service get Assets/Fx (the `.xtfx` examples of the effect catalog's
+# `shader:<name>` entries and their LICENSE) in `<executable dir>/fx`, which they hand to
+# catalog::setStandardShaderDir() on start. Same shape as xt_copy_fonts: one shared custom target,
+# xt_copy_fx.
+
+# xt_copy_standard_fx(<target>): registers <target> and makes it depend on xt_copy_fx.
+function(xt_copy_standard_fx target)
+    set_property(GLOBAL APPEND PROPERTY XT_COPY_FX_TARGETS ${target})
+    add_dependencies(${target} xt_copy_fx)
+endfunction()
+
+# _xt_make_copy_fx_target(): the deferred definition of xt_copy_fx.
+function(_xt_make_copy_fx_target)
+    get_property(targets GLOBAL PROPERTY XT_COPY_FX_TARGETS)
+    if(NOT targets)
+        return()
+    endif()
+    get_property(root GLOBAL PROPERTY XT_RUNTIME_OUTPUT_ROOT)
+    file(GLOB files LIST_DIRECTORIES false "${root}/Assets/Fx/*")
+    list(FILTER files EXCLUDE REGEX "/README\\.md$")
+    list(SORT files)
+    set(dirs "")
+    if(NOT "${XT_RUNTIME_OUTPUT_DIR}" STREQUAL "")
+        list(APPEND dirs "${XT_RUNTIME_OUTPUT_DIR}/fx")
+    else()
+        foreach(target IN LISTS targets)
+            list(APPEND dirs "$<TARGET_FILE_DIR:${target}>/fx")
+        endforeach()
+    endif()
+    set(commands "")
+    foreach(dir IN LISTS dirs)
+        list(APPEND commands
+            COMMAND "${CMAKE_COMMAND}" -E make_directory "${dir}"
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different ${files} "${dir}")
+    endforeach()
+    add_custom_target(xt_copy_fx ${commands}
+        COMMENT "Copying the built-in shader examples"
+        VERBATIM)
+endfunction()
+
 # xt_runtime_output_dir_deferred(): call once from this tree's top-level CMakeLists.txt.
 function(xt_runtime_output_dir_deferred)
     set_property(GLOBAL PROPERTY XT_RUNTIME_OUTPUT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
     cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}" CALL xt_apply_runtime_output_dir)
     cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}" CALL _xt_make_copy_symbols_target)
     cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}" CALL _xt_make_copy_fonts_target)
+    cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}" CALL _xt_make_copy_fx_target)
 endfunction()

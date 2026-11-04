@@ -35,7 +35,7 @@
   ],
   "bundle": {
     "id": "demo-game",
-    "irMajor": 2,
+    "irMajor": 3,
     "name": "XTFrame Game UI demo"
   },
   "motionSpec": {
@@ -148,7 +148,7 @@
       ],
       "contract": "6bce21e1d6d11d83",
       "file": "ui/hud.xtir",
-      "fileHash": 17443896289938208291,
+      "fileHash": 11830358765589142603,
       "fit": "native",
       "flow": "ui/hud.xtflow",
       "flowInterface": {
@@ -2322,7 +2322,7 @@
       ],
       "contract": "470e5ae7f0e98e05",
       "file": "ui/pause.xtir",
-      "fileHash": 7586922943261972269,
+      "fileHash": 11214458588480393143,
       "fit": "native",
       "flow": "",
       "id": "pause",
@@ -3355,7 +3355,7 @@
       ],
       "contract": "470e5ae7f0e98e05",
       "file": "ui/sceneview.xtir",
-      "fileHash": 7994679914893493766,
+      "fileHash": 8477482465951392568,
       "fit": "native",
       "flow": "",
       "id": "sceneview",

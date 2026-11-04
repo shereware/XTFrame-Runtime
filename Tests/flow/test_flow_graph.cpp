@@ -180,7 +180,7 @@ TEST_CASE("FlowGraph::toJson: round-trips Examples/desktop_app/ui/app.xtflow") {
 TEST_CASE("nodeTypeTable: the fourteen §17.6 node types, ports matching the shared port rules") {
     std::span<const NodeTypeDesc> table = nodeTypeTable();
     // T-193 appended six types (system, sound, haptic, spawn, emit, timeline; test_flow_global.cpp).
-    REQUIRE(table.size() == 23);  // T-541 state, T-543 filter and throttle appended.
+    REQUIRE(table.size() == 24);  // T-541 state, T-543 filter and throttle, T-601 lifecycle appended.
 
     std::set<std::string> names;
     for (const NodeTypeDesc& d : table.first(14)) {

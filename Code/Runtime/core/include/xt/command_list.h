@@ -459,21 +459,21 @@ struct ShaderRef {
 /// T-203: where a custom effect's declared parameters live in its EffectInstance (and so which
 /// `effectParam()` PropId animates each). In declaration order a Float takes `params[s]`, a Vec2
 /// `params[s]`/`params[s + 1]` (`s` = the next free float slot) and a Color `colors[c]` (the next
-/// free color); `outSlot[i]` receives `s` or `c`. Returns false when the table needs more than the 8
-/// float slots or the 2 colors an EffectInstance has (the `.xtfx` header rejects that).
+/// free color); `outSlot[i]` receives `s` or `c`. Returns false when the table needs more than the
+/// 16 float slots or the 4 colors an EffectInstance has (T-534; the `.xtfx` header rejects that).
 /// `types[i]` is ShaderParamDesc::type (0 Float, 1 Vec2, 2 Color).
 inline bool customParamSlots(const uint8_t* types, size_t count, uint8_t* outSlot) {
     uint8_t nextFloat = 0;
     uint8_t nextColor = 0;
     for (size_t i = 0; i < count; ++i) {
         if (types[i] == 2) {
-            if (nextColor >= 2) {
+            if (nextColor >= 4) {
                 return false;
             }
             outSlot[i] = nextColor++;
         } else {
             const uint8_t width = types[i] == 1 ? 2 : 1;
-            if (nextFloat + width > 8) {
+            if (nextFloat + width > 16) {
                 return false;
             }
             outSlot[i] = nextFloat;

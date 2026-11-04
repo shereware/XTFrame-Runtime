@@ -584,10 +584,10 @@ private:
         cp.time = m_in.time;
         cp.layerW = static_cast<float>(std::max(1, m_window.w));
         cp.layerH = static_cast<float>(std::max(1, m_window.h));
-        for (int i = 0; i < 8; ++i) {
+        for (int i = 0; i < 16; ++i) {
             cp.params[i] = p.params[i];
         }
-        for (int c = 0; c < 2; ++c) {
+        for (int c = 0; c < 4; ++c) {
             cp.colors[c * 4 + 0] = p.colors[c].r;
             cp.colors[c * 4 + 1] = p.colors[c].g;
             cp.colors[c * 4 + 2] = p.colors[c].b;

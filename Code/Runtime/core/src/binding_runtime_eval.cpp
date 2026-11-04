@@ -63,7 +63,7 @@ size_t BindingRuntime::gather(std::span<const IrConverterStep> steps, size_t i, 
     return k;
 }
 
-BVal BindingRuntime::argValue(const Arg& a, bool relativePercent, const EvalCtx& ctx) const {
+BVal BindingRuntime::argValue(const Arg& a, bool relativePercent, const EvalCtx& ctx) {
     switch (a.kind) {
         case ConverterArg::Number:
             return num(a.f);
@@ -133,9 +133,64 @@ BVal BindingRuntime::argValue(const Arg& a, bool relativePercent, const EvalCtx&
                 return num(a.f / 100.0 * toNum(portValue(static_cast<uint32_t>(ctx.maxPort))));
             }
             return num(a.f / 100.0);
+        case ConverterArg::SubChain:  // T-585: evaluated first, then used as a literal.
+            return subChainValue(a.u, ctx);
+        case ConverterArg::Calc:
+            // T-586 (03 §3.12.11): a static calc() of the CALC pool; the style pass and layout
+            // evaluate it like a static declaration's (apply() writes it as a typed Length).
+            return ofValue(Kind::Len, Value::ofLength(static_cast<float>(a.u), LengthUnit::Calc));
         default:
             return BVal{};
     }
+}
+
+BVal BindingRuntime::subChainValue(uint32_t chain, const EvalCtx& ctx) {
+    const BindingChunk& bc = m_doc.m_ir.bindings();
+    if (chain >= bc.chains().size() || ctx.subDepth >= kMaxSubChainDepth) {
+        return BVal{};
+    }
+    const IrSubChain& c = bc.chains()[chain];
+    EvalCtx sub = ctx;
+    sub.subDepth = ctx.subDepth + 1;
+    BVal in;
+    if (c.input != kSubChainOuterInput) {
+        // Its own port, read as a Port argument (the repeat instance's copy included).
+        Arg port;
+        port.kind = ConverterArg::Port;
+        port.u = c.input;
+        in = argValue(port, false, ctx);
+        const uint32_t mapped = ctx.binding != nullptr ? mapPort(ctx.binding->portMap, c.input) : c.input;
+        sub.maxPort = mapped < m_slots.size() ? m_slots[mapped].maxPort : -1;
+    } else if (ctx.input != nullptr) {
+        in = *ctx.input;
+    }
+    sub.input = &in;
+    sub.ticking = false;
+    return run(bc.chainSteps().subspan(c.stepOffset, c.stepCount), in, sub);
+}
+
+bool BindingRuntime::chainUses(std::span<const IrConverterStep> steps, int op, uint32_t depth) const {
+    const BindingChunk& bc = m_doc.m_ir.bindings();
+    for (const IrConverterStep& step : steps) {
+        if (op >= 0 && step.op == op) {
+            return true;
+        }
+        for (uint32_t k = 0; k < 4; ++k) {
+            const ConverterArg kind = converterArgKind(step, k);
+            if (op < 0 && (kind == ConverterArg::OuterItem || kind == ConverterArg::OuterIndex)) {
+                return true;
+            }
+            uint32_t chain = 0;
+            std::memcpy(&chain, &step.args[k], sizeof(chain));
+            if (kind == ConverterArg::SubChain && depth < kMaxSubChainDepth && chain < bc.chains().size()) {
+                const IrSubChain& c = bc.chains()[chain];
+                if (chainUses(bc.chainSteps().subspan(c.stepOffset, c.stepCount), op, depth + 1)) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
 }
 
 BVal BindingRuntime::run(std::span<const IrConverterStep> steps, BVal v, EvalCtx& ctx) {
@@ -149,7 +204,7 @@ BVal BindingRuntime::run(std::span<const IrConverterStep> steps, BVal v, EvalCtx
         }
         // The final tween of a transitionTween binding is the Animator's job (apply()).
         if (op == ConverterOp::Tween && ctx.binding != nullptr && ctx.binding->transitionTween &&
-            i >= steps.size()) {
+            ctx.subDepth == 0 && i >= steps.size()) {
             continue;
         }
         v = applyStep(op, args, stepIndex, std::move(v), ctx);
@@ -191,7 +246,7 @@ BVal BindingRuntime::applyStep(ConverterOp op, const std::vector<Arg>& args, siz
     auto an = [&](size_t i, double def, bool relative = false) {
         return i < args.size() ? toNum(argValue(args[i], relative, ctx)) : def;
     };
-    StepState* state = ctx.binding != nullptr && stepIndex < ctx.binding->state.size()
+    StepState* state = ctx.binding != nullptr && ctx.subDepth == 0 && stepIndex < ctx.binding->state.size()
                            ? &ctx.binding->state[stepIndex]
                            : nullptr;
     const float clock = m_doc.m_clock;
@@ -592,6 +647,8 @@ void BindingRuntime::evaluate(uint32_t index, bool initial) {
                 ? entryToB(m_slots[b.listPort], m_slots[b.listPort].entryValues[b.item])
                 : BVal{};
     }
+    const BVal input = v;  // T-585: what a sub-chain without a port of its own starts from.
+    ctx.input = &input;
     BVal r = run(b.steps, std::move(v), ctx);
     b.ticking = ctx.ticking;
     // T-200: a world anchor also depends on the layout, so it is re-applied on every evaluation
@@ -695,7 +752,9 @@ void BindingRuntime::apply(Binding& b, const BVal& r, bool initial) {
                 m_styleScratch += toCssStr(r);  // T-568: full precision, no exponent.
                 return m_styleScratch;
             };
-            if (isStylePropId(ir.targetId)) {
+            // T-586: a Calc-unit length is a typed declaration, never text (mini_css has no calc()).
+            const bool calcLength = r.kind == Kind::Len && r.v.len.unit == LengthUnit::Calc;
+            if (isStylePropId(ir.targetId) && !calcLength) {
                 ref.setStyle(styleText());
                 return;
             }
@@ -720,8 +779,11 @@ void BindingRuntime::apply(Binding& b, const BVal& r, bool initial) {
             }
             Value pv;
             bool typed = false;
-            if ((prop == xt::prop::TranslateX || prop == xt::prop::TranslateY) &&
-                (r.kind == Kind::Num || r.kind == Kind::Len)) {
+            if (calcLength) {
+                pv = r.v;
+                typed = true;
+            } else if ((prop == xt::prop::TranslateX || prop == xt::prop::TranslateY) &&
+                       (r.kind == Kind::Num || r.kind == Kind::Len)) {
                 // T-201: `bind:translate-x/y` -- an element's translate is a Length declaration.
                 pv = r.kind == Kind::Len ? r.v : Value::ofLength(static_cast<float>(r.num), LengthUnit::Px);
                 typed = true;

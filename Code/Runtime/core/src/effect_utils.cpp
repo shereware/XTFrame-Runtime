@@ -233,8 +233,7 @@ bool effectKindByName(std::string_view name, EffectKind& out) {
     return false;
 }
 
-// Docs/design/18-effects.md §18.2-18.3: parameter name -> paramIndex for `kind` (`enabled` = 0,
-// params[i] = i + 1, `color` = 16). Returns false for a name `kind` does not define.
+// Docs/design/18-effects.md §18.2-18.3: parameter name -> paramIndex for `kind` (see the header).
 bool effectParamIndexByName(EffectKind kind, std::string_view param, uint32_t& out) {
     if (param == "enabled") {
         out = prop::kEffectParamEnabled;
@@ -284,16 +283,75 @@ bool effectParamIndexByName(EffectKind kind, std::string_view param, uint32_t& o
         if (!hasColor) {
             return false;
         }
-        out = prop::kEffectParamColor0;
+        out = prop::kEffectParamColorBase;
+        return true;
+    }
+    if (param == "offset" && kind == EffectKind::DropShadow) {
+        out = prop::kEffectParamVec2Base;  // T-534: (offsetX, offsetY) as one Vec2.
         return true;
     }
     for (size_t i = 0; i < count; ++i) {
         if (param == names[i]) {
-            out = static_cast<uint32_t>(i + 1);
+            out = prop::kEffectParamFloatBase + static_cast<uint32_t>(i);
             return true;
         }
     }
     return false;
+}
+
+EffectSlotName effectSlotParamIndex(std::string_view name, uint32_t& paramIndex) {
+    if (name.size() < 2 || name.size() > 3 || (name[0] != 'p' && name[0] != 'c' && name[0] != 'v')) {
+        return EffectSlotName::NotSlot;
+    }
+    uint32_t n = 0;
+    for (size_t i = 1; i < name.size(); ++i) {
+        if (name[i] < '0' || name[i] > '9') {
+            return EffectSlotName::NotSlot;
+        }
+        n = n * 10 + static_cast<uint32_t>(name[i] - '0');
+    }
+    uint32_t base = prop::kEffectParamFloatBase;
+    uint32_t count = prop::kEffectParamFloatCount;
+    if (name[0] == 'c') {
+        base = prop::kEffectParamColorBase;
+        count = prop::kEffectParamColorCount;
+    } else if (name[0] == 'v') {
+        base = prop::kEffectParamVec2Base;
+        count = prop::kEffectParamVec2Count;
+    }
+    if (n >= count) {
+        return EffectSlotName::OutOfRange;
+    }
+    paramIndex = base + n;
+    return EffectSlotName::Ok;
+}
+
+CustomParamMatch matchCustomEffectParam(std::string_view param, std::string_view name, uint8_t type,
+                                        uint8_t slot, uint32_t& paramIndex) {
+    // T-532 (18.13): `<name>.x` / `<name>.y` address one component of a Vec2 as a Float.
+    int component = -1;
+    if (param.size() > 2 && param[param.size() - 2] == '.' && (param.back() == 'x' || param.back() == 'y')) {
+        component = param.back() == 'x' ? 0 : 1;
+        param.remove_suffix(2);
+    }
+    if (param != name) {
+        return CustomParamMatch::NoMatch;
+    }
+    if (component >= 0) {
+        if (type != 1) {
+            return CustomParamMatch::NoComponents;
+        }
+        paramIndex = prop::kEffectParamFloatBase + slot + static_cast<uint32_t>(component);
+        return CustomParamMatch::Ok;
+    }
+    if (type == 0) {
+        paramIndex = prop::kEffectParamFloatBase + slot;
+    } else if (type == 2) {
+        paramIndex = prop::kEffectParamColorBase + slot;
+    } else {
+        paramIndex = prop::kEffectParamVec2Base + slot;  // T-534: a Vec2 whole, any slot.
+    }
+    return CustomParamMatch::Ok;
 }
 
 }  // namespace xt

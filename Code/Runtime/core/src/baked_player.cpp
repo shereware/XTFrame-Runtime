@@ -235,7 +235,7 @@ Status BakedPlayer::load(IrBlob bytes, bool takeOwnership) {
     BakedHeader header{};
     std::memcpy(&header, m_data, sizeof(header));
     if (header.magic[0] != 'X' || header.magic[1] != 'T' || header.magic[2] != 'C' ||
-        header.magic[3] != 'L' || header.major != 1) {
+        header.magic[3] != 'L' || header.major != kBakedFormatMajor) {
         return Status::kInvalidIr;
     }
 

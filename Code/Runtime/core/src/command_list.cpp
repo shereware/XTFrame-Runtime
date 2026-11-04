@@ -460,7 +460,11 @@ void dumpCommandList(const CommandList& list, std::string& out) {
                     out += " enabled=";
                     out += std::to_string(e.enabled);
                     out += " params=[";
-                    for (int p = 0; p < 8; ++p) {
+                    // T-534 (IR 3.0): built-in kinds use params[0..7] and colors[0..1] (18.3); a
+                    // custom shader's dump shows all 16 float and 4 color slots.
+                    const bool custom = e.kind == EffectKind::Custom;
+                    const int paramCount = custom ? static_cast<int>(prop::kEffectParamFloatCount) : 8;
+                    for (int p = 0; p < paramCount; ++p) {
                         if (p != 0) {
                             out += ' ';
                         }
@@ -482,6 +486,18 @@ void dumpCommandList(const CommandList& list, std::string& out) {
                     appendFloat(out, e.colors[1].b);
                     out += ',';
                     appendFloat(out, e.colors[1].a);
+                    for (uint32_t c = 2; custom && c < prop::kEffectParamColorCount; ++c) {
+                        out += ") color";
+                        out += std::to_string(c);
+                        out += "=(";
+                        appendFloat(out, e.colors[c].r);
+                        out += ',';
+                        appendFloat(out, e.colors[c].g);
+                        out += ',';
+                        appendFloat(out, e.colors[c].b);
+                        out += ',';
+                        appendFloat(out, e.colors[c].a);
+                    }
                     out += ") stops=";
                     out += std::to_string(e.stopCount);
                 }

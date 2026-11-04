@@ -628,10 +628,9 @@ void BindingRuntime::load() {
                 list.push_back(static_cast<uint32_t>(i));
             }
         }
-        for (const IrConverterStep& step : b.steps) {
-            b.usesCustom = b.usesCustom || step.op == static_cast<uint8_t>(ConverterOp::Custom);
-            b.usesLocalize = b.usesLocalize || step.op == static_cast<uint8_t>(ConverterOp::Localize);
-        }
+        // T-585: sub-chain steps count too.
+        b.usesCustom = chainUses(b.steps, static_cast<int>(ConverterOp::Custom));
+        b.usesLocalize = chainUses(b.steps, static_cast<int>(ConverterOp::Localize));
         // A final tween on an animatable Float/Length/Color property: an Animator transition.
         if (static_cast<BindTarget>(b.ir->target) == BindTarget::Prop && !isStylePropId(b.ir->targetId) &&
             b.ir->sceneNode == kBindElementSelf) {

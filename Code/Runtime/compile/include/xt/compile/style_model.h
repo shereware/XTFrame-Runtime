@@ -134,11 +134,12 @@ struct CustomParamOverride {
 struct EffectDeclEntry {
     /// Which built-in effect this entry is.
     EffectKind kind = EffectKind::None;
-    /// paramIndex 1..8 (18.2); meaning depends on `kind` (18.3's parameter table). Lengths and
-    /// angles are already resolved to plain numbers (px, degrees) by the parser.
-    float params[8] = {};
-    /// paramIndex 16/17 (18.2).
-    Color colors[2]{};
+    /// paramIndex 1..16 (18.2, T-534); meaning depends on `kind` (18.3's parameter table; built-in
+    /// effects use only the first 8). Lengths and angles are already resolved to plain numbers
+    /// (px, degrees) by the parser.
+    float params[16] = {};
+    /// paramIndex 32..35 (18.2, T-534; built-in effects use only the first 2).
+    Color colors[4]{};
     /// `GradientMask`'s color stops; empty for every other kind.
     std::vector<GradientStop> stops;
     /// T-203 (18.4 `custom("<asset>" [, <ident> <value>]*)`): the `.xtfx` asset name as written
@@ -431,10 +432,13 @@ struct FontFallbackDef {
 struct TimelineEffectDecl {
     /// `<effect>`: an effect name (`glow`, `shadow`, ...) or a stack index written as digits.
     std::string effect;
-    /// `<param>`: the 18.3 parameter name (`intensity`, `radius`, `color`, ...).
+    /// `<param>`: the 18.3 parameter name (`intensity`, `radius`, `color`, ...), a `.xtfx` header
+    /// name (optionally `.x` / `.y`), or a slot `p<n>` / `c<n>` / `v<n>` (18.13, T-534).
     std::string param;
-    /// Parsed value: Float for a numeric parameter, Color for `color`.
-    StyleValue value;
+    /// T-534 (18.13): the value's source text, as written (trailing whitespace trimmed). Its type
+    /// follows the resolved parameter, so the emitter parses it (one number for a Float, a color
+    /// for a Color, `<x> <y>` for a Vec2).
+    std::string valueText;
     /// 1-based source line.
     int line = 0;
 };

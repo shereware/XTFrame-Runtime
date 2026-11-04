@@ -1,9 +1,10 @@
 // T-405 (Docs/design/43-compatibility-and-versions.md §43.5, 02 §2.2): the frozen `.xtir` fixtures
-// of every supported IR minor (Tests/ir/fixtures/v2.<minor>.xtir, each compiled from the same
-// Tests/ir/fixtures/v2_source.xt by the compiler of that minor, taken from this repository's git
-// history) must keep opening and rendering exactly like the current compiler's output of that
-// source; plus the 2.8 rules: hit-slop longhands vs the biased 2.7 encoding, the PORT `nested[]`
-// tail being optional, and META's optional `behavior` tail.
+// of every supported IR minor (Tests/ir/fixtures/v<major>.<minor>.xtir, each compiled from the same
+// Tests/ir/fixtures/v2_source.xt by the compiler of that minor) must keep opening and rendering
+// exactly like the current compiler's output of that source; plus the 2.8 rules: hit-slop
+// longhands, the PORT `nested[]` tail being optional, and META's optional `behavior` tail.
+// T-534 (IR 3.0, 02 §2.1, 43 §43.1): the 2.x fixtures (v2.5 .. v2.9, v2.7-hitslop, v2.8-tail) are
+// kept as files that must be rejected, with a message naming their major.
 
 #include <cstdint>
 #include <cstring>
@@ -160,8 +161,9 @@ TEST_CASE("T-405: the frozen fixture of every IR minor opens and renders like th
     CHECK(nonWhitePixels(golden[0]) > 1000);
     CHECK(golden[0] != golden[1]);  // The click, the binding and the animation all show.
 
-    for (uint16_t minor = 5; minor <= kIrFormatMinor; ++minor) {
-        const std::string name = "v2." + std::to_string(minor) + ".xtir";
+    // T-534: IR 3.x starts at minor 0 (v3.0.xtir).
+    for (uint16_t minor = 0; minor <= kIrFormatMinor; ++minor) {
+        const std::string name = "v" + std::to_string(kIrFormatMajor) + "." + std::to_string(minor) + ".xtir";
         CAPTURE(name);
         const std::vector<uint8_t> ir = readBytes(fixtureDir() / name);
         REQUIRE_FALSE(ir.empty());
@@ -181,10 +183,33 @@ TEST_CASE("T-405: the frozen fixture of every IR minor opens and renders like th
     }
 }
 
-TEST_CASE("T-405: a 2.7 file's biased hit-slop and the 2.8 Length longhands hit-test the same") {
-    const std::vector<uint8_t> v27 = readBytes(fixtureDir() / "v2.7-hitslop.xtir");
-    REQUIRE_FALSE(v27.empty());
-    CHECK(headerMinor(v27) == 7);
+TEST_CASE("T-534: every 2.x fixture is rejected and the reason names its major") {
+    for (const char* name : {"v2.5.xtir", "v2.6.xtir", "v2.7.xtir", "v2.7-hitslop.xtir", "v2.8.xtir",
+                             "v2.8-tail.xtir", "v2.9.xtir"}) {
+        CAPTURE(name);
+        const std::vector<uint8_t> ir = readBytes(fixtureDir() / name);
+        REQUIRE_FALSE(ir.empty());
+        Result<IrView> view = IrView::open(IrBlob{ir.data(), ir.size()}, {});
+        CHECK(view.status() == Status::kInvalidIr);
+        const std::string why = IrView::versionError(IrBlob{ir.data(), ir.size()});
+        CAPTURE(why);
+        CHECK(why.find("IR major 2") != std::string::npos);
+        CHECK(why.find("recompile the source") != std::string::npos);
+        NullTextShaper shaper;
+        FileAssetResolver assets(fixtureDir().string(), nullptr);
+        Context ctx(ContextConfig{&shaper, &assets});
+        CHECK(ctx.loadDocument(IrBlob{ir.data(), ir.size()}, /*takeOwnership=*/false).status() ==
+              Status::kInvalidIr);
+    }
+    // The current file passes the version check.
+    const std::vector<uint8_t> v3 = readBytes(fixtureDir() / "v3.0.xtir");
+    REQUIRE_FALSE(v3.empty());
+    CHECK(IrView::versionError(IrBlob{v3.data(), v3.size()}).empty());
+}
+
+TEST_CASE("T-405: hit-slop is written as the Length longhands and hit-tests in px / % / em") {
+    // T-534: the 2.7 file with the biased StyleProp 276 (v2.7-hitslop.xtir) is no longer opened;
+    // the expectations below are the ones it was compared against.
     const std::vector<uint8_t> v28 = compileFixture("v2_hitslop.xt");
 
     // 2.8 writes no StyleProp 276 any more, only 277-280 Length declarations.
@@ -200,38 +225,13 @@ TEST_CASE("T-405: a 2.7 file's biased hit-slop and the 2.8 Length longhands hit-
     }
     CHECK(longhands == 12);
 
-    Loaded a(v27);
     Loaded b(v28);
-    a.frame(0.0f);
     b.frame(0.0f);
-    const Vec2 probes[] = {{60, 64},  {60, 42},   {12, 52},   {60, 67},   {210, 48}, {210, 46},
-                           {210, 58}, {192, 152}, {248, 152}, {220, 145}, {189, 152}};
-    for (const Vec2& p : probes) {
-        CAPTURE(p.x);
-        CAPTURE(p.y);
-        // The id of the element hit ("" for an element without one, e.g. the body).
-        auto hitId = [&](Loaded& m) -> std::string {
-            const NodeId n = m.doc().hitTest(p);
-            if (n == kInvalidNode || m.doc().arena().kind(n) != NodeKind::Element) {
-                return std::string();
-            }
-            const StringId id = m.doc().arena().element(n).id;
-            return id != kInvalidString ? std::string(m.doc().string(id)) : std::string();
-        };
-        CHECK(hitId(a) == hitId(b));
-    }
     CHECK(b.doc().hitTest(Vec2{60, 64}) == b.doc().byId("track").node);
     CHECK(b.doc().hitTest(Vec2{192, 152}) == b.doc().byId("em").node);
     for (const char* id : {"track", "pct", "em"}) {
         CAPTURE(id);
-        const Value va = a.doc().byId(id).computedStyleValue(276);
-        const Value vb = b.doc().byId(id).computedStyleValue(276);
-        REQUIRE(va.type == ValueType::Color);
-        REQUIRE(vb.type == ValueType::Color);
-        CHECK(va.c.r == doctest::Approx(vb.c.r));
-        CHECK(va.c.g == doctest::Approx(vb.c.g));
-        CHECK(va.c.b == doctest::Approx(vb.c.b));
-        CHECK(va.c.a == doctest::Approx(vb.c.a));
+        REQUIRE(b.doc().byId(id).computedStyleValue(276).type == ValueType::Color);
     }
     // 1em = 10 px left and right on #em.
     CHECK(b.doc().byId("em").computedStyleValue(276).c.g == doctest::Approx(10.0f));

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <atomic>
 #include <charconv>
 #include <cmath>
@@ -446,6 +447,15 @@ bool IrView::parseBindings(const uint8_t* payload, size_t payloadSize, uint16_t 
     return true;
 }
 
+bool IrView::parseSubChains(const uint8_t* payload, size_t payloadSize, BindingChunk& out) {
+    ByteCursor cur(payload, payloadSize);
+    if (!cur.readCounted(out.m_chains) || !cur.readCounted(out.m_chainSteps)) {
+        return false;
+    }
+    out.m_chainsPresent = true;
+    return true;
+}
+
 bool IrView::parseRepeats(const uint8_t* payload, size_t payloadSize, RepeatChunk& out) {
     ByteCursor cur(payload, payloadSize);
     if (!cur.readCounted(out.m_repeats)) {
@@ -541,6 +551,58 @@ namespace {
 bool validStringId(StringId id, uint32_t count) { return id < count || id == kInvalidString; }
 
 bool inPool(uint64_t offset, uint64_t count, uint64_t poolSize) { return offset + count <= poolSize; }
+
+/// T-585 (03 §3.12.11): the BCHN pool -- every input is a PORT index or kSubChainOuterInput, every
+/// step range lies in chainSteps(), no chain names itself and no chain nests more than
+/// kMaxSubChainDepth deep (which also rules out longer cycles). The argument kinds themselves are
+/// checked with the other converter steps.
+bool validSubChains(const BindingChunk& binds, uint64_t portCount) {
+    const std::span<const IrSubChain> chains = binds.chains();
+    const std::span<const IrConverterStep> steps = binds.chainSteps();
+    for (const IrSubChain& c : chains) {
+        if ((c.input != kSubChainOuterInput && c.input >= portCount) ||
+            !inPool(c.stepOffset, c.stepCount, steps.size())) {
+            return false;
+        }
+    }
+    // height[i]: 0 = not computed yet, else the nesting depth of chain i's subtree (1 = no sub-chain
+    // argument). The recursion stops past kMaxSubChainDepth, so a cycle fails instead of spinning.
+    std::vector<uint8_t> height(chains.size(), 0);
+    auto depthOf = [&](auto& self, uint32_t index, uint32_t level) -> uint32_t {
+        if (level > kMaxSubChainDepth) {
+            return kMaxSubChainDepth + 1;
+        }
+        if (height[index] != 0) {
+            return height[index];
+        }
+        uint32_t deepest = 0;
+        const IrSubChain& c = chains[index];
+        for (uint32_t s = c.stepOffset; s < c.stepOffset + c.stepCount; ++s) {
+            for (uint32_t i = 0; i < 4; ++i) {
+                if (converterArgKind(steps[s], i) != ConverterArg::SubChain) {
+                    continue;
+                }
+                uint32_t child = 0;
+                std::memcpy(&child, &steps[s].args[i], sizeof(child));
+                if (child == index) {
+                    return kMaxSubChainDepth + 1;  // Self-reference.
+                }
+                deepest = std::max(deepest, self(self, child, level + 1));
+                if (deepest > kMaxSubChainDepth) {
+                    return deepest;
+                }
+            }
+        }
+        height[index] = static_cast<uint8_t>(deepest + 1);
+        return deepest + 1;
+    };
+    for (uint32_t i = 0; i < chains.size(); ++i) {
+        if (depthOf(depthOf, i, 1) > kMaxSubChainDepth) {
+            return false;
+        }
+    }
+    return true;
+}
 
 // StyleProp ids used by IrDecl::value when valueType == ListRef: style_decode::styleprop (05 §5.4),
 // the numbers style_engine.cpp decodes with (A14: one definition, not a copy).
@@ -1040,6 +1102,24 @@ std::span<const uint8_t> AssetChunk::data(const IrAsset& asset) const {
     return std::span<const uint8_t>(m_payload + asset.dataOffset, asset.dataLength);
 }
 
+/// T-534 (IR 3.0, 02 §2.1): a 3.x file carries every record layout and tail of 2.9, the last 2.x
+/// minor, so parseScene() / parseBindings() read it with that minor: their 2.x-minor widening
+/// (minor < 4 / < 5) applies to no file open() accepts.
+constexpr uint16_t kIr2xLayoutMinor = 9;
+
+std::string IrView::versionError(IrBlob blob) {
+    if (blob.data == nullptr || blob.size < sizeof(IrHeader)) {
+        return std::string();
+    }
+    IrHeader header{};
+    std::memcpy(&header, blob.data, sizeof(header));
+    if (std::memcmp(header.magic, "XTIR", 4) != 0 || header.major == kIrFormatMajor) {
+        return std::string();
+    }
+    return "IR major " + std::to_string(header.major) + " is not supported (this runtime reads IR major " +
+           std::to_string(kIrFormatMajor) + "); recompile the source";
+}
+
 Result<IrView> IrView::open(IrBlob blob, IrReadOptions options) {
     if (blob.data == nullptr || blob.size < sizeof(IrHeader)) {
         return Result<IrView>::error(Status::kInvalidIr);
@@ -1049,7 +1129,7 @@ Result<IrView> IrView::open(IrBlob blob, IrReadOptions options) {
         return Result<IrView>::error(Status::kInvalidIr);
     }
     if (header->major != kIrFormatMajor) {
-        return Result<IrView>::error(Status::kInvalidIr);
+        return Result<IrView>::error(Status::kInvalidIr);  // T-534: versionError() says why.
     }
     if (static_cast<uint64_t>(header->totalLength) != static_cast<uint64_t>(blob.size)) {
         return Result<IrView>::error(Status::kInvalidIr);
@@ -1110,7 +1190,7 @@ Result<IrView> IrView::open(IrBlob blob, IrReadOptions options) {
                     return Result<IrView>::error(Status::kInvalidIr);
                 }
                 SceneChunk sc;
-                if (!parseScene(payload, payloadLen, header->minor, sc)) {
+                if (!parseScene(payload, payloadLen, kIr2xLayoutMinor, sc)) {
                     return Result<IrView>::error(Status::kInvalidIr);
                 }
                 view.m_scenes.push_back(sc);
@@ -1197,7 +1277,15 @@ Result<IrView> IrView::open(IrBlob blob, IrReadOptions options) {
                 // T-175: optional, after DOCT; at most once.
                 if ((stage != S_DOCT_DONE && stage != S_SRCM_DONE && stage != S_META_DONE) ||
                     view.m_bindings.present() ||
-                    !parseBindings(payload, payloadLen, header->minor, view.m_bindings)) {
+                    !parseBindings(payload, payloadLen, kIr2xLayoutMinor, view.m_bindings)) {
+                    return Result<IrView>::error(Status::kInvalidIr);
+                }
+                break;
+            case kChunkBCHN:
+                // T-585: optional, after DOCT; at most once.
+                if ((stage != S_DOCT_DONE && stage != S_SRCM_DONE && stage != S_META_DONE) ||
+                    view.m_bindings.chainsPresent() ||
+                    !parseSubChains(payload, payloadLen, view.m_bindings)) {
                     return Result<IrView>::error(Status::kInvalidIr);
                 }
                 break;
@@ -1950,7 +2038,8 @@ Status IrView::validate(const IrView& view) {
         }
     }
     // Converter steps (TRIG conditions and BIND chains): op, and String/Port argument references.
-    auto validSteps = [&](std::span<const IrConverterStep> steps) {
+    // T-585: `subChains` = the BCHN chain count a SubChain argument may name (0 for TRIG).
+    auto validSteps = [&](std::span<const IrConverterStep> steps, size_t subChains) {
         for (const IrConverterStep& step : steps) {
             if (step.op > kConverterOpLast && step.op != static_cast<uint8_t>(ConverterOp::Custom)) {
                 return false;
@@ -1983,6 +2072,16 @@ Status IrView::validate(const IrView& view) {
                     case ConverterArg::Count:
                     case ConverterArg::OuterIndex:  // T-391
                         break;
+                    case ConverterArg::SubChain:  // T-585: a BCHN chain.
+                        if (bits >= subChains) {
+                            return false;
+                        }
+                        break;
+                    case ConverterArg::Calc:  // T-586: a CALC program index.
+                        if (bits >= calcCount) {
+                            return false;
+                        }
+                        break;
                     default:
                         return false;
                 }
@@ -1993,7 +2092,7 @@ Status IrView::validate(const IrView& view) {
 
     // -- TRIG (T-174) --
     const TriggerChunk& trig = view.m_triggers;
-    if (!validSteps(trig.conditions())) {
+    if (!validSteps(trig.conditions(), 0)) {
         return Status::kInvalidIr;
     }
     for (const IrTriggerTable& t : trig.tables()) {
@@ -2178,7 +2277,8 @@ Status IrView::validate(const IrView& view) {
             return Status::kInvalidIr;
         }
     }
-    if (!validSteps(binds.steps())) {
+    if (!validSteps(binds.steps(), binds.chains().size()) ||
+        !validSteps(binds.chainSteps(), binds.chains().size()) || !validSubChains(binds, portCount)) {
         return Status::kInvalidIr;
     }
 

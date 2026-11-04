@@ -1,8 +1,10 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "event_dispatcher.h"
@@ -93,6 +95,12 @@ public:
     /// `host` outside a trigger chain.
     std::string currentSource() const;
 
+    /// T-601 (53 §53.102 item 7): Document::addSurfaceListener() / removeSurfaceListener().
+    uint32_t addSurfaceListener(std::function<void(bool shown)> listener);
+    void removeSurfaceListener(uint32_t id);
+    /// Calls every surface listener (a copy of the list: one may remove itself or another).
+    void notifySurface(bool shown);
+
 private:
     struct Job {
         NodeId node = kInvalidNode;
@@ -160,6 +168,9 @@ private:
     static constexpr uint8_t kFireButtonMask = 0x7Fu;
     uint8_t m_fireButton = 0;
     uint8_t m_runButton = 0;
+    // T-601: the surface listeners (id, listener), in registration order; ids are never reused.
+    std::vector<std::pair<uint32_t, std::function<void(bool)>>> m_surfaceListeners;
+    uint32_t m_nextSurfaceListener = 1;
 };
 
 }  // namespace xt

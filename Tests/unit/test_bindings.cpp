@@ -830,7 +830,7 @@ TEST_CASE("T-358: port defaults of every allowed type compile into the PORT defa
     REQUIRE(r.ok());
     IrHeader header{};
     std::memcpy(&header, r.ir.data(), sizeof(header));
-    CHECK(header.minor >= 7);  // T-405: 8.
+    CHECK((header.major >= 3 || header.minor >= 7));  // T-405: 2.8; T-534: 3.0 has every 2.x tail.
     Result<IrView> view = IrView::open(IrBlob{r.ir.data(), r.ir.size()});
     REQUIRE(view.ok());
     const PortChunk& pc = view.value().ports();
@@ -1642,6 +1642,27 @@ TEST_CASE("T-544: a color effect parameter takes only a color source and a numer
     CHECK(compileError(compileSrc(glowPage("bind:effect.glow.radius=\"tint\"")),
                        "a numeric effect parameter needs a number source"));
     CHECK(compileSrc(glowPage("bind:effect.glow.radius=\"px\"")).ok());
+}
+
+TEST_CASE("T-534: bind:effect.* takes slot names; a whole vec2 is refused, colours by c<n>") {
+    const std::string shadowStyle = "effect: shadow(0 4px 8px #00000080)";
+    auto shadowPage = [&](std::string_view binds) {
+        return page("", "<div id=\"P\" port:px=\"number\" port:tint=\"color\"></div><div id=\"M\" style=\"" +
+                            shadowStyle + "\" " + std::string(binds) + "></div>");
+    };
+    CompileResult slot = compileSrc(shadowPage("bind:effect.shadow.p2=\"px\""));
+    REQUIRE(slot.ok());
+    Result<IrView> v = IrView::open(IrBlob{slot.ir.data(), slot.ir.size()});
+    REQUIRE(v.ok());
+    REQUIRE(v.value().bindings().bindings().size() == 1);
+    CHECK(v.value().bindings().bindings()[0].targetId ==
+          xt::effectParam(0, xt::prop::kEffectParamFloatBase + 2));
+    CHECK(compileSrc(shadowPage("bind:effect.shadow.c0=\"tint\"")).ok());
+    CHECK(compileError(compileSrc(shadowPage("bind:effect.shadow.offset=\"px\"")),
+                       "a vec2 effect parameter is bound by component (.x / .y)"));
+    CHECK(compileError(compileSrc(shadowPage("bind:effect.shadow.v0=\"px\"")),
+                       "a vec2 effect parameter is bound by component (.x / .y)"));
+    CHECK(compileError(compileSrc(shadowPage("bind:effect.shadow.p16=\"px\"")), "slot out of range"));
 }
 
 TEST_CASE("T-544: a port drives the effect parameter, painting only") {

@@ -379,17 +379,15 @@ PackedEffectInstance toPacked(const EffectInstance& v) {
     p.kind = static_cast<uint8_t>(v.kind);
     p.enabled = v.enabled;
     p.shader = v.shader;
-    for (int i = 0; i < 8; ++i) {
+    for (int i = 0; i < 16; ++i) {
         p.params[i] = v.params[i];
     }
-    p.color0r = v.colors[0].r;
-    p.color0g = v.colors[0].g;
-    p.color0b = v.colors[0].b;
-    p.color0a = v.colors[0].a;
-    p.color1r = v.colors[1].r;
-    p.color1g = v.colors[1].g;
-    p.color1b = v.colors[1].b;
-    p.color1a = v.colors[1].a;
+    for (int c = 0; c < 4; ++c) {
+        p.colors[c][0] = v.colors[c].r;
+        p.colors[c][1] = v.colors[c].g;
+        p.colors[c][2] = v.colors[c].b;
+        p.colors[c][3] = v.colors[c].a;
+    }
     p.stopOffset = v.stopOffset;
     p.stopCount = v.stopCount;
     return p;
@@ -400,11 +398,12 @@ EffectInstance fromPacked(const PackedEffectInstance& v) {
     e.kind = static_cast<EffectKind>(v.kind);
     e.enabled = v.enabled;
     e.shader = v.shader;
-    for (int i = 0; i < 8; ++i) {
+    for (int i = 0; i < 16; ++i) {
         e.params[i] = v.params[i];
     }
-    e.colors[0] = Color{v.color0r, v.color0g, v.color0b, v.color0a};
-    e.colors[1] = Color{v.color1r, v.color1g, v.color1b, v.color1a};
+    for (int c = 0; c < 4; ++c) {
+        e.colors[c] = Color{v.colors[c][0], v.colors[c][1], v.colors[c][2], v.colors[c][3]};
+    }
     e.stopOffset = v.stopOffset;
     e.stopCount = v.stopCount;
     return e;
@@ -548,7 +547,7 @@ bool BakedWriter::open(std::string_view path, uint32_t frameCount, float fps, Re
     header.magic[1] = 'T';
     header.magic[2] = 'C';
     header.magic[3] = 'L';
-    header.major = 1;
+    header.major = kBakedFormatMajor;
     header.minor = 4;
     header.frameCount = frameCount;
     header.fps = fps;

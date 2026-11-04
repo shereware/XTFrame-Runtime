@@ -172,6 +172,12 @@ bool parseParamLine(std::string_view rest, int line, XtfxHeader& out, XtfxError&
     if (p.name == "xtTime" || p.name == "xtSample" || p.name == "xtMain" || p.name == "XtInput") {
         return failXtfxParse(err, "param: '" + p.name + "' is reserved", line);
     }
+    uint32_t slotIndex = 0;
+    if (effectSlotParamIndex(p.name, slotIndex) != EffectSlotName::NotSlot) {
+        // T-534 (18.13): `p<n>` / `c<n>` / `v<n>` address slots in `effect.<fx>.<param>`.
+        return failXtfxParse(err, "param: '" + p.name + "' is a reserved parameter name (p<n> / c<n> / v<n>)",
+                             line);
+    }
     std::string_view type = words[1];
     size_t needed = 0;
     if (type == "float") {
@@ -259,6 +265,8 @@ bool parseXtfxHeader(std::string_view text, XtfxHeader& out, std::string& body, 
     int line = 0;
     size_t pos = 0;
     bool sawName = false;
+    bool sawBlurb = false;
+    bool warnedBlurb = false;
     while (pos <= text.size()) {
         size_t nl = text.find('\n', pos);
         std::string_view raw =
@@ -278,7 +286,7 @@ bool parseXtfxHeader(std::string_view text, XtfxHeader& out, std::string& body, 
             }
             if (!customParamSlots(types.data(), types.size(), slots.data())) {
                 return failXtfxParse(
-                    err, "header: too many parameters (at most 8 float components and 2 colors)", line);
+                    err, "header: too many parameters (at most 16 float components and 4 colors)", line);
             }
             for (size_t i = 0; i < slots.size(); ++i) {
                 out.params[i].slot = slots[i];
@@ -311,6 +319,15 @@ bool parseXtfxHeader(std::string_view text, XtfxHeader& out, std::string& body, 
                     if (!parseFallback(value, line, out, err)) {
                         return false;
                     }
+                } else if (key == "blurb") {
+                    // T-532 (18.7): the effect catalog's one-liner; the last one wins.
+                    if (sawBlurb && !warnedBlurb) {
+                        out.warnings.push_back(
+                            XtfxError{"header: duplicate 'blurb:', the last one wins", line, 0});
+                        warnedBlurb = true;
+                    }
+                    sawBlurb = true;
+                    out.blurb = std::string(value);
                 } else if (key == "expand") {
                     float px = 0;
                     if (!parseFloatWord(value, px) || px < 0) {
@@ -336,27 +353,15 @@ bool xtfxParamIndex(std::span<const XtfxParam> params, std::string_view name, ui
         return true;
     }
     for (const XtfxParam& p : params) {
-        if (p.name != name) {
-            continue;
+        const CustomParamMatch m = matchCustomEffectParam(name, p.name, p.type, p.slot, paramIndex);
+        if (m != CustomParamMatch::NoMatch) {
+            return m == CustomParamMatch::Ok;
         }
-        if (p.type == 0) {
-            paramIndex = 1u + p.slot;
-            return true;
-        }
-        if (p.type == 2) {
-            paramIndex = prop::kEffectParamColor0 + p.slot;
-            return true;
-        }
-        if (p.slot == 0) {
-            paramIndex = prop::kEffectParamOffset;
-            return true;
-        }
-        return false;
     }
     return false;
 }
 
-void applyXtfxDefaults(std::span<const XtfxParam> params, float outParams[8], float outColors[2][4]) {
+void applyXtfxDefaults(std::span<const XtfxParam> params, float outParams[16], float outColors[4][4]) {
     for (const XtfxParam& p : params) {
         if (p.type == 2) {
             for (int k = 0; k < 4; ++k) {

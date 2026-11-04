@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "bundle": { "id": "mygame", "name": "MyGame UI", "builtAt": "2026-09-22T10:00:00Z", "xtframe": "0.3.0", "irMajor": 2 },
+  "bundle": { "id": "mygame", "name": "MyGame UI", "builtAt": "2026-09-22T10:00:00Z", "xtframe": "0.3.0", "irMajor": 3 },
   "uis": [
     {
       "id": "hud", "name": "HUD", "file": "ui/hud.xtir", "flow": "ui/hud.xtflow", "thumb": "thumbs/hud.png",

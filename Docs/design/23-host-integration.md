@@ -307,3 +307,7 @@ XTFrame 內建的 `Code/SDKs/nlohmann/json.hpp`（3.11.3）以**自己的 ABI �
 ### 23.10.7 flow 節點與 port 來源（2026-11-02 使用者定案；22 §22.15、53 §53.101）
 
 14. **flow 節點**（manifest 欄位名 `flowInterface`，22 §22.15）：宿主腳本系統為每個帶 flow 的 UI 生成一個「`XTUI:<ui>:Flow`」節點：輸入 = Enable／Disable／Instance＋該 flow 實際接線的 system 事件（pulse：`Loading`、`Paused`、`Resumed`、`Disconnected`、`Back`；string：`Language`、`Platform`、`InputDevice`、`ReducedMotion`），輸出 = 每個 flow `emit`（pulse `<name>` 與 `<name>Value`）＋ `Instance`。宿主端的 port 清單（窗格、元件）依 `origin` 分組顯示：文件 port／觸發器 emit／flow emit／flow 寫入／system 事件，每列型別與來源，可直接複製節點型別名或建立節點。generated 的單 port 節點在 help 文字前加 `[flow]` 當該 port 由 flow 寫入；宿主對同一 port 寫入時 log 一次「also written by the UI's flow」。
+
+## 23.af IR 3.0 宿主同步（2026-10-30；T-534；CE 側為 CE-64（雲端分支原寫 CE-62、原編號 §23.ab，主線 2026-11-04 移植時改號））
+
+`IrEffect`／`EffectInstance` 由 80 bytes 擴為 144 bytes（`params[16]`、`colors[4]`；18 §18.2），效果參數 PropId 重編（float 1..16、color 32..35、vec2 整體 64..78），IR major 2 → 3。CE 端：`XUI2DResources.h` 的效果結構、`GpuDevice.cpp` 的 `XTUI_SAME_SIZE`／`XTUI_SAME_OFFSET` 斷言與 `SCustomEffectParams`（`params[16]`、`colors[16]`）、HLSL 包裝的 cbuffer 參數注入（最多 16 個 float 分量 + 4 色）；`.xtir` 讀取改認 major 3。沒有行為變更；Sandbox 以重新 pack 的 bundle 驗證既有場景畫面相同。

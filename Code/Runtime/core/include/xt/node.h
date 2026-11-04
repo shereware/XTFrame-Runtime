@@ -560,7 +560,7 @@ struct ParticleNodeData {
 };
 
 /// Compiled visual effect instance; on-disk layout matches IrEffect (Docs/design/18-effects.md
-/// §18.2), 80 bytes (4 + 4 + 32 + 32 + 8).
+/// §18.2), 144 bytes (4 + 4 + 64 + 64 + 8) since IR 3.0 (T-534).
 struct EffectInstance {
     /// Which built-in effect (or Custom) this slot holds.
     EffectKind kind = EffectKind::None;
@@ -569,16 +569,17 @@ struct EffectInstance {
     uint8_t _pad[2] = {};  ///< Padding, unused.
     /// Custom: the Shader asset; otherwise kInvalidAsset.
     AssetId shader = kInvalidAsset;
-    /// paramIndex 1..8; meaning depends on `kind` (18.3's parameter table).
-    float params[8] = {};
-    /// paramIndex 16/17.
-    Color colors[2]{};
+    /// paramIndex 1..16; meaning depends on `kind` (18.3's parameter table). Built-in effects use
+    /// only params[0..7]; params[8..15] are custom-shader slots.
+    float params[16] = {};
+    /// paramIndex 32..35. Built-in effects use only colors[0..1].
+    Color colors[4]{};
     /// Offset/count into the owning pool's gradient stops (NodeArena::effectStops(),
     /// CommandList::stops, or the IR chunk's stop pool); used by GradientMask.
     uint32_t stopOffset = 0;  ///< Offset into the owning stop pool.
     uint32_t stopCount = 0;   ///< Count of stops.
 };
-static_assert(sizeof(EffectInstance) == 80, "EffectInstance must match IrEffect's 80-byte layout");
+static_assert(sizeof(EffectInstance) == 144, "EffectInstance must match IrEffect's 144-byte layout");
 
 /// NodeKind::Bone-specific data (NodeArena::bone(id)); 32 §32.2.1, T-243. A child bone's
 /// translate x is its parent's length (it sits at the parent's tip).

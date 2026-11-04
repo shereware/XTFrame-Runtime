@@ -2,8 +2,9 @@
 # IR layout check (T-405, Docs/design/43-compatibility-and-versions.md §43.5): every `.xtir` POD size
 # and enum limit in Code/Runtime/core/include/xt/ir_pod.h must match both the committed Tests/ir/layout.txt and the
 # table of Docs/design/02-ir-format.md §2.12, the minor stamped in §2.2 must be kIrFormatMinor, and
-# Tests/ir/fixtures/v2.<minor>.xtir must exist -- so a layout or enum change cannot land without the
-# minor bump, the 02 chapter update and a frozen fixture in the same commit.
+# Tests/ir/fixtures/v<major>.<minor>.xtir must exist (major = kIrFormatMajor; T-534: 3.0 -> v3.0.xtir)
+# -- so a layout or enum change cannot land without the minor bump, the 02 chapter update and a
+# frozen fixture in the same commit.
 # Plain grep/awk, no configure or build. The layout is read from the header's one-line
 # `static_assert(sizeof(<Name>) == <N>);` checks and from its `inline constexpr ... k<...>Last = <N>;`
 # limits plus kIrFormatMinor; one `<kind> <name> <value>` line each, sorted.
@@ -66,17 +67,22 @@ fi
 report "$DOC §2.12 table differs from the header" "$gen" "$(documented)"
 
 minor="$(printf '%s\n' "$gen" | awk '$2 == "kIrFormatMinor" { print $3 }')"
+major="$(sed -nE 's/^inline constexpr uint16_t kIrFormatMajor = ([0-9]+);.*/\1/p' "$HDR")"
+if [ -z "$major" ]; then
+  echo "$HDR: kIrFormatMajor not found"
+  fail=$((fail + 1))
+fi
 if ! grep -qE "^\| 6 \| uint16 \| minor = \*\*${minor}\*\*" "$DOC"; then
   echo "$DOC §2.2: the header row does not say minor = **${minor}** (kIrFormatMinor)"
   fail=$((fail + 1))
 fi
-if [ ! -f "Tests/ir/fixtures/v2.${minor}.xtir" ]; then
-  echo "Tests/ir/fixtures/v2.${minor}.xtir is missing (a frozen fixture per minor, 43 §43.5)"
+if [ ! -f "Tests/ir/fixtures/v${major}.${minor}.xtir" ]; then
+  echo "Tests/ir/fixtures/v${major}.${minor}.xtir is missing (a frozen fixture per minor, 43 §43.5)"
   fail=$((fail + 1))
 fi
 
 if [ "$fail" = 0 ]; then
-  echo "IR LAYOUT: PASS ($(printf '%s\n' "$gen" | grep -c .) entries, minor ${minor})"
+  echo "IR LAYOUT: PASS ($(printf '%s\n' "$gen" | grep -c .) entries, ${major}.${minor})"
   exit 0
 fi
 echo "IR LAYOUT: FAIL ($fail)"

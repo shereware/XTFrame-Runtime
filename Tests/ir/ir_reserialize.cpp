@@ -30,6 +30,7 @@
 //   STRS  rebuilt  localization().*               -> setLocalization()
 //   PORT  rebuilt  ports().*                      -> setPorts()
 //   BIND  rebuilt  bindings().*                   -> setBindings()
+//   BCHN  rebuilt  bindings().chains()/chainSteps() -> setBindings() (T-585)
 //   RPT   rebuilt  repeats().repeats()            -> setRepeats()
 //   SHDR  rebuilt  shaders().shaders()/params()/text() -> addShader() (param names re-interned)
 //
@@ -263,6 +264,8 @@ std::vector<uint8_t> reserialize(const IrView& view) {
         bb.bindings = vec(b.bindings());
         bb.sources = vec(b.sources());
         bb.steps = vec(b.steps());
+        bb.chains = vec(b.chains());  // T-585: BCHN
+        bb.chainSteps = vec(b.chainSteps());
         w.setBindings(std::move(bb));
     }
 

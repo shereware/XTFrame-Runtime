@@ -758,12 +758,8 @@ uint32_t BindingRuntime::addInstanceBinding(uint32_t irBinding, NodeId node, uin
     b.instance = true;
     b.listPort = listPort;
     b.item = item;
-    for (const IrConverterStep& step : b.steps) {  // T-391: `outer.item(...)` / `outer.index`.
-        for (uint32_t k = 0; k < 4; ++k) {
-            const ConverterArg kind = converterArgKind(step, k);
-            b.usesOuter = b.usesOuter || kind == ConverterArg::OuterItem || kind == ConverterArg::OuterIndex;
-        }
-    }
+    b.usesOuter =
+        chainUses(b.steps, -1);  // T-391: `outer.item(...)` / `outer.index` (T-585: sub-chains too).
     if (!portMap.empty()) {
         // T-380: the copy reads (and targets) the instance's own copies of template ports.
         b.portMap.assign(portMap.begin(), portMap.end());

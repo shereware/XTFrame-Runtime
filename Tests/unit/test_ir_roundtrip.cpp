@@ -809,7 +809,7 @@ TEST_CASE("IR T-233: taper and width profile round-trip byte for byte (minor 4)"
     CHECK(again == bytes);
 }
 
-TEST_CASE("IR T-233: a minor 3 file's 136-byte path records open with taper / profile 0") {
+TEST_CASE("IR T-233 / T-534: a 2.3 file's 136-byte path records are rejected with the 2.x files") {
     std::vector<uint8_t> bytes = buildTaperIr();
     // Rewrite the SCEN chunk as IR minor 3 wrote it: every IrPathData record 16 bytes shorter.
     size_t chunkPos = 0;
@@ -839,22 +839,15 @@ TEST_CASE("IR T-233: a minor 3 file's 136-byte path records open with taper / pr
     std::memcpy(bytes.data() + chunkPos, &chunk, sizeof(chunk));
     IrHeader header{};
     std::memcpy(&header, bytes.data(), sizeof(header));
+    header.major = 2;  // T-534: such a file is a 2.3 file, and IR 3.0 opens no 2.x file.
     header.minor = 3;
     header.totalLength -= static_cast<uint32_t>(cut);
     std::memcpy(bytes.data(), &header, sizeof(header));
 
     Result<IrView> r = IrView::open(IrBlob{bytes.data(), bytes.size()}, IrReadOptions{true});
-    REQUIRE(r.ok());
-    const SceneChunk& sc = r.value().scene(0);
-    REQUIRE(sc.paths().size() == 1);
-    CHECK(sc.paths()[0].strokeWidth == doctest::Approx(8.0f));
-    CHECK(sc.paths()[0].miterLimit == doctest::Approx(4.0f));
-    CHECK(sc.paths()[0].taperStart == 0.0f);
-    CHECK(sc.paths()[0].taperEnd == 0.0f);
-    CHECK(sc.paths()[0].profileCount == 0);
-    // The widened records outlive copies of the view.
-    IrView copy = r.value();
-    CHECK(copy.scene(0).paths()[0].strokeWidth == doctest::Approx(8.0f));
+    CHECK(r.status() == Status::kInvalidIr);
+    CHECK(IrView::versionError(IrBlob{bytes.data(), bytes.size()}).find("recompile the source") !=
+          std::string::npos);
 }
 
 // T-332 (05 §5.9.8): the optional `CLIP` chunk (clip-path shape pool).

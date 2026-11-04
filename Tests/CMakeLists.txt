@@ -207,7 +207,7 @@ if(TARGET xtframe-symbols)
     xt_add_expect_exit_test(xtframe-symbols_usage CODE 2 OUTPUT "usage: xtframe-symbols"
         COMMAND $<TARGET_FILE:xtframe-symbols> bogus)
     xt_add_expect_exit_test(xtframe-symbols_version CODE 0
-        OUTPUT "^xtframe-symbols [0-9]+\\.[0-9]+\\.[0-9]+[^a-z]+ir-format 2\\.[0-9]+[^a-z]+behavior [0-9]+"
+        OUTPUT "^xtframe-symbols [0-9]+\\.[0-9]+\\.[0-9]+[^a-z]+ir-format 3\\.[0-9]+[^a-z]+behavior [0-9]+"
         COMMAND $<TARGET_FILE:xtframe-symbols> --version)
     xt_add_expect_exit_test(xtframe-symbols_tokens_json CODE 0 OUTPUT "\"displayFamily\""
         COMMAND $<TARGET_FILE:xtframe-symbols> tokens-json

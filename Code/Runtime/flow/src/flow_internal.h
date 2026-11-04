@@ -270,8 +270,9 @@ struct DocEndpointState {
     PortValue pollValue;
     PortValue pointerValue;
 
-    std::vector<uint32_t> listenerIds;      // Document::addListener ids, see unbindDocumentEndpoints().
-    std::vector<uint32_t> portListenerIds;  // T-175: Document::addPortListener ids, likewise.
+    std::vector<uint32_t> listenerIds;         // Document::addListener ids, see unbindDocumentEndpoints().
+    std::vector<uint32_t> portListenerIds;     // T-175: Document::addPortListener ids, likewise.
+    std::vector<uint32_t> surfaceListenerIds;  // T-601: Document::addSurfaceListener ids, likewise.
     /// Liveness token for the Animator "finished" callbacks, which Document offers no way to
     /// unregister: each callback holds a weak_ptr to it and does nothing once it has expired.
     std::shared_ptr<bool> aliveToken = std::make_shared<bool>(true);
@@ -682,6 +683,11 @@ struct xt::flow::FlowRuntime::Impl {
     void timelineInput(int nodeIndex, uint16_t slot, const RtValue& v);
     /// Registers the `timeline` nodes' TimelineEnd / TimelineMarker listeners.
     void bindTimelineNodes();
+    /// T-601 (53 §53.102): registers one surface listener on the load() Document when the graph has
+    /// a `lifecycle` node (a global runtime has none: validateGraph() rejects the node there).
+    void bindLifecycleNodes();
+    /// T-601: fires `shown` (or `hidden`) of every `lifecycle` node, in node order.
+    void lifecycleNodes(bool shown);
     /// Stores `text` in String output `slot` and fans it out: an output that fires on every event
     /// (system strings, `timeline.marker`).
     void fireEventText(int nodeIndex, uint16_t slot, std::string_view text);

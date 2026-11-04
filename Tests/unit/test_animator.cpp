@@ -678,7 +678,7 @@ TEST_CASE("Animator: Float track targets effectParam(0, 3) -> the effect's param
     CHECK(getProperty(fx.arena, fx.n1, effectParam(0, 3)).f == doctest::Approx(4.0f));
 }
 
-TEST_CASE("Animator: Vec2 track targets effectParam(0, kEffectParamOffset) -> params[0..1] change") {
+TEST_CASE("Animator: Vec2 track targets effectParam(0, kEffectParamVec2Base) -> params[0..1] change") {
     Fixture fx;
     EffectInstance e0{};
     e0.kind = EffectKind::DropShadow;
@@ -701,7 +701,7 @@ TEST_CASE("Animator: Vec2 track targets effectParam(0, kEffectParamOffset) -> pa
 
     Track track;
     track.target = 1;
-    track.prop = effectParam(0, prop::kEffectParamOffset);
+    track.prop = effectParam(0, prop::kEffectParamVec2Base);
     track.type = ValueType::Vec2;
     track.kfOffset = 0;
     track.kfCount = 2;

@@ -327,6 +327,11 @@ private:
         // T-411: a trigger set()'s element: in a `<repeat>` instance a template port argument
         // reads that instance's copy (kInvalidNode = no such mapping).
         NodeId node = kInvalidNode;
+        // T-585 (03 §3.12.11): the input of the chain being run (a sub-chain without a port of its
+        // own starts from it; null = none) and the sub-chain nesting level (0 = the binding's own
+        // chain; sub-chains keep no tween / delay / elemProp step state).
+        const BVal* input = nullptr;
+        uint32_t subDepth = 0;
     };
 
     /// The host-visible slot of `port` (null for none, a template-only or a released one).
@@ -408,7 +413,13 @@ private:
     void evaluate(uint32_t binding, bool initial);
     BVal run(std::span<const IrConverterStep> steps, BVal v, EvalCtx& ctx);
     size_t gather(std::span<const IrConverterStep> steps, size_t i, std::vector<Arg>& out) const;
-    BVal argValue(const Arg& a, bool relativePercent, const EvalCtx& ctx) const;
+    BVal argValue(const Arg& a, bool relativePercent, const EvalCtx& ctx);
+    /// T-585 (03 §3.12.11): the value of BCHN sub-chain `chain`, run from its own input port or
+    /// from `ctx.input`; BVal{} for a bad index or past kMaxSubChainDepth.
+    BVal subChainValue(uint32_t chain, const EvalCtx& ctx);
+    /// T-585: whether `steps`, or a sub-chain they name (recursively), has a step with op `op`
+    /// (a ConverterOp) or, for `op` < 0, an `outer.*` argument.
+    bool chainUses(std::span<const IrConverterStep> steps, int op, uint32_t depth = 0) const;
     BVal applyStep(ConverterOp op, const std::vector<Arg>& args, size_t stepIndex, BVal v, EvalCtx& ctx);
     BVal elemProp(const std::vector<Arg>& args, StepState* state);
     void apply(Binding& b, const BVal& r, bool initial);

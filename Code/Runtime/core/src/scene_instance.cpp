@@ -260,11 +260,12 @@ uint32_t copySceneEffects(const SceneChunk& chunk, NodeArena& arena) {
         fx.kind = static_cast<EffectKind>(src.kind);
         fx.enabled = src.enabled;
         fx.shader = src.shader;
-        for (int i = 0; i < 8; ++i) {
+        for (int i = 0; i < 16; ++i) {
             fx.params[i] = src.params[i];
         }
-        fx.colors[0] = src.colors[0];
-        fx.colors[1] = src.colors[1];
+        for (int c = 0; c < 4; ++c) {
+            fx.colors[c] = src.colors[c];
+        }
 
         XT_ASSERT(static_cast<uint64_t>(src.stopOffset) + src.stopCount <= stopPool.size());
         uint32_t stopBase = static_cast<uint32_t>(arena.effectStops().size());

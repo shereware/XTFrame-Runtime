@@ -515,6 +515,39 @@ TEST_CASE("T-547: a color effect parameter is refused (setProperty carries a num
     CHECK(errors[0] == "#S.setProperty: the effect parameter is not a number");
 }
 
+TEST_CASE("T-534: setProperty shares the 18.13 address -- slot names, vec2 components, typed refusal") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc =
+        loadDoc(shaper, "<div id=\"S\" style=\"effect: shadow(0 4px 8px #00000080)\"></div>");
+    FlowRuntime flow;
+    std::vector<std::string> errors;
+    // p<n> is float slot n on a built-in effect too (DropShadow's params[2] = blur).
+    REQUIRE(flow.load(parseGraph(setPropertyGraph("#S", "effect.shadow.p2")), *doc, errors) == Status::kOk);
+    move(*doc, 33.0f, 10.0f);
+    flow.tick(0.016f);
+    doc->update(0.016f);
+    CHECK(effectParams(*doc, "S", 2) == doctest::Approx(33.0f));
+
+    auto only = [&](const char* prop) {
+        std::vector<std::string> errs = loadErrors(*doc, setPropertyGraph("#S", prop));
+        REQUIRE(errs.size() == 1u);
+        return errs[0];
+    };
+    CHECK(only("effect.shadow.p16") == "#S.setProperty: slot out of range");
+    CHECK(only("effect.shadow.c1") == "#S.setProperty: the effect parameter is not a number");
+    CHECK(only("effect.shadow.v0") == "#S.setProperty: the effect parameter is not a number");
+    CHECK(only("effect.shadow.offset") == "#S.setProperty: the effect parameter is not a number");
+
+    // Shape without a Document: a trailing `.x` / `.y` component is well formed, anything else not.
+    FlowGraph graph;
+    errors.clear();
+    CHECK(FlowGraph::parse(setPropertyGraph("#S", "effect.0.center.x"), graph, errors) == Status::kOk);
+    errors.clear();
+    CHECK(FlowGraph::parse(setPropertyGraph("#S", "effect.0.center.z"), graph, errors) != Status::kOk);
+    errors.clear();
+    CHECK(FlowGraph::parse(setPropertyGraph("#S", "effect.0.center..x"), graph, errors) != Status::kOk);
+}
+
 TEST_CASE("T-547: rebind() resolves the effect address again and warns when the effect is gone") {
     NullTextShaper shaper;
     std::unique_ptr<Document> first = loadDoc(shaper, kMaskDiv);

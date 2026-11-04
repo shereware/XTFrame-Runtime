@@ -309,7 +309,7 @@ Claude Design canvas ──Artifact read──▶ <dump>/canvas.json + *.dc.html
 
 `effect.baseAdded`（T-567）：info，匯入器為時間軸／`@keyframes` 補上基底效果，detail `animation`／`effect`；`effect.dropped`：warning，時間軸鍵無法成為效果軌（text-shadow、非 px／deg／數字／顏色值）；`effect.degraded`：warning，上限夾限（8 px 文字效果、64 device px 模糊）與 `transition: text-shadow`——夾限時節點標 Low fidelity，`--strict` 因此 exit 1（`<helmet>` class 規則內的夾限無節點，不影響 `--strict`）。
 
-`bind.formatChain`、`bind.calcNotEvaluated`、`bind.enumPortName`（warning）、`bind.outPortSource`（T-568 為 error，裁決改 warning）、`tag.boundDisplayInlineNone`、`tag.showNotSurface`（warning，board hint）——T-568。
+~~`bind.formatChain`~~（T-585 移除：參數鏈已實作）、`bind.calcNotEvaluated`（T-586 起只對含 port 的 `calc()`）、`bind.enumPortName`（warning）、`bind.outPortSource`（T-568 為 error，裁決改 warning）、`tag.boundDisplayInlineNone`、`tag.showNotSurface`（warning，board hint）——T-568。
 `tag.repeatBinding`（warning，board hint）、`tag.stateGeometry`（warning，board hint）、`tag.symbolRootAppearance`（info）、`import.reimportMatch`（error；stop-loss 時 warning）、`layout.flexShrinkText`（warning，style hint）——T-566b。
 
 **T-566b 實作記錄（#540，2026-11-04；六項偏差主模型核准）**：`data-xt-repeat` → `<repeat id port>`，第一個子元素為模板，其餘丟棄＋warning；`tag.repeatBinding` 接受 `item()`／`index`／`count`／`outer.`；狀態差異排除幾何、只有幾何差異時不寫規則也不報 `stateNoDiff`；merge 摘要的 N 只計 `on:`／`bind:`／`port:`；`--lint -o <project>` 對既有專案乾跑配對（不寫檔）；`hue-rotate` 用自己的句子（YIQ 色相旋轉非 CSS 矩陣）；brightness(1) 這類無作用值不報。

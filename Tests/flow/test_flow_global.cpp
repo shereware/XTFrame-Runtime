@@ -194,7 +194,7 @@ TEST_CASE("xtflow: ui# references, lifecycle, instance and the new node types pa
 
     // The node table lists the new types after the fourteen §17.6 ones.
     std::span<const NodeTypeDesc> table = nodeTypeTable();
-    REQUIRE(table.size() == 23);  // T-541 state, T-543 filter and throttle appended.
+    REQUIRE(table.size() == 24);  // T-541 state, T-543 filter and throttle, T-601 lifecycle appended.
     CHECK(table[14].type == "system");
     CHECK(table[14].outputs.size() == 9);  // T-330: + reducedMotion.
     CHECK(table[19].type == "timeline");

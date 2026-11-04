@@ -293,7 +293,7 @@
   ],
   "bundle": {
     "id": "npdo",
-    "irMajor": 2,
+    "irMajor": 3,
     "name": "NPDO"
   },
   "flowInterface": {
@@ -329,7 +329,7 @@
       ],
       "contract": "7c2d401e35650fb2",
       "file": "ui/hud.xtir",
-      "fileHash": 5761009957890625085,
+      "fileHash": 15219859647357031443,
       "fit": "native",
       "flow": "ui/hud.xtflow",
       "flowInterface": {
@@ -4488,7 +4488,7 @@
       ],
       "contract": "20bab9dce93055ba",
       "file": "ui/main-menu.xtir",
-      "fileHash": 7713676530347697847,
+      "fileHash": 8975174195196703863,
       "fit": "native",
       "flow": "ui/main-menu.xtflow",
       "flowInterface": {
@@ -8561,7 +8561,7 @@
       ],
       "contract": "dad32e6f443164f6",
       "file": "ui/settings.xtir",
-      "fileHash": 2356492761202647223,
+      "fileHash": 14709609485953145138,
       "fit": "native",
       "flow": "ui/settings.xtflow",
       "flowInterface": {

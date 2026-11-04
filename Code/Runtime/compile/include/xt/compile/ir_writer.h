@@ -225,6 +225,10 @@ struct BindingBuilder {
     std::vector<uint32_t> sources;
     /// Converter chains.
     std::vector<IrConverterStep> steps;
+    /// T-585 (03 §3.12.11): the `BCHN` sub-chain pool (written only when non-empty).
+    std::vector<IrSubChain> chains;
+    /// T-585: the sub-chains' converter steps.
+    std::vector<IrConverterStep> chainSteps;
 };
 
 /// One `SHDR` entry (T-203, Docs/design/18-effects.md §18.7): a `.xtfx` asset's compiled form,

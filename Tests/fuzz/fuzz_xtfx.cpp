@@ -32,8 +32,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
             sum += index;
         }
     }
-    float params[8] = {};
-    float colors[2][4] = {};
+    float params[16] = {};
+    float colors[4][4] = {};
     xt::compile::applyXtfxDefaults(result.header.params, params, colors);
 
     xt::fuzz::consume(sum + result.glsl.size() + static_cast<size_t>(params[0] != 0.0f));

@@ -8,10 +8,12 @@
 #include <set>
 #include <utility>
 
+#include "calc_emit.h"   // T-586: a binding's static calc() goes into the CALC pool.
 #include "css_number.h"  // Code/Runtime/core/src: the CSS number (T-272).
 #include "style_emit.h"  // T-544: resolveEffectAddress() / staticEffectSequence().
 #include "xt/compile/aliases.h"
 #include "xt/compile/parse_xt.h"
+#include "xt/compile/parse_xts.h"
 #include "xt/compile/validate.h"
 #include "xt/ir_pod.h"
 #include "xt/timeline.h"
@@ -625,6 +627,9 @@ enum ArgAllow : uint32_t {
     kAllowPort = 4,
     kAllowString = 8,
     kAllowAny = 15,
+    /// T-585 (03 §3.12.11): a converter chain (`dmg | scale(-1)`) compiles into a BCHN sub-chain
+    /// (format() / select() / step() arguments of a `bind:` expression).
+    kAllowSubChain = 16,
 };
 
 void appendSteps(std::vector<IrConverterStep>& steps, ConverterOp op, const std::vector<ArgVal>& args) {
@@ -639,7 +644,8 @@ void appendSteps(std::vector<IrConverterStep>& steps, ConverterOp op, const std:
             step.argKinds =
                 static_cast<uint16_t>(step.argKinds | (static_cast<uint16_t>(a.kind) << (4u * k)));
             if (a.kind == ConverterArg::String || a.kind == ConverterArg::Port ||
-                a.kind == ConverterArg::Item || a.kind == ConverterArg::OuterItem) {
+                a.kind == ConverterArg::Item || a.kind == ConverterArg::OuterItem ||
+                a.kind == ConverterArg::Calc || a.kind == ConverterArg::SubChain) {
                 std::memcpy(&step.args[k], &a.u, sizeof(float));
             } else {
                 step.args[k] = a.f;
@@ -700,6 +706,7 @@ public:
         m_repeatItem = false;
         m_listValue = -1;
         m_needField = false;
+        m_calcProp = kNoCalcProp;
         for (const std::string& segment : splitTop(text, '|')) {
             Call c;
             if (!parseCallText(segment, c, err) || !converter(c, steps, err)) {
@@ -725,6 +732,7 @@ public:
         m_repeatItem = false;
         m_listValue = -1;
         m_needField = false;
+        m_calcProp = kNoCalcProp;
         out = ActionValue{};
         const std::vector<std::string> segments = splitTop(text, '|');
         m_portCalls = true;
@@ -809,17 +817,125 @@ private:
     // T-568: the `bind:` attribute being compiled, for the warnings raised inside the chain.
     int m_line = 0;
     int m_col = 0;
+    // T-586 (03 §3.12.11): the Length property a binding writes (kNoCalcProp otherwise), whose
+    // static `calc()` arguments compile into the CALC pool; `m_calcCompiled` counts the `calc(`
+    // spellings compiled so, against the attribute's total (the rest warn bind.calcNotEvaluated).
+    static constexpr uint16_t kNoCalcProp = 0xFFFFu;
+    uint16_t m_calcProp = kNoCalcProp;
+    size_t m_calcCompiled = 0;
+
+    /// T-586: the number of `calc(` spellings in `text`.
+    static size_t countCalc(std::string_view text) {
+        size_t n = 0;
+        for (size_t at = text.find("calc("); at != std::string_view::npos; at = text.find("calc(", at + 5)) {
+            ++n;
+        }
+        return n;
+    }
+
+    /// T-586 (03 §3.12.11): a quoted or bare `calc(<expr>)` argument of a Length binding that
+    /// parses as a static value of the property (no port in it) -> its CALC pool index.
+    bool staticCalc(const std::string& raw, ArgVal& out) {
+        const std::string text =
+            trimCopyBindEmit(isQuoted(raw) ? std::string_view(raw).substr(1, raw.size() - 2) : raw);
+        if (text.rfind("calc(", 0) != 0) {
+            return false;
+        }
+        // The declaration parser of a static `<prop>: calc(...)` (parseValue's lexer has no `+`).
+        const PropInfo* info = findPropById(m_calcProp);
+        DiagnosticSink ignored;
+        std::vector<StyleDecl> decls;
+        if (info == nullptr ||
+            !parseDeclarations(std::string(info->cssName) + ": " + text, m_fileName, m_line, ignored,
+                               decls) ||
+            decls.size() != 1 || decls[0].value.kind != StyleValueKind::Calc) {
+            return false;
+        }
+        out.kind = ConverterArg::Calc;
+        out.u = emitCalc(decls[0].value.calc, m_writer);
+        m_calcCompiled += countCalc(text);
+        return true;
+    }
+    // T-585: the BCHN pool sub-chains go into (only while compiling a `bind:` attribute; null for
+    // trigger values, whose chain arguments stay literal text) and the current nesting depth.
+    BindingBuilder* m_out = nullptr;
+    uint32_t m_subDepth = 0;
 
     void warnAt(const std::string& message, const char* code) {
         m_sink.warn(m_fileName, message, m_line, m_col, code);
     }
 
-    /// T-568 (27 §27.8, item 1 of Docs/tasks/T-568.md): a `format()` argument that is a converter
-    /// chain (`dmg | scale(-1)`) is still taken as literal text before IR 3.0; say so.
-    void checkFormatArg(const std::string& raw) {
-        if (!raw.empty() && !isQuoted(raw) && splitTop(raw, '|').size() > 1) {
-            warnAt("bind: format() argument chains are not evaluated before IR 3.0", "bind.formatChain");
+    /// T-585 (03 §3.12.11, 27 §27.8): a converter-chain argument (`dmg | scale(-1) | round(0)`)
+    /// -> a BCHN sub-chain (`out` kind SubChain, index into m_out->chains). The chain starts at a
+    /// port (`dmg`, `port(dmg)`: its input, a dependency of the binding) or, when the first segment
+    /// is a converter, at the input of the chain the argument belongs to. Its ports join the
+    /// binding's sources (m_deps). `tween` / `delay` keep per-step state and are rejected.
+    bool subChain(const std::string& raw, ArgVal& out, std::string& err) {
+        if (m_subDepth >= kMaxSubChainDepth) {
+            err = "bind: converter argument chains nest deeper than 4";
+            return false;
         }
+        const int savedPrimary = m_primary;
+        const int savedList = m_listValue;
+        const bool savedNeed = m_needField;
+        ++m_subDepth;
+        const bool ok = subChainBody(raw, out, err);
+        --m_subDepth;
+        m_primary = savedPrimary;
+        m_listValue = savedList;
+        m_needField = savedNeed;
+        return ok;
+    }
+
+    bool subChainBody(const std::string& raw, ArgVal& out, std::string& err) {
+        const std::vector<std::string> segments = splitTop(raw, '|');
+        IrSubChain chain{};
+        chain.input = kSubChainOuterInput;
+        m_listValue = -1;
+        m_needField = false;
+        const std::string headText = trimCopyBindEmit(segments[0]);
+        int port = portCall(headText, err);
+        if (port == -2) {
+            return false;
+        }
+        if (port < 0 && headText.find('(') == std::string::npos) {
+            port = m_scopes.resolve(headText, m_element);  // A port name wins over a converter.
+        }
+        size_t first = 0;
+        if (port >= 0) {
+            chain.input = static_cast<uint32_t>(port);
+            m_primary = port;
+            addDep(chain.input);
+            if (static_cast<PortValueType>(m_scopes.ports[static_cast<size_t>(port)].type) ==
+                PortValueType::List) {
+                m_listValue = port;
+            }
+            first = 1;
+        }
+        std::vector<IrConverterStep> steps;
+        for (size_t i = first; i < segments.size(); ++i) {
+            Call c;
+            if (!parseCallText(segments[i], c, err) || !converter(c, steps, err)) {
+                if (err.empty()) {
+                    err = "invalid converter \"" + trimCopyBindEmit(segments[i]) + "\"";
+                }
+                return false;
+            }
+            if (c.name == "tween" || c.name == "delay") {
+                err = c.name + "() cannot be used in a converter argument chain";
+                return false;
+            }
+        }
+        if (!checkNeedField(err)) {
+            return false;
+        }
+        chain.stepOffset = static_cast<uint32_t>(m_out->chainSteps.size());
+        chain.stepCount = static_cast<uint32_t>(steps.size());
+        m_out->chainSteps.insert(m_out->chainSteps.end(), steps.begin(), steps.end());
+        out.kind = ConverterArg::SubChain;
+        out.u = static_cast<uint32_t>(m_out->chains.size());
+        m_out->chains.push_back(chain);
+        return true;
     }
 
     /// T-411: `port(<name>)` -> its PORT index (-1 = not that form; -2 = an error, `err` set).
@@ -1083,6 +1199,10 @@ private:
             err = "empty argument";
             return false;
         }
+        if ((allow & kAllowSubChain) != 0 && m_out != nullptr && !isQuoted(raw) &&
+            splitTop(raw, '|').size() > 1) {
+            return subChain(raw, out, err);  // T-585
+        }
         if (m_portCalls && (allow & kAllowPort) != 0) {
             const int port = portCall(raw, err);  // T-411: `port(<name>)` in a trigger value.
             if (port == -2) {
@@ -1100,6 +1220,9 @@ private:
             if (term != 0) {
                 return term > 0;
             }
+        }
+        if (m_calcProp != kNoCalcProp && (allow & kAllowString) != 0 && staticCalc(raw, out)) {
+            return true;  // T-586: a static calc() value.
         }
         if (isQuoted(raw)) {
             if ((allow & kAllowString) == 0) {
@@ -1207,7 +1330,7 @@ private:
                 return false;
             }
             ArgVal v;
-            if (!arg(value, kAllowAny, v, err)) {
+            if (!arg(value, kAllowAny | kAllowSubChain, v, err)) {
                 return false;
             }
             if (key == "default") {
@@ -1376,10 +1499,8 @@ private:
                     err = "format() needs a quoted pattern first";
                     return false;
                 }
-                if (n == "format" && i > 0) {
-                    checkFormatArg(c.args[i]);
-                }
-                if (!arg(c.args[i], kAllowAny, a, err)) {
+                if (!arg(c.args[i], n == "format" && i > 0 ? kAllowAny | kAllowSubChain : kAllowAny, a,
+                         err)) {
                     return false;
                 }
                 args.push_back(a);
@@ -1678,8 +1799,7 @@ private:
             }
             // The first value is the chain's input ({0}); a constant one is loaded by concat().
             ArgVal first;
-            checkFormatArg(c.args[1]);
-            if (!arg(c.args[1], kAllowAny, first, err)) {
+            if (!arg(c.args[1], kAllowAny | kAllowSubChain, first, err)) {
                 return false;
             }
             if (first.kind == ConverterArg::Port) {
@@ -1699,8 +1819,7 @@ private:
             args.push_back(pattern);
             for (size_t i = 2; i < c.args.size(); ++i) {
                 ArgVal a;
-                checkFormatArg(c.args[i]);
-                if (!arg(c.args[i], kAllowAny, a, err)) {
+                if (!arg(c.args[i], kAllowAny | kAllowSubChain, a, err)) {
                     return false;
                 }
                 args.push_back(a);
@@ -1844,11 +1963,35 @@ private:
         return false;
     }
 
+    /// A `bind:` expression's head and converters (split at the top-level `|`) -> `steps`;
+    /// `lastConverter` = the last converter other than tween / delay (T-544).
+    bool compileExpression(const std::vector<std::string>& segments, std::vector<IrConverterStep>& steps,
+                           std::string& lastConverter, std::string& err) {
+        if (!head(trimCopyBindEmit(segments[0]), steps, err)) {
+            return false;
+        }
+        for (size_t i = 1; i < segments.size(); ++i) {
+            Call c;
+            if (!parseCallText(segments[i], c, err) || !converter(c, steps, err)) {
+                if (err.empty()) {
+                    err = "invalid converter \"" + trimCopyBindEmit(segments[i]) + "\"";
+                }
+                return false;
+            }
+            if (c.name != "tween" && c.name != "delay") {
+                lastConverter = c.name;
+            }
+        }
+        return checkNeedField(err);
+    }
+
     void compileBinding(uint32_t element, const DomAttr& attr, BindingBuilder& out,
                         const SvgBindAttr* scene = nullptr) {
         const std::string target = attr.name.substr(5);
         auto fail = [&](const std::string& msg) {
-            m_sink.error(m_fileName, "bind:" + target + ": " + msg, attr.line, attr.col);
+            // T-585: a message that already names `bind:` (the sub-chain depth limit) stands alone.
+            m_sink.error(m_fileName, msg.rfind("bind: ", 0) == 0 ? msg : "bind:" + target + ": " + msg,
+                         attr.line, attr.col);
             m_ok = false;
         };
         IrBinding b{};
@@ -1964,8 +2107,9 @@ private:
             // element's static effect sequence (the address `@timeline` uses).
             const std::string rest = target.substr(7);
             const size_t dot = rest.find('.');
-            if (dot == std::string::npos || dot == 0 || dot + 1 >= rest.size() ||
-                rest.find('.', dot + 1) != std::string::npos) {
+            // T-534 (18.13, review 2026-10-31 §2.7): the parameter may carry a vec2 component
+            // (`<param>.x` / `.y`) -- resolveEffectAddress() decides.
+            if (dot == std::string::npos || dot == 0 || dot + 1 >= rest.size()) {
                 fail("bind:effect.<effect>.<param> needs an effect and a parameter");
                 return;
             }
@@ -1975,12 +2119,18 @@ private:
                     : nullptr;
             std::string error;
             PropId prop = 0;
+            ValueType type = ValueType::Float;
             if (!resolveEffectAddress(m_writer, std::string_view(rest).substr(0, dot),
-                                      std::string_view(rest).substr(dot + 1), seq, error, prop,
-                                      effectIsColor)) {
+                                      std::string_view(rest).substr(dot + 1), seq, error, prop, type)) {
                 fail(error);
                 return;
             }
+            if (type == ValueType::Vec2) {
+                // A binding carries one number or one color; a vec2 is bound per component.
+                fail("a vec2 effect parameter is bound by component (.x / .y)");
+                return;
+            }
+            effectIsColor = type == ValueType::Color;
             effectBind = true;
             b.target = static_cast<uint8_t>(BindTarget::Prop);
             b.targetId = prop;
@@ -2010,28 +2160,23 @@ private:
         m_needField = false;
         m_line = attr.line;
         m_col = attr.col;
+        m_calcProp = kNoCalcProp;
+        m_calcCompiled = 0;
+        if (static_cast<BindTarget>(b.target) == BindTarget::Prop && !effectBind && scene == nullptr) {
+            const PropInfo* info = findProp(target);
+            if (info != nullptr && info->kind == StyleValueKind::Length) {
+                m_calcProp = info->prop;
+            }
+        }
         std::vector<IrConverterStep> steps;
         std::string err;
         std::vector<std::string> segments = splitTop(attr.value, '|');
-        if (!head(trimCopyBindEmit(segments[0]), steps, err)) {
-            fail(err);
-            return;
-        }
         std::string lastConverter;  // T-544: the last value-changing converter's name.
-        for (size_t i = 1; i < segments.size(); ++i) {
-            Call c;
-            if (!parseCallText(segments[i], c, err) || !converter(c, steps, err)) {
-                if (err.empty()) {
-                    err = "invalid converter \"" + trimCopyBindEmit(segments[i]) + "\"";
-                }
-                fail(err);
-                return;
-            }
-            if (c.name != "tween" && c.name != "delay") {
-                lastConverter = c.name;
-            }
-        }
-        if (!checkNeedField(err)) {
+        m_out = &out;               // T-585: this binding's sub-chains go into out.chains.
+        m_subDepth = 0;
+        const bool compiled = compileExpression(segments, steps, lastConverter, err);
+        m_out = nullptr;
+        if (!compiled) {
             fail(err);
             return;
         }
@@ -2062,16 +2207,14 @@ private:
                             attr.line, attr.col, "bind.outPortSource");
             }
         }
-        // T-568 (27 §27.8, 05 §5.4): a `calc()` value of a length property stays text the run time
-        // cannot evaluate before IR 3.0 (the static value stands).
-        if (static_cast<BindTarget>(b.target) == BindTarget::Prop && !effectBind && scene == nullptr &&
-            attr.value.find("calc(") != std::string::npos) {
-            const PropInfo* info = findProp(target);
-            if (info != nullptr && info->kind == StyleValueKind::Length) {
-                m_sink.warn(m_fileName, "bind: calc() is not evaluated at runtime before IR 3.0 (05 §5.4)",
-                            attr.line, attr.col, "bind.calcNotEvaluated");
-            }
+        // T-568 / T-586 (27 §27.8, 03 §3.12.11, 05 §5.4): a static `calc()` of a length property
+        // went into the CALC pool above; one that is not static (a port in it) stays text the run
+        // time cannot evaluate (the static value stands).
+        if (m_calcProp != kNoCalcProp && countCalc(attr.value) > m_calcCompiled) {
+            m_sink.warn(m_fileName, "bind: calc() is not evaluated at runtime (05 §5.4)", attr.line, attr.col,
+                        "bind.calcNotEvaluated");
         }
+        m_calcProp = kNoCalcProp;
         b.flags = static_cast<uint8_t>((m_afterLayout ? kBindAfterLayout : 0) |
                                        (m_primary < 0 ? kBindNoPrimary : 0) |
                                        (m_repeatItem && m_primary < 0 ? kBindRepeatItem : 0));

@@ -32,6 +32,10 @@
 
 namespace xt::compile {
 
+// Implemented in xts/xts_values.cpp (T-534, 18 §18.13): an `effect.<fx>.<param>` timeline value's
+// text parsed as `type` (Float / Color / Vec2). False on a mismatch, without reporting.
+bool parseEffectParamText(std::string_view text, ValueType type, StyleValue& out);
+
 namespace {
 
 namespace fs = std::filesystem;
@@ -54,18 +58,21 @@ IrKeyframe makeNeutralKeyframe(float time) {
 
 // Docs/design/18-effects.md §18.4's `@keyframes`/`effect` expansion (T-51a): a param slot per
 // builtin EffectKind (18.3), excluding DropShadow's offsetX/offsetY (paramIndex 1/2), which
-// emitEffectKeyframeTracks() replaces with the composite Vec2 rule (paramIndex 18) instead.
+// emitEffectKeyframeTracks() replaces with the composite Vec2 rule (paramIndex
+// kEffectParamVec2Base) instead.
 struct EffectParamSlot {
-    uint32_t paramIndex;  ///< 18.2 paramIndex (1..8 float, 16/17 color).
+    uint32_t paramIndex;  ///< 18.2 paramIndex (1..8 float, kEffectParamColorBase color; T-534).
     bool isColor;
 };
 
 std::vector<EffectParamSlot> effectParamSlots(EffectKind kind) {
+    constexpr uint32_t kColor0 = xt::prop::kEffectParamColorBase;  // colors[0] (T-534 encoding).
     switch (kind) {
         case EffectKind::DropShadow:
-            return {{3, false}, {4, false}, {5, false}, {16, true}};  // blur, spread, opacity, color0.
+            return {{3, false}, {4, false}, {5, false}, {kColor0, true}};  // blur, spread, opacity, color0.
         case EffectKind::Glow:
-            return {{1, false}, {2, false}, {3, false}, {16, true}};  // radius, intensity, inner, color0.
+            return {
+                {1, false}, {2, false}, {3, false}, {kColor0, true}};  // radius, intensity, inner, color0.
         case EffectKind::Blur:
             return {{1, false}, {2, false}};  // radiusX, radiusY.
         case EffectKind::ColorAdjust:
@@ -73,9 +80,9 @@ std::vector<EffectParamSlot> effectParamSlots(EffectKind kind) {
         case EffectKind::GradientMask:
             return {{1, false}, {2, false}, {3, false}, {4, false}, {5, false}, {6, false}};
         case EffectKind::Shine:
-            return {{1, false}, {2, false}, {3, false}, {4, false}, {5, false}, {16, true}};
+            return {{1, false}, {2, false}, {3, false}, {4, false}, {5, false}, {kColor0, true}};
         case EffectKind::Outline:
-            return {{1, false}, {2, false}, {3, false}, {16, true}};
+            return {{1, false}, {2, false}, {3, false}, {kColor0, true}};
         case EffectKind::BackdropBlur:
             return {{1, false}, {2, false}, {3, false}};  // radius, saturation, brightness.
         default:
@@ -156,7 +163,7 @@ void emitEffectKeyframeTracks(const KeyframesDef& kdef, TimelineBuilder& tb, std
             if (differs) {
                 IrTrack track{};
                 track.target = kSelfNode;
-                track.prop = xt::effectParam(static_cast<uint32_t>(i), xt::prop::kEffectParamOffset);
+                track.prop = xt::effectParam(static_cast<uint32_t>(i), xt::prop::kEffectParamVec2Base);
                 track.type = static_cast<uint8_t>(ValueType::Vec2);
                 track.kfOffset = static_cast<uint32_t>(tb.keyframes.size());
                 for (const auto& [offset, stopPtr] : stopByOffset) {
@@ -208,7 +215,7 @@ void emitEffectKeyframeTracks(const KeyframesDef& kdef, TimelineBuilder& tb, std
                 track.kfCount = static_cast<uint32_t>(tb.keyframes.size()) - track.kfOffset;
                 tb.tracks.push_back(track);
             } else {
-                uint32_t colorIdx = slot.paramIndex == 16 ? 0 : 1;
+                uint32_t colorIdx = slot.paramIndex - xt::prop::kEffectParamColorBase;
                 bool differs = false;
                 bool haveFirst = false;
                 Color first{};
@@ -914,9 +921,9 @@ bool encodeDeclValue(IrWriter& writer, StyleBuilder& style,
                         return false;
                     }
                 }
+                static_assert(sizeof(ir.params) == sizeof(e.params) && sizeof(ir.colors) == sizeof(e.colors));
                 std::memcpy(ir.params, e.params, sizeof(ir.params));
-                ir.colors[0] = e.colors[0];
-                ir.colors[1] = e.colors[1];
+                std::memcpy(ir.colors, e.colors, sizeof(ir.colors));
                 ir.stopOffset = static_cast<uint32_t>(style.effectStops.size());
                 ir.stopCount = static_cast<uint32_t>(e.stops.size());
                 for (const GradientStop& s : e.stops) {
@@ -1389,8 +1396,7 @@ IrEffect toFallbackIrEffect(const EffectDeclEntry& e) {
     ir.enabled = e.kind == EffectKind::None ? 0 : 1;
     ir.shader = kInvalidAsset;
     std::memcpy(ir.params, e.params, sizeof(ir.params));
-    ir.colors[0] = e.colors[0];
-    ir.colors[1] = e.colors[1];
+    std::memcpy(ir.colors, e.colors, sizeof(ir.colors));
     return ir;
 }
 
@@ -1471,6 +1477,9 @@ AssetId ensureShaderAsset(IrWriter& writer, const std::string& src, std::string_
         sink.error(pathToUtf8(full), r.error.message, r.error.line, r.error.col);
         return kInvalidAsset;
     }
+    for (const XtfxError& w : r.header.warnings) {
+        sink.warn(pathToUtf8(full), w.message, w.line, w.col);
+    }
     if (r.header.fallback.kind == EffectKind::GradientMask ||
         r.header.fallback.kind == EffectKind::BackdropBlur) {
         sink.error(pathToUtf8(full), "fallback: gradient-mask and backdrop-blur cannot be a fallback");
@@ -1514,8 +1523,8 @@ bool resolveCustomEffects(std::vector<StyleDecl>& decls, IrWriter& writer, std::
                     break;
                 }
                 const std::vector<XtfxParam> params = xtfxParamsOf(*writer.shaderForAsset(id));
-                float values[8] = {};
-                float colors[2][4] = {};
+                float values[16] = {};
+                float colors[4][4] = {};
                 applyXtfxDefaults(params, values, colors);
                 for (const CustomParamOverride& ov : e.customParams) {
                     const XtfxParam* p = nullptr;
@@ -1553,8 +1562,9 @@ bool resolveCustomEffects(std::vector<StyleDecl>& decls, IrWriter& writer, std::
                 if (!declOk) {
                     break;
                 }
+                static_assert(sizeof(values) == sizeof(e.params));
                 std::memcpy(e.params, values, sizeof(e.params));
-                for (int c = 0; c < 2; ++c) {
+                for (int c = 0; c < 4; ++c) {
                     e.colors[c] = Color{colors[c][0], colors[c][1], colors[c][2], colors[c][3]};
                 }
                 e.shaderAsset = id;
@@ -1870,7 +1880,7 @@ const std::vector<EffectDeclEntry>* staticEffectSequenceImpl(const RuleSet& rule
 // T-544: the shared 18.12 effect addressing (declared in style_emit.h).
 bool resolveEffectAddress(const IrWriter& writer, std::string_view effectName, std::string_view param,
                           const std::vector<EffectDeclEntry>* seq, std::string& error, PropId& out,
-                          bool& isColor) {
+                          ValueType& type) {
     if (seq == nullptr || seq->empty()) {
         error = "the element has no effect";
         return false;
@@ -1920,19 +1930,43 @@ bool resolveEffectAddress(const IrWriter& writer, std::string_view effectName, s
     }
     uint32_t paramIndex = 0;
     bool paramOk = false;
-    if ((*seq)[index].kind == EffectKind::Custom) {
+    // T-534 (18.13): slot addressing `p<n>` / `c<n>` / `v<n>` first (a `.xtfx` header cannot name a
+    // parameter this way, so it never hides a header name); valid on every effect kind.
+    const EffectSlotName slotName = effectSlotParamIndex(param, paramIndex);
+    if (slotName == EffectSlotName::OutOfRange) {
+        error = "slot out of range";
+        return false;
+    }
+    bool noComponents = false;
+    if (slotName == EffectSlotName::Ok) {
+        paramOk = true;
+    } else if ((*seq)[index].kind == EffectKind::Custom) {
         const ShaderBuilder* shader =
             writer.shaderForAsset(findShaderAsset(writer, (*seq)[index].customAsset));
-        paramOk = shader != nullptr && xtfxParamIndex(xtfxParamsOf(*shader), param, paramIndex);
+        if (shader != nullptr && param == "enabled") {
+            paramIndex = xt::prop::kEffectParamEnabled;
+            paramOk = true;
+        } else if (shader != nullptr) {
+            // T-532 (18.13): a `.x` / `.y` component on an existing non-vec2 parameter is its own
+            // error.
+            for (const XtfxParam& p : xtfxParamsOf(*shader)) {
+                const CustomParamMatch m = matchCustomEffectParam(param, p.name, p.type, p.slot, paramIndex);
+                if (m != CustomParamMatch::NoMatch) {
+                    paramOk = m == CustomParamMatch::Ok;
+                    noComponents = m == CustomParamMatch::NoComponents;
+                    break;
+                }
+            }
+        }
     } else {
         paramOk = effectParamIndexByName((*seq)[index].kind, param, paramIndex);
     }
     if (!paramOk) {
-        error = "unknown effect parameter";
+        error = noComponents ? "parameter has no components" : "unknown effect parameter";
         return false;
     }
     out = xt::effectParam(index, paramIndex);
-    isColor = paramIndex == xt::prop::kEffectParamColor0 || paramIndex == xt::prop::kEffectParamColor1;
+    type = xt::propertyType(out);
     return true;
 }
 
@@ -1952,13 +1986,18 @@ bool resolveTimelineEffectDecl(const IrWriter& writer, const TimelineEffectDecl&
     std::string where = "effect." + fx.effect + "." + fx.param + " on #" + path;
     std::string error;
     PropId prop = 0;
-    bool isColor = false;
-    if (!resolveEffectAddress(writer, fx.effect, fx.param, seq, error, prop, isColor)) {
+    ValueType type = ValueType::Float;
+    if (!resolveEffectAddress(writer, fx.effect, fx.param, seq, error, prop, type)) {
         sink.error(std::string(fileName), "@timeline " + where + ": " + error, fx.line);
         return false;
     }
     out.prop = prop;
-    out.value = fx.value;
+    // T-534 (18.13): the value is typed by the resolved parameter (Float / Color / Vec2).
+    if (!parseEffectParamText(fx.valueText, type, out.value)) {
+        sink.error(std::string(fileName), "@timeline " + where + ": value does not match parameter type",
+                   fx.line);
+        return false;
+    }
     out.line = fx.line;
     return true;
 }
@@ -2050,6 +2089,7 @@ void emitTimelineGroups(const RuleSet& ruleSet, const DomTree& dom, IrWriter& wr
             // Per prop: its samples in time order, plus first-appearance prop order.
             std::vector<uint16_t> propOrder;
             std::map<uint16_t, std::vector<TrackSample>> samples;
+            uint32_t vec2ClashReported = 0;  // T-532: bit i = effect i's clash was reported.
             auto addSample = [&](const TimelineKey& key, const StyleDecl& decl) {
                 if (isVectorProp(decl.prop)) {
                     // T-190: vector properties address an inline <svg>'s nodes (`#<svg id>/<id>`).
@@ -2069,6 +2109,44 @@ void emitTimelineGroups(const RuleSet& ruleSet, const DomTree& dom, IrWriter& wr
                                decl.line);
                     ok = false;
                     return;
+                }
+                if (xt::isEffectProp(decl.prop)) {
+                    // T-532 / T-534 (18.13): a vec2 addressed both whole (kEffectParamVec2Base + s)
+                    // and by component (kEffectParamFloatBase + s / + s + 1) in the same timeline
+                    // is an error, reported once per effect. Two wholes that share a float slot
+                    // (`v0` and `v1`) are reported the same way.
+                    const uint32_t fxIndex = (decl.prop >> 8) & 0xFu;
+                    const uint32_t paramIndex = decl.prop & 0xFFu;
+                    auto has = [&](uint32_t pi) {
+                        auto it = samples.find(xt::effectParam(fxIndex, pi));
+                        return it != samples.end() && !it->second.empty();
+                    };
+                    constexpr uint32_t kFloat = xt::prop::kEffectParamFloatBase;
+                    constexpr uint32_t kVec2 = xt::prop::kEffectParamVec2Base;
+                    constexpr uint32_t kFloatEnd = kFloat + xt::prop::kEffectParamFloatCount;
+                    constexpr uint32_t kVec2End = kVec2 + xt::prop::kEffectParamVec2Count;
+                    bool clash = false;
+                    if (paramIndex >= kVec2 && paramIndex < kVec2End) {
+                        const uint32_t s = paramIndex - kVec2;
+                        clash = has(kFloat + s) || has(kFloat + s + 1) || (s > 0 && has(kVec2 + s - 1)) ||
+                                (s + 1 < xt::prop::kEffectParamVec2Count && has(kVec2 + s + 1));
+                    } else if (paramIndex >= kFloat && paramIndex < kFloatEnd) {
+                        const uint32_t s = paramIndex - kFloat;
+                        clash = (s < xt::prop::kEffectParamVec2Count && has(kVec2 + s)) ||
+                                (s > 0 && has(kVec2 + s - 1));
+                    }
+                    if (clash) {
+                        if ((vec2ClashReported & (1u << fxIndex)) == 0) {
+                            vec2ClashReported |= 1u << fxIndex;
+                            sink.error(fileName,
+                                       "@timeline \"" + def.name + "\": #" + path + " effect " +
+                                           std::to_string(fxIndex) +
+                                           ": vec2 parameter addressed both whole and by component",
+                                       decl.line != 0 ? decl.line : key.line);
+                        }
+                        ok = false;
+                        return;
+                    }
                 }
                 std::vector<TrackSample>& list = samples[decl.prop];
                 if (list.empty()) {

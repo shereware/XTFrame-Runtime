@@ -176,6 +176,7 @@ std::vector<uint8_t> downgradeToMinor4(const std::vector<uint8_t>& in) {
         out.insert(out.end(), hp, hp + sizeof(ch));
         out.insert(out.end(), payload.begin(), payload.end());
     }
+    header.major = 2;  // T-534: an IR 2.4 file.
     header.minor = 4;
     header.totalLength = static_cast<uint32_t>(out.size());
     std::memcpy(out.data(), &header, sizeof(header));
@@ -746,7 +747,7 @@ TEST_CASE("rig: IR 2.5 round-trips byte for byte and instantiates the rig") {
     IrHeader header{};
     std::memcpy(&header, r.ir.data(), sizeof(header));
     CHECK(header.minor == kIrFormatMinor);
-    CHECK(kIrFormatMinor >= 5);  // T-335: 6.
+    CHECK((kIrFormatMajor >= 3 || kIrFormatMinor >= 5));  // T-335: 2.6; T-534: 3.0 has every 2.x tail.
     Result<IrView> view = IrView::open(IrBlob{r.ir.data(), r.ir.size()}, IrReadOptions{true});
     REQUIRE(view.ok());
     CHECK(IrWriter::fromView(view.value()).finish() == r.ir);
@@ -874,34 +875,17 @@ TEST_CASE("rig: bind: on <svg> content binds only properties the node takes; on:
     CHECK(hasDiagnostic(on, Diagnostic::Level::Warning, "on:click on <svg> content is not supported"));
 }
 
-TEST_CASE("rig: an IR minor 4 file (24-byte bindings, 152-byte paths) opens with no skin / scene node") {
+TEST_CASE("rig: an IR 2.4 file (24-byte bindings, 152-byte paths) is rejected with the 2.x files (T-534)") {
     CompileResult r = compileXt(R"X(<div port:w="number"></div><span id="T" bind:opacity="w">x</span>
         <svg id="S" viewBox="0 0 10 10"><path id="P" d="M0 0 L5 0 L5 5Z" fill="red"/></svg>)X");
     REQUIRE(r.ok());
     std::vector<uint8_t> old = downgradeToMinor4(r.ir);
     REQUIRE(old.size() < r.ir.size());
     Result<IrView> view = IrView::open(IrBlob{old.data(), old.size()}, IrReadOptions{true});
-    REQUIRE(view.ok());
-    bool sawPath = false;
-    for (uint32_t i = 0; i < view.value().sceneCount(); ++i) {
-        for (const IrPathData& p : view.value().scene(i).paths()) {
-            CHECK(p.skinIndex == kIrNoSkin);
-            CHECK(p.strokeWidth == doctest::Approx(1.0f));
-            sawPath = true;
-        }
-    }
-    CHECK(sawPath);
-    REQUIRE(view.value().bindings().bindings().size() == 1);
-    CHECK(view.value().bindings().bindings()[0].sceneNode == kBindElementSelf);
-    CHECK(static_cast<BindTarget>(view.value().bindings().bindings()[0].target) == BindTarget::Prop);
-
+    CHECK(view.status() == Status::kInvalidIr);
+    CHECK(IrView::versionError(IrBlob{old.data(), old.size()}).find("IR major 2") != std::string::npos);
     std::unique_ptr<Document> doc;
-    REQUIRE(Document::load(IrBlob{old.data(), old.size()}, false, nullptr, nullptr, doc) == Status::kOk);
-    doc->setViewport(Rect{0, 0, 100, 100});
-    doc->update(0.0f);
-    REQUIRE(doc->setPort(doc->lookupPort("w"), Value::ofFloat(0.5f)) == Status::kOk);
-    doc->update(0.016f);
-    CHECK(doc->byId("T").property(prop::Opacity).f == doctest::Approx(0.5f));
+    CHECK(Document::load(IrBlob{old.data(), old.size()}, false, nullptr, nullptr, doc) == Status::kInvalidIr);
 }
 
 TEST_CASE("rig: xtframe-compile --strict fails on a missing target and on out-of-range weights") {

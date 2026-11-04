@@ -23,14 +23,17 @@ namespace {
 /// Block layout (floats): [0] xtTime, [4..5] uTexelSize, [6..7] uLayerSize, then one vec4 per
 /// parameter from [8].
 constexpr uint32_t kParamBase = 8;
-constexpr uint32_t kMaxParams = 10;  // 8 float slots + 2 colors at most (customParamSlots)
+constexpr uint32_t kMaxParams = 20;  // 16 float slots + 4 colors at most (customParamSlots, T-534)
+static_assert(kParamBase + 4 * kMaxParams <= kParamBlockBytes / sizeof(float), "custom block overflows");
 
 std::string wrapModule(std::string_view module, const char* names, const uint8_t* types, uint32_t count) {
     std::string src =
         "#version 450\n"
         "layout(location = 0) in vec2 vUV;\n"
         "layout(location = 0) out vec4 fragColor;\n"
-        "layout(set = 1, binding = 0, std140) uniform XtCustomBlock { vec4 frame; vec4 sizes; vec4 p[10]; } "
+        "layout(set = 1, binding = 0, std140) uniform XtCustomBlock { vec4 frame; vec4 sizes; vec4 p[" +
+        std::to_string(kMaxParams) +
+        "]; } "
         "xtU;\n"
         "layout(set = 2, binding = 0) uniform texture2D xtLayerTex;\n"
         "layout(set = 2, binding = 3) uniform sampler xtLayerSmp;\n"

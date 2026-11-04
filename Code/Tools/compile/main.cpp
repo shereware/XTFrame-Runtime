@@ -2,6 +2,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -14,6 +15,7 @@
 #include "xt/compile/diagnostic_report.h"
 #include "xt/compile/diagnostics.h"
 #include "xt/compile/utf8_path.h"
+#include "xt/flow/flow_graph.h"
 #include "xt/ir.h"
 
 /// xtframe-compile: CLI front-end for xt::compile::compileLottie (`.json`) / compileDocument (`.xt`).
@@ -33,6 +35,11 @@
 /// T-576 (Docs/design/24-design-import.md §24.15.2): `--diagnostics FILE` also writes the
 /// diagnostics as the shared JSON list (codes `compile.error` / `compile.warning`); stderr is
 /// unchanged. The file is written whether or not the compile succeeded.
+///
+/// T-601 (53 §53.102 item 3): a `.xt` input's sibling `<stem>.xtflow` (the importer's convention,
+/// T-135) is linted too (xt::flow::lintFlowGraph()): each finding prints as a `warning
+/// flow.introByTimer ...` line to stderr and goes into `--diagnostics`; it never changes the exit
+/// code. A sibling that does not parse is left to the flow tools.
 ///
 /// Exit codes: 0 success, 1 a compile error occurred, 2 argument error (usage printed to stderr).
 ///
@@ -60,6 +67,38 @@
 namespace {
 
 namespace fs = std::filesystem;
+
+/// T-601: the findings of `xtPath`'s sibling `.xtflow`, in the shared format (none without one).
+std::vector<xt::compile::ReportDiagnostic> siblingFlowLint(const fs::path& xtPath) {
+    std::vector<xt::compile::ReportDiagnostic> items;
+    const fs::path flowPath = fs::path(xtPath).replace_extension(".xtflow");
+    std::ifstream in(flowPath, std::ios::binary);
+    if (!in) {
+        return items;
+    }
+    const std::string json((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    xt::flow::FlowGraph graph;
+    std::vector<std::string> errors;
+    std::vector<xt::flow::FlowLintFinding> findings;
+    if (xt::flow::FlowGraph::parse(json, graph, errors) == xt::Status::kOk) {
+        xt::flow::lintFlowGraph(graph, findings);
+    }
+    for (const xt::flow::FlowLintFinding& finding : findings) {
+        xt::compile::ReportDiagnostic item;
+        item.code = finding.code;
+        item.severity = xt::compile::Severity::Warning;
+        item.message = finding.message;
+        item.source = xt::compile::genericPathToUtf8(flowPath);
+        item.detail = {{"node", finding.nodeId}, {"target", finding.targets.front()}, {"fix", finding.fix}};
+        if (!finding.timeline.empty()) {  // §24.15.4: the board's `on:show` is the other cure.
+            item.fix.kind = xt::compile::FixKind::Board;
+            item.fix.boardAttr = "on:show";
+            item.fix.boardValue = "play(" + finding.timeline + ")";
+        }
+        items.push_back(std::move(item));
+    }
+    return items;
+}
 
 void printUsage() {
     std::fprintf(stderr,
@@ -191,12 +230,18 @@ static int run(int argc, char** argv) {
     for (const xt::compile::Diagnostic& d : result.diagnostics) {
         printDiagnostic(d);
     }
+    const std::vector<xt::compile::ReportDiagnostic> flowLint =
+        isXt ? siblingFlowLint(inputPath) : std::vector<xt::compile::ReportDiagnostic>();
+    for (const xt::compile::ReportDiagnostic& item : flowLint) {
+        std::fprintf(stderr, "%s\n", xt::compile::formatDiagnostic(item).c_str());
+    }
     if (!diagnosticsOut.empty()) {
         // T-576: the same messages in the shared format.
         std::vector<xt::compile::ReportDiagnostic> items;
         for (const xt::compile::Diagnostic& d : result.diagnostics) {
             items.push_back(xt::compile::fromCompileDiagnostic(d));
         }
+        items.insert(items.end(), flowLint.begin(), flowLint.end());
         const std::string text =
             xt::compile::diagnosticsJson(items, xt::compile::toolWithVersion("xtframe-compile"), input);
         if (!xt::compile::writeDiagnosticsFile(diagnosticsOut, text)) {

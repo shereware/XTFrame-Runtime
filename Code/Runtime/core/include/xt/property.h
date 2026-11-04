@@ -269,21 +269,27 @@ inline constexpr PropId kInvalidProp = 0xFFFF;    ///< Sentinel value for "no su
 // (0x8000+), not a fixed list like the ranges above: see effectParam()/isEffectProp() below.
 inline constexpr PropId kEffectPropBase = 0x8000;  ///< Base of the effect-parameter PropId range.
 
-/// paramIndex constants for effectParam()'s second argument (18.2). paramIndex 1-8 (EffectInstance
-/// ::params[0..7]) have no named constants here; kind-specific meaning comes from 18.3's table.
-inline constexpr uint32_t kEffectParamEnabled = 0;  ///< EffectInstance::enabled (Float 0/1).
-inline constexpr uint32_t kEffectParamColor0 = 16;  ///< EffectInstance::colors[0].
-inline constexpr uint32_t kEffectParamColor1 = 17;  ///< EffectInstance::colors[1].
-inline constexpr uint32_t kEffectParamOffset = 18;  ///< Composite Vec2 (params[0], params[1]).
+/// paramIndex constants for effectParam()'s second argument (18.2, re-encoded by T-534 for IR
+/// 3.0). Kind-specific meaning of the float / color slots comes from 18.3's table (built-in
+/// effects) or the `.xtfx` header (custom shaders, 18.13).
+inline constexpr uint32_t kEffectParamEnabled = 0;      ///< EffectInstance::enabled (Float 0/1).
+inline constexpr uint32_t kEffectParamFloatBase = 1;    ///< 1..16: Float EffectInstance::params[0..15].
+inline constexpr uint32_t kEffectParamFloatCount = 16;  ///< Number of float slots.
+inline constexpr uint32_t kEffectParamColorBase = 32;   ///< 32..35: Color EffectInstance::colors[0..3].
+inline constexpr uint32_t kEffectParamColorCount = 4;   ///< Number of color slots.
+/// 64..78: composite Vec2 (params[s], params[s + 1]) with s = paramIndex - 64; DropShadow's
+/// offset is kEffectParamVec2Base + 0.
+inline constexpr uint32_t kEffectParamVec2Base = 64;
+inline constexpr uint32_t kEffectParamVec2Count = 15;  ///< Number of vec2 start slots (0..14).
 
 }  // namespace prop
 
 /// Encodes an effect-parameter PropId (Docs/design/18-effects.md §18.2): effectIndex is the
 /// effect's position in the node's effect stack (0-15), paramIndex selects which field (0 =
-/// enabled, 1-8 = params[0..7], 16/17 = colors[0/1], 18 = the composite Vec2 offset from
-/// params[0..1]; see the prop::kEffectParam* constants). Both arguments are masked to their
-/// documented widths (4 and 8 bits) before encoding; callers must stay within 0-15/0-31 as
-/// propertyDefined() requires -- this function does not itself validate the range.
+/// enabled, 1-16 = params[0..15], 32-35 = colors[0..3], 64-78 = the composite Vec2 (params[s],
+/// params[s + 1]) with s = paramIndex - 64; see the prop::kEffectParam* constants). Both arguments
+/// are masked to their documented widths (4 and 8 bits) before encoding; callers must stay within
+/// the ranges propertyDefined() accepts -- this function does not itself validate them.
 constexpr PropId effectParam(uint32_t effectIndex, uint32_t paramIndex) {
     return static_cast<PropId>(prop::kEffectPropBase | ((effectIndex & 0xFu) << 8) | (paramIndex & 0xFFu));
 }
@@ -298,8 +304,8 @@ ValueType propertyType(PropId prop);
 
 /// True if prop is one of the defined PropId ranges: general 0-13, 3D 16-22, Camera 24-27, Path
 /// 32-51, Element 64-93/96-128, Modifier 208-231, Shape 232-245, or an effect parameter (18.2:
-/// prop >= kEffectPropBase, decoded effectIndex <= 15 and decoded paramIndex in {0, 1..8, 16, 17,
-/// 18}).
+/// prop >= kEffectPropBase, decoded effectIndex <= 15 and decoded paramIndex in {0, 1..16, 32..35,
+/// 64..78}).
 bool propertyDefined(PropId prop);
 
 /// True if kind owns prop: general (0-13) and 3D (16-22) props apply to every NodeKind other than

@@ -71,6 +71,8 @@ bool parseNodeType(std::string_view name, NodeType& out) {
         out = NodeType::Filter;
     } else if (name == "throttle") {
         out = NodeType::Throttle;
+    } else if (name == "lifecycle") {
+        out = NodeType::Lifecycle;  // T-601.
     } else {
         return false;
     }
@@ -603,6 +605,13 @@ bool nodePortInfo(NodeType type, const NodeDesc& node, const std::string& port, 
                 return true;
             }
             if (port == "passed") {
+                outType = PortType::Pulse;
+                return true;
+            }
+            return false;
+        case NodeType::Lifecycle:
+            // T-601 (53 §53.102): driven by the Document's surface lifecycle; outputs only.
+            if (isSource && (port == "shown" || port == "hidden")) {
                 outType = PortType::Pulse;
                 return true;
             }
@@ -1166,6 +1175,15 @@ Status validateGraph(const FlowGraph& graph, Document* doc, std::vector<std::str
             errors.push_back("node '" + node.id + "': 'ui' is only valid in the global flow");
         }
     }
+    // T-601 (53 §53.102): `lifecycle` is the UI's own shown / hidden; the global flow has none.
+    for (const NodeDesc& node : graph.nodes) {
+        NodeType type;
+        if (uiDocs != nullptr && parseNodeType(node.type, type) && type == NodeType::Lifecycle) {
+            errors.push_back("node '" + node.id +
+                             "': lifecycle is only valid in a UI's own flow (the global flow uses "
+                             "ui#<uiId>.shown / hidden)");
+        }
+    }
 
     // T-541: a `state` node's params (the states, transitions and events its ports come from).
     for (const NodeDesc& node : graph.nodes) {
@@ -1599,16 +1617,21 @@ namespace {
 
 constexpr std::string_view kEffectPrefix = "effect.";
 
-/// T-547: splits an `effect.<effect>.<param>` prop into its two segments; false unless there are
-/// exactly two, both non-empty.
+/// T-547: splits an `effect.<effect>.<param>` prop into its two segments; false unless both are
+/// non-empty. T-534 (18.13, review 2026-10-31 §2.7): `<param>` may end in a vec2 component `.x` /
+/// `.y`; any other further dot is malformed.
 bool splitEffectProp(std::string_view prop, std::string_view& effect, std::string_view& param) {
     if (prop.substr(0, kEffectPrefix.size()) != kEffectPrefix) {
         return false;
     }
     const std::string_view rest = prop.substr(kEffectPrefix.size());
     const size_t dot = rest.find('.');
-    if (dot == std::string_view::npos || dot == 0 || dot + 1 >= rest.size() ||
-        rest.find('.', dot + 1) != std::string_view::npos) {
+    if (dot == std::string_view::npos || dot == 0 || dot + 1 >= rest.size()) {
+        return false;
+    }
+    const size_t second = rest.find('.', dot + 1);
+    if (second != std::string_view::npos &&
+        (second == dot + 1 || second + 2 != rest.size() || (rest.back() != 'x' && rest.back() != 'y'))) {
         return false;
     }
     effect = rest.substr(0, dot);
@@ -1666,16 +1689,26 @@ bool resolveEffectProp(const Document& document, const ElementRef& element, cons
     const EffectInstance instance = element.effect(index);
     uint32_t paramIndex = 0;
     bool paramOk = false;
-    if (instance.kind == EffectKind::Custom) {
+    bool noComponents = false;
+    // T-534 (18.13, review 2026-10-31 §2.7): the same address as `@timeline` and `bind:effect` --
+    // slot names first, then the built-in table or the custom shader's declared names.
+    const EffectSlotName slotName = effectSlotParamIndex(paramName, paramIndex);
+    if (slotName == EffectSlotName::OutOfRange) {
+        error = "slot out of range";
+        return false;
+    }
+    if (slotName == EffectSlotName::Ok) {
+        paramOk = true;
+    } else if (instance.kind == EffectKind::Custom) {
         // The compiled document carries a custom effect's parameter names, not its header name,
         // so a custom effect is addressed by index only (the parameter by its declared name).
         const ShaderRef* ref = document.shaderRef(instance.shader);
         if (paramName == "enabled") {
             paramIndex = prop::kEffectParamEnabled;
             paramOk = true;
-        } else if (ref != nullptr && ref->paramCount <= 16) {
-            uint8_t types[16] = {};
-            uint8_t slots[16] = {};
+        } else if (ref != nullptr && ref->paramCount <= prop::kEffectParamFloatCount) {
+            uint8_t types[prop::kEffectParamFloatCount] = {};
+            uint8_t slots[prop::kEffectParamFloatCount] = {};
             const std::span<const ShaderParamDesc> params = document.shaderParams();
             if (static_cast<size_t>(ref->paramOffset) + ref->paramCount <= params.size()) {
                 for (uint32_t i = 0; i < ref->paramCount; ++i) {
@@ -1690,20 +1723,13 @@ bool resolveEffectProp(const Document& document, const ElementRef& element, cons
                         const std::string_view name =
                             names.substr(pos, end == std::string_view::npos ? end : end - pos);
                         pos = end == std::string_view::npos ? names.size() : end + 1;
-                        if (name != paramName) {
-                            continue;
+                        const CustomParamMatch m =
+                            matchCustomEffectParam(paramName, name, types[i], slots[i], paramIndex);
+                        if (m != CustomParamMatch::NoMatch) {
+                            paramOk = m == CustomParamMatch::Ok;
+                            noComponents = m == CustomParamMatch::NoComponents;
+                            break;
                         }
-                        if (types[i] == 0) {
-                            paramIndex = 1u + slots[i];
-                            paramOk = true;
-                        } else if (types[i] == 2) {
-                            paramIndex = prop::kEffectParamColor0 + slots[i];
-                            paramOk = true;
-                        } else if (slots[i] == 0) {
-                            paramIndex = prop::kEffectParamOffset;
-                            paramOk = true;
-                        }
-                        break;
                     }
                 }
             }
@@ -1712,11 +1738,12 @@ bool resolveEffectProp(const Document& document, const ElementRef& element, cons
         paramOk = effectParamIndexByName(instance.kind, paramName, paramIndex);
     }
     if (!paramOk) {
-        error = "unknown effect parameter";
+        error = noComponents ? "parameter has no components" : "unknown effect parameter";
         return false;
     }
-    if (paramIndex > 8) {
-        // `setProperty` carries a number; a color (or a composite Vec2) parameter has no source type.
+    if (propertyType(effectParam(index, paramIndex)) != ValueType::Float) {
+        // `setProperty` carries a number; a color or a whole vec2 parameter has no source type
+        // (a vec2 is written by component, `.x` / `.y`).
         error = "the effect parameter is not a number";
         return false;
     }
@@ -2515,8 +2542,12 @@ void unbindDocumentEndpoints(DocEndpointState& state, bool removeListeners) {
         for (uint32_t id : state.portListenerIds) {
             doc->removePortListener(id);
         }
+        for (uint32_t id : state.surfaceListenerIds) {
+            doc->removeSurfaceListener(id);  // T-601.
+        }
     }
     state.portListenerIds.clear();
+    state.surfaceListenerIds.clear();
     // A fresh token silences every "finished" callback registered against the old one, which
     // Document keeps until the instance finishes (see registerFinishedCallback()).
     state.aliveToken = std::make_shared<bool>(true);
@@ -2535,9 +2566,13 @@ void detachDocumentEndpoints(DocEndpointState& state) {
         for (uint32_t id : state.portListenerIds) {
             doc->removePortListener(id);
         }
+        for (uint32_t id : state.surfaceListenerIds) {
+            doc->removeSurfaceListener(id);  // T-601.
+        }
     }
     state.listenerIds.clear();
     state.portListenerIds.clear();
+    state.surfaceListenerIds.clear();
     state.aliveToken = std::make_shared<bool>(true);  // Silences pending "finished" callbacks.
     state.doc = nullptr;
     state.context = nullptr;
@@ -2596,6 +2631,7 @@ void FlowRuntime::Impl::bindDocumentEndpoints() {
     }
     resolveSinks();
     bindTimelineNodes();
+    bindLifecycleNodes();  // T-601.
 }
 
 void FlowRuntime::Impl::resolveSinks() {

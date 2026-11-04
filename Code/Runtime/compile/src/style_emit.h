@@ -83,12 +83,14 @@ void emitTimelineGroups(const RuleSet& ruleSet, const DomTree& dom, IrWriter& wr
 
 /// T-544 (18 §18.12): resolves the effect address `<effectName>.<param>` (`effectName` an effect
 /// name, a custom effect's header name, or a stack index written as digits) against the effect
-/// sequence `seq` (may be null) into the 18.2 effect PropId `out`; `isColor` is true for a color
-/// parameter. On failure `error` holds the message (no prefix) and false is returned. Shared by
-/// `@timeline` (emitTimelineGroups) and `bind:effect.<effect>.<param>` (bind_emit.cpp).
+/// sequence `seq` (may be null) into the 18.2 effect PropId `out`; `type` is its value type (T-534:
+/// Float, Color or Vec2; `param` may be a header / built-in name, `<vec2>.x` / `.y`, or a slot
+/// name `p<n>` / `c<n>` / `v<n>`, 18.13). On failure `error` holds the message (no prefix) and
+/// false is returned. Shared by `@timeline` (emitTimelineGroups) and
+/// `bind:effect.<effect>.<param>` (bind_emit.cpp).
 bool resolveEffectAddress(const IrWriter& writer, std::string_view effectName, std::string_view param,
                           const std::vector<EffectDeclEntry>* seq, std::string& error, PropId& out,
-                          bool& isColor);
+                          ValueType& type);
 
 /// T-544: the element's state-less `effect` sequence as far as the compiler can tell (the winning
 /// `effect` declaration among the rules whose selectors carry no pseudo-class, then the inline
