@@ -297,6 +297,12 @@ std::string externalKey(Endpoint::Owner owner, const std::string& elementId, con
 bool resolveDocumentEndpoint(const std::string& id, const std::string& port, bool isSource, Document* doc,
                              Endpoint& out, std::string& err);
 
+/// T-604 (53 "v2 document port addressing"): true when "#<id>.<port>" is a UI-root alias of the
+/// document port `port` -- element `id` is a direct child of `<body>` (the UI root), declares no
+/// port `port` itself, and the document declares one. resolveDocumentEndpoint() then binds the
+/// document port; lintFlowGraph(graph, doc, ...) reports `flow.rootPortAlias`.
+bool isRootPortAlias(const Document& doc, const std::string& id, const std::string& port);
+
 /// The edge parameter a document input port takes ("class" for add/remove/toggleClass, "prop"
 /// for setProperty), or nullptr.
 const char* documentInputParamName(const std::string& port);

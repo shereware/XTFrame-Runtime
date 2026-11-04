@@ -674,6 +674,8 @@ void Context::update(float dt) {
     // T-603 (53 §53.102 item 8): a surface visible at its first update is shown here --
     // lifecycle.shown, then OnShown (host, then a BundleContext's `ui#<id>.shown`) -- before the
     // update hook below, so a `play(intro)` from either paints the intro's time 0 this frame.
+    // T-605 (item 10): likewise the notifications of a requestShow() / requestHide() made between
+    // frames (lifecycle, OnShown / OnHidden, the `show` triggers), at this frame's clock.
     for (size_t i = 0; i < count; ++i) {  // By index (see `count` above).
         if (Document* doc = liveAt(i)) {
             doc->notifyInitialShow(m_clock);

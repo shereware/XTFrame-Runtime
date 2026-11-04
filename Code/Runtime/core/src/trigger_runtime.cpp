@@ -94,6 +94,19 @@ bool eraseNode(std::vector<NodeId>& list, NodeId node) {
     return true;
 }
 
+/// T-605 (53 §53.102 item 10): appends `entry` (show / hide) to the pending notifications (2 bits
+/// each, oldest lowest). Entries alternate (a show needs a hidden surface, a hide a visible one), so
+/// a third one ends where the first began and only the first is kept.
+void queueSurfaceNotify(uint8_t& queue, uint8_t entry) {
+    if (queue == 0) {
+        queue = entry;
+    } else if ((queue >> 2) == 0) {
+        queue = (queue & 3) == entry ? queue : static_cast<uint8_t>(queue | (entry << 2));
+    } else {
+        queue = static_cast<uint8_t>(queue & 3);
+    }
+}
+
 }  // namespace
 
 // -- TriggerRuntime -----------------------------------------------------------------------------
@@ -1432,7 +1445,9 @@ Status Document::requestShow() {
     if (deferSurfaceRequest(kSurfaceRequestShow)) {
         return Status::kOk;
     }
-    return applyShow();
+    // T-605 (53 §53.102 item 10): between frames (no dispatch, so not inside Context::update()) the
+    // surface shows now and its notifications wait for the next update's initial-show point.
+    return applyShow(m_context != nullptr);
 }
 
 Status Document::requestHide() {
@@ -1442,7 +1457,7 @@ Status Document::requestHide() {
     if (deferSurfaceRequest(kSurfaceRequestHide)) {
         return Status::kOk;
     }
-    return applyHide();
+    return applyHide(m_context != nullptr);  // T-605: as requestShow().
 }
 
 bool Document::deferSurfaceRequest(uint8_t request) {
@@ -1467,7 +1482,7 @@ void Document::applyPendingSurfaceRequest() {
     }
 }
 
-Status Document::applyShow() {
+Status Document::applyShow(bool later) {
     DispatchGuard dispatch(m_context);  // T-260a: OnShown and the `show` triggers.
     if (m_root == kInvalidNode) {
         return Status::kInvalidArgument;
@@ -1489,34 +1504,59 @@ Status Document::applyShow() {
             }
         }
     }
-    if (wasHidden && m_visibilityListener && !m_unloading) {  // T-260a: no OnShown when unloading.
-        std::function<void(bool)> listener = m_visibilityListener;
-        listener(true);
-    }
-    if (wasHidden && !m_unloading) {
-        m_triggers->notifySurface(true);  // T-601: with OnShown.
+    if (wasHidden) {
+        if (later) {
+            // T-605: lifecycle.shown, OnShown and the `show` triggers come with the next update.
+            queueSurfaceNotify(m_pendingSurfaceNotify, kSurfaceRequestShow);
+            return Status::kOk;
+        }
+        sendSurfaceNotify(true);  // T-605 (53 §53.102 item 10): before the `show` triggers.
     }
     fireSurfaceEvent(true);  // T-349: `<body>` and its direct children.
     applyAutofocus();        // T-194 (27.7).
     return Status::kOk;
 }
 
+void Document::sendSurfaceNotify(bool shown) {
+    // T-605 (53 §53.102 items 8, 10): lifecycle.shown / hidden (T-601), then OnShown / OnHidden.
+    if (m_unloading) {
+        return;  // T-260a: no OnShown / OnHidden when unloading.
+    }
+    m_triggers->notifySurface(shown);
+    if (m_visibilityListener && !m_unloading) {
+        std::function<void(bool)> listener = m_visibilityListener;
+        listener(shown);
+    }
+}
+
 void Document::notifyInitialShow(float clock) {
     // T-603 (53 §53.102 item 8): a surface visible at its first update() is shown once, in the
     // order lifecycle.shown -> OnShown (the Context's listeners: the host, a BundleContext's global
     // flow `ui#<id>.shown`). A surface hidden then is first shown by requestShow() (applyShow()).
-    if (m_shownOnce || m_initialShown || !m_surfaceVisible || m_unloading) {
+    // T-605 (item 10): the notifications of a requestShow() / requestHide() made between frames
+    // follow here, in the order they were made (a shown one with its `show` triggers).
+    const bool initial = !m_shownOnce && !m_initialShown && m_surfaceVisible && !m_unloading;
+    uint8_t pending = m_pendingSurfaceNotify;
+    m_pendingSurfaceNotify = 0;
+    if (!initial && (pending == 0 || m_unloading)) {
         return;
     }
-    m_initialShown = true;
     // A play() from these callbacks starts at the clock of the update() it precedes (its time 0 is
     // that frame); update() still flushes the held-back input at the clock it arrived at (T-389).
     const float savedClock = m_clock;
     m_clock = clock;
-    m_triggers->notifySurface(true);
-    if (m_visibilityListener && !m_unloading) {  // T-260a: no OnShown when unloading.
-        std::function<void(bool)> listener = m_visibilityListener;
-        listener(true);
+    if (initial) {
+        m_initialShown = true;
+        sendSurfaceNotify(true);
+    }
+    for (; pending != 0 && !m_unloading; pending = static_cast<uint8_t>(pending >> 2)) {
+        if ((pending & 3) == kSurfaceRequestHide) {
+            sendSurfaceNotify(false);
+            continue;
+        }
+        sendSurfaceNotify(true);
+        fireSurfaceEvent(true);  // T-349: `<body>` and its direct children.
+        applyAutofocus();        // T-194 (27.7).
     }
     m_clock = savedClock;
 }
@@ -1529,7 +1569,7 @@ void Document::setInitialVisibility(bool visible) {
     }
 }
 
-Status Document::applyHide() {
+Status Document::applyHide(bool later) {
     DispatchGuard dispatch(m_context);  // T-260a: the `hide` triggers and OnHidden.
     if (m_root == kInvalidNode) {
         return Status::kInvalidArgument;
@@ -1540,8 +1580,11 @@ Status Document::applyHide() {
     m_surfaceHiding = true;
     m_lastHideSource = m_triggers->currentSource();  // T-374 (17 §17.33.3).
     // T-349: `<body>` and its direct children; the deferred run settles the hide
-    // (finishPendingHides) even when nothing was queued.
+    // (finishPendingHides) even when nothing was queued. T-605: a hide settled in this run (no `then
+    // hide` waits) sends its notifications with the next update when `later`.
+    m_hideNotifyLater = later;
     fireSurfaceEvent(false);
+    m_hideNotifyLater = false;
     return Status::kOk;
 }
 
@@ -1595,13 +1638,11 @@ void Document::finishSurfaceHide() {
     }
     m_surfaceHiding = false;
     m_surfaceVisible = false;
-    if (m_visibilityListener && !m_unloading) {  // T-260a: no OnHidden when unloading.
-        std::function<void(bool)> listener = m_visibilityListener;
-        listener(false);
+    if (m_hideNotifyLater) {
+        queueSurfaceNotify(m_pendingSurfaceNotify, kSurfaceRequestHide);  // T-605.
+        return;
     }
-    if (!m_unloading) {
-        m_triggers->notifySurface(false);  // T-601: with OnHidden.
-    }
+    sendSurfaceNotify(false);  // T-605 (53 §53.102 item 10): lifecycle.hidden, then OnHidden.
 }
 
 void Document::finishPendingHides() {

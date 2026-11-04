@@ -1,0 +1,19 @@
+<xt>
+  <head>
+    <!-- T-589 migrator fixture (frozen source format 1): the anchor formulas of 54 §54.5.1. -->
+    <style>
+#TopLeft { position: absolute; left: calc(1safe-left + 24px); top: 1safe-top; width: 100px; height: 40px; }
+#BottomRight { position: absolute; right: calc(1safe-right + 16px); bottom: calc(1safe-bottom + 8px); width: 80px; height: 30px; }
+#Bar { position: absolute; left: calc(1safe-left + 10px); right: calc(1safe-right + 20px); top: calc(1safe-top + 50px); height: 12px; }
+#Middle { position: absolute; left: calc(50% - 200px / 2 + 5px); top: calc(50% - 60px / 2); width: 200px; height: 60px; }
+#Other { position: absolute; left: calc(1safe-left - 4px); top: 10px; width: 10px; height: 10px; }
+    </style>
+  </head>
+  <body>
+    <div id="TopLeft"></div>
+    <div id="BottomRight"></div>
+    <div id="Bar"></div>
+    <div id="Middle"></div>
+    <div id="Other"></div>
+  </body>
+</xt>

@@ -1831,25 +1831,22 @@ bool selectorMatchesFrom(const Selector& sel, size_t partIndex, const DomTree& d
     return false;
 }
 
-// The element's state-less `effect` sequence as far as the compiler can tell (the winning `effect`
-// declaration among the rules whose selectors carry no pseudo-class, then the inline `style`
-// attribute). nullptr when no such declaration exists. 18.12's effect-name addressing needs it to
-// turn `effect.<name>` into a stack index.
-const std::vector<EffectDeclEntry>* staticEffectSequenceImpl(const RuleSet& ruleSet, const DomTree& dom,
-                                                             uint32_t element,
-                                                             std::vector<StyleDecl>& inlineScratch,
-                                                             std::string_view fileName) {
+// T-588: the winning state-less declaration of `prop` for `element` (see style_emit.h).
+const StyleDecl* staticWinningDeclImpl(const RuleSet& ruleSet, const DomTree& dom, uint32_t element,
+                                       uint16_t prop, std::vector<StyleDecl>& inlineScratch,
+                                       std::string_view fileName, bool baseOnly) {
     const StyleDecl* best = nullptr;
     uint64_t bestKey = 0;
     uint64_t order = 0;
     for (const StyleRule& rule : ruleSet.rules) {
         for (const Selector& sel : rule.selectors) {
             ++order;
-            if (sel.parts.empty() || !selectorMatchesFrom(sel, 0, dom, element)) {
+            if ((baseOnly && rule.media >= 0) || sel.parts.empty() ||
+                !selectorMatchesFrom(sel, 0, dom, element)) {
                 continue;
             }
             for (const StyleDecl& d : rule.decls) {
-                if (d.prop != styleprop::Effect) {
+                if (d.prop != prop) {
                     continue;
                 }
                 uint64_t key = (static_cast<uint64_t>(d.important ? 1 : 0) << 62) |
@@ -1867,11 +1864,24 @@ const std::vector<EffectDeclEntry>* staticEffectSequenceImpl(const RuleSet& rule
         inlineScratch.clear();
         parseDeclarations(styleAttr->value, fileName, styleAttr->line, quiet, inlineScratch);
         for (const StyleDecl& d : inlineScratch) {
-            if (d.prop == styleprop::Effect && (best == nullptr || !best->important || d.important)) {
+            if (d.prop == prop && (best == nullptr || !best->important || d.important)) {
                 best = &d;
             }
         }
     }
+    return best;
+}
+
+// The element's state-less `effect` sequence as far as the compiler can tell (the winning `effect`
+// declaration among the rules whose selectors carry no pseudo-class, then the inline `style`
+// attribute). nullptr when no such declaration exists. 18.12's effect-name addressing needs it to
+// turn `effect.<name>` into a stack index.
+const std::vector<EffectDeclEntry>* staticEffectSequenceImpl(const RuleSet& ruleSet, const DomTree& dom,
+                                                             uint32_t element,
+                                                             std::vector<StyleDecl>& inlineScratch,
+                                                             std::string_view fileName) {
+    const StyleDecl* best =
+        staticWinningDeclImpl(ruleSet, dom, element, styleprop::Effect, inlineScratch, fileName, false);
     return best != nullptr ? &best->value.effects : nullptr;
 }
 
@@ -2313,6 +2323,12 @@ void emitTimelineGroups(const RuleSet& ruleSet, const DomTree& dom, IrWriter& wr
 
 bool selectorMatchesStatically(const Selector& sel, const DomTree& dom, uint32_t element) {
     return !sel.parts.empty() && selectorMatchesFrom(sel, 0, dom, element);
+}
+
+const StyleDecl* staticWinningDecl(const RuleSet& ruleSet, const DomTree& dom, uint32_t element,
+                                   uint16_t prop, std::string_view fileName, std::vector<StyleDecl>& scratch,
+                                   bool baseOnly) {
+    return staticWinningDeclImpl(ruleSet, dom, element, prop, scratch, fileName, baseOnly);
 }
 
 }  // namespace xt::compile

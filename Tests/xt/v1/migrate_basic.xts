@@ -1,0 +1,54 @@
+/* T-589 migrator fixture (frozen source format 1): a linked sheet mixing geometry and looks. */
+:root {
+  --accent: #2a7fd0;
+}
+
+#Screen {
+  position: relative;
+  width: 640px;
+  height: 360px;
+  background-color: #101418;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 6px;
+  background-color: #202830;
+}
+
+.card:hover {
+  width: 220px;
+  background-color: var(--accent);
+}
+
+@media (max-width: 500px) {
+  .card {
+    padding: 4px;
+    color: #ffffff;
+  }
+}
+
+@keyframes pulse {
+  from { opacity: 0.5; }
+  to { opacity: 1; }
+}
+
+#Hp {
+  state-enter: Low class(alarm);
+}
+
+#Pages/T1 {
+  on-press: set(tab, 0);
+}
+
+@timeline intro {
+  #Screen {
+    0s { opacity: 0; }
+    0.3s ease-out { opacity: 1; }
+  }
+}
+
+@timeline flash from "migrate_basic.xtanim.json#flash";

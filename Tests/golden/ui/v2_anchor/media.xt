@@ -1,0 +1,28 @@
+<xt version="2">
+  <!-- T-588 (Docs/design/54-source-format-v2.md 54.5.1): the anchor shorthands, also inside @media.
+       media_long.xt is the same document written with the longhands; the golden manifest requires
+       the same pixels at 16:9 and 21:9. -->
+  <body>
+    <div id="bg"></div>
+    <div id="box"></div>
+    <div id="bar"><div id="seg1"></div><div id="seg2"></div></div>
+  </body>
+  <layout>
+    #bg { anchor: stretch stretch screen; }
+    #box { anchor: left top; offset: 8px 8px; size: 40px 40px; }
+    #bar { anchor: stretch bottom; offset: 8px 8px; size: auto 20px; display: flex; gap: 4px; }
+    #seg1 { size: fill fill; }
+    #seg2 { size: 30px fill; }
+    @media (aspect-ratio >= 21/9) {
+      #box { anchor: center center; offset: 0 -10px; size: 60px 60px; }
+      #seg2 { size: fill fill; }
+    }
+  </layout>
+  <style>
+    #bg { background-color: #203040; }
+    #box { background-color: #e03030; }
+    #bar { background-color: #405060; }
+    #seg1 { background-color: #30a060; }
+    #seg2 { background-color: #4080ff; }
+  </style>
+</xt>

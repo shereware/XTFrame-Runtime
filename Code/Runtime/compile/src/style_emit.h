@@ -105,6 +105,14 @@ const std::vector<EffectDeclEntry>* staticEffectSequence(const RuleSet& ruleSet,
 /// trigger declarations (trigger_emit.cpp), like the static `effect` lookup of 18.12.
 bool selectorMatchesStatically(const Selector& sel, const DomTree& dom, uint32_t element);
 
+/// T-588: the winning state-less declaration of `prop` for `element` as far as the compiler can tell
+/// (the rules whose selectors match statically, by importance, specificity and source order, then
+/// the inline `style` attribute); `baseOnly` leaves out the rules inside `@media`. nullptr when none.
+/// `scratch` backs a declaration of the inline style and must outlive the returned pointer.
+const StyleDecl* staticWinningDecl(const RuleSet& ruleSet, const DomTree& dom, uint32_t element,
+                                   uint16_t prop, std::string_view fileName, std::vector<StyleDecl>& scratch,
+                                   bool baseOnly);
+
 /// Encodes one `StyleValue` into a Decl/Keyframe-format 16-byte value blob (Docs/design/02-ir-format.md
 /// §2.6's `Decl.value[16]` encoding table). TransitionList/AnimationList/FontFamilyList append to
 /// `style`'s corresponding pool; AnimationList additionally resolves each `animation-name` through

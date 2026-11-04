@@ -1,0 +1,13 @@
+{
+  "v": 1,
+  "timelines": [
+    {
+      "name": "flash",
+      "duration": 0.5,
+      "markers": [],
+      "tracks": [
+        { "layer": "Hp", "prop": "opacity", "keys": [[0, "1"], [0.5, "0.2"]] }
+      ]
+    }
+  ]
+}

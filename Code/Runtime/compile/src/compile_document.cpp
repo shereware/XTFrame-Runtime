@@ -13,6 +13,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "anchor_expand.h"  // T-588.
 #include "bind_emit.h"
 #include "compiled_assets.h"
 #include "doc_emit.h"
@@ -816,6 +817,10 @@ CompileResult compileDocumentImpl(std::string_view mainText, std::string_view ma
         }
         prepareRepeats(dom, path, sink, repeatDecls, repeatScopes, instanceRoots);
     }
+    // Step 2a'' (T-588, 54 §54.5.1): `size: fill` -- the parser expanded the anchor shorthands of
+    // every rule (in `@media` too) and marked each fill axis; now that the element tree is final it
+    // knows which elements are UI roots and stack children. Before tokens and style emission.
+    resolveAnchorFill(ruleSet, dom, path, sink);
 
     // Step 2b (T-170, 12.7): design tokens -> VARS; `var()` references are kept (or substituted
     // where a reference cannot be kept) now that every stylesheet's tokens are known.

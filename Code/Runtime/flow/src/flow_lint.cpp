@@ -4,10 +4,13 @@
 #include <utility>
 #include <vector>
 
+#include "flow_internal.h"
+#include "xt/document.h"
 #include "xt/flow/flow_graph.h"
 
 /// T-601 (Docs/design/53-flow-language.md §53.102 item 3; 24 §24.15.4): the static flow lint, on
-/// the parsed graph alone (no Document): `flow.introByTimer`.
+/// the parsed graph alone (no Document): `flow.introByTimer`. T-604: with a Document,
+/// `flow.rootPortAlias` (53 "v2 document port addressing").
 
 namespace xt::flow {
 
@@ -75,6 +78,23 @@ bool isIntroSink(const NodeDesc& node, const std::string& port) {
     return (node.type == "timeline" && (port == "play" || port == "seek")) || node.type == "state";
 }
 
+/// "#<id>.<port>" -> (id, port) for an element endpoint that would resolve as a declared port
+/// (not a built-in element / `<anim>` port, which resolveDocumentEndpoint() tries first).
+bool splitDeclaredElementEndpoint(const std::string& text, bool isSource, std::string& id,
+                                  std::string& port) {
+    if (text.size() < 2 || text[0] != '#') {
+        return false;
+    }
+    const size_t dot = text.find('.', 1);
+    if (dot == std::string::npos || dot == 1 || dot + 1 >= text.size()) {
+        return false;
+    }
+    id = text.substr(1, dot - 1);
+    port = text.substr(dot + 1);
+    PortType type{};
+    return !animPortInfo(port, isSource, type) && !elementPortInfo(port, isSource, type);
+}
+
 }  // namespace
 
 void lintFlowGraph(const FlowGraph& graph, std::vector<FlowLintFinding>& out) {
@@ -128,6 +148,30 @@ void lintFlowGraph(const FlowGraph& graph, std::vector<FlowLintFinding>& out) {
             finding.fix += " (or on:show=\"play(" + finding.timeline + ")\" on the board)";
         }
         out.push_back(std::move(finding));
+    }
+}
+
+void lintFlowGraph(const FlowGraph& graph, const Document& doc, std::vector<FlowLintFinding>& out) {
+    lintFlowGraph(graph, out);
+    std::set<std::string> reported;
+    for (const EdgeDesc& edge : graph.edges) {
+        for (const bool isSource : {true, false}) {
+            const std::string& text = isSource ? edge.from : edge.to;
+            std::string id;
+            std::string port;
+            if (!splitDeclaredElementEndpoint(text, isSource, id, port) || !isRootPortAlias(doc, id, port) ||
+                !reported.insert(text).second) {
+                continue;
+            }
+            FlowLintFinding finding;
+            finding.severity = FlowLintFinding::Severity::Info;
+            finding.code = "flow.rootPortAlias";
+            finding.targets.push_back(text);
+            finding.message = "'" + text + "' resolves to the document port '" + port + "' (#" + id +
+                              " is the UI root and declares no port '" + port + "')";
+            finding.fix = "rewrite as #document." + port;
+            out.push_back(std::move(finding));
+        }
     }
 }
 

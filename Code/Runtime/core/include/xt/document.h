@@ -1167,20 +1167,20 @@ private:
     /// T-349 (27.2.4): the surface's `show` (true) / `hide` (false) triggers on the surface element
     /// and, when it is `<body>`, on each direct Element child in document order, in one trigger run.
     void fireSurfaceEvent(bool show);
-    void notifyInitialShow(float clock);  // T-603 (53 §53.102 item 8): lifecycle.shown, OnShown; once.
+    void notifyInitialShow(float clock);  // T-603 (53 §53.102 item 8): the first show; T-605: pending.
     // T-397 (08 §8.17): requestShow() / requestHide() made while dispatching wait for the end of
     // the outermost dispatching call; trigger actions call applyShow() / applyHide() directly.
-    static constexpr uint8_t kSurfaceRequestNone = 0;
-    static constexpr uint8_t kSurfaceRequestShow = 1;
-    static constexpr uint8_t kSurfaceRequestHide = 2;
-    uint8_t m_pendingSurfaceRequest = kSurfaceRequestNone;
-    /// Queues `request` when the Context is dispatching (true), else false (apply it now).
-    bool deferSurfaceRequest(uint8_t request);
-    /// Applies the queued request, if any (Context::runPendingDocOps()).
-    void applyPendingSurfaceRequest();
-    /// The surface show / hide itself (the bodies of requestShow() / requestHide()).
-    Status applyShow();
-    Status applyHide();
+    static constexpr uint8_t kSurfaceRequestNone = 0, kSurfaceRequestShow = 1, kSurfaceRequestHide = 2;
+    // T-605 (53 §53.102 item 10): the shown / hidden notifications of a request made between frames,
+    // in order (2 bits each, kSurfaceRequestShow / Hide), sent by the next notifyInitialShow().
+    uint8_t m_pendingSurfaceRequest = kSurfaceRequestNone, m_pendingSurfaceNotify = 0;
+    bool deferSurfaceRequest(uint8_t request);  // Queued while the Context dispatches (true).
+    void applyPendingSurfaceRequest();          // The queued request (Context::runPendingDocOps()).
+    /// The surface show / hide itself (the bodies of requestShow() / requestHide()); `later`
+    /// (T-605): the notifications wait for the next update (m_pendingSurfaceNotify, m_hideNotifyLater).
+    Status applyShow(bool later = false);
+    Status applyHide(bool later = false);
+    void sendSurfaceNotify(bool shown);  // T-605: lifecycle.shown / hidden, then OnShown / OnHidden.
     /// T-349: the surface element, the root, or a direct Element child of `<body>`.
     bool isSurfaceMember(NodeId node) const;
     /// T-349: a `hide` chain of any surface member is still waiting (the surface's wait set).
@@ -1247,7 +1247,7 @@ private:
     /// or hiding by a `hide` action, `visibility` not hidden, `display` not none.
     bool surfaceChildShown(NodeId node) const;
     bool m_surfaceVisible = true;
-    bool m_surfaceHiding = false;
+    bool m_surfaceHiding = false, m_hideNotifyLater = false;
     bool m_shownOnce = false, m_initialShown = false;  // First update(): `show`; notifyInitialShow().
     std::vector<NodeId> m_autofocus;                   // T-194: `autofocus` elements, document order.
     /// T-194: focuses the first focusable `autofocus` element for player 0 when nothing has the

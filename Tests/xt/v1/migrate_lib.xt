@@ -1,0 +1,23 @@
+<xt>
+  <head>
+    <!-- T-589 migrator fixture (frozen source format 1): a symbol library. -->
+    <style>
+symbol(Tab) {
+  #Box { width: 80px; height: 24px; background-color: #303840; }
+  #Box:hover { background-color: #405060; }
+  @timeline glow { #Box { 0s { opacity: 0.6; } 0.2s { opacity: 1; } } }
+}
+    </style>
+    <symbol name="Tab">
+      <div id="Box" port:label="string in = &quot;Tab&quot;" port:pressed="event out">
+        <span id="Label" bind:text="label" style="left: 4px; color: #e0e0e0"></span>
+      </div>
+    </symbol>
+    <symbol name="Tabs">
+      <div id="Row" style="display: flex; gap: 4px">
+        <use symbol="Tab" id="T1"/>
+        <use symbol="Tab" id="T2"/>
+      </div>
+    </symbol>
+  </head>
+</xt>

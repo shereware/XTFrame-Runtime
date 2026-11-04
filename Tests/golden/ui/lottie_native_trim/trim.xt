@@ -1,7 +1,5 @@
-<xt>
-  <head>
-    <link rel="stylesheet" href="trim.xts"/>
-  </head>
+<xt version="2">
+
   <body>
     <div id="Trim" class="c_Trim">
       <svg id="TrimLayer" class="xl c_Trim" viewBox="0 0 256 256" width="256" height="256">
@@ -11,4 +9,28 @@
           </svg>
     </div>
   </body>
+
+  <layout>
+    .xl {
+      position: absolute;
+      left: 0px;
+      top: 0px;
+      transform-origin: 0px 0px;
+    }
+    .c_Trim {
+      width: 256px;
+      height: 256px;
+    }
+    #Trim {
+      position: relative;
+    }
+    #TrimLayer {
+      transform: translate(0px, 0px) rotate(0deg) skew(0deg, 0deg) scale(1, 1);
+      transform-origin: 0px 0px;
+    }
+  </layout>
+  <style src="trim.xts"/>
+  <timelines>
+    @timeline main from "trim.xtanim.json#main";
+  </timelines>
 </xt>

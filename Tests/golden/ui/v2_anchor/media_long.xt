@@ -1,0 +1,26 @@
+<xt version="2">
+  <!-- T-588: media.xt written with the longhands of the 54.5.1 expansion table (the reference). -->
+  <body>
+    <div id="bg"></div>
+    <div id="box"></div>
+    <div id="bar"><div id="seg1"></div><div id="seg2"></div></div>
+  </body>
+  <layout>
+    #bg { position: absolute; left: 0; right: 0; top: 0; bottom: 0; }
+    #box { position: absolute; left: calc(1safe-left + 8px); top: calc(1safe-top + 8px); width: 40px; height: 40px; }
+    #bar { position: absolute; left: calc(1safe-left + 8px); right: calc(1safe-right + 8px); bottom: calc(1safe-bottom + 8px); width: auto; height: 20px; display: flex; gap: 4px; }
+    #seg1 { flex-grow: 1; flex-basis: 0; align-self: stretch; }
+    #seg2 { width: 30px; align-self: stretch; }
+    @media (aspect-ratio >= 21/9) {
+      #box { position: absolute; left: calc(50% - 60px / 2); top: calc(50% - 60px / 2 + -10px); width: 60px; height: 60px; }
+      #seg2 { flex-grow: 1; flex-basis: 0; align-self: stretch; }
+    }
+  </layout>
+  <style>
+    #bg { background-color: #203040; }
+    #box { background-color: #e03030; }
+    #bar { background-color: #405060; }
+    #seg1 { background-color: #30a060; }
+    #seg2 { background-color: #4080ff; }
+  </style>
+</xt>

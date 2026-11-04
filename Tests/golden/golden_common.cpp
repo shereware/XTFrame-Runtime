@@ -64,6 +64,11 @@ SwTolerance swTolerance() {
 
 bool goldenVerbose() { return envValue("XT_GOLDEN_VERBOSE") == "1"; }
 
+std::string goldenUiDir(const std::string& fallback) {
+    const std::string root = envValue("XT_GOLDEN_UI_ROOT");
+    return root.empty() ? fallback : root;
+}
+
 std::string describeDiff(const char* tag, const std::string& name, const GoldenResult& result, float ratio,
                          int channel) {
     char line[512];

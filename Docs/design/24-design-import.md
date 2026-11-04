@@ -329,3 +329,5 @@ Claude Design canvas ──Artifact read──▶ <dump>/canvas.json + *.dc.html
 **來源格式 v2（2026-11-04 定案，54 章）**：匯入器輸出 v2（五區段、錨定改寫成 `anchor/offset/size`、去重只對外觀、符號庫檔 v2）；§24.15.4 代碼表追加 54 §54.13 與 `web.*`（T-594）。隨 T-592 落地。
 
 **代碼表追加（2026-11-04，53 §53.102；T-601）**：`flow.introByTimer`（warning；autostart 單發計時器驅動 `timeline.play`／`seek`／`state.set`；fix：`lifecycle.shown` 或 `on:show`）。
+
+**代碼表追加（2026-11-05；T-604）**：`flow.rootPortAlias`（info；`#<root>.<port>` 解析為文件 port；fix：改寫 `#document.<port>`）。

@@ -121,8 +121,13 @@ float swMaxDiffRatio(const std::string& /*name*/, const SwTolerance& tolerance) 
 /// and the largest channel delta, writing <name>.actual.png and <name>.diff.png to `outDir`.
 /// Returns whether the fixture passed.
 bool compareAndReport(const std::string& name, const std::vector<uint8_t>& actual,
-                      const std::vector<uint8_t>& expected, int width, int height, const fs::path& outDir) {
+                      const std::vector<uint8_t>& expected, int width, int height, const fs::path& outDir,
+                      bool exact = false) {
     SwTolerance tolerance = swTolerance();
+    if (exact && !g_gpuTolerance) {
+        tolerance.channel = 0;  // T-588: a `same-as=` fixture matches its reference pixel for pixel.
+        tolerance.ratio = 0.0f;
+    }
     if (g_gpuTolerance) {
         const SwTolerance defaults;
         if (tolerance.channel == defaults.channel) tolerance.channel = 16;
@@ -313,7 +318,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    const fs::path uiDir(XT_GOLDEN_UI_DIR);
+    const fs::path uiDir(goldenUiDir(XT_GOLDEN_UI_DIR));  // T-589: XT_GOLDEN_UI_ROOT overrides.
     const std::vector<UiFixture> uiFixtures = loadUiManifest((uiDir / "manifest.txt").string());
     for (const UiFixture& fx : uiFixtures) {
         if (!matchesFilter(fx.name, filter)) {
@@ -333,9 +338,11 @@ int main(int argc, char** argv) {
             continue;
         }
 
-        const fs::path expectedPath = expectedDir / (fx.name + ".png");
+        // T-588: a `same-as=` fixture is compared with its reference's image, also under --update
+        // (after the reference line has written it), and never writes one of its own.
+        const fs::path expectedPath = expectedDir / ((fx.sameAs.empty() ? fx.name : fx.sameAs) + ".png");
 
-        if (update) {
+        if (update && fx.sameAs.empty()) {
             std::error_code ec;
             fs::create_directories(expectedDir, ec);
             if (!sw::writePng(expectedPath.string(), actual.data(), fx.width, fx.height, fx.width * 4)) {
@@ -364,7 +371,7 @@ int main(int argc, char** argv) {
             continue;
         }
 
-        if (!compareAndReport(fx.name, actual, expected, fx.width, fx.height, outDir)) {
+        if (!compareAndReport(fx.name, actual, expected, fx.width, fx.height, outDir, !fx.sameAs.empty())) {
             ++failed;
         }
     }

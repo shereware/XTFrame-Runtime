@@ -691,6 +691,10 @@ TEST_CASE("triggers: requestHide waits for `then hide`, reports OnHidden, reques
     d.byId("Root").removeClass("shown");
     REQUIRE(ctx.requestShow(h.value()) == Status::kOk);
     CHECK(ctx.isVisible(h.value()));
+    // T-605 (53 §53.102 item 10): between frames, OnShown and `show` come with the next update.
+    CHECK_FALSE(d.byId("Root").hasClass("shown"));
+    CHECK(rec.log.size() == 1);
+    ctx.update(0.7f);
     CHECK(d.byId("Root").hasClass("shown"));
     REQUIRE(rec.log.size() == 2);
     CHECK(rec.log[1] == "shown#1");
@@ -885,8 +889,8 @@ TEST_CASE("T-374: with two top-level children, hiding one leaves the surface; hi
 
     // A host show brings back what the last hide left: B, not the element-hidden A.
     REQUIRE(s.ctx.requestShow(s.handle) == Status::kOk);
+    s.ctx.update(0.2f);  // T-605: between frames, `show` comes with the next update.
     CHECK(s.d->byId("B").hasClass("shown"));
-    s.ctx.update(0.2f);
     CHECK(s.d->byId("A").computedStyleValue(170).e == 1u);
     CHECK(s.d->byId("B").computedStyleValue(170).e == 0u);
 }

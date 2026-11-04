@@ -163,7 +163,8 @@ public:
     /// A trigger's `sound` / `haptic` / `emit` action (HostEvent::document is set).
     virtual void onHostEvent(const HostEvent& /*event*/) {}
     /// `OnShown`: requestShow() made a hidden surface visible again, or (T-603, 53 §53.102 item 8)
-    /// a surface visible at its first update (once, before onBeforeDocumentUpdate).
+    /// a surface visible at its first update (once, before onBeforeDocumentUpdate). T-605: after
+    /// the UI flow's lifecycle.shown and before the `show` triggers.
     virtual void onShown(DocumentHandle /*document*/) {}
     /// A surface finished hiding (`OnHidden`): at once, or after its `then hide` outro.
     virtual void onHidden(DocumentHandle /*document*/) {}
@@ -432,7 +433,11 @@ public:
     /// T-174 (13.8.2): Document::setCustomState on `element`'s own Document.
     Status setCustomState(ElementRef element, std::string_view name, bool on);
     /// T-174 (13.8.3, 27.2.4): the surface lifecycle of one loaded Document (see
-    /// Document::requestShow/requestHide). kInvalidArgument for an unknown handle.
+    /// Document::requestShow/requestHide). kInvalidArgument for an unknown handle. T-605 (53
+    /// §53.102 item 10): called between frames, the visibility changes at once and lifecycle.shown /
+    /// hidden, OnShown / OnHidden and the `show` triggers come in the next update(), after its input
+    /// and before onBeforeDocumentUpdate, at that frame's clock; called while dispatching (inside
+    /// update(), a callback) the request applies when the outermost dispatching call returns.
     Status requestShow(DocumentHandle handle);
     Status requestHide(DocumentHandle handle);
     /// T-373 (17 §17.33.2): Document::setInitialVisibility() -- the surface's visibility without

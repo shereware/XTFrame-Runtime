@@ -28,8 +28,12 @@ Tools/Scripts/corpus_fonts.py). --update first re-pins every selected project's 
 files (Tools/Scripts/corpus_fonts.py --update).
 
 Usage: corpus_check.py [--update] [--project <name>] [--skip-missing-fonts] [--view EXE] [--pack EXE]
-                       [--work DIR]
+                       [--work DIR] [--migrate]
   --update (or XT_CORPUS_UPDATE=1) rewrites expected/ from this run instead of comparing.
+  --migrate (T-589, Docs/design/54-source-format-v2.md 54.11): the work copy of each source is first
+    migrated to source format 2 in place (`xtframe-pack --upgrade --format 2`), then packed and compared
+    with the same expected/ (which must not change; not allowed with --update); the manifest's per-UI
+    `fileHash` (the hash of the .xtir, whose bytes the migration may change) is not compared.
 Exit codes: 0 every project matches (or was updated, or skipped), 1 a difference or a failed run,
 2 usage.
 Standard library only.
@@ -262,6 +266,21 @@ def normalize_manifest(path):
     return json.dumps(clean(data), indent=2, sort_keys=True, ensure_ascii=False) + "\n"
 
 
+def manifest_without_file_hashes(path):
+    """T-589: a normalized manifest.json with every `fileHash` dropped."""
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+
+    def drop(value):
+        if isinstance(value, dict):
+            return {k: drop(v) for k, v in value.items() if k != "fileHash"}
+        if isinstance(value, list):
+            return [drop(v) for v in value]
+        return value
+
+    return json.dumps(drop(data), sort_keys=True)
+
+
 LOG_PREFIXES = ("xtframe-view: flow event ", "xtframe-view: port ", "xtframe-view: drop ", "text=")
 
 
@@ -319,6 +338,12 @@ class Checker:
         # The pack may write into its project (standard symbols, measured asset fields): pack a copy.
         src = os.path.join(work, "source")
         shutil.copytree(os.path.join(REPO, spec["source"]), src)
+        if self.args.migrate:
+            # T-589: the migrated copy must render and behave exactly like the version 1 sources.
+            rc, out, err = run([self.args.pack, "--upgrade", "--format", "2", src], runlog)
+            if rc != 0:
+                self.fail(name, "xtframe-pack --upgrade --format 2 exited %d (see %s)" % (rc, runlog))
+                return
         bundle = os.path.join(work, "bundle")
         # T-527d (43 §43.4): only the standard fonts the bundle carries are rendered, never system fonts.
         rc, out, err = run([self.args.pack, "--strict", "--fonts", "bundled", src, "-o", bundle], runlog)
@@ -408,6 +433,12 @@ class Checker:
                 if reason:
                     bad += 1
                     self.fail(name, "%s: %s; actual %s, diff %s" % (rel, reason, a, diff))
+            elif rel == "manifest.json" and self.args.migrate:
+                # T-589: a migrated source compiles to other IR bytes (54 §54.11 layer one, reported
+                # only), so each UI's `fileHash` (the hash of its .xtir) is left out of the comparison.
+                if manifest_without_file_hashes(e) != manifest_without_file_hashes(a):
+                    bad += 1
+                    self.fail(name, "%s differs (fileHash ignored): diff %s %s" % (rel, e, a))
             elif not expected_bytes_equal(e, a):
                 bad += 1
                 self.fail(name, "%s differs: diff %s %s" % (rel, e, a))
@@ -422,10 +453,15 @@ def main():
     parser.add_argument("--view", help="xtframe-view executable (default: newest under bin/, then build/)")
     parser.add_argument("--pack", help="xtframe-pack executable (default: newest under bin/, then build/)")
     parser.add_argument("--work", help="work directory (default: build/corpus-work)")
+    parser.add_argument("--migrate", action="store_true",
+                        help="migrate each work copy to source format 2 before packing (T-589)")
     parser.add_argument("--skip-missing-fonts", action="store_true",
                         help="skip (instead of failing) a project whose `fonts` are not all installed "
                              "(or are a different build)")
     args = parser.parse_args()
+    if args.migrate and (args.update or os.environ.get("XT_CORPUS_UPDATE", "") == "1"):
+        print("corpus_check: --migrate compares with expected/ and cannot --update it")
+        return 2
     args.view = find_tool("xtframe-view", args.view)
     args.pack = find_tool("xtframe-pack", args.pack)
     if not args.view or not os.path.isfile(args.view) or not args.pack or not os.path.isfile(args.pack):

@@ -16,4 +16,8 @@ bool isLayoutSectionProperty(std::string_view name) {
     return std::binary_search(std::begin(kLayoutSectionProps), std::end(kLayoutSectionProps), name);
 }
 
+bool isLayoutShorthandProperty(std::string_view name) {
+    return std::binary_search(std::begin(kLayoutShorthandProps), std::end(kLayoutShorthandProps), name);
+}
+
 }  // namespace xt::compile

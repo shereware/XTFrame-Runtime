@@ -13,6 +13,7 @@ add_executable(xt_flow_tests
     test_flow_perf_counters.cpp
     test_flow_typed_sinks.cpp
     test_flow_lifecycle.cpp
+    test_flow_root_port_alias.cpp
 )
 target_include_directories(xt_flow_tests SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/Code/SDKs/doctest)
 # doctest needs the real standard headers, otherwise it conflicts with newer MSVC STL versions.

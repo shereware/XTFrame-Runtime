@@ -1,0 +1,154 @@
+<xt version="2">
+  <head>
+    <title>XTFrame HUD demo (version 2, anchor shorthands)</title>
+  </head>
+  <!-- T-588 (Docs/design/54-source-format-v2.md 54.5.1): Examples/demos/game-ui/hud/hud.xt with
+       ../shared/base.xts and hud.xts folded in, the geometry in <layout> written with the anchor
+       shorthands. The golden manifest requires the same pixels as the original (ui_game_hud). -->
+  <ports>
+    nx: number in
+    ny: number in
+  </ports>
+  <body>
+    <div id="root" on:pointermove="set(nx, pointer.fraction(#root).x | range(0, 1, -1, 1)); set(ny, pointer.fraction(#root).y | range(0, 1, -1, 1))">
+      <div id="editorBg" editor-only/>
+      <div id="stageL" class="stage">
+        <div id="player" class="panel" bind:rotate-y="nx | range(-1, 1, 32, 16)" bind:rotate-x="ny | range(-1, 1, 7, -7)">
+          <div class="label">
+  OPERATIVE
+</div>
+          <div id="name" class="title">
+  K. Vance
+</div>
+          <div id="hpBar" class="bar">
+            <div id="hpFill" class="fill"/>
+          </div>
+          <div id="hpRow" class="row">
+            <span class="label">
+  HP
+</span>
+            <span id="hpText" class="value">
+  100
+</span>
+            <button id="heal" class="chip">
+  HEAL
+</button>
+            <anim id="alert" class="hidden" src="../../../../Examples/demos/game-ui/shared/anim/alert.json" autoplay="false"/>
+          </div>
+        </div>
+      </div>
+      <div id="stageR" class="stage">
+        <div id="ammoPanel" class="panel" bind:rotate-y="nx | range(-1, 1, -16, -32)" bind:rotate-x="ny | range(-1, 1, 7, -7)">
+          <div class="label">
+  AMMO
+</div>
+          <div id="ammoRow" class="row">
+            <span id="ammo" class="big">
+  30
+</span>
+            <span class="dim">
+  / 90
+</span>
+          </div>
+          <div id="ammoButtons" class="row">
+            <button id="fire" class="btn primary">
+  FIRE
+</button>
+            <button id="reload" class="btn">
+  RELOAD
+</button>
+          </div>
+        </div>
+      </div>
+      <div id="skills">
+          <button id="skill1" class="skill ready">
+  Q
+</button>
+          <button id="skill2" class="skill">
+  E
+</button>
+          <button id="skill3" class="skill">
+  R
+</button>
+        </div>
+      <div id="card">
+        <div class="label">
+  OBJECTIVE
+</div>
+        <div class="title">
+  Secure the relay
+</div>
+        <div class="dim">
+  click to flip
+</div>
+      </div>
+      <anim id="radar" src="../../../../Examples/demos/game-ui/shared/anim/radar.json" loop="true"/>
+      <div id="clock" class="dim">
+  0.0
+</div>
+    </div>
+  </body>
+  <layout>
+    body { height: 100vh; width: 100vw; }
+    #root { size: fill fill; overflow: hidden; position: relative; }
+    #editorBg { anchor: stretch stretch screen; }
+    .panel { padding: 16px 20px 18px 20px; position: absolute; }
+    .title { margin: 2px 0px 12px 0px; }
+    .row { align-items: center; display: flex; gap: 10px; margin-top: 12px; }
+    .btn { height: 36px; padding: 0px 18px 0px 18px; }
+    .chip { height: 24px; padding: 0px 10px 0px 10px; }
+    .stage { perspective: 700px; position: absolute; }
+    #stageL { anchor: left top; offset: 16px 26px; size: 342px 164px; }
+    #stageR { anchor: right bottom; offset: 16px 6px; size: 292px 186px; }
+    #player { anchor: left top screen; size: 300px auto; transform: rotateY(24deg); transform-origin: 0% 50%; }
+    #ammoPanel { anchor: left top screen; size: 250px auto; transform: rotateY(-24deg); transform-origin: 100% 50%; }
+    .bar { height: 12px; overflow: hidden; }
+    .fill { size: fill fill; }
+    .value { width: 48px; }
+    /* An imported percentage position, not one of the anchor forms: kept as longhands. */
+    #skills { display: flex; gap: 16px; left: calc(48.48% - 108.6px); position: absolute; bottom: calc(1safe-bottom + 26px); }
+    .skill { size: 64px 64px; }
+    #card { anchor: center top; offset: 0 34px; size: 320px auto; padding: 14px 0px 16px 0px; }
+    #card.flipped { transform: rotateY(360deg); }
+    #clock { anchor: right top; offset: 49.88px 30px; }
+    #radar { anchor: left bottom; offset: 16px 30px; size: 96px 96px; }
+    #alert { size: 24px 24px; }
+  </layout>
+  <style>
+    #root { color: #e6edf3; font-family: "Noto Sans", sans-serif; font-size: 16px; }
+    #editorBg { background-color: #0b0f17; }
+    .panel { background-color: #161b22e6; border: 1px #30363d; border-radius: 12px; effect: shadow(0 10px 28px 0 #000000 0.55); }
+    .label { color: #8b949e; font-size: 12px; letter-spacing: 2px; }
+    .title { font-size: 22px; }
+    .dim { color: #8b949e; font-size: 14px; }
+    .btn { background-color: #21262d; border: 1px #30363d; border-radius: 8px; color: #e6edf3; font-size: 14px; letter-spacing: 1px; line-height: 36px; text-align: center; transition: background-color 120ms; }
+    .btn:hover { background-color: #30363d; }
+    .btn:active { background-color: #484f58; }
+    .primary { background-color: #1f6feb; border: 1px #388bfd; }
+    .primary:hover { background-color: #388bfd; }
+    .primary:active { background-color: #1158c7; }
+    .chip { background-color: #238636; border-radius: 12px; color: #ffffff; font-size: 12px; letter-spacing: 1px; line-height: 24px; text-align: center; transition: background-color 120ms; }
+    .chip:hover { background-color: #2ea043; }
+    #ammoPanel { transition: effect 250ms; }
+    .bar { background-color: #21262d; border-radius: 6px; }
+    .fill { background-color: #3fb950; border-radius: 6px; transition: width 300ms, background-color 300ms; }
+    #player.danger .fill { background-color: #f85149; }
+    .value { font-size: 18px; }
+    .big { font-size: 56px; line-height: 60px; transition: color 200ms; }
+    #ammoPanel.empty .big { color: #f85149; }
+    #ammoPanel.empty { effect: shadow(0 10px 28px 0 #000000 0.55) glow(18px #f85149 1.2); }
+    .skill { background-color: #161b22; border: 1px #30363d; border-radius: 14px; color: #8b949e; font-size: 24px; line-height: 64px; text-align: center; transition: background-color 120ms; }
+    .skill:hover { background-color: #21262d; }
+    .ready { animation: sweep 2.4s linear infinite; border: 1px #58a6ff; color: #e6edf3; effect: glow(14px #58a6ff 1.1) shine(30deg 36px #ffffff 0.9 0.6 0); }
+    #card { background-color: #161b22e6; border: 1px #30363d; border-radius: 12px; effect: shadow(0 10px 28px 0 #000000 0.55); text-align: center; transition: transform 800ms ease-in-out; }
+    @keyframes sweep {
+      0% { effect: glow(14px #58a6ff 1.1) shine(30deg 36px #ffffff 0.9 0.6 0); }
+      60% { effect: glow(14px #58a6ff 1.1) shine(30deg 36px #ffffff 0.9 0.6 1); }
+      100% { effect: glow(14px #58a6ff 1.1) shine(30deg 36px #ffffff 0.9 0.6 1); }
+    }
+    #radar { opacity: 0.8; }
+    #alert { transition: opacity 200ms; }
+    #alert.hidden { opacity: 0; }
+    #player.flash { border: 1px #f85149; }
+  </style>
+</xt>

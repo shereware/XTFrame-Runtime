@@ -1,0 +1,29 @@
+<xt>
+  <head>
+    <title>Migrate basic</title>
+    <!-- T-589 migrator fixture (frozen source format 1): every step of 54 §54.10 but the anchors. -->
+    <link rel="symbols" href="migrate_lib.xt"/>
+    <link href="migrate_basic.xts"/>
+    <style>
+#Btn { left: 24px; top: 300px; width: 120px; height: 32px; position: absolute; color: #ffffff; on-click: emit(go); }
+#Badge { z-index: 2; opacity: 0.9; }
+symbol(Chip) { #Dot { width: 6px; height: 6px; background-color: #ff8040; } }
+symbol(Chip) { @timeline blink { #Dot { 0s { opacity: 1; } 0.5s { opacity: 0.2; } } } }
+    </style>
+    <symbol name="Chip">
+      <div id="ChipRoot" port:level="number in = 1" expose="true">
+        <div id="Dot"></div>
+      </div>
+    </symbol>
+  </head>
+  <body port:hp="number in = 0.8" port:tab="number in = 0" port:go="event out" on:show="play(intro)">
+    <div id="Screen">
+      <div id="Hp" class="card" style="left: 16px; top: 16px; width: 200px; background-color: #335544"></div>
+      <div class="card" style="position: absolute; left: 16px; top: 120px; opacity: 0.8"><span>Second card</span></div>
+      <p style="margin-top: 4px; color: #c0c0c0">Status ready</p>
+      <use symbol="Tabs" id="Pages"/>
+      <use symbol="Chip" id="Badge"/>
+      <button id="Btn" on:hover="play(flash)">Go</button>
+    </div>
+  </body>
+</xt>

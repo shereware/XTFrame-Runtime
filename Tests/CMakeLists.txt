@@ -59,6 +59,8 @@ add_executable(xt_tests
     unit/test_lottie_masks_assets.cpp
     unit/test_parse_xt.cpp
     unit/test_parse_xt_v2.cpp
+    unit/test_anchor_expand.cpp
+    unit/test_migrate_v2.cpp
     unit/test_ports_section.cpp
     unit/test_parse_xts.cpp
     unit/test_xts_values.cpp

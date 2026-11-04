@@ -6,7 +6,13 @@ add_library(xt_compile STATIC
     src/parse_xt.cpp
     src/ports_section.cpp
     src/section_sources.cpp
+    src/anchor_expand.cpp
     src/xt_canonical_writer.cpp
+    src/migrate_v2.cpp
+    src/migrate_sheet.cpp
+    src/migrate_markup.cpp
+    src/migrate_report.cpp
+    src/computed_dump.cpp
     src/compile_lottie.cpp
     src/compile_document.cpp
     src/style_emit.cpp
@@ -66,4 +72,7 @@ set_source_files_properties(src/bind_emit.cpp src/xts/xts_values.cpp src/xts/xts
 # T-587: the v2 sources stay out of the batches too, so adding them does not regroup the batches
 # above (whose files share anonymous-namespace names such as kPi).
 set_source_files_properties(src/ports_section.cpp src/section_sources.cpp src/xt_canonical_writer.cpp
-    src/xts/xts_sections.cpp PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
+    src/xts/xts_sections.cpp src/anchor_expand.cpp PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
+# T-589: the migrator and the computed-style dump, likewise.
+set_source_files_properties(src/migrate_v2.cpp src/migrate_sheet.cpp src/migrate_markup.cpp src/migrate_report.cpp
+    src/computed_dump.cpp PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)

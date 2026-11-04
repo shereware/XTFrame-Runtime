@@ -8,6 +8,10 @@
 
 #include "xt/types.h"
 
+namespace xt {
+class Document;
+}
+
 /// xt_flow's data model: the parsed `.xtflow` document (nodes/edges/params), before any binding
 /// to a live Document. See Docs/design/17-editor.md §17.6, Docs/tasks/T-56.md.
 
@@ -170,7 +174,10 @@ struct FlowGraph {
 /// xtframe-compile (the `.xt`'s sibling `.xtflow`) and the importer's lint (`--lint`, the Problems
 /// panel's diagnostics files).
 struct FlowLintFinding {
-    std::string code;                  ///< "flow.introByTimer".
+    /// T-604: the finding's severity; `flow.rootPortAlias` is the only Info one.
+    enum class Severity { Warning, Info };
+    Severity severity = Severity::Warning;
+    std::string code;                  ///< "flow.introByTimer" / "flow.rootPortAlias".
     std::string nodeId;                ///< The node it is about (the timer).
     std::vector<std::string> targets;  ///< The inputs reached ("intro.play"), in edge order.
     std::string timeline;              ///< The first reached timeline's `name` ("" when none).
@@ -183,6 +190,13 @@ struct FlowLintFinding {
 /// `timeline.seek` or an input of a `state` node, directly or through the pulse-only relays
 /// (`merge`, a pulse-typed `throttle`); one finding per timer, in node order. Appends to `out`.
 void lintFlowGraph(const FlowGraph& graph, std::vector<FlowLintFinding>& out);
+
+/// T-604 (53 "v2 document port addressing", 24 §24.15.4): lintFlowGraph(graph, out) followed by
+/// the checks that need the bound Document. `flow.rootPortAlias` (Info): an endpoint
+/// `#<id>.<port>` that binds to the document port `port` because `#<id>` is a direct child of
+/// `<body>` declaring no such port itself; `nodeId` = "", `targets` = {the endpoint text},
+/// `fix` = "rewrite as #document.<port>". One finding per distinct endpoint text, in edge order.
+void lintFlowGraph(const FlowGraph& graph, const Document& doc, std::vector<FlowLintFinding>& out);
 
 /// One node port in nodeTypeTable(): its name and PortType (Docs/design/17-editor.md §17.6's
 /// signal node table).

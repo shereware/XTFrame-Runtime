@@ -238,6 +238,10 @@ struct StyleDecl {
     bool important = false;
     /// 1-based source line.
     int line = 0;
+    /// T-588 (54 §54.5.1): non-zero on the `width: 100%` / `height: 100%` written for an axis of
+    /// `size: fill` until compileDocument() knows what the element is (UI root, stack child or free
+    /// child) and rewrites it; the bits are anchor_expand.h's kAnchorFill*. Never reaches the IR.
+    uint8_t anchorFill = 0;
 };
 
 /// T-173 (05.9.2): kind of an extra per-compound selector condition (SelectorCond). The numeric

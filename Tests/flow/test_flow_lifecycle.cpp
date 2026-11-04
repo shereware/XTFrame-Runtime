@@ -46,8 +46,8 @@ std::string joinedLines(const std::vector<std::string>& lines) {
     return out;
 }
 
-DocumentHandle loadIntroUi(Context& ctx) {
-    const compile::SourceFile file{"intro.xt", kIntroUi};
+DocumentHandle loadIntroUi(Context& ctx, const char* xt = kIntroUi) {
+    const compile::SourceFile file{"intro.xt", xt};
     compile::CompileOptions options;
     compile::CompileResult result = compile::compileDocumentFromStrings({&file, 1}, "intro.xt", options);
     REQUIRE(result.ok());
@@ -156,10 +156,17 @@ TEST_CASE("lifecycle: hidden on OnHidden, shown again on requestShow") {
 
     REQUIRE(ctx.requestHide(h) == Status::kOk);  // No outro: hidden at once (OnHidden).
     CHECK_FALSE(ctx.isVisible(h));
+    // T-605 (53 §53.102 item 10): between frames the notification waits for the next update.
+    CHECK(count(runtime, "hidden.value") == 0);
+    ctx.update(0.016f);
     CHECK(count(runtime, "hidden.value") == 1);
     REQUIRE(ctx.requestShow(h) == Status::kOk);
+    CHECK(ctx.isVisible(h));
+    CHECK(count(runtime, "shown.value") == 1);
+    ctx.update(0.016f);
     CHECK(count(runtime, "shown.value") == 2);
     REQUIRE(ctx.requestShow(h) == Status::kOk);  // Already visible: no OnShown, no shown.
+    ctx.update(0.016f);
     CHECK(count(runtime, "shown.value") == 2);
     CHECK(count(runtime, "hidden.value") == 1);
 }
@@ -177,11 +184,14 @@ TEST_CASE("lifecycle: setVisible is silent; setVisible(false) then requestShow f
         ctx.update(0.016f);
         CHECK(count(runtime, "shown.value") == 0);  // Hidden at its first update: no first show.
         REQUIRE(ctx.requestShow(h) == Status::kOk);
-        CHECK(count(runtime, "shown.value") == 1);
-        // Started at the show (the Document's clock then, as an `on:show` play() is): the first
-        // frame drawn is the intro's start, one frame in, not the final state.
+        CHECK(ctx.isVisible(h));
+        // T-605 (53 §53.102 item 10): `shown` waits for the next update, where it is sent at that
+        // frame's clock, so the first frame drawn is the intro's time 0 exactly.
+        CHECK(count(runtime, "shown.value") == 0);
         ctx.update(0.016f);
-        CHECK(titleOpacity(doc) < 0.1f);
+        CHECK(count(runtime, "shown.value") == 1);
+        CHECK(titleOpacity(doc) == doctest::Approx(0.0f));
+        ctx.update(0.016f);
         CHECK(count(runtime, "shown.value") == 1);
     }
     SUBCASE("setVisible(true) fires nothing") {
@@ -305,13 +315,17 @@ TEST_CASE("T-603: the initial OnShown comes once, after lifecycle.shown and befo
         ctx.update(0.016f);
         ctx.update(0.016f);
         CHECK(rec.log == std::vector<std::string>{shown + " ui=1", "hook", "hook", "hook"});  // Once.
-        // requestShow / requestHide keep their T-174 behavior.
+        // T-605 (53 §53.102 item 10): between frames, the notifications wait for the next update,
+        // in the order made, before its hook; lifecycle.shown comes before OnShown.
         REQUIRE(ctx.requestShow(h) == Status::kOk);  // Already visible: nothing.
         REQUIRE(ctx.requestHide(h) == Status::kOk);
         REQUIRE(ctx.requestShow(h) == Status::kOk);
-        CHECK(rec.log.size() == 6);
+        CHECK(rec.log.size() == 4);
+        ctx.update(0.016f);
+        REQUIRE(rec.log.size() == 7);
         CHECK(rec.log[4] == "hidden#" + std::to_string(h));
-        CHECK(rec.log[5] == shown + " ui=1");  // applyShow(): OnShown, then lifecycle.shown (T-601).
+        CHECK(rec.log[5] == shown + " ui=2");
+        CHECK(rec.log[6] == "hook");
         CHECK(count(runtime, "shown.value") == 2);
         ctx.removeListener(&rec);
     }
@@ -327,10 +341,13 @@ TEST_CASE("T-603: the initial OnShown comes once, after lifecycle.shown and befo
         ctx.update(0.016f);
         CHECK(rec.log == std::vector<std::string>{"shown#" + std::to_string(visible), "hook", "hook"});
         REQUIRE(ctx.requestShow(parked) == Status::kOk);
-        REQUIRE(rec.log.size() == 4);
-        CHECK(rec.log[3] == "shown#" + std::to_string(parked));
+        CHECK(rec.log.size() == 3);  // T-605: with the next update.
         ctx.update(0.016f);
-        CHECK(rec.log.size() == 5);  // Only the hook: the first show was requestShow's.
+        REQUIRE(rec.log.size() == 5);
+        CHECK(rec.log[3] == "shown#" + std::to_string(parked));
+        CHECK(rec.log[4] == "hook");
+        ctx.update(0.016f);
+        CHECK(rec.log.size() == 6);  // Only the hook: the first show was requestShow's.
         ctx.removeListener(&rec);
     }
 }
@@ -358,7 +375,117 @@ TEST_CASE("T-603: the global flow's ui#<id>.shown fires on the initial show, aft
     CHECK(count(bundle.flowRuntime(), "c.value") == 1);  // Once.
     REQUIRE(ctx.requestHide(h) == Status::kOk);
     REQUIRE(ctx.requestShow(h) == Status::kOk);
-    CHECK(count(bundle.flowRuntime(), "c.value") == 2);  // requestShow: as before.
+    CHECK(count(bundle.flowRuntime(), "c.value") == 1);  // T-605: with the next update.
+    ctx.update(0.016f);
+    CHECK(count(bundle.flowRuntime(), "c.value") == 2);
+    ctx.removeListener(&rec);
+}
+
+namespace {
+
+/// T-605: `#Title` as kIntroUi; the surface's `show` trigger sets port `n` to 1.
+constexpr const char* kShowTriggerUi = R"X(<xt><head><style>
+#Title { width: 100px; height: 20px; }
+</style></head><body id="Root" port:n="number in" on:show="set(n, 1)"><span id="Title">t</span></body></xt>)X";
+
+/// T-605 (53 §53.102 item 10): what OnShown / OnHidden saw -- the lifecycle counters (sent before
+/// them) and port `n` (set by the `show` trigger, after them) -- and the update hook, which can
+/// request a show / hide itself (inside an update).
+struct OrderRecorder : ContextListener {
+    std::vector<std::string> log;
+    const FlowRuntime* flow = nullptr;
+    Document* doc = nullptr;
+    DocumentHandle handle = 0;
+    int hookRequest = 0;  // 1: requestShow, -1: requestHide from the next hook.
+    std::string seen(const char* counter) const {
+        const PortId n = doc->lookupPort("n");
+        return std::string(" ") + counter + "=" + std::to_string(static_cast<int>(count(*flow, counter))) +
+               " n=" + std::to_string(static_cast<int>(doc->getPort(n).f));
+    }
+    void onShown(DocumentHandle /*d*/) override { log.push_back("shown" + seen("shown.value")); }
+    void onHidden(DocumentHandle /*d*/) override { log.push_back("hidden" + seen("hidden.value")); }
+    void onBeforeDocumentUpdate(Context& context) override {
+        log.push_back("hook");
+        if (hookRequest > 0) {
+            REQUIRE(context.requestShow(handle) == Status::kOk);
+        } else if (hookRequest < 0) {
+            REQUIRE(context.requestHide(handle) == Status::kOk);
+        }
+        hookRequest = 0;
+    }
+};
+
+}  // namespace
+
+TEST_CASE("T-605: requestShow notifies lifecycle.shown, then OnShown, then the `show` triggers") {
+    NullTextShaper shaper;
+    Context ctx{ContextConfig{&shaper, nullptr}};
+    const DocumentHandle h = loadIntroUi(ctx, kShowTriggerUi);
+    Document& doc = *ctx.document(h);
+    FlowRuntime runtime;
+    loadFlow(runtime, doc, kCountingFlow);
+    const PortId n = doc.lookupPort("n");
+    REQUIRE(n != kInvalidPort);
+    OrderRecorder rec;
+    rec.flow = &runtime;
+    rec.doc = &doc;
+    rec.handle = h;
+    ctx.addListener(&rec);
+    REQUIRE(ctx.setVisible(h, false) == Status::kOk);  // Parked.
+    ctx.update(0.016f);
+    CHECK(rec.log == std::vector<std::string>{"hook"});
+
+    SUBCASE("between frames: with the next update, before its hook") {
+        REQUIRE(ctx.requestShow(h) == Status::kOk);
+        CHECK(ctx.isVisible(h));
+        CHECK(doc.getPort(n).f == doctest::Approx(0.0f));  // The `show` trigger waits too.
+        CHECK(rec.log.size() == 1);
+        ctx.update(0.016f);
+        CHECK(rec.log == std::vector<std::string>{"hook", "shown shown.value=1 n=0", "hook"});
+        CHECK(doc.getPort(n).f == doctest::Approx(1.0f));
+    }
+    SUBCASE("inside an update (the hook): when the update returns, in the same order") {
+        rec.hookRequest = 1;
+        ctx.update(0.016f);
+        CHECK(rec.log == std::vector<std::string>{"hook", "hook", "shown shown.value=1 n=0"});
+        CHECK(doc.getPort(n).f == doctest::Approx(1.0f));
+        ctx.update(0.016f);
+        CHECK(rec.log.size() == 4);  // Once.
+    }
+    ctx.removeListener(&rec);
+}
+
+TEST_CASE("T-605: requestHide between frames hides at once and notifies with the next update") {
+    NullTextShaper shaper;
+    Context ctx{ContextConfig{&shaper, nullptr}};
+    const DocumentHandle h = loadIntroUi(ctx, kShowTriggerUi);
+    Document& doc = *ctx.document(h);
+    FlowRuntime runtime;
+    loadFlow(runtime, doc, kCountingFlow);
+    OrderRecorder rec;
+    rec.flow = &runtime;
+    rec.doc = &doc;
+    rec.handle = h;
+    ctx.update(0.016f);
+    REQUIRE(count(runtime, "shown.value") == 1);
+    ctx.addListener(&rec);
+
+    REQUIRE(ctx.requestHide(h) == Status::kOk);
+    CHECK_FALSE(ctx.isVisible(h));  // The visibility changes at once.
+    CHECK(rec.log.empty());
+    CHECK(count(runtime, "hidden.value") == 0);
+    ctx.update(0.016f);
+    CHECK(rec.log == std::vector<std::string>{"hidden hidden.value=1 n=1", "hook"});
+
+    // A hide requested inside an update keeps its timing: when the update returns.
+    REQUIRE(ctx.requestShow(h) == Status::kOk);
+    ctx.update(0.016f);
+    REQUIRE(count(runtime, "shown.value") == 2);
+    rec.log.clear();
+    rec.hookRequest = -1;
+    ctx.update(0.016f);
+    CHECK(rec.log == std::vector<std::string>{"hook", "hidden hidden.value=2 n=1"});
+    CHECK_FALSE(ctx.isVisible(h));
     ctx.removeListener(&rec);
 }
 

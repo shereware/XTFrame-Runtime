@@ -1,8 +1,8 @@
-<xt>
+<xt version="2">
   <head>
-    <link rel="stylesheet" href="precomp_parent.xts"/>
-    <link rel="symbols" href="symbols/precomp_parent_Comp0.xt"/>
+    <symbols src="symbols/precomp_parent_Comp0.xt"/>
   </head>
+
   <body>
     <div id="PrecompParent" class="c_PrecompParent">
       <div id="Anchor_T" class="xl c_PrecompParent">
@@ -10,4 +10,36 @@
       </div>
     </div>
   </body>
+
+  <layout>
+    .xl {
+      position: absolute;
+      left: 0px;
+      top: 0px;
+      transform-origin: 0px 0px;
+    }
+    .c_PrecompParent {
+      width: 256px;
+      height: 256px;
+    }
+    #PrecompParent {
+      position: relative;
+    }
+    #Anchor_T {
+      transform: translate(10px, 0px) rotate(0deg) skew(0deg, 0deg) scale(1, 1);
+      transform-origin: 0px 0px;
+    }
+    #Comp {
+      width: 256px;
+      height: 256px;
+    }
+    #Comp {
+      transform: translate(0px, 20px) rotate(0deg) skew(0deg, 0deg) scale(1, 1);
+      transform-origin: 0px 0px;
+    }
+  </layout>
+  <style src="precomp_parent.xts"/>
+  <timelines>
+    @timeline main from "precomp_parent.xtanim.json#main";
+  </timelines>
 </xt>

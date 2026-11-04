@@ -30,6 +30,9 @@
 # XT_SHELL_GL=OFF, the Android presentation path; xtframe-view and ctest -R xtframe-view_sw) and
 # the agent stage (T-467: the vs2022-agent preset, Debug; xtframe-editor and xt_agent_tests built,
 # xt_agent_tests run offscreen; Docs/design/20-agent-interface.md §20.10).
+# T-589: after the WebGPU tests, the source format v2 migration check (Tools/Scripts/migrate_v2_check.sh:
+# the migrator over every fixture, standard symbol, template and example in a work directory, with
+# its computed-style self-check, the migrated corpus and the migrated Tests/golden).
 # T-441 (Docs/design/10-backends.md §10.10.3): after MSVC Release, the WebGPU tests (xt_wgpu_tests,
 # xt_golden_wgpu, xt_backends_tests via Tools/Scripts/wgpu_tests.sh) run twice, XT_WGPU_BACKEND=d3d12 and
 # =vulkan; a missing adapter fails. After WSL GCC Debug they run once more on Vulkan over lavapipe
@@ -304,6 +307,12 @@ if [ -z "$QUICK" ]; then
   XT_WGPU_BACKEND=d3d12 bash Tools/Scripts/wgpu_tests.sh --preset vs2022-release || fail=1
   step "MSVC wgpu: Vulkan (vs2022-release, XT_WGPU_BACKEND=vulkan)"
   XT_WGPU_BACKEND=vulkan bash Tools/Scripts/wgpu_tests.sh --preset vs2022-release || fail=1
+
+  # T-589 (Docs/design/54-source-format-v2.md §54.11): every Tests fixture, Assets/Symbols,
+  # Assets/Templates and Examples migrated to source format 2 in build/migrate-v2-check (never the
+  # repository files): the computed-style self-check, then the corpus and Tests/golden pixels.
+  step "source format v2 migration check (Tools/Scripts/migrate_v2_check.sh, Release)"
+  bash Tools/Scripts/migrate_v2_check.sh --config Release || fail=1
 
   step "MSVC editor (Qt5: ${XT_QT_DIR:-none})"
   if [ -n "$NO_EDITOR" ]; then

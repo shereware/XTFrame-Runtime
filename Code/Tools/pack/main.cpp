@@ -17,6 +17,7 @@
 #include "xt/bundle/ui_project.h"
 #include "xt/bundle/zip_archive.h"
 #include "xt/compile/diagnostics.h"
+#include "xt/compile/migrate.h"
 #include "xt/compile/utf8_path.h"
 
 /// xtframe-pack: turns a bundle's source form into its published form. See
@@ -27,6 +28,7 @@
 ///                   [--ui <id>]... [--strict] [--no-thumbs] [--embed] [--prune] [--lang <list>]
 ///                   [--allow-placeholders] [--zip] [--fonts system|bundled] [--fonts-dir <dir>] [--verbose]
 ///        xtframe-pack --upgrade <bundle-dir>
+///        xtframe-pack --upgrade --format 2 <project-dir | file.xt>
 ///        xtframe-pack --version
 ///
 /// --version (T-420) prints the version lines (Code/Tools/Common/print_version.h) to stdout and exits 0,
@@ -38,6 +40,11 @@
 /// `publish.outDir` is set (relative to the project
 /// root); an absent `--lang` falls back to `publish.languages`. `--upgrade <dir>` turns a
 /// `bundle.xtproj` directory into a UI Project in place (upgradeToUiProject()) and packs nothing.
+/// T-589 (Docs/design/54-source-format-v2.md §54.10): `--upgrade --format 2 <dir>` instead migrates
+/// the UI Project's sources from format 1 to 2 in place with xt::compile::migrateToV2() (the function
+/// `xtframe-compile --migrate` calls; self-check with the project's root and `shared.styles`), prints
+/// the report summary and packs nothing; a migration error or a layer-two difference writes nothing
+/// and exits 1. No backup files.
 ///
 /// --bake-vectors (T-226) moved to the editor in T-274 (Docs/RELEASE-MAP.md §6.1: xtframe-pack is
 /// runtime layer and does not link the editor core). The option is kept only to say so: it packs
@@ -130,6 +137,7 @@ void printUsage() {
                  "[--compress bc7|bc3|bc1|none] [--font-subset] [--fonts system|bundled] [--fonts-dir <dir>] "
                  "[--allow-placeholders] [--zip] [--verbose]\n"
                  "       xtframe-pack --upgrade <bundle-dir>\n"
+                 "       xtframe-pack --upgrade --format 2 <project-dir | file.xt>\n"
                  "       xtframe-pack --version\n");
 }
 
@@ -196,6 +204,54 @@ int runUpgrade(const std::string& dir) {
     return 0;
 }
 
+/// T-589: `--upgrade --format 2 <dir>`: see the file comment.
+int runUpgradeFormat2(const std::string& input, const std::string& exePath) {
+    std::error_code ec;
+    const fs::path symbols = fs::absolute(pathFromUtf8(exePath), ec).parent_path() / "symbols";
+    const std::string standardSymbols = xt::bundle::defaultGroupDir(pathToUtf8(symbols));
+    xt::compile::MigrateOptions options;
+    options.standardSymbolDir = standardSymbols;
+    options.compileOptions = [&](const std::string& xtPath) {
+        xt::compile::CompileOptions compile;
+        compile.standardSymbolDir = standardSymbols;
+        const fs::path dir = pathFromUtf8(xtPath).parent_path();
+        for (fs::path d = dir; !d.empty(); d = d.parent_path()) {
+            if (!xt::bundle::findUiProjectFile(genericPathToUtf8(d)).empty()) {
+                xt::Result<xt::bundle::UiProject> project = xt::bundle::UiProject::load(genericPathToUtf8(d));
+                if (project.ok()) {
+                    compile.rootDir = project.value().rootDir;
+                    for (const std::string& style : project.value().shared.styles) {
+                        std::error_code err;
+                        const fs::path absolute =
+                            fs::absolute(pathFromUtf8(compile.rootDir) / pathFromUtf8(style), err);
+                        compile.impliedStylesheets.push_back(pathToUtf8(absolute.lexically_normal()));
+                    }
+                }
+                break;
+            }
+            if (d.parent_path() == d) {
+                break;
+            }
+        }
+        return compile;
+    };
+    std::vector<xt::compile::MigratedFile> files;
+    xt::compile::MigrateReport report;
+    const bool ok = xt::compile::migrateToV2(input, options, files, report);
+    std::fputs(report.summary().c_str(), stdout);
+    if (!ok) {
+        std::fprintf(stderr, "xtframe-pack: --upgrade --format 2: nothing written\n");
+        return 1;
+    }
+    std::string error;
+    if (!xt::compile::writeMigratedFiles(files, report, std::string(), error)) {
+        std::fprintf(stderr, "xtframe-pack: --upgrade --format 2: %s\n", error.c_str());
+        return 1;
+    }
+    std::printf("xtframe-pack: upgraded '%s' to source format 2 (%zu files)\n", input.c_str(), files.size());
+    return 0;
+}
+
 int packMain(int argc, char** argv) {
     std::string input;
     xt::bundle::PackOptions options;
@@ -216,6 +272,13 @@ int packMain(int argc, char** argv) {
         }
     }
 
+    if (argc == 5 && std::string(argv[1]) == "--upgrade" && std::string(argv[2]) == "--format") {
+        if (std::string(argv[3]) != "2") {  // T-589
+            std::fprintf(stderr, "xtframe-pack: --upgrade --format: only 2 is supported\n");
+            return 2;
+        }
+        return runUpgradeFormat2(argv[4], argv[0]);
+    }
     if (argc >= 2 && std::string(argv[1]) == "--upgrade") {
         if (argc != 3) {
             printUsage();

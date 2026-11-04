@@ -208,3 +208,13 @@ ui_rounded_clip_children ui_rounded_clip_children.xt 256 256 0 0b0e12
 ui_3d_flip_0 ui_3d_flip.xt 256 256 0 0b0e12
 ui_3d_flip_90 ui_3d_flip.xt 256 256 0.48 0b0e12
 ui_3d_flip_180 ui_3d_flip.xt 256 256 1.0 0b0e12
+# T-588 (Docs/design/54-source-format-v2.md 54.5.1): the game-ui HUD (Examples/demos/game-ui/hud,
+# compiled where it is) and the same layout written as a version 2 document with the anchor
+# shorthands (v2_anchor/hud.xt); a `same-as=` line must match its reference pixel for pixel. The
+# @media case: the shorthand document against the same one written with the longhands, 16:9 and 21:9.
+ui_game_hud ../../../Examples/demos/game-ui/hud/hud.xt 640 360 0 000000
+ui_v2_anchor_hud v2_anchor/hud.xt 640 360 0 000000 same-as=ui_game_hud
+ui_v2_anchor_media_16x9 v2_anchor/media_long.xt 320 180 0 000000
+ui_v2_anchor_media_16x9_shorthand v2_anchor/media.xt 320 180 0 000000 same-as=ui_v2_anchor_media_16x9
+ui_v2_anchor_media_21x9 v2_anchor/media_long.xt 420 180 0 000000
+ui_v2_anchor_media_21x9_shorthand v2_anchor/media.xt 420 180 0 000000 same-as=ui_v2_anchor_media_21x9

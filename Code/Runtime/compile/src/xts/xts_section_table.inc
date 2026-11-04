@@ -75,4 +75,10 @@ constexpr std::string_view kLayoutSectionProps[] = {
     "width",
     "z-index",
 };
+constexpr std::string_view kLayoutShorthandProps[] = {
+    "anchor",
+    "offset",
+    "offset-end",
+    "size",
+};
 // clang-format on

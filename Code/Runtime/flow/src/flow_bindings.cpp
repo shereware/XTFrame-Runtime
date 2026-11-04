@@ -1549,6 +1549,19 @@ PortValue declaredPortValue(Document& doc, PortId port, PortType type) {
 
 }  // namespace
 
+bool isRootPortAlias(const Document& doc, const std::string& id, const std::string& port) {
+    if (id == "document") {
+        return false;
+    }
+    // Document::root() may be the `<xt>` element above `<body>`, so the parent is checked by tag.
+    const ElementRef element = doc.byId(id);
+    if (!element.valid() || element.parent().tag() != "body") {
+        return false;
+    }
+    return doc.lookupPort(declaredPortName(id, port)) == kInvalidPort &&
+           doc.lookupPort(declaredPortName("document", port)) != kInvalidPort;
+}
+
 bool resolveDocumentEndpoint(const std::string& id, const std::string& port, bool isSource, Document* doc,
                              Endpoint& out, std::string& err) {
     if (id == "document") {
@@ -1577,6 +1590,10 @@ bool resolveDocumentEndpoint(const std::string& id, const std::string& port, boo
         err.clear();
         if (resolveDeclaredPort(id, port, isSource, doc, out, err)) {
             return true;  // T-175: a port declared on (or exposed by) element `id`.
+        }
+        if (err.empty() && doc != nullptr && isRootPortAlias(*doc, id, port)) {
+            // T-604: `#<UI root>.<port>` of a v2 document (ports lowered onto `<body>`).
+            return resolveDeclaredPort("document", port, isSource, doc, out, err);
         }
         if (err.empty()) {
             err = "unknown " + std::string(isSource ? "output" : "input") + " port '" + port + "' on '#" +

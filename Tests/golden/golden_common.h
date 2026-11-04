@@ -63,6 +63,10 @@ SwTolerance swTolerance();
 /// T-267d: XT_GOLDEN_VERBOSE=1 -- also report fixtures that pass with differing pixels ([DIFF]).
 bool goldenVerbose();
 
+/// T-589: the UI fixture directory: `XT_GOLDEN_UI_ROOT` when set (Tools/Scripts/migrate_v2_check.sh
+/// renders a migrated copy against the same expected images), else `fallback`.
+std::string goldenUiDir(const std::string& fallback);
+
 /// T-267d: the one-line report of a compare, `<tag> <name>: <n> px differ, max channel diff <d>
 /// (allowed: ratio <r>, channel <c>)`, with tag "[FAIL]" or "[DIFF]".
 std::string describeDiff(const char* tag, const std::string& name, const GoldenResult& result, float ratio,
@@ -248,6 +252,11 @@ struct UiFixture {
     // T-491: extra asset roots tried after the .xt's own directory, for fonts that a linked library
     // stylesheet names relative to itself (the symbols tests pass the preset group directory).
     std::vector<std::string> assetRoots;
+    // T-588: `same-as=<name>` -- the fixture has no expected image of its own: it is compared with
+    // <name>'s, and on the SW backend every pixel must be identical (two sources of one picture,
+    // e.g. a layout written with and without the 54 §54.5.1 anchor shorthands). Never written by
+    // --update.
+    std::string sameAs;
 };
 
 /// Parses `Tests/golden/ui/manifest.txt`: one fixture per non-blank, non-'#'-comment line,
@@ -256,8 +265,8 @@ struct UiFixture {
 /// `clearColor` defaults to "ffffff" (opaque white, matching Docs/tasks/T-27.md's fixture table)
 /// when omitted. The optional trailing `.events` script (Docs/tasks/T-33b.md) may take either
 /// of the last two columns -- a token ending in ".events" is always the script, anything else
-/// is the clear color. A malformed line is skipped with a message to stdout and counted in
-/// manifestErrors().
+/// is the clear color. T-588: a `same-as=<name>` token sets UiFixture::sameAs. A malformed line is
+/// skipped with a message to stdout and counted in manifestErrors().
 std::vector<UiFixture> loadUiManifest(const std::string& manifestPath);
 
 /// Runs one UI fixture end-to-end (compileDocument -> Context -> update(time) -> render ->

@@ -5,6 +5,7 @@
 #include <string_view>
 #include <vector>
 
+#include "../anchor_expand.h"  // T-588.
 #include "xt/compile/aliases.h"
 #include "xt/compile/diagnostics.h"
 #include "xt/compile/parse_xts.h"
@@ -439,6 +440,8 @@ private:
         bool important = false;
     };
     std::vector<TransformPart>* m_transformParts = nullptr;
+    // T-588 (54 §54.5.1): the anchor shorthands of the block being read (expandAnchorBlock()).
+    std::vector<AnchorShorthandDecl>* m_anchorParts = nullptr;
     // T-218: some selector of the current rule may address inline `<svg>` content (`#Icon/*`, or a
     // path id `#Icon/Blade` that resolveSceneTargets() may turn into a scene target once the DOM
     // is known), so vector properties are kept for that pass to sort out.
@@ -509,11 +512,70 @@ private:
         std::vector<TransformPart> xforms;
         std::vector<TransformPart>* savedXforms = m_transformParts;
         m_transformParts = &xforms;
+        std::vector<AnchorShorthandDecl> anchors;
+        std::vector<AnchorShorthandDecl>* savedAnchors = m_anchorParts;
+        m_anchorParts = &anchors;
         parseDeclsBody(decls, insideBraces, sawEnd);
         m_transitionParts = saved;
         m_transformParts = savedXforms;
+        m_anchorParts = savedAnchors;
+        if (!anchors.empty()) {
+            expandAnchorBlock(anchors, decls);  // Before the merges: only <layout> has shorthands.
+        }
         mergeTransitionLonghands(parts, decls);
         mergeIndependentTransforms(xforms, decls);
+    }
+
+    // T-588 (54 §54.5.1): the block's anchor shorthands -> longhands, in place of the first one.
+    void expandAnchorBlock(const std::vector<AnchorShorthandDecl>& anchors, std::vector<StyleDecl>& decls) {
+        std::string_view conflict;
+        for (const StyleDecl& d : decls) {
+            const uint16_t p = d.prop;
+            conflict = !conflict.empty()          ? conflict
+                       : p == styleprop::Position ? "position"
+                       : p == xt::prop::Left      ? "left"
+                       : p == xt::prop::Right     ? "right"
+                       : p == xt::prop::Top       ? "top"
+                       : p == xt::prop::Bottom    ? "bottom"
+                                                  : std::string_view();
+        }
+        std::vector<AnchorLonghand> longhands;
+        const size_t sinkSizeBefore = m_sink.all().size();
+        if (expandAnchorShorthands(anchors, conflict, m_fileName, m_sink, longhands)) {
+            std::vector<StyleDecl> generated;
+            for (const AnchorLonghand& l : longhands) {
+                const PropInfo* info = findProp(l.name);
+                std::vector<StyleDecl> one;
+                const bool ok =
+                    containsVarFunction(l.value) && !isCalcFunctionValue(l.value)
+                        ? parseVarDecl(info, l.value, m_fileName, l.line, m_sink, one)
+                        : parseAndExpandDecl(info, l.value, m_fileName, l.line, m_sink, one, m_easingPoints);
+                for (StyleDecl& d : one) {
+                    d.important = l.important;
+                    d.anchorFill = ok ? l.fill : 0;
+                    generated.push_back(std::move(d));
+                }
+            }
+            const size_t at = std::min(anchors.front().declIndex, decls.size());
+            decls.insert(decls.begin() + static_cast<std::ptrdiff_t>(at), generated.begin(), generated.end());
+        }
+        syncErrorFlag(sinkSizeBefore);
+    }
+
+    // T-588: an anchor shorthand of a `<layout>` rule is kept for expandAnchorBlock(); anywhere else
+    // (`<style>`, a v1 stylesheet, a `style` attribute) it is `layout.notGeometry`.
+    void takeAnchorShorthand(const Token& nameTok, const std::vector<Token>& valueToks, bool important,
+                             size_t declIndex) {
+        if (m_mode != XtsSectionMode::LayoutOnly || !m_inRule || m_anchorParts == nullptr) {
+            sectionError(nameTok, "\"" + nameTok.text + "\" is a <layout> shorthand", "layout.notGeometry",
+                         "write \"" + nameTok.text +
+                             "\" in a <layout> section of a version 2 document, or write its longhands "
+                             "(left/top/width/height)");
+            return;
+        }
+        m_anchorParts->push_back(AnchorShorthandDecl{nameTok.text, splitAnchorComponents(valueToks),
+                                                     important, reportLine(nameTok.line), nameTok.col,
+                                                     declIndex});
     }
 
     // T-329: remembers a parsed transform-family declaration for mergeIndependentTransforms().
@@ -777,6 +839,10 @@ private:
                 return;
             }
 
+            if (!m_sceneRule && !isTrigger && isLayoutShorthandProperty(nameTok.text)) {
+                takeAnchorShorthand(nameTok, valueToks, important, decls.size());  // T-588.
+                continue;
+            }
             if (m_mode != XtsSectionMode::Full && m_inRule && !sectionAdmits(nameTok, valueToks, isTrigger)) {
                 continue;  // T-587: reported by sectionAdmits(), dropped.
             }

@@ -10,10 +10,12 @@
 #include "../Common/console_utf8.h"
 #include "../Common/print_version.h"
 #include "../Common/standard_symbols_note.h"
+#include "xt/bundle/symbol_library.h"
 #include "xt/bundle/ui_project.h"
 #include "xt/compile/compile.h"
 #include "xt/compile/diagnostic_report.h"
 #include "xt/compile/diagnostics.h"
+#include "xt/compile/migrate.h"
 #include "xt/compile/utf8_path.h"
 #include "xt/flow/flow_graph.h"
 #include "xt/ir.h"
@@ -24,7 +26,22 @@
 /// Usage: xtframe-compile <input.json | input.xt> -o <out.xtir> [--root DIR] [--embed-images]
 ///                       [--embed-fonts] [--strict] [--no-meta] [--standard-symbols DIR]
 ///                       [--diagnostics FILE]
+///        xtframe-compile --migrate <project-dir | file.xt> [-o DIR] [--anchors] [--report FILE]
+///                       [--standard-symbols DIR]
+///        xtframe-compile <input.xt | input.xtir> --dump-computed [-o FILE] [--standard-symbols DIR]
 ///        xtframe-compile --version
+///
+/// T-589 (Docs/design/54-source-format-v2.md §54.10-§54.11): `--migrate` rewrites a UI Project (every
+/// `.xt` under the directory) or one `.xt`, with the `.xts` and symbol libraries they link, from source
+/// format 1 to 2 (xt::compile::migrateToV2()): in place, or with `-o DIR` under DIR at the files' paths
+/// relative to their common root; no backup files. `--anchors` also rewrites the anchor formulas into
+/// `anchor` / `offset` / `size` (step 7). Every migrated UI document is compiled before and after and
+/// compared (the self-check: layer one = IR bytes, reported only; layer two = the computed-style
+/// dump, must be equal), with its UI Project's root and `shared.styles` when it is in one. The summary
+/// goes to stdout, `--report FILE` writes the full report as JSON. Exit 0 when every file migrated and
+/// no document differs in layer two, else 1; in place, nothing is written then.
+/// `--dump-computed` prints the computed-style dump of a `.xt` (compiled) or `.xtir` (read) as JSON
+/// (xt::compile::dumpComputedStyle()) to stdout, or to `-o FILE`.
 ///
 /// --version (T-420) prints the version lines (Code/Tools/Common/print_version.h) to stdout and exits 0,
 /// whatever else is on the command line.
@@ -101,11 +118,14 @@ std::vector<xt::compile::ReportDiagnostic> siblingFlowLint(const fs::path& xtPat
 }
 
 void printUsage() {
-    std::fprintf(stderr,
-                 "usage: xtframe-compile <input.json | input.xt> -o <out.xtir> [--root DIR] "
-                 "[--embed-images] [--embed-fonts] [--strict] [--no-meta] [--standard-symbols DIR]\n"
-                 "                       [--diagnostics FILE] [--lint --layout-subject-id]\n"
-                 "       xtframe-compile --version\n");
+    std::fprintf(
+        stderr,
+        "usage: xtframe-compile <input.json | input.xt> -o <out.xtir> [--root DIR] "
+        "[--embed-images] [--embed-fonts] [--strict] [--no-meta] [--standard-symbols DIR]\n"
+        "                       [--diagnostics FILE] [--lint --layout-subject-id]\n"
+        "       xtframe-compile --migrate <project-dir | file.xt> [-o DIR] [--anchors] [--report FILE]\n"
+        "       xtframe-compile <input.xt | input.xtir> --dump-computed [-o FILE]\n"
+        "       xtframe-compile --version\n");
 }
 
 /// Reads the `.xtir` header's major/minor version directly from the serialized bytes (no IrView
@@ -130,6 +150,91 @@ void printDiagnostic(const xt::compile::Diagnostic& d) {
     }
 }
 
+/// T-589: the self-check compile options of a document: its UI Project's root and `shared.styles`.
+xt::compile::CompileOptions migrateCompileOptions(const std::string& xtPath,
+                                                  const std::string& standardSymbols) {
+    xt::compile::CompileOptions options;
+    options.standardSymbolDir = standardSymbols;
+    xt::bundle::UiProject project;
+    if (!xt::tools::enclosingUiProject(xt::compile::pathFromUtf8(xtPath), project)) {
+        return options;
+    }
+    options.rootDir = project.rootDir;
+    for (const std::string& style : project.shared.styles) {
+        std::error_code ec;
+        const fs::path absolute =
+            fs::absolute(xt::compile::pathFromUtf8(project.rootDir) / xt::compile::pathFromUtf8(style), ec);
+        options.impliedStylesheets.push_back(xt::compile::pathToUtf8(absolute.lexically_normal()));
+    }
+    return options;
+}
+
+/// T-589: `--migrate`.
+int runMigrate(const std::string& input, const std::string& outDir, bool anchors,
+               const std::string& reportOut, const std::string& standardSymbols) {
+    xt::compile::MigrateOptions options;
+    options.anchors = anchors;
+    options.standardSymbolDir = standardSymbols;
+    options.compileOptions = [&](const std::string& xtPath) {
+        return migrateCompileOptions(xtPath, standardSymbols);
+    };
+    std::vector<xt::compile::MigratedFile> files;
+    xt::compile::MigrateReport report;
+    const bool ok = xt::compile::migrateToV2(input, options, files, report);
+    std::fputs(report.summary().c_str(), stdout);
+    if (!reportOut.empty() && !xt::compile::writeDiagnosticsFile(reportOut, report.json())) {
+        std::fprintf(stderr, "error: could not write '%s'\n", reportOut.c_str());
+    }
+    if (!ok && outDir.empty()) {
+        std::fprintf(stderr, "xtframe-compile: --migrate: nothing written (see the errors above)\n");
+        return 1;
+    }
+    std::string error;
+    if (!xt::compile::writeMigratedFiles(files, report, outDir, error)) {
+        std::fprintf(stderr, "error: %s\n", error.c_str());
+        return 1;
+    }
+    std::printf("migrate: wrote %zu files%s%s\n", files.size(), outDir.empty() ? " in place" : " under ",
+                outDir.c_str());
+    return ok ? 0 : 1;
+}
+
+/// T-589: `--dump-computed`.
+int runDumpComputed(const std::string& input, const std::string& output, const std::string& standardSymbols) {
+    const fs::path inputPath = xt::compile::pathFromUtf8(input);
+    std::vector<uint8_t> ir;
+    if (inputPath.extension() == ".xtir") {
+        std::ifstream in(inputPath, std::ios::binary);
+        ir.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    } else {
+        xt::compile::CompileOptions options = migrateCompileOptions(input, standardSymbols);
+        options.emitMeta = false;
+        xt::compile::CompileResult result = xt::compile::compileDocument(input, options);
+        for (const xt::compile::Diagnostic& d : result.diagnostics) {
+            printDiagnostic(d);
+        }
+        if (!result.ok()) {
+            return 1;
+        }
+        ir = std::move(result.ir);
+    }
+    std::string json;
+    std::string error;
+    if (!xt::compile::dumpComputedStyle(ir, json, error)) {
+        std::fprintf(stderr, "error: %s: %s\n", input.c_str(), error.c_str());
+        return 1;
+    }
+    if (output.empty()) {
+        std::fputs(json.c_str(), stdout);
+        return 0;
+    }
+    if (!xt::compile::writeDiagnosticsFile(output, json)) {
+        std::fprintf(stderr, "error: could not write '%s'\n", output.c_str());
+        return 1;
+    }
+    return 0;
+}
+
 }  // namespace
 
 static int run(int argc, char** argv) {
@@ -145,6 +250,10 @@ static int run(int argc, char** argv) {
     bool emitMeta = true;
     bool lint = false;             // T-587
     bool layoutSubjectId = false;  // T-587: with --lint, the lint layout.subjectNotId.
+    std::string migrateInput;      // T-589
+    std::string reportOut;         // T-589: --report FILE (with --migrate).
+    bool anchors = false;          // T-589: --anchors (with --migrate).
+    bool dumpComputed = false;     // T-589
 
     // T-420: --version wins over every other argument.
     for (int i = 1; i < argc; ++i) {
@@ -185,6 +294,17 @@ static int run(int argc, char** argv) {
                 return 2;
             }
             diagnosticsOut = argv[++i];
+        } else if (arg == "--migrate" || arg == "--report") {
+            if (i + 1 >= argc) {
+                std::fprintf(stderr, "xtframe-compile: %s requires an argument\n", arg.c_str());
+                printUsage();
+                return 2;
+            }
+            (arg == "--migrate" ? migrateInput : reportOut) = argv[++i];
+        } else if (arg == "--anchors") {
+            anchors = true;
+        } else if (arg == "--dump-computed") {
+            dumpComputed = true;
         } else if (arg == "--embed-images") {
             embedImages = true;
         } else if (arg == "--embed-fonts") {
@@ -204,6 +324,32 @@ static int run(int argc, char** argv) {
         } else {
             positional.push_back(arg);
         }
+    }
+
+    std::string symbolsDir = standardSymbols;
+    if (symbolsDir.empty()) {
+        std::error_code ec;
+        const fs::path symbols =
+            fs::absolute(xt::compile::pathFromUtf8(argv[0]), ec).parent_path() / "symbols";
+        if (fs::is_directory(symbols, ec)) {
+            // The standard symbols are the default group of the library (xtframe-pack's rule).
+            const std::string group = xt::bundle::defaultGroupDir(xt::compile::pathToUtf8(symbols));
+            symbolsDir = group.empty() ? xt::compile::pathToUtf8(symbols) : group;
+        }
+    }
+    if (!migrateInput.empty()) {  // T-589
+        if (!positional.empty() || dumpComputed) {
+            printUsage();
+            return 2;
+        }
+        return runMigrate(migrateInput, output, anchors, reportOut, symbolsDir);
+    }
+    if (dumpComputed) {  // T-589
+        if (positional.size() != 1) {
+            printUsage();
+            return 2;
+        }
+        return runDumpComputed(positional[0], output, symbolsDir);
     }
 
     if (positional.size() != 1 || output.empty()) {

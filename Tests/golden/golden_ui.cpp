@@ -814,6 +814,8 @@ std::vector<UiFixture> loadUiManifest(const std::string& manifestPath) {
         while (iss >> token) {
             if (token == "gl-only") {
                 fx.glOnly = true;  // T-203
+            } else if (token.rfind("same-as=", 0) == 0) {
+                fx.sameAs = token.substr(8);  // T-588
             } else if (token.size() > 7 && token.compare(token.size() - 7, 7, ".events") == 0) {
                 fx.eventsPath = token;
             } else {

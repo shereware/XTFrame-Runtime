@@ -209,3 +209,7 @@ layoutFlex(container, availW, availH):
 ## 6.16 `aspect-ratio`（2026-10-14；M32 T-328）
 
 `aspect-ratio: auto | <w> / <h> | <number>`（Float = w/h，0 = auto，可動畫，不繼承）。規則：只有一軸為確定值（px／可解析 %／flex 主軸算出的尺寸／absolute 由兩邊決定）而另一軸 `auto` 時，另一軸依比例推導；兩軸都確定時忽略；兩軸都 auto 時 block 以寬為確定軸、flex 項目以主軸為確定軸。推導值再經 min/max 夾限，被夾時以該軸重算另一軸**一次**（CSS Sizing 4 §5.1 的單次版本，不迭代）。flex 項目交叉軸為 auto 且 `align-self` 為 `stretch`（預設）時，**stretch 優先、比例被忽略**（CSS Sizing 4 §5.1 與 Flexbox §9.4，Chrome 行為；2026-10-14 修正，原稿寫反）；`align-self` 非 stretch 或交叉軸確定時才依比例。被夾限時只有「確定軸本身是自動尺寸（填滿、固有、shrink-to-fit）」才回推另一軸；作者明寫的 px 不改（CSS 2.1 §10.4）。替換元素（§6.10 `img`／`anim`／`video`／`sequence`）`auto` = 固有比例，明確值覆蓋固有比例。成本：一次乘除，無新迴圈。測試：`Tests/layout` 快照對照 Chrome。
+
+## 6.x 版面簡寫 `anchor` / `offset` / `offset-end` / `size`（2026-11-05；54 §54.5.1；T-588 #565）
+
+純編譯期糖，只准在 v2 `<layout>` 區段：展開對照表與 `size: fill` 三種情境（UI 根 `100vw`／`100vh`、自由子項 `100%`、堆疊子項 `flex-grow: 1; flex-basis: 0`／`align-self: stretch`）見 54 §54.5.1；實作與細則見 54 章 T-588 實作記錄。佈局引擎不認識這四個名字——它們到不了 IR。

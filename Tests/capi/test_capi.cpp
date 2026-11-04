@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <initializer_list>
 #include <json.hpp>
 #include <sstream>
 #include <string>
@@ -670,6 +671,59 @@ TEST_CASE("capi 14 (T-603): the initial show reaches the visibility listener bef
     CHECK(host.log == std::vector<std::string>{"shown", "hook", "hook"});  // Once.
     CHECK(flowPixels.rgba == hostPixels.rgba);
     xt_surface_destroy(hosted);
+    xt_surface_destroy(flow);
+    CHECK(xt_bundle_close(b) == XT_STATUS_OK);
+}
+
+TEST_CASE("capi 15 (T-605): a parked surface's request_show notifies in the first update, before the hook") {
+    // 53 §53.102 item 10: xt_surface_set_visible(0) parks it silently; xt_surface_request_show
+    // between frames shows it at once and its notification waits for the next xt_surface_update,
+    // after the input and before the update hook, at that frame's clock.
+    xt_bundle* b = xt_bundle_open(XT_CAPI_TEST_FLIP_BUNDLE);
+    REQUIRE_MESSAGE(b != nullptr, xt_capi_last_error());
+    xt_surface_desc desc = makeDesc(64, 64);
+    xt_surface* flow = xt_surface_create(b, "intro", &desc);  // run_flow = 1: lifecycle.shown -> intro.
+    REQUIRE_MESSAGE(flow != nullptr, xt_capi_last_error());
+    desc.run_flow = 0;
+    xt_surface* parked = xt_surface_create(b, "intro", &desc);  // run_flow = 0: the host plays it.
+    REQUIRE_MESSAGE(parked != nullptr, xt_capi_last_error());
+    IntroHost host;
+    REQUIRE(xt_surface_set_visibility_listener(parked, &IntroHost::onVisibility, &host) == XT_STATUS_OK);
+    REQUIRE(xt_surface_set_update_hook(parked, &IntroHost::onUpdate, &host) == XT_STATUS_OK);
+    for (xt_surface* s : {flow, parked}) {
+        REQUIRE(xt_surface_set_visible(s, 0) == XT_STATUS_OK);  // Parked: silent.
+    }
+    CHECK(host.log.empty());
+    for (xt_surface* s : {flow, parked}) {
+        REQUIRE(xt_surface_request_show(s) == XT_STATUS_OK);  // Unparked before the first update.
+    }
+    CHECK(host.log.empty());  // Not yet: with the next update.
+    CHECK(xt_surface_is_timeline_playing(flow, "", "intro") == 0);
+
+    Pixels flowPixels(64, 64);
+    Pixels hostPixels(64, 64);
+    xt_damage damage{};
+    auto frame = [&](float dt) {
+        REQUIRE(xt_surface_update(flow, dt) == XT_STATUS_OK);
+        REQUIRE(xt_surface_update(parked, dt) == XT_STATUS_OK);
+        REQUIRE(flowPixels.render(flow, damage) == XT_STATUS_OK);
+        REQUIRE(hostPixels.render(parked, damage) == XT_STATUS_OK);
+    };
+    frame(0.25f);  // Frame 0, a non-zero dt: a play at the previous clock would paint opacity 0.625.
+    CHECK(host.log == std::vector<std::string>{"shown", "hook"});
+    CHECK(host.play == XT_STATUS_OK);
+    CHECK(xt_surface_is_timeline_playing(parked, "", "intro") == 1);
+    CHECK(xt_surface_is_timeline_playing(flow, "", "intro") == 1);
+    const Rgba first = center(hostPixels);
+    INFO("rgba " << first.r << " " << first.g << " " << first.b << " " << first.a);
+    CHECK(first.a > 40);  // The intro's time 0 (opacity 0.25).
+    CHECK(first.a < 90);
+    CHECK(flowPixels.rgba == hostPixels.rgba);  // The same frame as the lifecycle.shown edge.
+
+    frame(0.25f);
+    CHECK(host.log == std::vector<std::string>{"shown", "hook", "hook"});  // Once.
+    CHECK(flowPixels.rgba == hostPixels.rgba);
+    xt_surface_destroy(parked);
     xt_surface_destroy(flow);
     CHECK(xt_bundle_close(b) == XT_STATUS_OK);
 }

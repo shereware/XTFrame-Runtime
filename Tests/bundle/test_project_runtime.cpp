@@ -98,7 +98,12 @@ TEST_CASE("T-373 loadProjectRuntime: other UIs load hidden; their on:show waits 
 
     REQUIRE(loaded.ctx.requestShow(b) == Status::kOk);
     CHECK(loaded.ctx.isVisible(b));
+    // T-605 (53 §53.102 item 10): between frames, the `show` triggers run in the next update, at its
+    // clock, so that frame is the intro's time 0.
+    CHECK_FALSE(docB->isTimelinePlaying("", "intro"));
+    loaded.ctx.update(0.1f);
     CHECK(docB->isTimelinePlaying("", "intro"));
+    CHECK(docB->timelineTime("", "intro") == doctest::Approx(0.0f));
     loaded.ctx.update(0.1f);
     const float t = docB->timelineTime("", "intro");
     CHECK(t > 0.0f);
@@ -137,6 +142,7 @@ TEST_CASE("T-373 Context::setVisible: no hide / show triggers; unknown handle re
     CHECK_FALSE(doc->byId("Root").hasClass("hid"));
     CHECK_FALSE(doc->byId("Root").hasClass("shown"));
     REQUIRE(ctx.requestShow(h.value()) == Status::kOk);
+    ctx.update(0.0f);  // T-605: between frames, the `show` triggers run in the next update.
     CHECK(doc->byId("Root").hasClass("shown"));
     CHECK(ctx.setVisible(0, false) == Status::kInvalidArgument);
     CHECK(ctx.setVisible(99, true) == Status::kInvalidArgument);
