@@ -110,6 +110,7 @@ add_executable(xt_tests
     unit/test_svg_style_rules.cpp
     unit/test_triggers.cpp
     unit/test_bindings.cpp
+    unit/test_bind_diagnostics.cpp
     unit/test_repeat.cpp
     unit/test_interaction.cpp
     unit/test_core_t200.cpp
@@ -154,8 +155,9 @@ target_link_libraries(xt_tests PRIVATE xt_core xt_compile xt_sw)
 # T-240: SdlRwAssetResolver lives in xt_shell (SDL2).
 if(XT_BUILD_SHELL)
     target_sources(xt_tests PRIVATE unit/test_sdl_rw_asset_resolver.cpp unit/test_hit_region.cpp
-        unit/test_live_resize.cpp unit/test_multi_window.cpp)  # T-376, T-377, T-384b
-    target_link_libraries(xt_tests PRIVATE xt_shell)
+        unit/test_live_resize.cpp unit/test_multi_window.cpp  # T-376, T-377, T-384b
+        shell/test_source_watcher.cpp)  # T-595
+    target_link_libraries(xt_tests PRIVATE xt_shell xt_shell_watch)  # T-598: SourceWatcher
 endif()
 xt_enable_exceptions(xt_tests)
 xt_no_rtti(xt_tests)
@@ -280,6 +282,8 @@ add_subdirectory(bundle)
 if(XT_BUILD_CAPI)
     add_subdirectory(capi)
 endif()
+# T-596: the compiled examples of Docs/intro/for-programmers.md (suite `intro`).
+add_subdirectory(intro)
 add_subdirectory(symbols)
 # T-424: the template UI Projects (Assets/Templates/projects, editor layer; not in the runtime export).
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/templates/CMakeLists.txt")
@@ -445,9 +449,11 @@ if(XT_BUILD_EDITOR AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/editor/CMakeLists.txt
                  COMMAND ${CMAKE_COMMAND} -DCASE=${t261f_case} "-DTOOL=$<TARGET_FILE:xtframe-editor>"
                          "-DWORK=${T261F_WORK}" "-DSOURCE=${PROJECT_SOURCE_DIR}" -P "${T261F_SCRIPT}")
     endforeach()
-    add_test(NAME t261f_editor_mcp
-             COMMAND ${CMAKE_COMMAND} -DCASE=mcp "-DTOOL=$<TARGET_FILE:xtframe-mcp>" "-DWORK=${T261F_WORK}"
-                     "-DSOURCE=${PROJECT_SOURCE_DIR}" -P "${T261F_SCRIPT}")
+    if(TARGET xtframe-mcp)  # T-520: not built without the service's HTTP part (XT_SERVICE_HTTP=OFF)
+        add_test(NAME t261f_editor_mcp
+                 COMMAND ${CMAKE_COMMAND} -DCASE=mcp "-DTOOL=$<TARGET_FILE:xtframe-mcp>" "-DWORK=${T261F_WORK}"
+                         "-DSOURCE=${PROJECT_SOURCE_DIR}" -P "${T261F_SCRIPT}")
+    endif()
 endif()
 # T-518: the same for the Qt-free xtframe-service (`--schemas` without a leading `--service`).
 if(TARGET xtframe-service)

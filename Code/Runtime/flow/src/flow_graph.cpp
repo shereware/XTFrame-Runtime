@@ -282,7 +282,8 @@ Status FlowGraph::parse(std::string_view jsonText, FlowGraph& out, std::vector<s
                 requireParam(node, "interval", errors);
                 break;
             case NodeType::Math:
-                checkOp(node, {"add", "sub", "mul", "div", "min", "max", "clamp", "map", "abs", "round"},
+                checkOp(node,
+                        {"add", "sub", "mul", "div", "min", "max", "clamp", "map", "abs", "round", "mod"},
                         errors);
                 break;
             case NodeType::Compare:
@@ -524,7 +525,7 @@ std::span<const NodeTypeDesc> nodeTypeTable() {
     // clang-format off
     static const std::vector<Entry> kEntries = {
         {NodeType::Constant, "constant", {"value"}, {}},
-        {NodeType::Counter,  "counter",  {"step", "initial", "min", "max"}, {"increment", "decrement", "reset", "set"}},
+        {NodeType::Counter,  "counter",  {"step", "initial", "min", "max", "wrap"}, {"increment", "decrement", "reset", "set"}},
         {NodeType::Toggle,   "toggle",   {"initial"}, {"toggle", "setTrue", "setFalse"}},
         {NodeType::Timer,    "timer",    {"interval", "autostart", "repeat"}, {"start", "stop"}},
         {NodeType::Clock,    "clock",    {}, {}},
@@ -543,7 +544,7 @@ std::span<const NodeTypeDesc> nodeTypeTable() {
         {NodeType::Haptic,   "haptic",   {"cue"}, {"trigger"}},
         {NodeType::Spawn,    "spawn",    {"symbol"}, {"trigger"}},
         {NodeType::Emit,     "emit",     {"port"}, {"trigger", "value"}},
-        {NodeType::Timeline, "timeline", {"name", "scope", "ui", "loop", "rate"}, {"play", "stop", "seek"}},
+        {NodeType::Timeline, "timeline", {"name", "scope", "ui", "loop", "rate", "hold"}, {"play", "stop", "seek"}},
         // T-541 (27 §27.4.4): only the fixed ports; the event / enter / exit ones depend on the params.
         // (nodeTypeTable() lists the scalar params, as with `lookup`.)
         // Its `states` / `events` / `transitions` are arrays (like `lookup`'s `values`): not listed.

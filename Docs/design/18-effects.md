@@ -281,3 +281,11 @@ float  xtTime;                         // Context 時鐘（秒）
 
 T-544 把 `bind:effect.<效果>.<參數>` 做在第 0 層（`setProperty` 直寫 + `effectPending` 補套一次），結果 restyle 重建效果堆疊時綁定值遺失。使用者裁決只走正解：**綁定與 flow 對效果參數的寫入一律走 04 §4.7 的第 4 層 Override**（`sticky = true`），`| tween(d)` 以「Override 帶補間」實作（04 §4.7 補充），`effectPending` 機制移除（Animator 每幀重套本來就涵蓋「載入時效果尚未建立」的情況）。`@timeline`／`animation` 對效果參數仍是第 2／3 層，被綁定的 Override 蓋掉——與一般屬性相同的規則，不另例外。宿主 `Document::setEffectParam()` 維持第 0 層（文件註解已說明等價於 `sticky = false`）；要持久的宿主寫入自己用 `setProperty(effectParam(...), v, true)`。
 
+## 18.13 渲染一致性修正（2026-11-01 定案；改進報告 R11、F32；T-572）
+
+- SW 的 `box-shadow: inset` 必須與 GL 相同：畫環，不塗滿盒子；加 SW／GL 共用黃金圖。
+- 父層 `border-radius` 加 `overflow: hidden` 時，圓角裁切套用到子元素（SW 與 GL）；dialect.md 的承諾維持。
+- 3D 翻轉：`backface-visibility: hidden` 以**合成後**的變換判定背面（父層 `rotateY(180deg)` 時正面剔除、背面顯示）。
+- `brightness()`／`hue-rotate()` 維持 §18.3 的定義（不改成 CSS 矩陣）；匯入器對 CSS 寫法發 `degraded: brightness is additive in XTFrame (18 §18.3)`。
+
+**T-572 實作記錄（#544，2026-11-04；偏差主模型核准）**：F24 根因＝SW inset 陰影寫非預乘像素到預乘 src-over（既有黃金圖全黑看不出），改走 `writeTinted()`；F25 圓角 overflow 用既有 `PushClipPath`（09 章 `ClipRectCmd` 無半徑欄位，命令格式不動），方角仍 `PushClipRect`；F32 根因＝`rotateY(0deg)` 的正面不是 3D 圖層、2D 節點從不做背面判定，修法在 `Painter::enterNode` 對空間根子樹內 `backfaceHidden` 的 2D 節點以合成矩陣判定。新黃金圖 5 張（`ui_3d_flip_90` 取 0.48 s 因恰好 90° 全黑），既有零張改變；SW／GL 對照全過。未做（候選）：命中測試仍用方形 padding box、翻到背面的 2D 正面仍可點、無空間根的 flattened 3D 不判背面。

@@ -126,6 +126,9 @@ public:
     virtual void onCheckedChanged(NodeId node, bool checked) = 0;
     /// T-194: `player`'s focus moved to `node` (kInvalidNode = cleared); aria-label announce.
     virtual void onFocusMoved(NodeId /*node*/, uint8_t /*player*/) {}
+    /// T-573 (27.8): `player` pressed a gamepad button; `target` is that player's focus, else the
+    /// root (where a KeyDown would go). Fires the `key(any)` triggers there.
+    virtual void onGamepadKey(NodeId /*target*/, uint8_t /*player*/) {}
     /// T-194: a drag turned `kind` on or off at `node` (the `Dragging` / `DropHover` states).
     virtual void onDragState(NodeId /*node*/, DragStateKind /*kind*/, bool /*on*/) {}
     /// T-194: a drop was delivered (`event` as dispatched; the host's HostEvent::Drop).

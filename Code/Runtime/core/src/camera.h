@@ -68,4 +68,20 @@ NodeId findCameraChild(const NodeArena& arena, NodeId root);
 /// 修正" 2.
 NodeId nearestSpaceRootOrDocRoot(const NodeArena& arena, NodeId n);
 
+/// T-570: 19.9's pick ray for `root` through `s`, the root's own box/plane coordinate. `setup` is
+/// rootCameraSetup()'s three-way result for the root (reused by the caller for layer sorting and
+/// backface tests); `p0`/`p1` are two points of the ray in the root's 3D space, built by 19.9's
+/// three formulas: an explicit perspective camera or a scene root's default camera unprojects
+/// (s, +-1) through the inverse viewProj; the CSS default camera shoots from the eye
+/// (perspective-origin, perspective) to (s, 0); an orthographic / identity camera shoots straight
+/// down -z. Returns false when the ray cannot be built (singular viewProj, w <= 0). Shared by
+/// hit_test.cpp's hit3DRoot() and Document::localPosIn() so a pointer-driven local position
+/// lands on the same plane point the hit test reported (27 §27.8, improvement report F56).
+bool rootPickRay(const NodeArena& arena, NodeId root, Vec2 s, CameraSetup& setup, Vec3& p0, Vec3& p1);
+
+/// T-570: intersects the ray p0 -> p1 (root space, from rootPickRay()) with the z = 0 plane of the
+/// layer whose world3 is `world3` (identity for the root's own plane) and writes the plane-local
+/// point into `q`. Returns false when world3 is singular or the ray is parallel to the plane.
+bool rayPlanePoint(const Mat4& world3, Vec3 p0, Vec3 p1, Vec2& q);
+
 }  // namespace xt

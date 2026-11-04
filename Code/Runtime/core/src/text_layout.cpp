@@ -104,9 +104,26 @@ void breakLines(const std::vector<FlatGlyph>& flat, const std::vector<uint8_t>& 
             uint32_t cutEnd = (lastBreak >= static_cast<int64_t>(lineStart))
                                   ? static_cast<uint32_t>(lastBreak) + 1
                                   : i;  // no candidate: force break before this grapheme
+            if (lastBreak < static_cast<int64_t>(lineStart)) {
+                // T-569 (07 §7.20 kinsoku): an emergency break never lands where breakAfter is 3
+                // (a `。` would start the next line, a `「` end this one). Move it back while the
+                // line keeps a glyph; failing that, forward (the punctuation hangs past the edge).
+                auto kinsoku = [&](uint32_t end) {
+                    const uint32_t c = flat[end - 1].clusterByte;
+                    return c < breakAfter.size() && breakAfter[c] == 3;
+                };
+                uint32_t back = cutEnd;
+                while (back > lineStart + 1 && kinsoku(back)) --back;
+                if (!kinsoku(back)) {
+                    cutEnd = back;
+                } else {
+                    while (cutEnd < n && kinsoku(cutEnd)) ++cutEnd;
+                }
+            }
             outRanges.push_back({lineStart, cutEnd});
             lineStart = cutEnd;
             lastBreak = -1;
+            if (cutEnd > i) i = cutEnd;  // T-569: glyphs hung past the edge are done.
             continue;  // reprocess glyph i against the new line
         }
         uint32_t cluster = flat[i].clusterByte;

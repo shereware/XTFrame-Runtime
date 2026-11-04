@@ -53,6 +53,7 @@ bundle 與 `.xtir` 是**衍生物**：編輯器永遠能由來源重新編出。
 | `media-axis` | 媒體軸 | `<video>`／`<sequence>` 的屬性面板「Clip」群組 |
 | `window-snapshot` | 多視窗的 `snapshotState` JSON 內容（版本 1 可變） | 不標示（宿主 API，編輯器無此設定） |
 | `wgpu-preview` | 編輯器的 WebGPU 預覽 | 偏好設定的「預覽」頁 |
+| `wasm-tools` | wasm 跨平台工具鏈（`@xtframe/…` 的 Node 版 CLI、`xtframe-service --stdio`、`xtframe-mcp-stdio`；2026-11-02 使用者：併 main 但 Experimental，CI `wasm` 為非必要工作） | 不標示（編輯器外的命令列工具；`Code/Tools/wasm/README.md` 首段與各命令 `--help` 第一行標 `[experimental]`） |
 
 說明：執行期修改器指編輯時未烘焙的修改器（31 章）；媒體軸指影片與圖片序列片段及其與時間軸的同步；多視窗快照即 `Document::snapshotState()` 的 JSON。
 

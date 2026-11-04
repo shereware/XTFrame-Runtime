@@ -45,6 +45,10 @@ struct BuildOptions {
     /// project does not declare), and resolve an inherited variable in the contrast table and the
     /// lint; empty = no inherited variables.
     std::string standardSymbolDir;
+    /// T-574 (35 §35.11): the lint runs for a publish (`xtframe-pack`): design.draftShipped is a
+    /// warning per draft variable. Otherwise it is one info finding `<N> draft entry|entries`
+    /// (no entry), and nothing when there is no draft.
+    bool publish = false;
 };
 
 /// Generates the document of `ds` in `project` (`graph` = buildGraph() of the two). The variables
@@ -89,9 +93,12 @@ struct AuditReport {
 Status audit(const UiProject& project, const DesignSystem& ds, std::string_view scope, AuditReport& out);
 
 /// The §35.10 checks that need the project files: design.literalColorNotInPalette (info: a UI
-/// literal colour with ΔE2000 > 2 to every swatch; nothing when the palette has no colour),
+/// literal colour with ΔE2000 > 2 to every swatch of a matching alpha -- an opaque swatch matches
+/// any alpha, a translucent one only its own; a fully transparent literal is never reported, T-574;
+/// nothing when the palette has no colour),
 /// design.contrastLow (warning: a `palette.yaml:contrast` pair below its `min`, base and each
-/// theme), design.draftShipped (warning: a draft variable), asset.placeholderShipped (T-312a, error:
+/// theme), design.draftShipped (warning per draft variable with BuildOptions::publish, else one info
+/// line counting them), asset.placeholderShipped (T-312a, error:
 /// an asset with status `placeholder`, assets::assetHygiene(); `entry` is its project-relative path)
 /// design.docStale (info: `DESIGN.md` missing or different from buildDocument() with `options`,
 /// forAi and sections ignored) and token.sameAsDefault (T-498b, warning: a `shared.tokens`

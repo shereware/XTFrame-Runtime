@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(XTFrame VERSION 0.13.0 LANGUAGES CXX C)
+project(XTFrame VERSION 0.13.1 LANGUAGES CXX C)
 
 # MSBuild compiles one file at a time per project unless /MP is given; apply it globally so the
 # FetchContent dependencies (SDL2, FreeType, HarfBuzz) build in parallel too.
@@ -75,6 +75,14 @@ endif()
 # Docs/design/51-builtin-ai.md §51.2, Docs/tasks/T-516a.md: the built-in AI agent (Code/Editor/AI, xt_ai) and the
 # network layer (Code/Editor/Net, xt_net); needs XT_BUILD_EDITOR. On by default; the beta repository of 40 §40.10.1
 # turns it off. T-515: both directories must exist (with their CMakeLists.txt), else the layer is off.
+# Docs/design/52-web-wasm.md §52.2, Docs/tasks/T-579.md (T-520 on claude/web-wasm): the HTTP part of the Editor
+# Service (the MCP Streamable HTTP server, cpp-httplib). OFF builds a stub instead (`xtframe-service --http` exits 2,
+# `--stdio` unchanged) and no xtframe-mcp; Emscripten forces it OFF. ON (the default) builds exactly what was built
+# before the switch existed. (symbols.import {url} downloads through xt_net since T-552: XT_EDITOR_AI, not this.)
+option(XT_SERVICE_HTTP "Build the Editor Service's MCP HTTP server (cpp-httplib)" ON)
+if(EMSCRIPTEN)
+    set(XT_SERVICE_HTTP OFF CACHE BOOL "Build the Editor Service's MCP HTTP server (cpp-httplib)" FORCE)
+endif()
 option(XT_EDITOR_AI "Build the built-in AI agent and the network layer (Code/Editor/AI, Code/Editor/Net)" ON)
 if(XT_EDITOR_AI AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Code/Editor/Net/CMakeLists.txt")
     message(STATUS "XT_EDITOR_AI: OFF (the network layer directory Code/Editor/Net is absent)")
@@ -97,7 +105,27 @@ if(XT_BUILD_AGENT AND NOT XT_BUILD_EDITOR)
     message(FATAL_ERROR "XT_BUILD_AGENT requires XT_BUILD_EDITOR=ON (xt_agent binds xt_editor_core)")
 endif()
 
+# Docs/design/52-web-wasm.md §52.2 (T-578): the Emscripten build (emcmake, Tools/Scripts/build_wasm.sh,
+# the wasm-* presets) has no GL, no GPU device, no WebGPU, no SDL2 shell and no Qt editor; forced OFF so a
+# bare `emcmake cmake` configures the same tree as the script.
+if(EMSCRIPTEN)
+    foreach(xt_wasm_off XT_BUILD_GL XT_BUILD_GPU XT_BUILD_WGPU XT_BUILD_SHELL XT_SHELL_GL XT_BUILD_EDITOR XT_BUILD_AGENT)
+        set(${xt_wasm_off} OFF CACHE BOOL "Forced OFF under Emscripten (52 §52.2)" FORCE)
+    endforeach()
+endif()
+# 52 §52.11, T-531: wasm SIMD. -msimd128 defines __wasm_simd128__, so xt/simd.h's f32x4 uses its
+# native wasm_simd128.h backend (bit-identical to SSE2; no -msse2 compat layer, which is slower
+# than scalar) and the software renderer selects that kernel table (sw_simd_dispatch.cpp: no cpuid
+# on wasm, so never AVX2). Every engine XTFrame targets (Node 16+, Chrome 91+, Firefox 89+,
+# Safari 16.4+) has SIMD128. OFF: f32x4 falls back to scalar. No effect outside Emscripten.
+option(XT_WASM_SIMD "Build the wasm targets with SIMD128 (the f32x4 kernels on wasm_simd128.h)" ON)
+if(EMSCRIPTEN AND XT_WASM_SIMD)
+    add_compile_options(-msimd128)
+endif()
+
 include(Tools/CMake/xt_warnings.cmake)
+# T-520 (52 §52.2): xt_wasm_node_cli(), the Node.js link flags of the Emscripten build.
+include(Tools/CMake/xt_wasm.cmake)
 include(Tools/CMake/xt_build_speed.cmake)
 include(Tools/CMake/xt_nlohmann.cmake)
 # T-430 (45 §45.3): Code/SDKs/versions.cmake and the shared fetched sources

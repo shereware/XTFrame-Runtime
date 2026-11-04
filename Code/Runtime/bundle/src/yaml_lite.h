@@ -23,6 +23,9 @@ namespace xt::bundle::detail {
 /// Parses `text` into `out` (an object, an array, or null for an empty file). Returns false and
 /// sets `*error` (when non-null) to "line N: <reason>" on unsupported or malformed input.
 bool parseYamlLite(std::string_view text, nlohmann::json& out, std::string* error = nullptr);
+/// T-574: the same into an ordered json, so mappings keep their file order (35 §35.11: the type
+/// scale and the motion spec are listed in source order).
+bool parseYamlLite(std::string_view text, nlohmann::ordered_json& out, std::string* error = nullptr);
 
 /// `text` as a YAML scalar: plain when it reads back as the same string, double-quoted otherwise.
 std::string yamlScalar(std::string_view text);

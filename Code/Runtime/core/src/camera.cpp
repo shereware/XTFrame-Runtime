@@ -137,6 +137,71 @@ CameraSetup rootCameraSetup(const NodeArena& arena, NodeId root) {
     return defaultSceneViewProj(box.w, box.h);
 }
 
+bool rootPickRay(const NodeArena& arena, NodeId root, Vec2 s, CameraSetup& setup, Vec3& p0, Vec3& p1) {
+    // Same three-way camera setup as rootCameraSetup()/Painter::emitRoot(), but with the extra
+    // branch information (explicit camera kind / CSS perspective vs. none) T-48's ray
+    // construction needs (see 19.9's three ray formulas).
+    enum class RayKind { Perspective, CssDefault, OrthoOrIdentity };
+    NodeId camNode = findCameraChild(arena, root);
+    Rect box = spaceRootBoxOf(arena, root);
+    RayKind rayKind = RayKind::OrthoOrIdentity;
+    float cssD = 0.0f;
+    Vec2 cssOrigin{};
+    if (camNode != kInvalidNode) {
+        setup = computeCameraViewProj(arena, camNode, box);
+        rayKind = arena.camera(camNode).kind == 0 ? RayKind::Perspective : RayKind::OrthoOrIdentity;
+    } else if (arena.kind(root) == NodeKind::Element && arena.element(root).perspectivePx > 0.0f) {
+        const ElementData& data = arena.element(root);
+        setup = cssPerspectiveViewProj(data.perspectivePx, data.perspectiveOriginPx);
+        rayKind = RayKind::CssDefault;
+        cssD = data.perspectivePx;
+        cssOrigin = data.perspectiveOriginPx;
+    } else if (arena.kind(root) == NodeKind::Element) {
+        setup = cssPerspectiveViewProj(0.0f, Vec2{});  // perspective: none -> identity.
+        rayKind = RayKind::OrthoOrIdentity;
+    } else {
+        setup = defaultSceneViewProj(box.w, box.h);  // AE default camera is always Perspective.
+        rayKind = RayKind::Perspective;
+    }
+    switch (rayKind) {
+        case RayKind::Perspective: {
+            Mat4 inv{};
+            if (!mat4Invert(setup.viewProj, inv)) {
+                return false;
+            }
+            float w0 = 0;
+            float w1 = 0;
+            p0 = mat4Project(inv, Vec3{s.x, s.y, -1.0f}, &w0);
+            p1 = mat4Project(inv, Vec3{s.x, s.y, 1.0f}, &w1);
+            return w0 > 1e-6f && w1 > 1e-6f;
+        }
+        case RayKind::CssDefault:
+            p0 = Vec3{cssOrigin.x, cssOrigin.y, cssD};
+            p1 = Vec3{s.x, s.y, 0.0f};
+            return true;
+        case RayKind::OrthoOrIdentity:
+            p0 = Vec3{s.x, s.y, 1e6f};
+            p1 = Vec3{s.x, s.y, 0.0f};
+            return true;
+    }
+    return false;
+}
+
+bool rayPlanePoint(const Mat4& world3, Vec3 p0, Vec3 p1, Vec2& q) {
+    Mat4 inv3{};
+    if (!mat4Invert(world3, inv3)) {
+        return false;
+    }
+    Vec3 q0 = mat4Transform(inv3, p0);
+    Vec3 q1 = mat4Transform(inv3, p1);
+    if (q0.z == q1.z) {
+        return false;  // Parallel to the layer's plane.
+    }
+    float t = q0.z / (q0.z - q1.z);
+    q = Vec2{q0.x + (q1.x - q0.x) * t, q0.y + (q1.y - q0.y) * t};
+    return true;
+}
+
 NodeId nearestSpaceRootOrDocRoot(const NodeArena& arena, NodeId n) {
     NodeId top = n;
     NodeId cur = arena.parent(n);

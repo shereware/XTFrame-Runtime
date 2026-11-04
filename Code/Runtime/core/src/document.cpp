@@ -1149,11 +1149,48 @@ Vec2 Document::localPosIn(NodeId element, Vec2 rootPos) const {
     if (!m_arena.alive(element) || m_arena.kind(element) != NodeKind::Element) {
         return Vec2{};
     }
+    // T-570 (27 §27.8, improvement report F56): inside a 3D space root's subtree `world` is
+    // plane-relative (19 §19.5), so inverting it alone returned screen coordinates. Walk the roots
+    // outermost first, the way hit_test.cpp's hitNode()/hit3DRoot() descend: the point in a root's
+    // enclosing plane -> the root's own box coordinate `s` -> 19.9's pick ray -> its intersection
+    // with the plane the content sits on (a 3D layer's world3, or the root's own plane) -> the
+    // plane point `q` the hit test reports as the local position. Outside any root the 2D path is
+    // unchanged (and, as in nodeToScreen(), no vector is built).
+    Vec2 pos = rootPos;
+    bool anyRoot = false;
+    for (NodeId cur = m_arena.parent(element); cur != kInvalidNode && !anyRoot; cur = m_arena.parent(cur)) {
+        anyRoot = m_arena.common(cur).isSpaceRoot != 0;
+    }
+    if (anyRoot) {
+        std::vector<NodeId> innermostFirst;  // The roots containing `element` (itself excluded).
+        for (NodeId cur = m_arena.parent(element); cur != kInvalidNode; cur = m_arena.parent(cur)) {
+            if (m_arena.common(cur).isSpaceRoot != 0) {
+                innermostFirst.push_back(cur);
+            }
+        }
+        for (size_t i = innermostFirst.size(); i-- > 0;) {
+            const NodeId root = innermostFirst[i];
+            // The content whose plane is wanted inside `root`: the next inner root, or `element`.
+            const NodeId content = i > 0 ? innermostFirst[i - 1] : element;
+            Mat2x3 rootInv{};
+            if (!invert(m_arena.common(root).world, rootInv)) {
+                return Vec2{};
+            }
+            const Vec2 s = apply(rootInv, pos);
+            CameraSetup setup{};
+            Vec3 p0{};
+            Vec3 p1{};
+            if (!rootPickRay(m_arena, root, s, setup, p0, p1) ||
+                !rayPlanePoint(planeWorld3For(m_arena, content), p0, p1, pos)) {
+                return Vec2{};  // No ray, or a plane parallel to it: the hit test cannot reach it either.
+            }
+        }
+    }
     Mat2x3 inv{};
     if (!invert(m_arena.common(element).world, inv)) {
         return Vec2{};  // Singular transform (hit_test.cpp's tryEnter skips such a node too).
     }
-    return apply(inv, rootPos);
+    return apply(inv, pos);
 }
 
 Vec2 Document::fractionIn(NodeId element, Vec2 rootPos) const {
@@ -1875,7 +1912,7 @@ void Document::update(float clock) {
     // Docs/design/18-effects.md §18.2: NodeArena keeps no warning list of its own; surface the
     // "pool grew" event here, once per growth (Docs/tasks/T-50.md).
     if (m_arena.effectPoolGrew()) {
-        m_warnings.push_back("effect pool grew");
+        m_warnings.emplace_back(NodeArena::kWarnEffectPoolGrew);
         m_arena.clearEffectPoolGrew();
     }
     // T-270a (B14): between frames, compact the node effect pool once more than half of a pool
@@ -1903,7 +1940,18 @@ void Document::update(float clock) {
         m_arena.clearEffectMissingWritten();
         if (!m_warnedEffectMissing) {
             m_warnedEffectMissing = true;
-            m_warnings.emplace_back(kWarnEffectMissing);
+            // T-568 (F110): which element and which track.
+            std::string text(kWarnEffectMissing);
+            const NodeId node = m_arena.effectMissingNode();
+            const StringId name =
+                node != kInvalidNode && m_arena.alive(node) && m_arena.kind(node) == NodeKind::Element
+                    ? m_arena.element(node).id
+                    : kInvalidString;
+            text += ": #";
+            text += name != kInvalidString ? std::string(string(name)) : std::string("(no id)");
+            text += " ";
+            text += propertyName(m_arena.effectMissingProp());
+            m_warnings.push_back(std::move(text));
         }
     }
 }

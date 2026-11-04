@@ -177,6 +177,103 @@ TEST_CASE("counter: increment/decrement/reset, clamped to [min, max]") {
     CHECK(valueOf(rt, "cnt.value") == doctest::Approx(0));
 }
 
+TEST_CASE("T-573: counter `wrap` steps past max to min and below min to max; no clamp") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc = buttonsDoc(shaper);
+    FlowRuntime rt;
+    const std::string json = R"({
+        "nodes": [ { "id": "cnt", "type": "counter",
+                     "params": { "step": 1, "initial": 0, "min": 0, "max": 2, "wrap": true } } ],
+        "edges": [
+            { "from": "#b1.Click", "to": "cnt.increment" },
+            { "from": "#b2.Click", "to": "cnt.decrement" }
+        ]
+    })";
+    REQUIRE(load(rt, *doc, json) == Status::kOk);
+    CHECK(valueOf(rt, "cnt.value") == doctest::Approx(0));
+    click(*doc, "b1");
+    click(*doc, "b1");
+    CHECK(valueOf(rt, "cnt.value") == doctest::Approx(2));
+    click(*doc, "b1");  // max + 1 -> min.
+    CHECK(valueOf(rt, "cnt.value") == doctest::Approx(0));
+    click(*doc, "b2");  // min - 1 -> max.
+    CHECK(valueOf(rt, "cnt.value") == doctest::Approx(2));
+
+    // `set` is not clamped on a wrap counter; without `wrap` (false) it is, as before.
+    for (bool wrap : {true, false}) {
+        CAPTURE(wrap);
+        FlowRuntime set;
+        const std::string setJson = std::string(R"({
+            "nodes": [ { "id": "src", "type": "counter", "params": { "step": 7, "initial": 0 } },
+                       { "id": "cnt", "type": "counter", "params": { "min": 0, "max": 2, "wrap": )") +
+                                    (wrap ? "true" : "false") + R"( } } ],
+            "edges": [ { "from": "#b3.Click", "to": "src.increment" },
+                       { "from": "src.value", "to": "cnt.set" } ]
+        })";
+        REQUIRE(load(set, *doc, setJson) == Status::kOk);
+        click(*doc, "b3");
+        CHECK(valueOf(set, "cnt.value") == doctest::Approx(wrap ? 7 : 2));
+    }
+}
+
+TEST_CASE("T-573: math op=mod is the float remainder with the dividend's sign; divisor 0 gives 0") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc = buttonsDoc(shaper);
+    struct Case {
+        double a;
+        double b;
+        double expected;
+    };
+    const Case cases[] = {{7.5, 2, 1.5}, {-7.5, 2, -1.5}, {7.5, -2, 1.5}, {5, 0, 0}, {6, 3, 0}};
+    for (const Case& c : cases) {
+        CAPTURE(c.a);
+        CAPTURE(c.b);
+        FlowRuntime rt;
+        const std::string json = R"({"nodes":[
+            {"id":"ca","type":"constant","params":{"value":)" +
+                                 std::to_string(c.a) + R"(}},
+            {"id":"cb","type":"constant","params":{"value":)" +
+                                 std::to_string(c.b) + R"(}},
+            {"id":"m","type":"math","params":{"op":"mod"}}],
+          "edges":[{"from":"ca.out","to":"m.a"},{"from":"cb.out","to":"m.b"}]})";
+        REQUIRE(load(rt, *doc, json) == Status::kOk);
+        CHECK(valueOf(rt, "m.out") == doctest::Approx(c.expected));
+    }
+}
+
+TEST_CASE("T-573: counter.wrap, math mod and timeline.hold survive parse() / toJson()") {
+    const std::string json = R"({"nodes":[
+        {"id":"cnt","type":"counter","params":{"max":3,"min":0,"wrap":true}},
+        {"id":"m","type":"math","params":{"op":"mod"}},
+        {"id":"tl","type":"timeline","params":{"hold":true,"name":"intro"}}],"edges":[]})";
+    FlowGraph graph;
+    std::vector<std::string> errors;
+    REQUIRE(FlowGraph::parse(json, graph, errors) == Status::kOk);
+    REQUIRE(graph.nodes.size() == 3);
+    CHECK(graph.nodes[0].params.at("wrap").type == PortType::Bool);
+    CHECK(graph.nodes[0].params.at("wrap").b);
+    CHECK(graph.nodes[1].params.at("op").s == "mod");
+    CHECK(graph.nodes[2].params.at("hold").b);
+    const std::string out = graph.toJson();
+    CHECK(out.find("\"wrap\": true") != std::string::npos);
+    CHECK(out.find("\"hold\": true") != std::string::npos);
+    CHECK(out.find("\"mod\"") != std::string::npos);
+    FlowGraph again;
+    REQUIRE(FlowGraph::parse(out, again, errors) == Status::kOk);
+    CHECK(again.toJson() == out);
+    // The node type table lists the new params.
+    bool counterWrap = false;
+    bool timelineHold = false;
+    for (const NodeTypeDesc& d : nodeTypeTable()) {
+        for (const std::string& p : d.params) {
+            counterWrap = counterWrap || (d.type == "counter" && p == "wrap");
+            timelineHold = timelineHold || (d.type == "timeline" && p == "hold");
+        }
+    }
+    CHECK(counterWrap);
+    CHECK(timelineHold);
+}
+
 TEST_CASE("toggle: toggle/setTrue/setFalse; `changed` pulse only fires on an actual change") {
     NullTextShaper shaper;
     std::unique_ptr<Document> doc = buttonsDoc(shaper);

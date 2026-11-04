@@ -195,6 +195,56 @@ std::vector<std::string> getStringArray(const json& obj, const char* key) {
     return out;
 }
 
+FlowInterface getFlowInterface(const json& obj, const char* key) {
+    FlowInterface out;
+    const auto it = obj.find(key);
+    if (it == obj.end() || !it->is_object()) {
+        return out;
+    }
+    out.present = true;
+    const auto emitsIt = it->find("emits");
+    if (emitsIt != it->end() && emitsIt->is_array()) {
+        for (const json& entry : *emitsIt) {
+            if (!entry.is_object()) {
+                continue;
+            }
+            FlowEmit emit{getString(entry, "name"), getString(entry, "type")};
+            if (emit.name.empty()) {
+                continue;
+            }
+            if (emit.type.empty()) {
+                emit.type = "pulse";
+            }
+            out.emits.push_back(std::move(emit));
+        }
+    }
+    out.writes = getStringArray(*it, "writes");
+    out.reads = getStringArray(*it, "reads");
+    out.system = getStringArray(*it, "system");
+    return out;
+}
+
+nlohmann::ordered_json writeFlowInterface(const FlowInterface& flow) {
+    nlohmann::ordered_json emits = nlohmann::ordered_json::array();
+    for (const FlowEmit& emit : flow.emits) {
+        nlohmann::ordered_json entry;
+        entry["name"] = emit.name;
+        entry["type"] = emit.type;
+        emits.push_back(std::move(entry));
+    }
+    nlohmann::ordered_json out;
+    out["emits"] = std::move(emits);
+    out["writes"] = flow.writes;
+    out["reads"] = flow.reads;
+    out["system"] = flow.system;
+    return out;
+}
+
+std::string getPortOrigin(const json& entry) {
+    std::string origin = getString(entry, "origin");
+    return origin.empty() ? std::string("document") : origin;
+}
+
 uint64_t getUint64(const json& obj, const char* key) {
     const auto it = obj.find(key);
     if (it == obj.end()) {

@@ -602,7 +602,7 @@ TEST_CASE("integration: keyframes addressing a missing effect are a no-op with o
     CHECK(doc->arena().common(lit.node).effectCount == 0);
     size_t missing = 0;
     for (const std::string& w : doc->warnings()) {
-        missing += w == kWarnEffectMissing ? 1u : 0u;
+        missing += w.rfind(kWarnEffectMissing, 0) == 0 ? 1u : 0u;
     }
     CHECK(missing == 1);
 }

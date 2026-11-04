@@ -51,6 +51,15 @@ struct FlowHostEvent {
     std::string nodeId;
 };
 
+/// T-582 (Docs/design/53-flow-language.md §53.5.5 "late binding"): options of
+/// FlowRuntime::loadGlobal() / BundleContext::loadGlobalFlow().
+struct FlowLoadOptions {
+    /// True: a `ui#<uiId>` reference to a UI that is not registered yet is a load error
+    /// (`unknown UI '<uiId>' in '<endpoint>'`), the pre-T-582 behavior. False (the default): the
+    /// load succeeds, that endpoint's edges are dormant until BundleContext::addUi(<uiId>, ...).
+    bool strictUis = false;
+};
+
 /// T-193: receives every FlowHostEvent of a FlowRuntime.
 using FlowHostEventListener = std::function<void(const FlowHostEvent&)>;
 
@@ -156,8 +165,21 @@ public:
     /// outlive this runtime or the next load. The json overload parses first (FlowGraph::parse()).
     /// rebind() is not supported on a global runtime (kUnsupported): load it again instead.
     /// T-260c: failure, and a call from inside this runtime's own dispatch, as load().
-    Status loadGlobal(std::string_view json, BundleContext& bundle, std::vector<std::string>& errors);
-    Status loadGlobal(const FlowGraph& graph, BundleContext& bundle, std::vector<std::string>& errors);
+    /// T-582 (53 §53.5.5 "late binding"): unless `options.strictUis`, a `ui#<uiId>` endpoint whose
+    /// UI is not registered yet is not an error: its edges are dormant (nothing is bound, sent or
+    /// received; an edge into it drops its value, counted by dormantDrops()) and, on success,
+    /// `notes` (when non-null) gets one line per such UI, in order of first use:
+    /// `ui#<uiId> not registered yet (edges dormant)`. The structural checks that need the UI's
+    /// Document (element ids, `<anim>` ports, declared port direction and type, effect addresses)
+    /// are then made when BundleContext::addUi() binds an instance of it. A deferred call (from
+    /// inside the dispatch) reports no notes.
+    Status loadGlobal(std::string_view json, BundleContext& bundle, std::vector<std::string>& errors,
+                      std::vector<std::string>* notes = nullptr, const FlowLoadOptions& options = {});
+    Status loadGlobal(const FlowGraph& graph, BundleContext& bundle, std::vector<std::string>& errors,
+                      std::vector<std::string>* notes = nullptr, const FlowLoadOptions& options = {});
+    /// T-582: how many deliveries into a dormant `ui#` endpoint (a UI with no bound instance) were
+    /// dropped since the last load; 0 when nothing is loaded.
+    uint64_t dormantDrops() const;
     /// True after a successful loadGlobal() (until the next load()/loadGlobal()).
     bool isGlobal() const;
 

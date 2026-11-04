@@ -25,7 +25,7 @@
 ///
 /// Usage: xtframe-pack <project-dir | name.xtui | ui-project.json | bundle.xtproj | file.xt> [-o <out-dir>]
 ///                   [--ui <id>]... [--strict] [--no-thumbs] [--embed] [--prune] [--lang <list>]
-///                   [--allow-placeholders] [--zip] [--fonts system|bundled] [--fonts-dir <dir>]
+///                   [--allow-placeholders] [--zip] [--fonts system|bundled] [--fonts-dir <dir>] [--verbose]
 ///        xtframe-pack --upgrade <bundle-dir>
 ///        xtframe-pack --version
 ///
@@ -65,6 +65,10 @@
 /// (one warning), and code points no bundled font has are taken from it (one warning per font).
 /// `--fonts-dir ""` turns the standard fonts off.
 ///
+/// --verbose (T-571, Docs/design/22-bundle.md §22.14): one `i18n: unused key '<key>'` warning per
+/// strings-table key no UI uses (PackOptions::verbose); without it each table gets one
+/// `i18n: N unused key(s) in <lang>.csv (--verbose lists them)` warning.
+///
 /// --lang (T-179, Docs/design/12-compiler.md §12.7): a comma-separated list of languages; only
 /// their `strings/<lang>.csv` tables are packed (and linted). May be repeated.
 ///
@@ -94,7 +98,8 @@
 ///     directory is used as the project root, so tab-completing the file works.
 ///
 /// T-309 (Docs/design/35-design-system.md §35.4, §35.10): when the project has a design directory,
-/// `design.draftShipped` and `design.docStale` of xt::bundle::design::lintDocument() are printed as
+/// `design.draftShipped` (one line per draft variable: the lint runs with BuildOptions::publish,
+/// T-574) and `design.docStale` of xt::bundle::design::lintDocument() are printed as
 /// `xtframe-pack: warning: ...` lines. They are checked right after pack() has pulled the standard
 /// symbols into the project (the state DESIGN.md is generated in, so a fresh checkout of the starter
 /// does not report it stale), before the compile diagnostics. They never stop the pack, change the
@@ -123,7 +128,7 @@ void printUsage() {
                  "[--ui <id>]... [--strict] [--no-thumbs] [--embed] [--prune] [--lang <list>] "
                  "[--gen-ports cpp|cs <out>] [--atlas] [--atlas-scope ui|bundle] "
                  "[--compress bc7|bc3|bc1|none] [--font-subset] [--fonts system|bundled] [--fonts-dir <dir>] "
-                 "[--allow-placeholders] [--zip]\n"
+                 "[--allow-placeholders] [--zip] [--verbose]\n"
                  "       xtframe-pack --upgrade <bundle-dir>\n"
                  "       xtframe-pack --version\n");
 }
@@ -163,6 +168,7 @@ void designWarnings(const xt::bundle::UiProject& project, const std::string& sta
     }
     design::BuildOptions options;
     options.standardSymbolDir = standardSymbolDir;
+    options.publish = true;  // T-574: design.draftShipped per draft variable
     for (const design::Issue& issue : design::lintDocument(project, ds, graph, options)) {
         if (issue.id != "design.draftShipped" && issue.id != "design.docStale") {
             continue;
@@ -325,6 +331,8 @@ int packMain(int argc, char** argv) {
             options.allowPlaceholders = true;  // T-312a
         } else if (arg == "--zip") {
             zip = true;  // T-500
+        } else if (arg == "--verbose") {
+            options.verbose = true;  // T-571
         } else if (arg == "--strict") {
             options.strict = true;
         } else if (arg == "--no-thumbs") {
@@ -449,6 +457,12 @@ int packMain(int argc, char** argv) {
     }
     for (const std::string& line : report.flowWarnings) {
         std::fprintf(stderr, "xtframe-pack: warning: %s\n", line.c_str());  // T-540
+    }
+    for (const std::string& line : report.infos) {
+        std::printf("xtframe-pack: info: %s\n", line.c_str());  // T-580
+    }
+    for (const std::string& line : report.missingFonts) {
+        std::fprintf(stderr, "xtframe-pack: warning: %s\n", line.c_str());  // T-569
     }
     if (!report.ok) {
         std::fprintf(stderr, "xtframe-pack: failed to pack '%s'\n", input.c_str());

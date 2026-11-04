@@ -11,6 +11,7 @@
 #include "../Common/standard_symbols_note.h"
 #include "xt/bundle/ui_project.h"
 #include "xt/compile/compile.h"
+#include "xt/compile/diagnostic_report.h"
 #include "xt/compile/diagnostics.h"
 #include "xt/compile/utf8_path.h"
 #include "xt/ir.h"
@@ -20,6 +21,7 @@
 ///
 /// Usage: xtframe-compile <input.json | input.xt> -o <out.xtir> [--root DIR] [--embed-images]
 ///                       [--embed-fonts] [--strict] [--no-meta] [--standard-symbols DIR]
+///                       [--diagnostics FILE]
 ///        xtframe-compile --version
 ///
 /// --version (T-420) prints the version lines (Code/Tools/Common/print_version.h) to stdout and exits 0,
@@ -27,6 +29,10 @@
 ///
 /// T-235: `--standard-symbols DIR` is where `<link rel="symbols" href="xt-standard:<Name>">`
 /// resolves (CompileOptions::standardSymbolDir); default `<executable dir>/symbols` when present.
+///
+/// T-576 (Docs/design/24-design-import.md §24.15.2): `--diagnostics FILE` also writes the
+/// diagnostics as the shared JSON list (codes `compile.error` / `compile.warning`); stderr is
+/// unchanged. The file is written whether or not the compile succeeded.
 ///
 /// Exit codes: 0 success, 1 a compile error occurred, 2 argument error (usage printed to stderr).
 ///
@@ -59,6 +65,7 @@ void printUsage() {
     std::fprintf(stderr,
                  "usage: xtframe-compile <input.json | input.xt> -o <out.xtir> [--root DIR] "
                  "[--embed-images] [--embed-fonts] [--strict] [--no-meta] [--standard-symbols DIR]\n"
+                 "                       [--diagnostics FILE]\n"
                  "       xtframe-compile --version\n");
 }
 
@@ -92,6 +99,7 @@ static int run(int argc, char** argv) {
     std::string output;
     std::string root;
     std::string standardSymbols;
+    std::string diagnosticsOut;  // T-576
     bool embedImages = false;
     bool embedFonts = false;
     bool strict = false;
@@ -129,6 +137,13 @@ static int run(int argc, char** argv) {
                 return 2;
             }
             standardSymbols = argv[++i];
+        } else if (arg == "--diagnostics") {
+            if (i + 1 >= argc) {
+                std::fprintf(stderr, "xtframe-compile: --diagnostics requires an argument\n");
+                printUsage();
+                return 2;
+            }
+            diagnosticsOut = argv[++i];
         } else if (arg == "--embed-images") {
             embedImages = true;
         } else if (arg == "--embed-fonts") {
@@ -175,6 +190,18 @@ static int run(int argc, char** argv) {
         isXt ? xt::compile::compileDocument(input, options) : xt::compile::compileLottie(input, options);
     for (const xt::compile::Diagnostic& d : result.diagnostics) {
         printDiagnostic(d);
+    }
+    if (!diagnosticsOut.empty()) {
+        // T-576: the same messages in the shared format.
+        std::vector<xt::compile::ReportDiagnostic> items;
+        for (const xt::compile::Diagnostic& d : result.diagnostics) {
+            items.push_back(xt::compile::fromCompileDiagnostic(d));
+        }
+        const std::string text =
+            xt::compile::diagnosticsJson(items, xt::compile::toolWithVersion("xtframe-compile"), input);
+        if (!xt::compile::writeDiagnosticsFile(diagnosticsOut, text)) {
+            std::fprintf(stderr, "error: could not write '%s'\n", diagnosticsOut.c_str());
+        }
     }
 
     if (!result.ok()) {

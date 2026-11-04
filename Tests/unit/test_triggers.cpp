@@ -472,6 +472,103 @@ TEST_CASE("triggers: play modes once, reverse and an explicit hold") {
     CHECK(l.doc->timelineTime("", "fade") == doctest::Approx(0.0f));
 }
 
+TEST_CASE("T-573: pause() / resume() hold and continue a timeline; its `then` waits") {
+    Loaded l = load(doc(kBoxes, R"X(<div id="A" on:click="play(fade) then class(done)"></div>
+                                   <div id="B" on:click="pause(fade)"></div>
+                                   <div id="C" on:click="resume(fade)"></div>)X"));
+    const CompileResult& r = l.result;
+    Result<IrView> view = viewOf(r);
+    REQUIRE(view.ok());
+    bool sawPause = false;
+    bool sawResume = false;
+    for (const IrTriggerAction& a : view.value().triggers().actions()) {
+        sawPause = sawPause || a.kind == static_cast<uint8_t>(TriggerAction::Pause);
+        sawResume = sawResume || a.kind == static_cast<uint8_t>(TriggerAction::Resume);
+    }
+    CHECK(sawPause);
+    CHECK(sawResume);
+    CHECK(static_cast<int>(TriggerAction::Pause) == 19);
+    CHECK(static_cast<int>(TriggerAction::Resume) == 20);
+
+    l.click(20, 20);
+    l.step(0.4f);
+    CHECK(l.doc->timelineTime("", "fade") == doctest::Approx(0.4f));
+    l.click(70, 20);  // pause
+    CHECK_FALSE(l.doc->isTimelinePlaying("", "fade"));
+    l.step(1.0f);
+    CHECK(l.doc->timelineTime("", "fade") == doctest::Approx(0.4f));
+    CHECK(l.el("A").property(prop::Opacity).f == doctest::Approx(0.4f));  // Members keep their values.
+    CHECK_FALSE(l.el("A").hasClass("done"));
+    l.click(70, 20);   // Pausing a paused timeline changes nothing.
+    l.click(120, 20);  // resume
+    CHECK(l.doc->isTimelinePlaying("", "fade"));
+    l.step(0.3f);
+    CHECK(l.doc->timelineTime("", "fade") == doctest::Approx(0.7f));
+    l.step(0.4f);
+    CHECK(l.el("A").hasClass("done"));  // The chain waited through the pause.
+    // Held at its end: resume does not restart it.
+    l.click(120, 20);
+    CHECK_FALSE(l.doc->isTimelinePlaying("", "fade"));
+    CHECK(l.doc->timelineTime("", "fade") == doctest::Approx(1.0f));
+}
+
+TEST_CASE("T-573: pause() / resume() compile errors") {
+    auto errs = [](std::string_view attrs, std::string_view needle) {
+        CompileResult r = compileXt(doc(kBoxes, "<div id=\"A\" " + std::string(attrs) + "></div>"));
+        CAPTURE(attrs);
+        CHECK_FALSE(r.ok());
+        CHECK(hasError(r, needle));
+    };
+    errs("on:click=\"pause(nope)\"", "unknown timeline \"nope\" in pause()");
+    errs("on:click=\"resume(nope)\"", "unknown timeline \"nope\" in resume()");
+    errs("on:click=\"pause(fade, pulse)\"", "pause() takes 1 argument(s)");
+    errs("on:click=\"resume()\"", "resume() takes 1 argument(s)");
+}
+
+TEST_CASE("T-573: key(any) fires on any non-modifier key and on a gamepad button") {
+    Loaded l = load(doc(kBoxes, R"X(<div id="A" tabindex="0" on:key(any)="state(K, toggle)"
+                                        state-groups="G: K|L"></div>)X"));
+    ElementRef a = l.el("A");
+    l.doc->setFocus(a);
+    auto key = [&](KeyCode code) {
+        InputEvent ev;
+        ev.kind = InputEvent::KeyDown;
+        ev.key = code;
+        l.doc->dispatchInput(ev);
+    };
+    key(KeyCode::KeyQ);
+    CHECK(l.has("A", "K"));
+    key(KeyCode::Left);  // Arrow keys count.
+    CHECK_FALSE(l.has("A", "K"));
+    key(KeyCode::F5);
+    CHECK(l.has("A", "K"));
+    for (KeyCode mod : {KeyCode::ShiftLeft, KeyCode::ShiftRight, KeyCode::ControlLeft, KeyCode::ControlRight,
+                        KeyCode::AltLeft, KeyCode::AltRight, KeyCode::MetaLeft, KeyCode::MetaRight}) {
+        key(mod);  // A modifier on its own does not.
+        CHECK(l.has("A", "K"));
+    }
+    InputEvent pad;
+    pad.kind = InputEvent::GamepadButtonDown;
+    pad.gamepadButton = GamepadButton::X;
+    l.doc->dispatchInput(pad);
+    CHECK_FALSE(l.has("A", "K"));  // A gamepad button counts.
+    pad.kind = InputEvent::GamepadButtonUp;
+    l.doc->dispatchInput(pad);
+    CHECK_FALSE(l.has("A", "K"));  // Only the press.
+}
+
+TEST_CASE("T-573: a gamepad button fires only key(any), not key(<name>)") {
+    Loaded l = load(doc(kBoxes, R"X(<div id="A" tabindex="0" on:key(Enter)="class(enter)"
+                                        on:key(any)="class(any)"></div>)X"));
+    l.doc->setFocus(l.el("A"));
+    InputEvent pad;
+    pad.kind = InputEvent::GamepadButtonDown;
+    pad.gamepadButton = GamepadButton::Start;
+    l.doc->dispatchInput(pad);
+    CHECK(l.el("A").hasClass("any"));
+    CHECK_FALSE(l.el("A").hasClass("enter"));
+}
+
 TEST_CASE("triggers: if/else compares the event value against constants") {
     Loaded l = load(doc(
         kBoxes,

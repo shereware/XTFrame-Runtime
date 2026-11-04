@@ -50,6 +50,17 @@
       "tags": [
         "menu"
       ]
+    },
+    {
+      "id": "sceneview",
+      "doc": "sceneview/sceneview.xt",
+      "size": [
+        1280,
+        720
+      ],
+      "tags": [
+        "debug"
+      ]
     }
   ],
   "shared": {

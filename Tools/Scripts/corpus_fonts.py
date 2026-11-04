@@ -42,6 +42,9 @@ def list_fonts(view):
         if not line.strip():
             continue
         family, _, path = line.partition("\t")
+        # T-569: a face of a .ttc/.otc collection is listed as `path#<face index>`; the file is
+        # what is hashed.
+        path = re.sub(r"#[0-9]+$", "", path)
         paths = fonts.setdefault(family.strip(), [])
         if path and path not in paths:
             paths.append(path)

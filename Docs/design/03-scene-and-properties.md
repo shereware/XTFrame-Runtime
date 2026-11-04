@@ -452,3 +452,9 @@ uint8_t propertyDirtyBits(PropId);
 - **編輯器**：圖層面板該圖層前有「只在編輯器顯示」圖示（灰色眼睛加 E），屬性面板「位置與尺寸」段「+」可加「只在編輯器顯示」核取列；畫布以淡化邊框提示（不改內容）。新圖層預設關。
 - **匯入**：Claude Design／HTML 畫板元素帶 `data-xt-editor-only`（24 章標籤字典）→ 匯入成 `editor-only`；Figma 無對應。
 - **lint**：發佈時若 `editor-only` 子樹內有被外部引用的 id（流圖、綁定、`<use>` 目標）→ 警告「發佈後找不到」。
+
+### 3.12.11 IR 3.0 的綁定表擴充（2026-11-04 定案；T-585、T-586；隨 IR major 3 落地）
+
+- **`ConverterChain` 參數可為子鏈**（T-585）：`ConverterArg` 加種類 `SubChain`，值為子鏈在同一 BindingTable 的 `chains[]` 池中的索引（池為新區塊 `BCHN`，每條子鏈同 `ConverterChain` 版面）。`format()`、`select()`、`step()`、`lookup()` 的參數都可引用子鏈；子鏈的輸入是外層鏈的輸入（或子鏈自己以 `port()` 開頭的來源）。執行期求值：先算子鏈得值，再當作字面參數。巢狀深度上限 4。
+- **綁定值可引用 Calc 池**（T-586）：綁定目標為 Length 類屬性時，值可以是 `LengthUnit::Calc` 的靜態 calc 索引（編譯期把綁定裡的 `calc()` 字面值編進 02 §3.12.6 的 Calc 池，與靜態宣告同一池），執行期 `setStyle` 走 Calc 單位而非 mini_css 文字；含 port 的 `calc()`（`calc(port(x) + 10px)`）仍不支援（警告 `bind.calcNotEvaluated` 改為只對含 port 的情況發）。
+- 43 §43.7：都是 IR 3.0 的 major 內容（新區塊、新種類），不另升 minor。

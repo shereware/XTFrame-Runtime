@@ -56,6 +56,31 @@ std::string entryRef(EntryKind kind, std::string_view id) {
     return out;
 }
 
+std::string referenceIdOf(std::string_view pathUnderReferences) {
+    std::string path(pathUnderReferences);
+    const size_t slash = path.rfind('/');
+    const size_t nameStart = slash == std::string::npos ? 0 : slash + 1;
+    constexpr std::string_view kUrl = ".url.yaml";
+    if (path.size() - nameStart > kUrl.size()) {
+        bool url = true;
+        for (size_t i = 0; i < kUrl.size(); ++i) {
+            char c = path[path.size() - kUrl.size() + i];
+            if (c >= 'A' && c <= 'Z') {
+                c = static_cast<char>(c - 'A' + 'a');
+            }
+            url = url && c == kUrl[i];
+        }
+        if (url) {
+            return path.substr(0, path.size() - kUrl.size());
+        }
+    }
+    const size_t dot = path.rfind('.');
+    if (dot == std::string::npos || dot < nameStart || dot == nameStart) {
+        return path;
+    }
+    return path.substr(0, dot);
+}
+
 bool parseEntryRef(std::string_view ref, EntryKind* kind, std::string* id) {
     const size_t colon = ref.find(':');
     if (colon == std::string_view::npos || colon == 0) {

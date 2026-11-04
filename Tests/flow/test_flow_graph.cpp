@@ -863,3 +863,118 @@ TEST_CASE("T-543 filter and throttle: toJson() round-trips and the node table li
     CHECK(throttle->outputs[2].name == "dropped");
     CHECK(throttle->outputs[2].type == PortType::Number);
 }
+
+TEST_CASE("T-580 hostInterface: emits, writes, reads and wired system events, without a Document") {
+    const std::string json = R"({
+        "version": 1,
+        "nodes": [
+            { "id": "c", "type": "constant", "params": { "value": 3 } },
+            { "id": "s", "type": "constant", "params": { "value": "x" } },
+            { "id": "e1", "type": "emit", "params": { "port": "clue_pick" } },
+            { "id": "e2", "type": "emit", "params": { "port": "opened" } },
+            { "id": "e3", "type": "emit", "params": { "port": "clue_pick" } },
+            { "id": "e4", "type": "emit", "params": { "port": "score_echo" } },
+            { "id": "sys", "type": "system" },
+            { "id": "cnt", "type": "counter" },
+            { "id": "ts", "type": "toString" }
+        ],
+        "edges": [
+            { "from": "#pick.Click", "to": "e1.trigger" },
+            { "from": "c.out", "to": "e1.value" },
+            { "from": "#open.Click", "to": "e2.trigger" },
+            { "from": "#open.Click", "to": "e3.trigger" },
+            { "from": "s.out", "to": "e3.value" },
+            { "from": "#open.Click", "to": "e4.trigger" },
+            { "from": "#document.score", "to": "e4.value" },
+            { "from": "sys.back", "to": "cnt.increment" },
+            { "from": "sys.paused", "to": "cnt.reset" },
+            { "from": "sys.languageChanged", "to": "#label.setText" },
+            { "from": "cnt.value", "to": "#document.hp" },
+            { "from": "cnt.value", "to": "#Card.hp" },
+            { "from": "cnt.value", "to": "#document.hp", "params": { "instance": "1" } },
+            { "from": "#Card.done", "to": "ts.in" },
+            { "from": "ts.out", "to": "#label2.setText" }
+        ]
+    })";
+    FlowGraph graph;
+    std::vector<std::string> errors;
+    const Status parsed = FlowGraph::parse(json, graph, errors);
+    for (const std::string& e : errors) {
+        MESSAGE(e);
+    }
+    REQUIRE(parsed == Status::kOk);
+    const std::string before = graph.toJson();
+
+    FlowHostInterface face;
+    REQUIRE(graph.hostInterface(face) == Status::kOk);
+    CHECK(graph.toJson() == before);  // Read-only.
+
+    REQUIRE(face.emits.size() == 3);
+    CHECK(face.emits[0].name == "clue_pick");  // e3's string value does not change it: first wins.
+    CHECK(face.emits[0].type == PortType::Number);
+    CHECK(face.emits[0].typeKnown);
+    CHECK(face.emits[1].name == "opened");
+    CHECK(face.emits[1].type == PortType::Pulse);  // Value not connected.
+    CHECK(face.emits[1].typeKnown);
+    CHECK(face.emits[2].name == "score_echo");
+    CHECK_FALSE(face.emits[2].typeKnown);  // A declared port: typed only against a Document.
+    CHECK(face.emits[2].typeSource.owner == "document");
+    CHECK(face.emits[2].typeSource.port == "score");
+
+    REQUIRE(face.writes.size() == 2);  // Each port once, in edge order.
+    CHECK(face.writes[0].owner == "document");
+    CHECK(face.writes[0].port == "hp");
+    CHECK(face.writes[1].owner == "Card");
+    CHECK(face.writes[1].port == "hp");
+    REQUIRE(face.reads.size() == 2);
+    CHECK(face.reads[0].port == "score");
+    CHECK(face.reads[1].owner == "Card");
+    CHECK(face.reads[1].port == "done");
+    // The §53.4.18 output order, not the edge order; element ports (setText, Click) are not listed.
+    CHECK(face.system == std::vector<std::string>{"paused", "languageChanged", "back"});
+}
+
+TEST_CASE("T-580 hostInterface: ui# addresses carry their UI; a graph that does not validate is refused") {
+    const std::string json = R"({
+        "version": 1,
+        "nodes": [ { "id": "r", "type": "radio", "params": { "count": 2 } },
+                   { "id": "e", "type": "emit", "params": { "port": "screen" } } ],
+        "edges": [
+            { "from": "ui#menu.new_game", "to": "r.set1" },
+            { "from": "ui#menu.new_game", "to": "e.trigger" },
+            { "from": "r.index", "to": "e.value" },
+            { "from": "r.index", "to": "ui#hud.Panel.active" },
+            { "from": "ui#hud.shown", "to": "r.set0" }
+        ]
+    })";
+    FlowGraph graph;
+    std::vector<std::string> errors;
+    REQUIRE(FlowGraph::parse(json, graph, errors) == Status::kOk);
+    FlowHostInterface face;
+    REQUIRE(graph.hostInterface(face) == Status::kOk);
+    REQUIRE(face.reads.size() == 1);  // The lifecycle output is not a port.
+    CHECK(face.reads[0].uiId == "menu");
+    CHECK(face.reads[0].owner == "document");
+    CHECK(face.reads[0].port == "new_game");
+    REQUIRE(face.writes.size() == 1);
+    CHECK(face.writes[0].uiId == "hud");
+    CHECK(face.writes[0].owner == "Panel");
+    CHECK(face.writes[0].port == "active");
+    REQUIRE(face.emits.size() == 1);
+    CHECK(face.emits[0].type == PortType::Number);
+    CHECK(face.system.empty());
+
+    FlowGraph broken;
+    NodeDesc counter;
+    counter.id = "a";
+    counter.type = "counter";
+    broken.nodes.push_back(counter);
+    EdgeDesc edge;
+    edge.from = "a.nope";
+    edge.to = "#x.setText";
+    broken.edges.push_back(edge);
+    face.system = {"stale"};
+    CHECK(broken.hostInterface(face) == Status::kInvalidArgument);
+    CHECK(face.system.empty());
+    CHECK(face.emits.empty());
+}

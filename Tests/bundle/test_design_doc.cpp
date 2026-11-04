@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -508,10 +509,21 @@ TEST_CASE("T-309 (f): lintDocument: literalColorNotInPalette, contrastLow, draft
     REQUIRE(contrast != nullptr);
     CHECK(contrast->severity == Severity::Warning);
     CHECK(findIssue(issues, "design.contrastLow", "token:color-text") == nullptr);
-    const Issue* draft = findIssue(issues, "design.draftShipped", "token:safe-x");
+    // T-574: outside a publish, design.draftShipped is one info line.
+    CHECK(findIssue(issues, "design.draftShipped", "token:safe-x") == nullptr);
+    const Issue* summary = findIssue(issues, "design.draftShipped", "");
+    REQUIRE(summary != nullptr);
+    CHECK(summary->severity == Severity::Info);
+    CHECK(summary->message == "1 draft entry");
+    BuildOptions publish;
+    publish.publish = true;
+    const std::vector<Issue> published = lintDocument(project, l.ds, l.graph, publish);
+    const Issue* draft = findIssue(published, "design.draftShipped", "token:safe-x");
     REQUIRE(draft != nullptr);
     CHECK(draft->severity == Severity::Warning);
-    CHECK(findIssue(issues, "design.draftShipped", "token:color-accent") == nullptr);
+    CHECK(draft->message == "'--safe-x' is a draft; approve it before publishing");
+    CHECK(findIssue(published, "design.draftShipped", "token:color-accent") == nullptr);
+    CHECK(findIssue(published, "design.draftShipped", "") == nullptr);
     // The sources changed after the write -> docStale.
     CHECK(hasIssue(issues, "design.docStale", Severity::Info));
     // The new contrast table is in the document: the inherited pair resolves only with the group
@@ -573,4 +585,195 @@ TEST_CASE("T-309 (h): the starter ships its DESIGN.md, byte-identical to a fresh
     CHECK(built == shipped);
     CHECK(shipped.find("### Inherited from broadsheet-2026") != std::string::npos);
     CHECK_FALSE(hasIssue(lintDocument(project, l.ds, l.graph, options), "design.docStale", Severity::Info));
+}
+
+namespace {
+
+void writeText574(const std::string& path, const std::string& text) {
+    std::error_code ec;
+    fs::create_directories(fs::path(path).parent_path(), ec);
+    std::ofstream out(path, std::ios::binary);
+    out << text;
+}
+
+}  // namespace
+
+TEST_CASE("T-574 (a): decision summary under a 決定 heading; Decision and decision still work") {
+    const UiProject project = starterCopy("doc_t574_decision");
+    Loaded l = loadDesign(project);
+    TextEntry zh;
+    zh.base.kind = EntryKind::Decision;
+    zh.base.id = "0004";
+    zh.base.extra = json{{"status", "accepted"}};
+    zh.title = "Grid";
+    zh.body =
+        "## 情境\n\nGaps differ on every screen.\n\n## 決定\n\nUse a 4 px grid.\n\n## 後果\n\nFewer "
+        "values.\n";
+    l.ds.decisions.push_back(zh);
+    TextEntry lower = zh;
+    lower.base.id = "0005";
+    lower.title = "Lower";
+    lower.body = "## context\n\nWhy.\n\n## decision\n\nLower case heading.\n";
+    l.ds.decisions.push_back(lower);
+    std::string md;
+    REQUIRE(buildDocument(project, l.ds, l.graph, BuildOptions(), md, nullptr) == Status::kOk);
+    CHECK(md.find("- **0004 · Grid** (accepted): Use a 4 px grid.") != std::string::npos);
+    CHECK(md.find("- **0005 · Lower** (accepted): Lower case heading.") != std::string::npos);
+}
+
+TEST_CASE("T-574 (b): type.yaml scale and effects and the motion spec keep their file order") {
+    const UiProject project = starterCopy("doc_t574_order");
+    const std::string typeYaml = designDir(project) + "/type.yaml";
+    writeText574(typeYaml,
+                 "version: 1\n"
+                 "roles:\n"
+                 "  - id: body\n"
+                 "    family: Inter\n"
+                 "scale:\n"
+                 "  micro: --font-size-micro\n"
+                 "  label: --font-size-label\n"
+                 "  hero: --font-size-hero\n"
+                 "effects:\n"
+                 "  outline: {width: 2}\n"
+                 "  glow: {radius: 4}\n");
+    Loaded l = loadDesign(project);
+    REQUIRE(l.ds.typeExtra.contains("scale"));
+    std::vector<std::string> steps;
+    for (auto it = l.ds.typeExtra["scale"].begin(); it != l.ds.typeExtra["scale"].end(); ++it) {
+        steps.push_back(it.key());
+    }
+    CHECK(steps == std::vector<std::string>{"micro", "label", "hero"});
+    std::string md;
+    REQUIRE(buildDocument(project, l.ds, l.graph, BuildOptions(), md, nullptr) == Status::kOk);
+    const size_t micro = md.find("| `micro` | `--font-size-micro` |");
+    const size_t label = md.find("| `label` | `--font-size-label` |");
+    const size_t hero = md.find("| `hero` | `--font-size-hero` |");
+    REQUIRE(micro != std::string::npos);
+    CHECK(micro < label);
+    CHECK(label < hero);
+    CHECK(md.find("- `outline`") < md.find("- `glow`"));
+    // contracts/motion-spec.yaml starts with duration and easing; alphabetical would start with ambient.
+    const size_t duration = md.find("| `duration.instant` |");
+    REQUIRE(duration != std::string::npos);
+    CHECK(duration < md.find("| `easing.opacity` |"));
+    CHECK(md.find("| `easing.opacity` |") < md.find("| `ambient.hud` |"));
+    // A save keeps the order, and a save after a load is byte-identical.
+    std::string error;
+    REQUIRE_MESSAGE(save(l.ds, &error) == Status::kOk, error);
+    const std::string saved = readText(typeYaml);
+    CHECK(saved.find("micro:") < saved.find("label:"));
+    CHECK(saved.find("label:") < saved.find("hero:"));
+    CHECK(saved.find("outline:") < saved.find("glow:"));
+    Loaded again = loadDesign(project);
+    REQUIRE_MESSAGE(save(again.ds, &error) == Status::kOk, error);
+    CHECK(readText(typeYaml) == saved);
+}
+
+TEST_CASE("T-574 (c): literalColorNotInPalette is alpha-aware and skips fully transparent literals") {
+    const UiProject project = starterCopy("doc_t574_alpha");
+    const std::string xts = project.rootDir + "/ui/hud/hud.xts";
+    const std::string before = readText(xts);
+    REQUIRE_FALSE(before.empty());
+    writeText574(xts, before +
+                          "\n.t574-a { color: #00000000; }\n.t574-b { color: #000000b3; }\n"
+                          ".t574-c { color: #12345680; }\n.t574-d { color: #abcdef40; }\n");
+    Loaded l = loadDesign(project);
+    const auto swatch = [](const std::string& id, const std::string& value) {
+        Swatch s;
+        s.base.kind = EntryKind::Swatch;
+        s.base.id = id;
+        s.value = value;
+        return s;
+    };
+    // An opaque black covers translucent black; a translucent swatch only covers its own alpha.
+    l.ds.swatches = {swatch("black", "#000000"), swatch("veil", "#12345640"), swatch("mist", "#abcdef40")};
+    const std::vector<Issue> issues = lintDocument(project, l.ds, l.graph);
+    std::vector<std::string> reported;
+    const Issue* veil = nullptr;
+    for (const Issue& issue : issues) {
+        if (issue.id == "design.literalColorNotInPalette") {
+            reported.push_back(issue.message.substr(0, issue.message.find(' ')));
+            if (issue.message.rfind("#12345680", 0) == 0) {
+                veil = &issue;
+            }
+        }
+    }
+    const auto has = [&reported](const char* value) {
+        return std::find(reported.begin(), reported.end(), value) != reported.end();
+    };
+    CHECK_FALSE(has("#00000000"));
+    CHECK_FALSE(has("#000000b3"));
+    CHECK(has("#12345680"));
+    CHECK_FALSE(has("#abcdef40"));
+    REQUIRE(veil != nullptr);
+    // The message text is unchanged.
+    CHECK(veil->message.rfind(
+              "#12345680 (1x) is not in the palette; nearest swatch:veil at ΔE2000 0.00; used at ", 0) == 0);
+}
+
+TEST_CASE("T-574 (d): version under the title, screen pictures, type specimens, .url.yaml ids") {
+    UiProject project = starterCopy("doc_t574_doc");
+    const std::string design = designDir(project);
+    // A web reference: its id drops `.url.yaml` as one extension.
+    writeText574(design + "/references/pipeline/claude-design-canvas.url.yaml",
+                 "url: https://example.com/\n");
+    writeText574(design + "/references/pipeline/claude-design-canvas.url.yaml.meta",
+                 "id: 3f1d2c4b-0000-4000-8000-000000000574\n");
+    // Screen pictures: one the screen links, one that illustrates ui:hud, one whose file is missing.
+    writeText574(design + "/references/screenshots/hud.png", "png");
+    writeText574(design + "/references/screenshots/hud.png.meta",
+                 "id: 3f1d2c4b-0000-4000-8000-000000000575\n");
+    writeText574(design + "/references/screenshots/hud-wide.png", "png");
+    writeText574(design + "/references/screenshots/hud-wide.png.meta",
+                 "id: 3f1d2c4b-0000-4000-8000-000000000576\ntitle: HUD 21:9\n"
+                 "links:\n  - {rel: illustrates, to: \"ui:hud\"}\n");
+    writeText574(
+        design + "/references/screenshots/hud-gone.png.meta",
+        "id: 3f1d2c4b-0000-4000-8000-000000000577\nlinks:\n  - {rel: illustrates, to: \"ui:hud\"}\n");
+    writeText574(
+        design + "/text/screens/hud.md",
+        "---\nlinks:\n  - {rel: illustrates, to: \"ref:screenshots/hud\"}\n---\n# HUD\n\nKeep the corners "
+        "clear.\n");
+    writeText574(design + "/type.yaml",
+                 "version: 1\nroles:\n  - id: body\n    family: Inter\n"
+                 "    sample: {en: Ready when you are., zh-TW: 準備好了就出發。}\n"
+                 "  - id: mono\n    family: Consolas\n    sample: \"HP 100 / 100\"\n");
+    Loaded l = loadDesign(project);
+    bool url = false;
+    for (const ReferenceMeta& r : l.ds.references) {
+        url = url || r.base.id == "pipeline/claude-design-canvas";
+        CHECK(r.base.id != "pipeline/claude-design-canvas.url");
+    }
+    CHECK(url);
+    CHECK(referenceIdOf("a/b.URL.YAML") == "a/b");
+    CHECK(referenceIdOf("a/b.png") == "a/b");
+    CHECK(referenceIdOf("a/.url.yaml") == "a/.url");
+    l.ds.info.extra = json{{"version", "0.1"}};
+    project.spec.languages = {"zh-TW", "en"};
+    std::string md;
+    REQUIRE(buildDocument(project, l.ds, l.graph, BuildOptions(), md, nullptr) == Status::kOk);
+    CHECK(md.find("# Starter design system\n\nVersion 0.1\n\n## 1 · Identity") != std::string::npos);
+    const size_t screens = md.find("## 10 · Screens");
+    REQUIRE(screens != std::string::npos);
+    const size_t own = md.find("![screenshots/hud](references/screenshots/hud.png)", screens);
+    const size_t wide = md.find("![HUD 21:9](references/screenshots/hud-wide.png)", screens);
+    CHECK(md.find("Keep the corners clear.", screens) < own);
+    CHECK(own != std::string::npos);
+    CHECK(wide != std::string::npos);
+    CHECK(own < wide);
+    CHECK(md.find("hud-gone") == std::string::npos);
+    const size_t specimens = md.find("### Specimens");
+    REQUIRE(specimens != std::string::npos);
+    CHECK(md.find("| Role | Family | Language | Sample |", specimens) != std::string::npos);
+    const size_t zh = md.find("| `body` | Inter | `zh-TW` | 準備好了就出發。 |", specimens);
+    const size_t en = md.find("| `body` | Inter | `en` | Ready when you are. |", specimens);
+    REQUIRE(zh != std::string::npos);
+    CHECK(zh < en);
+    CHECK(md.find("| `mono` | Consolas |  | HP 100 / 100 |", specimens) != std::string::npos);
+    // No pictures in the AI version.
+    BuildOptions ai;
+    ai.forAi = true;
+    std::string aiMd;
+    REQUIRE(buildDocument(project, l.ds, l.graph, ai, aiMd, nullptr) == Status::kOk);
+    CHECK(aiMd.find("references/screenshots/hud.png") == std::string::npos);
 }

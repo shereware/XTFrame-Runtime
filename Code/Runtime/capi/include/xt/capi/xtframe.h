@@ -25,7 +25,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#if defined(_WIN32)
+/* XT_CAPI_STATIC: the static library of the Emscripten build (libxtframe.a, Docs/design/52-web-wasm.md
+   52.9); no import / export attribute. */
+#if defined(XT_CAPI_STATIC)
+#define XT_CAPI
+#elif defined(_WIN32)
 #if defined(XT_CAPI_BUILD)
 #define XT_CAPI __declspec(dllexport)
 #else

@@ -53,6 +53,9 @@ Status BundleContext::addUi(std::string_view uiId, Context& owner, DocumentHandl
     ui.context = &owner;
     ui.handle = handle;
     m_uis.push_back(std::move(ui));
+    // T-582: the global flow's endpoints on `uiId` (dormant or not) reach this instance from now
+    // on; no node state is reset.
+    m_global->m_impl->bindUi(std::string(uiId), owner, handle);
     return Status::kOk;
 }
 
@@ -131,10 +134,11 @@ void BundleContext::enableFlow(bool on) {
     }
 }
 
-Status BundleContext::loadGlobalFlow(std::string_view json, std::vector<std::string>& errors) {
+Status BundleContext::loadGlobalFlow(std::string_view json, std::vector<std::string>& errors,
+                                     std::vector<std::string>* notes, const FlowLoadOptions& options) {
     m_global->setEnabled(m_enabled);
     m_global->setHostEventListener(m_hostListener);
-    return m_global->loadGlobal(json, *this, errors);
+    return m_global->loadGlobal(json, *this, errors, notes, options);
 }
 
 Status BundleContext::loadUiFlow(std::string_view uiId, std::string_view json,

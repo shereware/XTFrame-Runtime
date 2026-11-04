@@ -167,45 +167,45 @@ Languages: en, zh-TW.
 
 | Key | Value |
 | --- | --- |
-| `ambient.hud` | 1 |
-| `ambient.menu` | 2 |
-| `ambient.other` | 1 |
-| `animate_only` | [transform, opacity] |
-| `celebration_per_screen` | 1 |
-| `duration.cinematic` | [800, 2000] |
-| `duration.close` | [200, 450] |
-| `duration.fast` | [100, 200] |
 | `duration.instant` | [0, 50] |
+| `duration.fast` | [100, 200] |
 | `duration.normal` | [200, 300] |
+| `duration.close` | [200, 450] |
 | `duration.slow` | [300, 500] |
-| `easing.emphasis` | back-out |
-| `easing.exit` | ease-in |
-| `easing.move` | ease-out |
+| `duration.cinematic` | [800, 2000] |
 | `easing.opacity` | linear |
+| `easing.move` | ease-out |
+| `easing.exit` | ease-in |
+| `easing.emphasis` | back-out |
 | `easing.spring` | off |
-| `effects.backdrop_blur.hud` | 0 |
-| `effects.backdrop_blur.menu` | 0 |
-| `effects.backdrop_blur.panel` | 2 |
-| `effects.backdrop_blur.pause` | 2 |
-| `effects.effect_layers_max` | 24 |
-| `effects.fill_rate_max` | 3.0 |
-| `entrance.reveal_ms` | [300, 400] |
+| `selection` | snap |
 | `entrance.simultaneous_max` | 3 |
 | `entrance.stagger` | off |
 | `entrance.stagger_ms` | [40, 80] |
-| `overlay` | dim |
+| `entrance.reveal_ms` | [300, 400] |
+| `ambient.hud` | 1 |
+| `ambient.menu` | 2 |
+| `ambient.other` | 1 |
 | `particles.hud` | 0 |
 | `particles.menu` | 1 |
 | `particles.results` | 1 |
-| `reduced_motion` | crossfade |
-| `safe_area.applies_to` | floating |
-| `safe_area.console` | 0.05 |
+| `celebration_per_screen` | 1 |
+| `effects.backdrop_blur.hud` | 0 |
+| `effects.backdrop_blur.menu` | 0 |
+| `effects.backdrop_blur.pause` | 2 |
+| `effects.backdrop_blur.panel` | 2 |
+| `effects.effect_layers_max` | 24 |
+| `effects.fill_rate_max` | 3.0 |
+| `overlay` | dim |
 | `safe_area.default` | 0.025 |
-| `selection` | snap |
+| `safe_area.console` | 0.05 |
+| `safe_area.applies_to` | floating |
+| `text.min_px` | 12 |
+| `text.hud_default_px` | 14 |
 | `text.contrast_min` | 4.5 |
 | `text.font_families_max` | 3 |
-| `text.hud_default_px` | 14 |
-| `text.min_px` | 12 |
+| `animate_only` | [transform, opacity] |
+| `reduced_motion` | crossfade |
 
 ### Inherited from broadsheet-2026
 

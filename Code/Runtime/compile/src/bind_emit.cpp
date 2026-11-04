@@ -806,6 +806,21 @@ private:
     bool m_needField = false;
     // T-411: compiling a trigger action value: a converter argument may be `port(<name>)`.
     bool m_portCalls = false;
+    // T-568: the `bind:` attribute being compiled, for the warnings raised inside the chain.
+    int m_line = 0;
+    int m_col = 0;
+
+    void warnAt(const std::string& message, const char* code) {
+        m_sink.warn(m_fileName, message, m_line, m_col, code);
+    }
+
+    /// T-568 (27 §27.8, item 1 of Docs/tasks/T-568.md): a `format()` argument that is a converter
+    /// chain (`dmg | scale(-1)`) is still taken as literal text before IR 3.0; say so.
+    void checkFormatArg(const std::string& raw) {
+        if (!raw.empty() && !isQuoted(raw) && splitTop(raw, '|').size() > 1) {
+            warnAt("bind: format() argument chains are not evaluated before IR 3.0", "bind.formatChain");
+        }
+    }
 
     /// T-411: `port(<name>)` -> its PORT index (-1 = not that form; -2 = an error, `err` set).
     /// Call ports and event ports carry no value to read.
@@ -911,6 +926,17 @@ private:
         if (std::find(m_deps.begin(), m_deps.end(), port) == m_deps.end()) {
             m_deps.push_back(port);
         }
+    }
+
+    /// T-568: whether PORT `port` is an `out` port declared with a `port:<name>` attribute (the
+    /// implicit bone ports are out ports the run time publishes, so a binding may read them).
+    bool declaredOutPort(uint32_t port) const {
+        if (port >= m_scopes.ports.size()) {
+            return false;
+        }
+        const IrPort& p = m_scopes.ports[port];
+        return static_cast<PortDir>(p.dir) == PortDir::Out && p.element < m_dom.nodes.size() &&
+               m_dom.nodes[p.element].attr("port:" + m_scopes.names[port]) != nullptr;
     }
 
     /// T-383 (27 §27.3.3): whether `name` is an in port declared in the scope seen from the
@@ -1109,6 +1135,7 @@ private:
         if ((allow & kAllowPort) != 0) {
             int port = m_scopes.resolve(raw, m_element);
             if (port >= 0) {
+                warnEnumPort(raw);
                 out.kind = ConverterArg::Port;
                 out.u = static_cast<uint32_t>(port);
                 addDep(out.u);
@@ -1122,6 +1149,19 @@ private:
         out.kind = ConverterArg::String;
         out.u = m_writer.intern(raw);
         return true;
+    }
+
+    /// T-568 (27 §27.8): a bare converter argument that names a port and is also a value of the
+    /// chain's Enum source port is the port (T-383's precedence); warn that quoting means the value.
+    void warnEnumPort(const std::string& raw) {
+        if (m_primary < 0) {
+            return;
+        }
+        const auto values = m_scopes.enumValues.find(static_cast<uint32_t>(m_primary));
+        if (values != m_scopes.enumValues.end() &&
+            std::find(values->second.begin(), values->second.end(), raw) != values->second.end()) {
+            warnAt("bind: '" + raw + "' is a port; quote it to mean the enum value", "bind.enumPortName");
+        }
     }
 
     /// A `%` argument of a comparison / range() input needs the input port's `_max` companion.
@@ -1292,6 +1332,9 @@ private:
         if (n == "abs") {
             return numeric(ConverterOp::Abs, 0, 0, 0, false);
         }
+        if (n == "floor" || n == "ceil") {  // T-568 (27 §27.8).
+            return numeric(n == "floor" ? ConverterOp::Floor : ConverterOp::Ceil, 0, 0, 0, false);
+        }
         if (n == "scale") {
             return numeric(ConverterOp::Scale, 1, 1, numPort, false);
         }
@@ -1332,6 +1375,9 @@ private:
                 if (n == "format" && i == 0 && !isQuoted(c.args[0])) {
                     err = "format() needs a quoted pattern first";
                     return false;
+                }
+                if (n == "format" && i > 0) {
+                    checkFormatArg(c.args[i]);
                 }
                 if (!arg(c.args[i], kAllowAny, a, err)) {
                     return false;
@@ -1632,6 +1678,7 @@ private:
             }
             // The first value is the chain's input ({0}); a constant one is loaded by concat().
             ArgVal first;
+            checkFormatArg(c.args[1]);
             if (!arg(c.args[1], kAllowAny, first, err)) {
                 return false;
             }
@@ -1652,6 +1699,7 @@ private:
             args.push_back(pattern);
             for (size_t i = 2; i < c.args.size(); ++i) {
                 ArgVal a;
+                checkFormatArg(c.args[i]);
                 if (!arg(c.args[i], kAllowAny, a, err)) {
                     return false;
                 }
@@ -1774,7 +1822,8 @@ private:
                                                   : Got::Other;
             }
         } else if (lastConverter == "range" || lastConverter == "clamp" || lastConverter == "round" ||
-                   lastConverter == "abs" || lastConverter == "scale" || lastConverter == "offset") {
+                   lastConverter == "abs" || lastConverter == "scale" || lastConverter == "offset" ||
+                   lastConverter == "floor" || lastConverter == "ceil") {
             got = Got::Number;
         } else if (lastConverter == "lerpColor") {
             got = Got::Color;
@@ -1959,6 +2008,8 @@ private:
         m_repeatItem = false;
         m_listValue = -1;
         m_needField = false;
+        m_line = attr.line;
+        m_col = attr.col;
         std::vector<IrConverterStep> steps;
         std::string err;
         std::vector<std::string> segments = splitTop(attr.value, '|');
@@ -2000,6 +2051,25 @@ private:
         for (uint32_t dep : m_deps) {
             if (static_cast<int>(dep) != m_primary) {
                 sources.push_back(dep);
+            }
+        }
+        // T-568 (27 §27.8): a binding normally reads in ports. T-573 (main-model ruling on the
+        // T-568 record): reading an out port is a warning -- the host's setPort on it and a flow
+        // `emit` to it both update its bindings; nothing else writes it.
+        for (uint32_t source : sources) {
+            if (declaredOutPort(source)) {
+                m_sink.warn(m_fileName, "bind: source '" + m_scopes.names[source] + "' is an out port",
+                            attr.line, attr.col, "bind.outPortSource");
+            }
+        }
+        // T-568 (27 §27.8, 05 §5.4): a `calc()` value of a length property stays text the run time
+        // cannot evaluate before IR 3.0 (the static value stands).
+        if (static_cast<BindTarget>(b.target) == BindTarget::Prop && !effectBind && scene == nullptr &&
+            attr.value.find("calc(") != std::string::npos) {
+            const PropInfo* info = findProp(target);
+            if (info != nullptr && info->kind == StyleValueKind::Length) {
+                m_sink.warn(m_fileName, "bind: calc() is not evaluated at runtime before IR 3.0 (05 §5.4)",
+                            attr.line, attr.col, "bind.calcNotEvaluated");
             }
         }
         b.flags = static_cast<uint8_t>((m_afterLayout ? kBindAfterLayout : 0) |
@@ -2234,6 +2304,12 @@ bool emitPorts(const DomTree& dom, const std::vector<ExpandedSymbolInstance>& in
                     std::memcpy(d.value, &id, sizeof(id));
                 }
                 out.defaults.push_back(d);
+            }
+            if (type.type == PortValueType::Enum) {  // T-568: for the enum / port name warning.
+                std::vector<std::string>& values = scopes.enumValues[index];
+                for (const auto& field : type.fields) {
+                    values.push_back(field.first);
+                }
             }
             scopes.ports.push_back(port);
             scopes.names.push_back(name);
@@ -2596,7 +2672,7 @@ bool isCatalogConverter(std::string_view name) {
         "ge",       "eq",      "ne",    "between", "not",   "and",    "or",    "format",    "thousands",
         "fixed",    "percent", "time",  "upper",   "lower", "select", "step",  "lerpColor", "fromToken",
         "localize", "concat",  "glyph", "tween",   "delay", "count",  "index", "item",      "x",
-        "y",        "z",       "w",     "vec2",    "vec3",
+        "y",        "z",       "w",     "vec2",    "vec3",  "floor",  "ceil",
     };
     for (std::string_view n : kNames) {
         if (n == name) {

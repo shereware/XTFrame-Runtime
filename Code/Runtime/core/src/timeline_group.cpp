@@ -446,6 +446,29 @@ Status Document::seekTimeline(std::string_view scopePath, std::string_view name,
     return Status::kOk;
 }
 
+void Document::setTimelineGroupPaused(size_t index, bool paused) {
+    DispatchGuard dispatch(m_context);  // A `sync` video clip is paused / played with the group.
+    TimelineGroupRuntime& g = m_timelineGroups->groups[index];
+    if (!g.active) {
+        return;  // Nothing playing or held: nothing to pause or resume.
+    }
+    if (paused) {
+        if (!g.playing) {
+            return;
+        }
+        g.playing = false;
+    } else {
+        // A group held at its end (or not looping at the start in reverse) stays where it is.
+        const bool atEnd = !g.loop && (g.reverse ? g.t <= 0.0f : g.t >= g.duration);
+        if (g.playing || atEnd) {
+            return;
+        }
+        g.playing = true;
+        g.lastClock = m_clock;
+    }
+    applyTimelineGroupTime(index);
+}
+
 float Document::timelineTime(std::string_view scopePath, std::string_view name) const {
     int found = findTimelineGroup(scopePath, name);
     return found < 0 ? -1.0f : m_timelineGroups->groups[static_cast<size_t>(found)].t;

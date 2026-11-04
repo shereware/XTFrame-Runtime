@@ -12,6 +12,7 @@
 #include "xt/document.h"
 #include "xt/input.h"
 #include "xt/shell/app.h"
+#include "xt/shell/source_watcher.h"
 #include "xt/sw/sw_png.h"
 #include "xt/text_shaper.h"
 #include "xt/types.h"
@@ -25,7 +26,12 @@
 /// `:hover` transition on the button. See ui/app.xt / ui/app.xts for the document and
 /// Docs/design/13-api.md §13.5 for the `App` API this example drives.
 ///
-/// Usage: desktop_app [--headless] [--frames N] [--width W] [--height H]
+/// Usage: desktop_app [--headless] [--watch] [--frames N] [--width W] [--height H]
+///
+/// T-595 (54 §54.14 S5): `--watch` (window mode only) hot-reloads the UI: save ui/app.xt,
+/// ui/app.xts or ui/app.xtflow and the window shows the change on the next poll (500 ms), through
+/// a SourceWatcher (xt_shell_watch) installed on xt_shell::App and Context::hotReload(). A compile error
+/// prints its diagnostics (xtframe-compile's format) to stderr and the previous version stays on screen.
 ///
 /// Without `--headless`, this opens a real window and runs until it is closed (Escape or the
 /// window's close button), exiting 0. When `--headless` is given, or when `App` fails to create a
@@ -38,7 +44,7 @@
 namespace {
 
 void printUsage() {
-    std::fprintf(stderr, "usage: desktop_app [--headless] [--frames N] [--width W] [--height H]\n");
+    std::fprintf(stderr, "usage: desktop_app [--headless] [--watch] [--frames N] [--width W] [--height H]\n");
 }
 
 /// Wires this document's event listeners (Docs/design/08-events.md §8.3): the counter button, the
@@ -74,11 +80,16 @@ void wireUi(xt::Document& doc) {
 /// Compiles ui/app.xt (at XT_DESKTOP_APP_UI_DIR, set by CMakeLists.txt to this source directory)
 /// into an in-memory `.xtir` blob. Returns an empty vector on failure (diagnostics already
 /// printed to stderr).
-std::vector<uint8_t> compileUi() {
-    const std::string uiDir = XT_DESKTOP_APP_UI_DIR;
+xt::compile::CompileOptions uiCompileOptions() {
     xt::compile::CompileOptions options;
-    options.rootDir = uiDir;
-    xt::compile::CompileResult result = xt::compile::compileDocument(uiDir + "/app.xt", options);
+    options.rootDir = XT_DESKTOP_APP_UI_DIR;
+    return options;
+}
+
+std::string uiPath() { return std::string(XT_DESKTOP_APP_UI_DIR) + "/app.xt"; }
+
+std::vector<uint8_t> compileUi() {
+    xt::compile::CompileResult result = xt::compile::compileDocument(uiPath(), uiCompileOptions());
     for (const xt::compile::Diagnostic& d : result.diagnostics) {
         const char* level = d.level == xt::compile::Diagnostic::Level::Error ? "error" : "warning";
         std::fprintf(stderr, "desktop_app: %s: %s\n", level, d.message.c_str());
@@ -166,9 +177,17 @@ int main(int argc, char** argv) {
     args.width = 640;
     args.height = 480;
     std::vector<std::string> remaining;
-    if (!xt::examples::parseCommonArgs(argc, argv, args, remaining) || !remaining.empty()) {
+    if (!xt::examples::parseCommonArgs(argc, argv, args, remaining)) {
         printUsage();
         return 2;
+    }
+    bool watch = false;  // T-595.
+    for (const std::string& arg : remaining) {
+        if (arg != "--watch") {
+            printUsage();
+            return 2;
+        }
+        watch = true;
     }
     if (args.frames == 0) {
         args.frames = 1;
@@ -184,6 +203,8 @@ int main(int argc, char** argv) {
         windowConfig.width = args.width;
         windowConfig.height = args.height;
         windowConfig.title = "XTFrame desktop_app example";
+        // T-598: declared before the App, so it outlives the App's frame poll (installWatch).
+        xt::shell::SourceWatcher watcher;
         xt::shell::App app(windowConfig);
         if (app.ok()) {
             app.setAssetRoot(XT_DESKTOP_APP_UI_DIR);
@@ -201,6 +222,18 @@ int main(int argc, char** argv) {
             xt::Document* doc = app.context().document(handle);
             if (doc != nullptr) {
                 wireUi(*doc);
+            }
+            if (watch) {
+                // T-595: a reload replaces the Document, which drops every listener wired above
+                // (13 §13.8.3), so the handler wires the new one again.
+                watcher.setReloadedHandler([&app](xt::DocumentHandle reloaded) {
+                    if (xt::Document* fresh = app.context().document(reloaded)) {
+                        wireUi(*fresh);
+                    }
+                    std::fprintf(stderr, "desktop_app: reloaded ui/app.xt\n");
+                });
+                watcher.watch(uiPath(), handle, uiCompileOptions());
+                xt::shell::installWatch(app, watcher);  // T-598: App polls it every frame.
             }
             // App::run() itself polls SDL events, pushes input, calls Context::update()/render()
             // and swaps the window each iteration (Docs/design/13-api.md §13.5); the UI's

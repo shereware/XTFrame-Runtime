@@ -5,7 +5,7 @@
 #   Tools/Scripts/dev_check.sh [--release] [--no-build] [--agent] [--no-qt512] <target>... -- <suite>...
 #   suites: editor | editor_service | editor_qt | editor_qt_slow | editor_qt_gl | flow | bundle | capi | history | net | ai | core | golden |
 #           gpu | gl | wgpu | backends | text | agent | import | lottie | symbols | templates | headers | layering | testtemp | import-py | ctest | corpus | ir |
-#           roundtrip | shape | skills | qt512 | qt512-all
+#           roundtrip | shape | skills | qt512 | qt512-all | wasm
 #          (ctest = ctest -E '^xt_.*_tests$', the command-line tests (T-267d); headers = Tools/Scripts/check_public_headers.sh, no build;
 #           layering = Tools/Scripts/check_layering.sh (T-274, R never includes / links E) and, since T-267d,
 #           Tools/Scripts/check_test_temp.sh too (both must pass), no build;
@@ -39,7 +39,10 @@
 #           qt512 = Tools/Scripts/qt512_syntax_check.sh over the Code/Editor .cpp files changed or added relative to
 #           origin/main (git diff origin/main...HEAD plus the work tree; XT_CHANGED_FILES replaces git), flags from this
 #           tree's xt_clang_check lists, against the Qt 5.12 headers (T-470, 17 §17.9; no Qt 5.12 or no clang++: SKIP);
-#           qt512-all = the same over every Code/Editor Qt source of the tree; both no build, but the tree must be configured)
+#           qt512-all = the same over every Code/Editor Qt source of the tree; both no build, but the tree must be configured;
+#           wasm = Tools/Scripts/build_wasm.sh then Tools/Scripts/check_wasm.sh (T-579, T-520, 52 §52.5, Experimental: the Node.js builds of the
+#           command-line tools against this machine's native Release ones); needs emcmake (Emscripten SDK on PATH, EMSDK or
+#           EMSCRIPTEN_ROOT) and builds its own tree, not the preset's; without emcmake: SKIPPED, not a failure)
 # T-470: qt512 is added by itself whenever editor_qt is asked for or xtframe-editor is a target (--no-qt512: not).
 # T-517: net runs xt_net_tests; ai runs xt_ai_tests and the CTest entries ai_replay_* (xtframe-editor --service
 # --agent on a replay script, Docs/design/51-builtin-ai.md §51.7), so it builds xtframe-editor too.
@@ -129,6 +132,7 @@ changed_selection() {
       Code/Editor/AI/*)       suites+=(ai editor_qt);;  # T-517: the AI panel's mode (c) too
       Code/Editor/Cli/*) targets+=(xtframe-service); suites+=(editor_service ai);;  # T-518: --service, --agent
       Code/Tools/view/*) suites+=(ctest);;
+      Code/Tools/wasm/*|Tools/Scripts/*wasm*|Tools/CMake/xt_wasm.cmake) suites+=(wasm);;  # T-579 (T-520)
       Code/Runtime/wgpu/*|Tests/wgpu/*|Tools/CMake/xt_wgpu.cmake) suites+=(wgpu);;  # T-437
       Code/Backends/*|Tests/backends/*|Examples/backends/*|Code/Tools/view/view_renderer*) suites+=(backends);;  # T-439
       Assets/Templates/*|Tests/templates/*) suites+=(templates);;  # T-424
@@ -199,10 +203,10 @@ done
 if [ ${#suites[@]} -gt 0 ]; then mapfile -t suites < <(dedupe "${suites[@]}"); fi
 if [ ${#targets[@]} -gt 0 ]; then mapfile -t targets < <(dedupe "${targets[@]}"); fi
 if [ "$DRY_RUN" = 1 ]; then echo "targets: ${targets[*]}"; echo "suites: ${suites[*]}"; exit 0; fi
-# headers, layering, testtemp, import-py, ir, shape, skills, qt512 and qt512-all compile nothing; when they are all that was asked for, skip the build.
+# headers, layering, testtemp, import-py, ir, shape, skills, qt512, qt512-all and wasm (its own Emscripten tree) need no preset build; when they are all that was asked for, skip the build.
 needs_build=0
 for s in "${suites[@]}"; do
-  case "$s" in headers|layering|testtemp|import-py|ir|shape|skills|qt512|qt512-all) ;; *) needs_build=1;; esac
+  case "$s" in headers|layering|testtemp|import-py|ir|shape|skills|qt512|qt512-all|wasm) ;; *) needs_build=1;; esac
 done
 [ ${#targets[@]} -eq 0 ] && [ "$needs_build" = 0 ] && BUILD=0
 
@@ -452,6 +456,22 @@ run_suite() {
                echo "$out" | grep -E "tests passed|Failed|\*\*\*|Not Run"
                [ $rc -eq 124 ] && echo "ctest: TIMEOUT (killed after 1800 s; the test running then is reported as Failed)"
                echo "$out" | grep -q "100% tests passed" || fail=1;;
+    # T-520 (52 §52.5): the wasm tools; most machines have no Emscripten SDK, so its absence is a skip.
+    wasm)      wasm_emcmake=0
+               if command -v emcmake >/dev/null 2>&1 || { [ -n "${EMSDK:-}" ] && [ -f "$EMSDK/emsdk_env.sh" ]; } ||
+                  { [ -n "${EMSCRIPTEN_ROOT:-}" ] && [ -x "$EMSCRIPTEN_ROOT/emcmake" ]; }; then wasm_emcmake=1; fi
+               if [ "$wasm_emcmake" = 0 ] || [ ! -f Tools/Scripts/build_wasm.sh ]; then
+                 echo "wasm: SKIPPED (no emcmake: install the Emscripten SDK, or set EMSDK / EMSCRIPTEN_ROOT)"
+               else
+                 wasm_built=1
+                 out="$(timeout 3600 bash Tools/Scripts/build_wasm.sh 2>&1 </dev/null)" ||
+                   { fail=1; wasm_built=0; echo "$out" | tail -20; echo "wasm: build FAILED"; }
+                 if [ "$wasm_built" = 1 ]; then
+                   echo "$out" | grep "^build_wasm:"
+                   out="$(timeout 1800 bash Tools/Scripts/check_wasm.sh 2>&1 </dev/null)" || fail=1
+                   echo "$out" | grep -E "^check_wasm:|MISMATCH" | head -40
+                 fi
+               fi;;
     *) echo "unknown suite $s"; fail=1;;
   esac
 }

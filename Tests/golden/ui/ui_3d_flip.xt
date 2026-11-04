@@ -1,0 +1,35 @@
+<xt>
+  <head>
+    <style>
+      /* T-572 (18 §18.13 / 19 §19.6, improvement report F32): a card turned by its *parent*
+         (`rotateY` 0 -> 180 deg over 1 s) with two `backface-visibility: hidden` faces. The
+         faces are culled on the composed transform: at 0 s only the front (gold border) shows, at
+         0.48 s (86 deg, just short of edge-on) still only the front, foreshortened, and at 1 s
+         only the back (cyan border) shows, unmirrored: its composed transform is the identity. */
+      body { width: 256px; height: 256px; background-color: #0b0e12; }
+      #stage { position: absolute; left: 0px; top: 0px; width: 256px; height: 256px;
+               perspective: 800px; perspective-origin: 50% 50%; }
+      #card { position: absolute; left: 68px; top: 48px; width: 120px; height: 160px;
+              animation: flip 1s linear 0s 1 normal both; }
+      @keyframes flip { from { transform: rotateY(0deg); } to { transform: rotateY(180deg); } }
+      .face { position: absolute; left: 0px; top: 0px; width: 120px; height: 160px;
+              border-radius: 12px; border-width: 4px; backface-visibility: hidden; }
+      #front { background-color: #1d1910; border-color: #c9a24a; transform: rotateY(0deg); }
+      #back { background-color: #102030; border-color: #3ad0e6; transform: rotateY(180deg); }
+      /* An off-centre marker on each face, top-right in each face's own frame: at 180 deg the
+         back's cyan marker is top-right (unmirrored); a mirrored front would show a gold marker
+         top-left instead. */
+      .mark { position: absolute; top: 20px; width: 32px; height: 32px; }
+      #front-mark { left: 72px; background-color: #c9a24a; }
+      #back-mark { left: 72px; background-color: #3ad0e6; }
+    </style>
+  </head>
+  <body>
+    <div id="stage">
+      <div id="card">
+        <div id="front" class="face"><div id="front-mark" class="mark"></div></div>
+        <div id="back" class="face"><div id="back-mark" class="mark"></div></div>
+      </div>
+    </div>
+  </body>
+</xt>

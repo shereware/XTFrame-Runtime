@@ -160,7 +160,19 @@ void emitInlineSvgs(const DomTree& dom, RuleSet& ruleSet, IrWriter& writer, cons
                 return rig->imageAsset(href, lineBase + line);
             };
         }
-        if (parseSvg(node.svgSource, fileName, sink, writer, scene, &ids, &extras) != Status::kOk) {
+        // T-565 (F30): parseSvg() numbers lines from the `<svg>` source's first line; every message
+        // it raises is moved to the line of the document it sits on.
+        DiagnosticSink svgSink;
+        const Status svgStatus = parseSvg(node.svgSource, fileName, svgSink, writer, scene, &ids, &extras);
+        for (const Diagnostic& d : svgSink.all()) {
+            const int line = d.line > 0 ? lineBase + d.line : d.line;
+            if (d.level == Diagnostic::Level::Error) {
+                sink.error(d.file, d.message, line, d.col);
+            } else {
+                sink.warn(d.file, d.message, line, d.col);
+            }
+        }
+        if (svgStatus != Status::kOk) {
             continue;
         }
         if (rig != nullptr && !extras.binds.empty()) {

@@ -17,6 +17,7 @@
 #include "xt/flow/flow_graph.h"
 #include "xt/flow/flow_runtime.h"
 #include "xt/input.h"
+#include "xt/property.h"
 #include "xt/text_shaper.h"
 
 /// T-193 (Docs/design/27-interaction.md §27.4/27.4.1): the global flow (`ui#<uiId>...` references,
@@ -237,9 +238,12 @@ TEST_CASE("global flow: two-segment references reach document-level declared por
 
 TEST_CASE("global flow: binding errors") {
     TwoUis uis;
+    // T-582: strictUis keeps an unregistered UI an error (without it, its edges are dormant).
     auto loadError = [&uis](const char* text) {
         std::vector<std::string> errs;
-        CHECK(uis.bundle->loadGlobalFlow(text, errs) == Status::kInvalidArgument);
+        FlowLoadOptions strict;
+        strict.strictUis = true;
+        CHECK(uis.bundle->loadGlobalFlow(text, errs, nullptr, strict) == Status::kInvalidArgument);
         return joined(errs);
     };
     CHECK(loadError(R"({"nodes":[{"id":"c","type":"counter"}],
@@ -444,6 +448,95 @@ TEST_CASE("timeline node: play / seek / stop a named timeline, end and marker ou
     REQUIRE_MESSAGE(own.load(graph, uis.hudDoc(), errors) == Status::kOk, joined(errors));
     REQUIRE(own.postSystemEvent("loading") == Status::kOk);
     CHECK(uis.hudDoc().isTimelinePlaying("", "intro"));
+}
+
+TEST_CASE("T-573: timeline node `hold` keeps the last frame; without it the members are released") {
+    const char* src = R"X(<xt><head><style>
+#Title { width: 100px; height: 20px; }
+@timeline fadeout { duration: 0.5s; #Title { 0s { opacity: 1 } 0.5s { opacity: 0.2 } } }
+</style></head><body id="Root"><span id="Title">t</span></body></xt>)X";
+    for (const char* hold : {"", ",\"hold\":false", ",\"hold\":true"}) {
+        CAPTURE(hold);
+        NullTextShaper shaper;
+        Context ctx{ContextConfig{&shaper, nullptr}};
+        const DocumentHandle h = loadUi(ctx, "fade.xt", src);
+        ctx.setViewport(Rect{0, 0, 400, 300}, 1.0f);
+        ctx.update(0.0f);
+        Document& doc = *ctx.document(h);
+        FlowRuntime own;
+        FlowGraph graph;
+        std::vector<std::string> errors;
+        const std::string json =
+            std::string(R"({"nodes":[{"id":"tl","type":"timeline","params":{"name":"fadeout")") + hold +
+            R"(}},{"id":"sys","type":"system"}],
+            "edges":[{"from":"sys.loading","to":"tl.play"}]})";
+        REQUIRE_MESSAGE(FlowGraph::parse(json, graph, errors) == Status::kOk, joined(errors));
+        REQUIRE_MESSAGE(own.load(graph, doc, errors) == Status::kOk, joined(errors));
+        REQUIRE(own.postSystemEvent("loading") == Status::kOk);
+        for (int i = 0; i < 20; ++i) {
+            ctx.update(0.05f);
+        }
+        CHECK_FALSE(doc.isTimelinePlaying("", "fadeout"));
+        const bool held = std::string(hold).find("true") != std::string::npos;
+        CHECK(doc.byId("Title").property(prop::Opacity).f == doctest::Approx(held ? 0.2f : 1.0f));
+    }
+}
+
+TEST_CASE("T-573: a flow emit to a declared out port updates that port's bindings") {
+    const char* src = R"X(<xt><head><style>
+#S, #L, #H { width: 60px; height: 20px; }
+</style></head><body id="Root"><div id="Hud" port:score="number out" port:label="string out"
+port:hp="number in"><span id="S" bind:text="score">0</span><span id="L" bind:text="label">-</span>
+<span id="H" bind:text="hp">0</span></div></body></xt>)X";
+    NullTextShaper shaper;
+    Context ctx{ContextConfig{&shaper, nullptr}};
+    const DocumentHandle h = loadUi(ctx, "emit.xt", src);
+    ctx.setViewport(Rect{0, 0, 400, 300}, 1.0f);
+    ctx.update(0.0f);
+    Document& doc = *ctx.document(h);
+    FlowRuntime own;
+    FlowGraph graph;
+    std::vector<std::string> errors;
+    REQUIRE(FlowGraph::parse(R"({"nodes":[
+        {"id":"sys","type":"system"},
+        {"id":"k","type":"constant","params":{"value":42}},
+        {"id":"t","type":"constant","params":{"value":"hi"}},
+        {"id":"es","type":"emit","params":{"port":"score"}},
+        {"id":"el","type":"emit","params":{"port":"label"}},
+        {"id":"eh","type":"emit","params":{"port":"hp"}},
+        {"id":"ex","type":"emit","params":{"port":"nowhere"}},
+        {"id":"ep","type":"emit","params":{"port":"score"}}],
+      "edges":[
+        {"from":"k.out","to":"es.value"},{"from":"sys.loading","to":"es.trigger"},
+        {"from":"t.out","to":"el.value"},{"from":"sys.loading","to":"el.trigger"},
+        {"from":"k.out","to":"eh.value"},{"from":"sys.loading","to":"eh.trigger"},
+        {"from":"k.out","to":"ex.value"},{"from":"sys.loading","to":"ex.trigger"},
+        {"from":"sys.paused","to":"ep.trigger"}]})",
+                             graph, errors) == Status::kOk);
+    REQUIRE_MESSAGE(own.load(graph, doc, errors) == Status::kOk, joined(errors));
+    std::vector<FlowHostEvent> events;
+    own.setHostEventListener([&](const FlowHostEvent& e) { events.push_back(e); });
+    REQUIRE(own.postSystemEvent("loading") == Status::kOk);
+    ctx.update(0.0f);
+    CHECK(doc.byId("S").text() == "42");
+    CHECK(doc.byId("L").text() == "hi");
+    CHECK(doc.byId("H").text() == "0");  // An in port is not the emit's to write.
+    // The host still hears every emit, with its value.
+    REQUIRE(events.size() == 4);
+    bool sawScore = false;
+    for (const FlowHostEvent& e : events) {
+        CHECK(e.kind == FlowHostEventKind::Emit);
+        if (e.name == "score") {
+            sawScore = true;
+            CHECK(e.value.n == doctest::Approx(42));
+        }
+    }
+    CHECK(sawScore);
+    // A pulse emit (no value) leaves the port as it is.
+    REQUIRE(own.postSystemEvent("paused") == Status::kOk);
+    ctx.update(0.0f);
+    CHECK(doc.byId("S").text() == "42");
+    CHECK(events.size() == 5);
 }
 
 TEST_CASE("multi-instance: instance-filtered sources and sinks") {
@@ -714,4 +807,327 @@ TEST_CASE("T-356 loadProjectRuntime: one Context (view) and two Contexts (editor
     CHECK(editor.label == "hi");
     CHECK(view.hp == "7");
     CHECK(editor.hp == "7");
+}
+
+// -- T-582 (53 禮53.5.5 "late binding"): dormant ui# edges, bound by addUi, no state reset ----------
+
+namespace {
+
+constexpr const char* kMainMenu = R"X(<xt><head><style>
+#Options { width: 60px; height: 30px; } #Next { width: 60px; height: 30px; }
+</style></head>
+<body id="Root"><div id="M" port:open_options="event out"></div>
+<button id="Options" on:click="emit(open_options)">o</button><button id="Next">n</button></body></xt>)X";
+
+constexpr const char* kSettings = R"X(<xt><head><style>#Tab { width: 60px; height: 20px; }</style></head>
+<body id="Root"><div id="S" port:active="event in" port:opened="event out" on:port(active)="emit(opened)"></div>
+<span id="Tab">-</span></body></xt>)X";
+
+/// `active` is a number here: the main menu's event cannot drive it.
+constexpr const char* kSettingsWrongType =
+    R"X(<xt><head><style>#Tab { width: 60px; height: 20px; }</style></head>
+<body id="Root"><div id="S" port:active="number in" port:opened="event out"></div>
+<span id="Tab">-</span></body></xt>)X";
+
+/// main-menu's Options opens settings (event port to event port), its Next walks a radio whose
+/// index is shown in settings' Tab, and settings' `opened` counts back into the flow.
+constexpr const char* kLateFlow = R"({"version":1,"nodes":[
+    {"id":"r","type":"radio","params":{"count":3}},
+    {"id":"s","type":"toString"},
+    {"id":"o","type":"counter"}],
+  "edges":[
+    {"from":"ui#main-menu.open_options","to":"ui#settings.active"},
+    {"from":"ui#main-menu.Next.Click","to":"r.set2"},
+    {"from":"r.index","to":"s.in"},
+    {"from":"s.out","to":"ui#settings.Tab.setText"},
+    {"from":"ui#settings.opened","to":"o.increment"}]})";
+
+/// The main menu registered, settings loaded in the same Context but not registered.
+struct LateUis {
+    NullTextShaper shaper;
+    Context ctx{ContextConfig{&shaper, nullptr}};
+    DocumentHandle menu = 0;
+    DocumentHandle settings = 0;
+    std::unique_ptr<BundleContext> bundle;
+
+    LateUis() {
+        menu = loadUi(ctx, "main-menu.xt", kMainMenu);
+        settings = loadUi(ctx, "settings.xt", kSettings);
+        ctx.setViewport(Rect{0, 0, 400, 300}, 1.0f);
+        ctx.update(0.0f);
+        bundle = std::make_unique<BundleContext>(ctx);
+        REQUIRE(bundle->addUi("main-menu", menu) == Status::kOk);
+    }
+    Document& menuDoc() { return *ctx.document(menu); }
+    Document& settingsDoc() { return *ctx.document(settings); }
+    /// Clicks `id` in the main menu and runs a frame (the click trigger's emit, the flow tick).
+    void clickMenu(const char* id) {
+        click(menuDoc(), id);
+        ctx.update(0.016f);
+        bundle->tick(0.016f);
+        ctx.update(0.016f);
+    }
+    double opened() { return valueOf(bundle->flowRuntime(), "o.value").n; }
+    double radio() { return valueOf(bundle->flowRuntime(), "r.index").n; }
+};
+
+}  // namespace
+
+TEST_CASE("global flow: T-582 an unregistered UI loads with dormant edges and one note") {
+    LateUis uis;
+    std::vector<std::string> errors;
+    std::vector<std::string> notes;
+    REQUIRE_MESSAGE(uis.bundle->loadGlobalFlow(kLateFlow, errors, &notes) == Status::kOk, joined(errors));
+    CHECK(errors.empty());
+    REQUIRE(notes.size() == 1);
+    CHECK(notes[0] == "ui#settings not registered yet (edges dormant)");
+    FlowRuntime& global = uis.bundle->flowRuntime();
+    CHECK(global.isGlobal());
+    CHECK(global.dormantDrops() == 0);  // Seeding is not a delivery.
+
+    // ui#main-menu.open_options -> ui#settings.active is dormant: settings hears nothing.
+    uis.clickMenu("Options");
+    CHECK(uis.opened() == doctest::Approx(0));
+    CHECK(global.dormantDrops() == 1);
+    uis.clickMenu("Next");  // r.index 0 -> 2: the Tab sink is dormant too.
+    CHECK(uis.radio() == doctest::Approx(2));
+    CHECK(uis.settingsDoc().byId("Tab").text() == "-");
+    CHECK(global.dormantDrops() == 2);
+    CHECK(global.runtimeErrors().empty());
+
+    // A null `notes` is fine.
+    errors.clear();
+    CHECK(uis.bundle->loadGlobalFlow(kLateFlow, errors) == Status::kOk);
+}
+
+TEST_CASE("global flow: T-582 addUi binds the dormant edges and keeps the node state") {
+    LateUis uis;
+    std::vector<std::string> errors;
+    REQUIRE_MESSAGE(uis.bundle->loadGlobalFlow(kLateFlow, errors) == Status::kOk, joined(errors));
+    uis.clickMenu("Next");  // The radio moves while settings is dormant.
+    REQUIRE(uis.radio() == doctest::Approx(2));
+
+    REQUIRE(uis.bundle->addUi("settings", uis.settings) == Status::kOk);
+    FlowRuntime& global = uis.bundle->flowRuntime();
+    CHECK(global.runtimeErrors().empty());
+    CHECK(uis.radio() == doctest::Approx(2));  // Not reset, not seeded again.
+    // T-583 (T-582 ruling (2)): the newly bound value edge gets the current value once.
+    CHECK(uis.settingsDoc().byId("Tab").text() == "2");
+    const uint64_t drops = global.dormantDrops();
+
+    // The pulse reaches settings.active; its trigger emits `opened`, which reaches the counter.
+    uis.clickMenu("Options");
+    CHECK(uis.opened() == doctest::Approx(1));
+    CHECK(global.dormantDrops() == drops);
+    uis.clickMenu("Options");
+    CHECK(uis.opened() == doctest::Approx(2));
+}
+
+TEST_CASE("global flow: T-582 removeUi makes the edges dormant again; addUi binds them again") {
+    LateUis uis;
+    std::vector<std::string> errors;
+    REQUIRE_MESSAGE(uis.bundle->loadGlobalFlow(kLateFlow, errors) == Status::kOk, joined(errors));
+    REQUIRE(uis.bundle->addUi("settings", uis.settings) == Status::kOk);
+    uis.clickMenu("Options");
+    REQUIRE(uis.opened() == doctest::Approx(1));
+
+    REQUIRE(uis.bundle->removeUi("settings") == Status::kOk);
+    FlowRuntime& global = uis.bundle->flowRuntime();
+    const uint64_t drops = global.dormantDrops();
+    uis.clickMenu("Options");
+    CHECK(uis.opened() == doctest::Approx(1));
+    CHECK(global.dormantDrops() == drops + 1);
+    uis.clickMenu("Next");
+    CHECK(uis.radio() == doctest::Approx(2));
+
+    REQUIRE(uis.bundle->addUi("settings", uis.settings) == Status::kOk);
+    CHECK(uis.radio() == doctest::Approx(2));   // Kept across remove / add.
+    CHECK(uis.opened() == doctest::Approx(1));  // Likewise.
+    uis.clickMenu("Options");
+    CHECK(uis.opened() == doctest::Approx(2));
+    CHECK(global.runtimeErrors().empty());
+}
+
+TEST_CASE("global flow: T-582 strictUis keeps the unknown UI error") {
+    LateUis uis;
+    std::vector<std::string> errors;
+    std::vector<std::string> notes;
+    FlowLoadOptions strict;
+    strict.strictUis = true;
+    CHECK(uis.bundle->loadGlobalFlow(kLateFlow, errors, &notes, strict) == Status::kInvalidArgument);
+    CHECK(joined(errors).find("unknown UI 'settings' in 'ui#settings.active'") != std::string::npos);
+    CHECK(notes.empty());
+    CHECK_FALSE(uis.bundle->flowRuntime().isGlobal());
+}
+
+TEST_CASE("global flow: T-582 a type error found by addUi is reported and the UI stays dormant") {
+    LateUis uis;
+    const DocumentHandle wrong = loadUi(uis.ctx, "settings.xt", kSettingsWrongType);
+    uis.ctx.update(0.0f);
+    std::vector<std::string> errors;
+    REQUIRE_MESSAGE(uis.bundle->loadGlobalFlow(kLateFlow, errors) == Status::kOk, joined(errors));
+    REQUIRE(uis.bundle->addUi("settings", wrong) == Status::kOk);  // Registered, not bound.
+    FlowRuntime& global = uis.bundle->flowRuntime();
+    CHECK(joined(global.runtimeErrors()) ==
+          "type mismatch on edge 'ui#main-menu.open_options' -> 'ui#settings.active'\n");
+    const uint64_t drops = global.dormantDrops();
+    uis.clickMenu("Next");
+    CHECK(uis.ctx.document(wrong)->byId("Tab").text() == "-");
+    CHECK(global.dormantDrops() == drops + 1);
+
+    // The right settings binds once the wrong one is gone.
+    REQUIRE(uis.bundle->removeUi("settings") == Status::kOk);
+    REQUIRE(uis.bundle->addUi("settings", uis.settings) == Status::kOk);
+    uis.clickMenu("Options");
+    CHECK(uis.opened() == doctest::Approx(1));
+    CHECK(global.runtimeErrors().size() == 1);
+}
+
+TEST_CASE("global flow: T-582 every instance added later is bound on its own") {
+    LateUis uis;
+    const DocumentHandle second = loadUi(uis.ctx, "settings.xt", kSettings);
+    uis.ctx.update(0.0f);
+    std::vector<std::string> errors;
+    REQUIRE_MESSAGE(uis.bundle->loadGlobalFlow(kLateFlow, errors) == Status::kOk, joined(errors));
+    REQUIRE(uis.bundle->addUi("settings", uis.settings) == Status::kOk);
+    REQUIRE(uis.bundle->addUi("settings", second) == Status::kOk);
+    uis.clickMenu("Options");
+    CHECK(uis.opened() == doctest::Approx(2));  // Both instances heard it and answered.
+    uis.clickMenu("Next");
+    CHECK(uis.settingsDoc().byId("Tab").text() == "2");
+    CHECK(uis.ctx.document(second)->byId("Tab").text() == "2");
+}
+
+TEST_CASE("global flow: T-582 an addUi from inside the flow's dispatch binds once it returns") {
+    LateUis uis;
+    const char* json = R"({"version":1,"nodes":[
+        {"id":"spw","type":"spawn","params":{"symbol":"settings"}},{"id":"o","type":"counter"}],
+      "edges":[{"from":"ui#main-menu.Next.Click","to":"spw.trigger"},
+        {"from":"ui#main-menu.open_options","to":"ui#settings.active"},
+        {"from":"ui#settings.opened","to":"o.increment"}]})";
+    std::vector<std::string> errors;
+    REQUIRE_MESSAGE(uis.bundle->loadGlobalFlow(json, errors) == Status::kOk, joined(errors));
+    bool added = false;
+    uis.bundle->setHostEventListener([&](const FlowHostEvent& e) {
+        if (e.kind == FlowHostEventKind::Spawn && !added) {
+            added = true;
+            CHECK(uis.bundle->addUi("settings", uis.settings) == Status::kOk);
+        }
+    });
+    uis.clickMenu("Next");
+    REQUIRE(added);
+    uis.clickMenu("Options");
+    CHECK(uis.opened() == doctest::Approx(1));
+    CHECK(uis.bundle->flowRuntime().runtimeErrors().empty());
+}
+
+// -- T-583 (53 §53.5.5, T-582 ruling (2)): addUi resends current values along newly bound edges --
+
+namespace {
+
+constexpr const char* kResendMenu = R"X(<xt><head><style>#Next { width: 60px; height: 30px; }</style></head>
+<body id="Root"><div id="M" port:volume="number out"></div><button id="Next">n</button></body></xt>)X";
+
+constexpr const char* kResendSettings =
+    R"X(<xt><head><style>#Tab { width: 60px; height: 20px; }</style></head>
+<body id="Root"><div id="S" port:level="number in" port:vol="number in" port:ping="event in"
+port:opened="event out" on:port(ping)="emit(opened)"></div><span id="Tab">-</span></body></xt>)X";
+
+/// Edge 1 (r.index -> level) and 3 (s.out -> Tab) are node-fed value edges, 4 a pulse edge, 5 a
+/// document-fed value edge.
+constexpr const char* kResendFlow = R"({"version":1,"nodes":[
+    {"id":"r","type":"radio","params":{"count":3}},
+    {"id":"s","type":"toString"},
+    {"id":"o","type":"counter"}],
+  "edges":[
+    {"from":"ui#main-menu.Next.Click","to":"r.set2"},
+    {"from":"r.index","to":"ui#settings.level"},
+    {"from":"r.index","to":"s.in"},
+    {"from":"s.out","to":"ui#settings.Tab.setText"},
+    {"from":"ui#main-menu.Next.Click","to":"ui#settings.ping"},
+    {"from":"ui#main-menu.volume","to":"ui#settings.vol"},
+    {"from":"ui#settings.opened","to":"o.increment"}]})";
+
+struct ResendUis {
+    NullTextShaper shaper;
+    Context ctx{ContextConfig{&shaper, nullptr}};
+    DocumentHandle menu = 0;
+    DocumentHandle settings = 0;
+    std::unique_ptr<BundleContext> bundle;
+
+    ResendUis() {
+        menu = loadUi(ctx, "main-menu.xt", kResendMenu);
+        settings = loadUi(ctx, "settings.xt", kResendSettings);
+        ctx.setViewport(Rect{0, 0, 400, 300}, 1.0f);
+        ctx.update(0.0f);
+        bundle = std::make_unique<BundleContext>(ctx);
+        REQUIRE(bundle->addUi("main-menu", menu) == Status::kOk);
+        std::vector<std::string> errors;
+        REQUIRE_MESSAGE(bundle->loadGlobalFlow(kResendFlow, errors) == Status::kOk, joined(errors));
+    }
+    Document& menuDoc() { return *ctx.document(menu); }
+    void frame() {
+        ctx.update(0.016f);
+        bundle->tick(0.016f);
+        ctx.update(0.016f);
+    }
+    void clickNext() {
+        click(menuDoc(), "Next");
+        frame();
+    }
+    static std::string port(Document& doc, const char* name) { return doc.portText(doc.lookupPort(name)); }
+    double opened() { return valueOf(bundle->flowRuntime(), "o.value").n; }
+};
+
+}  // namespace
+
+TEST_CASE("global flow: T-583 addUi sends the current values along the newly bound value edges") {
+    ResendUis uis;
+    uis.clickNext();  // r.index 0 -> 2 while settings is dormant.
+    REQUIRE(valueOf(uis.bundle->flowRuntime(), "r.index").n == doctest::Approx(2));
+    REQUIRE(uis.menuDoc().setPort(uis.menuDoc().lookupPort("volume"), Value::ofFloat(5)) == Status::kOk);
+    uis.frame();  // The volume reaches the flow (dormant sink) and the clock moves on.
+    FlowRuntime& global = uis.bundle->flowRuntime();
+    const float levelFired = global.edgeLastFired()[1];
+    const uint64_t drops = global.dormantDrops();
+
+    REQUIRE(uis.bundle->addUi("settings", uis.settings) == Status::kOk);
+    Document& settings = *uis.ctx.document(uis.settings);
+    CHECK(ResendUis::port(settings, "level") == "2");  // A node output's value, at once.
+    CHECK(settings.byId("Tab").text() == "2");         // Likewise through toString.
+    CHECK(ResendUis::port(settings, "vol") == "5");    // A document source's last value.
+    CHECK(global.edgeLastFired()[1] > levelFired);     // Counted as a delivery.
+    CHECK(global.dormantDrops() == drops);
+    CHECK(valueOf(global, "r.index").n == doctest::Approx(2));  // No node re-evaluated.
+
+    // The pulse edge (Next.Click -> ping) is not replayed: settings never emits `opened`.
+    uis.frame();
+    CHECK(uis.opened() == doctest::Approx(0));
+    CHECK(global.runtimeErrors().empty());
+    // Bound now, the pulse goes through on the next click.
+    uis.clickNext();
+    CHECK(uis.opened() == doctest::Approx(1));
+}
+
+TEST_CASE("global flow: T-583 only the new instance gets the resend; a source with no value sends nothing") {
+    ResendUis uis;
+    const DocumentHandle second = loadUi(uis.ctx, "settings.xt", kResendSettings);
+    uis.ctx.update(0.0f);
+    REQUIRE(uis.bundle->addUi("settings", uis.settings) == Status::kOk);
+    Document& first = *uis.ctx.document(uis.settings);
+    uis.clickNext();
+    REQUIRE(ResendUis::port(first, "level") == "2");
+    REQUIRE(first.setPort(first.lookupPort("level"), Value::ofFloat(9)) == Status::kOk);
+    Document& other = *uis.ctx.document(second);
+    const std::string volBefore = ResendUis::port(other, "vol");
+    uis.frame();
+    const double openedBefore = uis.opened();  // The bound first instance heard the click's ping.
+
+    REQUIRE(uis.bundle->addUi("settings", second) == Status::kOk);
+    CHECK(ResendUis::port(other, "level") == "2");
+    CHECK(other.byId("Tab").text() == "2");
+    CHECK(ResendUis::port(first, "level") == "9");      // The instance bound before is left alone.
+    CHECK(ResendUis::port(other, "vol") == volBefore);  // main-menu.volume never delivered a value.
+    uis.frame();
+    CHECK(uis.opened() == doctest::Approx(openedBefore));  // No pulse replayed to the new one.
 }

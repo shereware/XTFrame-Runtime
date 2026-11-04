@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "name": "T571 View",
+  "id": "t571view",
+  "spec": {
+    "safeArea": {
+      "default": 0.04,
+      "console": 0.06
+    }
+  },
+  "uis": [
+    {
+      "id": "main",
+      "doc": "main/main.xt",
+      "size": [
+        1280,
+        720
+      ]
+    }
+  ]
+}

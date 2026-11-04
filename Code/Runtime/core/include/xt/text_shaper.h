@@ -93,7 +93,9 @@ struct ShapeResult {
     /// Glyphs for every run, indexed by each ShapedRun's glyphStart/glyphCount.
     std::vector<ShapedGlyph> glyphs;
     /// One entry per UTF-8 byte of the shaped text: 0 = no break, 1 = break allowed after the
-    /// codepoint starting at this byte, 2 = must break (e.g. after '\n').
+    /// codepoint starting at this byte, 2 = must break (e.g. after '\n'), 3 = no break and an
+    /// emergency break must avoid it too (kinsoku, Docs/design/07-text.md §7.20: the next
+    /// codepoint must not start a line or this one must not end it). Continuation bytes are 0.
     std::vector<uint8_t> breakAfter;
     /// One entry per UTF-8 byte: 1 = a grapheme cluster starts at this byte.
     std::vector<uint8_t> graphemeStart;
@@ -163,6 +165,8 @@ struct FontDesc {
     bool italic = false;
     /// True when the font is also a system-fallback candidate (07.3 step 3).
     bool fallback = false;
+    /// T-569 (07 §7.20): the face's OS/2 table says it covers a CJK block.
+    bool cjk = false;
 };
 
 /// Text shaping/font query interface. Implementations are shared across a Context; a real

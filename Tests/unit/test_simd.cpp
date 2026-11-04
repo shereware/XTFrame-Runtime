@@ -426,8 +426,8 @@ TEST_CASE("simd: the AVX2 table is byte-identical to the SSE2 table") {
 TEST_CASE("simd: a table is selected and names itself") {
     const char* name = xt::sw::swSimd().name;
     REQUIRE(name != nullptr);
-    const bool known =
-        std::strcmp(name, "scalar") == 0 || std::strcmp(name, "sse2") == 0 || std::strcmp(name, "avx2") == 0;
+    const bool known = std::strcmp(name, "scalar") == 0 || std::strcmp(name, "sse2") == 0 ||
+                       std::strcmp(name, "avx2") == 0 || std::strcmp(name, "wasm-simd128") == 0;
     INFO("selected SIMD table: " << name);
     CHECK(known);
 }

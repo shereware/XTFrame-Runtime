@@ -1324,6 +1324,27 @@ bool RepeatController::seek(NodeId node, StringId name, float t) {
     return false;
 }
 
+bool RepeatController::setPaused(NodeId node, StringId name, bool paused) {
+    Repeat* r = nullptr;
+    Instance* inst = nullptr;
+    bool exiting = false;
+    if (!findInstance(node, r, inst, exiting)) {
+        return false;
+    }
+    for (Playback& pb : m_playbacks) {
+        if (pb.scope == inst->nodes[0] && pb.name == name) {
+            if (paused) {
+                pb.playing = false;
+            } else if (!pb.playing && (pb.loop || (pb.reverse ? pb.t > 0.0f : pb.t < pb.duration))) {
+                pb.playing = true;
+                pb.lastClock = m_doc.m_clock;
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
 // -- Spawn pools (T-201) --------------------------------------------------------------------------
 
 bool RepeatController::spawn(NodeId node, uint32_t pool, Vec2 at, float lifetime, StringId timeline) {

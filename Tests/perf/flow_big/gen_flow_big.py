@@ -257,6 +257,8 @@ def write_xt(path, ui_id, title, style_sinks, text_sinks, port_sinks):
         lines.append(f'      <div id="{sid}" class="box"/>')
     for tid in text_sinks:
         lines.append(f'      <span id="{tid}" class="label">0</span>')
+    # T-573 (27 §27.8, T-568 record): a binding may read an out port (bind.outPortSource warns);
+    # the host's setPort on src<i> re-evaluates these bars every frame.
     for i in range(SOURCE_PORTS):
         lines.append(f'      <div id="sb{i}" class="bar" bind:height="src{i} | range(0,100,0px,40px)"/>')
     for i, port in enumerate(port_sinks):

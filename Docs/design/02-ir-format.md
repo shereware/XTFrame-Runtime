@@ -434,7 +434,7 @@ IrTriggerAction (20 bytes):
 
 **TriggerEvent**（上限 `kTriggerEventLast`；更大的碼不是錯誤，該觸發不會發生）：None 0、Hover 1、Leave 2、Press 3、Release 4、Click 5、Focus 6、Blur 7、Check 8、Uncheck 9、Show 10、Hide 11、Port 12、TimelineEnd 13、TimelineMarker 14、StateEnter 15、StateExit 16、DragStart 17、DragOver 18、Drop 19、Key 20、Gesture 21、Player 22、ItemEnter 23、ItemExit 24、MediaEnd 25、DragLeave 26、Back 27、NavBlocked 28、DragValue 29、NavValue 30、DoubleClick 31（T-379）、PointerCancel 32、PointerMove 33（T-386）、DragCancel 34（T-388）、Scroll 35、OutsidePress 36（T-387）、Change 37、Input 38（T-392）、PointerDrag 39（T-394）、FocusIn 40、FocusOut 41（T-397）。
 
-**TriggerAction**（上限 `kTriggerActionLast`；更大的碼略過）：None 0、Play 1、Stop 2、Seek 3、State 4、Class 5、Show 6、Hide 7、Sound 8、Set 9、Emit 10、If 11、Focus 12（arg0 = 目標 id，`kInvalidString` = 觸發元素自身，T-392）、Spawn 13、Haptic 14、Layer 15、Remove 16、Consume 17（只在 `on:outsidepress`，T-394）、Reset 18（`reset(value)`，只在有 `bind:value` 的元素，T-399）。
+**TriggerAction**（上限 `kTriggerActionLast`；更大的碼略過）：None 0、Play 1、Stop 2、Seek 3、State 4、Class 5、Show 6、Hide 7、Sound 8、Set 9、Emit 10、If 11、Focus 12（arg0 = 目標 id，`kInvalidString` = 觸發元素自身，T-392）、Spawn 13、Haptic 14、Layer 15、Remove 16、Consume 17（只在 `on:outsidepress`，T-394）、Reset 18（`reset(value)`，只在有 `bind:value` 的元素，T-399）、Pause 19、Resume 20（`pause(<timeline>)`／`resume(<timeline>)`，arg0 = 時間軸名，T-573）。
 
 **動作旗標**：
 
@@ -467,7 +467,7 @@ IrTriggerAction (20 bytes):
 
 ### 2.s.1 T-200 追加（#198）
 
-- `ConverterOp` 尾端：`x=37`、`y=38`、`z=39`、`w=40`、`Vec=41`（`vec2`／`vec3` 共用 41，`argCount` 2 或 3 決定大小；參數為 None 者取鏈輸入）。
+- `ConverterOp` 尾端：`x=37`、`y=38`、`z=39`、`w=40`、`Vec=41`（`vec2`／`vec3` 共用 41，`argCount` 2 或 3 決定大小；參數為 None 者取鏈輸入）；`Floor=42`、`Ceil=43`（T-568，無參數）。
 - `BindTarget::Checked = 9`（T-204 #203）：`bind:checked` 僅限 `<input type="checkbox">`，執行期只設清 Checked 位元並標樣式髒，不發 Change、不觸發 on:check/on:uncheck。
 - `BindTarget::WorldAnchor = 8`：`world-anchor="<port>"` 編成一筆 BIND（旗標 `kBindAfterLayout`、一個來源、無步驟）；port 非 vec2/vec3 為編譯錯誤。
 
@@ -587,14 +587,14 @@ uint32 textLength;  uint8 text[]            // UTF-8；source 與 glsl 都是它
 | 種類 | 名稱 | 值 |
 |---|---|---|
 | limit | `kBindTargetLast` | 14 |
-| limit | `kConverterOpLast` | 41 |
+| limit | `kConverterOpLast` | 43 |
 | limit | `kIfTermLast` | 6 |
 | limit | `kIrFormatMinor` | 9 |
 | limit | `kIrSelCondLast` | 17 |
 | limit | `kPortTypeLast` | 12 |
 | limit | `kSetSourceLast` | 10 |
 | limit | `kStylePropLast` | 280 |
-| limit | `kTriggerActionLast` | 18 |
+| limit | `kTriggerActionLast` | 20 |
 | limit | `kTriggerEventLast` | 41 |
 | struct | `EasingPoint` | 8 |
 | struct | `IrAnimationSpec` | 48 |

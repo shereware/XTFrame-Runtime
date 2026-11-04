@@ -334,6 +334,12 @@ TEST_CASE("T-176: every @media condition") {
     CHECK(mediaWidth("(aspect-ratio <= 16/9)", 320, 180) == 10);  // Exactly 16:9 counts.
     CHECK(mediaWidth("(aspect-ratio <= 16/9)", 420, 180) == 1);
     CHECK(mediaWidth("(aspect-ratio >= 2.3)", 420, 180) == 10);
+    // T-568 (F6): the web's min- / max-aspect-ratio forms are the same conditions.
+    CHECK(mediaWidth("(min-aspect-ratio: 2/1)", 420, 180) == 10);
+    CHECK(mediaWidth("(min-aspect-ratio: 2/1)", 320, 180) == 1);
+    CHECK(mediaWidth("(max-aspect-ratio: 16/9)", 320, 180) == 10);
+    CHECK(mediaWidth("(max-aspect-ratio: 16/9)", 420, 180) == 1);
+    CHECK(mediaWidth("(min-aspect-ratio: 2.3)", 420, 180) == 10);
     CHECK(mediaWidth("(orientation: portrait)", 200, 400) == 10);
     CHECK(mediaWidth("(orientation: portrait)", 400, 200) == 1);
     CHECK(mediaWidth("(orientation: landscape)", 400, 200) == 10);
@@ -429,6 +435,7 @@ TEST_CASE("T-176: unsupported @media queries warn and skip the block; misuse ins
         {"@media (hover: hover) { #a{width:5px} }", "unsupported @media feature", false},
         {"@media (aspect-ratio: 16/9) { #a{width:5px} }", "needs >= or <=", false},
         {"@media (min-width: 10em) { #a{width:5px} }", "takes a px length", false},
+        {"@media (min-aspect-ratio: 16px) { #a{width:5px} }", "expected a ratio", false},  // T-568
         {"@media (platform: tv) { #a{width:5px} }", "unknown value", false},
         {"@media (min-width: 1px) { @media (min-width: 2px) { #a{width:5px} } }", "cannot be nested", true},
         {"@media (min-width: 1px) { @keyframes k { from{opacity:0} } }", "not allowed inside @media", true},

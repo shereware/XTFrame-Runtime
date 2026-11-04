@@ -64,6 +64,7 @@ with them; clicking the badge opens this page.
 | `media-axis` | The media axis (video and image-sequence clips and their timeline sync) | Properties: the Clip group of a `<video>` or `<sequence>` |
 | `window-snapshot` | The JSON content of the multi-window document snapshot, `Document::snapshotState()` (its version 1 may change) | Not marked (host API, no editor setting) |
 | `wgpu-preview` | The editor's WebGPU preview (`--preview-backend wgpu`; falls back to OpenGL, then software) | Preferences: the Preview page |
+| `wasm-tools` | The WebAssembly tool chain for Node.js (`Code/Tools/wasm/`, `@xtframe/tools-wasm`: the command-line tools, `xtframe-service --stdio`, `xtframe-mcp-stdio`); its CI job `wasm` is not required | Not marked in the editor (command-line tools outside it): the first paragraph of `Code/Tools/wasm/README.md` and the first line of each command's `--help` say `[experimental]` |
 
 ## 6. Behavior version (`spec.behavior`)
 

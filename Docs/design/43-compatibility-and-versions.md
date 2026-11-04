@@ -17,8 +17,8 @@
 | `.xteditor.json` | 無 | 加 `version: 1`；缺 = 1；只含檢視狀態，未知鍵保留原樣寫回 |
 | `.meta`（素材、參考） | 無 | 加 `version: 1`；缺 = 1 |
 | `manifest/assets.yaml` | `version: 1` | 維持 |
-| `<xt>` 根節點 | 無 | `<xt version="1">`；缺 = 1；編譯器對大於已知的值報錯 |
-| `.xts` | 無 | 不加（語言層由 §43.3 行為版本管） |
+| `<xt>` 根節點 | 無 | `<xt version="1">`；缺 = 1；編譯器對大於已知的值報錯。**v2（54 章，M43）**：`<xt version="2">` 必寫，v1 讀取路徑保留到 1.0，讀 v1 警告一次「run --migrate」 |
+| `.xts` | 無 | 不加（語言層由 §43.3 行為版本管）。54 章 v2 的三種片段（layout／style／timelines）也都是 `.xts`，不加副檔名、隨擁有它的 `.xt` 走（2026-11-04） |
 | `design/*.yaml`、`contracts/*.yaml`、`conventions/*` | 無 | 加 `version: 1`；缺 = 1。**例外**（2026-10-21 裁定，T-406）：`design/design.yaml` 的 `version` 是設計系統自己的版本（35 §35.2），其格式版用 `formatVersion`（缺 = 1；T-410 補） |
 | `manifest.json`（bundle） | `version: 2` | 維持；加 §43.6 契約雜湊 |
 
@@ -93,7 +93,7 @@
 | Editor Service | op 名與參數 | 加 op；廢止走 alias |
 | skills | `xtui`／`xtui-editor` 的對外說明 | 跟 op 走 |
 
-**實驗**（不在承諾內，UI 與文件標「實驗」）：32 章綁定與變形、31 章修改器的執行期部分、`layer: overlay` 的巢狀順序、3D UI 深度分層、媒體軸、多視窗的 `snapshotState` JSON 內容（版本 1 可變）、編輯器的 WebGPU 預覽。
+**實驗**（不在承諾內，UI 與文件標「實驗」）：32 章綁定與變形、31 章修改器的執行期部分、`layer: overlay` 的巢狀順序、3D UI 深度分層、媒體軸、多視窗的 `snapshotState` JSON 內容（版本 1 可變）、編輯器的 WebGPU 預覽、**wasm 跨平台工具鏈**（`@xtframe/…` 的 Node 版 CLI、`xtframe-service --stdio`、`xtframe-mcp-stdio`；2026-11-02 使用者：併 main 但 Experimental，CI `wasm` 為非必要工作）。
 
 ## 43.8 beta 相容聲明（C4 的骨架）
 

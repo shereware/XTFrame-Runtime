@@ -29,7 +29,8 @@ if(XT_BUILD_SHELL)
         desktop_app/main.cpp
     )
     target_include_directories(desktop_app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common)
-    target_link_libraries(desktop_app PRIVATE xt_core xt_compile xt_sw xt_shell)
+    # T-598: xt_shell_watch is SourceWatcher (`--watch`); xt_shell alone has no compiler.
+    target_link_libraries(desktop_app PRIVATE xt_core xt_compile xt_sw xt_shell xt_shell_watch)
     target_compile_definitions(desktop_app PRIVATE
         XT_DESKTOP_APP_UI_DIR="${CMAKE_CURRENT_SOURCE_DIR}/desktop_app/ui")
     xt_enable_exceptions(desktop_app)

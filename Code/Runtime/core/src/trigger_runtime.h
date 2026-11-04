@@ -34,6 +34,8 @@ public:
     void onCheckedChanged(NodeId node, bool checked) override;
     // T-194 (08.9, 27.7).
     void onFocusMoved(NodeId node, uint8_t player) override;
+    // T-573 (27.8).
+    void onGamepadKey(NodeId target, uint8_t player) override;
     void onDragState(NodeId node, DragStateKind kind, bool on) override;
     void onDrop(const Event& event) override;
     uint32_t itemIndexOf(NodeId node) override;

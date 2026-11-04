@@ -31,6 +31,8 @@ struct PortScopes {
     std::vector<uint32_t> scopeOf;
     /// `<element id>.<port>` and `<instance id>.<port>` (exposed ports) -> port index.
     std::map<std::string, uint32_t, std::less<>> qualified;
+    /// T-568 (27 §27.8): an Enum port's value names, by port index (emitPorts()).
+    std::map<uint32_t, std::vector<std::string>> enumValues;
 
     /// Resolves `name` as seen from DOM node `element`: a qualified `[#]<id>.<port>` name, else
     /// the element's own scope, then each enclosing scope, then the document level. -1 when no

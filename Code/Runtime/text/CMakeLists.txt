@@ -49,6 +49,7 @@ add_library(xt_text STATIC
     src/ft_glyphs.cpp
     src/ft_text_shaper.cpp
     src/glyph_atlas.cpp
+    src/missing_fonts.cpp
 )
 target_include_directories(xt_text PUBLIC include)
 # T-261e: Code/Runtime/core/src/file_open_utf8.h (openFileUtf8, the UTF-8 file open shared by the runtime layers).

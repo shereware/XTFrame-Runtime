@@ -250,6 +250,10 @@ enum class TriggerEvent : uint8_t {
 };
 /// Highest TriggerEvent code (02 §2.v). A larger code is not an error: the trigger never fires.
 inline constexpr uint8_t kTriggerEventLast = 41;
+/// T-573 (27.8, 08 §8.20): IrTrigger::arg0 of a Key trigger written `key(any)` (no KeyCode has
+/// this value): any key that is not a modifier (Shift / Control / Alt / Meta) on its own, and any
+/// gamepad button. An older runtime compares it as a key code and never fires it.
+inline constexpr uint32_t kTriggerKeyAny = 0xFFFFu;
 
 /// IrTriggerAction::kind (27.2.3), numbered in the table's order.
 enum class TriggerAction : uint8_t {
@@ -283,9 +287,15 @@ enum class TriggerAction : uint8_t {
     /// T-399 (08 §8.18): `reset(value)`: re-applies the trigger element's `bind:value` (the port
     /// value replaces the user's edit). The compiler accepts it only on an element with `bind:value`.
     Reset = 18,
+    /// T-573 (27.8): `pause(<timeline>)`; arg0 = timeline name. The group's clock stops in place
+    /// (members keep their values); `then` chains waiting on it keep waiting.
+    Pause = 19,
+    /// T-573 (27.8): `resume(<timeline>)`; arg0 = timeline name. A paused (or seeked) group that
+    /// has not reached its end plays on from where it is; otherwise nothing happens.
+    Resume = 20,
 };
 /// Highest TriggerAction code (02 §2.v). A larger code is not an error: the action is skipped.
-inline constexpr uint8_t kTriggerActionLast = 18;
+inline constexpr uint8_t kTriggerActionLast = 20;
 
 /// IrTriggerAction::flags of a Play action (27.2.3 `play(<tl>[, reverse|loop|once|hold])`).
 inline constexpr uint8_t kPlayReverse = 1u;
@@ -433,12 +443,14 @@ enum class ConverterOp : uint8_t {
     /// T-200: `vec2(...)` / `vec3(...)`: a Vec2 (argCount 2) or Vec3 (argCount 3) of the arguments
     /// (Number or Port); an argument of kind None is the chain's input (`<port> | vec2(y)`).
     Vec = 41,
+    Floor = 42,  ///< T-568: floor (rounds toward -infinity).
+    Ceil = 43,   ///< T-568: ceil (rounds toward +infinity).
     /// Host converters (13.8.1 registerConverter) are numbered from here at run time; in the IR
     /// every host converter is this op with args[0] = its name (a String argument).
     Custom = 0x80,
 };
-/// Highest catalog op (ConverterOp::Vec, T-200).
-inline constexpr uint8_t kConverterOpLast = 41;
+/// Highest catalog op (ConverterOp::Ceil, T-568).
+inline constexpr uint8_t kConverterOpLast = 43;
 
 /// Kind of one IrConverterStep argument, 4 bits per argument in IrConverterStep::argKinds
 /// (T-175). Kind 0 keeps T-174's all-constant conditions valid.

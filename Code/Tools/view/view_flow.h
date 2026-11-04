@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "view_diagnostics.h"
 #include "xt/compile/utf8_path.h"
 #include "xt/context.h"
 #include "xt/document.h"
@@ -60,6 +61,9 @@ inline bool reportFlowContinuity(const xt::flow::FlowRuntime& runtime, bool stri
     runtime.loadWarnings(lines);
     for (const std::string& line : lines) {
         std::fprintf(stderr, "xtframe-view: %s: %s\n", strict ? "error" : "warning", line.c_str());
+        noteViewDiagnostic("flow.continuity",
+                           strict ? xt::compile::Severity::Error : xt::compile::Severity::Warning,
+                           line);  // T-576
     }
     return !(strict && !lines.empty());
 }

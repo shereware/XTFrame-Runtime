@@ -148,9 +148,15 @@
       ],
       "contract": "6bce21e1d6d11d83",
       "file": "ui/hud.xtir",
-      "fileHash": 8854934997607863199,
+      "fileHash": 17443896289938208291,
       "fit": "native",
       "flow": "ui/hud.xtflow",
+      "flowInterface": {
+        "emits": [],
+        "reads": [],
+        "system": [],
+        "writes": []
+      },
       "id": "hud",
       "name": "hud",
       "ports": {
@@ -1263,826 +1269,1032 @@
         "out": [
           {
             "name": "#alert.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#alert.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#alert.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#alert.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#alert.Finished",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#alert.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#alert.Marker",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#alert.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#alert.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#alert.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#alert.localTime",
+            "origin": "document",
             "type": "number"
           },
           {
             "name": "#ammo.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#ammo.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#ammo.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#ammo.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#ammo.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#ammo.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#ammo.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#ammo.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#ammoButtons.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#ammoButtons.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#ammoButtons.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#ammoButtons.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#ammoButtons.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#ammoButtons.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#ammoButtons.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#ammoButtons.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#ammoPanel.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#ammoPanel.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#ammoPanel.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#ammoPanel.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#ammoPanel.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#ammoPanel.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#ammoPanel.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#ammoPanel.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#ammoRow.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#ammoRow.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#ammoRow.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#ammoRow.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#ammoRow.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#ammoRow.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#ammoRow.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#ammoRow.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#card.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#card.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#card.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#card.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#card.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#card.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#card.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#card.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#clock.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#clock.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#clock.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#clock.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#clock.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#clock.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#clock.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#clock.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#fire.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fire.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fire.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#fire.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fire.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fire.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fire.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fire.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#heal.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#heal.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#heal.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#heal.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#heal.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#heal.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#heal.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#heal.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#hpBar.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#hpBar.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#hpBar.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#hpBar.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#hpBar.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#hpBar.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#hpBar.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#hpBar.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#hpFill.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#hpFill.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#hpFill.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#hpFill.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#hpFill.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#hpFill.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#hpFill.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#hpFill.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#hpRow.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#hpRow.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#hpRow.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#hpRow.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#hpRow.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#hpRow.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#hpRow.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#hpRow.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#hpText.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#hpText.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#hpText.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#hpText.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#hpText.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#hpText.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#hpText.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#hpText.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#name.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#name.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#name.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#name.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#name.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#name.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#name.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#name.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#player.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#player.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#player.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#player.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#player.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#player.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#player.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#player.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#radar.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#radar.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#radar.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#radar.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#radar.Finished",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#radar.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#radar.Marker",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#radar.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#radar.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#radar.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#radar.localTime",
+            "origin": "document",
             "type": "number"
           },
           {
             "name": "#reload.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#reload.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#reload.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#reload.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#reload.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#reload.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#reload.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#reload.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#root.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#root.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#root.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#root.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#root.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#root.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#root.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#root.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#skill1.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#skill1.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#skill1.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#skill1.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#skill1.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#skill1.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#skill1.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#skill1.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#skill2.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#skill2.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#skill2.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#skill2.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#skill2.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#skill2.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#skill2.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#skill2.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#skill3.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#skill3.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#skill3.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#skill3.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#skill3.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#skill3.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#skill3.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#skill3.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#skills.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#skills.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#skills.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#skills.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#skills.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#skills.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#skills.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#skills.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#stageL.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#stageL.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#stageL.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#stageL.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#stageL.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#stageL.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#stageL.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#stageL.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#stageR.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#stageR.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#stageR.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#stageR.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#stageR.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#stageR.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#stageR.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#stageR.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "document.clock",
+            "origin": "document",
             "type": "number"
           },
           {
             "name": "document.pointerDown",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "document.pointerNX",
+            "origin": "document",
             "type": "number"
           },
           {
             "name": "document.pointerNY",
+            "origin": "document",
             "type": "number"
           },
           {
             "name": "document.pointerX",
+            "origin": "document",
             "type": "number"
           },
           {
             "name": "document.pointerY",
+            "origin": "document",
             "type": "number"
           },
           {
             "name": "document.viewportHeight",
+            "origin": "document",
             "type": "number"
           },
           {
             "name": "document.viewportWidth",
+            "origin": "document",
             "type": "number"
           }
         ]
@@ -2110,7 +2322,7 @@
       ],
       "contract": "470e5ae7f0e98e05",
       "file": "ui/pause.xtir",
-      "fileHash": 13427725878334650713,
+      "fileHash": 7586922943261972269,
       "fit": "native",
       "flow": "",
       "id": "pause",
@@ -2625,398 +2837,497 @@
         "out": [
           {
             "name": "#halo.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#halo.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#halo.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#halo.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#halo.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#halo.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#halo.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#halo.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#headRow.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#headRow.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#headRow.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#headRow.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#headRow.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#headRow.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#headRow.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#headRow.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#heading.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#heading.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#heading.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#heading.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#heading.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#heading.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#heading.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#heading.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#hint.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#hint.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#hint.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#hint.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#hint.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#hint.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#hint.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#hint.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#menu.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#menu.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#menu.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#menu.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#menu.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#menu.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#menu.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#menu.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#options.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#options.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#options.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#options.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#options.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#options.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#options.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#options.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#pauseRadar.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#pauseRadar.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#pauseRadar.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#pauseRadar.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#pauseRadar.Finished",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#pauseRadar.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#pauseRadar.Marker",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#pauseRadar.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#pauseRadar.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#pauseRadar.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#pauseRadar.localTime",
+            "origin": "document",
             "type": "number"
           },
           {
             "name": "#quit.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#quit.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#quit.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#quit.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#quit.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#quit.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#quit.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#quit.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#resume.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#resume.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#resume.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#resume.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#resume.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#resume.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#resume.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#resume.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#root.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#root.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#root.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#root.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#root.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#root.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#root.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#root.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#scrim.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#scrim.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#scrim.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#scrim.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#scrim.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#scrim.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#scrim.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#scrim.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "document.clock",
+            "origin": "document",
             "type": "number"
           },
           {
             "name": "document.pointerDown",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "document.pointerNX",
+            "origin": "document",
             "type": "number"
           },
           {
             "name": "document.pointerNY",
+            "origin": "document",
             "type": "number"
           },
           {
             "name": "document.pointerX",
+            "origin": "document",
             "type": "number"
           },
           {
             "name": "document.pointerY",
+            "origin": "document",
             "type": "number"
           },
           {
             "name": "document.viewportHeight",
+            "origin": "document",
             "type": "number"
           },
           {
             "name": "document.viewportWidth",
+            "origin": "document",
             "type": "number"
           }
         ]
@@ -3034,6 +3345,500 @@
         "menu"
       ],
       "thumb": "thumbs/pause.png"
+    },
+    {
+      "assets": [
+        "assets/bcb9a6e8677ebb4a.ttf",
+        "assets/9f2d7f7820bc92c2.ttf",
+        "assets/73acb60d73f4b8d3.ttf",
+        "assets/e7733c492d3ebae3.ttf"
+      ],
+      "contract": "470e5ae7f0e98e05",
+      "file": "ui/sceneview.xtir",
+      "fileHash": 7994679914893493766,
+      "fit": "native",
+      "flow": "",
+      "id": "sceneview",
+      "name": "sceneview",
+      "ports": {
+        "in": [
+          {
+            "name": "#help.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#help.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#help.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#help.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#help.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#help.setState",
+            "type": "pulse"
+          },
+          {
+            "name": "#help.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#help.setText",
+            "type": "string"
+          },
+          {
+            "name": "#help.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#help.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#help.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#main.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#main.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#main.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#main.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#main.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#main.setState",
+            "type": "pulse"
+          },
+          {
+            "name": "#main.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#main.setText",
+            "type": "string"
+          },
+          {
+            "name": "#main.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#main.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#main.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#pip.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#pip.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#pip.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#pip.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#pip.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#pip.setState",
+            "type": "pulse"
+          },
+          {
+            "name": "#pip.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#pip.setText",
+            "type": "string"
+          },
+          {
+            "name": "#pip.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#pip.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#pip.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#pipPanel.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#pipPanel.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#pipPanel.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#pipPanel.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#pipPanel.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#pipPanel.setState",
+            "type": "pulse"
+          },
+          {
+            "name": "#pipPanel.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#pipPanel.setText",
+            "type": "string"
+          },
+          {
+            "name": "#pipPanel.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#pipPanel.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#pipPanel.toggleClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.addClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.focus",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.playAnimation",
+            "type": "string"
+          },
+          {
+            "name": "#root.removeClass",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.setProperty",
+            "type": "number"
+          },
+          {
+            "name": "#root.setState",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.setStyle",
+            "type": "string"
+          },
+          {
+            "name": "#root.setText",
+            "type": "string"
+          },
+          {
+            "name": "#root.setValue",
+            "type": "string"
+          },
+          {
+            "name": "#root.stopAnimation",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.toggleClass",
+            "type": "pulse"
+          }
+        ],
+        "out": [
+          {
+            "name": "#help.AnimationEnd",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "#help.Blur",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "#help.Change",
+            "origin": "document",
+            "type": "string"
+          },
+          {
+            "name": "#help.Click",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "#help.Focus",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "#help.PointerEnter",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "#help.PointerLeave",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "#help.hover",
+            "origin": "document",
+            "type": "bool"
+          },
+          {
+            "name": "#main.AnimationEnd",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "#main.Blur",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "#main.Change",
+            "origin": "document",
+            "type": "string"
+          },
+          {
+            "name": "#main.Click",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "#main.Focus",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "#main.PointerEnter",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "#main.PointerLeave",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "#main.hover",
+            "origin": "document",
+            "type": "bool"
+          },
+          {
+            "name": "#pip.AnimationEnd",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "#pip.Blur",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "#pip.Change",
+            "origin": "document",
+            "type": "string"
+          },
+          {
+            "name": "#pip.Click",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "#pip.Focus",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "#pip.PointerEnter",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "#pip.PointerLeave",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "#pip.hover",
+            "origin": "document",
+            "type": "bool"
+          },
+          {
+            "name": "#pipPanel.AnimationEnd",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "#pipPanel.Blur",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "#pipPanel.Change",
+            "origin": "document",
+            "type": "string"
+          },
+          {
+            "name": "#pipPanel.Click",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "#pipPanel.Focus",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "#pipPanel.PointerEnter",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "#pipPanel.PointerLeave",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "#pipPanel.hover",
+            "origin": "document",
+            "type": "bool"
+          },
+          {
+            "name": "#root.AnimationEnd",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.Blur",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.Change",
+            "origin": "document",
+            "type": "string"
+          },
+          {
+            "name": "#root.Click",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.Focus",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.PointerEnter",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.PointerLeave",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "#root.hover",
+            "origin": "document",
+            "type": "bool"
+          },
+          {
+            "name": "document.clock",
+            "origin": "document",
+            "type": "number"
+          },
+          {
+            "name": "document.pointerDown",
+            "origin": "document",
+            "type": "bool"
+          },
+          {
+            "name": "document.pointerNX",
+            "origin": "document",
+            "type": "number"
+          },
+          {
+            "name": "document.pointerNY",
+            "origin": "document",
+            "type": "number"
+          },
+          {
+            "name": "document.pointerX",
+            "origin": "document",
+            "type": "number"
+          },
+          {
+            "name": "document.pointerY",
+            "origin": "document",
+            "type": "number"
+          },
+          {
+            "name": "document.viewportHeight",
+            "origin": "document",
+            "type": "number"
+          },
+          {
+            "name": "document.viewportWidth",
+            "origin": "document",
+            "type": "number"
+          }
+        ]
+      },
+      "requires": {
+        "effects": true,
+        "space3d": false,
+        "text": true
+      },
+      "size": [
+        1280,
+        720
+      ],
+      "tags": [
+        "debug"
+      ],
+      "thumb": "thumbs/sceneview.png"
     }
   ],
   "version": 1

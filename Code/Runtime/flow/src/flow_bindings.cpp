@@ -1029,7 +1029,8 @@ void inferSelectTypes(const FlowGraph& graph, const std::map<std::string, int>& 
 bool resolveEndpoint(const std::string& text, bool isSource, const FlowGraph& graph,
                      const std::map<std::string, int>& nodeIndexById,
                      const std::map<int, PortType>& selectTypes, Document* doc,
-                     const std::map<std::string, Document*>* uiDocs, Endpoint& out, std::string& err) {
+                     const std::map<std::string, Document*>* uiDocs, std::vector<std::string>* dormantUis,
+                     Endpoint& out, std::string& err) {
     if (text.size() < 2) {
         err = "malformed endpoint '" + text + "'";
         return false;
@@ -1045,11 +1046,18 @@ bool resolveEndpoint(const std::string& text, bool isSource, const FlowGraph& gr
         Document* target = nullptr;
         if (uiDocs != nullptr) {
             auto it = uiDocs->find(uiId);
-            if (it == uiDocs->end()) {
+            if (it != uiDocs->end()) {
+                target = it->second;
+            } else if (dormantUis != nullptr) {
+                // T-582 (53 禮53.5.5): a UI not registered yet -- its edges are dormant, the checks
+                // that need its Document are made when addUi() binds it.
+                if (std::find(dormantUis->begin(), dormantUis->end(), uiId) == dormantUis->end()) {
+                    dormantUis->push_back(uiId);
+                }
+            } else {
                 err = "unknown UI '" + uiId + "' in '" + text + "'";
                 return false;
             }
-            target = it->second;
         }
         if (lifecycle) {
             if (!isSource) {
@@ -1133,7 +1141,8 @@ bool resolveEndpoint(const std::string& text, bool isSource, const FlowGraph& gr
 }  // namespace
 
 Status validateGraph(const FlowGraph& graph, Document* doc, std::vector<std::string>& errors,
-                     std::vector<BoundEdge>* outEdges, const std::map<std::string, Document*>* uiDocs) {
+                     std::vector<BoundEdge>* outEdges, const std::map<std::string, Document*>* uiDocs,
+                     std::vector<std::string>* dormantUis) {
     std::map<std::string, int> nodeIndexById;
     for (size_t i = 0; i < graph.nodes.size(); ++i) {
         nodeIndexById[graph.nodes[i].id] = static_cast<int>(i);
@@ -1199,12 +1208,12 @@ Status validateGraph(const FlowGraph& graph, Document* doc, std::vector<std::str
         Endpoint from, to;
         std::string err;
         bool fromOk = resolveEndpoint(e.from, /*isSource=*/true, graph, nodeIndexById, selectTypes, doc,
-                                      uiDocs, from, err);
+                                      uiDocs, dormantUis, from, err);
         if (!fromOk) {
             errors.push_back(err);
         }
         bool toOk = resolveEndpoint(e.to, /*isSource=*/false, graph, nodeIndexById, selectTypes, doc, uiDocs,
-                                    to, err);
+                                    dormantUis, to, err);
         if (!toOk) {
             errors.push_back(err);
         }
@@ -1239,16 +1248,8 @@ Status validateGraph(const FlowGraph& graph, Document* doc, std::vector<std::str
         // (Docs/design/17-editor.md §17.6's own sample graph wires a "Change" (string) output
         // into "#root.toggleClass" (pulse) this way -- resolving that contradiction between the
         // port-type table and the worked example in favor of the example; see the T-56 report).
-        bool flexibleSink = isFlexibleSink(to);
-        if (to.type == PortType::Pulse) {
-            // Always OK.
-        } else if (flexibleSink) {
-            if (from.type == PortType::Pulse) {
-                errors.push_back("cannot connect a pulse output to '" + e.to + "'");
-                continue;
-            }
-        } else if (from.type != to.type && !from.anyType && !to.anyType) {
-            errors.push_back("type mismatch on edge '" + e.from + "' -> '" + e.to + "'");
+        if (!checkEdgeTypes(from, to, e.from, e.to, err)) {
+            errors.push_back(err);
             continue;
         }
 
@@ -1396,6 +1397,25 @@ Status validateGraph(const FlowGraph& graph, Document* doc, std::vector<std::str
         *outEdges = std::move(built);
     }
     return Status::kOk;
+}
+
+bool checkEdgeTypes(const Endpoint& from, const Endpoint& to, const std::string& fromText,
+                    const std::string& toText, std::string& err) {
+    if (to.type == PortType::Pulse) {
+        return true;  // Always OK.
+    }
+    if (isFlexibleSink(to)) {
+        if (from.type == PortType::Pulse) {
+            err = "cannot connect a pulse output to '" + toText + "'";
+            return false;
+        }
+        return true;
+    }
+    if (from.type != to.type && !from.anyType && !to.anyType) {
+        err = "type mismatch on edge '" + fromText + "' -> '" + toText + "'";
+        return false;
+    }
+    return true;
 }
 
 // ---- Document endpoint layer (flow_internal.h; shared by FlowRuntime and HostPorts) ------------
@@ -2005,6 +2025,34 @@ bool typedPortValue(PortValueType type, const InputValue& v, Value& out) {
 
 }  // namespace
 
+void writeEmittedOutPort(Document& doc, std::string_view port, const InputValue& v) {
+    if (v.type == PortType::Pulse || port.empty()) {
+        return;
+    }
+    const PortId id = doc.lookupPort(port);
+    if (id == kInvalidPort) {
+        return;
+    }
+    const PortRecord info = doc.portInfo(id);
+    if (info.dir != PortDir::Out || info.type == PortValueType::Event) {
+        return;
+    }
+    // As applyResolvedInput()'s PortSet: a typed Value where one is equivalent, else the text form.
+    Value typed;
+    if (typedPortValue(info.type, v, typed)) {
+        doc.setPort(id, typed);
+        return;
+    }
+    char buf[64];
+    std::string_view text = v.type == PortType::Bool     ? std::string_view(v.b ? "true" : "false")
+                            : v.type == PortType::String ? v.s
+                                                         : std::string_view();
+    if (v.type == PortType::Number) {
+        text = std::string_view(buf, xt::formatFloat(buf, sizeof(buf), v.n, 17));
+    }
+    doc.setPortText(id, text);
+}
+
 bool sinkCacheValid(const SinkCache& cache, const DocEndpointState& state) {
     return cache.doc != nullptr && cache.doc == state.doc && cache.serial == state.serial;
 }
@@ -2581,7 +2629,7 @@ void FlowRuntime::Impl::bindSource(DocEndpointState& state, uint32_t slot, uint3
     sources.push_back(source);
 }
 
-void FlowRuntime::Impl::applyToSink(uint32_t edgeIndex, const RtValue& v) {
+void FlowRuntime::Impl::applyToSink(uint32_t edgeIndex, const RtValue& v, const DocEndpointState* only) {
     RtEdge& edge = rtEdges[edgeIndex];
     const SlotEndpoint& to = edge.to;
     if (to.owner == Endpoint::Owner::Node) {
@@ -2625,10 +2673,17 @@ void FlowRuntime::Impl::applyToSink(uint32_t edgeIndex, const RtValue& v) {
         }
         return;
     }
+    bool bound = false;
     for (UiDoc& ui : uiDocs) {
-        if (ui.uiId == sink.uiId && reaches(*ui.state)) {
-            write(*ui.state);
+        if (ui.uiId == sink.uiId && (only == nullptr || ui.state.get() == only)) {
+            bound = true;
+            if (reaches(*ui.state)) {
+                write(*ui.state);
+            }
         }
+    }
+    if (!bound && !seeding) {
+        ++dormantDrops;  // T-582: no instance of that UI is bound (yet, or any more); seeding is no delivery.
     }
 }
 
@@ -2679,43 +2734,48 @@ void FlowRuntime::Impl::bindTimelineNodes() {
         if (nodes[i].type != NodeType::Timeline) {
             continue;
         }
-        const std::string name = paramText(nodes[i], slots::timeline::kName);
-        const std::string scope = paramText(nodes[i], slots::timeline::kScope);
-        const std::string uiId = nodes[i].uiId;
-        const int index = static_cast<int>(i);
-        for (DocEndpointState* state : statesFor(uiId)) {
-            ElementRef root = state->doc->root();
-            if (!root.valid()) {
-                continue;
-            }
-            // TimelineEnd / TimelineMarker are sent to the group's scope element and bubble, so the
-            // root sees every group's events; the name (and a named scope) picks this node's.
-            auto handler = [this, state, index, name, scope, uiId](Event& ev) {
-                if (std::string_view(state->doc->string(ev.timelineName)) != name) {
-                    return;
-                }
-                if (!scope.empty() && ev.target != state->doc->byId(scope).node) {
-                    return;
-                }
-                const std::string* savedUi = currentUi;
-                const uint32_t savedInstance = currentInstance;
-                currentUi = &uiId;  // This handler's own copy: alive while it runs.
-                currentInstance = state->doc->instanceId();
-                if (ev.type == EventType::TimelineEnd) {
-                    firePulseOutput(index, slots::timeline::kEnd);
-                } else {
-                    fireEventText(index, slots::timeline::kMarker,
-                                  ev.markerName != kInvalidString
-                                      ? std::string_view(state->doc->string(ev.markerName))
-                                      : std::string_view());
-                }
-                currentUi = savedUi;
-                currentInstance = savedInstance;
-            };
-            state->listenerIds.push_back(state->doc->addListener(root, EventType::TimelineEnd, handler));
-            state->listenerIds.push_back(state->doc->addListener(root, EventType::TimelineMarker, handler));
+        for (DocEndpointState* state : statesFor(nodes[i].uiId)) {
+            bindTimelineNode(i, *state);
         }
     }
+}
+
+void FlowRuntime::Impl::bindTimelineNode(size_t i, DocEndpointState& endpointState) {
+    const std::string name = paramText(nodes[i], slots::timeline::kName);
+    const std::string scope = paramText(nodes[i], slots::timeline::kScope);
+    const std::string uiId = nodes[i].uiId;
+    const int index = static_cast<int>(i);
+    DocEndpointState* state = &endpointState;
+    ElementRef root = state->doc->root();
+    if (!root.valid()) {
+        return;
+    }
+    // TimelineEnd / TimelineMarker are sent to the group's scope element and bubble, so the
+    // root sees every group's events; the name (and a named scope) picks this node's.
+    auto handler = [this, state, index, name, scope, uiId](Event& ev) {
+        if (std::string_view(state->doc->string(ev.timelineName)) != name) {
+            return;
+        }
+        if (!scope.empty() && ev.target != state->doc->byId(scope).node) {
+            return;
+        }
+        const std::string* savedUi = currentUi;
+        const uint32_t savedInstance = currentInstance;
+        currentUi = &uiId;  // This handler's own copy: alive while it runs.
+        currentInstance = state->doc->instanceId();
+        if (ev.type == EventType::TimelineEnd) {
+            firePulseOutput(index, slots::timeline::kEnd);
+        } else {
+            fireEventText(index, slots::timeline::kMarker,
+                          ev.markerName != kInvalidString
+                              ? std::string_view(state->doc->string(ev.markerName))
+                              : std::string_view());
+        }
+        currentUi = savedUi;
+        currentInstance = savedInstance;
+    };
+    state->listenerIds.push_back(state->doc->addListener(root, EventType::TimelineEnd, handler));
+    state->listenerIds.push_back(state->doc->addListener(root, EventType::TimelineMarker, handler));
 }
 
 }  // namespace xt::flow

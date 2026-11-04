@@ -53,7 +53,10 @@ BVal num(double v, bool isBool = false);
 BVal str(std::string s);
 BVal ofValue(Kind kind, const Value& v);
 std::string numText(double v);
+std::string cssNumText(double v);
 std::string toStr(const BVal& b);
+/// T-568: toStr() for a CSS value: numbers in cssNumText()'s fixed form.
+std::string toCssStr(const BVal& b);
 double toNum(const BVal& b);
 bool truthy(const BVal& b);
 bool same(const BVal& a, const BVal& b);

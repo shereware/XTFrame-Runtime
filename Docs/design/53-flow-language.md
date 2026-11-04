@@ -41,6 +41,11 @@ flow 在遊戲端由宿主執行（宿主插件內建 `xt_flow`；宿主可關�
 - **無環**：節點對節點的邊不得成環（載入時 Kahn 演算法），例外是同一節點的 pulse→pulse 自環（§53.6.1）。經過文件繞回的迴路無法靜態判定，執行期以回饋保護截斷（§53.6.4）。
 - **初始推送（seeding）**：載入成功時每個節點先推一次初始輸出（`constant` 的值、`counter.initial`、`toggle.initial`、`radio.initial`、`state.initial`、重算型節點以未連線輸入求值一次……）。初始推送**不算**邊的投遞（`edgeLastFired()` 全為 −1），`compare` 不在此期間發 `true`／`false`，`state.set` 與 `timeline.seek` 在此期間忽略。
 
+**脈衝與計時的分工（2026-10-31 補，T-561；XTAtrium 雙模式 conformance 300 tick 逐 tick 全同後定案）**：
+- **脈衝邊在輸入派送內同步執行**：元素事件（Click、PointerEnter／Leave、Focus、Blur、AnimationEnd）與事件型 port 在 `Context::update` 的 `refreshHover`／`routeInput` 階段派送，xt_flow 的 listener 當場 `deliverExternal`，整條脈衝邊（含 `toggleClass`／`setStyle`／`playAnimation` 等終點）在**同一次 update 的樣式解算之前**生效，transition 起點時鐘取本幀。
+- **計時與值型在 update 之後的 tick**：`clock`、`timer`、`throttle` 的窗口與 trailing、值型訊號的按幀合併與送出（§27.4.1 (c)）、值型輪詢，都在 `BundleContext::tick(dt)`（C ABI：`xt_surface_update` 內 `Context::update` 之後）執行；其寫入下一次 update 才解算（最多晚一幀，與 §27.4.1 相符）。
+- **外部執行器**（50 §50.3 `xt_surface_set_update_hook`／13 §13.8.3 `onBeforeDocumentUpdate`）要等價：hook 內只派送本次 update 收到的文件脈衝並執行其邊；計時與值型在 update 返回後再做。`render` 不重解樣式（23 章）。
+
 ## 53.2 `.xtflow` JSON 格式
 
 ### 53.2.1 頂層
@@ -344,6 +349,9 @@ flow 在遊戲端由宿主執行（宿主插件內建 `xt_flow`；宿主可關�
 
 測試：`clock: \`seconds\` accumulates tick() dt`。
 
+**精度與時序（2026-10-31 補，XTAtrium conformance 定案）**：累計器是**單精度**（`float clockAccum += dt`，`dt` 即 `tick(float)` 的參數），輸出時才放寬成 double（`seconds = double(float 累計值)`），與 `#document.clock` 同一條規則（每個 UI 各自一個 float 累計器；`clock` 節點讀的是全域流圖的那一個）。載入時初始推送 `0`；之後在每個 tick 的 (4) 步推出含**本幀** `dt` 的累計值，下游重算型節點同 tick 的 (6) 步結算（不暫存到下一 tick）。外部執行器要逐 tick 等價，必須同樣以 float 累加、再轉 double 做格式化；以 double 累加或用 `tick × dt` 相乘，會在 `%.1f` 的進位邊界（x.x5）差一個 tick。
+
+
 ### 53.4.6 `random`
 
 | 項目 | 定義 |
@@ -614,6 +622,8 @@ flow 在遊戲端由宿主執行（宿主插件內建 `xt_flow`；宿主可關�
 - **多實例**：邊參數 `instance`（§53.2.3）。flow 本身沒有 `itemIndex`；`itemIndex` 只出現在 port 事件（`PortEvent`、C ABI `xt_port_event.item_index`）。`FlowHostEvent.instanceId` 帶發出事件的實例。
 - 測試：`global flow: three-segment ui# references drive one UI from another`、`global flow: two-segment references reach document-level declared ports`、`global flow: binding errors`、`global flow: ui#<id>.shown / hidden follow the Context lifecycle`、`multi-instance: instance-filtered sources and sinks`、`T-356 BundleContext: UIs in another Context take part in the global flow`。
 
+**延後綁定（2026-11-04 定案；T-582；CE-70 落地後確認宿主需要）**：全域流圖載入時，`ui#<x>` 指向的 UI 若**尚未註冊**（`addUi` 未呼叫），不再報 `unknown UI`，改為該端點的邊**休眠**（不綁、不送、不收），載入成功並在 `errors` 以外的 `notes`（新出參數，可為 null）回報 `ui#<x> not registered yet (edges dormant)`；之後 `addUi(x, …)` 時自動把休眠邊綁到該實例，**節點狀態不重置**（radio／counter／state 等照舊）；`removeUi(x)` 時邊回到休眠，同樣不重置。仍是錯誤的情況：`ui#` 用在 UI 流圖、全域流圖用 `#id.port`、方向錯、型別錯（型別檢查在綁定時做，綁定失敗印錯誤並維持休眠）。宿主因此不必在註冊集合變動時重載全域流圖；`loadGlobalFlow` 的舊行為（未註冊即錯誤）以 `FlowLoadOptions::strictUis = true` 保留給測試。
+
 ### 53.5.6 `bind:` 與 flow 的分工（27 §27.4.3）
 
 - 模擬或真實的遊戲值：flow（或宿主）寫進宣告 `in` port，UI 用 `bind:` 讀它——Demo 驗證過的綁定到遊戲裡一條線都不改。`set(port)` 是非視覺終點，連續性診斷永不報。
@@ -765,3 +775,34 @@ uiId → `DocumentHandle`（多實例可多個）、擁有全域 runtime 與每 
 
 順帶（不屬本章）：C ABI `xt_host_event` 沒有 `value` 欄位，`emit` 節點的值到不了 C 宿主 → 併入 T-558（C ABI 補充）。
 
+## 53.100 2026-11-01 只加項目（改進報告 R12；T-573）
+
+- `counter`：新 param `wrap: bool`（缺 = false）。true 時到 `max` 再加一步回 `min`（反向同理），`setCounter` 的夾限只在 wrap 為 false 時生效。
+- `math`：`op` 新值 `mod`（浮點取餘，結果與被除數同號，除數 0 → 0）。
+- `timeline` 節點：新 param `hold: bool`（缺 = false，維持舊行為：播完回基底值）。true 時播完持住終幀，與觸發器 `play()` 相同。
+- 這三項是 §53.4 表的追加，`kFlowFormatVersion` 不變（舊執行器遇未知 param 照 §53.2.2 接受不用）。
+
+## 53.101 flow 的宿主介面（2026-11-02 定案；22 §22.15、23 §23.10 第 14 項）
+
+從宿主看，一張 flow 的對外介面只有四種：`emit` 節點送出的事件（名稱＋值）、`system` 節點接收的系統事件、flow 寫入的 in port（`set(port)` 終點）、flow 讀取的 out port（來源）。`xtframe-pack` 把這四種反射進 manifest（22 §22.15），宿主腳本系統據此生成「flow 節點」：一個 UI 一個，輸入是 system 事件、輸出是 emit。flow 寫入的 in port 若宿主也寫，宿主端提示一次。語意不變；本節只是反射。
+
+**T-582 實作記錄（#533，2026-11-04；主模型裁決）**：休眠＝「`uiDocs` 中無該 `uiId` 的已綁實例」，不另開表；載入時未註冊 UI 的端點以無文件規則解析（宣告 port `anyType`），`addUi` 時 `checkUiEndpoints` 重解析並綁定（`flow_late_binding.cpp`），失敗印載入時同樣的錯誤到 `runtimeErrors()` 並維持休眠、`addUi` 仍回 kOk；派送中 `addUi` 延後到 `runPending`；`dormantDrops()` 另供查詢。裁決：(1) 全域 `timeline` 節點的 `ui` 指向未註冊 UI 仍是載入錯誤（§53.6.1 第 4 條不放寬）。(2) **剛綁上的值型終點不收上游目前值**——這會讓隨選開啟的 UI 看不到既有狀態（radio 已在 2，新開的 settings 仍顯示初始）：**改為綁定時沿新綁的值型邊補送一次目前值**（只值型、不脈衝、不重算節點），T-583。(3) 反覆 remove／add 留下的舊 UiDoc 到下次載入才回收：接受。(4) 休眠宣告 port 來源的 `filter` 檢查與 `select`／`filter`／`throttle` 型別推導在綁定時不重做：接受，記 PENDING。
+
+**T-583 實作記錄（#534，2026-11-04）**：`resendCurrentValues(uiId, state)` 在 `bindUi` 之後對「剛綁上、終點與來源皆值型、來源不在同一 UI、非生命週期」的邊各送一次（`applyToSink` 加 `only` 實例參數，多實例只送新實例，計入 `edgeLastFired`）；文件端點的最後值記在 `ExternalSlotInfo::last`（`rebind()` 後清空）；從未送過值的來源不補送。T-582 測試「`Tab` 綁定後仍是 "-"」改為 "2"（主模型確認）。
+
+**T-573 實作記錄（#547）**：`counter.wrap`（參數槽 4）：min／max 皆有時超過端點跳到另一端（不取模），wrap 時 `setCounter`／`set`／`initial` 不夾限；`math op=mod`：`std::fmod`，與被除數同號，除數 0 → 0；`timeline.hold`（參數槽 5，預設 false）；`xtframe-view --play` 持住終幀。
+
+**來源格式 v2（2026-11-04，54 章）**：flow 一定獨立——`.xtflow` 不是 v2 的區段、UI 檔不引用它；宿主可以完全不執行 `xt_flow`，直接以宿主腳本經 HostPorts／C ABI 驅動（§27.4、§53.7）。
+
+## 53.102 UI 流圖的 `lifecycle` 節點與「intro 不用計時器」（2026-11-04 定案；CE 第一次載入閃一下的根因；T-601）
+
+**根因**（CE 側唯讀調查，CE docs/05 §5.5.9）：NPDO 三張 UI 流圖用 `timer {interval: 0.05, autostart: true, repeat: false}` 的 `tick` 去 `timeline.play(intro)`——這是 skill `flow.md` 教的「載入後發一次脈衝」寫法。計時器只在流圖 tick 時累積，所以宿主先畫出 2～3 幀「作者畫的最終狀態」，intro 才跳回第 0 幀。第二次載入不閃是因為 CE-66 保留了整個 surface。
+
+**定案**：
+1. **UI 流圖新增來源節點 `lifecycle`**（節點類型第 24 種）：輸出 `shown`、`hidden`（pulse），無輸入、無參數。`shown` 在 Context `OnShown`（文件載入並第一次顯示、以及之後每次 `show`）時**同幀、在第一次 `update`／渲染之前**派送；`hidden` 在 `OnHidden`。語意與全域流圖的 `ui#<id>.shown`／`hidden`（§53.5.5）相同，只是在 UI 自己的流圖裡不需要 `ui#` 前綴。一張流圖可有多個 `lifecycle` 節點（都發）。`.xtflow` 格式版本不變（只加節點類型；舊執行器遇到未知類型的既有錯誤照舊）。
+2. **`timeline.play` 的正確啟動源**：`lifecycle.shown`（流圖）或板子上的 `on:show="play(intro)"`（27 §27.2.1）。兩者等價，作者選一個；**不要用 autostart 計時器**。
+3. **lint `flow.introByTimer`**（warning，24 §24.15.4 追加）：`timer` 節點 `autostart: true` 且 `repeat: false` 的 `tick` 直接或經純脈衝節點（`gate`／`once`／`sequence` 類）到達 `timeline.play`、`timeline.seek` 或 `state.set` 時發；訊息 `intro starts from an autostart timer; the first frames show the final state (use lifecycle.shown or on:show)`；`fix` 指向第 2 條。`xtframe-compile`／`--lint`／Problems 面板都列。
+4. **NPDO 三張流圖**（`main-menu`、`settings`、`hud`）改為 `lifecycle.shown → intro.play`，刪除 `start` 計時器；npdo 語料庫若像素變動則重產（預期第 0 幀改變：原本第 0 幀是最終狀態）。
+5. **skill `flow.md`**「載入後發一次脈衝」段改寫：用 `lifecycle.shown`；autostart 計時器只留給「真的要延遲」的情況，並註明閃爍風險。三份同步。
+6. 宿主端（CE-74／CE-75：Open 順序、第一幀 dt、Plate 綁定閘門、預熱）在 CE 倉處理，與本條獨立。
+7. **`shown` 的派送點明確化（CE-75 依賴）**：(a) 文件載入後以可見狀態進入第一次 `update` 時發一次（初次顯示；T-373 的 `setInitialVisibility(true)` 也算可見）；(b) 之後每次 `Context::requestShow`（或 `show` 動作）把隱藏的 surface 變回可見時發（既有 `OnShown`）。`Context::setVisible(handle, bool)` 維持 T-373 語意：**靜默**，不發 `show`／`hide` 觸發也不發 `OnShown`／`OnHidden`，因此也不發 `lifecycle.shown`／`hidden`。宿主要「先停車再亮相」：`setVisible(false)` 停車、`requestShow(handle)` 亮相（會發 `shown`）；`requestHide` 發 `hidden`。

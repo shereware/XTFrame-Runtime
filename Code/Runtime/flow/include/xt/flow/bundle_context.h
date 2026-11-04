@@ -32,8 +32,16 @@ public:
     Context& context() { return m_context; }
 
     /// Registers `handle` (loaded in context()) as an instance of UI `uiId`; call once per
-    /// instance. Register every UI before loading a flow that uses it. kInvalidArgument for an
-    /// empty id, a handle the Context does not know, or one already registered.
+    /// instance. kInvalidArgument for an empty id, a handle the Context does not know, or one
+    /// already registered.
+    /// T-582 (53 §53.5.5 "late binding"): with a global flow loaded, the new instance is bound to
+    /// the flow's `ui#<uiId>` endpoints at once (dormant ones included), after the checks that
+    /// need its Document (element ids, `<anim>` ports, declared port direction and type, edge
+    /// types, value-input fan-in, effect addresses); the node state is not reset and nothing is
+    /// seeded again. A check that fails is appended to flowRuntime().runtimeErrors() (the load
+    /// error's text) and that instance stays dormant; the call still returns kOk (it is
+    /// registered). Called from inside the global flow's own dispatch, the binding is made when
+    /// that dispatch returns.
     Status addUi(std::string_view uiId, DocumentHandle handle);
     /// T-356: registers `handle`, loaded in another Context `owner`, as an instance of UI `uiId`
     /// (a host that keeps some UIs out of the Context it renders, e.g. the editor's Demo space:
@@ -42,6 +50,7 @@ public:
     /// postSystemEvent() forwards to it, but a system event posted on it directly reaches no flow.
     /// handles() / uiOf() / uiFlowRuntime() see only context()'s instances; instances() sees
     /// every one. kInvalidArgument as the overload above; `owner` == context() is that overload.
+    /// T-582: bound to the global flow as the overload above.
     Status addUi(std::string_view uiId, Context& owner, DocumentHandle handle);
     /// T-260b: deregisters every instance of UI `uiId`: the global flow's endpoints on it are
     /// unbound (their listeners come off its Document only while the Context still holds that
@@ -50,8 +59,8 @@ public:
     /// same way, disabled, and destroyed at the next tick() (it may be the one calling back).
     /// Safe before or after Context::unloadDocument() of its handles, and from inside a callback
     /// (a ContextListener, a Document listener, a FlowHostEvent listener). The global flow keeps
-    /// its edges to `ui#<uiId>` (they reach nothing); load it again to bind a replacement.
-    /// kInvalidArgument when `uiId` is not registered.
+    /// its edges to `ui#<uiId>`, dormant again (T-582: no node state is reset); a later addUi()
+    /// of `uiId` binds them to the new instance. kInvalidArgument when `uiId` is not registered.
     Status removeUi(std::string_view uiId);
     /// The distinct UI ids, in first-registration order.
     std::vector<std::string> uiIds() const;
@@ -77,7 +86,10 @@ public:
     /// Parses and loads the global flow (FlowRuntime::loadGlobal() against this bundle).
     /// T-260c: called from a callback of the global flow's own propagation, it takes effect when
     /// that dispatch returns (FlowRuntime::load()); parse errors are still reported at once.
-    Status loadGlobalFlow(std::string_view json, std::vector<std::string>& errors);
+    /// T-582: a `ui#` reference to a UI not registered yet leaves its edges dormant and adds a
+    /// line to `notes` (FlowRuntime::loadGlobal()); `options.strictUis` makes it an error again.
+    Status loadGlobalFlow(std::string_view json, std::vector<std::string>& errors,
+                          std::vector<std::string>* notes = nullptr, const FlowLoadOptions& options = {});
     /// Parses a UI's own `.xtflow` and loads it once per registered instance of `uiId` (each
     /// against its own Document). kInvalidArgument for an unregistered id or any parse / load
     /// error (every instance's errors are collected; the ones that loaded stay loaded).

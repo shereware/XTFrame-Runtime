@@ -79,6 +79,9 @@ public:
     bool stop(NodeId node, StringId name, NodeId& scope);
     /// `seek(<name>, t)` on an instance's copy; false when `node` has none.
     bool seek(NodeId node, StringId name, float t);
+    /// T-573 (27.8): `pause(<name>)` (`paused`) / `resume(<name>)` on an instance's copy; false
+    /// when `node` has none. A copy held at its end does not resume.
+    bool setPaused(NodeId node, StringId name, bool paused);
     /// `remove`: destroys `node`'s instance when it is exiting.
     void removeAction(NodeId node);
 

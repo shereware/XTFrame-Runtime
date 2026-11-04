@@ -1,0 +1,26 @@
+<xt>
+  <head>
+    <style>
+      /* T-572 (18 §18.13, improvement report F25): a parent with `border-radius` and
+         `overflow: hidden` clips its children with the rounded padding box, on SW and GL alike
+         (xt_gl_tests compares GL to this SW image). Left: a bordered parent (the clip follows
+         the inner, padding-box radius); right: no border, a child that overhangs every corner. */
+      body { width: 256px; height: 256px; background-color: #0b0e12; }
+      #a { position: absolute; left: 16px; top: 48px; width: 104px; height: 120px;
+           border-radius: 28px; border-width: 6px; border-color: #c9a24a;
+           background-color: #161a21; overflow: hidden; }
+      #a-child { position: absolute; left: -10px; top: -10px; width: 124px; height: 140px;
+                 background-color: #3ad0e6; }
+      #b { position: absolute; left: 136px; top: 48px; width: 104px; height: 120px;
+           border-radius: 40px 12px 40px 12px; background-color: #161a21; overflow: hidden; }
+      #b-child { position: absolute; left: -20px; top: -20px; width: 144px; height: 160px;
+                 background-color: #ef476f; }
+      #b-inner { position: absolute; left: 20px; top: 30px; width: 64px; height: 60px;
+                 background-color: #ffd166; }
+    </style>
+  </head>
+  <body>
+    <div id="a"><div id="a-child"></div></div>
+    <div id="b"><div id="b-child"></div><div id="b-inner"></div></div>
+  </body>
+</xt>

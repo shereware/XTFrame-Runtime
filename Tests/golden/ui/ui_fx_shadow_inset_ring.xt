@@ -1,0 +1,20 @@
+<xt>
+  <head>
+    <style>
+      /* T-572 (18 §18.13, improvement report F24): an inset shadow with no blur and a 2 px
+         spread is a 2 px ring along the inside of the rounded box -- never a filled box -- and
+         SW and GL draw the same image (xt_gl_tests compares GL to this SW image). The second
+         box is the blurred variant from the same report (blur 12 px, spread 0). */
+      body { width: 256px; height: 256px; background-color: #0b0e12; }
+      div { position: absolute; background-color: #161a21; border-radius: 10px; }
+      #ring { left: 16px; top: 40px; width: 180px; height: 110px;
+              effect: shadow(0px 0px 0px 2px #3ad0e6 inset); }
+      #blur { left: 60px; top: 150px; width: 180px; height: 90px;
+              effect: shadow(0px 0px 12px 0px #3ad0e6 inset); }
+    </style>
+  </head>
+  <body>
+    <div id="ring"></div>
+    <div id="blur"></div>
+  </body>
+</xt>

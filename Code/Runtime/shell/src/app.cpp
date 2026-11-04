@@ -934,6 +934,12 @@ bool App::runFrameAll(const WindowFrameFn& onFrame, float dt, bool swap) {
     if (m_quit) {
         return false;
     }
+    // T-598 (was T-595's `--watch` poll): the host's per-frame hook runs before this frame's
+    // onFrame / update / render, so e.g. a hot reload shows on the frame after the save. Not from
+    // the live-resize watch (inside the OS modal loop).
+    if (m_framePoll && !m_inWatch) {
+        m_framePoll(*this);
+    }
     // T-384b: window 0 first, then the others in creation order. By index: onFrame may create a
     // window (appended; it renders this frame too) but never removes one (closing is deferred).
     for (size_t i = 0; i < m_windows.size(); ++i) {

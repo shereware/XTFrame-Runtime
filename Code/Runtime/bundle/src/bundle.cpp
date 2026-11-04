@@ -63,7 +63,8 @@ struct BundleManifest {
     bool hasSpec = false;  // T-207 `spec`.
     BundleSpec spec;
     std::string motionSpec;
-    std::string globalFlow;  // T-193 `flows.global`.
+    std::string globalFlow;             // T-193 `flows.global`.
+    FlowInterface globalFlowInterface;  // T-580 top-level `flowInterface`.
     // T-199.
     std::vector<AssetInfo> assetTable;
     std::vector<AtlasInfo> atlases;
@@ -91,6 +92,7 @@ void readPorts(const json& portsObj, const char* key, bool isInput, std::vector<
         port.name = getString(entry, "name");
         port.type = getString(entry, "type");
         port.isInput = isInput;
+        port.origin = detail::getPortOrigin(entry);  // T-580
         const auto paramsIt = entry.find("params");
         if (paramsIt != entry.end() && paramsIt->is_object()) {
             for (auto param = paramsIt->begin(); param != paramsIt->end(); ++param) {
@@ -233,7 +235,8 @@ Status readManifestBundle(std::string_view dir, Manifest& out, std::string* erro
             readPorts(*portsIt, "out", false, ui.ports);
         }
         ui.fileHash = getUint64(entry, "fileHash");
-        ui.contract = getString(entry, "contract");  // T-408
+        ui.contract = getString(entry, "contract");                           // T-408
+        ui.flowInterface = detail::getFlowInterface(entry, "flowInterface");  // T-580
         manifest.uis.push_back(std::move(ui));
     }
     manifest.tokens = detail::getTokens(root);
@@ -267,6 +270,7 @@ Status readManifestBundle(std::string_view dir, Manifest& out, std::string* erro
     if (flowsIt != root.end() && flowsIt->is_object()) {
         manifest.globalFlow = getString(*flowsIt, "global");
     }
+    manifest.globalFlowInterface = detail::getFlowInterface(root, "flowInterface");  // T-580
     // T-199 (§22.10): the `assets[]` rows and `atlas[]` pages.
     const auto assetsIt = root.find("assets");
     if (assetsIt != root.end() && assetsIt->is_array()) {
@@ -439,6 +443,7 @@ void Bundle::commit(detail::BundleManifest&& manifest) {
     m_spec = manifest.spec;
     m_motionSpec = std::move(manifest.motionSpec);
     m_globalFlow = std::move(manifest.globalFlow);
+    m_globalFlowInterface = std::move(manifest.globalFlowInterface);
     m_assetTable = std::move(manifest.assetTable);
     m_atlases = std::move(manifest.atlases);
     m_symbols = std::move(manifest.symbols);
@@ -516,6 +521,7 @@ const BundleSpec* Bundle::spec() const { return m_hasSpec ? &m_spec : nullptr; }
 std::string_view Bundle::motionSpec() const { return m_motionSpec; }
 
 std::string_view Bundle::globalFlow() const { return m_globalFlow; }
+const FlowInterface& Bundle::globalFlowInterface() const { return m_globalFlowInterface; }
 
 std::span<const SymbolContract> Bundle::symbolContracts() const { return m_symbols; }
 

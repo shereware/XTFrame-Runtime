@@ -446,6 +446,41 @@ TEST_CASE("SwEffects: DropShadow inset darkens the inner edge and leaves the out
     CHECK(fx.rF(37, 37) >= fx.rF(30, 30));
 }
 
+// 2d. T-572 (18 §18.13, F24): `shadow(0 0 0 2px <cyan> inset)` is a 2 px ring along the inside
+// of the shape. The shadow pixel is written premultiplied; the unpremultiplied colour that used
+// to be src-over'd added the full colour to every pixel of the box (invisible with black, the
+// colour every earlier inset test used), so the centre stays the content colour and only the rim
+// takes the shadow colour.
+TEST_CASE("SwEffects: DropShadow inset with a coloured, blur-less spread draws a ring, not a fill") {
+    Rect content{16, 16, 32, 32};
+    Fixture fx;
+    CommandList cl = makeList();
+    addPushEffect(cl, {dropShadowInset(0, 0, 0, 2, 1, Color{0.2f, 0.8f, 0.9f, 1})}, Mat2x3{}, content,
+                  content);
+    addFillRect(cl, content.x, content.y, content.w, content.h, Color{1, 0, 0, 1});
+    addPopEffect(cl);
+    fx.renderer.render(cl, nullptr, nullptr);
+
+    // Centre and anything further than 2 px from the edge: untouched red.
+    for (int p : {20, 24, 32, 40, 43}) {
+        CHECK(fx.pixel(p, 32).r == 255);
+        CHECK(fx.pixel(p, 32).g == 0);
+        CHECK(fx.pixel(p, 32).b == 0);
+        CHECK(fx.pixel(32, p).r == 255);
+        CHECK(fx.pixel(32, p).b == 0);
+    }
+    // The 2 px rim is the shadow colour over the content (fully covered: the field is 1 there).
+    for (int p : {16, 17, 46, 47}) {
+        CHECK(fx.rF(p, 32) == doctest::Approx(0.2f).epsilon(0.02f));
+        CHECK(fx.gF(p, 32) == doctest::Approx(0.8f).epsilon(0.02f));
+        CHECK(fx.bF(p, 32) == doctest::Approx(0.9f).epsilon(0.02f));
+        CHECK(fx.pixel(p, 32).a == 255);
+    }
+    // Outside the shape: still transparent (an inset shadow expands nothing).
+    CHECK(fx.pixel(12, 32).a == 0);
+    CHECK(fx.pixel(32, 50).a == 0);
+}
+
 // 3. Glow: outer glow(6px #ff0) is yellow-ish with a/>0 2px outside the square; inner glow makes
 // the inner edge brighter (higher r/g) than the square's center.
 TEST_CASE("SwEffects: Glow outer halos the content, inner brightens its inner edge") {

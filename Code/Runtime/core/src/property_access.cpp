@@ -1467,7 +1467,7 @@ bool setEffectProperty(NodeArena& arena, NodeId node, PropId prop, const Value& 
     uint32_t paramIndex = rawEffectParamIndex(prop);
     NodeCommon& common = arena.common(node);
     if (effectIndex >= common.effectCount) {
-        arena.noteEffectMissingWritten();
+        arena.noteEffectMissingWritten(node, prop);
         return false;
     }
     EffectInstance& e = arena.effects()[common.effectOffset + effectIndex];

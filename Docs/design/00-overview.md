@@ -45,7 +45,7 @@
 | 建置 | CMake ≥ 3.24，所有第三方以 `FetchContent` 或 vendored 單一標頭引入，不允許系統全域安裝相依 |
 | 使用場景 | 嵌入引擎與獨立桌面應用兩者都支援；核心不擁有視窗 |
 | 渲染 | IR 為中心；`xt_core` 零渲染相依；附 SW 光柵器與 OpenGL 3.3 兩個參考後端 |
-| UI 格式 | HTML/CSS 子集（副檔名 `.xt` / `.xts`），純 C++ API，第一版無腳本語言 |
+| UI 格式 | HTML/CSS 子集（副檔名 `.xt` / `.xts`），純 C++ API，第一版無腳本語言。**2026-11-04：來源格式 v2（54 章）**：一個 UI 一個 `.xt`，區段 `ports`／`body`／`layout`／`style`／`timelines`，片段一律 `.xts` 可外掛（不加副檔名）；M43 → v0.15.0 |
 | 動畫來源 | Lottie JSON（離線編譯）、CSS `transition`、CSS `@keyframes`、程式 API |
 | 時間單位 | 秒，`float` |
 | 座標系 | 左上為原點，x 向右，y 向下，單位為邏輯像素（`float`） |
@@ -114,7 +114,9 @@ xtframe/
 | 48-editor-broadsheet-theme.md | 編輯器的 Broadsheet 主題（paper／night-desk、圖示調色；2026-10-27） |
 | 49-symbol-sets.md | 符號庫、組與集（Photoshop 筆刷模型）：預設庫、掛載、`.xtsymbols` 匯入匯出、`xtframe-symbols`、`symbols.*` ops（2026-10-27） |
 | 50-c-abi.md | C ABI 宿主契約 `xt_capi`（共享庫 `xtframe`）與 Unity 插件 `com.xtframe.runtime`（2026-10-28） |
+| 52-web-wasm.md | Web／wasm（記錄＋部分現行，2026-11-02）：§52.2 建置形態與 T-531 SIMD128、`xt_capi` wasm 靜態庫為現行（T-578）；Node 版工具鏈為 Experimental（T-579）；`xtframe-web`／`xtframe-player` 未定案、碼在 `claude/web-wasm` |
 | 51-builtin-ai.md | 內建 AI 代理與網路層（定案 2026-10-27）：`xt_net`（作業系統原生 TLS、`SecretStore`）、`xt_ai`（Anthropic／OpenAI 相容供應商、`AgentRunner`、工具 = Editor Service op）、AI 面板 (c) 模式、無頭 `--agent`、契約 `model`／`budget.tokens` 欄位；M41 T-515～T-517 |
+| 54-source-format-v2.md | 來源格式 v2（定案 2026-11-04）：單檔多區段、`src` 外掛、`<ports>`、`<layout>` 幾何的唯一的家（選擇器不限主體）、錨點簡寫 `anchor/offset/size`、`on:…@path`、遷移器與判準、M43 T-587～T-597 → v0.15.0 |
 | 53-flow-language.md | Flow 語言規格（T-559 整理，2026-10-31）：`.xtflow` 格式與反推 JSON Schema、型別、23 種節點目錄、連接點反射、規則與錯誤字串、宿主介面與 C ABI 對應、conformance 測試集、文件與實作不一致表 |
 | 18-effects.md | 效果與 shader（0.2）：內建效果、模板、自訂 HLSL 片段、後端與引擎整合 |
 | 19-3d-space.md | 3D 空間（0.2）：AE 式 2.5D 圖層、攝影機、深度排序、投影繪製 |

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <span>
 #include <string>
 #include <string_view>
@@ -17,6 +18,12 @@ namespace xt::compile {
 /// `<event>` of an `on:<event>` attribute / `.xts` `on-<event>` declaration (27.2.2), e.g.
 /// `hover`, `key(Enter)`, `port(hp)`, `timeline(intro).end`, `state(Low).enter`.
 bool validateTriggerEvent(std::string_view event, std::string& error);
+
+/// T-571 (Docs/design/08-events.md §8.20, `xtframe-view --event "<frame> key <name>"`): the KeyCode
+/// (as uint32_t) a `key(<name>)` trigger names -- the same name table as the compiler's (`Enter`,
+/// `Escape`, `Space`, `ArrowUp`, `A`..`Z`, `KeyA`, `0`..`9`, `Digit0`, `F1`..`F12`, ...). False
+/// for a name the trigger does not accept.
+bool keyCodeFromTriggerName(std::string_view name, uint32_t& keyCode);
 
 /// The action list of a trigger (27.2.3): `;`/`,`-separated statements, `then` sequences,
 /// `if <cmp>(...) ... [else ...]`, with each action's name and argument shape checked.

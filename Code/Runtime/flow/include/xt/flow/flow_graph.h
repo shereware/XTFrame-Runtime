@@ -80,6 +80,38 @@ struct EdgeDesc {
     std::map<std::string, std::string> params;
 };
 
+/// T-580 (Docs/design/53-flow-language.md §53.101, 22-bundle.md §22.15): one document port a flow
+/// touches, as an edge endpoint names it. `uiId` is the `ui#<uiId>` of a global-flow endpoint (empty
+/// for a UI's own flow); `owner` is "document" for `#document.<port>` / `ui#<uiId>.<port>`, else the
+/// element id; `port` is the declared port name.
+struct FlowPortRef {
+    std::string uiId;
+    std::string owner;
+    std::string port;
+};
+
+/// T-580: one `emit` node's host event. `type` is the type of the edge into its `value` input
+/// (Pulse when nothing is connected). When that type cannot be worked out without a Document (the
+/// value comes from a declared port), `typeKnown` is false and `typeSource` names the port.
+struct FlowEmitInfo {
+    std::string name;
+    PortType type = PortType::Pulse;
+    bool typeKnown = true;
+    FlowPortRef typeSource;
+};
+
+/// T-580 (53 §53.101): the host-facing interface of a graph -- `emit` events (one per `port` name,
+/// first node wins, in node order), declared ports the graph writes (edge targets) and reads (edge
+/// sources), each once in edge order, and the `system` outputs that have an edge, in the
+/// §53.4.18 output order. Element ports, `#document` row-3 ports, `<anim>` ports and lifecycle
+/// outputs are not part of it.
+struct FlowHostInterface {
+    std::vector<FlowEmitInfo> emits;
+    std::vector<FlowPortRef> writes;
+    std::vector<FlowPortRef> reads;
+    std::vector<std::string> system;
+};
+
 /// The parsed flow graph: nodes/edges as literally declared in a `.xtflow` file, already
 /// structurally validated (Docs/tasks/T-56.md's rules that do not require a live Document: node
 /// type/port names, param shapes, edge type matching, value-input fan-in, cycles). Binding to a
@@ -125,6 +157,12 @@ struct FlowGraph {
     /// `FlowGraph::parse(g.toJson(), out, errors)` reproduces a `g` equal to the original (same
     /// nodes/edges, in the same order; `errors` empty, kOk).
     std::string toJson() const;
+
+    /// T-580: reflects the graph's host interface (FlowHostInterface) without a Document; read-only,
+    /// the graph is not changed. Endpoints are resolved as parse() resolves them, so call it on a
+    /// graph parse() accepted; returns kInvalidArgument (and leaves `out` empty) when the graph
+    /// does not validate.
+    Status hostInterface(FlowHostInterface& out) const;
 };
 
 /// One node port in nodeTypeTable(): its name and PortType (Docs/design/17-editor.md §17.6's

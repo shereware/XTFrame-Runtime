@@ -954,6 +954,48 @@ TEST_CASE("T-207 pack: manifest spec carries spec.safeArea and the logical heigh
     CHECK(readText(out + "/manifest.json").find("\"logicalHeight\": 1080") != std::string::npos);
 }
 
+TEST_CASE("T-571 pack: spec.fontFallback is the fonts.fallback of UIs without @font-fallback") {
+    // 22 §22.14, 30 §30.6 (report F87).
+    const std::string dir = makeUiProject("pack_spec_fallback");
+    Result<UiProject> loaded = UiProject::load(dir);
+    REQUIRE(loaded.ok());
+    UiProject project = loaded.value();
+    project.spec.fontFallback = {FontFallbackInfo{"zh-TW", {"Noto Sans TC", "Arial"}},
+                                 FontFallbackInfo{"ja", {"Noto Sans JP"}}};
+    REQUIRE(project.save() == Status::kOk);
+    PackOptions options;
+    options.outDir = freshDir("pack_spec_fallback_out");
+    options.thumbnails = false;
+    REQUIRE(pack(loadProject(dir), options).ok);
+    {
+        std::string error;
+        auto opened = Bundle::open(options.outDir, nullptr, &error);
+        REQUIRE_MESSAGE(opened.ok(), error);
+        const std::span<const FontFallbackInfo> chains = opened.value()->fontFallbacks();
+        REQUIRE(chains.size() == 2);  // A JSON object: languages in key order.
+        CHECK(chains[0].lang == "ja");
+        CHECK(chains[0].families == std::vector<std::string>{"Noto Sans JP"});
+        CHECK(chains[1].lang == "zh-TW");
+        CHECK(chains[1].families == std::vector<std::string>{"Noto Sans TC", "Arial"});
+    }
+
+    // A UI that declares its own chain wins for that language, whichever UI is packed first; the
+    // other spec languages stay.
+    writeText(dir + "/menus/pause.xt",
+              "<xt>\n  <head>\n    <style>\n      @font-fallback zh-TW { font-family: \"Own Font\"; }\n"
+              "    </style>\n  </head>\n  <body>\n    <div id=\"menu\">Paused</div>\n  </body>\n</xt>\n");
+    options.outDir = freshDir("pack_spec_fallback_declared");
+    REQUIRE(pack(loadProject(dir), options).ok);
+    std::string error;
+    auto opened = Bundle::open(options.outDir, nullptr, &error);
+    REQUIRE_MESSAGE(opened.ok(), error);
+    const std::span<const FontFallbackInfo> chains = opened.value()->fontFallbacks();
+    REQUIRE(chains.size() == 2);
+    CHECK(chains[0].lang == "ja");
+    CHECK(chains[1].lang == "zh-TW");
+    CHECK(chains[1].families == std::vector<std::string>{"Own Font"});
+}
+
 TEST_CASE("T-210 spec.logicalHeight: read, written only when set, packed into the manifest") {
     const std::string dir = makeUiProject("spec_logical_height");
     Result<UiProject> loaded = UiProject::load(dir);

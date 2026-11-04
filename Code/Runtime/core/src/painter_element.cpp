@@ -383,6 +383,33 @@ bool pushElementClipShape(const ElementData& data, const Mat2x3& world, CommandL
     return true;
 }
 
+void pushOverflowClip(const ElementData& data, const Mat2x3& world, CommandList& out,
+                      std::vector<PathVerb>& scratchVerbs, std::vector<float>& scratchPoints) {
+    const Rect pb = data.box.paddingBox();
+    float r[4];
+    paddingBoxRadii(data, r);
+    const bool rounded = r[0] > 0.0f || r[1] > 0.0f || r[2] > 0.0f || r[3] > 0.0f;
+    if (!rounded) {
+        uint32_t idx = static_cast<uint32_t>(out.clipRects.size());
+        out.clipRects.push_back(ClipRectCmd{world, pb});
+        out.commands.push_back(Command{CmdKind::PushClipRect, {}, idx});
+        return;
+    }
+    // T-572 (18 §18.13, F25): a rounded padding box clips the children with its rounded-rect
+    // path -- the same path emitElementBackgroundImage clips its tiles with -- so the corners of
+    // an `overflow: hidden` parent cut its children on SW and GL alike.
+    scratchVerbs.clear();
+    scratchPoints.clear();
+    appendRoundedRectPath(pb, r[0], r[1], r[2], r[3], scratchVerbs, scratchPoints);
+    ClipPathCmd cp{};
+    cp.xf = world;
+    appendPathToCommandList(scratchVerbs, scratchPoints, out, cp.path);
+    cp.rule = FillRule::NonZero;
+    uint32_t idx = static_cast<uint32_t>(out.clipPaths.size());
+    out.clipPaths.push_back(cp);
+    out.commands.push_back(Command{CmdKind::PushClipPath, {}, idx});
+}
+
 bool emitElementBackground(const ElementData& data, const Mat2x3& world, float alpha, CommandList& out,
                            std::vector<PathVerb>& scratchVerbs, std::vector<float>& scratchPoints) {
     const ComputedStyle& style = data.style;

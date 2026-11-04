@@ -276,3 +276,10 @@ PointerLeave（指標離開視窗）:
   - `bind:value`：`BindingRuntime::reapplyShownValues()` 在第二次樣式解析之後逐一檢查 Value 綁定的元素（自身或祖先 `display: none`），由隱藏變顯示時強制重套（即使 port 值未變）；`restoreState` 後 `reapplyAllValues()`；`reset(value)` = `TriggerAction::Reset = 18`（無參數；`reset()` 只接受 `value`，元素無 `bind:value` 屬性 → 編譯錯「reset(value) needs bind:value on the element」），執行期 `reapplyValue(node)`（含 repeat 實例的綁定）。IR 版本不變（舊執行期略過未知動作）。
   - `Event::leftWindow`（尾端）：`finishDrag` 的 DragLeave（外部 `ExternalDragLeave`、拖曳取消）為真，`updateDragOver` 換目標或移出目標的 DragLeave 為假。偏離：`Context` 的外部拖曳換 surface 時對舊 surface 送的 ExternalDragLeave 也是真（視窗內換文件）。
   - XF-098 根因：`RepeatController::createInnerRepeats` 對非 item-field 的內層 repeat 一律用 IR 的 `listPort`，即模板元素上宣告的 port（符號 `port:rows`）的**模板本身**那份；外層每實例的 `bind:rows` 寫的是 T-380 的實例副本，內層 copy 永遠聽不到（也無實例）。修法：該 port 若在本實例的 `inst.ports` 中就用實例副本，否則 `instancePortOf`（外層祖先實例的副本），document port 照舊共享。實例副本的 list 寫入走 `listSet` → `onListChanged(副本, Set)`，因此外層 `listUpdate`／`listInsert`／`listRemove` 與宿主寫 `Rows/1/Cell.rows` 都原地重綁、索引位移照 T-391。實測：上述重現、符號放在二層巢狀 repeat 內、符號內 repeat 再含 `item(k)` 巢狀、虛擬化外層回收列，皆正確；未找到需要編譯期拒絕的組合，故無新增編譯錯誤。
+
+## 8.20 2026-11-01 補充（T-570、T-573）
+
+- `pointerdrag`：超過拖曳門檻後放開不派送 Click（與 `draggable` 一致）。
+- `key(any)`：任意非修飾鍵；`xtframe-view --event "<frame> key <name>"` 可無頭驗證鍵盤。
+
+**T-570 實作記錄（#543，2026-11-04）**：3D 內 `Document::localPosIn` 逐層走 `rootPickRay`→`rayPlanePoint`（與 `hit3DRoot()` 共用，抽到 `camera.{h,cpp}`），2D 路徑不變；`handlePointerUp` 的 `dragged` 納入 `m_ptrDrag.dragging`，門檻內仍 Click。**F55 根因**：`rotate()` 在 `translate()` 前違反 05 §5.5 固定順序 → compose/decompose 輸出全部 10 個分量（含恆為 0 的 TranslateZ／RotationX／RotationY）→ animator 見 PropId 16-22 有 track 就強制 `is3D` → 節點成為 space root 外的 flattened 3D，Painter 照畫但 `hit_test.cpp` 的 `is3D && !isSpaceRoot → continue` 不看 `in3D` 而整棵跳過；修法只改命中測試（`in3D &&` 前置條件），IR 不變。候選：編譯器對 identity 3D 分量 track 不輸出（如 `svg_timeline.cpp` 的 `isIdentityTransformPart`），記 BACKLOG D。

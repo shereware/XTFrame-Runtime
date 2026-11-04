@@ -53,6 +53,11 @@ bool emitExternalPlaceholder(const ExternalNodeData& ext, const ElementData& dat
 /// The caller pops it after the children (painter_element.cpp).
 bool pushElementClipShape(const ElementData& data, const Mat2x3& world, CommandList& out,
                           std::vector<PathVerb>& scratchVerbs, std::vector<float>& scratchPoints);
+/// T-572 (18 §18.13): the element's overflow clip of its padding box -- a PushClipRect, or a
+/// PushClipPath of the rounded padding box when it has rounded corners (painter_element.cpp).
+/// The caller pops it after the children.
+void pushOverflowClip(const ElementData& data, const Mat2x3& world, CommandList& out,
+                      std::vector<PathVerb>& scratchVerbs, std::vector<float>& scratchPoints);
 /// T-202: one DrawParticles command for the live particles of `particles` (painter_element.cpp).
 void emitParticles(const ParticleNodeData& particles, const Mat2x3& world, float alpha, CommandList& out);
 /// T-202: the local AABB of `particles`' live quads; false when there are none.
@@ -868,6 +873,26 @@ void Painter::enterNode(const NodeArena& arena, NodeId n, float inheritedAlpha, 
     if (arena.kind(n) == NodeKind::Camera) {
         return;  // 19.4: never drawn/hit-tested.
     }
+    // T-572 (18 §18.13, 19 §19.6): `backface-visibility: hidden` is judged on the *composed*
+    // transform. A 3D layer is culled by flushSection() on its world3; a plain-2D node inside a
+    // space root lies on its enclosing layer's plane (or the root's), so it is culled here when
+    // that plane, composed with the node's own 2D transform, faces away -- a face with
+    // `rotateY(0deg)` (not is3D) under a parent turned by `rotateY(180deg)` is hidden, and so is
+    // everything it holds. Its own is3D descendants are separate layers and keep their own test.
+    if (!m_mappingStack.empty() && c.is3D == 0 && c.backfaceHidden != 0) {
+        const Mat4 saved = m_mappingStack.back().planeWorld3;
+        const bool swapped = m_currentLayer != kInvalidNode;
+        if (swapped) {
+            m_mappingStack.back().planeWorld3 = arena.common(m_currentLayer).world3;
+        }
+        const bool backface = project3d::isBackface(m_mappingStack, c.world, c.anchor);
+        if (swapped) {
+            m_mappingStack.back().planeWorld3 = saved;
+        }
+        if (backface) {
+            return;
+        }
+    }
     // T-194 (08.9): a `layer: overlay` subtree is skipped here and painted after the root (outside
     // every ancestor clip and layer), unless it is the overlay being entered by that pass. Not
     // inside a 3D space root (its layers are depth-sorted there).
@@ -1007,15 +1032,14 @@ void Painter::paintElement(const NodeArena& arena, NodeId n, float alpha, Comman
     }
 
     // Rule 5: overflow clip wraps the children only (padding-box, in this Element's own world
-    // transform). PushClipRect is emitted immediately (it needs no deferred state); PopClip is
+    // transform). The clip is emitted immediately (it needs no deferred state); PopClip is
     // deferred via the stack (pushed before the children's actions, so it pops -- i.e. executes --
     // after every child has been processed).
     // T-336: `auto` clips only once its content overflows; one clipping axis clips the whole box.
+    // T-572 (18 §18.13): a rounded padding box clips with its rounded-rect path (PushClipPath).
     bool clip = clipsOverflow(data);
     if (clip) {
-        uint32_t idx = static_cast<uint32_t>(out.clipRects.size());
-        out.clipRects.push_back(ClipRectCmd{c.world, data.box.paddingBox()});
-        out.commands.push_back(Command{CmdKind::PushClipRect, {}, idx});
+        pushOverflowClip(data, c.world, out, m_elemVerbsScratch, m_elemPointsScratch);
         m_stack.push_back(Action{Action::Kind::PopClip, kInvalidNode, 0.0f, MaskMode::Alpha});
     }
 

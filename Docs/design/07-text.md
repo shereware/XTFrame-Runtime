@@ -182,3 +182,12 @@ struct TextLine { Rect rect; float baseline; uint32_t firstRun, runCount; uint32
 - 整形快取以 id 為鍵但由 `shapedValid` 失效；layout 每次讀內容；Painter 不快取字形序列；GPU 不用 StringId；damage 雜湊取字形 id 與位置。
 - 組字字串（`Event::text`、`InputEvent::composition`）在派送它的 `Context::update()` 結束時失效，監聽者要保留須複製。
 - 字型家族只能從編譯清單選（05 §5.y）。
+
+## 7.20 字型檔列舉與字重選擇（2026-11-01 定案；改進報告 R4；T-569）
+
+- 目錄字型掃描接受 `.ttf`、`.otf`、`.ttc`、`.otc`；集合檔以 FreeType face index 逐字面列舉，每個字面各成一個候選（家族名取該字面的名稱表）。
+- 字重選擇：同家族多個靜態檔依 OS/2 `usWeightClass` 建表，`font-weight` 取最接近者（CSS Fonts 4 的規則：400 以下往下找、以上往上找）；可變字型依 `wght` 軸設實例。要求 ≥ 600 而家族最重 < 600 時合成粗體（FreeType embolden，強度依差值）。
+- 堆疊裡第一個 CJK 家族（名稱表含 CJK 或字面覆蓋 CJK 區段）未安裝時，import／view／pack 報 `missing font '<family>'`，不再靜默回退。
+- 禁則：行首不得出現 `。，、」』）！？：；`（UAX#14 CL／NS 類），行尾不得出現 `「『（`；加測試 `甲。乙` 窄寬換行。
+
+**T-569 實作記錄（#542，2026-11-04；主模型裁決）**：`.ttc`／`.otc` 逐 face index 列舉，`--list-fonts` 維持 `family<TAB>path` 並在集合檔後加 `#index`（corpus 雜湊前去掉）；名稱表完整解碼 UTF-16 並優先美國英文紀錄；字重以 OS/2 範圍＋CSS Fonts 4 排名；可變字型 `wght` 另開實例（不列入 `fonts()`）；合成粗體強度「每 300 重量差 em/36、上限 500」（FreeType 預設 em/24 比真 Bold 粗太多；調後墨量與 Noto CJK Bold 相當）——接受；CJK 標點回退優先 CJK 字型。**F51 根因不在 libunibreak**：`ft_breaks.cpp` 把斷行值放在多位元組字元的最後一個位元組，而 `text_shaper.h` 約定與 `breakLines()` 讀首位元組，所有 CJK 字後的斷行機會都看不到——已改到首位元組，並加 `breakAfter==3` 禁則值（緊急斷行先退避、退不了讓標點懸出）。`font.missing` 的 fix 內容待定（裁決：fix = board hint，attr `style`，value 為去掉缺家族後的堆疊，T-575 文件化）。Golden：`ui_i18n_cjk_mixed_wrap`（正確斷行）、fairy-forest `demo3-menu` 四張（Italic 700 改合成粗體）；game-ui corpus 仍為 T-562 遺留。

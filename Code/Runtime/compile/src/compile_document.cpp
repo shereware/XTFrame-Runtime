@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <ctime>
@@ -975,6 +976,26 @@ CompileResult compileDocumentImpl(std::string_view mainText, std::string_view ma
                 l10n.fallbackFamilies.push_back(writer.intern(family));
             }
             l10n.fallbacks.push_back(fb);
+        }
+    }
+
+    // T-571 (22 §22.14): the bundle's glyph images join the ASST of a document with a `<glyph>`.
+    if (!options.glyphImageAssets.empty() &&
+        std::any_of(doc.textInlines.begin(), doc.textInlines.end(),
+                    [](const IrTextInline& object) { return object.kind == 1; })) {
+        for (const std::string& name : options.glyphImageAssets) {
+            bool known = false;
+            for (const AssetBuilder& existing : writer.assets()) {
+                known = known || ((existing.kind == 0 || existing.kind == 3) &&
+                                  writer.stringAt(existing.name) == name);
+            }
+            if (!known && !name.empty()) {
+                AssetBuilder ab;
+                ab.kind = 0;  // Image.
+                ab.sourceName = name;
+                ab.name = writer.intern(name);
+                writer.addAsset(std::move(ab));
+            }
         }
     }
 

@@ -6,6 +6,7 @@
 #include <string_view>
 #include <vector>
 
+#include "xt/bundle/bundle.h"
 #include "xt/document.h"
 
 /// Strongly typed port headers (T-193; Docs/design/23-host-integration.md §23.10 item 1,
@@ -25,6 +26,9 @@ struct UiPortTable {
     /// T-408 (43 §43.6): the UI's contractHash(), written as `kContractHash` (C++) /
     /// `Ports.ContractHash` (C#); empty: no constant is written.
     std::string contract;
+    /// T-580 (22 §22.15): the UI's `flowInterface`; when `present`, a nested `Flow` namespace (C++)
+    /// / static class (C#) carries one string constant per emit name and the wired system events.
+    FlowInterface flow{};
 };
 
 /// Output language of generatePortHeader().
@@ -47,6 +51,11 @@ bool parsePortsLanguage(std::string_view text, PortsLanguage& out);
 /// Port type -> field type (C++ / C#): number float, string / texture std::string / string,
 /// bool bool, color std::array<float, 4> / float[], vec2 / vec3 std::array<float, N> / float[],
 /// entity and enum std::uint32_t / uint.
+///
+/// T-580: a table whose `flow.present` adds, after the port constants, `namespace Flow` (C++:
+/// `inline constexpr char <emit>[] = "<emit>";` per emit and `inline constexpr std::array<const
+/// char*, N> kSystemEvents`) / `public static class Flow` (C#: `public const string <Emit>` and
+/// `public static readonly string[] SystemEvents`). Without a flow the output is unchanged.
 std::string generatePortHeader(PortsLanguage language, std::span<const UiPortTable> tables);
 
 /// T-408 (Docs/design/43-compatibility-and-versions.md §43.6, 40 §40.6.1): the normalized JSON a
@@ -63,5 +72,15 @@ std::string contractJson(const Document& doc);
 /// manifest's `uis[].contract` and the `--gen-ports` constant. Two documents with the same ports
 /// (name, type, direction, default), timeline names and state names hash the same.
 std::string contractHash(const Document& doc);
+
+/// T-580 (22 §22.15: the contract covers `flowInterface`): `json` (a contractJson() text) with
+/// `,"flowInterface":{"emits":[{"name":..,"type":..},..],"writes":[..],"reads":[..],"system":[..]}`
+/// inserted before its closing brace, the lists in manifest order. An empty `flow` (no flow, or a
+/// flow with no host interface) leaves `json` unchanged, so such a UI keeps its pre-T-580 hash.
+std::string contractJsonWithFlow(std::string_view json, const FlowInterface& flow);
+
+/// T-580: the 16-hex contract hash of a contractJson() / contractJsonWithFlow() text;
+/// contractHash(doc) == contractHashOfJson(contractJson(doc)).
+std::string contractHashOfJson(std::string_view json);
 
 }  // namespace xt::bundle

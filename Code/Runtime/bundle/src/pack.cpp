@@ -17,9 +17,11 @@
 #include "bundle_json.h"
 #include "font_subset.h"
 #include "manifest_writer.h"
+#include "pack_flow.h"
 #include "symbol_contracts.h"
 #include "texture_compress.h"
 #include "xt/asset_resolver.h"
+#include "xt/bundle/gen_ports.h"
 #include "xt/bundle/migrations.h"
 #include "xt/bundle/symbol_library.h"
 #include "xt/bundle/ui_project.h"
@@ -46,6 +48,7 @@
 #include "yaml_lite.h"
 #ifdef XT_BUNDLE_HAS_TEXT
 #include "xt/text/ft_text_shaper.h"
+#include "xt/text/missing_fonts.h"
 #endif
 
 /// pack(): see xt/bundle/pack.h. Follows Docs/design/22-bundle.md §22.3/§22.4 and
@@ -429,6 +432,21 @@ private:
                              std::vector<std::string>& uiAssets);
     /// Reflects ports/`requires` off `doc` and, when asked, renders the thumbnail.
     void describeUi(Context& ctx, AssetResolver& assets, Document& doc, const ProjectUi& ui, UiInfo& out);
+    /// T-580 (22 §22.15): `ui.contract` from its contractJson() text and its `flowInterface`, also
+    /// copied (with the interface) into its --gen-ports table; a no-op for a UI not packed this run.
+    void finishContract(UiInfo& ui) {
+        const auto base = m_contractBase.find(ui.id);
+        if (base == m_contractBase.end()) {
+            return;
+        }
+        ui.contract = contractHashOfJson(contractJsonWithFlow(base->second, ui.flowInterface));
+        for (UiPortTable& table : m_report.portTables) {
+            if (table.uiId == ui.id) {
+                table.contract = ui.contract;
+                table.flow = ui.flowInterface;
+            }
+        }
+    }
     /// Deletes files under `assets/`, `ui/`, `thumbs/`, `themes/` and `strings/` the manifest no
     /// longer references.
     void prune();
@@ -585,6 +603,9 @@ private:
     /// Pass 2 (rewriteUis): rewriteAsset() only maps names, writes nothing.
     bool m_rewritePass = false;
     std::string m_currentUi;
+    /// T-580 (22 §22.15): each UI packed this run, its contractJson() text (taken before the first
+    /// update); the contract is the hash of it with the UI's final `flowInterface` added.
+    std::map<std::string, std::string> m_contractBase;
     /// T-498b: the implied default layer (see PackReport::impliedGroupDir).
     struct ImpliedLayer {
         bool active = false;
@@ -618,6 +639,19 @@ private:
     /// T-204: the packed names of the manifest glyphs. A glyph is resolved by name at run time
     /// (an inline text image), so it never goes into an atlas page.
     std::set<std::string> m_glyphAssets;
+    /// T-571 (§22.14): the languages whose manifest `fonts.fallback` chain came from
+    /// `spec.fontFallback`; a UI's own `@font-fallback` chain for such a language replaces it.
+    std::set<std::string> m_specFallbackLangs;
+    /// T-179/T-571: adds `chain` to the manifest's `fonts.fallback` unless its language already has
+    /// one (the first declaring UI wins); a declared chain (`fromSpec` false) replaces one that came
+    /// from `spec.fontFallback`.
+    void addFontFallback(FontFallbackInfo chain, bool fromSpec);
+    /// T-571 (§22.14): the manifest glyphs' current asset names (sorted, unique), handed to every
+    /// compile as CompileOptions::glyphImageAssets.
+    std::vector<std::string> glyphImageAssets() const;
+    /// T-571: adds to `uiAssets` each glyph image the compile put into the UI's ASST.
+    static void addGlyphAssets(const compile::CompileResult& result, const std::vector<std::string>& glyphs,
+                               std::vector<std::string>& uiAssets);
     /// Code points of every document text and string table (for the subset).
     std::set<uint32_t> m_charset;
     /// Language -> code points of its string table ("" = the documents' own text).
@@ -1282,6 +1316,7 @@ void Packer::rewriteUis() {
         compileOptions.publishAssetNames = true;                         // T-273b
         compileOptions.stripEditorOnly = true;                           // T-342 (22 §22.15)
         compileOptions.behavior = behavior();                            // T-407
+        compileOptions.glyphImageAssets = glyphImageAssets();            // T-571
         for (const std::string& style : m_project.shared.styles) {
             std::error_code ec;
             const fs::path absolute = fs::absolute(pathFromUtf8(m_project.rootDir) / pathFromUtf8(style), ec);
@@ -1297,6 +1332,7 @@ void Packer::rewriteUis() {
             error(ui.id, "atlas rewrite: the UI no longer compiles");
             continue;
         }
+        addGlyphAssets(result, compileOptions.glyphImageAssets, uiAssets);  // T-571
         const std::string irBytes(reinterpret_cast<const char*>(result.ir.data()), result.ir.size());
         const std::string irRelative = "ui/" + ui.id + ".xtir";
         if (!writeBytes(m_outDir / pathFromUtf8(irRelative), irBytes)) {
@@ -1332,7 +1368,8 @@ void Packer::describeUi(Context& ctx, AssetResolver& assets, Document& doc, cons
     const int height = std::max(1, toInt32Sat(ui.size.y));
     // T-408 (43 §43.6): the contract hash, taken before the first update so port defaults are
     // the declared ones.
-    out.contract = contractHash(doc);
+    m_contractBase[ui.id] = contractJson(doc);
+    out.contract = contractHashOfJson(m_contractBase[ui.id]);  // finishContract() adds the flow.
     ctx.setViewport(Rect{0, 0, static_cast<float>(width), static_cast<float>(height)}, 1.0f);
     ctx.update(0.0f);
 
@@ -1343,8 +1380,9 @@ void Packer::describeUi(Context& ctx, AssetResolver& assets, Document& doc, cons
         info.isInput = port.isInput;
         out.ports.push_back(std::move(info));
     }
+    detail::addTriggerEmitPorts(doc, out, m_report.infos);  // T-580: origin "trigger".
     // T-193: the declared-port table, for `xtframe-pack --gen-ports`.
-    m_report.portTables.push_back(UiPortTable{ui.id, doc.ports(), out.contract});
+    m_report.portTables.push_back(UiPortTable{ui.id, doc.ports(), out.contract, {}});
 
     const IrView& view = doc.ir();
     out.requiresEffects = !view.style().effects().empty() || !doc.arena().effects().empty();
@@ -1446,6 +1484,8 @@ bool Packer::packUi(const ProjectUi& ui, UiInfo& out) {
     compileOptions.stripEditorOnly = true;
     // T-407 (43 §43.3): every UI carries the project's `spec.behavior` in its META.
     compileOptions.behavior = behavior();
+    // T-571 (§22.14): a UI with a `<glyph>` carries the manifest's glyph images in its ASST.
+    compileOptions.glyphImageAssets = glyphImageAssets();
     for (const std::string& style : m_project.shared.styles) {
         // Absolute, because compileDocument() resolves a *relative* implied stylesheet against
         // `rootDir` again, which would double the prefix we just added.
@@ -1478,6 +1518,7 @@ bool Packer::packUi(const ProjectUi& ui, UiInfo& out) {
     if (!result.ok()) {
         return false;
     }
+    addGlyphAssets(result, compileOptions.glyphImageAssets, uiAssets);  // T-571
 
     // T-179: the keys this UI uses and its `@font-fallback` chains (the first UI to declare a
     // language's chain wins; chains are normally shared stylesheet rules anyway).
@@ -1490,20 +1531,20 @@ bool Packer::packUi(const ProjectUi& ui, UiInfo& out) {
             }
             for (const IrFontFallback& fb : l10n.fallbacks()) {
                 const std::string lang(view.value().string(fb.lang));
-                bool known = false;
-                for (const FontFallbackInfo& existing : m_manifest.fontFallbacks) {
-                    known = known || existing.lang == lang;
-                }
-                if (known) {
-                    continue;
-                }
                 FontFallbackInfo info;
                 info.lang = lang;
                 for (uint32_t i = 0; i < fb.familyCount; ++i) {
                     info.families.emplace_back(
                         view.value().string(l10n.fallbackFamilies()[fb.familyOffset + i]));
                 }
-                m_manifest.fontFallbacks.push_back(std::move(info));
+                addFontFallback(std::move(info), /*fromSpec=*/false);
+            }
+            // T-571 (§22.14, 30 §30.6): a UI that declares no `@font-fallback` starts from the
+            // `.xtui`'s `spec.fontFallback`; a declared chain later replaces such a chain.
+            if (l10n.fallbacks().empty() && m_ui != nullptr) {
+                for (const FontFallbackInfo& chain : m_ui->spec.fontFallback) {
+                    addFontFallback(chain, /*fromSpec=*/true);
+                }
             }
         }
     }
@@ -1524,6 +1565,7 @@ bool Packer::packUi(const ProjectUi& ui, UiInfo& out) {
         }
     }
     std::string flowBytes;
+    flow::FlowHostInterface uiFlow;  // T-580
     if (!flowFile.empty()) {
         const std::string label = ui.id + ": " + flowFile;
         const fs::path flowPath = pathFromUtf8(m_project.rootDir) / pathFromUtf8(flowFile);
@@ -1540,6 +1582,7 @@ bool Packer::packUi(const ProjectUi& ui, UiInfo& out) {
             return false;
         }
         warnEditorOnlyFlowReferences(label, graph, result.strippedIds);  // T-342
+        graph.hostInterface(uiFlow);                                     // T-580
     }
 
     const std::string irBytes(reinterpret_cast<const char*>(result.ir.data()), result.ir.size());
@@ -1583,10 +1626,23 @@ bool Packer::packUi(const ProjectUi& ui, UiInfo& out) {
         return false;
     }
     describeUi(ctx, assets, *doc, ui, out);
+    if (!flowFile.empty()) {
+        detail::applyUiFlowInterface(uiFlow, *doc, out, m_report.infos);  // T-580
+    }
+    finishContract(out);
     collectImageUses(*doc, doc->ir(), ui.id);  // T-199
     if (m_bundledFonts) {
         recordUnbundledFamilies(*doc, ui.id);  // T-527
     }
+#ifdef XT_BUNDLE_HAS_TEXT
+    // T-569 (07 §7.20): the first CJK family of a text's `font-family` that no registered font
+    // (system, standard, shared or the UI's own) has. Styles resolved first (--no-thumbs renders
+    // nothing; layoutIfDirty() does not advance the clock).
+    doc->layoutIfDirty();
+    for (const std::string& family : text::missingCjkFamilies(*doc, *m_shaper.get())) {
+        m_report.missingFonts.push_back(ui.id + ": missing font '" + family + "'");
+    }
+#endif
     if (!flowBytes.empty()) {
         // T-540 (27 §27.4.3): the flow bound against the packed Document; a flow that does not
         // bind (missing ids, ...) is not this check's business, it reports nothing.
@@ -2302,10 +2358,19 @@ void Packer::packStrings(bool incremental, const ManifestData& previous) {
             }
         }
         if (!incremental) {
+            // T-571 (§22.14): one summary line per table; PackOptions::verbose lists every key.
+            size_t unused = 0;
             for (const auto& [key, value] : table) {
                 if (m_usedKeys.count(key) == 0) {
-                    addWarning(relative, "i18n: unused key '" + key + "'");
+                    ++unused;
+                    if (m_options.verbose) {
+                        addWarning(relative, "i18n: unused key '" + key + "'");
+                    }
                 }
+            }
+            if (unused != 0 && !m_options.verbose) {
+                addWarning(relative, "i18n: " + std::to_string(unused) + " unused key(s) in " +
+                                         pathToUtf8(file.filename()) + " (--verbose lists them)");
             }
         }
 
@@ -2502,6 +2567,19 @@ void Packer::packGlobalFlow() {
     }
     m_manifest.globalFlow = relative;
     m_report.globalFlowWritten = true;
+    // T-580 (22 §22.15): `ui#<id>` writes / reads go to that UI's flowInterface, the rest to the
+    // top-level one; the UIs that changed get their contract again.
+    flow::FlowHostInterface reflected;
+    if (graph.hostInterface(reflected) == Status::kOk) {
+        for (const std::string& id :
+             detail::applyGlobalFlowInterface(reflected, m_manifest.uis, m_manifest.globalFlowInterface)) {
+            for (UiInfo& info : m_manifest.uis) {
+                if (info.id == id) {
+                    finishContract(info);
+                }
+            }
+        }
+    }
 }
 
 void Packer::prune() {
@@ -2659,6 +2737,9 @@ PackReport Packer::run() {
 
     detectImpliedGroup();  // T-498b
     loadStandardFonts();   // T-527b: before the UIs, whose text names standard families.
+    // T-204: before the assets.yaml lint, so glyph files count as referenced; T-571: before the
+    // UIs, whose compile adds the glyph images to a UI with a `<glyph>`.
+    packGlyphs();
 
     std::vector<size_t> kept;  // T-262a: indices into m_manifest.uis of entries taken from `previous`.
     for (const ProjectUi& ui : m_project.uis) {
@@ -2691,7 +2772,6 @@ PackReport Packer::run() {
         }
     }
 
-    packGlyphs();  // T-204: before the assets.yaml lint, so glyph files count as referenced.
     // T-262a: a kept entry still names its files, so their rows come back from the previous
     // manifest (once per file name); otherwise `assets[]` misses files a listed UI uses.
     for (const size_t index : kept) {
@@ -2825,6 +2905,42 @@ void Packer::packGlyphs() {
     std::sort(m_manifest.glyphs.begin(), m_manifest.glyphs.end(), [](const GlyphInfo& a, const GlyphInfo& b) {
         return a.device != b.device ? a.device < b.device : a.key < b.key;
     });
+}
+
+void Packer::addFontFallback(FontFallbackInfo chain, bool fromSpec) {
+    for (FontFallbackInfo& existing : m_manifest.fontFallbacks) {
+        if (existing.lang != chain.lang) {
+            continue;
+        }
+        if (!fromSpec && m_specFallbackLangs.erase(chain.lang) != 0) {
+            existing.families = std::move(chain.families);
+        }
+        return;
+    }
+    if (fromSpec) {
+        m_specFallbackLangs.insert(chain.lang);
+    }
+    m_manifest.fontFallbacks.push_back(std::move(chain));
+}
+
+std::vector<std::string> Packer::glyphImageAssets() const {
+    std::vector<std::string> names;
+    for (const GlyphInfo& glyph : m_manifest.glyphs) {
+        names.push_back(glyph.asset);
+    }
+    std::sort(names.begin(), names.end());
+    names.erase(std::unique(names.begin(), names.end()), names.end());
+    return names;
+}
+
+void Packer::addGlyphAssets(const compile::CompileResult& result, const std::vector<std::string>& glyphs,
+                            std::vector<std::string>& uiAssets) {
+    for (const compile::CompiledAsset& asset : result.assets) {
+        if (std::binary_search(glyphs.begin(), glyphs.end(), asset.name) &&
+            std::find(uiAssets.begin(), uiAssets.end(), asset.name) == uiAssets.end()) {
+            uiAssets.push_back(asset.name);
+        }
+    }
 }
 
 void Packer::packSymbolContracts() {

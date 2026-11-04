@@ -143,16 +143,17 @@ bool isSeqItem(std::string_view text) {
 }
 
 /// A plain scalar's typed value (see yaml_lite.h).
-json plainScalar(std::string_view raw) {
+template <class J>
+J plainScalar(std::string_view raw) {
     const std::string_view s = trim(raw);
     if (s.empty() || s == "~" || s == "null") {
-        return json(nullptr);
+        return J(nullptr);
     }
     if (s == "true") {
-        return json(true);
+        return J(true);
     }
     if (s == "false") {
-        return json(false);
+        return J(false);
     }
     size_t i = 0;
     if (s[i] == '-' || s[i] == '+') {
@@ -193,11 +194,11 @@ json plainScalar(std::string_view raw) {
             const size_t first = text[0] == '+' ? 1 : 0;
             double value = 0;
             xt::fromChars(text.data() + first, text.data() + text.size(), value);
-            return json(value);
+            return J(value);
         }
-        return json(static_cast<int64_t>(std::strtoll(text.c_str(), nullptr, 10)));
+        return J(static_cast<int64_t>(std::strtoll(text.c_str(), nullptr, 10)));
     }
-    return json(text);
+    return J(text);
 }
 
 /// Decodes the quoted scalar starting at `s[i]` into `out`; returns the index past it, or npos.
@@ -238,13 +239,14 @@ size_t parseQuoted(std::string_view s, size_t i, std::string& out) {
 }
 
 /// The single-line inline value parser: flow collections, quoted and plain scalars.
+template <class J>
 class InlineParser {
 public:
     InlineParser(std::string_view text, int line, std::string* error)
         : m_s(text), m_line(line), m_error(error) {}
 
     /// Parses the whole text as one value.
-    bool parseAll(json& out) {
+    bool parseAll(J& out) {
         if (!value(out, /*inFlow=*/false)) {
             return false;
         }
@@ -262,10 +264,10 @@ private:
         }
     }
 
-    bool value(json& out, bool inFlow) {
+    bool value(J& out, bool inFlow) {
         skipSpaces();
         if (m_pos >= m_s.size()) {
-            out = json(nullptr);
+            out = J(nullptr);
             return true;
         }
         const char c = m_s[m_pos];
@@ -282,7 +284,7 @@ private:
                 return setFailure(m_error, m_line, "unterminated quoted scalar");
             }
             m_pos = end;
-            out = json(text);
+            out = J(text);
             return true;
         }
         if (c == '&' || c == '*' || c == '!' || c == '|' || c == '>') {
@@ -296,16 +298,16 @@ private:
         } else {
             m_pos = m_s.size();
         }
-        out = plainScalar(m_s.substr(start, m_pos - start));
+        out = plainScalar<J>(m_s.substr(start, m_pos - start));
         return true;
     }
 
-    bool sequence(json& out) {
+    bool sequence(J& out) {
         const NestingScope nesting(m_depth);
         if (nesting.tooDeep()) {
             return setFailure(m_error, m_line, "nesting too deep");
         }
-        out = json::array();
+        out = J::array();
         ++m_pos;  // '['
         skipSpaces();
         if (m_pos < m_s.size() && m_s[m_pos] == ']') {
@@ -313,7 +315,7 @@ private:
             return true;
         }
         while (true) {
-            json item;
+            J item;
             if (!value(item, /*inFlow=*/true)) {
                 return false;
             }
@@ -334,12 +336,12 @@ private:
         }
     }
 
-    bool mapping(json& out) {
+    bool mapping(J& out) {
         const NestingScope nesting(m_depth);
         if (nesting.tooDeep()) {
             return setFailure(m_error, m_line, "nesting too deep");
         }
-        out = json::object();
+        out = J::object();
         ++m_pos;  // '{'
         skipSpaces();
         if (m_pos < m_s.size() && m_s[m_pos] == '}') {
@@ -367,7 +369,7 @@ private:
                 return setFailure(m_error, m_line, "expected ':' after key '" + key + "'");
             }
             ++m_pos;
-            json item;
+            J item;
             if (!value(item, /*inFlow=*/true)) {
                 return false;
             }
@@ -396,13 +398,14 @@ private:
 };
 
 /// The indentation-driven block parser.
+template <class J>
 class BlockParser {
 public:
     BlockParser(std::vector<Line>& lines, std::string* error) : m_lines(lines), m_error(error) {}
 
-    bool parseDocument(json& out) {
+    bool parseDocument(J& out) {
         if (m_lines.empty()) {
-            out = json(nullptr);
+            out = J(nullptr);
             return true;
         }
         if (!node(m_lines[0].indent, out)) {
@@ -415,7 +418,7 @@ public:
     }
 
 private:
-    bool node(int indent, json& out) {
+    bool node(int indent, J& out) {
         if (isSeqItem(m_lines[m_i].text)) {
             return sequence(indent, out);
         }
@@ -423,19 +426,19 @@ private:
         if (findKeyColon(line.text) == std::string::npos) {
             // A lone scalar or flow collection (e.g. a document that is just `[a, b]`).
             ++m_i;
-            InlineParser parser(line.text, line.number, m_error);
+            InlineParser<J> parser(line.text, line.number, m_error);
             return parser.parseAll(out);
         }
         return mapping(indent, out);
     }
 
     // T-257: every block recursion passes through mapping() or sequence(), so both count depth.
-    bool mapping(int indent, json& out) {
+    bool mapping(int indent, J& out) {
         const NestingScope nesting(m_depth);
         if (nesting.tooDeep()) {
             return setFailure(m_error, m_lines[m_i].number, "nesting too deep");
         }
-        out = json::object();
+        out = J::object();
         while (m_i < m_lines.size()) {
             const Line line = m_lines[m_i];
             if (line.indent < indent) {
@@ -462,7 +465,7 @@ private:
             }
             const std::string_view rest = trim(std::string_view(line.text).substr(colon + 1));
             ++m_i;
-            json value(nullptr);
+            J value(nullptr);
             if (rest.empty()) {
                 if (m_i < m_lines.size() && m_lines[m_i].indent > indent) {
                     if (!node(m_lines[m_i].indent, value)) {
@@ -475,7 +478,7 @@ private:
                     }
                 }
             } else {
-                InlineParser parser(rest, line.number, m_error);
+                InlineParser<J> parser(rest, line.number, m_error);
                 if (!parser.parseAll(value)) {
                     return false;
                 }
@@ -488,12 +491,12 @@ private:
         return true;
     }
 
-    bool sequence(int indent, json& out) {
+    bool sequence(int indent, J& out) {
         const NestingScope nesting(m_depth);
         if (nesting.tooDeep()) {
             return setFailure(m_error, m_lines[m_i].number, "nesting too deep");
         }
-        out = json::array();
+        out = J::array();
         while (m_i < m_lines.size()) {
             Line& line = m_lines[m_i];
             if (line.indent < indent || !isSeqItem(line.text)) {
@@ -507,7 +510,7 @@ private:
                 ++offset;
             }
             const std::string item = line.text.substr(offset);
-            json value(nullptr);
+            J value(nullptr);
             if (item.empty()) {
                 ++m_i;
                 if (m_i < m_lines.size() && m_lines[m_i].indent > indent) {
@@ -525,7 +528,7 @@ private:
             } else {
                 const int number = line.number;
                 ++m_i;
-                InlineParser parser(item, number, m_error);
+                InlineParser<J> parser(item, number, m_error);
                 if (!parser.parseAll(value)) {
                     return false;
                 }
@@ -541,9 +544,8 @@ private:
     int m_depth = 0;  // open block collections (T-257)
 };
 
-}  // namespace
-
-bool parseYamlLite(std::string_view text, json& out, std::string* error) {
+template <class J>
+bool parseYamlLiteImpl(std::string_view text, J& out, std::string* error) {
     if (text.size() >= 3 && static_cast<unsigned char>(text[0]) == 0xEF &&
         static_cast<unsigned char>(text[1]) == 0xBB && static_cast<unsigned char>(text[2]) == 0xBF) {
         text.remove_prefix(3);
@@ -578,13 +580,23 @@ bool parseYamlLite(std::string_view text, json& out, std::string* error) {
         }
         lines.push_back(Line{number, static_cast<int>(indent), std::string(content)});
     }
-    BlockParser parser(lines, error);
-    json result;
+    BlockParser<J> parser(lines, error);
+    J result;
     if (!parser.parseDocument(result)) {
         return false;
     }
     out = std::move(result);
     return true;
+}
+
+}  // namespace
+
+bool parseYamlLite(std::string_view text, json& out, std::string* error) {
+    return parseYamlLiteImpl(text, out, error);
+}
+
+bool parseYamlLite(std::string_view text, nlohmann::ordered_json& out, std::string* error) {
+    return parseYamlLiteImpl(text, out, error);
 }
 
 std::string yamlScalar(std::string_view text) {
@@ -604,7 +616,7 @@ std::string yamlScalar(std::string_view text) {
         }
     }
     if (plain) {
-        const json typed = plainScalar(text);
+        const json typed = plainScalar<json>(text);
         plain = typed.is_string() && typed.get<std::string>() == text;
     }
     if (plain) {

@@ -6,6 +6,7 @@
   </head>
   <body port:nx="number in" port:ny="number in">
     <div id="root" on:pointermove="set(nx, pointer.fraction(#root).x | range(0, 1, -1, 1)); set(ny, pointer.fraction(#root).y | range(0, 1, -1, 1))">
+      <div id="editorBg" editor-only/>
       <div id="stageL" class="stage">
         <div id="player" class="panel" bind:rotate-y="nx | range(-1, 1, 32, 16)" bind:rotate-x="ny | range(-1, 1, 7, -7)">
           <div class="label">

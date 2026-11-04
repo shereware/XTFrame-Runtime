@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <span>
+#include <string_view>
 #include <vector>
 
 #include "xt/assert.h"
@@ -184,12 +185,26 @@ public:
     /// Clears the flag set by effectPoolGrew(), so a caller (Document::update()) only surfaces one
     /// warning per growth event.
     void clearEffectPoolGrew() { m_effectPoolGrew = false; }
+    /// T-568 (F80): Document::update()'s warning for that event (a capacity event, not a problem
+    /// with the document: `xtframe-view --strict` reports it as info).
+    static constexpr std::string_view kWarnEffectPoolGrew = "effect pool grew";
     /// T-211: latched by setProperty() when a write addresses `effect.<n>.<param>` on a node with
     /// no n-th effect (a keyframe animating an effect the element's stack lacks); the write is a
     /// no-op. Document::update() turns it into a one-shot kWarnEffectMissing warning.
     bool effectMissingWritten() const { return m_effectMissingWritten; }
-    void noteEffectMissingWritten() { m_effectMissingWritten = true; }
+    /// T-568 (F110): `node` and `prop` (the first write since the last clear) name the element and
+    /// the track: the warning reads kWarnEffectMissing + `: #<element id> effect[<n>].param<p>`.
+    void noteEffectMissingWritten(NodeId node = kInvalidNode, PropId prop = 0) {
+        if (!m_effectMissingWritten) {
+            m_effectMissingNode = node;
+            m_effectMissingProp = prop;
+        }
+        m_effectMissingWritten = true;
+    }
     void clearEffectMissingWritten() { m_effectMissingWritten = false; }
+    /// T-568: the node and PropId noteEffectMissingWritten() recorded first.
+    NodeId effectMissingNode() const { return m_effectMissingNode; }
+    PropId effectMissingProp() const { return m_effectMissingProp; }
 
     /// T-244: `id`'s skinned geometry side-table entry, or nullptr when it has none (never skinned,
     /// or the slot was reused by another node since).
@@ -342,7 +357,9 @@ private:
     void countEffects(NodeId node, bool add);
     // Set by assignEffects() when m_effects/m_effectStops reallocated; see effectPoolGrew().
     bool m_effectPoolGrew = false;
-    bool m_effectMissingWritten = false;  // T-211, see effectMissingWritten().
+    bool m_effectMissingWritten = false;        // T-211, see effectMissingWritten().
+    NodeId m_effectMissingNode = kInvalidNode;  // T-568
+    PropId m_effectMissingProp = 0;             // T-568
     // T-244: skinned geometry side table; m_skinSlot is indexed by NodeId (0xFFFFFFFF = none).
     std::vector<uint32_t> m_skinSlot;
     std::vector<SkinnedGeometry> m_skinned;

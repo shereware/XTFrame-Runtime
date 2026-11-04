@@ -48,6 +48,34 @@ struct PortInfo {
     bool isInput = false;
     /// Extra string-valued parameters, e.g. {"prop": "RotationY"}.
     std::map<std::string, std::string> params;
+    /// T-580 (§22.15 `ports.out[].origin`): where an output comes from -- "document" (a declared
+    /// port or an element / document event), "trigger" (a document trigger's `emit(<name>)` of an
+    /// undeclared name) or "flow" (a flow `emit` node's undeclared `port`). Written for `ports.out`
+    /// only; a missing key reads as "document".
+    std::string origin = "document";
+};
+
+/// T-580 (§22.15): one `flowInterface.emits[]` entry -- an `emit` node's port name and the type of
+/// the value it sends ("pulse" when its `value` input is not connected).
+struct FlowEmit {
+    std::string name;
+    std::string type;
+};
+
+/// T-580 (§22.15, Docs/design/53-flow-language.md §53.101): the host-facing interface of a flow,
+/// `uis[].flowInterface` (the UI's own flow plus the global flow's `ui#<id>` entries for it) or the
+/// top-level `flowInterface` (the rest of the global flow). `writes` / `reads` are port addresses
+/// `#<ui id>.<port>` (document level) or `#<ui id>.<element>.<port>`; `system` the wired `system`
+/// outputs. A bundle packed before T-580 has none: `present` is false and every list empty.
+struct FlowInterface {
+    /// The manifest carries the object (the UI has a flow, or the global flow addresses it).
+    bool present = false;
+    std::vector<FlowEmit> emits;
+    std::vector<std::string> writes;
+    std::vector<std::string> reads;
+    std::vector<std::string> system;
+    /// True when all four lists are empty.
+    bool empty() const { return emits.empty() && writes.empty() && reads.empty() && system.empty(); }
 };
 
 /// One UI's manifest entry (§22.3 / §22.5).
@@ -85,6 +113,9 @@ struct UiInfo {
     /// contract hash, 16 lowercase hex digits (bundle::contractHash()); empty for a bundle packed
     /// before it existed.
     std::string contract;
+    /// T-580 (§22.15 `uis[].flowInterface`): what the UI's flow shows a host; `present` false and
+    /// empty for a UI without a flow (and for a bundle packed before T-580).
+    FlowInterface flowInterface;
 };
 
 /// One theme of a bundle (Docs/design/22-bundle.md §22.10 `themes[]`, T-170): a `.xts` file of
@@ -355,6 +386,9 @@ public:
     /// bundle root; empty when the manifest has none. Load it with
     /// xt::flow::BundleContext::loadGlobalFlow().
     std::string_view globalFlow() const;
+    /// T-580 (§22.15 top-level `flowInterface`): the global flow's host interface (the entries no
+    /// `ui#<id>` address assigns to a UI); `present` false and empty when the manifest has none.
+    const FlowInterface& globalFlowInterface() const;
     /// T-200 (§22.10 `symbols[]`): the contract summary of every symbol of the source project (its
     /// symbol library, then the UIs' own definitions); empty when the manifest has none.
     std::span<const SymbolContract> symbolContracts() const;
@@ -407,6 +441,7 @@ private:
     BundleSpec m_spec;
     std::string m_motionSpec;
     std::string m_globalFlow;
+    FlowInterface m_globalFlowInterface;  // T-580.
     // T-199.
     std::vector<AssetInfo> m_assetTable;
     std::vector<AtlasInfo> m_atlases;

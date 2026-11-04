@@ -10,6 +10,7 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "flow_slots.h"
@@ -161,9 +162,22 @@ std::vector<std::string> outputPortOrder(NodeType type, const NodeDesc& node);
 /// a known `ui` param are errors. With `uiDocs` null and `doc` non-null (a UI's own flow), any
 /// `ui#` endpoint and any `timeline.ui` param is an error. With both null (FlowGraph::parse()),
 /// both spellings are accepted without a Document.
+///
+/// T-582 (53 禮53.5.5 "late binding"): `dormantUis` non-null (with `uiDocs`): a `ui#<uiId>`
+/// endpoint whose UI is missing from `uiDocs` is not an error; it resolves as without a Document
+/// (FlowGraph::parse()'s rules: a declared port has no type yet) and `uiId` is appended to
+/// `dormantUis` once, in order of first use.
 Status validateGraph(const FlowGraph& graph, Document* doc, std::vector<std::string>& errors,
                      std::vector<BoundEdge>* outEdges,
-                     const std::map<std::string, Document*>* uiDocs = nullptr);
+                     const std::map<std::string, Document*>* uiDocs = nullptr,
+                     std::vector<std::string>* dormantUis = nullptr);
+
+/// T-582: the edge type rule of validateGraph() for resolved endpoints `from` -> `to` (the edge's
+/// texts `fromText` / `toText` for the message): a pulse sink takes anything, a flexible node
+/// input any value, otherwise the types must match unless either side has no type yet
+/// (Endpoint::anyType). False with `err` set when the edge is rejected.
+bool checkEdgeTypes(const Endpoint& from, const Endpoint& to, const std::string& fromText,
+                    const std::string& toText, std::string& err);
 
 /// T-193: splits `ui#<uiId>.<rest>`: `uiId`, and `rest` rewritten as a single-UI endpoint --
 /// "#<element>.<port>" for three segments, "#document.<port>" for two, or the bare "shown" /
@@ -400,6 +414,12 @@ SinkPath applyResolvedInput(DocEndpointState& state, const Endpoint& sink, const
                             const InputValue& v, const std::string& param,
                             const StyleTemplate* styleTemplate);
 
+/// T-573 (27 §27.8, T-568 record): a flow `emit` node with port name `port` sent `v`. When `doc`
+/// declares an `out` port of that name, the value is written into it (as the host's setPort on it
+/// would), so the bindings that read it re-evaluate. A pulse, an unknown port, another direction
+/// or a value of the wrong type changes nothing.
+void writeEmittedOutPort(Document& doc, std::string_view port, const InputValue& v);
+
 /// Sends `v` into the element / `<anim>` input port `sink` (registerDocumentEndpoint() first).
 /// `param` is the edge parameter (see documentInputParamName()). Type checks are the caller's.
 void applyDocumentInput(DocEndpointState& state, const Endpoint& sink, const InputValue& v,
@@ -490,7 +510,8 @@ struct FormatPiece {
 };
 
 /// `math`'s `op`, parsed at load (an unknown or absent op computes 0).
-enum class MathOp : uint8_t { Unknown, Add, Sub, Mul, Div, Min, Max, Clamp, Map, Abs, Round };
+/// T-573: Mod appended.
+enum class MathOp : uint8_t { Unknown, Add, Sub, Mul, Div, Min, Max, Clamp, Map, Abs, Round, Mod };
 /// `compare`'s `op`, parsed at load (an unknown or absent op is false).
 enum class CompareOp : uint8_t { Unknown, Eq, Ne, Lt, Le, Gt, Ge };
 MathOp parseMathOp(std::string_view op);
@@ -599,6 +620,11 @@ struct RtEdge {
 struct ExternalSlotInfo {
     Endpoint desc;
     bool valueSignal = false;  ///< isValueSignal() of it as a source.
+    /// T-583: the last value-type value delivered from it as a source (kNoValue: none yet), its
+    /// string buffer and the instance id it came from -- what bindUi() resends to a UI bound late.
+    RtValue last;
+    uint32_t lastHome = 0;
+    uint32_t lastInstance = 0;
 };
 
 /// Exact comparison (Docs/tasks/T-56.md "值型埠：只在值改變時推送（浮點比較 exact）").
@@ -660,9 +686,9 @@ struct xt::flow::FlowRuntime::Impl {
     /// (system strings, `timeline.marker`).
     void fireEventText(int nodeIndex, uint16_t slot, std::string_view text);
     /// Shared part of load()/loadGlobal(): builds the node array and value slots and validates
-    /// (`uiMap` as validateGraph()). Expects the endpoint states to be reset already.
+    /// (`uiMap` and `dormantUis` as validateGraph()). Expects the endpoint states to be reset already.
     Status loadGraph(const FlowGraph& graph, std::vector<std::string>& errors,
-                     const std::map<std::string, Document*>* uiMap);
+                     const std::map<std::string, Document*>* uiMap, std::vector<std::string>* dormantUis);
     /// T-476: builds node `nd`'s slots (values, params, format pieces, ops) as node `index`.
     void compileNode(const NodeDesc& nd, NodeRuntime& rt);
     /// T-541: a `state` node's names, interned state names and transition table (compileNode()).
@@ -673,6 +699,45 @@ struct xt::flow::FlowRuntime::Impl {
     /// Document, no UI id, no handle). The endpoint states stay allocated until the next load: a
     /// callback of theirs may be running further up the stack.
     void removeUi(std::string_view uiId);
+
+    // ---- T-582 (53 禮53.5.5 "late binding"; flow_late_binding.cpp) -----------------------------
+    /// The bundle the last successful loadGlobal() bound against; null otherwise.
+    BundleContext* globalBundle = nullptr;
+    /// FlowGraph::edges' endpoint texts of the loaded graph (edge order), for the messages of the
+    /// checks bindUi() makes.
+    std::vector<std::pair<std::string, std::string>> edgeTexts;
+    /// FlowRuntime::dormantDrops(): deliveries into a `ui#` sink whose UI has no bound instance.
+    uint64_t dormantDrops = 0;
+    /// An addUi() made inside this runtime's dispatch, bound once it returns (runPending()).
+    struct DeferredBind {
+        std::string uiId;
+        Context* context = nullptr;
+        DocumentHandle handle = 0;
+        uint32_t serial = 0;  ///< Context::documentSerial(handle) when it was asked for.
+    };
+    std::vector<DeferredBind> deferredBinds;
+    /// BundleContext::addUi(): binds instance (`context`, `handle`) of UI `uiId` to every endpoint
+    /// of the loaded global flow on `uiId`, without touching the node state; a failed check goes to
+    /// runtimeErrorList and leaves the instance dormant. Deferred inside a dispatch; a no-op when no
+    /// global flow is loaded, a load is pending or the instance is bound already.
+    void bindUi(const std::string& uiId, Context& context, DocumentHandle handle);
+    /// Runs deferredBinds (each one only while it is still registered on globalBundle with the
+    /// same Document).
+    void runDeferredBinds();
+    /// bindUi()'s checks of `uiId`'s endpoints against `doc`; appends one message per problem to
+    /// `errors`. On success `fresh` holds, per edge, the re-resolved endpoints (from, to).
+    void checkUiEndpoints(const std::string& uiId, Document& doc, std::vector<std::string>& errors,
+                          std::vector<std::pair<Endpoint, Endpoint>>& fresh);
+    /// Registers `state`'s endpoints of `uiId` and subscribes its outputs (bindDocumentEndpoints()
+    /// for one endpoint state).
+    void bindUiState(const std::string& uiId, DocEndpointState& state);
+    /// T-583 (53 §53.5.5, T-582 ruling (2)): after bindUi() bound `state` (an instance of
+    /// `uiId`), sends the current value of every value-type source along each newly bound
+    /// value-type edge into it, once: a node output holding a value, or a document endpoint of
+    /// another UI with a last delivered value. Pulses are not replayed; no node is re-evaluated.
+    void resendCurrentValues(const std::string& uiId, DocEndpointState& state);
+    /// Registers the TimelineEnd / TimelineMarker listeners of timeline node `index` on `state`.
+    void bindTimelineNode(size_t index, DocEndpointState& state);
     // ---- T-475 (Docs/design/21-perf-tracing.md §21.6): stage times and counters --------------
     /// FlowRuntime::setPerfTracker(); null = nothing recorded.
     PerfTracker* perfTracker = nullptr;
@@ -681,7 +746,7 @@ struct xt::flow::FlowRuntime::Impl {
         return perfTracker != nullptr && perfTracker->enabled() ? &perfTracker->current() : nullptr;
     }
     /// Adds one to `field` of the frame being recorded (no-op without one).
-    void perfCount(uint32_t FrameStats::*field) {
+    void perfCount(uint32_t FrameStats::* field) {
         if (FrameStats* stats = perfStats()) {
             ++(stats->*field);
         }
@@ -876,6 +941,7 @@ struct xt::flow::FlowRuntime::Impl {
         Document* doc = nullptr;  ///< Load: the Document.
         uint32_t serial = 0;      ///< Load: its loadSerial(), checked again when `docs.context` is set.
         BundleContext* bundle = nullptr;  ///< LoadGlobal.
+        FlowLoadOptions options;          ///< LoadGlobal (T-582).
     };
     PendingLoad pending;
     /// How many of this runtime's dispatching calls are on the stack: tick(), postSystemEvent(),
@@ -888,7 +954,8 @@ struct xt::flow::FlowRuntime::Impl {
         Impl& impl;
         explicit DispatchGuard(Impl& owner) : impl(owner) { ++impl.dispatchDepth; }
         ~DispatchGuard() {
-            if (--impl.dispatchDepth == 0 && impl.pending.kind != PendingLoad::Kind::None &&
+            if (--impl.dispatchDepth == 0 &&
+                (impl.pending.kind != PendingLoad::Kind::None || !impl.deferredBinds.empty()) &&
                 !impl.runningPending) {
                 impl.runPending();
             }
@@ -944,8 +1011,9 @@ struct xt::flow::FlowRuntime::Impl {
     void emitPassed(int nodeIndex, uint16_t slot, const RtValue& v, uint16_t passedSlot);
 
     Status load(const FlowGraph& graph, Document& document, std::vector<std::string>& errors);
-    /// T-193: FlowRuntime::loadGlobal().
-    Status loadGlobal(const FlowGraph& graph, BundleContext& bundle, std::vector<std::string>& errors);
+    /// T-193: FlowRuntime::loadGlobal(); T-582: `notes`, `options`.
+    Status loadGlobal(const FlowGraph& graph, BundleContext& bundle, std::vector<std::string>& errors,
+                      std::vector<std::string>* notes, const FlowLoadOptions& options);
     Status rebind(Document& document, std::vector<std::string>& warnings);
     /// T-260c: FlowRuntime::unload() (deferred like load() inside a dispatch).
     void unload();
@@ -959,7 +1027,8 @@ struct xt::flow::FlowRuntime::Impl {
     /// Gives `state`'s output slot `slot` a source binding for external slot `external`.
     void bindSource(DocEndpointState& state, uint32_t slot, uint32_t external);
     /// Delivers `v` along edge `edgeIndex` into its sink.
-    void applyToSink(uint32_t edgeIndex, const RtValue& v);
+    /// `only` (T-583): when set, a `ui#` sink is written in that endpoint state alone.
+    void applyToSink(uint32_t edgeIndex, const RtValue& v, const DocEndpointState* only = nullptr);
 
     // ---- evaluation (flow_nodes.cpp) ----
     void seedInitialOutputs();

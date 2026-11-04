@@ -53,7 +53,8 @@ guarantee the renders match (T-429). The `fonts` entries therefore carry the SHA
 file the `expected/` images were rendered with:
 
 - `xtframe-view --list-fonts` prints one `family<TAB>path` line per registered system font file
-  (UTF-8, sorted); `--list-fonts=names` prints only the family names (the T-426 output).
+  (UTF-8, sorted; T-569: a face of a `.ttc`/`.otc` collection is `path#<face index>`, and the
+  checker hashes the file without the suffix); `--list-fonts=names` prints only the family names (the T-426 output).
 - `Tools/Scripts/corpus_check.py` hashes the files of each listed family (stdlib `hashlib`); when a family
   has several files (Regular / Bold / Italic) any one matching is enough. No match is treated like a
   missing font: `[FAIL] <name>: font '<family>' is a different build (sha256 <12 hex>... expected

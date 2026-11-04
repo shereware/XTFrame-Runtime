@@ -290,3 +290,33 @@ T-527 實作後的補充（2026-10-29）：
 ## 22.15 發佈時移除 `editor-only` 子樹（2026-10-15；03 §3.13，T-342）
 
 `xtframe-pack` 與編輯器 Publish 在編譯每個 UI 前，先把帶 `editor-only` 屬性的元素連同子樹從文件移除，再編譯；只被這些子樹引用的素材不進 `assets/`，`manifest` 不列；移除的 id 若被流圖／綁定／`<use>` 引用 → lint 警告。縮圖（`thumbs/`）以移除後的文件渲染。
+
+## 22.14 字形資產與 `spec.fontFallback`（2026-11-01 定案；改進報告 R17；T-571）
+
+- `xtframe-pack` 把 manifest `glyphs` 列出的字形圖加進**每個含 `<glyph>` 的 UI** 的資產表（去重、與 `shared/` 同一份位元組），`Document::resolveGlyphs` 不改；沒有 `<glyph>` 的 UI 不加。
+- UI 沒有宣告 `@font-fallback` 時，以 `.xtui` 的 `spec.fontFallback` 為起點寫進 manifest `fonts.fallback`；有宣告的 UI 以自己的為準。30 §30.6 同步。
+- `i18n: unused key` 改為一行摘要 `i18n: N unused key(s) in <lang>.csv (--verbose lists them)`；`xtframe-view` 同。
+
+## 22.15 manifest 的 flow 介面（2026-11-02 使用者定案：宿主腳本系統要分得出「來自 flow 的 port」，並有一個專門走 flow 的節點；T-580）
+
+`xtframe-pack` 解析每個 UI 的 `.xtflow` 與 `bundle.xtflow`（`FlowGraph::parse()`，不需文件），在 `uis[].ports` 之外加 `uis[].flowInterface`（`uis[].flow` 已是 flow 檔路徑，不動），全域流圖另有頂層 `flowInterface`（頂層 `flows.global` 是路徑，不動）：
+
+```
+"flowInterface": {
+  "emits":  [ { "name": "clue_pick", "type": "number" } ],   // emit 節點的 port 名與 value 型別（從未接值 → "pulse"）
+  "writes": [ "#hud.hp", "#hud.state" ],                     // flow 以 set(port) 寫入的 in port（宿主也寫就是衝突候選）
+  "reads":  [ "#hud.score_out" ],                             // flow 當來源讀的 out port
+  "system": [ "paused", "resumed", "back", "languageChanged" ] // 圖中 system 節點實際接線的輸出
+}
+```
+
+- `ports.out[]` 每項加 `"origin": "document" | "trigger" | "flow"`：宣告 port 與元素事件為 `document`；文件觸發器 `emit(x)` 的未宣告名為 `trigger`；flow `emit` 節點的未宣告名為 `flow`（型別取 value 輸入的型別）。同名多來源取第一個出現者並在 pack 報 info。
+- 全域流圖以 `ui#<id>.<port>` 定址的項歸到該 UI；其餘歸頂層 `flowInterface`。
+- `contract` 雜湊涵蓋 `flowInterface`；`--gen-ports` 生成 `Flow` 巢狀結構（emit 名常數、system 清單）。
+- 讀端：`UiInfo::flowInterface`（`FlowInterface` 結構）與 `PortInfo::origin`（缺 → `document`）；舊 bundle 沒有 `flowInterface` 欄位：宿主視為全空（manifest version 不變，加欄位）。
+
+**T-580 實作記錄（#529，2026-11-02；主模型確認五項）**：位址 `#<ui>.<port>`（文件層）／`#<ui>.<element>.<port>`（元素）；writes／reads 只列宣告 port（in／call 終點、out 來源），元素內建埠、`#document` 連接點、`ui#x.shown/hidden` 不列；未宣告的觸發器 `emit(x)` 型別 `pulse`；UI 有 flow 或被全域流圖定址就寫 `flowInterface`，四個清單一律存在；契約雜湊只在 `flowInterface` 非空時納入（空介面的 UI 雜湊不變）。已知限制：增量 `--ui` 重打包時未重打包的 UI 保留舊 `flowInterface`（全域流圖的項只增不減）。`FlowGraph::hostInterface()` 為唯讀反射。
+
+**T-571 實作記錄（#545，2026-11-04；五項偏差主模型核准）**：字形資產由編譯器寫 ASST（`CompileOptions::glyphImageAssets`，含 `<glyph>` 的文件才附加；`resolveGlyphs` 不改）；`spec.fontFallback` 只補無 `@font-fallback` 的 UI（UI 自己的鏈優先、與打包順序無關；舊 `bundle.xtproj` 無 spec）；`i18n: N unused key(s) in <lang>.csv (--verbose lists them)`，`--verbose` 只逐鍵不另印摘要；view 暫存目錄帶 pid、正常結束時刪（崩潰殘留不清）；view 開 `.xt` 套所屬專案的 safe area／logicalHeight／uiscale 規則並印 `safe area <v> (from <proj>.xtui)`（給 `--safe` 時不印不覆蓋）；`--event "[<frame>] key <name>"` 用編譯器鍵名表（`keyCodeFromTriggerName`），`key()` 需焦點；`#btn covered by #x at (x,y)` 訊息。`<glyph>` 的屬性名是 `key`（22 §22.10.2 範例若寫 `action` 為誤）。
+
+**來源格式 v2（2026-11-04 定案，54 章）**：§22.11.1「UI」列的檔案清單改為 `<ui>.xt`（+ 可選 `.xts` 片段、`.xtflow`、sidecar）；`xtframe-pack --upgrade --format 2`；`fileHash` 以 `.xt` 加全部片段計算。隨 T-589 落地。

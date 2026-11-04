@@ -1683,3 +1683,69 @@ TEST_CASE("gl golden: ui_border_styles matches the SW expected image") {
     CAPTURE(result.maxChannelDiff);
     CHECK(result.pass);
 }
+
+// T-572 (18 §18.13; improvement report F24 / F25 / F32): the inset shadow ring, the rounded
+// overflow clip and the parent-flipped card are drawn from the same command lists on both
+// backends, so GL must match the SW expected images. Differences are confined to the antialiased
+// edges (the clip's rounded corners, the ring's inner edge, the card's perspective outline), hence
+// 16 / 0.03.
+namespace {
+
+void checkGlMatchesSwGolden(const char* name, int maxChannelDiff, float maxDiffFraction) {
+    const std::string uiDir = XT_GOLDEN_UI_DIR;
+    const std::vector<golden::UiFixture> fixtures = golden::loadUiManifest(uiDir + "/manifest.txt");
+    REQUIRE(golden::manifestErrors() == 0);
+    const golden::UiFixture* found = nullptr;
+    for (const golden::UiFixture& fx : fixtures) {
+        if (fx.name == name) {
+            found = &fx;
+        }
+    }
+    REQUIRE(found != nullptr);
+    std::vector<uint8_t> actual = golden::renderUiFixture(
+        *found, uiDir,
+        [&](const golden::UiFixture& f, const CommandList& cmds, TextShaper* shaper, AssetResolver* assets,
+            const IrView* ir) {
+            GlSession gl(f.width, f.height);
+            gl.target.bindAndClear(f.clearColor);
+            gl.renderer.render(cmds, shaper, assets, ir);
+            std::vector<uint8_t> pixels = gl.target.readback();
+            std::vector<uint8_t> topDown(pixels.size());
+            const size_t row = static_cast<size_t>(f.width) * 4;
+            for (int y = 0; y < f.height; ++y) {
+                std::copy(pixels.begin() + static_cast<long>(size_t(f.height - 1 - y) * row),
+                          pixels.begin() + static_cast<long>(size_t(f.height - y) * row),
+                          topDown.begin() + static_cast<long>(size_t(y) * row));
+            }
+            return topDown;
+        });
+    REQUIRE(!actual.empty());
+    std::vector<uint8_t> expected;
+    int ew = 0, eh = 0;
+    REQUIRE(sw::readPng(std::string(XT_GOLDEN_EXPECTED_DIR) + "/" + name + ".png", expected, ew, eh));
+    REQUIRE(ew == found->width);
+    REQUIRE(eh == found->height);
+    golden::GoldenResult result = golden::compareRgba(actual.data(), expected.data(), found->width,
+                                                      found->height, maxChannelDiff, maxDiffFraction);
+    MESSAGE(name << " SW/GL diff pixels: " << result.diffPixels
+                 << ", max channel diff: " << result.maxChannelDiff);
+    CAPTURE(result.diffPixels);
+    CAPTURE(result.maxChannelDiff);
+    CHECK(result.pass);
+}
+
+}  // namespace
+
+TEST_CASE("gl golden: ui_fx_shadow_inset_ring matches the SW expected image") {
+    checkGlMatchesSwGolden("ui_fx_shadow_inset_ring", 16, 0.03f);
+}
+
+TEST_CASE("gl golden: ui_rounded_clip_children matches the SW expected image") {
+    checkGlMatchesSwGolden("ui_rounded_clip_children", 16, 0.03f);
+}
+
+TEST_CASE("gl golden: ui_3d_flip_0 / 90 / 180 match the SW expected images") {
+    checkGlMatchesSwGolden("ui_3d_flip_0", 16, 0.03f);
+    checkGlMatchesSwGolden("ui_3d_flip_90", 16, 0.03f);
+    checkGlMatchesSwGolden("ui_3d_flip_180", 16, 0.03f);
+}

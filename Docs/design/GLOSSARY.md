@@ -255,3 +255,10 @@
 | 探索 | Explore | 把工作項放到方案上做（36 章），不碰主線 |
 - **效果目錄** effect catalog：「＋ 加入效果」鈕打開的清單，用美術的分類列出可加到元件上的一切（46 §46.13）。
 - **加入效果** Add effect：元件唯一的「往下加東西」入口（屬性面板頂端與畫布選取框旁）。
+
+## 54 章補充（2026-11-04）
+
+- **區段** section：v2 `.xt` 檔內的 `ports`／`body`／`layout`／`style`／`timelines`／`symbol`。
+- **版面區段** layout section：幾何的唯一的家；**外觀區段** style section：CSS 層疊的外觀；**時間軸區段** timelines section；**連接點區段** ports section。
+- **外掛** `src`：把一個區段的內容放到片段檔（一律 `.xts`）。
+- **錨點簡寫** anchor shorthand：`anchor`／`offset`／`offset-end`／`size`，編譯成既有的 `left/right/…` 與 `calc(1safe-…)`。

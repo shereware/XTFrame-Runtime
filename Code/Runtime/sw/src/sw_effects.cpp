@@ -221,11 +221,12 @@ void applyDropShadowInset(const EffectInstance& p, const Surface& src, Surface& 
         for (int x = 0; x < w; ++x) {
             float sx = static_cast<float>(x + pad) + 0.5f - offsetX;
             float hVal = sampleScalarBilinear(blurred, pw, ph, sx, sy, /*outside=*/1.0f);
-            float* q = shadowRow + static_cast<size_t>(x) * 4;
-            q[0] = color.r;
-            q[1] = color.g;
-            q[2] = color.b;
-            q[3] = hVal * srcRow[static_cast<size_t>(x) * 4 + 3] * color.a * opacity;
+            // T-572 (18 §18.13, F24): the surfaces and the span kernel are premultiplied, so the
+            // shadow pixel is written tinted (colour x alpha) like the outer shadow's; the plain
+            // colour used to be added at full strength wherever the box had alpha, which filled
+            // the whole box with any shadow colour that was not black.
+            writeTinted(shadowRow + static_cast<size_t>(x) * 4, color,
+                        hVal * srcRow[static_cast<size_t>(x) * 4 + 3] * color.a * opacity);
         }
         // The shadow goes on top of the content, so `dst` starts as a copy of `src` and the span
         // kernel blends the shadow row over it (Docs/tasks/T-102b.md step 2).

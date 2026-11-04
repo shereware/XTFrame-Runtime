@@ -212,3 +212,120 @@ Claude Design canvas ──Artifact read──▶ <dump>/canvas.json + *.dc.html
 **限制**：wasm 內沒有網路，但匯入器本來就不下載（字型由 `--fonts-dir` 提供）；啟動多一次 wasm 實例化（數十毫秒）；只支援 Node 18+（`engines`）。
 
 **後續（未排）**：同法把 `xtframe-compile` 與 `xtframe-view --headless`（軟體渲染器）編成 wasm，verify.md 的編譯與截圖步驟就能在雲端跑，技能的 deliver mode 可以整個移除；屆時 `check_wasm_import.sh` 擴成三個工具。
+
+## 24.14 匯入器的「不靜默」契約（2026-11-01 定案；《霧都棋局》改進報告 R1～R3、R7～R10、R15；裁決見 `Docs/reviews/2026-11-01-midnight-grid-report-triage.md`）
+
+本節是 24 章開頭「永遠不靜默產生錯的樣式」的具體規則。凡是匯入結果與板子不同，匯入報告必須有一行 finding（`--lint` 也報），否則就是 bug。
+
+### 24.14.1 共用樣式去重（T-563）
+1. 去重**永不**處理 UI 根與根的直接子元素（`anchorFrameChildren` 會處理的節點），也不處理 `<svg>` 子樹。
+2. 去重在自動錨定**之後**執行（錨定讀的是原始宣告）。
+3. 節點若有任何 helmet 規則（`#id`、`.class`、變體規則）宣告了與 inline 相同的屬性，該節點不去重（inline 優先權必須保住）。
+4. 報告列出每個共用 class 與使用它的節點數：`shared class .s-6fc710 used by 4 node(s)`；去重前後的樣式解算結果不得改變（測試：去重前後逐節點 computed style 相等）。
+
+### 24.14.2 自動錨定的量測與讀取（T-564）
+1. 量測文件是「作者的版面盒」：量測前剝掉所有 `bind:*`、`on:*`、`@timeline`、`animation`，根子元素強制 `display: block; visibility: visible`（只為量測，不寫回）。
+2. 錨定讀**計算後**的 `position`／`left`／`top`／`right`／`bottom`／`width`／`height`（inline＋helmet＋class 合併，取量測文件的解算值），不再只看 inline。
+3. 同一軸兩個 px 邊同時存在（`left`＋`right`、`top`＋`bottom`）＝拉伸：兩邊各錨到自己的安全邊，**永不清空**作者寫的邊；沒有 px 寬／高且含文字的軸同樣保留兩邊。
+4. 自動錨定與 `data-xt-anchor` 用同一個公式：`<side>: calc(1safe-<side> + (offset − safe_px))`，`safe_px` 為專案 `spec.safeArea` 在板子尺寸上的像素值；dialect.md 以一張表列出。
+5. 凡錨定改寫了作者寫的任一邊，finding：`anchor: #x left 24px -> calc(1safe-left - 8px)`（info 級，`--lint --anchors` 列出）。
+
+### 24.14.3 效果軌與 transition（T-567）
+- `data-xt-timeline` 裡的 `filter`／`box-shadow`／`text-shadow`／`backdrop-filter` 關鍵幀轉成 `effect.<name>.<param>` 軌（匯入器已知道 CSS→效果的對映，與靜態宣告同一張表）；`transition: box-shadow|filter|text-shadow` 轉成 `transition: effect`。
+- 效果上限（text-shadow 8 px、box-shadow 模糊 64 device px）在匯入時報 `degraded`，與編譯器同一訊息。
+
+### 24.14.4 SVG（T-565）
+- `<svg>` 子樹內標籤名與屬性名保留大小寫（`linearGradient`、`clipPath`、`viewBox`、`gradientUnits`…）。
+- `<svg>` 或其形狀上的 `data-xt-timeline` 轉成 `.xts` 的 `#<svg id>/<shape id>` 向量軌（31 章）；`data-xt-bind`／`data-xt-trigger`／`data-xt-state` 在 `<svg>` 上與一般元素同樣生效。做不到的組合發 finding，不得靜默。
+
+### 24.14.5 透傳與 finding 全覆蓋（T-566）
+- 透傳到 `.xt`／`.xts`：`hit-slop`、`layer`、`tabindex`、`autofocus`、`focus-trap`、`nav-up/down/left/right`、`key-activation`、`-webkit-mask-image`→`mask-image`、`object-fit`（未寫時匯出 `fill`，與 CSS 預設一致）、`object-position`。**2026-11-04 更正（T-566a）**：`.xts` 沒有 `mask-image` 與 `object-position`，兩者改為「改名後報不支援」的 finding（`mask-image` 漸層對應 18 章 `effect: gradient-mask()` 列候選）；`-webkit-text-stroke` 轉成 `text-effect: outline`（置中描邊變外描邊，附 note）；單獨出現的 `-webkit-*` 照去前綴名稱轉換並附 note。
+- 新標籤：`data-xt-key="menu_title"`（文字節點的多語系鍵，匯成 `@menu_title`，與 T-187 的跳脫並存；鍵依 07 §7.8 `[A-Za-z_][A-Za-z0-9_-]*`，不含點號，含點號者 finding 並保留原文）；`data-xt-repeat="items"`（匯成 `<repeat port="items">`，子樹為模板，`item(field)` 綁定照 27 章）。
+- `background-image: url(/_blob/<id>)` 與 `<img>` 走同一條 blob 搬移流程。
+- `data-xt-state` 的差異規則排除幾何屬性（`left/top/right/bottom/width/height/transform`）；有幾何差異時 finding `tag.stateGeometry`。
+- 符號根上的 `data-xt-port` 成為符號 port——**2026-11-04 更正（T-566b）**：寫在定義的第一個頂層元素上（bind_emit 的 PortScopes 只把實例內頂層元素宣告的 port 當作實例範圍；`<symbol>` 上的屬性不會展開到實例），實例以 `<use title="…">` 設字面值；符號根的外觀宣告補到之後沒有自己宣告的實例上並發 info `tag.symbolRootAppearance`（`symbol()` 規則選不到只有實例根的元素）。
+- 所有丟棄（屬性、前綴、未知 `data-xt-*`）、改寫（id slug、數值夾限）一律 finding，訊息含板子行號。
+- merge 摘要加一行：`kept hand edits on N node(s); the board changed too -- use --force to overwrite`；`--lint` 乾跑一次配對，配對失敗即 finding（F22）。
+- flex 子項含文字且無 `min-width` 時 finding `layout.flexShrinkText`（06 章無 min-content 自動最小值）。
+
+## 24.15 診斷契約：轉換永遠產出，問題一份清單（2026-11-01 使用者定案；理念：AI 與使用者可以在任何時候代替對方）
+
+照編譯器與 IDE 的慣例（診斷＝代碼＋位置＋嚴重度＋fix-it；錯誤不停產出；壓制與基準線；LSP 的 Problems 面板與 code action；SARIF 式機器可讀）。
+
+### 24.15.1 原則
+1. **轉換不停**：`xtframe-import` 遇到做不到的東西照樣寫出 UI（缺的放保守值或佔位），每個差異進清單；只有板子無法解析才失敗。`--strict` 只決定 exit code，不決定是否產出。
+2. **一份清單，兩種讀者**：AI（skill、Editor Service）與使用者（編輯器面板、stdout）看同一份資料；面板只是呈現。
+3. **修掉的消失、接受的不再出現、沒處理的留著**：清單在每次匯入／編譯重算；被接受的差異記在 `.xteditor.json` `diagnostics.accepted[]`（以代碼＋元素 id＋差異摘要為鍵），重匯時同樣差異不再列出；板子上也可用 `data-xt-allow="<code>[,<code>]"` 壓制該元素的指定代碼。
+
+### 24.15.2 格式（`ui/<ui>/<ui>.diagnostics.json`，UI Project 層另有 `diagnostics.json` 彙總；版本 1）
+```
+{ "version": 1, "tool": "xtframe-import 0.14.0", "source": "project/Title.dc.html",
+  "items": [ { "code": "import.dedupRoot", "severity": "warning",   // error | warning | info
+               "message": "...", "element": "cx-a", "line": 212, "col": 5,
+               "ui": "title", "detail": { "property": "left", "from": "24px", "to": "calc(1safe-left - 8px)" },
+               "fix": { "kind": "board" | "editor" | "none",
+                        "applicability": "machine" | "maybe" | "hint",
+                        "board": { "attr": "data-xt-anchor", "value": "left 24" },      // 板子端改法
+                        "editor": { "op": "repair.anchor", "args": { "id": "cx-a" } } }, // 編輯器端 op
+               "accepted": false } ] }
+```
+- `code`：穩定、文件化的代碼（既有 lint id 沿用：`tag.portUnbound`…；新加 `import.*`、`anchor.*`、`effect.*`、`bind.*`、`font.*`），每個代碼在 24 章附錄列出說明與修法。
+- `severity`：`error`＝成品與板子不同且無保守值；`warning`＝成品與板子不同但有保守值；`info`＝只是告知（去重、錨定改寫）。
+- `fix.applicability`：`machine` 可一鍵套、`maybe` 套前要看、`hint` 只是建議。
+- 編譯器（`xtframe-compile`）與 `xtframe-view --strict` 的訊息走同一格式（`--diagnostics <file>`），stdout 仍印人讀版。
+
+### 24.15.3 呈現與動作
+- **編輯器**：Problems 面板（17 章新節由 T-577 補）：依嚴重度分組，點項目跳到元素；`machine` 的 fix 一鍵套（呼叫 `repair.*` op），`maybe` 套前預覽差異；「接受」寫進 `.xteditor.json`；重匯後自動刷新。
+- **Editor Service**：`diagnostics.list`、`diagnostics.accept`、`diagnostics.fix`（29 章由 T-577 補 op 表）。
+- **skill**：`xtui` 轉換後讀清單：板子端能改的改完重匯，再把 `editor` 類交給 `xtui-editor` 套 op，最後回報剩下的 `hint`／`none` 項；`xtui-editor` 的「匯入後修補」情境就是這條迴圈。
+- **repair op 的範圍**：匯入器自己造成的差異（錨定、去重、效果降級、透傳失敗）一律提供 `machine` 或 `maybe` 修法；板子本身寫錯的（綁 display 又寫 none、列舉與 port 同名、符號根外觀）提供 `board` 改法與 `hint`，不自動改語意。
+
+### 24.15.4 代碼表（T-576 實作記錄，#532，2026-11-04；七項偏差主模型核准）
+
+型別與 JSON 寫出器在 `xt_compile`（`xt/compile/diagnostic_report.h`，`ReportDiagnostic`、`diagnosticsJson`、`formatDiagnostic`），匯入器以 `xt/import/diagnostics.h` 別名使用（xtframe-compile／view 不能連結編輯器層）。每項多一欄 `source`（專案層清單跨檔）。既有字串 warning（137 處）由 `classifyImportMessage` 歸類，訊息開頭 `<code>: ` 者沿用該代碼；之後的 T-563～T-567 直接推 `ImportReport::coded`。`--strict`：有 error 或 Low-fidelity 節點即 exit 1，兩者都照常產出；`--lint` 的 stdout 不加人讀行（只寫 `--diagnostics` 檔）。`keepGoing`（匯入不停）只在 CLI 開，Service 與 Qt 匯入沿用原子失敗（T-577 再決定）。修補過的編譯錯誤依任務單列 `error`（detail `conservative`），與 §24.15.2「有保守值＝warning」的定義不一致——**裁決：維持 `error`**（它代表「成品與板子不同」且作者必須看）。保守值 = 刪掉該行宣告（屬性回初始值），最多 4 輪重編。
+
+| code | severity | 說明 | fix |
+|---|---|---|---|
+| `board.canvasField`、`board.multipleTopLevel`、`board.strayClose`、`board.nestingFlattened`、`board.multipleRoots` | warning | 板子結構 | none |
+| `tag.portUnbound`、`tag.stateNoDiff`、`tag.triggerWithoutTimeline` | warning | 既有 lint | board hint |
+| `tag.timeline`、`tag.token`、`tag.port`、`tag.invalid` | warning | `data-xt-*` 讀不出或被忽略 | none |
+| `import.unknownTag` | warning | 未知 `data-xt-*` | board hint（刪屬性） |
+| `import.selectorDropped`、`import.declDropped`、`import.contentDropped`、`import.unsupportedProperty`、`import.elementReplaced`、`import.image`、`import.rasterMissing`、`import.token`、`import.mask`、`import.pathOutside`、`import.dropped`、`import.degraded` | warning | 丟棄／改寫 | none（T-566 補） |
+| `import.compileError` | error | 編譯錯誤，`conservative` 記保守值 | none |
+| `import.compileWarning`、`import.reimportConflict`、`import.noBaseline`、`import.oneWay` | warning | | none |
+| `import.notice`、`import.pseudoExpanded`、`import.skipped`、`import.tokenNotShared`、`anchor.replaced` | info | | none |
+| `anchor.tagInvalid`（board hint）、`anchor.flowMoved` | warning | | |
+| `bind.hole`、`bind.noDefault` | warning | | none |
+| `effect.dropped`、`effect.degraded`、`svg.unsupported`、`font.missing`（detail `family`）、`font.linked`、`font.shorthand`、`font.unresolved`、`layout.gridUnsupported` | warning | | none（T-565／T-567／T-569 補 fix） |
+| `compile.error`／`compile.warning`、`flow.continuity`（`--strict` 為 error）、`view.runtimeWarning` | — | xtframe-compile／view | none |
+
+| `dedup.shared`（T-563） | info | `shared class .s-xxxxxx used by N node(s)`，detail `class`、`nodes`；只在專案層清單 | none |
+
+`svg.unsupported`（T-565 起）：warning，board hint，`fix.boardAttr` 依情況為該 `data-xt-*` 或 `data-xt-vector`；`ImportLint` 加 `fixAttr` 欄位。
+
+`anchor.rewritten`（T-564）：info，每個被錨定改寫的宣告一筆，detail `property`／`from`／`to`，訊息 `anchor: #x left 24px -> calc(1safe-left - 8px)`（移除寫 `-> (removed)`）；`xtframe-import dc --lint --anchors` 另印不計入 finding 的 info 行。
+
+`import.idSlug`（T-566a）：info，detail from／to，board hint（改 `id`／`data-xt-name`）。
+
+`effect.baseAdded`（T-567）：info，匯入器為時間軸／`@keyframes` 補上基底效果，detail `animation`／`effect`；`effect.dropped`：warning，時間軸鍵無法成為效果軌（text-shadow、非 px／deg／數字／顏色值）；`effect.degraded`：warning，上限夾限（8 px 文字效果、64 device px 模糊）與 `transition: text-shadow`——夾限時節點標 Low fidelity，`--strict` 因此 exit 1（`<helmet>` class 規則內的夾限無節點，不影響 `--strict`）。
+
+`bind.formatChain`、`bind.calcNotEvaluated`、`bind.enumPortName`（warning）、`bind.outPortSource`（T-568 為 error，裁決改 warning）、`tag.boundDisplayInlineNone`、`tag.showNotSurface`（warning，board hint）——T-568。
+`tag.repeatBinding`（warning，board hint）、`tag.stateGeometry`（warning，board hint）、`tag.symbolRootAppearance`（info）、`import.reimportMatch`（error；stop-loss 時 warning）、`layout.flexShrinkText`（warning，style hint）——T-566b。
+
+**T-566b 實作記錄（#540，2026-11-04；六項偏差主模型核准）**：`data-xt-repeat` → `<repeat id port>`，第一個子元素為模板，其餘丟棄＋warning；`tag.repeatBinding` 接受 `item()`／`index`／`count`／`outer.`；狀態差異排除幾何、只有幾何差異時不寫規則也不報 `stateNoDiff`；merge 摘要的 N 只計 `on:`／`bind:`／`port:`；`--lint -o <project>` 對既有專案乾跑配對（不寫檔）；`hue-rotate` 用自己的句子（YIQ 色相旋轉非 CSS 矩陣）；brightness(1) 這類無作用值不報。
+
+**T-567 實作記錄（#539，2026-11-04；四項偏差主模型核准）**：時間軸鍵依靜態對映表拆成參數軌（blur→`effect.blur.radiusX/Y`、box-shadow／drop-shadow→`effect.shadow.*`、filter 色彩函式→`effect.color-adjust.*`、backdrop-filter→`effect.backdrop-blur.*`、glow）；元素同類效果唯一時用名字、否則用索引；與基底相同的參數不寫；手寫 `effect.<e>.<p>` 鍵保留。基底來源：元素自身 → helmet `#id` → 最後一條 `.class`；缺的效果以第一個鍵值補上（`backdrop-blur` 放最前）；`@keyframes`（F68）重建基底使其以 keyframes 的函式序列開頭。`transition: box-shadow|filter|text-shadow` → `effect`（多項取最後；`backdrop-filter` 不改寫）。未做：由 class 規則（觸發器加 class）啟動的 `@keyframes` 不補基底；後加 `backdrop-blur` 在最前會使先前寫出的索引位址位移。
+
+**T-566a 實作記錄（#538，2026-11-04；四項偏差主模型核准）**：透傳 `hit-slop`、`layer`、`tabindex`（負值照寫＋finding）、`autofocus`／`focus-trap`（true／false）、`nav-*`→`nav:*`（id 對映 slug，目標不存在丟棄＋warning）、`key-activation`（只在根，writer 移到 `<body>`）；filter／backdrop-filter 的 brightness／contrast／saturate 超範圍 finding 並夾限；F79 在匯入端去重（保留最後值，報一次）；F15 文字只在 keepGoing 關閉時出現（CLI 一律開，故走不到）；`--lint` 印 coded finding（info 不計數）；`<helmet>` class 規則的 finding 仍無行號（run-level）。
+
+**T-564 實作記錄（#537，2026-11-04；三項偏差主模型核准）**：量測副本剝掉 `bind:*`／`on:*` 與 `@timeline`（含 `symbol()` 內巢狀）、`animation*`，框架直接子元素強制 `visibility: visible`，`display: none` 者另加 `display: block`（不無條件強制，免得改掉作者的 flex／grid）；副本編譯失敗時退回量照原樣算繪的板子。計算後樣式由 `ElementRef::property` 讀四邊與寬高、`style.position` 讀定位；錨定值寫進節點 `#id` 規則並刪掉頂層 helmet `#id` 的同名宣告（`@media` 內保留）。兩 px 邊＝拉伸、兩邊保留；只寫一邊又釘到遠端時仍移到遠端並 finding `-> (removed)`（維持 T-210 的釘右／釘下行為；「永不清空作者的邊」指的是拉伸軸）。公式統一：`data-xt-anchor` 由 writer 以 `safe_px = spec.safeAreaDefault × 板寬／高`（無專案 0.025）改寫為 `calc(1safe-<edge> + (offset − safe_px))`，既有專案重匯時帶 px 的 `data-xt-anchor` 數值會變。未做：helmet 提供的 tagged 邊、根填滿視口判斷仍只看 inline；「量到的位置與作者寫的不同」finding 未做（margin 會誤報）。
+
+**T-565 實作記錄（#536，2026-11-04；五項偏差主模型核准）**：`<svg>` 子樹內標籤與屬性保留大小寫（結束標籤不分大小寫比對；`data-*` 仍小寫）；形狀上的 `data-xt-timeline` 經 `addShapeTags`→`convertVectorDeclaration` 轉成 `#<svg id>/<shape id>` 軌，`<svg>` 自身時間軸只收 transform／opacity／visibility，寫向量屬性者丟棄並 finding（不改成 `#svg/*`）；`<svg>` 上一般標籤經 `applySvgTags` 生效，`data-xt-state` 的形狀差異寫成 `#btn:hover #icon/blade` 或 `#gem/core:active`；`symbol`／`slot`／`glyph`／`rich` 在 `<svg>` 上為 finding；形狀無 id 的時間軸不自動補 id。F30 兩個根因：編譯器 `svg_timeline.cpp` 的行號基底（runtime 層一處修改）與 `mapXtLines` 把形狀 id 當文件元素。抽出成檔案的案例放 `fixtures/dc/r8-svg-extracted`（boards 下的板子要能在記憶體編譯）。
+
+**T-563 實作記錄（#535，2026-11-04）**：去重移到 `writeBundle()` 的錨定之後（`finishImport` 不再呼叫）；跳過 UI 根、extraRoots 與其直接子元素、`<svg>` 子樹；「helmet 規則宣告同名屬性即不去重」實作為「特異度 ≥ 0,1,0 且能命中該節點的規則」（型別選擇器與 `*` 不算威脅；縮寫／展開與 `inset`／四邊視為同名）——主模型確認。副作用：編輯器匯入預覽直接渲染前端結果，看不到 `.s-` class（計算後樣式不變）。
+
+**T-577 實作記錄（#550，2026-11-04；六項偏差主模型核准）**：Problems 面板（`dock.problems`，與 Messages 並排）全部經內建 Editor Service 的 `diagnostics.*` 讀寫，與 AI 同一份；`diagnostics.list {ui?}`（各項加 `index`、`counts`）、`diagnostics.accept {code, element, detail?, message?, ui?}`（寫 `.xteditor.json` `diagnostics.accepted[]`，無 UI 的項寫作用中 UI 的 sidecar，任一 UI 列了即視為已接受）、`diagnostics.fix {index, ui?, doc?}`（跑 `fix.editor` 的 repair op、從兩份檔移除、重跑 `lint.run`；board／hint 回 kUnsupported；項屬別 UI 時呼叫端傳 `doc`）；新 repair op：`repair.dedup {class, layers?}`（宣告寫回各元素 `#id` 規則、規則保留）、`repair.effectBase {layer, effect}`（`effect` 必填）、`repair.passthrough {layer, attr, value}`（只收焦點類屬性與 `key-activation`，驗值）。帶 `fix.editor` 的代碼：`anchor.rewritten`→`repair.anchor`（maybe，整 UI）、`dedup.shared`→`repair.dedup`（maybe）、`effect.baseAdded`→`repair.effectBase`（machine）、`import.dropped` 透傳失敗→`repair.passthrough`（maybe）。`maybe` 的預覽顯示 op／參數／detail from→to（repair op 無 dry-run）。**keepGoing 裁決**：Service `import.reimport` 與 Qt 匯入對話框皆開啟，三條路共用 `writeDiagnosticsFiles()`；重匯單一 UI 時專案層清單保留其他 UI 的項目。op 總數 206。
+
+**來源格式 v2（2026-11-04 定案，54 章）**：匯入器輸出 v2（五區段、錨定改寫成 `anchor/offset/size`、去重只對外觀、符號庫檔 v2）；§24.15.4 代碼表追加 54 §54.13 與 `web.*`（T-594）。隨 T-592 落地。
+
+**代碼表追加（2026-11-04，53 §53.102；T-601）**：`flow.introByTimer`（warning；autostart 單發計時器驅動 `timeline.play`／`seek`／`state.set`；fix：`lifecycle.shown` 或 `on:show`）。

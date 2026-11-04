@@ -728,8 +728,10 @@ void EventDispatcher::handlePointerUp(NodeArena& arena, NodeId root, const Input
 
     // T-194 (27.7): releasing a pointer drag drops it (or cancels it off a target); no Click.
     // T-388: also a press whose drag was cancelled before the release: no Click either.
+    // T-570 (08 §8.20, 27 §27.8): nor a `pointerdrag` that went past the drag threshold -- the
+    // release ends it like a `draggable` drag (improvement report F59b: the drop toggled a Click).
     const bool dragging = m_drag.active && !m_drag.gamepad && !m_drag.external;
-    const bool dragged = dragging || m_pressDragged;
+    const bool dragged = dragging || m_pressDragged || m_ptrDrag.dragging;
     m_pressDragged = false;
     if (dragging) {
         finishDrag(arena, m_drag.over != kInvalidNode);

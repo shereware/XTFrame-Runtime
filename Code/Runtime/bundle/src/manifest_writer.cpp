@@ -52,6 +52,9 @@ ordered_json writePorts(const std::vector<PortInfo>& ports, bool isInput) {
         ordered_json entry;
         entry["name"] = port.name;
         entry["type"] = port.type;
+        if (!isInput) {
+            entry["origin"] = port.origin.empty() ? std::string("document") : port.origin;  // T-580
+        }
         if (!port.params.empty()) {
             ordered_json params;
             for (const auto& [key, value] : port.params) {
@@ -79,6 +82,7 @@ void readPortsManifestWriter(const json& portsObj, const char* key, bool isInput
         port.name = getString(entry, "name");
         port.type = getString(entry, "type");
         port.isInput = isInput;
+        port.origin = detail::getPortOrigin(entry);  // T-580
         out.push_back(std::move(port));
     }
 }
@@ -152,6 +156,9 @@ Status writeManifest(std::string_view dir, const ManifestData& data) {
         portsObj["in"] = writePorts(ui.ports, /*isInput=*/true);
         portsObj["out"] = writePorts(ui.ports, /*isInput=*/false);
         entry["ports"] = std::move(portsObj);
+        if (ui.flowInterface.present) {
+            entry["flowInterface"] = detail::writeFlowInterface(ui.flowInterface);  // T-580
+        }
 
         entry["fileHash"] = ui.fileHash;
         if (!ui.contract.empty()) {
@@ -326,6 +333,10 @@ Status writeManifest(std::string_view dir, const ManifestData& data) {
         flows["global"] = data.globalFlow;
         root["flows"] = std::move(flows);
     }
+    // T-580 (§22.15): the global flow's host interface, right after `flows`.
+    if (data.globalFlowInterface.present) {
+        root["flowInterface"] = detail::writeFlowInterface(data.globalFlowInterface);
+    }
 
     if (!data.motionSpecJson.empty()) {
         const ordered_json motion =
@@ -401,6 +412,7 @@ bool readManifest(std::string_view dir, ManifestData& out) {
             }
             ui.fileHash = getUint64(entry, "fileHash");
             ui.contract = getString(entry, "contract");  // T-408: a kept UI keeps its contract.
+            ui.flowInterface = detail::getFlowInterface(entry, "flowInterface");  // T-580
             data.uis.push_back(std::move(ui));
         }
     }
@@ -493,9 +505,10 @@ bool readManifest(std::string_view dir, ManifestData& out) {
     if (flowsIt != root.end() && flowsIt->is_object()) {
         data.globalFlow = getString(*flowsIt, "global");
     }
-    data.symbols = detail::getSymbolContracts(root);  // T-200.
-    data.glyphs = detail::getGlyphs(root);            // T-204.
-    data.hasSpec = detail::getSpec(root, data.spec);  // T-207.
+    data.globalFlowInterface = detail::getFlowInterface(root, "flowInterface");  // T-580
+    data.symbols = detail::getSymbolContracts(root);                             // T-200.
+    data.glyphs = detail::getGlyphs(root);                                       // T-204.
+    data.hasSpec = detail::getSpec(root, data.spec);                             // T-207.
     const auto motionIt = root.find("motionSpec");
     if (motionIt != root.end() && motionIt->is_object()) {
         data.motionSpecJson = motionIt->dump();

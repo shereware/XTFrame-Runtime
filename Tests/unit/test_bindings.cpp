@@ -1686,7 +1686,7 @@ TEST_CASE("T-544: bind:effect.* on an element whose effect is gone is a no-op wi
     ui.step(0.016f);
     size_t missing = 0;
     for (const std::string& w : ui.doc->warnings()) {
-        missing += w == kWarnEffectMissing ? 1u : 0u;
+        missing += w.rfind(kWarnEffectMissing, 0) == 0 ? 1u : 0u;
     }
     CHECK(missing == 1);
 }
@@ -1698,7 +1698,7 @@ TEST_CASE("T-544: the port default reaches the effect parameter once the style p
     REQUIRE(c.effectCount == 1);
     CHECK(ui.doc->arena().effects()[c.effectOffset].params[0] == doctest::Approx(77.0f));
     for (const std::string& w : ui.doc->warnings()) {
-        CHECK(w != kWarnEffectMissing);
+        CHECK(w.rfind(kWarnEffectMissing, 0) != 0);
     }
 }
 
@@ -1740,7 +1740,7 @@ float effectParam0(Ui& ui, std::string_view id) {
 size_t effectMissingWarnings(const Ui& ui) {
     size_t n = 0;
     for (const std::string& w : ui.doc->warnings()) {
-        n += w == kWarnEffectMissing ? 1u : 0u;
+        n += w.rfind(kWarnEffectMissing, 0) == 0 ? 1u : 0u;
     }
     return n;
 }

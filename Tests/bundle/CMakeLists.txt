@@ -7,6 +7,7 @@ add_executable(xt_bundle_tests
     test_localization.cpp
     test_ui_project.cpp
     test_gen_ports.cpp
+    test_flow_interface.cpp
     test_asset_pipeline.cpp
     test_parser_limits.cpp
     test_file_safety.cpp

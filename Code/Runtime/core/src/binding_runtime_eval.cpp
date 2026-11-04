@@ -216,6 +216,10 @@ BVal BindingRuntime::applyStep(ConverterOp op, const std::vector<Arg>& args, siz
         }
         case ConverterOp::Abs:
             return num(std::fabs(toNum(v)));
+        case ConverterOp::Floor:  // T-568
+            return num(std::floor(toNum(v)));
+        case ConverterOp::Ceil:  // T-568
+            return num(std::ceil(toNum(v)));
         case ConverterOp::Scale:
             return num(toNum(v) * an(0, 1));
         case ConverterOp::Offset:
@@ -688,7 +692,7 @@ void BindingRuntime::apply(Binding& b, const BVal& r, bool initial) {
             auto styleText = [&]() -> std::string_view {
                 m_styleScratch.assign(css);
                 m_styleScratch += ": ";
-                m_styleScratch += toStr(r);
+                m_styleScratch += toCssStr(r);  // T-568: full precision, no exponent.
                 return m_styleScratch;
             };
             if (isStylePropId(ir.targetId)) {
@@ -740,7 +744,7 @@ void BindingRuntime::apply(Binding& b, const BVal& r, bool initial) {
                 pv = Value::ofEnum(toUint32Sat(r.num));
                 typed = true;
             } else if (r.kind != Kind::Str && r.kind != Kind::None) {
-                typed = mini_css::parseTokenText(prop, toStr(r), pv);
+                typed = mini_css::parseTokenText(prop, toCssStr(r), pv);
             }
             if (!typed) {
                 ref.setStyle(styleText());

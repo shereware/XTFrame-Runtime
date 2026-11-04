@@ -35,6 +35,7 @@
 #include "xt/command_list.h"
 #include "xt/compile/compile.h"
 #include "xt/compile/utf8_path.h"
+#include "xt/compile/validate.h"
 #include "xt/context.h"
 #include "xt/damage.h"
 #include "xt/document.h"
@@ -48,11 +49,18 @@
 #include "xt/shell/app.h"
 #ifndef XT_GL_NO_TEXT
 #include "xt/text/ft_text_shaper.h"
+#include "xt/text/missing_fonts.h"
 #endif
 #include "xt/sw/sw_png.h"
 #include "xt/sw/sw_renderer.h"
 #include "xt/text_shaper.h"
 #include "xt/timeline.h"
+
+#ifdef _WIN32
+#include <process.h>  // _getpid (T-571: the per-process scratch Bundle).
+#else
+#include <unistd.h>  // getpid
+#endif
 
 /// xtframe-view: opens a `.xtir`, `.json` (Lottie) or `.xt` (T-56: compiled at runtime, the same
 /// pattern Examples/engine_integration/main.cpp uses) file, a Bundle or a UI Project in an xt_shell
@@ -66,7 +74,8 @@
 ///   - a UI Project: its directory, its `<name>.xtui` (T-214), or an old `ui-project.json` /
 ///     `bundle.xtproj` (upgraded in memory, the file is not touched). It is packed (xt::bundle::pack(), no
 ///     thumbnails, no atlas, no `manifest/assets.yaml` write-back, `--prune`) into
-///     `%TEMP%/xtframe-view/<id>-<hash of the project path>` and that Bundle is opened as above;
+///     `%TEMP%/xtframe-view/<id>-<hash of the project path>-<pid>` (T-571: one per process, removed
+///     when the process exits) and that Bundle is opened as above;
 ///     stderr says `xtframe-view: packed <dir> -> <bundle>`. Compile errors print as diagnostics and
 ///     exit 1 only when no UI could be packed. R (reload) packs again first;
 ///   - a `.xtir`, `.xt` or Lottie `.json` file, as before.
@@ -135,12 +144,17 @@
 /// manifest's `spec.safeArea` (`console` with --platform console; a Bundle packed from a lone `.xt`
 /// has none). T-210: such an input also sets uiscale = viewport height / `spec.logicalHeight`
 /// (T-241: the viewport width or its short edge instead when `spec.uiscaleRule` says so).
+/// T-571 (report F8): a lone `.xt` inside a UI Project (enclosingUiProject(), not a legacy
+/// `bundle.xtproj`) takes that project's spec the same way -- safe area (unless --safe), logical
+/// height, uiscale rule and limits -- and says so on stderr: `xtframe-view: safe area 0.025 (from
+/// <name>.xtui)`.
 ///
 /// --play <timeline> (Docs/design/12-compiler.md §12.6/13-api.md §13.8.2, Docs/tasks/T-172.md)
 /// plays the document's root-scope `@timeline` of that name just before the first frame's
 /// update(); --seek <seconds> then moves it to that time (it keeps playing), so a --headless
 /// --frames 1 screenshot shows exactly that time point. --seek needs --play. An unknown timeline
-/// prints one warning and the run continues.
+/// prints one warning and the run continues. T-573 (F17): the timeline holds its last frame when it
+/// ends (PlayOptions::hold, the trigger `play()` default) instead of releasing its members.
 ///
 /// --fit (Docs/tasks/T-156.md) chooses how the windowed run places the document: `native` lays it
 /// out at the window size (the behaviour before T-156); the other modes lay it out at the design
@@ -172,6 +186,15 @@
 ///   --flow graph and, with --project, on the global and every other UI's flow (`kind`: loading,
 ///   paused, resumed, disconnected, languageChanged, platform, inputDevice; frame 0 when omitted).
 ///   T-200: also Context::postSystemEvent(), so every Document's `system.*` port gets it.
+///   T-571 (08 §8.20) adds `--event "[<frame>] key <name>"`: a KeyDown + KeyUp of the key a
+///   `key(<name>)` trigger names (xt::compile::keyCodeFromTriggerName(): Enter, Escape, Space,
+///   ArrowUp, A..Z, 0..9, F1..F12, ...), through Context::pushInput.
+///   T-571 (report F84): a Click whose centre hits another element (outside the target's subtree)
+///   warns `#<id> covered by #<other> at (<x>,<y>)` (the nearest element with an id up from the hit
+///   node, else `<tag>`) instead of `has no hit area`; the triggers are fired directly as before.
+///
+/// --verbose (T-571, 22 §22.14): a UI Project input lists every unused strings-table key
+/// (PackOptions::verbose) instead of one `i18n: N unused key(s) in <lang>.csv` line per table.
 ///
 /// --project <dir> (T-193, Docs/design/27-interaction.md §27.4; T-213: an alias of giving <dir> as
 /// the input, so it cannot be combined with one) opens a UI Project or Bundle as a whole: the
@@ -243,10 +266,11 @@
 /// (Code/Tools/Common/print_version.h) to stdout and exits 0, whatever else is on the command line.
 /// --list-fonts (T-426) registers the system fonts (FtTextShaper::addSystemFonts()) and prints
 /// one `family<TAB>path` line per registered font file to stdout (path = the file it was
-/// registered from; UTF-8; sorted and deduplicated, T-429), and exits 0, whatever else is on the
-/// command line (--version still wins). --list-fonts=names prints only the family names, one per
-/// line, sorted and deduplicated (the T-426 output). Tools/Scripts/corpus_check.py uses it to check a
-/// corpus project's required fonts and their file hashes.
+/// registered from; UTF-8; sorted and deduplicated, T-429; T-569: a face of a `.ttc`/`.otc`
+/// collection is `path#<face index>`, e.g. `Microsoft JhengHei<TAB>C:/Windows/Fonts/msjh.ttc#0`), and exits
+/// 0, whatever else is on the command line (--version still wins). --list-fonts=names prints only the family
+/// names, one per line, sorted and deduplicated (the T-426 output). Tools/Scripts/corpus_check.py uses it to
+/// check a corpus project's required fonts and their file hashes.
 ///
 /// Keys (read via Context::drainInput, this task's queue-only pushInput/drainInput -- no
 /// dispatch/hit-testing yet, T-32): Space pause/resume every `anim` element's defaultAnimation
@@ -298,6 +322,7 @@ struct ScriptedEvent {
     std::string value;   ///< `Change` / `Port`: the value to write; `State` (T-174): the state name.
     std::string mode;    ///< `State` only: on / off / toggle.
     uint8_t player = 0;  ///< T-194 `Pad`: the local player.
+    uint32_t key = 0;    ///< T-571 `Key`: the xt::KeyCode.
 };
 
 /// One `--pointer`: a raw InputEvent pushed just before `frame`'s update().
@@ -351,9 +376,11 @@ struct Args {
     bool dumpFlowValues = false;
     bool dumpCommands = false;  // T-202: print the last headless frame's CommandList.
     std::string dumpPorts;      // T-401: --dump-ports <file>: the main UI's port table as JSON.
+    std::string diagnostics;    // T-576: --diagnostics <file>: the run's diagnostics as JSON.
     bool logPorts = false;      // T-401: --log-ports: print every port event of a headless run.
     bool noFlow = false;
     bool strict = false;    // T-392: --strict (compile strict; runtime warnings printed at the end).
+    bool verbose = false;   // T-571: --verbose (a UI Project pack lists every unused string key).
     bool flowAuto = false;  // Set by resolveInput(): `flow` was guessed, not given.
     // Asset search directories handed to the resolver and the `.xt` compiler; empty = --root.
     std::vector<std::string> assetRoots;
@@ -472,7 +499,7 @@ void eventSpecError(const std::string& spec, const std::string& reason) {
 bool parseEventSpec(const std::string& spec, ScriptedEvent& out) {
     std::vector<std::string> parts = splitWhitespace(spec);
     {
-        // T-194: `[<frame>] press <button> [<player>]`.
+        // T-194: `[<frame>] press <button> [<player>]`; T-571: `[<frame>] key <name>`.
         size_t at = 0;
         uint32_t frame = 0;
         if (!parts.empty() && parseFrame(parts[0], frame)) {
@@ -495,6 +522,21 @@ bool parseEventSpec(const std::string& spec, ScriptedEvent& out) {
             out.port = "Pad";
             out.id = parts[at + 1];
             out.player = static_cast<uint8_t>(player);
+            return true;
+        }
+        // T-571 (08 §8.20): `[<frame>] key <name>`, the names of the `key()` trigger.
+        if (parts.size() > at && parts[at] == "key") {
+            uint32_t key = 0;
+            if (parts.size() != at + 2 || !xt::compile::keyCodeFromTriggerName(parts[at + 1], key)) {
+                eventSpecError(spec,
+                               "a key press is \"[<frame>] key <name>\" with a key() trigger name (Enter, "
+                               "Escape, Space, Tab, Backspace, ArrowUp, A-Z, 0-9, F1-F12, ...)");
+                return false;
+            }
+            out.frame = frame;
+            out.port = "Key";
+            out.id = parts[at + 1];
+            out.key = key;
             return true;
         }
     }
@@ -706,6 +748,8 @@ bool parseArgs(int argc, char** argv, Args& out) {
             out.noFlow = true;
         } else if (arg == "--strict") {
             out.strict = true;
+        } else if (arg == "--verbose") {
+            out.verbose = true;  // T-571
         } else if (arg == "--print-text") {
             std::string v;
             if (!needValue("--print-text", v)) {
@@ -736,6 +780,10 @@ bool parseArgs(int argc, char** argv, Args& out) {
             out.dumpFlowValues = true;
         } else if (arg == "--dump-ports") {
             if (!needValue("--dump-ports", out.dumpPorts)) {  // T-401.
+                return false;
+            }
+        } else if (arg == "--diagnostics") {
+            if (!needValue("--diagnostics", out.diagnostics)) {  // T-576.
                 return false;
             }
         } else if (arg == "--log-ports") {
@@ -994,13 +1042,38 @@ uint64_t pathHash(const std::string& text) {
     return hash;
 }
 
+/// T-571: this process's id (the scratch Bundle's directory name ends with it).
+unsigned long currentProcessId() {
+#ifdef _WIN32
+    return static_cast<unsigned long>(_getpid());
+#else
+    return static_cast<unsigned long>(getpid());
+#endif
+}
+
+/// T-571 (report F111): the scratch Bundle a UI Project input was packed into; removed (with
+/// everything in it) when the process exits -- after main() returns or on std::exit().
+struct ScratchBundle {
+    fs::path dir;
+    ScratchBundle() = default;
+    ScratchBundle(const ScratchBundle&) = delete;
+    ScratchBundle& operator=(const ScratchBundle&) = delete;
+    ~ScratchBundle() {
+        if (!dir.empty()) {
+            std::error_code ec;
+            fs::remove_all(dir, ec);
+        }
+    }
+};
+ScratchBundle g_scratchBundle;
+
 /// T-213 (Docs/design/22-bundle.md §22.11.2): packs the UI Project in `dir` into the scratch
 /// Bundle `outDir` the way xtframe-browse does (no thumbnails, `--prune`, nothing written back into
 /// the project). An old `ui-project.json` / `bundle.xtproj` is upgraded in memory only; the atlas is off
 /// because this viewer's resolver does not know atlas cells. Prints the diagnostics; false (after its own
 /// stderr line) when the project cannot be read or no UI could be packed.
 bool packProject(const std::string& dir, const std::string& outDir, const std::string& standardSymbolDir,
-                 const std::string& standardFontDir) {
+                 const std::string& standardFontDir, bool verbose) {
     std::string error;
     xt::Result<xt::bundle::UiProject> loaded = xt::bundle::UiProject::load(dir, &error);
     if (!loaded.ok()) {
@@ -1022,6 +1095,7 @@ bool packProject(const std::string& dir, const std::string& outDir, const std::s
     options.standardSymbolDir = standardSymbolDir;
     options.copyStandardSymbols = false;
     options.standardFontDir = standardFontDir;  // T-527d
+    options.verbose = verbose;                  // T-571
     const xt::bundle::PackReport report = xt::bundle::pack(project, options);
     for (const xt::compile::Diagnostic& d : report.diagnostics) {
         printDiagnostic(d);
@@ -1044,6 +1118,30 @@ bool packProject(const std::string& dir, const std::string& outDir, const std::s
         return false;
     }
     return true;
+}
+
+/// T-571 (report F8, 17 §17.4.1 item 5): a lone `.xt` inside a UI Project previews with that
+/// project's spec, as a Bundle packed from it would: the safe area (`console` with --platform
+/// console; --safe wins), the logical height, the uiscale rule and limits. A legacy
+/// `bundle.xtproj` has no spec and changes nothing. Prints `xtframe-view: safe area <f> (from
+/// <root file>)` when the project's safe area is used.
+void applyEnclosingProjectSpec(const fs::path& document, Args& args) {
+    xt::bundle::UiProject project;
+    if (!xt::tools::enclosingUiProject(document, project) || project.legacy) {
+        return;
+    }
+    const xt::bundle::ProjectSpec& spec = project.spec;
+    if (!args.safeGiven) {
+        const float safe =
+            args.device.platform == xt::DeviceKind::Console ? spec.safeAreaConsole : spec.safeAreaDefault;
+        args.device.safeArea = xt::Insets{safe, safe, safe, safe};
+        const std::string rootFile = xt::bundle::findUiProjectFile(project.rootDir);
+        std::fprintf(stderr, "xtframe-view: safe area %g (from %s)\n", static_cast<double>(safe),
+                     pathToUtf8(pathFromUtf8(rootFile).filename()).c_str());
+    }
+    args.logicalHeight = spec.logicalHeight;
+    args.uiscaleRule = spec.uiscaleRule;
+    args.uiscaleLimits = spec.uiscaleLimits;
 }
 
 /// T-135/T-213: turns whatever the user named into the document/flow/root actually opened.
@@ -1113,10 +1211,14 @@ bool resolveInput(Args& args) {
         const std::string absolute = genericPathToUtf8(fs::absolute(projectDir, ec).lexically_normal());
         char hash[17];
         std::snprintf(hash, sizeof(hash), "%016llx", static_cast<unsigned long long>(pathHash(absolute)));
-        bundleDir = fs::temp_directory_path(ec) / "xtframe-view" / pathFromUtf8(id + "-" + hash);
+        // T-571 (report F111): one scratch Bundle per process, so parallel viewers of one project
+        // never share (or half-overwrite) a pack; removed when the process exits.
+        bundleDir = fs::temp_directory_path(ec) / "xtframe-view" /
+                    pathFromUtf8(id + "-" + hash + "-" + std::to_string(currentProcessId()));
+        g_scratchBundle.dir = bundleDir;
         args.packSource = projectInput;
-        if (!packProject(args.packSource, pathToUtf8(bundleDir), args.standardSymbolDir,
-                         args.standardFontDir)) {
+        if (!packProject(args.packSource, pathToUtf8(bundleDir), args.standardSymbolDir, args.standardFontDir,
+                         args.verbose)) {
             args.loadFailed = true;
             return false;
         }
@@ -1226,6 +1328,9 @@ bool resolveInput(Args& args) {
             args.flowAuto = true;
         }
     }
+    if (inputPath.extension() == ".xt") {
+        applyEnclosingProjectSpec(inputPath, args);  // T-571
+    }
     return true;
 }
 
@@ -1292,7 +1397,7 @@ void printUsage(std::FILE* out) {
         "                     ui-project-dir | name.xtui | ui-project.json | bundle.xtproj> [options]\n"
         "\n"
         "  A UI Project (name.xtui, or an old ui-project.json / bundle.xtproj) is packed to\n"
-        "  %%TEMP%%/xtframe-view/<id>-<hash> first and that Bundle is opened.\n"
+        "  %%TEMP%%/xtframe-view/<id>-<hash>-<pid> first and that Bundle is opened.\n"
         "\n"
         "  --root DIR              asset root (default: the input file's directory)\n"
         "  --width W --height H    viewport size in logical pixels (default 1280x720)\n"
@@ -1307,6 +1412,7 @@ void printUsage(std::FILE* out) {
         "  --no-flow               do not load any signal graph\n"
         "  --strict                compile with strict checks; print the document's runtime\n"
         "                          warnings when a headless run ends\n"
+        "  --verbose               a UI Project input lists every unused strings-table key\n"
         "  --project DIR           same as the input DIR (a UI Project or Bundle), plus every\n"
         "                          other UI, their flows and the global flow\n"
         "  --headless              no window/GL context; software-render --frames frames\n"
@@ -1338,7 +1444,8 @@ void printUsage(std::FILE* out) {
         "Click/PointerEnter/PointerLeave/Focus/Blur/Change/state(<Name>) on an\n"
         "                          element before frame <frame> (repeatable); or\n"
         "                          \"<frame> port <name> <value>\" sets a declared port;\n"
-        "                          \"[<frame>] system <kind> [<value>]\" posts a system event\n"
+        "                          \"[<frame>] system <kind> [<value>]\" posts a system event;\n"
+        "                          \"[<frame>] key <name>\" presses a key (key() trigger names)\n"
         "  --port <name>=<value>   set a declared port before the first frame (repeatable;\n"
         "                          a list/struct port takes JSON: items='[{\"name\":\"A\"}]';\n"
         "                          a vec2/vec3 port x,y[,z] or pos=[1,2])\n"
@@ -1349,6 +1456,8 @@ void printUsage(std::FILE* out) {
         "  --dump-commands         print the last headless frame's command list\n"
         "  --dump-ports FILE       headless: write the main UI's declared ports (name, type,\n"
         "                          direction, default) to FILE as JSON before the first frame\n"
+        "  --diagnostics FILE      also write the compile / pack / flow (and, with --strict, runtime)\n"
+        "                          diagnostics to FILE as the shared JSON list when the run ends\n"
         "  --log-ports             headless: print `port <kind> <name> = <value> (frame N)` for\n"
         "                          every port change / emit / list change of the main UI\n"
         "  --perf                  frame tracing; --perf-csv <file> writes one row per frame\n"
@@ -1474,6 +1583,8 @@ void printPerfSummary(const xt::PerfSummary& s, float damageAreaPercent = -1.0f)
 /// scene image is what lies under the UI, as in the game.
 bool g_stripEditorOnly = false;
 bool g_strict = false;  // T-392: --strict.
+/// T-576: --diagnostics; written when the process ends (view_diagnostics.h).
+xt::tools::view::ViewDiagnosticsFile g_diagnosticsFile;
 
 /// T-343: `src` (`sw x sh` straight RGBA8) resampled bilinearly to `dw x dh`.
 void resampleRgba(const std::vector<uint8_t>& src, int sw, int sh, int dw, int dh,
@@ -1620,6 +1731,7 @@ float damageAreaFraction(const xt::DamageList& d, const xt::Rect& viewport) {
 }
 
 void printDiagnostic(const xt::compile::Diagnostic& d) {
+    xt::tools::view::viewDiagnostics().push_back(xt::compile::fromCompileDiagnostic(d));  // T-576
     const char* level = d.level == xt::compile::Diagnostic::Level::Error ? "error" : "warning";
     const std::string& file = d.file.empty() ? std::string("<input>") : d.file;
     if (d.line == 0 && d.col == 0) {
@@ -1740,9 +1852,47 @@ void setPortText(xt::Document& doc, const std::string& name, const std::string& 
     }
 }
 
+/// T-571 (report F84): names the element that took a press meant for `target`: `#<id>` of the
+/// nearest node with an id from `hit` up, else `<tag>` of the hit element. Empty when nothing was
+/// hit or `hit` is `target` or one of its ancestors (then the target simply has no hit area).
+std::string coveringElement(xt::Document& doc, const xt::ElementRef& target, xt::NodeId hit) {
+    if (hit == xt::kInvalidNode) {
+        return std::string();
+    }
+    for (xt::NodeId up = target.node; up != xt::kInvalidNode; up = doc.arena().parent(up)) {
+        if (up == hit) {
+            return std::string();
+        }
+    }
+    std::string tag;
+    for (xt::NodeId node = hit; node != xt::kInvalidNode; node = doc.arena().parent(node)) {
+        if (doc.arena().kind(node) != xt::NodeKind::Element) {
+            continue;
+        }
+        const xt::ElementRef element{&doc, node, doc.arena().generation(node)};
+        if (!element.id().empty()) {
+            return "#" + std::string(element.id());
+        }
+        if (tag.empty()) {
+            tag = "<" + std::string(element.tag()) + ">";
+        }
+    }
+    return tag;
+}
+
 void applyScriptedEvent(xt::Context& ctx, xt::Document& doc, const ScriptedEvent& scripted) {
     if (scripted.port == "Port") {
         setPortText(doc, scripted.id, scripted.value);
+        return;
+    }
+    if (scripted.port == "Key") {
+        // T-571 (08 §8.20): a key press (down + up) through the surface stack, as a keyboard would.
+        xt::InputEvent ev;
+        ev.kind = xt::InputEvent::KeyDown;
+        ev.key = static_cast<xt::KeyCode>(scripted.key);
+        ctx.pushInput(ev);
+        ev.kind = xt::InputEvent::KeyUp;
+        ctx.pushInput(ev);
         return;
     }
     if (scripted.port == "Pad") {
@@ -1796,10 +1946,11 @@ void applyScriptedEvent(xt::Context& ctx, xt::Document& doc, const ScriptedEvent
         // T-359: a zero-area element, or one whose centre hits something outside its own subtree,
         // would never receive the pointer click; fire its triggers directly instead.
         bool reachable = box.w > 0.0f && box.h > 0.0f;
+        xt::NodeId hitNode = xt::kInvalidNode;
         if (reachable) {
             reachable = false;
-            for (xt::NodeId hit = doc.hitTestPress(center); hit != xt::kInvalidNode;
-                 hit = doc.arena().parent(hit)) {
+            hitNode = doc.hitTestPress(center);
+            for (xt::NodeId hit = hitNode; hit != xt::kInvalidNode; hit = doc.arena().parent(hit)) {
                 if (hit == ref.node) {
                     reachable = true;
                     break;
@@ -1807,8 +1958,16 @@ void applyScriptedEvent(xt::Context& ctx, xt::Document& doc, const ScriptedEvent
             }
         }
         if (!reachable) {
-            std::fprintf(stderr, "warning: #%s has no hit area; dispatching click directly\n",
-                         scripted.id.c_str());
+            const std::string cover = coveringElement(doc, ref, hitNode);
+            if (!cover.empty()) {
+                // T-571 (report F84): another element takes the press at the centre.
+                std::fprintf(stderr, "warning: #%s covered by %s at (%g,%g); dispatching click directly\n",
+                             scripted.id.c_str(), cover.c_str(), static_cast<double>(center.x),
+                             static_cast<double>(center.y));
+            } else {
+                std::fprintf(stderr, "warning: #%s has no hit area; dispatching click directly\n",
+                             scripted.id.c_str());
+            }
             (void)doc.fireTrigger(ref, xt::TriggerEvent::Press);
             (void)doc.fireTrigger(ref, xt::TriggerEvent::Release);
             (void)doc.fireTrigger(ref, xt::TriggerEvent::Click);
@@ -1835,7 +1994,9 @@ void applyScriptedInput(const Args& args, xt::Context& ctx, xt::DocumentHandle h
     }
     // T-172: --play/--seek, before the first frame's update().
     if (frame == 0 && !args.playTimeline.empty()) {
-        if (doc->playTimeline("", args.playTimeline) != xt::Status::kOk) {
+        xt::PlayOptions playOptions;
+        playOptions.hold = true;  // T-573 (F17): hold the last frame, as the trigger play() does.
+        if (doc->playTimeline("", args.playTimeline, playOptions) != xt::Status::kOk) {
             std::fprintf(stderr, "xtframe-view: --play: no @timeline '%s' in the document\n",
                          args.playTimeline.c_str());
         } else if (args.seekTime >= 0.0f) {
@@ -2187,6 +2348,23 @@ void addBundleFonts(const Args& args, xt::TextShaper& shaper) {
     }
 }
 
+/// T-569 (Docs/design/07-text.md §7.20, report R4): one stderr line `xtframe-view: missing font
+/// '<family>'` per text `font-family` list whose first CJK family is not installed, instead of a
+/// silent fallback. Needs resolved styles (after the first update, or layoutIfDirty()).
+void reportMissingFonts(const xt::Document* doc, const xt::TextShaper& shaper) {
+#ifndef XT_GL_NO_TEXT
+    if (doc == nullptr) {
+        return;
+    }
+    for (const std::string& family : xt::text::missingCjkFamilies(*doc, shaper)) {
+        std::fprintf(stderr, "xtframe-view: missing font '%s'\n", family.c_str());
+    }
+#else
+    (void)doc;
+    (void)shaper;
+#endif
+}
+
 bool loadOtherUis(const Args& args, xt::Context& ctx, const std::string& rootDir, FlowTargets& targets) {
     if (!args.wholeProject) {
         return true;
@@ -2272,7 +2450,12 @@ int main(int argc, char** argv) {
                 lines.insert(font.family);
                 continue;
             }
-            const std::string path = shaper.fontPath(font.id);
+            std::string path = shaper.fontPath(font.id);
+            // T-569 (07 §7.20): a `.ttc`/`.otc` face is `path#<face index>`.
+            const long faceIndex = shaper.fontFaceIndex(font.id);
+            if (faceIndex >= 0) {
+                path += "#" + std::to_string(faceIndex);
+            }
             if (printable(path)) {
                 lines.insert(font.family + "\t" + path);
             }
@@ -2313,6 +2496,8 @@ int main(int argc, char** argv) {
 
     g_stripEditorOnly = !args.scene.empty();  // T-343
     g_strict = args.strict;                   // T-392
+    g_diagnosticsFile.path = args.diagnostics;  // T-576
+    g_diagnosticsFile.source = args.input;
     // T-439: --renderer. A renderer other than the shell's (windowed) or other than xt_sw
     // (headless) draws the frame loop below through a FrameTarget; when it cannot be created the
     // run goes on with the default path.
@@ -2519,6 +2704,9 @@ int main(int argc, char** argv) {
             // T-125: queued before update(), which drains and dispatches the queue first.
             applyScriptedInput(args, ctx, handle, frame, systemEvent);
             ctx.update(frameDt);
+            if (frame == 0) {
+                reportMissingFonts(ctx.document(handle), shaper);  // T-569
+            }
             if (hasFlow || targets.project.bundle) {
                 xt::PerfScope flowScope(ctx.perf(), &xt::FrameStats::flowMs);
                 if (hasFlow) {
@@ -2595,7 +2783,14 @@ int main(int argc, char** argv) {
             // with a zero-height viewport) as warnings.
             if (const xt::Document* doc = ctx.document(handle)) {
                 for (const std::string& message : doc->warnings()) {
-                    std::fprintf(stderr, "xtframe-view: warning: %s\n", message.c_str());
+                    // T-568 (F80): a pool reallocation is a capacity event, not an author warning.
+                    const bool info = message == xt::NodeArena::kWarnEffectPoolGrew;
+                    std::fprintf(stderr, "xtframe-view: %s: %s\n", info ? "info" : "warning",
+                                 message.c_str());
+                    xt::tools::view::noteViewDiagnostic(
+                        "view.runtimeWarning",
+                        info ? xt::compile::Severity::Info : xt::compile::Severity::Warning,
+                        message);  // T-576
                 }
             }
         }
@@ -2695,6 +2890,10 @@ int main(int argc, char** argv) {
     xt::DocumentHandle handle = 0;
     if (!loadInto(app.context(), args.input, rootDir, args.assetRoots, handle)) {
         return 1;
+    }
+    if (xt::Document* doc = app.context().document(handle)) {
+        doc->layoutIfDirty();  // T-569: resolved styles for the font check (no clock advance).
+        reportMissingFonts(doc, app.textShaper());
     }
     app.setCurrentDocument(handle);
     app.setStatsLog(args.stats);  // T-240.
@@ -2861,7 +3060,7 @@ int main(int argc, char** argv) {
                     // T-213: a UI Project input is packed again, so R shows its edited sources.
                     if (!args.packSource.empty()) {
                         packProject(args.packSource, args.bundleDir, args.standardSymbolDir,
-                                    args.standardFontDir);
+                                    args.standardFontDir, args.verbose);
                     }
 #ifndef XT_GL_NO_TEXT
                     if (args.bundle) {

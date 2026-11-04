@@ -82,8 +82,7 @@ struct PortRecord {
     std::string exposedName;
     /// Value type (ir_pod.h PortValueType).
     PortValueType type = PortValueType::Number;
-    /// Direction.
-    PortDir dir = PortDir::In;
+    PortDir dir = PortDir::In;  ///< Direction.
     /// Exposed to its symbol instance's parent (`expose:false` clears it).
     bool exposed = true;
     /// True for a port declared outside any symbol instance.
@@ -1136,6 +1135,7 @@ private:
     void activateTimelineGroup(size_t index);
     void releaseTimelineGroup(size_t index);
     void applyTimelineGroupTime(size_t index);
+    void setTimelineGroupPaused(size_t index, bool paused);  // T-573 (27.8): pause() / resume().
     void queueTimelineMarkers(size_t index, float from, float to, bool inclusiveFrom);
     void captureTimelineRestores(size_t index);
     void stepTimelineGroups(float clock);

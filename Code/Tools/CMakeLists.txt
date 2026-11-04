@@ -5,6 +5,9 @@ add_executable(xtframe-compile
 target_link_libraries(xtframe-compile PRIVATE xt_core xt_compile xt_bundle)
 xt_enable_exceptions(xtframe-compile)
 xt_set_warnings(xtframe-compile)
+if(EMSCRIPTEN)
+    xt_wasm_node_cli(xtframe-compile createXtframeCompile)  # T-578 (52 §52.2)
+endif()
 
 # T-400: xtframe-bake, xtframe-design and xtframe-import are guarded by their directories, which the
 # runtime export (Tools/Scripts/export_runtime.sh) leaves out; their tests below check `if(TARGET ...)`.
@@ -16,6 +19,9 @@ add_executable(xtframe-bake
 target_link_libraries(xtframe-bake PRIVATE xt_core xt_compile)
 xt_enable_exceptions(xtframe-bake)
 xt_set_warnings(xtframe-bake)
+if(EMSCRIPTEN)
+    xt_wasm_node_cli(xtframe-bake createXtframeBake)  # T-578 (52 §52.2)
+endif()
 endif()
 
 add_executable(xtframe-pack
@@ -24,6 +30,9 @@ add_executable(xtframe-pack
 target_link_libraries(xtframe-pack PRIVATE xt_core xt_bundle)
 xt_enable_exceptions(xtframe-pack)
 xt_set_warnings(xtframe-pack)
+if(EMSCRIPTEN)
+    xt_wasm_node_cli(xtframe-pack createXtframePack)  # T-578 (52 §52.2)
+endif()
 # T-198 (Docs/design/30-ui-project.md 30.4): the standard symbol library next to the executable,
 # where xtframe-pack looks for it (`<executable dir>/symbols`); one shared copy target (T-474,
 # Tools/CMake/xt_runtime_output.cmake).
@@ -69,6 +78,9 @@ add_executable(xtframe-design
 target_link_libraries(xtframe-design PRIVATE xt_core xt_bundle)
 xt_enable_exceptions(xtframe-design)
 xt_set_warnings(xtframe-design)
+if(EMSCRIPTEN)
+    xt_wasm_node_cli(xtframe-design createXtframeDesign)  # T-578 (52 §52.2)
+endif()
 xt_copy_standard_symbols(xtframe-design)
 xt_copy_standard_fonts(xtframe-design)  # T-527b
 
@@ -90,6 +102,9 @@ if(TARGET xt_text)
 endif()
 xt_enable_exceptions(xtframe-symbols)
 xt_set_warnings(xtframe-symbols)
+if(EMSCRIPTEN)
+    xt_wasm_node_cli(xtframe-symbols createXtframeSymbols)  # T-578 (52 §52.2)
+endif()
 xt_copy_standard_symbols(xtframe-symbols)
 xt_copy_standard_fonts(xtframe-symbols)  # T-527b
 endif()
@@ -102,15 +117,9 @@ target_link_libraries(xtframe-import PRIVATE xt_core xt_import)
 xt_enable_exceptions(xtframe-import)
 xt_set_warnings(xtframe-import)
 if(EMSCRIPTEN)
-    # T-503 (Docs/design/24-design-import.md §24.13): the Node.js build of the converter. One
-    # xtframe-import.js + xtframe-import.wasm pair, loaded by Code/Tools/import-wasm/bin/. NODERAWFS
-    # reads and writes the host file system directly (the dump and the project directory are real
-    # paths, no virtual FS staging); the stack matches the 1 MB the depth limits of 24 §24.12 were
-    # measured against, with headroom; EXIT_RUNTIME hands main()'s return value to the wrapper.
-    target_link_options(xtframe-import PRIVATE
-        -sNODERAWFS=1 -sENVIRONMENT=node -sMODULARIZE=1 -sEXPORT_NAME=createXtframeImport
-        -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=4MB -sEXIT_RUNTIME=1 -sINVOKE_RUN=0
-        -sEXPORTED_RUNTIME_METHODS=callMain)
+    # T-503 (24 §24.13), T-578 / T-579 (52 §52.2): the Node.js build, loaded by Code/Tools/wasm/bin/ and
+    # Code/Tools/import-wasm/bin/.
+    xt_wasm_node_cli(xtframe-import createXtframeImport)
 endif()
 endif()
 
@@ -223,6 +232,20 @@ if(XT_BUILD_TESTS)
         COMMAND $<TARGET_FILE:xtframe-pack> "${PROJECT_SOURCE_DIR}/Tests/bundle/fixtures/sample"
                 -o "${CMAKE_BINARY_DIR}/xtframe-pack-test-out/sample-ui" --ui nope --no-thumbs)
 
+    # T-571 (22 §22.14, report F85): the unused strings-table keys are one summary line per table;
+    # --verbose lists every key instead.
+    set(T571_PROJECT "${PROJECT_SOURCE_DIR}/Tests/xt/t571_project")
+    xt_add_expect_exit_test(t571_pack_unused_key_summary CODE 0
+        OUTPUT "i18n: 2 unused key.s. in en\\.csv .--verbose lists them."
+        REJECT "i18n: unused key '"
+        COMMAND $<TARGET_FILE:xtframe-pack> "${T571_PROJECT}"
+                -o "${CMAKE_BINARY_DIR}/xtframe-pack-test-out/t571" --no-thumbs)
+    xt_add_expect_exit_test(t571_pack_unused_key_verbose CODE 0
+        OUTPUT "i18n: unused key 'menu_unused_a'.*i18n: unused key 'menu_unused_b'"
+        REJECT "unused key.s. in"
+        COMMAND $<TARGET_FILE:xtframe-pack> "${T571_PROJECT}"
+                -o "${CMAKE_BINARY_DIR}/xtframe-pack-test-out/t571-verbose" --no-thumbs --verbose)
+
     # T-420: --version prints three lines to stdout and exits 0, whatever else is given.
     xt_add_expect_exit_test(xtframe-pack_version CODE 0
         OUTPUT "^xtframe-pack [0-9]+\\.[0-9]+\\.[0-9]+[^a-z]+ir-format 2\\.[0-9]+[^a-z]+behavior [0-9]+"
@@ -255,6 +278,13 @@ if(XT_BUILD_TESTS)
         OUTPUT "video .\\.\\./outside_video_clips/intro\\.webm. is outside the project. a bundle does not carry video files, so the published UI names it by this path"
         COMMAND $<TARGET_FILE:xtframe-pack> "${PROJECT_SOURCE_DIR}/Tests/bundle/fixtures/outside_video/main.xt"
                 -o "${CMAKE_BINARY_DIR}/xtframe-pack-test-out/t273d-video" --no-thumbs)
+
+    # T-569 (Docs/design/07-text.md §7.20, report R4): the first CJK family of a text's
+    # font-family list that is not installed is a `missing font` warning, not a silent fallback.
+    xt_add_expect_exit_test(t569_pack_missing_cjk_font CODE 0
+        OUTPUT "warning: [^\n]*missing font 'Xt Missing JhengHei'"
+        COMMAND $<TARGET_FILE:xtframe-pack> "${PROJECT_SOURCE_DIR}/Tests/bundle/fixtures/missing_cjk_font/main.xt"
+                -o "${CMAKE_BINARY_DIR}/xtframe-pack-test-out/t569-missing-font" --no-thumbs)
 
     # T-261f item 1/2: the tools read their arguments as UTF-8, so a path named in a script the ANSI
     # code page cannot spell (kana, Hangul) works too (Tests/cmake/t261f_utf8_args.cmake).
@@ -368,6 +398,19 @@ if(XT_BUILD_TESTS)
                     --flow "${PROJECT_SOURCE_DIR}/Examples/desktop_app/ui/app.xtflow"
                     --headless --frames 3)
 
+        # T-569 (07 §7.20, report R4): the viewer reports the uninstalled first CJK family of a
+        # text's font-family list; --list-fonts lists each face of a .ttc as `path#index` (only
+        # where Microsoft JhengHei is installed).
+        xt_add_expect_exit_test(t569_view_missing_cjk_font CODE 0
+            OUTPUT "xtframe-view: missing font 'Xt Missing JhengHei'"
+            COMMAND ${XT_VIEW} "${PROJECT_SOURCE_DIR}/Tests/bundle/fixtures/missing_cjk_font/main.xt"
+                    --headless --frames 1)
+        if(EXISTS "C:/Windows/Fonts/msjh.ttc")
+            xt_add_expect_exit_test(t569_view_list_fonts_ttc CODE 0
+                OUTPUT "Microsoft JhengHei.C:/Windows/Fonts.msjh\\.ttc#0"
+                COMMAND ${XT_VIEW} --list-fonts)
+        endif()
+
         # T-125: scripted interaction against Examples/demos/game-ui's HUD. `#fire.Click` on
         # frame 5 decrements the `ammo` counter node once, and its toString feeds `#ammo`'s text.
         # T-240 item 8: on the SW presentation path (XT_SHELL_GL=OFF) a windowed frame (hidden
@@ -409,6 +452,33 @@ if(XT_BUILD_TESTS)
             OUTPUT "text=7.*warning: #zero has no hit area. dispatching click directly"
             COMMAND ${XT_VIEW} "${PROJECT_SOURCE_DIR}/Tests/xt/view_zero_click.xt"
                     --headless --frames 6 --event "3 #zero.Click" --print-text label)
+
+        # T-571 (report F84): a scripted click whose centre lands on a covering sibling names it.
+        # (report F8): a bare .xt inside a UI Project takes the project's safe area and says so;
+        # --safe wins (no line). (08 §8.20): `--event "<frame> key <name>"` presses a key on the
+        # focused element; an unknown key name is an argument error.
+        set(T571_XT "${PROJECT_SOURCE_DIR}/Tests/xt/t571_project/main/main.xt")
+        xt_add_expect_exit_test(t571_view_click_covered CODE 0
+            OUTPUT "text=7.*warning: #btn covered by #stamp-applied at .[0-9.]+,[0-9.]+.. dispatching click directly"
+            COMMAND ${XT_VIEW} "${T571_XT}" --headless --frames 4 --event "2 #btn.Click" --print-text label)
+        xt_add_expect_exit_test(t571_view_safe_area_from_project CODE 0
+            OUTPUT "xtframe-view: safe area 0.04 .from T571 View\\.xtui."
+            COMMAND ${XT_VIEW} "${T571_XT}" --headless --frames 1)
+        xt_add_expect_exit_test(t571_view_safe_area_given CODE 0 REJECT "safe area 0.04"
+            COMMAND ${XT_VIEW} "${T571_XT}" --headless --frames 1 --safe 0)
+        xt_add_expect_exit_test(t571_view_key_event CODE 0 OUTPUT "text=5"
+            COMMAND ${XT_VIEW} "${T571_XT}" --headless --frames 4 --event "1 #field.Focus"
+                    --event "2 key Escape" --print-text label)
+        xt_add_expect_exit_test(t571_view_key_event_unknown CODE 2
+            OUTPUT "cannot parse --event '2 key Bogus': a key press is"
+            COMMAND ${XT_VIEW} "${T571_XT}" --headless --frames 1 --event "2 key Bogus")
+        # T-571 (report F111, 22 §22.14): the scratch Bundle is `<id>-<hash>-<pid>` and is removed at
+        # exit; the viewer's pack prints the unused-key summary too.
+        add_test(NAME t571_view_scratch_bundle
+                 COMMAND ${CMAKE_COMMAND} -DVIEW=${XT_VIEW} "-DPROJECT=${PROJECT_SOURCE_DIR}/Tests/xt/t571_project"
+                         -DID=t571view
+                         "-DSUMMARY=i18n: 2 unused key\\(s\\) in en\\.csv \\(--verbose lists them\\)"
+                         -P "${PROJECT_SOURCE_DIR}/Tests/cmake/view_scratch_bundle.cmake")
 
         # T-392 (XF-078, 27 §27.3.2 XF-073): --event parse errors name the spec, the reason and the
         # element form; --print-text names a missing id; --strict prints the runtime warnings.

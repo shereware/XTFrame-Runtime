@@ -85,6 +85,14 @@ std::vector<std::string> getStringArray(const json& obj, const char* key);
 /// works). 0 when absent or unparsable.
 uint64_t getUint64(const json& obj, const char* key);
 
+/// T-580 (§22.15): `obj[key]` as a FlowInterface (`present` set when it is an object; a missing
+/// or wrongly typed list reads as empty, an `emits` entry without a name is skipped).
+FlowInterface getFlowInterface(const json& obj, const char* key);
+/// T-580: `flow` as the `{emits, writes, reads, system}` object the manifest writes.
+nlohmann::ordered_json writeFlowInterface(const FlowInterface& flow);
+/// T-580 (§22.15): a `ports.out[]` entry's `origin`; "document" when absent or not a string.
+std::string getPortOrigin(const json& entry);
+
 /// T-170 (§22.10): `root["tokens"]` (an object of `--name` -> value text) as TokenDefs, in the
 /// object's order; non-string values are skipped. Empty when absent.
 std::vector<TokenDef> getTokens(const json& root);

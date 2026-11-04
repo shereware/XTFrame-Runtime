@@ -10,10 +10,20 @@
 #define XT_SIMD_SSE2 0
 #endif
 
+#if !XT_SIMD_SSE2 && defined(__wasm_simd128__)
+#define XT_SIMD_WASM 1
+#include <wasm_simd128.h>
+#else
+#define XT_SIMD_WASM 0
+#endif
+
 /// Minimal, dependency-free, header-only 4-lane float vector used by the SW backend's hot pixel
 /// loops (Docs/design/23-host-integration.md §23.5, Docs/tasks/T-102.md step 3). Two types with
 /// the same 15-function interface:
-///   - `f32x4`  -- SSE2 (`__m128`) where the target has it, a plain scalar struct otherwise;
+///   - `f32x4`  -- one of three backends, picked at compile time: SSE2 (`__m128`) where the target
+///                 has it; wasm SIMD128 (`v128_t`, <wasm_simd128.h>) under `-msimd128` without
+///                 SSE2 (Docs/design/52-web-wasm.md §52.2, Docs/tasks/T-531.md), bit-identical to
+///                 the SSE2 backend; a plain scalar struct otherwise;
 ///   - `f32x4s` -- always scalar, the reference the SIMD kernels are checked against and what
 ///                 `XT_SW_FORCE_SCALAR=1` selects at run time.
 /// Every kernel in sw_simd_kernels.h is a template over one of the two, so there is exactly one
@@ -33,6 +43,11 @@ struct f32x4s {
 /// SSE2-backed 4-lane vector.
 struct f32x4 {
     __m128 v;
+};
+#elif XT_SIMD_WASM
+/// wasm SIMD128-backed 4-lane vector.
+struct f32x4 {
+    v128_t v;
 };
 #else
 /// Scalar stand-in for `f32x4` on targets without SSE2; same interface, no vector registers.
@@ -143,7 +158,8 @@ inline f32x4 sub(f32x4 a, f32x4 b) { return f32x4{_mm_sub_ps(a.v, b.v)}; }
 inline f32x4 mul(f32x4 a, f32x4 b) { return f32x4{_mm_mul_ps(a.v, b.v)}; }
 /// See the `f32x4s` overload.
 inline f32x4 div(f32x4 a, f32x4 b) { return f32x4{_mm_div_ps(a.v, b.v)}; }
-/// See the `f32x4s` overload. Compiled with /arch:AVX2 this contracts into a single vfmadd.
+/// See the `f32x4s` overload. Two roundings on every backend: the AVX2 unit is built without FMA
+/// so all tables stay byte-identical (Docs/design/23-host-integration.md §23.5, T-529).
 inline f32x4 fma(f32x4 a, f32x4 b, f32x4 c) { return f32x4{_mm_add_ps(_mm_mul_ps(a.v, b.v), c.v)}; }
 /// See the `f32x4s` overload.
 inline f32x4 min(f32x4 a, f32x4 b) { return f32x4{_mm_min_ps(a.v, b.v)}; }
@@ -177,6 +193,57 @@ inline void storeU8(uint8_t* p, f32x4 a) {
     __m128i bytes = _mm_packus_epi16(words, words);
     uint32_t packed = static_cast<uint32_t>(_mm_cvtsi128_si32(bytes));
     std::memcpy(p, &packed, sizeof(packed));
+}
+
+#elif XT_SIMD_WASM
+
+// Every function here produces the same bits as its SSE2 counterpart above (Docs/tasks/T-531.md
+// step 1). wasm has no FMA without relaxed-simd, so nothing is fused.
+
+/// See the `f32x4s` overload. Unaligned loads are fine.
+inline f32x4 load(const f32x4*, const float* p) { return f32x4{wasm_v128_load(p)}; }
+/// See the `f32x4s` overload.
+inline f32x4 splat(const f32x4*, float s) { return f32x4{wasm_f32x4_splat(s)}; }
+/// See the `f32x4s` overload.
+inline void store(float* p, f32x4 a) { wasm_v128_store(p, a.v); }
+/// See the `f32x4s` overload.
+inline f32x4 add(f32x4 a, f32x4 b) { return f32x4{wasm_f32x4_add(a.v, b.v)}; }
+/// See the `f32x4s` overload.
+inline f32x4 sub(f32x4 a, f32x4 b) { return f32x4{wasm_f32x4_sub(a.v, b.v)}; }
+/// See the `f32x4s` overload.
+inline f32x4 mul(f32x4 a, f32x4 b) { return f32x4{wasm_f32x4_mul(a.v, b.v)}; }
+/// See the `f32x4s` overload.
+inline f32x4 div(f32x4 a, f32x4 b) { return f32x4{wasm_f32x4_div(a.v, b.v)}; }
+/// See the `f32x4s` overload. A multiply then an add, as in the SSE2 backend.
+inline f32x4 fma(f32x4 a, f32x4 b, f32x4 c) { return add(mul(a, b), c); }
+/// See the `f32x4s` overload. `pmin(x, y)` is `y < x ? y : x`, so `pmin(b, a)` is x86
+/// `_mm_min_ps(a, b)` = `a < b ? a : b`, NaN and signed zeros included (both return `b`).
+inline f32x4 min(f32x4 a, f32x4 b) { return f32x4{wasm_f32x4_pmin(b.v, a.v)}; }
+/// See the `f32x4s` overload. `pmax(b, a)` is x86 `_mm_max_ps(a, b)` = `a > b ? a : b`.
+inline f32x4 max(f32x4 a, f32x4 b) { return f32x4{wasm_f32x4_pmax(b.v, a.v)}; }
+/// See the `f32x4s` overload.
+inline f32x4 cmpGt(f32x4 a, f32x4 b) { return f32x4{wasm_f32x4_gt(a.v, b.v)}; }
+/// See the `f32x4s` overload. `bitselect(x, y, m)` takes `x` where `m` is 1.
+inline f32x4 blend(f32x4 a, f32x4 b, f32x4 mask) { return f32x4{wasm_v128_bitselect(b.v, a.v, mask.v)}; }
+/// See the `f32x4s` overload.
+inline f32x4 splatW(f32x4 a) { return f32x4{wasm_i32x4_shuffle(a.v, a.v, 3, 3, 3, 3)}; }
+/// See the `f32x4s` overload. Same zero-extend, convert, multiply chain as the SSE2 backend.
+inline f32x4 loadU8(const f32x4*, const uint8_t* p) {
+    v128_t bytes = wasm_v128_load32_zero(p);
+    v128_t words = wasm_u16x8_extend_low_u8x16(bytes);
+    v128_t dwords = wasm_u32x4_extend_low_u16x8(words);
+    return f32x4{wasm_f32x4_mul(wasm_f32x4_convert_i32x4(dwords), wasm_f32x4_splat(1.0f / 255.0f))};
+}
+/// See the `f32x4s` overload. The clamp keeps the SSE2 operand order (`_mm_max_ps(a, 0)` =
+/// `pmax(0, a)`, so NaN becomes 0; `_mm_min_ps(c, 1)` = `pmin(1, c)`); the scaled value is then in
+/// [0.5, 255.5], where the saturating truncation equals x86's `cvttps`.
+inline void storeU8(uint8_t* p, f32x4 a) {
+    v128_t c = wasm_f32x4_pmin(wasm_f32x4_splat(1.0f), wasm_f32x4_pmax(wasm_f32x4_splat(0.0f), a.v));
+    v128_t scaled = wasm_f32x4_add(wasm_f32x4_mul(c, wasm_f32x4_splat(255.0f)), wasm_f32x4_splat(0.5f));
+    v128_t ints = wasm_i32x4_trunc_sat_f32x4(scaled);
+    v128_t words = wasm_i16x8_narrow_i32x4(ints, ints);
+    v128_t bytes = wasm_u8x16_narrow_i16x8(words, words);
+    wasm_v128_store32_lane(p, bytes, 0);
 }
 
 #else

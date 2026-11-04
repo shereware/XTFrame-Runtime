@@ -67,7 +67,7 @@ inline constexpr std::string_view kInitial[] = {"initial"};
 inline constexpr std::string_view kCue[] = {"cue"};
 
 inline constexpr std::string_view kCounterIn[] = {"increment", "decrement", "reset", "set"};
-inline constexpr std::string_view kCounterParams[] = {"step", "initial", "min", "max"};
+inline constexpr std::string_view kCounterParams[] = {"step", "initial", "min", "max", "wrap"};  // T-573: wrap.
 inline constexpr std::string_view kToggleIn[] = {"toggle", "setTrue", "setFalse"};
 inline constexpr std::string_view kToggleOut[] = {"value", "changed"};
 inline constexpr std::string_view kTimerIn[] = {"start", "stop"};
@@ -92,7 +92,7 @@ inline constexpr std::string_view kEmitIn[] = {"trigger", "value"};
 inline constexpr std::string_view kEmitParams[] = {"port"};
 inline constexpr std::string_view kTimelineIn[] = {"play", "stop", "seek"};
 inline constexpr std::string_view kTimelineOut[] = {"end", "marker"};
-inline constexpr std::string_view kTimelineParams[] = {"name", "scope", "ui", "loop", "rate"};
+inline constexpr std::string_view kTimelineParams[] = {"name", "scope", "ui", "loop", "rate", "hold"};  // T-573.
 // T-541: `state`'s fixed ports. Its event inputs (slot 2 + event index) and enter / exit outputs
 // (slot 3 + 2 * state index, +1 for the exit) are per node: stateSlotOf() (flow_internal.h).
 inline constexpr std::string_view kStateIn[] = {"set", "guard"};
@@ -201,7 +201,7 @@ namespace slots {
 namespace counter {
 inline constexpr uint16_t kIncrement = 0, kDecrement = 1, kReset = 2, kSet = 3;
 inline constexpr uint16_t kValue = 0;
-inline constexpr uint16_t kStep = 0, kInitial = 1, kMin = 2, kMax = 3;
+inline constexpr uint16_t kStep = 0, kInitial = 1, kMin = 2, kMax = 3, kWrap = 4;  // T-573: kWrap.
 }  // namespace counter
 namespace toggle {
 inline constexpr uint16_t kToggle = 0, kSetTrue = 1, kSetFalse = 2;
@@ -256,7 +256,7 @@ inline constexpr uint16_t kName = 0, kVolume = 1;
 namespace timeline {
 inline constexpr uint16_t kPlay = 0, kStop = 1, kSeek = 2;
 inline constexpr uint16_t kEnd = 0, kMarker = 1;
-inline constexpr uint16_t kName = 0, kScope = 1, kUi = 2, kLoop = 3, kRate = 4;
+inline constexpr uint16_t kName = 0, kScope = 1, kUi = 2, kLoop = 3, kRate = 4, kHold = 5;  // T-573: kHold.
 }  // namespace timeline
 namespace state {
 inline constexpr uint16_t kSet = 0, kGuard = 1, kFirstEvent = 2;
@@ -281,6 +281,7 @@ inline constexpr uint16_t kUnit = 0, kRateParam = 1, kTrailing = 2;
 // The slot constants above must name the table entries they stand for.
 static_assert(slotOf(NodeType::Counter, SlotKind::Input, "set") == slots::counter::kSet);
 static_assert(slotOf(NodeType::Counter, SlotKind::Param, "max") == slots::counter::kMax);
+static_assert(slotOf(NodeType::Counter, SlotKind::Param, "wrap") == slots::counter::kWrap);
 static_assert(slotOf(NodeType::Toggle, SlotKind::Output, "changed") == slots::toggle::kChanged);
 static_assert(slotOf(NodeType::Timer, SlotKind::Param, "repeat") == slots::timer::kRepeat);
 static_assert(slotOf(NodeType::Timer, SlotKind::Output, "count") == slots::timer::kCount);
@@ -296,6 +297,7 @@ static_assert(slotOf(NodeType::Radio, SlotKind::Param, "initial") == slots::radi
 static_assert(slotOf(NodeType::Emit, SlotKind::Input, "value") == slots::action::kEmitValue);
 static_assert(slotOf(NodeType::Sound, SlotKind::Param, "volume") == slots::action::kVolume);
 static_assert(slotOf(NodeType::Timeline, SlotKind::Param, "rate") == slots::timeline::kRate);
+static_assert(slotOf(NodeType::Timeline, SlotKind::Param, "hold") == slots::timeline::kHold);
 static_assert(slotOf(NodeType::Timeline, SlotKind::Input, "seek") == slots::timeline::kSeek);
 static_assert(slotOf(NodeType::State, SlotKind::Input, "set") == slots::state::kSet);
 static_assert(slotOf(NodeType::State, SlotKind::Input, "guard") == slots::state::kGuard);

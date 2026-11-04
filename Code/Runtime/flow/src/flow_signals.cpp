@@ -105,6 +105,7 @@ void FlowRuntime::Impl::compileEdges() {
         ExternalSlotInfo info;
         info.desc = ep;
         info.valueSignal = isValueSignal(ep.owner, ep.port, ep.type);
+        info.lastHome = strings.addBuffer();  // T-583.
         externals.push_back(std::move(info));
         externalIndex.emplace(key, slot);
         return slot;
@@ -510,6 +511,12 @@ void FlowRuntime::Impl::deliverExternal(uint32_t external, DocEndpointState* sta
         // runtime bound it (its old Document is gone): liveDocument(), not `state->doc`.
         const Document* doc = state != nullptr ? liveDocument(*state) : nullptr;
         currentInstance = doc != nullptr ? doc->instanceId() : 0;
+    }
+    // T-583: a value-type source keeps its last value, for a UI bound later (resendCurrentValues()).
+    if (v.type != kNoValue && v.type != PortType::Pulse) {
+        ExternalSlotInfo& info = externals[external];
+        assignValue(info.lastHome, info.last, v);
+        info.lastInstance = currentInstance;
     }
     fanOut(externalKeyBase + external, v);
     currentUi = savedUi;

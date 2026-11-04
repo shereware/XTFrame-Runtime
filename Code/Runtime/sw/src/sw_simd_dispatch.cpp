@@ -9,7 +9,8 @@
 #endif
 
 /// Run-time selection between the scalar, SSE2 and AVX2 kernel tables (Docs/tasks/T-102.md
-/// step 3). See sw_simd.h.
+/// step 3). See sw_simd.h. On wasm (XT_SIMD_WASM, Docs/tasks/T-531.md) the `f32x4` table is the
+/// SIMD128 backend of xt/simd.h; there is no cpuid there, so never AVX2.
 
 namespace xt::sw {
 
@@ -87,6 +88,8 @@ SwSimdOps selectOps() {
         return swSimdAvx2Ops();
     }
     return simdk::makeOps<simd::f32x4>("sse2");
+#elif XT_SIMD_WASM
+    return simdk::makeOps<simd::f32x4>("wasm-simd128");
 #else
     return simdk::makeOps<simd::f32x4>("scalar");
 #endif

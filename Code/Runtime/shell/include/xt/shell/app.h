@@ -268,6 +268,13 @@ public:
     /// InputEvent::modifiers bits (kShift / kCtrl / kAlt / kSuper).
     uint8_t modifierState() const;
 
+    /// T-598 (was T-595's built-in watcher): a hook App calls once per frame in runFrame() /
+    /// run(), after the SDL events were polled and before `onFrame` -- not from the live-resize
+    /// watch's extra frame (inside the OS modal loop). An empty function (the default) removes it.
+    /// The `--watch` hot reload installs itself here (xt_shell_watch: installWatch(), see
+    /// xt/shell/source_watcher.h), so xt_shell itself never links the compiler.
+    void setFramePoll(std::function<void(App&)> poll) { m_framePoll = std::move(poll); }
+
     /// T-384a (23 §23.ad): the window App created at construction (window 0). Valid whenever
     /// ok() is true.
     Window& mainWindow() { return *m_windows[0]; }
@@ -391,6 +398,7 @@ private:
     bool m_quit = false;
     bool m_platformDrop = false;  // T-393: initPlatformFileDrop() ran (shut down in ~App).
     std::function<bool(const SDL_Event&)> m_eventHook;  // T-240.
+    std::function<void(App&)> m_framePoll;              // T-598.
     // T-194: open controllers (SDL instance id -> player slot).
     struct Pad {
         SDL_GameController* controller = nullptr;

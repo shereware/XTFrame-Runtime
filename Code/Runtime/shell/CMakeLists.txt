@@ -15,6 +15,8 @@ if(WIN32)
 else()
     target_sources(xt_shell PRIVATE src/platform_other.cpp)
 endif()
+# T-598: no xt_compile here -- a shipped desktop host links xt_shell without the compiler; the
+# `--watch` hot reload lives in xt_shell_watch below.
 target_link_libraries(xt_shell PUBLIC xt_core xt_sw SDL2::SDL2-static)
 if(WIN32)
     target_link_libraries(xt_shell PUBLIC SDL2::SDL2main)
@@ -46,3 +48,28 @@ xt_enable_exceptions(xt_shell)
 # only emits next to its key function -- never under xt_core's -fno-rtti (see xt_no_rtti).
 xt_no_rtti(xt_shell)
 xt_set_warnings(xt_shell)
+
+# T-595 / T-598: SourceWatcher (`--watch` hot reload) recompiles the UI with xt_compile, so it is a
+# target of its own on top of xt_shell; only a host that wants hot reload (desktop_app, the tests)
+# links it. Its header sits in xt_shell's include directory (xt/shell/source_watcher.h) but needs
+# xt_compile's headers, which only this target provides.
+add_library(xt_shell_watch STATIC
+    src/source_watcher.cpp
+)
+target_link_libraries(xt_shell_watch PUBLIC xt_shell xt_compile)
+xt_enable_exceptions(xt_shell_watch)
+xt_no_rtti(xt_shell_watch)
+xt_set_warnings(xt_shell_watch)
+
+# T-598 item 1: xt_shell never links xt_compile. Checked once the whole tree is configured, so a
+# target_link_libraries(xt_shell ...) added anywhere later is caught too.
+function(_xt_assert_shell_without_compile)
+    foreach(prop LINK_LIBRARIES INTERFACE_LINK_LIBRARIES)
+        get_target_property(libs xt_shell ${prop})
+        if(libs AND "xt_compile" IN_LIST libs)
+            message(FATAL_ERROR "T-598: xt_shell must not link xt_compile (found in ${prop}); "
+                                "hot reload belongs to xt_shell_watch")
+        endif()
+    endforeach()
+endfunction()
+cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}" CALL _xt_assert_shell_without_compile)

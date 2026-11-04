@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "bundle_json.h"
+#include "color_math.h"
 #include "design_internal.h"
 #include "xt/bundle/asset_meta.h"
 #include "xt/bundle/design_color.h"
@@ -174,14 +175,16 @@ std::string byteSize(uint64_t bytes) {
     return buffer;
 }
 
-/// A JSON value as one line: strings bare, arrays `[a, b]`, objects `{k: v}`.
-std::string inlineValue(const json& v) {
+/// A JSON value as one line: strings bare, arrays `[a, b]`, objects `{k: v}` (in the value's own
+/// key order; T-574 passes ordered values).
+template <class J>
+std::string inlineValue(const J& v) {
     if (v.is_string()) {
-        return v.get<std::string>();
+        return v.template get<std::string>();
     }
     if (v.is_array()) {
         std::vector<std::string> items;
-        for (const json& item : v) {
+        for (const J& item : v) {
             items.push_back(inlineValue(item));
         }
         return "[" + joinDesignDoc(items, ", ") + "]";
@@ -196,10 +199,11 @@ std::string inlineValue(const json& v) {
     if (v.is_null()) {
         return "null";
     }
-    return v.dump(-1, ' ', false, json::error_handler_t::replace);
+    return v.dump(-1, ' ', false, J::error_handler_t::replace);
 }
 
-void flatten(const json& v, const std::string& prefix, std::vector<std::vector<std::string>>& rows) {
+template <class J>
+void flatten(const J& v, const std::string& prefix, std::vector<std::vector<std::string>>& rows) {
     if (v.is_object() && !v.empty()) {
         for (auto it = v.begin(); it != v.end(); ++it) {
             flatten(it.value(), prefix.empty() ? it.key() : prefix + "." + it.key(), rows);
@@ -544,6 +548,13 @@ public:
             name = m_project.name.empty() ? m_project.id : m_project.name;
         }
         out += "# " + name + " design system\n";
+        // T-574 (35 §35.11): design.yaml's `version`, the design system's own, under the title.
+        if (m_ds.info.extra.is_object()) {
+            const auto version = m_ds.info.extra.find("version");
+            if (version != m_ds.info.extra.end() && !version->is_null() && !version->is_structured()) {
+                out += "\nVersion " + inlineValue(*version) + "\n";
+            }
+        }
         if (m_options.forAi) {
             out += "\nAI edition: images and deprecated entries are left out; each section is cut to about " +
                    std::to_string(
@@ -658,6 +669,80 @@ private:
             const Lines lines = renderText(t, m_options.forAi);
             blankDesignDoc(out);
             out.insert(out.end(), lines.begin(), lines.end());
+            if (section == kScreens && screen && !m_options.forAi) {
+                screenshots(t, out);
+            }
+        }
+    }
+
+    /// T-574 (35 §35.4 row 10, §35.11): the pictures of a screen entry -- the references it links
+    /// with `illustrates` / `see-also` (in link order), then the references that link `illustrates`
+    /// to it or to `ui:<its file name>` (by id) -- embedded after its text when the picture file
+    /// exists under the design directory. Not in the AI version.
+    void screenshots(const TextEntry& t, Lines& out) {
+        static constexpr const char* kPictures[] = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".svg"};
+        const auto picture = [](const std::string& path) {
+            std::string lower = path;
+            for (char& c : lower) {
+                if (c >= 'A' && c <= 'Z') {
+                    c = static_cast<char>(c - 'A' + 'a');
+                }
+            }
+            for (const char* ext : kPictures) {
+                const size_t n = std::char_traits<char>::length(ext);
+                if (lower.size() > n && lower.compare(lower.size() - n, n, ext) == 0) {
+                    return true;
+                }
+            }
+            return false;
+        };
+        std::string ui = t.path.substr(std::string("text/screens/").size());
+        if (ui.size() > 3 && ui.compare(ui.size() - 3, 3, ".md") == 0) {
+            ui.resize(ui.size() - 3);
+        }
+        const std::string self = entryRef(EntryKind::Text, t.base.id);
+        const std::string uiRef = entryRef(EntryKind::Ui, ui);
+        std::vector<std::string> ids;
+        const auto add = [&ids](const std::string& id) {
+            if (std::find(ids.begin(), ids.end(), id) == ids.end()) {
+                ids.push_back(id);
+            }
+        };
+        for (const Link& link : t.base.links) {
+            EntryKind kind = EntryKind::Text;
+            std::string id;
+            if ((link.rel == "illustrates" || link.rel == "see-also") && parseEntryRef(link.to, &kind, &id) &&
+                kind == EntryKind::Reference) {
+                add(id.substr(0, id.find('@')));
+            }
+        }
+        std::vector<const ReferenceMeta*> refs;
+        for (const ReferenceMeta& r : m_ds.references) {
+            refs.push_back(&r);
+        }
+        std::sort(refs.begin(), refs.end(),
+                  [](const ReferenceMeta* a, const ReferenceMeta* b) { return a->base.id < b->base.id; });
+        for (const ReferenceMeta* r : refs) {
+            for (const Link& link : r->base.links) {
+                if (link.rel == "illustrates" && (link.to == self || link.to == uiRef)) {
+                    add(r->base.id);
+                    break;
+                }
+            }
+        }
+        const fs::path root = pathFromUtf8(m_ds.rootDir);
+        for (const std::string& id : ids) {
+            for (const ReferenceMeta* r : refs) {
+                std::error_code ec;
+                if (r->base.id != id || isDeprecated(r->base) || !picture(r->path) ||
+                    !fs::is_regular_file(root / pathFromUtf8(r->path), ec)) {
+                    continue;
+                }
+                const std::string title = r->title.empty() ? r->base.id : r->title;
+                blankDesignDoc(out);
+                out.push_back("![" + title + "](" + r->path + ")");
+                out.emplace_back();
+            }
         }
     }
 
@@ -979,6 +1064,7 @@ private:
             headingDesignDoc(out, "Roles");
             table(out, {"Role", "Family", "Weights", "Note"}, roles);
         }
+        specimens(out);
         if (m_ds.typeExtra.is_object()) {
             const auto scale = m_ds.typeExtra.find("scale");
             if (scale != m_ds.typeExtra.end() && scale->is_object() && !scale->empty()) {
@@ -1020,11 +1106,55 @@ private:
                         out.push_back("- " + code(it.key()));
                     }
                 } else if (effects->is_array()) {
-                    for (const json& e : *effects) {
+                    for (const auto& e : *effects) {
                         out.push_back("- " + code(inlineValue(e)));
                     }
                 }
             }
+        }
+    }
+
+    /// T-574 (35 §35.3.5, §35.11): `### Specimens`, each role's `sample` (one sentence, or a map
+    /// language -> sentence) as real text: the project's languages first in `spec.languages` order,
+    /// then the others alphabetically. Nothing when no role has a sample.
+    void specimens(Lines& out) {
+        std::vector<std::vector<std::string>> rows;
+        for (const TypeRole& r : m_ds.typeRoles) {
+            if (isDeprecated(r.base) || !r.base.extra.is_object()) {
+                continue;
+            }
+            const auto sample = r.base.extra.find("sample");
+            if (sample == r.base.extra.end()) {
+                continue;
+            }
+            const std::string role = code(r.base.id);
+            if (sample->is_string()) {
+                rows.push_back({role, r.family, std::string(), sample->get<std::string>()});
+                continue;
+            }
+            if (!sample->is_object()) {
+                continue;
+            }
+            std::vector<std::string> langs;
+            for (const std::string& lang : m_project.spec.languages) {
+                if (sample->contains(lang) && std::find(langs.begin(), langs.end(), lang) == langs.end()) {
+                    langs.push_back(lang);
+                }
+            }
+            for (auto it = sample->begin(); it != sample->end(); ++it) {
+                if (std::find(langs.begin(), langs.end(), it.key()) == langs.end()) {
+                    langs.push_back(it.key());
+                }
+            }
+            for (const std::string& lang : langs) {
+                const json& text = (*sample)[lang];
+                rows.push_back({role, r.family, code(lang),
+                                text.is_string() ? text.get<std::string>() : inlineValue(text)});
+            }
+        }
+        if (!rows.empty()) {
+            headingDesignDoc(out, "Specimens");
+            table(out, {"Role", "Family", "Language", "Sample"}, rows);
         }
     }
 
@@ -1048,7 +1178,7 @@ private:
         texts(kMotion, out);
         std::string text;
         if (bundle::detail::readFile(pathToUtf8(m_data.root / "contracts" / "motion-spec.yaml"), text)) {
-            json spec;
+            nlohmann::ordered_json spec;  // T-574: in file order
             if (bundle::detail::parseYamlLite(text, spec, nullptr) && spec.is_object() && !spec.empty()) {
                 headingDesignDoc(out, "Motion spec");
                 std::vector<std::vector<std::string>> rows;
@@ -1270,7 +1400,7 @@ private:
     }
 
     /// The one-sentence summary of a decision: its `note`, else the first paragraph under its
-    /// "Decision" heading, else its first paragraph.
+    /// "Decision" (or 決定) heading, else its first paragraph.
     static std::string decisionSummary(const TextEntry& d) {
         if (!d.base.note.empty()) {
             return d.base.note;
@@ -1303,7 +1433,9 @@ private:
                 while (level < line.size() && line[level] == '#') {
                     ++level;
                 }
-                inDecision = detail::headingSlug(util::trim(line.substr(level))) == "decision";
+                // T-574 (35 §35.11): the template's 決定 as well as Decision / decision.
+                const std::string heading = util::trim(line.substr(level));
+                inDecision = detail::headingSlug(heading) == "decision" || heading == "決定";
             } else if (line.empty()) {
                 flush();
             } else {
@@ -1519,7 +1651,31 @@ std::vector<Issue> lintRules(const UiProject& project, const DesignSystem& ds, c
         AuditReport report;
         if (audit(project, ds, "uis", report) == Status::kOk) {
             for (const AuditReport::Literal& l : report.colors) {
-                if (!l.nearestSwatch.empty() && l.deltaE <= 2.0f) {
+                // T-574 (35 §35.11): alpha-aware. A fully transparent literal is no colour; a
+                // literal is in the palette when a swatch is within ΔE2000 2 of its RGB and has the
+                // same alpha, or the swatch is opaque (a translucent use of a palette colour).
+                float rgba[4];
+                if (!bundle::detail::parseHexColor(l.value, rgba)) {
+                    continue;
+                }
+                const int alpha = static_cast<int>(std::lround(rgba[3] * 255.0f));
+                if (alpha == 0) {
+                    continue;
+                }
+                bool inPalette = false;
+                for (const Swatch& s : ds.swatches) {
+                    float swatch[4];
+                    if (!bundle::detail::parseHexColor(s.value, swatch)) {
+                        continue;
+                    }
+                    const int swatchAlpha = static_cast<int>(std::lround(swatch[3] * 255.0f));
+                    const float d = deltaE2000(l.value, s.value);
+                    if (d >= 0.0f && d <= 2.0f && (swatchAlpha == 255 || swatchAlpha == alpha)) {
+                        inPalette = true;
+                        break;
+                    }
+                }
+                if (inPalette) {
                     continue;
                 }
                 std::string entry;
@@ -1589,17 +1745,26 @@ std::vector<Issue> lintRules(const UiProject& project, const DesignSystem& ds, c
         }
     }
 
-    // design.draftShipped (warning): a declared variable whose metadata is a draft (or missing).
+    // design.draftShipped: a declared variable whose metadata is a draft (or missing). T-574 (35
+    // §35.11): a warning per entry only when publishing (xtframe-pack); otherwise one info line.
+    size_t drafts = 0;
     for (const auto& [name, value] : data.tokenOrder) {
         (void)value;
         for (const TokenMeta& t : data.synced.tokens) {
             if (t.base.id == name && isDraft(t.base)) {
-                addIssueDesignDoc(out, "design.draftShipped", Severity::Warning,
-                                  entryRef(EntryKind::Token, name),
-                                  "'--" + name + "' is a draft; approve it before publishing");
+                ++drafts;
+                if (options.publish) {
+                    addIssueDesignDoc(out, "design.draftShipped", Severity::Warning,
+                                      entryRef(EntryKind::Token, name),
+                                      "'--" + name + "' is a draft; approve it before publishing");
+                }
                 break;
             }
         }
+    }
+    if (!options.publish && drafts > 0) {
+        addIssueDesignDoc(out, "design.draftShipped", Severity::Info, std::string(),
+                          std::to_string(drafts) + (drafts == 1 ? " draft entry" : " draft entries"));
     }
 
     // asset.placeholderShipped (error, T-312a): an asset promoted from a reference and not replaced.

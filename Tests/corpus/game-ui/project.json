@@ -4,7 +4,8 @@
   "frames": [0, 30, 120],
   "uis": [
     {"id": "hud", "width": 1280, "height": 720},
-    {"id": "pause", "width": 1280, "height": 720}
+    {"id": "pause", "width": 1280, "height": 720},
+    {"id": "sceneview", "width": 1280, "height": 720}
   ],
   "scripts": ["hud-fire-reload.json", "pause-hover.json"]
 }

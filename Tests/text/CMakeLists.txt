@@ -7,12 +7,15 @@ add_executable(xt_text_tests
     test_text_bitmap_path.cpp
     test_i18n_regression.cpp
     test_system_fonts.cpp
+    test_font_weights.cpp
 )
 target_include_directories(xt_text_tests SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/Code/SDKs/doctest)
 # test_ft_shaper.cpp exercises Code/Runtime/text/src/vo_table.h directly (Docs/tasks/T-29.md test list).
 target_include_directories(xt_text_tests PRIVATE ${PROJECT_SOURCE_DIR}/Code/Runtime/text/src)
 target_compile_definitions(xt_text_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)
 target_compile_definitions(xt_text_tests PRIVATE XT_TEST_FONTS_DIR="${PROJECT_SOURCE_DIR}/Tests/fonts")
+# T-569: the bundled standard fonts (Noto Sans / Noto Sans TC), deterministic on every machine.
+target_compile_definitions(xt_text_tests PRIVATE XT_ASSET_FONTS_DIR="${PROJECT_SOURCE_DIR}/Assets/Fonts")
 # test_sw_glyphs.cpp renders DrawGlyphs through the SW backend (Docs/tasks/T-30.md).
 target_link_libraries(xt_text_tests PRIVATE xt_text xt_core xt_sw)
 xt_enable_exceptions(xt_text_tests)

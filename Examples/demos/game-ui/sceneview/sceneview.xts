@@ -1,0 +1,36 @@
+/* Scene view test UI of the game-ui bundle. The host binds engine://main and engine://pip to
+   camera entities (xtui_scene_view); until then the runtime draws its placeholder. Palette, type
+   scale and panel base come from ../shared/base.xts. The root has no background, so the game
+   scene shows through; #editorBg is editor-only and is stripped at publish time. */
+
+#main {
+  bottom: 0;
+  height: 100%;
+  left: 0;
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 100%;
+}
+
+#help {
+  left: calc(1safe-left + 24px);
+  top: calc(1safe-top + 24px);
+}
+
+#help .dim {
+  margin: 4px 0px 0px 0px;
+}
+
+#pipPanel {
+  bottom: calc(1safe-bottom + 24px);
+  right: calc(1safe-right + 24px);
+}
+
+#pip {
+  border: 1px #30363d;
+  border-radius: 8px;
+  height: 270px;
+  margin: 8px 0px 0px 0px;
+  width: 480px;
+}

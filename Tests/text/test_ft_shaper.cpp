@@ -42,9 +42,14 @@ TEST_CASE("FtTextShaper::match finds registered fonts by family/weight") {
     const xt::FontId fallback = f.shaper.match(req(unknown));
     CHECK(fallback == 0);  // first registered font
 
-    // The only "Noto Sans" face is weight 400; requesting 700 must still resolve to it.
+    // The only "Noto Sans" face is weight 400; requesting 700 resolves to it, emboldened
+    // (T-569, Docs/design/07-text.md §7.20: a synthetic-bold instance with an id of its own) ...
     const xt::FontId heavy = f.shaper.match(req(noto, 700));
-    CHECK(heavy == a);
+    CHECK(heavy != xt::kInvalidFont);
+    CHECK(heavy != a);
+    CHECK(f.shaper.match(req(noto, 700)) == heavy);  // made once
+    // ... while 500 still takes the 400 face itself.
+    CHECK(f.shaper.match(req(noto, 500)) == a);
 }
 
 TEST_CASE("FtTextShaper::shape latin 'Hello World'") {
@@ -94,8 +99,10 @@ TEST_CASE("FtTextShaper::shape mixed latin+CJK falls back fonts and splits runs"
     CHECK(out.runs[0].byteStart == 0);
     CHECK(out.runs[1].byteEnd == 12);
 
-    // After the first CJK character (世, bytes [6,9)) a break is allowed.
-    CHECK(out.breakAfter[8] == 1);
+    // After the first CJK character (世, bytes [6,9)) a break is allowed; T-569: the value sits on
+    // the character's first byte (xt/text_shaper.h), where text layout reads it.
+    CHECK(out.breakAfter[6] == 1);
+    CHECK(out.breakAfter[8] == 0);
 }
 
 TEST_CASE("FtTextShaper::shape arabic paragraph in an LTR paragraph") {

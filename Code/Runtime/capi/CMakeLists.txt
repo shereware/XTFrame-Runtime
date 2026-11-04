@@ -3,18 +3,28 @@
 # (include/xt/capi/xtframe.h, pure C99) over xt_core / xt_bundle / xt_flow / xt_sw (and xt_text).
 # Only the `xt_` functions are exported: hidden visibility for this target, and a linker export list
 # that keeps the symbols of the static libraries linked in (built with default visibility) local.
-add_library(xt_capi SHARED
+# Docs/design/52-web-wasm.md §52.9 (T-525, T-578): under Emscripten the library is STATIC instead (a shared
+# library means nothing in wasm): libxtframe.a, no visibility preset, no export list and no
+# position-independent code, and XT_CAPI_STATIC (PUBLIC) makes the header's XT_CAPI macro empty.
+set(xt_capi_sources
     src/capi_library.cpp
     src/capi_bundle.cpp
     src/capi_surface.cpp
     src/capi_ports.cpp
 )
-set_target_properties(xt_capi PROPERTIES
-    OUTPUT_NAME xtframe
-    CXX_VISIBILITY_PRESET hidden
-    C_VISIBILITY_PRESET hidden
-    VISIBILITY_INLINES_HIDDEN ON
-)
+if(EMSCRIPTEN)
+    add_library(xt_capi STATIC ${xt_capi_sources})
+    set_target_properties(xt_capi PROPERTIES OUTPUT_NAME xtframe)
+    target_compile_definitions(xt_capi PUBLIC XT_CAPI_STATIC)
+else()
+    add_library(xt_capi SHARED ${xt_capi_sources})
+    set_target_properties(xt_capi PROPERTIES
+        OUTPUT_NAME xtframe
+        CXX_VISIBILITY_PRESET hidden
+        C_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN ON
+    )
+endif()
 target_compile_definitions(xt_capi PRIVATE XT_CAPI_BUILD)
 target_include_directories(xt_capi PUBLIC include)
 # xt::bundle::detail::readFile / joinPath (Code/Runtime/bundle/src/bundle_json.h): the flow files and
@@ -74,7 +84,7 @@ function(xt_capi_make_pic target)
         endforeach()
     endwhile()
 endfunction()
-if(NOT WIN32)
+if(NOT WIN32 AND NOT EMSCRIPTEN)
     xt_capi_make_pic(xt_capi)
 endif()
 # The module may use exceptions (xt_bundle / xt_text may throw); every exported function body runs
@@ -83,8 +93,10 @@ xt_enable_exceptions(xt_capi)
 xt_no_rtti(xt_capi)
 xt_set_warnings(xt_capi)
 
-# Export list: only `xt_*`.
-if(APPLE)
+# Export list: only `xt_*` (a static library has none).
+if(EMSCRIPTEN)
+    # No export list: the program that links libxtframe.a decides what it exports.
+elseif(APPLE)
     target_link_options(xt_capi PRIVATE "LINKER:-exported_symbol,_xt_*")
 elseif(NOT WIN32)
     set(xt_capi_version_script "${CMAKE_CURRENT_BINARY_DIR}/xtframe.map")
@@ -96,8 +108,17 @@ endif()
 # 45 §45.4: the library lands next to the xtframe-* executables, in bin/<platform>_<arch>/<Config>/
 # (XT_RUNTIME_OUTPUT_DIR; Tools/CMake/xt_runtime_output.cmake places executables only). A DLL is a
 # RUNTIME artifact on Windows, a .so / .dylib a LIBRARY one elsewhere; the import library stays in
-# the build tree.
-if(NOT "${XT_RUNTIME_OUTPUT_DIR}" STREQUAL "")
+# the build tree. Under Emscripten the static libxtframe.a is an ARCHIVE artifact, placed the same way
+# (bin/wasm32/<Config>/libxtframe.a, 52 §52.9).
+if(NOT "${XT_RUNTIME_OUTPUT_DIR}" STREQUAL "" AND EMSCRIPTEN)
+    set(xt_capi_configs ${CMAKE_CONFIGURATION_TYPES} ${CMAKE_BUILD_TYPE} Debug Release RelWithDebInfo MinSizeRel)
+    list(REMOVE_DUPLICATES xt_capi_configs)
+    set_target_properties(xt_capi PROPERTIES ARCHIVE_OUTPUT_DIRECTORY "${XT_RUNTIME_OUTPUT_DIR}")
+    foreach(config IN LISTS xt_capi_configs)
+        string(TOUPPER "${config}" config_upper)
+        set_target_properties(xt_capi PROPERTIES ARCHIVE_OUTPUT_DIRECTORY_${config_upper} "${XT_RUNTIME_OUTPUT_DIR}")
+    endforeach()
+elseif(NOT "${XT_RUNTIME_OUTPUT_DIR}" STREQUAL "")
     xt_set_runtime_dir(xt_capi "${XT_RUNTIME_OUTPUT_DIR}")
     set(xt_capi_configs ${CMAKE_CONFIGURATION_TYPES} ${CMAKE_BUILD_TYPE} Debug Release RelWithDebInfo MinSizeRel)
     list(REMOVE_DUPLICATES xt_capi_configs)

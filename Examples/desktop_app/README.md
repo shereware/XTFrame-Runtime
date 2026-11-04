@@ -9,7 +9,7 @@ document and stylesheet, and `main.cpp`'s `wireUi()` for the event listeners
 ## Build & run
 
 ```
-desktop_app [--headless] [--frames N] [--width W] [--height H]
+desktop_app [--headless] [--watch] [--frames N] [--width W] [--height H]
 ```
 
 Without `--headless` this opens a real window and runs until it is closed (Escape, or the
@@ -22,6 +22,39 @@ iterations with no window at all. The fallback still exercises the same UI wirin
 button click and a checkbox toggle through `Context::pushInput()` (a `PointerDown`/`PointerUp`
 pair at the target element's `boundingBox()` center -- exactly what a real pointer click looks
 like to the event dispatcher) and a text entry through `ElementRef::setValue()`.
+
+## Edit the `.xt`, save, see it
+
+```
+desktop_app --watch
+```
+
+With `--watch` the window keeps an eye on the UI's sources -- `ui/app.xt`, `ui/app.xts`,
+`ui/app.xtflow` and any other `.xt` / `.xts` / `.xtcl` / `.xtflow` under `ui/` -- by polling their
+modification times every 500 ms. Edit a style or a layer, save, and the window shows the change
+within half a second: the example recompiles the UI with `xt::compile::compileDocument()` and swaps
+it in with `Context::hotReload()`, which keeps port values and element states (13 §13.8.3), then
+wires its listeners again. When the save does not compile, the diagnostics are printed to stderr in
+the same `file:line:col: error: message` form as `xtframe-compile`, and the previous version stays
+on screen until the next save that compiles.
+
+A host gets the same behaviour by linking `xt_shell_watch` (`xt_shell` plus the compiler; a
+shipped host links `xt_shell` alone and has no compiler) and installing a `SourceWatcher` on its
+`xt::shell::App` after loading its UI:
+
+```cpp
+#include "xt/shell/source_watcher.h"
+
+xt::shell::SourceWatcher watcher;  // declared before the App: it must outlive it
+// ... create the App, load the UI as `handle` ...
+watcher.setReloadedHandler([&](xt::DocumentHandle h) { /* re-wire listeners */ });
+watcher.watch("ui/app.xt", handle, options);  // the CompileOptions it compiled with
+xt::shell::installWatch(app, watcher);         // polled once per frame, before onFrame
+```
+
+`installWatch()` is a thin wrapper over the generic `App::setFramePoll()` hook.
+`watcher.addPath(dir)` adds a directory outside the UI's own (a shared symbol library).
+`--watch` applies to the window mode; the `--headless` run ignores it.
 
 ## Two ways to load the UI
 

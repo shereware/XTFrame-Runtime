@@ -39,8 +39,9 @@ hb_script_t scriptForCodepoint(uint32_t codepoint);
 VerticalOrientation verticalOrientationFor(uint32_t codepoint);
 // ft_glyphs.cpp
 bool ftDecomposeOutline(FT_Face face, uint32_t glyphId, std::vector<PathVerb>& outVerbs,
-                        std::vector<float>& outPoints);
-bool ftRenderBitmap(FT_Face face, uint32_t glyphId, float sizePx, float subpixelX, GlyphBitmap& out);
+                        std::vector<float>& outPoints, float embolden);
+bool ftRenderBitmap(FT_Face face, uint32_t glyphId, float sizePx, float subpixelX, GlyphBitmap& out,
+                    float embolden);
 
 namespace {
 
@@ -207,6 +208,10 @@ struct FtTextShaper::Impl {
         FT_Face face = fonts.face(font);
         if (face == nullptr) return nullptr;
         hb_font_t* hbFont = hb_ft_font_create_referenced(face);
+        // T-569 (07 §7.20): a synthetic-bold instance's advances grow by the embolden strength
+        // (not in place), the same strength ft_glyphs.cpp applies to the outline.
+        const float embolden = fonts.embolden(font);
+        if (embolden > 0.0f) hb_font_set_synthetic_bold(hbFont, embolden, embolden, false);
         hbFonts.emplace(font, hbFont);
         return hbFont;
     }
@@ -256,7 +261,8 @@ uint32_t FtTextShaper::addFontDir(std::string_view dir, uint32_t maxFiles) {
         for (char& c : ext) {
             c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         }
-        if (ext != ".ttf" && ext != ".otf") {
+        // T-569 (07 §7.20): `.ttc`/`.otc` collections too; each face is registered on its own.
+        if (ext != ".ttf" && ext != ".otf" && ext != ".ttc" && ext != ".otc") {
             continue;
         }
         files.push_back(pathToUtf8(entry.path()));
@@ -267,12 +273,14 @@ uint32_t FtTextShaper::addFontDir(std::string_view dir, uint32_t maxFiles) {
             break;
         }
         std::lock_guard<std::mutex> lock(impl_->mutex);
-        if (impl_->fonts.addFontFileDeferred(file)) {
+        const uint32_t first = impl_->fonts.fontCount();
+        const uint32_t faces = impl_->fonts.addFontFileDeferred(file, maxFiles - added);
+        for (uint32_t i = 0; i < faces; ++i) {
             // Directory fonts (system fonts) are fallback candidates so that any family request
             // and any script can resolve to a font that has the glyph (07.3 step 3).
-            impl_->fonts.addFallbackFont(impl_->fonts.fontCount() - 1);
-            ++added;
+            impl_->fonts.addFallbackFont(first + i);
         }
+        added += faces;
     }
     return added;
 }
@@ -349,6 +357,16 @@ void FtTextShaper::fonts(std::vector<FontDesc>& out) const {
 std::string FtTextShaper::fontPath(FontId id) const {
     std::lock_guard<std::mutex> lock(impl_->mutex);
     return impl_->fonts.fontPath(id);
+}
+
+long FtTextShaper::fontFaceIndex(FontId id) const {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    return impl_->fonts.fontFaceIndex(id);
+}
+
+std::string FtTextShaper::missingCjkFamily(const std::vector<std::string>& stack) const {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    return impl_->fonts.missingCjkFamily(stack);
 }
 
 FontId FtTextShaper::match(const FontRequest& request) {
@@ -582,7 +600,7 @@ bool FtTextShaper::glyphOutline(FontId font, uint32_t glyphId, std::vector<PathV
 
     FT_Face face = impl_->fonts.face(font);
     OutlineEntry entry;
-    const bool ok = ftDecomposeOutline(face, glyphId, entry.verbs, entry.points);
+    const bool ok = ftDecomposeOutline(face, glyphId, entry.verbs, entry.points, impl_->fonts.embolden(font));
     if (impl_->outlineCache.size() >= kGlyphCacheLimit) impl_->outlineCache.clear();
     outVerbs = entry.verbs;
     outPoints = entry.points;
@@ -605,7 +623,8 @@ bool FtTextShaper::glyphBitmap(FontId font, uint32_t glyphId, float size, float 
 
     FT_Face face = impl_->fonts.face(font);
     GlyphBitmap bitmap;
-    const bool ok = ftRenderBitmap(face, glyphId, size, static_cast<float>(subpixel) * 0.25f, bitmap);
+    const bool ok = ftRenderBitmap(face, glyphId, size, static_cast<float>(subpixel) * 0.25f, bitmap,
+                                   impl_->fonts.embolden(font));
     if (impl_->bitmapCache.size() >= kGlyphCacheLimit) impl_->bitmapCache.clear();
     out = bitmap;
     impl_->bitmapCache.emplace(key, bitmap);

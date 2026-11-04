@@ -39,6 +39,8 @@ void FlowRuntime::Impl::unbindAll(bool removeListeners) {
 }
 
 void FlowRuntime::Impl::removeUi(std::string_view uiId) {
+    // T-582: an addUi() of it still waiting for the dispatch to return is dropped too.
+    std::erase_if(deferredBinds, [uiId](const DeferredBind& bind) { return bind.uiId == uiId; });
     for (UiDoc& ui : uiDocs) {
         if (ui.uiId != uiId) {
             continue;
@@ -65,10 +67,11 @@ Status FlowRuntime::Impl::load(const FlowGraph& graph, Document& document, std::
     // `this` that is about to describe a completely different graph.
     unbindAll(/*removeListeners=*/true);
     uiDocs.clear();
+    globalBundle = nullptr;  // T-582: a single-Document runtime binds no UI later.
     resetDocumentTreeState(docs);
     docs.doc = &document;
     docs.serial = document.loadSerial();  // T-260c.
-    const Status status = loadGraph(graph, errors, nullptr);
+    const Status status = loadGraph(graph, errors, nullptr, nullptr);
     if (status != Status::kOk) {
         clearAll();  // T-260c: a failed load keeps nothing of the Document.
     }
@@ -76,19 +79,22 @@ Status FlowRuntime::Impl::load(const FlowGraph& graph, Document& document, std::
 }
 
 Status FlowRuntime::Impl::loadGlobal(const FlowGraph& graph, BundleContext& bundle,
-                                     std::vector<std::string>& errors) {
+                                     std::vector<std::string>& errors, std::vector<std::string>* notes,
+                                     const FlowLoadOptions& options) {
     if (dispatchDepth > 0) {  // T-260c: as load().
         pending = PendingLoad{};
         pending.kind = PendingLoad::Kind::LoadGlobal;
         pending.graph = graph;
         pending.bundle = &bundle;
+        pending.options = options;  // T-582.
         return Status::kOk;
     }
     DispatchGuard dispatch(*this);
     unbindAll(/*removeListeners=*/true);
     uiDocs.clear();
     resetDocumentTreeState(docs);
-    docs.doc = nullptr;  // The global flow has no Document of its own.
+    docs.doc = nullptr;      // The global flow has no Document of its own.
+    globalBundle = nullptr;  // T-582: set again once the load succeeded.
     std::map<std::string, Document*> uiMap;
     for (const std::string& uiId : bundle.uiIds()) {
         for (const BundleContext::Instance& instance : bundle.instances(uiId)) {  // T-356: any Context.
@@ -113,10 +119,19 @@ Status FlowRuntime::Impl::loadGlobal(const FlowGraph& graph, BundleContext& bund
             uiMap.emplace(uiId, document);  // The first instance answers the validation.
         }
     }
-    Status status = loadGraph(graph, errors, &uiMap);
+    // T-582 (53 §53.5.5): the UIs the graph names that are not registered yet (dormant edges).
+    std::vector<std::string> dormant;
+    Status status = loadGraph(graph, errors, &uiMap, options.strictUis ? nullptr : &dormant);
     global = status == Status::kOk;
     if (status != Status::kOk) {
         clearAll();  // T-260c: as load().
+        return status;
+    }
+    globalBundle = &bundle;
+    if (notes != nullptr) {
+        for (const std::string& uiId : dormant) {
+            notes->push_back("ui#" + uiId + " not registered yet (edges dormant)");
+        }
     }
     return status;
 }
@@ -133,6 +148,7 @@ void FlowRuntime::Impl::unload() {
 void FlowRuntime::Impl::clearAll() {
     unbindAll(/*removeListeners=*/true);
     uiDocs.clear();
+    globalBundle = nullptr;  // T-582.
     resetDocumentTreeState(docs);
     docs.doc = nullptr;
     docs.context = nullptr;
@@ -143,7 +159,11 @@ void FlowRuntime::Impl::clearAll() {
 
 void FlowRuntime::Impl::runPending() {
     runningPending = true;
-    while (pending.kind != PendingLoad::Kind::None) {
+    while (pending.kind != PendingLoad::Kind::None || !deferredBinds.empty()) {
+        if (pending.kind == PendingLoad::Kind::None) {
+            runDeferredBinds();  // T-582: the addUi() calls made inside the dispatch.
+            continue;
+        }
         PendingLoad op = std::move(pending);
         pending = PendingLoad{};
         std::vector<std::string> errors;  // Nobody is left to report them to.
@@ -158,7 +178,7 @@ void FlowRuntime::Impl::runPending() {
                 }
                 break;
             case PendingLoad::Kind::LoadGlobal:
-                loadGlobal(op.graph, *op.bundle, errors);
+                loadGlobal(op.graph, *op.bundle, errors, nullptr, op.options);
                 break;
             case PendingLoad::Kind::Unload:
                 clearAll();
@@ -217,10 +237,14 @@ void FlowRuntime::Impl::resetGraph() {
     nodeStale.clear();
     continuityList.clear();
     setStateList.clear();
+    edgeTexts.clear();  // T-582.
+    dormantDrops = 0;
+    deferredBinds.clear();
 }
 
 Status FlowRuntime::Impl::loadGraph(const FlowGraph& graph, std::vector<std::string>& errors,
-                                    const std::map<std::string, Document*>* uiMap) {
+                                    const std::map<std::string, Document*>* uiMap,
+                                    std::vector<std::string>* dormantUis) {
     resetGraph();
     for (const NodeDesc& nd : graph.nodes) {
         if (nodeIndexById.count(nd.id) != 0) {
@@ -244,9 +268,14 @@ Status FlowRuntime::Impl::loadGraph(const FlowGraph& graph, std::vector<std::str
     }
 
     std::vector<BoundEdge> boundEdges;
-    Status status = validateGraph(graph, docs.doc, errors, &boundEdges, uiMap);
+    Status status = validateGraph(graph, docs.doc, errors, &boundEdges, uiMap, dormantUis);
     if (status != Status::kOk) {
         return status;
+    }
+    // T-582: the endpoint texts, for the checks addUi() makes when it binds a UI later
+    // (validateGraph() succeeded, so edge i is graph.edges[i]).
+    for (const EdgeDesc& e : graph.edges) {
+        edgeTexts.emplace_back(e.from, e.to);
     }
     // T-476: one string buffer per value slot (a slot's strings are copied into its own).
     slotHomeBase = static_cast<uint32_t>(strings.size());
@@ -558,20 +587,23 @@ std::span<const std::string_view> systemEventKinds() {
     return kKinds;
 }
 
-Status FlowRuntime::loadGlobal(std::string_view json, BundleContext& bundle,
-                               std::vector<std::string>& errors) {
+Status FlowRuntime::loadGlobal(std::string_view json, BundleContext& bundle, std::vector<std::string>& errors,
+                               std::vector<std::string>* notes, const FlowLoadOptions& options) {
     FlowGraph graph;
     Status parsed = FlowGraph::parse(json, graph, errors);
     if (parsed != Status::kOk) {
         return parsed;
     }
-    return loadGlobal(graph, bundle, errors);
+    return loadGlobal(graph, bundle, errors, notes, options);
 }
 
 Status FlowRuntime::loadGlobal(const FlowGraph& graph, BundleContext& bundle,
-                               std::vector<std::string>& errors) {
-    return m_impl->loadGlobal(graph, bundle, errors);
+                               std::vector<std::string>& errors, std::vector<std::string>* notes,
+                               const FlowLoadOptions& options) {
+    return m_impl->loadGlobal(graph, bundle, errors, notes, options);
 }
+
+uint64_t FlowRuntime::dormantDrops() const { return m_impl->loaded ? m_impl->dormantDrops : 0; }
 
 bool FlowRuntime::isGlobal() const { return m_impl->loaded && m_impl->global; }
 

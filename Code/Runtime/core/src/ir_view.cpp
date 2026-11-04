@@ -2051,6 +2051,8 @@ Status IrView::validate(const IrView& view) {
                     }
                     break;
                 case TriggerAction::Stop:
+                case TriggerAction::Pause:   // T-573.
+                case TriggerAction::Resume:  // T-573.
                 case TriggerAction::Class:
                 case TriggerAction::Sound:
                 case TriggerAction::Haptic:

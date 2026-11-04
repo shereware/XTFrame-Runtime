@@ -826,13 +826,53 @@ ordered_json tokensJson(const DesignSystem& ds) {
 
 // --- type.yaml ---
 
-void readType(const json& root, DesignSystem& ds) {
+/// T-574: `value` (as read and migrated) with the key order of `source` (the same file parsed in
+/// order): keys `source` has come first in its order, the others after them alphabetically.
+ordered_json inSourceOrder(const json& value, const ordered_json* source) {
+    if (value.is_object()) {
+        ordered_json out = ordered_json::object();
+        if (source != nullptr && source->is_object()) {
+            for (auto it = source->begin(); it != source->end(); ++it) {
+                const auto found = value.find(it.key());
+                if (found != value.end()) {
+                    out[it.key()] = inSourceOrder(*found, &it.value());
+                }
+            }
+        }
+        for (auto it = value.begin(); it != value.end(); ++it) {
+            if (!out.contains(it.key())) {
+                out[it.key()] = inSourceOrder(it.value(), nullptr);
+            }
+        }
+        return out;
+    }
+    if (value.is_array()) {
+        ordered_json out = ordered_json::array();
+        const bool paired = source != nullptr && source->is_array() && source->size() == value.size();
+        for (size_t i = 0; i < value.size(); ++i) {
+            out.push_back(inSourceOrder(value[i], paired ? &(*source)[i] : nullptr));
+        }
+        return out;
+    }
+    return ordered_json(value);
+}
+
+/// `source` (may be null): type.yaml parsed in order, for the order of typeExtra (T-574).
+void readType(const json& root, const ordered_json* source, DesignSystem& ds) {
     if (!root.is_object()) {
         return;
     }
     for (auto it = root.begin(); it != root.end(); ++it) {
         if (it.key() != "roles" || !it->is_array()) {
-            putExtraKey(ds.typeExtra, it.key(), it.value());
+            const ordered_json* from = nullptr;
+            if (source != nullptr && source->is_object()) {
+                const auto found = source->find(it.key());
+                from = found == source->end() ? nullptr : &*found;
+            }
+            if (!ds.typeExtra.is_object()) {
+                ds.typeExtra = ordered_json::object();
+            }
+            ds.typeExtra[it.key()] = inSourceOrder(it.value(), from);
             continue;
         }
         for (const json& item : *it) {
@@ -876,7 +916,7 @@ ordered_json typeJson(const DesignSystem& ds) {
     if (ds.typeExtra.is_object()) {
         for (auto it = ds.typeExtra.begin(); it != ds.typeExtra.end(); ++it) {
             if (!o.contains(it.key())) {
-                o[it.key()] = bundle::detail::toOrdered(it.value());
+                o[it.key()] = it.value();
             }
         }
     }
@@ -1030,7 +1070,7 @@ bool readReference(const fs::path& metaFile, const fs::path& designRoot, Referen
     out.base.kind = EntryKind::Reference;
     out.path = relativeMeta.substr(0, relativeMeta.size() - 5);  // without ".meta"
     const std::string underRefs = out.path.substr(out.path.find('/') + 1);
-    out.base.id = stripExtension(underRefs);
+    out.base.id = referenceIdOf(underRefs);  // T-574: `.url.yaml` as one extension
     if (!root.is_object()) {
         return true;
     }
@@ -1300,7 +1340,15 @@ Status load(const UiProject& project, DesignSystem& out, std::vector<Issue>* iss
     if (!readYamlFile(root / "type.yaml", "type.yaml", doc, error)) {
         return Status::kInvalidArgument;
     }
-    readType(doc, ds);
+    {
+        // T-574: the same file in order, for typeExtra (readYamlFile() checked it already).
+        ordered_json ordered;
+        std::string text;
+        const bool inOrder = doc.is_object() &&
+                             bundle::detail::readFile(pathToUtf8(root / "type.yaml"), text) &&
+                             bundle::detail::parseYamlLite(text, ordered, nullptr);
+        readType(doc, inOrder ? &ordered : nullptr, ds);
+    }
     for (const fs::path& file : filesUnder(root / "text", ".md")) {
         const std::string relative = relativeGeneric(file, root);
         const bool decision = relative.rfind("text/decisions/", 0) == 0;

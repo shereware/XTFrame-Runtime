@@ -127,62 +127,13 @@ HitResult hit3DRoot(const NodeArena& arena, NodeId root, const HitFrame& frame, 
                     uint32_t depth) {
     Vec2 s = frame.localPos;
 
-    // Same three-way camera setup as camera.h's rootCameraSetup()/Painter::emitRoot(), but with
-    // the extra branch information (explicit camera kind / CSS perspective vs. none) T-48's ray
-    // construction needs (see 19.9's three ray formulas).
-    enum class RayKind { Perspective, CssDefault, OrthoOrIdentity };
+    // T-570: the ray lives in camera.cpp's rootPickRay() now, shared with Document::localPosIn()
+    // so `pointer.local()` on a 3D layer agrees with the plane point this hit test reports.
     NodeId camNode = findCameraChild(arena, root);
-    Rect box = spaceRootBoxOf(arena, root);
     CameraSetup setup{};
-    RayKind rayKind = RayKind::OrthoOrIdentity;
-    float cssD = 0.0f;
-    Vec2 cssOrigin{};
-    if (camNode != kInvalidNode) {
-        setup = computeCameraViewProj(arena, camNode, box);
-        rayKind = arena.camera(camNode).kind == 0 ? RayKind::Perspective : RayKind::OrthoOrIdentity;
-    } else if (arena.kind(root) == NodeKind::Element && arena.element(root).perspectivePx > 0.0f) {
-        const ElementData& data = arena.element(root);
-        setup = cssPerspectiveViewProj(data.perspectivePx, data.perspectiveOriginPx);
-        rayKind = RayKind::CssDefault;
-        cssD = data.perspectivePx;
-        cssOrigin = data.perspectiveOriginPx;
-    } else if (arena.kind(root) == NodeKind::Element) {
-        setup = cssPerspectiveViewProj(0.0f, Vec2{});  // perspective: none -> identity.
-        rayKind = RayKind::OrthoOrIdentity;
-    } else {
-        setup = defaultSceneViewProj(box.w, box.h);  // AE default camera is always Perspective.
-        rayKind = RayKind::Perspective;
-    }
-
     Vec3 p0{};
     Vec3 p1{};
-    bool rayOk = true;
-    switch (rayKind) {
-        case RayKind::Perspective: {
-            Mat4 inv{};
-            if (!mat4Invert(setup.viewProj, inv)) {
-                rayOk = false;
-                break;
-            }
-            float w0 = 0;
-            float w1 = 0;
-            p0 = mat4Project(inv, Vec3{s.x, s.y, -1.0f}, &w0);
-            p1 = mat4Project(inv, Vec3{s.x, s.y, 1.0f}, &w1);
-            if (w0 <= 1e-6f || w1 <= 1e-6f) {
-                rayOk = false;
-            }
-            break;
-        }
-        case RayKind::CssDefault:
-            p0 = Vec3{cssOrigin.x, cssOrigin.y, cssD};
-            p1 = Vec3{s.x, s.y, 0.0f};
-            break;
-        case RayKind::OrthoOrIdentity:
-            p0 = Vec3{s.x, s.y, 1e6f};
-            p1 = Vec3{s.x, s.y, 0.0f};
-            break;
-    }
-    if (!rayOk) {
+    if (!rootPickRay(arena, root, s, setup, p0, p1)) {
         return HitResult{};
     }
 
@@ -234,17 +185,10 @@ HitResult hit3DRoot(const NodeArena& arena, NodeId root, const HitFrame& frame, 
                     continue;
                 }
             }
-            Mat4 inv3{};
-            if (!mat4Invert(lc.world3, inv3)) {
-                continue;
+            Vec2 q{};
+            if (!rayPlanePoint(lc.world3, p0, p1, q)) {
+                continue;  // Singular world3, or the ray is parallel to the layer's plane.
             }
-            Vec3 q0 = mat4Transform(inv3, p0);
-            Vec3 q1 = mat4Transform(inv3, p1);
-            if (q0.z == q1.z) {
-                continue;  // Parallel to the layer's plane.
-            }
-            float t = q0.z / (q0.z - q1.z);
-            Vec2 q{q0.x + (q1.x - q0.x) * t, q0.y + (q1.y - q0.y) * t};
             HitResult hit = hitNode(arena, layer.node, q, mode, /*in3D=*/true, depth + 1);
             if (hit.node != kInvalidNode) {
                 return hit;
@@ -302,10 +246,17 @@ HitResult hitNode(const NodeArena& arena, NodeId node, Vec2 pos, HitMode mode, b
             continue;  // Scene nodes and Text are never individually hit (08.2).
         }
         const NodeCommon& cc = arena.common(child);
-        if (cc.is3D != 0 && cc.isSpaceRoot == 0) {
+        if (in3D && cc.is3D != 0 && cc.isSpaceRoot == 0) {
             // A 3D layer (not itself a root): belongs to some sorted segment's own candidate
             // list, tested independently by hit3DRoot() with its own ray-plane intersection --
             // not reachable through ordinary 2D descent (§19.9: "遇到 is3D 子孫跳過").
+            // T-570 (improvement report F55): only inside a space root's subtree. Outside any
+            // root an is3D node is flattened onto the 2D chain (world_transform.cpp's
+            // asFlattened3D; the Painter draws it through `world` like any 2D node), so it is
+            // entered here with that same `world`. A timeline whose `transform` keys went through
+            // 05.5's compose/decompose path (rotate() before translate()) carries identity
+            // rotateX/rotateY/translateZ tracks, which force is3D = 1 (19.3) -- skipping such a
+            // node here left it drawn but unhittable.
             continue;
         }
         if (!in3D && (cc.flags2 & kLayerOverlay) != 0) {

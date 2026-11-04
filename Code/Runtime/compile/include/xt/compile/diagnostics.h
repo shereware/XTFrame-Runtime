@@ -25,21 +25,24 @@ struct Diagnostic {
     int col = 0;
     /// Human-readable description of the problem.
     std::string message;
+    /// T-568 (24 §24.15.4): a stable diagnostics code (`bind.*`, `compile.*`...) when the message
+    /// has one of its own; "" files it under `compile.error` / `compile.warning`.
+    std::string code = {};
 };
 
 /// Accumulates diagnostics produced by a single compile/parse call.
 class DiagnosticSink {
 public:
-    /// Records a warning at `file:line:col`.
-    void warn(std::string file, std::string message, int line = 0, int col = 0) {
-        m_diagnostics.push_back(
-            Diagnostic{Diagnostic::Level::Warning, std::move(file), line, col, std::move(message)});
+    /// Records a warning at `file:line:col`; `code` (T-568) is Diagnostic::code.
+    void warn(std::string file, std::string message, int line = 0, int col = 0, std::string code = {}) {
+        m_diagnostics.push_back(Diagnostic{Diagnostic::Level::Warning, std::move(file), line, col,
+                                           std::move(message), std::move(code)});
     }
 
-    /// Records an error at `file:line:col`.
-    void error(std::string file, std::string message, int line = 0, int col = 0) {
-        m_diagnostics.push_back(
-            Diagnostic{Diagnostic::Level::Error, std::move(file), line, col, std::move(message)});
+    /// Records an error at `file:line:col`; `code` (T-568) is Diagnostic::code.
+    void error(std::string file, std::string message, int line = 0, int col = 0, std::string code = {}) {
+        m_diagnostics.push_back(Diagnostic{Diagnostic::Level::Error, std::move(file), line, col,
+                                           std::move(message), std::move(code)});
     }
 
     /// T-408 (43 §43.6): whether deprecated() records anything (CompileOptions::strict or

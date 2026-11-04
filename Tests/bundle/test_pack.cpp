@@ -685,6 +685,113 @@ TEST_CASE("pack: manifest glyphs[device] from glyphs/<device>/<key>.<ext>, Bundl
     }
 }
 
+TEST_CASE("T-571 pack: the manifest glyph images join the asset table of every UI with a <glyph>") {
+    // 22 §22.14 (report F86): Document::resolveGlyphs only looks in the UI's own IR asset table, so
+    // a UI that names the glyph image nowhere else used to draw `[confirm]` with the provider set.
+    const std::string source = copiedSample("glyph_assets");
+    std::error_code ec;
+    fs::create_directories(source + "/shared/glyphs/gamepad", ec);
+    fs::create_directories(source + "/shared/glyphs/keyboard", ec);
+    std::vector<uint8_t> rgba(8 * 8 * 4, 255);
+    rgba[0] = 7;
+    REQUIRE(sw::writePng(source + "/shared/glyphs/gamepad/confirm.png", rgba.data(), 8, 8, 8 * 4));
+    rgba[0] = 8;
+    REQUIRE(sw::writePng(source + "/shared/glyphs/keyboard/confirm.png", rgba.data(), 8, 8, 8 * 4));
+    // The same bytes as the keyboard glyph: one file, one ASST entry (deduplicated).
+    REQUIRE(sw::writePng(source + "/shared/img/key.png", rgba.data(), 8, 8, 8 * 4));
+    std::ofstream(source + "/hud/hud.xt", std::ios::trunc)
+        << "<xt>\n  <body>\n    <div id=\"panel\">\n      <img src=\"img/a.png\"/>\n"
+           "      <img id=\"key\" src=\"img/key.png\"/>\n"
+           "      <p id=\"prompt\">Press <glyph key=\"confirm\" height=\"16\"/> to start</p>\n"
+           "    </div>\n  </body>\n</xt>\n";
+
+    for (const bool atlas : {false, true}) {
+        CAPTURE(atlas);
+        PackOptions options;
+        options.outDir = outDir(atlas ? "glyph_assets_atlas" : "glyph_assets");
+        options.thumbnails = false;
+        options.atlas = atlas;
+        options.atlasScope = "bundle";
+        const PackReport report = pack(loadProject(source), options);
+        REQUIRE(report.ok);
+
+        Result<std::unique_ptr<Bundle>> opened = Bundle::open(options.outDir, sw::decodeImageBytes);
+        REQUIRE(opened.ok());
+        Bundle& bundle = *opened.value();
+        const std::string pad(bundle.glyphAsset("gamepad", "confirm"));
+        const std::string keyboard(bundle.glyphAsset("keyboard", "confirm"));
+        REQUIRE_FALSE(pad.empty());
+        REQUIRE_FALSE(keyboard.empty());
+
+        // Listed for the UI with a `<glyph>` (each once), not for the one without.
+        const UiInfo* hud = bundle.ui("hud");
+        const UiInfo* pause = bundle.ui("pause");
+        REQUIRE(hud != nullptr);
+        REQUIRE(pause != nullptr);
+        CHECK(std::count(hud->assets.begin(), hud->assets.end(), pad) == 1);
+        CHECK(std::count(hud->assets.begin(), hud->assets.end(), keyboard) == 1);
+        CHECK(std::find(pause->assets.begin(), pause->assets.end(), pad) == pause->assets.end());
+        CHECK(std::find(pause->assets.begin(), pause->assets.end(), keyboard) == pause->assets.end());
+
+        // The `.xtir` ASST holds each glyph image once, as an Image named like the manifest entry.
+        auto asstCount = [&](const std::string& uiId, const std::string& name) {
+            std::ifstream in(options.outDir + "/ui/" + uiId + ".xtir", std::ios::binary);
+            const std::vector<uint8_t> ir((std::istreambuf_iterator<char>(in)),
+                                          std::istreambuf_iterator<char>());
+            Result<IrView> view = IrView::open(IrBlob{ir.data(), ir.size()}, IrReadOptions{});
+            REQUIRE(view.ok());
+            int count = 0;
+            for (const IrAsset& asset : view.value().assets().assets()) {
+                count += (asset.kind == 0 && view.value().string(asset.name) == name) ? 1 : 0;
+            }
+            return count;
+        };
+        CHECK(asstCount("hud", pad) == 1);
+        CHECK(asstCount("hud", keyboard) == 1);  // Also the `<img src="img/key.png">`: one entry.
+        CHECK(asstCount("pause", pad) == 0);
+
+        // With the bundle's provider on gamepad, the `<glyph key="confirm">` draws the image (a
+        // shaper with fonts lays the line out; without one the text has no lines, and only the
+        // resolved asset is checked).
+#ifdef XT_TEST_HAS_TEXT
+        text::FtTextShaper shaper;
+        const bool shapes = shaper.addSystemFonts() > 0;
+#else
+        const bool shapes = false;
+        NullTextShaper shaper;
+#endif
+        Context ctx(ContextConfig{&shaper, &bundle.assets()});
+        BundleGlyphProvider provider(bundle);
+        ctx.setGlyphProvider(&provider);
+        REQUIRE(ctx.setInputDevice(InputKind::Gamepad) == Status::kOk);
+        Result<DocumentHandle> handle = loadUi(ctx, bundle, "hud");
+        REQUIRE(handle.ok());
+        Document* doc = ctx.document(handle.value());
+        REQUIRE(doc != nullptr);
+        CHECK(resolvedGlyphs(*doc) == 1);
+        ctx.setViewport(Rect{0, 0, 1280, 720}, 1.0f);
+        ctx.update(0.0f);
+        CommandList list;
+        ctx.render(list);
+        AssetId padId = kInvalidAsset;
+        const std::span<const IrAsset> assets = doc->ir().assets().assets();
+        for (uint32_t i = 0; i < assets.size(); ++i) {
+            if (doc->ir().string(assets[i].name) == pad) {
+                padId = i;
+            }
+        }
+        REQUIRE(padId != kInvalidAsset);
+        bool drawn = false;
+        for (const ImageCmd& image : list.images) {
+            drawn = drawn || image.asset == padId;
+        }
+        CHECK((drawn || !shapes));
+        // Mouse falls back to the keyboard set, also in the table now.
+        REQUIRE(ctx.setInputDevice(InputKind::Mouse) == Status::kOk);
+        CHECK(resolvedGlyphs(*doc) == 1);
+    }
+}
+
 TEST_CASE("pack: an xt-standard: symbol link resolves in the standard symbol library (T-235)") {
     const std::string src = copiedSample("xt_standard");
     {

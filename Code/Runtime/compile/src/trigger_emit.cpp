@@ -192,6 +192,10 @@ bool keyFromName(std::string_view name, uint32_t& out) {
             return true;
         }
     }
+    if (name == "any") {  // T-573 (27.8): any non-modifier key, gamepad buttons included.
+        out = kTriggerKeyAny;
+        return true;
+    }
     // `A`..`Z` / `KeyA`..`KeyZ`, `0`..`9` / `Digit0`..`Digit9`.
     std::string_view s = name;
     if (s.size() == 4 && s.substr(0, 3) == "Key") {
@@ -1546,6 +1550,16 @@ private:
             out.arg0 = m_writer.intern(c.args[0].value);
             return true;
         }
+        if (c.name == "pause" || c.name == "resume") {
+            // T-573 (27.8): `pause(<timeline>)` / `resume(<timeline>)`, as flow `<anim>` pause/resume.
+            const TimelineDef* def = nullptr;
+            if (!argCount(1, 1) || !plain(0) || !timeline(c.args[0].value, def)) {
+                return false;
+            }
+            out.kind = static_cast<uint8_t>(c.name == "pause" ? TriggerAction::Pause : TriggerAction::Resume);
+            out.arg0 = m_writer.intern(c.args[0].value);
+            return true;
+        }
         if (c.name == "seek") {
             const TimelineDef* def = nullptr;
             if (!argCount(2, 2) || !plain(0) || !plain(1) || !timeline(c.args[0].value, def)) {
@@ -2609,6 +2623,9 @@ private:
         if (c.name == "seek") {
             return argCount(2, 2) && plain(0) && plain(1);
         }
+        if (c.name == "pause" || c.name == "resume") {  // T-573 (27.8).
+            return argCount(1, 1) && plain(0);
+        }
         if (c.name == "state") {
             for (size_t i = 0; i < c.args.size(); ++i) {
                 if (c.args[i].key == "target") {  // T-201.
@@ -2757,5 +2774,7 @@ bool validateTriggerEvent(std::string_view event, std::string& error) {
 bool validateTriggerActions(std::string_view actions, std::string& error) {
     return Emitter::validateActionsSyntax(actions, error);
 }
+
+bool keyCodeFromTriggerName(std::string_view name, uint32_t& keyCode) { return keyFromName(name, keyCode); }
 
 }  // namespace xt::compile

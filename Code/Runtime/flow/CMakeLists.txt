@@ -5,8 +5,10 @@ add_library(xt_flow STATIC
     src/flow_signals.cpp
     src/flow_bindings.cpp
     src/flow_ports.cpp
+    src/flow_interface.cpp
     src/host_ports.cpp
     src/bundle_context.cpp
+    src/flow_late_binding.cpp
 )
 target_link_libraries(xt_flow PUBLIC xt_core)
 target_include_directories(xt_flow PUBLIC include)

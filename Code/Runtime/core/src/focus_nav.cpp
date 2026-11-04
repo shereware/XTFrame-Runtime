@@ -354,6 +354,14 @@ void EventDispatcher::clearActiveChain(NodeArena& arena, std::vector<NodeId>& ch
 
 void EventDispatcher::handleGamepadButton(NodeArena& arena, NodeId root, const InputEvent& input, bool down) {
     const uint8_t p = m_curPlayer;
+    if (down && m_triggerSink != nullptr) {
+        // T-573 (27.8): any gamepad button fires `key(any)` before its own default action.
+        const NodeId focus = m_focus[p];
+        const NodeId target = focus != kInvalidNode && arena.alive(focus) ? focus : root;
+        if (target != kInvalidNode && arena.alive(target) && arena.common(target).triggerTable != 0) {
+            m_triggerSink->onGamepadKey(target, p);
+        }
+    }
     PadState& pad = m_pads[p];
     NavDirection dir = NavDirection::Up;
     if (padDirection(input.gamepadButton, dir)) {

@@ -1,6 +1,7 @@
 add_library(xt_compile STATIC
     src/placeholder.cpp
     src/aliases.cpp
+    src/diagnostic_report.cpp
     src/ir_writer.cpp
     src/parse_xt.cpp
     src/compile_lottie.cpp

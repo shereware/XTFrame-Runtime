@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <span>
 #include <string>
@@ -2964,4 +2965,166 @@ TEST_CASE("T-411: set() source errors -- unknown port, item() outside a template
     CHECK(validateTriggerActions("set(t, port(a) | offset(port(b))); set(u, item(id)); set(v, 5 | scale(2))",
                                  err));
     CHECK_FALSE(validateTriggerActions("set(t, nope | scale(2))", err));
+}
+
+// -- T-570 (27 §27.8, 08 §8.20, 19 §19.5; improvement report F56 / F59b / F55) -------------------
+
+namespace {
+
+/// A Tests/layout board, compiled from its file (like test_hit_test_3d.cpp's loadDoc).
+Loaded loadBoard(const std::string& name, float w, float h) {
+    Loaded out;
+    CompileOptions options;
+    out.result = compileDocument(std::string(XT_TEST_LAYOUT_DIR) + "/" + name, options);
+    for (const Diagnostic& d : out.result.diagnostics) {
+        CAPTURE(d.message);
+        CHECK(d.level != Diagnostic::Level::Error);
+    }
+    REQUIRE(out.result.ok());
+    Status status =
+        Document::load(IrBlob{out.result.ir.data(), out.result.ir.size()}, false, nullptr, nullptr, out.doc);
+    REQUIRE(status == Status::kOk);
+    out.doc->setViewport(Rect{0, 0, w, h});
+    out.doc->update(0.0f);
+    return out;
+}
+
+constexpr const char* kStageStyle =
+    "#stage { position: absolute; left: 0px; top: 0px; width: 400px; height: 300px; perspective: 1000px; }"
+    " #board { position: absolute; left: 100px; top: 100px; width: 200px; height: 100px; }";
+
+}  // namespace
+
+TEST_CASE("T-570 (F56): localPosIn / fractionIn inside a 3D space root use the hit test's ray-plane point") {
+    // rotateX(0deg) under `perspective`: the board sits flat on the root's plane, so the local
+    // position is the plain 2D value (the report's `ddy_a = 127` at pointer y = 255 came from
+    // inverting the plane-relative `world` alone, i.e. screen coordinates).
+    Loaded flat = load(doc(std::string(kStageStyle) + " #board { transform: rotateX(0deg); }",
+                           "<div id=\"stage\"><div id=\"board\"></div></div>"),
+                       400, 300);
+    const NodeId flatBoard = flat.el("board").node;
+    const Vec2 flatLocal = flat.doc->localPosIn(flatBoard, Vec2{150, 130});
+    CHECK(flatLocal.x == doctest::Approx(50.0f));
+    CHECK(flatLocal.y == doctest::Approx(30.0f));
+    const Vec2 flatFraction = flat.doc->fractionIn(flatBoard, Vec2{150, 130});
+    CHECK(flatFraction.x == doctest::Approx(0.25f));
+    CHECK(flatFraction.y == doctest::Approx(0.3f));
+
+    // rotateX(30deg): the board is a 3D layer; the local position is the point where the hit
+    // test's pick ray meets the board's plane -- the same `Event::localPos` a press reports.
+    Loaded tilted = load(doc(std::string(kStageStyle) + " #board { transform: rotateX(30deg); }",
+                             "<div id=\"stage\"><div id=\"board\"></div></div>"),
+                         400, 300);
+    const NodeId board = tilted.el("board").node;
+    const Vec2 screen = tilted.doc->nodeToScreen(board, Vec2{50, 30});
+    REQUIRE(tilted.doc->hitTest(screen) == board);
+    Vec2 pressLocal{};
+    int presses = 0;
+    tilted.doc->addListener(tilted.el("board"), EventType::PointerDown, [&](Event& e) {
+        pressLocal = e.localPos;
+        ++presses;
+    });
+    tilted.pointer(InputEvent::PointerDown, screen.x, screen.y);
+    REQUIRE(presses == 1);
+    CHECK(pressLocal.x == doctest::Approx(50.0f).epsilon(0.01));
+    CHECK(pressLocal.y == doctest::Approx(30.0f).epsilon(0.01));
+    const Vec2 local = tilted.doc->localPosIn(board, screen);
+    CHECK(local.x == doctest::Approx(pressLocal.x).epsilon(0.001));
+    CHECK(local.y == doctest::Approx(pressLocal.y).epsilon(0.001));
+    // ...and not the 2D inverse of the plane-relative world (screen - (100, 100)).
+    CHECK(std::fabs((screen.y - 100.0f) - local.y) > 1.0f);
+    const Vec2 fraction = tilted.doc->fractionIn(board, screen);
+    CHECK(fraction.x == doctest::Approx(0.25f).epsilon(0.01));
+    CHECK(fraction.y == doctest::Approx(0.3f).epsilon(0.01));
+    tilted.pointer(InputEvent::PointerUp, screen.x, screen.y);
+
+    // Outside any 3D root the 2D path is unchanged (T-386's case).
+    Loaded plain = load(doc("#E { position: absolute; left: 50px; top: 20px; width: 100px; height: 40px; }",
+                            "<div id=\"E\"></div>"),
+                        400, 300);
+    const Vec2 plainLocal = plain.doc->localPosIn(plain.el("E").node, Vec2{110, 40});
+    CHECK(plainLocal.x == doctest::Approx(60.0f));
+    CHECK(plainLocal.y == doctest::Approx(20.0f));
+}
+
+TEST_CASE("T-570 (F59b): a pointerdrag past the drag threshold suppresses the Click on release") {
+    Loaded l = load(doc("#Card { position: absolute; left: 0px; top: 0px; width: 100px; height: 100px; }",
+                        "<div id=\"Card\" port:clue_pick=\"event out\" on:pointerdrag=\"state(Dragging)\""
+                        " on:click=\"emit(clue_pick)\"></div>"),
+                    300, 200);
+    const PortId cluePick = l.doc->lookupPort("clue_pick");
+    REQUIRE(cluePick != kInvalidPort);
+    int emits = 0;
+    l.doc->addPortListener([&](const PortEvent& e) {
+        if (e.port == cluePick && e.kind == PortEventKind::Emit) {
+            ++emits;
+        }
+    });
+    int clicks = 0;
+    l.doc->addListener(l.el("Card"), EventType::Click, [&](Event&) { ++clicks; });
+    int ups = 0;
+    l.doc->addListener(l.el("Card"), EventType::PointerUp, [&](Event&) { ++ups; });
+
+    // Press, drag 30 px, release on the same element: PointerUp, but no Click and no emit.
+    l.pointer(InputEvent::PointerDown, 10, 10);
+    l.pointer(InputEvent::PointerMove, 40, 10);
+    CHECK(l.has("Card", "Dragging"));
+    l.pointer(InputEvent::PointerUp, 40, 10);
+    CHECK(ups == 1);
+    CHECK(clicks == 0);
+    CHECK(emits == 0);
+    CHECK_FALSE(l.el("Card").hasState(kStateActive));
+
+    // A plain press / release still clicks and emits.
+    l.pointer(InputEvent::PointerDown, 10, 10);
+    l.pointer(InputEvent::PointerUp, 10, 10);
+    CHECK(clicks == 1);
+    CHECK(emits == 1);
+
+    // A move under the threshold (3 px) is not a pointerdrag: still a Click.
+    l.pointer(InputEvent::PointerDown, 10, 10);
+    l.pointer(InputEvent::PointerMove, 13, 10);
+    l.pointer(InputEvent::PointerUp, 13, 10);
+    CHECK(clicks == 2);
+    CHECK(emits == 2);
+
+    // The next press after a suppressed Click starts fresh.
+    l.pointer(InputEvent::PointerDown, 10, 10);
+    l.pointer(InputEvent::PointerMove, 60, 10);
+    l.pointer(InputEvent::PointerUp, 60, 10);
+    CHECK(clicks == 2);
+    l.pointer(InputEvent::PointerDown, 20, 20);
+    l.pointer(InputEvent::PointerUp, 20, 20);
+    CHECK(clicks == 3);
+    CHECK(emits == 3);
+}
+
+TEST_CASE("T-570 (F55): a rotate()-then-translate() transform timeline keeps the subtree hittable") {
+    Loaded l = loadBoard("hit_test_rotate_translate.xt", 400, 320);
+    l.step(1.0f);  // Past the 0.5 s intro (fill forwards).
+    const char* const pairs[2][2] = {{"memo", "btn-restart"}, {"memo2", "btn-restart2"}};
+    for (const auto& ids : pairs) {
+        CAPTURE(ids[1]);
+        const ElementRef memo = l.el(ids[0]);
+        const ElementRef btn = l.el(ids[1]);
+        REQUIRE(memo.valid());
+        REQUIRE(btn.valid());
+        INFO("is3D forced by the identity 3D tracks: " << int(l.doc->arena().common(memo.node).is3D));
+        const Rect box = btn.boundingBox();
+        REQUIRE(box.w > 0.0f);
+        const Vec2 center{box.x + box.w * 0.5f, box.y + box.h * 0.5f};
+        // The button (not its parent, not the body) is under its own centre, for hover and press.
+        CHECK(l.doc->hitTest(center) == btn.node);
+        CHECK(l.doc->hitTestPress(center) == btn.node);
+        l.pointer(InputEvent::PointerMove, center.x, center.y);
+        CHECK(btn.hasState(kStateHover));
+        const Color hover = bg(l, ids[1]);  // `:hover` applies: #ff0000.
+        CHECK(hover.r == doctest::Approx(1.0f));
+        CHECK(hover.g == doctest::Approx(0.0f));
+        l.pointer(InputEvent::PointerDown, center.x, center.y);
+        l.pointer(InputEvent::PointerUp, center.x, center.y);
+        CHECK(l.has(ids[1], "Clicked"));
+        l.pointer(InputEvent::PointerMove, 1, 1);
+        CHECK_FALSE(btn.hasState(kStateHover));
+    }
 }

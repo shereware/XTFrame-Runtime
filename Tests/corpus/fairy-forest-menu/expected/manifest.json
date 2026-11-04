@@ -323,9 +323,15 @@
       ],
       "contract": "e2a7c05333c2dbef",
       "file": "ui/demo3-menu.xtir",
-      "fileHash": 7410948297750201355,
+      "fileHash": 16116864875603624340,
       "fit": "native",
       "flow": "ui/demo3-menu.xtflow",
+      "flowInterface": {
+        "emits": [],
+        "reads": [],
+        "system": [],
+        "writes": []
+      },
       "id": "demo3-menu",
       "name": "demo3-menu",
       "ports": {
@@ -2850,1874 +2856,2342 @@
         "out": [
           {
             "name": "#bg-color.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#bg-color.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#bg-color.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#bg-color.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#bg-color.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#bg-color.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#bg-color.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#bg-color.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#bg-gray.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#bg-gray.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#bg-gray.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#bg-gray.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#bg-gray.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#bg-gray.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#bg-gray.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#bg-gray.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#corner-bl-color.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#corner-bl-color.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#corner-bl-color.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#corner-bl-color.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#corner-bl-color.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#corner-bl-color.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#corner-bl-color.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#corner-bl-color.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#corner-bl-gray.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#corner-bl-gray.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#corner-bl-gray.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#corner-bl-gray.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#corner-bl-gray.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#corner-bl-gray.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#corner-bl-gray.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#corner-bl-gray.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#corner-tr-color.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#corner-tr-color.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#corner-tr-color.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#corner-tr-color.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#corner-tr-color.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#corner-tr-color.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#corner-tr-color.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#corner-tr-color.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#corner-tr-gray.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#corner-tr-gray.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#corner-tr-gray.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#corner-tr-gray.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#corner-tr-gray.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#corner-tr-gray.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#corner-tr-gray.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#corner-tr-gray.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#demo3-menu.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#demo3-menu.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#demo3-menu.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#demo3-menu.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#demo3-menu.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#demo3-menu.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#demo3-menu.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#demo3-menu.continue_game",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#demo3-menu.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#demo3-menu.new_game",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#demo3-menu.open_credits",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#demo3-menu.open_options",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-fireflies.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-fireflies.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-fireflies.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#fx-fireflies.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-fireflies.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-fireflies.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-fireflies.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-fireflies.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#fx-layer.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-layer.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-layer.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#fx-layer.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-layer.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-layer.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-layer.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-layer.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#fx-light.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-light.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-light.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#fx-light.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-light.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-light.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-light.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-light.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#fx-petals-color.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-petals-color.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-petals-color.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#fx-petals-color.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-petals-color.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-petals-color.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-petals-color.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-petals-color.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#fx-petals-gray.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-petals-gray.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-petals-gray.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#fx-petals-gray.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-petals-gray.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-petals-gray.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-petals-gray.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-petals-gray.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#fx-petals.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-petals.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-petals.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#fx-petals.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-petals.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-petals.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-petals.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#fx-petals.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#garland-color.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#garland-color.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#garland-color.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#garland-color.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#garland-color.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#garland-color.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#garland-color.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#garland-color.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#garland-gray.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#garland-gray.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#garland-gray.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#garland-gray.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#garland-gray.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#garland-gray.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#garland-gray.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#garland-gray.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#item-continue-hl.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-hl.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-hl.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#item-continue-hl.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-hl.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-hl.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-hl.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-hl.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#item-continue-icon-color.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-icon-color.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-icon-color.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#item-continue-icon-color.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-icon-color.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-icon-color.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-icon-color.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-icon-color.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#item-continue-icon-gray.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-icon-gray.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-icon-gray.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#item-continue-icon-gray.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-icon-gray.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-icon-gray.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-icon-gray.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-icon-gray.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#item-continue-icon.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-icon.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-icon.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#item-continue-icon.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-icon.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-icon.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-icon.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-icon.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#item-continue-label-color.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-label-color.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-label-color.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#item-continue-label-color.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-label-color.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-label-color.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-label-color.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-label-color.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#item-continue-label-gray.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-label-gray.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-label-gray.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#item-continue-label-gray.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-label-gray.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-label-gray.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-label-gray.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-label-gray.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#item-continue-label.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-label.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-label.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#item-continue-label.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-label.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-label.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-label.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue-label.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#item-continue.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#item-continue.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-continue.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#item-credits-hl.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-hl.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-hl.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#item-credits-hl.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-hl.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-hl.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-hl.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-hl.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#item-credits-icon-color.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-icon-color.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-icon-color.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#item-credits-icon-color.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-icon-color.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-icon-color.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-icon-color.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-icon-color.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#item-credits-icon-gray.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-icon-gray.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-icon-gray.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#item-credits-icon-gray.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-icon-gray.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-icon-gray.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-icon-gray.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-icon-gray.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#item-credits-icon.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-icon.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-icon.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#item-credits-icon.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-icon.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-icon.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-icon.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-icon.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#item-credits-label-color.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-label-color.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-label-color.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#item-credits-label-color.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-label-color.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-label-color.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-label-color.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-label-color.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#item-credits-label-gray.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-label-gray.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-label-gray.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#item-credits-label-gray.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-label-gray.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-label-gray.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-label-gray.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-label-gray.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#item-credits-label.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-label.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-label.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#item-credits-label.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-label.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-label.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-label.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits-label.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#item-credits.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#item-credits.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-credits.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#item-new-hl.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-hl.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-hl.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#item-new-hl.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-hl.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-hl.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-hl.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-hl.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#item-new-icon-color.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-icon-color.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-icon-color.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#item-new-icon-color.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-icon-color.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-icon-color.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-icon-color.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-icon-color.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#item-new-icon-gray.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-icon-gray.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-icon-gray.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#item-new-icon-gray.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-icon-gray.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-icon-gray.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-icon-gray.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-icon-gray.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#item-new-icon.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-icon.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-icon.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#item-new-icon.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-icon.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-icon.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-icon.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-icon.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#item-new-label-color.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-label-color.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-label-color.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#item-new-label-color.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-label-color.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-label-color.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-label-color.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-label-color.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#item-new-label-gray.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-label-gray.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-label-gray.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#item-new-label-gray.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-label-gray.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-label-gray.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-label-gray.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-label-gray.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#item-new-label.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-label.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-label.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#item-new-label.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-label.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-label.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-label.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new-label.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#item-new.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#item-new.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-new.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#item-option-hl.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-hl.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-hl.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#item-option-hl.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-hl.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-hl.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-hl.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-hl.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#item-option-icon-color.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-icon-color.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-icon-color.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#item-option-icon-color.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-icon-color.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-icon-color.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-icon-color.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-icon-color.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#item-option-icon-gray.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-icon-gray.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-icon-gray.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#item-option-icon-gray.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-icon-gray.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-icon-gray.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-icon-gray.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-icon-gray.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#item-option-icon.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-icon.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-icon.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#item-option-icon.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-icon.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-icon.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-icon.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-icon.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#item-option-label-color.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-label-color.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-label-color.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#item-option-label-color.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-label-color.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-label-color.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-label-color.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-label-color.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#item-option-label-gray.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-label-gray.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-label-gray.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#item-option-label-gray.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-label-gray.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-label-gray.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-label-gray.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-label-gray.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#item-option-label.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-label.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-label.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#item-option-label.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-label.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-label.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-label.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option-label.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#item-option.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#item-option.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#item-option.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#menu-panel.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#menu-panel.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#menu-panel.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#menu-panel.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#menu-panel.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#menu-panel.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#menu-panel.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#menu-panel.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#panel-warm.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#panel-warm.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#panel-warm.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#panel-warm.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#panel-warm.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#panel-warm.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#panel-warm.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#panel-warm.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#title-color.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#title-color.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#title-color.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#title-color.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#title-color.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#title-color.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#title-color.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#title-color.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#title-gray.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#title-gray.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#title-gray.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#title-gray.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#title-gray.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#title-gray.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#title-gray.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#title-gray.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#title-group.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#title-group.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#title-group.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#title-group.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#title-group.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#title-group.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#title-group.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#title-group.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#trail-1.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#trail-1.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#trail-1.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#trail-1.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#trail-1.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#trail-1.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#trail-1.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#trail-1.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#trail-2.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#trail-2.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#trail-2.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#trail-2.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#trail-2.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#trail-2.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#trail-2.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#trail-2.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#trail-3.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#trail-3.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#trail-3.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#trail-3.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#trail-3.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#trail-3.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#trail-3.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#trail-3.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#trail-layer.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#trail-layer.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#trail-layer.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#trail-layer.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#trail-layer.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#trail-layer.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#trail-layer.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#trail-layer.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "#vignette.AnimationEnd",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#vignette.Blur",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#vignette.Change",
+            "origin": "document",
             "type": "string"
           },
           {
             "name": "#vignette.Click",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#vignette.Focus",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#vignette.PointerEnter",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#vignette.PointerLeave",
+            "origin": "document",
             "type": "pulse"
           },
           {
             "name": "#vignette.hover",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "document.clock",
+            "origin": "document",
             "type": "number"
           },
           {
             "name": "document.pointerDown",
+            "origin": "document",
             "type": "bool"
           },
           {
             "name": "document.pointerNX",
+            "origin": "document",
             "type": "number"
           },
           {
             "name": "document.pointerNY",
+            "origin": "document",
             "type": "number"
           },
           {
             "name": "document.pointerX",
+            "origin": "document",
             "type": "number"
           },
           {
             "name": "document.pointerY",
+            "origin": "document",
             "type": "number"
           },
           {
             "name": "document.viewportHeight",
+            "origin": "document",
             "type": "number"
           },
           {
             "name": "document.viewportWidth",
+            "origin": "document",
             "type": "number"
           }
         ]

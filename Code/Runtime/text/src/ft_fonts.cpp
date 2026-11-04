@@ -2,7 +2,11 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdio>
+
+#include FT_MULTIPLE_MASTERS_H
+#include FT_TRUETYPE_TABLES_H
 
 #include "file_open_utf8.h"  // Code/Runtime/core/src (T-261e)
 #include "font_name_table.h"
@@ -85,17 +89,49 @@ bool containsCI(std::string_view haystack, std::string_view needle) {
     return false;
 }
 
-// CSS Fonts Level 4 §5.2 weight-distance ordering, simplified to "nearest wins, ties broken by
-// the earlier-registered candidate" (the task's test fixtures never register two weights in the
-// same family close enough for the fallback direction rules to matter).
-int weightDistance(uint16_t candidate, uint16_t target) {
-    return candidate > target ? candidate - target : target - candidate;
+// T-569 (07 §7.20): CSS Fonts Level 4 §5.2 font-weight matching over a face's weight range
+// [lo, hi] (equal for a static face). A range containing `target` wins; otherwise, for a target in
+// [400, 500], heavier faces up to 500 (ascending), then lighter ones (descending), then heavier ones
+// above 500 (ascending); below 400 lighter first (descending) then heavier (ascending); above 500
+// heavier first (ascending) then lighter (descending). Returns a key, lower = better.
+int weightRank(uint16_t lo, uint16_t hi, uint16_t target) {
+    if (lo <= target && target <= hi) return 0;
+    const bool heavier = lo > target;
+    const int distance = heavier ? lo - target : target - hi;
+    if (target >= 400 && target <= 500) {
+        if (heavier && lo <= 500) return 1000 + distance;
+        if (!heavier) return 2000 + distance;
+        return 3000 + distance;
+    }
+    if (target < 400) return heavier ? 2000 + distance : 1000 + distance;
+    return heavier ? 1000 + distance : 2000 + distance;
+}
+
+// T-569: synthetic-bold strength (fraction of the em) for a request `requested` >= 600 on a family
+// whose heaviest face is `heaviest` < 600. 400 -> 700 gives em / 36 (FreeType's own
+// FT_GlyphSlot_Embolden uses em / 24, which came out clearly heavier than a real Bold face of Noto
+// Sans CJK TC); the strength scales with the weight difference, at most 500.
+float emboldenFor(uint16_t requested, uint16_t heaviest) {
+    if (requested < 600 || heaviest >= 600 || requested <= heaviest) return 0.0f;
+    const int difference = std::min(500, requested - heaviest);
+    return static_cast<float>(difference) / 300.0f / 36.0f;
 }
 
 // Coarse weight/italic guess from a `name`-table subfamily string (e.g. "Bold Italic"), used only
 // while a font is still deferred; FreeType's own style_flags (more reliable) replace this the
 // moment the font is actually opened (Docs/tasks/T-104.md).
-uint16_t weightFromSubfamily(std::string_view subfamily) { return containsCI(subfamily, "bold") ? 700 : 400; }
+// T-569: only for a face without an OS/2 table; one with it uses usWeightClass.
+uint16_t weightFromSubfamily(std::string_view subfamily) {
+    if (containsCI(subfamily, "thin") || containsCI(subfamily, "hairline")) return 100;
+    if (containsCI(subfamily, "extralight") || containsCI(subfamily, "ultralight")) return 200;
+    if (containsCI(subfamily, "semilight") || containsCI(subfamily, "demilight")) return 350;
+    if (containsCI(subfamily, "light")) return 300;
+    if (containsCI(subfamily, "medium")) return 500;
+    if (containsCI(subfamily, "semibold") || containsCI(subfamily, "demibold")) return 600;
+    if (containsCI(subfamily, "extrabold") || containsCI(subfamily, "ultrabold")) return 800;
+    if (containsCI(subfamily, "black") || containsCI(subfamily, "heavy")) return 900;
+    return containsCI(subfamily, "bold") ? 700 : 400;
+}
 bool italicFromSubfamily(std::string_view subfamily) {
     return containsCI(subfamily, "italic") || containsCI(subfamily, "oblique");
 }
@@ -125,6 +161,10 @@ const std::vector<std::string_view>& scriptFamilyHints(uint32_t codepoint) {
     if (codepoint >= 0x4E00 && codepoint <= 0x9FFF) return han;      // CJK Unified Ideographs
     if (codepoint >= 0x3400 && codepoint <= 0x4DBF) return han;      // CJK Unified Ideographs Ext. A
     if (codepoint >= 0x3040 && codepoint <= 0x30FF) return han;      // Hiragana/Katakana
+    // T-569 (report R4): CJK and fullwidth punctuation look for a CJK font first, so a `，` or `。`
+    // no requested family has is not drawn from whichever font sorts first.
+    if (codepoint >= 0x3000 && codepoint <= 0x303F) return han;      // CJK Symbols and Punctuation
+    if (codepoint >= 0xFF00 && codepoint <= 0xFFEF) return han;      // Halfwidth and Fullwidth Forms
     if (codepoint >= 0xAC00 && codepoint <= 0xD7A3) return hangul;   // Hangul syllables
     if (codepoint >= 0x0590 && codepoint <= 0x05FF) return hebrew;   // Hebrew
     if (codepoint >= 0x0600 && codepoint <= 0x06FF) return arabic;   // Arabic
@@ -132,6 +172,17 @@ const std::vector<std::string_view>& scriptFamilyHints(uint32_t codepoint) {
     if (codepoint >= 0x1F300 && codepoint <= 0x1FAFF) return emoji;  // Misc. emoji blocks
     if (codepoint >= 0x2600 && codepoint <= 0x27BF) return emoji;
     return empty;
+}
+
+// A 16.16 `wght` axis value as a CSS weight (1..1000).
+uint16_t fixedWeight(FT_Fixed value) {
+    return static_cast<uint16_t>(std::clamp<long>(static_cast<long>((value + 0x8000) >> 16), 1, 1000));
+}
+
+bool isCollectionPath(std::string_view path) {
+    if (path.size() < 4) return false;
+    const std::string_view ext = path.substr(path.size() - 4);
+    return iequals(ext, ".ttc") || iequals(ext, ".otc");
 }
 
 bool familyMatchesHints(std::string_view family, const std::vector<std::string_view>& hints) {
@@ -160,13 +211,40 @@ bool FontTable::loadFace(std::vector<uint8_t> memory, RegisteredFont& out) const
     out.face = face;
     out.memory = std::move(memory);
     out.family = face->family_name != nullptr ? face->family_name : "";
-    // FreeType exposes only a coarse bold/regular style flag; a font with no OS/2 weight table
-    // reports FT_STYLE_FLAG_BOLD -> weight 700, otherwise 400. Fonts with an OS/2 table (TrueType
-    // /OpenType) are handled the same way here since xt_text does not parse OS/2 usWeightClass;
-    // the test fixtures are single-weight fonts, so this coarse mapping is sufficient.
-    out.weight = (face->style_flags & FT_STYLE_FLAG_BOLD) != 0 ? 700 : 400;
-    out.italic = (face->style_flags & FT_STYLE_FLAG_ITALIC) != 0;
+    readFaceFacts(face, out);
     return true;
+}
+
+void FontTable::readFaceFacts(FT_Face face, RegisteredFont& font) const {
+    // T-569 (07 §7.20): the OS/2 usWeightClass; FreeType's coarse bold flag only for a face
+    // without an OS/2 table.
+    const auto* os2 = static_cast<const TT_OS2*>(FT_Get_Sfnt_Table(face, FT_SFNT_OS2));
+    if (os2 != nullptr && os2->version != 0xFFFF && os2->usWeightClass != 0) {
+        int weight = os2->usWeightClass;
+        if (weight < 10) weight *= 100;
+        font.weight = static_cast<uint16_t>(std::clamp(weight, 1, 1000));
+        font.italic = (os2->fsSelection & 0x0201) != 0 || (face->style_flags & FT_STYLE_FLAG_ITALIC) != 0;
+        font.cjk = (os2->ulUnicodeRange2 & ((1u << 17) | (1u << 24) | (1u << 27))) != 0 ||
+                   (os2->version >= 1 && (os2->ulCodePageRange1 & (0x1Fu << 17)) != 0);
+    } else {
+        font.weight = (face->style_flags & FT_STYLE_FLAG_BOLD) != 0 ? 700 : 400;
+        font.italic = (face->style_flags & FT_STYLE_FLAG_ITALIC) != 0;
+    }
+    font.weightMin = font.weight;
+    font.weightMax = font.weight;
+    font.variable = false;
+    FT_MM_Var* mm = nullptr;
+    if (FT_HAS_MULTIPLE_MASTERS(face) && FT_Get_MM_Var(face, &mm) == 0 && mm != nullptr) {
+        for (FT_UInt a = 0; a < mm->num_axis; ++a) {
+            if (mm->axis[a].tag != FT_MAKE_TAG('w', 'g', 'h', 't')) continue;
+            font.variable = true;
+            font.weightMin = fixedWeight(mm->axis[a].minimum);
+            font.weightMax = fixedWeight(mm->axis[a].maximum);
+            font.weight = fixedWeight(mm->axis[a].def);
+            break;
+        }
+        FT_Done_MM_Var(library_, mm);
+    }
 }
 
 bool FontTable::addFontFile(std::string_view path) {
@@ -194,30 +272,54 @@ bool FontTable::addFontMemory(std::vector<uint8_t> bytes) {
     return true;
 }
 
-bool FontTable::addFontFileDeferred(std::string_view path) {
-    FontNameInfo info;
-    if (!readFontNameTable(path, info)) return false;
-    RegisteredFont font;
-    font.path = std::string(path);
-    font.family = std::move(info.family);
-    font.subfamily = std::move(info.subfamily);
-    font.postScriptName = std::move(info.postScriptName);
-    font.weight = weightFromSubfamily(font.subfamily);
-    font.italic = italicFromSubfamily(font.subfamily);
-    font.deferred = true;
-    fonts_.push_back(std::move(font));
-    return true;
+uint32_t FontTable::addFontFileDeferred(std::string_view path, uint32_t maxFaces) {
+    // T-569 (07 §7.20): every face of a `.ttc`/`.otc` collection is its own candidate.
+    const uint32_t faces = fontFaceCount(path);
+    uint32_t added = 0;
+    for (uint32_t index = 0; index < faces && added < maxFaces; ++index) {
+        FontNameInfo info;
+        if (!readFontNameTable(path, info, index)) continue;
+        RegisteredFont font;
+        font.path = std::string(path);
+        font.faceIndex = static_cast<long>(index);
+        font.collection = faces > 1 || isCollectionPath(path);
+        font.family = std::move(info.family);
+        font.subfamily = std::move(info.subfamily);
+        font.postScriptName = std::move(info.postScriptName);
+        if (info.weightClass != 0) {
+            font.weight = info.weightClass;
+            font.italic = info.italic || italicFromSubfamily(font.subfamily);
+        } else {
+            font.weight = weightFromSubfamily(font.subfamily);
+            font.italic = italicFromSubfamily(font.subfamily);
+        }
+        font.cjk = info.cjk;
+        font.weightMin = font.weight;
+        font.weightMax = font.weight;
+        if (info.variableWeight && info.weightMin <= info.weightMax) {
+            font.variable = true;
+            font.weightMin = info.weightMin;
+            font.weightMax = info.weightMax;
+            font.weight = std::clamp(info.weightDefault, info.weightMin, info.weightMax);
+        }
+        font.deferred = true;
+        fonts_.push_back(std::move(font));
+        ++added;
+    }
+    return added;
 }
 
 void FontTable::addFallbackFont(FontId id) { fallback_.push_back(id); }
 
 void FontTable::fonts(std::vector<FontDesc>& out) const {
     for (size_t i = 0; i < fonts_.size(); ++i) {
+        if (fonts_[i].base != kInvalidFont) continue;  // T-569: weight instances are not listed.
         FontDesc desc;
         desc.id = static_cast<FontId>(i);
         desc.family = fonts_[i].family;
         desc.weight = fonts_[i].weight;
         desc.italic = fonts_[i].italic;
+        desc.cjk = fonts_[i].cjk;
         desc.fallback = std::find(fallback_.begin(), fallback_.end(), desc.id) != fallback_.end();
         out.push_back(std::move(desc));
     }
@@ -226,6 +328,78 @@ void FontTable::fonts(std::vector<FontDesc>& out) const {
 std::string FontTable::fontPath(FontId id) const {
     if (id >= fonts_.size()) return std::string();
     return fonts_[id].path;
+}
+
+long FontTable::fontFaceIndex(FontId id) const {
+    if (id >= fonts_.size() || !fonts_[id].collection) return -1;
+    return fonts_[id].faceIndex;
+}
+
+float FontTable::embolden(FontId id) const { return id < fonts_.size() ? fonts_[id].embolden : 0.0f; }
+
+std::string FontTable::missingCjkFamily(const std::vector<std::string>& stack) const {
+    return firstMissingCjkFamily(stack, [this](std::string_view family) {
+        FamilyPresence state = FamilyPresence::kAbsent;
+        for (const RegisteredFont& f : fonts_) {
+            if (f.broken || f.base != kInvalidFont || !iequals(f.family, family)) continue;
+            if (f.cjk) return FamilyPresence::kInstalledCjk;
+            state = FamilyPresence::kInstalled;
+        }
+        return state;
+    });
+}
+
+FontId FontTable::instanceOf(FontId base, uint16_t wght, float strength) const {
+    if (wght == 0 && strength <= 0.0f) return base;
+    const auto key = std::make_tuple(base, wght, static_cast<int>(std::lround(strength * 1000.0f)));
+    const auto found = instances_.find(key);
+    if (found != instances_.end()) return found->second;
+    if (face(base) == nullptr) return base;  // Opens a deferred base; a broken one stays itself.
+    FT_Face instanceFace = nullptr;
+    const FT_Error err = !fonts_[base].path.empty()
+                             ? newFaceUtf8(library_, fonts_[base].path, fonts_[base].faceIndex, &instanceFace)
+                             : FT_New_Memory_Face(library_, fonts_[base].memory.data(),
+                                                  static_cast<FT_Long>(fonts_[base].memory.size()),
+                                                  fonts_[base].faceIndex, &instanceFace);
+    if (err != 0 || instanceFace == nullptr) {
+        instances_.emplace(key, base);
+        return base;
+    }
+    if (wght != 0) {
+        // T-569 (07 §7.20): a variable face's `wght` axis set to the matched weight, the other
+        // axes left at their defaults.
+        FT_MM_Var* mm = nullptr;
+        if (FT_Get_MM_Var(instanceFace, &mm) == 0 && mm != nullptr) {
+            std::vector<FT_Fixed> coords(mm->num_axis);
+            for (FT_UInt a = 0; a < mm->num_axis; ++a) {
+                const bool weightAxis = mm->axis[a].tag == FT_MAKE_TAG('w', 'g', 'h', 't');
+                coords[a] = weightAxis ? static_cast<FT_Fixed>(wght) * 65536 : mm->axis[a].def;
+            }
+            FT_Set_Var_Design_Coordinates(instanceFace, mm->num_axis, coords.data());
+            FT_Done_MM_Var(library_, mm);
+        }
+    }
+    RegisteredFont inst;
+    const RegisteredFont& b = fonts_[base];
+    inst.face = instanceFace;
+    inst.family = b.family;
+    inst.subfamily = b.subfamily;
+    inst.postScriptName = b.postScriptName;
+    inst.path = b.path;
+    inst.faceIndex = b.faceIndex;
+    inst.collection = b.collection;
+    inst.weight = wght != 0 ? wght : b.weight;
+    inst.weightMin = inst.weight;
+    inst.weightMax = inst.weight;
+    inst.italic = b.italic;
+    inst.cjk = b.cjk;
+    inst.base = base;
+    inst.instanceWeight = wght;
+    inst.embolden = strength;
+    fonts_.push_back(std::move(inst));
+    const auto id = static_cast<FontId>(fonts_.size() - 1);
+    instances_.emplace(key, id);
+    return id;
 }
 
 FT_Face FontTable::openDeferred(size_t index) const {
@@ -244,32 +418,53 @@ FT_Face FontTable::openDeferred(size_t index) const {
     }
     f.face = face;
     ++openedCount_;
-    // FreeType's style_flags are more reliable than the subfamily-string guess used while deferred
-    // (Docs/tasks/T-104.md); replace it now that the face is actually open.
-    f.weight = (face->style_flags & FT_STYLE_FLAG_BOLD) != 0 ? 700 : 400;
-    f.italic = (face->style_flags & FT_STYLE_FLAG_ITALIC) != 0;
+    // T-569: the deferred scan already read OS/2 and `fvar`, the tables readFaceFacts() reads,
+    // so the weight a match was made with stays put; only a face whose scan found no OS/2 table is
+    // refined now (Docs/tasks/T-104.md: FreeType's style flags beat the subfamily guess).
+    const auto* os2 = static_cast<const TT_OS2*>(FT_Get_Sfnt_Table(face, FT_SFNT_OS2));
+    if (os2 == nullptr || os2->version == 0xFFFF || os2->usWeightClass == 0) {
+        f.weight = (face->style_flags & FT_STYLE_FLAG_BOLD) != 0 ? 700 : 400;
+        f.italic = (face->style_flags & FT_STYLE_FLAG_ITALIC) != 0;
+        if (!f.variable) {
+            f.weightMin = f.weight;
+            f.weightMax = f.weight;
+        }
+    }
     if (f.family.empty() && face->family_name != nullptr) f.family = face->family_name;
     return face;
 }
 
 FontId FontTable::matchFamily(std::string_view family, uint16_t weight, bool italic) const {
+    // T-569 (07 §7.20): italic match first, then CSS Fonts 4 weight ranking (weightRank()), ties
+    // to the earlier-registered face. The family's heaviest face decides synthetic bold.
     FontId best = kInvalidFont;
-    int bestDistance = -1;
+    int bestRank = 0;
     bool bestItalic = false;
     for (size_t i = 0; i < fonts_.size(); ++i) {
         const RegisteredFont& f = fonts_[i];
-        if (f.broken) continue;
+        if (f.broken || f.base != kInvalidFont) continue;
         if (!iequals(f.family, family)) continue;
-        const int distance = weightDistance(f.weight, weight);
+        const int rank = weightRank(f.weightMin, f.weightMax, weight);
         const bool italicMatch = f.italic == italic;
         if (best == kInvalidFont || (italicMatch && !bestItalic) ||
-            (italicMatch == bestItalic && distance < bestDistance)) {
+            (italicMatch == bestItalic && rank < bestRank)) {
             best = static_cast<FontId>(i);
-            bestDistance = distance;
+            bestRank = rank;
             bestItalic = italicMatch;
         }
     }
-    return best;
+    if (best == kInvalidFont) return best;
+    uint16_t heaviest = 0;
+    for (const RegisteredFont& f : fonts_) {
+        if (!f.broken && f.base == kInvalidFont && f.italic == fonts_[best].italic &&
+            iequals(f.family, family)) {
+            heaviest = std::max(heaviest, f.weightMax);
+        }
+    }
+    const RegisteredFont& chosen = fonts_[best];
+    const uint16_t effective = std::clamp(weight, chosen.weightMin, chosen.weightMax);
+    const uint16_t wght = chosen.variable && effective != chosen.weight ? effective : 0;
+    return instanceOf(best, wght, emboldenFor(weight, heaviest));
 }
 
 FontId FontTable::match(const FontRequest& request) const {

@@ -198,3 +198,13 @@ scene_rig_basic_0 scene_rig_basic.xt 256 256 0 ffffff scene_rig_basic.events
 scene_rig_basic_1 scene_rig_basic.xt 256 256 0.4 ffffff scene_rig_basic.events
 scene_rig_basic_2 scene_rig_basic.xt 256 256 0.8 ffffff scene_rig_basic.events
 scene_rig_own_transform scene_rig_own_transform.xt 256 256 0 ffffff
+# T-572 (18 §18.13; improvement report F24 / F25 / F32): an inset shadow ring (no blur, 2 px spread)
+# and a blurred inset; a rounded `overflow: hidden` parent clipping its children; a card flipped
+# by its parent with two backface-hidden faces at 0 / 86 / 180 deg (ui_3d_flip_90 samples 0.48 s:
+# at exactly 90 deg both faces are edge-on and the image is empty). xt_gl_tests compares GL to
+# the same images.
+ui_fx_shadow_inset_ring ui_fx_shadow_inset_ring.xt 256 256 0 0b0e12
+ui_rounded_clip_children ui_rounded_clip_children.xt 256 256 0 0b0e12
+ui_3d_flip_0 ui_3d_flip.xt 256 256 0 0b0e12
+ui_3d_flip_90 ui_3d_flip.xt 256 256 0.48 0b0e12
+ui_3d_flip_180 ui_3d_flip.xt 256 256 1.0 0b0e12

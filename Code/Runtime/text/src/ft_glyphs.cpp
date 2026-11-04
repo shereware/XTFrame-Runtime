@@ -85,7 +85,7 @@ int cubicTo(const FT_Vector* control1, const FT_Vector* control2, const FT_Vecto
 }  // namespace
 
 bool ftDecomposeOutline(FT_Face face, uint32_t glyphId, std::vector<PathVerb>& outVerbs,
-                        std::vector<float>& outPoints) {
+                        std::vector<float>& outPoints, float embolden) {
     outVerbs.clear();
     outPoints.clear();
     if (face == nullptr) return false;
@@ -93,6 +93,13 @@ bool ftDecomposeOutline(FT_Face face, uint32_t glyphId, std::vector<PathVerb>& o
     if (face->glyph->format != FT_GLYPH_FORMAT_OUTLINE) return false;
 
     const float upem = face->units_per_EM != 0 ? static_cast<float>(face->units_per_EM) : 1000.0f;
+    if (embolden > 0.0f) {
+        // T-569 (07 §7.20): synthetic bold. FT_Outline_EmboldenXY grows the outline right and up
+        // by the strength (the left side bearing stays), matching the advance HarfBuzz's
+        // hb_font_set_synthetic_bold() adds (ft_text_shaper.cpp).
+        const auto strength = static_cast<FT_Pos>(std::lround(embolden * upem));
+        FT_Outline_EmboldenXY(&face->glyph->outline, strength, strength);
+    }
     DecomposeCtx ctx{&outVerbs, &outPoints, 1.0f / upem};
 
     FT_Outline_Funcs funcs{};
@@ -132,7 +139,8 @@ bool ftDecomposeOutline(FT_Face face, uint32_t glyphId, std::vector<PathVerb>& o
     return !outVerbs.empty();
 }
 
-bool ftRenderBitmap(FT_Face face, uint32_t glyphId, float sizePx, float subpixelX, GlyphBitmap& out) {
+bool ftRenderBitmap(FT_Face face, uint32_t glyphId, float sizePx, float subpixelX, GlyphBitmap& out,
+                    float embolden) {
     if (face == nullptr || sizePx <= 0) return false;
     const FT_F26Dot6 charSize = static_cast<FT_F26Dot6>(std::lround(sizePx * 64.0f));
     if (FT_Set_Char_Size(face, 0, charSize, 0, 0) != 0) return false;
@@ -143,6 +151,11 @@ bool ftRenderBitmap(FT_Face face, uint32_t glyphId, float sizePx, float subpixel
     if (FT_Load_Glyph(face, glyphId, FT_LOAD_DEFAULT | FT_LOAD_TARGET_LIGHT) != 0) return false;
     // Quantize to the 1/4 px grid the bitmap cache keys on, then shift the (hinted) outline by
     // that fraction of a pixel before rasterizing. 26.6 fixed point, so 1/4 px == 16 units.
+    if (embolden > 0.0f && face->glyph->format == FT_GLYPH_FORMAT_OUTLINE) {
+        // T-569: synthetic bold in 26.6 pixels, as in ftDecomposeOutline().
+        const auto strength = static_cast<FT_Pos>(std::lround(embolden * sizePx * 64.0f));
+        FT_Outline_EmboldenXY(&face->glyph->outline, strength, strength);
+    }
     const float quantized = std::floor(subpixelX * 4.0f + 0.5f) / 4.0f;
     if (quantized != 0.0f && face->glyph->format == FT_GLYPH_FORMAT_OUTLINE) {
         FT_Outline_Translate(&face->glyph->outline, static_cast<FT_Pos>(std::lround(quantized * 64.0f)), 0);

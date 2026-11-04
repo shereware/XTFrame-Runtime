@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -38,7 +39,9 @@ public:
     bool addFontMemory(std::vector<uint8_t> bytes) override;
 
     /// Registers `.ttf`/`.otf` files found directly inside `dir` (non-recursive, in directory
-    /// order) until `maxFiles` of them have been registered successfully. Returns how many were
+    /// order) until `maxFiles` of them have been registered successfully. T-569 (07 §7.20): also
+    /// `.ttc`/`.otc` collections, each face (FreeType face index) as its own font; the budget and
+    /// the returned count are then in faces. Returns how many were
     /// registered; a missing/unreadable directory registers nothing and returns 0. Used by hosts to pick up
     /// the system font directories (Docs/design/12-compiler.md §12.6). Each font is registered
     /// lazily (Docs/tasks/T-104.md): only its `name` table is read here; FreeType opens it the
@@ -69,6 +72,13 @@ public:
     /// empty for a font registered from memory or a single addFontFile() call, or an unknown id.
     /// Tooling only (T-429: `xtframe-view --list-fonts`).
     std::string fontPath(FontId id) const;
+    /// T-569: the face index of font `id` within its `.ttc`/`.otc` collection file, or -1 when it
+    /// is not a collection face. `xtframe-view --list-fonts` prints such a face as `path#index`.
+    long fontFaceIndex(FontId id) const;
+    /// T-569 (Docs/design/07-text.md §7.20): the first CJK family of the `font-family` list `stack`
+    /// (generic families skipped) when no registered font has that family name, else "". A family
+    /// counts as CJK by its name, or -- when installed -- by its OS/2 CJK coverage bits.
+    std::string missingCjkFamily(const std::vector<std::string>& stack) const;
 
     /// Finds the best registered font for `request`, falling back through the system-fallback
     /// candidate list (Docs/design/07-text.md §7.3 step 3); returns kInvalidFont only if no font

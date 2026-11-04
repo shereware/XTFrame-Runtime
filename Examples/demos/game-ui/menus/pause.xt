@@ -6,6 +6,7 @@
   </head>
   <body>
     <div id="root">
+      <div id="editorBg" editor-only/>
       <div id="scrim"></div>
       <div id="halo"></div>
       <div id="menu" class="panel">

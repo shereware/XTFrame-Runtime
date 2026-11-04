@@ -99,6 +99,10 @@ struct PackOptions {
     /// does not know where they come from (the editor's history).
     std::string projectCommit;
     std::string projectCheckpoint;
+    /// T-571 (22 §22.14, `--verbose`): one `i18n: unused key '<key>'` warning per unused strings-table
+    /// key. false (the default): one `i18n: N unused key(s) in <lang>.csv (--verbose lists them)`
+    /// warning per table instead.
+    bool verbose = false;
 };
 
 /// What a pack() run did.
@@ -162,6 +166,14 @@ struct PackReport {
     /// against the packed Document). Under `PackOptions::strict` each is an error diagnostic
     /// instead and is not listed here.
     std::vector<std::string> flowWarnings;
+    /// T-580 (22 §22.15): "<ui id>: port 'document.<name>' (trigger|flow emit) is already listed
+    /// (origin ...); the first is kept" -- one line per undeclared emit name that another source
+    /// already put in `ports.out`. Informational; never an error.
+    std::vector<std::string> infos;
+    /// T-569 (Docs/design/07-text.md §7.20): "<ui id>: missing font '<family>'" -- one line per
+    /// distinct first CJK family of a UI's text `font-family` lists that no font the pack
+    /// registered has (with `--fonts bundled` the system fonts are not registered). A warning.
+    std::vector<std::string> missingFonts;
 };
 
 /// Packs `project` into `options.outDir` per §22.3/§22.4. With a non-empty `options.onlyUis` and an

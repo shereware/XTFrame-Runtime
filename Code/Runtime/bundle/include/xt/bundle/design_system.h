@@ -208,8 +208,10 @@ struct DesignSystem {
     std::vector<TextEntry> texts;
     std::vector<TextEntry> decisions;
     std::vector<ReferenceMeta> references;
-    /// `type.yaml` keys other than `roles` (scale, effects, ...); null when there are none.
-    nlohmann::json typeExtra;
+    /// `type.yaml` keys other than `roles` (scale, effects, ...); null when there are none. T-574
+    /// (35 §35.11): ordered, so the scale and the effects keep their file order in DESIGN.md and
+    /// on save.
+    nlohmann::ordered_json typeExtra;
     /// T-305 addition: `palette.yaml` keys other than `groups`/`swatches` (`version`, `contrast`,
     /// ...), so a save keeps them; null when there are none.
     nlohmann::json paletteExtra;
@@ -230,6 +232,10 @@ bool parseRel(std::string_view text, Rel* rel = nullptr);
 std::string_view kindPrefix(EntryKind kind);
 /// `<prefix>:<id>`, e.g. `swatch:ember`.
 std::string entryRef(EntryKind kind, std::string_view id);
+/// T-574 (35 §35.11): the id of the reference file at `pathUnderReferences` (the path under
+/// `references/`, '/' separators): without its extension, a web reference's `.url.yaml` (any
+/// case) counting as one (`pipeline/canvas.url.yaml` -> `pipeline/canvas`).
+std::string referenceIdOf(std::string_view pathUnderReferences);
 /// Splits a reference into kind and id. The id keeps an anchor: `ref:<group>/<name>@<annotation>`
 /// (`@` only for ref), `text:<file>#<anchor>`, `type:<id>#<key>`, `layer:<ui>#<id>` (a layer always
 /// has one). `token:--name` reads as id `name`. False for an empty text, a missing or unknown

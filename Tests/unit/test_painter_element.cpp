@@ -1157,6 +1157,46 @@ TEST_CASE("PaintElement: T-327 more than 4096 tiles falls back to stretch and fl
     CHECK_FALSE(painter.backgroundTilesCapped());
 }
 
+// T-572 (18 §18.13, F25): a rounded padding box clips the children with a PushClipPath of its
+// rounded rect (four Cubic corners, NonZero), border widths taken off the radius; square corners
+// keep the PushClipRect above.
+TEST_CASE("PaintElement: T-572 rounded overflow hidden clips children with a PushClipPath") {
+    NodeArena arena;
+    NodeId root = makeElement(arena, kInvalidNode);
+    ElementData& rootData = arena.element(root);
+    rootData.box.width = 80;
+    rootData.box.height = 60;
+    rootData.box.border = Edges{4, 4, 4, 4};
+    rootData.style.overflowX = rootData.style.overflowY = Overflow::Hidden;
+    setRadius(rootData, 16);
+
+    NodeId child = makeElement(arena, root);
+    ElementData& childData = arena.element(child);
+    childData.box.width = 10;
+    childData.box.height = 10;
+    childData.style.base[prop::BackgroundColor] = Value::ofColor(Color{0, 0, 1, 1});
+
+    CommandList cmds;
+    paintDump(arena, root, cmds);
+    REQUIRE(cmds.commands.size() == 3);
+    CHECK(cmds.commands[0].kind == CmdKind::PushClipPath);
+    CHECK(cmds.commands[1].kind == CmdKind::FillPath);
+    CHECK(cmds.commands[2].kind == CmdKind::PopClip);
+    CHECK(countKind(cmds, CmdKind::PushClipRect) == 0);
+    const ClipPathCmd& clip = cmds.clipPaths[cmds.commands[0].index];
+    CHECK(clip.rule == FillRule::NonZero);
+    CHECK(countVerb(cmds, clip.path, PathVerb::Cubic) == 4);
+    // The path is the padding box (border 4 px) with the radius less the border: 16 - 4 = 12.
+    Rect bounds = pointsBounds(cmds, clip.path, clip.path.pointOffset, clip.path.pointCount);
+    CHECK(bounds.x == doctest::Approx(4.0f));
+    CHECK(bounds.y == doctest::Approx(4.0f));
+    CHECK(bounds.w == doctest::Approx(72.0f));
+    CHECK(bounds.h == doctest::Approx(52.0f));
+    // The first Move sits at (left + r, top) = (4 + 12, 4).
+    CHECK(cmds.points[clip.path.pointOffset] == doctest::Approx(16.0f));
+    CHECK(cmds.points[clip.path.pointOffset + 1] == doctest::Approx(4.0f));
+}
+
 TEST_CASE("PaintElement: T-327 a rounded box clips the image set with one PushClipPath") {
     NodeArena arena;
     NodeId root = backgroundElement(arena);

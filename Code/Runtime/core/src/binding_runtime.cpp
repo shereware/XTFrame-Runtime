@@ -19,6 +19,7 @@
 #include "style_decode.h"
 #include "trigger_runtime.h"
 #include "xt/animator.h"
+#include "xt/charconv.h"
 #include "xt/num_guard.h"
 #include "xt/property.h"
 #include "xt/version.h"
@@ -124,8 +125,24 @@ BVal ofValue(Kind kind, const Value& v) {
     return b;
 }
 
-/// Shortest fixed form, up to 6 decimals.
+/// T-568 (27 §27.8, 53 §53.4.9): a number as text -- `xt::formatFloat(v, 6)` (`%.6g`), the flow's
+/// rule, so `123.45f` reads `123.45`, not `123.450003`. As before, a non-finite value is "0" and
+/// negative zero "0".
 std::string numText(double v) {
+    if (!std::isfinite(v)) {
+        return "0";
+    }
+    char buf[64];
+    std::string s(buf, xt::formatFloat(buf, sizeof(buf), v, 6));
+    if (s == "-0") {
+        s = "0";
+    }
+    return s;
+}
+
+/// The fixed form (up to 6 decimals, trailing zeros removed) a CSS value is written with: a
+/// property binding's text keeps its full precision and never takes an exponent.
+std::string cssNumText(double v) {
     if (!std::isfinite(v)) {
         return "0";
     }
@@ -210,6 +227,24 @@ std::string toStr(const BVal& b) {
             return numText(b.v.v3.x) + "," + numText(b.v.v3.y) + "," + numText(b.v.v3.z);
         default:
             return std::string();
+    }
+}
+
+std::string toCssStr(const BVal& b) {
+    switch (b.kind) {
+        case Kind::Num:
+            return b.isBool ? toStr(b) : cssNumText(b.num);
+        case Kind::Len:
+            if (b.v.len.unit == LengthUnit::Auto) {
+                return "auto";
+            }
+            return cssNumText(b.v.len.value) + unitText(b.v.len.unit);
+        case Kind::Vec2:
+            return cssNumText(b.v.v2.x) + "," + cssNumText(b.v.v2.y);
+        case Kind::Vec3:
+            return cssNumText(b.v.v3.x) + "," + cssNumText(b.v.v3.y) + "," + cssNumText(b.v.v3.z);
+        default:
+            return toStr(b);
     }
 }
 

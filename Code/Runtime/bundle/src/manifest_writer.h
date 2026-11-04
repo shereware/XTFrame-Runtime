@@ -102,6 +102,9 @@ struct ManifestData {
     /// T-193 (§22.10 `flows.global`): the global flow file, relative to the bundle root, written
     /// as `"flows": {"global": ...}` just before `motionSpec`; omitted when empty.
     std::string globalFlow;
+    /// T-580 (§22.15 top-level `flowInterface`): the global flow's host interface, written right
+    /// after `flows`; omitted when not `present`.
+    FlowInterface globalFlowInterface;
     /// T-183 (§22.10 `motionSpec`): JSON object text, written last; omitted when empty.
     std::string motionSpecJson;
     /// T-200 (§22.10 `symbols[]`): written after `fonts`, before `flows`; omitted when empty.

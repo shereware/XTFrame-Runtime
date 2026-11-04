@@ -138,8 +138,20 @@ TEST_CASE("T-179: pack copies strings tables, lints them and records fallback ch
     CHECK(hasWarning(report, "strings/zh-TW.csv", "untranslated key 'pause_img'"));
     CHECK(hasWarning(report, "strings/zh-TW.csv", "untranslated key 'pause_resume'"));
     CHECK_FALSE(hasWarning(report, "strings/zh-TW.csv", "untranslated key 'pause_title'"));
-    CHECK(hasWarning(report, "strings/en.csv", "unused key 'old_key'"));
+    // T-571 (22 §22.14): one summary line per table; --verbose lists the keys.
+    CHECK(hasWarning(report, "strings/en.csv", "i18n: 1 unused key(s) in en.csv (--verbose lists them)"));
+    CHECK_FALSE(hasWarning(report, "strings/en.csv", "unused key 'old_key'"));
+    CHECK_FALSE(hasWarning(report, "strings/zh-TW.csv", "unused key"));
     CHECK_FALSE(hasWarning(report, "strings/en.csv", "untranslated"));
+    {
+        PackOptions verbose = options;
+        verbose.outDir = outDir("full_verbose");
+        verbose.verbose = true;
+        const PackReport listed = pack(loadProject(source), verbose);
+        CHECK(listed.ok);
+        CHECK(hasWarning(listed, "strings/en.csv", "i18n: unused key 'old_key'"));
+        CHECK_FALSE(hasWarning(listed, "strings/en.csv", "unused key(s)"));
+    }
 
     std::string error;
     Result<std::unique_ptr<Bundle>> opened = Bundle::open(out, nullptr, &error);

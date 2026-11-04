@@ -46,9 +46,9 @@ uint32_t StringPool::addBuffer() {
 
 MathOp parseMathOp(std::string_view op) {
     static constexpr std::pair<std::string_view, MathOp> kOps[] = {
-        {"add", MathOp::Add}, {"sub", MathOp::Sub},    {"mul", MathOp::Mul},     {"div", MathOp::Div},
-        {"min", MathOp::Min}, {"max", MathOp::Max},    {"clamp", MathOp::Clamp}, {"map", MathOp::Map},
-        {"abs", MathOp::Abs}, {"round", MathOp::Round}};
+        {"add", MathOp::Add}, {"sub", MathOp::Sub},     {"mul", MathOp::Mul},     {"div", MathOp::Div},
+        {"min", MathOp::Min}, {"max", MathOp::Max},     {"clamp", MathOp::Clamp}, {"map", MathOp::Map},
+        {"abs", MathOp::Abs}, {"round", MathOp::Round}, {"mod", MathOp::Mod}};  // T-573: mod.
     for (const auto& [name, value] : kOps) {
         if (name == op) {
             return value;
@@ -466,10 +466,12 @@ void FlowRuntime::Impl::setCounter(int nodeIndex, double value) {
     NodeRuntime& n = nodes[static_cast<size_t>(nodeIndex)];
     const RtValue& min = values[n.paramBase + slots::counter::kMin];
     const RtValue& max = values[n.paramBase + slots::counter::kMax];
-    if (min.type != kNoValue) {
+    // T-573 (53 §53.100): a `wrap` counter is not clamped (its steps wrap in handlePulseInput()).
+    const bool wrap = paramBool(n, slots::counter::kWrap, false);
+    if (min.type != kNoValue && !wrap) {
         value = std::max(value, min.n);
     }
-    if (max.type != kNoValue) {
+    if (max.type != kNoValue && !wrap) {
         value = std::min(value, max.n);
     }
     n.counterValue = value;
@@ -556,10 +558,21 @@ void FlowRuntime::Impl::handlePulseInput(int nodeIndex, uint16_t slot) {
     switch (n.type) {
         case NodeType::Counter: {
             double step = paramNum(n, slots::counter::kStep, 1.0);
-            if (slot == slots::counter::kIncrement) {
-                setCounter(nodeIndex, n.counterValue + step);
-            } else if (slot == slots::counter::kDecrement) {
-                setCounter(nodeIndex, n.counterValue - step);
+            // T-573 (53 §53.100): with `wrap`, a step past `max` lands on `min` and one below
+            // `min` on `max` (when both bounds are given).
+            const bool wrap = paramBool(n, slots::counter::kWrap, false);
+            const RtValue& min = values[n.paramBase + slots::counter::kMin];
+            const RtValue& max = values[n.paramBase + slots::counter::kMax];
+            if (slot == slots::counter::kIncrement || slot == slots::counter::kDecrement) {
+                double next = n.counterValue + (slot == slots::counter::kIncrement ? step : -step);
+                if (wrap && max.type != kNoValue && min.type != kNoValue) {
+                    if (next > max.n) {
+                        next = min.n;
+                    } else if (next < min.n) {
+                        next = max.n;
+                    }
+                }
+                setCounter(nodeIndex, next);
             } else if (slot == slots::counter::kReset) {
                 setCounter(nodeIndex, paramNum(n, slots::counter::kInitial, 0.0));
             }
@@ -686,8 +699,17 @@ void FlowRuntime::Impl::handleActionPulse(int nodeIndex, uint16_t slot) {
             break;
         case NodeType::Emit: {
             const RtValue& value = values[n.inputBase + slots::action::kEmitValue];
-            sendHostEvent(FlowHostEventKind::Emit, nodeIndex, paramText(n, slots::action::kName),
-                          value.type != kNoValue ? toPortValue(value) : typedValue(PortType::Pulse), 1.0f);
+            const std::string port = paramText(n, slots::action::kName);
+            const PortValue sent = value.type != kNoValue ? toPortValue(value) : typedValue(PortType::Pulse);
+            if (sent.type != PortType::Pulse && enabled && !replacing()) {
+                // T-573 (27 §27.8): an emit to a declared `out` port updates that port (and so its
+                // bindings) in every instance of the node's UI, before the host hears the event.
+                const std::string uiId = n.uiId;  // A binding's listener may reload the graph.
+                for (DocEndpointState* state : statesFor(uiId)) {
+                    writeEmittedOutPort(*state->doc, port, InputValue{sent.type, sent.b, sent.n, sent.s});
+                }
+            }
+            sendHostEvent(FlowHostEventKind::Emit, nodeIndex, port, sent, 1.0f);
             break;
         }
         default:
@@ -743,6 +765,10 @@ void FlowRuntime::Impl::evaluateNode(int nodeIndex) {
                     break;
                 case MathOp::Round:
                     out = std::round(a);
+                    break;
+                case MathOp::Mod:
+                    // T-573 (53 §53.100): float remainder, the sign of the dividend; divisor 0 -> 0.
+                    out = (b != 0.0) ? std::fmod(a, b) : 0.0;
                     break;
                 case MathOp::Unknown:
                     break;
@@ -1137,6 +1163,7 @@ void FlowRuntime::Impl::timelineInput(int nodeIndex, uint16_t slot, const RtValu
     const std::string scope = paramText(n, slots::timeline::kScope);
     const std::string nodeId = n.id;
     const bool loop = paramBool(n, slots::timeline::kLoop, false);
+    const bool hold = paramBool(n, slots::timeline::kHold, false);  // T-573 (53 §53.100).
     const auto rate = static_cast<float>(paramNum(n, slots::timeline::kRate, 1.0));
     for (DocEndpointState* state : statesFor(n.uiId)) {
         Status status = Status::kOk;
@@ -1144,6 +1171,7 @@ void FlowRuntime::Impl::timelineInput(int nodeIndex, uint16_t slot, const RtValu
             PlayOptions options;
             options.loop = loop;
             options.rate = rate;
+            options.hold = hold;  // T-573: hold the last frame, as the trigger play() does.
             status = state->doc->playTimeline(scope, name, options);
         } else if (slot == slots::timeline::kStop) {
             status = state->doc->stopTimeline(scope, name);

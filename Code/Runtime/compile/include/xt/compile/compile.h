@@ -88,6 +88,12 @@ struct CompileOptions {
     /// element. false (the default, editor preview and `xtframe-compile`): every name stays as
     /// written.
     bool publishAssetNames = false;
+    /// T-571 (Docs/design/22-bundle.md §22.14): a published build's device glyph images (the
+    /// manifest `glyphs` assets, already in their published names). When the document has a
+    /// `<glyph>`, each name not already in ASST is appended as an external Image entry, as written
+    /// (no lookup, no rewrite, no embedding), so Document::resolveGlyphs finds the asset an
+    /// IGlyphProvider names. A document without `<glyph>` ignores it.
+    std::vector<std::string> glyphImageAssets;
     /// T-342 (Docs/design/03-scene-and-properties.md §3.13, 22-bundle.md §22.15): the publish view.
     /// true: every element carrying the `editor-only` attribute is removed with its subtree right
     /// after parsing (the document's and every symbol library's), before anything else is compiled,

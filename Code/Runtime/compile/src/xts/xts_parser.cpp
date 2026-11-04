@@ -1437,6 +1437,27 @@ private:
     // keeps compiling. Structural misuse inside a supported block stays an error.
     void mediaWarn(const Token& tok, const std::string& msg) { warn(tok, msg + "; @media block ignored"); }
 
+    // `<number>` or `<number> / <number>` (both positive, unitless) of an aspect-ratio media
+    // feature; m_cur is on the first number. False after a warning.
+    bool parseMediaRatio(float& ratio) {
+        if (m_cur.kind != TokenKind::Number || !m_cur.unit.empty() || !(m_cur.num > 0.0f)) {
+            mediaWarn(m_cur, "expected a ratio such as 16/9 or 1.78");
+            return false;
+        }
+        ratio = m_cur.num;
+        advance();
+        if (unknownChar(m_cur) == '/') {
+            advance();
+            if (m_cur.kind != TokenKind::Number || !m_cur.unit.empty() || !(m_cur.num > 0.0f)) {
+                mediaWarn(m_cur, "expected a ratio such as 16/9 or 1.78");
+                return false;
+            }
+            ratio /= m_cur.num;
+            advance();
+        }
+        return true;
+    }
+
     bool parseMediaCondition(MediaCondDecl& cond) {
         Token open = m_cur;
         advance();  // '('
@@ -1462,22 +1483,25 @@ private:
                 return false;
             }
             advance();
-            if (m_cur.kind != TokenKind::Number || !m_cur.unit.empty() || !(m_cur.num > 0.0f)) {
-                mediaWarn(m_cur, "expected a ratio such as 16/9 or 1.78");
+            float ratio = 0.0f;
+            if (!parseMediaRatio(ratio)) {
                 return false;
             }
-            float ratio = m_cur.num;
-            advance();
-            if (unknownChar(m_cur) == '/') {
-                advance();
-                if (m_cur.kind != TokenKind::Number || !m_cur.unit.empty() || !(m_cur.num > 0.0f)) {
-                    mediaWarn(m_cur, "expected a ratio such as 16/9 or 1.78");
-                    return false;
-                }
-                ratio /= m_cur.num;
-                advance();
-            }
             cond.feature = ge ? MediaFeature::MinAspect : MediaFeature::MaxAspect;
+            cond.value = ratio;
+        } else if (feature == "min-aspect-ratio" || feature == "max-aspect-ratio") {
+            // T-568 (F6): the web's range form, the same condition as `(aspect-ratio >= a/b)` /
+            // `(aspect-ratio <= a/b)`.
+            if (m_cur.kind != TokenKind::Colon) {
+                mediaWarn(featureTok, "expected ':' after media feature \"" + feature + "\"");
+                return false;
+            }
+            advance();
+            float ratio = 0.0f;
+            if (!parseMediaRatio(ratio)) {
+                return false;
+            }
+            cond.feature = feature == "min-aspect-ratio" ? MediaFeature::MinAspect : MediaFeature::MaxAspect;
             cond.value = ratio;
         } else {
             if (m_cur.kind != TokenKind::Colon) {

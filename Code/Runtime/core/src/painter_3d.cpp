@@ -42,6 +42,9 @@ bool emitExternalPlaceholder(const ExternalNodeData& ext, const ElementData& dat
 /// T-332 (05 §5.9.8): the element's `clip-path` push (painter_element.cpp); see painter.cpp.
 bool pushElementClipShape(const ElementData& data, const Mat2x3& world, CommandList& out,
                           std::vector<PathVerb>& scratchVerbs, std::vector<float>& scratchPoints);
+/// T-572 (18 §18.13): the element's overflow clip (painter_element.cpp); see painter.cpp.
+void pushOverflowClip(const ElementData& data, const Mat2x3& world, CommandList& out,
+                      std::vector<PathVerb>& scratchVerbs, std::vector<float>& scratchPoints);
 
 void sortedElementChildren(const NodeArena& arena, NodeId node, std::vector<NodeId>& out);
 
@@ -278,9 +281,7 @@ void Painter::emitRoot(const NodeArena& arena, NodeId root, float inheritedAlpha
         }
         clip = clipsOverflow(data);  // T-336.
         if (clip) {
-            uint32_t clipIdx = static_cast<uint32_t>(out.clipRects.size());
-            out.clipRects.push_back(ClipRectCmd{c.world, data.box.paddingBox()});
-            out.commands.push_back(Command{CmdKind::PushClipRect, {}, clipIdx});
+            pushOverflowClip(data, c.world, out, m_elemVerbsScratch, m_elemPointsScratch);  // T-572.
         }
     }
 

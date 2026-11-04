@@ -58,6 +58,25 @@ namespace {
 
 constexpr size_t kMaxJobsPerRun = 10000;
 
+/// T-573: the Key trigger argument of a gamepad button press (no KeyCode has it); only `key(any)`
+/// (kTriggerKeyAny) matches it.
+constexpr uint32_t kKeyArgGamepad = 0xFFFEu;
+
+/// T-573 (27.8): whether a pressed key `arg0` (a KeyCode, or kKeyArgGamepad) fires `key(any)`:
+/// everything but a modifier key on its own.
+bool anyKeyMatches(uint32_t arg0) {
+    if (arg0 == kKeyArgGamepad) {
+        return true;
+    }
+    if (arg0 > 0xFFFFu) {
+        return false;
+    }
+    const auto key = static_cast<KeyCode>(arg0);
+    return key != KeyCode::ShiftLeft && key != KeyCode::ShiftRight && key != KeyCode::ControlLeft &&
+           key != KeyCode::ControlRight && key != KeyCode::AltLeft && key != KeyCode::AltRight &&
+           key != KeyCode::MetaLeft && key != KeyCode::MetaRight;
+}
+
 void markStyleDirtySubtree(NodeArena& arena, NodeId node) {
     arena.markDirty(node, static_cast<uint8_t>(kDirtyStyle));
     arena.traversePreorder(node, [&arena](NodeId n) {
@@ -257,6 +276,12 @@ void TriggerRuntime::onDomEvent(const Event& event, NodeId node) {
     }
 }
 
+void TriggerRuntime::onGamepadKey(NodeId target, uint8_t player) {
+    // T-573 (27.8, 08 §8.20): a gamepad button press fires `key(any)` on the player's KeyDown
+    // target (its focus, else the root), like a key would.
+    fire(target, TriggerEvent::Key, kKeyArgGamepad, kInvalidString, 0.0f, 0xFFFFFFFFu, player);
+}
+
 void TriggerRuntime::onFocusMoved(NodeId node, uint8_t player) {
     // T-194 (27.7): the new focus's `aria-label` is read aloud by the host.
     Document& doc = m_doc;
@@ -375,6 +400,11 @@ void TriggerRuntime::fire(NodeId node, TriggerEvent event, uint32_t arg0, uint32
         }
         switch (event) {
             case TriggerEvent::Key:
+                // T-573 (27.8): `key(any)`; a gamepad button matches nothing else.
+                if (trig.arg0 == kTriggerKeyAny ? !anyKeyMatches(arg0) : trig.arg0 != arg0) {
+                    continue;
+                }
+                break;
             case TriggerEvent::StateEnter:
             case TriggerEvent::StateExit:
             case TriggerEvent::TimelineEnd:
@@ -970,6 +1000,20 @@ TriggerRuntime::Outcome TriggerRuntime::perform(NodeId node, const IrTriggerActi
             }
             if (!doc.m_repeats->seek(node, action.arg0, t)) {  // T-177: an instance's copy first.
                 doc.seekTimeline(path, name, t);
+            }
+            return Outcome::Done;
+        }
+        case TriggerAction::Pause:
+        case TriggerAction::Resume: {
+            // T-573 (27.8): an instance's copy first (T-177), else the scoped group (T-201).
+            const bool pause = static_cast<TriggerAction>(action.kind) == TriggerAction::Pause;
+            if (doc.m_repeats->setPaused(node, action.arg0, pause)) {
+                return Outcome::Done;
+            }
+            const NodeId group = timelineScope(node, action.arg0);
+            const int index = doc.findTimelineGroup(scopePath(group), ir.string(action.arg0));
+            if (index >= 0) {
+                doc.setTimelineGroupPaused(static_cast<size_t>(index), pause);
             }
             return Outcome::Done;
         }
