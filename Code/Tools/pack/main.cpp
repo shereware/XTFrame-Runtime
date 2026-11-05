@@ -2,6 +2,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "../Common/console_utf8.h"
@@ -151,6 +152,19 @@ void printDiagnostic(const xt::compile::Diagnostic& d) {
     std::string message = d.message;
     if (message.rfind("vector.unbakedModifier", 0) == 0) {
         message += kBakeHint;
+    }
+    // T-620: a manifest entry whose file is gone ("assets: <id>: file '<f>' not found") still stops
+    // the pack; the message says which entry it is and how to clear it.
+    static constexpr std::string_view kAssetsHead = "assets: ";
+    static constexpr std::string_view kNotFound = "' not found";
+    const size_t idEnd = message.find(": file '", kAssetsHead.size());
+    if (d.file == xt::bundle::kAssetsManifestPath && message.rfind(kAssetsHead, 0) == 0 &&
+        idEnd != std::string::npos && message.size() > kNotFound.size() &&
+        message.compare(message.size() - kNotFound.size(), kNotFound.size(), kNotFound) == 0) {
+        const std::string id = message.substr(kAssetsHead.size(), idEnd - kAssetsHead.size());
+        message += " (manifest/assets.yaml entry '" + id +
+                   "' names a file that is not there: re-run xtframe-import, which removes the entries it "
+                   "wrote that nothing references any more, or delete the entry from manifest/assets.yaml)";
     }
     if (d.line == 0 && d.col == 0) {
         std::fprintf(stderr, "%s: %s: %s\n", file.c_str(), level, message.c_str());

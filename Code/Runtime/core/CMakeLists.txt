@@ -30,6 +30,7 @@ add_library(xt_core STATIC
     src/external_media.cpp
     src/trigger_runtime.cpp
     src/repeat_controller.cpp
+    src/repeat_template_content.cpp
     src/binding_runtime.cpp
     src/binding_runtime_eval.cpp
     src/binding_runtime_ports.cpp

@@ -122,6 +122,15 @@ public:
     /// T-380: template port `port` (a PORT index) as seen from `node`: the copy of the live or
     /// exiting instance containing `node` (T-391: or of an enclosing one), else `port` itself.
     uint32_t instancePortOf(NodeId node, uint32_t port) const;
+    /// T-624: Document::setLocalization() for the instances' `@key` places (live, exiting, pooled).
+    void relocalize(ILocalizationProvider* provider, std::string_view lang);
+    /// T-624: Document::localizationKey() for an instance element's text, or an empty view.
+    std::string_view localizationKeyOf(NodeId element) const;
+    /// Document::setLocalization()'s step for one `@key` place: an untouched one shows `provider`'s
+    /// text for its key in `lang` (or the key itself); a gone or host-replaced one is left alone.
+    /// T-624: shared by the document's places and the instances' copies.
+    static void resolveLocalizedSlot(Document& doc, Document::LocalizedSlot& slot,
+                                     ILocalizationProvider* provider, std::string_view lang);
 
 private:
     struct Instance {
@@ -132,6 +141,8 @@ private:
         std::vector<std::pair<uint32_t, uint32_t>> ports;
         // T-391 (27 §27.3.4): the m_repeats indices of the nested repeats inside this instance.
         std::vector<uint32_t> inner;
+        // T-624: the `@key` places of the copy (text nodes and attributes), as Document's own.
+        std::vector<Document::LocalizedSlot> l10n;
     };
     struct Repeat {
         const IrRepeat* ir = nullptr;
@@ -232,6 +243,13 @@ private:
     /// T-260b: the index in `r.live` of the instance whose root is `root`, or r.live.size().
     size_t liveIndexOf(const Repeat& r, NodeId root) const;
     void renameInstance(Repeat& r, Instance& inst);
+    /// T-624 (repeat_template_content.cpp): a new instance's template `<svg>` scenes and `@key`
+    /// places (resolved at once in the document's language).
+    void copyTemplateContent(Repeat& r, Instance& inst);
+    /// T-624: the `@key` places hold the template's values again (pool reuse): resolves them anew.
+    void relocalizeInstance(Instance& inst);
+    /// T-624: `scene` instantiated under the copy `element` (a free Document::m_instances slot).
+    void instantiateScene(NodeId element, SceneId scene);
     NodeId anchorFor(const Repeat& r, uint32_t index) const;
     /// Makes `r.live` exactly the entries [begin, end) (clamped to the list).
     bool sync(Repeat& r, uint32_t begin, uint32_t end);

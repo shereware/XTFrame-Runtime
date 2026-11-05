@@ -556,38 +556,9 @@ void Document::setLocalization(ILocalizationProvider* provider, std::string_view
     m_l10nProvider = provider;          // T-175: `localize` binding steps.
     // 1. Every still-untouched `@key` place shows the provider's text, or the key itself.
     for (LocalizedSlot& slot : m_localized) {
-        const StringId current = localizedCurrent(slot);
-        if (current == kInvalidString || current != slot.shown) {
-            continue;  // Gone, or the host replaced it (setText/setAttribute).
-        }
-        const std::string_view key = m_ir.string(slot.key);
-        std::string_view text = provider != nullptr ? provider->resolve(key, lang) : std::string_view{};
-        if (text.empty()) {
-            text = key;
-        }
-        const StringId sid = intern(text);
-        slot.shown = sid;
-        if (sid == current) {
-            continue;
-        }
-        if (slot.attrIndex == 0xFFFFFFFFu) {
-            TextNodeData& data = m_arena.text(slot.node);
-            data.text = sid;
-            data.shapedValid = 0;
-            m_arena.markDirty(slot.node, static_cast<uint8_t>(kDirtyLayout));
-            const NodeId parent = m_arena.parent(slot.node);
-            if (parent != kInvalidNode) {
-                m_arena.markDirty(parent, static_cast<uint8_t>(kDirtyLayout));
-            }
-        } else {
-            ElementData& element = m_arena.element(slot.node);
-            element.attributes[slot.attrIndex].second = sid;
-            m_arena.markDirty(slot.node, static_cast<uint8_t>(kDirtyStyle));  // `[attr]` selectors.
-            if (m_ir.string(element.attributes[slot.attrIndex].first) == "placeholder") {
-                m_arena.markDirty(slot.node, static_cast<uint8_t>(kDirtyLayout));  // T-395: relaid out.
-            }
-        }
+        RepeatController::resolveLocalizedSlot(*this, slot, provider, lang);  // T-624: shared.
     }
+    m_repeats->relocalize(provider, lang);  // T-624: the `<repeat>` instances' copies too.
 
     refreshUnresolvedPlaceholders();  // T-397 (08 §8.16).
 
@@ -653,7 +624,7 @@ std::string_view Document::localizationKey(ElementRef element) const {
             return m_ir.string(slot.key);
         }
     }
-    return std::string_view{};
+    return m_repeats->localizationKeyOf(element.node);  // T-624: a `<repeat>` instance's copy.
 }
 
 ElementRef Document::createElement(std::string_view tag) {

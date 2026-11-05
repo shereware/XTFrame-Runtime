@@ -27,6 +27,10 @@ expected <12 hex>...)` (`xtframe-view --list-fonts` prints `family<TAB>path`; se
 Tools/Scripts/corpus_fonts.py). --update first re-pins every selected project's `fonts` to this machine's
 files (Tools/Scripts/corpus_fonts.py --update).
 
+T-623 (Docs/design/22-bundle.md 22.16): a project.json may name `"lang": "<tag>"`, passed to every
+xtframe-view run as `--lang`; without it xtframe-view starts a bundle with strings tables in its
+manifest `spec.defaultLanguage` (else the first table), so no project renders raw `@key` text.
+
 Usage: corpus_check.py [--update] [--project <name>] [--skip-missing-fonts] [--view EXE] [--pack EXE]
                        [--work DIR] [--migrate]
   --update (or XT_CORPUS_UPDATE=1) rewrites expected/ from this run instead of comparing.
@@ -295,6 +299,7 @@ class Checker:
         self.failures = []
         self.skipped = []
         self.fonts = {}  # T-429: {family: [path, ...]} from corpus_fonts.list_fonts().
+        self.langs = {}  # T-623: {project: project.json `lang`}; missing = the bundle's default.
 
     def fail(self, project, message):
         self.failures.append("%s: %s" % (project, message))
@@ -303,6 +308,8 @@ class Checker:
     def view(self, bundle, ui, frames, extra, screenshot, project, label, runlog):
         cmd = [self.args.view, "--project", bundle, "--ui", ui["id"], "--headless", "--frames", str(frames),
                "--width", str(ui["width"]), "--height", str(ui["height"]), "--screenshot", screenshot] + extra
+        if self.langs.get(project):
+            cmd += ["--lang", self.langs[project]]
         rc, out, err = run(cmd, runlog)
         if rc != 0 or not os.path.isfile(screenshot):
             self.fail(project, "%s: xtframe-view exited %d (see %s)" % (label, rc, runlog))
@@ -322,6 +329,7 @@ class Checker:
         pdir = os.path.join(CORPUS, name)
         with open(os.path.join(pdir, "project.json"), encoding="utf-8") as f:
             spec = json.load(f)
+        self.langs[name] = spec.get("lang")
         problem = self.font_problem(spec)
         if problem is not None:
             if self.args.skip_missing_fonts:

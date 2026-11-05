@@ -221,6 +221,7 @@ void readSpec(const json& obj, ProjectSpec& spec) {
     spec.inputMethods = getStringArray(input, "methods");
     spec.players = getIntUiProject(input, "players", spec.players);
     spec.languages = getStringArray(obj, "languages");
+    spec.defaultLanguage = getString(obj, "defaultLanguage");  // T-623
     const auto fallbackIt = obj.find("fontFallback");
     if (fallbackIt != obj.end() && fallbackIt->is_object()) {
         for (auto it = fallbackIt->begin(); it != fallbackIt->end(); ++it) {
@@ -294,6 +295,9 @@ ordered_json writeSpec(const ProjectSpec& spec) {
     input["players"] = spec.players;
     out["input"] = std::move(input);
     out["languages"] = spec.languages;
+    if (!spec.defaultLanguage.empty()) {
+        out["defaultLanguage"] = spec.defaultLanguage;  // T-623: written only when set.
+    }
     ordered_json fallback = ordered_json::object();
     for (const FontFallbackInfo& info : spec.fontFallback) {
         fallback[info.lang] = info.families;
@@ -634,9 +638,10 @@ Result<UiProject> UiProject::load(std::string_view input, std::string* error) {
 
     const json& specObj = objectAt(root, "spec");
     readSpec(specObj, project.spec);
-    project.extraSpecJson = extraKeys(
-        specObj, {"behavior", "platforms", "safeArea", "logicalHeight", "uiscaleRule", "uiscaleClamp",
-                  "uiscaleDpiFloor", "responsive", "input", "languages", "fontFallback", "budget", "engine"});
+    project.extraSpecJson =
+        extraKeys(specObj, {"behavior", "platforms", "safeArea", "logicalHeight", "uiscaleRule",
+                            "uiscaleClamp", "uiscaleDpiFloor", "responsive", "input", "languages",
+                            "defaultLanguage", "fontFallback", "budget", "engine"});
 
     const auto uisIt = root.find("uis");
     if (uisIt == root.end() || !uisIt->is_array()) {

@@ -88,6 +88,10 @@ struct ProjectSpec {
     std::vector<std::string> languages;
     /// Per-language font fallback chains.
     std::vector<FontFallbackInfo> fontFallback;
+    /// T-623 (22 §22.16): `spec.defaultLanguage` (BCP 47), the language tools and hosts start in
+    /// when the project has string tables. Empty = the first strings table by file name. Written
+    /// back only when set.
+    std::string defaultLanguage;
     /// Performance budget: UI frame time in milliseconds; 0 = unset.
     float budgetFrameMs = 0.0f;
     /// Performance budget: effect layers per screen; 0 = unset.
@@ -429,6 +433,11 @@ Status adoptAsUiProject(const UiProject& unnamed, const std::vector<std::string>
 /// `publish.outDir` to the stored path.
 void recordPublish(UiProject& project, std::string_view kind, std::string_view path,
                    std::string_view timestamp);
+
+/// T-623 (§22.16): the language a tool starts `project` in, as `xtframe-pack` writes it to the
+/// manifest: "" when `<rootDir>/<shared.strings>` holds no `*.csv`, else `spec.defaultLanguage`,
+/// else the first table's language by file name.
+std::string defaultLanguage(const UiProject& project);
 
 /// A stored target path made absolute (a relative one resolves against `project.rootDir`), '/'
 /// separators.

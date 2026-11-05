@@ -47,8 +47,9 @@
 ///     template's classes, attributes and states before reuse. The viewport without `viewport=`
 ///     is the nearest `overflow: scroll` ancestor, else the document viewport.
 ///   - `anim` and `<camera>` elements inside a template are copied as plain elements (their scene
-///     or camera is not instantiated); `@key` text inside a template shows the template's text at
-///     copy time and does not follow setLanguage().
+///     or camera is not instantiated). T-624: an inline `<svg>` (or `<img src="*.svg">`) copy gets
+///     its own scene instance, and the copy's `@key` text and attributes are resolved in the
+///     document's language and follow setLanguage() like the document's own.
 ///   - T-380 (27 §27.3.4): every instance gets its own copy of each port a symbol declares inside
 ///     the template (BindingRuntime::addInstancePort); its bindings, `port()` triggers and
 ///     `set()` / `emit()` actions use the copies. A pooled instance's copies go back to the
@@ -356,6 +357,7 @@ RepeatController::Instance RepeatController::createInstance(Repeat& r, uint32_t 
         }
         inst.nodes[k] = n;
     }
+    copyTemplateContent(r, inst);  // T-624: `<svg>` scenes (before the bindings), `@key` places.
     renameInstance(r, inst);
     // T-202 (03 §3.12.5): a `<particles>` copy gets its own emitter, with a per-instance stream.
     for (NodeId n : inst.nodes) {
@@ -710,6 +712,7 @@ void RepeatController::resetFromTemplate(Repeat& r, Instance& inst) {
             t = arena.nextSibling(t);
         }
     }
+    relocalizeInstance(inst);  // T-624: the template's `@key` values are back.
 }
 
 void RepeatController::releaseInstance(Instance& inst) {
@@ -773,7 +776,16 @@ void RepeatController::recycleInstance(Repeat& r, Instance inst) {
     std::vector<NodeId> nodes;
     arena.traversePostorder(root, [&nodes](NodeId n) { nodes.push_back(n); });
     for (NodeId n : nodes) {
+        // T-624: a pooled `<svg>` copy keeps its scene (its scene-node bindings stay pointed at it).
+        const bool element = arena.kind(n) == NodeKind::Element;
+        const SceneId scene = element ? arena.element(n).scene : kInvalidScene;
+        if (scene != kInvalidScene) {
+            arena.element(n).scene = kInvalidScene;
+        }
         m_doc.cleanupNodeForRemoval(n);
+        if (scene != kInvalidScene) {
+            arena.element(n).scene = scene;
+        }
         arena.common(n).flags2 |= kPooled;  // T-270f: refused by every mutating ElementRef call.
     }
     if (arena.parent(root) != kInvalidNode) {

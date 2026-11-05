@@ -7,11 +7,11 @@
 
 #define XT_VERSION_MAJOR 0
 #define XT_VERSION_MINOR 15
-#define XT_VERSION_PATCH 0
+#define XT_VERSION_PATCH 1
 
 namespace xt {
 
-/// Returns "0.15.0".
+/// Returns "0.15.1".
 const char* versionString();
 
 /// T-407 (Docs/design/43-compatibility-and-versions.md §43.3): the behavior version a project's

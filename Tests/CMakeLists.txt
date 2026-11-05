@@ -84,6 +84,7 @@ add_executable(xt_tests
     unit/test_layout_grid.cpp
     unit/test_hit_test.cpp
     unit/test_hit_test_3d.cpp
+    unit/test_hit_flex_justify.cpp
     unit/test_events.cpp
     unit/test_layout_text_node.cpp
     unit/test_rich_text.cpp
@@ -118,6 +119,7 @@ add_executable(xt_tests
     unit/test_bind_diagnostics.cpp
     unit/test_web_compat.cpp
     unit/test_repeat.cpp
+    unit/test_repeat_template_content.cpp
     unit/test_interaction.cpp
     unit/test_core_t200.cpp
     unit/test_symbol_gaps.cpp

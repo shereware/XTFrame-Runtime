@@ -1,0 +1,26 @@
+<xt version="2">
+
+  <ports>
+    title: string in = "abc"
+    rightClick: event out
+    leftClick: event out
+    middleDown: event out
+    pressRight: event out
+  </ports>
+
+  <body id="Root">
+    <button id="B" on:click(right)="emit(rightClick)" on:click(left)="emit(leftClick)"
+        on:pointerdown(middle)="emit(middleDown)" on:press="if button(right) emit(pressRight)"></button>
+    <span id="L" bind:text="title"></span>
+  </body>
+
+  <layout>
+    #B {
+      position: absolute;
+      left: 0px;
+      top: 0px;
+      width: 100px;
+      height: 40px;
+    }
+  </layout>
+</xt>

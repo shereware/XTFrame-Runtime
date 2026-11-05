@@ -17,6 +17,7 @@
 /// T-568 (Docs/design/27-interaction.md §27.8; Docs/reviews/2026-11-01-midnight-grid-report-triage.md
 /// R13 / R16 / F42 / F43 / F110): binding diagnostics, number text and the floor / ceil converters.
 /// T-585 (03 §3.12.11): converter sub-chains as format() / select() / step() arguments (BCHN).
+/// T-621 (27 §27.3.3): select() / step() branch values typed by the binding target.
 
 using namespace xt;
 using namespace xt::compile;
@@ -453,4 +454,189 @@ TEST_CASE("T-568 F110: the effect-missing warning names the element and the trac
     REQUIRE(missing.size() == 1);
     CAPTURE(missing[0]);
     CHECK(missing[0].rfind(std::string(kWarnEffectMissing) + ": #M effect[0].param", 0) == 0);
+}
+
+// -- T-621 (27 §27.3.3, 03 §3.12): select() / step() branch values typed by the binding target ---
+
+namespace {
+
+/// A symbol with a bool and a number in-port, instances bound from the document port `mode`.
+std::string branchPage(std::string_view style, std::string_view body) {
+    return "<xt><head><style>" + std::string(style) +
+           "</style><symbol name=\"R\"><span id=\"T\" port:ready=\"bool in\" port:count=\"number in\">"
+           "</span></symbol></head><body id=\"Root\"><div id=\"P\" port:mode=\"number\" "
+           "port:label=\"string\"></div>" +
+           std::string(body) + "</body></xt>";
+}
+
+/// The kinds of the default and the first value argument of binding `index`'s first step.
+std::vector<ConverterArg> branchKinds(const CompileResult& r, size_t index) {
+    Result<IrView> view = IrView::open(IrBlob{r.ir.data(), r.ir.size()});
+    REQUIRE(view.ok());
+    const BindingChunk& bc = view.value().bindings();
+    REQUIRE(index < bc.bindings().size());
+    const IrBinding& b = bc.bindings()[index];
+    const IrConverterStep& head = bc.steps()[b.stepOffset];
+    std::vector<ConverterArg> out;
+    out.push_back(converterArgKind(head, 0));  // default
+    for (uint32_t a = 2; a < head.argCount && a < 4; a += 2) {
+        out.push_back(converterArgKind(head, a));
+    }
+    return out;
+}
+
+bool readyOf(Ui& ui, std::string_view use) {
+    ui.step(0.016f);
+    const PortId p = ui.doc->lookupPort(std::string(use) + ".ready");
+    REQUIRE(p != kInvalidPort);
+    return ui.doc->portText(p) == "true";
+}
+
+}  // namespace
+
+TEST_CASE("T-621: select() / step() into a bool port: literal, quoted and step branch values") {
+    const std::string src = branchPage(
+        "",
+        "<use symbol=\"R\" id=\"A\" bind:ready=\"mode | select(0: true, 1: true, default: false)\"></use>"
+        "<use symbol=\"R\" id=\"B\" bind:ready=\"mode | select(1: 'true', default: 'false')\"></use>"
+        "<use symbol=\"R\" id=\"C\" bind:ready=\"mode | step(1: false, 2: true, default: true) | "
+        "tween(0s)\"></use>");
+    const CompileResult r = compileSrc(src);
+    REQUIRE(r.ok());
+    for (size_t i = 0; i < 3; ++i) {
+        for (ConverterArg k : branchKinds(r, i)) {
+            CHECK(k == ConverterArg::Number);  // Typed at compile time; no strings left.
+        }
+    }
+    Ui ui = open(src);
+    CHECK(readyOf(ui, "A"));
+    CHECK_FALSE(readyOf(ui, "B"));
+    CHECK(readyOf(ui, "C"));
+    ui.set("mode", 1);
+    CHECK(readyOf(ui, "A"));
+    CHECK(readyOf(ui, "B"));
+    CHECK_FALSE(readyOf(ui, "C"));
+    ui.set("mode", 2);
+    CHECK_FALSE(readyOf(ui, "A"));
+    CHECK_FALSE(readyOf(ui, "B"));
+    CHECK(readyOf(ui, "C"));
+}
+
+TEST_CASE("T-621: select() into a number port converts quoted numbers") {
+    const std::string src = branchPage(
+        "", "<use symbol=\"R\" id=\"A\" bind:count=\"mode | select(0: '7', 1: 2.5, default: '-1')\"></use>");
+    Ui ui = open(src);
+    const PortId p = ui.doc->lookupPort("A.count");
+    REQUIRE(p != kInvalidPort);
+    CHECK(ui.doc->getPort(p).f == doctest::Approx(7.0f));
+    ui.set("mode", 1);
+    ui.step(0.016f);
+    CHECK(ui.doc->getPort(p).f == doctest::Approx(2.5f));
+    ui.set("mode", 5);
+    ui.step(0.016f);
+    CHECK(ui.doc->getPort(p).f == doctest::Approx(-1.0f));
+}
+
+TEST_CASE("T-621: bind:display and bind:state.X branch values; display keeps its value form") {
+    const std::string src =
+        branchPage("#A, #B, #C { height: 20px; } #S:state(Low) { opacity: 0.5; }",
+                   "<div id=\"A\" bind:display=\"mode | select(0: 'false', default: 'true')\"></div>"
+                   "<div id=\"B\" bind:display=\"mode | select(0: none, default: block)\"></div>"
+                   "<div id=\"C\"></div>"
+                   "<div id=\"S\" bind:state.Low=\"mode | select(1: 'true', default: 'false')\"></div>");
+    const CompileResult r = compileSrc(src);
+    REQUIRE(r.ok());
+    for (ConverterArg k : branchKinds(r, 0)) {
+        CHECK(k == ConverterArg::Number);
+    }
+    for (ConverterArg k : branchKinds(r, 1)) {
+        CHECK(k == ConverterArg::String);  // A display value, not a bool spelling.
+    }
+    for (ConverterArg k : branchKinds(r, 2)) {
+        CHECK(k == ConverterArg::Number);
+    }
+    Ui ui = open(src);
+    ui.step(0.016f);
+    CHECK(ui.el("C").boundingBox().y == doctest::Approx(0));  // A and B take no room.
+    CHECK_FALSE(ui.doc->hasCustomState(ui.el("S"), "Low"));
+    ui.set("mode", 1);
+    ui.step(0.016f);
+    CHECK(ui.el("C").boundingBox().y == doctest::Approx(40));
+    CHECK(ui.doc->hasCustomState(ui.el("S"), "Low"));
+}
+
+TEST_CASE("T-621: a branch value the target type cannot take is bind.branchType") {
+    const CompileResult r = compileSrc(branchPage(
+        "", "<use symbol=\"R\" id=\"A\" bind:ready=\"mode | select(0: on, default: false)\"></use>"));
+    CHECK(!r.ok());
+    const std::vector<Diagnostic> found =
+        withMessage(r, "bind:ready: select() branch value \"on\" is not a bool (true, false or a number)");
+    REQUIRE(found.size() == 1);
+    CHECK(found[0].level == Diagnostic::Level::Error);
+    CHECK(found[0].code == "bind.branchType");
+    CHECK(!found[0].fix.empty());
+    const CompileResult num = compileSrc(branchPage(
+        "", "<use symbol=\"R\" id=\"A\" bind:count=\"mode | step(1: 'many', default: 0)\"></use>"));
+    CHECK(withMessage(num, "bind:count: step() branch value \"many\" is not a number").size() == 1);
+    // Only the last value step is typed: a select() feeding eq() keeps its strings; a string
+    // target keeps `true` / `false` as text.
+    const std::string ok = branchPage(
+        "",
+        "<use symbol=\"R\" id=\"A\" bind:ready=\"mode | select(0: 'a', default: 'b') | eq('a')\"></use>"
+        "<span id=\"X\" bind:text=\"mode | select(0: true, default: false)\"></span>");
+    REQUIRE(compileSrc(ok).ok());
+    Ui ui = open(ok);
+    CHECK(readyOf(ui, "A"));
+    CHECK(ui.text("X") == "true");
+}
+
+TEST_CASE("T-621: a bool port takes the strings \"true\" / \"false\" at run time (older IR)") {
+    // IR written before T-621: the port binding's select() carries String branch values. Build it
+    // by giving the port binding the text binding's (string) steps.
+    const std::string src =
+        branchPage("",
+                   "<use symbol=\"R\" id=\"A\" bind:ready=\"mode | select(1: true, default: false)\"></use>"
+                   "<span id=\"X\" bind:text=\"mode | select(1: true, default: false)\"></span>"
+                   "<use symbol=\"R\" id=\"L\" bind:ready=\"label\"></use>");
+    const CompileResult r = compileSrc(src);
+    REQUIRE(r.ok());
+    Result<IrView> view = IrView::open(IrBlob{r.ir.data(), r.ir.size()});
+    REQUIRE(view.ok());
+    const BindingChunk& bc = view.value().bindings();
+    BindingBuilder bindings;
+    bindings.bindings.assign(bc.bindings().begin(), bc.bindings().end());
+    bindings.sources.assign(bc.sources().begin(), bc.sources().end());
+    bindings.steps.assign(bc.steps().begin(), bc.steps().end());
+    const IrBinding* port = nullptr;
+    const IrBinding* text = nullptr;
+    for (const IrBinding& b : bindings.bindings) {
+        if (static_cast<BindTarget>(b.target) == BindTarget::Port && b.stepCount > 0) {
+            port = &b;
+        } else if (static_cast<BindTarget>(b.target) == BindTarget::Text) {
+            text = &b;
+        }
+    }
+    REQUIRE(port != nullptr);
+    REQUIRE(text != nullptr);
+    REQUIRE(port->stepCount == text->stepCount);
+    for (uint32_t i = 0; i < port->stepCount; ++i) {
+        bindings.steps[port->stepOffset + i] = bindings.steps[text->stepOffset + i];
+    }
+    IrWriter writer = IrWriter::fromView(view.value());
+    writer.setBindings(bindings);
+    const std::vector<uint8_t> blob = writer.finish();
+    Ui ui;
+    REQUIRE(Document::load(IrBlob{blob.data(), blob.size()}, false, nullptr, nullptr, ui.doc) == Status::kOk);
+    ui.doc->setViewport(Rect{0, 0, 400, 200});
+    ui.doc->update(0.0f);
+    CHECK_FALSE(readyOf(ui, "A"));
+    ui.set("mode", 1);
+    CHECK(readyOf(ui, "A"));  // "true" -> true (toNum() alone read 0).
+    ui.set("mode", 0);
+    CHECK_FALSE(readyOf(ui, "A"));
+    // A string port bound to a bool port: the same run-time conversion.
+    REQUIRE(ui.doc->setPortText(ui.doc->lookupPort("label"), "true") == Status::kOk);
+    CHECK(readyOf(ui, "L"));
+    REQUIRE(ui.doc->setPortText(ui.doc->lookupPort("label"), "false") == Status::kOk);
+    CHECK_FALSE(readyOf(ui, "L"));
 }

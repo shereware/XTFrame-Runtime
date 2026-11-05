@@ -2405,6 +2405,12 @@ void Packer::packProjectExtras(bool incremental) {
     m_manifest.spec.uiscaleRule = m_ui->spec.uiscaleRule;      // T-241
     m_manifest.spec.uiscaleLimits = m_ui->spec.uiscaleLimits;  // T-345
     m_manifest.spec.behavior = m_ui->spec.behavior;            // T-407
+    // T-623 (§22.16): the .xtui's spec.defaultLanguage, else the first strings table by file name
+    // (packStrings ran first and lists the tables sorted).
+    m_manifest.spec.defaultLanguage = m_ui->spec.defaultLanguage;
+    if (m_manifest.spec.defaultLanguage.empty() && !m_manifest.strings.empty()) {
+        m_manifest.spec.defaultLanguage = m_manifest.strings.front().lang;
+    }
 
     const fs::path root = pathFromUtf8(m_project.rootDir);
     std::error_code ec;

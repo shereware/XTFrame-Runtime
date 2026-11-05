@@ -893,9 +893,18 @@ void BindingRuntime::apply(Binding& b, const BVal& r, bool initial) {
         case BindTarget::WorldAnchor:
             applyWorldAnchor(b.node, r);
             return;
-        case BindTarget::Port:  // T-380 (27 §27.3.4): a symbol instance's in-port.
-            writePort(mapPort(b.portMap, ir.targetId), r, initial);
+        case BindTarget::Port: {  // T-380 (27 §27.3.4): a symbol instance's in-port.
+            const uint32_t port = mapPort(b.portMap, ir.targetId);
+            // T-621: IR from before T-621 carries select() / step() branch values `true` / `false`
+            // as strings; a Bool port takes them as the bool they spell (toNum() would read 0).
+            if (r.kind == Kind::Str && (r.str == "true" || r.str == "false") && port < m_slots.size() &&
+                static_cast<PortValueType>(m_slots[port].ir.type) == PortValueType::Bool) {
+                writePort(port, num(r.str == "true" ? 1 : 0, /*isBool=*/true), initial);
+                return;
+            }
+            writePort(port, r, initial);
             return;
+        }
         case BindTarget::Value:
             // T-392 (27 §27.3.5): `bind:value`, the input's runtime value without a Change event.
             doc.m_events->setEditValue(doc.m_arena, b.node, toStr(r));

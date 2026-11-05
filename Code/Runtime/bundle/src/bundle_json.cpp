@@ -328,6 +328,7 @@ bool getSpec(const json& root, BundleSpec& out) {
     if (const auto behavior = it->find("behavior"); behavior != it->end() && behavior->is_number_unsigned()) {
         out.behavior = static_cast<uint32_t>(std::min<uint64_t>(behavior->get<uint64_t>(), 0xFFFFFFFFu));
     }
+    out.defaultLanguage = getString(*it, "defaultLanguage");  // T-623
     return true;
 }
 

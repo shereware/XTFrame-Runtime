@@ -125,14 +125,20 @@
 /// `strings/<lang>.csv` below the root directory (a bundle.xtproj input's bundle root, else --root
 /// or the input's directory) into an xt::bundle::BundleLocalizationProvider and calls
 /// Context::setLanguage(<tag>) before the document is loaded, so its `@key` text shows that
-/// language. A malformed table exits 1; no `strings/` directory just shows the keys.
+/// language. A malformed table exits 1; no `strings/` directory just shows the keys. T-623 (22
+/// §22.16): without --lang, a project or bundle with string tables starts in its default language
+/// (`spec.defaultLanguage`, else the first table by file name) and says so on stderr:
+/// `xtframe-view: lang <tag> (default)`; a lone `.xt` inside a UI Project reads that project's tables.
 ///
 /// --port <name>=<value> (Docs/design/27-interaction.md §27.3, Docs/tasks/T-175.md) sets a declared
 /// port (Document::lookupPort / setPortText: a number, true/false, a color, an enum value name,
 /// text; T-177: a JSON object for a struct port, a JSON array of objects for a list port, e.g.
 /// `--port items='[{"name":"A"},{"name":"B"}]'`; T-381: a JSON array of values for a list<T> port,
 /// e.g. `--port 'labels=["a","b"]'`; T-200: `--port pos=[1,2]` for a vec2/vec3 port) just
-/// before the first frame's update(); repeatable. `--event
+/// before the first frame's update(); repeatable. T-627: `--port <name> <value>` (two arguments)
+/// is the same, and a value loses one pair of matching outer quotes, so `--port x ''` and
+/// `--port x=""` (quotes passed through by cmd.exe or a spawned process) set the empty string,
+/// which differs from leaving the port out (its declared default). `--event
 /// "<frame> port <name> <value>"` does the same before a later frame. An unknown port or a value that does
 /// not parse prints one warning and the run continues.
 ///
@@ -192,6 +198,12 @@
 ///   T-571 (report F84): a Click whose centre hits another element (outside the target's subtree)
 ///   warns `#<id> covered by #<other> at (<x>,<y>)` (the nearest element with an id up from the hit
 ///   node, else `<tag>`) instead of `has no hit area`; the triggers are fired directly as before.
+///   T-627: `--event "<frame> #<id>.Click button=left|right|middle"` clicks with that mouse button
+///   (default left), so `click(right)` / `press(right)` triggers and `if button(right)` see it (the
+///   direct-fire fallback above carries no button, 08 §8.13); `--event "[<frame>] pointer
+///   <move|down|up> <x> <y> [button=left|right|middle]"` is one raw pointer event, as --pointer
+///   (button only with down/up; frame 0 when omitted). A `port <name> ''` value loses one pair of
+///   outer quotes, as --port.
 ///
 /// --verbose (T-571, 22 §22.14): a UI Project input lists every unused strings-table key
 /// (PackOptions::verbose) instead of one `i18n: N unused key(s) in <lang>.csv` line per table.
@@ -211,8 +223,9 @@
 /// --gamepad (T-194, Docs/design/08-events.md §8.9) opens SDL game controllers in the windowed
 /// mode (one player slot each, in connection order). --players N (1..8) limits the slots to N and
 /// marks players 0..N-1 as gamepad players (Context::setPlayerDevice).
-///   --pointer "<frame> <x> <y> [move|down|up]" pushes one raw InputEvent at viewport coordinates
-///   <x>/<y> (default `move`, left button for `down`/`up`) through Context::pushInput.
+///   --pointer "<frame> <x> <y> [move|down|up] [button=left|right|middle]" pushes one raw
+///   InputEvent at viewport coordinates <x>/<y> (default `move`; T-627: the button, default left)
+///   through Context::pushInput.
 ///
 /// --dump-flow-values prints the loaded --flow graph's output-port values as `<node>.<port> =
 /// <value>` (one per line) when a --headless run ends; --dump-every N prints the same block every
@@ -323,6 +336,11 @@ struct ScriptedEvent {
     std::string mode;    ///< `State` only: on / off / toggle.
     uint8_t player = 0;  ///< T-194 `Pad`: the local player.
     uint32_t key = 0;    ///< T-571 `Key`: the xt::KeyCode.
+    /// T-627: `Click` and `Pointer`: the mouse button (`button=left|right|middle`, default left).
+    xt::PointerButton button = xt::PointerButton::Left;
+    float x = 0;                                              ///< T-627 `Pointer`: viewport x.
+    float y = 0;                                              ///< T-627 `Pointer`: viewport y.
+    xt::InputEvent::Kind kind = xt::InputEvent::PointerMove;  ///< T-627 `Pointer`: move / down / up.
 };
 
 /// One `--pointer`: a raw InputEvent pushed just before `frame`'s update().
@@ -331,6 +349,7 @@ struct ScriptedPointer {
     float x = 0;
     float y = 0;
     xt::InputEvent::Kind kind = xt::InputEvent::PointerMove;
+    xt::PointerButton button = xt::PointerButton::Left;  ///< T-627: `button=left|right|middle`.
 };
 
 struct Args {
@@ -408,6 +427,8 @@ struct Args {
     xt::bundle::UiScaleRule uiscaleRule = xt::bundle::UiScaleRule::Height;  // T-241: spec.uiscaleRule.
     xt::bundle::UiScaleLimits uiscaleLimits;  // T-345: spec.uiscaleClamp / spec.uiscaleDpiFloor.
     std::string lang;                         // T-179: --lang, empty = none.
+    bool langDefault = false;                 // T-623: `lang` is the project's / bundle's default.
+    std::string stringsDir;                   // T-623: the input's strings tables (else <root>/strings).
     std::vector<std::pair<std::string, std::string>> ports;  // T-175: --port name=value.
     float seekTime = -1.0f;                                  // T-172: --seek, < 0 = none.
     bool gamepad = false;                                    // T-194: --gamepad.
@@ -486,6 +507,54 @@ bool parseFrame(const std::string& text, uint32_t& out) {
     return true;
 }
 
+/// T-627: `button=left|right|middle` -> PointerButton; false for any other word.
+bool parseButtonField(const std::string& word, xt::PointerButton& out) {
+    if (word == "button=left") {
+        out = xt::PointerButton::Left;
+    } else if (word == "button=right") {
+        out = xt::PointerButton::Right;
+    } else if (word == "button=middle") {
+        out = xt::PointerButton::Middle;
+    } else {
+        return false;
+    }
+    return true;
+}
+
+/// T-627: `move|down|up` -> the pointer InputEvent kind; false for any other word.
+bool parsePointerKind(const std::string& word, xt::InputEvent::Kind& out) {
+    if (word == "move") {
+        out = xt::InputEvent::PointerMove;
+    } else if (word == "down") {
+        out = xt::InputEvent::PointerDown;
+    } else if (word == "up") {
+        out = xt::InputEvent::PointerUp;
+    } else {
+        return false;
+    }
+    return true;
+}
+
+/// T-627: a whole-word decimal coordinate (`12`, `-3.5`); false when `text` is not one.
+bool parseCoordinate(const std::string& text, float& out) {
+    if (text.empty()) {
+        return false;
+    }
+    char* end = nullptr;
+    out = std::strtof(text.c_str(), &end);
+    return end == text.c_str() + text.size();
+}
+
+/// T-627: a port value with one pair of matching outer quotes ('' or "") removed, so a shell that
+/// passes the quotes through (cmd.exe, a spawned process) still sets the empty string.
+std::string stripOuterQuotes(const std::string& value) {
+    if (value.size() >= 2 && (value.front() == '\'' || value.front() == '"') &&
+        value.back() == value.front()) {
+        return value.substr(1, value.size() - 2);
+    }
+    return value;
+}
+
 /// T-392 (XF-078): the one stderr line of a malformed --event: the spec as given, the reason and
 /// the element form.
 void eventSpecError(const std::string& spec, const std::string& reason) {
@@ -522,6 +591,25 @@ bool parseEventSpec(const std::string& spec, ScriptedEvent& out) {
             out.port = "Pad";
             out.id = parts[at + 1];
             out.player = static_cast<uint8_t>(player);
+            return true;
+        }
+        // T-627: `[<frame>] pointer <move|down|up> <x> <y> [button=left|right|middle]`.
+        if (parts.size() > at && parts[at] == "pointer") {
+            xt::InputEvent::Kind kind = xt::InputEvent::PointerMove;
+            xt::PointerButton button = xt::PointerButton::Left;
+            if (parts.size() < at + 4 || parts.size() > at + 5 || !parsePointerKind(parts[at + 1], kind) ||
+                !parseCoordinate(parts[at + 2], out.x) || !parseCoordinate(parts[at + 3], out.y) ||
+                (parts.size() == at + 5 &&
+                 (kind == xt::InputEvent::PointerMove || !parseButtonField(parts[at + 4], button)))) {
+                eventSpecError(spec,
+                               "a pointer event is \"[<frame>] pointer <move|down|up> <x> <y> "
+                               "[button=left|right|middle]\" (button only with down/up)");
+                return false;
+            }
+            out.frame = frame;
+            out.port = "Pointer";
+            out.kind = kind;
+            out.button = button;
             return true;
         }
         // T-571 (08 §8.20): `[<frame>] key <name>`, the names of the `key()` trigger.
@@ -577,8 +665,18 @@ bool parseEventSpec(const std::string& spec, ScriptedEvent& out) {
         while (at < spec.size() && (spec[at] == ' ' || spec[at] == '\t')) {
             ++at;
         }
-        out.value = spec.substr(at);
+        out.value = stripOuterQuotes(spec.substr(at));  // T-627: `port <name> ''` is the empty string.
         return true;
+    }
+    // T-627: `<frame> #<id>.Click button=left|right|middle`.
+    bool hasButton = false;
+    if (parts.size() == 3 && parts[2].rfind("button=", 0) == 0) {
+        if (!parseButtonField(parts[2], out.button)) {
+            eventSpecError(spec, "'" + parts[2] + "' is not button=left|right|middle");
+            return false;
+        }
+        hasButton = true;
+        parts.pop_back();
     }
     if (parts.size() != 2) {
         eventSpecError(spec, parts.size() < 2 ? "missing the frame or the target"
@@ -610,6 +708,10 @@ bool parseEventSpec(const std::string& spec, ScriptedEvent& out) {
         eventSpecError(spec, "'" + target + "' has an empty element id");
         return false;
     }
+    if (hasButton && (port != "Click" || eq != std::string::npos)) {
+        eventSpecError(spec, "button= applies to Click only");
+        return false;
+    }
     if (port.rfind("state(", 0) == 0 && port.size() > 7 && port.back() == ')' && eq == std::string::npos) {
         // T-174: `state(<Name>[,on|off|toggle])`.
         std::string inner = port.substr(6, port.size() - 7);
@@ -637,30 +739,28 @@ bool parseEventSpec(const std::string& spec, ScriptedEvent& out) {
     return true;
 }
 
-/// `--pointer "<frame> <x> <y> [move|down|up]"`; same error convention as parseEventSpec().
+/// `--pointer "<frame> <x> <y> [move|down|up] [button=left|right|middle]"` (T-627: the button);
+/// same error convention as parseEventSpec().
 bool parsePointerSpec(const std::string& spec, ScriptedPointer& out) {
     std::vector<std::string> parts = splitWhitespace(spec);
-    if ((parts.size() != 3 && parts.size() != 4) || !parseFrame(parts[0], out.frame)) {
+    if (parts.size() < 3 || parts.size() > 5 || !parseFrame(parts[0], out.frame)) {
         std::fprintf(stderr,
-                     "xtframe-view: --pointer: expected \"<frame> <x> <y> [move|down|up]\", got "
-                     "'%s'\n",
+                     "xtframe-view: --pointer: expected \"<frame> <x> <y> [move|down|up] "
+                     "[button=left|right|middle]\", got '%s'\n",
                      spec.c_str());
         return false;
     }
     out.x = static_cast<float>(std::atof(parts[1].c_str()));
     out.y = static_cast<float>(std::atof(parts[2].c_str()));
-    if (parts.size() == 4) {
-        if (parts[3] == "move") {
-            out.kind = xt::InputEvent::PointerMove;
-        } else if (parts[3] == "down") {
-            out.kind = xt::InputEvent::PointerDown;
-        } else if (parts[3] == "up") {
-            out.kind = xt::InputEvent::PointerUp;
-        } else {
-            std::fprintf(stderr, "xtframe-view: --pointer: unknown kind '%s' (move, down, up)\n",
-                         parts[3].c_str());
-            return false;
-        }
+    if (parts.size() >= 4 && !parsePointerKind(parts[3], out.kind)) {
+        std::fprintf(stderr, "xtframe-view: --pointer: unknown kind '%s' (move, down, up)\n",
+                     parts[3].c_str());
+        return false;
+    }
+    if (parts.size() == 5 && !parseButtonField(parts[4], out.button)) {
+        std::fprintf(stderr, "xtframe-view: --pointer: '%s' is not button=left|right|middle\n",
+                     parts[4].c_str());
+        return false;
     }
     return true;
 }
@@ -979,11 +1079,20 @@ bool parseArgs(int argc, char** argv, Args& out) {
                 return false;
             }
             size_t eq = v.find('=');
+            if (eq == std::string::npos && !v.empty() && v[0] != '-' && i + 1 < argc &&
+                std::string_view(argv[i + 1]).rfind("--", 0) != 0) {
+                // T-627: `--port <name> <value>`, so `--port x ''` sets the empty string.
+                out.ports.emplace_back(v, stripOuterQuotes(argv[++i]));
+                continue;
+            }
             if (eq == std::string::npos || eq == 0) {
-                std::fprintf(stderr, "xtframe-view: --port: expected <name>=<value>, got '%s'\n", v.c_str());
+                std::fprintf(stderr,
+                             "xtframe-view: --port: expected <name>=<value> or <name> <value>, got '%s'\n",
+                             v.c_str());
                 return false;
             }
-            out.ports.emplace_back(v.substr(0, eq), v.substr(eq + 1));
+            // T-627: `x=''` / `x=""` (the quotes passed through) is the empty string.
+            out.ports.emplace_back(v.substr(0, eq), stripOuterQuotes(v.substr(eq + 1)));
         } else if (arg == "--play") {
             if (!needValue("--play", out.playTimeline)) {
                 return false;
@@ -1142,6 +1251,15 @@ void applyEnclosingProjectSpec(const fs::path& document, Args& args) {
     args.logicalHeight = spec.logicalHeight;
     args.uiscaleRule = spec.uiscaleRule;
     args.uiscaleLimits = spec.uiscaleLimits;
+    // T-623 (22 §22.16): the project's string tables, and its default language without --lang.
+    const std::string lang = xt::bundle::defaultLanguage(project);
+    if (!lang.empty()) {
+        args.stringsDir = pathToUtf8(pathFromUtf8(project.rootDir) / pathFromUtf8(project.shared.strings));
+        if (args.lang.empty()) {
+            args.lang = lang;
+            args.langDefault = true;
+        }
+    }
 }
 
 /// T-135/T-213: turns whatever the user named into the document/flow/root actually opened.
@@ -1251,6 +1369,13 @@ bool resolveInput(Args& args) {
             args.logicalHeight = spec->logicalHeight;
             args.uiscaleRule = spec->uiscaleRule;      // T-241
             args.uiscaleLimits = spec->uiscaleLimits;  // T-345
+        }
+        // T-623 (22 §22.16): a bundle with string tables starts in its default language unless
+        // --lang names one.
+        args.stringsDir = pathToUtf8(bundleDir / "strings");
+        if (args.lang.empty()) {
+            args.lang = xt::bundle::defaultLanguage(bundle);
+            args.langDefault = !args.lang.empty();
         }
 
         std::string ids;
@@ -1445,11 +1570,16 @@ void printUsage(std::FILE* out) {
         "                          element before frame <frame> (repeatable); or\n"
         "                          \"<frame> port <name> <value>\" sets a declared port;\n"
         "                          \"[<frame>] system <kind> [<value>]\" posts a system event;\n"
-        "                          \"[<frame>] key <name>\" presses a key (key() trigger names)\n"
+        "                          \"[<frame>] key <name>\" presses a key (key() trigger names);\n"
+        "                          \"<frame> #<id>.Click button=right\" clicks with that button\n"
+        "                          (left|right|middle, default left);\n"
+        "                          \"[<frame>] pointer <move|down|up> <x> <y> [button=<b>]\" pushes\n"
+        "                          one raw pointer event (button only with down/up)\n"
         "  --port <name>=<value>   set a declared port before the first frame (repeatable;\n"
-        "                          a list/struct port takes JSON: items='[{\"name\":\"A\"}]';\n"
-        "                          a vec2/vec3 port x,y[,z] or pos=[1,2])\n"
-        "  --pointer \"<frame> <x> <y> [move|down|up]\"\n"
+        "  --port <name> <value>   a list/struct port takes JSON: items='[{\"name\":\"A\"}]';\n"
+        "                          a vec2/vec3 port x,y[,z] or pos=[1,2]; one pair of outer\n"
+        "                          quotes is removed, so x='' or x \"\" sets the empty string)\n"
+        "  --pointer \"<frame> <x> <y> [move|down|up] [button=left|right|middle]\"\n"
         "                          push one raw pointer event before frame <frame> (repeatable)\n"
         "  --dump-flow-values      print `<node>.<port> = <value>` for the --flow graph at the end\n"
         "  --dump-every N          also print that block every N frames (implies the above)\n"
@@ -1474,7 +1604,8 @@ void printUsage(std::FILE* out) {
         "  --safe F | T,R,B,L      safe-area insets as fractions of the viewport (0..0.5)\n"
         "  --platform KIND         desktop, console or handheld (@media (platform))\n"
         "  --input KIND            mouse, gamepad or touch (@media (input))\n"
-        "  --lang TAG              show @key text in this language (strings/<lang>.csv)\n"
+        "  --lang TAG              show @key text in this language (strings/<lang>.csv);\n"
+        "                          default: the project's spec.defaultLanguage when it has strings\n"
         "  --event \"[<frame>] press <button> [<player>]\"\n"
         "                          press a gamepad button (A B X Y Back Guide Start LS RS LB RB\n"
         "                          Up Down Left Right) for a local player (default 0)\n"
@@ -1828,11 +1959,12 @@ float frameRateFor(xt::Document& doc, xt::ElementRef anim) {
 
 /// Pushes one raw pointer InputEvent (T-125's --pointer) into `ctx`'s queue; Context::update()
 /// dispatches it into the foreground Document before that frame's own update.
-void pushPointer(xt::Context& ctx, xt::InputEvent::Kind kind, xt::Vec2 pos) {
+void pushPointer(xt::Context& ctx, xt::InputEvent::Kind kind, xt::Vec2 pos,
+                 xt::PointerButton button = xt::PointerButton::Left) {
     xt::InputEvent event;
     event.kind = kind;
     event.pos = pos;
-    event.button = xt::PointerButton::Left;
+    event.button = button;  // T-627: --event / --pointer `button=`.
     ctx.pushInput(event);
 }
 
@@ -1883,6 +2015,11 @@ std::string coveringElement(xt::Document& doc, const xt::ElementRef& target, xt:
 void applyScriptedEvent(xt::Context& ctx, xt::Document& doc, const ScriptedEvent& scripted) {
     if (scripted.port == "Port") {
         setPortText(doc, scripted.id, scripted.value);
+        return;
+    }
+    if (scripted.port == "Pointer") {
+        // T-627: one raw pointer event with its button, as --pointer.
+        pushPointer(ctx, scripted.kind, xt::Vec2{scripted.x, scripted.y}, scripted.button);
         return;
     }
     if (scripted.port == "Key") {
@@ -1973,8 +2110,8 @@ void applyScriptedEvent(xt::Context& ctx, xt::Document& doc, const ScriptedEvent
             (void)doc.fireTrigger(ref, xt::TriggerEvent::Click);
             return;
         }
-        pushPointer(ctx, xt::InputEvent::PointerDown, center);
-        pushPointer(ctx, xt::InputEvent::PointerUp, center);
+        pushPointer(ctx, xt::InputEvent::PointerDown, center, scripted.button);
+        pushPointer(ctx, xt::InputEvent::PointerUp, center, scripted.button);
     }
 }
 
@@ -2015,7 +2152,7 @@ void applyScriptedInput(const Args& args, xt::Context& ctx, xt::DocumentHandle h
     }
     for (const ScriptedPointer& pointer : args.pointers) {
         if (pointer.frame == frame) {
-            pushPointer(ctx, pointer.kind, xt::Vec2{pointer.x, pointer.y});
+            pushPointer(ctx, pointer.kind, xt::Vec2{pointer.x, pointer.y}, pointer.button);
         }
     }
     // T-389: a synthetic fast mouse along the diagonal, one pixel-ish step per event, bouncing.
@@ -2197,16 +2334,22 @@ bool writeScreenshot(const std::string& path, const uint8_t* rgba, int width, in
     return true;
 }
 
-/// T-179: --lang. Loads every `<rootDir>/strings/*.csv` into `provider`, binds it and sets the
-/// language on `ctx`. Returns false (after its own stderr line) for a table that cannot be read or
-/// parsed, or an invalid language tag. No-op without --lang.
+/// T-179: --lang. Loads every `<rootDir>/strings/*.csv` (T-623: else the input's own tables,
+/// Args::stringsDir) into `provider`, binds it and sets the language on `ctx`. Returns false (after
+/// its own stderr line) for a table that cannot be read or parsed, or an invalid language tag.
+/// No-op without a language. T-623: a default language (no --lang) prints `xtframe-view: lang <tag>
+/// (default)`; its failures are a warning and the run goes on showing the keys.
 bool setupLanguage(const Args& args, const std::string& rootDir,
                    xt::bundle::BundleLocalizationProvider& provider, xt::Context& ctx) {
     if (args.lang.empty()) {
         return true;
     }
-    const fs::path dir = pathFromUtf8(rootDir) / "strings";
+    const char* what = args.langDefault ? "spec.defaultLanguage" : "--lang";
+    fs::path dir = pathFromUtf8(rootDir) / "strings";
     std::error_code ec;
+    if (!fs::is_directory(dir, ec) && !args.stringsDir.empty()) {
+        dir = pathFromUtf8(args.stringsDir);
+    }
     if (fs::is_directory(dir, ec)) {
         for (fs::directory_iterator it(dir, ec), end; it != end; it.increment(ec)) {
             if (ec) {
@@ -2218,15 +2361,18 @@ bool setupLanguage(const Args& args, const std::string& rootDir,
             std::string error;
             if (provider.loadFile(pathToUtf8(it->path().stem()), pathToUtf8(it->path()), &error) !=
                 xt::Status::kOk) {
-                std::fprintf(stderr, "xtframe-view: --lang: %s\n", error.c_str());
-                return false;
+                std::fprintf(stderr, "xtframe-view: %s: %s\n", what, error.c_str());
+                return args.langDefault;
             }
         }
     }
     ctx.setLocalizationProvider(&provider);
     if (ctx.setLanguage(args.lang) != xt::Status::kOk) {
-        std::fprintf(stderr, "xtframe-view: --lang: invalid language '%s'\n", args.lang.c_str());
-        return false;
+        std::fprintf(stderr, "xtframe-view: %s: invalid language '%s'\n", what, args.lang.c_str());
+        return args.langDefault;
+    }
+    if (args.langDefault) {
+        std::fprintf(stderr, "xtframe-view: lang %s (default)\n", args.lang.c_str());
     }
     return true;
 }

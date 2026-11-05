@@ -214,6 +214,10 @@ struct BundleSpec {
     /// T-407 (43 §43.3): `spec.behavior`, the project's behavior version (every UI's IR META carries
     /// the same value); missing = 0, written only when not 0.
     uint32_t behavior = 0;
+    /// T-623 (§22.16): `spec.defaultLanguage`, the language to start in when the bundle has string
+    /// tables (the `.xtui`'s value, else the first strings table by file name); empty = not
+    /// written (no strings and none set). Use defaultLanguage(const Bundle&) to apply the fallback.
+    std::string defaultLanguage;
 };
 
 /// T-199 (Docs/design/22-bundle.md §22.10): one `assets[]` row a host may want to know about
@@ -600,5 +604,10 @@ std::vector<LanguageCoverage> languageCoverage(const Bundle& bundle);
 /// T-179: the distinct localization keys (without `@`) one compiled `.xtir` uses, sorted; empty
 /// when it has none or cannot be opened.
 std::vector<std::string> localizationKeys(IrBlob blob);
+
+/// T-623 (§22.16): the language a tool or host starts `bundle` in: "" when it has no strings
+/// table, else the manifest's `spec.defaultLanguage`, else the first `strings()` language (a
+/// bundle packed before T-623 has no `spec.defaultLanguage`; pack lists the tables by file name).
+std::string defaultLanguage(const Bundle& bundle);
 
 }  // namespace xt::bundle

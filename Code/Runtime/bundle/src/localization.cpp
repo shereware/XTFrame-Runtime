@@ -1,4 +1,6 @@
 #include <algorithm>
+#include <cctype>
+#include <filesystem>
 #include <set>
 #include <string>
 #include <utility>
@@ -6,6 +8,8 @@
 
 #include "bundle_json.h"
 #include "xt/bundle/bundle.h"
+#include "xt/bundle/ui_project.h"
+#include "xt/compile/utf8_path.h"
 #include "xt/ir.h"
 
 /// T-179: `strings/<lang>.csv` tables (Docs/design/22-bundle.md §22.10), the provider that serves
@@ -245,6 +249,43 @@ std::vector<LanguageCoverage> languageCoverage(const Bundle& bundle) {
         out.push_back(std::move(coverage));
     }
     return out;
+}
+
+std::string defaultLanguage(const Bundle& bundle) {
+    if (bundle.strings().empty()) {
+        return std::string();
+    }
+    if (const BundleSpec* spec = bundle.spec(); spec != nullptr && !spec->defaultLanguage.empty()) {
+        return spec->defaultLanguage;
+    }
+    return bundle.strings().front().lang;
+}
+
+std::string defaultLanguage(const UiProject& project) {
+    namespace fs = std::filesystem;
+    // The tables pack() would write (Packer::packStrings): `*.csv` (any case), sorted by path.
+    const fs::path dir =
+        compile::pathFromUtf8(project.rootDir) / compile::pathFromUtf8(project.shared.strings);
+    std::vector<fs::path> files;
+    std::error_code ec;
+    if (fs::is_directory(dir, ec)) {
+        for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
+            std::string ext = compile::pathToUtf8(it->path().extension());
+            std::transform(ext.begin(), ext.end(), ext.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (ext == ".csv" && it->is_regular_file(ec)) {
+                files.push_back(it->path());
+            }
+        }
+    }
+    if (files.empty()) {
+        return std::string();
+    }
+    if (!project.spec.defaultLanguage.empty()) {
+        return project.spec.defaultLanguage;
+    }
+    std::sort(files.begin(), files.end());
+    return compile::pathToUtf8(files.front().stem());
 }
 
 }  // namespace xt::bundle

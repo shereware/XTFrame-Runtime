@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "name": "Default language",
+  "id": "default-language",
+  "game": "Default language",
+  "spec": {
+    "safeArea": {
+      "default": 0,
+      "console": 0.05
+    },
+    "logicalHeight": 64,
+    "languages": [
+      "en",
+      "zh-TW"
+    ],
+    "defaultLanguage": "zh-TW"
+  },
+  "uis": [
+    {
+      "id": "greet",
+      "doc": "greet/greet.xt",
+      "size": [
+        64,
+        64
+      ],
+      "tags": []
+    }
+  ]
+}

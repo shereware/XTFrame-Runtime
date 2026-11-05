@@ -87,7 +87,7 @@ DiagnosticCounts countDiagnostics(const std::vector<ReportDiagnostic>& items);
 
 /// The diagnostics file (§24.15.2, `version: 1`): `{"version":1,"tool":<tool>,"source":<source>,
 /// "items":[...]}`, two-space indented, members in the documented order, a newline at the end.
-/// `tool` is the tool's name plus its version ("xtframe-import 0.15.0", see toolWithVersion()).
+/// `tool` is the tool's name plus its version ("xtframe-import 0.15.1", see toolWithVersion()).
 std::string diagnosticsJson(const std::vector<ReportDiagnostic>& items, std::string_view tool,
                             std::string_view source);
 

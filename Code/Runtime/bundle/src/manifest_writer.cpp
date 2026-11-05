@@ -129,6 +129,9 @@ Status writeManifest(std::string_view dir, const ManifestData& data) {
         specObj["logicalHeight"] = detail::shortNumber(data.spec.logicalHeight);
         specObj["uiscaleRule"] = uiScaleRuleName(data.spec.uiscaleRule);  // T-241
         detail::writeUiScaleLimits(specObj, data.spec.uiscaleLimits);     // T-345
+        if (!data.spec.defaultLanguage.empty()) {
+            specObj["defaultLanguage"] = data.spec.defaultLanguage;  // T-623: written only when set.
+        }
         root["spec"] = std::move(specObj);
     }
 

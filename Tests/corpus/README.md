@@ -13,6 +13,7 @@ Each directory here is one corpus project (T-401, `Docs/design/43-compatibility-
 | `frames` | The frames each UI is rendered at. |
 | `uis` | The UI ids with their viewport `width` / `height`. |
 | `scripts` | Behaviour scripts under `scripts/`. |
+| `lang` | Optional (T-623): passed to every `xtframe-view` run as `--lang`. Without it a project with strings tables renders in its manifest `spec.defaultLanguage` (else the first table by file name), never raw `@key` text. |
 
 ## Fonts
 

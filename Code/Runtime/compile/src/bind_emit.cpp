@@ -860,6 +860,12 @@ private:
     // trigger values, whose chain arguments stay literal text) and the current nesting depth.
     BindingBuilder* m_out = nullptr;
     uint32_t m_subDepth = 0;
+    /// T-621 (27 §27.3.3, 03 §3.12): how the binding target types the branch values of the
+    /// chain's last select() / step() (Any = they stay as written).
+    enum class BranchTarget : uint8_t { Any, Bool, Number, Display };
+    BranchTarget m_branchTarget = BranchTarget::Any;
+    bool m_typeBranches = false;  ///< The converter being compiled is the chain's last value step.
+    bool m_branchError = false;   ///< compileExpression() failed with `bind.branchType`.
 
     void warnAt(const std::string& message, const char* code) {
         m_sink.warn(m_fileName, message, m_line, m_col, code);
@@ -1330,7 +1336,7 @@ private:
                 return false;
             }
             ArgVal v;
-            if (!arg(value, kAllowAny | kAllowSubChain, v, err)) {
+            if (!arg(value, kAllowAny | kAllowSubChain, v, err) || !typeBranch(c.name, value, v, err)) {
                 return false;
             }
             if (key == "default") {
@@ -1368,6 +1374,36 @@ private:
         out.push_back(def);
         out.insert(out.end(), pairs.begin(), pairs.end());
         return true;
+    }
+
+    /// T-621 (27 §27.3.3): a string branch value of the chain's last select() / step() whose
+    /// binding target is a bool / number port or a boolean property: `true` / `false` -> Number
+    /// 1 / 0, a number -> Number; anything else is `bind.branchType` (a `bind:display` keeps it:
+    /// a string that is not a bool spelling is the display value itself, 27 §27.3.2).
+    bool typeBranch(const std::string& name, const std::string& raw, ArgVal& v, std::string& err) {
+        if (!m_typeBranches || m_subDepth != 0 || m_branchTarget == BranchTarget::Any ||
+            v.kind != ConverterArg::String) {
+            return true;
+        }
+        const std::string text = isQuoted(raw) ? raw.substr(1, raw.size() - 2) : raw;
+        float n = 0;
+        if (text == "true" || text == "false") {
+            v.kind = ConverterArg::Number;
+            v.f = text == "true" ? 1.0f : 0.0f;
+            return true;
+        }
+        if (parseNumber(text, n)) {
+            v.kind = ConverterArg::Number;
+            v.f = n;
+            return true;
+        }
+        if (m_branchTarget == BranchTarget::Display) {
+            return true;
+        }
+        err = name + "() branch value \"" + text + "\" is not a " +
+              (m_branchTarget == BranchTarget::Number ? "number" : "bool (true, false or a number)");
+        m_branchError = true;
+        return false;
     }
 
     /// T-381: an `item(<n>)` of a list<struct{...}> must be followed by `item(<field>)`.
@@ -1967,11 +2003,22 @@ private:
     /// `lastConverter` = the last converter other than tween / delay (T-544).
     bool compileExpression(const std::vector<std::string>& segments, std::vector<IrConverterStep>& steps,
                            std::string& lastConverter, std::string& err) {
+        // T-621: the last segment other than tween / delay decides the value the target gets.
+        size_t last = segments.size() - 1;
+        for (Call probe; last > 0; --last) {
+            std::string ignored;
+            if (!parseCallText(segments[last], probe, ignored) ||
+                (probe.name != "tween" && probe.name != "delay")) {
+                break;
+            }
+        }
+        m_typeBranches = last == 0;
         if (!head(trimCopyBindEmit(segments[0]), steps, err)) {
             return false;
         }
         for (size_t i = 1; i < segments.size(); ++i) {
             Call c;
+            m_typeBranches = i == last;
             if (!parseCallText(segments[i], c, err) || !converter(c, steps, err)) {
                 if (err.empty()) {
                     err = "invalid converter \"" + trimCopyBindEmit(segments[i]) + "\"";
@@ -1985,13 +2032,34 @@ private:
         return checkNeedField(err);
     }
 
+    /// T-621: how binding `b`'s target types select() / step() branch values.
+    BranchTarget branchTarget(const IrBinding& b) const {
+        switch (static_cast<BindTarget>(b.target)) {
+            case BindTarget::Port: {
+                const PortValueType type = static_cast<PortValueType>(m_scopes.ports[b.targetId].type);
+                return type == PortValueType::Bool     ? BranchTarget::Bool
+                       : type == PortValueType::Number ? BranchTarget::Number
+                                                       : BranchTarget::Any;
+            }
+            case BindTarget::Checked:
+            case BindTarget::Disabled:
+            case BindTarget::BuiltinState:
+            case BindTarget::State:
+                return BranchTarget::Bool;
+            case BindTarget::Display:
+                return BranchTarget::Display;
+            default:
+                return BranchTarget::Any;
+        }
+    }
+
     void compileBinding(uint32_t element, const DomAttr& attr, BindingBuilder& out,
                         const SvgBindAttr* scene = nullptr) {
         const std::string target = attr.name.substr(5);
-        auto fail = [&](const std::string& msg) {
+        auto fail = [&](const std::string& msg, const char* code = "", const char* fix = "") {
             // T-585: a message that already names `bind:` (the sub-chain depth limit) stands alone.
             m_sink.error(m_fileName, msg.rfind("bind: ", 0) == 0 ? msg : "bind:" + target + ": " + msg,
-                         attr.line, attr.col);
+                         attr.line, attr.col, code, fix);
             m_ok = false;
         };
         IrBinding b{};
@@ -2174,9 +2242,19 @@ private:
         std::string lastConverter;  // T-544: the last value-changing converter's name.
         m_out = &out;               // T-585: this binding's sub-chains go into out.chains.
         m_subDepth = 0;
+        m_branchTarget = branchTarget(b);  // T-621
+        m_branchError = false;
         const bool compiled = compileExpression(segments, steps, lastConverter, err);
         m_out = nullptr;
+        m_branchTarget = BranchTarget::Any;
+        m_typeBranches = false;
         if (!compiled) {
+            if (m_branchError) {
+                fail(err, "bind.branchType",
+                     "Write the branch value as true, false or a number (quoted or not), or bind a string "
+                     "target.");
+                return;
+            }
             fail(err);
             return;
         }
