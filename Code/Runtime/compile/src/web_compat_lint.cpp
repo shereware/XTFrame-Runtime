@@ -25,8 +25,8 @@
 ///     get no `web.*` code: ports and their direction (`bind.outPortSource`), port names `index` /
 ///     `count` / `item` / `time` and ancestor classes in symbol styles (compiler warnings), `@media`
 ///     limits (dropped with a warning), text mixed with block children (the parser's error).
-///   - `web.textWithChildren`, `web.percentHeightOnAuto` and `web.vwVhVsUiscale` have no item of
-///     their own in not-like-web.md; they point at its "Layout and painting" section.
+///   - `web.textWithChildren`, `web.percentHeightOnAuto` and `web.vwVhVsUiscale` point at their own
+///     not-like-web.md items under "Layout and painting" (added by T-611).
 ///   - The computed-style checks read the cascade without any `@media` condition or state
 ///     (dumpComputedStyle()'s base combination); inherited values are followed up the tree here.
 
@@ -56,7 +56,10 @@ std::string lowerTrim(std::string_view text) {
 std::string item(std::string_view lead) { return " (not-like-web.md: \"" + std::string(lead) + "\")"; }
 
 constexpr std::string_view kDisplayItem = "display is block | flex | grid | none";
-constexpr std::string_view kSection = "Layout and painting";
+constexpr std::string_view kTextItem = "An element holds either text or child elements";
+constexpr std::string_view kPercentHeightItem =
+    "`height: N%` on a child of an `auto`-height parent is nothing";
+constexpr std::string_view kViewportItem = "`vw`/`vh` do not follow `uiscale`";
 
 /// True when `value` holds a number directly followed by `vw`, `vh`, `vmin` or `vmax`.
 bool hasViewportUnit(const std::string& value) {
@@ -106,7 +109,7 @@ void richTextChildren(const DomTree& tree, uint32_t nodeIndex, const DomNode& ow
                      name + " sits in the text of <" + owner.tag +
                          ">, so it becomes a run of that text, not an element: its id, bind: and on: do "
                          "nothing (an XTFrame element holds either text or child elements)" +
-                         item(kSection),
+                         item(kTextItem),
                      node.line, node.col, "web.textWithChildren",
                      "put the text beside " + name + " in its own <span>, so " + name + " stays an element");
         }
@@ -247,7 +250,7 @@ private:
         report(e,
                name(e) + " has height " + h + " of " + name(p) +
                    ", whose height is auto (it comes from its content): give the parent a height, or size " +
-                   name(e) + " with flex" + item(kSection),
+                   name(e) + " with flex" + item(kPercentHeightItem),
                "web.percentHeightOnAuto", selector(p) + " { height: <height>; }");
     }
 
@@ -387,7 +390,7 @@ void lintWebDeclaration(std::string_view prop, std::string_view value, const std
                  decl +
                      " follows the viewport, not the UI scale: XTFrame multiplies px by uiscale but not "
                      "vw / vh" +
-                     item(kSection),
+                     item(kViewportItem),
                  line, col, "web.vwVhVsUiscale", "write the size in px, unless it must follow the viewport");
     }
 }

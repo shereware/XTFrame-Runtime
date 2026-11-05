@@ -46,6 +46,38 @@ TextShaper* ensureShaper(xt_bundle& b, bool systemFonts) {
     return b.shaper.get();
 }
 
+void setupLocalization(xt_bundle& b) {
+    const auto strings = b.bundle->strings();
+    if (strings.empty()) {
+        return;
+    }
+    auto provider = std::make_unique<bundle::BundleLocalizationProvider>();
+    std::string error;
+    if (provider->load(*b.bundle, &error) != Status::kOk) {
+        log(1, "xt_bundle_open: " + error);
+    }
+    // `spec.defaultLanguage` is not part of Bundle's parsed BundleSpec: read it off the manifest.
+    std::string manifest;
+    if (readBundleFile(*b.bundle, "manifest.json", manifest)) {
+        std::string parseError;
+        const bundle::detail::json root =
+            bundle::detail::parseBounded(manifest, bundle::detail::kMaxJsonDepth, parseError);
+        if (root.is_object()) {
+            const auto spec = root.find("spec");
+            if (spec != root.end() && spec->is_object()) {
+                const auto lang = spec->find("defaultLanguage");
+                if (lang != spec->end() && lang->is_string()) {
+                    b.defaultLanguage = lang->get<std::string>();
+                }
+            }
+        }
+    }
+    if (b.defaultLanguage.empty()) {
+        b.defaultLanguage = strings.front().lang;
+    }
+    b.localization = std::move(provider);
+}
+
 }  // namespace xt::capi
 
 using xt::capi::fail;
@@ -69,6 +101,7 @@ XT_CAPI xt_bundle* xt_bundle_open(const char* dir_utf8) {
         }
         auto b = std::make_unique<xt_bundle>();
         b->bundle = std::move(opened.value());
+        xt::capi::setupLocalization(*b);
         return b.release();
     });
 }

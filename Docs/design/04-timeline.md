@@ -261,3 +261,20 @@ iteration listener 對於在同一幀結束的 instance 會看到 `isPlaying() =
 ## 4.12 時間參數的非有限值（2026-10-07 審查修正鏈合併；T-255b #318）
 
 `evalTrack`／`Animator::seek`／`Document::seekTimeline`：`+Inf` 表示結尾（`-Inf` 為 0）；NaN 讀為 0。取代 02 §2.w 記的「非有限＝0」。`seekMedia` 對非有限時間回 `kInvalidArgument`。
+
+## 4.13 CSS `animation` 的身分與改參數不重播（2026-11-05 定案；使用者：「純靠 CSS 做的動畫，改參數以後就從頭播放一次」；T-616）
+
+**參考**：CSS Animations Level 1「Changes to the animation-* properties while animating」——動畫的身分是 `animation-name` 清單裡的**位置＋名稱**；改元素的其他屬性不影響正在跑的動畫；改 `animation-duration`／`timing-function`／`iteration-count`／`direction`／`fill-mode`／`delay` 只更新該動畫的參數、**不重新開始**（瀏覽器以已經過的時間重新套用）；只有清單裡的名稱被移除或新增，才停止／啟動對應那一項。Chrome DevTools 改 `@keyframes` 內容也是就地更新。
+
+**定案（執行時）**：05 §5.7 第 6 步的「list-level compare」改為**逐項身分比對**：
+1. 比對鍵 = 位置 + `@keyframes` 名稱（IR 為 timeline id）；今天用「勝出宣告範圍的 offset／count 是否相同」判定，任何 restyle（含編輯器 `setStyle` 的執行期宣告）都會改變 offset 而被當成「清單變了」，這是重播的根因。
+2. 身分相同的項：保留 `Animator` 實例，只更新 `PlayParams` 的 duration／delay／iteration／direction／fill／easing（`Animator::updateParams(id, params, clock)`，以**已經過的本地時間**接續；duration 變時保留已經過的秒數，不保留比例；超出新長度則依 fill 收尾）。
+3. 名稱被移除 → `stop`；新名稱 → `play`；順序改變但名稱集相同 → 視為各自不變。
+4. `@keyframes` 內容改變（同名 timeline 的軌道重編）→ 同一實例改指新 timeline，本地時間不變（DevTools 行為）。
+5. `@timeline` 群組（TimelineGroup）不在此條：它的播放由 `play`／`seek` 顯式控制，restyle 本來就不動它。
+
+**定案（編輯器預覽）**：`PreviewSession::recompile()`（T-593 原始碼面板、結構性修改）目前是載新文件、卸舊文件，執行時狀態全部歸零。改為**狀態延續**：重編前對舊文件取快照 `Document::captureRuntimeState()`（每元素 id：CSS 動畫實例清單 {位置, 名稱, 本地時間, 暫停}；`@timeline` 群組 {名稱, 範圍, 時間, 播放中, loop}；自訂狀態；port 值已由既有路徑保留），載入新文件後 `restoreRuntimeState()` 以元素 id + 名稱配對，配不到的照新文件初始；新文件的時鐘接續舊文件。配對規則與 13 §13.8.3 `hotReload` 的狀態保留一致，實作共用同一組函式。編輯器以 `setStyle` 走的快路徑則由上面的執行時定案自然解決。
+
+**驗收**：編輯器內改 `#x` 的 `color` 或 `width`，其 `animation: pulse 2s infinite` 不閃不重頭；改 `animation-duration` 從 2s 到 4s，動畫從目前位置以新速度繼續；原始碼面板改一個顏色（走 recompile）後動畫位置連續；`xtframe-view --headless` 的既有 golden 不變。
+
+**T-616 實作記錄（#586，2026-11-06；偏差主模型核准）**：`applyAnimationDiff` 的身分鍵 = timeline id ＋「清單裡前面同名項的數量」（同名以位置區分）；舊清單由 `lastAnimationOffset/Count` 讀回（IR 範圍不變、執行期宣告不覆寫該槽），`ElementData` 不加欄位；offset／count 不變 → 不動；同身分改時序 → `Animator::updateParams`（play-state 變化則 pause／resume）；消失 → stop；新增 → play；≤16 項走堆疊。**保留的重播（核准）**：以執行期 `setStyle` 重新宣告「完全相同的清單」仍重播——這是 flow `playAnimation` 同名再播的既有契約（53、17.6／T-270c）；代價是編輯器 `applyLive` 若送出未變的 `animation` 值也會重播（改 color／width／duration 不會）→ 編輯器端應避免重送未變的 `animation` 宣告（PENDING）。`updateParams(id, params, clock)` 保留已經過的秒數（自 delay 結束起算、依實例方向），換 delay／speed／scale／segment／loop／iterations／fill／layer／easing，保留 timeline／selfNode／group／paused；超出新長度下次 evaluate 依 fill 收尾、已結束者不再發 `onFinished`、跳過的 iteration／marker 不發事件；**啟動後改 delay 不移動位置**（與 CSS 不同，接受）。另有 `retarget(id, timeline)`、`elapsedSeconds`／`setElapsedSeconds`（靜默）、`isPaused`、`StyleEngine::animationSpecs()`。快照：新標頭 `xt/runtime_state.h` 的 `RuntimeState`（不透明、move-only：`DocumentState` ＋ 時鐘）；`Document::captureRuntimeState()`／`restoreRuntimeState()`；`DocumentState.animations[]`（元素 id、位置、名稱、經過秒數、paused、ended）；restore 走 `Context::hotReload` 的 `collectState`／`applyState(exact=false)`，新步驟 5b 在延續的時鐘下 `layoutIfDirty()` 讓新文件的動畫實例存在再配對；hotReload 因此也帶 CSS 動畫（`snapshotState()` JSON 不變）。`PreviewSession::recompile()` 載入前 capture、設 viewport 後 restore；**Demo 重啟與離開 Demo 走 `restartNextRecompile()` 不延續**（`editor_session_demo.cpp` 兩行，核准）。測試 `test_animation_identity.cpp` 七案、`test_animator.cpp` 五案、`test_preview_session.cpp` 一案；core 1989、golden 173、flow 191、editor 403、editor_service 252。未跑 editor_qt（機器記憶體不足；主線補跑）。未決：restore 後由 `show`／autoplay 啟動的群組在第一次 update 仍重啟（同 hotReload）；`isPlaying()` 對 paused 回 true（既有）。

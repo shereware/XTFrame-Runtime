@@ -50,11 +50,23 @@ struct DocumentState {
         float rate = 1;
     };
 
+    /// T-616 (04 §4.13): one CSS `animation` item of an element with an id, matched by its position
+    /// in the element's `animation` list and its `@keyframes` name.
+    struct Animation {
+        std::string id;
+        uint32_t position = 0;
+        std::string name;
+        float elapsed = 0;  // Animator::elapsedSeconds().
+        bool paused = false;
+        bool ended = false;  // Finished and dropped (no forwards fill): the new one is stopped.
+    };
+
     std::vector<Port> ports;
     std::vector<States> states;
     std::vector<Input> inputs;
     std::vector<Scroll> scrolls;
     std::vector<Timeline> timelines;
+    std::vector<Animation> animations;  // T-616; not part of the snapshotState() JSON.
     /// Each player's focused element id ("" = none).
     std::string focus[kMaxPlayers];
 };

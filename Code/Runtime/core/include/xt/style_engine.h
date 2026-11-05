@@ -4,6 +4,7 @@
 #include <deque>
 #include <functional>
 #include <map>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -137,6 +138,10 @@ public:
     void setRuntimeAnimations(const std::vector<IrAnimationSpec>* animations) {
         m_runtimeAnimations = animations;
     }
+    /// T-616 (04 §4.13): the `animation` items a cascaded offset/count pair names (e.g.
+    /// ComputedStyle::lastAnimationOffset/Count, ElementData::cssAnimations' list): the IR's, or the
+    /// runtime pool's for a kRuntimeEffectOffsetBit offset. Empty when out of range or before init().
+    std::span<const IrAnimationSpec> animationSpecs(uint32_t offset, uint32_t count) const;
 
     /// T-199 (26 §26.3.4): binds the Document's AssetResolver so resolve() can read an image's
     /// atlas cell and manifest slice (AssetResolver::imageMeta) into ElementData::backgroundSubUv,

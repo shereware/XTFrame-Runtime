@@ -1,0 +1,9 @@
+#box {
+  background-color: #ff0000;
+}
+#box.hello {
+  background-color: #00ff00;
+}
+#box.nihao {
+  background-color: #0000ff;
+}

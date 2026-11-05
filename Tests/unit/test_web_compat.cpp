@@ -112,6 +112,9 @@ TEST_CASE("T-594: web.vwVhVsUiscale -- vw / vh lengths, in a style sheet and in 
     REQUIRE(found.size() == 2);
     CHECK(found[0].message.find("width: 50vw") != std::string::npos);
     CHECK(found[1].message.find("height: 10vh") != std::string::npos);
+    // T-614: the pointer names the item T-611 added, not the section.
+    CHECK(found[0].message.find("(not-like-web.md: \"`vw`/`vh` do not follow `uiscale`\")") !=
+          std::string::npos);
     CHECK(webCount(compileWeb(page("#A { width: 50px; }", "<div id=\"A\"></div>"))) == 0);
 }
 
@@ -122,6 +125,8 @@ TEST_CASE("T-594: web.textWithChildren -- an id / bind: on a span folded into ri
     const Diagnostic d = single(r, "web.textWithChildren");
     CHECK(d.message.find("<span id=\"Value\">") != std::string::npos);
     CHECK(d.fix.find("in its own <span>") != std::string::npos);
+    CHECK(d.message.find("(not-like-web.md: \"An element holds either text or child elements\")") !=
+          std::string::npos);
     CHECK(d.line == 1);
     // Plain inline markup (no id, bind or on) is rich text as intended.
     CHECK(webCount(compileWeb(page("", "<div id=\"Line\">Score <b>bold</b></div>"))) == 0);
@@ -189,6 +194,8 @@ TEST_CASE("T-594: web.percentHeightOnAuto -- height in % of a parent whose heigh
     const Diagnostic d = single(r, "web.percentHeightOnAuto");
     CHECK(d.message.find("#Half has height 50% of #Box") == 0);
     CHECK(d.fix == "#Box { height: <height>; }");
+    CHECK(d.message.find("(not-like-web.md: \"`height: N%` on a child of an `auto`-height parent is "
+                         "nothing\")") != std::string::npos);
 }
 
 TEST_CASE("T-594: web.translateZSort -- a 2D sibling between 3D siblings") {

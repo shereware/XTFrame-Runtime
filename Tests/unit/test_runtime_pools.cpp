@@ -942,7 +942,7 @@ TEST_CASE("T-270c: an effect switching between two stop counts 1000 times keeps 
     CHECK(ui.doc->arena().effects().size() <= 256);
 }
 
-TEST_CASE("T-270c: setStyle animation alternating 1000 times stays bounded and restarts each time") {
+TEST_CASE("T-270c: setStyle animation alternating 1000 times stays bounded; declared again it restarts") {
     Ui ui = open(page("@keyframes spin { from { opacity: 1 } to { opacity: 0.5 } }",
                       R"X(<div id="A" style="width: 50px; height: 20px">x</div>)X"));
     ElementRef a = ui.doc->byId("A");
@@ -951,7 +951,8 @@ TEST_CASE("T-270c: setStyle animation alternating 1000 times stays bounded and r
                                   "animation: spin 1s linear, spin 3s linear"};
     std::vector<uint32_t> last;
     for (int i = 0; i < 1000; ++i) {
-        // The same declaration twice in a row as well: declared again, it restarts (17.6).
+        // The same declaration twice in a row as well: declared again, it restarts (17.6). T-616
+        // (04 §4.13): a changed list keeps the `spin` item at position 0 (same instance, new timing).
         const int which = (i / 2) % 3;
         REQUIRE(a.setStyle(kAnimations[which]) == Status::kOk);
         ui.step();
@@ -959,8 +960,15 @@ TEST_CASE("T-270c: setStyle animation alternating 1000 times stays bounded and r
         const std::vector<uint32_t> playing = ui.doc->animationsOf(a);
         REQUIRE(playing.size() == (which == 2 ? 2u : 1u));
         CHECK(ui.doc->animationTimelineDuration(playing[0]) == doctest::Approx(which == 1 ? 2.0f : 1.0f));
-        for (uint32_t id : playing) {
-            CHECK(std::find(last.begin(), last.end(), id) == last.end());  // A new instance.
+        if (i % 2 == 1 || i == 0) {
+            for (uint32_t id : playing) {
+                CHECK(std::find(last.begin(), last.end(), id) == last.end());  // A new instance.
+            }
+        } else {
+            CHECK(playing[0] == last[0]);  // Changed, not declared again: continues.
+            if (which == 2) {
+                CHECK(std::find(last.begin(), last.end(), playing[1]) == last.end());  // Added.
+            }
         }
         last = playing;
     }

@@ -851,3 +851,125 @@ TEST_CASE(
     anim.evaluate(9.5f, fx.arena);
     CHECK(getProperty(fx.arena, fx.n1, prop::Opacity).f == doctest::Approx(0.7f));
 }
+
+// -- T-616 (04 §4.13): updateParams / retarget / elapsedSeconds ------------------------------------
+
+TEST_CASE("T-616 Animator: updateParams keeps the elapsed seconds, not the fraction, across a new duration") {
+    Fixture fx;
+    Timeline tl = makeTimeline();
+    Animator anim;
+    TimelineId tid = anim.registerTimeline(&tl);
+    PlayParams p = basicParams(tid, fx);
+    p.durationScale = 2.0f;
+    p.loop = LoopMode::Loop;
+    p.iterations = 0;
+    uint32_t id = anim.play(p, 0.0f);
+    anim.evaluate(1.0f, fx.arena);
+    CHECK(anim.localTime(id, 1.0f) == doctest::Approx(0.5f));
+    CHECK(anim.elapsedSeconds(id, 1.0f) == doctest::Approx(1.0f));
+
+    p.durationScale = 4.0f;
+    REQUIRE(anim.updateParams(id, p, 1.0f));
+    CHECK(anim.elapsedSeconds(id, 1.0f) == doctest::Approx(1.0f));
+    CHECK(anim.localTime(id, 1.0f) == doctest::Approx(0.25f));
+    anim.evaluate(2.0f, fx.arena);
+    CHECK(getProperty(fx.arena, fx.n1, prop::Opacity).f == doctest::Approx(0.5f));  // 2 s of 4.
+    CHECK(anim.segmentDuration(id) == doctest::Approx(4.0f));
+    CHECK_FALSE(anim.updateParams(id + 100, p, 2.0f));
+}
+
+TEST_CASE("T-616 Animator: updateParams past the new length finishes as the fill says, once") {
+    Fixture fx;
+    Timeline tl = makeTimeline();
+    Animator anim;
+    TimelineId tid = anim.registerTimeline(&tl);
+    int finished = 0;
+    anim.onFinished = [&](uint32_t) { ++finished; };
+    PlayParams p = basicParams(tid, fx);
+    p.durationScale = 2.0f;
+    p.fill = FillMode::Forwards;
+    uint32_t id = anim.play(p, 0.0f);
+    anim.evaluate(1.5f, fx.arena);
+    CHECK(getProperty(fx.arena, fx.n1, prop::Opacity).f == doctest::Approx(0.75f));
+
+    p.durationScale = 1.0f;  // 1.5 s elapsed of a 1 s animation: past its end.
+    REQUIRE(anim.updateParams(id, p, 1.5f));
+    anim.evaluate(1.6f, fx.arena);
+    CHECK(anim.isFinished(id));
+    CHECK(finished == 1);
+    CHECK(getProperty(fx.arena, fx.n1, prop::Opacity).f == doctest::Approx(1.0f));
+    // Finished already and still past the end: no second onFinished.
+    p.durationScale = 0.5f;
+    REQUIRE(anim.updateParams(id, p, 1.6f));
+    anim.evaluate(1.7f, fx.arena);
+    CHECK(finished == 1);
+}
+
+TEST_CASE("T-616 Animator: updateParams keeps a paused instance paused at its elapsed seconds") {
+    Fixture fx;
+    Timeline tl = makeTimeline();
+    Animator anim;
+    TimelineId tid = anim.registerTimeline(&tl);
+    PlayParams p = basicParams(tid, fx);
+    p.loop = LoopMode::Loop;
+    p.iterations = 0;
+    uint32_t id = anim.play(p, 0.0f);
+    anim.pause(id, 0.5f);
+    p.durationScale = 2.0f;
+    REQUIRE(anim.updateParams(id, p, 0.7f));
+    CHECK(anim.isPaused(id));
+    CHECK(anim.localTime(id, 3.0f) == doctest::Approx(0.25f));  // 0.5 s of 2, frozen.
+    anim.resume(id, 3.0f);
+    CHECK(anim.localTime(id, 3.5f) == doctest::Approx(0.5f));
+}
+
+TEST_CASE("T-616 Animator: retarget plays another timeline at the same local time") {
+    Fixture fx;
+    Timeline tl = makeTimeline();
+    Timeline reversed = makeTimeline();
+    reversed.keyframes[0].value = Value::ofFloat(1.0f);
+    reversed.keyframes[1].value = Value::ofFloat(0.0f);
+    Animator anim;
+    TimelineId tid = anim.registerTimeline(&tl);
+    TimelineId other = anim.registerTimeline(&reversed);
+    uint32_t id = anim.play(basicParams(tid, fx), 0.0f);
+    anim.evaluate(0.25f, fx.arena);
+    CHECK(getProperty(fx.arena, fx.n1, prop::Opacity).f == doctest::Approx(0.25f));
+
+    REQUIRE(anim.retarget(id, other));
+    CHECK(anim.localTime(id, 0.25f) == doctest::Approx(0.25f));
+    anim.evaluate(0.25f, fx.arena);
+    CHECK(getProperty(fx.arena, fx.n1, prop::Opacity).f == doctest::Approx(0.75f));
+    REQUIRE(anim.debugInstances(0.25f).size() == 1);
+    CHECK(anim.debugInstances(0.25f)[0].timeline == other);
+    CHECK_FALSE(anim.retarget(id, other + 7));
+}
+
+TEST_CASE(
+    "T-616 Animator: setElapsedSeconds round-trips, counts a reversed instance from its end, and finishes "
+    "quietly") {
+    Fixture fx;
+    Timeline tl = makeTimeline();
+    Animator anim;
+    TimelineId tid = anim.registerTimeline(&tl);
+    int finished = 0;
+    anim.onFinished = [&](uint32_t) { ++finished; };
+    PlayParams p = basicParams(tid, fx);
+    p.speed = -1.0f;
+    uint32_t id = anim.play(p, 0.0f);
+    anim.seek(id, 1.0f, 0.0f);  // As a CSS `reverse` item starts.
+    CHECK(anim.elapsedSeconds(id, 0.0f) == doctest::Approx(0.0f));
+    CHECK(anim.elapsedSeconds(id, 0.3f) == doctest::Approx(0.3f));
+    CHECK(anim.localTime(id, 0.3f) == doctest::Approx(0.7f));
+
+    anim.setElapsedSeconds(id, 0.6f, 0.3f);
+    CHECK(anim.elapsedSeconds(id, 0.3f) == doctest::Approx(0.6f));
+    CHECK(anim.localTime(id, 0.3f) == doctest::Approx(0.4f));
+
+    PlayParams q = basicParams(tid, fx);
+    uint32_t done = anim.play(q, 0.0f);
+    anim.setElapsedSeconds(done, 5.0f, 0.3f);  // Past its end: already finished, no onFinished.
+    anim.evaluate(0.35f, fx.arena);
+    CHECK(anim.isFinished(done));
+    CHECK(finished == 0);
+}

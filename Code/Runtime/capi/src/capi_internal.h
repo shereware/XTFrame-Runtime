@@ -142,6 +142,13 @@ struct xt_bundle {
     xt::text::FtTextShaper* ftShaper = nullptr;
 #endif
     bool systemFontsAdded = false;
+    /// T-617 (50 §50.x localization): the manifest `strings[lang]` tables, loaded by xt_bundle_open();
+    /// null for a bundle without strings. Every surface's Context borrows it (setLocalizationProvider);
+    /// xt_bundle_close() refuses while a surface is open, so it outlives every borrower.
+    std::unique_ptr<xt::bundle::BundleLocalizationProvider> localization;
+    /// T-617: the language a new surface starts in: manifest `spec.defaultLanguage`, else the first
+    /// `strings()` language. Empty when `localization` is null.
+    std::string defaultLanguage;
     /// Bundle::reload()'s result, for xt_bundle_changed_ui_id().
     std::vector<std::string> changedIds;
     /// Surfaces created on this bundle and not destroyed yet.
@@ -236,6 +243,11 @@ private:
 /// The bundle's shared shaper, built on first use (bundle fonts first, then the system fonts once
 /// when `systemFonts` asks for them; 50.3 and Docs/tasks/T-504.md item 2).
 TextShaper* ensureShaper(xt_bundle& bundle, bool systemFonts);
+
+/// T-617: loads the bundle's string tables into `bundle.localization` and picks
+/// `bundle.defaultLanguage`; a no-op for a bundle without strings. A table that cannot be read is
+/// logged (the tables before it stay loaded).
+void setupLocalization(xt_bundle& bundle);
 
 /// Reads `<bundle dir>/<relative>` through xt_bundle's own file reader (the setBundleFileReader
 /// hook applies). False when it cannot be read.

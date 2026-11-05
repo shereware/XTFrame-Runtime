@@ -1,0 +1,16 @@
+<xt version="2">
+
+  <ports>
+    key: string in = "@greeting"
+    heard: string in
+  </ports>
+
+  <body>
+    <div id="box" bind:class.hello="key | localize | eq(Hello)" bind:class.nihao="key | localize | eq(Nihao)">
+      <span id="label">@greeting</span>
+    </div>
+  </body>
+
+  <layout src="l10n.layout.xts"/>
+  <style src="l10n.xts"/>
+</xt>

@@ -96,6 +96,7 @@ add_executable(xt_tests
     unit/test_query.cpp
     unit/test_dynamic_tree.cpp
     unit/test_style_animation_integration.cpp
+    unit/test_animation_identity.cpp
     unit/test_top_level_elements.cpp
     unit/test_command_simplifier.cpp
     unit/test_command_list_validate.cpp

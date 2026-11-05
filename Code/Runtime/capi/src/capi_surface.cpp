@@ -206,6 +206,16 @@ XT_CAPI xt_surface* xt_surface_create(xt_bundle* b, const char* ui_id, const xt_
         // Load order (50.3, Docs/tasks/T-504.md item 1).
         xt::TextShaper* shaper = xt::capi::ensureShaper(*b, desc->system_fonts != 0);
         s->ctx = std::make_unique<xt::Context>(xt::ContextConfig{shaper, &b->bundle->assets()});
+        if (b->localization != nullptr) {
+            // T-617 (50 §50.x): before loadUi, so the Document's `@key` text loads resolved.
+            s->ctx->setLocalizationProvider(b->localization.get());
+            if (s->ctx->setLanguage(b->defaultLanguage) != xt::Status::kOk) {
+                xt::capi::log(1, "xt_surface_create: spec.defaultLanguage '" + b->defaultLanguage +
+                                     "' is not a language tag; using '" + b->bundle->strings().front().lang +
+                                     "'");
+                (void)s->ctx->setLanguage(b->bundle->strings().front().lang);
+            }
+        }
         xt::Result<xt::DocumentHandle> loaded = xt::bundle::loadUi(*s->ctx, *b->bundle, s->uiId);
         if (!loaded.ok()) {
             return fromStatus(toCapi(loaded.status()), "xt_surface_create: cannot load UI '" + s->uiId +
@@ -547,9 +557,20 @@ XT_CAPI xt_status xt_surface_set_language(xt_surface* s, const char* lang) {
     XT_CAPI_GUARD("xt_surface_set_language", {
         XT_CAPI_REQUIRE_SURFACE(s, "xt_surface_set_language");
         xt::capi::DispatchScope scope(*s);
-        const xt::Status status = s->ctx->setLanguage(lang != nullptr ? lang : "");
+        const char* tag = lang != nullptr ? lang : "";
+        // Context::setLanguage re-resolves every `@key` text and `localize` binding through the
+        // bundle's provider (which serves every language; the language is all that switches).
+        const xt::Status status = s->ctx->setLanguage(tag);
         if (status != xt::Status::kOk) {
             return fail(toCapi(status), "xt_surface_set_language: not a language tag");
+        }
+        // T-617 (50 §50.x): a bundle with strings tells its flows itself; without strings nothing
+        // changes (the host may post languageChanged on its own, as before).
+        if (s->owner->localization != nullptr) {
+            const xt::Status posted = s->bundleCtx->postSystemEvent("languageChanged", tag);
+            if (posted != xt::Status::kOk) {
+                return fail(toCapi(posted), "xt_surface_set_language: posting languageChanged failed");
+            }
         }
         return XT_STATUS_OK;
     });

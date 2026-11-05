@@ -1,0 +1,12 @@
+/* Red while the greeting is unresolved, green in English ("Hello"), blue in zh-TW ("Nihao"). */
+body {
+  width: 100vw;
+  height: 100vh;
+}
+#box {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100vw;
+  height: 100vh;
+}

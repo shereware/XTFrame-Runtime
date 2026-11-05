@@ -27,13 +27,18 @@ xt_capi_pack_bundle(XT_CAPI_DEVICE device "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/
 # T-561: a one-card UI whose flow toggles `flipped` on #card.Click, with an opacity transition; T-603:
 # a second UI, `intro`, whose flow plays its intro from lifecycle.shown.
 xt_capi_pack_bundle(XT_CAPI_FLIP flip "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/flip")
+# T-617: a one-box UI whose color follows `localize` bindings of `@greeting` (strings en / zh-TW) and
+# whose flow writes system.languageChanged into the `heard` port.
+xt_capi_pack_bundle(XT_CAPI_L10N l10n "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/l10n")
 add_custom_target(xt_capi_test_bundles
     DEPENDS "${XT_CAPI_GAME_UI}/manifest.json" "${XT_CAPI_HUD_OVERLAY}/manifest.json"
-            "${XT_CAPI_DEVICE}/manifest.json" "${XT_CAPI_FLIP}/manifest.json")
+            "${XT_CAPI_DEVICE}/manifest.json" "${XT_CAPI_FLIP}/manifest.json"
+            "${XT_CAPI_L10N}/manifest.json")
 
 add_executable(xt_capi_tests
     test_main.cpp
     test_capi.cpp
+    test_capi_l10n.cpp
 )
 add_dependencies(xt_capi_tests xt_capi_test_bundles)
 target_include_directories(xt_capi_tests SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/Code/SDKs/doctest)
@@ -43,7 +48,8 @@ target_compile_definitions(xt_capi_tests PRIVATE
     XT_CAPI_TEST_BUNDLE="${XT_CAPI_GAME_UI}"
     XT_CAPI_TEST_PORTS_BUNDLE="${XT_CAPI_HUD_OVERLAY}"
     XT_CAPI_TEST_DEVICE_BUNDLE="${XT_CAPI_DEVICE}"
-    XT_CAPI_TEST_FLIP_BUNDLE="${XT_CAPI_FLIP}")
+    XT_CAPI_TEST_FLIP_BUNDLE="${XT_CAPI_FLIP}"
+    XT_CAPI_TEST_L10N_BUNDLE="${XT_CAPI_L10N}")
 # Only the C header (and xt/version.h's macros, for case 1) -- the runtime is reached through the
 # shared library alone. nlohmann reads the packed manifest for case 2.
 target_include_directories(xt_capi_tests PRIVATE ${PROJECT_SOURCE_DIR}/Code/Runtime/core/include)

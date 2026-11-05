@@ -138,6 +138,29 @@ public:
     void seek(uint32_t id, float localT, float clock);
     /// Keeps the current localT from jumping.
     void setSpeed(uint32_t id, float speed, float clock);
+    /// T-616 (04 §4.13, a CSS `animation` item whose identity did not change): replaces the
+    /// instance's delay, speed, durationScale, segment, loop, iterations, fill, layer and
+    /// overrideEasing with `params`' (its timeline, local-to-arena table, self node and group are
+    /// kept; see retarget() for the timeline) and continues from the active seconds already
+    /// elapsed (elapsedSeconds()): a new duration keeps the elapsed seconds, not the fraction, and
+    /// an instance now past its last iteration finishes as its fill says on the next evaluate().
+    /// The paused state is kept. False (nothing changed) for an unknown id or a timeline-less one.
+    bool updateParams(uint32_t id, const PlayParams& params, float clock);
+    /// T-616 (04 §4.13 item 4, a `@keyframes` whose content changed): the instance plays
+    /// `timeline` from now on at the same local time; a segment end at the old timeline's duration
+    /// moves to the new one's. False for an unknown id or an unregistered `timeline`.
+    bool retarget(uint32_t id, TimelineId timeline);
+    /// T-616: the seconds the instance has played since its delay ended, in its own direction (a
+    /// negative-speed instance counts from its segment end, as applyAnimationDiff seeks a reversed
+    /// CSS animation), not counting paused time; negative while its delay runs. 0 for an unknown id.
+    float elapsedSeconds(uint32_t id, float clock) const;
+    /// T-616: puts the instance at `seconds` of elapsedSeconds() (Document's runtime-state restore,
+    /// 04 §4.13). Quiet: an instance this lands past its end counts as already finished (no
+    /// onFinished), and no iteration or marker crossed by the jump is reported. No-op for an
+    /// unknown id or a zero speed.
+    void setElapsedSeconds(uint32_t id, float seconds, float clock);
+    /// T-616: true if the instance exists and is paused.
+    bool isPaused(uint32_t id) const;
     /// True if the instance exists and is not finished.
     bool isActive(uint32_t id) const;
     /// True if the instance exists and is finished (still in the pool when fill has Forwards).
@@ -315,6 +338,11 @@ private:
     };
 
     LocalState computeLocalState(const Instance& inst, float clock) const;
+    // T-616: elapsedSeconds() / setElapsedSeconds() of one instance, and the event bookkeeping
+    // after such a jump (`quietFinish`: an instance now past its end counts as notified).
+    float activeElapsed(const Instance& inst, float clock) const;
+    void setActiveElapsed(Instance& inst, float seconds, float clock);
+    void resyncAfterJump(Instance& inst, float clock, bool quietFinish);
     Instance* findInstance(uint32_t id);
     const Instance* findInstance(uint32_t id) const;
     void growScratchForTimeline(const Timeline& tl);

@@ -701,83 +701,183 @@ void markNonAnimatableDirty(NodeArena& arena, NodeId node, const ComputedStyle& 
     }
 }
 
-/// 05.7 step 6 (CSS `animation` diff): list-level compare -- any change to which decl range won
-/// stops every previously-created instance and plays the new list from scratch.
-void applyAnimationDiff(Animator& animator, const IrView& ir,
-                        const std::vector<IrAnimationSpec>* runtimeAnimations, ElementData& data,
-                        ComputedStyle& next, NodeId node, float clock,
-                        const std::function<void(uint32_t, NodeId)>& onAnimationPlay) {
-    bool unchanged = next.animationOffset == data.style.lastAnimationOffset &&
-                     next.animationCount == data.style.lastAnimationCount;
-    if (unchanged) {
-        next.lastAnimationOffset = data.style.lastAnimationOffset;
-        next.lastAnimationCount = data.style.lastAnimationCount;
-        return;
-    }
-    for (uint32_t id : data.cssAnimations) {
-        animator.stop(id);
-    }
-    data.cssAnimations.clear();
-
-    // T-123: a runtime `animation` declaration (ElementRef::setStyle) tags its offset with
-    // kRuntimeEffectOffsetBit and indexes Document's own pool instead of the IR's STYL one.
+/// The `animation` items of a cascaded offset/count pair: T-123, a runtime `animation`
+/// declaration (ElementRef::setStyle) tags its offset with kRuntimeEffectOffsetBit and indexes
+/// Document's own pool instead of the IR's STYL one. Empty when the range is out of bounds.
+std::span<const IrAnimationSpec> animationSpecsIn(const IrView& ir,
+                                                  const std::vector<IrAnimationSpec>* runtimeAnimations,
+                                                  uint32_t offset, uint32_t count) {
     std::span<const IrAnimationSpec> all = ir.style().animations();
-    uint32_t offset = next.animationOffset;
     if ((offset & kRuntimeEffectOffsetBit) != 0) {
         offset &= ~kRuntimeEffectOffsetBit;
         all = runtimeAnimations != nullptr ? std::span<const IrAnimationSpec>(*runtimeAnimations)
                                            : std::span<const IrAnimationSpec>{};
     }
-    if (static_cast<uint64_t>(offset) + next.animationCount <= all.size()) {
-        std::span<const IrAnimationSpec> specs = all.subspan(offset, next.animationCount);
-        for (const IrAnimationSpec& spec : specs) {
-            // direction: 0 normal, 1 reverse, 2 alternate, 3 alternate-reverse (05.6/T-22).
-            bool isAlternate = spec.direction == 2 || spec.direction == 3;
-            bool isReverse = spec.direction == 1 || spec.direction == 3;
-
-            PlayParams params;
-            params.timeline = spec.timeline;
-            params.localToArena = nullptr;
-            params.localCount = 0;
-            params.selfNode = node;
-            params.delay = spec.delay;
-            params.durationScale = spec.duration;
-            params.segStart = 0;
-            params.segEnd = -1;
-            params.fill = static_cast<FillMode>(spec.fill);
-            params.layer = 0;
-            params.overrideEasing = toEasing(spec.easing);
-
-            if (spec.iterations == 0) {
-                params.loop = isAlternate ? LoopMode::PingPong : LoopMode::Loop;
-                params.iterations = 0;
-                params.speed = 1;
-            } else {
-                params.loop = LoopMode::Once;
-                params.iterations = spec.iterations;
-                params.speed = isReverse ? -1.0f : 1.0f;
-            }
-
-            uint32_t id = animator.play(params, clock);
-            if (onAnimationPlay) {
-                onAnimationPlay(id, node);
-            }
-            if (isReverse && spec.iterations != 0) {
-                // "reverse 系列 -> speed = -1 並 seek 到尾" (T-24.md). localT is in the
-                // timeline's own (unscaled) time domain, i.e. its segEnd == duration (the
-                // compiler always builds @keyframes timelines with duration == 1, see
-                // Code/Runtime/compile/src/style_emit.cpp emitKeyframesTimelines).
-                float segEndSeconds = ir.timeline(spec.timeline).duration();
-                animator.seek(id, segEndSeconds, clock);
-            }
-            if (spec.playState == 1 /* paused */) {
-                animator.pause(id, clock);
-            }
-            data.cssAnimations.push_back(id);
-        }
+    if (static_cast<uint64_t>(offset) + count > all.size()) {
+        return {};
     }
+    return all.subspan(offset, count);
+}
+
+/// The PlayParams of one CSS `animation` item on `node` (05.6 / T-22 / T-24).
+PlayParams cssAnimationParams(const IrAnimationSpec& spec, NodeId node) {
+    // direction: 0 normal, 1 reverse, 2 alternate, 3 alternate-reverse (05.6/T-22).
+    const bool isAlternate = spec.direction == 2 || spec.direction == 3;
+    const bool isReverse = spec.direction == 1 || spec.direction == 3;
+    PlayParams params;
+    params.timeline = spec.timeline;
+    params.selfNode = node;
+    params.delay = spec.delay;
+    params.durationScale = spec.duration;
+    params.segStart = 0;
+    params.segEnd = -1;
+    params.fill = static_cast<FillMode>(spec.fill);
+    params.layer = 0;
+    params.overrideEasing = toEasing(spec.easing);
+    if (spec.iterations == 0) {
+        params.loop = isAlternate ? LoopMode::PingPong : LoopMode::Loop;
+        params.iterations = 0;
+        params.speed = 1;
+    } else {
+        params.loop = LoopMode::Once;
+        params.iterations = spec.iterations;
+        params.speed = isReverse ? -1.0f : 1.0f;
+    }
+    return params;
+}
+
+/// Plays one CSS `animation` item and returns its instance id.
+uint32_t playCssAnimation(Animator& animator, const IrView& ir, const IrAnimationSpec& spec, NodeId node,
+                          float clock, const std::function<void(uint32_t, NodeId)>& onAnimationPlay) {
+    uint32_t id = animator.play(cssAnimationParams(spec, node), clock);
+    if (onAnimationPlay) {
+        onAnimationPlay(id, node);
+    }
+    if ((spec.direction == 1 || spec.direction == 3) && spec.iterations != 0) {
+        // "reverse 系列 -> speed = -1 並 seek 到尾" (T-24.md). localT is in the timeline's own
+        // (unscaled) time domain, i.e. its segEnd == duration (the compiler always builds
+        // @keyframes timelines with duration == 1, see
+        // Code/Runtime/compile/src/style_emit.cpp emitKeyframesTimelines).
+        animator.seek(id, ir.timeline(spec.timeline).duration(), clock);
+    }
+    if (spec.playState == 1 /* paused */) {
+        animator.pause(id, clock);
+    }
+    return id;
+}
+
+/// Whether two `animation` items play alike (every field but the padding).
+bool sameAnimationSpec(const IrAnimationSpec& a, const IrAnimationSpec& b) {
+    return a.timeline == b.timeline && a.duration == b.duration && a.delay == b.delay &&
+           a.easing.kind == b.easing.kind && a.easing.stepsJumpEnd == b.easing.stepsJumpEnd &&
+           a.easing.stepCount == b.easing.stepCount && a.easing.x1 == b.easing.x1 &&
+           a.easing.y1 == b.easing.y1 && a.easing.x2 == b.easing.x2 && a.easing.y2 == b.easing.y2 &&
+           a.iterations == b.iterations && a.direction == b.direction && a.fill == b.fill &&
+           a.playState == b.playState;
+}
+
+/// How many items before `index` in `specs` play the same timeline (the identity's position part).
+uint32_t timelineOccurrence(std::span<const IrAnimationSpec> specs, size_t index) {
+    uint32_t n = 0;
+    for (size_t i = 0; i < index; ++i) {
+        n += specs[i].timeline == specs[index].timeline ? 1u : 0u;
+    }
+    return n;
+}
+
+/// 05.7 step 6 (CSS `animation` diff), per item (04 §4.13, T-616; CSS Animations 1 "Changes to the
+/// animation-* properties while animating"). An item's identity is its `@keyframes` (timeline id)
+/// plus how many earlier items of the list name the same one, so a reordered list of the same
+/// names keeps every instance. An item whose identity was in the last-applied list keeps its
+/// Animator instance and only takes the new timing (Animator::updateParams, continuing from the
+/// elapsed seconds; a play-state change pauses / resumes it); an identity that is gone stops; a
+/// new one plays. The last-applied list is read back from ComputedStyle::lastAnimationOffset /
+/// Count, which stays valid: IR ranges never change and Document::declareRuntimeAnimationsFor()
+/// never writes into the slot that pair points at. The one restart that remains (17.6, T-270c):
+/// a runtime declaration (ElementRef::setStyle) of exactly the list already playing -- a new
+/// runtime slot with identical items, which no restyle produces -- plays the whole list from the
+/// start, as xt_flow's `playAnimation` relies on (53, "playAnimation ... restarts").
+void applyAnimationDiff(Animator& animator, const IrView& ir,
+                        const std::vector<IrAnimationSpec>* runtimeAnimations, ElementData& data,
+                        ComputedStyle& next, NodeId node, float clock,
+                        const std::function<void(uint32_t, NodeId)>& onAnimationPlay) {
+    const uint32_t lastOffset = data.style.lastAnimationOffset;
+    const uint32_t lastCount = data.style.lastAnimationCount;
     next.lastAnimationOffset = next.animationOffset;
     next.lastAnimationCount = next.animationCount;
+    if (next.animationOffset == lastOffset && next.animationCount == lastCount) {
+        return;
+    }
+    std::span<const IrAnimationSpec> oldSpecs =
+        animationSpecsIn(ir, runtimeAnimations, lastOffset, lastCount);
+    const std::span<const IrAnimationSpec> newSpecs =
+        animationSpecsIn(ir, runtimeAnimations, next.animationOffset, next.animationCount);
+    bool restart = oldSpecs.size() != data.cssAnimations.size();  // Defensive: ids out of step.
+    if (!restart && !oldSpecs.empty() && oldSpecs.size() == newSpecs.size() &&
+        (next.animationOffset & kRuntimeEffectOffsetBit) != 0) {
+        restart = true;  // Declared again: an identical list restarts.
+        for (size_t i = 0; i < newSpecs.size() && restart; ++i) {
+            restart = sameAnimationSpec(oldSpecs[i], newSpecs[i]);
+        }
+    }
+    if (restart) {
+        for (uint32_t id : data.cssAnimations) {
+            animator.stop(id);
+        }
+        data.cssAnimations.clear();
+        oldSpecs = {};
+    }
+    // Small lists (all real ones) stay on the stack, so a restyle allocates nothing.
+    constexpr size_t kInline = 16;
+    uint32_t idsInline[kInline];
+    uint8_t usedInline[kInline] = {};
+    std::vector<uint32_t> idsHeap;
+    std::vector<uint8_t> usedHeap;
+    uint32_t* ids = idsInline;
+    uint8_t* used = usedInline;
+    if (newSpecs.size() > kInline) {
+        idsHeap.resize(newSpecs.size());
+        ids = idsHeap.data();
+    }
+    if (oldSpecs.size() > kInline) {
+        usedHeap.assign(oldSpecs.size(), 0);
+        used = usedHeap.data();
+    }
+    for (size_t i = 0; i < newSpecs.size(); ++i) {
+        const IrAnimationSpec& spec = newSpecs[i];
+        const uint32_t occurrence = timelineOccurrence(newSpecs, i);
+        size_t match = oldSpecs.size();
+        for (size_t j = 0, seen = 0; j < oldSpecs.size(); ++j) {
+            if (oldSpecs[j].timeline == spec.timeline && seen++ == occurrence) {
+                match = j;
+                break;
+            }
+        }
+        if (match == oldSpecs.size()) {
+            ids[i] = playCssAnimation(animator, ir, spec, node, clock, onAnimationPlay);
+            continue;
+        }
+        used[match] = 1;
+        ids[i] = data.cssAnimations[match];
+        const IrAnimationSpec& was = oldSpecs[match];
+        if (sameAnimationSpec(was, spec)) {
+            continue;
+        }
+        animator.updateParams(ids[i], cssAnimationParams(spec, node), clock);
+        if (spec.playState != was.playState) {
+            if (spec.playState == 1) {
+                animator.pause(ids[i], clock);
+            } else {
+                animator.resume(ids[i], clock);
+            }
+        }
+    }
+    for (size_t j = 0; j < oldSpecs.size(); ++j) {
+        if (used[j] == 0) {
+            animator.stop(data.cssAnimations[j]);
+        }
+    }
+    data.cssAnimations.assign(ids, ids + newSpecs.size());
 }
 
 /// Effect-parameter PropId's paramIndex list that's animatable (18-effects.md §18.2/§18.3, T-534
@@ -1580,6 +1680,11 @@ void StyleEngine::resolveImageMeta(const IrView& ir, const ComputedStyle& next, 
         }
         data.borderImageSlicePx[i] = px;
     }
+}
+
+std::span<const IrAnimationSpec> StyleEngine::animationSpecs(uint32_t offset, uint32_t count) const {
+    return m_ir != nullptr ? animationSpecsIn(*m_ir, m_runtimeAnimations, offset, count)
+                           : std::span<const IrAnimationSpec>{};
 }
 
 void StyleEngine::init(const IrView& ir, Animator& animator, TextShaper* shaper) {

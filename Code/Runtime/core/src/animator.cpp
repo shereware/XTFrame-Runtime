@@ -300,6 +300,105 @@ void Animator::setSpeed(uint32_t id, float speed, float clock) {
     }
 }
 
+float Animator::activeElapsed(const Instance& inst, float clock) const {
+    if (inst.speed == 0.0f) {
+        return 0.0f;
+    }
+    const float elapsed =
+        inst.paused != 0 ? inst.pausedAt : (clock - inst.startClock - inst.delay) * inst.speed;
+    const float origin = inst.speed < 0.0f ? (inst.segEnd - inst.segStart) * inst.durationScale : 0.0f;
+    return (elapsed - origin) / inst.speed;
+}
+
+void Animator::setActiveElapsed(Instance& inst, float seconds, float clock) {
+    if (inst.speed == 0.0f || !std::isfinite(seconds)) {
+        return;
+    }
+    const float origin = inst.speed < 0.0f ? (inst.segEnd - inst.segStart) * inst.durationScale : 0.0f;
+    const float elapsed = origin + seconds * inst.speed;
+    if (inst.paused != 0) {
+        inst.pausedAt = elapsed;
+    } else {
+        inst.startClock = clock - inst.delay - elapsed / inst.speed;
+    }
+}
+
+void Animator::resyncAfterJump(Instance& inst, float clock, bool quietFinish) {
+    const LocalState st = computeLocalState(inst, clock);
+    if (st.finished) {
+        if (quietFinish) {
+            inst.finished = 1;
+            inst.finishedNotified = 1;
+        }
+    } else {
+        inst.finished = 0;
+        inst.finishedNotified = 0;
+    }
+    // No iteration or marker note for what the jump skipped over.
+    inst.prevIter = st.iter;
+    inst.iterCount = st.iter;
+    inst.prevLocalT = st.localT;
+}
+
+bool Animator::updateParams(uint32_t id, const PlayParams& params, float clock) {
+    Instance* inst = findInstance(id);
+    const Timeline* tl = inst != nullptr ? timeline(inst->timeline) : nullptr;
+    if (tl == nullptr) {
+        return false;
+    }
+    const float seconds = activeElapsed(*inst, clock);
+    const bool wasFinished = inst->finished != 0;
+    inst->delay = params.delay;
+    inst->speed = std::isfinite(params.speed) ? params.speed : 0.0f;
+    inst->durationScale = params.durationScale;
+    inst->segStart = params.segStart;
+    inst->segEnd = params.segEnd < 0.0f ? tl->duration : params.segEnd;
+    inst->loop = params.loop;
+    inst->iterations = params.loop == LoopMode::Once ? uint16_t{1} : params.iterations;  // As play().
+    inst->fill = params.fill;
+    inst->layer = params.layer;
+    inst->overrideEasing = params.overrideEasing;
+    setActiveElapsed(*inst, seconds, clock);
+    // Already finished and still past the end: no second onFinished.
+    resyncAfterJump(*inst, clock, /*quietFinish=*/wasFinished);
+    return true;
+}
+
+bool Animator::retarget(uint32_t id, TimelineId timelineId) {
+    Instance* inst = findInstance(id);
+    const Timeline* next = timeline(timelineId);
+    if (inst == nullptr || next == nullptr) {
+        return false;
+    }
+    const Timeline* prev = timeline(inst->timeline);
+    if (prev != nullptr && inst->segEnd == prev->duration) {
+        inst->segEnd = next->duration;
+    }
+    inst->timeline = timelineId;
+    growScratchForTimeline(*next);
+    growPendingCapacity(next->tracks.size());
+    return true;
+}
+
+float Animator::elapsedSeconds(uint32_t id, float clock) const {
+    const Instance* inst = findInstance(id);
+    return inst == nullptr ? 0.0f : activeElapsed(*inst, clock);
+}
+
+void Animator::setElapsedSeconds(uint32_t id, float seconds, float clock) {
+    Instance* inst = findInstance(id);
+    if (inst == nullptr || inst->speed == 0.0f) {
+        return;
+    }
+    setActiveElapsed(*inst, seconds, clock);
+    resyncAfterJump(*inst, clock, /*quietFinish=*/true);
+}
+
+bool Animator::isPaused(uint32_t id) const {
+    const Instance* inst = findInstance(id);
+    return inst != nullptr && inst->paused != 0;
+}
+
 bool Animator::isActive(uint32_t id) const {
     const Instance* inst = findInstance(id);
     return inst != nullptr && inst->finished == 0;

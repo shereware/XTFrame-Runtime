@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "sys",
+      "type": "system"
+    }
+  ],
+  "edges": [
+    {
+      "from": "sys.languageChanged",
+      "to": "#document.heard"
+    }
+  ]
+}

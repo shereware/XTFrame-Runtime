@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <memory>
 #include <span>
 #include <string>
 #include <string_view>
@@ -16,6 +17,7 @@
 #include "timeline_group.h"
 #include "xt/document.h"
 #include "xt/property.h"
+#include "xt/runtime_state.h"
 
 /// Document::snapshotState / restoreState and the collect / check / apply code Context::hotReload
 /// shares (T-398; Docs/design/23-host-integration.md §23.ad.1, 22-bundle.md §22.10).
@@ -169,6 +171,16 @@ bool boolOr(const Json* v, bool fallback) {
 uint32_t offsetOr(const Json* v) {
     const double n = numberOr(v, 0);
     return n > 0 && n < 4294967295.0 ? static_cast<uint32_t>(n) : 0u;
+}
+
+/// T-616: the `@keyframes` name compiled into `timeline` ("" for none).
+std::string_view keyframesName(const IrView& ir, TimelineId timeline) {
+    for (const IrKeyframesRef& ref : ir.style().keyframesRefs()) {
+        if (ref.timeline == timeline) {
+            return ir.string(ref.name);
+        }
+    }
+    return {};
 }
 
 void markStyleDirtySubtree(NodeArena& arena, NodeId node) {
@@ -402,6 +414,23 @@ void Document::collectState(DocumentState& out, bool withPorts) {
             if (sx != 0.0f || sy != 0.0f) {
                 out.scrolls.push_back(DocumentState::Scroll{id, sx, sy});
             }
+            // T-616: the CSS `animation` items, by position and `@keyframes` name.
+            const std::span<const IrAnimationSpec> specs =
+                m_styleEngine.animationSpecs(data.style.lastAnimationOffset, data.style.lastAnimationCount);
+            for (size_t i = 0; i < specs.size() && specs.size() == data.cssAnimations.size(); ++i) {
+                const uint32_t anim = data.cssAnimations[i];
+                if (anim == 0) {
+                    continue;
+                }
+                DocumentState::Animation entry;
+                entry.id = id;
+                entry.position = static_cast<uint32_t>(i);
+                entry.name = std::string(keyframesName(m_ir, specs[i].timeline));
+                entry.ended = !m_animator.isActive(anim) && !m_animator.isFinished(anim);
+                entry.elapsed = m_animator.elapsedSeconds(anim, m_clock);
+                entry.paused = m_animator.isPaused(anim);
+                out.animations.push_back(std::move(entry));
+            }
         }
     }
     for (uint8_t p = 0; p < kMaxPlayers; ++p) {
@@ -562,6 +591,34 @@ void Document::applyState(const DocumentState& state, bool exact) {
         }
     }
     m_timelineGroups->pending.clear();
+    // 5b. T-616 (04 §4.13): CSS `animation` items, by element id + position + `@keyframes` name,
+    // after a style pass at this clock has played the new document's own (the custom states above
+    // may have changed which `animation` declaration wins).
+    if (!state.animations.empty()) {
+        layoutIfDirty();
+    }
+    for (const DocumentState::Animation& snap : state.animations) {
+        const NodeId node = byId(snap.id).node;
+        if (node == kInvalidNode) {
+            continue;
+        }
+        const ElementData& data = m_arena.element(node);
+        const std::span<const IrAnimationSpec> specs =
+            m_styleEngine.animationSpecs(data.style.lastAnimationOffset, data.style.lastAnimationCount);
+        if (snap.position >= specs.size() || specs.size() != data.cssAnimations.size() ||
+            keyframesName(m_ir, specs[snap.position].timeline) != snap.name) {
+            continue;
+        }
+        const uint32_t anim = data.cssAnimations[snap.position];
+        if (snap.ended) {
+            m_animator.stop(anim);  // Quietly: it ended before.
+            continue;
+        }
+        m_animator.setElapsedSeconds(anim, snap.elapsed, m_clock);
+        if (snap.paused && !m_animator.isPaused(anim)) {
+            m_animator.pause(anim, m_clock);
+        }
+    }
     // 6. Scroll offsets, against a fresh layout so they clamp to the real content.
     std::vector<std::pair<NodeId, Vec2>> scrolls;
     if (exact) {
@@ -587,6 +644,29 @@ void Document::applyState(const DocumentState& state, bool exact) {
             m_events->setScroll(m_arena, node, pos.x, pos.y, /*notify=*/false);
         }
     }
+}
+
+RuntimeState::RuntimeState() = default;
+RuntimeState::~RuntimeState() = default;
+RuntimeState::RuntimeState(RuntimeState&& other) noexcept = default;
+RuntimeState& RuntimeState::operator=(RuntimeState&& other) noexcept = default;
+
+RuntimeState Document::captureRuntimeState() {
+    RuntimeState out;
+    out.m_state = std::make_unique<DocumentState>();
+    collectState(*out.m_state, /*withPorts=*/false);
+    out.m_clock = m_clock;
+    return out;
+}
+
+void Document::restoreRuntimeState(const RuntimeState& state) {
+    if (state.m_state == nullptr) {
+        return;
+    }
+    // Context::hotReload's carry-over (hot_reload.cpp), without its all-or-nothing check: what this
+    // document lacks is skipped and keeps its initial state.
+    m_clock = state.m_clock;
+    applyState(*state.m_state, /*exact=*/false);
 }
 
 std::string Document::snapshotState() {

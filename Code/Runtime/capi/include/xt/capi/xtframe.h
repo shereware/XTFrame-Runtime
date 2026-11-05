@@ -67,6 +67,8 @@ typedef void (*xt_log_fn)(int level, const char* message, void* user);
 XT_CAPI void        xt_capi_set_log(xt_log_fn fn, void* user);
 
 /* --- Bundle (a published directory bundle, Docs/design/22; read-only) --- */
+/* xt_bundle_open: a manifest with `strings` also loads its string tables (T-617); every surface then
+   starts in `spec.defaultLanguage` (else the first strings language) with its `@key` text resolved. */
 XT_CAPI xt_bundle*  xt_bundle_open(const char* dir_utf8);  /* NULL + last_error */
 XT_CAPI xt_status   xt_bundle_close(xt_bundle* b);         /* surfaces still open -> INVALID_ARGUMENT, not closed */
 XT_CAPI const char* xt_bundle_id(const xt_bundle* b);
@@ -179,6 +181,9 @@ XT_CAPI xt_status   xt_surface_request_hide(xt_surface* s);
 XT_CAPI xt_status   xt_surface_set_visible(xt_surface* s, int visible);    /* no intro/outro */
 XT_CAPI int         xt_surface_is_visible(const xt_surface* s);
 XT_CAPI xt_status   xt_surface_set_theme(xt_surface* s, const char* name);  /* "" clears */
+/* set_language: Context::setLanguage (every `@key` text and `localize` binding re-resolved); with a
+   strings bundle the library then posts the system event languageChanged = lang to the surface's
+   flows itself (the host need not; posting it again is harmless). Without strings: language only. */
 XT_CAPI xt_status   xt_surface_set_language(xt_surface* s, const char* lang);
 XT_CAPI xt_status   xt_surface_post_system_event(xt_surface* s, const char* kind, const char* value);
 XT_CAPI xt_status   xt_surface_hot_reload(xt_surface* s);   /* reloadUi + flow rebind + ports rebind */

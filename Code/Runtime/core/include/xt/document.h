@@ -47,8 +47,7 @@ struct ImageData;
 class IGlyphProvider;
 /// A compiled setStyle() text shape (see xt/style_template.h, T-477).
 struct StyleTemplate;
-/// Forward declaration; the class is defined below.
-class Document;
+class Document;  // Defined below.
 /// The Context that loaded a Document (see xt/context.h).
 class Context;
 class EventDispatcher;    // Code/Runtime/core/src/event_dispatcher.h (private; Document owns one via pimpl).
@@ -59,6 +58,7 @@ class TriggerRuntime;     // Code/Runtime/core/src/trigger_runtime.h (private; D
 class BindingRuntime;     // Code/Runtime/core/src/binding_runtime.h (private; Document owns one, see m_bindings).
 class RepeatController;   // Code/Runtime/core/src/repeat_controller.h (private; Document owns one, see m_repeats).
 struct DocumentState;     // Code/Runtime/core/src/document_state.h (private; T-398 snapshot / hotReload carry-over).
+class RuntimeState;       // xt/runtime_state.h (T-616: captureRuntimeState() / restoreRuntimeState()).
 namespace rig {
 struct RigState;  // Code/Runtime/core/src/rig_eval.h (private; Document owns the pool, see m_rigs).
 }  // namespace rig
@@ -768,6 +768,9 @@ public:
     /// kInvalidArgument when the text is not a snapshot (unparsable JSON, not an object, another
     /// `version`), with nothing applied.
     Status restoreState(std::string_view json);
+    /// T-616 (04 §4.13): hotReload's state carry-over for an in-place reload; xt/runtime_state.h.
+    RuntimeState captureRuntimeState();
+    void restoreRuntimeState(const RuntimeState& state);
     /// 27.3.1 multi-instance: the id this Document's host events carry (default 0).
     void setInstanceId(uint32_t id) { m_instanceId = id; }
     uint32_t instanceId() const { return m_instanceId; }
@@ -855,13 +858,10 @@ public:
     /// The autoplay-created instance id for `anim`; 0 if none (not autoplay, or not an `anim`
     /// element with an instantiated scene).
     uint32_t defaultAnimation(ElementRef anim) const;
-    /// Docs/tasks/T-62.md: `element`'s CSS `animation` instance ids (`ElementData::cssAnimations`),
-    /// in declaration order (the order they appear in the `animation` shorthand's comma list, per
-    /// `applyAnimationDiff()`'s per-spec `play()` loop -- style_engine.cpp). Empty when `element` is
-    /// invalid, not an Element, or currently has no `animation` declaration. Editor-only accessor
-    /// (`xt::editor::PreviewSession`'s timeline playhead, Docs/design/17-editor.md §17.5/§17.7);
-    /// intentionally omitted from 13-api.md's public surface (13.2 doesn't have it either) since it
-    /// exposes Animator instance ids, which nothing outside the editor needs.
+    /// Docs/tasks/T-62.md: `element`'s CSS `animation` instance ids (`ElementData::cssAnimations`)
+    /// in the order of its `animation` list (an item keeps its id across restyles, 04 §4.13).
+    /// Empty when `element` is invalid, not an Element, or has no `animation` declaration.
+    /// Editor-only accessor (`xt::editor::PreviewSession`'s timeline playhead, 17 §17.5/§17.7).
     std::vector<uint32_t> animationsOf(ElementRef element) const;
     /// `anim`'s instantiated scene instance, or nullptr when it has none.
     const SceneInstance* sceneInstance(ElementRef anim) const;
@@ -1424,7 +1424,7 @@ private:
     };
     // Two slots per (element, property), written alternately: a declaration goes into the slot
     // the element's cascaded value does not reference, so its offset always changes -- which is
-    // how StyleEngine sees a change (markNonAnimatableDirty repaints, applyAnimationDiff restarts)
+    // how StyleEngine sees a change (markNonAnimatableDirty repaints, applyAnimationDiff re-diffs)
     // -- and the pool holds at most two slots per element. Released with the element.
     struct RuntimeDeclSlots {
         RuntimeDeclSlot slot[2];
