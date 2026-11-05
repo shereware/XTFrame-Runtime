@@ -573,10 +573,16 @@ bool emitDoc(const DomTree& dom, IrWriter& writer, StyleBuilder& style, DocBuild
                 // partially applied); the underlying parse errors go into a throwaway sink so they
                 // don't fail the whole document (Docs/tasks/T-23.md "失敗 -> warning 丟棄").
                 DiagnosticSink localSink;
+                localSink.setWebCompat(sink.webCompat());
                 std::vector<StyleDecl> decls;
                 // T-335: a `linear()` easing's points go straight into the STYL pool.
                 bool declsOk =
                     parseDeclarations(attr.value, fileName, attr.line, localSink, decls, &style.easingPoints);
+                for (const Diagnostic& d : localSink.all()) {  // T-594: the `web.*` advice is kept.
+                    if (d.code.rfind("web.", 0) == 0) {
+                        sink.web(d.file, d.message, d.line, d.col, d.code, d.fix);
+                    }
+                }
                 if (!declsOk) {
                     sink.warn(std::string(fileName), "invalid inline style, ignored", attr.line, attr.col);
                 } else {

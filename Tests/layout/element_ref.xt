@@ -1,18 +1,5 @@
-<xt>
-  <head>
-    <style>
-      body { width: 400px; height: 300px; }
-      #box { width: 100px; height: 50px; background-color: #000000; }
-      #box.big { width: 200px; }
-      #box:hover { background-color: #ff0000; }
-      #rotated { position: absolute; left: 10px; top: 200px; width: 40px; height: 20px;
-                 transform: rotate(90deg); transform-origin: 0px 0px; }
-      #persp { position: absolute; left: 48px; top: 24px; width: 120px; height: 60px;
-               perspective: 500px; }
-      #label { width: 120px; height: 20px; font-size: 10px; }
-      #field { width: 120px; height: 20px; font-size: 10px; }
-    </style>
-  </head>
+<xt version="2">
+
   <body id="body">
     <div id="box" class="panel" data-role="main">text</div>
     <div id="rotated"></div>
@@ -23,4 +10,57 @@
     <input id="vert" type="text" style="writing-mode: vertical-rl"/>
     <div id="persp"></div>
   </body>
+
+  <layout>
+    body {
+      width: 400px;
+      height: 300px;
+    }
+    #box {
+      width: 100px;
+      height: 50px;
+    }
+    #box.big {
+      width: 200px;
+    }
+    #rotated {
+      position: absolute;
+      left: 10px;
+      top: 200px;
+      width: 40px;
+      height: 20px;
+      transform: rotate(90deg);
+      transform-origin: 0px 0px;
+    }
+    #persp {
+      position: absolute;
+      left: 48px;
+      top: 24px;
+      width: 120px;
+      height: 60px;
+      perspective: 500px;
+    }
+    #label {
+      width: 120px;
+      height: 20px;
+    }
+    #field {
+      width: 120px;
+      height: 20px;
+    }
+  </layout>
+  <style>
+    #box {
+      background-color: #000000;
+    }
+    #box:hover {
+      background-color: #ff0000;
+    }
+    #label {
+      font-size: 10px;
+    }
+    #field {
+      font-size: 10px;
+    }
+  </style>
 </xt>

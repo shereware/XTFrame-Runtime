@@ -12,6 +12,10 @@
 #include "xt/bundle/bundle.h"
 #include "xt/bundle/symbol_library.h"
 #include "xt/bundle/symbol_lint.h"
+#include "xt/compile/canonical_writer.h"
+#include "xt/compile/dom.h"
+#include "xt/compile/migrate.h"
+#include "xt/compile/parse_xt.h"
 #include "xt/compile/parse_xts.h"
 #include "xt/compile/style_model.h"
 #include "xt/compile/utf8_path.h"
@@ -436,6 +440,41 @@ std::string rewriteText(std::string text, const std::vector<std::pair<std::strin
     return text;
 }
 
+/// T-606 (Docs/design/54-source-format-v2.md §54.7, §54.9): the text a saved group holds for the
+/// project symbol file `file` (read as `text`): source format 2 through the canonical writer -- a
+/// version 2 file re-written canonically, a version 1 file migrated by migrateToV2() (which writes
+/// with the same writer; the library's own `<link>`s, never loaded by version 1, are dropped). A file
+/// that does not read as version 2 or does not migrate cleanly is kept as it is (version 1 still
+/// reads).
+std::string savedSymbolText(const fs::path& file, const std::string& text) {
+    compile::DiagnosticSink sink;
+    compile::DomTree dom;
+    if (!compile::parseXtSymbolLibrary(text, genericPathToUtf8(file), sink, dom)) {
+        return text;
+    }
+    if (dom.formatVersion >= 2) {
+        compile::CanonicalXt doc;
+        compile::DiagnosticSink readSink;
+        return compile::readCanonicalXt(text, genericPathToUtf8(file), readSink, doc)
+                   ? compile::writeCanonicalXt(doc)
+                   : text;
+    }
+    compile::MigrateOptions options;
+    options.selfCheck = false;
+    std::vector<compile::MigratedFile> files;
+    compile::MigrateReport report;
+    if (!compile::migrateToV2(genericPathToUtf8(file), options, files, report)) {
+        return text;
+    }
+    for (const compile::MigratedFile& migrated : files) {
+        std::error_code ec;
+        if (!migrated.created && fs::equivalent(pathFromUtf8(migrated.path), file, ec)) {
+            return migrated.text;
+        }
+    }
+    return text;
+}
+
 struct SaveContext {
     const UiProject& project;
     fs::path root;
@@ -573,6 +612,7 @@ Status saveAsGroupImpl(const UiProject& project, std::span<const std::string_vie
             !readFile(genericPathToUtf8(file), source.text)) {
             return ctx.fail(Status::kNotFound, "no " + symbolsRel + "/" + source.name + ".xt");
         }
+        source.text = savedSymbolText(file, source.text);
         sources.push_back(std::move(source));
     }
 
@@ -774,7 +814,7 @@ Status saveAsGroupImpl(const UiProject& project, std::span<const std::string_vie
         entry["previousContent"] = nlohmann::ordered_json::array();
         entries.push_back(std::move(entry));
 
-        // The symbol file, as it is.
+        // The symbol file, in source format 2 (T-606).
         if (!writeFile(genericPathToUtf8(ctx.groupDir / pathFromUtf8(source.name + ".xt")), source.text)) {
             return abort(Status::kIoError, "cannot write " + source.name + ".xt");
         }

@@ -1,17 +1,5 @@
-<xt>
-  <head>
-    <style>
-      #rowRev { display: flex; flex-direction: row-reverse; width: 400px; height: 30px; }
-      #ra { width: 80px; }
-      #rb { width: 60px; }
-      #rc { width: 100px; }
+<xt version="2">
 
-      #colRev { display: flex; flex-direction: column-reverse; width: 100px; height: 300px; }
-      #ca { height: 80px; }
-      #cb { height: 60px; }
-      #cc { height: 100px; }
-    </style>
-  </head>
   <body>
     <div id="rowRev">
       <div id="ra"></div>
@@ -24,4 +12,37 @@
       <div id="cc"></div>
     </div>
   </body>
+
+  <layout>
+    #rowRev {
+      display: flex;
+      flex-direction: row-reverse;
+      width: 400px;
+      height: 30px;
+    }
+    #ra {
+      width: 80px;
+    }
+    #rb {
+      width: 60px;
+    }
+    #rc {
+      width: 100px;
+    }
+    #colRev {
+      display: flex;
+      flex-direction: column-reverse;
+      width: 100px;
+      height: 300px;
+    }
+    #ca {
+      height: 80px;
+    }
+    #cb {
+      height: 60px;
+    }
+    #cc {
+      height: 100px;
+    }
+  </layout>
 </xt>

@@ -1,17 +1,24 @@
-<xt>
-  <head>
-    <style>
-      @font-face { font-family: "Noto Naskh Arabic"; src: "../../fonts/NotoNaskhArabic-Regular.subset.ttf"; }
-      #a {
-        margin: 16px;
-        width: 220px;
-        font-family: "Noto Naskh Arabic";
-        font-size: 20px;
-        color: #202020;
-      }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <div id="a">السلام عليكم</div>
   </body>
+
+  <layout>
+    #a {
+      margin: 16px;
+      width: 220px;
+    }
+  </layout>
+  <style>
+    @font-face {
+      font-family: "Noto Naskh Arabic";
+      src: "../../fonts/NotoNaskhArabic-Regular.subset.ttf";
+    }
+    #a {
+      font-family: "Noto Naskh Arabic";
+      font-size: 20px;
+      color: #202020;
+    }
+  </style>
 </xt>

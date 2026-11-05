@@ -13,6 +13,7 @@ add_library(xt_compile STATIC
     src/migrate_markup.cpp
     src/migrate_report.cpp
     src/computed_dump.cpp
+    src/web_compat_lint.cpp
     src/compile_lottie.cpp
     src/compile_document.cpp
     src/style_emit.cpp
@@ -76,3 +77,5 @@ set_source_files_properties(src/ports_section.cpp src/section_sources.cpp src/xt
 # T-589: the migrator and the computed-style dump, likewise.
 set_source_files_properties(src/migrate_v2.cpp src/migrate_sheet.cpp src/migrate_markup.cpp src/migrate_report.cpp
     src/computed_dump.cpp PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
+# T-594: the web-compat lint, likewise.
+set_source_files_properties(src/web_compat_lint.cpp PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)

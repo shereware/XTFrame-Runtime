@@ -764,7 +764,7 @@
   },
   {
    "from": "listShift.out",
-   "to": "#challenge-menu.listShift"
+   "to": "#document.listShift"
   },
   {
    "from": "parked.value",
@@ -780,7 +780,7 @@
   },
   {
    "from": "panelShift.out",
-   "to": "#challenge-menu.panelShift"
+   "to": "#document.panelShift"
   }
  ]
 }

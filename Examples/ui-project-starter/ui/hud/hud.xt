@@ -1,22 +1,19 @@
-<xt>
+<xt version="2">
   <head>
-    <!-- In-game HUD built from the standard symbol library, placed by conventions/layouts/hud.xt:
-         status top-left, compass top-centre, minimap top-right, toasts right, prompt and subtitle
-         low-centre, hotbar bottom-centre, abilities bottom-right, crosshair centre. -->
-    <link rel="symbols" href="../../shared/symbols/HealthBar.xt"/>
-    <link rel="symbols" href="../../shared/symbols/Counter.xt"/>
-    <link rel="symbols" href="../../shared/symbols/CompassStrip.xt"/>
-    <link rel="symbols" href="../../shared/symbols/Minimap.xt"/>
-    <link rel="symbols" href="../../shared/symbols/Toast.xt"/>
-    <link rel="symbols" href="../../shared/symbols/Notification.xt"/>
-    <link rel="symbols" href="../../shared/symbols/Crosshair.xt"/>
-    <link rel="symbols" href="../../shared/symbols/DamageNumber.xt"/>
-    <link rel="symbols" href="../../shared/symbols/Subtitle.xt"/>
-    <link rel="symbols" href="../../shared/symbols/Hotbar.xt"/>
-    <link rel="symbols" href="../../shared/symbols/CooldownRing.xt"/>
-    <link rel="symbols" href="../../shared/symbols/InputGlyph.xt"/>
-    <link href="hud.xts"/>
+    <symbols src="../../shared/symbols/HealthBar.xt"/>
+    <symbols src="../../shared/symbols/Counter.xt"/>
+    <symbols src="../../shared/symbols/CompassStrip.xt"/>
+    <symbols src="../../shared/symbols/Minimap.xt"/>
+    <symbols src="../../shared/symbols/Toast.xt"/>
+    <symbols src="../../shared/symbols/Notification.xt"/>
+    <symbols src="../../shared/symbols/Crosshair.xt"/>
+    <symbols src="../../shared/symbols/DamageNumber.xt"/>
+    <symbols src="../../shared/symbols/Subtitle.xt"/>
+    <symbols src="../../shared/symbols/Hotbar.xt"/>
+    <symbols src="../../shared/symbols/CooldownRing.xt"/>
+    <symbols src="../../shared/symbols/InputGlyph.xt"/>
   </head>
+
   <body>
     <div id="Screen">
       <div id="Damage"><use symbol="DamageNumber" id="Hits"/></div>
@@ -48,4 +45,7 @@
       </div>
     </div>
   </body>
+
+  <layout src="hud.layout.xts"/>
+  <style src="hud.xts"/>
 </xt>

@@ -1,0 +1,27 @@
+<xt version="2">
+  <head>
+    <symbols src="../RadioGroup.xt"/>
+  </head>
+
+  <body>
+    <use symbol="RadioGroup" id="Difficulty"/>
+  </body>
+
+  <layout>
+    body {
+      width: 240px;
+      height: 150px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      row-gap: 12px;
+    }
+  </layout>
+  <style src="../tokens.xts"/>
+  <style>
+    body {
+      background-color: var(--color-bg);
+    }
+  </style>
+</xt>

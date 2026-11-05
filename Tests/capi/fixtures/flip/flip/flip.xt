@@ -1,10 +1,9 @@
-<xt>
-  <head>
-    <!-- xt_capi_tests (T-561): one card a click flips. Its flow toggles `flipped` on #card.Click
-         (run_flow = 1); a run_flow = 0 host does the same from xt_surface_set_update_hook. -->
-    <link href="flip.xts"/>
-  </head>
+<xt version="2">
+
   <body>
     <div id="card"></div>
   </body>
+
+  <layout src="flip.layout.xts"/>
+  <style src="flip.xts"/>
 </xt>

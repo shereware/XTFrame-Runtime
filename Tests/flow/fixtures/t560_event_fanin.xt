@@ -1,5 +1,24 @@
-<xt><head><style>#A { width: 40px; height: 40px; } #B { width: 40px; height: 40px; }</style></head>
-<body id="Root"><div id="Hud" port:fire="event in" port:hits="number in" port:shot="event out"
-    on:port(fire)="emit(shot)"></div>
-  <div id="A"></div>
-  <div id="B"></div></body></xt>
+<xt version="2">
+
+  <ports>
+    fire: event in
+    hits: number in
+    shot: event out
+  </ports>
+
+  <body id="Root"><div id="Hud"
+      on:port(fire)="emit(shot)"></div>
+    <div id="A"></div>
+    <div id="B"></div></body>
+
+  <layout>
+    #A {
+      width: 40px;
+      height: 40px;
+    }
+    #B {
+      width: 40px;
+      height: 40px;
+    }
+  </layout>
+</xt>

@@ -323,7 +323,7 @@
       ],
       "contract": "e2a7c05333c2dbef",
       "file": "ui/demo3-menu.xtir",
-      "fileHash": 17183465868133161074,
+      "fileHash": 9262614524403849744,
       "fit": "native",
       "flow": "ui/demo3-menu.xtflow",
       "flowInterface": {
@@ -611,14 +611,6 @@
           {
             "name": "#demo3-menu.playAnimation",
             "type": "string"
-          },
-          {
-            "name": "#demo3-menu.px",
-            "type": "number"
-          },
-          {
-            "name": "#demo3-menu.py",
-            "type": "number"
           },
           {
             "name": "#demo3-menu.removeClass",
@@ -2851,6 +2843,14 @@
           {
             "name": "#vignette.toggleClass",
             "type": "pulse"
+          },
+          {
+            "name": "document.px",
+            "type": "number"
+          },
+          {
+            "name": "document.py",
+            "type": "number"
           }
         ],
         "out": [
@@ -3130,29 +3130,9 @@
             "type": "pulse"
           },
           {
-            "name": "#demo3-menu.continue_game",
-            "origin": "document",
-            "type": "pulse"
-          },
-          {
             "name": "#demo3-menu.hover",
             "origin": "document",
             "type": "bool"
-          },
-          {
-            "name": "#demo3-menu.new_game",
-            "origin": "document",
-            "type": "pulse"
-          },
-          {
-            "name": "#demo3-menu.open_credits",
-            "origin": "document",
-            "type": "pulse"
-          },
-          {
-            "name": "#demo3-menu.open_options",
-            "origin": "document",
-            "type": "pulse"
           },
           {
             "name": "#fx-fireflies.AnimationEnd",
@@ -5158,6 +5138,26 @@
             "name": "document.clock",
             "origin": "document",
             "type": "number"
+          },
+          {
+            "name": "document.continue_game",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "document.new_game",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "document.open_credits",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "document.open_options",
+            "origin": "document",
+            "type": "pulse"
           },
           {
             "name": "document.pointerDown",

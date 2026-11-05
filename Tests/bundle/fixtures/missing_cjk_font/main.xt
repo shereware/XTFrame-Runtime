@@ -1,13 +1,19 @@
-<xt>
-  <head>
-    <style>
-      /* T-569 (07 §7.20, report R4): the first CJK family of the list is not installed. */
-      #cjk { font-family: "Xt Missing JhengHei", "Segoe UI", sans-serif; font-size: 20px; }
-      #latin { font-family: "Xt Missing Latin", sans-serif; font-size: 20px; }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <div id="cjk">甲，乙：丙（丁）、戊。</div>
     <div id="latin">Latin only</div>
   </body>
+
+  <style>
+    /* T-569 (07 §7.20, report R4): the first CJK family of the list is not installed. */
+    #cjk {
+      font-family: "Xt Missing JhengHei", "Segoe UI", sans-serif;
+      font-size: 20px;
+    }
+    #latin {
+      font-family: "Xt Missing Latin", sans-serif;
+      font-size: 20px;
+    }
+  </style>
 </xt>

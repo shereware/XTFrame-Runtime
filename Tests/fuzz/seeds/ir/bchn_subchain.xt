@@ -1,9 +1,13 @@
-<!-- T-602: fuzz_ir seed for the BCHN chunk (02 §2.s.4, 03 §3.12.11). Converter sub-chains as a
-     format() argument (T-585 F88), a select() value and a step() value. -->
-<xt>
-  <head><style></style></head>
+<xt version="2">
+
+  <ports>
+    target_hp: number
+    dmg: number
+    mode: string
+  </ports>
+
   <body id="Root">
-    <div id="P" port:target_hp="number" port:dmg="number" port:mode="string"></div>
+    <div id="P"></div>
     <span id="T" bind:text="format('{0} → {1}', target_hp, dmg | scale(-1) | offset(target_hp) | round(0))"></span>
     <span id="S" bind:text="mode | select(x: dmg | offset(1), default: 'none')"></span>
     <span id="N" bind:text="target_hp | step(10: port(dmg) | scale(3), default: 0)"></span>

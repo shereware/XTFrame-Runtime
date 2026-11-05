@@ -1,0 +1,125 @@
+<xt version="2">
+
+  <symbol name="BottomSheet" state-groups="Sheet: Collapsed|Expanded" requires="states: Collapsed, Expanded; slots: title, content">
+    <ports>
+      open: bool in
+    </ports>
+    <div id="Box"
+         bind:state.Expanded="open" bind:state.Collapsed="open | not"
+         on:port(open)="if gt(0) play(expand) else play(collapse)">
+      <div id="Panel">
+        <div id="Grip"
+             on:click="sound(ui_open); set(open, toggle)"
+             on:gesture(swipe(up))="set(open, true)"
+             on:gesture(swipe(down))="sound(ui_back); set(open, false)">
+          <div id="Handle"></div>
+          <span id="Title"><slot name="title">Settings</slot></span>
+        </div>
+        <div id="Rule"></div>
+        <div id="Content"><slot name="content"><span id="ContentText">Content</span></slot></div>
+      </div>
+    </div>
+  </symbol>
+
+  <layout>
+    symbol(BottomSheet) {
+      #Box {
+        position: absolute;
+        left: 0px;
+        bottom: 0px;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+      }
+      #Panel {
+        display: flex;
+        flex-direction: column;
+        padding: 0px var(--space-4) var(--space-4) var(--space-4);
+        padding-bottom: calc(1safe-bottom + 16px);
+      }
+      #Grip {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        row-gap: var(--space-2);
+        min-height: var(--touch-min);
+        padding: var(--space-2) 0px var(--space-2) 0px;
+      }
+      #Handle {
+        width: 48px;
+        height: var(--rule-thick);
+      }
+      #Rule {
+        height: 7px;
+      }
+      #Content {
+        display: flex;
+        flex-direction: column;
+        row-gap: var(--space-3);
+        padding: var(--space-2) 0px 0px 0px;
+      }
+      #Box:state(Collapsed) #Content {
+        display: none;
+      }
+    }
+  </layout>
+  <style>
+    symbol(BottomSheet) {
+      #Box {
+        font-family: var(--font-body);
+        color: var(--color-text);
+      }
+      #Panel {
+        background-color: var(--color-surface);
+        background-image: var(--tex-grain);
+        background-repeat: repeat;
+        background-size: 128px 128px;
+        border-width: var(--rule-thick) 0px 0px 0px;
+        border-color: var(--color-border);
+      }
+      #Handle {
+        background-color: var(--color-accent);
+      }
+      #Title {
+        font-family: var(--font-display);
+        font-size: var(--font-size-l);
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: var(--letter-display);
+      }
+      #Rule {
+        background-image: var(--tex-rule-h);
+        background-repeat: repeat-x;
+        background-size: 1px 7px;
+      }
+      #Box:state(Expanded) #Handle {
+        background-color: var(--color-accent-hover);
+      }
+    }
+  </style>
+  <timelines>
+    symbol(BottomSheet) {
+      @timeline collapse {
+        #Panel {
+          0s {
+            transform: translateY(-120px);
+          }
+          0.25s ease-out {
+            transform: translateY(0px);
+          }
+        }
+      }
+      @timeline expand {
+        #Panel {
+          0s {
+            transform: translateY(240px);
+          }
+          0.3s ease-out {
+            transform: translateY(0px);
+          }
+        }
+      }
+    }
+  </timelines>
+</xt>

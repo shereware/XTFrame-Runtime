@@ -1,24 +1,5 @@
-<xt>
-  <head>
-    <style>
-      #cb { position: relative; width: 400px; height: 300px; }
-      #row { position: absolute; left: 8px; top: 8px;
-             display: flex; flex-direction: row; gap: 16px; }
-      #row > div { width: 64px; height: 64px; }
-      #rowLeftOnly { position: absolute; left: 8px;
-                     display: flex; flex-direction: row; gap: 16px; }
-      #rowLeftOnly > div { width: 64px; height: 64px; }
-      #rowPad { position: absolute; left: 8px; top: 100px; padding: 8px;
-                display: flex; flex-direction: row; gap: 16px; }
-      #rowPad > div { width: 64px; height: 64px; }
-      #col { position: absolute; left: 8px; top: 200px;
-             display: flex; flex-direction: column; gap: 16px; }
-      #col > div { width: 64px; height: 64px; }
-      #overflow { position: absolute; left: 0px; top: 0px;
-                  display: flex; flex-direction: row; gap: 10px; }
-      #overflow > div { width: 150px; height: 50px; }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <div id="cb">
       <div id="row">
@@ -48,4 +29,72 @@
       <div id="oc"></div>
     </div>
   </body>
+
+  <layout>
+    #cb {
+      position: relative;
+      width: 400px;
+      height: 300px;
+    }
+    #row {
+      position: absolute;
+      left: 8px;
+      top: 8px;
+      display: flex;
+      flex-direction: row;
+      gap: 16px;
+    }
+    #row > div {
+      width: 64px;
+      height: 64px;
+    }
+    #rowLeftOnly {
+      position: absolute;
+      left: 8px;
+      display: flex;
+      flex-direction: row;
+      gap: 16px;
+    }
+    #rowLeftOnly > div {
+      width: 64px;
+      height: 64px;
+    }
+    #rowPad {
+      position: absolute;
+      left: 8px;
+      top: 100px;
+      padding: 8px;
+      display: flex;
+      flex-direction: row;
+      gap: 16px;
+    }
+    #rowPad > div {
+      width: 64px;
+      height: 64px;
+    }
+    #col {
+      position: absolute;
+      left: 8px;
+      top: 200px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    #col > div {
+      width: 64px;
+      height: 64px;
+    }
+    #overflow {
+      position: absolute;
+      left: 0px;
+      top: 0px;
+      display: flex;
+      flex-direction: row;
+      gap: 10px;
+    }
+    #overflow > div {
+      width: 150px;
+      height: 50px;
+    }
+  </layout>
 </xt>

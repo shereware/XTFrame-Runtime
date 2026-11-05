@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -17,15 +18,17 @@
 #include "xt/compile/diagnostics.h"
 #include "xt/compile/migrate.h"
 #include "xt/compile/utf8_path.h"
+#include "xt/document.h"
 #include "xt/flow/flow_graph.h"
 #include "xt/ir.h"
+#include "xt/text_shaper.h"
 
 /// xtframe-compile: CLI front-end for xt::compile::compileLottie (`.json`) / compileDocument (`.xt`).
 /// See Docs/tasks/T-17.md "xtframe-compile", Docs/tasks/T-23.md "xtframe-compile".
 ///
 /// Usage: xtframe-compile <input.json | input.xt> -o <out.xtir> [--root DIR] [--embed-images]
 ///                       [--embed-fonts] [--strict] [--no-meta] [--standard-symbols DIR]
-///                       [--diagnostics FILE]
+///                       [--diagnostics FILE] [--web-compat]
 ///        xtframe-compile --migrate <project-dir | file.xt> [-o DIR] [--anchors] [--report FILE]
 ///                       [--standard-symbols DIR]
 ///        xtframe-compile <input.xt | input.xtir> --dump-computed [-o FILE] [--standard-symbols DIR]
@@ -56,7 +59,14 @@
 /// T-601 (53 §53.102 item 3): a `.xt` input's sibling `<stem>.xtflow` (the importer's convention,
 /// T-135) is linted too (xt::flow::lintFlowGraph()): each finding prints as a `warning
 /// flow.introByTimer ...` line to stderr and goes into `--diagnostics`; it never changes the exit
-/// code. A sibling that does not parse is left to the flow tools.
+/// code. A sibling that does not parse is left to the flow tools. T-594: when the compile succeeded the
+/// lint gets the compiled Document too (the lintFlowGraph(graph, doc, out) overload), so the info
+/// `flow.rootPortAlias` (an `#<UI root>.<port>` endpoint bound to a document port) is reported as an
+/// `info` line; a failed compile lints the graph alone, as before.
+///
+/// T-594 (54 §54.14 S4): `--web-compat` turns on the `web.*` warnings (CompileOptions::webCompat):
+/// HTML/CSS habits XTFrame does not share, each with a fix (Skills/skills/xtui/references/
+/// not-like-web.md). They print like any warning, go into `--diagnostics` and never fail `--strict`.
 ///
 /// Exit codes: 0 success, 1 a compile error occurred, 2 argument error (usage printed to stderr).
 ///
@@ -86,7 +96,10 @@ namespace {
 namespace fs = std::filesystem;
 
 /// T-601: the findings of `xtPath`'s sibling `.xtflow`, in the shared format (none without one).
-std::vector<xt::compile::ReportDiagnostic> siblingFlowLint(const fs::path& xtPath) {
+/// T-594: `ir` (the compiled document; empty when the compile failed) is loaded as the Document the
+/// lint resolves endpoints against.
+std::vector<xt::compile::ReportDiagnostic> siblingFlowLint(const fs::path& xtPath,
+                                                           const std::vector<uint8_t>& ir) {
     std::vector<xt::compile::ReportDiagnostic> items;
     const fs::path flowPath = fs::path(xtPath).replace_extension(".xtflow");
     std::ifstream in(flowPath, std::ios::binary);
@@ -97,16 +110,32 @@ std::vector<xt::compile::ReportDiagnostic> siblingFlowLint(const fs::path& xtPat
     xt::flow::FlowGraph graph;
     std::vector<std::string> errors;
     std::vector<xt::flow::FlowLintFinding> findings;
+    xt::NullTextShaper shaper;
+    std::unique_ptr<xt::Document> doc;
+    if (!ir.empty() && xt::Document::load(xt::IrBlob{ir.data(), ir.size()}, false, &shaper, nullptr, doc) !=
+                           xt::Status::kOk) {
+        doc.reset();
+    }
     if (xt::flow::FlowGraph::parse(json, graph, errors) == xt::Status::kOk) {
-        xt::flow::lintFlowGraph(graph, findings);
+        if (doc != nullptr) {
+            xt::flow::lintFlowGraph(graph, *doc, findings);
+        } else {
+            xt::flow::lintFlowGraph(graph, findings);
+        }
     }
     for (const xt::flow::FlowLintFinding& finding : findings) {
         xt::compile::ReportDiagnostic item;
         item.code = finding.code;
-        item.severity = xt::compile::Severity::Warning;
+        item.severity = finding.severity == xt::flow::FlowLintFinding::Severity::Info
+                            ? xt::compile::Severity::Info
+                            : xt::compile::Severity::Warning;
         item.message = finding.message;
         item.source = xt::compile::genericPathToUtf8(flowPath);
-        item.detail = {{"node", finding.nodeId}, {"target", finding.targets.front()}, {"fix", finding.fix}};
+        if (!finding.nodeId.empty()) {
+            item.detail.push_back({"node", finding.nodeId});
+        }
+        item.detail.push_back({"target", finding.targets.front()});
+        item.detail.push_back({"fix", finding.fix});
         if (!finding.timeline.empty()) {  // §24.15.4: the board's `on:show` is the other cure.
             item.fix.kind = xt::compile::FixKind::Board;
             item.fix.boardAttr = "on:show";
@@ -122,7 +151,7 @@ void printUsage() {
         stderr,
         "usage: xtframe-compile <input.json | input.xt> -o <out.xtir> [--root DIR] "
         "[--embed-images] [--embed-fonts] [--strict] [--no-meta] [--standard-symbols DIR]\n"
-        "                       [--diagnostics FILE] [--lint --layout-subject-id]\n"
+        "                       [--diagnostics FILE] [--lint --layout-subject-id] [--web-compat]\n"
         "       xtframe-compile --migrate <project-dir | file.xt> [-o DIR] [--anchors] [--report FILE]\n"
         "       xtframe-compile <input.xt | input.xtir> --dump-computed [-o FILE]\n"
         "       xtframe-compile --version\n");
@@ -250,6 +279,7 @@ static int run(int argc, char** argv) {
     bool emitMeta = true;
     bool lint = false;             // T-587
     bool layoutSubjectId = false;  // T-587: with --lint, the lint layout.subjectNotId.
+    bool webCompat = false;        // T-594: the web.* warnings.
     std::string migrateInput;      // T-589
     std::string reportOut;         // T-589: --report FILE (with --migrate).
     bool anchors = false;          // T-589: --anchors (with --migrate).
@@ -317,6 +347,8 @@ static int run(int argc, char** argv) {
             lint = true;
         } else if (arg == "--layout-subject-id") {
             layoutSubjectId = true;
+        } else if (arg == "--web-compat") {
+            webCompat = true;
         } else if (!arg.empty() && arg[0] == '-') {
             std::fprintf(stderr, "xtframe-compile: unknown option '%s'\n", arg.c_str());
             printUsage();
@@ -368,6 +400,7 @@ static int run(int argc, char** argv) {
     options.strict = strict;
     options.emitMeta = emitMeta;
     options.lintLayoutSubjectId = lint && layoutSubjectId;  // T-587 (54 §54.13)
+    options.webCompat = webCompat;                          // T-594 (54 §54.14 S4)
     options.standardSymbolDir = standardSymbols;
     if (standardSymbols.empty()) {
         std::error_code ec;
@@ -384,7 +417,7 @@ static int run(int argc, char** argv) {
         printDiagnostic(d);
     }
     const std::vector<xt::compile::ReportDiagnostic> flowLint =
-        isXt ? siblingFlowLint(inputPath) : std::vector<xt::compile::ReportDiagnostic>();
+        isXt ? siblingFlowLint(inputPath, result.ir) : std::vector<xt::compile::ReportDiagnostic>();
     for (const xt::compile::ReportDiagnostic& item : flowLint) {
         std::fprintf(stderr, "%s\n", xt::compile::formatDiagnostic(item).c_str());
     }

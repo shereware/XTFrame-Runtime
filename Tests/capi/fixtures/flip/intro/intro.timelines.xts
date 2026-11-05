@@ -1,0 +1,11 @@
+@timeline intro {
+  duration: 0.5s;
+  #card {
+    0s {
+      opacity: 0.25;
+    }
+    0.5s {
+      opacity: 1;
+    }
+  }
+}

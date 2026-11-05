@@ -1,0 +1,51 @@
+body {
+  width: 100vw;
+  height: 100vh;
+}
+#Screen {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#Panel {
+  width: 960px;
+  display: flex;
+  flex-direction: column;
+  row-gap: var(--space-4);
+  padding: var(--space-6);
+}
+#Header {
+  display: flex;
+  flex-direction: column;
+  row-gap: var(--space-3);
+}
+#Columns {
+  display: flex;
+  column-gap: 48px;
+}
+#ColumnA, #ColumnB {
+  display: flex;
+  flex-direction: column;
+  row-gap: var(--space-4);
+}
+#DifficultyRow {
+  display: flex;
+  align-items: center;
+  column-gap: var(--space-2);
+}
+#Footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+#Divider {
+  height: 1px;
+}
+#Hints, #Actions {
+  display: flex;
+  align-items: center;
+  column-gap: var(--space-4);
+}

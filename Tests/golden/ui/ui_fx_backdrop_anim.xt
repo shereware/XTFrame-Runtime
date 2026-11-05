@@ -1,36 +1,5 @@
-<xt>
-  <head>
-    <style>
-      @keyframes slide {
-        from { left: 20px; }
-        to { left: 120px; }
-      }
-      #grid {
-        position: absolute;
-        left: 0;
-        top: 40px;
-        width: 256px;
-        height: 96px;
-        display: flex;
-        flex-wrap: wrap;
-      }
-      #grid > div { width: 32px; height: 32px; }
-      .a { background-color: #e0503c; }
-      .b { background-color: #2f6fd0; }
-      .c { background-color: #33a06a; }
-      #panel {
-        position: absolute;
-        left: 20px;
-        top: 48px;
-        width: 80px;
-        height: 80px;
-        border-radius: 10px;
-        background-color: #ffffff80;
-        effect: backdrop-blur(8px);
-        animation: slide 1s linear;
-      }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <div id="grid">
       <div class="a"></div>
@@ -60,4 +29,52 @@
     </div>
     <div id="panel"></div>
   </body>
+
+  <layout>
+    #grid {
+      position: absolute;
+      left: 0;
+      top: 40px;
+      width: 256px;
+      height: 96px;
+      display: flex;
+      flex-wrap: wrap;
+    }
+    #grid > div {
+      width: 32px;
+      height: 32px;
+    }
+    #panel {
+      position: absolute;
+      left: 20px;
+      top: 48px;
+      width: 80px;
+      height: 80px;
+    }
+  </layout>
+  <style>
+    @keyframes slide {
+      from {
+        left: 20px;
+      }
+      to {
+        left: 120px;
+      }
+    }
+    .a {
+      background-color: #e0503c;
+    }
+    .b {
+      background-color: #2f6fd0;
+    }
+    .c {
+      background-color: #33a06a;
+    }
+    #panel {
+      border-radius: 10px;
+      background-color: #ffffff80;
+      effect: backdrop-blur(8px);
+      animation: slide 1s linear;
+    }
+  </style>
 </xt>

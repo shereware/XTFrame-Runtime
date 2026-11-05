@@ -1,10 +1,11 @@
-<xt>
-  <head>
-    <link href="ui_outline_focus.xts"/>
-  </head>
+<xt version="2">
+
   <body>
     <button id="btn1"></button>
     <button id="btn2"></button>
     <button id="btn3"></button>
   </body>
+
+  <layout src="ui_outline_focus.layout.xts"/>
+  <style src="ui_outline_focus.xts"/>
 </xt>

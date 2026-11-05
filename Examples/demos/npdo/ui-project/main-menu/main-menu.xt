@@ -1,11 +1,20 @@
-<xt>
+<xt version="2">
   <head>
-    <link href="../shared/base.xts"/>
-    <link href="main-menu.xts"/>
     <title>Main Menu</title>
   </head>
+
+  <ports>
+    new_game: event out
+    continue_game: event out
+    load_game: event out
+    open_options: event out
+    open_credits: event out
+    quit_game: event out
+    active: bool in = true
+  </ports>
+
   <body>
-    <div id="main-menu" on:port(active)="if eq(1) show() else hide(); if eq(1) play(intro)" on:timeline(intro).end="play(idle, loop)" port:new_game="event out" port:continue_game="event out" port:load_game="event out" port:open_options="event out" port:open_credits="event out" port:quit_game="event out" port:active="bool in = true">
+    <div id="main-menu" on:port(active)="if eq(1) show() else hide(); if eq(1) play(intro)" on:timeline(intro).end="play(idle, loop)">
       <div id="menu-scene">
         <img id="menu-bg" src="../shared/img/menu-bg.png"/>
         <img id="menu-lamp" src="../shared/img/menu-lamp.png"/>
@@ -73,4 +82,10 @@
       </div>
     </div>
   </body>
+
+  <layout src="../shared/base.layout.xts"/>
+  <layout src="main-menu.layout.xts"/>
+  <style src="../shared/base.xts"/>
+  <style src="main-menu.xts"/>
+  <timelines src="main-menu.timelines.xts"/>
 </xt>

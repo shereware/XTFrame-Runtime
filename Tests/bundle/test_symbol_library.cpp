@@ -5,6 +5,7 @@
 
 #include "doctest.h"
 #include "test_temp.h"
+#include "xt/bundle/bundle.h"
 #include "xt/bundle/symbol_library.h"
 #include "xt/bundle/symbol_lint.h"
 #include "xt/bundle/ui_project.h"
@@ -904,7 +905,27 @@ TEST_CASE(
     const fs::path group = mine / "groups" / "my-controls";
     CHECK(fs::is_regular_file(group / "Button.xt"));
     CHECK(fs::is_regular_file(group / "Toggle.xt"));
-    CHECK(readTextT498(group / "Button.xt") == readTextT498(root / "shared" / "symbols" / "Button.xt"));
+    // T-606 (54 §54.7): the saved file is source format 2 (canonical writer) with the project copy's
+    // contract, whatever the format of the copy.
+    const std::string savedButton = readTextT498(group / "Button.xt");
+    const std::string projectButton = readTextT498(root / "shared" / "symbols" / "Button.xt");
+    CHECK(savedButton.rfind("<xt version=\"2\">", 0) == 0);
+    CHECK(savedButton.find("<ports>") != std::string::npos);
+    CHECK(savedButton.find("port:pressed") == std::string::npos);
+    {
+        const std::vector<SymbolContract> saved = readSymbolContracts(savedButton, "Button.xt");
+        const std::vector<SymbolContract> copy = readSymbolContracts(projectButton, "Button.xt");
+        REQUIRE(saved.size() == 1);
+        REQUIRE(copy.size() == 1);
+        CHECK(saved[0].requiredStates == copy[0].requiredStates);
+        CHECK(saved[0].requiredSlots == copy[0].requiredSlots);
+        REQUIRE(saved[0].ports.size() == copy[0].ports.size());
+        for (size_t i = 0; i < saved[0].ports.size(); ++i) {
+            CHECK(saved[0].ports[i].name == copy[0].ports[i].name);
+            CHECK(saved[0].ports[i].type == copy[0].ports[i].type);
+            CHECK(saved[0].ports[i].dir == copy[0].ports[i].dir);
+        }
+    }
     CHECK(fs::is_regular_file(group / "fonts" / "NotoSerifDisplay-ExtraCondensedBlack.ttf"));
     CHECK(fs::is_regular_file(group / "textures" / "hatch-ink.png"));
     CHECK(fs::is_regular_file(group / "textures" / "hatch-night.png"));
@@ -993,4 +1014,20 @@ TEST_CASE(
     REQUIRE(loadLibrary(mine, library) == Status::kOk);
     REQUIRE(library.groups.size() == 3);
     CHECK(library.groups[2].lint.errors > 0);
+    CHECK(readTextT498(mine / "groups" / "plain" / "Plain.xt").rfind("<xt version=\"2\">", 0) == 0);
+
+    // T-606: a project copy already in format 2 is written canonically (a second save of the saved
+    // file gives the same bytes).
+    writeTextT498(root / "shared" / "symbols" / "Button.xt", savedButton);
+    const std::string_view buttonOnly[] = {"Button"};
+    CHECK(saveAsGroup(project, buttonOnly, mine, "again", "Again", &error, &mounts) == Status::kOk);
+    CHECK(readTextT498(mine / "groups" / "again" / "Button.xt") == savedButton);
+    REQUIRE(loadLibrary(mine, library) == Status::kOk);
+    const SymbolEntry* againEntry = findSymbol(library, "Button", "again");
+    const SymbolEntry* first = findSymbol(library, "Button", "my-controls");
+    REQUIRE(againEntry != nullptr);
+    REQUIRE(first != nullptr);
+    CHECK(againEntry->content == first->content);
+    CHECK(library.groups.back().id == "again");
+    CHECK(library.groups.back().lint.errors == 0);
 }

@@ -92,7 +92,7 @@ TEST_CASE("parseXt: 5.1 example document") {
     CHECK(tree.nodes[6].tag == "input");
     CHECK(tree.nodes[7].tag == "button");
 
-    CHECK(tree.linkHrefs.size() == 1);
+    REQUIRE(tree.linkHrefs.size() == 1);
     CHECK(tree.linkHrefs[0] == "theme.xts");
     REQUIRE(tree.inlineStyles.size() == 1);
     CHECK(tree.inlineStyles[0].first.find("color: #fff") != std::string::npos);

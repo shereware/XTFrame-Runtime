@@ -1,0 +1,34 @@
+<xt version="2">
+  <head>
+    <symbols src="../CooldownRing.xt"/>
+  </head>
+
+  <body>
+    <div id="Row">
+      <use symbol="CooldownRing" id="Dash"/>
+      <use symbol="CooldownRing" id="Heal"/>
+    </div>
+  </body>
+
+  <layout>
+    body {
+      width: 200px;
+      height: 100px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      row-gap: 12px;
+    }
+    #Row {
+      display: flex;
+      column-gap: 16px;
+    }
+  </layout>
+  <style src="../tokens.xts"/>
+  <style>
+    body {
+      background-color: var(--color-bg);
+    }
+  </style>
+</xt>

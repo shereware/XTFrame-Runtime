@@ -1,0 +1,55 @@
+body {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+#TitleBar {
+  height: 36px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+#Title {
+  flex-grow: 1;
+  padding-left: 12px;
+}
+.control {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.glyph.min {
+  width: 10px;
+  height: 1px;
+}
+.glyph.max {
+  width: 10px;
+  height: 10px;
+}
+#Content {
+  flex-grow: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#Card {
+  display: flex;
+  flex-direction: column;
+  padding: 24px 32px;
+}
+#Heading {
+  margin-bottom: 12px;
+}
+.line {
+  margin-top: 4px;
+}
+#DropZone {
+  margin-top: 16px;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

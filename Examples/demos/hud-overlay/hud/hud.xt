@@ -1,14 +1,13 @@
-<xt>
-  <head>
-    <!-- HUD overlay demo (examples/demos/README.md "hud-overlay"): a 1920x1080 in-game HUD with no
-         background of its own -- the host draws it over the game frame with straight alpha. The
-         game frame under it here is an editor-only reference (03 3.13): the canvas shows it, the
-         Demo space and the published bundle do not. Ports hp, stamina, ammo (numbers) and damage
-         (an event) are what the host sets; the `demo` timeline seeds and animates them on its own
-         (8 s loop) so the HUD moves without a host. -->
-    <link href="hud.xts"/>
-  </head>
-  <body port:hp="number in" port:stamina="number in" port:ammo="number in" port:damage="event in"
+<xt version="2">
+
+  <ports>
+    hp: number in
+    stamina: number in
+    ammo: number in
+    damage: event in
+  </ports>
+
+  <body
         on:show="set(hp, 100); set(stamina, 80); set(ammo, 24); play(demo, loop)"
         on:port(damage)="class(hurt, on); play(hurt-clear)"
         on:timeline(hurt-clear).end="class(hurt, off)"
@@ -68,4 +67,8 @@
       </div>
     </div>
   </body>
+
+  <layout src="hud.layout.xts"/>
+  <style src="hud.xts"/>
+  <timelines src="hud.timelines.xts"/>
 </xt>

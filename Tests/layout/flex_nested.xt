@@ -1,13 +1,5 @@
-<xt>
-  <head>
-    <style>
-      #outer { display: flex; width: 400px; height: 100px; }
-      #mid { width: 150px; display: flex; flex-direction: column; }
-      #inner1 { height: 30px; }
-      #inner2 { height: 40px; }
-      #side { width: 100px; }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <div id="outer">
       <div id="mid">
@@ -17,4 +9,26 @@
       <div id="side"></div>
     </div>
   </body>
+
+  <layout>
+    #outer {
+      display: flex;
+      width: 400px;
+      height: 100px;
+    }
+    #mid {
+      width: 150px;
+      display: flex;
+      flex-direction: column;
+    }
+    #inner1 {
+      height: 30px;
+    }
+    #inner2 {
+      height: 40px;
+    }
+    #side {
+      width: 100px;
+    }
+  </layout>
 </xt>

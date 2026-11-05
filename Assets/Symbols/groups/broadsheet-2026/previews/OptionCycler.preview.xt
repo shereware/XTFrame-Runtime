@@ -1,22 +1,27 @@
-<xt>
+<xt version="2">
   <head>
-    <!-- T-198: preview of the OptionCycler standard symbol (golden states and thumbnail; T-499: moved into the group). -->
-    <link href="../tokens.xts"/>
-    <link rel="symbols" href="../OptionCycler.xt"/>
-    <style>
-      body {
-        width: 400px;
-        height: 90px;
-        padding: 16px;
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        row-gap: 12px;
-        background-color: var(--color-bg);
-      }
-    </style>
+    <symbols src="../OptionCycler.xt"/>
   </head>
+
   <body>
     <use symbol="OptionCycler" id="Mode" slot:label="Window mode"/>
   </body>
+
+  <layout>
+    body {
+      width: 400px;
+      height: 90px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      row-gap: 12px;
+    }
+  </layout>
+  <style src="../tokens.xts"/>
+  <style>
+    body {
+      background-color: var(--color-bg);
+    }
+  </style>
 </xt>

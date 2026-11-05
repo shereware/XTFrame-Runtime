@@ -68,6 +68,19 @@ public:
 
     /// T-408: the warnings deprecated() recorded.
     size_t deprecatedCount() const { return m_deprecatedCount; }
+    /// T-594 (54 §54.14 S4): whether the `web.*` checks run (CompileOptions::webCompat).
+    void setWebCompat(bool on) { m_webCompat = on; }
+    bool webCompat() const { return m_webCompat; }
+    /// T-594: a `web.*` warning (`code`, `fix`), recorded only when setWebCompat(true). Counted by
+    /// webCount(), which a strict compile subtracts like deprecatedCount(): the advice never fails it.
+    void web(std::string file, std::string message, int line, int col, std::string code, std::string fix) {
+        if (m_webCompat) {
+            warn(std::move(file), std::move(message), line, col, std::move(code), std::move(fix));
+            ++m_webCount;
+        }
+    }
+    /// T-594: the warnings web() recorded.
+    size_t webCount() const { return m_webCount; }
 
     /// Returns every diagnostic recorded so far, in the order they were raised.
     const std::vector<Diagnostic>& all() const { return m_diagnostics; }
@@ -97,6 +110,8 @@ private:
     std::vector<Diagnostic> m_diagnostics;
     bool m_reportDeprecated = false;
     size_t m_deprecatedCount = 0;
+    bool m_webCompat = false;
+    size_t m_webCount = 0;
 };
 
 }  // namespace xt::compile

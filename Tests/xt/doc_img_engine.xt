@@ -1,6 +1,14 @@
-<xt>
+<xt version="2">
+
   <body>
     <img src="engine://scene"/>
-    <img src="engine://scene" style="width: 64px; height: 32px"/>
+    <img id="External_1" src="engine://scene"/>
   </body>
+
+  <layout>
+    #External_1 {
+      width: 64px;
+      height: 32px;
+    }
+  </layout>
 </xt>

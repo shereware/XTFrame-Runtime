@@ -1,17 +1,5 @@
-<xt>
-  <head>
-    <style>
-      @keyframes fade-in { from { opacity: 0 } to { opacity: 1 } }
-      @keyframes sweep { from { opacity: 1 } to { opacity: 0 } }
-      #menu { background-color: #202020; position: relative; width: 400px; height: 300px; overflow: hidden; }
-      #panel { background-color: #00ff00; position: absolute; left: 0px; top: 0px; width: 40px; height: 40px; }
-      #hud { position: absolute; left: 0px; top: 0px; width: 400px; height: 300px;
-             pointer-events: none; animation: fade-in 900ms ease-out 0s 1 normal both; }
-      #hudChild { background-color: #ff0000; position: absolute; left: 10px; top: 10px; width: 50px; height: 20px; }
-      #scan { position: absolute; left: 0px; top: 0px; width: 400px; height: 3px;
-              pointer-events: none; animation: sweep 1100ms ease-in 0s 1 normal both; }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <div id="menu">
       <div id="panel"></div>
@@ -21,4 +9,76 @@
     </div>
     <div id="scan"></div>
   </body>
+
+  <layout>
+    #menu {
+      position: relative;
+      width: 400px;
+      height: 300px;
+      overflow: hidden;
+    }
+    #panel {
+      position: absolute;
+      left: 0px;
+      top: 0px;
+      width: 40px;
+      height: 40px;
+    }
+    #hud {
+      position: absolute;
+      left: 0px;
+      top: 0px;
+      width: 400px;
+      height: 300px;
+    }
+    #hudChild {
+      position: absolute;
+      left: 10px;
+      top: 10px;
+      width: 50px;
+      height: 20px;
+    }
+    #scan {
+      position: absolute;
+      left: 0px;
+      top: 0px;
+      width: 400px;
+      height: 3px;
+    }
+  </layout>
+  <style>
+    @keyframes fade-in {
+      from {
+        opacity: 0;
+      }
+      to {
+        opacity: 1;
+      }
+    }
+    @keyframes sweep {
+      from {
+        opacity: 1;
+      }
+      to {
+        opacity: 0;
+      }
+    }
+    #menu {
+      background-color: #202020;
+    }
+    #panel {
+      background-color: #00ff00;
+    }
+    #hud {
+      pointer-events: none;
+      animation: fade-in 900ms ease-out 0s 1 normal both;
+    }
+    #hudChild {
+      background-color: #ff0000;
+    }
+    #scan {
+      pointer-events: none;
+      animation: sweep 1100ms ease-in 0s 1 normal both;
+    }
+  </style>
 </xt>

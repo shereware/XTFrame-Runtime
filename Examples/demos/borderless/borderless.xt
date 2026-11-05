@@ -1,13 +1,12 @@
-<xt>
-  <head>
-    <!-- Borderless window demo (examples/demos/README.md "borderless", docs/design/23-host-integration.md
-         23.ab): the whole window is the UI. The 36 px title bar is `app-region: drag` (the OS moves the
-         window, Snap and maximize keep working); its three buttons are `app-region: no-drag` and send
-         the out events winMinimize / winMaximize / winClose, which `xtframe-view --borderless` maps to
-         the window controls. -->
-    <link href="borderless.xts"/>
-  </head>
-  <body port:winMinimize="event out" port:winMaximize="event out" port:winClose="event out">
+<xt version="2">
+
+  <ports>
+    winMinimize: event out
+    winMaximize: event out
+    winClose: event out
+  </ports>
+
+  <body>
     <div id="TitleBar">
       <span id="Title">XTFrame borderless window</span>
       <button id="Minimize" class="control" on:click="emit(winMinimize)"><div class="glyph min"></div></button>
@@ -27,4 +26,7 @@
       </div>
     </div>
   </body>
+
+  <layout src="borderless.layout.xts"/>
+  <style src="borderless.xts"/>
 </xt>

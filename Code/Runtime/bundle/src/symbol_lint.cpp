@@ -16,6 +16,8 @@
 #include "xt/bundle/symbol_library.h"
 #include "xt/charconv.h"
 #include "xt/compile/compile.h"
+#include "xt/compile/dom.h"
+#include "xt/compile/parse_xt.h"
 #include "xt/compile/utf8_path.h"
 #include "xt/ir.h"
 #include "xt/util/sha256.h"
@@ -232,22 +234,43 @@ std::string contractText(const SymbolEntry& entry) {
     return text;
 }
 
-/// The `requires` attribute value of the `<symbol name="<name>" ...>` start tag; empty when the
-/// tag has none; `found` says whether the tag exists.
-std::string requiresAttribute(const std::string& text, const std::string& name, bool& found) {
-    const size_t tag = text.find("<symbol name=\"" + name + "\"");
-    found = tag != std::string::npos;
-    if (!found) {
-        return std::string();
+/// The `<symbol name="<name>">` definition of a parsed symbol file (T-606: from the DomTree, so a
+/// version 1 `<symbol>` in `<head>` and a version 2 one under `<xt>` read the same); nullptr when the
+/// file defines no such symbol.
+const compile::DomNode* symbolDefinition(const compile::DomTree& dom, const std::string& name) {
+    for (const uint32_t index : dom.symbolDefs) {
+        if (index >= dom.nodes.size()) {
+            continue;
+        }
+        const compile::DomAttr* attr = dom.nodes[index].attr("name");
+        if (attr != nullptr && attr->value == name) {
+            return &dom.nodes[index];
+        }
     }
-    const size_t close = text.find('>', tag);
-    const std::string head = text.substr(tag, close == std::string::npos ? std::string::npos : close - tag);
-    const size_t attr = head.find("requires=\"");
-    if (attr == std::string::npos) {
-        return std::string();
+    return nullptr;
+}
+
+/// The `port:<name>` attributes declared inside the definition `def` (nested `<symbol>`s left out),
+/// name -> trimmed value. T-606 (54 §54.4): a version 2 `<ports>` section is already lowered onto
+/// the symbol's first element by parseXt(), so both versions read alike.
+std::map<std::string, std::string> declaredPorts(const compile::DomTree& dom, const compile::DomNode& def) {
+    std::map<std::string, std::string> out;
+    std::vector<uint32_t> stack(def.children.rbegin(), def.children.rend());
+    while (!stack.empty()) {
+        const uint32_t index = stack.back();
+        stack.pop_back();
+        if (index >= dom.nodes.size() || dom.nodes[index].tag == "symbol") {
+            continue;
+        }
+        const compile::DomNode& node = dom.nodes[index];
+        for (const compile::DomAttr& attr : node.attrs) {
+            if (attr.name.size() > 5 && attr.name.compare(0, 5, "port:") == 0) {
+                out.emplace(attr.name.substr(5), trimmed(attr.value));
+            }
+        }
+        stack.insert(stack.end(), node.children.rbegin(), node.children.rend());
     }
-    const size_t end = head.find('"', attr + 10);
-    return end == std::string::npos ? std::string() : head.substr(attr + 10, end - attr - 10);
+    return out;
 }
 
 std::string escapeAngle(std::string text) {
@@ -358,12 +381,13 @@ void checkPreview(Lint& lint, const SymbolGroup& group, const SymbolEntry& entry
     } else {
         options.rootDir = genericPathToUtf8(lint.dir);
         options.xtDir = genericPathToUtf8(lint.dir);
-        std::string doc = "<xt><head>";
+        // T-590: source format 2 (54 §54.3), so the format 1 deprecation never reaches the lint.
+        std::string doc = "<xt version=\"2\"><head><symbols src=\"" + entry.file +
+                          "\"/></head><body><use symbol=\"" + entry.name + "\" id=\"Preview\"/></body>";
         if (!group.tokensFile.empty()) {
-            doc += "<link href=\"" + group.tokensFile + "\"/>";
+            doc += "<style src=\"" + group.tokensFile + "\"/>";
         }
-        doc += "<link rel=\"symbols\" href=\"" + entry.file + "\"/></head><body><use symbol=\"" + entry.name +
-               "\" id=\"Preview\"/></body></xt>";
+        doc += "</xt>";
         const compile::SourceFile files[] = {{"xt-lint-preview.xt", doc}};
         result = compile::compileDocumentFromStrings(files, "xt-lint-preview.xt", options);
     }
@@ -414,18 +438,30 @@ void lintSymbol(Lint& lint, const SymbolGroup& group, const SymbolEntry& entry,
         return;
     }
 
-    bool tagFound = false;
-    const std::string requiresText = requiresAttribute(text, name, tagFound);
-    if (!tagFound) {
+    // T-606: the definition, its contract and its ports from the parsed file (version 1 or 2). A file
+    // that does not parse keeps what was read; the strict compile of the preview reports the error.
+    compile::DiagnosticSink parseSink;
+    compile::DomTree dom;
+    compile::parseXtSymbolLibrary(text, entry.file, parseSink, dom);
+    const compile::DomNode* def = symbolDefinition(dom, name);
+    if (def == nullptr) {
         lint.error(name, "symbol.name", entry.file + " has no <symbol name=\"" + name + "\"");
-    } else if (requiresText != contractText(entry)) {
-        lint.error(name, "index.contract",
-                   "requires=\"" + requiresText + "\" but the index says \"" + contractText(entry) + "\"");
+    } else {
+        const compile::DomAttr* req = def->attr("requires");
+        const std::string requiresText = req != nullptr ? req->value : std::string();
+        if (requiresText != contractText(entry)) {
+            lint.error(
+                name, "index.contract",
+                "requires=\"" + requiresText + "\" but the index says \"" + contractText(entry) + "\"");
+        }
     }
+    const std::map<std::string, std::string> ports =
+        def != nullptr ? declaredPorts(dom, *def) : std::map<std::string, std::string>();
     for (const SymbolPortInfo& port : entry.ports) {
-        const std::string decl = "port:" + port.name + "=\"" + escapeAngle(port.type) + " " + port.dir + "\"";
-        if (text.find(decl) == std::string::npos) {
-            lint.error(name, "index.port", "no " + decl);
+        const auto found = ports.find(port.name);
+        if (found == ports.end() || found->second != port.type + " " + port.dir) {
+            lint.error(name, "index.port",
+                       "no port:" + port.name + "=\"" + escapeAngle(port.type) + " " + port.dir + "\"");
         }
     }
     std::set<std::string> declared;
@@ -735,29 +771,28 @@ std::vector<std::string> styleRegions(std::string_view text, bool isXts) {
     if (isXts) {
         return {std::string(text)};
     }
+    // T-606 (54 §54.3): from the parsed file, so a version 2 `<layout>` / `<style>` / `<timelines>`
+    // section (document or symbol level) is read as a version 1 `<style>` block is. A file that
+    // does not parse gives what the parser read before the error.
+    compile::DiagnosticSink sink;
+    compile::DomTree dom;
+    compile::parseXtSymbolLibrary(text, "styles.xt", sink, dom);
     std::vector<std::string> out;
-    size_t pos = 0;
-    while (pos < text.size()) {
-        const size_t block = text.find("<style>", pos);
-        const size_t attr = text.find("style=\"", pos);
-        if (block == std::string_view::npos && attr == std::string_view::npos) {
-            break;
+    for (const auto& [css, line] : dom.inlineStyles) {
+        (void)line;
+        out.push_back(css);
+    }
+    for (const std::vector<compile::XtSheetSection>* list :
+         {&dom.layoutSheets, &dom.styleSheets, &dom.timelineSheets}) {
+        for (const compile::XtSheetSection& section : *list) {
+            if (section.src.empty()) {
+                out.push_back(section.text);
+            }
         }
-        if (block != std::string_view::npos && (attr == std::string_view::npos || block <= attr)) {
-            const size_t close = text.find("</style>", block + 7);
-            if (close == std::string_view::npos) {
-                pos = block + 1;
-                continue;
-            }
-            out.emplace_back(text.substr(block + 7, close - block - 7));
-            pos = close + 8;
-        } else {
-            const size_t close = text.find('"', attr + 7);
-            if (close == std::string_view::npos) {
-                break;
-            }
-            out.emplace_back(text.substr(attr + 7, close - attr - 7));
-            pos = close + 1;
+    }
+    for (const compile::DomNode& node : dom.nodes) {
+        if (const compile::DomAttr* style = node.attr("style")) {
+            out.push_back(style->value);
         }
     }
     return out;

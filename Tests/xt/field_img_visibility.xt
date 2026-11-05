@@ -1,11 +1,5 @@
-<xt>
-  <head>
-    <style>
-      img, div { width: 40px; height: 40px; }
-      #self, #rasterSelf { visibility: hidden; }
-      #hidingParent { visibility: hidden; }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <img id="shown" src="svg_icon.svg"/>
     <img id="rasterShown" src="field_checker.png"/>
@@ -16,4 +10,21 @@
       <img id="rasterInherited" src="field_checker.png"/>
     </div>
   </body>
+
+  <layout>
+    img,
+    div {
+      width: 40px;
+      height: 40px;
+    }
+  </layout>
+  <style>
+    #self,
+    #rasterSelf {
+      visibility: hidden;
+    }
+    #hidingParent {
+      visibility: hidden;
+    }
+  </style>
 </xt>

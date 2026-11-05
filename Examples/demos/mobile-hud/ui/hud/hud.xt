@@ -1,17 +1,12 @@
-<xt>
+<xt version="2">
   <head>
-    <!-- Mobile HUD demo (docs/design/23-host-integration.md 23.11.2): a portrait game HUD built
-         from the standard mobile symbols. TopBar along the top safe area (pause, health, ammo),
-         a minimap placeholder top-right (<external>, the host binds its texture), the virtual
-         joystick bottom-left and two action buttons bottom-right. Pressing a button plays its
-         cooldown ring; `intro` brings the HUD in when the UI is shown. -->
-    <link rel="symbols" href="../../shared/symbols/TopBar.xt"/>
-    <link rel="symbols" href="../../shared/symbols/HealthBar.xt"/>
-    <link rel="symbols" href="../../shared/symbols/Counter.xt"/>
-    <link rel="symbols" href="../../shared/symbols/VirtualJoystick.xt"/>
-    <link rel="symbols" href="../../shared/symbols/TouchButton.xt"/>
-    <link href="hud.xts"/>
+    <symbols src="../../shared/symbols/TopBar.xt"/>
+    <symbols src="../../shared/symbols/HealthBar.xt"/>
+    <symbols src="../../shared/symbols/Counter.xt"/>
+    <symbols src="../../shared/symbols/VirtualJoystick.xt"/>
+    <symbols src="../../shared/symbols/TouchButton.xt"/>
   </head>
+
   <body>
     <div id="Screen" on:show="play(intro)">
       <div id="TopSlot">
@@ -37,4 +32,8 @@
       </div>
     </div>
   </body>
+
+  <layout src="hud.layout.xts"/>
+  <style src="hud.xts"/>
+  <timelines src="hud.timelines.xts"/>
 </xt>

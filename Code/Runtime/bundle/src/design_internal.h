@@ -8,6 +8,10 @@
 
 #include "xt/bundle/design_system.h"
 
+namespace xt::compile {
+struct DomTree;
+}  // namespace xt::compile
+
 /// Helpers shared by design_system.cpp, design_io.cpp, design_graph.cpp and design_diff.cpp
 /// (Docs/tasks/T-305.md). Internal to xt_bundle.
 
@@ -47,6 +51,20 @@ inline bool isNameChar(char c) {
 
 /// The last `#id` of each comma-separated selector of a rule prelude (design_graph.cpp).
 std::vector<std::string> preludeIds(std::string_view prelude);
+
+/// T-606 (Docs/design/54-source-format-v2.md §54.3, §54.8): the stylesheets of a parsed `.xt`, as
+/// the design tools scan them, for version 1 and version 2 alike (design_graph.cpp,
+/// design_audit.cpp).
+struct DomSheets {
+    /// The inline stylesheet texts: version 1 `<style>` blocks, then the inline version 2
+    /// `<layout>` / `<style>` / `<timelines>` sections (document and symbol level) in file order.
+    std::vector<std::string> inlineCss;
+    /// The stylesheet files, as written (relative to the `.xt`): version 1 `<link href>` values when
+    /// `withLinks` (a version 1 symbol library never loads its own links), then the `src` of the
+    /// version 2 sections in file order (a library's own `src` fragments load, 54 §54.7).
+    std::vector<std::string> hrefs;
+};
+DomSheets domSheets(const compile::DomTree& dom, bool withLinks);
 
 /// The `--name: value` declarations of the stylesheet at `path` (UTF-8): (name without `--`,
 /// value), first declaration's order, last declaration's value; empty when `path` is empty or

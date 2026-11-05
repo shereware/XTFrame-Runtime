@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "ports_section.h"
+#include "web_compat_lint.h"
 #include "xt/util/text.h"
 
 /// Hand-written recursive-descent `.xt` parser. See Docs/design/05-style-and-css.md §5.1-5.2,
@@ -266,6 +267,11 @@ public:
             m_version = static_cast<int>(version);  // T-587: 2 reads the v2 sections (54 §54.3).
         }
         m_tree.formatVersion = m_version;
+        if (m_version < 2) {
+            // T-590 (54 §54.12): reading format 1 is kept until 1.0; one deprecation per file,
+            // which a strict compile does not count (DiagnosticSink::deprecated()).
+            m_sink.deprecated(m_file, "source format 1: run xtframe-compile --migrate", rootLine, rootCol);
+        }
         DomNode root;
         root.tag = "xt";
         root.attrs = std::move(attrs);
@@ -1417,7 +1423,8 @@ private:
         m_tree.nodes[nodeIndex].rawText = textBuf;
         if (!folded.empty()) {
             if (hasChildren && allChildrenInline(nodeIndex)) {
-                buildRichText(nodeIndex);  // T-178 (07.8): text with inline markup.
+                lintWebRichText(m_tree, nodeIndex, m_file, m_sink);  // T-594: before the folding.
+                buildRichText(nodeIndex);                            // T-178 (07.8): text with inline markup.
             } else if (hasChildren) {
                 error("element <" + m_tree.nodes[nodeIndex].tag + "> mixes text and child elements",
                       startLine, startCol);

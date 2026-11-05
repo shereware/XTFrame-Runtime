@@ -1,10 +1,19 @@
-<xt>
-  <head>
-    <style>
-      #icon { width: 192px; height: 192px; margin: 32px; object-fit: contain; }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <img id="icon" src="unsupported.svg"/>
   </body>
+
+  <layout>
+    #icon {
+      width: 192px;
+      height: 192px;
+      margin: 32px;
+    }
+  </layout>
+  <style>
+    #icon {
+      object-fit: contain;
+    }
+  </style>
 </xt>

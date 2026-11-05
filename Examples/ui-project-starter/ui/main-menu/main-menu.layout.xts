@@ -1,0 +1,45 @@
+body {
+  width: 100vw;
+  height: 100vh;
+}
+#Screen {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+#Left {
+  anchor: left top;
+  offset: 64px 102px;
+  display: flex;
+  flex-direction: column;
+  row-gap: var(--space-2);
+}
+#Subtitle {
+  margin-bottom: var(--space-6);
+}
+#List {
+  display: flex;
+  flex-direction: column;
+  row-gap: var(--space-3);
+}
+#TopRight {
+  position: absolute;
+  right: var(--safe-x);
+  top: var(--safe-y);
+  display: flex;
+  justify-content: flex-end;
+}
+#Version {
+  position: absolute;
+  left: var(--safe-x);
+  bottom: var(--safe-y);
+}
+#Hints {
+  position: absolute;
+  right: var(--safe-x);
+  bottom: var(--safe-y);
+  display: flex;
+  justify-content: flex-end;
+  column-gap: var(--space-6);
+}

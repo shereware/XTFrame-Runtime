@@ -1,14 +1,38 @@
-<xt>
-  <head>
-    <style>
-      #a { width: 200px; height: 60px; margin: 12px; background-color: #ff0000; }
-      #b { width: 200px; height: 60px; margin: 12px; background-color: #00aa00; display: none; }
-      #c { width: 200px; height: 60px; margin: 12px; background-color: #0000ff; }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <div id="a"></div>
     <div id="b"></div>
     <div id="c"></div>
   </body>
+
+  <layout>
+    #a {
+      width: 200px;
+      height: 60px;
+      margin: 12px;
+    }
+    #b {
+      width: 200px;
+      height: 60px;
+      margin: 12px;
+      display: none;
+    }
+    #c {
+      width: 200px;
+      height: 60px;
+      margin: 12px;
+    }
+  </layout>
+  <style>
+    #a {
+      background-color: #ff0000;
+    }
+    #b {
+      background-color: #00aa00;
+    }
+    #c {
+      background-color: #0000ff;
+    }
+  </style>
 </xt>

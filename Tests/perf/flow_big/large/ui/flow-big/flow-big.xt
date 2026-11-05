@@ -1,10 +1,63 @@
-<xt>
+<xt version="2">
   <head>
-    <link href="flow-big.xts"/>
     <title>Flow Big Large</title>
   </head>
+
+  <ports>
+    src0: number out = 0
+    src1: number out = 0
+    src2: number out = 0
+    src3: number out = 0
+    src4: number out = 0
+    src5: number out = 0
+    src6: number out = 0
+    src7: number out = 0
+    src8: number out = 0
+    src9: number out = 0
+    src10: number out = 0
+    src11: number out = 0
+    src12: number out = 0
+    src13: number out = 0
+    src14: number out = 0
+    src15: number out = 0
+    src16: number out = 0
+    src17: number out = 0
+    src18: number out = 0
+    src19: number out = 0
+    in0: number in = 0
+    in1: number in = 0
+    in2: number in = 0
+    in3: number in = 0
+    in4: number in = 0
+    in5: number in = 0
+    in6: number in = 0
+    in7: number in = 0
+    in8: number in = 0
+    in9: number in = 0
+    in10: number in = 0
+    in11: number in = 0
+    in12: number in = 0
+    in13: number in = 0
+    in14: number in = 0
+    in15: number in = 0
+    in16: number in = 0
+    in17: number in = 0
+    in18: number in = 0
+    in19: number in = 0
+    in20: number in = 0
+    in21: number in = 0
+    in22: number in = 0
+    in23: number in = 0
+    in24: number in = 0
+    in25: number in = 0
+    in26: number in = 0
+    in27: number in = 0
+    in28: number in = 0
+    in29: number in = 0
+  </ports>
+
   <body>
-    <div id="flow-big" port:src0="number out = 0" port:src1="number out = 0" port:src2="number out = 0" port:src3="number out = 0" port:src4="number out = 0" port:src5="number out = 0" port:src6="number out = 0" port:src7="number out = 0" port:src8="number out = 0" port:src9="number out = 0" port:src10="number out = 0" port:src11="number out = 0" port:src12="number out = 0" port:src13="number out = 0" port:src14="number out = 0" port:src15="number out = 0" port:src16="number out = 0" port:src17="number out = 0" port:src18="number out = 0" port:src19="number out = 0" port:in0="number in = 0" port:in1="number in = 0" port:in2="number in = 0" port:in3="number in = 0" port:in4="number in = 0" port:in5="number in = 0" port:in6="number in = 0" port:in7="number in = 0" port:in8="number in = 0" port:in9="number in = 0" port:in10="number in = 0" port:in11="number in = 0" port:in12="number in = 0" port:in13="number in = 0" port:in14="number in = 0" port:in15="number in = 0" port:in16="number in = 0" port:in17="number in = 0" port:in18="number in = 0" port:in19="number in = 0" port:in20="number in = 0" port:in21="number in = 0" port:in22="number in = 0" port:in23="number in = 0" port:in24="number in = 0" port:in25="number in = 0" port:in26="number in = 0" port:in27="number in = 0" port:in28="number in = 0" port:in29="number in = 0">
+    <div id="flow-big">
       <div id="hv0" class="cell"/>
       <div id="hv1" class="cell"/>
       <div id="hv2" class="cell"/>
@@ -149,4 +202,7 @@
       <div id="ib29" class="bar" bind:width="in29 | range(0,100,0px,120px)"/>
     </div>
   </body>
+
+  <layout src="flow-big.layout.xts"/>
+  <style src="flow-big.xts"/>
 </xt>

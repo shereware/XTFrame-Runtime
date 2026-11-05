@@ -4,8 +4,8 @@
         { "id": "shots", "type": "counter", "params": {} }
     ],
     "edges": [
-        { "from": "#A.Click", "to": "#Hud.fire" },
-        { "from": "#B.Click", "to": "#Hud.fire" },
-        { "from": "#Hud.shot", "to": "shots.increment" }
+        { "from": "#A.Click", "to": "#document.fire" },
+        { "from": "#B.Click", "to": "#document.fire" },
+        { "from": "#document.shot", "to": "shots.increment" }
     ]
 }

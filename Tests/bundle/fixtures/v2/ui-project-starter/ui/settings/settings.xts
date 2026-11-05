@@ -1,0 +1,27 @@
+/* Settings layout: a centred panel (overlay: dim, no blur, per contracts/motion-spec.yaml).
+   Colors come from tokens only. */
+body {
+  background-color: var(--color-bg);
+  background-image: var(--tex-grain);
+  background-repeat: repeat;
+  background-size: 128px 128px;
+  font-family: var(--font-family);
+}
+#Panel {
+  border-width: var(--border-w);
+  border-color: var(--color-border);
+  border-radius: var(--radius-l);
+  background-color: var(--color-surface);
+}
+#Heading {
+  color: var(--color-text);
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+}
+#DifficultyLabel {
+  color: var(--color-text-dim);
+  font-size: var(--font-size-s);
+}
+#Divider {
+  background-color: var(--color-border);
+}

@@ -1,0 +1,65 @@
+<xt version="2">
+
+  <symbol name="Stamp" requires="slots: text">
+    <div id="Box">
+      <div id="Outer">
+        <div id="Inner">
+          <span id="Text"><slot name="text">Approved</slot></span>
+        </div>
+      </div>
+    </div>
+  </symbol>
+
+  <layout>
+    symbol(Stamp) {
+      #Box {
+        width: 140px;
+        height: 140px;
+        transform: rotate(-14deg);
+      }
+      #Outer {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 138px;
+        height: 138px;
+      }
+      #Inner {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 124px;
+        height: 124px;
+      }
+      #Text {
+        width: 100px;
+      }
+    }
+  </layout>
+  <style>
+    symbol(Stamp) {
+      #Box {
+        opacity: 0.85;
+      }
+      #Outer {
+        border-width: var(--rule-thin);
+        border-color: var(--color-danger);
+        border-radius: var(--radius-full);
+      }
+      #Inner {
+        border-width: var(--rule-thin);
+        border-color: var(--color-danger);
+        border-radius: var(--radius-full);
+      }
+      #Text {
+        color: var(--color-danger);
+        font-family: var(--font-display);
+        font-size: var(--font-size-l);
+        font-weight: 900;
+        text-align: center;
+        text-transform: uppercase;
+        letter-spacing: var(--letter-display);
+      }
+    }
+  </style>
+</xt>

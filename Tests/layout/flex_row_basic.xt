@@ -1,12 +1,5 @@
-<xt>
-  <head>
-    <style>
-      #container { display: flex; width: 400px; height: 100px; }
-      #a { width: 50px; }
-      #b { width: 60px; }
-      #c { width: 70px; }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <div id="container">
       <div id="a"></div>
@@ -14,4 +7,21 @@
       <div id="c"></div>
     </div>
   </body>
+
+  <layout>
+    #container {
+      display: flex;
+      width: 400px;
+      height: 100px;
+    }
+    #a {
+      width: 50px;
+    }
+    #b {
+      width: 60px;
+    }
+    #c {
+      width: 70px;
+    }
+  </layout>
 </xt>

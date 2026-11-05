@@ -1,14 +1,37 @@
-<xt>
-  <head>
-    <style>
-      #i1 { width: 200px; height: 60px; margin: 8px; object-fit: fill; }
-      #i2 { width: 200px; height: 60px; margin: 8px; object-fit: contain; }
-      #i3 { width: 200px; height: 60px; margin: 8px; object-fit: cover; }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <img id="i1" src="checker.png"/>
     <img id="i2" src="checker.png"/>
     <img id="i3" src="checker.png"/>
   </body>
+
+  <layout>
+    #i1 {
+      width: 200px;
+      height: 60px;
+      margin: 8px;
+    }
+    #i2 {
+      width: 200px;
+      height: 60px;
+      margin: 8px;
+    }
+    #i3 {
+      width: 200px;
+      height: 60px;
+      margin: 8px;
+    }
+  </layout>
+  <style>
+    #i1 {
+      object-fit: fill;
+    }
+    #i2 {
+      object-fit: contain;
+    }
+    #i3 {
+      object-fit: cover;
+    }
+  </style>
 </xt>

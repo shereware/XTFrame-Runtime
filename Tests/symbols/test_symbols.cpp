@@ -15,12 +15,16 @@
 #include "json.hpp"
 #include "test_temp.h"
 #include "xt/asset_resolver.h"
+#include "xt/bundle/bundle.h"
 #include "xt/bundle/pack.h"
 #include "xt/bundle/symbol_library.h"
 #include "xt/bundle/symbol_lint.h"
 #include "xt/bundle/ui_project.h"
 #include "xt/command_list.h"
 #include "xt/compile/compile.h"
+#include "xt/compile/diagnostics.h"
+#include "xt/compile/dom.h"
+#include "xt/compile/parse_xt.h"
 #include "xt/compile/utf8_path.h"
 #include "xt/context.h"
 #include "xt/document.h"
@@ -196,14 +200,19 @@ fs::path copiedStarter(const std::string& name) {
     return dir;
 }
 
-/// The standard symbol names the starter's UIs link (`shared/symbols/<Name>.xt`).
+/// The standard symbol names the starter's UIs link (`shared/symbols/<Name>.xt`). T-606: from the
+/// parsed documents (`<link rel="symbols">` of version 1, `<symbols src>` of version 2).
 std::set<std::string> linkedSymbols(const fs::path& root) {
     std::set<std::string> names;
-    const std::regex link("<link rel=\"symbols\" href=\"\\.\\./\\.\\./shared/symbols/([A-Za-z]+)\\.xt\"");
+    const std::string prefix = "../../shared/symbols/";
     for (const char* ui : {"hud/hud.xt", "main-menu/main-menu.xt", "settings/settings.xt"}) {
-        const std::string text = readText(root / "ui" / ui);
-        for (std::sregex_iterator it(text.begin(), text.end(), link), end; it != end; ++it) {
-            names.insert((*it)[1].str());
+        compile::DiagnosticSink sink;
+        compile::DomTree dom;
+        REQUIRE(compile::parseXt(readText(root / "ui" / ui), ui, sink, dom));
+        for (const std::string& href : dom.symbolHrefs) {
+            if (href.rfind(prefix, 0) == 0 && fs::path(href).extension() == ".xt") {
+                names.insert(fs::path(href).stem().string());
+            }
         }
     }
     return names;
@@ -703,8 +712,19 @@ TEST_CASE("symbols: the mobile-hud demo packs strictly with the mobile symbols a
 TEST_CASE("symbols: ListItem shows the three data paths and its preview list binds per entry (T-382)") {
     // 30 §30.13: in-ports for values, a slot for free content, bind:state for states.
     const std::string text = readText(fs::path(XT_SYMBOLS_DIR) / "list" / "ListItem.xt");
-    CHECK(text.find("port:title=\"string in\"") != std::string::npos);
-    CHECK(text.find("port:selected=\"bool in\"") != std::string::npos);
+    // T-606: the ports from the parsed file (`port:` attributes of version 1, `<ports>` of version 2).
+    const std::vector<bundle::SymbolContract> contracts = bundle::readSymbolContracts(text, "ListItem.xt");
+    REQUIRE(contracts.size() == 1);
+    auto hasPort = [&](const std::string& name, const std::string& type, const std::string& dir) {
+        for (const bundle::SymbolPortInfo& port : contracts[0].ports) {
+            if (port.name == name && port.type == type && port.dir == dir) {
+                return true;
+            }
+        }
+        return false;
+    };
+    CHECK(hasPort("title", "string", "in"));
+    CHECK(hasPort("selected", "bool", "in"));
     CHECK(text.find("<slot name=\"trailing\">") != std::string::npos);
     CHECK(text.find("bind:state.Selected=\"selected\"") != std::string::npos);
     CHECK(text.find("on:dblclick=\"emit(dblactivate)\"") != std::string::npos);
@@ -725,7 +745,7 @@ TEST_CASE("symbols: ListItem shows the three data paths and its preview list bin
         ctx.loadDocument(IrBlob{result.ir.data(), result.ir.size()}, /*takeOwnership=*/false);
     REQUIRE(handle.ok());
     Document& doc = *ctx.document(handle.value());
-    const PortId items = doc.lookupPort("List.items");
+    const PortId items = doc.lookupPort("items");
     REQUIRE(items != kInvalidPort);
     CHECK(doc.setPortText(items, R"([{"title":"Save 1","subtitle":"a","badge":"3h","selected":false},)"
                                  R"({"title":"Save 2","subtitle":"b","badge":"5h","selected":true}])") ==

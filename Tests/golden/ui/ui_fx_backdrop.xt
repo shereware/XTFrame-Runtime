@@ -1,32 +1,5 @@
-<xt>
-  <head>
-    <style>
-      #grid {
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 128px;
-        height: 128px;
-        display: flex;
-        flex-wrap: wrap;
-      }
-      #grid > div { width: 32px; height: 32px; }
-      .a { background-color: #e0503c; }
-      .b { background-color: #2f6fd0; }
-      .c { background-color: #33a06a; }
-      .d { background-color: #f0c040; }
-      #panel {
-        position: absolute;
-        left: 68px;
-        top: 36px;
-        width: 120px;
-        height: 120px;
-        border-radius: 12px;
-        background-color: #ffffff80;
-        effect: backdrop-blur(8px);
-      }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <div id="grid">
       <div class="a"></div>
@@ -48,4 +21,46 @@
     </div>
     <div id="panel"></div>
   </body>
+
+  <layout>
+    #grid {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 128px;
+      height: 128px;
+      display: flex;
+      flex-wrap: wrap;
+    }
+    #grid > div {
+      width: 32px;
+      height: 32px;
+    }
+    #panel {
+      position: absolute;
+      left: 68px;
+      top: 36px;
+      width: 120px;
+      height: 120px;
+    }
+  </layout>
+  <style>
+    .a {
+      background-color: #e0503c;
+    }
+    .b {
+      background-color: #2f6fd0;
+    }
+    .c {
+      background-color: #33a06a;
+    }
+    .d {
+      background-color: #f0c040;
+    }
+    #panel {
+      border-radius: 12px;
+      background-color: #ffffff80;
+      effect: backdrop-blur(8px);
+    }
+  </style>
 </xt>

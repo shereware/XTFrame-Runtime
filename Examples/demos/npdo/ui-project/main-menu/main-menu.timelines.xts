@@ -1,0 +1,397 @@
+@timeline intro {
+  #menu-scene {
+    0ms {
+      opacity: 0;
+    }
+    1200ms ease-out {
+      opacity: 1;
+    }
+  }
+  #menu-title {
+    0ms {
+      opacity: 0;
+      transform: translateX(0px) scale(1.07);
+    }
+    300ms {
+      opacity: 0;
+      transform: translateX(0px) scale(1.07);
+    }
+    900ms ease-out {
+      opacity: 1;
+    }
+    1200ms ease-out {
+      transform: translateX(0px) scale(1);
+    }
+    1240ms {
+      opacity: 0.45;
+      transform: translateX(-9px) scale(1);
+    }
+    1290ms {
+      opacity: 1;
+      transform: translateX(7.5px) scale(1);
+    }
+    1340ms {
+      opacity: 0.7;
+      transform: translateX(-3px) scale(1);
+    }
+    1390ms {
+      opacity: 1;
+      transform: translateX(0px) scale(1);
+    }
+  }
+  #menu-list {
+    0ms {
+      opacity: 0;
+    }
+    900ms {
+      opacity: 0;
+    }
+    1600ms ease-out {
+      opacity: 1;
+    }
+  }
+}
+@timeline idle {
+  #menu-scene {
+    0ms {
+      transform: translateX(0px) scale(1);
+    }
+    12000ms ease-in-out {
+      transform: translateX(-21px) scale(1.045);
+    }
+    24000ms ease-in-out {
+      transform: translateX(0px) scale(1);
+    }
+  }
+  #menu-lamp {
+    0ms {
+      opacity: 0.8;
+    }
+    6450ms {
+      opacity: 0.25;
+    }
+    6520ms {
+      opacity: 0.8;
+    }
+    6600ms {
+      opacity: 0.4;
+    }
+    6700ms {
+      opacity: 0.8;
+    }
+    17050ms {
+      opacity: 0.1;
+    }
+    17120ms {
+      opacity: 0.8;
+    }
+    17240ms {
+      opacity: 0.3;
+    }
+    17320ms {
+      opacity: 0.8;
+    }
+    24000ms {
+      opacity: 0.8;
+    }
+  }
+  #menu-shade-left {
+    0ms {
+      opacity: 1;
+    }
+    1000ms ease-in-out {
+      opacity: 0.93;
+    }
+    17050ms {
+      opacity: 1;
+    }
+    17120ms {
+      opacity: 0.93;
+    }
+    17240ms {
+      opacity: 1;
+    }
+    17320ms {
+      opacity: 0.93;
+    }
+    24000ms ease-in-out {
+      opacity: 1;
+    }
+  }
+  #menu-shade-bottom {
+    0ms {
+      opacity: 1;
+    }
+    6000ms ease-in-out {
+      opacity: 0.82;
+    }
+    12000ms ease-in-out {
+      opacity: 1;
+    }
+    18000ms ease-in-out {
+      opacity: 0.82;
+    }
+    24000ms ease-in-out {
+      opacity: 1;
+    }
+  }
+  #menu-grime {
+    0ms {
+      opacity: 0.45;
+      transform: translate(0px, 0px) scale(1.15);
+    }
+    8000ms ease-in-out {
+      opacity: 0.7;
+    }
+    12000ms ease-in-out {
+      transform: translate(-67.5px, -45px) scale(1.15);
+    }
+    16000ms ease-in-out {
+      opacity: 0.45;
+    }
+    24000ms ease-in-out {
+      opacity: 0.45;
+      transform: translate(0px, 0px) scale(1.15);
+    }
+  }
+  #menu-title {
+    0ms {
+      transform: translateX(0px) scale(1);
+      opacity: 1;
+    }
+    6000ms ease-in-out {
+      transform: translateX(0px) scale(1.012);
+    }
+    12000ms ease-in-out {
+      transform: translateX(0px) scale(1);
+    }
+    13940ms {
+      opacity: 1;
+    }
+    13990ms {
+      opacity: 0.6;
+    }
+    14040ms {
+      opacity: 1;
+    }
+    14080ms {
+      opacity: 0.8;
+    }
+    14110ms {
+      opacity: 1;
+    }
+    18000ms ease-in-out {
+      transform: translateX(0px) scale(1.012);
+    }
+    24000ms ease-in-out {
+      transform: translateX(0px) scale(1);
+      opacity: 1;
+    }
+  }
+}
+@timeline fog {
+  #menu-fog {
+    0ms {
+      transform: translateX(0px);
+    }
+    64000ms linear {
+      transform: translateX(-1920px);
+    }
+  }
+}
+@timeline rain {
+  #menu-rain {
+    0ms {
+      transform: translateY(0px);
+    }
+    500ms linear {
+      transform: translateY(768px);
+    }
+  }
+}
+@timeline hover1 {
+  #band-new-game {
+    0ms {
+      transform: translateX(-33px);
+    }
+    180ms ease-out {
+      transform: translateX(0px);
+    }
+  }
+  #label-new-game {
+    0ms {
+      opacity: 1;
+      transform: translateX(0px);
+    }
+    30ms {
+      opacity: 0.35;
+    }
+    60ms {
+      opacity: 1;
+    }
+    100ms {
+      opacity: 0.6;
+    }
+    140ms {
+      opacity: 1;
+    }
+    180ms ease-out {
+      transform: translateX(13.5px);
+    }
+  }
+}
+@timeline hover2 {
+  #band-continue {
+    0ms {
+      transform: translateX(-33px);
+    }
+    180ms ease-out {
+      transform: translateX(0px);
+    }
+  }
+  #label-continue {
+    0ms {
+      opacity: 1;
+      transform: translateX(0px);
+    }
+    30ms {
+      opacity: 0.35;
+    }
+    60ms {
+      opacity: 1;
+    }
+    100ms {
+      opacity: 0.6;
+    }
+    140ms {
+      opacity: 1;
+    }
+    180ms ease-out {
+      transform: translateX(13.5px);
+    }
+  }
+}
+@timeline hover3 {
+  #band-load-game {
+    0ms {
+      transform: translateX(-33px);
+    }
+    180ms ease-out {
+      transform: translateX(0px);
+    }
+  }
+  #label-load-game {
+    0ms {
+      opacity: 1;
+      transform: translateX(0px);
+    }
+    30ms {
+      opacity: 0.35;
+    }
+    60ms {
+      opacity: 1;
+    }
+    100ms {
+      opacity: 0.6;
+    }
+    140ms {
+      opacity: 1;
+    }
+    180ms ease-out {
+      transform: translateX(13.5px);
+    }
+  }
+}
+@timeline hover4 {
+  #band-options {
+    0ms {
+      transform: translateX(-33px);
+    }
+    180ms ease-out {
+      transform: translateX(0px);
+    }
+  }
+  #label-options {
+    0ms {
+      opacity: 1;
+      transform: translateX(0px);
+    }
+    30ms {
+      opacity: 0.35;
+    }
+    60ms {
+      opacity: 1;
+    }
+    100ms {
+      opacity: 0.6;
+    }
+    140ms {
+      opacity: 1;
+    }
+    180ms ease-out {
+      transform: translateX(13.5px);
+    }
+  }
+}
+@timeline hover5 {
+  #band-credits {
+    0ms {
+      transform: translateX(-33px);
+    }
+    180ms ease-out {
+      transform: translateX(0px);
+    }
+  }
+  #label-credits {
+    0ms {
+      opacity: 1;
+      transform: translateX(0px);
+    }
+    30ms {
+      opacity: 0.35;
+    }
+    60ms {
+      opacity: 1;
+    }
+    100ms {
+      opacity: 0.6;
+    }
+    140ms {
+      opacity: 1;
+    }
+    180ms ease-out {
+      transform: translateX(13.5px);
+    }
+  }
+}
+@timeline hover6 {
+  #band-quit {
+    0ms {
+      transform: translateX(-33px);
+    }
+    180ms ease-out {
+      transform: translateX(0px);
+    }
+  }
+  #label-quit {
+    0ms {
+      opacity: 1;
+      transform: translateX(0px);
+    }
+    30ms {
+      opacity: 0.35;
+    }
+    60ms {
+      opacity: 1;
+    }
+    100ms {
+      opacity: 0.6;
+    }
+    140ms {
+      opacity: 1;
+    }
+    180ms ease-out {
+      transform: translateX(13.5px);
+    }
+  }
+}

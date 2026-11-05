@@ -1,0 +1,27 @@
+<xt version="2">
+  <head>
+    <symbols src="../../HealthBar.xt"/>
+  </head>
+
+  <body>
+    <use symbol="HealthBar" id="Hp"/>
+  </body>
+
+  <layout>
+    body {
+      width: 320px;
+      height: 90px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      row-gap: 12px;
+    }
+  </layout>
+  <style src="../../tokens-night.xts"/>
+  <style>
+    body {
+      background-color: var(--color-bg);
+    }
+  </style>
+</xt>

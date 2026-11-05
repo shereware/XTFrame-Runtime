@@ -1,21 +1,66 @@
-<xt>
-  <!-- T-570 (improvement report F55): a `transform` timeline written rotate() before translate()
-       goes through 05.5's compose/decompose path, whose identity rotateX/rotateY/translateZ tracks
-       force is3D = 1 on #memo (19.3). Outside any 3D space root the node is flattened onto the 2D
-       chain and drawn, so it must be hit tested through the same `world` too. #memo2 is the same
-       intro written in the fixed order (never broken). -->
-  <head>
-    <style>
-      @keyframes intro { from { transform: rotate(-4deg) translateY(-30px); } to { transform: rotate(-1deg) translateY(0px); } }
-      @keyframes intro-fixed { from { transform: translateY(-30px) rotate(-4deg); } to { transform: translateY(0px) rotate(-1deg); } }
-      #memo { position: absolute; left: 100px; top: 40px; width: 200px; height: 120px; background-color: #333333; animation: intro 0.5s forwards; }
-      #memo2 { position: absolute; left: 100px; top: 180px; width: 200px; height: 120px; background-color: #333333; animation: intro-fixed 0.5s forwards; }
-      #btn-restart, #btn-restart2 { position: absolute; left: 20px; top: 20px; width: 80px; height: 30px; background-color: #888888; }
-      #btn-restart:hover, #btn-restart2:hover { background-color: #ff0000; }
-    </style>
-  </head>
+<xt version="2">
+
   <body id="root">
     <div id="memo"><div id="btn-restart" on:click="state(Clicked)"></div></div>
     <div id="memo2"><div id="btn-restart2" on:click="state(Clicked)"></div></div>
   </body>
+
+  <layout>
+    #memo {
+      position: absolute;
+      left: 100px;
+      top: 40px;
+      width: 200px;
+      height: 120px;
+    }
+    #memo2 {
+      position: absolute;
+      left: 100px;
+      top: 180px;
+      width: 200px;
+      height: 120px;
+    }
+    #btn-restart,
+    #btn-restart2 {
+      position: absolute;
+      left: 20px;
+      top: 20px;
+      width: 80px;
+      height: 30px;
+    }
+  </layout>
+  <style>
+    @keyframes intro {
+      from {
+        transform: rotate(-4deg) translateY(-30px);
+      }
+      to {
+        transform: rotate(-1deg) translateY(0px);
+      }
+    }
+    @keyframes intro-fixed {
+      from {
+        transform: translateY(-30px) rotate(-4deg);
+      }
+      to {
+        transform: translateY(0px) rotate(-1deg);
+      }
+    }
+    #memo {
+      background-color: #333333;
+      animation: intro 0.5s forwards;
+    }
+    #memo2 {
+      background-color: #333333;
+      animation: intro-fixed 0.5s forwards;
+    }
+    #btn-restart,
+    #btn-restart2 {
+      background-color: #888888;
+    }
+    #btn-restart:hover,
+    #btn-restart2:hover {
+      background-color: #ff0000;
+    }
+  </style>
 </xt>

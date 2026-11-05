@@ -9,64 +9,77 @@ it matches the current API.
 
 **You wire a finished UI into a game.** Artists make the UI in the editor and hand you a bundle.
 Your side is small: one `xt::Context` per texture, three calls per frame, and the UI's declared
-ports (`port:` - typed values in and events out) as the contract between game and UI. This is
-what XTFrame is designed for, and sections 2.3-2.5 and 5 cover it.
+ports (its `<ports>` section - typed values in and events out) as the contract between game and
+UI. This is what XTFrame is designed for, and sections 2.3-2.5 and 5 cover it.
 
-**You write the UI yourself.** You can: a UI is two text files, `.xt` (elements, ports,
-triggers, bindings) and `.xts` (CSS-like styles), compiled to a binary `.xtir`. It looks like
-HTML and CSS but is not a browser - read section 3 before you start, and section 4 to decide
-where your logic goes.
+**You write the UI yourself.** You can: a UI is one text file, `.xt`, compiled to a binary
+`.xtir`. The file has sections (source format 2, 54): `<ports>` (the contract), `<body>`
+(elements, triggers, bindings), `<layout>` (geometry: position, size, stacking), `<style>`
+(appearance) and `<timelines>` (animation). `<layout>`, `<style>` and `<timelines>` may also live
+in `.xts` fragment files pulled in with `src` (`<style src="hud.xts"/>`; that is what the importer
+writes for the appearance). It looks like HTML and CSS but is not a browser - read section 3
+before you start, and section 4 to decide where your logic goes.
 
 ## 2. The ten-minute path
 
 ### 2.1 Write the UI
 
-A HUD with one number bound to a port. `hud.xt`:
+A HUD with one number bound to a port, in one file. `hud.xt`:
 
-```html
-<xt>
-  <head>
-    <link href="hud.xts"/>
-  </head>
-  <body port:hp="number in = 100">
+```xml
+<xt version="2">
+  <ports>
+    hp: number in = 100
+  </ports>
+
+  <body>
     <div id="Panel">
       <span id="Label">HP</span>
       <span id="HpText" bind:text="hp | round(0)" bind:class.low="hp | lt(30)">--</span>
     </div>
   </body>
+
+  <layout>
+    body {
+      width: 100vw;
+      height: 100vh;
+    }
+    #Panel {
+      anchor: left top;
+      offset: 24px 24px;
+      display: flex;
+      gap: 8px;
+      padding: 8px 12px;
+    }
+  </layout>
+
+  <style>
+    #Panel {
+      border-radius: 6px;
+      background-color: #10141ccc;
+      font-size: 24px;
+      color: #f2f5f8;
+    }
+    #HpText.low {
+      color: #ff5a4f;
+    }
+  </style>
 </xt>
 ```
 
-`port:hp="number in = 100"` declares an input port with a default. `bind:text` shows it rounded;
-`bind:class.low` turns the class `low` on while `hp < 30`. Converters such as `round` and `lt`
-are a fixed set, chained with `|` (27 §27.3.3) - not an expression language. Every element that
-the host or a selector talks to has an `id`.
-
-`hud.xts`, linked from the `<head>`:
-
-```css
-body {
-  width: 100vw;
-  height: 100vh;
-}
-
-#Panel {
-  position: absolute;
-  left: 24px;
-  top: 24px;
-  display: flex;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: 6px;
-  background-color: #10141ccc;
-  font-size: 24px;
-  color: #f2f5f8;
-}
-
-#HpText.low {
-  color: #ff5a4f;
-}
-```
+- `<ports>` declares one port per line, `name: type [in|out|call] [= default]`: here an input
+  number with a default of 100. It is the whole contract the game sees; `--gen-ports` (section 6)
+  turns it into a header.
+- `bind:text` shows the port rounded; `bind:class.low` turns the class `low` on while `hp < 30`.
+  Converters such as `round` and `lt` are a fixed set, chained with `|` (27 §27.3.3) - not an
+  expression language. Every element that the host or a selector talks to has an `id`.
+- `<layout>` holds every geometry declaration and nothing else; `<style>` holds the look and no
+  geometry (a `width` in `<style>` or a `color` in `<layout>` is a compile error). Both are CSS
+  with the same selectors and cascade. `anchor: left top; offset: 24px 24px` pins the panel 24 px
+  inside the top-left corner of the safe area (the TV / notch margin the host reports with
+  `Context::setDevice`; none by default, so here it is the screen corner); plain
+  `position: absolute; left: 24px; top: 24px` works too and ignores the safe area (06, 54 §54.5.1).
+  Which properties are geometry: `Skills/skills/xtui/references/style-groups.md`, column Section.
 
 ### 2.2 Compile and look
 
@@ -75,9 +88,10 @@ xtframe-compile hud.xt -o hud.xtir
 xtframe-view hud.xtir
 ```
 
-`xtframe-compile` reports errors as `file:line:col: level: message`; add `--strict` to turn the
-quiet cases into errors. `xtframe-view` opens a window (it also takes the `.xt` directly, a
-bundle or a UI Project); `--headless --screenshot hud.png` renders without one.
+`xtframe-compile` reports errors as `file:line:col: level: message` (line and column in the
+`.xt`, inside whichever section); add `--strict` to turn the quiet cases into errors.
+`xtframe-view` opens a window (it also takes the `.xt` directly, a bundle or a UI Project);
+`--headless --screenshot hud.png` renders without one.
 
 ### 2.3 Drive it from C++
 
@@ -93,7 +107,7 @@ if (!loaded.ok()) {
 xt::Document* doc = ctx.document(loaded.value());
 ctx.setViewport(xt::Rect{0, 0, 1280, 720}, /*devicePixelRatio=*/1.0f);
 
-const xt::PortId hp = doc->lookupPort("hp");  // the `port:hp` of hud.xt
+const xt::PortId hp = doc->lookupPort("hp");  // the `hp` of the <ports> of hud.xt
 
 xt::CommandList list;
 for (int frame = 0; frame < 3; ++frame) {
@@ -202,28 +216,28 @@ the repository's own tests compare rendered frames byte for byte.
 The first fifteen lines of `Skills/skills/xtui/references/not-like-web.md` (read the whole page
 once):
 
-1. Always border-box; there is no `box-sizing`.
-2. `display` is `block | flex | grid | none` - no inline, inline-block or table.
-3. `position` is `static | relative | absolute` - no `fixed` or `sticky`.
-4. `z-index` only reorders siblings; to draw above everything use the style `layer: overlay`.
-5. `pointer-events` is inherited: `none` on a full-screen container, `auto` on each panel.
-6. A `<use>` instance root is a sized box that takes clicks even when its inside is hidden.
-7. Flex items have no min-content minimum: give text items `min-width` or `flex-shrink: 0`.
-8. `translateZ` sorts whole layers by their anchor, not pixels; crossing planes do not cut.
-9. Ports have a direction: a flow reads `out` and writes `in`; a board binds `in` ports.
-10. `bind:` beats a static class: bind it or write it, not both.
-11. List ports are typed (`list<struct{...}>`, `list<string>`); the host sends JSON.
-12. Lists nest: an inner `<repeat port="item(rows)">`; `outer.item(field)` reads one level up.
-13. `bind:visible` keeps the space; `bind:display` removes the element from the layout.
-14. `Disabled` is always the built-in `:disabled`, and it disables the whole subtree for input.
-15. State on a `<use>` goes on the instance root: style it as `:state(Open) #Inner`.
+1. Geometry only in `<layout>`, the look only in `<style>` (`display: none` is the exception).
+2. Always border-box; there is no `box-sizing`.
+3. `display` is `block | flex | grid | none` - no inline, inline-block or table.
+4. `position` is `static | relative | absolute` - no `fixed` or `sticky`.
+5. `z-index` only reorders siblings; to draw above everything use `layer: overlay` in `<layout>`.
+6. `pointer-events` is inherited: `none` on a full-screen container, `auto` on each panel.
+7. A `<use>` instance root is a sized box that takes clicks even when its inside is hidden.
+8. Flex items have no min-content minimum: give text items `min-width` or `flex-shrink: 0`.
+9. `translateZ` sorts whole layers by their anchor, not pixels; crossing planes do not cut.
+10. Ports have a direction: a flow reads `out` and writes `in`; a board binds `in` ports.
+11. `bind:` beats a static class: bind it or write it, not both.
+12. List ports are typed (`list<struct{...}>`, `list<string>`); the host sends JSON.
+13. Lists nest: an inner `<repeat port="item(rows)">`; `outer.item(field)` reads one level up.
+14. `bind:visible` keeps the space; `bind:display` removes the element from the layout.
+15. `Disabled` is always the built-in `:disabled`, and it disables the whole subtree for input.
 
 ## 4. Four ways to put logic in
 
 | Route | Use it when |
 |---|---|
 | C++ listener (`Document::addListener`, `addPortListener`) | the logic needs game state or belongs to the game; you want your debugger |
-| `on:` + `bind:` in the `.xt` (27 §27.2-27.3) | presentation reacts to the UI's own events and ports: press plays a timeline, a value drives text, width or a class; it travels with the UI and artists can edit it |
+| `on:` + `bind:` on the elements of `<body>` (27 §27.2-27.3) | presentation reacts to the UI's own events and ports: press plays a timeline, a value drives text, width or a class; it travels with the UI and artists can edit it |
 | flow (`.xtflow`, `xt_flow`; 27 §27.4, 53) | UI-side event logic across elements or UIs without host code: routing, state machines, filtering; optional (a host may not run `xt_flow` at all) and never for animation |
 | `xt::flow::HostPorts` (13 §13.8.1) | the game-UI contract by port name that survives reloads: set in-ports, receive emits, call ports, register converters; what engine plugins and the C ABI use |
 
@@ -259,14 +273,16 @@ document (13 §13.9-13.10):
 | Tool | What it does |
 |---|---|
 | `xtframe-compile <file.xt> -o <file.xtir>` | compile one UI; `--strict`, `--diagnostics FILE` (12) |
+| `xtframe-compile --migrate <project\|file.xt> [-o DIR]` | rewrite a format 1 UI (ports as `port:` attributes, geometry mixed into the `.xts`) as format 2; checks that every element's computed style stays the same (54 §54.10) |
 | `xtframe-view <file.xt\|.xtir\|bundle\|.xtui>` | preview in a window; `--headless --frames N --screenshot out.png` for scripts |
 | `xtframe-pack <project\|file.xt> -o <dir>` | publish a bundle (22); `--zip` for one `.xtb` file, `--strict` for CI |
 | `xtframe-pack ... --gen-ports cpp\|cs <out>` | a typed header of every UI's ports (for hud.xt: `xtui::hud::hp`, one `PortId` constant per port) to compile against (23 §23.10) |
 | `xtframe-service --stdio` | the headless Editor Service: JSON lines on stdin, the same operations as the editor, for scripts and agents (17, 20); needs `XT_BUILD_EDITOR_CLI` |
 
-Hot reload while you type: coming soon as `xt_shell::App --watch` (task T-595). Until then call
-`Context::hotReload` / `xt_surface_hot_reload` (port values and states carry over when the
-new UI still has them) or `reloadDocument` yourself.
+Hot reload while you type: `Examples/desktop_app --watch` recompiles the UI when you save it and
+swaps it in (`xt::shell::SourceWatcher` from `xt_shell_watch`; a compile error is printed and
+the old UI stays). In your own host call `Context::hotReload` / `xt_surface_hot_reload` (port
+values and states carry over when the new UI still has them) or `reloadDocument` yourself.
 
 ## 7. Further reading
 
@@ -276,8 +292,10 @@ new UI still has them) or `reloadDocument` yourself.
 - [50 C ABI](../design/50-c-abi.md) - `xtframe.h`, threads, the Unity package.
 - [22 Bundle](../design/22-bundle.md) - what `xtframe-pack` writes and how a game loads it.
 - [27 Interaction](../design/27-interaction.md) - states, `on:` triggers, `bind:` and converters, flow.
+- [54 Source format 2](../design/54-source-format-v2.md) - the sections of a `.xt`, `src`
+  fragments, the anchor shorthands, migrating from format 1.
 - [05 Style and CSS](../design/05-style-and-css.md), [06 Layout](../design/06-layout.md),
-  [08 Events](../design/08-events.md) - what the `.xts` and the event model support.
+  [08 Events](../design/08-events.md) - what `<layout>` / `<style>` and the event model support.
 - [53 Flow language](../design/53-flow-language.md) - the `.xtflow` graphs.
 - [Not like web](../../Skills/skills/xtui/references/not-like-web.md) - every difference from HTML/CSS.
 - `Examples/desktop_app/` (a window with `xt_shell`), `Examples/engine_integration/` (a host

@@ -1,0 +1,43 @@
+/* Shared theme for the game-ui UI Project: palette, type scale, panel and button base.
+   Listed in the .xtui as shared.styles, so xtframe-pack loads it before every UI's own
+   stylesheet. Each .xt also <link>s it explicitly so a single document still looks right when it
+   is opened on its own with xtframe-view or xtframe-editor. Loading it twice is harmless: the rules
+   are identical, so the cascade result is the same. */
+body {
+  height: 100vh;
+  width: 100vw;
+}
+#root {
+  height: 100vh;
+  overflow: hidden;
+  position: relative;
+  width: 100vw;
+}
+#editorBg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+}
+.panel {
+  padding: 16px 20px 18px 20px;
+  position: absolute;
+}
+.title {
+  margin: 2px 0px 12px 0px;
+}
+.row {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+.btn {
+  height: 36px;
+  padding: 0px 18px 0px 18px;
+}
+.chip {
+  height: 24px;
+  padding: 0px 10px 0px 10px;
+}

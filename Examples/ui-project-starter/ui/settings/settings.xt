@@ -1,23 +1,20 @@
-<xt>
+<xt version="2">
   <head>
-    <!-- Settings screen built from the standard symbol library: a centred panel with Tabs, two
-         columns of setting rows and a footer with input hints and the Apply / Back buttons. The
-         host (or a flow) owns every value: it listens to the rows' events and sets their ports. -->
-    <link rel="symbols" href="../../shared/symbols/Tabs.xt"/>
-    <link rel="symbols" href="../../shared/symbols/OptionCycler.xt"/>
-    <link rel="symbols" href="../../shared/symbols/Dropdown.xt"/>
-    <link rel="symbols" href="../../shared/symbols/Slider.xt"/>
-    <link rel="symbols" href="../../shared/symbols/Toggle.xt"/>
-    <link rel="symbols" href="../../shared/symbols/Checkbox.xt"/>
-    <link rel="symbols" href="../../shared/symbols/RadioGroup.xt"/>
-    <link rel="symbols" href="../../shared/symbols/Stepper.xt"/>
-    <link rel="symbols" href="../../shared/symbols/TextField.xt"/>
-    <link rel="symbols" href="../../shared/symbols/Tooltip.xt"/>
-    <link rel="symbols" href="../../shared/symbols/ProgressBar.xt"/>
-    <link rel="symbols" href="../../shared/symbols/Button.xt"/>
-    <link rel="symbols" href="../../shared/symbols/InputGlyph.xt"/>
-    <link href="settings.xts"/>
+    <symbols src="../../shared/symbols/Tabs.xt"/>
+    <symbols src="../../shared/symbols/OptionCycler.xt"/>
+    <symbols src="../../shared/symbols/Dropdown.xt"/>
+    <symbols src="../../shared/symbols/Slider.xt"/>
+    <symbols src="../../shared/symbols/Toggle.xt"/>
+    <symbols src="../../shared/symbols/Checkbox.xt"/>
+    <symbols src="../../shared/symbols/RadioGroup.xt"/>
+    <symbols src="../../shared/symbols/Stepper.xt"/>
+    <symbols src="../../shared/symbols/TextField.xt"/>
+    <symbols src="../../shared/symbols/Tooltip.xt"/>
+    <symbols src="../../shared/symbols/ProgressBar.xt"/>
+    <symbols src="../../shared/symbols/Button.xt"/>
+    <symbols src="../../shared/symbols/InputGlyph.xt"/>
   </head>
+
   <body>
     <div id="Screen">
       <div id="Panel">
@@ -59,4 +56,7 @@
       </div>
     </div>
   </body>
+
+  <layout src="settings.layout.xts"/>
+  <style src="settings.xts"/>
 </xt>

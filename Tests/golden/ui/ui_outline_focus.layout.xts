@@ -1,0 +1,15 @@
+button {
+  position: absolute;
+  left: 40px;
+  width: 120px;
+  height: 40px;
+}
+#btn1 {
+  top: 30px;
+}
+#btn2 {
+  top: 100px;
+}
+#btn3 {
+  top: 170px;
+}

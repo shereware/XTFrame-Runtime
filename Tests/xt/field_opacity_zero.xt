@@ -1,14 +1,5 @@
-<xt>
-  <head>
-    <style>
-      div { width: 40px; height: 40px; background-color: #ff0000; }
-      #o0 { opacity: 0; }
-      #o0dot { opacity: 0.0; }
-      #o001 { opacity: 0.01; }
-      #o05 { opacity: 0.5; }
-      #o1 { opacity: 1; }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <div id="o0"></div>
     <div id="o0dot"></div>
@@ -16,4 +7,31 @@
     <div id="o05"></div>
     <div id="o1"></div>
   </body>
+
+  <layout>
+    div {
+      width: 40px;
+      height: 40px;
+    }
+  </layout>
+  <style>
+    div {
+      background-color: #ff0000;
+    }
+    #o0 {
+      opacity: 0;
+    }
+    #o0dot {
+      opacity: 0.0;
+    }
+    #o001 {
+      opacity: 0.01;
+    }
+    #o05 {
+      opacity: 0.5;
+    }
+    #o1 {
+      opacity: 1;
+    }
+  </style>
 </xt>

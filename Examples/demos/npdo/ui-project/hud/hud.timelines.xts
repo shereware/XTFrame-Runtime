@@ -1,0 +1,54 @@
+@timeline intro {
+  #objective {
+    0ms {
+      opacity: 0;
+    }
+    800ms ease-out {
+      opacity: 1;
+    }
+  }
+  #location {
+    0ms {
+      opacity: 0;
+    }
+    200ms {
+      opacity: 0;
+    }
+    1000ms ease-out {
+      opacity: 1;
+    }
+  }
+  #interact-prompt {
+    0ms {
+      opacity: 0;
+    }
+    400ms {
+      opacity: 0;
+    }
+    900ms ease-out {
+      opacity: 1;
+    }
+  }
+  #vitals {
+    0ms {
+      opacity: 0;
+    }
+    300ms {
+      opacity: 0;
+    }
+    1100ms ease-out {
+      opacity: 1;
+    }
+  }
+  #inventory {
+    0ms {
+      opacity: 0;
+    }
+    500ms {
+      opacity: 0;
+    }
+    1200ms ease-out {
+      opacity: 1;
+    }
+  }
+}

@@ -1,0 +1,98 @@
+/* T-326 (18 §18.12): one 64 px cell per `mix-blend-mode` value, in BlendMode order (normal,
+   multiply, ..., luminosity, add), four per row. Each cell's backdrop is a blue left half and a
+   yellow right half; the orange square on top straddles both and is composited with the cell's
+   mode, so every separable and non-separable formula shows two distinct results. */
+.cell {
+  position: absolute;
+  width: 64px;
+  height: 64px;
+}
+.l {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 32px;
+  height: 64px;
+}
+.r {
+  position: absolute;
+  left: 32px;
+  top: 0px;
+  width: 32px;
+  height: 64px;
+}
+.top {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  width: 40px;
+  height: 40px;
+}
+#c0 {
+  left: 0px;
+  top: 0px;
+}
+#c1 {
+  left: 64px;
+  top: 0px;
+}
+#c2 {
+  left: 128px;
+  top: 0px;
+}
+#c3 {
+  left: 192px;
+  top: 0px;
+}
+#c4 {
+  left: 0px;
+  top: 64px;
+}
+#c5 {
+  left: 64px;
+  top: 64px;
+}
+#c6 {
+  left: 128px;
+  top: 64px;
+}
+#c7 {
+  left: 192px;
+  top: 64px;
+}
+#c8 {
+  left: 0px;
+  top: 128px;
+}
+#c9 {
+  left: 64px;
+  top: 128px;
+}
+#c10 {
+  left: 128px;
+  top: 128px;
+}
+#c11 {
+  left: 192px;
+  top: 128px;
+}
+#c12 {
+  left: 0px;
+  top: 192px;
+}
+#c13 {
+  left: 64px;
+  top: 192px;
+}
+#c14 {
+  left: 128px;
+  top: 192px;
+}
+#c15 {
+  left: 192px;
+  top: 192px;
+}
+#c16 {
+  left: 0px;
+  top: 256px;
+}

@@ -1,13 +1,5 @@
-<xt>
-  <head>
-    <style>
-      #shrinkAll { display: flex; width: 400px; height: 30px; }
-      #shrinkAll > div { width: 200px; }
-      #shrinkFixed { display: flex; width: 400px; height: 30px; }
-      #shrinkFixed > div { width: 200px; }
-      #f2 { flex-shrink: 0; }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <div id="shrinkAll">
       <div id="a1"></div>
@@ -20,4 +12,26 @@
       <div id="f3"></div>
     </div>
   </body>
+
+  <layout>
+    #shrinkAll {
+      display: flex;
+      width: 400px;
+      height: 30px;
+    }
+    #shrinkAll > div {
+      width: 200px;
+    }
+    #shrinkFixed {
+      display: flex;
+      width: 400px;
+      height: 30px;
+    }
+    #shrinkFixed > div {
+      width: 200px;
+    }
+    #f2 {
+      flex-shrink: 0;
+    }
+  </layout>
 </xt>

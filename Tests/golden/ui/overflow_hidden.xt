@@ -1,27 +1,33 @@
-<xt>
-  <head>
-    <style>
-      #parent {
-        position: relative;
-        width: 100px;
-        height: 80px;
-        margin: 40px;
-        overflow: hidden;
-        background-color: #eeeeee;
-      }
-      #child {
-        position: absolute;
-        left: -20px;
-        top: -20px;
-        width: 160px;
-        height: 160px;
-        background-color: #ff5500;
-      }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <div id="parent">
       <div id="child"></div>
     </div>
   </body>
+
+  <layout>
+    #parent {
+      position: relative;
+      width: 100px;
+      height: 80px;
+      margin: 40px;
+      overflow: hidden;
+    }
+    #child {
+      position: absolute;
+      left: -20px;
+      top: -20px;
+      width: 160px;
+      height: 160px;
+    }
+  </layout>
+  <style>
+    #parent {
+      background-color: #eeeeee;
+    }
+    #child {
+      background-color: #ff5500;
+    }
+  </style>
 </xt>

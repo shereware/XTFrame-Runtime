@@ -1,12 +1,28 @@
-<xt>
-  <head>
-    <style>
-      #a { width: 120px; height: 80px; margin: 20px; background-color: #ff0000; }
-      #b { width: 120px; height: 80px; margin: 20px; background-color: #0000ff; }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <div id="a"></div>
     <div id="b"></div>
   </body>
+
+  <layout>
+    #a {
+      width: 120px;
+      height: 80px;
+      margin: 20px;
+    }
+    #b {
+      width: 120px;
+      height: 80px;
+      margin: 20px;
+    }
+  </layout>
+  <style>
+    #a {
+      background-color: #ff0000;
+    }
+    #b {
+      background-color: #0000ff;
+    }
+  </style>
 </xt>

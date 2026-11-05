@@ -1,0 +1,38 @@
+<xt version="2">
+  <head>
+    <symbols src="../Modal.xt"/>
+    <symbols src="../Button.xt"/>
+  </head>
+
+  <body>
+    <use symbol="Modal" id="Confirm" slot:title="Quit to menu">
+      <slot name="body"><span id="Warn">Unsaved progress will be lost</span></slot>
+      <slot name="actions">
+        <use symbol="Button" id="Cancel" variant:Kind="Secondary" variant:Size="S" slot:label="Cancel"/>
+        <use symbol="Button" id="Quit" variant:Size="S" slot:label="Quit"/>
+      </slot>
+    </use>
+  </body>
+
+  <layout>
+    body {
+      width: 480px;
+      height: 300px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      row-gap: 12px;
+    }
+    body {
+      position: relative;
+      padding: 0px;
+    }
+  </layout>
+  <style src="../tokens.xts"/>
+  <style>
+    body {
+      background-color: var(--color-bg);
+    }
+  </style>
+</xt>

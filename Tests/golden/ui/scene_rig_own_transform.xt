@@ -1,14 +1,5 @@
-<xt>
-  <head>
-    <style>
-      /* T-243b (32 §32.2.2): a skinned shape with its own transform. The box's points start at
-         x = 0 and its transform moves them 60 to the right, onto two bones from (60, 140), each
-         60 long; the inverse bind is inverse(rest) x own, so the box sits where an unskinned copy
-         would (the grey outline) and only the right half follows the second bone, which an IK
-         constraint (chain 1) aims up at the red dot. */
-      svg { position: absolute; left: 28px; top: 28px; width: 200px; height: 200px; }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <svg id="Rig1" viewBox="0 0 200 200" width="200" height="200">
       <path id="Ref" d="M0 128 L120 128 L120 152 L0 152 Z" transform="translate(60 0)" fill="none"
@@ -32,4 +23,19 @@
       <circle id="Hand" cx="0" cy="0" r="5" transform="translate(160 70)" fill="#dd2222"/>
     </svg>
   </body>
+
+  <layout>
+    /* T-243b (32 §32.2.2): a skinned shape with its own transform. The box's points start at
+         x = 0 and its transform moves them 60 to the right, onto two bones from (60, 140), each
+         60 long; the inverse bind is inverse(rest) x own, so the box sits where an unskinned copy
+         would (the grey outline) and only the right half follows the second bone, which an IK
+         constraint (chain 1) aims up at the red dot. */
+    svg {
+      position: absolute;
+      left: 28px;
+      top: 28px;
+      width: 200px;
+      height: 200px;
+    }
+  </layout>
 </xt>

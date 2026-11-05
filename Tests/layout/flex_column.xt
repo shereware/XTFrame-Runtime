@@ -1,18 +1,5 @@
-<xt>
-  <head>
-    <style>
-      #container {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        width: 200px;
-        height: 300px;
-      }
-      #a { height: 50px; width: 60px; }
-      #b { height: 80px; width: 100px; }
-      #c { height: 120px; width: 150px; }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <div id="container">
       <div id="a"></div>
@@ -20,4 +7,26 @@
       <div id="c"></div>
     </div>
   </body>
+
+  <layout>
+    #container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 200px;
+      height: 300px;
+    }
+    #a {
+      height: 50px;
+      width: 60px;
+    }
+    #b {
+      height: 80px;
+      width: 100px;
+    }
+    #c {
+      height: 120px;
+      width: 150px;
+    }
+  </layout>
 </xt>

@@ -1,0 +1,12 @@
+/* Red without reduced motion, blue with it. */
+body {
+  width: 100vw;
+  height: 100vh;
+}
+#box {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100vw;
+  height: 100vh;
+}

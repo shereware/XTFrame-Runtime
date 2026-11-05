@@ -176,12 +176,13 @@
         "textures/hatch-ink.png",
         "textures/hatch-night.png"
       ],
-      "content": "sha256:31fa5e562d2749d385dfc95a071df962616e9790b18fa817da6c5de9e20b8689",
+      "content": "sha256:6e44649c994b4515efa64f8156e06c0c490eae3bc213850f223cf158cb6721fb",
       "previousContent": [
         "sha256:416b02cf81b9fdfc045d41339d335a7dd890fcd892f54731fd78b324c417227e",
         "sha256:50b5a58007a1ee3bb8def378f14ce62af61cf72b73649c34608aaa223c6aad72",
         "sha256:1f289ce1c3deb13a094bec8e1b8d50a64e83edea508c3b33747a5656b0a20f8e",
-        "sha256:8781953d3f9c48a09122d67e2f2d3edc39e5d555d5de7c8fe7622b57262c14b0"
+        "sha256:8781953d3f9c48a09122d67e2f2d3edc39e5d555d5de7c8fe7622b57262c14b0",
+        "sha256:31fa5e562d2749d385dfc95a071df962616e9790b18fa817da6c5de9e20b8689"
       ]
     },
     {
@@ -293,12 +294,13 @@
         "textures/hatch-night.png"
       ],
       "notes": "The switch is the checkbox input with its knob inside; its check / uncheck set the `value` port (`set(value, true|false)`). A host change of `value` does not move the switch (no `checked` binding target); the host sets that with setAttribute(\"checked\").",
-      "content": "sha256:97b4a1ced6eb835bd94ba0125d9bc09ada8988e6e1f7f468ff3e7ee34c5319bb",
+      "content": "sha256:4c046a4ae66df25ccdd39f4ba8ac57da9745720c54a7709ecb14d4248ff789aa",
       "previousContent": [
         "sha256:f396f0187bab1970d26e5a72e9891d59d75f4a5d7facf1a46de853ee36d3d371",
         "sha256:d82490f191a345798af4d96c83ce31ec0dfa8690c099567c50213e73cd4f7e64",
         "sha256:3e59a995c007b93c7c456f4bbc4ac3bd8889bad53ab0bfe518d2c63f006e0b4f",
-        "sha256:cfad81c5d5ab79f6eb39540034bb0ab27797a8fb413b5e7397a8aee86893f31f"
+        "sha256:cfad81c5d5ab79f6eb39540034bb0ab27797a8fb413b5e7397a8aee86893f31f",
+        "sha256:97b4a1ced6eb835bd94ba0125d9bc09ada8988e6e1f7f468ff3e7ee34c5319bb"
       ]
     },
     {
@@ -414,13 +416,14 @@
         "textures/hatch-night.png"
       ],
       "notes": "Same as Toggle: the box is the checkbox input with its mark inside; its check / uncheck set the `value` port.",
-      "content": "sha256:22ca19cccf68ae866acc464f761509f5324b0f8dcae1a13a1f825cda44c9f946",
+      "content": "sha256:c365a37cc6e977f042fdf5f9a9608f979562d5ab65a9b402d38f6d754cdd2e42",
       "previousContent": [
         "sha256:7f90fbb880932ae5672d7adb417db17d733508caeabfe2c0c32fe4c5af2b54d7",
         "sha256:0c0fb742312f86a9e342a35a72c4c7b5ebdeb2a495487b2c537aac76d3dc5349",
         "sha256:32e11211a66b6543f25f76049e7c1434a48ac8a8a032687101e5d686842234ce",
         "sha256:79867bbacc770c9829cc40edbd5750bc3e9a30affd494b324c8fa375148f692a",
-        "sha256:2920f7aca94d8d8dcae554df9254e2ec69c353c9b930c7ba894722d4bf533cd9"
+        "sha256:2920f7aca94d8d8dcae554df9254e2ec69c353c9b930c7ba894722d4bf533cd9",
+        "sha256:22ca19cccf68ae866acc464f761509f5324b0f8dcae1a13a1f825cda44c9f946"
       ]
     },
     {
@@ -539,12 +542,13 @@
         "textures/hatch-night.png"
       ],
       "notes": "Controlled: the host sets `value` (selected index) on `select`; a trigger cannot set a state on a sibling, so the group cannot select locally.",
-      "content": "sha256:1a85d8d658ffa8d3e8aa9ad29a9348ed354a94ea88b588609e655172fb00cea5",
+      "content": "sha256:44eb0a0938ece4a145c5bb3da1ae34cb0f98321c5de20969800188aeeb2ef9ee",
       "previousContent": [
         "sha256:715939ab27258b2b339c8c84c0de1335ded5681cf992ca7a3ef94fbd36ab976e",
         "sha256:0985bed1e5de313e39710dd89da62c8e26678f4b1a7948896dbc25e6c0643509",
         "sha256:0b99d2bd85cbbfd3a442c2619e548b68472acc4d4cc28bc665bed6acc0fb5364",
-        "sha256:840af080d68483d8787e3625e8e32c09f81900929d7431cb45caa7e3e35b4fb8"
+        "sha256:840af080d68483d8787e3625e8e32c09f81900929d7431cb45caa7e3e35b4fb8",
+        "sha256:1a85d8d658ffa8d3e8aa9ad29a9348ed354a94ea88b588609e655172fb00cea5"
       ]
     },
     {
@@ -680,12 +684,13 @@
         "textures/hatch-night.png"
       ],
       "notes": "The track is `draggable=\"axis-x\"`: a press or drag along it sets `value` (min..max, rounded); with the track focused, Left/Right keys and the gamepad d-pad emit `decrease` / `increase` (nav.value).",
-      "content": "sha256:8f52a8946ffee460fcc7f2a940e283f2e155d41823db209e16ddde191a2b59d1",
+      "content": "sha256:3f516bffda68509a9ca2476d8f6928c44d28f8cf0083c82f78b5876d3000bc1f",
       "previousContent": [
         "sha256:be3002a9fd815234ff2c46f641afe73b4df10dfe6f7aa1fb3c6e3eca8d15832a",
         "sha256:389148ad77c56ef46159b2b205ec3f586f94c5231af10efc0e50951ef1b20dda",
         "sha256:3c62a26d455fce4f283114fabb3a1e16c1c3cdb87c55b68ec765a5710ff074ab",
-        "sha256:6a6fff251f368f212f8ff001f8b2eedb8e568f1e13f648bfd537f15c32b69afe"
+        "sha256:6a6fff251f368f212f8ff001f8b2eedb8e568f1e13f648bfd537f15c32b69afe",
+        "sha256:8f52a8946ffee460fcc7f2a940e283f2e155d41823db209e16ddde191a2b59d1"
       ]
     },
     {
@@ -823,12 +828,13 @@
         "textures/hatch-night.png"
       ],
       "notes": "Controlled: `decrease` / `increase` events, the host sets `value`.",
-      "content": "sha256:f74adc9991f136f95aeae023748c00612971ac6a2c45b282621d465e7f49702c",
+      "content": "sha256:6ea104e0cf08404109270d9f92d593a7b6020baea17c7bf073db55702095efd8",
       "previousContent": [
         "sha256:41097b061a013519fd503f9d6c0f2378d37cd1da488e03e6686b5bd59066b410",
         "sha256:961794f26c9fbed0e13e1439a50294f048c648133e1110b61631f3624c3cbc95",
         "sha256:4df71c31ff7204b70d1d198c2464c2ca22f1471c713553ae69cea7ded2c6b10c",
-        "sha256:6fdb34040d21e7d5fe62e9492bbcf00d6a754beae7f31eb460762fb42eed70b0"
+        "sha256:6fdb34040d21e7d5fe62e9492bbcf00d6a754beae7f31eb460762fb42eed70b0",
+        "sha256:f74adc9991f136f95aeae023748c00612971ac6a2c45b282621d465e7f49702c"
       ]
     },
     {
@@ -985,13 +991,14 @@
         "textures/hatch-night.png"
       ],
       "notes": "The list sits inside the field, shown by the custom state Open; while Open the field is lifted into the overlay layer (`layer(overlay)` on state(Open).enter). The list is a `focus-trap`.",
-      "content": "sha256:44880f25d1a066b35413f074e74e6f4891b34accca273d146164f71021b84d4e",
+      "content": "sha256:5628e26bdff46dc16fbf28c5f5ddb8d0f8453fcaf754b3b70a87f133c7b472f9",
       "previousContent": [
         "sha256:56aed37c1e6a7f910a1fd04245415a6b0cfc1c7eb5e87e4ccb919e7e180a3c11",
         "sha256:d040fda70f84888e92406c9cdf3115f330fbad7b3279c902a702034a62253955",
         "sha256:48749756cb1725ccda1bb5e15307eed4807d97c0d1280169b26bd931931dc0e4",
         "sha256:3e624277e33a3ceeacbca70320819d5cade507d954b97fce17890606474b1866",
-        "sha256:073022e84f65e66a3a6e001fe7af09041847537b39b4a30635ea6e9642dd2902"
+        "sha256:073022e84f65e66a3a6e001fe7af09041847537b39b4a30635ea6e9642dd2902",
+        "sha256:44880f25d1a066b35413f074e74e6f4891b34accca273d146164f71021b84d4e"
       ]
     },
     {
@@ -1138,14 +1145,15 @@
         "textures/hatch-night.png"
       ],
       "notes": "Controlled: `prev` / `next` events, the host sets `current`.",
-      "content": "sha256:049df4f9d0cd4397ee56ddc85ae4e0650b5da2f72f55d0764b3d5dfc22a22445",
+      "content": "sha256:0839104b193b618a80f9baa9d991d3430e1582f53802b12b1c9bcba899a3ede3",
       "previousContent": [
         "sha256:b83d50ef20dda3ddf79f54209a68863f9f53a445a1b6f49082f3ae5a2dd279ad",
         "sha256:53a1aa3ccca90f9f481e20d8ca2cbc7c20fd08ba9b05238d4750ea1e53fe4656",
         "sha256:86185c37c244deae7646a4b4bf9229aa4756e06a52bfdf3b3a72548860284207",
         "sha256:da67e03ba205aba2b9c8e90fbb3c011593af15d57b6e40402b15050e68aebca1",
         "sha256:92446a007fca173a0f9fbdda7411b2c27e9fc3a7fb32c0a2e8fc6df7a3d8e5aa",
-        "sha256:bec423a033b689a3e0af7a8299662d469b5ad2e5b97390e727ca4f65e9b0167d"
+        "sha256:bec423a033b689a3e0af7a8299662d469b5ad2e5b97390e727ca4f65e9b0167d",
+        "sha256:049df4f9d0cd4397ee56ddc85ae4e0650b5da2f72f55d0764b3d5dfc22a22445"
       ]
     },
     {
@@ -1267,12 +1275,13 @@
         "textures/hatch-night.png"
       ],
       "notes": "The placeholder is the key @xt_textfield_placeholder; Enter emits `submit`.",
-      "content": "sha256:0076f990b2ed84e50198928421321af7bf6c2e083a0765c9729282e59e1dae00",
+      "content": "sha256:cd3d5c393f5cd4ac226fd0323db606d9f9d2003a057fd7e606fbf63bf528c230",
       "previousContent": [
         "sha256:978b8077ecb76f307ef57a1c54e312eee3ada8ad6fdc5afb00d742dacba0941f",
         "sha256:d403e6f1a2c8c4206a8e13f0c5bb62c4230d8b5fb7968f2e5083c60a3e559caa",
         "sha256:9b43d9f20bfe0b92c2b8b965dd1b344b9265e6ba706eef43f7945397a01cc69d",
-        "sha256:17c1c0d3b7ef645dbcd558f857342241084b4c1ed589a84cb630f2035faa3d85"
+        "sha256:17c1c0d3b7ef645dbcd558f857342241084b4c1ed589a84cb630f2035faa3d85",
+        "sha256:0076f990b2ed84e50198928421321af7bf6c2e083a0765c9729282e59e1dae00"
       ]
     },
     {
@@ -1396,11 +1405,12 @@
       ],
       "textures": [],
       "notes": "A click selects its tab directly (`state(TabN, on, target=#Box)`) and emits `select` from that tab's element; `value` (0-3) also selects the Tab1..Tab4 state.",
-      "content": "sha256:bbaf509471a1b9cbd494e5d0145a5c92aee27e9d19760ffbc52f81d52a11679a",
+      "content": "sha256:38d41633c4b34672873818ee40145c0d237d44e427f748f71f59f199c42b2d85",
       "previousContent": [
         "sha256:f560fa79090c663ec319a3d1b9809f47f18d57a9fb4ab76026e716ed5d864e23",
         "sha256:ff3636e6a816b5592c368dd5d19c238adfee2467c120432588084a7a2f3ec153",
-        "sha256:8636044fd482ebf8ad23574676e5afc42f75afa7e6e1d6ad9117d4a0f9e5af0f"
+        "sha256:8636044fd482ebf8ad23574676e5afc42f75afa7e6e1d6ad9117d4a0f9e5af0f",
+        "sha256:bbaf509471a1b9cbd494e5d0145a5c92aee27e9d19760ffbc52f81d52a11679a"
       ]
     },
     {
@@ -1490,12 +1500,13 @@
         "textures/grain-night.png"
       ],
       "notes": "The 600 ms hover delay is a transition delay (the tip fades in on :hover).",
-      "content": "sha256:09e940f0f6ea3056d0b19bc7fd6855b38ac29e43ca842bc0c05aa3cc476639c5",
+      "content": "sha256:deed8875dc570a5b01f1735e800fe34cf1849c97b9f5c85565db2c02e2677309",
       "previousContent": [
         "sha256:1f883fe1c9a160b2dddaae01f0df9a5c3f01ff064cb14d18261026fc42248e32",
         "sha256:b267d144c8e785f4e6e8feb9df8b85befb77754c56b712e080f562b205b2d9f3",
         "sha256:267fb90ba8d3509342758e5e2641c8f26445d394e71c34199aa08606ae409cda",
-        "sha256:890f630d71b7712896accd5711c3807a6ab532511c2100e71f3c15597cd75de6"
+        "sha256:890f630d71b7712896accd5711c3807a6ab532511c2100e71f3c15597cd75de6",
+        "sha256:09e940f0f6ea3056d0b19bc7fd6855b38ac29e43ca842bc0c05aa3cc476639c5"
       ]
     },
     {
@@ -1616,11 +1627,12 @@
         "textures/rule-double-night.png"
       ],
       "notes": "The panel box is a `focus-trap` (navigation stays inside); intro plays on show, outro on hide (then hides).",
-      "content": "sha256:4d2077e6f84e6d9353d54f482542ae9e1a40ba2a0e78b41ccfadf83526fd15a8",
+      "content": "sha256:32b31e8b01432c63ada2caeac5a33f84e47eb0ed77a16b4aed752e000dbb8359",
       "previousContent": [
         "sha256:3b64cc5a57bd9475e7ba5cbf7bd726269c25bc9957693e2f2012d82f70217c78",
         "sha256:0c85222b3ad3e512eb27b20bc1b04f7a369d0323c04f7519ff57664fe5dfeb56",
-        "sha256:a2336fdd0fd4a99c8cf64484e9535f7c402213b0a211d27490eeeab601ac5956"
+        "sha256:a2336fdd0fd4a99c8cf64484e9535f7c402213b0a211d27490eeeab601ac5956",
+        "sha256:4d2077e6f84e6d9353d54f482542ae9e1a40ba2a0e78b41ccfadf83526fd15a8"
       ]
     },
     {
@@ -1734,11 +1746,12 @@
         "textures/grain-night.png"
       ],
       "notes": "Entries come and go with listInsert / listRemove; item-enter / item-exit play the item-in / item-out timelines.",
-      "content": "sha256:731baf23389d1d1e71dff9876aa33439818a32361e8f4d9c06d6e377ee6c27ea",
+      "content": "sha256:3bd88b12b1be0b7e369be634886449430df376c50b2990f695f8b84b04dc5bc5",
       "previousContent": [
         "sha256:0f13f48fcc43fcdf35fa9d181d81d57f708275c9eee9e95919e493b75a0c2c10",
         "sha256:d0ef987e18343da814ea86a4feb178d34de1c043a6474038d3a9d9db496369f7",
-        "sha256:35c21050665045ad197b67c5b1a2728d067e9d861734b208430009da260b8b6a"
+        "sha256:35c21050665045ad197b67c5b1a2728d067e9d861734b208430009da260b8b6a",
+        "sha256:731baf23389d1d1e71dff9876aa33439818a32361e8f4d9c06d6e377ee6c27ea"
       ]
     },
     {
@@ -1845,11 +1858,12 @@
         "textures/hatch-ink.png",
         "textures/hatch-night.png"
       ],
-      "content": "sha256:bacddf713f2afede4b04c32419ed7ecea80a69d6de522cc0b42ae7d19c5eca7c",
+      "content": "sha256:f8b748c465f62765129ca9420139549ad3c54fd7477772391ead11b817485a91",
       "previousContent": [
         "sha256:2a605400db73f4fea4a1e2c559e8dc68cd3237a5ede065c901f9e95f49b5c34f",
         "sha256:7c88e9abd898cffced3cc34817e2e7955f2fee5167676188fd7f85186f6d6a6c",
-        "sha256:aae5e2dd4f7dcd3951700f8eb88647ea4a22daf71a810fb3df439244ee8fc58b"
+        "sha256:aae5e2dd4f7dcd3951700f8eb88647ea4a22daf71a810fb3df439244ee8fc58b",
+        "sha256:bacddf713f2afede4b04c32419ed7ecea80a69d6de522cc0b42ae7d19c5eca7c"
       ]
     },
     {
@@ -1925,9 +1939,10 @@
       "fonts": [],
       "textures": [],
       "notes": "The sweep is three stacked conic-gradient discs (no clipping); the host drives the `cooldown` timeline (1 s = 0-100 %) with playTimeline / seekTimeline. The sweep colours are tokens substituted at compile time (a theme recolours the dial and the ready state, not the sweep).",
-      "content": "sha256:2a3e94fb6dbd3cba3a42481e0fb2b992bd0706468a90fdbdf016ddeb28665b99",
+      "content": "sha256:9a78f0d2ac2c63fc3e97ce2a075812a4c51b3747f214b1647a01c24ea5bb7cc8",
       "previousContent": [
-        "sha256:ebecef342f83923049206d11b00fad995b646e4df2290ba6b8d46f6ecdf010c6"
+        "sha256:ebecef342f83923049206d11b00fad995b646e4df2290ba6b8d46f6ecdf010c6",
+        "sha256:2a3e94fb6dbd3cba3a42481e0fb2b992bd0706468a90fdbdf016ddeb28665b99"
       ]
     },
     {
@@ -2044,11 +2059,12 @@
         "textures/hatch-night.png"
       ],
       "notes": "The fill scales on x (`bind:scale-x`, transform-origin at its left edge) and tweens; no relayout.",
-      "content": "sha256:857918dd617f298e9f82a87e75c5663c74f53413e807d8be1144a07cacdfd3ef",
+      "content": "sha256:474571f61c720c0165e5844e86340237252f1d790d98a6e590054d3249cedbcc",
       "previousContent": [
         "sha256:5248a611fdc64b4523d9d560faa474909f4b4f7358103e1b2468e582f513fc9f",
         "sha256:7817e33d46727600ee74280e16ad6e07947c0092cfa97b2b77e2805d73310a89",
-        "sha256:12874d26ab6dc567e8d9d492d11a3892ce6e82e1f1dc75e4fb1a0839a228789d"
+        "sha256:12874d26ab6dc567e8d9d492d11a3892ce6e82e1f1dc75e4fb1a0839a228789d",
+        "sha256:857918dd617f298e9f82a87e75c5663c74f53413e807d8be1144a07cacdfd3ef"
       ]
     },
     {
@@ -2144,11 +2160,12 @@
         "fonts/NotoSerifDisplay-ExtraCondensedBold.ttf"
       ],
       "textures": [],
-      "content": "sha256:cd3201fc895fea16fb1421d5bfe807e7f3fdd0b0699e80ef75dea5a9bd954900",
+      "content": "sha256:a8e1cb99ce10311f626597e707c8bb5461bea026bd4a65374f83b692223d232b",
       "previousContent": [
         "sha256:359c8d10818beecba57a7db02c2a3f6ea9cfadf8898aafb894f84bdcaeacd624",
         "sha256:0625e0eddfebfbf20fc8a139abdce314263d92ea96cf6e9eb290e0b0fd99f26f",
-        "sha256:65defe7570495bd58a2db33154568a0d8bef674d3a094d424e99979813dd2e42"
+        "sha256:65defe7570495bd58a2db33154568a0d8bef674d3a094d424e99979813dd2e42",
+        "sha256:cd3201fc895fea16fb1421d5bfe807e7f3fdd0b0699e80ef75dea5a9bd954900"
       ]
     },
     {
@@ -2268,12 +2285,13 @@
         "textures/dots-night.png"
       ],
       "notes": "Controlled: `selected` (index) from the host; a click emits `select` with the entry index.",
-      "content": "sha256:504c915492ba83fb99f516b10b5a40ed010b8df4f5edec644f23e65f7e3997bd",
+      "content": "sha256:b3ee035dadd9f055ad1e8a6d0b0f4b4b12697412ff0538885309082972e209c8",
       "previousContent": [
         "sha256:914fff11deaac4acf8d126c13da82cf379b926f18dfd159cc33545f85d9dda82",
         "sha256:312755d30438327cba19ded0fa9f3162200916fdb2fd3eecb715bef1b01307d8",
         "sha256:d3431cd02d99dae410e59d4080312dc8945d966904e44de9b785203a81ba647f",
-        "sha256:104d75d4c6892c64abdb2eba6e3dee1f7d20f7fb3cb8139517fca747da645bd4"
+        "sha256:104d75d4c6892c64abdb2eba6e3dee1f7d20f7fb3cb8139517fca747da645bd4",
+        "sha256:504c915492ba83fb99f516b10b5a40ed010b8df4f5edec644f23e65f7e3997bd"
       ]
     },
     {
@@ -2339,10 +2357,11 @@
       "fonts": [],
       "textures": [],
       "notes": "The hit flash is the `hit` timeline, playable from the host until symbol-scope play() works.",
-      "content": "sha256:12b25a696793598a58b53df1b3a89afa4466b9e09380d2a304393bbbec2f2348",
+      "content": "sha256:608b95a8e2c2dd03d52640cfd57d1a14510cb1d8e120832c5407bc97cdf078ba",
       "previousContent": [
         "sha256:c6dbb89fb6e299be616d825d700634a305dba9de35f70025e6bac2838b457865",
-        "sha256:573beb4c8e6110d6359b1c7c190cc45bd9ae8aa76c19cf43ce270502f2f54583"
+        "sha256:573beb4c8e6110d6359b1c7c190cc45bd9ae8aa76c19cf43ce270502f2f54583",
+        "sha256:12b25a696793598a58b53df1b3a89afa4466b9e09380d2a304393bbbec2f2348"
       ]
     },
     {
@@ -2424,13 +2443,14 @@
       ],
       "textures": [],
       "notes": "Set amount / crit / x / y (offset from the field's top-left), then fire `hit`: each hit spawns a DamagePop (its `pop` timeline, 0.45 s) that keeps the values it was spawned with. The file also defines DamageNumberList, the list-port alternative (`numbers: list<struct{amount, x, y, crit}>`, item-enter / item-exit).",
-      "content": "sha256:0d1e9c3f400665decf074770b4104bc2506fe5307dd7d393865b223a9c2098a5",
+      "content": "sha256:cceffbd21732a76e7e462915fa9eb90d23ecaf294a6d1bd8280ed009e236b8c1",
       "previousContent": [
         "sha256:669ee3ae72e2767c045b3a46b4daea75dcdb917211895b1735580fd9f309ee46",
         "sha256:6508d615d6859d190e98abc86ca32714ed547a22cd4cd91d7e3ea0004cd5f9e1",
         "sha256:6f51b3388e3fa29cefccc2a78bbc2531e52de61fa24444621df9a68b1a473700",
         "sha256:82afaf1d00286021e5a89f96941eba82651f87e116b2b8a22f51468121b9fd6d",
-        "sha256:88d6f3e8b0fb77927f5cddebfa249f5c6c657d653e44414c22500d0d32fa27a7"
+        "sha256:88d6f3e8b0fb77927f5cddebfa249f5c6c657d653e44414c22500d0d32fa27a7",
+        "sha256:0d1e9c3f400665decf074770b4104bc2506fe5307dd7d393865b223a9c2098a5"
       ]
     },
     {
@@ -2516,11 +2536,12 @@
         "textures/rule-double-night.png"
       ],
       "notes": "The map is `<external source=\"scene-view:minimap\">`; the round frame does not clip external content to its radius.",
-      "content": "sha256:1e65b2612f50a556aad8f9069246a2dee6ada7f0fbd3288a69d3d66acbdac500",
+      "content": "sha256:645d90069db83fbccbf60a4f773e51f4ec73cd499059d20237694b46720aad8a",
       "previousContent": [
         "sha256:3321a757145634625bbc2ad625607f5aaa055d5f2a1e31763d9a715a65ce8f63",
         "sha256:44bb27fab2f3b65e4fcabc5a637f751a4ebfa6a410468d8d39c42791df548b96",
-        "sha256:b111e76e94fccd2cf05ecfc2abff82c86e78561838efde35b5b101f77a9180df"
+        "sha256:b111e76e94fccd2cf05ecfc2abff82c86e78561838efde35b5b101f77a9180df",
+        "sha256:1e65b2612f50a556aad8f9069246a2dee6ada7f0fbd3288a69d3d66acbdac500"
       ]
     },
     {
@@ -2586,11 +2607,12 @@
         "textures/rule-double-night.png"
       ],
       "notes": "The strip scrolls with `bind:translate-x` (a transform component; no relayout).",
-      "content": "sha256:78318b7cb760fba6350b1b2776de24e11f75fc3eaac39eebf81b8b52d8480501",
+      "content": "sha256:a224613e57a1bc87336ccb91a536894c2fa0df9845abc8f9c90e6f7902066c41",
       "previousContent": [
         "sha256:ca0b45fc13d09a5fb8cb139c9c83058005bca8fd8b6019f94fb90557c326ab41",
         "sha256:6c424a2be6ebd989b5037d4851c8287f8cef43f4b0ab3b719aeeb2857f76a771",
-        "sha256:19513eb93563fe21e8b9583282e0aafd07e0aaf6dd15bb41bf2828dc8f396b1f"
+        "sha256:19513eb93563fe21e8b9583282e0aafd07e0aaf6dd15bb41bf2828dc8f396b1f",
+        "sha256:78318b7cb760fba6350b1b2776de24e11f75fc3eaac39eebf81b8b52d8480501"
       ]
     },
     {
@@ -2713,11 +2735,12 @@
         "textures/rule-double-night.png"
       ],
       "notes": "The intro (text-reveal) runs from the host API until symbol-scope play() works; the Narrator voice hides the speaker.",
-      "content": "sha256:d73f9953cfc1bf758658d82282431ad08dea492832180dc93df965e5e7f8b470",
+      "content": "sha256:f030030234fa69a3557a96be2ee418ca8433d8b940e51ab0aaef19aeed7e2bd0",
       "previousContent": [
         "sha256:57b02ad0ce276793e40df7033cf55d33f304514f7b7be71afbb5d7918517ebec",
         "sha256:fe9d87d00425722ca150d801f706685b86b018f98409dc57a88b433a163cb778",
-        "sha256:681f9753c4c75828f6332ba8f4e4338bab6f417db3ade84506dee92514362c8c"
+        "sha256:681f9753c4c75828f6332ba8f4e4338bab6f417db3ade84506dee92514362c8c",
+        "sha256:d73f9953cfc1bf758658d82282431ad08dea492832180dc93df965e5e7f8b470"
       ]
     },
     {
@@ -2840,11 +2863,12 @@
         "textures/grain-paper.png",
         "textures/grain-night.png"
       ],
-      "content": "sha256:a94d986888f5a9fda109ae1461eb09f67eac14c2ea0b61cec0c3c7d99f0c1149",
+      "content": "sha256:26bd387431c07779c71a955850c3ecdce00d2f82d7fb5235beabddc9967100c8",
       "previousContent": [
         "sha256:0953e9e00c5e7910ed59d85be19b0f8f8bb1f6f70772d88d0eb1b82ae33bca6c",
         "sha256:d4d8070932e7d12ea3995c5004e04a48107664f609a0fd256f3bf829456da37c",
-        "sha256:cab3395f5a5c2605f08d99b33a3652113bb672b840b6e657338c199e1818584c"
+        "sha256:cab3395f5a5c2605f08d99b33a3652113bb672b840b6e657338c199e1818584c",
+        "sha256:a94d986888f5a9fda109ae1461eb09f67eac14c2ea0b61cec0c3c7d99f0c1149"
       ]
     },
     {
@@ -2894,9 +2918,10 @@
       ],
       "textures": [],
       "notes": "Purely decorative: no ports, no timelines. The whole mark is tilted -14 degrees and drawn at 85% opacity; the ring colour is `--color-danger`.",
-      "content": "sha256:55df5c49f83903c11f5aa6953b8f5673c291a01ad9bea42f742dddd5f88df0d9",
+      "content": "sha256:22e68825281494a5845055e1d15f69b9b3cdbac1d6dfb0d0b1cc570dbd254322",
       "previousContent": [
-        "sha256:0b197a38d3d7304b4963332b6250bee284d07354846efea7d6c4a4222fc1045d"
+        "sha256:0b197a38d3d7304b4963332b6250bee284d07354846efea7d6c4a4222fc1045d",
+        "sha256:55df5c49f83903c11f5aa6953b8f5673c291a01ad9bea42f742dddd5f88df0d9"
       ]
     },
     {
@@ -2974,10 +2999,11 @@
       ],
       "textures": [],
       "notes": "Fill the `glyph` slot with `<glyph key=\"<action>\"/>`; without a glyph provider the action name shows as text.",
-      "content": "sha256:0963b5cb6736427a1a17effadca5f6aacd0730b53e4a85f6d4d980a46e389da3",
+      "content": "sha256:78060d47f8e45e4b7ec615d7eeb06dc61606ebbb33c2e6d56498495a8dea7b21",
       "previousContent": [
         "sha256:44c76f981d537d78f9255471eda8062947f1715bff8f48d6c8cc6cd209670577",
-        "sha256:478c19d18d9cadccbcdcbef3da28166d495d33438f133a4dd7eea40b0e703027"
+        "sha256:478c19d18d9cadccbcdcbef3da28166d495d33438f133a4dd7eea40b0e703027",
+        "sha256:0963b5cb6736427a1a17effadca5f6aacd0730b53e4a85f6d4d980a46e389da3"
       ]
     },
     {
@@ -3047,11 +3073,12 @@
         "textures/grain-night.png"
       ],
       "notes": "Fill the `text` slot with text and `<glyph key>` elements.",
-      "content": "sha256:a0e43057dcf841c3745aa594048d5cf6a76a53e501998764141d6ccb894160ed",
+      "content": "sha256:00b9bbf15b6788f7be881f8a1202b861ea924e6a67777527cb4022580b0705ae",
       "previousContent": [
         "sha256:ceb16a7661e3674106f811472de4f9caa34bdadd7069096be09d1afeb4fa415f",
         "sha256:d10ad1171ef92c47f4821e52bf45f34b7ede2d35227ac95ed338231f5a7a94ae",
-        "sha256:6d696561b1d2b37f36a382c79719de03b0fabe69438d853f0bd30a5c6fd19648"
+        "sha256:6d696561b1d2b37f36a382c79719de03b0fabe69438d853f0bd30a5c6fd19648",
+        "sha256:a0e43057dcf841c3745aa594048d5cf6a76a53e501998764141d6ccb894160ed"
       ]
     },
     {
@@ -3159,11 +3186,12 @@
         "textures/hatch-night.png"
       ],
       "notes": "The pad is `draggable=\"axis-x\"`, so a drag writes only the x component (`axis` = (x, 0), x in -1..1); there is no vertical drag value yet, so `axis.y` stays 0 unless the host writes it. `dead` (the host sets 0.15) draws the dead-zone ring; the host applies the dead zone. Mode=Floating fades the base until active; the base does not move to the touch point (no pointer position in triggers).",
-      "content": "sha256:224f2ccde010b0e3ca3c4cef6cbf4864e2a3e1baf92b188ff824d675636dc497",
+      "content": "sha256:44161a352edfa6faadaa5b0c60a9476c62df42046274d821b770c32cbb5cacbd",
       "previousContent": [
         "sha256:1f07adc19aede3c06378c5f22a29aa79847ce99831746f9119d6c16a537166dc",
         "sha256:acf9566b42ebec3c57b86c71c9ce78daf58d8e5b9c0ba607c65d83ebe5fdd7c2",
-        "sha256:296980508e4b8162bd6ac808fed5644f657e3d00b4ea1a79db9aede9a8eeaaa1"
+        "sha256:296980508e4b8162bd6ac808fed5644f657e3d00b4ea1a79db9aede9a8eeaaa1",
+        "sha256:224f2ccde010b0e3ca3c4cef6cbf4864e2a3e1baf92b188ff824d675636dc497"
       ]
     },
     {
@@ -3312,11 +3340,12 @@
         "textures/hatch-night.png"
       ],
       "notes": "Press emits `pressed`, sets `held` and loops the `repeat` timeline whose `tick` marker emits `repeat` every 0.25 s (a fixed interval: a symbol cannot take a `repeat-ms` attribute); `cooldown` (0..1, host-driven) scales a vertical shade rather than a conic ring and sets Cooling.",
-      "content": "sha256:2a90a8f5dc4d8b8cbcc9447eeb62bb91132f7d6090c2d893476ebd7abccad954",
+      "content": "sha256:f7ace082a8a2961ad7200ca39616a43113a31190ca11cdd8a72e98b95df6c2c0",
       "previousContent": [
         "sha256:4cb06dc73ca22ce31c8e2798f4c1a6b53592c7d47c2abdfac1069589f3c6bdeb",
         "sha256:bd5ff645aa577c330cda850957fb13814ee79c379cbfd7f4dd1d9ab26b01bc18",
-        "sha256:7c3fa77a7890acfae451803b1e61cf6444c3b6d6d0c405ae16adfff12b70d188"
+        "sha256:7c3fa77a7890acfae451803b1e61cf6444c3b6d6d0c405ae16adfff12b70d188",
+        "sha256:2a90a8f5dc4d8b8cbcc9447eeb62bb91132f7d6090c2d893476ebd7abccad954"
       ]
     },
     {
@@ -3436,11 +3465,12 @@
         "textures/hatch-night.png"
       ],
       "notes": "Each arrow writes `direction` and `axis` (unit vector, y down) before emitting `dir`; release writes `axis` = (0, 0).",
-      "content": "sha256:fd8a89621bcc8cf0b3e53a32d6032a90b9c0e8cf5012a9d3b8c8a83a984386ed",
+      "content": "sha256:c022f810cee34297223d89cbc88001a28929017574d915a92ff97de793fe2459",
       "previousContent": [
         "sha256:d2f2660df5ade07bac060400d208ff551bb76c6ea2a076eb1d8ebe2cd0ddd1b0",
         "sha256:28aab7535629e22b82a983c9bc00e79e75437639a464deeafe3e0ebe6c3f1a7b",
-        "sha256:ae42fbc96c9ccf2351cf530b91ae34c02357c7f1b49c2b0e605a0184506b4b18"
+        "sha256:ae42fbc96c9ccf2351cf530b91ae34c02357c7f1b49c2b0e605a0184506b4b18",
+        "sha256:fd8a89621bcc8cf0b3e53a32d6032a90b9c0e8cf5012a9d3b8c8a83a984386ed"
       ]
     },
     {
@@ -3563,11 +3593,12 @@
         "textures/hatch-night.png"
       ],
       "notes": "The top card follows a horizontal drag through the local `offset` port and snaps back on release; the swipe gestures play `fly-left` / `fly-right`; the host swaps the content and plays `intro`.",
-      "content": "sha256:564aa41dccbfd630eb2eab77511ceff0df00757a631d10947a8522256f782234",
+      "content": "sha256:df1e8a6b6b96047243c017bb5295e69159fd42220d8e0e530713ab406128f365",
       "previousContent": [
         "sha256:6c75ab36c0051333027ee138363668e8590206302a7eb6e63e866acd42427942",
         "sha256:1b34b5688e9b2c99ab1bb2ce4cd4dbbb52ecb352ce08343d88240300f727ac32",
-        "sha256:e2cdf9e84b6fb226c6164ed89c9f8c90c15d7ad144610f6a34ffddea7b56c62d"
+        "sha256:e2cdf9e84b6fb226c6164ed89c9f8c90c15d7ad144610f6a34ffddea7b56c62d",
+        "sha256:564aa41dccbfd630eb2eab77511ceff0df00757a631d10947a8522256f782234"
       ]
     },
     {
@@ -3689,11 +3720,12 @@
         "textures/rule-double-night.png"
       ],
       "notes": "The symbol writes `open` itself (Toggle convention) and plays `expand` / `collapse` on every change; closing by dragging is approximated by the swipe(down) gesture (there is no vertical drag value).",
-      "content": "sha256:d4cca281dbbd8fb6e485c682aa6c4c549551abd7d49a37854dc38dec9379ca97",
+      "content": "sha256:c8eeda0491734486d51175a66681937b3525441a6a60b685f46a4843ece1d950",
       "previousContent": [
         "sha256:5eee14d606fe878f562fb94ba68a8e86e3656ab6999a51c2963b739026ebb187",
         "sha256:d063bd7914329a2ea8f2253433d909ccf9097d7c2509377b30686d7e45603ccf",
-        "sha256:eae666d7b7642af5f6ddb86218862c11e76d05c818d1a2a193de179427fba61f"
+        "sha256:eae666d7b7642af5f6ddb86218862c11e76d05c818d1a2a193de179427fba61f",
+        "sha256:d4cca281dbbd8fb6e485c682aa6c4c549551abd7d49a37854dc38dec9379ca97"
       ]
     },
     {
@@ -3836,7 +3868,7 @@
         "textures/grain-night.png"
       ],
       "notes": "A tap writes `value` and emits `select`; `value` (0-4) selects the Bar1..Bar5 state of the TabBar group.",
-      "content": "sha256:4431f3d17acfdc6ca07b7eb74a8eea1c5aaffa13c31ae45a2fffa3b6dd0cbd74",
+      "content": "sha256:17caa0506b3a89e7e9b8bcc752323457c326ecff17a7dcb0da4b0a75fa633b7d",
       "previousContent": [
         "sha256:211365cdb60035f205082a85118c299b5a2658f46c314520da117e56d4c75a49",
         "sha256:6cd8d51b2fdddfe5d7cab69a0e2bdf180f92333a19b3ed2a62f7380583214df3",
@@ -3844,7 +3876,8 @@
         "sha256:cc273d973e47a9ad6a857c506976cd185a212ea66da6a5848bd35d30d8431d02",
         "sha256:b7ec28a0b4cdcbab412b9cbac40de195b3c4e64a14cd397a75d0ff96b43c01c5",
         "sha256:157d7945bc38f92f83b23a8be3dd2e5ce5cbd44460012ee9a154ae625ef3b7ae",
-        "sha256:55182865c29c1109b67ea9c8484f5de97a54412c9d854b4c8cd480b501c0025d"
+        "sha256:55182865c29c1109b67ea9c8484f5de97a54412c9d854b4c8cd480b501c0025d",
+        "sha256:4431f3d17acfdc6ca07b7eb74a8eea1c5aaffa13c31ae45a2fffa3b6dd0cbd74"
       ]
     },
     {
@@ -3934,11 +3967,12 @@
         "textures/rule-double-night.png"
       ],
       "notes": "Its top padding is `1safe-top`; `intro` slides the bar in.",
-      "content": "sha256:d6e7ad481ea818f40da560dce258d38749e2616322e753e7d4cacf455b7927aa",
+      "content": "sha256:f592f2d291168015f68f39a0c67c2354dd469402c8f3706a261ab4a9feef1d78",
       "previousContent": [
         "sha256:d97e9e39d282ba789c0af0e0d3905074a8bc9b68e70f9f5e0476e9870ff9e916",
         "sha256:fef9255ec7279dbd3ef769ef47a706032e28c689df8ab2a20da9b1f8b73e3539",
-        "sha256:8d093140d9b77a3c4a75e31569695ed63a52ee7eaa3c92bd954ad3bde215133a"
+        "sha256:8d093140d9b77a3c4a75e31569695ed63a52ee7eaa3c92bd954ad3bde215133a",
+        "sha256:d6e7ad481ea818f40da560dce258d38749e2616322e753e7d4cacf455b7927aa"
       ]
     },
     {
@@ -4045,11 +4079,12 @@
         "textures/grain-night.png"
       ],
       "notes": "The host writes `progress` while the list is pulled and stops `spin` (stopTimeline) when the refresh is done.",
-      "content": "sha256:95b4e630191700da4ea3a36bce97e3692c271b2eae5f7ce9c9c2eebc8246f1ab",
+      "content": "sha256:b84995eaa9af7e5c686f42bda9a9b4674e4d94daa52a9bd0c138aed2a43cd19d",
       "previousContent": [
         "sha256:f67c4818f3a405a6aac3e0fbd3ce12b90503b504680d0110dbcc2c40a1572f81",
         "sha256:f437b2816addd3ef15df7104dea122c775fc5dae77be128a8a23237e1d56eedb",
-        "sha256:691f35c3d78bc7a3669fa42c4e1b07881356d621e2f0818db03a98e8d4ec3e4a"
+        "sha256:691f35c3d78bc7a3669fa42c4e1b07881356d621e2f0818db03a98e8d4ec3e4a",
+        "sha256:95b4e630191700da4ea3a36bce97e3692c271b2eae5f7ce9c9c2eebc8246f1ab"
       ]
     },
     {
@@ -4167,11 +4202,12 @@
         "textures/hatch-night.png"
       ],
       "notes": "A copy of Toggle (symbols have no `extends`); check / uncheck also play `flip`.",
-      "content": "sha256:3498b50da82470bab4e5c7cb9c47dc662c36579506637e114cc287029a32e17b",
+      "content": "sha256:b0636fa0d57bff55783a89dfdef9e0344e61e0c82420ac61bb2fb4972b853583",
       "previousContent": [
         "sha256:a6b4799825233a342a23fa79b105233bddef441b96e371dedde25032a7146a7b",
         "sha256:fe2b74ddae8d45d9bc086424ada682bd1397e40f71a77475f8e9b21f359f81c2",
-        "sha256:fcafa27514db267ec4e10d8a523a9185e3056219c48bc09e483f423b3cd0009f"
+        "sha256:fcafa27514db267ec4e10d8a523a9185e3056219c48bc09e483f423b3cd0009f",
+        "sha256:3498b50da82470bab4e5c7cb9c47dc662c36579506637e114cc287029a32e17b"
       ]
     },
     {
@@ -4314,11 +4350,12 @@
         "textures/hatch-night.png"
       ],
       "notes": "A copy of Slider (symbols have no `extends`); pressing the track plays `grab`.",
-      "content": "sha256:a7f879ed28f9bbfcc33e7ac52fe21bd6f5966f498c615360f0d00d4f7b5547f8",
+      "content": "sha256:063c772ae68ef9d8b87657edf4490f872d1ba488cc728203bfcc7d5c424f89d3",
       "previousContent": [
         "sha256:a72e7940eb7910900c12190ffbdd2b894a70cf7d1999b2feb0a6aef78fec2c51",
         "sha256:16ef10d0bf661af6b6a631c2e12fa66377421a46ad8d60cc89278d41ad14b96a",
-        "sha256:9279da2bb3cb929b5ac8bbda22581bd6b237cd88968492ad77229098137d1f97"
+        "sha256:9279da2bb3cb929b5ac8bbda22581bd6b237cd88968492ad77229098137d1f97",
+        "sha256:a7f879ed28f9bbfcc33e7ac52fe21bd6f5966f498c615360f0d00d4f7b5547f8"
       ]
     },
     {
@@ -4439,11 +4476,12 @@
         "textures/hatch-night.png"
       ],
       "notes": "The gesture scale is not a trigger event value, so the host turns `pinch` into a new `scale` and resets it on `reset` (double tap).",
-      "content": "sha256:5fbce9ace34d05bc64cc74722492186cf72c10ac6da9a88a92d4c794f9168e8a",
+      "content": "sha256:818c0eee589e513da039fd3620a652fbd2c407e60d6cbcfe6edbdc3204533085",
       "previousContent": [
         "sha256:373ce773235714baa26288d19f5ae487734647c4d7cf6519440ecd1b56af27e3",
         "sha256:a5ecda5df543a22b14850a4b0cddb4e65247f9b7b4af6b9cf8e980d2016f6291",
-        "sha256:49a3ee62c5d6dd6241bfaa2761bc794ad7ad98b20aa890ac6893d26196384540"
+        "sha256:49a3ee62c5d6dd6241bfaa2761bc794ad7ad98b20aa890ac6893d26196384540",
+        "sha256:5fbce9ace34d05bc64cc74722492186cf72c10ac6da9a88a92d4c794f9168e8a"
       ]
     },
     {
@@ -4579,11 +4617,12 @@
       ],
       "textures": [],
       "notes": "The list-entry pattern: values through in-ports (`bind:title=\"item(title)\"` on the <use> in a <repeat> template), free content through the `trailing` slot (slot content may bind item() and document ports), states through bind:state (Selected follows `selected`). From a <repeat> entry the events carry the entry index.",
-      "content": "sha256:c582b7118daa09bb0849537f7e37ba26628f9749b496218a02ca93cabe8cff08",
+      "content": "sha256:3ea5eb318dff20faea2e350d740ff2a56c484730259cd3af85e40d80e410ee91",
       "previousContent": [
         "sha256:f0321bdb94d03413e1acdc1d6614ad9c998803d49f7d958d7e5e60f0f29e9ee0",
         "sha256:e392401f0375a5df12addb9d4da7d4cd6dda4302945596488d6e5d6db798a322",
-        "sha256:bdaa1fe62dca388f8f633e8a60616164a79c27aafbf6371417135cf92d59ea01"
+        "sha256:bdaa1fe62dca388f8f633e8a60616164a79c27aafbf6371417135cf92d59ea01",
+        "sha256:c582b7118daa09bb0849537f7e37ba26628f9749b496218a02ca93cabe8cff08"
       ]
     }
   ]

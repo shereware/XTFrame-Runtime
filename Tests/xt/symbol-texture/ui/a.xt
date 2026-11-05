@@ -1,7 +1,8 @@
-<xt>
+<xt version="2">
   <head>
-    <link rel="symbols" href="../lib/Panel.xt"/>
+    <symbols src="../lib/Panel.xt"/>
   </head>
+
   <body>
     <use symbol="Panel" id="P"/>
   </body>

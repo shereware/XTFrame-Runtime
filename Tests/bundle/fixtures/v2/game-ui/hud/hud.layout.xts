@@ -1,0 +1,78 @@
+/* XTFrame HUD demo. Built through the Marionette dev endpoint: see ../build.marionette.json.
+   Palette, type scale, panel and button base live in ../shared/base.xts (shared by the whole
+   game-ui bundle); only HUD-specific rules are here. */
+.stage {
+  perspective: 700px;
+  position: absolute;
+}
+#stageL {
+  height: 164px;
+  left: calc(1safe-left + 16px);
+  top: calc(1safe-top + 26px);
+  width: 342px;
+}
+#stageR {
+  height: 186px;
+  width: 292px;
+  bottom: calc(1safe-bottom + 6px);
+  right: calc(1safe-right + 16px);
+}
+#player {
+  left: 0px;
+  top: 0px;
+  transform: rotateY(24deg);
+  transform-origin: 0% 50%;
+  width: 300px;
+}
+#ammoPanel {
+  left: 0px;
+  top: 0px;
+  transform: rotateY(-24deg);
+  transform-origin: 100% 50%;
+  width: 250px;
+}
+.bar {
+  height: 12px;
+  overflow: hidden;
+}
+.fill {
+  height: 100%;
+  width: 100%;
+}
+.value {
+  width: 48px;
+}
+#skills {
+  display: flex;
+  gap: 16px;
+  left: calc(48.48% - 108.6px);
+  position: absolute;
+  bottom: calc(1safe-bottom + 26px);
+}
+.skill {
+  height: 64px;
+  width: 64px;
+}
+#card {
+  left: calc(50% - 160px);
+  padding: 14px 0px 16px 0px;
+  position: absolute;
+  top: calc(1safe-top + 34px);
+  width: 320px;
+}
+#card.flipped {
+  transform: rotateY(360deg);
+}
+#clock {
+  anchor: right top;
+  offset: 49.88px 30px;
+}
+#radar {
+  anchor: left bottom;
+  offset: 16px 30px;
+  size: 96px 96px;
+}
+#alert {
+  height: 24px;
+  width: 24px;
+}

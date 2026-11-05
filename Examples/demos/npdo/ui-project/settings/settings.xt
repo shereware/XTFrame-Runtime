@@ -1,11 +1,49 @@
-<xt>
+<xt version="2">
   <head>
-    <link href="../shared/base.xts"/>
-    <link href="settings.xts"/>
     <title>Settings</title>
   </head>
+
+  <ports>
+    master_volume: number in = 80
+    music_volume: number in = 60
+    sfx_volume: number in = 75
+    dialogue_volume: number in = 90
+    output_device: string in = "Headphones (Realtek)"
+    audio_mode: string in = "Night Mode"
+    subtitles: bool in = true
+    gp_camera_shake: number in = 60
+    gp_autosave: bool in = true
+    gp_hints: bool in = true
+    gfx_brightness: number in = 50
+    gfx_vsync: bool in = true
+    gfx_grain: bool in = false
+    ctl_sensitivity: number in = 40
+    ctl_invert_y: bool in = false
+    acc_contrast: bool in = false
+    acc_text_size: number in = 50
+    mic_input_volume: number in = 70
+    mic_voice_chat: bool in = true
+    mic_push_to_talk: bool in = false
+    tab: number in = 0
+    tab_gameplay: event out
+    tab_graphics: event out
+    tab_audio: event out
+    tab_controls: event out
+    tab_accessibility: event out
+    tab_microphone: event out
+    audio_mode_prev: event out
+    audio_mode_next: event out
+    open_output_device: event out
+    toggle_subtitles: event out
+    play_test_sound: event out
+    apply_settings: event out
+    reset_defaults: event out
+    back: event out
+    active: bool in = true
+  </ports>
+
   <body>
-    <div id="settings" on:port(active)="if eq(1) show() else hide(); if eq(1) play(intro)" port:master_volume="number in = 80" port:music_volume="number in = 60" port:sfx_volume="number in = 75" port:dialogue_volume="number in = 90" port:output_device="string in = &quot;Headphones (Realtek)&quot;" port:audio_mode="string in = &quot;Night Mode&quot;" port:subtitles="bool in = true" port:gp_camera_shake="number in = 60" port:gp_autosave="bool in = true" port:gp_hints="bool in = true" port:gfx_brightness="number in = 50" port:gfx_vsync="bool in = true" port:gfx_grain="bool in = false" port:ctl_sensitivity="number in = 40" port:ctl_invert_y="bool in = false" port:acc_contrast="bool in = false" port:acc_text_size="number in = 50" port:mic_input_volume="number in = 70" port:mic_voice_chat="bool in = true" port:mic_push_to_talk="bool in = false" port:tab="number in = 0" port:tab_gameplay="event out" port:tab_graphics="event out" port:tab_audio="event out" port:tab_controls="event out" port:tab_accessibility="event out" port:tab_microphone="event out" port:audio_mode_prev="event out" port:audio_mode_next="event out" port:open_output_device="event out" port:toggle_subtitles="event out" port:play_test_sound="event out" port:apply_settings="event out" port:reset_defaults="event out" port:back="event out" port:active="bool in = true">
+    <div id="settings" on:port(active)="if eq(1) show() else hide(); if eq(1) play(intro)">
       <img id="settings-bg" class="s-43161f" src="../shared/img/menu-bg.png"/>
       <div id="settings-shade"/>
       <img id="settings-title" src="../shared/img/menu-title.png"/>
@@ -365,4 +403,10 @@
       </div>
     </div>
   </body>
+
+  <layout src="../shared/base.layout.xts"/>
+  <layout src="settings.layout.xts"/>
+  <style src="../shared/base.xts"/>
+  <style src="settings.xts"/>
+  <timelines src="settings.timelines.xts"/>
 </xt>

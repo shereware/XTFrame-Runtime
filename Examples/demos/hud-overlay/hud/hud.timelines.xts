@@ -1,0 +1,27 @@
+/* The 8 s demo: the markers seed the ports (hit at 1 s, heal at 4.5 s); the HP and stamina bars
+   follow through their bindings' tween; the cooldown wedge turns once from 2 s to 6 s. */
+@timeline demo {
+  duration: 8s;
+  marker: hit 1s, heal 4.5s;
+  #Cooldown {
+    0s {
+      transform: rotate(0deg);
+    }
+    2s {
+      transform: rotate(0deg);
+    }
+    6s linear {
+      transform: rotate(360deg);
+    }
+  }
+}
+@timeline hurt-clear {
+  #HurtClock {
+    0s {
+      opacity: 0;
+    }
+    0.95s {
+      opacity: 0;
+    }
+  }
+}

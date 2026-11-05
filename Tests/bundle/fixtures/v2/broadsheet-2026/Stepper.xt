@@ -1,0 +1,150 @@
+<xt version="2">
+
+  <symbol name="Stepper" requires="states: Hover, Pressed, Focus, Disabled; slots: label">
+    <ports>
+      value: number in
+      decrease: event out
+      increase: event out
+    </ports>
+    <div id="Box">
+      <span id="Label"><slot name="label">Amount</slot></span>
+      <div id="Controls">
+        <button id="Minus" on:press="sound(ui_tick)" on:click="emit(decrease)"><div id="MinusBar" class="bar"></div></button>
+        <span id="Value" bind:text="value | round"></span>
+        <button id="Plus" on:press="sound(ui_tick)" on:click="emit(increase)">
+          <div id="PlusMark"><div id="PlusBar" class="bar"></div><div id="PlusStem" class="bar"></div></div>
+        </button>
+      </div>
+    </div>
+  </symbol>
+
+  <layout>
+    symbol(Stepper) {
+      #Box {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        column-gap: var(--space-4);
+        width: 260px;
+      }
+      #Controls {
+        display: flex;
+        align-items: center;
+        column-gap: var(--space-2);
+      }
+      #Minus,
+      #Plus {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: var(--control-s);
+        height: var(--control-s);
+      }
+      #Value {
+        min-width: 40px;
+      }
+      .bar {
+        width: 10px;
+        height: 2px;
+      }
+      #PlusMark {
+        position: relative;
+        width: 10px;
+        height: 10px;
+      }
+      #PlusBar {
+        position: absolute;
+        left: 0px;
+        top: 4px;
+      }
+      #PlusStem {
+        position: absolute;
+        left: 0px;
+        top: 4px;
+        transform: rotate(90deg);
+      }
+      #Minus:active,
+      #Plus:active {
+        transform: translate(2px, 2px);
+      }
+      #Minus:focus,
+      #Plus:focus {
+        transform: rotate(-1.5deg);
+      }
+      :disabled #Minus,
+      :disabled #Plus {
+        transform: none !important;
+      }
+    }
+  </layout>
+  <style>
+    symbol(Stepper) {
+      #Box {
+        color: var(--color-text);
+        font-family: var(--font-body);
+        font-size: var(--font-size-m);
+      }
+      #Minus,
+      #Plus {
+        border-width: var(--rule-thin);
+        border-color: var(--color-border);
+        outline: var(--rule-thin) solid var(--color-border);
+        outline-offset: 2px;
+        background-color: var(--color-surface);
+        color: var(--color-text);
+        transition: background-color var(--motion-fast) linear, transform var(--motion-fast) ease-out;
+      }
+      #Label {
+        white-space: nowrap;
+      }
+      #Value {
+        text-align: center;
+        white-space: nowrap;
+        font-family: var(--font-display);
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: var(--letter-display);
+      }
+      .bar {
+        background-color: var(--color-text);
+      }
+      #Minus:hover,
+      #Plus:hover {
+        background-color: var(--color-accent);
+      }
+      #Minus:hover .bar,
+      #Plus:hover .bar {
+        background-color: var(--color-text-on-accent);
+      }
+      #Minus:active,
+      #Plus:active {
+        background-color: var(--color-surface-sunken);
+      }
+      #Minus:active .bar,
+      #Plus:active .bar {
+        background-color: var(--color-text);
+      }
+      #Minus:focus,
+      #Plus:focus {
+        outline: var(--focus-w) solid var(--color-focus);
+        outline-offset: 2px;
+      }
+      :disabled #Minus,
+      :disabled #Plus {
+        background-color: var(--color-disabled-bg) !important;
+        background-image: var(--tex-hatch) !important;
+        background-repeat: repeat;
+        background-size: 8px 8px;
+        border-color: var(--color-disabled-text) !important;
+        color: var(--color-disabled-text) !important;
+        outline: none !important;
+      }
+      :disabled #Value {
+        color: var(--color-disabled-text);
+      }
+      :disabled .bar {
+        background-color: var(--color-disabled-text) !important;
+      }
+    }
+  </style>
+</xt>

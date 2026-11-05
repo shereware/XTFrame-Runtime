@@ -191,9 +191,9 @@
         "assets/73acb60d73f4b8d3.ttf",
         "assets/e7733c492d3ebae3.ttf"
       ],
-      "contract": "520900aafcd96523",
+      "contract": "50228ee4ba2cc0f0",
       "file": "ui/challenge-menu.xtir",
-      "fileHash": 11836817131708516121,
+      "fileHash": 9013411579605041162,
       "fit": "native",
       "flow": "ui/challenge-menu.xtflow",
       "flowInterface": {
@@ -201,8 +201,8 @@
         "reads": [],
         "system": [],
         "writes": [
-          "#challenge-menu.challenge-menu.listShift",
-          "#challenge-menu.challenge-menu.panelShift"
+          "#challenge-menu.listShift",
+          "#challenge-menu.panelShift"
         ]
       },
       "id": "challenge-menu",
@@ -480,22 +480,6 @@
           {
             "name": "#challenge-menu.focus",
             "type": "pulse"
-          },
-          {
-            "name": "#challenge-menu.listShift",
-            "type": "number"
-          },
-          {
-            "name": "#challenge-menu.nx",
-            "type": "number"
-          },
-          {
-            "name": "#challenge-menu.ny",
-            "type": "number"
-          },
-          {
-            "name": "#challenge-menu.panelShift",
-            "type": "number"
           },
           {
             "name": "#challenge-menu.playAnimation",
@@ -4624,6 +4608,22 @@
           {
             "name": "#world-layer.toggleClass",
             "type": "pulse"
+          },
+          {
+            "name": "document.listShift",
+            "type": "number"
+          },
+          {
+            "name": "document.nx",
+            "type": "number"
+          },
+          {
+            "name": "document.ny",
+            "type": "number"
+          },
+          {
+            "name": "document.panelShift",
+            "type": "number"
           }
         ],
         "out": [

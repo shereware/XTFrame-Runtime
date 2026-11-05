@@ -1,11 +1,13 @@
-<xt>
-  <head>
-    <style>
-      #scaled { width: 100px; }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <img id="scaled" src="../lottie/img/pix.png"/>
     <img id="natural" src="../lottie/img/pix.png"/>
   </body>
+
+  <layout>
+    #scaled {
+      width: 100px;
+    }
+  </layout>
 </xt>

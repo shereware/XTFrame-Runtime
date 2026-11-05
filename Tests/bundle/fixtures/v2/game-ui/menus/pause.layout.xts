@@ -1,0 +1,48 @@
+#scrim {
+  left: 0;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+}
+#halo {
+  height: 480px;
+  left: calc(50% - 240px);
+  position: absolute;
+  top: calc(1safe-top + 102px);
+  width: 480px;
+}
+#menu {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  left: calc(47.73% - 190.92px);
+  top: calc(1safe-top + 134px);
+  width: 400px;
+}
+#heading {
+  margin: 6px 0px 6px 0px;
+}
+.wide {
+  margin: 14px 0px 0px 0px;
+  padding: 0px;
+  width: 280px;
+}
+#hint {
+  margin: 22px 0px 0px 0px;
+}
+/* T-152: the same radar.json as the HUD, at half speed, as a decoration beside the heading.
+   The Lottie file is compiled into each UI's .xtir; it is not a packed asset. */
+#headRow {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  margin: 6px 0px 6px 0px;
+}
+#headRow #heading {
+  margin: 0px 0px 0px 0px;
+}
+#pauseRadar {
+  height: 40px;
+  width: 40px;
+}

@@ -1,0 +1,231 @@
+@timeline intro {
+  #settings-tabs {
+    0ms {
+      opacity: 0;
+    }
+    500ms ease-out {
+      opacity: 1;
+    }
+  }
+  #settings-panel {
+    0ms {
+      opacity: 0;
+    }
+    150ms {
+      opacity: 0;
+    }
+    650ms ease-out {
+      opacity: 1;
+    }
+  }
+}
+@timeline tabhover_gameplay {
+  #tab-gameplay-hover {
+    0ms {
+      opacity: 0;
+      transform: translateX(-21px);
+    }
+    160ms ease-out {
+      opacity: 0.6;
+    }
+    180ms ease-out {
+      transform: translateX(0px);
+    }
+  }
+  #tab-gameplay-label {
+    0ms {
+      opacity: 1;
+      transform: translateX(0px);
+    }
+    30ms {
+      opacity: 0.35;
+    }
+    60ms {
+      opacity: 1;
+    }
+    100ms {
+      opacity: 0.6;
+    }
+    140ms {
+      opacity: 1;
+    }
+    180ms ease-out {
+      transform: translateX(9px);
+    }
+  }
+}
+@timeline tabhover_graphics {
+  #tab-graphics-hover {
+    0ms {
+      opacity: 0;
+      transform: translateX(-21px);
+    }
+    160ms ease-out {
+      opacity: 0.6;
+    }
+    180ms ease-out {
+      transform: translateX(0px);
+    }
+  }
+  #tab-graphics-label {
+    0ms {
+      opacity: 1;
+      transform: translateX(0px);
+    }
+    30ms {
+      opacity: 0.35;
+    }
+    60ms {
+      opacity: 1;
+    }
+    100ms {
+      opacity: 0.6;
+    }
+    140ms {
+      opacity: 1;
+    }
+    180ms ease-out {
+      transform: translateX(9px);
+    }
+  }
+}
+@timeline tabhover_audio {
+  #tab-audio-hover {
+    0ms {
+      opacity: 0;
+      transform: translateX(-21px);
+    }
+    160ms ease-out {
+      opacity: 0.6;
+    }
+    180ms ease-out {
+      transform: translateX(0px);
+    }
+  }
+  #tab-audio-label {
+    0ms {
+      opacity: 1;
+      transform: translateX(0px);
+    }
+    30ms {
+      opacity: 0.35;
+    }
+    60ms {
+      opacity: 1;
+    }
+    100ms {
+      opacity: 0.6;
+    }
+    140ms {
+      opacity: 1;
+    }
+    180ms ease-out {
+      transform: translateX(9px);
+    }
+  }
+}
+@timeline tabhover_controls {
+  #tab-controls-hover {
+    0ms {
+      opacity: 0;
+      transform: translateX(-21px);
+    }
+    160ms ease-out {
+      opacity: 0.6;
+    }
+    180ms ease-out {
+      transform: translateX(0px);
+    }
+  }
+  #tab-controls-label {
+    0ms {
+      opacity: 1;
+      transform: translateX(0px);
+    }
+    30ms {
+      opacity: 0.35;
+    }
+    60ms {
+      opacity: 1;
+    }
+    100ms {
+      opacity: 0.6;
+    }
+    140ms {
+      opacity: 1;
+    }
+    180ms ease-out {
+      transform: translateX(9px);
+    }
+  }
+}
+@timeline tabhover_accessibility {
+  #tab-accessibility-hover {
+    0ms {
+      opacity: 0;
+      transform: translateX(-21px);
+    }
+    160ms ease-out {
+      opacity: 0.6;
+    }
+    180ms ease-out {
+      transform: translateX(0px);
+    }
+  }
+  #tab-accessibility-label {
+    0ms {
+      opacity: 1;
+      transform: translateX(0px);
+    }
+    30ms {
+      opacity: 0.35;
+    }
+    60ms {
+      opacity: 1;
+    }
+    100ms {
+      opacity: 0.6;
+    }
+    140ms {
+      opacity: 1;
+    }
+    180ms ease-out {
+      transform: translateX(9px);
+    }
+  }
+}
+@timeline tabhover_microphone {
+  #tab-microphone-hover {
+    0ms {
+      opacity: 0;
+      transform: translateX(-21px);
+    }
+    160ms ease-out {
+      opacity: 0.6;
+    }
+    180ms ease-out {
+      transform: translateX(0px);
+    }
+  }
+  #tab-microphone-label {
+    0ms {
+      opacity: 1;
+      transform: translateX(0px);
+    }
+    30ms {
+      opacity: 0.35;
+    }
+    60ms {
+      opacity: 1;
+    }
+    100ms {
+      opacity: 0.6;
+    }
+    140ms {
+      opacity: 1;
+    }
+    180ms ease-out {
+      transform: translateX(9px);
+    }
+  }
+}

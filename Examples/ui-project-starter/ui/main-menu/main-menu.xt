@@ -1,14 +1,11 @@
-<xt>
+<xt version="2">
   <head>
-    <!-- Main menu built from the standard symbol library, placed by
-         conventions/layouts/main-menu.xt: title and a vertical list on the left (the most common
-         main-menu layout in the 2026-09 survey), input hints bottom-right, a quit confirmation. -->
-    <link rel="symbols" href="../../shared/symbols/Button.xt"/>
-    <link rel="symbols" href="../../shared/symbols/InputGlyph.xt"/>
-    <link rel="symbols" href="../../shared/symbols/Modal.xt"/>
-    <link rel="symbols" href="../../shared/symbols/Notification.xt"/>
-    <link href="main-menu.xts"/>
+    <symbols src="../../shared/symbols/Button.xt"/>
+    <symbols src="../../shared/symbols/InputGlyph.xt"/>
+    <symbols src="../../shared/symbols/Modal.xt"/>
+    <symbols src="../../shared/symbols/Notification.xt"/>
   </head>
+
   <body on:show="play(intro)">
     <div id="Screen">
       <div id="Left">
@@ -39,4 +36,8 @@
       </use>
     </div>
   </body>
+
+  <layout src="main-menu.layout.xts"/>
+  <style src="main-menu.xts"/>
+  <timelines src="main-menu.timelines.xts"/>
 </xt>

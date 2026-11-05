@@ -1,16 +1,37 @@
-<xt>
-  <head>
-    <style>
-      :root { --bg: #ff0000; --accent: #0000ff; --gap: 20px; --radius: 8px; }
-      div { width: 100px; height: 60px; margin: var(--gap); border-radius: var(--radius); }
-      #a { background-color: var(--bg); }
-      #b { background-color: var(--accent); opacity: var(--fade, 0.5); }
-      #c { background-color: var(--missing, #00ff00); }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <div id="a"></div>
     <div id="b"></div>
     <div id="c"></div>
   </body>
+
+  <layout>
+    div {
+      width: 100px;
+      height: 60px;
+      margin: var(--gap);
+    }
+  </layout>
+  <style>
+    :root {
+      --bg: #ff0000;
+      --accent: #0000ff;
+      --gap: 20px;
+      --radius: 8px;
+    }
+    div {
+      border-radius: var(--radius);
+    }
+    #a {
+      background-color: var(--bg);
+    }
+    #b {
+      background-color: var(--accent);
+      opacity: var(--fade, 0.5);
+    }
+    #c {
+      background-color: var(--missing, #00ff00);
+    }
+  </style>
 </xt>

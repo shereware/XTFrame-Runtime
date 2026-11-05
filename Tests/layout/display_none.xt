@@ -1,14 +1,21 @@
-<xt>
-  <head>
-    <style>
-      #a { height: 10px; }
-      #b { display: none; height: 100px; }
-      #c { height: 10px; }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <div id="a"></div>
     <div id="b"></div>
     <div id="c"></div>
   </body>
+
+  <layout>
+    #a {
+      height: 10px;
+    }
+    #b {
+      display: none;
+      height: 100px;
+    }
+    #c {
+      height: 10px;
+    }
+  </layout>
 </xt>

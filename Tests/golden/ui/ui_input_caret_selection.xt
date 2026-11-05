@@ -1,22 +1,29 @@
-<xt>
-  <head>
-    <style>
-      @font-face { font-family: "TestSans"; src: "../../fonts/NotoSans-Regular.subset.ttf"; }
-      #inp {
-        margin: 24px;
-        width: 200px;
-        height: 40px;
-        padding: 8px;
-        background-color: #ffffff;
-        border: 1px #808080;
-        font-family: "TestSans";
-        font-size: 20px;
-        line-height: 1.2em;
-        color: #202020;
-      }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <input id="inp" type="text" value="hello world" />
   </body>
+
+  <layout>
+    #inp {
+      margin: 24px;
+      width: 200px;
+      height: 40px;
+      padding: 8px;
+    }
+  </layout>
+  <style>
+    @font-face {
+      font-family: "TestSans";
+      src: "../../fonts/NotoSans-Regular.subset.ttf";
+    }
+    #inp {
+      background-color: #ffffff;
+      border: 1px #808080;
+      font-family: "TestSans";
+      font-size: 20px;
+      line-height: 1.2em;
+      color: #202020;
+    }
+  </style>
 </xt>

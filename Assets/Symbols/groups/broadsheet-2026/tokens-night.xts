@@ -5,11 +5,32 @@
    This file is the implicit UI Project's token set: link it when a document has no project
    tokens of its own. A project that defines its own tokens must not also link this file (a token
    declared twice is a compiler warning). Link exactly one of tokens.xts and tokens-night.xts. */
-@font-face { font-family: "Noto Serif Display ExtraCondensed"; src: "fonts/NotoSerifDisplay-ExtraCondensedBlack.ttf"; font-weight: 900; }
-@font-face { font-family: "Noto Serif Display ExtraCondensed"; src: "fonts/NotoSerifDisplay-ExtraCondensedBold.ttf"; font-weight: 700; }
-@font-face { font-family: "Noto Serif"; src: "fonts/NotoSerif-Regular.ttf"; font-weight: 400; }
-@font-face { font-family: "Noto Serif"; src: "fonts/NotoSerif-Bold.ttf"; font-weight: 700; }
-@font-face { font-family: "Noto Serif"; src: "fonts/NotoSerif-Italic.ttf"; font-weight: 400; font-style: italic; }
+@font-face {
+  font-family: "Noto Serif Display ExtraCondensed";
+  src: "fonts/NotoSerifDisplay-ExtraCondensedBlack.ttf";
+  font-weight: 900;
+}
+@font-face {
+  font-family: "Noto Serif Display ExtraCondensed";
+  src: "fonts/NotoSerifDisplay-ExtraCondensedBold.ttf";
+  font-weight: 700;
+}
+@font-face {
+  font-family: "Noto Serif";
+  src: "fonts/NotoSerif-Regular.ttf";
+  font-weight: 400;
+}
+@font-face {
+  font-family: "Noto Serif";
+  src: "fonts/NotoSerif-Bold.ttf";
+  font-weight: 700;
+}
+@font-face {
+  font-family: "Noto Serif";
+  src: "fonts/NotoSerif-Italic.ttf";
+  font-weight: 400;
+  font-style: italic;
+}
 :root {
   /* Surfaces and text. */
   --color-bg: #262320;

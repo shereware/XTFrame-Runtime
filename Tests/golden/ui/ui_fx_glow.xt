@@ -1,20 +1,33 @@
-<xt>
-  <head>
-    <style>
-      @font-face { font-family: "Noto Sans"; src: "../../fonts/NotoSans-Regular.subset.ttf"; }
-      body { width: 256px; height: 256px; background-color: #101018; }
-      #a {
-        position: absolute;
-        left: 48px;
-        top: 108px;
-        font-family: "Noto Sans";
-        font-size: 40px;
-        color: #ffcc00;
-        effect: glow(12px #ffcc00 1.5);
-      }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <div id="a">Glow</div>
   </body>
+
+  <layout>
+    body {
+      width: 256px;
+      height: 256px;
+    }
+    #a {
+      position: absolute;
+      left: 48px;
+      top: 108px;
+    }
+  </layout>
+  <style>
+    @font-face {
+      font-family: "Noto Sans";
+      src: "../../fonts/NotoSans-Regular.subset.ttf";
+    }
+    body {
+      background-color: #101018;
+    }
+    #a {
+      font-family: "Noto Sans";
+      font-size: 40px;
+      color: #ffcc00;
+      effect: glow(12px #ffcc00 1.5);
+    }
+  </style>
 </xt>

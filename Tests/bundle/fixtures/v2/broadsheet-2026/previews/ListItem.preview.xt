@@ -1,0 +1,42 @@
+<xt version="2">
+  <head>
+    <symbols src="../list/ListItem.xt"/>
+  </head>
+
+  <ports>
+    items: list<struct{title: string, subtitle: string, badge: string, selected: bool}> in
+  </ports>
+
+  <body>
+    <div id="List">
+      <repeat port="items" id="Rows">
+        <use symbol="ListItem" id="Item" bind:title="item(title)" bind:subtitle="item(subtitle)"
+             bind:selected="item(selected)">
+          <slot name="trailing"><span id="Badge" bind:text="item(badge)"></span></slot>
+        </use>
+      </repeat>
+    </div>
+  </body>
+
+  <layout>
+    body {
+      width: 340px;
+      height: 220px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    #Rows {
+      display: flex;
+      flex-direction: column;
+      row-gap: 8px;
+    }
+  </layout>
+  <style src="../tokens.xts"/>
+  <style>
+    body {
+      background-color: var(--color-bg);
+    }
+  </style>
+</xt>

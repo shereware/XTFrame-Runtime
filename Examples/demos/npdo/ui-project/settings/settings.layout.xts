@@ -1,0 +1,281 @@
+#settings {
+  height: 100vh;
+  margin-bottom: 0;
+  margin-left: 0;
+  margin-right: 0;
+  margin-top: 0;
+  overflow: hidden;
+  position: relative;
+  width: 100vw;
+  z-index: 0;
+}
+#settings-shade {
+  height: 100%;
+  left: 0%;
+  position: absolute;
+  top: 0%;
+  width: 100%;
+}
+#settings-title {
+  anchor: left top;
+  offset: 12px 27px;
+  size: 450px 150px;
+}
+#settings-location {
+  anchor: right top;
+  offset: 0 24px;
+  size: 330px 76.5px;
+  padding-right: 18px;
+}
+#settings-tabs {
+  anchor: left bottom;
+  offset: 6px 93px;
+  size: 279px 705px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 21px;
+}
+#settings-panel {
+  anchor: left bottom;
+  offset: 297px 93px;
+  size: 840px 705px;
+  padding-bottom: 36px;
+  padding-left: 42px;
+  padding-right: 42px;
+  padding-top: 36px;
+}
+/* import: Settings.dc.html:1/5/2/3/1/0 */
+#master-fill {
+  width: 80%;
+}
+/* import: Settings.dc.html:1/5/2/5/1/0 */
+#sfx-fill {
+  width: 75%;
+}
+/* import: Settings.dc.html:1/5/2/6/1/0 */
+#dialogue-fill {
+  width: 90%;
+}
+/* import: Settings.dc.html:1/5/2/7/1/1 */
+#output-chevron {
+  height: 18px;
+  position: absolute;
+  right: 15px;
+  top: 10.5px;
+  width: 18px;
+}
+/* import: Settings.dc.html:1/5/2/8/1 */
+#range-prev {
+  left: 420px;
+}
+/* import: Settings.dc.html:1/5/2/8/3 */
+#range-next {
+  left: 708px;
+}
+/* import: Settings.dc.html:1/5/3/3/1/0 */
+#sensitivity-fill {
+  width: 40%;
+}
+/* import: Settings.dc.html:1/5/5/4/1/0 */
+#involume-fill {
+  width: 70%;
+}
+#settings-footer {
+  bottom: 0%;
+  height: 78px;
+  left: 0%;
+  position: absolute;
+  width: 100%;
+}
+#settings-version {
+  height: 49.5px;
+  left: 48px;
+  position: absolute;
+  top: 0px;
+  width: 120px;
+}
+/* import: Settings.dc.html:1/6/1 */
+#settings-hints {
+  align-items: center;
+  display: flex;
+  flex-direction: row;
+  gap: 21px;
+  height: 48px;
+  position: absolute;
+  right: 48px;
+  top: 1.5px;
+}
+.tab {
+  position: relative;
+  width: 279px;
+  height: 66px;
+  flex-shrink: 0;
+}
+.tab-band {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 279px;
+  height: 66px;
+}
+.band-tex {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 100%;
+  height: 100%;
+}
+.tab-label {
+  position: absolute;
+  left: 33px;
+  top: 0px;
+  height: 66px;
+}
+.panel {
+  width: 756px;
+  display: flex;
+  flex-direction: column;
+}
+.off {
+  display: none;
+}
+.panel-desc {
+  margin-top: 9px;
+}
+.panel-divider {
+  width: 756px;
+  height: 1.5px;
+  margin-top: 24px;
+  margin-bottom: 6px;
+}
+.row {
+  position: relative;
+  width: 756px;
+  height: 60px;
+  flex-shrink: 0;
+}
+.row-label {
+  position: absolute;
+  left: 9px;
+  top: 0px;
+  height: 60px;
+}
+.sl-track {
+  position: absolute;
+  left: 420px;
+  top: 28.5px;
+  width: 264px;
+  height: 3px;
+}
+.sl-fill {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  height: 3px;
+}
+.sl-knob {
+  position: absolute;
+  right: -4.5px;
+  top: -9px;
+  width: 9px;
+  height: 21px;
+}
+.sl-value {
+  position: absolute;
+  left: 699px;
+  top: 0px;
+  width: 51px;
+  height: 60px;
+}
+.sl-hit {
+  position: absolute;
+  left: 420px;
+  top: 12px;
+  width: 264px;
+  height: 36px;
+}
+.sw-state {
+  position: absolute;
+  left: 420px;
+  top: 0px;
+  width: 48px;
+  height: 60px;
+}
+.sw {
+  position: absolute;
+  left: 474px;
+  top: 13.5px;
+  width: 63px;
+  height: 33px;
+}
+.sw-knob {
+  position: absolute;
+  left: 4.5px;
+  top: 4.5px;
+  width: 24px;
+  height: 24px;
+}
+.on .sw-knob {
+  left: 34.5px;
+}
+.box {
+  position: absolute;
+  left: 420px;
+  top: 9px;
+  width: 330px;
+  height: 42px;
+}
+.box-text {
+  position: absolute;
+  left: 18px;
+  top: 0px;
+  height: 39px;
+}
+.box-cycle {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 327px;
+  height: 39px;
+}
+.btn {
+  width: 240px;
+}
+.btn-text {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 237px;
+  height: 39px;
+}
+.step-arrow {
+  position: absolute;
+  top: 9px;
+  width: 42px;
+  height: 42px;
+}
+.step-value {
+  position: absolute;
+  left: 465px;
+  top: 0px;
+  width: 240px;
+  height: 60px;
+}
+.chip {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 15px;
+  height: 48px;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+.sep {
+  width: 1.5px;
+  height: 33px;
+}
+.key {
+  width: 33px;
+  height: 33px;
+}

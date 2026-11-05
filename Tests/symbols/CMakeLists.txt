@@ -23,6 +23,7 @@ target_compile_definitions(xt_symbols_tests PRIVATE
     XT_SYMBOLS_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
     XT_SYMBOLS_OUT_DIR="${CMAKE_CURRENT_BINARY_DIR}/out"
     XT_SYMBOLS_LIBRARY_DIR="${PROJECT_SOURCE_DIR}/Assets/Symbols"
+    XT_SYMBOLS_V2_DIR="${PROJECT_SOURCE_DIR}/Tests/bundle/fixtures/v2/broadsheet-2026"
     XT_SKILL_TOKENS_JSON="${PROJECT_SOURCE_DIR}/Skills/skills/xtui/references/tokens.json"
     XT_STARTER_DIR="${PROJECT_SOURCE_DIR}/Examples/ui-project-starter"
     XT_MOBILE_HUD_DIR="${PROJECT_SOURCE_DIR}/Examples/demos/mobile-hud")

@@ -1,0 +1,96 @@
+<xt version="2">
+
+  <symbol name="ListItem" requires="states: Hover, Focus, Selected; slots: trailing">
+    <ports>
+      title: string in
+      subtitle: string in
+      selected: bool in
+      activate: event out
+      dblactivate: event out
+    </ports>
+    <div id="Box" tabindex="0"
+         bind:state.Selected="selected"
+         on:click="sound(ui_select); emit(activate)" on:dblclick="emit(dblactivate)">
+      <div id="Text">
+        <span id="Title" bind:text="title"></span>
+        <span id="Subtitle" bind:text="subtitle"></span>
+      </div>
+      <div id="Trailing"><slot name="trailing"></slot></div>
+    </div>
+  </symbol>
+
+  <layout>
+    symbol(ListItem) {
+      #Box {
+        display: flex;
+        align-items: center;
+        column-gap: var(--space-3);
+        width: 300px;
+        min-height: var(--control-l);
+        padding: var(--space-2) var(--space-3);
+      }
+      #Text {
+        display: flex;
+        flex-direction: column;
+        flex-grow: 1;
+        row-gap: var(--space-1);
+      }
+      #Trailing {
+        display: flex;
+        align-items: center;
+        column-gap: var(--space-2);
+        padding: 0px 0px 0px var(--space-3);
+      }
+      #Box:focus {
+        transform: rotate(-1.5deg);
+      }
+    }
+  </layout>
+  <style>
+    symbol(ListItem) {
+      #Box {
+        border-width: 0px 0px var(--rule-thin) var(--rule-thick);
+        border-bottom-color: var(--color-border);
+        border-left-color: transparent;
+        background-color: var(--color-surface);
+        color: var(--color-text);
+        font-family: var(--font-body);
+        font-size: var(--font-size-m);
+        transition: background-color var(--motion-fast) linear, transform var(--motion-fast) ease-out;
+      }
+      #Title {
+        white-space: nowrap;
+      }
+      #Subtitle {
+        white-space: nowrap;
+        color: var(--color-text-dim);
+        font-size: var(--font-size-s);
+      }
+      #Trailing {
+        border-width: 0px 0px 0px var(--rule-thin);
+        border-color: var(--color-border);
+        color: var(--color-text-dim);
+        font-size: var(--font-size-s);
+      }
+      #Box:state(Selected) {
+        border-left-color: var(--color-accent);
+        background-color: var(--color-surface-sunken);
+      }
+      #Box:hover {
+        background-color: var(--color-accent);
+        color: var(--color-text-on-accent);
+      }
+      #Box:hover #Subtitle {
+        color: var(--color-text-on-accent);
+      }
+      #Box:hover #Trailing {
+        border-color: var(--color-text-on-accent);
+        color: var(--color-text-on-accent);
+      }
+      #Box:focus {
+        outline: var(--focus-w) solid var(--color-focus);
+        outline-offset: 2px;
+      }
+    }
+  </style>
+</xt>

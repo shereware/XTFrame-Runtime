@@ -24,7 +24,7 @@ int main(int argc, char** argv) {
     xt::Document* doc = ctx.document(loaded.value());
     ctx.setViewport(xt::Rect{0, 0, 1280, 720}, /*devicePixelRatio=*/1.0f);
 
-    const xt::PortId hp = doc->lookupPort("hp");  // the `port:hp` of hud.xt
+    const xt::PortId hp = doc->lookupPort("hp");  // the `hp` of the <ports> of hud.xt
 
     xt::CommandList list;
     for (int frame = 0; frame < 3; ++frame) {

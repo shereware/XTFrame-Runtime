@@ -329,7 +329,7 @@
       ],
       "contract": "7c2d401e35650fb2",
       "file": "ui/hud.xtir",
-      "fileHash": 15219859647357031443,
+      "fileHash": 17672454310010172475,
       "fit": "native",
       "flow": "ui/hud.xtflow",
       "flowInterface": {
@@ -609,44 +609,12 @@
             "type": "pulse"
           },
           {
-            "name": "#hud.active",
-            "type": "bool"
-          },
-          {
             "name": "#hud.addClass",
             "type": "pulse"
           },
           {
-            "name": "#hud.clock",
-            "type": "string"
-          },
-          {
             "name": "#hud.focus",
             "type": "pulse"
-          },
-          {
-            "name": "#hud.hp",
-            "type": "number"
-          },
-          {
-            "name": "#hud.interact_label",
-            "type": "string"
-          },
-          {
-            "name": "#hud.interact_visible",
-            "type": "bool"
-          },
-          {
-            "name": "#hud.location",
-            "type": "string"
-          },
-          {
-            "name": "#hud.noise_label",
-            "type": "string"
-          },
-          {
-            "name": "#hud.objective",
-            "type": "string"
           },
           {
             "name": "#hud.playAnimation",
@@ -675,10 +643,6 @@
           {
             "name": "#hud.setValue",
             "type": "string"
-          },
-          {
-            "name": "#hud.stamina",
-            "type": "number"
           },
           {
             "name": "#hud.stopAnimation",
@@ -2491,6 +2455,42 @@
           {
             "name": "#vitals.toggleClass",
             "type": "pulse"
+          },
+          {
+            "name": "document.active",
+            "type": "bool"
+          },
+          {
+            "name": "document.clock",
+            "type": "string"
+          },
+          {
+            "name": "document.hp",
+            "type": "number"
+          },
+          {
+            "name": "document.interact_label",
+            "type": "string"
+          },
+          {
+            "name": "document.interact_visible",
+            "type": "bool"
+          },
+          {
+            "name": "document.location",
+            "type": "string"
+          },
+          {
+            "name": "document.noise_label",
+            "type": "string"
+          },
+          {
+            "name": "document.objective",
+            "type": "string"
+          },
+          {
+            "name": "document.stamina",
+            "type": "number"
           }
         ],
         "out": [
@@ -4488,7 +4488,7 @@
       ],
       "contract": "20bab9dce93055ba",
       "file": "ui/main-menu.xtir",
-      "fileHash": 8975174195196703863,
+      "fileHash": 6993578913224018767,
       "fit": "native",
       "flow": "ui/main-menu.xtflow",
       "flowInterface": {
@@ -5518,10 +5518,6 @@
           {
             "name": "#label-quit.toggleClass",
             "type": "pulse"
-          },
-          {
-            "name": "#main-menu.active",
-            "type": "bool"
           },
           {
             "name": "#main-menu.addClass",
@@ -6578,6 +6574,10 @@
           {
             "name": "#menu-version.toggleClass",
             "type": "pulse"
+          },
+          {
+            "name": "document.active",
+            "type": "bool"
           }
         ],
         "out": [
@@ -7537,39 +7537,9 @@
             "type": "pulse"
           },
           {
-            "name": "#main-menu.continue_game",
-            "origin": "document",
-            "type": "pulse"
-          },
-          {
             "name": "#main-menu.hover",
             "origin": "document",
             "type": "bool"
-          },
-          {
-            "name": "#main-menu.load_game",
-            "origin": "document",
-            "type": "pulse"
-          },
-          {
-            "name": "#main-menu.new_game",
-            "origin": "document",
-            "type": "pulse"
-          },
-          {
-            "name": "#main-menu.open_credits",
-            "origin": "document",
-            "type": "pulse"
-          },
-          {
-            "name": "#main-menu.open_options",
-            "origin": "document",
-            "type": "pulse"
-          },
-          {
-            "name": "#main-menu.quit_game",
-            "origin": "document",
-            "type": "pulse"
           },
           {
             "name": "#menu-bg.AnimationEnd",
@@ -8497,6 +8467,31 @@
             "type": "number"
           },
           {
+            "name": "document.continue_game",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "document.load_game",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "document.new_game",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "document.open_credits",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "document.open_options",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
             "name": "document.pointerDown",
             "origin": "document",
             "type": "bool"
@@ -8520,6 +8515,11 @@
             "name": "document.pointerY",
             "origin": "document",
             "type": "number"
+          },
+          {
+            "name": "document.quit_game",
+            "origin": "document",
+            "type": "pulse"
           },
           {
             "name": "document.viewportHeight",
@@ -8561,7 +8561,7 @@
       ],
       "contract": "dad32e6f443164f6",
       "file": "ui/settings.xtir",
-      "fileHash": 14709609485953145138,
+      "fileHash": 14739566876171324905,
       "fit": "native",
       "flow": "ui/settings.xtflow",
       "flowInterface": {
@@ -16631,88 +16631,12 @@
             "type": "pulse"
           },
           {
-            "name": "#settings.acc_contrast",
-            "type": "bool"
-          },
-          {
-            "name": "#settings.acc_text_size",
-            "type": "number"
-          },
-          {
-            "name": "#settings.active",
-            "type": "bool"
-          },
-          {
             "name": "#settings.addClass",
             "type": "pulse"
           },
           {
-            "name": "#settings.audio_mode",
-            "type": "string"
-          },
-          {
-            "name": "#settings.ctl_invert_y",
-            "type": "bool"
-          },
-          {
-            "name": "#settings.ctl_sensitivity",
-            "type": "number"
-          },
-          {
-            "name": "#settings.dialogue_volume",
-            "type": "number"
-          },
-          {
             "name": "#settings.focus",
             "type": "pulse"
-          },
-          {
-            "name": "#settings.gfx_brightness",
-            "type": "number"
-          },
-          {
-            "name": "#settings.gfx_grain",
-            "type": "bool"
-          },
-          {
-            "name": "#settings.gfx_vsync",
-            "type": "bool"
-          },
-          {
-            "name": "#settings.gp_autosave",
-            "type": "bool"
-          },
-          {
-            "name": "#settings.gp_camera_shake",
-            "type": "number"
-          },
-          {
-            "name": "#settings.gp_hints",
-            "type": "bool"
-          },
-          {
-            "name": "#settings.master_volume",
-            "type": "number"
-          },
-          {
-            "name": "#settings.mic_input_volume",
-            "type": "number"
-          },
-          {
-            "name": "#settings.mic_push_to_talk",
-            "type": "bool"
-          },
-          {
-            "name": "#settings.mic_voice_chat",
-            "type": "bool"
-          },
-          {
-            "name": "#settings.music_volume",
-            "type": "number"
-          },
-          {
-            "name": "#settings.output_device",
-            "type": "string"
           },
           {
             "name": "#settings.playAnimation",
@@ -16743,20 +16667,8 @@
             "type": "string"
           },
           {
-            "name": "#settings.sfx_volume",
-            "type": "number"
-          },
-          {
             "name": "#settings.stopAnimation",
             "type": "pulse"
-          },
-          {
-            "name": "#settings.subtitles",
-            "type": "bool"
-          },
-          {
-            "name": "#settings.tab",
-            "type": "number"
           },
           {
             "name": "#settings.toggleClass",
@@ -19577,6 +19489,94 @@
           {
             "name": "#vsync-switch.toggleClass",
             "type": "pulse"
+          },
+          {
+            "name": "document.acc_contrast",
+            "type": "bool"
+          },
+          {
+            "name": "document.acc_text_size",
+            "type": "number"
+          },
+          {
+            "name": "document.active",
+            "type": "bool"
+          },
+          {
+            "name": "document.audio_mode",
+            "type": "string"
+          },
+          {
+            "name": "document.ctl_invert_y",
+            "type": "bool"
+          },
+          {
+            "name": "document.ctl_sensitivity",
+            "type": "number"
+          },
+          {
+            "name": "document.dialogue_volume",
+            "type": "number"
+          },
+          {
+            "name": "document.gfx_brightness",
+            "type": "number"
+          },
+          {
+            "name": "document.gfx_grain",
+            "type": "bool"
+          },
+          {
+            "name": "document.gfx_vsync",
+            "type": "bool"
+          },
+          {
+            "name": "document.gp_autosave",
+            "type": "bool"
+          },
+          {
+            "name": "document.gp_camera_shake",
+            "type": "number"
+          },
+          {
+            "name": "document.gp_hints",
+            "type": "bool"
+          },
+          {
+            "name": "document.master_volume",
+            "type": "number"
+          },
+          {
+            "name": "document.mic_input_volume",
+            "type": "number"
+          },
+          {
+            "name": "document.mic_push_to_talk",
+            "type": "bool"
+          },
+          {
+            "name": "document.mic_voice_chat",
+            "type": "bool"
+          },
+          {
+            "name": "document.music_volume",
+            "type": "number"
+          },
+          {
+            "name": "document.output_device",
+            "type": "string"
+          },
+          {
+            "name": "document.sfx_volume",
+            "type": "number"
+          },
+          {
+            "name": "document.subtitles",
+            "type": "bool"
+          },
+          {
+            "name": "document.tab",
+            "type": "number"
           }
         ],
         "out": [
@@ -26936,79 +26936,9 @@
             "type": "pulse"
           },
           {
-            "name": "#settings.apply_settings",
-            "origin": "document",
-            "type": "pulse"
-          },
-          {
-            "name": "#settings.audio_mode_next",
-            "origin": "document",
-            "type": "pulse"
-          },
-          {
-            "name": "#settings.audio_mode_prev",
-            "origin": "document",
-            "type": "pulse"
-          },
-          {
-            "name": "#settings.back",
-            "origin": "document",
-            "type": "pulse"
-          },
-          {
             "name": "#settings.hover",
             "origin": "document",
             "type": "bool"
-          },
-          {
-            "name": "#settings.open_output_device",
-            "origin": "document",
-            "type": "pulse"
-          },
-          {
-            "name": "#settings.play_test_sound",
-            "origin": "document",
-            "type": "pulse"
-          },
-          {
-            "name": "#settings.reset_defaults",
-            "origin": "document",
-            "type": "pulse"
-          },
-          {
-            "name": "#settings.tab_accessibility",
-            "origin": "document",
-            "type": "pulse"
-          },
-          {
-            "name": "#settings.tab_audio",
-            "origin": "document",
-            "type": "pulse"
-          },
-          {
-            "name": "#settings.tab_controls",
-            "origin": "document",
-            "type": "pulse"
-          },
-          {
-            "name": "#settings.tab_gameplay",
-            "origin": "document",
-            "type": "pulse"
-          },
-          {
-            "name": "#settings.tab_graphics",
-            "origin": "document",
-            "type": "pulse"
-          },
-          {
-            "name": "#settings.tab_microphone",
-            "origin": "document",
-            "type": "pulse"
-          },
-          {
-            "name": "#settings.toggle_subtitles",
-            "origin": "document",
-            "type": "pulse"
           },
           {
             "name": "#sfx-fill.AnimationEnd",
@@ -29571,9 +29501,39 @@
             "type": "bool"
           },
           {
+            "name": "document.apply_settings",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "document.audio_mode_next",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "document.audio_mode_prev",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "document.back",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
             "name": "document.clock",
             "origin": "document",
             "type": "number"
+          },
+          {
+            "name": "document.open_output_device",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "document.play_test_sound",
+            "origin": "document",
+            "type": "pulse"
           },
           {
             "name": "document.pointerDown",
@@ -29599,6 +29559,46 @@
             "name": "document.pointerY",
             "origin": "document",
             "type": "number"
+          },
+          {
+            "name": "document.reset_defaults",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "document.tab_accessibility",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "document.tab_audio",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "document.tab_controls",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "document.tab_gameplay",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "document.tab_graphics",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "document.tab_microphone",
+            "origin": "document",
+            "type": "pulse"
+          },
+          {
+            "name": "document.toggle_subtitles",
+            "origin": "document",
+            "type": "pulse"
           },
           {
             "name": "document.viewportHeight",

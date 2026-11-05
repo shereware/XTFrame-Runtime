@@ -1,24 +1,5 @@
-<xt>
-  <head>
-    <style>
-      #container {
-        display: flex;
-        flex-direction: column;
-        flex-wrap: wrap;
-        width: 232px;
-        height: 200px;
-        margin: 12px;
-        gap: 4px;
-        background-color: #eeeeee;
-      }
-      #container > div { width: 100px; height: 60px; }
-      #a { background-color: #ff0000; }
-      #b { background-color: #00aa00; }
-      #c { background-color: #0000ff; }
-      #d { background-color: #ff8800; }
-      #e { background-color: #8800ff; }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <div id="container">
       <div id="a"></div>
@@ -28,4 +9,40 @@
       <div id="e"></div>
     </div>
   </body>
+
+  <layout>
+    #container {
+      display: flex;
+      flex-direction: column;
+      flex-wrap: wrap;
+      width: 232px;
+      height: 200px;
+      margin: 12px;
+      gap: 4px;
+    }
+    #container > div {
+      width: 100px;
+      height: 60px;
+    }
+  </layout>
+  <style>
+    #container {
+      background-color: #eeeeee;
+    }
+    #a {
+      background-color: #ff0000;
+    }
+    #b {
+      background-color: #00aa00;
+    }
+    #c {
+      background-color: #0000ff;
+    }
+    #d {
+      background-color: #ff8800;
+    }
+    #e {
+      background-color: #8800ff;
+    }
+  </style>
 </xt>

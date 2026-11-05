@@ -1,0 +1,140 @@
+#main-menu {
+  height: 100vh;
+  margin-bottom: 0;
+  margin-left: 0;
+  margin-right: 0;
+  margin-top: 0;
+  overflow: hidden;
+  position: relative;
+  width: 100vw;
+}
+/* import: MainMenu.dc.html:1/0 */
+#menu-scene {
+  height: 100%;
+  left: 0%;
+  overflow: hidden;
+  position: absolute;
+  top: 0%;
+  width: 100%;
+}
+#menu-bg {
+  height: 100%;
+  left: 0px;
+  position: absolute;
+  top: 0px;
+  width: 100%;
+}
+#menu-lamp {
+  height: 480px;
+  left: 32.19%;
+  position: absolute;
+  top: 11.39%;
+  width: 480px;
+}
+#menu-lamp-core {
+  height: 280px;
+  left: 37.24%;
+  position: absolute;
+  top: 21.48%;
+  width: 280px;
+}
+#menu-fog {
+  bottom: -30px;
+  height: 480px;
+  left: 0px;
+  position: absolute;
+  width: 5760px;
+}
+#menu-shade-left-fill {
+  height: 100%;
+  left: 0px;
+  position: absolute;
+  top: 0px;
+  width: 1190px;
+}
+#menu-shade-bottom-fill {
+  bottom: 0px;
+  height: 281px;
+  left: 0px;
+  position: absolute;
+  right: 0px;
+}
+#menu-grime {
+  height: 100%;
+  left: 0%;
+  position: absolute;
+  top: 0%;
+  transform: translate(0px, 0px) scale(1.15);
+  width: 100%;
+}
+#menu-rain {
+  bottom: 0px;
+  left: 0px;
+  position: absolute;
+  right: 0px;
+  top: -768px;
+}
+#menu-title {
+  anchor: left top;
+  offset: 18px 99px;
+  size: 693px 231px;
+}
+/* import: MainMenu.dc.html:1/7 */
+#menu-list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  left: calc(1safe-left + 48px);
+  position: absolute;
+  top: 41.11%;
+  width: 450px;
+}
+#menu-version {
+  anchor: left bottom;
+  offset: 0 0;
+  size: 120px 24px;
+}
+/* import: MainMenu.dc.html:1/9 */
+#menu-hints {
+  align-items: center;
+  anchor: right bottom;
+  offset: 0 0;
+  size: 390px 33px;
+  display: flex;
+  flex-direction: row;
+  gap: 15px;
+  justify-content: flex-end;
+}
+/* import: MainMenu.dc.html:1/9/2 */
+#hint-select {
+  margin-right: 27px;
+}
+.menu-item {
+  position: relative;
+  width: 450px;
+  height: 63px;
+}
+.menu-band {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 450px;
+  height: 63px;
+}
+.band-tex {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 100%;
+  height: 100%;
+}
+.menu-label {
+  position: absolute;
+  left: 39px;
+  top: 0px;
+  height: 63px;
+}
+.key {
+  width: 33px;
+  height: 33px;
+}

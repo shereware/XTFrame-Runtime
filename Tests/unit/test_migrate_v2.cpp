@@ -422,3 +422,63 @@ TEST_CASE("T-589 migrate: a port on an element other than <body>, the UI root or
     CHECK(contains(r->errors[0], "#Deep.x"));
     CHECK(findFile(files, "doc.xt") == nullptr);
 }
+
+namespace {
+
+/// T-590: the diagnostics of `text` compiled as `doc.xt` whose message is the format 1 hint.
+size_t formatOneHints(const CompileResult& result) {
+    size_t n = 0;
+    for (const Diagnostic& d : result.diagnostics) {
+        n += d.message == "source format 1: run xtframe-compile --migrate" ? size_t{1} : size_t{0};
+    }
+    return n;
+}
+
+CompileResult compileText(const std::string& text, const CompileOptions& options) {
+    const SourceFile files[] = {{"doc.xt", text}};
+    return compileDocumentFromStrings(files, "doc.xt", options);
+}
+
+const char* const kFormatOneDoc =
+    "<xt version=\"1\"><head><style>#a { width: 10px; height: 10px; }</style></head>"
+    "<body><div id=\"a\"></div></body></xt>\n";
+
+}  // namespace
+
+TEST_CASE("T-590 reading format 1: one deprecation hint per file, through DiagnosticSink::deprecated()") {
+    CompileOptions options;
+    options.reportDeprecated = true;
+    const CompileResult v1 = compileText(kFormatOneDoc, options);
+    REQUIRE(v1.ok());
+    CHECK(formatOneHints(v1) == 1);
+    for (const Diagnostic& d : v1.diagnostics) {
+        if (d.message == "source format 1: run xtframe-compile --migrate") {
+            CHECK(d.level == Diagnostic::Level::Warning);
+            CHECK(d.file == "doc.xt");
+            CHECK(d.line == 1);
+        }
+    }
+    // A missing version is format 1 too.
+    const CompileResult v0 = compileText("<xt><body><div id=\"a\"></div></body></xt>\n", options);
+    REQUIRE(v0.ok());
+    CHECK(formatOneHints(v0) == 1);
+    // Format 2 never gets it.
+    const CompileResult v2 = compileText(
+        "<xt version=\"2\"><layout>\n  #a { width: 10px; height: 10px; }\n</layout>"
+        "<body><div id=\"a\"></div></body></xt>\n",
+        options);
+    REQUIRE(v2.ok());
+    CHECK(formatOneHints(v2) == 0);
+    // Without reportDeprecated / strict it is dropped, like every deprecated() use.
+    const CompileResult quiet = compileText(kFormatOneDoc, CompileOptions{});
+    REQUIRE(quiet.ok());
+    CHECK(formatOneHints(quiet) == 0);
+}
+
+TEST_CASE("T-590 reading format 1: the hint does not fail a strict compile") {
+    CompileOptions options;
+    options.strict = true;
+    const CompileResult result = compileText(kFormatOneDoc, options);
+    CHECK(result.ok());
+    CHECK(formatOneHints(result) == 1);
+}

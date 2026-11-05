@@ -1,11 +1,22 @@
-<xt>
+<xt version="2">
   <head>
-    <link href="../shared/base.xts"/>
-    <link href="hud.xts"/>
     <title>In-game HUD</title>
   </head>
+
+  <ports>
+    objective: string in = "Reach the Main Entrance"
+    location: string in = "St. Ren Hospital Grounds"
+    clock: string in = "17:42"
+    hp: number in = 64
+    stamina: number in = 78
+    noise_label: string in = "Low"
+    interact_label: string in = "Open Gate"
+    interact_visible: bool in = true
+    active: bool in = true
+  </ports>
+
   <body>
-    <div id="hud" on:port(active)="if eq(1) show() else hide(); if eq(1) play(intro)" port:objective="string in = &quot;Reach the Main Entrance&quot;" port:location="string in = &quot;St. Ren Hospital Grounds&quot;" port:clock="string in = &quot;17:42&quot;" port:hp="number in = 64" port:stamina="number in = 78" port:noise_label="string in = &quot;Low&quot;" port:interact_label="string in = &quot;Open Gate&quot;" port:interact_visible="bool in = true" port:active="bool in = true">
+    <div id="hud" on:port(active)="if eq(1) show() else hide(); if eq(1) play(intro)">
       <img id="hud-preview-bg" class="s-43161f" src="../shared/img/hud-preview-bg.png"/>
       <div id="hud-vignette"/>
       <div id="objective">
@@ -101,4 +112,10 @@
       </div>
     </div>
   </body>
+
+  <layout src="../shared/base.layout.xts"/>
+  <layout src="hud.layout.xts"/>
+  <style src="../shared/base.xts"/>
+  <style src="hud.xts"/>
+  <timelines src="hud.timelines.xts"/>
 </xt>

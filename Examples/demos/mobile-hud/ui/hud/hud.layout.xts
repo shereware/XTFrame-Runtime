@@ -1,0 +1,72 @@
+body {
+  width: 100vw;
+  height: 100vh;
+}
+#Screen {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+}
+#TopSlot {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 100vw;
+  display: flex;
+}
+#Pause {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  column-gap: 6px;
+  width: var(--touch-min);
+  height: var(--touch-min);
+}
+#PauseBarA, #PauseBarB {
+  width: 6px;
+  height: 18px;
+}
+#MapSlot {
+  anchor: right top;
+  offset: 24px 96px;
+  size: 240px 240px;
+  overflow: hidden;
+}
+#Minimap {
+  width: 240px;
+  height: 240px;
+}
+#StickSlot {
+  anchor: left bottom;
+  offset: 64px 96px;
+}
+#Actions {
+  anchor: right bottom;
+  offset: 48px 96px;
+  display: flex;
+  align-items: flex-end;
+  column-gap: var(--space-6);
+}
+.action {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 112px;
+  height: 112px;
+}
+#AttackSlot {
+  margin-bottom: 72px;
+}
+.ring {
+  position: absolute;
+  left: 4px;
+  /* centred in the 112px .action slot */
+  top: 4px;
+  width: 104px;
+  height: 104px;
+}
+/* Instances size through their internal path ids (editor/symbols/README.md "Layout"). */
+#Top/Box {
+  width: 100vw;
+}

@@ -1,9 +1,8 @@
-<xt>
+<xt version="2">
   <head>
-    <link href="../shared/base.xts"/>
-    <link href="pause.xts"/>
     <title>XTFrame pause menu demo</title>
   </head>
+
   <body>
     <div id="root">
       <div id="editorBg" editor-only/>
@@ -23,4 +22,9 @@
       </div>
     </div>
   </body>
+
+  <layout src="../shared/base.layout.xts"/>
+  <layout src="pause.layout.xts"/>
+  <style src="../shared/base.xts"/>
+  <style src="pause.xts"/>
 </xt>

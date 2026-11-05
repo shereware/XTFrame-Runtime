@@ -1,14 +1,5 @@
-<xt>
-  <head>
-    <style>
-      #stage { position: absolute; left: 0px; top: 0px; width: 300px; height: 300px; perspective: 400px; }
-      #wrap { position: absolute; left: 0px; top: 0px; width: 300px; height: 300px; }
-      #cardA { position: absolute; left: 20px; top: 20px; width: 80px; height: 80px; transform: rotateY(180deg); background-color: #ff0000; }
-      #btn { position: absolute; left: 10px; top: 10px; width: 30px; height: 20px; background-color: #ffffff; }
-      #cardB { position: absolute; left: 100px; top: 20px; width: 80px; height: 80px; transform: rotateY(180deg); background-color: #00ff00; }
-      #plainDiv { position: absolute; left: 60px; top: 60px; width: 100px; height: 100px; background-color: #0000ff; }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <div id="stage">
       <div id="wrap">
@@ -18,4 +9,66 @@
       </div>
     </div>
   </body>
+
+  <layout>
+    #stage {
+      position: absolute;
+      left: 0px;
+      top: 0px;
+      width: 300px;
+      height: 300px;
+      perspective: 400px;
+    }
+    #wrap {
+      position: absolute;
+      left: 0px;
+      top: 0px;
+      width: 300px;
+      height: 300px;
+    }
+    #cardA {
+      position: absolute;
+      left: 20px;
+      top: 20px;
+      width: 80px;
+      height: 80px;
+      transform: rotateY(180deg);
+    }
+    #btn {
+      position: absolute;
+      left: 10px;
+      top: 10px;
+      width: 30px;
+      height: 20px;
+    }
+    #cardB {
+      position: absolute;
+      left: 100px;
+      top: 20px;
+      width: 80px;
+      height: 80px;
+      transform: rotateY(180deg);
+    }
+    #plainDiv {
+      position: absolute;
+      left: 60px;
+      top: 60px;
+      width: 100px;
+      height: 100px;
+    }
+  </layout>
+  <style>
+    #cardA {
+      background-color: #ff0000;
+    }
+    #btn {
+      background-color: #ffffff;
+    }
+    #cardB {
+      background-color: #00ff00;
+    }
+    #plainDiv {
+      background-color: #0000ff;
+    }
+  </style>
 </xt>

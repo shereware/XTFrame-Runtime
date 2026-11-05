@@ -18,6 +18,7 @@ add_executable(xt_bundle_tests
     test_project_runtime.cpp
     test_project_edit.cpp
     test_source_versions.cpp
+    test_source_v2_readers.cpp
     test_roundtrip.cpp
     test_symbol_library.cpp
     test_symbol_json.cpp

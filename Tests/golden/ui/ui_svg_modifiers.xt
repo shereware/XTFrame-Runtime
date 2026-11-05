@@ -1,17 +1,5 @@
-<xt>
-  <head>
-    <style>
-      /* T-225b (31 §31.6.1): runtime shape modifiers written in an inline <svg>. The timeline
-         animates the serial trim's trim-end (0 -> 1) and the repeat's copies (3 -> 12); the
-         manifest samples it at 0.5 s (trim-end 0.5, copies round(7.5) = 8). */
-      svg { position: absolute; left: 0px; top: 0px; width: 256px; height: 256px; }
-      @timeline main {
-        duration: 1s;
-        #Mods/Trim1 { 0s { trim-end: 0 } 1s { trim-end: 1 } }
-        #Mods/Rep1 { 0s { copies: 3 } 1s { copies: 12 } }
-      }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <svg id="Mods" viewBox="0 0 256 256" width="256" height="256">
       <!-- Top left: a circle and a line trimmed serially as one length. -->
@@ -38,4 +26,38 @@
       </g>
     </svg>
   </body>
+
+  <layout>
+    /* T-225b (31 §31.6.1): runtime shape modifiers written in an inline <svg>. The timeline
+         animates the serial trim's trim-end (0 -> 1) and the repeat's copies (3 -> 12); the
+         manifest samples it at 0.5 s (trim-end 0.5, copies round(7.5) = 8). */
+    svg {
+      position: absolute;
+      left: 0px;
+      top: 0px;
+      width: 256px;
+      height: 256px;
+    }
+  </layout>
+  <timelines>
+    @timeline main {
+      duration: 1s;
+      #Mods/Trim1 {
+        0s {
+          trim-end: 0;
+        }
+        1s {
+          trim-end: 1;
+        }
+      }
+      #Mods/Rep1 {
+        0s {
+          copies: 3;
+        }
+        1s {
+          copies: 12;
+        }
+      }
+    }
+  </timelines>
 </xt>

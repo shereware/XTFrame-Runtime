@@ -1,0 +1,168 @@
+<xt version="2">
+
+  <symbol name="DamageNumber" requires="states: Crit">
+    <ports>
+      amount: number in
+      crit: bool in
+      x: number in
+      y: number in
+      hit: event in
+    </ports>
+    <div id="Box" on:port(hit)="spawn(DamagePop, at=#Origin, lifetime=0.45s, timeline=pop)">
+      <div id="Origin"></div>
+    </div>
+  </symbol>
+
+  <symbol name="DamagePop">
+    <div id="Hit" class="dmg-hit" bind:left="x" bind:top="y" bind:state.Crit="crit">
+      <span id="Amount" class="dmg-amount" bind:text="amount | round | thousands"></span>
+    </div>
+  </symbol>
+
+  <symbol name="DamageNumberList" requires="states: Crit">
+    <ports>
+      numbers: list<struct{amount: number, x: number, y: number, crit: bool}> in
+    </ports>
+    <div id="Box">
+      <repeat port="numbers" id="Pop" item-enter="play(pop-in)" item-exit="play(pop-out) then remove">
+        <div id="Hit" class="dmg-hit" bind:left="item(x)" bind:top="item(y)" bind:state.Crit="item(crit)">
+          <span id="Amount" class="dmg-amount" bind:text="item(amount) | round | thousands"></span>
+        </div>
+      </repeat>
+    </div>
+  </symbol>
+
+  <layout>
+    symbol(DamageNumber) {
+      #Box {
+        position: relative;
+        width: 320px;
+        height: 200px;
+      }
+      #Origin {
+        position: absolute;
+        left: 0px;
+        top: 0px;
+        width: 0px;
+        height: 0px;
+      }
+      /* The spawned DamagePop elements are inside the instance: classes reach them. */
+      .dmg-hit {
+        position: absolute;
+        left: 0px;
+        top: 0px;
+        padding: 0px var(--space-1);
+      }
+    }
+    symbol(DamageNumberList) {
+      #Box {
+        position: relative;
+        width: 320px;
+        height: 200px;
+      }
+      #Pop {
+        position: relative;
+      }
+      .dmg-hit {
+        position: absolute;
+        left: 0px;
+        top: 0px;
+        padding: 0px var(--space-1);
+      }
+    }
+  </layout>
+  <style>
+    symbol(DamageNumber) {
+      #Box {
+        pointer-events: none;
+        font-family: var(--font-display);
+      }
+      .dmg-amount {
+        color: var(--color-text);
+        font-family: var(--font-display);
+        font-size: var(--font-size-l);
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: var(--letter-display);
+        white-space: nowrap;
+      }
+      /* No stamp outline: a spawned absolute box has no shrink-to-fit width, so an outline would
+           draw as a thin bar. The crit is the red ink and the larger size. */
+      .dmg-hit:state(Crit) .dmg-amount {
+        color: var(--color-danger);
+        font-size: var(--font-size-xl);
+      }
+    }
+    symbol(DamageNumberList) {
+      #Box {
+        pointer-events: none;
+        font-family: var(--font-display);
+      }
+      .dmg-amount {
+        color: var(--color-text);
+        font-family: var(--font-display);
+        font-size: var(--font-size-l);
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: var(--letter-display);
+        white-space: nowrap;
+      }
+      /* No stamp outline: a spawned absolute box has no shrink-to-fit width, so an outline would
+           draw as a thin bar. The crit is the red ink and the larger size. */
+      .dmg-hit:state(Crit) .dmg-amount {
+        color: var(--color-danger);
+        font-size: var(--font-size-xl);
+      }
+    }
+  </style>
+  <timelines>
+    symbol(DamageNumberList) {
+      @timeline pop-in {
+        #Hit {
+          0s {
+            opacity: 0;
+            transform: translateY(8px);
+          }
+          0.15s ease-out {
+            opacity: 1;
+            transform: translateY(0px);
+          }
+        }
+      }
+      @timeline pop-out {
+        #Hit {
+          0s {
+            opacity: 1;
+            transform: translateY(0px);
+          }
+          0.3s ease-in {
+            opacity: 0;
+            transform: translateY(-24px);
+          }
+        }
+      }
+    }
+    symbol(DamagePop) {
+      @timeline pop {
+        #Hit {
+          0s {
+            opacity: 0;
+            transform: translateY(8px);
+          }
+          0.12s ease-out {
+            opacity: 1;
+            transform: translateY(0px);
+          }
+          0.2s {
+            opacity: 1;
+            transform: translateY(-4px);
+          }
+          0.45s ease-in {
+            opacity: 0;
+            transform: translateY(-24px);
+          }
+        }
+      }
+    }
+  </timelines>
+</xt>

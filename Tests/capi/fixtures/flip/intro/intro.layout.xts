@@ -1,0 +1,12 @@
+/* Red, opaque at rest; the intro starts at opacity 0.25 (frame 0) and ends opaque after 0.5s. */
+body {
+  width: 100vw;
+  height: 100vh;
+}
+#card {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100vw;
+  height: 100vh;
+}

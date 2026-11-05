@@ -1,10 +1,14 @@
-<xt>
-  <head>
-    <style>
-      #a { width: 500px; max-width: 300px; min-height: 50px; }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <div id="a"></div>
   </body>
+
+  <layout>
+    #a {
+      width: 500px;
+      max-width: 300px;
+      min-height: 50px;
+    }
+  </layout>
 </xt>

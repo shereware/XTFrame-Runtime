@@ -25,8 +25,9 @@
 /// §35.5, §35.6, §35.10; Docs/tasks/T-305.md).
 ///
 /// Computed edges (variable -> UI / layer / symbol) come from a text scan of `var(--name` in:
-///   - every UI document (its `<style>` blocks and element `style=` attributes) and the `.xts`
-///     stylesheets it `<link>`s: an edge `ui:<id>` -> `token:<name>` always, plus
+///   - every UI document (its `<style>` blocks, T-606: its inline version 2 `<layout>` / `<style>` /
+///     `<timelines>` sections, and element `style=` attributes) and the `.xts` stylesheets it
+///     `<link>`s (version 2: its section `src` fragments): an edge `ui:<id>` -> `token:<name>` always, plus
 ///     `layer:<ui>#<element id>` -> `token:<name>` when the use sits in a rule block whose selector
 ///     (innermost first) names `#<id>` of an element of that UI (the last `#id` of each
 ///     comma-separated selector), or in that element's `style=`;
@@ -303,8 +304,19 @@ private:
                 }
             }
         }
-        for (const auto& [css, line] : dom.inlineStyles) {
-            (void)line;
+        // T-606: inline sections and (version 2) the library's own `src` fragments too.
+        const detail::DomSheets sheets = detail::domSheets(dom, false);
+        for (const std::string& css : sheets.inlineCss) {
+            for (const StyleUse& use : scanStylesheet(css)) {
+                info.tokens.insert(use.token);
+            }
+        }
+        for (const std::string& href : sheets.hrefs) {
+            const fs::path sheet = (path.parent_path() / pathFromUtf8(href)).lexically_normal();
+            std::string css;
+            if (sheet.extension() != ".xts" || !bundle::detail::readFile(pathToUtf8(sheet), css)) {
+                continue;
+            }
             for (const StyleUse& use : scanStylesheet(css)) {
                 info.tokens.insert(use.token);
             }
@@ -411,14 +423,16 @@ private:
                 useInUi(ui.id, elementIds, use);
             }
         }
-        for (const auto& [css, line] : dom.inlineStyles) {
-            (void)line;
+        // T-606 (54 §54.3, §54.8): `<link href>` / `<style>` of version 1 and the sections and `src`
+        // fragments of version 2.
+        const detail::DomSheets sheets = detail::domSheets(dom, true);
+        for (const std::string& css : sheets.inlineCss) {
             for (const StyleUse& use : scanStylesheet(css)) {
                 useInUi(ui.id, elementIds, use);
             }
         }
         const fs::path docDir = docPath.parent_path();
-        for (const std::string& href : dom.linkHrefs) {
+        for (const std::string& href : sheets.hrefs) {
             const fs::path sheet = (docDir / pathFromUtf8(href)).lexically_normal();
             if (sheet.extension() != ".xts") {
                 continue;
@@ -689,6 +703,36 @@ std::vector<Issue> validate(const DesignSystem& ds, const Graph& graph) {
 }
 
 namespace detail {
+
+DomSheets domSheets(const compile::DomTree& dom, bool withLinks) {
+    DomSheets out;
+    for (const auto& [css, line] : dom.inlineStyles) {
+        (void)line;
+        out.inlineCss.push_back(css);
+    }
+    if (withLinks) {
+        out.hrefs = dom.linkHrefs;
+    }
+    std::vector<const compile::XtSheetSection*> sections;
+    for (const std::vector<compile::XtSheetSection>* list :
+         {&dom.layoutSheets, &dom.styleSheets, &dom.timelineSheets}) {
+        for (const compile::XtSheetSection& section : *list) {
+            sections.push_back(&section);
+        }
+    }
+    std::stable_sort(sections.begin(), sections.end(),
+                     [](const compile::XtSheetSection* a, const compile::XtSheetSection* b) {
+                         return a->order < b->order;
+                     });
+    for (const compile::XtSheetSection* section : sections) {
+        if (!section->src.empty()) {
+            out.hrefs.push_back(section->src);
+        } else {
+            out.inlineCss.push_back(section->text);
+        }
+    }
+    return out;
+}
 
 /// The last `#id` of each comma-separated selector of a rule prelude.
 std::vector<std::string> preludeIds(std::string_view prelude) {

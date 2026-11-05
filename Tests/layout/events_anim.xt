@@ -1,14 +1,38 @@
-<xt>
-  <head>
-    <style>
-      @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
-      #animEl { width: 10px; height: 10px; animation: fadeIn 0.1s; }
-      #transEl { width: 10px; height: 10px; background-color: #000000; transition: background-color 0.1s; }
-      #transEl.on { background-color: #ffffff; }
-    </style>
-  </head>
+<xt version="2">
+
   <body id="body">
     <div id="animEl"></div>
     <div id="transEl"></div>
   </body>
+
+  <layout>
+    #animEl {
+      width: 10px;
+      height: 10px;
+    }
+    #transEl {
+      width: 10px;
+      height: 10px;
+    }
+  </layout>
+  <style>
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+      }
+      to {
+        opacity: 1;
+      }
+    }
+    #animEl {
+      animation: fadeIn 0.1s;
+    }
+    #transEl {
+      background-color: #000000;
+      transition: background-color 0.1s;
+    }
+    #transEl.on {
+      background-color: #ffffff;
+    }
+  </style>
 </xt>

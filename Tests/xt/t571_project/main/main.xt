@@ -1,23 +1,45 @@
-<xt>
-  <head>
-    <!-- T-571: xtframe-view checks against a .xt inside a UI Project. `#stamp-applied` (a later,
-         transparent sibling) covers `#btn`, so a scripted `#btn.Click` names it (report F84);
-         `#field` takes `key(Escape)` once focused (08 §8.20); the project's safe area applies to
-         a bare `.xt` run (report F8); shared/strings/en.csv has two keys no UI uses (22 §22.14). -->
-    <style>
-      #stage { position: relative; width: 400px; height: 300px; }
-      #field { width: 100px; height: 24px; }
-      #label { width: 100px; height: 24px; }
-      #btn { position: absolute; left: 0px; top: 120px; width: 100px; height: 40px; }
-      #stamp-applied { position: absolute; left: 0px; top: 100px; width: 200px; height: 100px; }
-    </style>
-  </head>
+<xt version="2">
+
+  <ports>
+    count: number in
+  </ports>
+
   <body>
-    <div id="stage" port:count="number in">
+    <div id="stage">
       <div id="field" tabindex="0" on:key(Escape)="set(count, 5)"></div>
       <span id="label" bind:text="count"></span>
       <div id="btn" on:click="set(count, 7)"></div>
       <div id="stamp-applied"></div>
     </div>
   </body>
+
+  <layout>
+    #stage {
+      position: relative;
+      width: 400px;
+      height: 300px;
+    }
+    #field {
+      width: 100px;
+      height: 24px;
+    }
+    #label {
+      width: 100px;
+      height: 24px;
+    }
+    #btn {
+      position: absolute;
+      left: 0px;
+      top: 120px;
+      width: 100px;
+      height: 40px;
+    }
+    #stamp-applied {
+      position: absolute;
+      left: 0px;
+      top: 100px;
+      width: 200px;
+      height: 100px;
+    }
+  </layout>
 </xt>

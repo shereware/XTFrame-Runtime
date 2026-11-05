@@ -1,0 +1,68 @@
+#root {
+  color: #e6edf3;
+  font-family: "Noto Sans", sans-serif;
+  font-size: 16px;
+}
+/* The game-screen backdrop is editor-only (03 3.13): the editor and xtframe-view show it, the
+   published bundle strips it, so the root is transparent in the game. */
+#editorBg {
+  background-color: #0b0f17;
+}
+.panel {
+  background-color: #161b22e6;
+  border: 1px #30363d;
+  border-radius: 12px;
+  effect: shadow(0 10px 28px 0 #000000 0.55);
+}
+.label {
+  color: #8b949e;
+  font-size: 12px;
+  letter-spacing: 2px;
+}
+.title {
+  font-size: 22px;
+}
+.dim {
+  color: #8b949e;
+  font-size: 14px;
+}
+.btn {
+  background-color: #21262d;
+  border: 1px #30363d;
+  border-radius: 8px;
+  color: #e6edf3;
+  font-size: 14px;
+  letter-spacing: 1px;
+  line-height: 36px;
+  text-align: center;
+  transition: background-color 120ms;
+}
+.btn:hover {
+  background-color: #30363d;
+}
+.btn:active {
+  background-color: #484f58;
+}
+.primary {
+  background-color: #1f6feb;
+  border: 1px #388bfd;
+}
+.primary:hover {
+  background-color: #388bfd;
+}
+.primary:active {
+  background-color: #1158c7;
+}
+.chip {
+  background-color: #238636;
+  border-radius: 12px;
+  color: #ffffff;
+  font-size: 12px;
+  letter-spacing: 1px;
+  line-height: 24px;
+  text-align: center;
+  transition: background-color 120ms;
+}
+.chip:hover {
+  background-color: #2ea043;
+}

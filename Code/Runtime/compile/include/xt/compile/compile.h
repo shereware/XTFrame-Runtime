@@ -113,6 +113,12 @@ struct CompileOptions {
     /// `layout.subjectNotId` (a v2 `<layout>` rule whose subject has no `#id` is a warning); off by
     /// default, `xtframe-compile --lint --layout-subject-id` turns it on.
     bool lintLayoutSubjectId = false;
+    /// T-594 (Docs/design/54-source-format-v2.md §54.14 S4, 24 §24.15.4): the `web.*` warnings --
+    /// each a habit from HTML/CSS that XTFrame does not share (Skills/skills/xtui/references/
+    /// not-like-web.md), with a `fix`. Off by default; `xtframe-compile --web-compat`, `xtframe-import
+    /// ... --lint --web-compat` and the Editor Service's `lint.run {webCompat: true}` turn it on. A
+    /// strict compile does not fail on them (DiagnosticSink::webCount()).
+    bool webCompat = false;
     /// T-452 (Docs/design/17-editor.md §17.25): when set, asked instead of the disk whether a file
     /// system entry exists at a UTF-8 path, wherever an asset reference is resolved: the search
     /// directory probe of `<img src>` / `<anim src>` / `@font-face src` (`searchDirs`) and the "not

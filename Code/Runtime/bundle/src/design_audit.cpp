@@ -23,9 +23,10 @@
 #include "xt/util/text.h"
 
 /// design.audit (Docs/design/35-design-system.md §35.7.1; Docs/tasks/T-309.md item 3): a text scan of
-/// the style values of a UI Project. Declarations are read from `.xts` text, `<style>` blocks and
-/// `style=` attributes without the compiler's value parser, so a value the compiler would reject is
-/// still counted as written.
+/// the style values of a UI Project. Declarations are read from `.xts` text, `<style>` blocks (T-606:
+/// and the inline version 2 `<layout>` / `<style>` / `<timelines>` sections; a section's `src`
+/// fragment is a stylesheet like a `<link>`ed one) and `style=` attributes without the compiler's value
+/// parser, so a value the compiler would reject is still counted as written.
 ///
 /// What counts:
 ///   - colours: `#` + 3/4/6/8 hex digits not followed by a name character, `rgb(`/`rgba(` with three
@@ -294,14 +295,16 @@ public:
                     declaration(d, where);
                 }
             }
-            for (const auto& [css, line] : dom.inlineStyles) {
-                (void)line;
+            // T-606 (54 §54.3, §54.8): version 1 `<style>` / `<link href>`, version 2 inline sections
+            // and section `src` fragments.
+            const detail::DomSheets docSheets = detail::domSheets(dom, true);
+            for (const std::string& css : docSheets.inlineCss) {
                 for (const Declaration& d : scanDeclarations(css)) {
                     declaration(d, whereOf(d, {ui.id}, uiElements, docRel));
                 }
             }
             const fs::path docDir = docPath.parent_path();
-            for (const std::string& href : dom.linkHrefs) {
+            for (const std::string& href : docSheets.hrefs) {
                 const fs::path sheet = (docDir / pathFromUtf8(href)).lexically_normal();
                 if (sheet.extension() == ".xts") {
                     sheets[relative(sheet)].insert(ui.id);
@@ -364,8 +367,19 @@ public:
                     }
                 }
             }
-            for (const auto& [css, line] : dom.inlineStyles) {
-                (void)line;
+            // T-606: inline sections and (version 2) the library's own `src` fragments too.
+            const detail::DomSheets sheets = detail::domSheets(dom, false);
+            for (const std::string& css : sheets.inlineCss) {
+                for (const Declaration& d : scanDeclarations(css)) {
+                    declaration(d, where);
+                }
+            }
+            for (const std::string& href : sheets.hrefs) {
+                const fs::path sheet = (file.parent_path() / pathFromUtf8(href)).lexically_normal();
+                std::string css;
+                if (sheet.extension() != ".xts" || !bundle::detail::readFile(pathToUtf8(sheet), css)) {
+                    continue;
+                }
                 for (const Declaration& d : scanDeclarations(css)) {
                     declaration(d, where);
                 }

@@ -1,16 +1,5 @@
-<xt>
-  <head>
-    <style>
-      #container {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px 20px;
-        width: 400px;
-        height: 200px;
-      }
-      #container > div { width: 150px; height: 40px; }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <div id="container">
       <div id="a"></div>
@@ -18,4 +7,18 @@
       <div id="c"></div>
     </div>
   </body>
+
+  <layout>
+    #container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 20px;
+      width: 400px;
+      height: 200px;
+    }
+    #container > div {
+      width: 150px;
+      height: 40px;
+    }
+  </layout>
 </xt>

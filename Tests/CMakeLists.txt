@@ -115,6 +115,7 @@ add_executable(xt_tests
     unit/test_triggers.cpp
     unit/test_bindings.cpp
     unit/test_bind_diagnostics.cpp
+    unit/test_web_compat.cpp
     unit/test_repeat.cpp
     unit/test_interaction.cpp
     unit/test_core_t200.cpp

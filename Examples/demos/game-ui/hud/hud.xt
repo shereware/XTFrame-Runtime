@@ -1,10 +1,14 @@
-<xt>
+<xt version="2">
   <head>
-    <link href="../shared/base.xts"/>
-    <link href="hud.xts"/>
     <title>XTFrame HUD demo</title>
   </head>
-  <body port:nx="number in" port:ny="number in">
+
+  <ports>
+    nx: number in
+    ny: number in
+  </ports>
+
+  <body>
     <div id="root" on:pointermove="set(nx, pointer.fraction(#root).x | range(0, 1, -1, 1)); set(ny, pointer.fraction(#root).y | range(0, 1, -1, 1))">
       <div id="editorBg" editor-only/>
       <div id="stageL" class="stage">
@@ -83,4 +87,9 @@
 </div>
     </div>
   </body>
+
+  <layout src="../shared/base.layout.xts"/>
+  <layout src="hud.layout.xts"/>
+  <style src="../shared/base.xts"/>
+  <style src="hud.xts"/>
 </xt>

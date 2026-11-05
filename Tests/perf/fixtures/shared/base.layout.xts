@@ -1,0 +1,171 @@
+.s-ff4c67 {
+  height: 720px;
+  left: 0px;
+  position: absolute;
+  top: 0px;
+  width: 1280px;
+}
+.s-2f37a3 {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  height: 40px;
+  padding-bottom: 0px;
+  padding-left: 10px;
+  padding-right: 16px;
+  padding-top: 0px;
+  position: relative;
+}
+.s-ef7c7c {
+  height: 20px;
+  width: 4px;
+}
+/* import */
+/* shared by 5 nodes */
+.s-3ffd60 {
+  flex-grow: 1;
+}
+/* import */
+/* shared by 3 nodes */
+.s-a4be2d {
+  height: 0px;
+  overflow: hidden;
+  width: 50px;
+}
+/* import */
+/* shared by 5 nodes */
+.s-441b33 {
+  height: 16px;
+  width: 50px;
+}
+/* import */
+/* shared by 2 nodes */
+.s-262847 {
+  height: 14px;
+  overflow: hidden;
+  width: 50px;
+}
+/* import */
+/* shared by 3 nodes */
+.s-3e90e1 {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+}
+.s-3d6f7d {
+  width: 124px;
+}
+.s-b48d03 {
+  flex-grow: 1;
+  height: 8px;
+  overflow: hidden;
+  position: relative;
+}
+.s-efab5b {
+  height: 8px;
+  left: 6.25%;
+  position: absolute;
+  top: 0px;
+  width: 2px;
+}
+.s-fe62fd {
+  height: 8px;
+  left: 12.50%;
+  position: absolute;
+  top: 0px;
+  width: 2px;
+}
+.s-1f154f {
+  height: 8px;
+  left: 18.75%;
+  position: absolute;
+  top: 0px;
+  width: 2px;
+}
+.s-55ba7d {
+  height: 8px;
+  left: 25.00%;
+  position: absolute;
+  top: 0px;
+  width: 2px;
+}
+.s-ea13cb {
+  height: 8px;
+  left: 31.25%;
+  position: absolute;
+  top: 0px;
+  width: 2px;
+}
+.s-299c04 {
+  height: 8px;
+  left: 37.50%;
+  position: absolute;
+  top: 0px;
+  width: 2px;
+}
+.s-9e2bb4 {
+  height: 8px;
+  left: 43.75%;
+  position: absolute;
+  top: 0px;
+  width: 2px;
+}
+.s-da8eb3 {
+  height: 8px;
+  left: 50.00%;
+  position: absolute;
+  top: 0px;
+  width: 2px;
+}
+.s-825632 {
+  height: 8px;
+  left: 56.25%;
+  position: absolute;
+  top: 0px;
+  width: 2px;
+}
+.s-9acd11 {
+  height: 8px;
+  left: 62.50%;
+  position: absolute;
+  top: 0px;
+  width: 2px;
+}
+.s-d55803 {
+  height: 8px;
+  left: 68.75%;
+  position: absolute;
+  top: 0px;
+  width: 2px;
+}
+.s-c156c5 {
+  height: 8px;
+  left: 75.00%;
+  position: absolute;
+  top: 0px;
+  width: 2px;
+}
+.s-79e2b1 {
+  height: 8px;
+  left: 81.25%;
+  position: absolute;
+  top: 0px;
+  width: 2px;
+}
+.s-1d3cb7 {
+  height: 8px;
+  left: 87.50%;
+  position: absolute;
+  top: 0px;
+  width: 2px;
+}
+.s-d0a5a7 {
+  height: 8px;
+  left: 93.75%;
+  position: absolute;
+  top: 0px;
+  width: 2px;
+}
+.s-ed349d {
+  width: 34px;
+}

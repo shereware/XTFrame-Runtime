@@ -1,0 +1,4 @@
+#pip {
+  border: 1px #30363d;
+  border-radius: 8px;
+}

@@ -1,24 +1,5 @@
-<xt>
-  <head>
-    <style>
-      #box {
-        position: absolute;
-        left: 20px;
-        top: 20px;
-        width: 100px;
-        height: 100px;
-        overflow: scroll;
-        background-color: #eeeeee;
-      }
-      #content {
-        width: 60px;
-        height: 300px;
-      }
-      #a { width: 60px; height: 100px; background-color: #ff0000; }
-      #b { width: 60px; height: 100px; background-color: #00aa00; }
-      #c { width: 60px; height: 100px; background-color: #0000ff; }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <div id="box">
       <div id="content">
@@ -28,4 +9,45 @@
       </div>
     </div>
   </body>
+
+  <layout>
+    #box {
+      position: absolute;
+      left: 20px;
+      top: 20px;
+      width: 100px;
+      height: 100px;
+      overflow: scroll;
+    }
+    #content {
+      width: 60px;
+      height: 300px;
+    }
+    #a {
+      width: 60px;
+      height: 100px;
+    }
+    #b {
+      width: 60px;
+      height: 100px;
+    }
+    #c {
+      width: 60px;
+      height: 100px;
+    }
+  </layout>
+  <style>
+    #box {
+      background-color: #eeeeee;
+    }
+    #a {
+      background-color: #ff0000;
+    }
+    #b {
+      background-color: #00aa00;
+    }
+    #c {
+      background-color: #0000ff;
+    }
+  </style>
 </xt>

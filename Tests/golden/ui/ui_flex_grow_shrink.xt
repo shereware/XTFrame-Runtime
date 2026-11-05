@@ -1,18 +1,5 @@
-<xt>
-  <head>
-    <style>
-      #row {
-        display: flex;
-        width: 232px;
-        height: 60px;
-        margin: 12px;
-        background-color: #eeeeee;
-      }
-      #a { flex: 1; height: 60px; background-color: #ff0000; }
-      #b { flex: 2; min-width: 120px; height: 60px; background-color: #00aa00; }
-      #c { flex: 1; height: 60px; background-color: #0000ff; }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <div id="row">
       <div id="a"></div>
@@ -20,4 +7,40 @@
       <div id="c"></div>
     </div>
   </body>
+
+  <layout>
+    #row {
+      display: flex;
+      width: 232px;
+      height: 60px;
+      margin: 12px;
+    }
+    #a {
+      flex: 1;
+      height: 60px;
+    }
+    #b {
+      flex: 2;
+      min-width: 120px;
+      height: 60px;
+    }
+    #c {
+      flex: 1;
+      height: 60px;
+    }
+  </layout>
+  <style>
+    #row {
+      background-color: #eeeeee;
+    }
+    #a {
+      background-color: #ff0000;
+    }
+    #b {
+      background-color: #00aa00;
+    }
+    #c {
+      background-color: #0000ff;
+    }
+  </style>
 </xt>

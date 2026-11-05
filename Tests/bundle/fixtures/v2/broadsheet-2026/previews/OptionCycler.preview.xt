@@ -1,0 +1,27 @@
+<xt version="2">
+  <head>
+    <symbols src="../OptionCycler.xt"/>
+  </head>
+
+  <body>
+    <use symbol="OptionCycler" id="Mode" slot:label="Window mode"/>
+  </body>
+
+  <layout>
+    body {
+      width: 400px;
+      height: 90px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      row-gap: 12px;
+    }
+  </layout>
+  <style src="../tokens.xts"/>
+  <style>
+    body {
+      background-color: var(--color-bg);
+    }
+  </style>
+</xt>

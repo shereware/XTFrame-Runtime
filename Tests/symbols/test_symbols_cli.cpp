@@ -72,12 +72,31 @@ fs::path freshDir(const std::string& name) {
     return dir;
 }
 
+/// Replaces the first `from` after the first `anchor` of `file` with `to`; REQUIREs both were there.
+void patchAfter(const fs::path& file, const std::string& anchor, const std::string& from,
+                const std::string& to) {
+    std::string text = readText(file);
+    const size_t start = text.find(anchor);
+    REQUIRE_MESSAGE(start != std::string::npos, anchor);
+    const size_t at = text.find(from, start);
+    REQUIRE_MESSAGE(at != std::string::npos, from);
+    text.replace(at, from.size(), to);
+    writeText(file, text);
+}
+
 /// A copy of the preset group under `<root>/<name>/broadsheet-2026` (the directory name is the id).
-fs::path copiedGroup(const std::string& name) {
-    const fs::path dir = freshDir(name) / "broadsheet-2026";
+/// T-606: `v2` lays the source format 2 copy of the group (the migrator's output,
+/// Tests/bundle/fixtures/v2/broadsheet-2026) over it.
+fs::path copiedGroup(const std::string& name, bool v2 = false) {
+    const fs::path dir = freshDir(name + (v2 ? "_v2" : "")) / "broadsheet-2026";
     std::error_code ec;
     fs::copy(XT_SYMBOLS_DIR, dir, fs::copy_options::recursive, ec);
     REQUIRE(ec.value() == 0);
+    if (v2) {
+        fs::copy(XT_SYMBOLS_V2_DIR, dir, fs::copy_options::recursive | fs::copy_options::overwrite_existing,
+                 ec);
+        REQUIRE(ec.value() == 0);
+    }
     return dir;
 }
 
@@ -146,56 +165,60 @@ TEST_CASE("symbols cli: the preset library lints without a finding") {
 }
 
 TEST_CASE("symbols cli: a missing thumbnail, a literal colour and a missing token default are reported") {
-    {  // The thumbnail.
-        const fs::path group = copiedGroup("lint_thumb");
-        fs::remove(group / "thumbnails" / "Button.png");
-        const bundle::LintReport report = bundle::lintGroup(group);
-        CHECK_MESSAGE(hasIssue(report, "Button", "thumbnail.missing"), issuesText(report));
-        CHECK(report.errors() == 1);
-    }
-    {  // A literal colour (the content hash of the index goes stale with it).
-        const fs::path group = copiedGroup("lint_color");
-        patchFile(group / "Button.xt", "<style>",
-                  "<style>\n      symbol(Button) { #Box { color: #ff0000; } }");
-        const bundle::LintReport report = bundle::lintGroup(group);
-        CHECK_MESSAGE(hasIssue(report, "Button", "style.literalColor"), issuesText(report));
-        CHECK(hasIssue(report, "Button", "index.content"));
-        // --index-only does not scan the styles.
-        bundle::LintOptions options;
-        options.indexOnly = true;
-        CHECK_FALSE(hasIssue(bundle::lintGroup(group, options), "Button", "style.literalColor"));
-    }
-    {  // A token the file reads but the token file does not declare.
-        const fs::path group = copiedGroup("lint_token");
-        patchFile(group / "tokens.xts", "  --color-accent: #1f1c18;\n", "");
-        const bundle::LintReport report = bundle::lintGroup(group);
-        CHECK_MESSAGE(hasIssue(report, "Button", "token.undeclared"), issuesText(report));
-    }
-    {  // A changed default in the token file against the index's.
-        const fs::path group = copiedGroup("lint_default");
-        patchFile(group / "tokens.xts", "--color-accent: #1f1c18;", "--color-accent: #1f1c19;");
-        const bundle::LintReport report = bundle::lintGroup(group);
-        CHECK_MESSAGE(hasIssue(report, "Button", "token.default"), issuesText(report));
+    for (const bool v2 : {false, true}) {  // T-606: on both source formats.
+        CAPTURE(v2);
+        {  // The thumbnail.
+            const fs::path group = copiedGroup("lint_thumb", v2);
+            fs::remove(group / "thumbnails" / "Button.png");
+            const bundle::LintReport report = bundle::lintGroup(group);
+            CHECK_MESSAGE(hasIssue(report, "Button", "thumbnail.missing"), issuesText(report));
+            CHECK(report.errors() == 1);
+        }
+        {  // A literal colour (the content hash of the index goes stale with it).
+            const fs::path group = copiedGroup("lint_color", v2);
+            patchFile(group / "Button.xt", "<style>",
+                      "<style>\n      symbol(Button) { #Box { color: #ff0000; } }");
+            const bundle::LintReport report = bundle::lintGroup(group);
+            CHECK_MESSAGE(hasIssue(report, "Button", "style.literalColor"), issuesText(report));
+            CHECK(hasIssue(report, "Button", "index.content"));
+            // --index-only does not scan the styles.
+            bundle::LintOptions options;
+            options.indexOnly = true;
+            CHECK_FALSE(hasIssue(bundle::lintGroup(group, options), "Button", "style.literalColor"));
+        }
+        {  // A token the file reads but the token file does not declare.
+            const fs::path group = copiedGroup("lint_token", v2);
+            patchFile(group / "tokens.xts", "  --color-accent: #1f1c18;\n", "");
+            const bundle::LintReport report = bundle::lintGroup(group);
+            CHECK_MESSAGE(hasIssue(report, "Button", "token.undeclared"), issuesText(report));
+        }
+        {  // A changed default in the token file against the index's.
+            const fs::path group = copiedGroup("lint_default", v2);
+            patchFile(group / "tokens.xts", "--color-accent: #1f1c18;", "--color-accent: #1f1c19;");
+            const bundle::LintReport report = bundle::lintGroup(group);
+            CHECK_MESSAGE(hasIssue(report, "Button", "token.default"), issuesText(report));
+        }
     }
 }
 
 TEST_CASE("symbols cli: contract, timelines, listing and previews") {
-    {  // A state the contract requires without a rule.
-        const fs::path group = copiedGroup("lint_contract");
-        patchAll(group / "Button.xt", ":active", ".was-active");
-        const bundle::LintReport report = bundle::lintGroup(group);
-        CHECK_MESSAGE(hasIssue(report, "Button", "contract.state"), issuesText(report));
-    }
-    {  // A timeline longer than 500 ms and one with an unconventional name.
-        const fs::path group = copiedGroup("lint_timeline");
-        patchFile(group / "Button.xt",
-                  "0.15s linear { opacity: 1 } }\n        }\n        @timeline hover-out",
-                  "0.9s linear { opacity: 1 } }\n        }\n        @timeline hover-out");
-        patchFile(group / "Button.xt", "@timeline press {", "@timeline PressDown {");
-        const bundle::LintReport report = bundle::lintGroup(group);
-        CHECK_MESSAGE(hasIssue(report, "Button", "timeline.duration"), issuesText(report));
-        CHECK(hasIssue(report, "Button", "timeline.name", bundle::LintLevel::Warning));
-        CHECK(hasIssue(report, "Button", "index.timeline"));  // The index still lists `press`.
+    for (const bool v2 : {false, true}) {  // T-606: the contract and timeline cases on both formats.
+        CAPTURE(v2);
+        {  // A state the contract requires without a rule.
+            const fs::path group = copiedGroup("lint_contract", v2);
+            patchAll(group / "Button.xt", ":active", ".was-active");
+            const bundle::LintReport report = bundle::lintGroup(group);
+            CHECK_MESSAGE(hasIssue(report, "Button", "contract.state"), issuesText(report));
+        }
+        {  // A timeline longer than 500 ms and one with an unconventional name.
+            const fs::path group = copiedGroup("lint_timeline", v2);
+            patchAfter(group / "Button.xt", "@timeline hover-in", "0.15s", "0.9s");
+            patchFile(group / "Button.xt", "@timeline press {", "@timeline PressDown {");
+            const bundle::LintReport report = bundle::lintGroup(group);
+            CHECK_MESSAGE(hasIssue(report, "Button", "timeline.duration"), issuesText(report));
+            CHECK(hasIssue(report, "Button", "timeline.name", bundle::LintLevel::Warning));
+            CHECK(hasIssue(report, "Button", "index.timeline"));  // The index still lists `press`.
+        }
     }
     {  // A file the index does not list.
         const fs::path group = copiedGroup("lint_unlisted");

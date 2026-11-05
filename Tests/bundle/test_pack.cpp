@@ -1996,7 +1996,7 @@ std::string tokenValueT498b(const Bundle& bundle, std::string_view name) {
 }
 
 constexpr const char* kButtonDocT498b =
-    "<xt><head><link rel=\"symbols\" href=\"xt-standard:Button\"/></head>\n"
+    "<xt version=\"2\"><head><symbols src=\"xt-standard:Button\"/></head>\n"
     "<body><use symbol=\"Button\" id=\"Go\" slot:label=\"Go\"/></body></xt>\n";
 
 }  // namespace
@@ -2085,8 +2085,9 @@ TEST_CASE(
     "pack: no standard symbol linked -> no implied layer; token.sameAsDefault warns on a repeated default "
     "(T-498b)") {
     {
-        const UiProject project = projectT498b("plain", "<xt><body><div id=\"a\"/></body></xt>\n",
-                                               ":root { --color-bg: #e6e2d6; }\n");
+        const UiProject project =
+            projectT498b("plain", "<xt version=\"2\"><body><div id=\"a\"/></body></xt>\n",
+                         ":root { --color-bg: #e6e2d6; }\n");
         PackOptions options;
         options.thumbnails = false;
         options.strict = true;

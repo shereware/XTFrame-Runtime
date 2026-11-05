@@ -361,7 +361,7 @@ TEST_CASE("T-587 <layout> selectors are not restricted to #id subjects (54 §54.
     REQUIRE(linted.ok());
     size_t count = 0;
     for (const Diagnostic& d : linted.diagnostics) {
-        count += d.code == "layout.subjectNotId" ? 1 : 0;
+        count += d.code == "layout.subjectNotId" ? size_t{1} : size_t{0};
     }
     CHECK(count == 1);
 }

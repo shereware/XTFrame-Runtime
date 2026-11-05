@@ -25,7 +25,9 @@
 ///   group.thumbnail         W: `group.json` names no group thumbnail
 ///   index.unlisted          a `.xt` file of the group root, `mobile/` or `list/` is not in index.json
 ///   index.contract          the `requires="..."` of the symbol file is not the index entry's contract
-///   index.port              a port of the entry is not declared by `port:<name>="<type> <dir>"`
+///   index.port              a port of the entry is not declared by `port:<name>="<type> <dir>"` in
+///                           the symbol (version 1) or `<name>: <type> <dir>` in its `<ports>`
+///                           (version 2; T-606 reads both from the parsed file)
 ///   index.timeline          a timeline of the entry has no `@timeline <name>` in the file
 ///   index.tokens            the entry's token names are not the `var(--name)` set the file reads
 ///   index.fonts             the entry's fonts are not the files its font tokens name
@@ -102,7 +104,9 @@ std::vector<LintReport> lintLibrary(const std::filesystem::path& dir, const Lint
 std::vector<std::string> findLiteralColors(std::string_view css);
 
 /// The text the colour scan reads from a file: for a `.xt` (`isXts` false) the bodies of its
-/// `<style>` elements and its `style="..."` attributes, for an `.xts` the whole text.
+/// `<style>` elements, its inline version 2 `<layout>` / `<style>` / `<timelines>` sections (T-606,
+/// 54 §54.3; read from the parsed file, `src` fragments are files of their own) and its
+/// `style="..."` attributes; for an `.xts` the whole text.
 std::vector<std::string> styleRegions(std::string_view text, bool isXts);
 
 /// One `@timeline <name> { ... }` block of a stylesheet text.

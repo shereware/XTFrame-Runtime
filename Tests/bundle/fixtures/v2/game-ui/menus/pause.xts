@@ -1,0 +1,45 @@
+/* Pause menu of the game-ui bundle. Palette, type scale, panel and button base come from
+   ../shared/base.xts, so this menu matches the HUD; only menu-specific rules are here. */
+#scrim {
+  background-color: #0b0f17cc;
+}
+#halo {
+  animation: halo 3200ms linear infinite;
+  background-color: #1f6feb26;
+  border-radius: 240px;
+  effect: glow(40px #1f6feb 0.5);
+}
+#menu {
+  text-align: center;
+}
+#heading {
+  font-size: 44px;
+  letter-spacing: 10px;
+  line-height: 52px;
+}
+.quit {
+  background-color: #3d1a1a;
+  border: 1px #6e2b2b;
+  color: #f85149;
+}
+.quit:hover {
+  background-color: #5a2424;
+}
+.quit:active {
+  background-color: #7a2f2f;
+}
+#hint {
+  font-size: 12px;
+  letter-spacing: 1px;
+}
+@keyframes halo {
+  0% {
+    effect: glow(40px #1f6feb 0.5);
+  }
+  50% {
+    effect: glow(84px #1f6feb 1.1);
+  }
+  100% {
+    effect: glow(40px #1f6feb 0.5);
+  }
+}

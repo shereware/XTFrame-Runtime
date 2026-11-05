@@ -73,6 +73,6 @@ endif()
 
 add_test(NAME intro_snippets
          COMMAND ${CMAKE_COMMAND} "-DDOC=${INTRO_DOC}"
-                 "-DWHOLE=${CMAKE_CURRENT_SOURCE_DIR}/hud/hud.xt$<SEMICOLON>${CMAKE_CURRENT_SOURCE_DIR}/hud/hud.xts"
+                 "-DWHOLE=${CMAKE_CURRENT_SOURCE_DIR}/hud/hud.xt"
                  "-DMARKED=$<JOIN:${intro_marked},$<SEMICOLON>>"
                  -P "${CMAKE_CURRENT_SOURCE_DIR}/check_snippets.cmake")

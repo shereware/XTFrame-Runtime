@@ -1,0 +1,29 @@
+<xt version="2">
+  <head>
+    <symbols src="../Toggle.xt"/>
+  </head>
+
+  <body>
+    <use symbol="Toggle" id="Sound" slot:label="Sound"/>
+    <use symbol="Toggle" id="Music" slot:label="Music"/>
+    <use symbol="Toggle" id="Off" disabled="true" slot:label="Voice chat"/>
+  </body>
+
+  <layout>
+    body {
+      width: 260px;
+      height: 140px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      row-gap: 12px;
+    }
+  </layout>
+  <style src="../tokens.xts"/>
+  <style>
+    body {
+      background-color: var(--color-bg);
+    }
+  </style>
+</xt>

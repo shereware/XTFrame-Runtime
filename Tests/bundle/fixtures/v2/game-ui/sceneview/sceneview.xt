@@ -1,0 +1,28 @@
+<xt version="2">
+  <head>
+    <title>XTFrame scene view test</title>
+  </head>
+
+  <body>
+    <div id="root">
+      <div id="editorBg" editor-only/>
+      <img id="main" src="engine://main"/>
+      <div id="help" class="panel">
+        <div class="label">SCENE VIEW TEST</div>
+        <div class="title">engine://main · engine://pip</div>
+        <div class="dim">xtui_scene_view &lt;surface&gt; main 1280 720 &lt;camera entity&gt; 7</div>
+        <div class="dim">xtui_scene_view &lt;surface&gt; pip 480 270 &lt;camera entity&gt; 7</div>
+        <div class="dim">xtui_scene_view &lt;surface&gt; main off</div>
+      </div>
+      <div id="pipPanel" class="panel">
+        <div class="label">SCENE VIEW / pip</div>
+        <img id="pip" src="engine://pip"/>
+      </div>
+    </div>
+  </body>
+
+  <layout src="../shared/base.layout.xts"/>
+  <layout src="sceneview.layout.xts"/>
+  <style src="../shared/base.xts"/>
+  <style src="sceneview.xts"/>
+</xt>

@@ -1,0 +1,112 @@
+<xt version="2">
+
+  <symbol name="Subtitle" state-groups="Voice: Character|Narrator" requires="states: Character, Narrator">
+    <ports>
+      speaker: string in
+      line: string in
+      narrator: bool in
+    </ports>
+    <div id="Box"
+         bind:state.Narrator="narrator" bind:state.Character="narrator | not" bind:visible="line | ne('')"
+         on:port(line)="play(intro)" on:hide="play(outro) then hide">
+      <span id="Speaker" bind:text="speaker"></span>
+      <span id="Line" bind:text="line"></span>
+      <div id="Rule"></div>
+    </div>
+  </symbol>
+
+  <layout>
+    symbol(Subtitle) {
+      #Box {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        row-gap: var(--space-1);
+        max-width: 640px;
+        padding: var(--space-2) var(--space-4);
+      }
+      #Rule {
+        align-self: stretch;
+        height: 7px;
+        margin-bottom: -4px;
+      }
+      #Box:state(Character) #Speaker {
+        display: block;
+      }
+      #Box:state(Narrator) #Speaker {
+        display: none;
+      }
+    }
+  </layout>
+  <style>
+    symbol(Subtitle) {
+      #Box {
+        border-width: var(--rule-thick) 0px 0px 0px;
+        border-color: var(--color-border);
+        background-color: var(--color-surface);
+        background-image: var(--tex-grain);
+        background-repeat: repeat;
+        background-size: 128px 128px;
+        font-family: var(--font-body);
+        text-align: center;
+      }
+      #Speaker {
+        color: var(--color-text);
+        font-family: var(--font-display);
+        font-size: var(--font-size-s);
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: var(--letter-display);
+      }
+      #Line {
+        color: var(--color-text);
+        font-size: var(--font-size-m);
+      }
+      #Rule {
+        background-image: var(--tex-rule-h);
+        background-repeat: repeat-x;
+        background-size: 1px 7px;
+      }
+      #Box:state(Narrator) #Line {
+        color: var(--color-text-dim);
+        font-style: italic;
+      }
+    }
+  </style>
+  <timelines>
+    symbol(Subtitle) {
+      @timeline intro {
+        #Box {
+          0s {
+            opacity: 0;
+            transform: translateY(8px);
+          }
+          0.25s ease-out {
+            opacity: 1;
+            transform: translateY(0px);
+          }
+        }
+        #Line {
+          0s {
+            text-reveal: 0;
+          }
+          0.35s linear {
+            text-reveal: 1;
+          }
+        }
+      }
+      @timeline outro {
+        #Box {
+          0s {
+            opacity: 1;
+            transform: translateY(0px);
+          }
+          0.2s ease-in {
+            opacity: 0;
+            transform: translateY(8px);
+          }
+        }
+      }
+    }
+  </timelines>
+</xt>

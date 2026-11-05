@@ -5,7 +5,8 @@
 #include <string_view>
 #include <vector>
 
-#include "../anchor_expand.h"  // T-588.
+#include "../anchor_expand.h"    // T-588.
+#include "../web_compat_lint.h"  // T-594.
 #include "xt/compile/aliases.h"
 #include "xt/compile/diagnostics.h"
 #include "xt/compile/parse_xts.h"
@@ -839,6 +840,10 @@ private:
                 return;
             }
 
+            if (m_sink.webCompat() && !isTrigger) {  // T-594: the `web.*` habits, before validation.
+                lintWebDeclaration(nameTok.text, tokensToText(valueToks), m_fileName,
+                                   reportLine(nameTok.line), nameTok.col, m_sink);
+            }
             if (!m_sceneRule && !isTrigger && isLayoutShorthandProperty(nameTok.text)) {
                 takeAnchorShorthand(nameTok, valueToks, important, decls.size());  // T-588.
                 continue;

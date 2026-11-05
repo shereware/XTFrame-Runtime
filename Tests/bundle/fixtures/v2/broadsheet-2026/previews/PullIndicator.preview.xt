@@ -1,0 +1,28 @@
+<xt version="2">
+  <head>
+    <symbols src="../mobile/PullIndicator.xt"/>
+  </head>
+
+  <body>
+    <use symbol="PullIndicator" id="Pull"/>
+  </body>
+
+  <layout>
+    body {
+      width: 240px;
+      height: 120px;
+      padding: 16px;
+      display: flex;
+      flex-direction: row;
+      align-items: flex-start;
+      column-gap: 16px;
+      row-gap: 12px;
+    }
+  </layout>
+  <style src="../tokens.xts"/>
+  <style>
+    body {
+      background-color: var(--color-bg);
+    }
+  </style>
+</xt>

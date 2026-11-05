@@ -1,8 +1,8 @@
-<xt>
+<xt version="2">
   <head>
-    <link href="app.xts"/>
     <title>XTFrame desktop_app example</title>
   </head>
+
   <body>
     <div id="root">
       <h1>XTFrame desktop_app example</h1>
@@ -20,4 +20,7 @@
       </div>
     </div>
   </body>
+
+  <layout src="app.layout.xts"/>
+  <style src="app.xts"/>
 </xt>

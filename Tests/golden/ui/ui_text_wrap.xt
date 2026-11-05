@@ -1,17 +1,24 @@
-<xt>
-  <head>
-    <style>
-      @font-face { font-family: "Noto Sans"; src: "../../fonts/NotoSans-Regular.subset.ttf"; }
-      #a {
-        margin: 16px;
-        width: 180px;
-        font-family: "Noto Sans";
-        font-size: 24px;
-        color: #202020;
-      }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <div id="a">Hello World Hello World</div>
   </body>
+
+  <layout>
+    #a {
+      margin: 16px;
+      width: 180px;
+    }
+  </layout>
+  <style>
+    @font-face {
+      font-family: "Noto Sans";
+      src: "../../fonts/NotoSans-Regular.subset.ttf";
+    }
+    #a {
+      font-family: "Noto Sans";
+      font-size: 24px;
+      color: #202020;
+    }
+  </style>
 </xt>

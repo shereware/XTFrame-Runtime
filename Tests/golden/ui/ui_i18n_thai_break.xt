@@ -1,17 +1,24 @@
-<xt>
-  <head>
-    <style>
-      @font-face { font-family: "Noto Sans Thai"; src: "../../fonts/NotoSansThai-Regular.subset.ttf"; }
-      #a {
-        margin: 16px;
-        width: 120px;
-        font-family: "Noto Sans Thai";
-        font-size: 20px;
-        color: #202020;
-      }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <div id="a" lang="th">ประเทศไทยมีวัฒนธรรมที่งดงาม</div>
   </body>
+
+  <layout>
+    #a {
+      margin: 16px;
+      width: 120px;
+    }
+  </layout>
+  <style>
+    @font-face {
+      font-family: "Noto Sans Thai";
+      src: "../../fonts/NotoSansThai-Regular.subset.ttf";
+    }
+    #a {
+      font-family: "Noto Sans Thai";
+      font-size: 20px;
+      color: #202020;
+    }
+  </style>
 </xt>

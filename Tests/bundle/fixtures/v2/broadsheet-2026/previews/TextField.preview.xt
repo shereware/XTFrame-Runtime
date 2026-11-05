@@ -1,0 +1,27 @@
+<xt version="2">
+  <head>
+    <symbols src="../TextField.xt"/>
+  </head>
+
+  <body>
+    <use symbol="TextField" id="Name" slot:label="Player name"/>
+  </body>
+
+  <layout>
+    body {
+      width: 320px;
+      height: 110px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      row-gap: 12px;
+    }
+  </layout>
+  <style src="../tokens.xts"/>
+  <style>
+    body {
+      background-color: var(--color-bg);
+    }
+  </style>
+</xt>

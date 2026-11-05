@@ -144,9 +144,9 @@ std::string MigrateReport::summary() const {
     size_t anchors = 0;
     for (const MigrateFileReport& f : files) {
         const std::string rel = relativeTo(f.path, root);
-        migrated += f.status == "migrated" ? 1 : 0;
-        skipped += f.status == "skipped" ? 1 : 0;
-        errors += f.status == "error" ? 1 : 0;
+        migrated += f.status == "migrated" ? size_t{1} : size_t{0};
+        skipped += f.status == "skipped" ? size_t{1} : size_t{0};
+        errors += f.status == "error" ? size_t{1} : size_t{0};
         ids += f.idsAssigned.size();
         split += f.rulesSplit;
         anchors += f.anchors;

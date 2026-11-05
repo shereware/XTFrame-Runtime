@@ -1,16 +1,75 @@
-<xt>
-  <head>
-    <style>
-      #stage2 { position: absolute; left: 0px; top: 150px; width: 300px; height: 150px; perspective: 400px; perspective-origin: 0px 0px; }
-      #back { position: absolute; left: 50px; top: 0px; width: 80px; height: 80px; transform: translateZ(-100px); background-color: #00ff00; }
-      #front { position: absolute; left: 80px; top: 0px; width: 80px; height: 80px; transform: translateZ(50px); background-color: #0000ff; }
-      #stage3 { position: absolute; left: 0px; top: 0px; width: 300px; height: 150px; perspective: 400px; }
-      #bfHidden { position: absolute; left: 20px; top: 20px; width: 60px; height: 60px; transform: rotateY(180deg); backface-visibility: hidden; background-color: #ff00ff; }
-      #bfVisible { position: absolute; left: 120px; top: 20px; width: 60px; height: 60px; transform: rotateY(180deg); backface-visibility: visible; background-color: #00ffff; }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <div id="stage3"><div id="bfHidden"></div><div id="bfVisible"></div></div>
     <div id="stage2"><div id="back"></div><div id="front"></div></div>
   </body>
+
+  <layout>
+    #stage2 {
+      position: absolute;
+      left: 0px;
+      top: 150px;
+      width: 300px;
+      height: 150px;
+      perspective: 400px;
+      perspective-origin: 0px 0px;
+    }
+    #back {
+      position: absolute;
+      left: 50px;
+      top: 0px;
+      width: 80px;
+      height: 80px;
+      transform: translateZ(-100px);
+    }
+    #front {
+      position: absolute;
+      left: 80px;
+      top: 0px;
+      width: 80px;
+      height: 80px;
+      transform: translateZ(50px);
+    }
+    #stage3 {
+      position: absolute;
+      left: 0px;
+      top: 0px;
+      width: 300px;
+      height: 150px;
+      perspective: 400px;
+    }
+    #bfHidden {
+      position: absolute;
+      left: 20px;
+      top: 20px;
+      width: 60px;
+      height: 60px;
+      transform: rotateY(180deg);
+      backface-visibility: hidden;
+    }
+    #bfVisible {
+      position: absolute;
+      left: 120px;
+      top: 20px;
+      width: 60px;
+      height: 60px;
+      transform: rotateY(180deg);
+      backface-visibility: visible;
+    }
+  </layout>
+  <style>
+    #back {
+      background-color: #00ff00;
+    }
+    #front {
+      background-color: #0000ff;
+    }
+    #bfHidden {
+      background-color: #ff00ff;
+    }
+    #bfVisible {
+      background-color: #00ffff;
+    }
+  </style>
 </xt>

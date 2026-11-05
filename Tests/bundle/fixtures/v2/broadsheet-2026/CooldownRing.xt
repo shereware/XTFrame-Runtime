@@ -1,0 +1,137 @@
+<xt version="2">
+
+  <symbol name="CooldownRing" state-groups="Cooldown: Ready|Cooling" requires="states: Ready, Cooling; slots: icon">
+    <ports>
+      ready: bool in
+    </ports>
+    <div id="Box" bind:state.Ready="ready" bind:state.Cooling="ready | not">
+      <div id="Dial">
+        <div id="Base" class="disc"></div>
+        <div id="Cover" class="disc"></div>
+        <div id="Late" class="disc"></div>
+        <div id="Hole"><slot name="icon"><div id="IconDot"></div></slot></div>
+      </div>
+    </div>
+  </symbol>
+
+  <layout>
+    symbol(CooldownRing) {
+      #Box {
+        width: 56px;
+        height: 56px;
+      }
+      #Dial {
+        position: relative;
+        width: 56px;
+        height: 56px;
+      }
+      .disc {
+        position: absolute;
+        left: 0px;
+        top: 0px;
+        width: 56px;
+        height: 56px;
+      }
+      #Cover {
+        transform: rotate(0deg);
+      }
+      #Late {
+        transform: rotate(0deg);
+      }
+      #Hole {
+        position: absolute;
+        left: 6px;
+        top: 6px;
+        width: 44px;
+        height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #IconDot {
+        width: 16px;
+        height: 16px;
+      }
+    }
+  </layout>
+  <style>
+    symbol(CooldownRing) {
+      #Dial {
+        border-width: var(--rule-thin);
+        border-color: var(--color-border);
+        border-radius: var(--radius-full);
+        background-color: var(--color-track);
+      }
+      .disc {
+        border-radius: var(--radius-full);
+      }
+      #Base {
+        background-gradient: conic-gradient(0deg, var(--color-accent) 0%, var(--color-accent) 50%, transparent 50%, transparent 100%);
+      }
+      #Cover {
+        background-gradient: conic-gradient(0deg, var(--color-track) 0%, var(--color-track) 50%, transparent 50%, transparent 100%);
+      }
+      #Late {
+        background-gradient: conic-gradient(0deg, var(--color-accent) 0%, var(--color-accent) 50%, transparent 50%, transparent 100%);
+        opacity: 0;
+      }
+      #Hole {
+        border-radius: var(--radius-full);
+        background-color: var(--color-surface);
+      }
+      #IconDot {
+        border-radius: var(--radius-s);
+        background-color: var(--color-text-dim);
+      }
+      #Box:state(Ready) #Dial {
+        background-color: var(--color-accent);
+      }
+      #Box:state(Ready) #IconDot {
+        background-color: var(--color-text);
+      }
+      #Box:state(Cooling) #IconDot {
+        background-color: var(--color-text-dim);
+      }
+      #Box:state(Ready) #Cover {
+        opacity: 0;
+      }
+    }
+  </style>
+  <timelines>
+    symbol(CooldownRing) {
+      @timeline cooldown {
+        duration: 1s;
+        #Cover {
+          0s {
+            transform: rotate(0deg);
+            opacity: 1;
+          }
+          0.5s linear {
+            transform: rotate(180deg);
+            opacity: 1;
+          }
+          0.501s {
+            opacity: 0;
+          }
+        }
+        #Late {
+          0s {
+            transform: rotate(0deg);
+            opacity: 0;
+          }
+          0.5s {
+            transform: rotate(0deg);
+            opacity: 0;
+          }
+          0.501s {
+            opacity: 1;
+          }
+          1s linear {
+            transform: rotate(180deg);
+            opacity: 1;
+          }
+        }
+      }
+    }
+  </timelines>
+</xt>

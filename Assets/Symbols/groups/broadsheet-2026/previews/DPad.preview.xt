@@ -1,23 +1,28 @@
-<xt>
+<xt version="2">
   <head>
-    <!-- T-241: preview of the DPad standard mobile symbol (golden states and thumbnail; T-499: moved into the group). -->
-    <link href="../tokens.xts"/>
-    <link rel="symbols" href="../mobile/DPad.xt"/>
-    <style>
-      body {
-        width: 200px;
-        height: 200px;
-        padding: 16px;
-        display: flex;
-        flex-direction: row;
-        align-items: flex-start;
-        column-gap: 16px;
-        row-gap: 12px;
-        background-color: var(--color-bg);
-      }
-    </style>
+    <symbols src="../mobile/DPad.xt"/>
   </head>
+
   <body>
     <use symbol="DPad" id="Pad"/>
   </body>
+
+  <layout>
+    body {
+      width: 200px;
+      height: 200px;
+      padding: 16px;
+      display: flex;
+      flex-direction: row;
+      align-items: flex-start;
+      column-gap: 16px;
+      row-gap: 12px;
+    }
+  </layout>
+  <style src="../tokens.xts"/>
+  <style>
+    body {
+      background-color: var(--color-bg);
+    }
+  </style>
 </xt>

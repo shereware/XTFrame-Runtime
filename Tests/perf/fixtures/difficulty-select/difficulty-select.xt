@@ -1,9 +1,8 @@
-<xt>
+<xt version="2">
   <head>
-    <link href="../shared/base.xts"/>
-    <link href="difficulty-select.xts"/>
     <title>difficulty-select</title>
   </head>
+
   <body>
     <div id="difficulty-select">
       <div id="world">
@@ -276,4 +275,9 @@
       <div id="vignette"/>
     </div>
   </body>
+
+  <layout src="../shared/base.layout.xts"/>
+  <layout src="difficulty-select.layout.xts"/>
+  <style src="../shared/base.xts"/>
+  <style src="difficulty-select.xts"/>
 </xt>

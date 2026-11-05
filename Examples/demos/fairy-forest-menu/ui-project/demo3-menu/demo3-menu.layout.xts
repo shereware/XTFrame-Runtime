@@ -1,0 +1,213 @@
+#demo3-menu {
+  height: 100vh;
+  margin-bottom: 0;
+  margin-left: 0;
+  margin-right: 0;
+  margin-top: 0;
+  overflow: hidden;
+  position: relative;
+  width: 100vw;
+}
+#bg-gray {
+  bottom: 0;
+  left: 0;
+  position: absolute;
+  right: 0;
+  top: 0;
+}
+#trail-layer {
+  bottom: 0;
+  left: 0;
+  position: absolute;
+  right: 0;
+  top: 0;
+}
+#trail-3 {
+  height: 100%;
+  left: 0px;
+  position: absolute;
+  top: 0px;
+  width: 100%;
+}
+#trail-2 {
+  height: 100%;
+  left: 0px;
+  position: absolute;
+  top: 0px;
+  width: 100%;
+}
+#trail-1 {
+  height: 100%;
+  left: 0px;
+  position: absolute;
+  top: 0px;
+  width: 100%;
+}
+#bg-color {
+  bottom: 0;
+  left: 0;
+  position: absolute;
+  right: 0;
+  top: 0;
+}
+#vignette {
+  bottom: 0;
+  left: 0;
+  position: absolute;
+  right: 0;
+  top: 0;
+}
+#fx-layer {
+  bottom: 0;
+  left: 0;
+  overflow: hidden;
+  position: absolute;
+  right: 0;
+  top: 0;
+}
+#fx-fireflies {
+  height: 1440px;
+  left: 0px;
+  position: absolute;
+  top: 0px;
+  width: 100%;
+}
+#fx-petals {
+  height: 1440px;
+  left: 0px;
+  position: absolute;
+  top: 0px;
+  width: 100%;
+}
+#fx-petals-color {
+  height: 100%;
+  left: 0px;
+  position: absolute;
+  top: 0px;
+  width: 100%;
+}
+/* import: Main.dc.html:1/5 */
+#title-group {
+  height: 230px;
+  left: calc(50% - 300px);
+  position: absolute;
+  top: calc(1safe-top + 18px);
+  width: 600px;
+}
+#garland-gray {
+  height: 90px;
+  left: 60px;
+  position: absolute;
+  top: 132px;
+  width: 480px;
+}
+#garland-color {
+  height: 90px;
+  left: 60px;
+  position: absolute;
+  top: 132px;
+  width: 480px;
+}
+#menu-panel {
+  anchor: left bottom;
+  offset: 64px 62px;
+  size: 380px 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  justify-content: center;
+  padding-bottom: 26px;
+  padding-left: 24px;
+  padding-right: 24px;
+  padding-top: 26px;
+}
+#panel-warm {
+  height: 100%;
+  left: 0px;
+  position: absolute;
+  top: 0px;
+  width: 100%;
+}
+#corner-tr-gray {
+  height: 126px;
+  position: absolute;
+  right: -58px;
+  top: -64px;
+  width: 190px;
+}
+#corner-tr-color {
+  height: 126px;
+  position: absolute;
+  right: -58px;
+  top: -64px;
+  width: 190px;
+}
+#corner-bl-gray {
+  bottom: -58px;
+  height: 126px;
+  left: -62px;
+  position: absolute;
+  transform: rotate(180deg);
+  width: 190px;
+}
+#corner-bl-color {
+  bottom: -58px;
+  height: 126px;
+  left: -62px;
+  position: absolute;
+  transform: rotate(180deg);
+  width: 190px;
+}
+.menu-item {
+  position: relative;
+  width: 332px;
+  height: 64px;
+  padding-top: 0px;
+  padding-right: 16px;
+  padding-bottom: 0px;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 18px;
+}
+.item-hl {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 100%;
+  height: 100%;
+}
+.icon-wrap {
+  position: relative;
+  width: 52px;
+  height: 52px;
+}
+.icon {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 52px;
+  height: 52px;
+}
+.label-wrap {
+  position: relative;
+  width: 230px;
+  height: 40px;
+}
+.label {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+}
+.title {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 600px;
+  height: 140px;
+  margin-top: 0;
+  margin-right: 0;
+  margin-bottom: 0;
+  margin-left: 0;
+}

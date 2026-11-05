@@ -25,6 +25,7 @@
 #include "svg_timeline.h"
 #include "symbol_expand.h"
 #include "trigger_emit.h"
+#include "web_compat_lint.h"
 #include "xt/asset_resolver.h"
 #include "xt/charconv.h"
 #include "xt/compile/compile.h"
@@ -557,6 +558,7 @@ CompileResult compileDocumentImpl(std::string_view mainText, std::string_view ma
     CompileResult result;
     DiagnosticSink sink;
     sink.setReportDeprecated(options.strict || options.reportDeprecated);  // T-408
+    sink.setWebCompat(options.webCompat);                                  // T-594
     std::string path(mainName);
     std::string fileName = basenameOf(mainName);
 
@@ -566,6 +568,7 @@ CompileResult compileDocumentImpl(std::string_view mainText, std::string_view ma
         result.diagnostics = sink.all();
         return result;
     }
+    lintWebDom(dom, path, sink);  // T-594: `<table>` markup, a `layer` attribute.
     // Step 1a' (T-342, 03 §3.13): the publish view drops `editor-only` subtrees before anything
     // else sees them; the symbol libraries get the same treatment as they are read below.
     std::vector<std::string> strippedSymbols;
@@ -1120,9 +1123,12 @@ CompileResult compileDocumentImpl(std::string_view mainText, std::string_view ma
     result.assets = collectCompiledAssets(writer);
 
     // T-408: a deprecated alias is reported under strict but does not fail it.
-    bool failed = sink.hasErrors() || (options.strict && sink.warningCount() > sink.deprecatedCount());
+    // T-594: neither do the `web.*` warnings.
+    bool failed = sink.hasErrors() ||
+                  (options.strict && sink.warningCount() > sink.deprecatedCount() + sink.webCount());
     if (!failed) {
         result.ir = writer.finish();
+        lintWebDocument(result.ir, path, sink);  // T-594: the checks that need the cascade.
     }
     result.diagnostics = sink.all();
     return result;

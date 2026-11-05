@@ -1,17 +1,5 @@
-<xt>
-  <head>
-    <style>
-      #row { display: flex; height: 200px; }
-      #r-stretch { width: 100px; aspect-ratio: 2; }
-      #r-center { width: 100px; aspect-ratio: 2; align-self: center; }
-      #r-basis { flex-basis: 60px; aspect-ratio: 3 / 2; align-self: flex-start; }
-      #r-plain { width: 50px; }
-      #col { display: flex; flex-direction: column; width: 300px; }
-      #c-stretch { height: 40px; aspect-ratio: 2; }
-      #c-center { height: 40px; aspect-ratio: 2; align-self: center; }
-      #c-plain { height: 30px; }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <div id="row">
       <div id="r-stretch"></div>
@@ -25,4 +13,45 @@
       <div id="c-plain"></div>
     </div>
   </body>
+
+  <layout>
+    #row {
+      display: flex;
+      height: 200px;
+    }
+    #r-stretch {
+      width: 100px;
+      aspect-ratio: 2;
+    }
+    #r-center {
+      width: 100px;
+      aspect-ratio: 2;
+      align-self: center;
+    }
+    #r-basis {
+      flex-basis: 60px;
+      aspect-ratio: 3 / 2;
+      align-self: flex-start;
+    }
+    #r-plain {
+      width: 50px;
+    }
+    #col {
+      display: flex;
+      flex-direction: column;
+      width: 300px;
+    }
+    #c-stretch {
+      height: 40px;
+      aspect-ratio: 2;
+    }
+    #c-center {
+      height: 40px;
+      aspect-ratio: 2;
+      align-self: center;
+    }
+    #c-plain {
+      height: 30px;
+    }
+  </layout>
 </xt>

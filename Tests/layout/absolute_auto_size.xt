@@ -1,13 +1,5 @@
-<xt>
-  <head>
-    <style>
-      #cb { position: relative; width: 300px; height: 200px; }
-      #a { position: absolute; left: 10px; top: 10px; width: 100px; padding: 10px; }
-      .row { height: 20px; }
-      #b { position: absolute; right: 20px; bottom: 30px; padding: 10px; }
-      .wide { width: 120px; height: 20px; }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <div id="cb">
       <div id="a">
@@ -19,4 +11,32 @@
       </div>
     </div>
   </body>
+
+  <layout>
+    #cb {
+      position: relative;
+      width: 300px;
+      height: 200px;
+    }
+    #a {
+      position: absolute;
+      left: 10px;
+      top: 10px;
+      width: 100px;
+      padding: 10px;
+    }
+    .row {
+      height: 20px;
+    }
+    #b {
+      position: absolute;
+      right: 20px;
+      bottom: 30px;
+      padding: 10px;
+    }
+    .wide {
+      width: 120px;
+      height: 20px;
+    }
+  </layout>
 </xt>

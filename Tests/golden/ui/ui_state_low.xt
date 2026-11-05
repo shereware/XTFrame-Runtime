@@ -1,22 +1,74 @@
-<xt>
-  <head>
-    <style>
-      /* T-174: :state() styles (27.1), a state group, a click trigger and an .xts state-enter. */
-      #Hp { position: absolute; left: 32px; top: 32px; width: 192px; height: 32px; background-color: #333333; }
-      #Hp_Bar { position: absolute; left: 4px; top: 4px; width: 184px; height: 24px; background-color: #33aa66; }
-      #Hp:state(Full) > #Hp_Bar { background-color: #33cc99; }
-      #Hp:state(Low) > #Hp_Bar { width: 40px; background-color: #cc3333; }
-      #Hp { state-enter: Low class(alarm); }
-      .alarm { border-width: 4px; border-color: #ff9900; }
-      #Btn { position: absolute; left: 32px; top: 112px; width: 96px; height: 48px; background-color: #888888; }
-      #Btn:state(Selected) { background-color: #3366cc; border-radius: 12px; }
-      #Other { position: absolute; left: 144px; top: 112px; width: 80px; height: 48px; background-color: #888888; }
-      #Other:state(Selected) { background-color: #3366cc; }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
-    <div id="Hp" state-groups="Level: Full|Low"><div id="Hp_Bar"></div></div>
+    <div id="Hp" state-groups="Level: Full|Low" on:state(Low).enter="class(alarm)"><div id="Hp_Bar"></div></div>
     <div id="Btn" on:click="state(Selected, toggle)"></div>
     <div id="Other"></div>
   </body>
+
+  <layout>
+    #Hp {
+      position: absolute;
+      left: 32px;
+      top: 32px;
+      width: 192px;
+      height: 32px;
+    }
+    #Hp_Bar {
+      position: absolute;
+      left: 4px;
+      top: 4px;
+      width: 184px;
+      height: 24px;
+    }
+    #Hp:state(Low) > #Hp_Bar {
+      width: 40px;
+    }
+    #Btn {
+      position: absolute;
+      left: 32px;
+      top: 112px;
+      width: 96px;
+      height: 48px;
+    }
+    #Other {
+      position: absolute;
+      left: 144px;
+      top: 112px;
+      width: 80px;
+      height: 48px;
+    }
+  </layout>
+  <style>
+    /* T-174: :state() styles (27.1), a state group, a click trigger and an .xts state-enter. */
+    #Hp {
+      background-color: #333333;
+    }
+    #Hp_Bar {
+      background-color: #33aa66;
+    }
+    #Hp:state(Full) > #Hp_Bar {
+      background-color: #33cc99;
+    }
+    #Hp:state(Low) > #Hp_Bar {
+      background-color: #cc3333;
+    }
+    .alarm {
+      border-width: 4px;
+      border-color: #ff9900;
+    }
+    #Btn {
+      background-color: #888888;
+    }
+    #Btn:state(Selected) {
+      background-color: #3366cc;
+      border-radius: 12px;
+    }
+    #Other {
+      background-color: #888888;
+    }
+    #Other:state(Selected) {
+      background-color: #3366cc;
+    }
+  </style>
 </xt>

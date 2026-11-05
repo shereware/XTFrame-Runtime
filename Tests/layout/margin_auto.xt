@@ -1,10 +1,13 @@
-<xt>
-  <head>
-    <style>
-      #a { width: 100px; margin: 0 auto; }
-    </style>
-  </head>
+<xt version="2">
+
   <body>
     <div id="a"></div>
   </body>
+
+  <layout>
+    #a {
+      width: 100px;
+      margin: 0 auto;
+    }
+  </layout>
 </xt>

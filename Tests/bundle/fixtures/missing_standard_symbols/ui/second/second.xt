@@ -1,9 +1,16 @@
-<xt>
+<xt version="2">
   <head>
-    <!-- T-263f item 12 fixture, second UI: the note is printed once per run, not once per UI. -->
-    <link rel="symbols" href="../../shared/lib/TopBar.xt"/>
+    <symbols src="../../shared/lib/TopBar.xt"/>
   </head>
+
   <body>
-    <div style="width: 10px; height: 10px; background-color: #0000ff"></div>
+    <div id="Group_1" style="background-color: #0000ff"></div>
   </body>
+
+  <layout>
+    #Group_1 {
+      width: 10px;
+      height: 10px;
+    }
+  </layout>
 </xt>

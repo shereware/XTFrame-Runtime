@@ -1,0 +1,91 @@
+<xt version="2">
+
+  <symbol name="TopBar" requires="slots: title, left, right">
+    <div id="Box">
+      <div id="Bar">
+        <div id="Left"><slot name="left"></slot></div>
+        <span id="Title"><slot name="title">Title</slot></span>
+        <div id="Right"><slot name="right"></slot></div>
+      </div>
+      <div id="Rule"></div>
+    </div>
+  </symbol>
+
+  <layout>
+    symbol(TopBar) {
+      #Box {
+        display: flex;
+        flex-direction: column;
+        flex-grow: 1;
+        padding-top: 1safe-top;
+      }
+      #Bar {
+        display: flex;
+        align-items: center;
+        column-gap: var(--space-3);
+        min-height: 56px;
+        padding: 0px var(--space-3);
+      }
+      #Left,
+      #Right {
+        display: flex;
+        align-items: center;
+        column-gap: var(--space-2);
+        min-width: var(--touch-min);
+        min-height: var(--touch-min);
+      }
+      #Title {
+        flex-grow: 1;
+      }
+      #Rule {
+        height: 7px;
+      }
+    }
+  </layout>
+  <style>
+    symbol(TopBar) {
+      #Box {
+        background-color: var(--color-surface);
+        background-image: var(--tex-grain);
+        background-repeat: repeat;
+        background-size: 128px 128px;
+        font-family: var(--font-body);
+        color: var(--color-text);
+      }
+      #Bar {
+        border-width: var(--rule-thick) 0px 0px 0px;
+        border-color: var(--color-border);
+      }
+      #Title {
+        text-align: center;
+        font-family: var(--font-display);
+        font-size: var(--font-size-l);
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: var(--letter-display);
+        white-space: nowrap;
+      }
+      #Rule {
+        background-image: var(--tex-rule-h);
+        background-repeat: repeat-x;
+        background-size: 1px 7px;
+      }
+    }
+  </style>
+  <timelines>
+    symbol(TopBar) {
+      @timeline intro {
+        #Bar {
+          0s {
+            transform: translateY(8px);
+            opacity: 0;
+          }
+          0.25s ease-out {
+            transform: translateY(0px);
+            opacity: 1;
+          }
+        }
+      }
+    }
+  </timelines>
+</xt>
