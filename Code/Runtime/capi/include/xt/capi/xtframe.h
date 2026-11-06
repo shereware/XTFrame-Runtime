@@ -272,6 +272,23 @@ XT_CAPI uint32_t xt_debug_surface_input_count(const xt_surface* s);
 typedef void (*xt_update_hook_fn)(xt_surface* s, float dt, void* user);
 XT_CAPI xt_status xt_surface_set_update_hook(xt_surface* s, xt_update_hook_fn fn, void* user);
 
+/* T-635 (Docs/design/50-c-abi.md 50.y; appended, ABI version unchanged): the runtime state snapshot
+   (Document::snapshotState / restoreState): every port value (event ports excepted), the custom
+   states, input text and selection, focus and scroll position of the elements with an id, and the
+   active @timeline groups. Not included: the IR, resources and flow node state; restore on the same
+   bundle version (another version only applies ports and custom states best-effort).
+   xt_surface_save_state: the snapshot as JSON. The string is owned by the surface and stays valid
+   until the next xt_surface_save_state, xt_surface_destroy or xt_surface_hot_reload on that surface
+   (other calls do not invalidate it); copy it to keep it. NULL + last_error on failure.
+   xt_surface_load_state: applies a save_state text, after create and before the first
+   xt_surface_update or at any time; ports are written as a host write (listeners notified,
+   port(<name>) triggers fired), id'd elements the snapshot does not list lose their custom states
+   and scroll offset, timeline groups not in it are released. NULL or not a snapshot (unparsable
+   JSON, not an object, another version) -> XT_STATUS_INVALID_ARGUMENT with nothing applied; from
+   inside a callback -> XT_STATUS_UNSUPPORTED (as hot_reload). */
+XT_CAPI const char* xt_surface_save_state(xt_surface* s);
+XT_CAPI xt_status xt_surface_load_state(xt_surface* s, const char* json);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

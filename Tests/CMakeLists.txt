@@ -3,6 +3,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/common)
 
 add_executable(xt_tests
     unit/test_main.cpp
+    unit/test_test_temp.cpp  # T-632
     unit/test_version.cpp
     unit/test_charconv.cpp
     unit/test_locale_numbers.cpp

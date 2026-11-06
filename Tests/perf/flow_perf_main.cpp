@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include "test_temp.h"
 #include "xt/bundle/ui_project.h"
 #include "xt/command_list.h"
 #include "xt/compile/compile.h"
@@ -214,7 +215,7 @@ void writeCsv(const std::string& path, const std::vector<xt::FrameStats>& frames
 
 }  // namespace
 
-int main(int argc, char** argv) {
+static int runFlowPerf(int argc, char** argv) {
     Args args;
     if (!parseArgs(argc, argv, args)) {
         std::fprintf(stderr,
@@ -373,3 +374,6 @@ int main(int argc, char** argv) {
     }
     return 0;
 }
+
+// T-632: every test main returns through finishTempDir (Tests/common/test_temp.h).
+int main(int argc, char** argv) { return xt::test::finishTempDir(runFlowPerf(argc, argv)); }

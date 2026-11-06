@@ -1,0 +1,37 @@
+/* Four 16px rows: the hp bar, the Level states, the Pulse timeline and a scrolled box of stripes. */
+body {
+  width: 100vw;
+  height: 100vh;
+}
+#Bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 16px;
+}
+#Level {
+  position: absolute;
+  left: 0;
+  top: 16px;
+  width: 64px;
+  height: 16px;
+}
+#Pulse {
+  position: absolute;
+  left: 0;
+  top: 32px;
+  width: 64px;
+  height: 16px;
+}
+#Box {
+  position: absolute;
+  left: 0;
+  top: 48px;
+  width: 64px;
+  height: 16px;
+  overflow: scroll;
+}
+.stripe {
+  width: 64px;
+  height: 16px;
+}

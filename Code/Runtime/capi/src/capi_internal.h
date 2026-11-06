@@ -210,6 +210,9 @@ struct xt_surface : public xt::ContextListener {
     uint32_t dispatchDepth = 0;
     uint32_t debugInputCount = 0;
     xt::capi::Scratch scratch;
+    /// T-635 (50 §50.y): the last xt_surface_save_state() text; its pointer stays valid until the
+    /// next save_state / destroy / hot_reload on this surface.
+    std::string stateJson;
 
     ~xt_surface() override;
     /// Takes everything down in the 50.3 order; safe to call twice.

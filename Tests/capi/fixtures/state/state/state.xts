@@ -1,0 +1,28 @@
+#Bar {
+  background-color: #ff0000;
+}
+#Level {
+  background-color: #00ff00;
+}
+#Level:state(Warn) {
+  background-color: #ffff00;
+}
+#Level:state(Ok) {
+  background-color: #00ffff;
+}
+#Pulse {
+  background-color: #ffffff;
+  opacity: 1;
+}
+#S1 {
+  background-color: #ff0000;
+}
+#S2 {
+  background-color: #00ff00;
+}
+#S3 {
+  background-color: #0000ff;
+}
+#S4 {
+  background-color: #ffffff;
+}

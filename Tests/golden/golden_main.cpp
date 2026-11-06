@@ -7,6 +7,7 @@
 #ifdef XT_GOLDEN_WGPU
 #include "golden_wgpu.h"
 #endif
+#include "test_temp.h"
 #include "xt/asset_resolver.h"
 #include "xt/compile/ir_writer.h"
 #include "xt/ir.h"
@@ -156,7 +157,7 @@ bool compareAndReport(const std::string& name, const std::vector<uint8_t>& actua
 
 }  // namespace
 
-int main(int argc, char** argv) {
+static int runGolden(int argc, char** argv) {
     bool update = false;
     std::string filter;
     std::string backendName = "sw";
@@ -406,3 +407,6 @@ int main(int argc, char** argv) {
     }
     return 0;
 }
+
+// T-632: every test main returns through finishTempDir (Tests/common/test_temp.h).
+int main(int argc, char** argv) { return xt::test::finishTempDir(runGolden(argc, argv)); }

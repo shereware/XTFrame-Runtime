@@ -1,0 +1,11 @@
+@timeline pulse {
+  duration: 2s;
+  #Pulse {
+    0s {
+      opacity: 0;
+    }
+    2s {
+      opacity: 1;
+    }
+  }
+}

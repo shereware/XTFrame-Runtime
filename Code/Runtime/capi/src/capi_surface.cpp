@@ -630,6 +630,49 @@ XT_CAPI xt_status xt_surface_hot_reload(xt_surface* s) {
     });
 }
 
+XT_CAPI const char* xt_surface_save_state(xt_surface* s) {
+    XT_CAPI_GUARD_OR("xt_surface_save_state", const char*, nullptr, {
+        if (s == nullptr) {
+            xt::capi::setLastError("xt_surface_save_state: surface is NULL");
+            return nullptr;
+        }
+        xt::Document* doc = s->ctx != nullptr ? s->ctx->document(s->handle) : nullptr;
+        if (doc == nullptr) {
+            xt::capi::setLastError("xt_surface_save_state: the surface has no document loaded");
+            return nullptr;
+        }
+        // T-635 (50 §50.y): kept in the surface (not the scratch ring), so the pointer outlives the
+        // other calls on it until the next save_state / destroy / hot_reload.
+        s->stateJson = doc->snapshotState();
+        return s->stateJson.c_str();
+    });
+}
+
+XT_CAPI xt_status xt_surface_load_state(xt_surface* s, const char* json) {
+    XT_CAPI_GUARD("xt_surface_load_state", {
+        XT_CAPI_REQUIRE_SURFACE(s, "xt_surface_load_state");
+        if (s->dispatchDepth > 0) {
+            return fail(XT_STATUS_UNSUPPORTED, "xt_surface_load_state: not from inside a callback");
+        }
+        if (json == nullptr) {
+            return fail(XT_STATUS_INVALID_ARGUMENT, "xt_surface_load_state: json is NULL");
+        }
+        xt::Document* doc = s->ctx != nullptr ? s->ctx->document(s->handle) : nullptr;
+        if (doc == nullptr) {
+            return fail(XT_STATUS_INVALID_ARGUMENT,
+                        "xt_surface_load_state: the surface has no document loaded");
+        }
+        // Port writes notify the listeners (host port events) as a host write does: a dispatch.
+        xt::capi::DispatchScope scope(*s);
+        const xt::Status status = doc->restoreState(json);
+        if (status != xt::Status::kOk) {
+            return fail(toCapi(status), std::string("xt_surface_load_state: not a state snapshot (") +
+                                            xt::statusName(status) + "); nothing applied");
+        }
+        return XT_STATUS_OK;
+    });
+}
+
 XT_CAPI xt_status xt_surface_play_timeline(xt_surface* s, const char* scope_path, const char* name,
                                            const xt_play_options* opt) {
     XT_CAPI_GUARD("xt_surface_play_timeline", {

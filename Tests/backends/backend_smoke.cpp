@@ -2,6 +2,7 @@
 #include <cstring>
 #include <string>
 
+#include "test_temp.h"
 #include "xt/command_list.h"
 #include "xt/context.h"
 #include "xt_backend.h"
@@ -12,7 +13,7 @@
 /// native windows, e.g. SDL's offscreen) is a SKIP (exit 0); any other create() failure exits 1.
 /// Built once per combination by Tests/backends/CMakeLists.txt (XT_SMOKE_NAME = the combination).
 
-int main(int argc, char** argv) {
+static int runSmoke(int argc, char** argv) {
     (void)argc;
     (void)argv;
     xt::backend::Backend backend;
@@ -57,3 +58,6 @@ int main(int argc, char** argv) {
     std::printf("%s\n", ok ? "smoke ok" : "smoke FAILED");
     return ok ? 0 : 1;
 }
+
+// T-632: every test main returns through finishTempDir (Tests/common/test_temp.h).
+int main(int argc, char** argv) { return xt::test::finishTempDir(runSmoke(argc, argv)); }

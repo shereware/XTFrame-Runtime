@@ -115,3 +115,5 @@ fixture (.xt 或 .json) + 參數 (width, height, dpr, time)
 - PR 觸發的 CI（§15.8）待 self-hosted runner 登錄後接手「每張單」那層；在那之前本機就是閘門。
 - 後果：版號之間可能累積幾張只過 dev_check 的單；版號單的完整閘門抓到的問題開修正單（T-457 的模式）。
 - T-470：Qt 5.12 標頭語法檢查抽成 `Tools/Scripts/qt512_syntax_check.sh`（`local_ci.sh` 以 `--all` 呼叫）；`dev_check.sh` 的 `qt512` 套件只查相對 `origin/main` 改動的 `Code/Editor/**/*.cpp`，要求 `editor_qt` 或目標 `xtframe-editor` 時自動帶入（`--no-qt512` 關閉），`qt512-all` 查全部。
+
+**T-632 實作記錄（#602，2026-11-06）**：`tempDir()` 首次建立自己的根後呼叫 `sweepStaleTempDirs(parent, own)`（`XT_TEST_KEEP_TEMP=1` 不掃）：只看 `xt_tests_` 前綴，最後寫入超過 24 h、或數字後綴 pid 不在執行中（Windows `OpenProcess` 只在 `ERROR_INVALID_PARAMETER` 視為死、否則 `GetExitCodeProcess`；POSIX `kill(pid,0)` ESRCH）即 `remove_all`（錯誤忽略）。不含 `<windows.h>`（它的 `small` 巨集撞 `test_locale_numbers.cpp`），改自行宣告四個 kernel32 函式。`finishTempDir` 刪除失敗重試 5 次、200 ms。補收尾的 main：`golden_main.cpp`、`flow_perf_main.cpp`、`backend_smoke.cpp`（intro 範例與 fake_browser 不用暫存，不改）。測試 `test_test_temp.cpp` 四案；core 2007、golden 173、backends 9、editor 403、editor_service 253、history 29、bundle 257、flow 191。
