@@ -1,3 +1,4 @@
+#include <cstring>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -547,6 +548,15 @@ constexpr const char* kStateUi = R"X(<xt><head><style>
 <div id="Box"><div id="Tall"></div></div>
 </body></xt>)X";
 
+/// T-650: a snapshot without its `clock` member (the update() count differs after one more frame).
+std::string withoutClock(std::string snap) {
+    const size_t at = snap.find(",\"clock\":{");
+    if (at != std::string::npos) {
+        snap.erase(at, snap.find('}', at) + 1 - at);
+    }
+    return snap;
+}
+
 InputEvent stateKey(KeyCode key, uint8_t modifiers = 0) {
     InputEvent ev;
     ev.kind = InputEvent::KeyDown;
@@ -614,8 +624,9 @@ TEST_CASE("t398: snapshotState in one Context, restoreState in another, before i
     CHECK(n.isTimelinePlaying("", "intro"));
     CHECK(n.timelineTime("", "intro") == doctest::Approx(t0));
     CHECK(n.byId("Box").scrollPos().y == doctest::Approx(120));
-    // Everything the snapshot covers, the input caret and selection included, is the same.
-    CHECK(n.snapshotState() == snap);
+    // Everything the snapshot covers, the input caret and selection included, is the same (T-650:
+    // but the update() count, one more here).
+    CHECK(withoutClock(n.snapshotState()) == withoutClock(snap));
 
     // Applied again at any time: the snapshot is authoritative (state cleared, focus moved).
     REQUIRE(n.setCustomState(n.byId("A"), "Warn", false) == Status::kOk);
@@ -632,7 +643,7 @@ TEST_CASE("t398: snapshotState in one Context, restoreState in another, before i
     // Not a snapshot: nothing applied.
     CHECK(n.restoreState("{") == Status::kInvalidArgument);
     CHECK(n.restoreState("[]") == Status::kInvalidArgument);
-    CHECK(n.restoreState(R"({"version":2})") == Status::kInvalidArgument);
+    CHECK(n.restoreState(R"({"version":3})") == Status::kInvalidArgument);  // T-650: 1 and 2 load.
     // Unknown elements, ports, states and timelines are skipped.
     CHECK(n.restoreState(R"({"version":1,"ports":{"nope":"1","hp":"7"},"states":{"Zz":["Warn"]},)"
                          R"("timelines":[{"name":"none"}]})") == Status::kOk);
@@ -654,4 +665,137 @@ TEST_CASE("t398: hotReload carries input values and scroll offsets too") {
     h->step();
     CHECK(n.byId("F").value() == "abc");
     CHECK(n.byId("Box").scrollPos().y == doctest::Approx(64));
+}
+
+// -- T-650 (23 XF-097 version 2): runtime classes, the document clock and `shown` -----------------
+
+namespace {
+
+constexpr const char* kV2Ui = R"X(<xt><head><style>
+#A { width: 40px; height: 20px; opacity: 1; }
+#B, #C { width: 40px; height: 20px; }
+.big { width: 80px; }
+.red { opacity: 0.5; }
+@timeline intro { duration: 2s; #A { 0s { opacity: 0 } 2s { opacity: 1 } } }
+</style></head><body id="Root" on:show="play(intro)">
+<div id="A" class="big"></div><div id="B"></div><div id="C"></div>
+</body></xt>)X";
+
+/// Counts the OnShown calls of a Context.
+struct ShownCounter : ContextListener {
+    int shown = 0;
+    void onShown(DocumentHandle /*document*/) override { ++shown; }
+};
+
+/// A second Context with the same IR loaded, not updated yet.
+struct Fresh {
+    Context ctx{ContextConfig{}};
+    DocumentHandle handle = 0;
+    ShownCounter counter;
+    explicit Fresh(const std::vector<uint8_t>& ir) {
+        ctx.addListener(&counter);
+        ctx.setViewport(Rect{0, 0, 400, 300}, 1.0f);
+        Result<DocumentHandle> h = ctx.loadDocument(IrBlob{ir.data(), ir.size()}, false);
+        REQUIRE(h.ok());
+        handle = h.value();
+    }
+    ~Fresh() { ctx.removeListener(&counter); }
+    Fresh(const Fresh&) = delete;
+    Fresh& operator=(const Fresh&) = delete;
+    Document& doc() { return *ctx.document(handle); }
+};
+
+bool sameBits(float a, float b) { return std::memcmp(&a, &b, sizeof(float)) == 0; }
+
+}  // namespace
+
+TEST_CASE("t650: runtime classes round-trip as add / remove deltas against the IR") {
+    auto h = open(kV2Ui);
+    Document& d = h->doc();
+    REQUIRE(d.byId("A").removeClass("big"));
+    REQUIRE(d.byId("A").addClass("red"));
+    REQUIRE(d.byId("B").addClass("zeta"));
+    REQUIRE(d.byId("B").addClass("red"));
+    h->step();
+    const std::string snap = d.snapshotState();
+    CAPTURE(snap);
+    CHECK(snap.find(R"({"version":2,)") == 0);
+    CHECK(snap.find(
+              R"("classes":{"A":{"add":["red"],"remove":["big"]},"B":{"add":["red","zeta"],"remove":[]}})") !=
+          std::string::npos);
+    CHECK(snap.find(R"("shown":true})") != std::string::npos);
+
+    Fresh f(h->ir);
+    Document& n = f.doc();
+    REQUIRE(n.byId("C").addClass("stray"));  // The snapshot is authoritative: C gets its IR classes back.
+    REQUIRE(n.restoreState(snap) == Status::kOk);
+    f.ctx.update(0.0f);
+    CHECK(n.byId("A").hasClass("red"));
+    CHECK_FALSE(n.byId("A").hasClass("big"));
+    CHECK(n.byId("B").hasClass("red"));
+    CHECK(n.byId("B").hasClass("zeta"));
+    CHECK_FALSE(n.byId("C").hasClass("stray"));
+    CHECK(n.byId("B").property(prop::Opacity).f == doctest::Approx(0.5f));  // Restyled.
+    CHECK(n.byId("A").boundingBox().w == doctest::Approx(40.0f));           // `.big` is gone.
+    CHECK(withoutClock(n.snapshotState()) == withoutClock(snap));
+
+    // A version 1 snapshot (no `classes`) leaves the classes alone.
+    REQUIRE(n.byId("C").addClass("stray"));
+    REQUIRE(n.restoreState(R"({"version":1})") == Status::kOk);
+    CHECK(n.byId("C").hasClass("stray"));
+    CHECK(n.byId("A").hasClass("red"));
+}
+
+TEST_CASE("t650: the clock round-trips bit for bit; restored before the first update, no initial show") {
+    auto h = open(kV2Ui);  // Shown at its first update: `on:show` plays the intro.
+    Document& d = h->doc();
+    for (int i = 0; i < 50; ++i) {
+        h->step(1.0f / 60.0f);
+    }
+    REQUIRE(d.isTimelinePlaying("", "intro"));
+    const std::string snap = d.snapshotState();
+    CAPTURE(snap);
+    CHECK(snap.find(R"("frame":51})") != std::string::npos);
+
+    Fresh f(h->ir);
+    Document& n = f.doc();
+    REQUIRE(n.restoreState(snap) == Status::kOk);
+    CHECK(sameBits(f.ctx.clock(), h->ctx.clock()));  // The only document: the Context's clock too.
+    for (int i = 0; i < 30; ++i) {
+        h->step(1.0f / 60.0f);
+        f.ctx.update(1.0f / 60.0f);
+        CAPTURE(i);
+        REQUIRE(sameBits(n.timelineTime("", "intro"), d.timelineTime("", "intro")));
+        REQUIRE(sameBits(n.byId("A").property(prop::Opacity).f, d.byId("A").property(prop::Opacity).f));
+    }
+    CHECK(f.counter.shown == 0);  // No OnShown, no `show` trigger (the intro was not restarted).
+    CHECK(n.snapshotState() == d.snapshotState());
+
+    // A snapshot taken before the first update says shown=false: the restored document shows as usual.
+    Fresh early(h->ir);
+    const std::string unshown = early.doc().snapshotState();
+    CHECK(unshown.find(R"("shown":false})") != std::string::npos);
+    Fresh g(h->ir);
+    REQUIRE(g.doc().restoreState(unshown) == Status::kOk);
+    g.ctx.update(0.0f);
+    CHECK(g.counter.shown == 1);
+    CHECK(g.doc().isTimelinePlaying("", "intro"));
+    CHECK(g.doc().timelineTime("", "intro") == 0.0f);
+}
+
+TEST_CASE("t650: a version 1 snapshot still loads: clock kept, initial show as before") {
+    auto h = open(kV2Ui);
+    Fresh f(h->ir);
+    Document& n = f.doc();
+    REQUIRE(n.byId("C").addClass("stray"));
+    REQUIRE(
+        n.restoreState(R"({"version":1,"states":{},"timelines":[{"name":"intro","t":1,"playing":true}]})") ==
+        Status::kOk);
+    CHECK(f.ctx.clock() == 0.0f);
+    CHECK(n.timelineTime("", "intro") == doctest::Approx(1.0f));
+    f.ctx.update(0.0f);
+    CHECK(f.counter.shown == 1);                 // The initial show, as before T-650.
+    CHECK(n.timelineTime("", "intro") == 0.0f);  // Its `show` trigger restarts the intro.
+    CHECK(n.byId("C").hasClass("stray"));        // No `classes`: untouched.
+    CHECK(n.snapshotState().find(R"("frame":1})") != std::string::npos);  // Counted from the load.
 }

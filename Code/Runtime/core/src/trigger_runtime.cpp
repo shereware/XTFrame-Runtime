@@ -1495,6 +1495,7 @@ Status Document::applyShow(bool later) {
     m_surfaceHiding = false;
     m_surfaceVisible = true;
     m_shownOnce = true;
+    m_initialShown = true;  // T-650: a parked surface's first show counts as its initial show.
     // A pending `then hide` must not win (T-349: nor one of a direct child of `<body>`).
     m_triggers->cancelWaiting(surface, TriggerEvent::Hide);
     if (surface != m_root) {

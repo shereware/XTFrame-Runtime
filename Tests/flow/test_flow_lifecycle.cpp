@@ -531,3 +531,41 @@ TEST_CASE("lint flow.introByTimer: autostart timer into timeline.play warns; lif
       "edges":[{"from":"t.tick","to":"c.increment"},{"from":"c.value","to":"i.seek"}]})")
               .empty());
 }
+
+TEST_CASE("lifecycle: T-650 -- a shown snapshot restored before the first update emits no shown again") {
+    // 23 XF-097 version 2, first-frame rule: the document counts as shown, so neither lifecycle.shown
+    // nor the intro it plays run again; a later requestShow() after a hide still emits `shown`.
+    NullTextShaper shaper;
+    Context ctx{ContextConfig{&shaper, nullptr}};
+    const DocumentHandle h = loadIntroUi(ctx);
+    FlowRuntime runtime;
+    loadFlow(runtime, *ctx.document(h), kCountingFlow);
+    for (int i = 0; i < 40; ++i) {  // 0.64 s: the 0.5 s intro has ended.
+        ctx.update(0.016f);
+    }
+    REQUIRE(count(runtime, "shown.value") == 1);
+    REQUIRE_FALSE(ctx.document(h)->isTimelinePlaying("", "intro"));
+    const std::string snap = ctx.document(h)->snapshotState();
+
+    Context ctx2{ContextConfig{&shaper, nullptr}};
+    const DocumentHandle h2 = loadIntroUi(ctx2);
+    Document& doc2 = *ctx2.document(h2);
+    FlowRuntime runtime2;
+    loadFlow(runtime2, doc2, kCountingFlow);
+    REQUIRE(doc2.restoreState(snap) == Status::kOk);
+    ctx2.update(0.016f);
+    CHECK(count(runtime2, "shown.value") == 0);
+    CHECK_FALSE(doc2.isTimelinePlaying("", "intro"));
+    CHECK(titleOpacity(doc2) == doctest::Approx(1.0f));  // The saved frame, not the intro's first one.
+    for (int i = 0; i < 5; ++i) {
+        ctx2.update(0.016f);
+    }
+    CHECK(count(runtime2, "shown.value") == 0);
+
+    REQUIRE(ctx2.requestHide(h2) == Status::kOk);
+    ctx2.update(0.016f);
+    CHECK(count(runtime2, "hidden.value") == 1);
+    REQUIRE(ctx2.requestShow(h2) == Status::kOk);
+    ctx2.update(0.016f);
+    CHECK(count(runtime2, "shown.value") == 1);
+}

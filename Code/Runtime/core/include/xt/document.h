@@ -764,9 +764,9 @@ public:
     /// positions (a layout pass runs first, layoutIfDirty(), so the offsets clamp to the real
     /// content). The snapshot is authoritative for what it covers: id'd elements it does not list
     /// lose their custom states and scroll offset, players it lists no focus for lose theirs.
-    /// Elements, ports, states and timelines this document does not have are skipped.
-    /// kInvalidArgument when the text is not a snapshot (unparsable JSON, not an object, another
-    /// `version`), with nothing applied.
+    /// Elements, ports, states and timelines this document does not have are skipped. T-650 (23
+    /// XF-097 version 2): also runtime classes, the clock and `shown` (see document_state.cpp); version
+    /// 1 still loads. kInvalidArgument when the text is not a snapshot, with nothing applied.
     Status restoreState(std::string_view json);
     /// T-616 (04 §4.13): hotReload's state carry-over for an in-place reload; xt/runtime_state.h.
     RuntimeState captureRuntimeState();
@@ -1125,12 +1125,13 @@ private:
     /// The EditState of `element`'s Text child, or nullptr when `element` is not editable. Used by
     /// ElementRef::value()/setValue() (ElementRef is a friend).
     EditState* editStateForElement(NodeId element);
-    // T-398 (23 §23.ad.1, Code/Runtime/core/src/document_state.cpp): the state snapshotState() / restoreState()
-    // and Context::hotReload carry. collectState() fills `out` (its port values only when
-    // `withPorts`); missingState() lists what `state` refers to that this Document lacks (custom
-    // states, focus, timelines -- hotReload's compatibility check); applyState() applies it (with
-    // `exact`, as restoreState(): unlisted custom states / scroll offsets / focus are cleared).
+    // T-398 (23 §23.ad.1, document_state.cpp): the state snapshotState() / restoreState() and
+    // Context::hotReload carry. collectState() fills `out` (port values only when `withPorts`);
+    // missingState() lists what `state` refers to that this Document lacks (hotReload's check);
+    // applyState() applies it (`exact` = restoreState(): unlisted states / scroll / focus cleared).
     void collectState(DocumentState& out, bool withPorts);
+    void collectClasses(DocumentState& out) const;  // T-650: `classes` of the version 2 snapshot.
+    void applyClasses(const DocumentState& state);
     void missingState(const DocumentState& state, std::vector<std::string>& missing) const;
     void applyState(const DocumentState& state, bool exact);
     // `@timeline` group runtime (Code/Runtime/core/src/timeline_group.cpp, T-172).
@@ -1145,9 +1146,8 @@ private:
     void stepTimelineGroups(float clock);
     void flushTimelineEvents();
     void forgetTimelineNode(NodeId node);
-    /// T-35 remove(): undoes everything this Document tracks for one node that is about to be
-    /// destroyed (listeners, animation instances, transitions/overrides, EditState, `anim` scene
-    /// instance). Does not touch the arena topology; the caller destroys the subtree afterwards.
+    /// T-35 remove(): undoes everything this Document tracks for a node about to be destroyed (listeners,
+    /// animations, transitions/overrides, EditState, `anim` scene instance); the caller destroys it.
     void cleanupNodeForRemoval(NodeId node);
     /// T-173: after a child of `parent` was added or removed, marks every Element child of
     /// `parent` and its subtree kDirtyStyle when the stylesheet uses structural pseudo-classes.
@@ -1248,7 +1248,7 @@ private:
     bool surfaceChildShown(NodeId node) const;
     bool m_surfaceVisible = true;
     bool m_surfaceHiding = false, m_hideNotifyLater = false;
-    bool m_shownOnce = false, m_initialShown = false;  // First update(): `show`; notifyInitialShow().
+    bool m_shownOnce = false, m_initialShown = false;  // First update(): `show`; first show done (T-650).
     std::vector<NodeId> m_autofocus;                   // T-194: `autofocus` elements, document order.
     /// T-194: focuses the first focusable `autofocus` element for player 0 when nothing has the
     /// focus (first show and requestShow()).
@@ -1299,16 +1299,16 @@ private:
     std::vector<Timeline> m_timelines;
     std::vector<SceneInstance> m_instances;
     std::vector<NodeId> m_docElementNodes;  // DOCT element index -> Element NodeId.
-    // instanceId -> (element, source). Appended to on every play() (public, CSS-diff and
-    // autoplay); entries are erased once their instance finishes (ids are never reused, so an
-    // erased id is simply never looked up again). A CSS animation instance that is stopped (not
-    // finished) mid-flight -- e.g. replaced by a style re-resolve -- leaves its entry behind
-    // permanently; see the T-32 report's "uncovered cases".
+    // instanceId -> (element, source). Appended to on every play() (public, CSS-diff and autoplay);
+    // entries are erased once their instance finishes (ids are never reused). A CSS animation instance
+    // stopped (not finished) mid-flight -- e.g. replaced by a style re-resolve -- leaves its entry
+    // behind permanently; see the T-32 report's "uncovered cases".
     std::vector<AnimInstanceInfo> m_animInstances;
     NodeId m_root = kInvalidNode;
     TextShaper* m_shaper = nullptr;
     AssetResolver* m_assets = nullptr;
     float m_clock = 0;
+    uint64_t m_frame = 0;  // T-650: update() calls (the snapshot's `clock.frame`).
     Rect m_viewport{};
     // T-176: setDevice()/setUiScale() state and the LengthEnv derived from them + m_viewport.
     DeviceInfo m_device{};

@@ -61,6 +61,13 @@ struct DocumentState {
         bool ended = false;  // Finished and dropped (no forwards fill): the new one is stopped.
     };
 
+    /// T-650 (23 XF-097 version 2): one id'd element's runtime classes against its IR classes.
+    struct Classes {
+        std::string id;
+        std::vector<std::string> add;     // Runtime classes the IR element does not have, sorted.
+        std::vector<std::string> remove;  // IR classes the element no longer has, sorted.
+    };
+
     std::vector<Port> ports;
     std::vector<States> states;
     std::vector<Input> inputs;
@@ -69,6 +76,13 @@ struct DocumentState {
     std::vector<Animation> animations;  // T-616; not part of the snapshotState() JSON.
     /// Each player's focused element id ("" = none).
     std::string focus[kMaxPlayers];
+    // T-650 (23 XF-097 version 2). A version 1 snapshot has none of them (has* false, shown -1).
+    std::vector<Classes> classes;  // Only elements whose classes differ from the IR's.
+    bool hasClasses = false;       // The snapshot lists classes (applied by restoreState() only).
+    bool hasClock = false;
+    double clockSeconds = 0;  // The document clock (a float, written with %.17g).
+    uint64_t clockFrame = 0;  // Document::update() calls.
+    int shown = -1;           // The initial show was done: 1, not yet: 0, not in the snapshot: -1.
 };
 
 }  // namespace xt

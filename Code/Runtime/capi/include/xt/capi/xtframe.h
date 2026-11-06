@@ -286,7 +286,11 @@ XT_CAPI xt_status xt_surface_set_update_hook(xt_surface* s, xt_update_hook_fn fn
    port(<name>) triggers fired), id'd elements the snapshot does not list lose their custom states
    and scroll offset, timeline groups not in it are released. NULL or not a snapshot (unparsable
    JSON, not an object, another version) -> XT_STATUS_INVALID_ARGUMENT with nothing applied; from
-   inside a callback -> XT_STATUS_UNSUPPORTED (as hot_reload). */
+   inside a callback -> XT_STATUS_UNSUPPORTED (as hot_reload).
+   T-650 (50.y addendum): version 2 snapshots add the runtime classes of the id'd elements, the
+   document clock and whether the initial show was done; version 1 snapshots still load. Loaded
+   before the first xt_surface_update, a snapshot of a shown surface skips the initial show: no
+   xt_visibility_fn "shown", no intro started by it -- the first frame is the saved one. */
 XT_CAPI const char* xt_surface_save_state(xt_surface* s);
 XT_CAPI xt_status xt_surface_load_state(xt_surface* s, const char* json);
 

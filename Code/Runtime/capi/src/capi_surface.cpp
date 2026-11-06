@@ -696,6 +696,8 @@ XT_CAPI xt_status xt_surface_load_state(xt_surface* s, const char* json) {
                         "xt_surface_load_state: the surface has no document loaded");
         }
         // Port writes notify the listeners (host port events) as a host write does: a dispatch.
+        // T-650: a version 2 snapshot also sets the surface's clock (its Context has this document
+        // alone) and, before the first update, skips the initial show (no visibility callback).
         xt::capi::DispatchScope scope(*s);
         const xt::Status status = doc->restoreState(json);
         if (status != xt::Status::kOk) {

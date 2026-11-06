@@ -1749,6 +1749,7 @@ void Document::update(float clock) {
     m_triggers->flushContinuous();
     m_bindings->flushDirty();
     m_clock = clock;
+    ++m_frame;  // T-650: the snapshot's `clock.frame`.
     // T-601 / T-603 / T-605 (53 §53.102 items 7a, 8, 10): the surface's first show and the pending
     // notifications, before this frame's timelines step, so a `lifecycle.shown` / OnShown
     // `play(intro)` paints the intro's first frame. Context::update() already sent them before the

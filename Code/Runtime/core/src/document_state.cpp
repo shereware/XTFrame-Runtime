@@ -1,7 +1,9 @@
 #include "document_state.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <iterator>
 #include <memory>
 #include <span>
 #include <string>
@@ -15,6 +17,7 @@
 #include "mini_json.h"
 #include "text_edit.h"
 #include "timeline_group.h"
+#include "xt/context.h"
 #include "xt/document.h"
 #include "xt/property.h"
 #include "xt/runtime_state.h"
@@ -22,15 +25,23 @@
 /// Document::snapshotState / restoreState and the collect / check / apply code Context::hotReload
 /// shares (T-398; Docs/design/23-host-integration.md §23.ad.1, 22-bundle.md §22.10).
 ///
-/// Snapshot JSON (version 1), every member optional on restore:
-///   {"version":1,
+/// Snapshot JSON (version 2; version 1 is read too), every member optional on restore:
+///   {"version":2,
 ///    "ports":{"<qualified name>":"<setPortText() text>", ...},
 ///    "states":{"<element id>":["<state>", ...], ...},
 ///    "inputs":{"<element id>":{"value":"...","cursor":N,"anchor":N}, ...},
 ///    "focus":{"<player>":"<element id>", ...},
 ///    "scroll":{"<element id>":[x,y], ...},
 ///    "timelines":[{"scope":"<id>","name":"...","t":S,"rate":R,"playing":B,"reverse":B,
-///                  "loop":B,"hold":B}, ...]}
+///                  "loop":B,"hold":B}, ...],
+///    "classes":{"<element id>":{"add":["<class>", ...],"remove":["<class>", ...]}, ...},
+///    "clock":{"seconds":S,"frame":N},
+///    "shown":B}
+/// T-650 (23 XF-097 "快照版本 2"): `classes` lists the id'd DOCT elements whose runtime classes differ
+/// from their IR classes (both sides sorted); `clock` is the document clock (%.17g, so the float comes
+/// back bit for bit) and its update() count; `shown` says the initial show was done. A member left out
+/// (any version 1 snapshot) restores as before: classes untouched, the clock kept, the initial show
+/// as usual.
 /// Port values are text so restoreState() can hand them to setPortText() as they are: numbers with
 /// 9 significant digits (a float round-trips), Bool `true`/`false`, Enum the value name, Color
 /// `#rrggbb[aa]`, vec2/vec3 `x,y[,z]`, Struct / List the JSON setPortText() reads.
@@ -191,13 +202,61 @@ void markStyleDirtySubtree(NodeArena& arena, NodeId node) {
     });
 }
 
+std::vector<std::string> stringItems(const Json* arr) {
+    std::vector<std::string> out;
+    if (arr != nullptr && arr->kind == Json::Kind::Arr) {
+        for (const Json& item : arr->items) {
+            if (item.kind == Json::Kind::Str && !item.s.empty()) {
+                out.push_back(item.s);
+            }
+        }
+    }
+    return out;
+}
+
+/// T-650: the version 2 members (`classes`, `clock`, `shown`), each only when present.
+void parseVersion2(const Json& root, DocumentState& out) {
+    if (const Json* classes = member(root, "classes");
+        classes != nullptr && classes->kind == Json::Kind::Obj) {
+        out.hasClasses = true;
+        for (const auto& [id, v] : classes->fields) {
+            DocumentState::Classes entry{id, stringItems(member(v, "add")), stringItems(member(v, "remove"))};
+            if (!entry.add.empty() || !entry.remove.empty()) {
+                out.classes.push_back(std::move(entry));
+            }
+        }
+    }
+    if (const Json* clock = member(root, "clock"); clock != nullptr && clock->kind == Json::Kind::Obj) {
+        const double seconds = numberOr(member(*clock, "seconds"), -1);
+        if (std::isfinite(seconds) && seconds >= 0) {
+            out.hasClock = true;
+            out.clockSeconds = seconds;
+            const double frame = numberOr(member(*clock, "frame"), 0);
+            out.clockFrame = frame > 0 && frame < 9007199254740992.0 ? static_cast<uint64_t>(frame) : 0u;
+        }
+    }
+    if (const Json* shown = member(root, "shown"); shown != nullptr && shown->kind == Json::Kind::Bool) {
+        out.shown = shown->b ? 1 : 0;
+    }
+}
+
+void appendStringList(std::string& out, const std::vector<std::string>& items) {
+    out += '[';
+    for (size_t i = 0; i < items.size(); ++i) {
+        out += i > 0 ? "," : "";
+        appendString(out, items[i]);
+    }
+    out += ']';
+}
+
 /// The DocumentState a snapshot JSON describes; false when it is not one.
 bool parseState(std::string_view text, DocumentState& out) {
     Json root;
     if (!JsonReader(text).parse(root) || root.kind != Json::Kind::Obj) {
         return false;
     }
-    if (numberOr(member(root, "version"), 0) != 1) {
+    const double version = numberOr(member(root, "version"), 0);
+    if (version != 1 && version != 2) {
         return false;
     }
     if (const Json* ports = member(root, "ports"); ports != nullptr && ports->kind == Json::Kind::Obj) {
@@ -269,11 +328,12 @@ bool parseState(std::string_view text, DocumentState& out) {
             out.timelines.push_back(std::move(entry));
         }
     }
+    parseVersion2(root, out);
     return true;
 }
 
 std::string serializeState(const DocumentState& state) {
-    std::string out = "{\"version\":1,\"ports\":{";
+    std::string out = "{\"version\":2,\"ports\":{";
     for (size_t i = 0; i < state.ports.size(); ++i) {
         out += i > 0 ? "," : "";
         appendString(out, state.ports[i].name);
@@ -339,7 +399,22 @@ std::string serializeState(const DocumentState& state) {
         out += std::string(",\"hold\":") + (g.hold ? "true" : "false");
         out += '}';
     }
-    out += "]}";
+    out += "],\"classes\":{";
+    for (size_t i = 0; i < state.classes.size(); ++i) {
+        out += i > 0 ? "," : "";
+        appendString(out, state.classes[i].id);
+        out += ":{\"add\":";
+        appendStringList(out, state.classes[i].add);
+        out += ",\"remove\":";
+        appendStringList(out, state.classes[i].remove);
+        out += '}';
+    }
+    char clock[80];
+    std::snprintf(clock, sizeof(clock), "},\"clock\":{\"seconds\":%.17g,\"frame\":%llu},\"shown\":",
+                  std::isfinite(state.clockSeconds) ? state.clockSeconds : 0.0,
+                  static_cast<unsigned long long>(state.clockFrame));
+    out += clock;
+    out += state.shown == 1 ? "true}" : "false}";
     return out;
 }
 
@@ -436,6 +511,11 @@ void Document::collectState(DocumentState& out, bool withPorts) {
     for (uint8_t p = 0; p < kMaxPlayers; ++p) {
         out.focus[p] = idOf(focus(p).node);
     }
+    collectClasses(out);
+    out.hasClock = true;
+    out.clockSeconds = m_clock;
+    out.clockFrame = m_frame;
+    out.shown = m_initialShown ? 1 : 0;
     for (const TimelineGroupRuntime& g : m_timelineGroups->groups) {
         if (!g.active) {
             continue;
@@ -452,6 +532,78 @@ void Document::collectState(DocumentState& out, bool withPorts) {
         entry.t = g.t;
         entry.rate = g.rate;
         out.timelines.push_back(std::move(entry));
+    }
+}
+
+void Document::collectClasses(DocumentState& out) const {
+    // T-650: each id'd DOCT element's runtime classes against its IR element's, by text.
+    const std::span<const IrDocElement> elements = m_ir.doc().elements();
+    const std::span<const uint32_t> classPool = m_ir.doc().classPool();
+    out.hasClasses = true;
+    for (size_t i = 0; i < m_docElementNodes.size() && i < elements.size(); ++i) {
+        const NodeId n = m_docElementNodes[i];
+        if (n == kInvalidNode || !m_arena.alive(n) || m_arena.element(n).id == kInvalidString) {
+            continue;
+        }
+        std::vector<std::string_view> irClasses;
+        for (uint32_t k = 0; k < elements[i].classCount; ++k) {
+            irClasses.push_back(m_ir.string(classPool[elements[i].classOffset + k]));
+        }
+        std::vector<std::string_view> runtime;
+        for (const StringId sid : m_arena.element(n).classes) {
+            runtime.push_back(string(sid));
+        }
+        std::sort(irClasses.begin(), irClasses.end());
+        std::sort(runtime.begin(), runtime.end());
+        DocumentState::Classes entry;
+        entry.id = std::string(string(m_arena.element(n).id));
+        std::vector<std::string_view> added;
+        std::vector<std::string_view> removed;
+        std::set_difference(runtime.begin(), runtime.end(), irClasses.begin(), irClasses.end(),
+                            std::back_inserter(added));
+        std::set_difference(irClasses.begin(), irClasses.end(), runtime.begin(), runtime.end(),
+                            std::back_inserter(removed));
+        entry.add.assign(added.begin(), added.end());
+        entry.remove.assign(removed.begin(), removed.end());
+        if (!entry.add.empty() || !entry.remove.empty()) {
+            out.classes.push_back(std::move(entry));
+        }
+    }
+}
+
+void Document::applyClasses(const DocumentState& state) {
+    // T-650: the snapshot is authoritative: a listed element gets its IR classes plus `add` minus
+    // `remove`, an unlisted id'd DOCT element its IR classes. A change restyles the subtree (no
+    // trigger reacts to a class).
+    const std::span<const IrDocElement> elements = m_ir.doc().elements();
+    const std::span<const uint32_t> classPool = m_ir.doc().classPool();
+    for (size_t i = 0; i < m_docElementNodes.size() && i < elements.size(); ++i) {
+        const NodeId n = m_docElementNodes[i];
+        if (n == kInvalidNode || !m_arena.alive(n) || m_arena.element(n).id == kInvalidString) {
+            continue;
+        }
+        const std::string_view id = string(m_arena.element(n).id);
+        std::vector<StringId> want(classPool.begin() + elements[i].classOffset,
+                                   classPool.begin() + elements[i].classOffset + elements[i].classCount);
+        for (const DocumentState::Classes& entry : state.classes) {
+            if (entry.id != id) {
+                continue;
+            }
+            for (const std::string& name : entry.add) {
+                want.push_back(intern(name));
+            }
+            for (const std::string& name : entry.remove) {
+                want.erase(std::remove_if(want.begin(), want.end(),
+                                          [&](StringId sid) { return string(sid) == name; }),
+                           want.end());
+            }
+        }
+        std::sort(want.begin(), want.end());
+        want.erase(std::unique(want.begin(), want.end()), want.end());
+        if (m_arena.element(n).classes != want) {
+            m_arena.element(n).classes = std::move(want);
+            markStyleDirtySubtree(m_arena, n);
+        }
     }
 }
 
@@ -539,6 +691,10 @@ void Document::applyState(const DocumentState& state, bool exact) {
             m_arena.common(node).customStates = bits;
             markStyleDirtySubtree(m_arena, node);
         }
+    }
+    // 2b. T-650: runtime classes (restoreState() only; a hot reload keeps the new IR's).
+    if (exact && state.hasClasses) {
+        applyClasses(state);
     }
     // 3. Input values and selections (quiet, as a host restoring; no Change event).
     for (const DocumentState::Input& input : state.inputs) {
@@ -679,6 +835,30 @@ Status Document::restoreState(std::string_view json) {
     DocumentState state;
     if (!parseState(json, state)) {
         return Status::kInvalidArgument;
+    }
+    // T-650 (23 XF-097 version 2): the clock first, so the timeline groups and CSS animations below
+    // are set against it. It is the Context's clock while this is the Context's only document (a
+    // C ABI surface): the frames that follow run on the same clock values as the saved run's.
+    if (state.hasClock) {
+        m_clock = static_cast<float>(state.clockSeconds);
+        m_frame = state.clockFrame;
+        if (m_context != nullptr) {
+            bool alone = true;
+            for (size_t i = 0; i < m_context->m_documents.size() && alone; ++i) {
+                const Document* other = m_context->liveAt(i);
+                alone = other == nullptr || other == this;
+            }
+            if (alone) {
+                m_context->m_clock = m_clock;
+            }
+        }
+    }
+    // First rule: restored before the first update() with the initial show done, the document counts
+    // as shown -- no lifecycle.shown / OnShown, no `show` triggers (their intro) and no autofocus;
+    // the timeline groups are the snapshot's alone.
+    if (state.shown == 1 && !m_shownOnce) {
+        m_shownOnce = true;
+        m_initialShown = true;
     }
     applyState(state, /*exact=*/true);
     // T-399 (08 §8.18): `bind:value` covers what is left of an edit with its port's value again.

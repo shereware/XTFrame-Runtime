@@ -97,6 +97,15 @@ std::string setUpAndSave(xt_surface* s, Frame& rgba) {
     return json;
 }
 
+/// T-650: a snapshot without its `clock` member.
+std::string withoutClock(std::string snap) {
+    const size_t at = snap.find(",\"clock\":{");
+    if (at != std::string::npos) {
+        snap.erase(at, snap.find('}', at) + 1 - at);
+    }
+    return snap;
+}
+
 /// Load from inside the update hook: refused like hot_reload.
 struct HookProbe {
     const char* json = nullptr;
@@ -157,7 +166,7 @@ TEST_CASE("capi state 2 (T-635): a fresh surface restored before its first updat
     CHECK(xt_surface_is_timeline_playing(fresh, "", "pulse") == 1);
     const char* again = xt_surface_save_state(fresh);
     REQUIRE(again != nullptr);
-    CHECK(std::string(again) == saved);
+    CHECK(withoutClock(again) == withoutClock(saved));  // T-650: one more update() counted.
 
     xt_surface_destroy(fresh);
 }
@@ -168,7 +177,7 @@ TEST_CASE("capi state 3 (T-635): bad input is INVALID_ARGUMENT with nothing appl
     Frame rgba = newFrame();
     const std::string saved = setUpAndSave(s, rgba);
 
-    for (const char* bad : {static_cast<const char*>(nullptr), "", "{", "[]", "{\"version\":2}"}) {
+    for (const char* bad : {static_cast<const char*>(nullptr), "", "{", "[]", "{\"version\":3}"}) {
         CAPTURE((bad != nullptr ? bad : "(NULL)"));
         CHECK(xt_surface_load_state(s, bad) == XT_STATUS_INVALID_ARGUMENT);
         CHECK(std::strlen(xt_capi_last_error()) > 0);
@@ -223,4 +232,204 @@ TEST_CASE("capi state 5 (T-635): the saved string stays valid across other calls
     const char* second = xt_surface_save_state(s);
     REQUIRE(second != nullptr);
     CHECK(std::string(second) == copy);
+}
+
+// -- T-650 (23 XF-097 "version 2", 50 §50.y addendum): runtime classes, the clock, the first frame ---
+
+namespace {
+
+xt_surface_desc flowDesc(int width, int height, float dpr) {
+    xt_surface_desc desc{};
+    desc.struct_size = sizeof(desc);
+    desc.width = width;
+    desc.height = height;
+    desc.device_pixel_ratio = dpr;
+    desc.premultiplied = 1;
+    desc.run_flow = 1;
+    return desc;
+}
+
+/// Counts the visibility callbacks of a surface.
+struct VisibilityCount {
+    int shown = 0;
+    int hidden = 0;
+    static void onVisibility(xt_surface* /*s*/, int visible, void* user) {
+        auto* self = static_cast<VisibilityCount*>(user);
+        ++(visible != 0 ? self->shown : self->hidden);
+    }
+};
+
+/// A surface of `ui` (run_flow = 1) with a VisibilityCount listening; destroyed at scope end.
+struct FlowSurface {
+    xt_surface* s = nullptr;
+    VisibilityCount visibility;
+    FlowSurface(xt_bundle* b, const char* ui, const xt_surface_desc& desc) {
+        s = xt_surface_create(b, ui, &desc);
+        REQUIRE_MESSAGE(s != nullptr, xt_capi_last_error());
+        REQUIRE(xt_surface_set_visibility_listener(s, &VisibilityCount::onVisibility, &visibility) ==
+                XT_STATUS_OK);
+    }
+    ~FlowSurface() { xt_surface_destroy(s); }
+    FlowSurface(const FlowSurface&) = delete;
+    FlowSurface& operator=(const FlowSurface&) = delete;
+};
+
+void renderInto(xt_surface* s, Frame& rgba, int width) {
+    xt_damage damage{};
+    REQUIRE(xt_surface_render(s, rgba.data(), width * 4, &damage) == XT_STATUS_OK);
+}
+
+void click(xt_surface* s, float x, float y) {
+    for (const int32_t kind : {XT_INPUT_POINTER_MOVE, XT_INPUT_POINTER_DOWN, XT_INPUT_POINTER_UP}) {
+        xt_input_event e{};
+        e.struct_size = sizeof(e);
+        e.kind = kind;
+        e.x = x;
+        e.y = y;
+        e.gesture_scale = 1.0f;
+        REQUIRE(xt_surface_push_input(s, &e) == XT_STATUS_OK);
+    }
+}
+
+/// The first byte where two frames differ, as a message.
+std::string firstDifference(const Frame& a, const Frame& b, int width) {
+    size_t i = 0;
+    while (i < a.size() && i < b.size() && a[i] == b[i]) {
+        ++i;
+    }
+    const size_t px = i / 4;
+    return "pixel (" + std::to_string(px % static_cast<size_t>(width)) + ", " +
+           std::to_string(px / static_cast<size_t>(width)) + ") channel " + std::to_string(i % 4);
+}
+
+}  // namespace
+
+TEST_CASE("capi state 6 (T-650): a clicked card's class is back on a fresh surface's first frame") {
+    xt_bundle* b = xt_bundle_open(XT_CAPI_TEST_FLIP_BUNDLE);
+    REQUIRE_MESSAGE(b != nullptr, xt_capi_last_error());
+    const xt_surface_desc desc = flowDesc(kSize, kSize, 1.0f);
+    std::string saved;
+    Frame atSave = newFrame();
+    {
+        FlowSurface original(b, "flip", desc);
+        REQUIRE(xt_surface_update(original.s, 0.0f) == XT_STATUS_OK);
+        click(original.s, 32.0f, 32.0f);  // Flow: #card.Click -> toggleClass(flipped).
+        REQUIRE(xt_surface_update(original.s, 0.0f) == XT_STATUS_OK);
+        REQUIRE(xt_surface_update(original.s, 0.6f) == XT_STATUS_OK);
+        REQUIRE(xt_surface_update(original.s, 0.6f) == XT_STATUS_OK);  // The 1 s opacity fade is over.
+        renderInto(original.s, atSave, kSize);
+        const char* json = xt_surface_save_state(original.s);
+        REQUIRE_MESSAGE(json != nullptr, xt_capi_last_error());
+        saved = json;
+    }
+    INFO(saved);
+    CHECK(saved.find(R"("classes":{"card":{"add":["flipped"],"remove":[]}})") != std::string::npos);
+    CHECK(saved.find(R"("shown":true})") != std::string::npos);
+
+    {
+        FlowSurface fresh(b, "flip", desc);
+        REQUIRE_MESSAGE(xt_surface_load_state(fresh.s, saved.c_str()) == XT_STATUS_OK, xt_capi_last_error());
+        Frame first = newFrame();
+        REQUIRE(xt_surface_update(fresh.s, 0.0f) == XT_STATUS_OK);
+        renderInto(fresh.s, first, kSize);
+        CHECK_MESSAGE(first == atSave, firstDifference(first, atSave, kSize));  // Byte for byte.
+        CHECK(fresh.visibility.shown == 0);  // The initial show was skipped: no visibility callback.
+
+        // Without the snapshot the first frame is the unflipped red card.
+        FlowSurface plain(b, "flip", desc);
+        Frame red = newFrame();
+        REQUIRE(xt_surface_update(plain.s, 0.0f) == XT_STATUS_OK);
+        renderInto(plain.s, red, kSize);
+        CHECK(red != atSave);
+        CHECK(plain.visibility.shown == 1);
+    }
+    CHECK(xt_bundle_close(b) == XT_STATUS_OK);
+}
+
+TEST_CASE("capi state 7 (T-650): loaded before the first update, the intro is not replayed") {
+    // fixtures/flip/intro: lifecycle.shown -> play(intro), a 0.5 s fade of the card from 0.25 to 1.
+    xt_bundle* b = xt_bundle_open(XT_CAPI_TEST_FLIP_BUNDLE);
+    REQUIRE_MESSAGE(b != nullptr, xt_capi_last_error());
+    const xt_surface_desc desc = flowDesc(kSize, kSize, 1.0f);
+    {
+        FlowSurface original(b, "intro", desc);
+        Frame orig = newFrame();
+        REQUIRE(xt_surface_update(original.s, 0.0f) == XT_STATUS_OK);
+        REQUIRE(xt_surface_update(original.s, 0.2f) == XT_STATUS_OK);  // Mid-intro.
+        renderInto(original.s, orig, kSize);
+        REQUIRE(original.visibility.shown == 1);
+        REQUIRE(xt_surface_is_timeline_playing(original.s, "", "intro") == 1);
+        const char* json = xt_surface_save_state(original.s);
+        REQUIRE_MESSAGE(json != nullptr, xt_capi_last_error());
+        const std::string saved = json;
+        INFO(saved);
+
+        FlowSurface fresh(b, "intro", desc);
+        REQUIRE_MESSAGE(xt_surface_load_state(fresh.s, saved.c_str()) == XT_STATUS_OK, xt_capi_last_error());
+        Frame copy = newFrame();
+        REQUIRE(xt_surface_update(fresh.s, 0.0f) ==
+                XT_STATUS_OK);  // No silent update(0) needed before the load.
+        renderInto(fresh.s, copy, kSize);
+        CHECK_MESSAGE(copy == orig, firstDifference(copy, orig, kSize));  // The intro at 0.2 s, not at 0.
+        CHECK(fresh.visibility.shown == 0);
+        // The intro goes on from the snapshot, frame for frame with the original, and ends once.
+        for (int f = 0; f < 4; ++f) {
+            CAPTURE(f);
+            REQUIRE(xt_surface_update(original.s, 0.125f) == XT_STATUS_OK);
+            REQUIRE(xt_surface_update(fresh.s, 0.125f) == XT_STATUS_OK);
+            renderInto(original.s, orig, kSize);
+            renderInto(fresh.s, copy, kSize);
+            CHECK_MESSAGE(copy == orig, firstDifference(copy, orig, kSize));
+        }
+        CHECK(xt_surface_is_timeline_playing(fresh.s, "", "intro") == 0);
+        CHECK(fresh.visibility.shown == 0);
+        CHECK(original.visibility.shown == 1);
+    }
+    CHECK(xt_bundle_close(b) == XT_STATUS_OK);
+}
+
+TEST_CASE("capi state 8 (T-650): npdo main-menu loaded mid-rain: 60 frames equal the uninterrupted run") {
+    // Debug renders at half size like test_capi_partial.cpp (same layout, device pixel ratio 0.5).
+#ifdef NDEBUG
+    constexpr int kW = 1280;
+    constexpr int kH = 720;
+    constexpr float kDpr = 1.0f;
+#else
+    constexpr int kW = 640;
+    constexpr int kH = 360;
+    constexpr float kDpr = 0.5f;
+#endif
+    constexpr float kDt = 1.0f / 60.0f;
+    xt_bundle* b = xt_bundle_open(XT_CAPI_TEST_NPDO_BUNDLE);
+    REQUIRE_MESSAGE(b != nullptr, xt_capi_last_error());
+    const xt_surface_desc desc = flowDesc(kW, kH, kDpr);
+    const size_t bytes = static_cast<size_t>(kW) * kH * 4u;
+    {
+        FlowSurface original(b, "main-menu", desc);
+        Frame orig(bytes, 0);
+        for (int f = 0; f < 45; ++f) {  // lifecycle.shown plays intro, rain and fog (main-menu.xtflow).
+            REQUIRE(xt_surface_update(original.s, f == 0 ? 0.0f : kDt) == XT_STATUS_OK);
+            renderInto(original.s, orig, kW);
+        }
+        REQUIRE(xt_surface_is_timeline_playing(original.s, "", "rain") == 1);
+        const char* json = xt_surface_save_state(original.s);
+        REQUIRE_MESSAGE(json != nullptr, xt_capi_last_error());
+        const std::string saved = json;
+        INFO(saved);
+
+        FlowSurface fresh(b, "main-menu", desc);
+        REQUIRE_MESSAGE(xt_surface_load_state(fresh.s, saved.c_str()) == XT_STATUS_OK, xt_capi_last_error());
+        Frame copy(bytes, 0);
+        for (int f = 0; f < 60; ++f) {
+            CAPTURE(f);
+            REQUIRE(xt_surface_update(original.s, kDt) == XT_STATUS_OK);
+            REQUIRE(xt_surface_update(fresh.s, kDt) == XT_STATUS_OK);
+            renderInto(original.s, orig, kW);
+            renderInto(fresh.s, copy, kW);
+            REQUIRE_MESSAGE(copy == orig, firstDifference(copy, orig, kW));
+        }
+        CHECK(xt_surface_is_timeline_playing(fresh.s, "", "rain") == 1);
+        CHECK(fresh.visibility.shown == 0);
+    }
+    CHECK(xt_bundle_close(b) == XT_STATUS_OK);
 }
