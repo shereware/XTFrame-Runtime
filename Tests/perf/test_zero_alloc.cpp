@@ -11,6 +11,7 @@
 #include "xt/context.h"
 #include "xt/document.h"
 #include "xt/ir.h"
+#include "xt/sw/sw_renderer.h"
 #include "xt/text_shaper.h"
 #include "xt/types.h"
 
@@ -222,4 +223,51 @@ TEST_CASE(
     CHECK(doc->animator().transitionCount() == 10);
 
     checkZeroAllocFrames(ctx, cmds, dt, 10);
+}
+
+// T-641 (Docs/design/50-c-abi.md §50.aa item 3): the SW layer pool's ageing must not churn. A static
+// scene of nested opacity groups of different sizes (the panel holding three cards, a halo: two
+// layers deep), fully rendered every frame at 1280x720, keeps
+// hitting its pool slots: after the warm-up, 300 frames of SwRenderer::render allocate nothing --
+// across two ageing windows (120 frames each). Effects are left out: their passes allocate per frame
+// regardless of the pool (pre-existing; measured the same with the ageing switched off).
+TEST_CASE("perf: T-641 static nested layers, 300 full SW frames allocate nothing (layer pool ageing)") {
+    CompileOptions options;
+    options.rootDir = std::string(XT_PERF_FIXTURES_DIR);
+    CompileResult result = compileDocument(fixturePath("layers_static.xt"), options);
+    requireNoErrors(result);
+
+    NullTextShaper shaper;
+    Context ctx(ContextConfig{&shaper, nullptr});
+    ctx.setViewport(Rect{0, 0, 1280, 720}, 1.0f);
+    Result<DocumentHandle> handle = ctx.loadDocument(IrBlob{result.ir.data(), result.ir.size()}, true);
+    REQUIRE(handle.ok());
+
+    CommandList cmds;
+    const float dt = 1.0f / 60.0f;
+    ctx.update(dt);
+    ctx.render(cmds);
+    int layers = 0;
+    for (const Command& c : cmds.commands) {
+        layers += c.kind == CmdKind::PushLayer ? 1 : 0;
+    }
+    CHECK(layers >= 5);  // #panel, the 3 cards, #halo (a childless node folds its opacity into its paint)
+    std::vector<uint8_t> rgba(static_cast<size_t>(1280) * 720 * 4, 0);
+    sw::SwRenderer renderer;
+    renderer.setTarget(sw::SwTarget{rgba.data(), 1280, 720, 1280 * 4});
+    for (int i = 0; i < 3; ++i) {  // Warm-up: the pool, the effect and mask scratch grow.
+        renderer.render(cmds, &shaper, nullptr);
+    }
+    uint64_t total = 0;
+    for (int i = 0; i < 300; ++i) {
+        xt::perf::startCounting();
+        renderer.render(cmds, &shaper, nullptr);
+        const uint64_t n = xt::perf::count();
+        xt::perf::stopCounting();
+        if (n != 0) {
+            reportAllocSizes("SwRenderer::render()", i);
+        }
+        total += n;
+    }
+    CHECK(total == 0);
 }

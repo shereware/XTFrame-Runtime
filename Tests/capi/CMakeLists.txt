@@ -43,6 +43,7 @@ add_executable(xt_capi_tests
     test_capi_l10n.cpp
     test_capi_state.cpp
     test_capi_gpu.cpp
+    test_capi_trim.cpp
 )
 add_dependencies(xt_capi_tests xt_capi_test_bundles)
 target_include_directories(xt_capi_tests SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/Code/SDKs/doctest)

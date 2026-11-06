@@ -183,6 +183,11 @@ public:
     /// land where xt_flow's pulse edges do: resolved this frame, transitions start at this frame's
     /// clock. Unload / reload requested here are deferred like in any other callback (13.9).
     virtual void onBeforeDocumentUpdate(Context& /*context*/) {}
+    /// T-641 (50 §50.aa items 1-2): the renderer drawing this Context should free its frame
+    /// scratch now (SwRenderer::releaseScratch(), a GPU renderer's surface texture and resources).
+    /// Context::releaseRenderScratch() calls it, and update() does once after every Document of
+    /// the Context became hidden while trim-on-hide is on. The next render() reports `full`.
+    virtual void onReleaseRenderScratch(Context& /*context*/) {}
 };
 
 /// Owns every loaded Document, the shared clock, and the per-frame update/render entry points
@@ -447,6 +452,16 @@ public:
     /// False for an unknown handle.
     bool isVisible(DocumentHandle handle) const;
     bool isHiding(DocumentHandle handle) const;
+    /// T-641 (50 §50.aa item 1): with trim-on-hide on (the default), the update() that ends with
+    /// no Document of this Context visible, after a render() that painted something, calls
+    /// releaseRenderScratch() -- once per hide. Off: the renderer keeps its scratch while hidden.
+    void setTrimOnHide(bool on) { m_trimOnHide = on; }
+    bool trimOnHide() const { return m_trimOnHide; }
+    /// T-641 (50 §50.aa item 2): tells every listener to free its renderer's frame scratch
+    /// (ContextListener::onReleaseRenderScratch) and makes the next render() report `full`, so a
+    /// visible Context repaints whole. Callable at any time, callbacks included (not from inside
+    /// a backend's render of this Context's list).
+    void releaseRenderScratch();
     /// T-175 (13.8.1, 27.3.1 multi-instance): the instance id `handle`'s host events and port
     /// events carry (Document::setInstanceId); kept across reloadDocument(). kInvalidArgument for
     /// an unknown handle.
@@ -644,6 +659,10 @@ private:
     void applyUiScale();
     HostTargetMode m_hostTargetMode = HostTargetMode::Layer;  // T-343
     bool m_sceneStatic = false;                               // T-343
+    bool m_trimOnHide = true;                                 // T-641: setTrimOnHide()
+    // T-641: a render() painted something since the last releaseRenderScratch() (the renderer
+    // holds scratch that a hide may release).
+    bool m_renderScratchHeld = false;
     // T-174: host listeners, in registration order.
     std::vector<ContextListener*> m_listeners;
     // T-179: setLocalizationProvider()/setLanguage() state, handed to every Document on load.

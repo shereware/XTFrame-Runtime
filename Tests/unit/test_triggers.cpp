@@ -1004,3 +1004,65 @@ TEST_CASE("triggers: IrView rejects out-of-range TRIG / STAT references") {
     std::vector<uint8_t> good = writer.finish();
     CHECK(IrView::open(IrBlob{good.data(), good.size()}).ok());
 }
+
+// T-641 (Docs/design/50-c-abi.md §50.aa items 1-2): the update() that ends with nothing visible
+// asks the listeners to release their renderer scratch, once per hide and only after a render()
+// painted something; trim-on-hide off asks nothing; releaseRenderScratch() asks at once. After
+// either the next render() reports `full`.
+namespace {
+
+struct TrimListener : ContextListener {
+    int releases = 0;
+    void onReleaseRenderScratch(Context& /*context*/) override { ++releases; }
+};
+
+}  // namespace
+
+TEST_CASE("T-641: Context releases render scratch after a hide, once, and reports full damage") {
+    Surface s(R"X(<xt><head><style>
+      #Box { position: absolute; left: 0px; top: 0px; width: 40px; height: 40px; background-color: #ff0000; }
+    </style></head><body id="Root"><div id="Box"></div></body></xt>)X");
+    TrimListener trim;
+    s.ctx.addListener(&trim);
+    CHECK(s.ctx.trimOnHide());
+    CommandList list;
+    DamageList damage;
+    s.ctx.render(list, &damage);
+    s.ctx.update(0.0f);
+    s.ctx.render(list, &damage);
+    CHECK_FALSE(damage.full);
+    CHECK(trim.releases == 0);  // Visible: nothing to release.
+
+    REQUIRE(s.ctx.setVisible(s.handle, false) == Status::kOk);
+    CHECK(trim.releases == 0);  // Not before the next update().
+    s.ctx.update(0.0f);
+    CHECK(trim.releases == 1);
+    s.ctx.render(list, &damage);
+    CHECK(damage.full);
+    CHECK(list.commands.empty());
+    s.ctx.update(0.0f);
+    s.ctx.render(list, &damage);
+    s.ctx.update(0.0f);
+    CHECK(trim.releases == 1);  // Once per hide: the hidden renders painted nothing.
+
+    REQUIRE(s.ctx.setVisible(s.handle, true) == Status::kOk);
+    s.ctx.update(0.0f);
+    s.ctx.render(list, &damage);
+    CHECK_FALSE(list.commands.empty());
+    CHECK(trim.releases == 1);
+
+    // Explicit release while visible: at once, and the next frame is full.
+    s.ctx.releaseRenderScratch();
+    CHECK(trim.releases == 2);
+    s.ctx.update(0.0f);
+    s.ctx.render(list, &damage);
+    CHECK(damage.full);
+
+    // Trim-on-hide off: hiding releases nothing.
+    s.ctx.setTrimOnHide(false);
+    REQUIRE(s.ctx.setVisible(s.handle, false) == Status::kOk);
+    s.ctx.update(0.0f);
+    s.ctx.update(0.0f);
+    CHECK(trim.releases == 2);
+    s.ctx.removeListener(&trim);
+}

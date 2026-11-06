@@ -201,11 +201,20 @@ size_t LayerStack::acquire(int w, int h) {
     if (best == m_pool.size()) {
         m_pool.emplace_back();
         m_inUse.push_back(0);
+        m_age.emplace_back();
     }
     m_inUse[best] = 1;
+    SlotAge& age = m_age[best];
+    age.acquired = true;
+    age.windowPeak = std::max(age.windowPeak, need);
     Surface& s = m_pool[best];
     s.w = w;
     s.h = h;
+    if (s.rgba.capacity() < need) {
+        // T-641: exactly the requested size; `resize` alone would grow geometrically.
+        std::vector<float>().swap(s.rgba);
+        s.rgba.reserve(need);
+    }
     // `resize` keeps the vector's capacity when shrinking, so a smaller layer reuses the same
     // storage; only the pixels this layer owns are cleared.
     s.rgba.resize(need);
@@ -214,6 +223,51 @@ size_t LayerStack::acquire(int w, int h) {
 }
 
 void LayerStack::release(size_t index) { m_inUse[index] = 0; }
+
+void LayerStack::endFrame() {
+    if (!m_stack.empty() || std::find(m_inUse.begin(), m_inUse.end(), uint8_t{1}) != m_inUse.end()) {
+        return;
+    }
+    const bool windowEnds = ++m_windowFrames >= kPoolIdleFrames;
+    if (windowEnds) {
+        m_windowFrames = 0;
+    }
+    size_t kept = 0;
+    for (size_t i = 0; i < m_pool.size(); ++i) {
+        SlotAge& age = m_age[i];
+        age.idleFrames = age.acquired ? 0 : age.idleFrames + 1;
+        age.acquired = false;
+        if (age.idleFrames >= kPoolIdleFrames) {
+            continue;  // Freed: not moved into the kept range below.
+        }
+        if (windowEnds) {
+            Surface& s = m_pool[i];
+            if (age.windowPeak > 0 && s.rgba.capacity() / 2 > age.windowPeak) {
+                std::vector<float>().swap(s.rgba);
+                s.rgba.reserve(age.windowPeak);
+                s.w = 0;
+                s.h = 0;
+            }
+            age.windowPeak = 0;
+        }
+        if (kept != i) {
+            m_pool[kept] = std::move(m_pool[i]);
+            m_age[kept] = m_age[i];
+        }
+        ++kept;
+    }
+    m_pool.resize(kept);
+    m_inUse.resize(kept);
+    m_age.resize(kept);
+}
+
+void LayerStack::releasePool() {
+    resetStack();
+    std::vector<Surface>().swap(m_pool);
+    std::vector<uint8_t>().swap(m_inUse);
+    std::vector<SlotAge>().swap(m_age);
+    m_windowFrames = 0;
+}
 
 Target LayerStack::currentTarget(const Target& root) const {
     if (m_stack.empty()) {

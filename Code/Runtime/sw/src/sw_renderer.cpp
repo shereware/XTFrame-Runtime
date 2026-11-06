@@ -1983,6 +1983,36 @@ void SwRenderer::render(const CommandList& list, TextShaper* shaper, AssetResolv
     }
     m_impl->directDamage = nullptr;
     m_impl->endDamage();
+    m_impl->layers.endFrame();  // T-641: the layer pool's ageing (50 §50.aa item 3).
+}
+
+void SwRenderer::releaseScratch() {
+    Impl& m = *m_impl;
+    m.resetStacks();
+    m.layers.releasePool();
+    m.fxScratchA = Surface{};
+    m.fxScratchB = Surface{};
+    m.fxResult = Surface{};
+    m.fxBackdropResult = Surface{};
+    m.fxScratch = EffectScratch{};
+    std::vector<EffectFrame>().swap(m.effectFrames);
+    std::vector<Impl::ClipLayer>().swap(m.clipStack);
+    std::vector<std::vector<uint8_t>>().swap(m.maskPool);
+    // The damage state reads "full": no mask is kept, and nothing of the last frame is reused.
+    m.partialRedraw = false;
+    std::vector<uint8_t>().swap(m.damageMask);
+    std::vector<Rect>().swap(m.damageRects);
+    std::vector<uint8_t>().swap(m.combinedMask);
+    m.combinedValid = false;
+    std::vector<Impl::SwBand>().swap(m.prevBands);
+    std::vector<Impl::SwBand>().swap(m.curBands);
+    std::vector<Impl::Cluster>().swap(m.clusters);
+    m.prevRunKinds.clear();
+    m.prevBandsValid = false;
+    m.bandTargetW = m.bandTargetH = 0;
+    std::vector<float>().swap(m.spanScratch);
+    m.imageScratch = ImageScratch{};
+    std::vector<MeshVertex>().swap(m.meshScratch);
 }
 
 }  // namespace xt::sw

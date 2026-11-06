@@ -177,6 +177,22 @@ public:
 
     /// Exposed for tests: number of surfaces held in the pool (checked-out or free).
     size_t poolSize() const { return m_pool.size(); }
+    /// Exposed for tests: the float capacity of pool slot `index` (< poolSize()).
+    size_t slotCapacity(size_t index) const { return m_pool[index].rgba.capacity(); }
+
+    /// T-641 (Docs/design/50-c-abi.md §50.aa item 3): closes one frame of the pool's ageing; the
+    /// SW renderer calls it once at the end of every render(). A slot not acquired for
+    /// `kPoolIdleFrames` consecutive frames is freed. Every `kPoolIdleFrames` frames, a slot whose
+    /// capacity is more than twice the largest size it served in that window is reallocated to
+    /// exactly that size (the factor keeps an animated layer from reallocating every window). Does
+    /// nothing while a frame is still open (an unbalanced list): the slots are in use.
+    void endFrame();
+    /// T-641 (§50.aa items 1-2): frees every pooled surface (the stack is reset first). The next
+    /// acquire allocates again.
+    void releasePool();
+
+    /// Frames a pool slot may go unacquired before endFrame() frees it (§50.aa item 3).
+    static constexpr uint32_t kPoolIdleFrames = 120;
 
 private:
     enum class FrameKind : uint8_t { Layer, Mask };
@@ -210,7 +226,8 @@ private:
     /// size vary from push to push (T-133), so the search prefers the smallest free buffer whose
     /// storage already fits; a new one is added only while the pool is below `kMaxPooledSurfaces`
     /// (beyond that an ill-fitting free buffer is grown instead, so a deep stack cannot make the
-    /// pool grow without bound). Only the first `w * h` pixels are cleared.
+    /// pool grow without bound). Only the first `w * h` pixels are cleared. A buffer that must grow
+    /// is reallocated to exactly `w * h` pixels (T-641: no geometric slack).
     size_t acquire(int w, int h);
     void release(size_t index);
     Target surfaceTarget(size_t index) { return Target::fromSurface(m_pool[index]); }
@@ -218,9 +235,19 @@ private:
     const uint8_t* m_rootWriteMask = nullptr;
     int m_rootWriteMaskStride = 0;
 
+    /// T-641: a pool slot's ageing state, parallel to `m_pool`.
+    struct SlotAge {
+        uint32_t idleFrames = 0;  ///< consecutive endFrame()s without an acquire
+        size_t windowPeak = 0;    ///< the largest `need` (floats) served in the current window
+        bool acquired = false;    ///< acquired since the last endFrame()
+    };
+
     std::vector<Surface> m_pool;
     std::vector<uint8_t> m_inUse;
+    std::vector<SlotAge> m_age;
     std::vector<Frame> m_stack;
+    /// endFrame()s since the current capacity window began.
+    uint32_t m_windowFrames = 0;
 };
 
 /// Per-renderer scratch for drawImage/drawImageQuad (Docs/tasks/T-149.md): `span` holds one

@@ -99,6 +99,13 @@ public:
     void render(const CommandList& list, TextShaper* shaper, AssetResolver* assets,
                 const IrView* ir = nullptr, PerfTracker* perf = nullptr, const DamageList* damage = nullptr);
 
+    /// T-641 (Docs/design/50-c-abi.md §50.aa items 1-2): frees the renderer's frame scratch -- the
+    /// offscreen layer pool, the effect buffers, the clip and damage masks, the Direct-mode bands --
+    /// so a hidden surface keeps only its target. Nothing of the last frame is reused afterwards
+    /// (the damage state reads "full"); the next render() allocates again and draws the same
+    /// pixels. The target stays set. Not to be called during render().
+    void releaseScratch();
+
     /// Draw commands (FillPath/StrokePath/DrawImage/DrawGlyphs/DrawImageQuad) the last render()
     /// call actually executed, and how many it skipped as outside the damage rectangles. Both are
     /// 0 before the first render(); a full render never skips anything (Docs/tasks/T-99.md test 2).

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <vector>
@@ -344,6 +345,142 @@ TEST_CASE("LayerStack: T-263a resetStack empties the stack and frees every poole
         stack.endMaskContent(root);
         CHECK(stack.poolSize() == held);
     }
+}
+
+// T-641 (Docs/design/50-c-abi.md §50.aa item 3): pool ageing. A slot not acquired for
+// kPoolIdleFrames consecutive frames is freed; one whose capacity is more than twice what it served
+// in a window is reallocated to that size; a slot acquired every frame is never touched.
+TEST_CASE("LayerStack: T-641 a slot idle for 120 frames is freed, a slot in use every frame is kept") {
+    LayerStack stack;
+    std::vector<uint8_t> rootBuf(static_cast<size_t>(64) * 64 * 4, 0);
+    SwTarget swTarget{rootBuf.data(), 64, 64, 64 * 4};
+    Target root = Target::fromSwTarget(swTarget);
+
+    // Frame 0: two nested layers -> two slots.
+    stack.pushLayer(root, 1.0f, BlendMode::Normal, Rect{0, 0, 64, 64});
+    stack.pushLayer(root, 1.0f, BlendMode::Normal, Rect{0, 0, 32, 32});
+    stack.popLayer(root);
+    stack.popLayer(root);
+    stack.endFrame();
+    REQUIRE(stack.poolSize() == 2);
+
+    // Then only the outer layer, every frame: the inner slot ages out after kPoolIdleFrames frames.
+    const uint32_t idle = LayerStack::kPoolIdleFrames;
+    for (uint32_t frame = 1; frame <= idle; ++frame) {
+        stack.resetStack();
+        stack.pushLayer(root, 1.0f, BlendMode::Normal, Rect{0, 0, 64, 64});
+        stack.popLayer(root);
+        stack.endFrame();
+        CHECK(stack.poolSize() == (frame < idle ? 2u : 1u));
+    }
+    // The slot in use every frame kept its storage.
+    CHECK(stack.slotCapacity(0) == static_cast<size_t>(64) * 64 * 4);
+    for (uint32_t frame = 0; frame < 3 * idle; ++frame) {
+        stack.pushLayer(root, 1.0f, BlendMode::Normal, Rect{0, 0, 64, 64});
+        stack.popLayer(root);
+        stack.endFrame();
+    }
+    CHECK(stack.poolSize() == 1);
+    CHECK(stack.slotCapacity(0) == static_cast<size_t>(64) * 64 * 4);
+
+    // No frame at all for kPoolIdleFrames frames: the pool empties.
+    for (uint32_t frame = 0; frame < idle; ++frame) {
+        stack.endFrame();
+    }
+    CHECK(stack.poolSize() == 0);
+}
+
+TEST_CASE("LayerStack: T-641 exact allocation on growth; an oversized slot shrinks at the window end") {
+    LayerStack stack;
+    std::vector<uint8_t> rootBuf(static_cast<size_t>(64) * 64 * 4, 0);
+    SwTarget swTarget{rootBuf.data(), 64, 64, 64 * 4};
+    Target root = Target::fromSwTarget(swTarget);
+    const size_t big = static_cast<size_t>(64) * 64 * 4;
+    const size_t small = static_cast<size_t>(16) * 16 * 4;
+
+    stack.pushLayer(root, 1.0f, BlendMode::Normal, Rect{0, 0, 64, 64});
+    stack.popLayer(root);
+    REQUIRE(stack.poolSize() == 1);
+    CHECK(stack.slotCapacity(0) == big);  // Exactly the request, no geometric slack.
+    stack.endFrame();
+
+    // From now on only the small layer: the window containing the big one keeps the capacity, the
+    // next window (whose peak is 16x16) gives it back.
+    const uint32_t window = LayerStack::kPoolIdleFrames;
+    uint32_t frames = 1;
+    for (; frames < window; ++frames) {
+        stack.pushLayer(root, 1.0f, BlendMode::Normal, Rect{0, 0, 16, 16});
+        stack.popLayer(root);
+        stack.endFrame();
+    }
+    CHECK(stack.slotCapacity(0) == big);
+    for (; frames < 2 * window; ++frames) {
+        stack.pushLayer(root, 1.0f, BlendMode::Normal, Rect{0, 0, 16, 16});
+        stack.popLayer(root);
+        stack.endFrame();
+    }
+    CHECK(stack.poolSize() == 1);
+    CHECK(stack.slotCapacity(0) == small);
+
+    // A size that varies within 2x (an animated glow) keeps its peak capacity across windows.
+    for (uint32_t frame = 0; frame < 3 * window; ++frame) {
+        const float side = frame % 2 == 0 ? 12.0f : 16.0f;
+        stack.pushLayer(root, 1.0f, BlendMode::Normal, Rect{0, 0, side, side});
+        stack.popLayer(root);
+        stack.endFrame();
+        CHECK(stack.slotCapacity(0) == small);
+    }
+
+    // releasePool frees everything; the next acquire allocates again.
+    stack.releasePool();
+    CHECK(stack.poolSize() == 0);
+    stack.pushLayer(root, 1.0f, BlendMode::Normal, Rect{0, 0, 16, 16});
+    stack.popLayer(root);
+    CHECK(stack.poolSize() == 1);
+
+    // A full pool (kMaxPooledSurfaces = 16) grows a free slot instead, also to exactly the request.
+    stack.releasePool();
+    for (int i = 0; i < 16; ++i) {
+        stack.pushLayer(root, 1.0f, BlendMode::Normal, Rect{0, 0, 8, 8});
+    }
+    for (int i = 0; i < 16; ++i) {
+        stack.popLayer(root);
+    }
+    REQUIRE(stack.poolSize() == 16);
+    stack.pushLayer(root, 1.0f, BlendMode::Normal, Rect{0, 0, 64, 64});
+    stack.popLayer(root);
+    CHECK(stack.poolSize() == 16);
+    size_t largest = 0;
+    for (size_t i = 0; i < stack.poolSize(); ++i) {
+        largest = std::max(largest, stack.slotCapacity(i));
+    }
+    CHECK(largest == big);
+}
+
+TEST_CASE("SwRenderer: T-641 releaseScratch then render draws the same pixels") {
+    constexpr int w = 64;
+    constexpr int h = 64;
+    std::vector<uint8_t> a(static_cast<size_t>(w) * h * 4, 0);
+    std::vector<uint8_t> b(a.size(), 0);
+    CommandList cl;
+    cl.viewport = Rect{0, 0, w, h};
+    addPushClipRect(cl, Rect{4, 4, 48, 48});
+    addPushLayer(cl, 0.5f, BlendMode::Multiply);
+    addFillRect(cl, 0, 0, 40, 40, Color{1, 0, 0, 1});
+    addPushLayer(cl, 0.75f, BlendMode::Normal);
+    addFillRect(cl, 20, 20, 40, 40, Color{0, 0, 1, 1});
+    addPopLayer(cl);
+    addPopLayer(cl);
+    addPopClip(cl);
+
+    SwRenderer renderer;
+    renderer.setTarget(SwTarget{a.data(), w, h, w * 4});
+    renderer.render(cl, nullptr, nullptr);
+    renderer.releaseScratch();
+    renderer.releaseScratch();  // Twice is harmless.
+    renderer.setTarget(SwTarget{b.data(), w, h, w * 4});
+    renderer.render(cl, nullptr, nullptr);
+    CHECK(a == b);
 }
 
 TEST_CASE("LayerStack: a bounded layer composites at its origin and nowhere else (T-133)") {

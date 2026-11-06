@@ -147,6 +147,13 @@ void detachGpu(xt_surface& surface) {
     surface.target = sw::SwTarget{};
 }
 
+void releaseGpuResources(xt_surface& surface) {
+    if (surface.gpu == nullptr) return;
+    surface.gpu.reset();  // T-641: gpuTarget, `attached` and renderPath stay (still attached)
+    // The memory goes back to the target's device, whose allocator keeps it for the next resources.
+    log(0, "xt_surface: GPU resources released (" + surface.uiId + ")");
+}
+
 bool gpuDrawCounts(const xt_surface& surface, uint32_t& executed, uint32_t& skipped) {
     if (surface.gpu == nullptr) return false;
     executed = surface.gpu->executed;
@@ -219,8 +226,9 @@ bool buildCompositeFrame(xt_gpu_target& t, xt::gpu::TextureHandle handle, const 
 /// The largest surface / target side a texture handle and a scissor can describe.
 constexpr int kMaxSide = 16384;
 
-/// Attaches `s` to `t` (its renderer on the target's device, its glyph atlas). Empty, or why not.
-std::string attachSurface(xt_surface& s, xt_gpu_target& t) {
+/// Builds the GPU resources of `s` on `t` (its renderer on the target's device, its glyph atlas):
+/// on first attach, and again after a release (T-641). Empty, or why not.
+std::string buildSurfaceGpu(xt_surface& s, xt_gpu_target& t) {
     std::unique_ptr<xt::capi::SurfaceGpu, xt::capi::SurfaceGpuDeleter> gpu(new xt::capi::SurfaceGpu);
     gpu->target = &t;
     xt::wgpu::WgpuInit in = t.init;
@@ -235,10 +243,14 @@ std::string attachSurface(xt_surface& s, xt_gpu_target& t) {
     }
 #endif
     s.gpu = std::move(gpu);
+    return std::string();
+}
+
+/// Attaches `s` to `t` (the render path; the resources are built by buildSurfaceGpu).
+void attachSurface(xt_surface& s, xt_gpu_target& t) {
     s.gpuTarget = &t;
     ++t.attached;
     s.renderPath = xt::capi::RenderPath::Gpu;
-    return std::string();
 }
 
 }  // namespace
@@ -451,9 +463,21 @@ XT_CAPI xt_status xt_surface_render_gpu(xt_surface* s, xt_gpu_target* t, const x
             return fail(XT_STATUS_INVALID_ARGUMENT, "xt_surface_render_gpu: the surface is larger than " +
                                                         std::to_string(kMaxSide) + " px");
         }
+        if (s->gpu == nullptr && s->gpuTarget != nullptr && !s->ctx->isVisible(s->handle)) {
+            // T-641 (50 §50.aa item 4): released while hidden; a hidden surface paints nothing, so
+            // its resources are rebuilt only once it has something to draw again.
+            xt::capi::DispatchScope scope(*s);
+            s->ctx->render(s->list, &s->damage);
+            if (s->list.commands.empty()) return XT_STATUS_OK;
+        }
         if (s->gpu == nullptr) {
-            const std::string error = attachSurface(*s, *t);
+            const std::string error = buildSurfaceGpu(*s, *t);
             if (!error.empty()) return fail(XT_STATUS_INTERNAL, "xt_surface_render_gpu: " + error);
+            if (s->gpuTarget == nullptr) {
+                attachSurface(*s, *t);
+            } else {
+                xt::capi::log(0, "xt_surface_render_gpu: GPU resources rebuilt (" + s->uiId + ")");
+            }
         }
         xt::capi::SurfaceGpu& g = *s->gpu;
         bool fresh = false;
@@ -512,6 +536,8 @@ void detachGpu(xt_surface& surface) {
     surface.gpuTarget = nullptr;
     surface.renderPath = RenderPath::None;
 }
+
+void releaseGpuResources(xt_surface& surface) { surface.gpu.reset(); }
 
 bool gpuDrawCounts(const xt_surface& /*surface*/, uint32_t& /*executed*/, uint32_t& /*skipped*/) {
     return false;

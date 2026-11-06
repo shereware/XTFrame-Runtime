@@ -60,6 +60,15 @@ void xt_surface::onBeforeDocumentUpdate(xt::Context& context) {
     xt::capi::callbackGuard("the update hook", [&] { updateHookFn(this, updateDt, updateHookUser); });
 }
 
+void xt_surface::onReleaseRenderScratch(xt::Context& context) {
+    // T-641 (50 §50.aa): nothing renders during a callback, so the buffers are free to go.
+    if (&context != ctx.get()) {
+        return;
+    }
+    renderer.releaseScratch();
+    xt::capi::releaseGpuResources(*this);
+}
+
 namespace xt::capi {
 
 void applyUiScale(xt_surface& s) {
@@ -540,6 +549,22 @@ XT_CAPI xt_status xt_surface_set_visible(xt_surface* s, int visible) {
         XT_CAPI_REQUIRE_SURFACE(s, "xt_surface_set_visible");
         xt::capi::DispatchScope scope(*s);
         return toCapi(s->ctx->setVisible(s->handle, visible != 0));
+    });
+}
+
+XT_CAPI xt_status xt_surface_trim(xt_surface* s) {
+    XT_CAPI_GUARD("xt_surface_trim", {
+        XT_CAPI_REQUIRE_SURFACE(s, "xt_surface_trim");
+        s->ctx->releaseRenderScratch();  // T-641 (50 §50.aa item 2); allowed inside callbacks.
+        return XT_STATUS_OK;
+    });
+}
+
+XT_CAPI xt_status xt_surface_set_trim_on_hide(xt_surface* s, int enabled) {
+    XT_CAPI_GUARD("xt_surface_set_trim_on_hide", {
+        XT_CAPI_REQUIRE_SURFACE(s, "xt_surface_set_trim_on_hide");
+        s->ctx->setTrimOnHide(enabled != 0);  // T-641 (50 §50.aa item 1).
+        return XT_STATUS_OK;
     });
 }
 

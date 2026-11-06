@@ -361,6 +361,17 @@ XT_CAPI xt_status xt_surface_render_gpu(xt_surface* s, xt_gpu_target* t, const x
 /* Releases the GPU resources of `s` and detaches it from its target; then either render path may be
    used. A surface that is not attached -> OK (and it may use either path again). */
 XT_CAPI xt_status xt_surface_detach_gpu(xt_surface* s);
+
+/* ---- Hidden surfaces and memory (50 §50.aa, T-641) ------------------------------------------------
+   xt_surface_trim: frees the surface's frame scratch now -- the software renderer's layer pool,
+   effect buffers and masks; with a GPU target, the surface texture and renderer resources (it stays
+   attached). Any time, inside callbacks too. A visible surface repaints whole on its next render.
+   xt_surface_set_trim_on_hide: 1 (the default) = the first xt_surface_update after the surface became
+   hidden (xt_surface_set_visible(s, 0), or a request_hide outro that ended) does the same; the frame
+   that shows it again allocates anew and renders the same pixels. 0 keeps the scratch while hidden
+   (a HUD toggled every few frames). */
+XT_CAPI xt_status xt_surface_trim(xt_surface* s);
+XT_CAPI xt_status xt_surface_set_trim_on_hide(xt_surface* s, int enabled);
 /* clang-format on */
 
 #ifdef __cplusplus

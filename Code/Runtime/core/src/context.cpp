@@ -696,6 +696,31 @@ void Context::update(float dt) {
             doc->update(m_clock);
         }
     }
+
+    // T-641 (50 §50.aa item 1): the frame that ends with nothing of this Context visible lets the
+    // renderer drop its scratch (a `then hide` outro still paints: isVisible() stays true until it
+    // ends). Once per hide: render() sets the flag again only after it painted something.
+    if (m_trimOnHide && m_renderScratchHeld) {
+        bool anyVisible = false;
+        for (size_t i = 0; i < m_documents.size() && !anyVisible; ++i) {
+            const Document* doc = liveAt(i);
+            anyVisible = doc != nullptr && doc->isVisible();
+        }
+        if (!anyVisible) {
+            releaseRenderScratch();
+        }
+    }
+}
+
+void Context::releaseRenderScratch() {
+    m_renderScratchHeld = false;
+    m_damageBaseValid = false;  // The next render() reports `full`.
+    if (!m_listeners.empty()) {
+        const std::vector<ContextListener*> listeners = m_listeners;  // Callbacks may edit the list.
+        for (ContextListener* listener : listeners) {
+            listener->onReleaseRenderScratch(*this);
+        }
+    }
 }
 
 void Context::render(CommandList& out, DamageList* damage) {
@@ -745,6 +770,9 @@ void Context::render(CommandList& out, DamageList* damage) {
     // out-of-range list fails our own suites (no cost in Release).
     XT_ASSERT(validateCommandList(out));
     out.structureChecked = true;
+    if (!out.commands.empty()) {
+        m_renderScratchHeld = true;  // T-641: a backend drawing this list holds scratch now.
+    }
     // T-263c: process-wide, so a list of another Context is never taken for this one's.
     static std::atomic<uint32_t> nextFrameSerial{1};
     out.frameSerial = nextFrameSerial.fetch_add(1, std::memory_order_relaxed);

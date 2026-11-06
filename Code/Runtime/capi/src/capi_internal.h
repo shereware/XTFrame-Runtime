@@ -132,10 +132,10 @@ bool splitUtf8(const char* text, size_t size, std::vector<std::pair<size_t, uint
 /// exception); XT_CAPI_GUARD_OR returns `type` (`fail` on an exception); XT_CAPI_GUARD_VOID
 /// returns nothing.
 #define XT_CAPI_GUARD(function, ...) \
-    return ::xt::capi::guard<xt_status>(function, XT_STATUS_INTERNAL, [&]() -> xt_status __VA_ARGS__)
+    return ::xt::capi::guard<xt_status>(function, XT_STATUS_INTERNAL, [&]()->xt_status __VA_ARGS__)
 #define XT_CAPI_GUARD_OR(function, type, failValue, ...) \
-    return ::xt::capi::guard<type>(function, failValue, [&]() -> type __VA_ARGS__)
-#define XT_CAPI_GUARD_VOID(function, ...) ::xt::capi::guardVoid(function, [&]() -> void __VA_ARGS__)
+    return ::xt::capi::guard<type>(function, failValue, [&]()->type __VA_ARGS__)
+#define XT_CAPI_GUARD_VOID(function, ...) ::xt::capi::guardVoid(function, [&]()->void __VA_ARGS__)
 /// The NULL check a surface entry point returning xt_status starts with (inside its guard).
 #define XT_CAPI_REQUIRE_SURFACE(s, function)                                                              \
     if ((s) == nullptr) {                                                                                 \
@@ -237,6 +237,8 @@ struct xt_surface : public xt::ContextListener {
     void onShown(xt::DocumentHandle document) override;
     void onHidden(xt::DocumentHandle document) override;
     void onBeforeDocumentUpdate(xt::Context& context) override;
+    /// T-641 (50 §50.aa): frees the SW renderer's scratch and, when attached, the GPU resources.
+    void onReleaseRenderScratch(xt::Context& context) override;
 };
 
 namespace xt::capi {
@@ -284,6 +286,10 @@ void applyUiScale(xt_surface& surface);
 /// T-636: releases the surface's GPU resources, detaches it from its target and resets its render
 /// path to None (capi_gpu.cpp). Safe on a surface that is not attached.
 void detachGpu(xt_surface& surface);
+/// T-641 (50 §50.aa item 4): releases the surface's GPU texture and renderer resources but keeps it
+/// attached (render path, target); the next xt_surface_render_gpu that has something to draw
+/// rebuilds them. A no-op on a surface without GPU resources.
+void releaseGpuResources(xt_surface& surface);
 /// T-636: the draw counters of the surface's last GPU render (false when it has none).
 bool gpuDrawCounts(const xt_surface& surface, uint32_t& executed, uint32_t& skipped);
 

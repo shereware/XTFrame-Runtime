@@ -1,0 +1,88 @@
+<xt version="2">
+
+  <body>
+    <div id="panel">
+      <div class="card" id="c0"><div class="chip"></div></div>
+      <div class="card" id="c1"><div class="chip"></div></div>
+      <div class="card" id="c2"><div class="chip"></div></div>
+    </div>
+    <div id="halo"><div id="core"></div></div>
+    <div id="strip"></div>
+  </body>
+
+  <layout>
+    body {
+      width: 1280px;
+      height: 720px;
+    }
+    #panel {
+      position: absolute;
+      left: 80px;
+      top: 80px;
+      width: 560px;
+      height: 400px;
+      display: flex;
+      flex-wrap: wrap;
+    }
+    .card {
+      width: 160px;
+      height: 120px;
+      margin: 12px;
+    }
+    .chip {
+      width: 60px;
+      height: 40px;
+      margin: 20px;
+    }
+    #halo {
+      position: absolute;
+      left: 700px;
+      top: 120px;
+      width: 480px;
+      height: 480px;
+    }
+    #core {
+      width: 200px;
+      height: 200px;
+      margin: 140px;
+    }
+    #strip {
+      position: absolute;
+      left: 0px;
+      top: 660px;
+      width: 1280px;
+      height: 60px;
+    }
+  </layout>
+  <style>
+    body {
+      background-color: #101018;
+    }
+    #panel {
+      background-color: #22283a;
+      opacity: 0.85;
+    }
+    .card {
+      background-color: #3a7bd5;
+      opacity: 0.7;
+    }
+    .chip {
+      background-color: #f0c040;
+      opacity: 0.5;
+    }
+    #halo {
+      background-color: #1f6feb80;
+      border-radius: 240px;
+      opacity: 0.6;
+    }
+    #core {
+      background-color: #ffffff;
+      border-radius: 100px;
+      opacity: 0.4;
+    }
+    #strip {
+      background-color: #e63946;
+      opacity: 0.3;
+    }
+  </style>
+</xt>
