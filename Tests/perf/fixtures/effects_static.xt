@@ -1,0 +1,202 @@
+<xt version="2">
+
+  <body>
+    <div id="backdrop">
+      <div class="tile" id="t0"></div>
+      <div class="tile" id="t1"></div>
+      <div class="tile" id="t2"></div>
+      <div class="tile" id="t3"></div>
+    </div>
+    <div id="shadow"></div>
+    <div id="spread"></div>
+    <div id="inset"></div>
+    <div id="glow"></div>
+    <div id="blur"><div id="blurred"></div></div>
+    <div id="outline"></div>
+    <div id="adjust"></div>
+    <div id="mask"></div>
+    <div id="shine"></div>
+    <div id="stack"></div>
+    <div id="glass"></div>
+    <div id="multiply"></div>
+  </body>
+
+  <layout>
+    body {
+      width: 1280px;
+      height: 720px;
+    }
+    #backdrop {
+      position: absolute;
+      left: 0px;
+      top: 0px;
+      width: 1280px;
+      height: 720px;
+      display: flex;
+      flex-wrap: wrap;
+    }
+    .tile {
+      width: 640px;
+      height: 360px;
+    }
+    #shadow {
+      position: absolute;
+      left: 60px;
+      top: 60px;
+      width: 180px;
+      height: 120px;
+    }
+    #spread {
+      position: absolute;
+      left: 300px;
+      top: 60px;
+      width: 180px;
+      height: 120px;
+    }
+    #inset {
+      position: absolute;
+      left: 540px;
+      top: 60px;
+      width: 180px;
+      height: 120px;
+    }
+    #glow {
+      position: absolute;
+      left: 780px;
+      top: 60px;
+      width: 180px;
+      height: 120px;
+    }
+    #blur {
+      position: absolute;
+      left: 1020px;
+      top: 60px;
+      width: 180px;
+      height: 120px;
+    }
+    #blurred {
+      width: 90px;
+      height: 60px;
+      margin: 30px;
+    }
+    #outline {
+      position: absolute;
+      left: 60px;
+      top: 260px;
+      width: 180px;
+      height: 120px;
+    }
+    #adjust {
+      position: absolute;
+      left: 300px;
+      top: 260px;
+      width: 180px;
+      height: 120px;
+    }
+    #mask {
+      position: absolute;
+      left: 540px;
+      top: 260px;
+      width: 180px;
+      height: 120px;
+    }
+    #shine {
+      position: absolute;
+      left: 780px;
+      top: 260px;
+      width: 180px;
+      height: 120px;
+    }
+    #stack {
+      position: absolute;
+      left: 1020px;
+      top: 260px;
+      width: 180px;
+      height: 120px;
+    }
+    #glass {
+      position: absolute;
+      left: 200px;
+      top: 460px;
+      width: 400px;
+      height: 200px;
+    }
+    #multiply {
+      position: absolute;
+      left: 700px;
+      top: 460px;
+      width: 400px;
+      height: 200px;
+    }
+  </layout>
+  <style>
+    #t0 {
+      background-color: #e0503c;
+    }
+    #t1 {
+      background-color: #2f6fd0;
+    }
+    #t2 {
+      background-color: #33a06a;
+    }
+    #t3 {
+      background-color: #f0c040;
+    }
+    #shadow {
+      background-color: #ffffff;
+      border-radius: 12px;
+      effect: shadow(6px 8px 10px #00000080);
+    }
+    #spread {
+      background-color: #ffffff;
+      effect: shadow(0px 0px 8px 6px #000000cc);
+    }
+    #inset {
+      background-color: #ffffff;
+      effect: shadow(8px 8px 10px 4px #000000cc 1 inset);
+    }
+    #glow {
+      background-color: #20242c;
+      border-radius: 20px;
+      effect: glow(12px #ffcc00 1.5);
+    }
+    #blur {
+      background-color: #ffffff40;
+      effect: blur(6px);
+    }
+    #blurred {
+      background-color: #101018;
+    }
+    #outline {
+      background-color: #3a7bd5;
+      border-radius: 30px;
+      effect: outline(2px #000000 1px outer);
+    }
+    #adjust {
+      background-color: #3a7bd5;
+      effect: color-adjust(hue-rotate(120deg));
+    }
+    #mask {
+      background-color: #e63946;
+      effect: gradient-mask(linear, 0px 0px, 180px 0px, #fff 0%, #fff0 100%);
+    }
+    #shine {
+      background-color: #22283a;
+      effect: shine(20deg 30px #fff 1 0.5 0);
+    }
+    #stack {
+      background-color: #ffffff;
+      effect: shadow(6px 8px 10px #00000080) outline(2px #000000 1px outer) color-adjust(saturate(0.5));
+    }
+    #glass {
+      border-radius: 16px;
+      background-color: #ffffff60;
+      effect: backdrop-blur(12px);
+    }
+    #multiply {
+      background-color: #80c0ff;
+      opacity: 0.8;
+      mix-blend-mode: multiply;
+    }
+  </style>
+</xt>

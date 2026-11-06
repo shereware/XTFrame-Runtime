@@ -54,6 +54,7 @@ add_library(xt_wgpu STATIC
     src/wgpu_custom.cpp
     src/wgpu_geometry.cpp
     src/wgpu_renderer.cpp
+    src/wgpu_shared.cpp
     src/wgpu_window.cpp
     "${xt_wgsl_header}"
 )

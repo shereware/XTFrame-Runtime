@@ -1,0 +1,47 @@
+/* 480x400 at uiscale 1. Rows 0-120: light text on an opaque dark band; rows 120-240: dark text on
+   transparent; below: a non-convex star path and a 120 px word (outlines on both backends). */
+body {
+  width: 100vw;
+  height: 100vh;
+}
+#Dark {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 480px;
+  height: 120px;
+}
+#Clear {
+  position: absolute;
+  left: 0;
+  top: 120px;
+  width: 480px;
+  height: 120px;
+}
+.s12,
+.s24,
+.s48 {
+  position: absolute;
+  left: 8px;
+}
+.s12 {
+  top: 6px;
+}
+.s24 {
+  top: 26px;
+}
+.s48 {
+  top: 56px;
+}
+#Star {
+  position: absolute;
+  left: 10px;
+  top: 260px;
+  width: 120px;
+  height: 120px;
+}
+#Word {
+  position: absolute;
+  left: 170px;
+  top: 236px;
+}

@@ -36,11 +36,20 @@ struct AtlasEntry {
 /// not fit in any existing texture, a new texture is allocated (up to 4); once all 4 are full,
 /// every texture and cache entry is cleared and packing restarts from an empty atlas (`lookup()`
 /// still places the requested glyph and returns true; `wasReset()` reports the reset happened).
+///
+/// T-648 (Docs/design/50-c-abi.md §50.z addendum): an atlas made with an `initialSize` smaller than
+/// `textureSize` starts with one page of `initialSize`; when a glyph fits nowhere while the size
+/// is still below `textureSize`, every page grows to `textureSize` in place (content and every
+/// entry's position kept, the new area empty, each page wholly pending upload) before a page is
+/// added. A growth changes `textureSize()` -- the uv scale of every entry -- so `wasReset()`
+/// reports it like a reset: a consumer that already used entries rebuilds with the new size.
 class GlyphAtlas {
 public:
     /// `textureSize` (Docs/tasks/T-31.md: optional, for tests that want to exercise the overflow
-    /// path with a small atlas) must be > 0; defaults to the production size, 2048.
-    explicit GlyphAtlas(FtTextShaper& shaper, int textureSize = 2048);
+    /// path with a small atlas) must be > 0; defaults to the production size, 2048. T-648:
+    /// `initialSize` in 1..textureSize starts the atlas smaller (see the class comment); 0 (the
+    /// default) or anything out of that range starts at `textureSize`.
+    explicit GlyphAtlas(FtTextShaper& shaper, int textureSize = 2048, int initialSize = 0);
 
     /// Finds (rasterizing and packing on a cache miss) the atlas entry for (font, glyphId) at
     /// `sizePx`, rasterized at horizontal subpixel offset `subpixelX` px (quantized to
@@ -55,8 +64,11 @@ public:
 
     /// Number of textures allocated so far (0..4).
     uint32_t textureCount() const { return static_cast<uint32_t>(textures_.size()); }
-    /// Side length, in pixels, of each atlas texture (as passed to the constructor).
+    /// Side length, in pixels, of each atlas texture now (T-648: `initialSize` until the atlas
+    /// grows, then the constructor's `textureSize`).
     int textureSize() const { return textureSize_; }
+    /// T-648: the side length the pages grow to (the constructor's `textureSize`).
+    int maxTextureSize() const { return maxTextureSize_; }
 
     /// Calls fn(textureIndex, x, y, w, h, r8Pixels, stride) once per texture with pending
     /// changes since the last flushUploads() call, covering (at least) every glyph rect added in
@@ -120,6 +132,7 @@ private:
 
     FtTextShaper* shaper_;
     int textureSize_;
+    int maxTextureSize_;
     std::vector<Texture> textures_;
     std::unordered_map<Key, AtlasEntry, KeyHash> cache_;
     bool wasReset_ = false;
@@ -129,6 +142,8 @@ private:
     // `size` x `size` texture; returns true and fills (x, y) on success.
     static bool place(Texture& tex, int w, int h, int size, int& x, int& y);
     void resetAll();
+    /// T-648: grows every page from textureSize_ to maxTextureSize_ (content kept, all dirty).
+    void grow();
 };
 
 }  // namespace xt::text

@@ -875,3 +875,295 @@ TEST_CASE("damage: T-326 a blended element joins the damage when something under
     CHECK(coversSelf);
     CHECK(coversBox == false);
 }
+
+// T-644 (§23.2 revision "步驟 2 改為多區間"): step 2 aligns the two hash sequences with a sequence
+// diff, so the unchanged commands between two changed ranges stay clean.
+namespace {
+
+/// The middle box every T-644 list draws between its changing parts.
+constexpr Rect kMiddle{120, 60, 160, 180};
+
+/// Box `a` at the top left, the big unchanged middle box, box `b` at the bottom right.
+CommandList threeBoxes(Color a, Color b) {
+    CommandList list = emptyList();
+    addBox(list, 10, 10, 30, 30, a);
+    addBox(list, kMiddle.x, kMiddle.y, kMiddle.w, kMiddle.h, Color{0.2f, 0.5f, 0.3f, 1});
+    addBox(list, 350, 250, 30, 30, b);
+    return list;
+}
+
+void pushClipRect(CommandList& list, Rect rect) {
+    list.clipRects.push_back(ClipRectCmd{Mat2x3{}, rect});
+    list.commands.push_back(
+        Command{CmdKind::PushClipRect, {}, static_cast<uint32_t>(list.clipRects.size() - 1)});
+}
+
+bool touchesMiddle(const DamageList& d) {
+    for (const Rect& r : d.rects) {
+        const Rect hit = intersect(r, kMiddle);
+        if (hit.w > 0 && hit.h > 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/// Longest common subsequence length by dynamic programming (the reference for the Myers diff).
+size_t lcsLength(const std::vector<uint64_t>& a, const std::vector<uint64_t>& b) {
+    std::vector<size_t> row(b.size() + 1, 0);
+    for (size_t i = 0; i < a.size(); ++i) {
+        size_t diag = 0;
+        for (size_t j = 0; j < b.size(); ++j) {
+            const size_t up = row[j + 1];
+            row[j + 1] = a[i] == b[j] ? diag + 1 : std::max(row[j + 1], row[j]);
+            diag = up;
+        }
+    }
+    return row[b.size()];
+}
+
+/// Checks prevToCur / curToPrev are inverse, monotone, pair equal hashes only; returns the match count.
+size_t checkMatching(const std::vector<uint64_t>& a, const std::vector<uint64_t>& b,
+                     const std::vector<uint32_t>& prevToCur, const std::vector<uint32_t>& curToPrev) {
+    REQUIRE(prevToCur.size() == a.size());
+    REQUIRE(curToPrev.size() == b.size());
+    size_t matches = 0;
+    size_t lastJ = 0;
+    bool any = false;
+    for (size_t i = 0; i < a.size(); ++i) {
+        if (prevToCur[i] == kNoCommandMatch) {
+            continue;
+        }
+        const size_t j = prevToCur[i];
+        REQUIRE(j < b.size());
+        CHECK(curToPrev[j] == i);
+        CHECK(a[i] == b[j]);
+        CHECK((!any || j > lastJ));
+        lastJ = j;
+        any = true;
+        ++matches;
+    }
+    size_t back = 0;
+    for (uint32_t i : curToPrev) {
+        back += i == kNoCommandMatch ? 0 : 1;
+    }
+    CHECK(back == matches);
+    return matches;
+}
+
+}  // namespace
+
+TEST_CASE("damage: T-644 two separated changes leave the unchanged middle clean") {
+    const CommandList prev = threeBoxes(Color{1, 0, 0, 1}, Color{0, 0, 1, 1});
+    const CommandList cur = threeBoxes(Color{0, 1, 0, 1}, Color{1, 1, 0, 1});
+    DamageList damage;
+    computeDamage(prev, cur, Rect{0, 0, kViewW, kViewH}, damage);
+    REQUIRE(!damage.full);
+    CHECK(damage.rects.size() == 2);
+    CHECK(!touchesMiddle(damage));
+    CHECK(damageArea(damage) == doctest::Approx(2 * 30 * 30));
+    const PixelDamage px = pixelDamage(prev, cur);
+    CHECK(px.changed == 2 * 30 * 30);
+    CHECK(px.outside == 0);
+}
+
+TEST_CASE("damage: T-644 inserted and deleted commands change the list length, not the middle") {
+    const CommandList prev = threeBoxes(Color{1, 0, 0, 1}, Color{0, 0, 1, 1});
+    // An extra box drawn right after `a`, and `b` gone: the list is as long, but shifted.
+    CommandList cur = emptyList();
+    addBox(cur, 10, 10, 30, 30, Color{1, 0, 0, 1});
+    addBox(cur, 60, 20, 20, 20, Color{0, 0, 0, 1});
+    addBox(cur, kMiddle.x, kMiddle.y, kMiddle.w, kMiddle.h, Color{0.2f, 0.5f, 0.3f, 1});
+    // And one more at the end: longer than prev.
+    addBox(cur, 300, 10, 20, 20, Color{0, 0, 0, 1});
+    addBox(cur, 330, 10, 20, 20, Color{0, 0, 0, 1});
+    for (int pass = 0; pass < 2; ++pass) {
+        CAPTURE(pass);
+        const CommandList& from = pass == 0 ? prev : cur;
+        const CommandList& to = pass == 0 ? cur : prev;
+        DamageList damage;
+        computeDamage(from, to, Rect{0, 0, kViewW, kViewH}, damage);
+        REQUIRE(!damage.full);
+        CHECK(!touchesMiddle(damage));
+        CHECK(damageArea(damage) == doctest::Approx(20 * 20 + 30 * 30 + 2 * 20 * 20));
+        const PixelDamage px = pixelDamage(from, to);
+        CHECK(px.changed > 0);
+        CHECK(px.outside == 0);
+    }
+}
+
+TEST_CASE("damage: T-644 a matched command wrapped into a new group is still dirty") {
+    // prev: a, middle, b. cur: a recoloured, middle inside a new clip (and a layer), b recoloured:
+    // the middle's hash is unchanged, but the clip cuts most of it away.
+    const CommandList prev = threeBoxes(Color{1, 0, 0, 1}, Color{0, 0, 1, 1});
+    for (int variant = 0; variant < 2; ++variant) {
+        CAPTURE(variant);
+        CommandList cur = emptyList();
+        addBox(cur, 10, 10, 30, 30, Color{0, 1, 0, 1});
+        pushClipRect(cur, Rect{150, 100, 40, 40});
+        if (variant == 1) {
+            LayerCmd layer{};
+            layer.opacity = 0.5f;
+            layer.boundsHint = Rect{150, 100, 40, 40};
+            cur.layers.push_back(layer);
+            cur.commands.push_back(Command{CmdKind::PushLayer, {}, 0});
+        }
+        addBox(cur, kMiddle.x, kMiddle.y, kMiddle.w, kMiddle.h, Color{0.2f, 0.5f, 0.3f, 1});
+        if (variant == 1) {
+            cur.commands.push_back(Command{CmdKind::PopLayer, {}, 0});
+        }
+        cur.commands.push_back(Command{CmdKind::PopClip, {}, 0});
+        addBox(cur, 350, 250, 30, 30, Color{1, 1, 0, 1});
+        for (int pass = 0; pass < 2; ++pass) {
+            CAPTURE(pass);
+            const PixelDamage px = pass == 0 ? pixelDamage(prev, cur) : pixelDamage(cur, prev);
+            CHECK(px.changed > static_cast<int>(kMiddle.w * kMiddle.h) / 2);
+            CHECK(px.outside == 0);
+        }
+    }
+    // The same clip in both lists but a different rectangle: the clip's own bounds cover the change
+    // (as before T-644), and the matched content inside both clips is not added on its own.
+    CommandList clipA = emptyList();
+    pushClipRect(clipA, Rect{150, 100, 40, 40});
+    addBox(clipA, kMiddle.x, kMiddle.y, kMiddle.w, kMiddle.h, Color{0.2f, 0.5f, 0.3f, 1});
+    clipA.commands.push_back(Command{CmdKind::PopClip, {}, 0});
+    CommandList clipB = clipA;
+    clipB.clipRects[0].rect = Rect{200, 150, 40, 40};
+    DamageList damage;
+    computeDamage(clipA, clipB, Rect{0, 0, kViewW, kViewH}, damage);
+    REQUIRE(!damage.full);
+    CHECK(damageArea(damage) == doctest::Approx(2 * 40 * 40));
+    CHECK(pixelDamage(clipA, clipB).outside == 0);
+}
+
+TEST_CASE("damage: T-644 the propagation rules hold for every changed range") {
+    // B6: two separated changes inside one glow, the content between them unchanged: the halo is
+    // dirty (whole boundsHint), the box after the effect is not.
+    auto glowList = [](Color first, Color last) {
+        CommandList list = emptyList();
+        EffectInstance glow{};
+        glow.kind = EffectKind::Glow;
+        glow.params[0] = 16;
+        list.effects.push_back(glow);
+        EffectCmd ec{};
+        ec.effectOffset = 0;
+        ec.effectCount = 1;
+        ec.boundsHint = Rect{36, 36, 248, 88};
+        ec.contentBounds = Rect{60, 60, 200, 40};
+        list.effectCmds.push_back(ec);
+        list.commands.push_back(Command{CmdKind::PushEffect, {}, 0});
+        addBox(list, 60, 60, 40, 40, first);
+        addBox(list, 140, 60, 40, 40, Color{0.5f, 0.5f, 0.5f, 1});
+        addBox(list, 220, 60, 40, 40, last);
+        list.commands.push_back(Command{CmdKind::PopEffect, {}, 0});
+        addBox(list, 300, 200, 20, 20, Color{0, 0, 0, 1});
+        return list;
+    };
+    const CommandList prev = glowList(Color{1, 0, 0, 1}, Color{1, 0, 0, 1});
+    const CommandList cur = glowList(Color{0, 1, 0, 1}, Color{0, 1, 0, 1});
+    DamageList damage;
+    computeDamage(prev, cur, Rect{0, 0, kViewW, kViewH}, damage);
+    REQUIRE(!damage.full);
+    bool coversHalo = false;
+    for (const Rect& r : damage.rects) {
+        coversHalo = coversHalo || rectContains(r, Rect{36, 36, 248, 88});
+        CHECK(intersect(r, Rect{300, 200, 20, 20}).w == 0);
+    }
+    CHECK(coversHalo);
+
+    // Blended layer and mask (T-263b) with a second, unrelated change after them.
+    auto withSecondChange = [](CommandList a, CommandList b, int minChanged) {
+        addBox(a, 370, 10, 20, 20, Color{0, 0, 0, 1});
+        addBox(b, 370, 10, 20, 20, Color{1, 1, 1, 1});
+        const PixelDamage px = pixelDamage(a, b);
+        CHECK(px.changed > minChanged);
+        CHECK(px.outside == 0);
+    };
+    for (BlendMode blend : {BlendMode::Normal, BlendMode::Multiply, BlendMode::Difference}) {
+        CAPTURE(static_cast<int>(blend));
+        withSecondChange(layerList(blend, 100, Color{1, 0, 0, 1}), layerList(blend, 180, Color{0, 1, 0, 1}),
+                         1000);
+    }
+    for (MaskMode mode : {MaskMode::Alpha, MaskMode::LumaInverted}) {
+        CAPTURE(static_cast<int>(mode));
+        withSecondChange(maskList(mode, 80, Color{1, 0, 0, 1}), maskList(mode, 120, Color{0, 1, 0, 1}), 100);
+    }
+}
+
+TEST_CASE("damage: T-644 the hash diff is a longest common subsequence, with caps") {
+    std::vector<uint32_t> prevToCur;
+    std::vector<uint32_t> curToPrev;
+    // Random small sequences over a small alphabet: the diff is monotone, pairs equal hashes only and
+    // matches as many as the dynamic-programming LCS.
+    uint32_t seed = 12345;
+    auto next = [&seed](uint32_t mod) {
+        seed = seed * 1664525u + 1013904223u;
+        return (seed >> 8) % mod;
+    };
+    for (int round = 0; round < 200; ++round) {
+        CAPTURE(round);
+        std::vector<uint64_t> a(next(40));
+        std::vector<uint64_t> b(next(40));
+        for (uint64_t& h : a) {
+            h = next(4);
+        }
+        for (uint64_t& h : b) {
+            h = next(4);
+        }
+        const bool ran = matchCommandHashes(a, b, prevToCur, curToPrev);
+        const size_t matches = checkMatching(a, b, prevToCur, curToPrev);
+        if (ran) {
+            CHECK(matches == lcsLength(a, b));
+        }
+    }
+
+    // Two separated edits in a long list: everything else matched.
+    std::vector<uint64_t> a(kDamageDiffMaxCommands - 1);  // + 1 insertion = exactly the cap
+    for (size_t i = 0; i < a.size(); ++i) {
+        a[i] = 1000 + i;
+    }
+    std::vector<uint64_t> b = a;
+    b[10] = 7;
+    b[a.size() - 10] = 8;
+    b.insert(b.begin() + 2000, 9);
+    REQUIRE(matchCommandHashes(a, b, prevToCur, curToPrev));
+    CHECK(checkMatching(a, b, prevToCur, curToPrev) == a.size() - 2);
+    CHECK(prevToCur[2000] == 2001);
+
+    // n > kDamageDiffMaxCommands: only the common head and tail are matched (the single range).
+    a.push_back(5);
+    b.push_back(5);
+    CHECK(!matchCommandHashes(a, b, prevToCur, curToPrev));
+    CHECK(checkMatching(a, b, prevToCur, curToPrev) == 10 + 10);
+    CHECK(prevToCur[2000] == kNoCommandMatch);
+
+    // More than kDamageDiffMaxEdits edits: the single range too.
+    std::vector<uint64_t> c(1000);
+    std::vector<uint64_t> d(1000);
+    for (size_t i = 0; i < c.size(); ++i) {
+        c[i] = i;
+        d[i] = i % 3 == 1 ? 5000 + i : i;  // 333 changed commands = 666 edits
+    }
+    CHECK(!matchCommandHashes(c, d, prevToCur, curToPrev));
+    CHECK(checkMatching(c, d, prevToCur, curToPrev) == 1 + 2);  // head 0; tail 998, 999
+}
+
+TEST_CASE("damage: T-644 a list over the command cap keeps the single changed range") {
+    // kDamageDiffMaxCommands + 2 tiny boxes along the top row; the first and the last change colour.
+    const size_t count = kDamageDiffMaxCommands + 2;
+    auto build = [count](Color ends) {
+        CommandList list = emptyList();
+        for (size_t i = 0; i < count; ++i) {
+            const float x = static_cast<float>(i % 380);
+            addBox(list, x, 5, 1, 1, i == 0 || i + 1 == count ? ends : Color{0, 0, 0, 1});
+        }
+        return list;
+    };
+    const CommandList prev = build(Color{1, 0, 0, 1});
+    const CommandList cur = build(Color{0, 1, 0, 1});
+    DamageList damage;
+    computeDamage(prev, cur, Rect{0, 0, kViewW, kViewH}, damage);
+    REQUIRE(!damage.full);
+    // Single range: every box between the two ends is dirty, so the damage spans the row.
+    CHECK(damageBounds(damage).w >= 379.0f);
+}

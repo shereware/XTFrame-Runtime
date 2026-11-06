@@ -66,9 +66,15 @@ bool runThreeBoxPasses(float*& cur, float*& tmp, int w, int h, int channels, int
     return resultInCur;
 }
 
+/// The `MathScratch` of the overloads that take none (T-643).
+MathScratch& fallbackMath() {
+    static thread_local MathScratch math;
+    return math;
+}
+
 /// 1D max filter (van Herk / Gil-Werman), window radius `r` (window size `2r+1`), O(n) regardless
 /// of `r`. Samples outside `[0, n)` are treated as 0 (18.6). `r <= 0` copies `in` to `out`.
-void maxFilter1D(const float* in, float* out, int n, int r) {
+void maxFilter1D(const float* in, float* out, int n, int r, MathScratch& math) {
     if (r <= 0) {
         std::copy(in, in + n, out);
         return;
@@ -78,14 +84,17 @@ void maxFilter1D(const float* in, float* out, int n, int r) {
     const int blockCount = (paddedLen + windowLen - 1) / windowLen;
     const int extLen = blockCount * windowLen;
 
-    std::vector<float> ext(static_cast<size_t>(extLen), -std::numeric_limits<float>::infinity());
+    std::vector<float>& ext = math.ext;
+    ext.assign(static_cast<size_t>(extLen), -std::numeric_limits<float>::infinity());
     for (int i = 0; i < paddedLen; ++i) {
         int srcIdx = i - r;
         ext[static_cast<size_t>(i)] = (srcIdx >= 0 && srcIdx < n) ? in[srcIdx] : 0.0f;
     }
 
-    std::vector<float> prefixMax(static_cast<size_t>(extLen));
-    std::vector<float> suffixMax(static_cast<size_t>(extLen));
+    std::vector<float>& prefixMax = math.prefixMax;
+    std::vector<float>& suffixMax = math.suffixMax;
+    prefixMax.resize(static_cast<size_t>(extLen));
+    suffixMax.resize(static_cast<size_t>(extLen));
     for (int i = 0; i < extLen; ++i) {
         prefixMax[static_cast<size_t>(i)] =
             (i % windowLen == 0)
@@ -107,10 +116,7 @@ void maxFilter1D(const float* in, float* out, int n, int r) {
 }
 
 /// A per-pixel offset vector to the nearest source pixel, used by the 8SSEDT two-pass scan.
-struct DVec {
-    int dx = 0;
-    int dy = 0;
-};
+using DVec = DistanceVec;
 
 long long sqLen(const DVec& v) {
     return static_cast<long long>(v.dx) * v.dx + static_cast<long long>(v.dy) * v.dy;
@@ -132,9 +138,10 @@ void updateFrom(std::vector<DVec>& grid, int w, int h, int x, int y, int ox, int
 }
 
 /// Danielsson two-pass 8SSEDT: distance transform of `sourceMask` (nonzero = source, distance 0).
-void distanceTransform(const std::vector<uint8_t>& sourceMask, int w, int h, std::vector<float>& outDist) {
+void distanceTransform(const std::vector<uint8_t>& sourceMask, int w, int h, std::vector<float>& outDist,
+                       std::vector<DVec>& grid) {
     constexpr int kInf = 1 << 14;
-    std::vector<DVec> grid(static_cast<size_t>(w) * static_cast<size_t>(h));
+    grid.resize(static_cast<size_t>(w) * static_cast<size_t>(h));
     for (size_t i = 0; i < grid.size(); ++i) {
         grid[i] = sourceMask[i] != 0 ? DVec{0, 0} : DVec{kInf, kInf};
     }
@@ -358,9 +365,9 @@ namespace {
 /// T-343: the three-pass box blur of `data` (`w x h x channels`, in place through `scratch`) at
 /// 1 / 2^shift resolution: downsample, blur with the halved sigmas, upsample back into `data`.
 void blurDownsampled(std::vector<float>& data, std::vector<float>& scratch, int w, int h, int channels,
-                     float sigmaX, float sigmaY, bool skipX, bool skipY, int shift) {
-    std::vector<float> level;
-    std::vector<float> next;
+                     float sigmaX, float sigmaY, bool skipX, bool skipY, int shift, MathScratch& math) {
+    std::vector<float>& level = math.level;
+    std::vector<float>& next = math.next;
     int lw = w, lh = h;
     downsample2x2(data.data(), w, h, channels, level, lw, lh);
     for (int l = 2; l <= shift; ++l) {
@@ -387,6 +394,11 @@ void blurDownsampled(std::vector<float>& data, std::vector<float>& scratch, int 
 
 void gaussianBlur(const Surface& src, Surface& dst, Surface& scratch, float sigmaX, float sigmaY,
                   bool premultiply) {
+    gaussianBlur(src, dst, scratch, sigmaX, sigmaY, premultiply, fallbackMath());
+}
+
+void gaussianBlur(const Surface& src, Surface& dst, Surface& scratch, float sigmaX, float sigmaY,
+                  bool premultiply, MathScratch& math) {
     const int w = src.w;
     const int h = src.h;
     const size_t n = static_cast<size_t>(w) * static_cast<size_t>(h);
@@ -414,7 +426,7 @@ void gaussianBlur(const Surface& src, Surface& dst, Surface& scratch, float sigm
     // T-343 (18 §18.15): large sigmas run at a lower resolution, like the GPU path.
     const int shift = blurDownsampleShift(std::max(skipX ? 0.0f : sigmaX, skipY ? 0.0f : sigmaY));
     if (shift > 0) {
-        blurDownsampled(dst.rgba, scratch.rgba, w, h, 4, sigmaX, sigmaY, skipX, skipY, shift);
+        blurDownsampled(dst.rgba, scratch.rgba, w, h, 4, sigmaX, sigmaY, skipX, skipY, shift, math);
         return;
     }
 
@@ -431,7 +443,8 @@ namespace {
 /// Blurs `alpha` (already holding the `w * h` field to blur) in place with an isotropic sigma:
 /// three horizontal plus three vertical box passes against `scratch` as the ping-pong buffer.
 /// Shared by `gaussianBlurAlpha` and `gaussianBlurAlphaField`.
-void blurAlphaInPlace(std::vector<float>& alpha, int w, int h, std::vector<float>& scratch, float sigma) {
+void blurAlphaInPlace(std::vector<float>& alpha, int w, int h, std::vector<float>& scratch, float sigma,
+                      MathScratch& math) {
     scratch.assign(static_cast<size_t>(w) * static_cast<size_t>(h), 0.0f);
 
     bool skip = false;
@@ -442,7 +455,7 @@ void blurAlphaInPlace(std::vector<float>& alpha, int w, int h, std::vector<float
     // T-343 (18 §18.15): a glow's or shadow's mask blurs at a lower resolution too.
     const int shift = blurDownsampleShift(sigma);
     if (shift > 0) {
-        blurDownsampled(alpha, scratch, w, h, 1, sigma, sigma, false, false, shift);
+        blurDownsampled(alpha, scratch, w, h, 1, sigma, sigma, false, false, shift, math);
         return;
     }
 
@@ -458,6 +471,11 @@ void blurAlphaInPlace(std::vector<float>& alpha, int w, int h, std::vector<float
 
 void gaussianBlurAlpha(const Surface& src, std::vector<float>& outAlpha, std::vector<float>& scratch,
                        float sigma) {
+    gaussianBlurAlpha(src, outAlpha, scratch, sigma, fallbackMath());
+}
+
+void gaussianBlurAlpha(const Surface& src, std::vector<float>& outAlpha, std::vector<float>& scratch,
+                       float sigma, MathScratch& math) {
     const int w = src.w;
     const int h = src.h;
     const size_t n = static_cast<size_t>(w) * static_cast<size_t>(h);
@@ -466,21 +484,31 @@ void gaussianBlurAlpha(const Surface& src, std::vector<float>& outAlpha, std::ve
     for (size_t i = 0; i < n; ++i) {
         outAlpha[i] = src.rgba[i * 4 + 3];
     }
-    blurAlphaInPlace(outAlpha, w, h, scratch, sigma);
+    blurAlphaInPlace(outAlpha, w, h, scratch, sigma, math);
 }
 
 void gaussianBlurAlphaField(const std::vector<float>& alpha, int w, int h, std::vector<float>& outAlpha,
                             std::vector<float>& scratch, float sigma) {
+    gaussianBlurAlphaField(alpha, w, h, outAlpha, scratch, sigma, fallbackMath());
+}
+
+void gaussianBlurAlphaField(const std::vector<float>& alpha, int w, int h, std::vector<float>& outAlpha,
+                            std::vector<float>& scratch, float sigma, MathScratch& math) {
     const size_t n = static_cast<size_t>(w) * static_cast<size_t>(h);
     outAlpha.resize(n);
     for (size_t i = 0; i < n; ++i) {
         outAlpha[i] = alpha[i];
     }
-    blurAlphaInPlace(outAlpha, w, h, scratch, sigma);
+    blurAlphaInPlace(outAlpha, w, h, scratch, sigma, math);
 }
 
 void dilateAlpha(const std::vector<float>& in, std::vector<float>& out, std::vector<float>& scratch, int w,
                  int h, int r) {
+    dilateAlpha(in, out, scratch, w, h, r, fallbackMath());
+}
+
+void dilateAlpha(const std::vector<float>& in, std::vector<float>& out, std::vector<float>& scratch, int w,
+                 int h, int r, MathScratch& math) {
     const size_t n = static_cast<size_t>(w) * static_cast<size_t>(h);
     out.resize(n);
     if (r <= 0) {
@@ -492,17 +520,19 @@ void dilateAlpha(const std::vector<float>& in, std::vector<float>& out, std::vec
     const size_t uw = static_cast<size_t>(w);
     for (int y = 0; y < h; ++y) {
         size_t rowOff = static_cast<size_t>(y) * uw;
-        maxFilter1D(in.data() + rowOff, scratch.data() + rowOff, w, r);
+        maxFilter1D(in.data() + rowOff, scratch.data() + rowOff, w, r, math);
     }
 
-    std::vector<float> colIn(static_cast<size_t>(h));
-    std::vector<float> colOut(static_cast<size_t>(h));
+    std::vector<float>& colIn = math.column;
+    std::vector<float>& colOut = math.columnOut;
+    colIn.resize(static_cast<size_t>(h));
+    colOut.resize(static_cast<size_t>(h));
     for (int x = 0; x < w; ++x) {
         size_t ux = static_cast<size_t>(x);
         for (int y = 0; y < h; ++y) {
             colIn[static_cast<size_t>(y)] = scratch[static_cast<size_t>(y) * uw + ux];
         }
-        maxFilter1D(colIn.data(), colOut.data(), h, r);
+        maxFilter1D(colIn.data(), colOut.data(), h, r, math);
         for (int y = 0; y < h; ++y) {
             out[static_cast<size_t>(y) * uw + ux] = colOut[static_cast<size_t>(y)];
         }
@@ -510,18 +540,25 @@ void dilateAlpha(const std::vector<float>& in, std::vector<float>& out, std::vec
 }
 
 void signedDistance(const std::vector<float>& alpha, std::vector<float>& outSdf, int w, int h) {
+    signedDistance(alpha, outSdf, w, h, fallbackMath());
+}
+
+void signedDistance(const std::vector<float>& alpha, std::vector<float>& outSdf, int w, int h,
+                    MathScratch& math) {
     const size_t n = static_cast<size_t>(w) * static_cast<size_t>(h);
-    std::vector<uint8_t> fg(n);
-    std::vector<uint8_t> bg(n);
+    std::vector<uint8_t>& fg = math.fg;
+    std::vector<uint8_t>& bg = math.bg;
+    fg.resize(n);
+    bg.resize(n);
     for (size_t i = 0; i < n; ++i) {
         fg[i] = alpha[i] >= 0.5f ? 1 : 0;
         bg[i] = fg[i] != 0 ? 0 : 1;
     }
 
-    std::vector<float> dOut;  // distance to nearest foreground pixel; 0 on foreground.
-    std::vector<float> dIn;   // distance to nearest background pixel; 0 on background.
-    distanceTransform(fg, w, h, dOut);
-    distanceTransform(bg, w, h, dIn);
+    std::vector<float>& dOut = math.distOut;  // distance to nearest foreground pixel; 0 on foreground.
+    std::vector<float>& dIn = math.distIn;    // distance to nearest background pixel; 0 on background.
+    distanceTransform(fg, w, h, dOut, math.grid);
+    distanceTransform(bg, w, h, dIn, math.grid);
 
     outSdf.resize(n);
     for (size_t i = 0; i < n; ++i) {

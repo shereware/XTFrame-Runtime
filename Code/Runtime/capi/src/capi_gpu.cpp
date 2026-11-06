@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -17,6 +18,7 @@
 #include "xt/gpu/gpu_frame.h"
 #include "xt/wgpu/wgpu_device.h"
 #include "xt/wgpu/wgpu_renderer.h"
+#include "xt/wgpu/wgpu_shared.h"
 #include "xt/wgpu/wgpu_window.h"
 #if defined(XT_CAPI_HAS_TEXT) && !defined(XT_GPU_NO_TEXT)
 #define XT_CAPI_GPU_ATLAS 1
@@ -30,6 +32,11 @@
 /// CommandList with its own WgpuRenderer into its own texture of the surface's size; the target then
 /// composites that texture into `dest` with a one-command GpuFrame (Shading::Texture, LinearClamp,
 /// SrcOver) submitted to its composer's WgpuDevice -- the existing draw path, no shader of its own.
+/// T-648 (50 §50.z addendum): the target owns a WgpuSharedCache that its composer and every attached
+/// surface's renderer borrow -- one pipeline set (compiled once per target) and one texture per bundle
+/// image content, kept until the target is destroyed (a surface's detach, trim or destroy does not
+/// free them). Each surface keeps its own glyph atlas (starting at 1024 x 1024, growing to 2048 x 2048),
+/// transient pool and surface texture.
 /// Without wgpu (XT_BUILD_WGPU=OFF) every function only reports "built without wgpu".
 
 using xt::capi::fail;
@@ -42,8 +49,14 @@ struct xt_gpu_target {
     xt::wgpu::WgpuWindowSurface window;  ///< valid for a window target
     WGPUTexture offscreen = nullptr;     ///< XT_WINDOW_NONE target
     WGPUTextureFormat format = WGPUTextureFormat_RGBA8Unorm;
+    /// T-648: pipelines and image textures shared by the composer and the surfaces' renderers;
+    /// declared before them, and shut down by the destructor once they are.
+    xt::wgpu::WgpuSharedCache shared;
+    /// T-648: the shared-cache counters as last logged (xt_surface_render_gpu logs on a change).
+    xt::wgpu::WgpuSharedStats logged;
     xt::wgpu::WgpuRenderer composer;  ///< its WgpuDevice composites; also readback
     int width = 0, height = 0;
+    uint32_t sampleCount = 4;  ///< T-647: the attached surfaces' renderers (1 or 4)
     bool inFrame = false;
     WGPUTexture frameTexture = nullptr;   ///< the frame's texture (window's or `offscreen`), not owned
     WGPUTextureView frameView = nullptr;  ///< the frame's view (owned for `offscreen` only)
@@ -53,6 +66,7 @@ struct xt_gpu_target {
     ~xt_gpu_target() {
         releaseFrame();
         composer.shutdown();
+        shared.shutdown();  // every surface is detached (destroy refuses otherwise)
         window.release();
         releaseOffscreen();
         init.release();
@@ -226,6 +240,30 @@ bool buildCompositeFrame(xt_gpu_target& t, xt::gpu::TextureHandle handle, const 
 /// The largest surface / target side a texture handle and a scissor can describe.
 constexpr int kMaxSide = 16384;
 
+#ifdef XT_CAPI_GPU_ATLAS
+/// T-648 (50 §50.z addendum): a surface's glyph atlas pages -- the first one starts at kAtlasFirstPage
+/// and grows to kAtlasPage when full.
+constexpr int kAtlasPage = 2048;
+constexpr int kAtlasFirstPage = 1024;
+#endif
+
+/// T-648: logs the target's shared-cache counters when a texture was created, reused or freed, or a
+/// pipeline set made or borrowed, since the last line (info level; tests count them).
+void logSharedCache(xt_gpu_target& t) {
+    const xt::wgpu::WgpuSharedStats s = t.shared.stats();
+    const xt::wgpu::WgpuSharedStats& l = t.logged;
+    if (s.imageCreates == l.imageCreates && s.imageReuses == l.imageReuses && s.imageFrees == l.imageFrees &&
+        s.pipelineSets == l.pipelineSets && s.pipelineBorrows == l.pipelineBorrows) {
+        return;
+    }
+    t.logged = s;
+    xt::capi::log(0, "xt_gpu_target: shared image textures " + std::to_string(s.imageTextures) + " (" +
+                         std::to_string(s.imageBytes / 1024u) + " KiB; uploaded " +
+                         std::to_string(s.imageCreates) + ", reused " + std::to_string(s.imageReuses) +
+                         ", freed " + std::to_string(s.imageFrees) + "); pipeline sets " +
+                         std::to_string(s.pipelineSets) + ", borrowed " + std::to_string(s.pipelineBorrows));
+}
+
 /// Builds the GPU resources of `s` on `t` (its renderer on the target's device, its glyph atlas):
 /// on first attach, and again after a release (T-641). Empty, or why not.
 std::string buildSurfaceGpu(xt_surface& s, xt_gpu_target& t) {
@@ -233,12 +271,17 @@ std::string buildSurfaceGpu(xt_surface& s, xt_gpu_target& t) {
     gpu->target = &t;
     xt::wgpu::WgpuInit in = t.init;
     in.targetFormat = WGPUTextureFormat_RGBA8Unorm;
-    in.sampleCount = 1;
+    // T-647 (50 §50.z addendum): at 4 the renderer draws into its own 4x colour and stencil attachments
+    // and resolves into the surface texture (WgpuDevice::ensureSurfaceAttachments), which is what the
+    // composer samples and readback sees -- for window and offscreen targets alike.
+    in.sampleCount = t.sampleCount;
+    in.shared = &t.shared;  // T-648: the target's pipelines and image textures
     in.error.clear();
     if (!gpu->renderer.init(in)) return std::string("WgpuRenderer::init: ") + gpu->renderer.lastError();
 #ifdef XT_CAPI_GPU_ATLAS
     if (s.owner->ftShaper != nullptr) {
-        gpu->atlas = std::make_unique<xt::text::GlyphAtlas>(*s.owner->ftShaper);
+        // T-648: one 1024 x 1024 page first, grown to the full 2048 x 2048 once it is full.
+        gpu->atlas = std::make_unique<xt::text::GlyphAtlas>(*s.owner->ftShaper, kAtlasPage, kAtlasFirstPage);
         gpu->renderer.setGlyphAtlas(gpu->atlas.get());
     }
 #endif
@@ -264,8 +307,14 @@ XT_CAPI xt_gpu_target* xt_gpu_target_create(const xt_gpu_target_desc* desc) {
             return nullptr;
         };
         if (desc == nullptr) return failNull("desc is NULL");
-        if (desc->struct_size < sizeof(xt_gpu_target_desc)) {
+        // T-647: sample_count was appended; a desc ending before it (an older host) still creates.
+        constexpr size_t kMinDescSize = offsetof(xt_gpu_target_desc, sample_count);
+        if (desc->struct_size < kMinDescSize) {
             return failNull("desc->struct_size is smaller than sizeof(xt_gpu_target_desc)");
+        }
+        const int samples = desc->struct_size >= sizeof(xt_gpu_target_desc) ? desc->sample_count : 0;
+        if (samples != 0 && samples != 1 && samples != 4) {
+            return failNull("sample_count " + std::to_string(samples) + " (allowed: 0 = 4, 1, 4)");
         }
         if (desc->width <= 0 || desc->height <= 0 || desc->width > kMaxSide || desc->height > kMaxSide) {
             return failNull("width / height must be in 1.." + std::to_string(kMaxSide));
@@ -299,6 +348,7 @@ XT_CAPI xt_gpu_target* xt_gpu_target_create(const xt_gpu_target_desc* desc) {
         auto t = std::make_unique<xt_gpu_target>();
         t->width = desc->width;
         t->height = desc->height;
+        t->sampleCount = samples == 1 ? 1u : 4u;
         xt::wgpu::WgpuHeadlessOptions options;
         options.backend = desc->backend != nullptr ? desc->backend : "";
         t->init = xt::wgpu::WgpuInit::headless(options);
@@ -314,7 +364,8 @@ XT_CAPI xt_gpu_target* xt_gpu_target_create(const xt_gpu_target_desc* desc) {
         }
         xt::wgpu::WgpuInit in = t->init;
         in.targetFormat = t->format;
-        in.sampleCount = 1;
+        in.sampleCount = 1;      // one axis-aligned textured quad per surface: nothing to antialias
+        in.shared = &t->shared;  // T-648: the composer makes the target's pipeline set
         in.error.clear();
         if (!t->composer.init(in))
             return failNull(std::string("WgpuRenderer::init: ") + t->composer.lastError());
@@ -331,7 +382,10 @@ XT_CAPI xt_status xt_gpu_target_destroy(xt_gpu_target* t) {
                                             " surface(s) still attached; destroy them or call "
                                             "xt_surface_detach_gpu first");
         }
+        const uint32_t images = t->shared.stats().imageTextures;
         delete t;
+        xt::capi::log(
+            0, "xt_gpu_target: destroyed; " + std::to_string(images) + " shared image texture(s) freed");
         return XT_STATUS_OK;
     });
 }
@@ -497,6 +551,7 @@ XT_CAPI xt_status xt_surface_render_gpu(xt_surface* s, xt_gpu_target* t, const x
                 const xt::wgpu::WgpuStats stats = g.renderer.stats();
                 g.executed = stats.drawCalls;
                 g.skipped = stats.skippedCmds;
+                logSharedCache(*t);
                 if (g.renderer.lastError()[0] != '\0') {
                     xt::capi::log(2, std::string("xt_surface_render_gpu: ") + g.renderer.lastError());
                 }

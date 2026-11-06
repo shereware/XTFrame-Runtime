@@ -335,6 +335,8 @@ typedef struct xt_gpu_target_desc {
     int width, height;        /* pixels (> 0) */
     int vsync;                /* 1: Fifo; 0: Immediate, else Mailbox, else Fifo (windows only) */
     const char* backend;      /* NULL or "" = the XT_WGPU_BACKEND rule; else vulkan|d3d12|metal|gl */
+    int sample_count;         /* surface rendering MSAA: 0 = 4 (the default), 1 or 4; other values fail.
+                                 Read only when struct_size covers it: an older, shorter desc means 0 */
 } xt_gpu_target_desc;
 
 /* NULL + last_error when no adapter / device can be had (the host falls back to xt_surface_render),

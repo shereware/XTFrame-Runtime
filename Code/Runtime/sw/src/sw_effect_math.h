@@ -19,6 +19,35 @@
 
 namespace xt::sw::fx {
 
+/// One pixel's offset to the nearest source pixel in the 8SSEDT distance transform.
+struct DistanceVec {
+    int dx = 0;
+    int dy = 0;
+};
+
+/// T-643: the working buffers of the passes below (everything but their outputs), owned by the
+/// caller so a warm renderer allocates nothing per frame -- SwRenderer keeps one in its
+/// `EffectScratch` and frees it in `releaseScratch()`. Only ever resized, never shrunk; the
+/// contents are undefined between calls. The overloads without one use a `thread_local` instance.
+struct MathScratch {
+    /// `maxFilter1D`'s padded input and its block prefix / suffix maxima.
+    std::vector<float> ext;
+    std::vector<float> prefixMax;
+    std::vector<float> suffixMax;
+    /// `dilateAlpha`'s column pass: one column in, one column out.
+    std::vector<float> column;
+    std::vector<float> columnOut;
+    /// `signedDistance`: the two masks, the two distance fields and the transform's offset grid.
+    std::vector<uint8_t> fg;
+    std::vector<uint8_t> bg;
+    std::vector<float> distOut;
+    std::vector<float> distIn;
+    std::vector<DistanceVec> grid;
+    /// The downsampled blur's (T-343) current and next pyramid level.
+    std::vector<float> level;
+    std::vector<float> next;
+};
+
 /// T-343 (Docs/design/18-effects.md §18.15): exact 2 x 2 box downsample of a `w x h` field of
 /// `channels` interleaved floats into `ceil(w / 2) x ceil(h / 2)` (`outW`/`outH`), each output the
 /// mean of its four sources clamped to the last column / row -- gpu_frame.h's `Downsample`.
@@ -43,12 +72,18 @@ void upsampleBilinear(const float* src, int sw, int sh, int channels, std::vecto
 /// back -- the same arithmetic as the GPU path, so the backends agree.
 void gaussianBlur(const Surface& src, Surface& dst, Surface& scratch, float sigmaX, float sigmaY,
                   bool premultiply);
+/// `gaussianBlur` with the caller's working buffers (T-643).
+void gaussianBlur(const Surface& src, Surface& dst, Surface& scratch, float sigmaX, float sigmaY,
+                  bool premultiply, MathScratch& math);
 
 /// Blurs only `src`'s alpha channel with an isotropic sigma (3 horizontal + 3 vertical box passes),
 /// writing the result to `outAlpha` (resized to `src.w * src.h`, row-major). `scratch` is a
 /// ping-pong buffer, resized as needed.
 void gaussianBlurAlpha(const Surface& src, std::vector<float>& outAlpha, std::vector<float>& scratch,
                        float sigma);
+/// `gaussianBlurAlpha` with the caller's working buffers (T-643).
+void gaussianBlurAlpha(const Surface& src, std::vector<float>& outAlpha, std::vector<float>& scratch,
+                       float sigma, MathScratch& math);
 
 /// `gaussianBlurAlpha` on a bare scalar field (`w * h`, row-major) instead of a Surface's alpha
 /// channel. The effect passes build such a field anyway (the dilated or inverted alpha), so this
@@ -56,12 +91,18 @@ void gaussianBlurAlpha(const Surface& src, std::vector<float>& outAlpha, std::ve
 /// (Docs/tasks/T-102b.md). `outAlpha` may not alias `alpha`.
 void gaussianBlurAlphaField(const std::vector<float>& alpha, int w, int h, std::vector<float>& outAlpha,
                             std::vector<float>& scratch, float sigma);
+/// `gaussianBlurAlphaField` with the caller's working buffers (T-643).
+void gaussianBlurAlphaField(const std::vector<float>& alpha, int w, int h, std::vector<float>& outAlpha,
+                            std::vector<float>& scratch, float sigma, MathScratch& math);
 
 /// Separable max filter (van Herk / Gil-Werman, O(w*h) regardless of radius) over window radius `r`
 /// (window size `2r+1`); used for DropShadow's `spread`. Samples outside `[0,w) x [0,h)` are treated
 /// as 0. `out` and `scratch` are resized to `w*h`. `r <= 0` copies `in` to `out` unchanged.
 void dilateAlpha(const std::vector<float>& in, std::vector<float>& out, std::vector<float>& scratch, int w,
                  int h, int r);
+/// `dilateAlpha` with the caller's working buffers (T-643).
+void dilateAlpha(const std::vector<float>& in, std::vector<float>& out, std::vector<float>& scratch, int w,
+                 int h, int r, MathScratch& math);
 
 /// 8SSEDT signed distance field (Danielsson two-pass, forward + backward, 4-neighborhood + diagonal
 /// each): `alpha >= 0.5` is foreground. `outSdf` (resized to `w*h`) holds the signed distance in
@@ -69,6 +110,9 @@ void dilateAlpha(const std::vector<float>& in, std::vector<float>& out, std::vec
 /// is the distance transform of the foreground mask (0 on foreground pixels) and `dIn` is the
 /// distance transform of the background mask (0 on background pixels).
 void signedDistance(const std::vector<float>& alpha, std::vector<float>& outSdf, int w, int h);
+/// `signedDistance` with the caller's working buffers (T-643).
+void signedDistance(const std::vector<float>& alpha, std::vector<float>& outSdf, int w, int h,
+                    MathScratch& math);
 
 /// A 4x5 affine color matrix: row `i` (0=R, 1=G, 2=B, 3=A) dotted with `(r, g, b, a, 1)` gives
 /// output channel `i`. `applyColorMatrix` only reads rows 0..2 (RGB); row 3 is left as an identity

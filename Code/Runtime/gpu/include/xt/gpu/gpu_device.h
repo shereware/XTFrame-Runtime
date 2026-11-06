@@ -17,6 +17,16 @@
 
 namespace xt::gpu {
 
+/// T-648: what an image texture holds, as `FrameBuilder` hashes it (the decoded straight RGBA8 pixels,
+/// or a compressed image's blocks) -- two 64-bit lanes of one content hash. Together with the size
+/// and format it names the texture in `GpuDevice::findSharedImage`.
+struct ImageKey {
+    uint64_t lo = 0;
+    uint64_t hi = 0;
+
+    bool operator==(const ImageKey&) const = default;
+};
+
 class GpuDevice {
 public:
     virtual ~GpuDevice() = default;
@@ -119,6 +129,42 @@ public:
 
     /// Releases a target from `acquireBandTarget`. Ignores 0. Never called from within `submit`.
     virtual void releaseBandTarget(TextureHandle target) { releaseCachedTarget(target); }
+
+    // -- Shared image textures (T-648, Docs/design/50-c-abi.md §50.z addendum). Appended with
+    //    default implementations: a device that does not share keeps one texture per builder. --
+
+    /// True when image textures are shared with the other devices of one owner (the C ABI's GPU
+    /// target): the builder then asks `findSharedImage` before it prepares an upload, and creates
+    /// and releases its images with the two functions below instead of `createTexture` /
+    /// `destroyTexture`. False (the default): those functions are never called.
+    virtual bool sharesImageTextures() const { return false; }
+
+    /// A new handle on this device to the shared texture of `key` (`w` x `h`, `fmt`), when one
+    /// exists; 0 otherwise. Each non-zero handle is one use, ended by `releaseSharedImage`.
+    virtual TextureHandle findSharedImage(const ImageKey& key, uint16_t w, uint16_t h, TextureFormat fmt) {
+        (void)key;
+        (void)w;
+        (void)h;
+        (void)fmt;
+        return 0;
+    }
+
+    /// Like `createTexture`, and the texture becomes the shared one of `key` (one use). An image
+    /// texture is never updated after it is created.
+    virtual TextureHandle createSharedImage(const ImageKey& key, const char* debugName, uint16_t w,
+                                            uint16_t h, TextureFormat fmt, const void* initial) {
+        (void)key;
+        return createTexture(debugName, w, h, fmt, initial);
+    }
+
+    /// Ends one use of a texture from `findSharedImage` / `createSharedImage` (the handle is gone).
+    /// `keep`: the builder is shutting down (its surface was detached, trimmed or destroyed), and
+    /// the texture stays for the owner's lifetime even when nothing uses it; otherwise (an eviction
+    /// or an invalidation) it is destroyed once no device uses it. Ignores 0.
+    virtual void releaseSharedImage(TextureHandle tex, bool keep) {
+        (void)keep;
+        destroyTexture(tex);
+    }
 };
 
 }  // namespace xt::gpu

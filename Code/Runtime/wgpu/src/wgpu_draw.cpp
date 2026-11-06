@@ -30,7 +30,7 @@ WGPUBindGroup WgpuDevice::Gpu::bindGroup(WGPUDevice device, const detail::BindGr
     WGPUBindGroupEntry e[4] = {WGPU_BIND_GROUP_ENTRY_INIT, WGPU_BIND_GROUP_ENTRY_INIT,
                                WGPU_BIND_GROUP_ENTRY_INIT, WGPU_BIND_GROUP_ENTRY_INIT};
     size_t count = 0;
-    if (key.layout == pipelines.blitLayout()) {
+    if (key.layout == pipelines->blitLayout()) {
         e[0].binding = 0;
         e[0].buffer = uniforms.buffer;
         e[0].size = 16;
@@ -66,7 +66,7 @@ void WgpuDevice::blit(WGPURenderPassEncoder pass, WGPUTextureView src, uint32_t 
                       int w, int h, WGPUTextureFormat format, uint32_t samples, bool hasStencil,
                       uint32_t targetW, uint32_t targetH) {
     Gpu& g = *m_gpu;
-    WGPURenderPipeline p = g.pipelines.blit(format, samples, hasStencil);
+    WGPURenderPipeline p = g.pipelines->blit(format, samples, hasStencil);
     x = std::max(0, x);
     y = std::max(0, y);
     w = std::min(w, static_cast<int>(targetW) - x);
@@ -76,7 +76,7 @@ void WgpuDevice::blit(WGPURenderPassEncoder pass, WGPUTextureView src, uint32_t 
         return;
     }
     detail::BindGroupKey key;
-    key.layout = g.pipelines.blitLayout();
+    key.layout = g.pipelines->blitLayout();
     key.v0 = src;
     WGPUBindGroup bg = g.bindGroup(m_device, key, m_stats.bindGroups, src == m_surface);
     wgpuRenderPassEncoderSetPipeline(pass, p);
@@ -153,7 +153,7 @@ void WgpuDevice::drawCmd(WGPURenderPassEncoder pass, const gpu::DrawCmd& cmd, ui
             if (cmd.program == gpu::EffectProgram::Custom) {
                 const float* p = &frame.params[cmd.paramIndex];  // packCustom checked the block
                 const uint32_t id = static_cast<uint32_t>(p[0]);
-                if (id == 0 || id > g.pipelines.customCount()) {
+                if (id == 0 || id > g.pipelines->customCount()) {
                     m_lastError = "unknown custom effect program";
                     ++m_stats.skippedCmds;
                     return;
@@ -182,7 +182,7 @@ void WgpuDevice::drawCmd(WGPURenderPassEncoder pass, const gpu::DrawCmd& cmd, ui
     key.format = format;
     key.samples = static_cast<uint8_t>(samples);
     key.hasStencil = hasStencil;
-    WGPURenderPipeline pipeline = g.pipelines.get(key);
+    WGPURenderPipeline pipeline = g.pipelines->get(key);
     if (pipeline == nullptr) {
         ++m_stats.skippedCmds;
         return;
@@ -219,9 +219,9 @@ void WgpuDevice::drawCmd(WGPURenderPassEncoder pass, const gpu::DrawCmd& cmd, ui
 
     // Group 2: the textures and sampler of this shading.
     detail::BindGroupKey bk;
-    bk.layout = g.pipelines.textureLayout(shader);
+    bk.layout = g.pipelines->textureLayout(shader);
     bk.v0 = bk.v1 = bk.v2 = g.dummyView;
-    bk.sampler = g.pipelines.sampler(gpu::Sampler::LinearClamp);
+    bk.sampler = g.pipelines->sampler(gpu::Sampler::LinearClamp);
     auto textureView = [this, &g](gpu::TextureHandle h) {
         const Texture* t = find(h);
         return t != nullptr ? t->view : g.dummyView;
@@ -235,7 +235,7 @@ void WgpuDevice::drawCmd(WGPURenderPassEncoder pass, const gpu::DrawCmd& cmd, ui
         case Shading::TextureStraight:
         case Shading::ParticleTexture:
             bk.v0 = textureView(cmd.texture);
-            bk.sampler = g.pipelines.sampler(cmd.sampler);
+            bk.sampler = g.pipelines->sampler(cmd.sampler);
             break;
         case Shading::Gradient:
         case Shading::Glyph:

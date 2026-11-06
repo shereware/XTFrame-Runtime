@@ -1,0 +1,29 @@
+body {
+  font-family: "Noto Sans", sans-serif;
+}
+#Dark {
+  background-color: #101820;
+  color: #f0f0f0;
+}
+#Clear {
+  color: #202020;
+}
+.s12,
+.s24,
+.s48,
+#Word {
+  white-space: nowrap;
+}
+.s12 {
+  font-size: 12px;
+}
+.s24 {
+  font-size: 24px;
+}
+.s48 {
+  font-size: 48px;
+}
+#Word {
+  color: #ffffff;
+  font-size: 120px;
+}

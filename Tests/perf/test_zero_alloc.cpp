@@ -229,8 +229,7 @@ TEST_CASE(
 // scene of nested opacity groups of different sizes (the panel holding three cards, a halo: two
 // layers deep), fully rendered every frame at 1280x720, keeps
 // hitting its pool slots: after the warm-up, 300 frames of SwRenderer::render allocate nothing --
-// across two ageing windows (120 frames each). Effects are left out: their passes allocate per frame
-// regardless of the pool (pre-existing; measured the same with the ageing switched off).
+// across two ageing windows (120 frames each). Effects have their own case below (T-643).
 TEST_CASE("perf: T-641 static nested layers, 300 full SW frames allocate nothing (layer pool ageing)") {
     CompileOptions options;
     options.rootDir = std::string(XT_PERF_FIXTURES_DIR);
@@ -266,6 +265,52 @@ TEST_CASE("perf: T-641 static nested layers, 300 full SW frames allocate nothing
         xt::perf::stopCounting();
         if (n != 0) {
             reportAllocSizes("SwRenderer::render()", i);
+        }
+        total += n;
+    }
+    CHECK(total == 0);
+}
+
+// T-643: the effect passes' working buffers (blur levels, max-filter rows and columns, the distance
+// transform, the backdrop pyramid) and the per-PushEffect state are renderer-owned scratch now. A
+// static 1280x720 scene holding every SW effect kind -- drop shadow (plain, spread, inset), glow,
+// blur, outline, ColorAdjust, GradientMask, Shine, a stack of three, a backdrop blur -- and a
+// translucent Multiply layer, fully rendered every frame: after the warm-up, 300 frames allocate
+// nothing.
+TEST_CASE("perf: T-643 static effects, 300 full SW frames allocate nothing (effect scratch)") {
+    CompileOptions options;
+    options.rootDir = std::string(XT_PERF_FIXTURES_DIR);
+    CompileResult result = compileDocument(fixturePath("effects_static.xt"), options);
+    requireNoErrors(result);
+
+    NullTextShaper shaper;
+    Context ctx(ContextConfig{&shaper, nullptr});
+    ctx.setViewport(Rect{0, 0, 1280, 720}, 1.0f);
+    Result<DocumentHandle> handle = ctx.loadDocument(IrBlob{result.ir.data(), result.ir.size()}, true);
+    REQUIRE(handle.ok());
+
+    CommandList cmds;
+    ctx.update(1.0f / 60.0f);
+    ctx.render(cmds);
+    int effects = 0;
+    for (const Command& c : cmds.commands) {
+        effects += c.kind == CmdKind::PushEffect ? 1 : 0;
+    }
+    CHECK(effects >= 11);  // #multiply is a PushLayer, not an effect
+    std::vector<uint8_t> rgba(static_cast<size_t>(1280) * 720 * 4, 0);
+    sw::SwRenderer renderer;
+    renderer.setTarget(sw::SwTarget{rgba.data(), 1280, 720, 1280 * 4});
+    for (int i = 0; i < 3; ++i) {  // Warm-up: the pool and every effect buffer grow.
+        renderer.render(cmds, &shaper, nullptr);
+    }
+    uint64_t total = 0;
+    for (int i = 0; i < 300; ++i) {
+        xt::perf::startCounting();
+        renderer.render(cmds, &shaper, nullptr);
+        const uint64_t n = xt::perf::count();
+        xt::perf::stopCounting();
+        if (n != 0) {
+            reportAllocSizes("SwRenderer::render() with effects", i);
         }
         total += n;
     }

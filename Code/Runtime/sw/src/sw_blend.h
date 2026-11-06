@@ -44,6 +44,26 @@ inline Color blendSrcOverPremul(const Color& src, const Color& dst) {
     return Color{src.r + dst.r * k, src.g + dst.g * k, src.b + dst.b * k, src.a + dst.a * k};
 }
 
+/// One RGBA8 pixel as a premultiplied float colour: each byte divided by 255 (a divide, not a
+/// multiply by 1/255 -- the two differ in the last bit for about half the byte values), then
+/// premultiplied unless the bytes already are (`premul`, `SwTarget::premultiplied`). The layer
+/// compositing loops and their SIMD kernels read the root target this way (T-643).
+inline Color loadPixelU8(const uint8_t* p, bool premul) {
+    const Color c{static_cast<float>(p[0]) / 255.0f, static_cast<float>(p[1]) / 255.0f,
+                  static_cast<float>(p[2]) / 255.0f, static_cast<float>(p[3]) / 255.0f};
+    return premul ? c : premultiply(c);
+}
+
+/// The inverse of `loadPixelU8`: un-premultiplies `c` unless `premul`, then rounds every channel
+/// with `floatToByte`.
+inline void storePixelU8(uint8_t* p, const Color& c, bool premul) {
+    const Color out = premul ? c : unpremultiply(c);
+    p[0] = floatToByte(out.r);
+    p[1] = floatToByte(out.g);
+    p[2] = floatToByte(out.b);
+    p[3] = floatToByte(out.a);
+}
+
 /// Composites non-premultiplied `src` (top) over non-premultiplied `dst` (backdrop) using `mode`,
 /// per W3C Compositing and Blending Level 1 §9.1.3 (separable modes), §9.1.4 (non-separable modes:
 /// Hue/Saturation/Color/Luminosity), and BlendMode::Add (= Cs + Cb clamped to 1, the color part of

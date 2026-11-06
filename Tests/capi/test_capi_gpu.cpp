@@ -5,11 +5,14 @@
 // Tests/wgpu). Fixtures: Tests/capi/fixtures/state (64x64, four rows) and fixtures/flip (a red card).
 // XT_CAPI_TEST_HAS_WGPU is set when the library was built with xt_wgpu; without it only the
 // "built without wgpu" answers are checked. With wgpu but no adapter the cases print SKIP and pass.
+// T-648 (cases 8-10, at sample counts 1 and 4): the target's shared image textures and pipeline set,
+// observed through its info log lines (npdo `settings`, two surfaces of one bundle).
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <initializer_list>
 #include <string>
@@ -404,6 +407,194 @@ TEST_CASE("capi gpu 6 (T-636): an unknown backend name, bad descriptors and call
     CHECK(std::all_of(buf.begin(), buf.end(), [](uint8_t v) { return v == 0; }));
     CHECK(xt_gpu_target_resize(t, 0, 4) == XT_STATUS_INVALID_ARGUMENT);
     CHECK(xt_surface_detach_gpu(nullptr) == XT_STATUS_INVALID_ARGUMENT);
+}
+
+namespace {
+
+/// T-648: the target's shared-cache info lines (xt_capi_set_log), latest values; removed at scope end.
+struct SharedLog {
+    unsigned long textures = 0, uploaded = 0, reused = 0, freed = 0, sets = 0, borrowed = 0;
+    unsigned long destroyedFreed = 0;
+    int lines = 0;
+    int released = 0;
+    bool destroyed = false;
+    SharedLog() { xt_capi_set_log(&SharedLog::onLog, this); }
+    ~SharedLog() { xt_capi_set_log(nullptr, nullptr); }
+    SharedLog(const SharedLog&) = delete;
+    SharedLog& operator=(const SharedLog&) = delete;
+    static unsigned long after(const char* message, const char* key) {
+        const char* p = std::strstr(message, key);
+        return p != nullptr ? std::strtoul(p + std::strlen(key), nullptr, 10) : 0ul;
+    }
+    static void onLog(int level, const char* message, void* user) {
+        auto* self = static_cast<SharedLog*>(user);
+        if (level != 0) return;
+        if (std::strstr(message, "xt_gpu_target: shared image textures ") == message) {
+            self->textures = after(message, "shared image textures ");
+            self->uploaded = after(message, "uploaded ");
+            self->reused = after(message, "reused ");
+            self->freed = after(message, "freed ");
+            self->sets = after(message, "pipeline sets ");
+            self->borrowed = after(message, "borrowed ");
+            ++self->lines;
+        } else if (std::strstr(message, "xt_gpu_target: destroyed; ") == message) {
+            self->destroyed = true;
+            self->destroyedFreed = after(message, "destroyed; ");
+        } else if (std::strstr(message, "GPU resources released") != nullptr) {
+            ++self->released;
+        }
+    }
+};
+
+constexpr int kShareSize = 192;
+
+/// An offscreen kShareSize target with `samples` (1 or 4), or null without an adapter.
+xt_gpu_target* shareTarget(int samples) {
+    xt_gpu_target_desc desc = offscreenDesc(kShareSize, kShareSize);
+    desc.sample_count = samples;
+    xt_gpu_target* t = xt_gpu_target_create(&desc);
+    if (t == nullptr) {
+        const std::string error = xt_capi_last_error();
+        REQUIRE_MESSAGE(contains(error.c_str(), "no WebGPU adapter"), error);
+        std::printf("SKIP: no WebGPU adapter (%s)\n", error.c_str());
+    }
+    return t;
+}
+
+/// One npdo bundle and two `settings` surfaces of it (both destroyed, then the bundle closed, at scope
+/// end; the caller detaches them or destroys its target first).
+struct SharedPair {
+    xt_bundle* bundle = nullptr;
+    xt_surface* s[2] = {nullptr, nullptr};
+    SharedPair() {
+        bundle = xt_bundle_open(XT_CAPI_TEST_NPDO_BUNDLE);
+        REQUIRE_MESSAGE(bundle != nullptr, xt_capi_last_error());
+        for (xt_surface*& surface : s) {
+            xt_surface_desc desc{};
+            desc.struct_size = sizeof(desc);
+            desc.width = kShareSize;
+            desc.height = kShareSize;
+            desc.device_pixel_ratio = 1.0f;
+            desc.premultiplied = 1;
+            surface = xt_surface_create(bundle, "settings", &desc);
+            REQUIRE_MESSAGE(surface != nullptr, xt_capi_last_error());
+        }
+    }
+    ~SharedPair() {
+        for (xt_surface* surface : s) xt_surface_destroy(surface);
+        (void)xt_bundle_close(bundle);
+    }
+    SharedPair(const SharedPair&) = delete;
+    SharedPair& operator=(const SharedPair&) = delete;
+};
+
+/// `s` alone over the whole target (update(0) first), read back.
+Pixels shareFrame(xt_gpu_target* t, xt_surface* s) {
+    frame(t, {{s, xt_rect{0, 0, kShareSize, kShareSize}}});
+    return readback(t, kShareSize, kShareSize, kShareSize * 4);
+}
+
+}  // namespace
+
+TEST_CASE("capi gpu 8 (T-648): two surfaces of one bundle on one target upload each image once") {
+    for (const int samples : {1, 4}) {
+        CAPTURE(samples);
+        SharedLog log;
+        xt_gpu_target* t = shareTarget(samples);
+        if (t == nullptr) return;
+        {
+            SharedPair p;
+            const Pixels first = shareFrame(t, p.s[0]);
+            REQUIRE(log.lines > 0);
+            const unsigned long uploaded = log.uploaded;
+            std::printf("samples %d, first surface: %lu image texture(s) uploaded, pipeline sets %lu\n",
+                        samples, uploaded, log.sets);
+            CHECK(uploaded > 0);  // npdo settings draws bundle images
+            CHECK(log.reused == 0);
+            CHECK(log.textures == uploaded);
+            CHECK(log.sets == 1);      // made by the target's composer ...
+            CHECK(log.borrowed == 1);  // ... and borrowed by the first surface's renderer
+            const Pixels second = shareFrame(t, p.s[1]);
+            CHECK(log.uploaded == uploaded);  // nothing uploaded again
+            CHECK(log.reused == uploaded);    // every image of the second surface is the first one's
+            CHECK(log.textures == uploaded);
+            CHECK(log.sets == 1);
+            CHECK(log.borrowed == 2);
+            CHECK(first == second);  // the shared textures draw what the uploaded ones drew
+            for (xt_surface* s : p.s) REQUIRE(xt_surface_detach_gpu(s) == XT_STATUS_OK);
+        }
+        CHECK(xt_gpu_target_destroy(t) == XT_STATUS_OK);
+        CHECK(log.destroyed);
+        CHECK(log.destroyedFreed == log.uploaded);
+    }
+}
+
+TEST_CASE(
+    "capi gpu 9 (T-648): a detach keeps the shared textures; the other surface draws on; destroy frees") {
+    for (const int samples : {1, 4}) {
+        CAPTURE(samples);
+        SharedLog log;
+        xt_gpu_target* t = shareTarget(samples);
+        if (t == nullptr) return;
+        unsigned long uploaded = 0;
+        {
+            SharedPair p;
+            (void)shareFrame(t, p.s[0]);
+            const Pixels before = shareFrame(t, p.s[1]);
+            uploaded = log.uploaded;
+            REQUIRE(uploaded > 0);
+            REQUIRE(xt_surface_detach_gpu(p.s[0]) == XT_STATUS_OK);
+            CHECK(shareFrame(t, p.s[1]) == before);  // the other surface still draws its images
+            // Both detached: the textures stay with the target, used by no surface ...
+            REQUIRE(xt_surface_detach_gpu(p.s[1]) == XT_STATUS_OK);
+            const unsigned long reused = log.reused;
+            // ... and a surface attached again finds every one of them (no upload).
+            CHECK(shareFrame(t, p.s[1]) == before);
+            CHECK(log.uploaded == uploaded);
+            CHECK(log.reused == reused + uploaded);
+            CHECK(log.freed == 0);
+            CHECK(log.textures == uploaded);
+            REQUIRE(xt_surface_detach_gpu(p.s[1]) == XT_STATUS_OK);
+        }
+        CHECK(!log.destroyed);
+        CHECK(xt_gpu_target_destroy(t) == XT_STATUS_OK);  // frees them
+        CHECK(log.destroyed);
+        CHECK(log.destroyedFreed == uploaded);
+    }
+}
+
+TEST_CASE("capi gpu 10 (T-648): a trimmed surface rebuilds from the shared textures and pipelines") {
+    for (const int samples : {1, 4}) {
+        CAPTURE(samples);
+        SharedLog log;
+        xt_gpu_target* t = shareTarget(samples);
+        if (t == nullptr) return;
+        {
+            SharedPair p;
+            (void)shareFrame(t, p.s[1]);  // the other surface holds the textures too
+            const Pixels before = shareFrame(t, p.s[0]);
+            const unsigned long uploaded = log.uploaded, reused = log.reused, borrowed = log.borrowed;
+            // T-641: hidden for two frames releases the surface's GPU resources (it stays attached).
+            REQUIRE(xt_surface_set_visible(p.s[0], 0) == XT_STATUS_OK);
+            (void)shareFrame(t, p.s[0]);
+            (void)shareFrame(t, p.s[0]);
+            CHECK(log.released == 1);
+            REQUIRE(xt_surface_set_visible(p.s[0], 1) == XT_STATUS_OK);
+            CHECK(shareFrame(t, p.s[0]) == before);  // rebuilt: same pixels
+            CHECK(log.uploaded == uploaded);         // ... from the shared textures
+            CHECK(log.reused == reused + uploaded);
+            CHECK(log.borrowed == borrowed + 1);  // and the shared pipeline set
+            CHECK(log.sets == 1);
+            // xt_surface_trim on both: no texture is freed, the next frames upload nothing.
+            REQUIRE(xt_surface_trim(p.s[0]) == XT_STATUS_OK);
+            REQUIRE(xt_surface_trim(p.s[1]) == XT_STATUS_OK);
+            CHECK(shareFrame(t, p.s[0]) == before);
+            CHECK(log.uploaded == uploaded);
+            CHECK(log.freed == 0);
+            for (xt_surface* s : p.s) REQUIRE(xt_surface_detach_gpu(s) == XT_STATUS_OK);
+        }
+        CHECK(xt_gpu_target_destroy(t) == XT_STATUS_OK);
+    }
 }
 
 #ifdef _WIN32

@@ -354,3 +354,89 @@ TEST_CASE("SwRenderer: T-263a partial redraw of a glyph run touches only the dam
         CHECK(buf == before);
     }
 }
+
+namespace {
+
+void addPushClipRect(CommandList& cl, const Rect& rect) {
+    cl.clipRects.push_back(ClipRectCmd{Mat2x3{}, rect});
+    Command cmd{};
+    cmd.kind = CmdKind::PushClipRect;
+    cmd.index = static_cast<uint32_t>(cl.clipRects.size() - 1);
+    cl.commands.push_back(cmd);
+}
+
+void addSimple(CommandList& cl, CmdKind kind) {
+    Command cmd{};
+    cmd.kind = kind;
+    cl.commands.push_back(cmd);
+}
+
+/// A full-viewport linear gradient (translucent to opaque), then the given solid box: frame A and
+/// frame B of the T-642 case differ only in that box's color.
+CommandList makeT642Scene(Color boxColor) {
+    CommandList cl;
+    cl.viewport = Rect{0, 0, kWidth, kHeight};
+    cl.devicePixelRatio = 1.0f;
+    cl.stops.push_back(GradientStop{0.0f, Color{1, 0, 0, 0.25f}});
+    cl.stops.push_back(GradientStop{1.0f, Color{0, 0, 1, 1}});
+    addFillRect(cl, 0, 0, kWidth, kHeight, Color{});
+    FillCmd& grad = cl.fills.back();
+    grad.paint.kind = PaintKind::Linear;
+    grad.paint.color = Color{1, 1, 1, 1};
+    grad.paint.p0 = Vec2{3.5f, 0};
+    grad.paint.p1 = Vec2{191.25f, 17};
+    grad.paint.stopOffset = 0;
+    grad.paint.stopCount = 2;
+    addPushClipRect(cl, Rect{8, 6, 180, 88});  // whole pixels: a box-only clip
+    cl.layers.push_back(LayerCmd{0.5f, BlendMode::Normal, Rect{8, 6, 180, 88}});
+    addSimple(cl, CmdKind::PushLayer);
+    cl.commands.back().index = 0;
+    addFillRect(cl, 10.5f, 8.25f, 170, 80, Color{0, 1, 0, 0.75f});
+    addPushClipRect(cl, Rect{20.5f, 10.5f, 120.25f, 70.75f});  // fractional: a mask
+    addFillRect(cl, 40.25f, 20.5f, 90, 50, boxColor);
+    addSimple(cl, CmdKind::PopClip);
+    addSimple(cl, CmdKind::PopLayer);
+    addSimple(cl, CmdKind::PopClip);
+    return cl;
+}
+
+}  // namespace
+
+// T-642: under a partial redraw a layer buffer is cropped to the damage, draws are swept and
+// sampled only inside it, and a whole-pixel clip rectangle builds no mask; none of that may change
+// a byte of the result compared to a full render.
+TEST_CASE(
+    "SwRenderer: T-642 partial redraw through a layer, box and mask clips and a gradient equals a full "
+    "render") {
+    const CommandList frameA = makeT642Scene(Color{1, 1, 0, 1});
+    const CommandList frameB = makeT642Scene(Color{0, 1, 1, 0.5f});
+    const size_t bytes = static_cast<size_t>(kWidth) * static_cast<size_t>(kHeight) * 4;
+    for (const bool premultiplied : {false, true}) {
+        CAPTURE(premultiplied);
+        std::vector<uint8_t> full(bytes, 0);
+        std::vector<uint8_t> partial(bytes, 0);
+        SwRenderer fullRenderer;
+        SwRenderer partialRenderer;
+        SwTarget fullTarget{full.data(), kWidth, kHeight, kWidth * 4};
+        fullTarget.premultiplied = premultiplied;
+        SwTarget partialTarget{partial.data(), kWidth, kHeight, kWidth * 4};
+        partialTarget.premultiplied = premultiplied;
+        fullRenderer.setTarget(fullTarget);
+        partialRenderer.setTarget(partialTarget);
+        const Color clear{0.9f, 0.9f, 0.9f, 0.5f};
+        partialRenderer.clear(clear);
+        partialRenderer.render(frameA, nullptr, nullptr);
+        fullRenderer.clear(clear);
+        fullRenderer.render(frameB, nullptr, nullptr);
+
+        // Two overlapping rectangles over the changed box, one of them reaching past the layer.
+        DamageList damage;
+        damage.full = false;
+        damage.viewport = frameB.viewport;
+        damage.rects.push_back(Rect{40, 20, 91, 51});
+        damage.rects.push_back(Rect{75.5f, 45, 120, 40});
+        partialRenderer.clearRects(clear, damage.rects);
+        partialRenderer.render(frameB, nullptr, nullptr, nullptr, nullptr, &damage);
+        CHECK(partial == full);
+    }
+}

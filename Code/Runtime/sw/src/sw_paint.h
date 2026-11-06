@@ -102,7 +102,13 @@ public:
     /// affine in x for a linear gradient, and so are the ellipse-normalized offsets of a radial one
     /// -- so the inner loop is a ramp copy plus, for a radial gradient, one sqrt. Indices outside
     /// the returned [first, last) are left untouched in `dst`.
-    SpanInfo spanPremul(int x, int y, int n, float alphaScale, float* dst) const;
+    SpanInfo spanPremul(int x, int y, int n, float alphaScale, float* dst) const {
+        return spanPremul(x, y, 0, n, alphaScale, dst);
+    }
+    /// T-642: pixels `[begin, end)` of the span that starts at (x, y), written to `dst[0, end -
+    /// begin)`; every pixel gets exactly the value the whole span's evaluation gives it (`t` is
+    /// still stepped from `x`). `first`/`last` are relative to `begin`.
+    SpanInfo spanPremul(int x, int y, int begin, int end, float alphaScale, float* dst) const;
 
 private:
     /// The gradient parameter `t` (clamped to [0, 1]) at a device-space point, going through the

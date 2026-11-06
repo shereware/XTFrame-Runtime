@@ -170,6 +170,39 @@ std::string_view atlasPageOf(AssetId asset, const IrView& ir) {
     return index < assets.size() ? atlasAssetPage(ir.string(assets[index].name)) : std::string_view();
 }
 
+/// T-648: the content key of `bytes` bytes at `data` (an image's straight RGBA8 pixels or its
+/// compressed blocks) -- four xxh64-style lanes over 8-byte words, folded into two 64-bit halves.
+ImageKey imageContentKey(const uint8_t* data, size_t bytes) {
+    constexpr uint64_t kP1 = 11400714785074694791ull, kP2 = 14029467366897019727ull,
+                       kP3 = 1609587929392839161ull, kP4 = 9650029242287828579ull;
+    auto rotl = [](uint64_t v, int r) { return (v << r) | (v >> (64 - r)); };
+    auto mixIn = [&](uint64_t acc, uint64_t w) { return rotl(acc + w * kP2, 31) * kP1; };
+    uint64_t lane[4] = {kP1 + kP2, kP2, 0, 0 - kP1};
+    size_t i = 0;
+    for (; i + 32 <= bytes; i += 32) {
+        for (size_t k = 0; k < 4; ++k) {
+            uint64_t w = 0;
+            std::memcpy(&w, data + i + k * 8u, 8);
+            lane[k] = mixIn(lane[k], w);
+        }
+    }
+    for (size_t k = 0; i < bytes; ++i, k = (k + 1) & 3u) {
+        lane[k] = mixIn(lane[k], data[i]);
+    }
+    auto avalanche = [](uint64_t h) {
+        h ^= h >> 33;
+        h *= 14029467366897019727ull;
+        h ^= h >> 29;
+        h *= 1609587929392839161ull;
+        return h ^ (h >> 32);
+    };
+    const auto length = static_cast<uint64_t>(bytes);
+    ImageKey key;
+    key.lo = avalanche(rotl(lane[0], 1) + rotl(lane[1], 7) + rotl(lane[2], 12) + rotl(lane[3], 18) + length);
+    key.hi = avalanche((lane[0] * kP3) ^ (lane[1] * kP4) ^ rotl(lane[2], 23) ^ rotl(lane[3], 41) ^ ~length);
+    return key;
+}
+
 }  // namespace
 
 struct FrameBuilder::Impl {
@@ -208,6 +241,9 @@ struct FrameBuilder::Impl {
         uint8_t variant = 0;  ///< T-345: 0 = 1x, 1 = `@2x`, 2 = `@3x` (the scale it was asked at).
         bool straight = false;
         bool owned = true;
+        /// T-648: `tex` is a use of a shared image texture (GpuDevice::findSharedImage /
+        /// createSharedImage), released with releaseSharedImage.
+        bool sharedImage = false;
         const void* shared = nullptr;
         /// T-215: `assetEpoch` when uploaded; `shared` pointers only match within one epoch.
         uint32_t epoch = 0;
@@ -292,7 +328,6 @@ struct FrameBuilder::Impl {
     /// What an effect segment's cache key says about `listSources` (the only id when there is
     /// one, else a hash of them all).
     uint32_t listSourcesKey = 0;
-    std::vector<uint8_t> premultiplyScratch;
 
 #ifndef XT_GPU_NO_TEXT
     /// T-263c ruling 4: the bitmap size of every atlas-capable glyph run, by run (its font,
@@ -481,6 +516,19 @@ struct FrameBuilder::Impl {
     // Lifetime.
     // ---------------------------------------------------------------------------------------
 
+    /// Gives back the texture of an owned cache entry: destroyed, or (T-648) one use of a shared
+    /// image ended -- kept for the owner's lifetime when `keep` (this builder shuts down).
+    void releaseImage(const TextureEntry& entry, bool keep) {
+        if (!entry.owned) {
+            return;
+        }
+        if (entry.sharedImage) {
+            device->releaseSharedImage(entry.tex, keep);
+        } else {
+            device->destroyTexture(entry.tex);
+        }
+    }
+
     void init(GpuDevice& dev) {
         shutdown();
         device = &dev;
@@ -499,9 +547,7 @@ struct FrameBuilder::Impl {
         releaseAllBands();
         if (device != nullptr) {
             for (const TextureEntry& entry : textureCache) {
-                if (entry.owned) {
-                    device->destroyTexture(entry.tex);
-                }
+                releaseImage(entry, true);  // T-648: shared images outlive a detach / trim
             }
 #ifndef XT_GPU_NO_TEXT
             for (TextureHandle& t : atlasTextures) {
@@ -540,9 +586,7 @@ struct FrameBuilder::Impl {
                 ++i;
                 continue;
             }
-            if (entry.owned) {
-                device->destroyTexture(entry.tex);
-            }
+            releaseImage(entry, false);
             textureCache.erase(textureCache.begin() + static_cast<std::ptrdiff_t>(i));
         }
         *pick = SourceSlot{};
@@ -1582,7 +1626,8 @@ struct FrameBuilder::Impl {
             textureCache.erase(textureCache.begin() + static_cast<std::ptrdiff_t>(i));
             break;
         }
-        auto remember = [&](const void* shared, TextureHandle tex, bool isStraight, int width, int height) {
+        auto remember = [&](const void* shared, TextureHandle tex, bool isStraight, int width, int height,
+                            bool isShared) {
             TextureEntry entry;
             entry.asset = asset;
             entry.tex = tex;
@@ -1590,6 +1635,7 @@ struct FrameBuilder::Impl {
             entry.straight = isStraight;
             entry.shared = shared;
             entry.owned = true;
+            entry.sharedImage = isShared;
             entry.epoch = assetEpoch;
             entry.source = currentSource;
             entry.width = width;
@@ -1597,6 +1643,7 @@ struct FrameBuilder::Impl {
             for (const TextureEntry& other : textureCache) {
                 if (other.tex == tex && other.source == currentSource) {
                     entry.owned = false;
+                    entry.sharedImage = false;
                     break;
                 }
             }
@@ -1631,7 +1678,7 @@ struct FrameBuilder::Impl {
             bool isStraight = true;
             if (TextureHandle shared =
                     sharedTexture(compressed, compressed->width, compressed->height, isStraight)) {
-                return remember(compressed, shared, isStraight, compressed->width, compressed->height);
+                return remember(compressed, shared, isStraight, compressed->width, compressed->height, false);
             }
             TextureFormat fmt = TextureFormat::Bc7;
             if (compressed->format == DdsFormat::Bc1) {
@@ -1643,11 +1690,25 @@ struct FrameBuilder::Impl {
                 compressed->height <= 65535 && !overTextureLimit(compressed->width, compressed->height) &&
                 compressed->blocks.size() >=
                     ddsLevelSize(compressed->format, compressed->width, compressed->height)) {
-                TextureHandle tex = device->createTexture(
-                    "xt image (bc)", static_cast<uint16_t>(compressed->width),
-                    static_cast<uint16_t>(compressed->height), fmt, compressed->blocks.data());
+                const auto w = static_cast<uint16_t>(compressed->width);
+                const auto h = static_cast<uint16_t>(compressed->height);
+                // T-648: on a sharing device, one texture per content on the owner's devices.
+                const bool share = device->sharesImageTextures();
+                TextureHandle tex = 0;
+                if (share) {
+                    const ImageKey key = imageContentKey(
+                        compressed->blocks.data(),
+                        ddsLevelSize(compressed->format, compressed->width, compressed->height));
+                    tex = device->findSharedImage(key, w, h, fmt);
+                    if (tex == 0) {
+                        tex = device->createSharedImage(key, "xt image (bc)", w, h, fmt,
+                                                        compressed->blocks.data());
+                    }
+                } else {
+                    tex = device->createTexture("xt image (bc)", w, h, fmt, compressed->blocks.data());
+                }
                 if (tex != 0) {
-                    return remember(compressed, tex, true, compressed->width, compressed->height);
+                    return remember(compressed, tex, true, compressed->width, compressed->height, share);
                 }
             }
         }
@@ -1661,7 +1722,7 @@ struct FrameBuilder::Impl {
         {
             bool isStraight = false;
             if (TextureHandle shared = sharedTexture(view, view->width, view->height, isStraight)) {
-                return remember(view, shared, isStraight, view->width, view->height);
+                return remember(view, shared, isStraight, view->width, view->height, false);
             }
         }
         const ImageData& image = *view;
@@ -1686,21 +1747,37 @@ struct FrameBuilder::Impl {
             textureCache.push_back(refused);
             return 0;
         }
-        // Premultiply on the CPU (gpu_frame.h: every texture is premultiplied).
         const size_t count = static_cast<size_t>(image.width) * static_cast<size_t>(image.height);
-        premultiplyScratch.resize(count * 4);
-        for (size_t i = 0; i < count; ++i) {
-            const uint8_t* s = image.rgba.data() + i * 4;
-            uint8_t* d = premultiplyScratch.data() + i * 4;
-            const uint32_t a = s[3];
-            d[0] = static_cast<uint8_t>((s[0] * a + 127u) / 255u);
-            d[1] = static_cast<uint8_t>((s[1] * a + 127u) / 255u);
-            d[2] = static_cast<uint8_t>((s[2] * a + 127u) / 255u);
-            d[3] = s[3];
+        const auto w = static_cast<uint16_t>(image.width);
+        const auto h = static_cast<uint16_t>(image.height);
+        // T-648: on a sharing device the texture of the same pixels may exist already (another
+        // surface of the target uploaded it): no premultiply, no upload.
+        const bool share = device->sharesImageTextures();
+        ImageKey key;
+        if (share) {
+            key = imageContentKey(image.rgba.data(), count * 4);
+            if (TextureHandle found = device->findSharedImage(key, w, h, TextureFormat::Rgba8)) {
+                return remember(view, found, false, image.width, image.height, true);
+            }
         }
-        TextureHandle tex = device->createTexture("xt image", static_cast<uint16_t>(image.width),
-                                                  static_cast<uint16_t>(image.height), TextureFormat::Rgba8,
-                                                  premultiplyScratch.data());
+        TextureHandle tex = 0;
+        {
+            // Premultiply on the CPU (gpu_frame.h: every texture is premultiplied). T-648: a scratch
+            // of this upload only, freed with it (it used to keep the largest image's size).
+            std::vector<uint8_t> premultiplied(count * 4);
+            for (size_t i = 0; i < count; ++i) {
+                const uint8_t* s = image.rgba.data() + i * 4;
+                uint8_t* d = premultiplied.data() + i * 4;
+                const uint32_t a = s[3];
+                d[0] = static_cast<uint8_t>((s[0] * a + 127u) / 255u);
+                d[1] = static_cast<uint8_t>((s[1] * a + 127u) / 255u);
+                d[2] = static_cast<uint8_t>((s[2] * a + 127u) / 255u);
+                d[3] = s[3];
+            }
+            tex = share ? device->createSharedImage(key, "xt image", w, h, TextureFormat::Rgba8,
+                                                    premultiplied.data())
+                        : device->createTexture("xt image", w, h, TextureFormat::Rgba8, premultiplied.data());
+        }
         if (tex == 0) {
             // Docs/tasks/T-263b.md E10: the device could not take this image (the upload failed,
             // or it is larger than a limit the device does not report). Remembered with texture
@@ -1719,7 +1796,7 @@ struct FrameBuilder::Impl {
             textureCache.push_back(failed);
             return 0;
         }
-        return remember(view, tex, false, image.width, image.height);
+        return remember(view, tex, false, image.width, image.height, share);
     }
 
     /// T-150: resolves the texture a DrawImage/DrawImageQuad samples. An `engine://` asset takes
@@ -2008,6 +2085,15 @@ struct FrameBuilder::Impl {
     }
 
     void uploadPendingAtlas() {
+        // T-648: a growing atlas (GlyphAtlas initialSize) changed its page size: the device pages
+        // are made again at the new size (the grown pages are wholly pending upload).
+        if (atlasTextureSize != 0 && atlasTextureSize != glyphAtlas->textureSize()) {
+            for (TextureHandle& t : atlasTextures) {
+                device->destroyTexture(t);
+                t = 0;
+            }
+            atlasTextureSize = 0;
+        }
         glyphAtlas->flushUploads(
             [this](uint16_t texIndex, int x, int y, int w, int h, const uint8_t* pixels, int stride) {
                 if (texIndex >= 4 || w <= 0 || h <= 0) {
@@ -2192,7 +2278,8 @@ struct FrameBuilder::Impl {
     /// (glyph id, subpixel phase). False: the run is over the bound.
     bool effectRunFitsAtlas(const GlyphsCmd& cmd, const Mat2x3& deviceXf, float dpr) {
         const double cell = std::ceil(static_cast<double>(glyphRunBitmapSize(cmd, deviceXf)));
-        const double page = static_cast<double>(glyphAtlas->textureSize());
+        // T-648: the size the pages grow to, so a growing atlas bounds a run as a full-size one does.
+        const double page = static_cast<double>(glyphAtlas->maxTextureSize());
         const double bound = page * page * kEffectRunAtlasShare;
         const double cellArea = cell * cell;
         if (static_cast<double>(cmd.glyphCount) * cellArea <= bound) {
@@ -3816,9 +3903,7 @@ struct FrameBuilder::Impl {
         prevBandsValid = false;  // T-343: a band may have drawn the asset
         if (device != nullptr) {
             for (const TextureEntry& entry : textureCache) {
-                if (entry.owned) {
-                    device->destroyTexture(entry.tex);
-                }
+                releaseImage(entry, false);
             }
         }
         textureCache.clear();
@@ -3859,8 +3944,8 @@ struct FrameBuilder::Impl {
             const TextureEntry& entry = textureCache[i];
             // E10: the asset's own "could not be uploaded" entry (texture 0) goes too.
             if (meant(entry) || std::find(doomed.begin(), doomed.end(), entry.tex) != doomed.end()) {
-                if (device != nullptr && entry.owned) {
-                    device->destroyTexture(entry.tex);
+                if (device != nullptr) {
+                    releaseImage(entry, false);
                 }
                 textureCache.erase(textureCache.begin() + static_cast<std::ptrdiff_t>(i));
             } else {

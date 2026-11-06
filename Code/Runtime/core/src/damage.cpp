@@ -60,19 +60,28 @@ static_assert(sizeof(PaintRef) == 52 && sizeof(FillCmd) == 96 && sizeof(StrokeCm
                   sizeof(MaskCmd) == 20,
               "a padded command payload changed: update its hashFields() overload");
 
+/// T-644: pool offsets (PathRef's verb/point offsets, stopOffset, dashOffset, glyphOffset,
+/// effectOffset, instanceOffset, vertexOffset, indexOffset) are left out of every hash: the pool
+/// entries they point at are hashed by content, and an inserted or deleted command shifts the offsets
+/// of every command after it, which would make the whole rest of the list look changed to the
+/// sequence diff of §23.2 step 2.
+uint64_t hashFields(uint64_t hash, const PathRef& path) {
+    hash = hashPod(hash, path.verbCount);
+    return hashPod(hash, path.pointCount);
+}
+
 uint64_t hashFields(uint64_t hash, const PaintRef& p) {
     hash = hashPod(hash, p.kind);
     hash = hashPod(hash, p.color);
     hash = hashPod(hash, p.p0);
     hash = hashPod(hash, p.p1);
     hash = hashPod(hash, p.p2);
-    hash = hashPod(hash, p.stopOffset);
     return hashPod(hash, p.stopCount);
 }
 
 uint64_t hashFields(uint64_t hash, const FillCmd& c) {
     hash = hashPod(hash, c.xf);
-    hash = hashPod(hash, c.path);
+    hash = hashFields(hash, c.path);
     hash = hashFields(hash, c.paint);
     hash = hashPod(hash, c.rule);
     return hashPod(hash, c.antialias);
@@ -80,13 +89,12 @@ uint64_t hashFields(uint64_t hash, const FillCmd& c) {
 
 uint64_t hashFields(uint64_t hash, const StrokeCmd& c) {
     hash = hashPod(hash, c.xf);
-    hash = hashPod(hash, c.path);
+    hash = hashFields(hash, c.path);
     hash = hashFields(hash, c.paint);
     hash = hashPod(hash, c.width);
     hash = hashPod(hash, c.cap);
     hash = hashPod(hash, c.join);
     hash = hashPod(hash, c.miterLimit);
-    hash = hashPod(hash, c.dashOffset);
     hash = hashPod(hash, c.dashCount);
     return hashPod(hash, c.dashPhase);
 }
@@ -97,7 +105,6 @@ uint64_t hashFields(uint64_t hash, const GlyphsCmd& c) {
     hash = hashPod(hash, c.size);
     hash = hashPod(hash, c.color);
     hash = hashPod(hash, c.rendering);
-    hash = hashPod(hash, c.glyphOffset);
     hash = hashPod(hash, c.glyphCount);
     hash = hashPod(hash, c.effect);
     hash = hashPod(hash, c._pad);
@@ -106,7 +113,7 @@ uint64_t hashFields(uint64_t hash, const GlyphsCmd& c) {
 
 uint64_t hashFields(uint64_t hash, const ClipPathCmd& c) {
     hash = hashPod(hash, c.xf);
-    hash = hashPod(hash, c.path);
+    hash = hashFields(hash, c.path);
     return hashPod(hash, c.rule);
 }
 
@@ -279,7 +286,221 @@ void addRect(std::vector<Rect>& rects, const Rect& rect) {
     }
 }
 
+/// T-644: a group opener whose commandBounds() also bound every pixel its content can reach (the
+/// clip shapes, and the boundsHint of a layer, mask, effect or projection, whose buffers are that
+/// big). PushTransform3D draws nothing by itself but only occurs inside a PushProjection, whose
+/// boundsHint covers its content (a changed transform alone added nothing before T-644 either).
+/// EndMaskContent has no payload: it is unmatched only when it moved, i.e. the mask's phases changed.
+bool boundsItsContent(CmdKind kind) {
+    switch (kind) {
+        case CmdKind::PushClipRect:
+        case CmdKind::PushClipPath:
+        case CmdKind::PushLayer:
+        case CmdKind::PushMask:
+        case CmdKind::PushEffect:
+        case CmdKind::PushProjection:
+        case CmdKind::PushTransform3D:
+            return true;
+        default:
+            return false;
+    }
+}
+
+/// T-644: keeps `open` the stack of the group commands enclosing the command after `index` (every
+/// Push*, plus EndMaskContent as its own level so the mask's two phases differ).
+void trackOpenGroups(const CommandList& list, size_t index, std::vector<uint32_t>& open) {
+    switch (list.commands[index].kind) {
+        case CmdKind::PushClipRect:
+        case CmdKind::PushClipPath:
+        case CmdKind::PushLayer:
+        case CmdKind::PushMask:
+        case CmdKind::PushProjection:
+        case CmdKind::PushTransform3D:
+        case CmdKind::PushEffect:
+        case CmdKind::EndMaskContent:
+            open.push_back(static_cast<uint32_t>(index));
+            break;
+        case CmdKind::PopMask:
+            if (!open.empty() && list.commands[open.back()].kind == CmdKind::EndMaskContent) {
+                open.pop_back();
+            }
+            [[fallthrough]];
+        case CmdKind::PopClip:
+        case CmdKind::PopLayer:
+        case CmdKind::PopProjection:
+        case CmdKind::PopTransform3D:
+        case CmdKind::PopEffect:
+            if (!open.empty()) {
+                open.pop_back();
+            }
+            break;
+        default:
+            break;
+    }
+}
+
+/// T-644: whether a matched pair of commands draws in the same context. Level by level, the
+/// enclosing groups must be matched with each other, or both be unmatched (changed) groups that bound
+/// their content -- then both groups' bounds are dirty and cover whatever the move between them
+/// changes, as a group whose payload changed in place always did.
+bool sameContext(const CommandList& prev, const CommandList& cur, const std::vector<uint32_t>& prevOpen,
+                 const std::vector<uint32_t>& curOpen, const std::vector<uint32_t>& prevToCur,
+                 const std::vector<uint32_t>& curToPrev) {
+    if (prevOpen.size() != curOpen.size()) {
+        return false;
+    }
+    for (size_t level = 0; level < prevOpen.size(); ++level) {
+        const uint32_t p = prevOpen[level];
+        const uint32_t c = curOpen[level];
+        if (prevToCur[p] == c) {
+            continue;
+        }
+        if (prevToCur[p] == kNoCommandMatch && curToPrev[c] == kNoCommandMatch &&
+            boundsItsContent(prev.commands[p].kind) && boundsItsContent(cur.commands[c].kind)) {
+            continue;
+        }
+        return false;
+    }
+    return true;
+}
+
+/// T-644: the dirty commands of both lists: every unmatched one, plus every matched pair whose
+/// enclosing groups differ (sameContext()) -- a matched command moved into, out of or between groups
+/// can change pixels its unchanged hash does not show (a clip wrapped around it, say).
+void markDirty(const CommandList& prev, const CommandList& cur, const std::vector<uint32_t>& prevToCur,
+               const std::vector<uint32_t>& curToPrev, std::vector<uint8_t>& prevDirty,
+               std::vector<uint8_t>& curDirty) {
+    static thread_local std::vector<uint32_t> prevOpen;
+    static thread_local std::vector<uint32_t> curOpen;
+    const size_t prevCount = prev.commands.size();
+    const size_t curCount = cur.commands.size();
+    prevDirty.resize(prevCount);
+    curDirty.resize(curCount);
+    for (size_t i = 0; i < prevCount; ++i) {
+        prevDirty[i] = prevToCur[i] == kNoCommandMatch ? 1 : 0;
+    }
+    for (size_t j = 0; j < curCount; ++j) {
+        curDirty[j] = curToPrev[j] == kNoCommandMatch ? 1 : 0;
+    }
+    prevOpen.clear();
+    curOpen.clear();
+    size_t i = 0;
+    size_t j = 0;
+    while (i < prevCount || j < curCount) {
+        if (i < prevCount && prevToCur[i] == kNoCommandMatch) {
+            trackOpenGroups(prev, i++, prevOpen);
+            continue;
+        }
+        if (j < curCount && curToPrev[j] == kNoCommandMatch) {
+            trackOpenGroups(cur, j++, curOpen);
+            continue;
+        }
+        if (i >= prevCount || j >= curCount) {
+            break;  // Unreachable: matches pair up in order.
+        }
+        if (!sameContext(prev, cur, prevOpen, curOpen, prevToCur, curToPrev)) {
+            prevDirty[i] = 1;
+            curDirty[j] = 1;
+        }
+        trackOpenGroups(prev, i++, prevOpen);
+        trackOpenGroups(cur, j++, curOpen);
+    }
+}
+
 }  // namespace
+
+bool matchCommandHashes(const std::vector<uint64_t>& prev, const std::vector<uint64_t>& cur,
+                        std::vector<uint32_t>& prevToCur, std::vector<uint32_t>& curToPrev) {
+    const size_t prevCount = prev.size();
+    const size_t curCount = cur.size();
+    prevToCur.assign(prevCount, kNoCommandMatch);
+    curToPrev.assign(curCount, kNoCommandMatch);
+    auto link = [&](size_t i, size_t j) {
+        prevToCur[i] = static_cast<uint32_t>(j);
+        curToPrev[j] = static_cast<uint32_t>(i);
+    };
+    const size_t common = std::min(prevCount, curCount);
+    size_t head = 0;
+    while (head < common && prev[head] == cur[head]) {
+        link(head, head);
+        ++head;
+    }
+    size_t tail = 0;
+    while (tail < common - head && prev[prevCount - 1 - tail] == cur[curCount - 1 - tail]) {
+        link(prevCount - 1 - tail, curCount - 1 - tail);
+        ++tail;
+    }
+    const size_t n = prevCount - head - tail;
+    const size_t m = curCount - head - tail;
+    if (n == 0 || m == 0) {
+        return true;  // Only insertions or only deletions: head and tail are already the alignment.
+    }
+    if (std::max(prevCount, curCount) > kDamageDiffMaxCommands) {
+        return false;
+    }
+
+    // Myers' greedy forward search over the middle a = prev[head, head + n), b = cur[head, head + m):
+    // after d edits, v[k] is the furthest x reached on diagonal k = x - y. Every step's row
+    // (k = -d..d) is kept for the backtrack: row d starts at trace[d * d].
+    using Index = std::ptrdiff_t;
+    const Index n0 = static_cast<Index>(n);
+    const Index m0 = static_cast<Index>(m);
+    const Index maxD = static_cast<Index>(std::min(n + m, kDamageDiffMaxEdits));
+    const uint64_t* a = prev.data() + head;
+    const uint64_t* b = cur.data() + head;
+    static thread_local std::vector<Index> v;
+    static thread_local std::vector<Index> trace;
+    v.assign(static_cast<size_t>(2 * maxD + 3), 0);
+    trace.clear();
+    auto at = [&](Index k) -> Index& { return v[static_cast<size_t>(k + maxD + 1)]; };
+    Index edits = -1;
+    for (Index d = 0; d <= maxD && edits < 0; ++d) {
+        for (Index k = -d; k <= d; k += 2) {
+            Index x = (k == -d || (k != d && at(k - 1) < at(k + 1))) ? at(k + 1) : at(k - 1) + 1;
+            Index y = x - k;
+            while (x < n0 && y < m0 && a[x] == b[y]) {
+                ++x;
+                ++y;
+            }
+            at(k) = x;
+            if (x >= n0 && y >= m0) {
+                edits = d;
+            }
+        }
+        for (Index k = -d; k <= d; ++k) {
+            trace.push_back(at(k));
+        }
+    }
+    if (edits < 0) {
+        return false;  // Too many edits: keep the single range (head and tail only).
+    }
+
+    // Backtrack from (n0, m0): each step undoes one edit and the diagonal run (matches) after it.
+    Index x = n0;
+    Index y = m0;
+    for (Index d = edits; d > 0; --d) {
+        const Index k = x - y;
+        const Index* row = trace.data() + (d - 1) * (d - 1);  // Row d - 1; k' at row[k' + d - 1].
+        auto prevRow = [&](Index kk) { return row[kk + d - 1]; };
+        const bool down = k == -d || (k != d && prevRow(k - 1) < prevRow(k + 1));
+        const Index prevK = down ? k + 1 : k - 1;
+        const Index prevX = prevRow(prevK);
+        const Index runStart = down ? prevX : prevX + 1;  // x right after this step's edit
+        while (x > runStart) {
+            --x;
+            --y;
+            link(head + static_cast<size_t>(x), head + static_cast<size_t>(y));
+        }
+        x = prevX;
+        y = prevX - prevK;
+    }
+    while (x > 0 && y > 0) {
+        --x;
+        --y;
+        link(head + static_cast<size_t>(x), head + static_cast<size_t>(y));
+    }
+    return true;
+}
 
 void hashCommandList(const CommandList& list, std::vector<uint64_t>& out) {
     out.clear();
@@ -339,19 +560,26 @@ void hashCommandList(const CommandList& list, std::vector<uint64_t>& out) {
                 break;
             case CmdKind::PushEffect: {
                 const EffectCmd& c = list.effectCmds[cmd.index];
-                hash = hashPod(hash, c);
+                EffectCmd payload = c;
+                payload.effectOffset = 0;
+                hash = hashPod(hash, payload);
                 hash = hashPool(hash, list.effects, c.effectOffset, c.effectCount);
                 break;
             }
             case CmdKind::DrawParticles: {
                 const ParticlesCmd& c = list.particles[cmd.index];
-                hash = hashPod(hash, c);
+                ParticlesCmd payload = c;
+                payload.instanceOffset = 0;
+                hash = hashPod(hash, payload);
                 hash = hashPool(hash, list.particleInstances, c.instanceOffset, c.count);
                 break;
             }
             case CmdKind::DrawImageMesh: {
                 const ImageMeshCmd& c = list.imageMeshes[cmd.index];
-                hash = hashPod(hash, c);
+                ImageMeshCmd payload = c;
+                payload.vertexOffset = 0;
+                payload.indexOffset = 0;
+                hash = hashPod(hash, payload);
                 hash = hashPool(hash, list.meshVertices, c.vertexOffset, c.vertexCount);
                 hash = hashPool(hash, list.meshIndices, c.indexOffset, c.indexCount);
                 break;
@@ -508,33 +736,27 @@ void computeDamage(const CommandList& prev, const CommandList& cur, Rect viewpor
     out.clear();
     out.viewport = viewportDevice;
 
-    // §23.2 step 2: hash both lists, then find the first and the last differing command.
+    // §23.2 step 2 (T-644 revision): hash both lists and align them; the unmatched commands form
+    // any number of changed ranges, and the matched ones between them stay clean.
     static thread_local std::vector<uint64_t> prevHashes;
     static thread_local std::vector<uint64_t> curHashes;
-    /// Indices of the PushEffect commands open at the start of a changed range (B6 below).
+    static thread_local std::vector<uint32_t> prevToCur;
+    static thread_local std::vector<uint32_t> curToPrev;
+    static thread_local std::vector<uint8_t> prevDirty;
+    static thread_local std::vector<uint8_t> curDirty;
+    /// Indices of the PushEffect commands open at the current command (B6 below).
     static thread_local std::vector<size_t> openEffects;
     hashCommandList(prev, prevHashes);
     hashCommandList(cur, curHashes);
 
-    size_t prevCount = prevHashes.size();
-    size_t curCount = curHashes.size();
-    size_t common = std::min(prevCount, curCount);
-    size_t head = 0;
-    while (head < common && prevHashes[head] == curHashes[head]) {
-        ++head;
-    }
-    size_t tail = 0;
-    while (tail < common - head && prevHashes[prevCount - 1 - tail] == curHashes[curCount - 1 - tail]) {
-        ++tail;
-    }
-    size_t prevEnd = prevCount - tail;
-    size_t curEnd = curCount - tail;
     // T-203 (Docs/design/18-effects.md §18.7): a custom effect's shader may read `xtTime`, so
     // its node changes on screen whenever the clock moves even though no command did.
     const bool clockMoved = !cur.shaders.empty() && cur.time != prev.time;
-    if (head >= prevEnd && head >= curEnd && !clockMoved) {
+    if (prevHashes == curHashes && !clockMoved) {
         return;  // Identical lists: nothing changed on screen.
     }
+    (void)matchCommandHashes(prevHashes, curHashes, prevToCur, curToPrev);
+    markDirty(prev, cur, prevToCur, curToPrev, prevDirty, curDirty);
 
     // §23.2 step 3: the changed ranges' bounds, in device pixels, clipped to the viewport.
     float dpr = cur.devicePixelRatio > 0 ? cur.devicePixelRatio : 1.0f;
@@ -542,7 +764,7 @@ void computeDamage(const CommandList& prev, const CommandList& cur, Rect viewpor
     /// already intersected with the ones outside it (a PushClipRect pushes its enclosing entry
     /// unchanged, so overflow clips keep their pre-T-332 behaviour).
     static thread_local std::vector<Rect> openClips;
-    auto collect = [&](const CommandList& list, size_t from, size_t to, float listDpr) {
+    auto collect = [&](const CommandList& list, const std::vector<uint8_t>& dirty, float listDpr) {
         auto add = [&](const Rect& box) {
             Rect device{box.x * listDpr, box.y * listDpr, box.w * listDpr, box.h * listDpr};
             addRect(out.rects, clipAndSnap(device, viewportDevice));
@@ -572,42 +794,39 @@ void computeDamage(const CommandList& prev, const CommandList& cur, Rect viewpor
         auto clipped = [&](Rect bounds) {
             return openClips.empty() ? bounds : intersect(bounds, openClips.back());
         };
-        for (size_t i = 0; i < from; ++i) {
+        openEffects.clear();
+        bool inRange = false;
+        for (size_t i = 0; i < list.commands.size(); ++i) {
             const Command& cmd = list.commands[i];
-            if (cmd.kind == CmdKind::PushClipPath || cmd.kind == CmdKind::PushClipRect ||
-                cmd.kind == CmdKind::PopClip) {
+            if (dirty[i] != 0) {
+                if (!inRange) {
+                    // B6 (Docs/tasks/T-263a.md): an effect whose PushEffect is still open where a
+                    // changed range starts encloses it, and its halo (a glow, a shadow, a blur)
+                    // follows the content, so its boundsHint -- already outset by the stack's
+                    // expansion -- is repainted too. Effects opened inside the range are covered by
+                    // their own PushEffect.
+                    for (size_t e : openEffects) {
+                        add(commandBounds(list, list.commands[e]));
+                    }
+                }
+                const Rect bounds = clipped(commandBounds(list, cmd));
+                add(bounds);
+                trackClip(cmd, bounds);
+            } else if (cmd.kind == CmdKind::PushClipPath || cmd.kind == CmdKind::PushClipRect ||
+                       cmd.kind == CmdKind::PopClip) {
                 trackClip(cmd, clipped(commandBounds(list, cmd)));
             }
-        }
-        for (size_t i = from; i < to; ++i) {
-            const Command& cmd = list.commands[i];
-            const Rect bounds = clipped(commandBounds(list, cmd));
-            add(bounds);
-            trackClip(cmd, bounds);
-        }
-        if (from >= to) {
-            return;
-        }
-        // B6 (Docs/tasks/T-263a.md): an effect whose PushEffect is still open where the change
-        // starts encloses it, and its halo (a glow, a shadow, a blur) follows the content, so its
-        // boundsHint -- already outset by the stack's expansion -- is repainted too. Effects
-        // opened inside the range are covered by their own PushEffect above.
-        openEffects.clear();
-        for (size_t i = 0; i < from; ++i) {
-            const CmdKind kind = list.commands[i].kind;
-            if (kind == CmdKind::PushEffect) {
+            inRange = dirty[i] != 0;
+            if (cmd.kind == CmdKind::PushEffect) {
                 openEffects.push_back(i);
-            } else if (kind == CmdKind::PopEffect && !openEffects.empty()) {
+            } else if (cmd.kind == CmdKind::PopEffect && !openEffects.empty()) {
                 openEffects.pop_back();
             }
         }
-        for (size_t i : openEffects) {
-            add(commandBounds(list, list.commands[i]));
-        }
     };
     float prevDpr = prev.devicePixelRatio > 0 ? prev.devicePixelRatio : 1.0f;
-    collect(prev, head, prevEnd, prevDpr);
-    collect(cur, head, curEnd, dpr);
+    collect(prev, prevDirty, prevDpr);
+    collect(cur, curDirty, dpr);
     if (clockMoved) {
         for (const Command& cmd : cur.commands) {
             if (cmd.kind != CmdKind::PushEffect) {

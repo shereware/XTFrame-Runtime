@@ -98,3 +98,52 @@ TEST_CASE("GlyphAtlas::flushUploads reports a region covering the new glyph") {
     atlas.flushUploads([&](uint16_t, int, int, int, int, const uint8_t*, int) { ++callCount; });
     CHECK(callCount == 0);
 }
+
+TEST_CASE("GlyphAtlas with an initial size grows its first page in place before adding a page (T-648)") {
+    Fixture f;
+    xt::text::GlyphAtlas atlas(f.shaper, 256, 128);
+    CHECK(atlas.textureSize() == 128);
+    CHECK(atlas.maxTextureSize() == 256);
+    // Fill the 128 x 128 page with distinct 40 px glyphs, remembering where each went.
+    struct Placed {
+        uint32_t glyph;
+        float size;
+        xt::text::AtlasEntry entry;
+    };
+    std::vector<Placed> placed;
+    bool grew = false;
+    for (int i = 0; i < 64 && !grew; ++i) {
+        const uint32_t glyphId = glyphIdFor(f.shaper, f.font, static_cast<char>('A' + (i % 26)));
+        const float size = 40.0f + static_cast<float>(i / 26);
+        xt::text::AtlasEntry entry;
+        REQUIRE(atlas.lookup(f.font, glyphId, size, entry));
+        if (atlas.wasReset()) {
+            grew = true;  // a growth reports like a reset (the uv scale changed) ...
+        } else {
+            placed.push_back(Placed{glyphId, size, entry});
+        }
+    }
+    REQUIRE(grew);
+    CHECK(atlas.textureSize() == 256);
+    CHECK(atlas.textureCount() == 1);  // ... but it is the same page, grown
+    // Every entry placed before the growth is still cached at the same place.
+    for (const Placed& p : placed) {
+        xt::text::AtlasEntry again;
+        REQUIRE(atlas.lookup(f.font, p.glyph, p.size, again));
+        CHECK(again.texture == p.entry.texture);
+        CHECK(again.x == p.entry.x);
+        CHECK(again.y == p.entry.y);
+    }
+    CHECK(!atlas.wasReset());
+    // The grown page is wholly pending upload, at the new size.
+    int regions = 0;
+    atlas.flushUploads([&](uint16_t, int x, int y, int w, int h, const uint8_t*, int stride) {
+        ++regions;
+        CHECK(x == 0);
+        CHECK(y == 0);
+        CHECK(w == 256);
+        CHECK(h == 256);
+        CHECK(stride == 256);
+    });
+    CHECK(regions == 1);
+}

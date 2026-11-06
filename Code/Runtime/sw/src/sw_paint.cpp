@@ -212,16 +212,21 @@ bool PaintEval::visibleRange(float a, float b, float c, int n, int& i0, int& i1)
     return i0 < i1;
 }
 
-PaintEval::SpanInfo PaintEval::spanPremul(int x, int y, int n, float alphaScale, float* dst) const {
+PaintEval::SpanInfo PaintEval::spanPremul(int x, int y, int begin, int end, float alphaScale,
+                                          float* dst) const {
     SpanInfo info;
-    info.first = n;
+    info.first = end - begin;
     info.last = 0;
     info.allOpaque = true;
+    // T-642: the span's own pixel count, as far as this piece needs it; every index below is still
+    // relative to `x`, and `write` stores pixel `i` at `dst[i - begin]`.
+    const int n = end;
 
     // The ramp is already premultiplied by the paint's alpha, so one source pixel is just the ramp
     // entry scaled by the span's coverage -- four multiplies, no stop search. At full coverage the
     // scale is exactly 1.0f, so the multiply is the identity rather than a second rounding.
-    auto write = [&](int i, const float* c) {
+    auto write = [&](int si, const float* c) {
+        const int i = si - begin;
         float* p = dst + static_cast<size_t>(i) * 4;
         const float a = c[3] * alphaScale;
         p[0] = c[0] * alphaScale;
@@ -243,7 +248,7 @@ PaintEval::SpanInfo PaintEval::spanPremul(int x, int y, int n, float alphaScale,
 
     if (m_degenerate) {
         const float* c = sample(1.0f);
-        for (int i = 0; i < n; ++i) {
+        for (int i = begin; i < n; ++i) {
             write(i, c);
         }
         return info;
@@ -252,7 +257,7 @@ PaintEval::SpanInfo PaintEval::spanPremul(int x, int y, int n, float alphaScale,
     if (m_projective) {
         // T-160: under a projection t is not affine along the span (the homography divides by a
         // per-pixel w), so every pixel is mapped on its own. Only projected gradients get here.
-        for (int i = 0; i < n; ++i) {
+        for (int i = begin; i < n; ++i) {
             write(i, sample(tAt(Vec2{static_cast<float>(x + i) + 0.5f, static_cast<float>(y) + 0.5f})));
         }
         return info;
@@ -277,7 +282,7 @@ PaintEval::SpanInfo PaintEval::spanPremul(int x, int y, int n, float alphaScale,
 
     if (m_kind == PaintKind::Conic) {
         // T-201: the angle is not affine along the span; one atan2 per pixel.
-        for (int i = 0; i < n; ++i) {
+        for (int i = begin; i < n; ++i) {
             const float fi = static_cast<float>(i);
             write(i, sample(conicT(Vec2{v0.x + step.x * fi, v0.y + step.y * fi}, d)));
         }
@@ -294,7 +299,7 @@ PaintEval::SpanInfo PaintEval::spanPremul(int x, int y, int n, float alphaScale,
                               v0.x * v0.x + v0.y * v0.y - lenSq, n, i0, i1)) {
                 return info;
             }
-            for (int i = i0; i < i1; ++i) {
+            for (int i = std::max(i0, begin); i < i1; ++i) {
                 const float fi = static_cast<float>(i);
                 const float vx = v0.x + step.x * fi;
                 const float vy = v0.y + step.y * fi;
@@ -313,7 +318,7 @@ PaintEval::SpanInfo PaintEval::spanPremul(int x, int y, int n, float alphaScale,
                                       nx0 * nx0 + ny0 * ny0 - 1.0f, n, i0, i1)) {
             return info;
         }
-        for (int i = i0; i < i1; ++i) {
+        for (int i = std::max(i0, begin); i < i1; ++i) {
             const float fi = static_cast<float>(i);
             const float nx = nx0 + dnx * fi;
             const float ny = ny0 + dny * fi;
@@ -348,7 +353,7 @@ PaintEval::SpanInfo PaintEval::spanPremul(int x, int y, int n, float alphaScale,
             return info;
         }
     }
-    for (int i = i0; i < i1; ++i) {
+    for (int i = std::max(i0, begin); i < i1; ++i) {
         const float t = std::clamp(t0 + dt * static_cast<float>(i), 0.0f, 1.0f);
         write(i, sample(t));
     }

@@ -50,6 +50,8 @@
 
 namespace xt::wgpu {
 
+class WgpuSharedCache;
+
 /// What the last `submit` did (for tests and tools; not a stable API).
 struct WgpuDeviceStats {
     uint32_t passes = 0;            ///< render passes encoded
@@ -95,6 +97,13 @@ public:
     /// references. Safe to call twice or before init.
     void shutdown();
     bool initialized() const { return m_device != nullptr; }
+    /// T-648 (wgpu_shared.h): the cache the next `init` borrows its pipeline set from and that image
+    /// textures are shared through (`sharesImageTextures`); null (the default) = the device's own.
+    /// Not owned; it must outlive this device's `shutdown`. A cache already bound to another
+    /// `WGPUDevice` is not used (the device then keeps its own pipelines and shares no image).
+    void setSharedCache(WgpuSharedCache* cache) { m_shared = cache; }
+    /// T-648: true while this device borrows a WgpuSharedCache (set by `init`).
+    bool sharing() const { return m_sharing != nullptr; }
 
     /// Size of the surface target in pixels (the views passed to `setSurface`).
     void resize(int width, int height);
@@ -119,6 +128,14 @@ public:
     /// T-438: target 0 can be read back (a blit from the surface view, which then needs
     /// TEXTURE_BINDING), so Direct mode works (§10.10.2 Direct row).
     bool supportsDirectTarget() const override { return true; }
+    /// T-648: image textures through the borrowed WgpuSharedCache (see gpu::GpuDevice). A shared
+    /// image's handle is an external entry of this device's table naming the cache's view.
+    bool sharesImageTextures() const override { return m_sharing != nullptr; }
+    gpu::TextureHandle findSharedImage(const gpu::ImageKey& key, uint16_t w, uint16_t h,
+                                       gpu::TextureFormat fmt) override;
+    gpu::TextureHandle createSharedImage(const gpu::ImageKey& key, const char* debugName, uint16_t w,
+                                         uint16_t h, gpu::TextureFormat fmt, const void* initial) override;
+    void releaseSharedImage(gpu::TextureHandle tex, bool keep) override;
 
     /// T-150: makes a host texture view sampleable as a `TextureHandle` (for
     /// `AssetResolver::setExternalTexture`). Not owned: the host keeps it alive until
@@ -163,6 +180,7 @@ private:
         uint16_t width = 0, height = 0;
         bool external = false;  ///< view not owned (registerExternalTexture)
         bool cached = false;    ///< an acquireCachedTarget target
+        uint32_t sharedId = 0;  ///< T-648: a use of WgpuSharedCache image `sharedId` (external)
     };
     /// One pooled offscreen target: `color` is drawn into (4x when `samples` is 4) and resolves
     /// into `resolve`; with one sample `resolve` is null and `color` is the sampleable texture.
@@ -211,6 +229,8 @@ private:
     bool m_clearSurface = false;
     WGPUColor m_clearColor = {0, 0, 0, 0};
     std::unique_ptr<Gpu> m_gpu;
+    WgpuSharedCache* m_shared = nullptr;   ///< T-648: setSharedCache
+    WgpuSharedCache* m_sharing = nullptr;  ///< T-648: the cache borrowed since init (null: none)
 
     std::vector<Texture> m_textures;  ///< handle h = m_textures[h - 1]
     std::vector<uint32_t> m_freeTextures;
@@ -246,6 +266,10 @@ private:
 
     const Texture* find(gpu::TextureHandle tex) const;
     gpu::TextureHandle addTexture(const Texture& t);
+    /// T-648: borrows the pipeline set of `m_shared` (creating it on first use) for `init`.
+    bool borrowSharedPipelines(WGPUTextureFormat format, uint32_t samples, std::string& err);
+    /// T-648: removes table entry `tex` (a shared image use) and ends that use.
+    void dropSharedUse(gpu::TextureHandle tex, bool keep);
     bool ensureSurfaceAttachments();
     void releaseSurfaceAttachments();
     int acquirePooled(const gpu::TransientTargetDesc& desc);

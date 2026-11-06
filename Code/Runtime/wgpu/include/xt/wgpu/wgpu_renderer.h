@@ -34,6 +34,7 @@ class GlyphAtlas;
 namespace xt::wgpu {
 
 class WgpuDevice;
+class WgpuSharedCache;
 
 /// Options of `WgpuInit::headless`.
 struct WgpuHeadlessOptions {
@@ -58,6 +59,10 @@ struct WgpuInit {
     uint32_t sampleCount = 1;
     WGPUInstance instance = nullptr;
     WGPUAdapter adapter = nullptr;
+    /// T-648 (wgpu_shared.h): the cache whose pipeline set and image textures the renderer's device
+    /// shares with the other renderers on `device`; null (the default) = none. Not owned: it must
+    /// outlive the renderer's `shutdown`. `headless()` leaves it null and `release()` ignores it.
+    WgpuSharedCache* shared = nullptr;
     /// Why `headless()` returned no device (empty otherwise).
     std::string error;
 

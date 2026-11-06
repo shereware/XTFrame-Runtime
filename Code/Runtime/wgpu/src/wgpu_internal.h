@@ -10,8 +10,10 @@
 #include <unordered_map>
 #include <vector>
 
+#include "xt/gpu/gpu_device.h"
 #include "xt/gpu/gpu_frame.h"
 #include "xt/wgpu/wgpu_device.h"
+#include "xt/wgpu/wgpu_shared.h"
 
 /// xt_wgpu internals (T-438, Docs/design/10-backends.md §10.10.2): the pipeline cache, the shader
 /// table and the geometry/uniform buffers behind `WgpuDevice::submit`. Not installed.
@@ -226,9 +228,47 @@ struct BindGroupKeyHash {
 
 namespace xt::wgpu {
 
+/// The state behind WgpuSharedCache (T-648; wgpu_shared.cpp, wgpu_device.cpp).
+struct WgpuSharedCache::Impl {
+    /// The device the pipeline set and the images were created on (one reference held while
+    /// either lives); a WgpuDevice on another WGPUDevice does not share.
+    WGPUDevice device = nullptr;
+    detail::Pipelines pipelines;
+    bool pipelinesReady = false;
+    /// (format << 8 | samples) of every probe (T-456) already passed on `device`.
+    std::vector<uint64_t> probed;
+    struct Image {
+        gpu::ImageKey key;
+        uint16_t width = 0, height = 0;
+        gpu::TextureFormat format = gpu::TextureFormat::Rgba8;
+        WGPUTexture texture = nullptr;  ///< null = free slot
+        WGPUTextureView view = nullptr;
+        uint32_t uses = 0;  ///< device handles naming it
+        uint64_t bytes = 0;
+    };
+    std::vector<Image> images;  ///< id i + 1 = images[i]
+    std::vector<uint32_t> freeIds;
+    WgpuSharedStats stats;
+
+    /// True when a WgpuDevice on `dev` may borrow this cache (it adopts `dev` when it has none).
+    bool adopt(WGPUDevice dev);
+    /// The id of the live image of (`key`, size, format), or 0.
+    uint32_t findImage(const gpu::ImageKey& key, uint16_t w, uint16_t h, gpu::TextureFormat fmt) const;
+    /// Takes ownership of `texture` / `view` as the image of `key` with one use; returns its id.
+    uint32_t addImage(const gpu::ImageKey& key, uint16_t w, uint16_t h, gpu::TextureFormat fmt,
+                      WGPUTexture texture, WGPUTextureView view, uint64_t bytes);
+    /// Ends one use of image `id` (see gpu::GpuDevice::releaseSharedImage for `keep`).
+    void releaseImage(uint32_t id, bool keep);
+    void destroyImage(Image& image);
+    /// Releases the device reference once nothing created on it is left.
+    void releaseDeviceIfUnused();
+};
+
 /// WgpuDevice's GPU-side state (wgpu_device.cpp, wgpu_draw.cpp).
 struct WgpuDevice::Gpu {
-    detail::Pipelines pipelines;
+    /// The device's own pipeline set, unused while `pipelines` points into a WgpuSharedCache (T-648).
+    detail::Pipelines ownPipelines;
+    detail::Pipelines* pipelines = &ownPipelines;
     detail::Geometry geometry;
     detail::ShadowBuffer uniforms;
     /// Group 0 / group 1 bind groups over `uniforms` (re-created when that buffer is).

@@ -1,0 +1,22 @@
+<xt version="2">
+
+  <body>
+    <div id="Dark">
+      <span id="D12" class="s12">The quick brown fox jumps over the lazy dog 12px</span>
+      <span id="D24" class="s24">Quick brown fox 24px</span>
+      <span id="D48" class="s48">Hello 48</span>
+    </div>
+    <div id="Clear">
+      <span id="C12" class="s12">The quick brown fox jumps over the lazy dog 12px</span>
+      <span id="C24" class="s24">Quick brown fox 24px</span>
+      <span id="C48" class="s48">Hello 48</span>
+    </div>
+    <svg id="Star" viewBox="0 0 120 120" width="120" height="120">
+      <path d="M60 4 L73 46 L116 46 L81 72 L94 114 L60 88 L26 114 L39 72 L4 46 L47 46 Z" fill="#ffffff"/>
+    </svg>
+    <span id="Word">Sky</span>
+  </body>
+
+  <layout src="text.layout.xts"/>
+  <style src="text.xts"/>
+</xt>

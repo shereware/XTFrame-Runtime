@@ -86,14 +86,17 @@ public:
     /// time spent executing effect stacks (PopEffect) to `effectsMs`, and the time spent drawing
     /// glyph runs (DrawGlyphs) to `textMs`. Null (the default) measures nothing.
     /// `damage` (Docs/design/23-host-integration.md §23.3) restricts this call to the dirty
-    /// rectangles of xt::Context::render(). Null, `full`, or an empty rectangle list renders the
-    /// whole target exactly as before. Otherwise the union of `damage->rects` becomes a write mask
-    /// on the *root* target: every pixel outside it keeps its value, and a FillPath / StrokePath /
-    /// DrawImage / DrawGlyphs / DrawImageQuad command whose commandBounds() misses every rectangle
-    /// is skipped entirely. Push*/Pop* commands always run (the stacks must stay balanced), and
-    /// layer/mask/effect buffers are still allocated and computed over their full boundsHint (an
-    /// effect reads its neighborhood); only their composite back onto the root is masked. The
-    /// result inside the rectangles is byte-identical to a full render of the same list.
+    /// rectangles of xt::Context::render(). Null or `full` renders the whole target exactly as
+    /// before. Otherwise the union of `damage->rects` is the *root* target's write region: every
+    /// pixel outside it keeps its value, and a FillPath / StrokePath / DrawImage / DrawGlyphs /
+    /// DrawImageQuad command whose commandBounds() misses every rectangle is skipped entirely
+    /// (an empty list therefore draws nothing). T-642: a command that does meet the region is
+    /// swept, sampled and written only inside it, and a root-level layer / mask / per-pixel
+    /// effect (ColorAdjust, GradientMask, Shine, BackdropBlur) buffer covers only the region's
+    /// part of its boundsHint; a buffer whose effect reads a neighbourhood (blur, glow, shadow,
+    /// outline) keeps its full boundsHint and its content is drawn whole, and only its composite
+    /// is restricted. Push*/Pop* commands always run (the stacks must stay balanced). The result
+    /// inside the rectangles is byte-identical to a full render of the same list.
     ///
     /// `damage` is additive (defaulted) so existing call sites keep compiling unchanged.
     void render(const CommandList& list, TextShaper* shaper, AssetResolver* assets,

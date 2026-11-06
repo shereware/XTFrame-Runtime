@@ -67,6 +67,7 @@ struct WgpuRenderer::Impl {
             return false;
         }
         std::string err;
+        device.setSharedCache(in.shared);  // T-648
         if (!device.init(in.device, in.queue, in.targetFormat, in.sampleCount, err)) {
             lastError = err;
             return false;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 
@@ -19,7 +20,8 @@
 
 /// Minimal, dependency-free, header-only 4-lane float vector used by the SW backend's hot pixel
 /// loops (Docs/design/23-host-integration.md §23.5, Docs/tasks/T-102.md step 3). Two types with
-/// the same 15-function interface:
+/// the same interface (15 functions, plus T-643's comparisons, mask logic, `sqrt`, `abs` and
+/// `transpose4`, which the layer blend-mode kernels need):
 ///   - `f32x4`  -- one of three backends, picked at compile time: SSE2 (`__m128`) where the target
 ///                 has it; wasm SIMD128 (`v128_t`, <wasm_simd128.h>) under `-msimd128` without
 ///                 SSE2 (Docs/design/52-web-wasm.md §52.2, Docs/tasks/T-531.md), bit-identical to
@@ -29,8 +31,8 @@
 /// Every kernel in sw_simd_kernels.h is a template over one of the two, so there is exactly one
 /// copy of each algorithm. Lane order matches the RGBA memory order: lane 0 is R, lane 3 is A.
 ///
-/// No exceptions, no RTTI, no allocation, nothing outside <cstdint>/<cstring> and the intrinsic
-/// header (Docs/design/01-architecture.md §1.7: xt_core stays dependency-free).
+/// No exceptions, no RTTI, no allocation, nothing outside <cmath>/<cstdint>/<cstring> and the
+/// intrinsic header (Docs/design/01-architecture.md §1.7: xt_core stays dependency-free).
 
 namespace xt::simd {
 
@@ -125,6 +127,67 @@ inline f32x4s blend(f32x4s a, f32x4s b, f32x4s mask) {
 }
 /// Broadcasts lane 3 (alpha) to all 4 lanes.
 inline f32x4s splatW(f32x4s a) { return f32x4s{{a.v[3], a.v[3], a.v[3], a.v[3]}}; }
+/// Lane-wise `a < b` (`op` 0), `a <= b` (1) or `a == b` (2) as a bit mask.
+inline f32x4s cmpOp(f32x4s a, f32x4s b, int op) {
+    f32x4s r{};
+    for (int i = 0; i < 4; ++i) {
+        const bool t = op == 0 ? a.v[i] < b.v[i] : (op == 1 ? a.v[i] <= b.v[i] : a.v[i] == b.v[i]);
+        uint32_t bits = t ? 0xFFFFFFFFu : 0u;
+        std::memcpy(&r.v[i], &bits, sizeof(bits));
+    }
+    return r;
+}
+/// Lane-wise `a < b` as a bit mask (T-643).
+inline f32x4s cmpLt(f32x4s a, f32x4s b) { return cmpOp(a, b, 0); }
+/// Lane-wise `a <= b` as a bit mask (T-643).
+inline f32x4s cmpLe(f32x4s a, f32x4s b) { return cmpOp(a, b, 1); }
+/// Lane-wise `a == b` as a bit mask (T-643).
+inline f32x4s cmpEq(f32x4s a, f32x4s b) { return cmpOp(a, b, 2); }
+/// Bitwise `a & b`, `a | b` (`op` 1) or `a & ~b` (`op` 2) of two lanes' bits.
+inline f32x4s maskOp(f32x4s a, f32x4s b, int op) {
+    f32x4s r{};
+    for (int i = 0; i < 4; ++i) {
+        uint32_t x = 0;
+        uint32_t y = 0;
+        std::memcpy(&x, &a.v[i], sizeof(x));
+        std::memcpy(&y, &b.v[i], sizeof(y));
+        x = op == 0 ? (x & y) : (op == 1 ? (x | y) : (x & ~y));
+        std::memcpy(&r.v[i], &x, sizeof(x));
+    }
+    return r;
+}
+/// Bitwise `a & b` of two masks (T-643).
+inline f32x4s maskAnd(f32x4s a, f32x4s b) { return maskOp(a, b, 0); }
+/// Bitwise `a | b` of two masks (T-643).
+inline f32x4s maskOr(f32x4s a, f32x4s b) { return maskOp(a, b, 1); }
+/// Bitwise `a & ~b` of two masks (T-643).
+inline f32x4s maskAndNot(f32x4s a, f32x4s b) { return maskOp(a, b, 2); }
+/// Lane-wise correctly rounded square root, `std::sqrt` (T-643).
+inline f32x4s sqrt(f32x4s a) {
+    return f32x4s{{std::sqrt(a.v[0]), std::sqrt(a.v[1]), std::sqrt(a.v[2]), std::sqrt(a.v[3])}};
+}
+/// Lane-wise absolute value: the sign bit cleared, like `std::fabs` (T-643).
+inline f32x4s abs(f32x4s a) {
+    f32x4s r{};
+    for (int i = 0; i < 4; ++i) {
+        uint32_t x = 0;
+        std::memcpy(&x, &a.v[i], sizeof(x));
+        x &= 0x7FFFFFFFu;
+        std::memcpy(&r.v[i], &x, sizeof(x));
+    }
+    return r;
+}
+/// Transposes the 4 x 4 matrix whose rows are `a`, `b`, `c`, `d` in place: four RGBA pixels become
+/// the R, G, B and A vectors of those pixels, and back (T-643).
+inline void transpose4(f32x4s& a, f32x4s& b, f32x4s& c, f32x4s& d) {
+    const f32x4s r[4] = {a, b, c, d};
+    for (int i = 0; i < 4; ++i) {
+        a.v[i] = r[i].v[0];
+        b.v[i] = r[i].v[1];
+        c.v[i] = r[i].v[2];
+        d.v[i] = r[i].v[3];
+    }
+}
 /// Loads 4 bytes and scales them to [0, 1].
 inline f32x4s loadU8(const f32x4s*, const uint8_t* p) {
     const float k = 1.0f / 255.0f;
@@ -173,6 +236,24 @@ inline f32x4 blend(f32x4 a, f32x4 b, f32x4 mask) {
 }
 /// See the `f32x4s` overload.
 inline f32x4 splatW(f32x4 a) { return f32x4{_mm_shuffle_ps(a.v, a.v, _MM_SHUFFLE(3, 3, 3, 3))}; }
+/// See the `f32x4s` overload.
+inline f32x4 cmpLt(f32x4 a, f32x4 b) { return f32x4{_mm_cmplt_ps(a.v, b.v)}; }
+/// See the `f32x4s` overload.
+inline f32x4 cmpLe(f32x4 a, f32x4 b) { return f32x4{_mm_cmple_ps(a.v, b.v)}; }
+/// See the `f32x4s` overload.
+inline f32x4 cmpEq(f32x4 a, f32x4 b) { return f32x4{_mm_cmpeq_ps(a.v, b.v)}; }
+/// See the `f32x4s` overload.
+inline f32x4 maskAnd(f32x4 a, f32x4 b) { return f32x4{_mm_and_ps(a.v, b.v)}; }
+/// See the `f32x4s` overload.
+inline f32x4 maskOr(f32x4 a, f32x4 b) { return f32x4{_mm_or_ps(a.v, b.v)}; }
+/// See the `f32x4s` overload. `_mm_andnot_ps(x, y)` is `~x & y`.
+inline f32x4 maskAndNot(f32x4 a, f32x4 b) { return f32x4{_mm_andnot_ps(b.v, a.v)}; }
+/// See the `f32x4s` overload. `sqrtps` is correctly rounded, like `std::sqrt`.
+inline f32x4 sqrt(f32x4 a) { return f32x4{_mm_sqrt_ps(a.v)}; }
+/// See the `f32x4s` overload.
+inline f32x4 abs(f32x4 a) { return f32x4{_mm_andnot_ps(_mm_set1_ps(-0.0f), a.v)}; }
+/// See the `f32x4s` overload.
+inline void transpose4(f32x4& a, f32x4& b, f32x4& c, f32x4& d) { _MM_TRANSPOSE4_PS(a.v, b.v, c.v, d.v); }
 /// See the `f32x4s` overload.
 inline f32x4 loadU8(const f32x4*, const uint8_t* p) {
     uint32_t packed = 0;
@@ -227,6 +308,33 @@ inline f32x4 cmpGt(f32x4 a, f32x4 b) { return f32x4{wasm_f32x4_gt(a.v, b.v)}; }
 inline f32x4 blend(f32x4 a, f32x4 b, f32x4 mask) { return f32x4{wasm_v128_bitselect(b.v, a.v, mask.v)}; }
 /// See the `f32x4s` overload.
 inline f32x4 splatW(f32x4 a) { return f32x4{wasm_i32x4_shuffle(a.v, a.v, 3, 3, 3, 3)}; }
+/// See the `f32x4s` overload.
+inline f32x4 cmpLt(f32x4 a, f32x4 b) { return f32x4{wasm_f32x4_lt(a.v, b.v)}; }
+/// See the `f32x4s` overload.
+inline f32x4 cmpLe(f32x4 a, f32x4 b) { return f32x4{wasm_f32x4_le(a.v, b.v)}; }
+/// See the `f32x4s` overload.
+inline f32x4 cmpEq(f32x4 a, f32x4 b) { return f32x4{wasm_f32x4_eq(a.v, b.v)}; }
+/// See the `f32x4s` overload.
+inline f32x4 maskAnd(f32x4 a, f32x4 b) { return f32x4{wasm_v128_and(a.v, b.v)}; }
+/// See the `f32x4s` overload.
+inline f32x4 maskOr(f32x4 a, f32x4 b) { return f32x4{wasm_v128_or(a.v, b.v)}; }
+/// See the `f32x4s` overload. `wasm_v128_andnot(x, y)` is `x & ~y`.
+inline f32x4 maskAndNot(f32x4 a, f32x4 b) { return f32x4{wasm_v128_andnot(a.v, b.v)}; }
+/// See the `f32x4s` overload.
+inline f32x4 sqrt(f32x4 a) { return f32x4{wasm_f32x4_sqrt(a.v)}; }
+/// See the `f32x4s` overload.
+inline f32x4 abs(f32x4 a) { return f32x4{wasm_f32x4_abs(a.v)}; }
+/// See the `f32x4s` overload.
+inline void transpose4(f32x4& a, f32x4& b, f32x4& c, f32x4& d) {
+    const v128_t t0 = wasm_i32x4_shuffle(a.v, b.v, 0, 4, 1, 5);
+    const v128_t t1 = wasm_i32x4_shuffle(c.v, d.v, 0, 4, 1, 5);
+    const v128_t t2 = wasm_i32x4_shuffle(a.v, b.v, 2, 6, 3, 7);
+    const v128_t t3 = wasm_i32x4_shuffle(c.v, d.v, 2, 6, 3, 7);
+    a.v = wasm_i32x4_shuffle(t0, t1, 0, 1, 4, 5);
+    b.v = wasm_i32x4_shuffle(t0, t1, 2, 3, 6, 7);
+    c.v = wasm_i32x4_shuffle(t2, t3, 0, 1, 4, 5);
+    d.v = wasm_i32x4_shuffle(t2, t3, 2, 3, 6, 7);
+}
 /// See the `f32x4s` overload. Same zero-extend, convert, multiply chain as the SSE2 backend.
 inline f32x4 loadU8(const f32x4*, const uint8_t* p) {
     v128_t bytes = wasm_v128_load32_zero(p);
@@ -313,18 +421,34 @@ inline f32x4 blend(f32x4 a, f32x4 b, f32x4 mask) {
 }
 /// See the `f32x4s` overload.
 inline f32x4 splatW(f32x4 a) { return f32x4{{a.v[3], a.v[3], a.v[3], a.v[3]}}; }
+/// The same lanes as an `f32x4s`, and back: the T-643 ops below reuse the reference ones.
+inline f32x4s asRef(f32x4 a) { return f32x4s{{a.v[0], a.v[1], a.v[2], a.v[3]}}; }
+/// See `asRef`.
+inline f32x4 fromRef(f32x4s a) { return f32x4{{a.v[0], a.v[1], a.v[2], a.v[3]}}; }
 /// See the `f32x4s` overload.
-inline f32x4 loadU8(const f32x4*, const uint8_t* p) {
-    const float k = 1.0f / 255.0f;
-    return f32x4{{static_cast<float>(p[0]) * k, static_cast<float>(p[1]) * k, static_cast<float>(p[2]) * k,
-                  static_cast<float>(p[3]) * k}};
-}
+inline f32x4 cmpLt(f32x4 a, f32x4 b) { return fromRef(cmpLt(asRef(a), asRef(b))); }
 /// See the `f32x4s` overload.
-inline void storeU8(uint8_t* p, f32x4 a) {
-    for (int i = 0; i < 4; ++i) {
-        float c = a.v[i] < 0.0f ? 0.0f : (a.v[i] > 1.0f ? 1.0f : a.v[i]);
-        p[i] = static_cast<uint8_t>(static_cast<int>(c * 255.0f + 0.5f));
-    }
+inline f32x4 cmpLe(f32x4 a, f32x4 b) { return fromRef(cmpLe(asRef(a), asRef(b))); }
+/// See the `f32x4s` overload.
+inline f32x4 cmpEq(f32x4 a, f32x4 b) { return fromRef(cmpEq(asRef(a), asRef(b))); }
+/// See the `f32x4s` overload.
+inline f32x4 maskAnd(f32x4 a, f32x4 b) { return fromRef(maskAnd(asRef(a), asRef(b))); }
+/// See the `f32x4s` overload.
+inline f32x4 maskOr(f32x4 a, f32x4 b) { return fromRef(maskOr(asRef(a), asRef(b))); }
+/// See the `f32x4s` overload.
+inline f32x4 maskAndNot(f32x4 a, f32x4 b) { return fromRef(maskAndNot(asRef(a), asRef(b))); }
+/// See the `f32x4s` overload.
+inline f32x4 sqrt(f32x4 a) { return fromRef(sqrt(asRef(a))); }
+/// See the `f32x4s` overload.
+inline f32x4 abs(f32x4 a) { return fromRef(abs(asRef(a))); }
+/// See the `f32x4s` overload.
+inline void transpose4(f32x4& a, f32x4& b, f32x4& c, f32x4& d) {
+    f32x4s r[4] = {asRef(a), asRef(b), asRef(c), asRef(d)};
+    transpose4(r[0], r[1], r[2], r[3]);
+    a = fromRef(r[0]);
+    b = fromRef(r[1]);
+    c = fromRef(r[2]);
+    d = fromRef(r[3]);
 }
 
 #endif  // XT_SIMD_SSE2

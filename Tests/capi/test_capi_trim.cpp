@@ -57,7 +57,8 @@ double privateMb() {
 }
 
 /// This process's video memory (local + non-local, every adapter; Windows/WDDM), in MB; 0 elsewhere.
-double videoMb() {
+/// Only the Windows GPU cases call it, hence [[maybe_unused]] (T-643: GCC -Werror=unused-function).
+[[maybe_unused]] double videoMb() {
 #ifdef _WIN32
     IDXGIFactory1* factory = nullptr;
     if (FAILED(CreateDXGIFactory1(__uuidof(IDXGIFactory1), reinterpret_cast<void**>(&factory)))) return 0.0;
@@ -172,7 +173,12 @@ TEST_CASE("capi trim 2 (T-641): trim_on_hide 0 keeps the scratch while hidden") 
     REQUIRE(xt_surface_set_visible(f.s, 0) == XT_STATUS_OK);
     f.frame(0.0f);
     f.frame(0.0f);
+#ifdef _WIN32
+    // privateMb() measures on Windows only (0 elsewhere, where releasedShare answers 1).
     CHECK(releasedShare(f.baseMb, renderedMb, privateMb()) < 0.2);
+#else
+    (void)renderedMb;
+#endif
     REQUIRE(xt_surface_set_visible(f.s, 1) == XT_STATUS_OK);
     f.frame(0.0f);
     CHECK(samePixels(f.rgba, before));

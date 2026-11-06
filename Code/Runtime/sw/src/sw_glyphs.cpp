@@ -100,8 +100,8 @@ bool glyphBitmapPathApplies(const GlyphsCmd& cmd, const Mat2x3& deviceXf) {
 }
 
 uint32_t drawGlyphBitmaps(TextShaper& shaper, const CommandList& list, const GlyphsCmd& cmd,
-                          const Mat2x3& deviceXf, const Target& dst, const uint8_t* clipMask,
-                          int clipStride) {
+                          const Mat2x3& deviceXf, const Target& dst, const uint8_t* clipMask, int clipStride,
+                          const WriteRegion* region) {
     if (cmd.font == kInvalidFont || cmd.glyphCount == 0 || cmd.color.a <= 0.0f) {
         return 0;
     }
@@ -111,6 +111,10 @@ uint32_t drawGlyphBitmaps(TextShaper& shaper, const CommandList& list, const Gly
     }
     const GammaTables& gamma = gammaTables();
     const float textLum = luminance(cmd.color.r, cmd.color.g, cmd.color.b);
+    // 50 §50.z addendum (T-647): over a destination less than half opaque the direction is the GPU
+    // atlas path's per-run rule (frame_builder.cpp coverageGamma: text luminance > 0.5 -> lighter),
+    // not the comparison with a pixel that is mostly not there (transparent reads as luminance 0).
+    const bool runLighter = textLum > 0.5f;
     const int dstX0 = dst.originX;
     const int dstX1 = dst.originX + dst.w;
     const int dstY0 = dst.originY;
@@ -118,6 +122,7 @@ uint32_t drawGlyphBitmaps(TextShaper& shaper, const CommandList& list, const Gly
     const bool dstPremul = dst.u8Premultiplied;
 
     uint32_t drawn = 0;
+    size_t hint = 0;
     GlyphBitmap bitmap;
     for (uint32_t i = 0; i < cmd.glyphCount; ++i) {
         const uint32_t index = cmd.glyphOffset + i;
@@ -175,6 +180,10 @@ uint32_t drawGlyphBitmaps(TextShaper& shaper, const CommandList& list, const Gly
                 if (clip == 0) {
                     continue;
                 }
+                // T-642: outside the clip's box or the damage region nothing is written.
+                if (region != nullptr && !region->contains(x, y, hint)) {
+                    continue;
+                }
                 const size_t lx = static_cast<size_t>(x - dstX0);
                 // The destination is read before blending: the gamma direction depends on it.
                 // Float rows are premultiplied since T-102, so the luminance test un-premultiplies
@@ -194,8 +203,9 @@ uint32_t drawGlyphBitmaps(TextShaper& shaper, const CommandList& list, const Gly
                     }
                 }
                 const Color plain = rowF != nullptr ? unpremultiply(d) : d;
-                const float cov = textLum > luminance(plain.r, plain.g, plain.b) ? gamma.lighter[coverage]
-                                                                                 : gamma.darker[coverage];
+                const bool lighter =
+                    plain.a < 0.5f ? runLighter : textLum > luminance(plain.r, plain.g, plain.b);
+                const float cov = lighter ? gamma.lighter[coverage] : gamma.darker[coverage];
                 const float a = cov * cmd.color.a * (static_cast<float>(clip) / 255.0f);
                 if (a <= 0.0f) {
                     continue;
@@ -262,7 +272,8 @@ float glyphEffectDeviceRadius(const GlyphsCmd& cmd, const Mat2x3& deviceXf) {
 }
 
 uint32_t drawGlyphEffect(TextShaper& shaper, const CommandList& list, const GlyphsCmd& cmd,
-                         const Mat2x3& deviceXf, const Target& dst, const uint8_t* clipMask, int clipStride) {
+                         const Mat2x3& deviceXf, const Target& dst, const uint8_t* clipMask, int clipStride,
+                         const WriteRegion* region) {
     if (cmd.font == kInvalidFont || cmd.glyphCount == 0 || cmd.color.a <= 0.0f) {
         return 0;
     }
@@ -281,6 +292,7 @@ uint32_t drawGlyphEffect(TextShaper& shaper, const CommandList& list, const Glyp
     } else if (sigma > 0.0f) {
         k = static_cast<int>(std::ceil(3.0f * sigma));
     }
+    size_t hint = 0;
     std::vector<float> weights;  // Blur: 1-D Gaussian, normalized.
     if (!dilate && k > 0) {
         weights.resize(static_cast<size_t>(2 * k + 1));
@@ -413,6 +425,9 @@ uint32_t drawGlyphEffect(TextShaper& shaper, const CommandList& list, const Glyp
                 const float a = m * cmd.color.a * clip;
                 if (a <= 0.0f) {
                     continue;
+                }
+                if (region != nullptr && !region->contains(x, y, hint)) {
+                    continue;  // T-642: outside the clip's box or the damage region.
                 }
                 blendCoverage(dst, x, y, cmd.color, a);
             }

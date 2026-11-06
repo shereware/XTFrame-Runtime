@@ -7,7 +7,10 @@
 
 namespace xt::text {
 
-GlyphAtlas::GlyphAtlas(FtTextShaper& shaper, int textureSize) : shaper_(&shaper), textureSize_(textureSize) {}
+GlyphAtlas::GlyphAtlas(FtTextShaper& shaper, int textureSize, int initialSize)
+    : shaper_(&shaper),
+      textureSize_(initialSize > 0 && initialSize < textureSize ? initialSize : textureSize),
+      maxTextureSize_(textureSize) {}
 
 void GlyphAtlas::markDirty(Texture& tex, int x, int y, int w, int h) {
     if (!tex.dirty) {
@@ -55,6 +58,23 @@ void GlyphAtlas::resetAll() {
     cache_.clear();
 }
 
+void GlyphAtlas::grow() {
+    const size_t oldSize = static_cast<size_t>(textureSize_);
+    const size_t newSize = static_cast<size_t>(maxTextureSize_);
+    for (Texture& tex : textures_) {
+        std::vector<uint8_t> pixels(newSize * newSize, 0);
+        for (size_t row = 0; row < oldSize; ++row) {
+            std::copy_n(tex.pixels.begin() + static_cast<long>(row * oldSize), oldSize,
+                        pixels.begin() + static_cast<long>(row * newSize));
+        }
+        tex.pixels.swap(pixels);
+        tex.dirty = false;
+        markDirty(tex, 0, 0, maxTextureSize_, maxTextureSize_);
+    }
+    textureSize_ = maxTextureSize_;
+    wasReset_ = true;  // the uv scale changed: see the class comment
+}
+
 bool GlyphAtlas::lookup(FontId font, uint32_t glyphId, float sizePx, float subpixelX, AtlasEntry& out) {
     const uint32_t roundedSize = static_cast<uint32_t>(std::lround(sizePx * 4.0f));
     const uint32_t subpixel = static_cast<uint32_t>(std::lround(subpixelX * 4.0f)) & 3u;
@@ -69,7 +89,9 @@ bool GlyphAtlas::lookup(FontId font, uint32_t glyphId, float sizePx, float subpi
     if (!shaper_->glyphBitmap(font, glyphId, sizePx, static_cast<float>(subpixel) * 0.25f, bitmap))
         return false;
 
-    for (size_t attempt = 0; attempt < 2; ++attempt) {
+    // T-648: one more attempt while the atlas may still grow (grow, then add a page or reset).
+    const size_t attempts = textureSize_ < maxTextureSize_ ? 3 : 2;
+    for (size_t attempt = 0; attempt < attempts; ++attempt) {
         for (size_t i = 0; i < textures_.size(); ++i) {
             int x = 0, y = 0;
             if (place(textures_[i], bitmap.width, bitmap.height, textureSize_, x, y)) {
@@ -94,6 +116,10 @@ bool GlyphAtlas::lookup(FontId font, uint32_t glyphId, float sizePx, float subpi
                 out = entry;
                 return true;
             }
+        }
+        if (textureSize_ < maxTextureSize_ && !textures_.empty()) {
+            grow();
+            continue;  // retry placement into the grown pages
         }
         if (textures_.size() < 4) {
             Texture tex;

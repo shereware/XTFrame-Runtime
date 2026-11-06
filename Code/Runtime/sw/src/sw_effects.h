@@ -2,6 +2,7 @@
 
 #include <span>
 
+#include "sw_effect_math.h"
 #include "sw_layer.h"
 #include "xt/effect_utils.h"
 #include "xt/node.h"
@@ -73,6 +74,8 @@ struct EffectScratch {
     /// `applyBackdropBlur`'s blurred copy of the backdrop, and its blur ping-pong buffer.
     Surface backdrop;
     Surface backdropScratch;
+    /// T-643: the blur / dilation / distance-transform passes' own working buffers.
+    fx::MathScratch math;
 };
 
 /// Copies the rectangle `x0, y0, w, h` (device px, in `src`'s own caller-space coordinates) out of
@@ -95,6 +98,10 @@ struct BackdropPyramid {
     Surface level[kBackdropPyramidMaxLevels + 1];
     /// Pixels captured (level 0's area), for FrameStats::backdropCopyPx.
     uint32_t copiedPx = 0;
+    /// T-643: `buildBackdropPyramid`'s working buffers (the 2 x 2 downsample before each Kawase
+    /// pass), kept with the pyramid so a rebuilt pyramid allocates nothing once warm.
+    std::vector<float> box;
+    Surface boxed;
 };
 
 /// Captures `src`'s region (`x0`, `y0`, `w x h`, already clamped to the target) into level 0 and

@@ -179,16 +179,25 @@ bool WgpuDevice::init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat targ
         wgpuDeviceGetLimits(device, &limits) == WGPUStatus_Success ? limits.maxTextureDimension2D : 0;
     m_hasBc = wgpuDeviceHasFeature(device, WGPUFeatureName_TextureCompressionBC) != 0;
     m_gpu = std::make_unique<Gpu>();
-    if (!m_gpu->pipelines.init(device, err)) {
-        shutdown();
-        return false;
-    }
-    // T-456: one minimal pipeline first, so a backend whose shader compiler fails (T-440: a D3Dcompiler_47
-    // without ps_5_1) is an init failure the host can fall back from, not a panic at submit.
-    if (!m_gpu->pipelines.probe(targetFormat, sampleCount, err)) {
-        err = "WgpuDevice::init: " + err;
-        shutdown();
-        return false;
+    if (m_shared != nullptr && m_shared->m_impl->adopt(device)) {
+        // T-648: the pipeline set of the cache (created by the first device that borrows it).
+        if (!borrowSharedPipelines(targetFormat, sampleCount, err)) {
+            shutdown();
+            return false;
+        }
+    } else {
+        if (!m_gpu->pipelines->init(device, err)) {
+            shutdown();
+            return false;
+        }
+        // T-456: one minimal pipeline first, so a backend whose shader compiler fails (T-440: a
+        // D3Dcompiler_47 without ps_5_1) is an init failure the host can fall back from, not a panic
+        // at submit.
+        if (!m_gpu->pipelines->probe(targetFormat, sampleCount, err)) {
+            err = "WgpuDevice::init: " + err;
+            shutdown();
+            return false;
+        }
     }
     m_gpu->dummy = makeTexture(device, "xt_wgpu dummy", 1, 1, WGPUTextureFormat_RGBA8Unorm, 1,
                                WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst);
@@ -213,6 +222,33 @@ bool WgpuDevice::init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat targ
 
 void WgpuDevice::setProbeShaderForTesting(const char* wgsl) { detail::setProbeShaderOverride(wgsl); }
 
+bool WgpuDevice::borrowSharedPipelines(WGPUTextureFormat format, uint32_t samples, std::string& err) {
+    WgpuSharedCache::Impl& c = *m_shared->m_impl;
+    m_sharing = m_shared;
+    ++c.stats.devices;
+    if (!c.pipelinesReady) {
+        if (!c.pipelines.init(m_device, err)) {
+            c.pipelines.shutdown();
+            return false;
+        }
+        c.pipelinesReady = true;
+        ++c.stats.pipelineSets;
+    } else {
+        ++c.stats.pipelineBorrows;
+    }
+    m_gpu->pipelines = &c.pipelines;
+    // T-456 once per (format, samples) on the cache's device: its shader compiler is proven by then.
+    const uint64_t probeKey = uint64_t(uint32_t(format)) << 8 | samples;
+    if (std::find(c.probed.begin(), c.probed.end(), probeKey) == c.probed.end()) {
+        if (!c.pipelines.probe(format, samples, err)) {
+            err = "WgpuDevice::init: " + err;
+            return false;
+        }
+        c.probed.push_back(probeKey);
+    }
+    return true;
+}
+
 void WgpuDevice::shutdown() {
     if (m_gpu) {
         m_gpu->releaseBindGroups();
@@ -220,11 +256,14 @@ void WgpuDevice::shutdown() {
         if (m_gpu->paramGroup != nullptr) wgpuBindGroupRelease(m_gpu->paramGroup);
         m_gpu->uniforms.release();
         m_gpu->geometry.shutdown();
-        m_gpu->pipelines.shutdown();
+        m_gpu->ownPipelines.shutdown();  // T-648: a borrowed set stays with its cache
         releaseTexture(m_gpu->dummy, m_gpu->dummyView);
         m_gpu.reset();
     }
     for (Texture& t : m_textures) {
+        if (t.sharedId != 0 && m_sharing != nullptr) {
+            m_sharing->m_impl->releaseImage(t.sharedId, true);  // T-648: kept for the cache's life
+        }
         releaseTextureEntry(t);
     }
     m_textures.clear();
@@ -249,6 +288,11 @@ void WgpuDevice::shutdown() {
         m_device = nullptr;
     }
     m_surface = nullptr;
+    if (m_sharing != nullptr) {
+        WgpuSharedCache::Impl& c = *m_sharing->m_impl;
+        if (c.stats.devices > 0) --c.stats.devices;
+        m_sharing = nullptr;
+    }
 }
 
 void WgpuDevice::resize(int width, int height) {
@@ -354,7 +398,7 @@ gpu::TextureHandle WgpuDevice::createTexture(const char* debugName, uint16_t w, 
 void WgpuDevice::updateTexture(gpu::TextureHandle tex, uint16_t x, uint16_t y, uint16_t w, uint16_t h,
                                const void* data, size_t rowPitch) {
     const Texture* t = find(tex);
-    if (t == nullptr || t->texture == nullptr || data == nullptr || w == 0 || h == 0 ||
+    if (t == nullptr || t->texture == nullptr || t->sharedId != 0 || data == nullptr || w == 0 || h == 0 ||
         isCompressed(t->format)) {
         return;
     }
@@ -378,12 +422,80 @@ void WgpuDevice::updateTexture(gpu::TextureHandle tex, uint16_t x, uint16_t y, u
 }
 
 void WgpuDevice::destroyTexture(gpu::TextureHandle tex) {
-    if (find(tex) == nullptr) {
+    const Texture* t = find(tex);
+    if (t == nullptr) {
+        return;
+    }
+    if (t->sharedId != 0) {
+        dropSharedUse(tex, false);  // T-648: as releaseSharedImage(tex, false)
         return;
     }
     m_gpu->releaseBindGroups();  // the cached bind groups may name its view
     releaseTextureEntry(m_textures[tex - 1]);
     m_freeTextures.push_back(tex);
+}
+
+// -- T-648 shared image textures (wgpu_shared.h). --
+
+gpu::TextureHandle WgpuDevice::findSharedImage(const gpu::ImageKey& key, uint16_t w, uint16_t h,
+                                               gpu::TextureFormat fmt) {
+    if (m_sharing == nullptr) {
+        return 0;
+    }
+    WgpuSharedCache::Impl& c = *m_sharing->m_impl;
+    const uint32_t id = c.findImage(key, w, h, fmt);
+    if (id == 0) {
+        return 0;
+    }
+    WgpuSharedCache::Impl::Image& image = c.images[id - 1];
+    Texture t;
+    t.texture = image.texture;  // not owned (external)
+    t.view = image.view;
+    t.format = fmt;
+    t.width = w;
+    t.height = h;
+    t.external = true;
+    t.sharedId = id;
+    if (image.uses++ == 0) ++c.stats.imagesInUse;
+    ++c.stats.imageReuses;
+    return addTexture(t);
+}
+
+gpu::TextureHandle WgpuDevice::createSharedImage(const gpu::ImageKey& key, const char* debugName, uint16_t w,
+                                                 uint16_t h, gpu::TextureFormat fmt, const void* initial) {
+    const gpu::TextureHandle handle = createTexture(debugName, w, h, fmt, initial);
+    if (handle == 0 || m_sharing == nullptr) {
+        return handle;
+    }
+    // The texture moves to the cache; this device's entry becomes an external use of it.
+    Texture& t = m_textures[handle - 1];
+    const uint64_t bytes = isCompressed(fmt) ? uint64_t((w + 3u) / 4u) * ((h + 3u) / 4u) * unitBytes(fmt)
+                                             : uint64_t(w) * h * unitBytes(fmt);
+    t.sharedId = m_sharing->m_impl->addImage(key, w, h, fmt, t.texture, t.view, bytes);
+    t.external = true;
+    return handle;
+}
+
+void WgpuDevice::releaseSharedImage(gpu::TextureHandle tex, bool keep) {
+    const Texture* t = find(tex);
+    if (t == nullptr) {
+        return;
+    }
+    if (t->sharedId == 0) {
+        destroyTexture(tex);
+        return;
+    }
+    dropSharedUse(tex, keep);
+}
+
+void WgpuDevice::dropSharedUse(gpu::TextureHandle tex, bool keep) {
+    const uint32_t id = m_textures[tex - 1].sharedId;
+    m_gpu->releaseBindGroups();                // the cached bind groups may name its view
+    releaseTextureEntry(m_textures[tex - 1]);  // external: the view stays with the cache
+    m_freeTextures.push_back(tex);
+    if (m_sharing != nullptr) {
+        m_sharing->m_impl->releaseImage(id, keep);
+    }
 }
 
 gpu::TextureHandle WgpuDevice::registerExternalTexture(WGPUTextureView view, uint16_t width,
@@ -465,7 +577,7 @@ uint32_t WgpuDevice::prepareCustomEffect(std::string_view glsl, const char* name
         return 0;
     }
     std::string warning;
-    const uint32_t id = m_gpu->pipelines.prepareCustom(glsl, names, types, count, warning);
+    const uint32_t id = m_gpu->pipelines->prepareCustom(glsl, names, types, count, warning);
     if (!warning.empty()) {
         if (!m_warning.empty()) {
             m_warning += "\n";
@@ -755,7 +867,7 @@ void WgpuDevice::planFrame(const gpu::GpuFrame& frame) {
         if (cmd.shading == gpu::Shading::Effect && cmd.program == gpu::EffectProgram::Custom) {
             float block[kZeroBlockFloats] = {};
             uint16_t shader = 0;
-            if (!m_gpu->pipelines.packCustom(src, available, block, shader)) {
+            if (!m_gpu->pipelines->packCustom(src, available, block, shader)) {
                 m_cmdParamOffsets[c] = kNoParams;
                 continue;
             }
@@ -825,12 +937,12 @@ void WgpuDevice::submit(const gpu::GpuFrame& frame) {
         e.buffer = g.uniforms.buffer;
         e.size = 48;
         WGPUBindGroupDescriptor d = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
-        d.layout = g.pipelines.passLayout();
+        d.layout = g.pipelines->passLayout();
         d.entryCount = 1;
         d.entries = &e;
         g.passGroup = wgpuDeviceCreateBindGroup(m_device, &d);
         e.size = detail::kParamBlockBytes;
-        d.layout = g.pipelines.paramLayout();
+        d.layout = g.pipelines->paramLayout();
         g.paramGroup = wgpuDeviceCreateBindGroup(m_device, &d);
         g.groupsGeneration = g.uniforms.generation;
     }
@@ -889,7 +1001,7 @@ void WgpuDevice::submit(const gpu::GpuFrame& frame) {
         if (t.cached && t.view != nullptr) ++m_stats.cachedTargets;
     }
     // T-456: pipelines that failed this submit (each key once; their draws were skipped).
-    const std::string pipelineErrors = g.pipelines.takeError();
+    const std::string pipelineErrors = g.pipelines->takeError();
     if (!pipelineErrors.empty()) {
         m_lastError = m_lastError.empty() ? "submit: " + pipelineErrors : m_lastError + "; " + pipelineErrors;
     }

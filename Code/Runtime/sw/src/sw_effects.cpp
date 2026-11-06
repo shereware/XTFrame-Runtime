@@ -197,11 +197,12 @@ void applyDropShadowInset(const EffectInstance& p, const Surface& src, Surface& 
 
     {
         PerfFieldScope dilateScope(timers.dilate);
-        fx::dilateAlpha(inv, scratch.dilated, scratch.fieldA, pw, ph, spreadR);
+        fx::dilateAlpha(inv, scratch.dilated, scratch.fieldA, pw, ph, spreadR, scratch.math);
     }
     {
         PerfFieldScope blurScope(timers.blur);
-        fx::gaussianBlurAlphaField(scratch.dilated, pw, ph, scratch.blurred, scratch.fieldB, sigma);
+        fx::gaussianBlurAlphaField(scratch.dilated, pw, ph, scratch.blurred, scratch.fieldB, sigma,
+                                   scratch.math);
     }
 
     PerfFieldScope pixScope(timers.pix);
@@ -246,11 +247,12 @@ void applyDropShadow(const EffectInstance& p, const Surface& src, Surface& shado
     int spreadR = static_cast<int>(std::lround(spread));
     {
         PerfFieldScope dilateScope(timers.dilate);
-        fx::dilateAlpha(scratch.alpha, scratch.dilated, scratch.fieldA, w, h, spreadR);
+        fx::dilateAlpha(scratch.alpha, scratch.dilated, scratch.fieldA, w, h, spreadR, scratch.math);
     }
     {
         PerfFieldScope blurScope(timers.blur);
-        fx::gaussianBlurAlphaField(scratch.dilated, w, h, scratch.blurred, scratch.fieldB, blur * 0.5f);
+        fx::gaussianBlurAlphaField(scratch.dilated, w, h, scratch.blurred, scratch.fieldB, blur * 0.5f,
+                                   scratch.math);
     }
 
     PerfFieldScope pixScope(timers.pix);
@@ -381,7 +383,7 @@ void applyGlow(const EffectInstance& p, const Surface& src, Surface& dst, Effect
     if (!inner) {
         {
             PerfFieldScope blurScope(timers.blur);
-            fx::gaussianBlurAlpha(src, scratch.blurred, scratch.fieldB, sigma);
+            fx::gaussianBlurAlpha(src, scratch.blurred, scratch.fieldB, sigma, scratch.math);
         }
         PerfFieldScope pixScope(timers.pix);
         const std::vector<float>& blurred = scratch.blurred;
@@ -406,7 +408,7 @@ void applyGlow(const EffectInstance& p, const Surface& src, Surface& dst, Effect
         }
         {
             PerfFieldScope blurScope(timers.blur);
-            fx::gaussianBlurAlphaField(inv, w, h, scratch.blurred, scratch.fieldB, sigma);
+            fx::gaussianBlurAlphaField(inv, w, h, scratch.blurred, scratch.fieldB, sigma, scratch.math);
         }
         PerfFieldScope pixScope(timers.pix);
         const std::vector<float>& blurred = scratch.blurred;
@@ -430,11 +432,11 @@ void applyGlow(const EffectInstance& p, const Surface& src, Surface& dst, Effect
 }
 
 void applyBlur(const EffectInstance& p, const Surface& src, Surface& scratchA, Surface& dst,
-               const EffectTimers& timers) {
+               EffectScratch& scratch, const EffectTimers& timers) {
     PerfFieldScope blurScope(timers.blur);
     float radiusX = clampDevicePx64(std::max(0.0f, p.params[0]));
     float radiusY = clampDevicePx64(std::max(0.0f, p.params[1]));
-    fx::gaussianBlur(src, dst, scratchA, radiusX * 0.5f, radiusY * 0.5f, /*premultiply=*/true);
+    fx::gaussianBlur(src, dst, scratchA, radiusX * 0.5f, radiusY * 0.5f, /*premultiply=*/true, scratch.math);
 }
 
 void applyColorAdjust(const EffectInstance& p, const Surface& src, Surface& dst, const EffectTimers& timers) {
@@ -548,7 +550,7 @@ void applyOutline(const EffectInstance& p, const Surface& src, Surface& dst, Eff
     alphaChannel(src, scratch.alpha);
     {
         PerfFieldScope sdfScope(timers.sdf);
-        fx::signedDistance(scratch.alpha, scratch.blurred, w, h);
+        fx::signedDistance(scratch.alpha, scratch.blurred, w, h, scratch.math);
     }
 
     PerfFieldScope pixScope(timers.pix);
@@ -760,7 +762,7 @@ void applyEffect(const EffectInstance& screenParams, std::span<const GradientSto
             applyGlow(screenParams, src, dst, scratch, timers);
             break;
         case EffectKind::Blur:
-            applyBlur(screenParams, src, scratchA, dst, timers);
+            applyBlur(screenParams, src, scratchA, dst, scratch, timers);
             break;
         case EffectKind::ColorAdjust:
             applyColorAdjust(screenParams, src, dst, timers);
@@ -821,8 +823,8 @@ void buildBackdropPyramid(const Target& src, int x0, int y0, int w, int h, float
     }
     PerfFieldScope blurScope(timers.blur);
     out.levels = backdropPyramidLevels(std::min(maxSigma, 32.0f));
-    std::vector<float> box;
-    Surface boxed;
+    std::vector<float>& box = out.box;
+    Surface& boxed = out.boxed;
     for (int l = 1; l <= out.levels; ++l) {
         const Surface& prev = out.level[l - 1];
         int bw = 0, bh = 0;

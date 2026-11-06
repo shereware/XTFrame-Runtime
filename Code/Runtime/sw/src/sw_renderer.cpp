@@ -34,10 +34,12 @@ bool buildGlyphContours(TextShaper& shaper, const CommandList& list, const Glyph
 // Docs/tasks/T-101.md).
 bool glyphBitmapPathApplies(const GlyphsCmd& cmd, const Mat2x3& deviceXf);
 uint32_t drawGlyphBitmaps(TextShaper& shaper, const CommandList& list, const GlyphsCmd& cmd,
-                          const Mat2x3& deviceXf, const Target& dst, const uint8_t* clipMask, int clipStride);
+                          const Mat2x3& deviceXf, const Target& dst, const uint8_t* clipMask, int clipStride,
+                          const WriteRegion* region);
 // Also sw_glyphs.cpp: T-178 glyph-level text effects (GlyphEffect, xt/command_list.h).
 uint32_t drawGlyphEffect(TextShaper& shaper, const CommandList& list, const GlyphsCmd& cmd,
-                         const Mat2x3& deviceXf, const Target& dst, const uint8_t* clipMask, int clipStride);
+                         const Mat2x3& deviceXf, const Target& dst, const uint8_t* clipMask, int clipStride,
+                         const WriteRegion* region);
 
 namespace {
 
@@ -77,21 +79,28 @@ int maskRunEnd(const uint8_t* row, int x, int x1, uint8_t value) {
     return i;
 }
 
-/// Half-open device-px box, the unit T-133's clip bounds are tracked in: `[x0, x1) x [y0, y1)`,
-/// always clamped to the target, empty when either extent is non-positive.
-struct Box {
-    int x0 = 0;
-    int y0 = 0;
-    int x1 = 0;
-    int y1 = 0;
-
-    bool empty() const { return x1 <= x0 || y1 <= y0; }
-};
-
-/// The two boxes' intersection, normalized to `Box{}` when it is empty.
-Box intersectBox(const Box& a, const Box& b) {
-    Box r{std::max(a.x0, b.x0), std::max(a.y0, b.y0), std::min(a.x1, b.x1), std::min(a.y1, b.y1)};
-    return r.empty() ? Box{} : r;
+/// T-642: true when the effect stack `params` (screen units, the BackdropBlur stage already split
+/// off) computes every output pixel from the same pixel of its input alone, so its buffer can be
+/// cropped to the pixels a partial redraw needs without changing one of them. Blur, glow, shadow
+/// and outline read a neighbourhood whose sums also depend on the buffer's extent (box-blur
+/// running sums, downsample grid, distance transform), so they cannot.
+bool pointwiseEffectStack(std::span<const EffectInstance> params) {
+    for (const EffectInstance& e : params) {
+        if (e.enabled == 0) {
+            continue;
+        }
+        switch (e.kind) {
+            case EffectKind::None:
+            case EffectKind::ColorAdjust:
+            case EffectKind::GradientMask:
+            case EffectKind::Shine:
+            case EffectKind::BackdropBlur:  // Past the first stage it passes the content through.
+                break;
+            default:
+                return false;
+        }
+    }
+    return true;
 }
 
 /// One `PushEffect`'s worth of state, stashed between the PushEffect and its matching PopEffect
@@ -168,7 +177,31 @@ struct SwRenderer::Impl {
     // PushEffect/PopEffect state (Docs/tasks/T-53b.md): one EffectFrame per active PushEffect,
     // innermost last; fxScratchA/B/Result are the applyEffectStack buffers, reused across
     // PopEffect calls (01.7's allowed exception -- resized, not reallocated, once warm).
+    // T-643: `effectFrames[0, effectDepth)` are the active frames; the entries above keep their
+    // buffers (screenParams, the backdrop pyramid) for the next PushEffect at that depth, so a
+    // warm renderer allocates nothing per effect.
     std::vector<EffectFrame> effectFrames;
+    size_t effectDepth = 0;
+
+    /// The frame for a new PushEffect, reset to what a fresh EffectFrame holds (its buffers' capacity
+    /// kept, T-643).
+    EffectFrame& pushEffectFrame() {
+        if (effectDepth == effectFrames.size()) {
+            effectFrames.emplace_back();
+        }
+        EffectFrame& ef = effectFrames[effectDepth++];
+        ef.screenParams.clear();
+        ef.invScreenXf = Mat2x3{};
+        ef.bufferOriginPx = Vec2{};
+        ef.contentBoundsPx = Rect{};
+        ef.hasBackdrop = false;
+        ef.pyramid.x0 = 0;
+        ef.pyramid.y0 = 0;
+        ef.pyramid.levels = 0;
+        ef.pyramid.copiedPx = 0;
+        ef.cluster = -1;
+        return ef;
+    }
     Surface fxScratchA;
     Surface fxScratchB;
     Surface fxResult;
@@ -184,8 +217,14 @@ struct SwRenderer::Impl {
     // `target.width * target.height` bytes and -- the T-133 invariant every path below relies on
     // -- is zero everywhere outside `bounds`, so rasterizing, intersecting and clearing only ever
     // touch the rows inside a box instead of the whole viewport.
+    //
+    // T-642: an axis-aligned PushClipRect whose device corners are whole pixels rasterizes to
+    // exactly 255 inside its box and 0 outside, so it builds no mask at all: the layer owns no
+    // `mask`, `maskPtr` borrows the enclosing layer's (null: none, i.e. 255 everywhere) and only
+    // `bounds` narrows. Every draw therefore honours `bounds` as well as `maskPtr` (WriteRegion).
     struct ClipLayer {
-        std::vector<uint8_t> mask;
+        std::vector<uint8_t> mask;         ///< Owned mask; empty for a box-only layer.
+        const uint8_t* maskPtr = nullptr;  ///< The mask that applies (owned or borrowed), or null.
         Box bounds;
     };
     std::vector<ClipLayer> clipStack;
@@ -193,19 +232,29 @@ struct SwRenderer::Impl {
     /// rows its layer wrote before returning it here, so acquireMask never has to.
     std::vector<std::vector<uint8_t>> maskPool;
 
-    // Partial redraw state (Docs/design/23-host-integration.md §23.3, Docs/tasks/T-99.md). Empty
-    // `damageMask` means "this render() is a full one" and every path below behaves exactly as it
-    // did before T-99. Otherwise `damageMask` is a target-sized 255/0 write mask (255 inside the
-    // union of `damageRects`), `damageRects` are the same rectangles snapped to whole pixels (the
-    // command-skipping test), and `combinedMask` caches `clipMask` intersected with `damageMask`
-    // for draws that land on the root target -- rebuilt only when the clip stack changes, not per
-    // draw. 255 (not 1) is what makes a masked-in pixel take the renderer's existing
-    // `clip == 255` fast paths and stay byte-identical to a full render.
+    // Partial redraw state (Docs/design/23-host-integration.md §23.3, Docs/tasks/T-99.md, T-642).
+    // `partialRedraw == false` means "this render() is a full one" and every path below behaves
+    // exactly as it did before T-99. Otherwise `damageRects` are the damage rectangles snapped to
+    // whole pixels (the command-skipping test) and `damageRegion` is their union as disjoint row
+    // bands: the root target's write region. No per-frame mask is built: every draw sweeps and
+    // samples only the region's pixels (WriteRegion), and every composite onto the root writes
+    // only inside it (LayerStack::setRootRegion).
+    //
+    // `needStack` holds, per open Push{Layer,Effect,Mask}, the region of its buffer whose pixels
+    // can reach the damage: the damage itself (layers, masks and per-pixel effect stacks map a
+    // pixel to the same pixel) or null (a neighbourhood effect, or a root section holding a
+    // backdrop blur that reads its own buffers, needs its whole buffer). Below an empty stack the
+    // root's region applies. `fullBox` is the buffer as it would be without the crop, so that a
+    // draw is counted as clipped away (lastSkippedDrawCommands) exactly as before.
     bool partialRedraw = false;
-    std::vector<uint8_t> damageMask;
     std::vector<Rect> damageRects;
-    std::vector<uint8_t> combinedMask;
-    bool combinedValid = false;
+    std::vector<Box> damageBoxes;
+    RectRegion damageRegion;
+    struct NeedFrame {
+        const RectRegion* need = nullptr;
+        Box fullBox;
+    };
+    std::vector<NeedFrame> needStack;
     uint32_t executedDraws = 0;
     uint32_t skippedDraws = 0;
 
@@ -288,6 +337,11 @@ struct SwRenderer::Impl {
                 PerfFieldScope clipScope(timer(&FrameStats::swClipMs));
                 const ClipRectCmd& c = list.clipRects[cmd.index];
                 Mat2x3 deviceXf = mul(deviceScale(dpr), c.xf);
+                Box pixelBox;
+                if (!projecting() && pixelAlignedRect(deviceXf, c.rect, pixelBox)) {
+                    pushClipBox(pixelBox);  // T-642: no mask for a whole-pixel axis-aligned rect.
+                    break;
+                }
                 std::vector<uint8_t> newMask = acquireMask();
                 Box shape;
                 if (!projecting()) {
@@ -334,18 +388,24 @@ struct SwRenderer::Impl {
                 if (sectionSkips(boundsPx, true)) {
                     return skipSection(list, ci, CmdKind::PushLayer, CmdKind::PopLayer);
                 }
-                layers.pushLayer(rootTarget(), c.opacity, c.blend, boundsPx);
+                // T-642: the buffer covers only the part of the hint the damage can see.
+                const RectRegion* need = childNeed(list, ci, CmdKind::PushLayer, CmdKind::PopLayer, true);
+                layers.pushLayer(rootTarget(), c.opacity, c.blend, cropToNeed(boundsPx, need));
+                needStack.push_back(NeedFrame{need, bufferBox(boundsPx, true)});
                 break;
             }
             case CmdKind::PopLayer: {
                 PerfFieldScope layerScope(timer(&FrameStats::swLayerMs));
+                popNeed();
                 layers.popLayer(rootTarget());
                 break;
             }
             case CmdKind::PushMask: {
                 PerfFieldScope layerScope(timer(&FrameStats::swLayerMs));
                 const MaskCmd& c = list.masks[cmd.index];
+                const RectRegion* need = childNeed(list, ci, CmdKind::PushMask, CmdKind::PopMask, true);
                 layers.pushMask(rootTarget(), c.mode);
+                needStack.push_back(NeedFrame{need, Box{0, 0, target.width, target.height}});
                 break;
             }
             case CmdKind::EndMaskContent: {
@@ -355,6 +415,7 @@ struct SwRenderer::Impl {
             }
             case CmdKind::PopMask: {
                 PerfFieldScope layerScope(timer(&FrameStats::swLayerMs));
+                popNeed();
                 layers.popMask(rootTarget());
                 break;
             }
@@ -437,7 +498,7 @@ struct SwRenderer::Impl {
                     return skipSection(list, ci, CmdKind::PushEffect, CmdKind::PopEffect);
                 }
 
-                EffectFrame ef;
+                EffectFrame& ef = pushEffectFrame();
                 // Docs/design/18-effects.md §18.6: a leading BackdropBlur reads the target as it
                 // stands right now -- before this node's own layer is opened, and before anything
                 // drawn inside it. Under partial redraw the area outside the damage rectangles
@@ -479,13 +540,7 @@ struct SwRenderer::Impl {
                     }
                 }
 
-                {
-                    PerfFieldScope layerScope(timer(&FrameStats::swLayerMs));
-                    layers.pushEffectLayer(rootTarget(), boundsPx);
-                }
-
                 ef.invScreenXf = invScreenXf;
-                ef.bufferOriginPx = layers.topLayerOrigin();
                 ef.contentBoundsPx = toTargetPx(c.contentBounds, dpr);
                 ef.screenParams.reserve(std::min<size_t>(c.effectCount, list.effects.size()));
                 for (uint32_t i = 0; i < c.effectCount; ++i) {
@@ -508,19 +563,32 @@ struct SwRenderer::Impl {
                     }
                     ef.screenParams.push_back(effectToScreen(e, screenXf));
                 }
-                effectFrames.push_back(std::move(ef));
+                // T-642: a per-pixel stack's buffer is cropped to what the damage can see; any
+                // other stack keeps its whole hint and needs every pixel of its content.
+                std::span<const EffectInstance> filters = ef.screenParams;
+                if (ef.hasBackdrop && !filters.empty()) {
+                    filters = filters.subspan(1);
+                }
+                const RectRegion* need = childNeed(list, ci, CmdKind::PushEffect, CmdKind::PopEffect,
+                                                   pointwiseEffectStack(filters));
+                {
+                    PerfFieldScope layerScope(timer(&FrameStats::swLayerMs));
+                    layers.pushEffectLayer(rootTarget(), cropToNeed(boundsPx, need));
+                }
+                ef.bufferOriginPx = layers.topLayerOrigin();
+                needStack.push_back(NeedFrame{need, bufferBox(boundsPx, false)});
                 break;
             }
             case CmdKind::PopEffect: {
                 PerfFieldScope effectScope(stats != nullptr ? &stats->effectsMs : nullptr);
                 // A well-formed CommandList always balances Push/PopEffect (same rule as
                 // PopClip/PopProjection above).
-                XT_ASSERT(!effectFrames.empty());
-                if (effectFrames.empty()) {
+                XT_ASSERT(effectDepth > 0);
+                if (effectDepth == 0) {
                     break;
                 }
-                EffectFrame ef = std::move(effectFrames.back());
-                effectFrames.pop_back();
+                const EffectFrame& ef = effectFrames[--effectDepth];
+                popNeed();
                 Surface& raw = layers.topLayerSurface();
                 // The BackdropBlur stage (always the stack's first, §18.6) runs first and by
                 // itself: it needs the snapshot taken at PushEffect time as a second input.
@@ -868,18 +936,17 @@ struct SwRenderer::Impl {
         executedDraws = 0;
         skippedDraws = 0;
         partialRedraw = false;
-        damageMask.clear();
         damageRects.clear();
-        combinedValid = false;
-        layers.setRootWriteMask(nullptr, 0);
+        damageBoxes.clear();
+        damageRegion.clear();
+        layers.setRootRegion(nullptr);
         if (damage == nullptr || damage->full || target.width <= 0 || target.height <= 0) {
             return;
         }
         // An empty rectangle list means "nothing changed on screen": every draw is then skipped
-        // and the all-zero mask below blocks anything that is not skippable, so the target keeps
+        // and the empty region below lets nothing that is not skippable write, so the target keeps
         // the previous frame untouched.
         partialRedraw = true;
-        damageMask.assign(static_cast<size_t>(target.width) * static_cast<size_t>(target.height), 0);
         for (const Rect& rect : damage->rects) {
             int x0 = 0;
             int y0 = 0;
@@ -890,24 +957,127 @@ struct SwRenderer::Impl {
             }
             damageRects.push_back(Rect{static_cast<float>(x0), static_cast<float>(y0),
                                        static_cast<float>(x1 - x0), static_cast<float>(y1 - y0)});
-            for (int y = y0; y < y1; ++y) {
-                uint8_t* row = damageMask.data() + static_cast<size_t>(y) * static_cast<size_t>(target.width);
-                for (int x = x0; x < x1; ++x) {
-                    row[x] = 255;
-                }
-            }
+            damageBoxes.push_back(Box{x0, y0, x1, y1});
         }
-        layers.setRootWriteMask(damageMask.data(), target.width);
+        damageRegion.build(damageBoxes);
+        layers.setRootRegion(&damageRegion);
     }
 
     /// Drops the partial-redraw state so the next render() (and any stray LayerStack use) is a
     /// full one again; the buffers keep their capacity.
     void endDamage() {
         partialRedraw = false;
-        damageMask.clear();
         damageRects.clear();
-        combinedValid = false;
-        layers.setRootWriteMask(nullptr, 0);
+        damageBoxes.clear();
+        damageRegion.clear();
+        needStack.clear();
+        layers.setRootRegion(nullptr);
+    }
+
+    /// The region of the current target whose pixels can reach the damage, or null when every
+    /// pixel is needed (a full render, or inside a buffer that needs all of its content).
+    const RectRegion* currentNeed() const {
+        if (!needStack.empty()) {
+            return needStack.back().need;
+        }
+        return partialRedraw ? &damageRegion : nullptr;
+    }
+
+    /// The box LayerStack gives a buffer for `boundsPx` (rounded outwards, clamped; `layerFallback`:
+    /// pushLayer's 1x1 stand-in for an empty hint).
+    Box bufferBox(const Rect& boundsPx, bool layerFallback) const {
+        int x0 = 0;
+        int y0 = 0;
+        int x1 = 0;
+        int y1 = 0;
+        if (snapRectToTarget(boundsPx, target.width, target.height, x0, y0, x1, y1)) {
+            return Box{x0, y0, x1, y1};
+        }
+        if (!layerFallback) {
+            return Box{};
+        }
+        const int fx = std::min(std::clamp(static_cast<int>(std::floor(boundsPx.x)), 0, target.width),
+                                std::max(0, target.width - 1));
+        const int fy = std::min(std::clamp(static_cast<int>(std::floor(boundsPx.y)), 0, target.height),
+                                std::max(0, target.height - 1));
+        return Box{fx, fy, fx + 1, fy + 1};
+    }
+
+    /// The need of the buffer `list.commands[open]` is about to push (see `needStack`):
+    /// `pointwise` says the section maps each pixel of its buffer to the same pixel below it.
+    const RectRegion* childNeed(const CommandList& list, size_t open, CmdKind pushKind, CmdKind popKind,
+                                bool pointwise) const {
+        const RectRegion* need = currentNeed();
+        if (need == nullptr || !pointwise) {
+            return nullptr;
+        }
+        // A backdrop blur inside a root section samples that section's own buffers around its
+        // node, so their content must be complete there: the whole section draws unrestricted.
+        if (layers.empty() && sectionReadsOwnBackdrop(list, open, pushKind, popKind)) {
+            return nullptr;
+        }
+        return need;
+    }
+
+    /// True when the section `list.commands[open]` opens holds a PushEffect (below its own
+    /// opening command) whose stack starts with an enabled BackdropBlur.
+    static bool sectionReadsOwnBackdrop(const CommandList& list, size_t open, CmdKind pushKind,
+                                        CmdKind popKind) {
+        int depth = 0;
+        for (size_t i = open; i < list.commands.size(); ++i) {
+            const Command& c = list.commands[i];
+            if (c.kind == pushKind) {
+                ++depth;
+            } else if (c.kind == popKind && --depth == 0) {
+                return false;
+            }
+            if (i != open && c.kind == CmdKind::PushEffect) {
+                const EffectCmd& e = list.effectCmds[c.index];
+                if (e.effectCount > 0) {
+                    const EffectInstance& first = list.effects[e.effectOffset];
+                    if (first.kind == EffectKind::BackdropBlur && first.enabled != 0) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    void popNeed() {
+        if (!needStack.empty()) {
+            needStack.pop_back();
+        }
+    }
+
+    /// `boundsPx` narrowed to the bounding box of `need` inside it (snapped and clamped the way
+    /// LayerStack sizes a buffer); `boundsPx` itself without a need. A hint the need does not
+    /// meet becomes an empty rectangle at its corner, which LayerStack turns into the smallest
+    /// buffer (it composites nothing the damage can see).
+    Rect cropToNeed(const Rect& boundsPx, const RectRegion* need) const {
+        if (need == nullptr) {
+            return boundsPx;
+        }
+        int x0 = 0;
+        int y0 = 0;
+        int x1 = 0;
+        int y1 = 0;
+        if (!snapRectToTarget(boundsPx, target.width, target.height, x0, y0, x1, y1)) {
+            return boundsPx;
+        }
+        const Box crop = need->boundsWithin(Box{x0, y0, x1, y1});
+        if (crop.empty()) {
+            return Rect{static_cast<float>(x0), static_cast<float>(y0), 0.0f, 0.0f};
+        }
+        return Rect{static_cast<float>(crop.x0), static_cast<float>(crop.y0),
+                    static_cast<float>(crop.x1 - crop.x0), static_cast<float>(crop.y1 - crop.y0)};
+    }
+
+    /// The write region of a draw into `dst`: the current clip's box and the destination's own
+    /// rectangle, restricted to the current need.
+    WriteRegion drawRegion(const Target& dst) const {
+        const Box dstBox{dst.originX, dst.originY, dst.originX + dst.w, dst.originY + dst.h};
+        return WriteRegion{intersectBox(clipBounds(), dstBox), currentNeed()};
     }
 
     bool projecting() const { return !mappings.empty(); }
@@ -975,11 +1145,9 @@ struct SwRenderer::Impl {
         return effect_math::flattenTolerance(mappings, deviceXf, rawPoints);
     }
 
-    /// The clip byte array that applies to the draw about to be issued: the plain clip mask,
-    /// except that a draw landing on the root target while a partial redraw is in progress also
-    /// gets the damage write mask folded in. Null means "no clip at all".
-    /// The innermost clip layer's mask, or null when nothing is clipped.
-    const uint8_t* clipData() const { return clipStack.empty() ? nullptr : clipStack.back().mask.data(); }
+    /// The innermost clip layer's mask, or null when no mask applies. A draw also honours
+    /// clipBounds() (T-642: a box-only clip has no mask of its own; see ClipLayer).
+    const uint8_t* clipData() const { return clipStack.empty() ? nullptr : clipStack.back().maskPtr; }
 
     /// The device-px box outside which the current clip is known to be zero; the whole target when
     /// nothing is clipped.
@@ -999,33 +1167,6 @@ struct SwRenderer::Impl {
             return m;
         }
         return std::vector<uint8_t>(n, 0);
-    }
-
-    const uint8_t* activeClipData() {
-        const uint8_t* plain = clipData();
-        // Offscreen layer/mask/effect buffers are computed in full; only their composite back onto
-        // the root is masked (LayerStack::setRootWriteMask).
-        if (!partialRedraw || !layers.empty()) {
-            return plain;
-        }
-        if (plain == nullptr) {
-            return damageMask.data();
-        }
-        if (!combinedValid) {
-            // Outside the clip's box the clip mask is zero, so the intersection is zero there too:
-            // only the box's rows need the per-byte min (T-133).
-            combinedMask.assign(static_cast<size_t>(target.width) * static_cast<size_t>(target.height), 0);
-            const Box b = clipBounds();
-            for (int y = b.y0; y < b.y1; ++y) {
-                const size_t off = static_cast<size_t>(y) * static_cast<size_t>(target.width);
-                for (int x = b.x0; x < b.x1; ++x) {
-                    const size_t i = off + static_cast<size_t>(x);
-                    combinedMask[i] = std::min(plain[i], damageMask[i]);
-                }
-            }
-            combinedValid = true;
-        }
-        return combinedMask.data();
     }
 
     /// True when `cmd` draws entirely outside every damage rectangle and can be skipped. Only
@@ -1113,14 +1254,6 @@ struct SwRenderer::Impl {
             }
         }
         return true;
-    }
-
-    uint8_t clipAt(int x, int y) const {
-        const uint8_t* m = clipData();
-        if (m == nullptr) {
-            return 255;
-        }
-        return m[static_cast<size_t>(y) * static_cast<size_t>(target.width) + static_cast<size_t>(x)];
     }
 
     /// Adds every input contour's edges to `raster`, unconditionally closing each one (a fill or a
@@ -1263,17 +1396,53 @@ struct SwRenderer::Impl {
         return sweepIntoMask(rule, outMask);
     }
 
+    /// T-642: true when `rect` under `deviceXf` (no rotation or shear) has whole-pixel device
+    /// corners, writing its box (clamped to the target) to `out`. Such a rectangle rasterizes to
+    /// coverage 255 on every pixel inside the box and 0 outside it (each edge lies on a pixel
+    /// boundary), so the box alone is the same clip as its mask.
+    bool pixelAlignedRect(const Mat2x3& deviceXf, const Rect& rect, Box& out) const {
+        if (deviceXf.b != 0.0f || deviceXf.c != 0.0f) {
+            return false;
+        }
+        // The corners exactly as rasterizeRectMask computes them.
+        const Vec2 p0 = apply(deviceXf, Vec2{rect.x, rect.y});
+        const Vec2 p2 = apply(deviceXf, Vec2{rect.x + rect.w, rect.y + rect.h});
+        const Vec2 p1 = apply(deviceXf, Vec2{rect.x + rect.w, rect.y});
+        const Vec2 p3 = apply(deviceXf, Vec2{rect.x, rect.y + rect.h});
+        constexpr float kLimit = 1048576.0f;  // 2^20: well inside int and the rasterizer's range
+        for (const float v : {p0.x, p0.y, p1.x, p1.y, p2.x, p2.y, p3.x, p3.y}) {
+            if (!(std::fabs(v) <= kLimit) || std::floor(v) != v) {
+                return false;
+            }
+        }
+        if (p0.y != p1.y || p2.y != p3.y || p0.x != p3.x || p1.x != p2.x) {
+            return false;
+        }
+        const Box raw{static_cast<int>(std::min(p0.x, p2.x)), static_cast<int>(std::min(p0.y, p2.y)),
+                      static_cast<int>(std::max(p0.x, p2.x)), static_cast<int>(std::max(p0.y, p2.y))};
+        out = intersectBox(raw, Box{0, 0, target.width, target.height});
+        return true;
+    }
+
+    /// T-642: pushes a box-only clip layer (see ClipLayer): the enclosing mask, if any, still
+    /// applies, now inside the intersection of the two boxes only.
+    void pushClipBox(const Box& box) {
+        ClipLayer layer;
+        layer.maskPtr = clipStack.empty() ? nullptr : clipStack.back().maskPtr;
+        layer.bounds = intersectBox(box, clipBounds());
+        clipStack.push_back(std::move(layer));
+    }
+
     /// Pushes a clip layer whose freshly rasterized shape occupies `shape` in `newMask` (from
     /// `acquireMask`, so zero outside `shape`). The layer's box is `shape` intersected with the
     /// enclosing layer's, and the per-byte min with the enclosing mask runs only inside that
     /// intersection; what `shape` covers outside it is cleared, restoring the "zero outside the
     /// box" invariant (T-133).
     void pushClipMask(std::vector<uint8_t>&& newMask, Box shape) {
-        combinedValid = false;
         const Box bounds = intersectBox(shape, clipBounds());
         if (!clipStack.empty()) {
             const int w = target.width;
-            const uint8_t* prev = clipStack.back().mask.data();
+            const uint8_t* prev = clipStack.back().maskPtr;  // null: a box-only chain, 255 inside
             for (int y = shape.y0; y < shape.y1; ++y) {
                 const size_t off = static_cast<size_t>(y) * static_cast<size_t>(w);
                 uint8_t* row = newMask.data() + off;
@@ -1281,19 +1450,26 @@ struct SwRenderer::Impl {
                     std::memset(row + shape.x0, 0, static_cast<size_t>(shape.x1 - shape.x0));
                     continue;
                 }
-                const uint8_t* prevRow = prev + off;
+                const uint8_t* prevRow = prev != nullptr ? prev + off : nullptr;
                 for (int x = shape.x0; x < bounds.x0; ++x) {
                     row[x] = 0;
                 }
                 for (int x = bounds.x1; x < shape.x1; ++x) {
                     row[x] = 0;
                 }
+                if (prev == nullptr) {
+                    continue;
+                }
                 for (int x = bounds.x0; x < bounds.x1; ++x) {
                     row[x] = std::min(prevRow[x], row[x]);
                 }
             }
         }
-        clipStack.push_back(ClipLayer{std::move(newMask), bounds});
+        ClipLayer layer;
+        layer.mask = std::move(newMask);
+        layer.maskPtr = layer.mask.data();
+        layer.bounds = bounds;
+        clipStack.push_back(std::move(layer));
     }
 
     void popClip() {
@@ -1308,6 +1484,9 @@ struct SwRenderer::Impl {
         }
         ClipLayer top = std::move(clipStack.back());
         clipStack.pop_back();
+        if (top.mask.empty()) {
+            return;  // T-642: a box-only layer owns no mask.
+        }
         // Clearing only the rows this layer wrote (instead of the whole buffer) is what keeps the
         // pool's all-zero invariant cheap; see `maskPool`.
         const int w = target.width;
@@ -1316,7 +1495,6 @@ struct SwRenderer::Impl {
                         static_cast<size_t>(top.bounds.x1 - top.bounds.x0));
         }
         maskPool.push_back(std::move(top.mask));
-        combinedValid = false;
     }
 
     /// Empties the clip stack (its masks go back to the pool), the layer stack (releasing every
@@ -1328,7 +1506,8 @@ struct SwRenderer::Impl {
         }
         layers.resetStack();
         mappings.clear();
-        effectFrames.clear();
+        effectDepth = 0;
+        needStack.clear();
     }
 
     /// Fills `points`/`starts` (already device-space, closed per addClosedContours) into `dst`
@@ -1338,10 +1517,17 @@ struct SwRenderer::Impl {
         // T-133 step 4: the spans that can survive lie inside the path's own device-px box, the
         // destination's box and the current clip's box; when those three do not meet, the draw
         // writes nothing and the rasterizer never has to sweep it at all.
-        const Box region = intersectBox(
-            intersectBox(devicePointsBox(points),
-                         Box{dst.originX, dst.originY, dst.originX + dst.w, dst.originY + dst.h}),
-            clipBounds());
+        const Box shapeBox = intersectBox(devicePointsBox(points), clipBounds());
+        const Box region =
+            intersectBox(shapeBox, Box{dst.originX, dst.originY, dst.originX + dst.w, dst.originY + dst.h});
+        // T-642: a buffer cropped to the damage counts nothing as clipped away that its full hint
+        // would have drawn (the accounting stays that of the uncropped buffer).
+        const Box fullDst = needStack.empty() || needStack.back().need == nullptr
+                                ? Box{dst.originX, dst.originY, dst.originX + dst.w, dst.originY + dst.h}
+                                : needStack.back().fullBox;
+        if (region.empty() && !intersectBox(shapeBox, fullDst).empty()) {
+            return;
+        }
         if (region.empty()) {
             // Entirely clipped away: the same accounting a damage-skipped draw gets (the dispatch
             // loop has already counted this command as executed).
@@ -1351,14 +1537,19 @@ struct SwRenderer::Impl {
             ++skippedDraws;
             return;
         }
+        // T-642: under a partial redraw only the needed pixels are swept, evaluated and written
+        // (the spans themselves, and every run's anchor, stay those of a full draw).
+        const RectRegion* need = currentNeed();
+        if (need != nullptr && need->boundsWithin(region).empty()) {
+            return;
+        }
         {
             PerfFieldScope rasterScope(timer(&FrameStats::swRasterMs));
             raster.reset(target.width, target.height);
             addClosedContours(points, starts);
-            raster.setSweepRows(region.y0, region.y1);
         }
         const bool solid = eval.isSolid();
-        const uint8_t* clipData = activeClipData();
+        const uint8_t* clipData = this->clipData();
         PerfFieldScope spanScope(timer(&FrameStats::swSpanMs));
         // Docs/tasks/T-128.md step 1's breakdown. One scope per paint kind, plus a second,
         // deliberately *overlapping* one for the clipped case (see FrameStats::swSpanClippedMs).
@@ -1400,8 +1591,10 @@ struct SwRenderer::Impl {
         // per-span clamp below needs no separate destination test (T-133).
         const int dstX0 = region.x0;
         const int dstX1 = region.x1;
+        const WriteRegion writable{region, need};
+        size_t hint = 0;
 
-        raster.sweep(rule, [&](int y, int x0, int x1, uint8_t coverage) {
+        auto spanFn = [&](int y, int x0, int x1, uint8_t coverage) {
             if (coverage == 0) {
                 return;
             }
@@ -1414,6 +1607,47 @@ struct SwRenderer::Impl {
             if (x0 >= x1) {
                 return;
             }
+            // The row's needed intervals (the whole span without a need).
+            const RectRegion::Interval whole{x0, x1};
+            const RectRegion::Interval* iv = &whole;
+            uint32_t ivCount = 1;
+            if (need != nullptr) {
+                const RectRegion::Band* band = need->bandAt(y, hint);
+                if (band == nullptr) {
+                    return;
+                }
+                iv = need->intervals(*band);
+                ivCount = band->count;
+            }
+            uint32_t piecePixels = 0;
+            for (uint32_t k = 0; k < ivCount; ++k) {
+                const int a = std::max(x0, iv[k].x0);
+                const int b = std::min(x1, iv[k].x1);
+                if (a < b) {
+                    piecePixels += static_cast<uint32_t>(b - a);
+                }
+            }
+            if (piecePixels == 0) {
+                return;
+            }
+            // Calls `fn(a, b)` for the needed pieces of `[from, to)`, left to right.
+            auto pieces = [&](int from, int to, auto&& fn) {
+                for (uint32_t k = 0; k < ivCount; ++k) {
+                    const int a = std::max(from, iv[k].x0);
+                    const int b = std::min(to, iv[k].x1);
+                    if (a < b) {
+                        fn(a, b);
+                    }
+                }
+            };
+            auto needed = [&](int px) {
+                for (uint32_t k = 0; k < ivCount; ++k) {
+                    if (px >= iv[k].x0 && px < iv[k].x1) {
+                        return true;
+                    }
+                }
+                return false;
+            };
             float* rowF = dst.rowF(y);
             uint8_t* rowU8 = rowF != nullptr ? nullptr : dst.rowU8(y);
             if (rowF == nullptr && rowU8 == nullptr) {
@@ -1421,7 +1655,7 @@ struct SwRenderer::Impl {
             }
             if (stats != nullptr) {
                 ++stats->spansPerFrame;
-                stats->spanPixelsPerFrame += static_cast<uint32_t>(x1 - x0);
+                stats->spanPixelsPerFrame += piecePixels;
             }
             const uint8_t* clipRow =
                 clipData != nullptr ? clipData + static_cast<size_t>(y) * clipStride : nullptr;
@@ -1431,9 +1665,9 @@ struct SwRenderer::Impl {
             // Docs/tasks/T-102.md step 4a: a solid paint at full clip is one constant
             // premultiplied source colour over a contiguous run, which is exactly what
             // `spanSolidOver*` does. The run is cut at every pixel the clip mask only partly lets
-            // through, so a *partially* redrawn frame (whose damage mask arrives as a 255/0 clip)
-            // takes the same kernel over the same pixels as a full redraw and stays byte-identical
-            // to it (Docs/tasks/T-99.md test 1).
+            // through; a *partially* redrawn frame (T-642) hands the kernel only the run's needed
+            // pieces, which take the same per-pixel arithmetic as a full redraw and stay
+            // byte-identical to it (Docs/tasks/T-99.md test 1).
             const bool solidRuns = solid && !(opaqueSolid && fullCoverage);
             const float runA = cov * solidColor.a;
             const float runSrc[4] = {solidColor.r * runA, solidColor.g * runA, solidColor.b * runA, runA};
@@ -1449,68 +1683,79 @@ struct SwRenderer::Impl {
                     x = maskRunEnd(clipRow, x, x1, 0);
                     continue;
                 }
-                const size_t lx = static_cast<size_t>(x - dst.originX);
                 if (clip == 255) {
                     // Docs/tasks/T-128.md step 4: the longest run the clip mask lets through
                     // completely is painted exactly as if there were no clip -- no per-pixel
-                    // multiply, and the whole run goes to one kernel call.
+                    // multiply, and the whole run goes to one kernel call (one per needed piece).
                     int runEnd = x1;
                     if (clipRow != nullptr) {
                         runEnd = maskRunEnd(clipRow, x + 1, x1, 255);
                     }
-                    const int n = runEnd - x;
-                    if (solidRuns) {
-                        if (runA > 0.0f) {
-                            if (rowF != nullptr) {
-                                simd.spanSolidOverF(rowF + lx * 4, n, runSrc, 1.0f - runA);
-                            } else {
-                                simd.spanSolidOverU8(rowU8 + lx * 4, n, runSrc, 1.0f - runA, dstPremul);
+                    const int runStart = x;
+                    pieces(runStart, runEnd, [&](int a, int b) {
+                        const size_t lx = static_cast<size_t>(a - dst.originX);
+                        const int n = b - a;
+                        if (solidRuns) {
+                            if (runA > 0.0f) {
+                                if (rowF != nullptr) {
+                                    simd.spanSolidOverF(rowF + lx * 4, n, runSrc, 1.0f - runA);
+                                } else {
+                                    simd.spanSolidOverU8(rowU8 + lx * 4, n, runSrc, 1.0f - runA, dstPremul);
+                                }
                             }
-                        }
-                    } else if (solid) {
-                        // opaqueSolid && fullCoverage: src-over is a store.
-                        if (rowF != nullptr) {
-                            for (int i = 0; i < n; ++i) {
-                                float* p = rowF + (lx + static_cast<size_t>(i)) * 4;
-                                p[0] = solidColor.r;
-                                p[1] = solidColor.g;
-                                p[2] = solidColor.b;
-                                p[3] = 1.0f;
+                        } else if (solid) {
+                            // opaqueSolid && fullCoverage: src-over is a store.
+                            if (rowF != nullptr) {
+                                for (int i = 0; i < n; ++i) {
+                                    float* p = rowF + (lx + static_cast<size_t>(i)) * 4;
+                                    p[0] = solidColor.r;
+                                    p[1] = solidColor.g;
+                                    p[2] = solidColor.b;
+                                    p[3] = 1.0f;
+                                }
+                            } else {
+                                for (int i = 0; i < n; ++i) {
+                                    uint8_t* p = rowU8 + (lx + static_cast<size_t>(i)) * 4;
+                                    p[0] = solidR8;
+                                    p[1] = solidG8;
+                                    p[2] = solidB8;
+                                    p[3] = 255;
+                                }
                             }
                         } else {
-                            for (int i = 0; i < n; ++i) {
-                                uint8_t* p = rowU8 + (lx + static_cast<size_t>(i)) * 4;
-                                p[0] = solidR8;
-                                p[1] = solidG8;
-                                p[2] = solidB8;
-                                p[3] = 255;
-                            }
-                        }
-                    } else {
-                        const PaintEval::SpanInfo info = eval.spanPremul(x, y, n, cov, scratch);
-                        if (info.first < info.last) {
-                            const int m = info.last - info.first;
-                            const size_t off = lx + static_cast<size_t>(info.first);
-                            const float* src = scratch + static_cast<size_t>(info.first) * 4;
-                            if (info.allOpaque) {
-                                // Every source pixel has alpha 1, so `src + dst * 0` is the source:
-                                // the destination is never read (Docs/tasks/T-128.md step 2).
-                                if (rowF != nullptr) {
-                                    std::memcpy(rowF + off * 4, src,
-                                                static_cast<size_t>(m) * 4 * sizeof(float));
+                            // The gradient is still stepped from the run's start (T-642).
+                            const PaintEval::SpanInfo info =
+                                eval.spanPremul(runStart, y, a - runStart, b - runStart, cov, scratch);
+                            if (info.first < info.last) {
+                                const int m = info.last - info.first;
+                                const size_t off = lx + static_cast<size_t>(info.first);
+                                const float* src = scratch + static_cast<size_t>(info.first) * 4;
+                                if (info.allOpaque) {
+                                    // Every source pixel has alpha 1, so `src + dst * 0` is the
+                                    // source: the destination is never read (Docs/tasks/T-128.md
+                                    // step 2).
+                                    if (rowF != nullptr) {
+                                        std::memcpy(rowF + off * 4, src,
+                                                    static_cast<size_t>(m) * 4 * sizeof(float));
+                                    } else {
+                                        simd.rowToU8(src, rowU8 + off * 4, m, dstPremul);
+                                    }
+                                } else if (rowF != nullptr) {
+                                    simd.spanSrcOverF(rowF + off * 4, src, m);
                                 } else {
-                                    simd.rowToU8(src, rowU8 + off * 4, m, dstPremul);
+                                    simd.spanSrcOverU8(rowU8 + off * 4, src, m, dstPremul);
                                 }
-                            } else if (rowF != nullptr) {
-                                simd.spanSrcOverF(rowF + off * 4, src, m);
-                            } else {
-                                simd.spanSrcOverU8(rowU8 + off * 4, src, m, dstPremul);
                             }
                         }
-                    }
+                    });
                     x = runEnd;
                     continue;
                 }
+                if (!needed(x)) {
+                    ++x;
+                    continue;
+                }
+                const size_t lx = static_cast<size_t>(x - dst.originX);
                 const Color paint =
                     solid ? solidColor : eval.at(static_cast<float>(x), static_cast<float>(y));
                 const float a = cov * paint.a * (static_cast<float>(clip) / 255.0f);
@@ -1545,6 +1790,10 @@ struct SwRenderer::Impl {
                 }
                 ++x;
             }
+        };
+        writable.forEachRowRange([&](int y0, int y1) {
+            raster.setSweepRows(y0, y1);
+            raster.sweep(rule, spanFn);
         });
     }
 
@@ -1651,7 +1900,8 @@ struct SwRenderer::Impl {
                 return;
             }
             Target effectDst = layers.currentTarget(rootTarget());
-            drawGlyphEffect(*shaper, list, cmd, deviceXf, effectDst, activeClipData(), target.width);
+            const WriteRegion region = drawRegion(effectDst);
+            drawGlyphEffect(*shaper, list, cmd, deviceXf, effectDst, clipData(), target.width, &region);
             return;
         }
         // T-101: small `text-rendering: auto` text takes the hinted-bitmap path instead. Not
@@ -1659,8 +1909,9 @@ struct SwRenderer::Impl {
         // per-point projection 19.7 requires -- so projected runs keep using outlines.
         if (!projecting() && glyphBitmapPathApplies(cmd, deviceXf)) {
             Target bitmapDst = layers.currentTarget(rootTarget());
+            const WriteRegion region = drawRegion(bitmapDst);
             const uint32_t drawn =
-                drawGlyphBitmaps(*shaper, list, cmd, deviceXf, bitmapDst, activeClipData(), target.width);
+                drawGlyphBitmaps(*shaper, list, cmd, deviceXf, bitmapDst, clipData(), target.width, &region);
             if (stats != nullptr) {
                 stats->swGlyphBitmaps += drawn;
             }
@@ -1721,13 +1972,14 @@ struct SwRenderer::Impl {
         const ImageData& image = *view;
         Mat2x3 deviceXf = mul(deviceScale(dpr), cmd.xf);
         Target dst = layers.currentTarget(rootTarget());
-        const uint8_t* clipPtr = activeClipData();
+        const uint8_t* clipPtr = clipData();
+        const WriteRegion region = drawRegion(dst);
         // Docs/tasks/T-128.md step 1: image sampling is its own per-pixel loop, timed separately
         // from swSpanMs (see FrameStats::swSpanImageMs). Asset decode above is deliberately
         // outside the scope -- it is cached by the resolver, not per-pixel work.
         PerfFieldScope imageScope(timer(&FrameStats::swSpanImageMs));
         if (!projecting()) {
-            drawImage(dst, raster, deviceXf, cmd, image, clipPtr, target.width, imageScratch);
+            drawImage(dst, raster, deviceXf, cmd, image, clipPtr, target.width, imageScratch, &region);
             return;
         }
         // §19.7 DrawImage under projection: "dst 四角經 projectPoint 得裝置四邊形 q[4] ->
@@ -1747,7 +1999,7 @@ struct SwRenderer::Impl {
             }
         }
         drawImageQuad(dst, raster, q, cmd.srcUv, cmd.opacity, cmd.smooth, image, clipPtr, target.width,
-                      imageScratch);
+                      imageScratch, &region);
     }
 
     /// T-202 (Docs/tasks/T-202.md item 4): one rotated quad per particle; no texture (or no way to
@@ -1776,10 +2028,12 @@ struct SwRenderer::Impl {
         }
         Mat2x3 deviceXf = mul(deviceScale(dpr), cmd.xf);
         Target dst = layers.currentTarget(rootTarget());
-        const uint8_t* clipPtr = activeClipData();
+        const uint8_t* clipPtr = clipData();
+        const WriteRegion region = drawRegion(dst);
         PerfFieldScope imageScope(timer(&FrameStats::swSpanImageMs));
         drawParticles(dst, raster, deviceXf, list.particleInstances.data() + cmd.instanceOffset, cmd.count,
-                      cmd.blend == ParticleBlend::Additive, image, clipPtr, target.width, imageScratch);
+                      cmd.blend == ParticleBlend::Additive, image, clipPtr, target.width, imageScratch,
+                      &region);
     }
 
     void drawImageQuadCmd(const ImageQuadCmd& cmd, float dpr, AssetResolver* assets, const IrView* ir) {
@@ -1813,10 +2067,11 @@ struct SwRenderer::Impl {
             }
         }
         Target dst = layers.currentTarget(rootTarget());
-        const uint8_t* clipPtr = activeClipData();
+        const uint8_t* clipPtr = clipData();
+        const WriteRegion region = drawRegion(dst);
         PerfFieldScope imageScope(timer(&FrameStats::swSpanImageMs));
         drawImageQuad(dst, raster, q, cmd.srcUv, cmd.opacity, cmd.smooth, image, clipPtr, target.width,
-                      imageScratch);
+                      imageScratch, &region);
     }
 
     /// T-245 (Docs/design/32-rigging-and-deformation.md §32.2.4): the vertices go through the
@@ -1855,10 +2110,12 @@ struct SwRenderer::Impl {
             meshScratch[i] = MeshVertex{p, src.uv};
         }
         Target dst = layers.currentTarget(rootTarget());
-        const uint8_t* clipPtr = activeClipData();
+        const uint8_t* clipPtr = clipData();
+        const WriteRegion region = drawRegion(dst);
         PerfFieldScope imageScope(timer(&FrameStats::swSpanImageMs));
         drawImageMesh(dst, meshScratch.data(), cmd.vertexCount, list.meshIndices.data() + cmd.indexOffset,
-                      cmd.indexCount, cmd.opacity, cmd.smooth, *view, clipPtr, target.width, imageScratch);
+                      cmd.indexCount, cmd.opacity, cmd.smooth, *view, clipPtr, target.width, imageScratch,
+                      &region);
     }
 };
 
@@ -1871,9 +2128,9 @@ void SwRenderer::setTarget(const SwTarget& target) {
     m_impl->target = target;
     m_impl->maskPool.clear();
     m_impl->partialRedraw = false;
-    m_impl->damageMask.clear();
     m_impl->damageRects.clear();
-    m_impl->combinedValid = false;
+    m_impl->damageBoxes.clear();
+    m_impl->damageRegion.clear();
 }
 
 void SwRenderer::clear(Color color) {
@@ -1998,12 +2255,12 @@ void SwRenderer::releaseScratch() {
     std::vector<EffectFrame>().swap(m.effectFrames);
     std::vector<Impl::ClipLayer>().swap(m.clipStack);
     std::vector<std::vector<uint8_t>>().swap(m.maskPool);
-    // The damage state reads "full": no mask is kept, and nothing of the last frame is reused.
+    // The damage state reads "full": no region is kept, and nothing of the last frame is reused.
     m.partialRedraw = false;
-    std::vector<uint8_t>().swap(m.damageMask);
     std::vector<Rect>().swap(m.damageRects);
-    std::vector<uint8_t>().swap(m.combinedMask);
-    m.combinedValid = false;
+    std::vector<Box>().swap(m.damageBoxes);
+    m.damageRegion.release();
+    std::vector<Impl::NeedFrame>().swap(m.needStack);
     std::vector<Impl::SwBand>().swap(m.prevBands);
     std::vector<Impl::SwBand>().swap(m.curBands);
     std::vector<Impl::Cluster>().swap(m.clusters);

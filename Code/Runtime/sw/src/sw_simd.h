@@ -2,13 +2,19 @@
 
 #include <cstdint>
 
+#include "xt/node.h"
+
 /// Run-time SIMD dispatch for the SW backend's three measured hot spots (Docs/tasks/T-102.md
 /// step 3/4, Docs/design/23-host-integration.md §23.5):
 ///   (a) span blending  -- `spanSolidOver*` (one constant paint colour) and `spanSrcOver*`
 ///       (per-pixel source, i.e. the gradient/image/layer-composite case);
 ///   (b) the Gaussian blur's horizontal and vertical box passes -- `boxPassH` / `boxPassV`;
 ///   (c) float <-> RGBA8 conversion -- `rowToU8` / `rowFromU8` (the u8 span kernels use the same
-///       two conversions inline, fused with the blend).
+///       two conversions inline, fused with the blend);
+///   (d) T-643: compositing a layer at opacity < 1 or in one of the 16 non-Normal blend modes --
+///       `spanLayerBlendF` / `spanLayerBlendU8`, byte-identical to the per-pixel `blendPixelPremul`
+///       loop they replace (which stays as their reference and handles each run's last n % 4
+///       pixels).
 ///
 /// Every kernel exists three times from one template body (sw_simd_kernels.h): a scalar reference,
 /// an SSE2 build and an AVX2 build (a separate translation unit compiled with /arch:AVX2 but without
@@ -41,6 +47,18 @@ struct SwSimdOps {
     void (*boxPassH)(const float* src, float* dst, int w, int h, int channels, int radius);
     /// One vertical box-filter pass; see sw_effect_math.cpp's scalar description.
     void (*boxPassV)(const float* src, float* dst, int w, int h, int channels, int radius);
+
+    /// T-643: composites `n` premultiplied layer pixels `src`, each scaled by `opacity`, onto `n`
+    /// premultiplied float pixels with `mode` -- exactly `dst = blendPixelPremul(mode, src *
+    /// opacity, dst)` per pixel, skipping every pixel whose scaled alpha is `<= 0` (LayerStack::
+    /// popLayer's rule). Normal is a source-over a pixel at a time; the other 16 modes run four
+    /// pixels at a time (transposed to one vector per channel) through the W3C formulas of
+    /// sw_blend.cpp, operation for operation.
+    void (*spanLayerBlendF)(float* dst, const float* src, int n, float opacity, BlendMode mode);
+    /// `spanLayerBlendF` onto an RGBA8 row, read and written like sw_blend.h's `loadPixelU8` /
+    /// `storePixelU8` (un-premultiplied around the blend unless `dstPremul`).
+    void (*spanLayerBlendU8)(uint8_t* dst, const float* src, int n, float opacity, BlendMode mode,
+                             bool dstPremul);
 
     /// `n` premultiplied float pixels -> RGBA8 (un-premultiplied unless `dstPremul`).
     void (*rowToU8)(const float* src, uint8_t* dst, int n, bool dstPremul);

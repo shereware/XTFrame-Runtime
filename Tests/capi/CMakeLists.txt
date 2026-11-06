@@ -32,10 +32,16 @@ xt_capi_pack_bundle(XT_CAPI_FLIP flip "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/flip
 xt_capi_pack_bundle(XT_CAPI_L10N l10n "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/l10n")
 # T-635: four rows (a port-bound bar, custom states, a timeline, a scrolled box) for save / load state.
 xt_capi_pack_bundle(XT_CAPI_STATE state "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/state")
+# T-647: text at 12 / 24 / 48 px (light on dark, dark on transparent), a non-convex star and a 120 px
+# word, with bundled Noto Sans (publish.fonts), for the GPU-target text tolerance cases.
+xt_capi_pack_bundle(XT_CAPI_TEXT text "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/text")
+# T-642: the npdo demo (hud / settings) for the partial-redraw equivalence cases (test_capi_partial.cpp).
+xt_capi_pack_bundle(XT_CAPI_NPDO npdo "${PROJECT_SOURCE_DIR}/Examples/demos/npdo/ui-project")
 add_custom_target(xt_capi_test_bundles
     DEPENDS "${XT_CAPI_GAME_UI}/manifest.json" "${XT_CAPI_HUD_OVERLAY}/manifest.json"
             "${XT_CAPI_DEVICE}/manifest.json" "${XT_CAPI_FLIP}/manifest.json"
-            "${XT_CAPI_L10N}/manifest.json" "${XT_CAPI_STATE}/manifest.json")
+            "${XT_CAPI_L10N}/manifest.json" "${XT_CAPI_STATE}/manifest.json"
+            "${XT_CAPI_NPDO}/manifest.json" "${XT_CAPI_TEXT}/manifest.json")
 
 add_executable(xt_capi_tests
     test_main.cpp
@@ -43,7 +49,9 @@ add_executable(xt_capi_tests
     test_capi_l10n.cpp
     test_capi_state.cpp
     test_capi_gpu.cpp
+    test_capi_gpu_text.cpp
     test_capi_trim.cpp
+    test_capi_partial.cpp
 )
 add_dependencies(xt_capi_tests xt_capi_test_bundles)
 target_include_directories(xt_capi_tests SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/Code/SDKs/doctest)
@@ -55,7 +63,9 @@ target_compile_definitions(xt_capi_tests PRIVATE
     XT_CAPI_TEST_DEVICE_BUNDLE="${XT_CAPI_DEVICE}"
     XT_CAPI_TEST_FLIP_BUNDLE="${XT_CAPI_FLIP}"
     XT_CAPI_TEST_L10N_BUNDLE="${XT_CAPI_L10N}"
-    XT_CAPI_TEST_STATE_BUNDLE="${XT_CAPI_STATE}")
+    XT_CAPI_TEST_STATE_BUNDLE="${XT_CAPI_STATE}"
+    XT_CAPI_TEST_NPDO_BUNDLE="${XT_CAPI_NPDO}"
+    XT_CAPI_TEST_TEXT_BUNDLE="${XT_CAPI_TEXT}")
 # Only the C header (and xt/version.h's macros, for case 1) -- the runtime is reached through the
 # shared library alone. nlohmann reads the packed manifest for case 2.
 target_include_directories(xt_capi_tests PRIVATE ${PROJECT_SOURCE_DIR}/Code/Runtime/core/include)

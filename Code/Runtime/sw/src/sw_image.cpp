@@ -28,6 +28,12 @@
 /// The arithmetic is the same operators as before (non-premultiplied lerp, then `rgb * a`), only
 /// reassociated where the row blend swaps the lerp order, so golden images stay within the
 /// Docs/design/15-testing.md §15.3 tolerance.
+///
+/// T-642 (Docs/design/23-host-integration.md §23.3): every draw takes an optional WriteRegion. The
+/// rasterizer then sweeps only the region's rows, and each span is sampled and blended only over its
+/// pieces inside the region -- but always from the span's own anchor (the axis map is built at the
+/// span's first pixel, as an unrestricted draw builds it), so a pixel inside the region comes out
+/// byte-identical to an unrestricted draw of the same command.
 
 namespace xt::sw {
 
@@ -144,6 +150,30 @@ struct DstRow {
     }
 };
 
+/// Sweeps `raster` (NonZero) over the rows `region` can write, or over every row without one.
+template <class Fn>
+void sweepRegion(Rasterizer& raster, const WriteRegion* region, Fn&& fn) {
+    if (region == nullptr) {
+        raster.sweep(FillRule::NonZero, fn);
+        return;
+    }
+    region->forEachRowRange([&](int y0, int y1) {
+        raster.setSweepRows(y0, y1);
+        raster.sweep(FillRule::NonZero, fn);
+    });
+}
+
+/// Calls `fn(a, b)` for the pieces of `[x0, x1)` on row `y` that `region` lets through (the whole
+/// range without one).
+template <class Fn>
+void forPieces(const WriteRegion* region, int y, int x0, int x1, size_t& hint, Fn&& fn) {
+    if (region == nullptr) {
+        fn(x0, x1);
+        return;
+    }
+    region->forEachPiece(y, x0, x1, hint, fn);
+}
+
 /// Blends `src` (n premultiplied float samples for device pixels `[x, x + n)`, coverage and
 /// opacity already applied) onto `row`. The clip mask splits the span into runs: 0 skips the pixel
 /// (never written, so a partial redraw's damage mask leaves the pixel byte-identical), 255 goes to
@@ -249,21 +279,27 @@ AxisMap makeAxisMap(double k, double c, double dstOrigin, double dstSize, double
 }
 
 /// The axis-aligned path's sampler for one span (shared by DrawImage and, T-245, the axis-aligned
-/// triangles of DrawImageMesh): `n` device pixels whose source column is `xm.at(i)` and whose
-/// source row is the fixed-point `fy`, written premultiplied (times `kv`) into `span`. Returns
-/// true when every texel the span read is known to be opaque (the caller still folds coverage and
-/// opacity into its `allOpaque`).
-bool sampleAxisSpan(const ImageData& image, bool smooth, const AxisMap& xm, int64_t fy, int n, f32x4 kv,
-                    f32x4 alphaMask, float* span, float* rowBlend) {
+/// triangles of DrawImageMesh): a span of `n` device pixels whose source column is `xm.at(i)` and
+/// whose source row is the fixed-point `fy`; pixels `[begin, end)` of it are written premultiplied
+/// (times `kv`) into `span[0, end - begin)`. The filter path is chosen from the whole span (T-642: a
+/// piece of a span is sampled exactly as the whole span would sample it). Returns true when every
+/// texel the piece read is known to be opaque (the caller still folds coverage and opacity into its
+/// `allOpaque`).
+bool sampleAxisSpan(const ImageData& image, bool smooth, const AxisMap& xm, int64_t fy, int n, int begin,
+                    int end, f32x4 kv, f32x4 alphaMask, float* span, float* rowBlend) {
     const int W = image.width;
     const int H = image.height;
     const int sy0 = fixedFloor(fy);
-    // Columns this span touches (the map is monotonic, so the two ends bound it).
-    const int cA = fixedFloor(xm.at(0));
-    const int cB = fixedFloor(xm.at(n - 1));
+    // Columns the whole span touches (the map is monotonic, so the two ends bound it): they choose
+    // the filter path. The piece's own columns bound what is read.
+    const int sA = fixedFloor(xm.at(0));
+    const int sB = fixedFloor(xm.at(n - 1));
+    const int cCount =
+        clampi(std::max(sA, sB) + (smooth ? 1 : 0), 0, W - 1) - clampi(std::min(sA, sB), 0, W - 1) + 1;
+    const int cA = fixedFloor(xm.at(begin));
+    const int cB = fixedFloor(xm.at(end - 1));
     const int cMin = clampi(std::min(cA, cB), 0, W - 1);
     const int cMax = clampi(std::max(cA, cB) + (smooth ? 1 : 0), 0, W - 1);
-    const int cCount = cMax - cMin + 1;
 
     uint8_t alphaAnd = 255;
     bool alphaKnown = false;
@@ -282,20 +318,20 @@ bool sampleAxisSpan(const ImageData& image, bool smooth, const AxisMap& xm, int6
                 simd::store(rowBlend + o, vlerp(vloadU8(r0 + o), vloadU8(r1 + o), ty));
             }
             alphaKnown = true;
-            for (int i = 0; i < n; ++i) {
+            for (int i = begin; i < end; ++i) {
                 const int64_t fx = xm.at(i);
                 const int sx0 = fixedFloor(fx);
                 const int xa = clampi(sx0, 0, W - 1);
                 const int xb = clampi(sx0 + 1, 0, W - 1);
                 const f32x4 s = vlerp(vload(rowBlend + static_cast<size_t>(xa) * 4),
                                       vload(rowBlend + static_cast<size_t>(xb) * 4), vsplat(fixedFrac(fx)));
-                simd::store(span + static_cast<size_t>(i) * 4, premulSample(s, kv, alphaMask));
+                simd::store(span + static_cast<size_t>(i - begin) * 4, premulSample(s, kv, alphaMask));
             }
         } else {
             // Strong minification: fewer texels are read by sampling four per pixel than by
             // pre-blending every column in between.
             f32x4 minv = vsplat(1.0f);
-            for (int i = 0; i < n; ++i) {
+            for (int i = begin; i < end; ++i) {
                 const int64_t fx = xm.at(i);
                 const int sx0 = fixedFloor(fx);
                 const size_t xa = static_cast<size_t>(clampi(sx0, 0, W - 1)) * 4;
@@ -304,7 +340,7 @@ bool sampleAxisSpan(const ImageData& image, bool smooth, const AxisMap& xm, int6
                 const f32x4 s = vlerp(vlerp(vloadU8(r0 + xa), vloadU8(r0 + xb), tx),
                                       vlerp(vloadU8(r1 + xa), vloadU8(r1 + xb), tx), ty);
                 minv = simd::min(minv, s);
-                simd::store(span + static_cast<size_t>(i) * 4, premulSample(s, kv, alphaMask));
+                simd::store(span + static_cast<size_t>(i - begin) * 4, premulSample(s, kv, alphaMask));
             }
             float mins[4];
             simd::store(mins, minv);
@@ -320,10 +356,10 @@ bool sampleAxisSpan(const ImageData& image, bool smooth, const AxisMap& xm, int6
             }
             alphaKnown = true;
         }
-        for (int i = 0; i < n; ++i) {
+        for (int i = begin; i < end; ++i) {
             const int sx = clampi(fixedFloor(xm.at(i)), 0, W - 1);
             const f32x4 s = vloadU8(r0 + static_cast<size_t>(sx) * 4);
-            simd::store(span + static_cast<size_t>(i) * 4, premulSample(s, kv, alphaMask));
+            simd::store(span + static_cast<size_t>(i - begin) * 4, premulSample(s, kv, alphaMask));
         }
     }
     return alphaKnown && alphaAnd == 255;
@@ -332,7 +368,7 @@ bool sampleAxisSpan(const ImageData& image, bool smooth, const AxisMap& xm, int6
 /// Axis-aligned DrawImage (deviceXf.b == deviceXf.c == 0). See the file comment.
 void drawImageAxisAligned(Target& target, Rasterizer& raster, const Mat2x3& inverse, const ImageCmd& cmd,
                           const ImageData& image, const uint8_t* clipMask, int clipWidth,
-                          ImageScratch& scratch) {
+                          ImageScratch& scratch, const WriteRegion* region) {
     const int W = image.width;
     const int H = image.height;
     const bool smooth = cmd.smooth != 0;
@@ -343,8 +379,9 @@ void drawImageAxisAligned(Target& target, Rasterizer& raster, const Mat2x3& inve
     scratch.row.resize(static_cast<size_t>(W) * 4);
     float* span = scratch.span.data();
     float* rowBlend = scratch.row.data();
+    size_t hint = 0;
 
-    raster.sweep(FillRule::NonZero, [&](int y, int x0, int x1, uint8_t coverage) {
+    sweepRegion(raster, region, [&](int y, int x0, int x1, uint8_t coverage) {
         if (coverage == 0) {
             return;
         }
@@ -359,58 +396,65 @@ void drawImageAxisAligned(Target& target, Rasterizer& raster, const Mat2x3& inve
         const float k = (static_cast<float>(coverage) / 255.0f) * opacity;
         const f32x4 kv = vsplat(k);
 
-        // Source row(s) for this device row.
+        // Source row(s) for this device row; the column map is anchored at the span's first pixel.
         const AxisMap ym = makeAxisMap(inverse.d, inverse.f, cmd.dst.y, cmd.dst.h, cmd.srcUv.y, cmd.srcUv.h,
                                        static_cast<double>(H), offset, y);
         const int64_t fy = ym.at(0);
         const AxisMap xm = makeAxisMap(inverse.a, inverse.e, cmd.dst.x, cmd.dst.w, cmd.srcUv.x, cmd.srcUv.w,
                                        static_cast<double>(W), offset, x0);
-        const bool opaqueSrc = sampleAxisSpan(image, smooth, xm, fy, n, kv, alphaMask, span, rowBlend);
-        const bool allOpaque = opaqueSrc && coverage == 255 && opacity == 1.0f;
-        blendSpan(row, x0, n, span, clipRow, allOpaque);
+        forPieces(region, y, x0, x1, hint, [&](int a, int b) {
+            const bool opaqueSrc =
+                sampleAxisSpan(image, smooth, xm, fy, n, a - x0, b - x0, kv, alphaMask, span, rowBlend);
+            const bool allOpaque = opaqueSrc && coverage == 255 && opacity == 1.0f;
+            blendSpan(row, a, b - a, span, clipRow, allOpaque);
+        });
     });
 }
 
 /// General DrawImage (rotation/shear): per-pixel inverse mapping, SIMD lerps.
 void drawImageGeneral(Target& target, Rasterizer& raster, const Mat2x3& inverse, const ImageCmd& cmd,
-                      const ImageData& image, const uint8_t* clipMask, int clipWidth, ImageScratch& scratch) {
+                      const ImageData& image, const uint8_t* clipMask, int clipWidth, ImageScratch& scratch,
+                      const WriteRegion* region) {
     const bool smooth = cmd.smooth != 0;
     const float opacity = cmd.opacity;
     const f32x4 alphaMask = alphaLaneMask();
     scratch.span.resize(static_cast<size_t>(target.w) * 4);
     float* span = scratch.span.data();
+    size_t hint = 0;
 
-    raster.sweep(FillRule::NonZero, [&](int y, int x0, int x1, uint8_t coverage) {
+    sweepRegion(raster, region, [&](int y, int sx0, int sx1, uint8_t coverage) {
         if (coverage == 0) {
             return;
         }
         DstRow row;
-        if (!row.resolve(target, y, x0, x1)) {
+        if (!row.resolve(target, y, sx0, sx1)) {
             return;
         }
-        const int n = x1 - x0;
-        const uint8_t* clipRow = clipMask != nullptr
-                                     ? clipMask + static_cast<size_t>(y) * static_cast<size_t>(clipWidth)
-                                     : nullptr;
-        const float k = (static_cast<float>(coverage) / 255.0f) * opacity;
-        const f32x4 kv = vsplat(k);
-        f32x4 minv = vsplat(1.0f);
-        const float cy = static_cast<float>(y) + 0.5f;
-        for (int i = 0; i < n; ++i) {
-            const float cx = static_cast<float>(x0 + i) + 0.5f;
-            const Vec2 local = apply(inverse, Vec2{cx, cy});
-            const float u = (local.x - cmd.dst.x) / cmd.dst.w;
-            const float v = (local.y - cmd.dst.y) / cmd.dst.h;
-            const float su = std::clamp(cmd.srcUv.x + u * cmd.srcUv.w, 0.0f, 1.0f);
-            const float sv = std::clamp(cmd.srcUv.y + v * cmd.srcUv.h, 0.0f, 1.0f);
-            const f32x4 s = smooth ? sampleBilinear(image, su, sv) : sampleNearest(image, su, sv);
-            minv = simd::min(minv, s);
-            simd::store(span + static_cast<size_t>(i) * 4, premulSample(s, kv, alphaMask));
-        }
-        float mins[4];
-        simd::store(mins, minv);
-        const bool allOpaque = mins[3] >= 1.0f && coverage == 255 && opacity == 1.0f;
-        blendSpan(row, x0, n, span, clipRow, allOpaque);
+        forPieces(region, y, sx0, sx1, hint, [&](int x0, int x1) {
+            const int n = x1 - x0;
+            const uint8_t* clipRow = clipMask != nullptr
+                                         ? clipMask + static_cast<size_t>(y) * static_cast<size_t>(clipWidth)
+                                         : nullptr;
+            const float k = (static_cast<float>(coverage) / 255.0f) * opacity;
+            const f32x4 kv = vsplat(k);
+            f32x4 minv = vsplat(1.0f);
+            const float cy = static_cast<float>(y) + 0.5f;
+            for (int i = 0; i < n; ++i) {
+                const float cx = static_cast<float>(x0 + i) + 0.5f;
+                const Vec2 local = apply(inverse, Vec2{cx, cy});
+                const float u = (local.x - cmd.dst.x) / cmd.dst.w;
+                const float v = (local.y - cmd.dst.y) / cmd.dst.h;
+                const float su = std::clamp(cmd.srcUv.x + u * cmd.srcUv.w, 0.0f, 1.0f);
+                const float sv = std::clamp(cmd.srcUv.y + v * cmd.srcUv.h, 0.0f, 1.0f);
+                const f32x4 s = smooth ? sampleBilinear(image, su, sv) : sampleNearest(image, su, sv);
+                minv = simd::min(minv, s);
+                simd::store(span + static_cast<size_t>(i) * 4, premulSample(s, kv, alphaMask));
+            }
+            float mins[4];
+            simd::store(mins, minv);
+            const bool allOpaque = mins[3] >= 1.0f && coverage == 255 && opacity == 1.0f;
+            blendSpan(row, x0, n, span, clipRow, allOpaque);
+        });
     });
 }
 
@@ -444,7 +488,7 @@ void addSpan(const DstRow& row, int x, int n, const float* src, const uint8_t* c
 
 void drawParticles(Target& target, Rasterizer& raster, const Mat2x3& deviceXf,
                    const ParticleInstance* instances, uint32_t count, bool additive, const ImageData* image,
-                   const uint8_t* clipMask, int clipWidth, ImageScratch& scratch) {
+                   const uint8_t* clipMask, int clipWidth, ImageScratch& scratch, const WriteRegion* region) {
     if (image != nullptr && (image->width <= 0 || image->height <= 0 || image->rgba.empty())) {
         return;  // A texture that did not decode draws nothing (like DrawImage).
     }
@@ -452,6 +496,7 @@ void drawParticles(Target& target, Rasterizer& raster, const Mat2x3& deviceXf,
     const f32x4 one = vsplat(1.0f);
     scratch.span.resize(static_cast<size_t>(target.w) * 4);
     float* span = scratch.span.data();
+    size_t hint = 0;
     for (uint32_t pi = 0; pi < count; ++pi) {
         const ParticleInstance& p = instances[pi];
         if (!(p.w > 0.0f) || !(p.h > 0.0f) || !(p.rgba.a > 0.0f)) {
@@ -476,44 +521,47 @@ void drawParticles(Target& target, Rasterizer& raster, const Mat2x3& deviceXf,
         }
         const float tint[4] = {p.rgba.r, p.rgba.g, p.rgba.b, p.rgba.a};
         const f32x4 tintV = vload(tint);
-        raster.sweep(FillRule::NonZero, [&](int y, int x0, int x1, uint8_t coverage) {
+        sweepRegion(raster, region, [&](int y, int sx0, int sx1, uint8_t coverage) {
             if (coverage == 0) {
                 return;
             }
             DstRow row;
-            if (!row.resolve(target, y, x0, x1)) {
+            if (!row.resolve(target, y, sx0, sx1)) {
                 return;
             }
-            const int n = x1 - x0;
-            const uint8_t* clipRow = clipMask != nullptr
-                                         ? clipMask + static_cast<size_t>(y) * static_cast<size_t>(clipWidth)
-                                         : nullptr;
-            const f32x4 kv = vsplat(static_cast<float>(coverage) / 255.0f);
-            const float cy = static_cast<float>(y) + 0.5f;
-            for (int i = 0; i < n; ++i) {
-                float* out = span + static_cast<size_t>(i) * 4;
-                f32x4 texel = one;
-                if (image != nullptr) {
-                    const Vec2 uv = apply(deviceToUnit, Vec2{static_cast<float>(x0 + i) + 0.5f, cy});
-                    const float u = std::clamp(uv.x, 0.0f, 1.0f);
-                    const float v = std::clamp(uv.y, 0.0f, 1.0f);
-                    const float su = p.uv0.x + u * (p.uv1.x - p.uv0.x);
-                    const float sv = p.uv0.y + v * (p.uv1.y - p.uv0.y);
-                    texel = premulSample(sampleBilinear(*image, su, sv), one, alphaMask);
+            forPieces(region, y, sx0, sx1, hint, [&](int x0, int x1) {
+                const int n = x1 - x0;
+                const uint8_t* clipRow =
+                    clipMask != nullptr ? clipMask + static_cast<size_t>(y) * static_cast<size_t>(clipWidth)
+                                        : nullptr;
+                const f32x4 kv = vsplat(static_cast<float>(coverage) / 255.0f);
+                const float cy = static_cast<float>(y) + 0.5f;
+                for (int i = 0; i < n; ++i) {
+                    float* out = span + static_cast<size_t>(i) * 4;
+                    f32x4 texel = one;
+                    if (image != nullptr) {
+                        const Vec2 uv = apply(deviceToUnit, Vec2{static_cast<float>(x0 + i) + 0.5f, cy});
+                        const float u = std::clamp(uv.x, 0.0f, 1.0f);
+                        const float v = std::clamp(uv.y, 0.0f, 1.0f);
+                        const float su = p.uv0.x + u * (p.uv1.x - p.uv0.x);
+                        const float sv = p.uv0.y + v * (p.uv1.y - p.uv0.y);
+                        texel = premulSample(sampleBilinear(*image, su, sv), one, alphaMask);
+                    }
+                    simd::store(out, simd::mul(simd::mul(texel, tintV), kv));
                 }
-                simd::store(out, simd::mul(simd::mul(texel, tintV), kv));
-            }
-            if (additive) {
-                addSpan(row, x0, n, span, clipRow);
-            } else {
-                blendSpan(row, x0, n, span, clipRow, false);
-            }
+                if (additive) {
+                    addSpan(row, x0, n, span, clipRow);
+                } else {
+                    blendSpan(row, x0, n, span, clipRow, false);
+                }
+            });
         });
     }
 }
 
 void drawImage(Target& target, Rasterizer& raster, const Mat2x3& deviceXf, const ImageCmd& cmd,
-               const ImageData& image, const uint8_t* clipMask, int clipWidth, ImageScratch& scratch) {
+               const ImageData& image, const uint8_t* clipMask, int clipWidth, ImageScratch& scratch,
+               const WriteRegion* region) {
     if (image.width <= 0 || image.height <= 0 || image.rgba.empty()) {
         return;
     }
@@ -541,15 +589,15 @@ void drawImage(Target& target, Rasterizer& raster, const Mat2x3& deviceXf, const
     }
 
     if (deviceXf.b == 0.0f && deviceXf.c == 0.0f) {
-        drawImageAxisAligned(target, raster, inverse, cmd, image, clipMask, clipWidth, scratch);
+        drawImageAxisAligned(target, raster, inverse, cmd, image, clipMask, clipWidth, scratch, region);
     } else {
-        drawImageGeneral(target, raster, inverse, cmd, image, clipMask, clipWidth, scratch);
+        drawImageGeneral(target, raster, inverse, cmd, image, clipMask, clipWidth, scratch, region);
     }
 }
 
 void drawImageQuad(Target& target, Rasterizer& raster, const Vec2 q[4], Rect srcUv, float opacity,
                    uint8_t smooth, const ImageData& image, const uint8_t* clipMask, int clipWidth,
-                   ImageScratch& scratch) {
+                   ImageScratch& scratch, const WriteRegion* region) {
     if (image.width <= 0 || image.height <= 0 || image.rgba.empty()) {
         return;
     }
@@ -574,7 +622,7 @@ void drawImageQuad(Target& target, Rasterizer& raster, const Vec2 q[4], Rect src
         cmd.srcUv = srcUv;
         cmd.opacity = opacity;
         cmd.smooth = smooth;
-        drawImage(target, raster, cmd.xf, cmd, image, clipMask, clipWidth, scratch);
+        drawImage(target, raster, cmd.xf, cmd, image, clipMask, clipWidth, scratch, region);
         return;
     }
     // Device-space extent: `target` may be a bounded effect/layer buffer with an origin offset, but
@@ -587,42 +635,45 @@ void drawImageQuad(Target& target, Rasterizer& raster, const Vec2 q[4], Rect src
     const f32x4 zero = vsplat(0.0f);
     scratch.span.resize(static_cast<size_t>(target.w) * 4);
     float* span = scratch.span.data();
+    size_t hint = 0;
 
-    raster.sweep(FillRule::NonZero, [&](int y, int x0, int x1, uint8_t coverage) {
+    sweepRegion(raster, region, [&](int y, int sx0, int sx1, uint8_t coverage) {
         if (coverage == 0) {
             return;
         }
         DstRow row;
-        if (!row.resolve(target, y, x0, x1)) {
+        if (!row.resolve(target, y, sx0, sx1)) {
             return;
         }
-        const int n = x1 - x0;
-        const uint8_t* clipRow = clipMask != nullptr
-                                     ? clipMask + static_cast<size_t>(y) * static_cast<size_t>(clipWidth)
-                                     : nullptr;
-        const float k = (static_cast<float>(coverage) / 255.0f) * opacity;
-        const f32x4 kv = vsplat(k);
-        f32x4 minv = vsplat(1.0f);
-        const float cy = static_cast<float>(y) + 0.5f;
-        for (int i = 0; i < n; ++i) {
-            float* out = span + static_cast<size_t>(i) * 4;
-            const Vec2 uv = mat3Apply(hinv, Vec2{static_cast<float>(x0 + i) + 0.5f, cy});
-            if (uv.x < 0.0f || uv.x > 1.0f || uv.y < 0.0f || uv.y > 1.0f) {
-                // Outside the quad's own uv square: alpha 0, which blendSpan skips.
-                simd::store(out, zero);
-                minv = zero;
-                continue;
+        forPieces(region, y, sx0, sx1, hint, [&](int x0, int x1) {
+            const int n = x1 - x0;
+            const uint8_t* clipRow = clipMask != nullptr
+                                         ? clipMask + static_cast<size_t>(y) * static_cast<size_t>(clipWidth)
+                                         : nullptr;
+            const float k = (static_cast<float>(coverage) / 255.0f) * opacity;
+            const f32x4 kv = vsplat(k);
+            f32x4 minv = vsplat(1.0f);
+            const float cy = static_cast<float>(y) + 0.5f;
+            for (int i = 0; i < n; ++i) {
+                float* out = span + static_cast<size_t>(i) * 4;
+                const Vec2 uv = mat3Apply(hinv, Vec2{static_cast<float>(x0 + i) + 0.5f, cy});
+                if (uv.x < 0.0f || uv.x > 1.0f || uv.y < 0.0f || uv.y > 1.0f) {
+                    // Outside the quad's own uv square: alpha 0, which blendSpan skips.
+                    simd::store(out, zero);
+                    minv = zero;
+                    continue;
+                }
+                const float su = std::clamp(srcUv.x + uv.x * srcUv.w, 0.0f, 1.0f);
+                const float sv = std::clamp(srcUv.y + uv.y * srcUv.h, 0.0f, 1.0f);
+                const f32x4 s = smooth != 0 ? sampleBilinear(image, su, sv) : sampleNearest(image, su, sv);
+                minv = simd::min(minv, s);
+                simd::store(out, premulSample(s, kv, alphaMask));
             }
-            const float su = std::clamp(srcUv.x + uv.x * srcUv.w, 0.0f, 1.0f);
-            const float sv = std::clamp(srcUv.y + uv.y * srcUv.h, 0.0f, 1.0f);
-            const f32x4 s = smooth != 0 ? sampleBilinear(image, su, sv) : sampleNearest(image, su, sv);
-            minv = simd::min(minv, s);
-            simd::store(out, premulSample(s, kv, alphaMask));
-        }
-        float mins[4];
-        simd::store(mins, minv);
-        const bool allOpaque = mins[3] >= 1.0f && coverage == 255 && opacity == 1.0f;
-        blendSpan(row, x0, n, span, clipRow, allOpaque);
+            float mins[4];
+            simd::store(mins, minv);
+            const bool allOpaque = mins[3] >= 1.0f && coverage == 255 && opacity == 1.0f;
+            blendSpan(row, x0, n, span, clipRow, allOpaque);
+        });
     });
 }
 
@@ -710,7 +761,7 @@ void axisFromVertices(const double pos[3], const double uv[3], double& origin, d
 /// path (sampleAxisSpan); any other triangle maps every pixel center back to (u, v).
 void drawAffineTriangle(Target& target, const MeshVertex& m0, const MeshVertex& m1, const MeshVertex& m2,
                         float opacity, bool smooth, const ImageData& image, const uint8_t* clipMask,
-                        int clipWidth, ImageScratch& scratch) {
+                        int clipWidth, ImageScratch& scratch, const WriteRegion* region) {
     const MeshVertex* v[3] = {&m0, &m1, &m2};
     for (const MeshVertex* p : v) {
         if (!(std::fabs(p->p.x) <= kTriMaxCoord) || !(std::fabs(p->p.y) <= kTriMaxCoord) ||
@@ -797,6 +848,7 @@ void drawAffineTriangle(Target& target, const MeshVertex& m0, const MeshVertex& 
                       static_cast<float>(pv[0] - dvdx * px[0] - dvdy * py[0])};
     }
 
+    size_t hint = 0;
     for (int64_t yy = rowLo; yy <= rowHi; ++yy) {
         const int y = static_cast<int>(yy);
         int64_t lo = colLo;
@@ -805,40 +857,42 @@ void drawAffineTriangle(Target& target, const MeshVertex& m0, const MeshVertex& 
             !clipRowToEdge(edges[2], y, lo, hi)) {
             continue;
         }
-        int x0 = static_cast<int>(lo);
-        int x1 = static_cast<int>(hi) + 1;
+        int sx0 = static_cast<int>(lo);
+        int sx1 = static_cast<int>(hi) + 1;
         DstRow row;
-        if (!row.resolve(target, y, x0, x1)) {
+        if (!row.resolve(target, y, sx0, sx1)) {
             continue;
         }
-        const int n = x1 - x0;
+        const int n = sx1 - sx0;
         const uint8_t* clipRow = clipMask != nullptr
                                      ? clipMask + static_cast<size_t>(y) * static_cast<size_t>(clipWidth)
                                      : nullptr;
-        bool opaqueSrc = false;
-        if (axisAligned) {
-            const AxisMap ym =
-                makeAxisMap(1.0, 0.0, oy, sizeY, 0.0, 1.0, static_cast<double>(image.height), offset, y);
-            AxisMap xm = xmAnchor;
-            xm.base += xm.step * static_cast<int64_t>(x0 - static_cast<int>(colLo));
-            opaqueSrc =
-                sampleAxisSpan(image, smooth, xm, ym.at(0), n, kv, alphaMask, span, scratch.row.data());
-        } else {
-            f32x4 minv = vsplat(1.0f);
-            const float cy = static_cast<float>(y) + 0.5f;
-            for (int i = 0; i < n; ++i) {
-                const Vec2 uv = apply(toUv, Vec2{static_cast<float>(x0 + i) + 0.5f, cy});
-                const float su = std::clamp(uv.x, 0.0f, 1.0f);
-                const float sv = std::clamp(uv.y, 0.0f, 1.0f);
-                const f32x4 s = smooth ? sampleBilinear(image, su, sv) : sampleNearest(image, su, sv);
-                minv = simd::min(minv, s);
-                simd::store(span + static_cast<size_t>(i) * 4, premulSample(s, kv, alphaMask));
+        forPieces(region, y, sx0, sx1, hint, [&](int x0, int x1) {
+            bool opaqueSrc = false;
+            if (axisAligned) {
+                const AxisMap ym =
+                    makeAxisMap(1.0, 0.0, oy, sizeY, 0.0, 1.0, static_cast<double>(image.height), offset, y);
+                AxisMap xm = xmAnchor;
+                xm.base += xm.step * static_cast<int64_t>(sx0 - static_cast<int>(colLo));
+                opaqueSrc = sampleAxisSpan(image, smooth, xm, ym.at(0), n, x0 - sx0, x1 - sx0, kv, alphaMask,
+                                           span, scratch.row.data());
+            } else {
+                f32x4 minv = vsplat(1.0f);
+                const float cy = static_cast<float>(y) + 0.5f;
+                for (int i = 0; i < x1 - x0; ++i) {
+                    const Vec2 uv = apply(toUv, Vec2{static_cast<float>(x0 + i) + 0.5f, cy});
+                    const float su = std::clamp(uv.x, 0.0f, 1.0f);
+                    const float sv = std::clamp(uv.y, 0.0f, 1.0f);
+                    const f32x4 s = smooth ? sampleBilinear(image, su, sv) : sampleNearest(image, su, sv);
+                    minv = simd::min(minv, s);
+                    simd::store(span + static_cast<size_t>(i) * 4, premulSample(s, kv, alphaMask));
+                }
+                float mins[4];
+                simd::store(mins, minv);
+                opaqueSrc = mins[3] >= 1.0f;
             }
-            float mins[4];
-            simd::store(mins, minv);
-            opaqueSrc = mins[3] >= 1.0f;
-        }
-        blendSpan(row, x0, n, span, clipRow, opaqueSrc && opacity == 1.0f);
+            blendSpan(row, x0, x1 - x0, span, clipRow, opaqueSrc && opacity == 1.0f);
+        });
     }
 }
 
@@ -846,7 +900,7 @@ void drawAffineTriangle(Target& target, const MeshVertex& m0, const MeshVertex& 
 
 void drawImageMesh(Target& target, const MeshVertex* vertices, uint32_t vertexCount, const uint16_t* indices,
                    uint32_t indexCount, float opacity, uint8_t smooth, const ImageData& image,
-                   const uint8_t* clipMask, int clipWidth, ImageScratch& scratch) {
+                   const uint8_t* clipMask, int clipWidth, ImageScratch& scratch, const WriteRegion* region) {
     if (image.width <= 0 || image.height <= 0 || image.rgba.empty() || !(opacity > 0.0f)) {
         return;
     }
@@ -858,7 +912,7 @@ void drawImageMesh(Target& target, const MeshVertex* vertices, uint32_t vertexCo
             continue;  // Out-of-range index (never produced by the Painter): skipped.
         }
         drawAffineTriangle(target, vertices[i0], vertices[i1], vertices[i2], opacity, smooth != 0, image,
-                           clipMask, clipWidth, scratch);
+                           clipMask, clipWidth, scratch, region);
     }
 }
 

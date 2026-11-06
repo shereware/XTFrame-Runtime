@@ -86,7 +86,7 @@
 ///                    [--height H] [--ui <id>] [--no-flow] [--strict]
 ///                    [--msaa N] [--screenshot PATH] [--flow <file.xtflow>] [--headless] [--transparent]
 ///                    [--frames N]
-///                    [--print-text <id>] [--perf] [--perf-csv <file>] [--show-damage]
+///                    [--print-text <id>] [--perf] [--perf-csv <file>] [--show-damage] [--partial]
 ///                    [--event "<frame> #<id>.<Port>[=<value>]"] [--pointer "<frame> <x> <y> [move|down|up]"]
 ///                    [--dump-flow-values] [--dump-every N] [--dump-commands]
 ///                    [--bind-texture <name>=<file.png>]
@@ -243,6 +243,13 @@
 /// also computed (without the overlay) under --perf, which then reports the `damage` phase time
 /// and the average share of the viewport the rectangles covered.
 ///
+/// --partial (T-642, Docs/design/23-host-integration.md §23.3) makes the --headless software path
+/// redraw like a host does: every frame after the first whose DamageList is not `full` clears only
+/// the dirty rectangles (SwRenderer::clearRects) and passes the DamageList to SwRenderer::render,
+/// so --perf / --perf-csv measure the partial-redraw cost instead of a full repaint per frame. A
+/// `full` frame (and frame 0) is cleared and drawn whole. It needs --headless and the default
+/// renderer; --show-damage is ignored with it (the outline would stay in the kept pixels).
+///
 /// --strict (T-392) compiles `.xt` input with CompileOptions::strict and, when a --headless run
 /// ends, prints every Document::warnings() entry as `xtframe-view: warning: <message>` on stderr
 /// (27 §27.3.2: a virtualized `<repeat>` whose viewport is 0 px high).
@@ -392,6 +399,7 @@ struct Args {
     int secondHeight = 0;
     bool perf = false;
     bool showDamage = false;
+    bool partial = false;  // T-642: --partial (headless SW redraws only the damage).
     bool dumpFlowValues = false;
     bool dumpCommands = false;  // T-202: print the last headless frame's CommandList.
     std::string dumpPorts;      // T-401: --dump-ports <file>: the main UI's port table as JSON.
@@ -1019,6 +1027,8 @@ bool parseArgs(int argc, char** argv, Args& out) {
             out.synthPorts = static_cast<uint32_t>(std::strtoul(v.c_str(), nullptr, 10));
         } else if (arg == "--show-damage") {
             out.showDamage = true;
+        } else if (arg == "--partial") {
+            out.partial = true;
         } else if (arg == "--perf-csv") {
             if (!needValue("--perf-csv", out.perfCsv)) {
                 return false;
@@ -1595,6 +1605,8 @@ void printUsage(std::FILE* out) {
         "  --synth-ports N         measurement: write the first N document-level number ports\n"
         "                          every frame (a different 0..100 triangle wave each)\n"
         "  --show-damage           outline the dirty rectangles (needs --headless)\n"
+        "  --partial               headless: redraw only the dirty rectangles each frame (the\n"
+        "                          DamageList goes to the software renderer, as a host does)\n"
         "  --bind-texture <name>=<file.png>\n"
         "                          bind the PNG as the host texture `engine://<name>` (repeatable;\n"
         "                          --headless binds its CPU pixels)\n"
@@ -2822,7 +2834,17 @@ int main(int argc, char** argv) {
         xt::DamageList damage;
         // T-98: the damage diff needs the previous frame's command list, which Context::render()
         // takes back out of `list` -- so `list` is never cleared here.
-        bool trackDamage = args.perf || args.showDamage || !args.scene.empty();  // T-343: bands
+        // T-642: --partial hands the DamageList to the plain software path below.
+        const bool partialRedraw = args.partial && !frameTarget && scene.empty();
+        if (args.partial && !partialRedraw) {
+            std::fprintf(stderr,
+                         "xtframe-view: --partial applies to the default software path only; ignored\n");
+        }
+        if (partialRedraw && args.showDamage) {
+            std::fprintf(stderr, "xtframe-view: --show-damage is ignored with --partial\n");
+        }
+        const bool showDamage = args.showDamage && !partialRedraw;
+        bool trackDamage = args.perf || showDamage || partialRedraw || !args.scene.empty();  // T-343: bands
         float damageAreaSum = 0.0f;
         const float dt = 1.0f / 60.0f;
         uint32_t frameCount = args.frames > 0 ? args.frames : 1;
@@ -2882,10 +2904,18 @@ int main(int argc, char** argv) {
                 renderer.render(list, &shaper, &assets, irView, &ctx.perf(), trackDamage ? &damage : nullptr);
             } else {
                 renderer.setTarget(target);
-                renderer.clear(args.transparent ? xt::Color{0, 0, 0, 0} : xt::Color{1, 1, 1, 1});
-                renderer.render(list, &shaper, &assets, irView, &ctx.perf());
+                const xt::Color clearColor = args.transparent ? xt::Color{0, 0, 0, 0} : xt::Color{1, 1, 1, 1};
+                if (partialRedraw && frame != 0 && !damage.full) {
+                    // T-642: as a host keeps its texture -- only the dirty rectangles are cleared
+                    // and redrawn; every other pixel still holds the previous frame.
+                    renderer.clearRects(clearColor, damage.rects);
+                    renderer.render(list, &shaper, &assets, irView, &ctx.perf(), &damage);
+                } else {
+                    renderer.clear(clearColor);
+                    renderer.render(list, &shaper, &assets, irView, &ctx.perf());
+                }
             }
-            if (args.showDamage) {
+            if (showDamage) {
                 drawDamageOverlay(pixels.data(), args.width, args.height, strideBytes, damage);
             }
             if (csv) {
@@ -2999,6 +3029,9 @@ int main(int argc, char** argv) {
         // Docs/design/23-host-integration.md §23.3: the GL backend has no partial repaint and no
         // overlay pass, so the flag is accepted and ignored outside --headless.
         std::fprintf(stderr, "xtframe-view: --show-damage needs --headless (software backend); ignored\n");
+    }
+    if (args.partial) {
+        std::fprintf(stderr, "xtframe-view: --partial needs --headless (software backend); ignored\n");
     }
 
     xt::shell::App app(windowConfig);

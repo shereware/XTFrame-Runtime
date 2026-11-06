@@ -110,6 +110,7 @@ add_executable(xt_tests
     unit/test_perf.cpp
     unit/test_public_headers.cpp
     unit/test_simd.cpp
+    unit/test_sw_layer_simd.cpp  # T-643
     unit/test_field_fixes.cpp
     unit/test_timeline_group.cpp
     unit/test_external_media.cpp
