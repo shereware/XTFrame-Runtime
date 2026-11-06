@@ -17,6 +17,8 @@
 xt_surface::~xt_surface() { teardown(); }
 
 void xt_surface::teardown() {
+    // T-636: the GPU resources and the attachment go first (they hold nothing of the Context).
+    xt::capi::detachGpu(*this);
     // 50.3: ports -> bundle context (its flows) -> context.
     ports.reset();
     bundleCtx.reset();
@@ -464,6 +466,12 @@ XT_CAPI xt_status xt_surface_render(xt_surface* s, void* rgba, int stride_bytes,
             return fail(XT_STATUS_INVALID_ARGUMENT,
                         "xt_surface_render: rgba is NULL or stride_bytes < width * 4");
         }
+        if (s->renderPath == xt::capi::RenderPath::Gpu) {  // T-636 (50 §50.z): never mixed
+            return fail(
+                XT_STATUS_UNSUPPORTED,
+                "xt_surface_render: the surface renders to a GPU target; call xt_surface_detach_gpu first");
+        }
+        s->renderPath = xt::capi::RenderPath::Software;
         xt::capi::DispatchScope scope(*s);
         xt::sw::SwTarget target;
         target.rgba = static_cast<uint8_t*>(rgba);
@@ -777,6 +785,9 @@ XT_CAPI xt_status xt_surface_frame_stats(const xt_surface* s, xt_frame_stats* ou
         out->render_ms = frame.renderMs;
         out->executed_draws = s->renderer.lastExecutedDrawCommands();
         out->skipped_draws = s->renderer.lastSkippedDrawCommands();
+        if (s->renderPath == xt::capi::RenderPath::Gpu) {  // T-636: the GPU renderer's counters
+            (void)xt::capi::gpuDrawCounts(*s, out->executed_draws, out->skipped_draws);
+        }
         return XT_STATUS_OK;
     });
 }

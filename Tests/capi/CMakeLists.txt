@@ -42,6 +42,7 @@ add_executable(xt_capi_tests
     test_capi.cpp
     test_capi_l10n.cpp
     test_capi_state.cpp
+    test_capi_gpu.cpp
 )
 add_dependencies(xt_capi_tests xt_capi_test_bundles)
 target_include_directories(xt_capi_tests SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/Code/SDKs/doctest)
@@ -58,6 +59,11 @@ target_compile_definitions(xt_capi_tests PRIVATE
 # shared library alone. nlohmann reads the packed manifest for case 2.
 target_include_directories(xt_capi_tests PRIVATE ${PROJECT_SOURCE_DIR}/Code/Runtime/core/include)
 target_link_libraries(xt_capi_tests PRIVATE xt_capi xt_nlohmann)
+# T-636: the GPU target cases need a library built with xt_wgpu (and wgpu-native next to the tests).
+if(TARGET xt_wgpu)
+    target_compile_definitions(xt_capi_tests PRIVATE XT_CAPI_TEST_HAS_WGPU)
+    xt_copy_runtime_library(xt_capi_tests xt::wgpu_native)
+endif()
 xt_enable_exceptions(xt_capi_tests)
 xt_no_rtti(xt_capi_tests)
 xt_set_warnings(xt_capi_tests)

@@ -51,7 +51,8 @@ extern "C" {
 typedef enum xt_status {            /* = xt::Status */
     XT_STATUS_OK = 0, XT_STATUS_INVALID_ARGUMENT, XT_STATUS_INVALID_IR, XT_STATUS_NOT_FOUND,
     XT_STATUS_OUT_OF_RANGE, XT_STATUS_UNSUPPORTED, XT_STATUS_IO_ERROR, XT_STATUS_INTERNAL,
-    XT_STATUS_INCOMPATIBLE
+    XT_STATUS_INCOMPATIBLE,
+    XT_STATUS_BUSY                  /* T-636 (50.z, appended; no xt::Status counterpart): still in use */
 } xt_status;
 
 typedef struct xt_bundle xt_bundle;      /* opaque */
@@ -288,6 +289,79 @@ XT_CAPI xt_status xt_surface_set_update_hook(xt_surface* s, xt_update_hook_fn fn
    inside a callback -> XT_STATUS_UNSUPPORTED (as hot_reload). */
 XT_CAPI const char* xt_surface_save_state(xt_surface* s);
 XT_CAPI xt_status xt_surface_load_state(xt_surface* s, const char* json);
+
+/* T-636 (Docs/design/50-c-abi.md 50.z; appended, ABI version unchanged): the GPU target, drawn with
+   xt_wgpu (wgpu-native, shipped next to the library). The library owns the WebGPU instance, adapter,
+   device and swapchain (or offscreen texture) of a target. Frame order:
+     xt_gpu_target_begin_frame -> xt_surface_render_gpu (any number, any surfaces) -> xt_gpu_target_end_frame.
+   Surfaces are composited inside the target in call order (a later call is drawn over an earlier one,
+   premultiplied source-over); `dest` is a rectangle in target pixels (NULL = the whole target). A
+   surface renders at its own size (xt_surface_resize) and is scaled linearly into `dest` when the sizes
+   differ (the host computes any fit rectangle).
+   Attachment: the first xt_surface_render_gpu of a surface attaches it to that target (its own renderer,
+   glyph atlas and texture cache on the target's device). A surface attached to one target given to
+   another -> XT_STATUS_INVALID_ARGUMENT ("attached to another target"); a surface that has used
+   xt_surface_render cannot use xt_surface_render_gpu, nor the reverse -> XT_STATUS_UNSUPPORTED, until
+   xt_surface_detach_gpu (which also releases the GPU resources; destroying the surface does too).
+   xt_gpu_target_destroy with surfaces still attached -> XT_STATUS_BUSY, nothing destroyed.
+   Resize, device pixel ratio and input of a surface are unchanged. xt_frame_stats.render_ms of a GPU
+   frame is the CPU time of building and submitting it (no present wait).
+   A build without wgpu (XT_BUILD_WGPU=OFF): xt_gpu_target_create returns NULL with last_error
+   "built without wgpu"; every other function here returns XT_STATUS_UNSUPPORTED. */
+/* clang-format off */
+typedef struct xt_gpu_target xt_gpu_target;  /* opaque */
+
+typedef enum xt_window_kind {
+    XT_WINDOW_NONE = 0,  /* no window: an offscreen RGBA8 texture (headless, conformance, readback) */
+    XT_WINDOW_WIN32,
+    XT_WINDOW_COCOA,
+    XT_WINDOW_X11,
+    XT_WINDOW_WAYLAND
+} xt_window_kind;
+
+typedef struct xt_native_window {
+    int kind;  /* xt_window_kind */
+    union {
+        struct { void* hwnd; } win32;                          /* HWND */
+        struct { void* ns_window; } cocoa;                     /* NSWindow*; call create on the main thread */
+        struct { void* display; uint64_t window; } x11;        /* Display*, Window */
+        struct { void* display; void* surface; } wayland;      /* wl_display*, wl_surface* */
+    } u;
+} xt_native_window;
+
+typedef struct xt_gpu_target_desc {
+    uint32_t struct_size;     /* = sizeof(xt_gpu_target_desc) */
+    xt_native_window window;
+    int width, height;        /* pixels (> 0) */
+    int vsync;                /* 1: Fifo; 0: Immediate, else Mailbox, else Fifo (windows only) */
+    const char* backend;      /* NULL or "" = the XT_WGPU_BACKEND rule; else vulkan|d3d12|metal|gl */
+} xt_gpu_target_desc;
+
+/* NULL + last_error when no adapter / device can be had (the host falls back to xt_surface_render),
+   the window gives no surface, the backend name is unknown, or the build has no wgpu. */
+XT_CAPI xt_gpu_target* xt_gpu_target_create(const xt_gpu_target_desc* desc);
+/* Surfaces still attached -> XT_STATUS_BUSY (destroy them or xt_surface_detach_gpu first). NULL -> OK. */
+XT_CAPI xt_status xt_gpu_target_destroy(xt_gpu_target* t);
+/* New size in pixels (swapchain reconfigured / offscreen texture recreated); not inside a frame. */
+XT_CAPI xt_status xt_gpu_target_resize(xt_gpu_target* t, int width, int height);
+/* Starts a frame: acquires the swapchain texture and clears it to `clear_rgba` (straight alpha, each
+   0..1; NULL = transparent). A window whose texture cannot be had this frame (minimized) still returns
+   OK: the surfaces still render, nothing is composited or presented. */
+XT_CAPI xt_status xt_gpu_target_begin_frame(xt_gpu_target* t, const float clear_rgba[4]);
+/* Presents the frame (XT_WINDOW_NONE: only submits). */
+XT_CAPI xt_status xt_gpu_target_end_frame(xt_gpu_target* t);
+/* Blocking copy of the target into `rgba` (premultiplied RGBA8, row 0 = top, `stride` bytes per row,
+   >= width * 4). XT_WINDOW_NONE: any time after end_frame (or inside a frame); a window: only between
+   begin_frame and end_frame, and only when its swapchain allows copies (else UNSUPPORTED). For tests
+   and conformance. */
+XT_CAPI xt_status xt_gpu_target_readback(xt_gpu_target* t, void* rgba, int stride);
+/* Renders `s` (after xt_surface_update, as xt_surface_render) and composites it into `dest` of the
+   frame `t` has begun (outside begin_frame / end_frame -> XT_STATUS_INVALID_ARGUMENT). */
+XT_CAPI xt_status xt_surface_render_gpu(xt_surface* s, xt_gpu_target* t, const xt_rect* dest);
+/* Releases the GPU resources of `s` and detaches it from its target; then either render path may be
+   used. A surface that is not attached -> OK (and it may use either path again). */
+XT_CAPI xt_status xt_surface_detach_gpu(xt_surface* s);
+/* clang-format on */
 
 #ifdef __cplusplus
 } /* extern "C" */

@@ -54,10 +54,15 @@ add_library(xt_wgpu STATIC
     src/wgpu_custom.cpp
     src/wgpu_geometry.cpp
     src/wgpu_renderer.cpp
+    src/wgpu_window.cpp
     "${xt_wgsl_header}"
 )
 target_include_directories(xt_wgpu PUBLIC include)
 target_include_directories(xt_wgpu PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/gen")
 target_link_libraries(xt_wgpu PUBLIC xt_core xt_gpu xt::wgpu_native)
+if(APPLE)
+    # T-636 (wgpu_window.cpp): an NSWindow's CAMetalLayer through the Objective-C runtime.
+    target_link_libraries(xt_wgpu PUBLIC objc "-framework QuartzCore" "-framework AppKit")
+endif()
 xt_set_warnings(xt_wgpu)
 xt_no_exceptions_rtti(xt_wgpu)

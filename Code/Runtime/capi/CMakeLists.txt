@@ -11,6 +11,7 @@ set(xt_capi_sources
     src/capi_bundle.cpp
     src/capi_surface.cpp
     src/capi_ports.cpp
+    src/capi_gpu.cpp
 )
 if(EMSCRIPTEN)
     add_library(xt_capi STATIC ${xt_capi_sources})
@@ -34,6 +35,21 @@ target_link_libraries(xt_capi PRIVATE xt_core xt_bundle xt_flow xt_sw xt_nlohman
 if(XT_BUILD_TEXT)
     target_link_libraries(xt_capi PRIVATE xt_text)
     target_compile_definitions(xt_capi PRIVATE XT_CAPI_HAS_TEXT)
+endif()
+# T-636 (50 §50.z): the GPU target over xt_wgpu when this build has it (the top level adds this directory
+# after Code/Runtime/wgpu); without it src/capi_gpu.cpp only reports "built without wgpu". wgpu-native's
+# shared library is copied next to the library after each build (the same POST_BUILD copy as xtframe-view,
+# Tools/CMake/xt_runtime_output.cmake), so bin/<platform>/<Config>/ holds xtframe + wgpu_native together.
+if(TARGET xt_wgpu)
+    target_link_libraries(xt_capi PRIVATE xt_wgpu)
+    target_compile_definitions(xt_capi PRIVATE XT_CAPI_HAS_WGPU)
+    xt_copy_runtime_library(xt_capi xt::wgpu_native)
+    # Linux / macOS: find libwgpu_native next to libxtframe wherever the pair is copied (untested there).
+    if(APPLE)
+        set_target_properties(xt_capi PROPERTIES BUILD_RPATH "@loader_path" INSTALL_RPATH "@loader_path")
+    elseif(NOT WIN32 AND NOT EMSCRIPTEN)
+        set_target_properties(xt_capi PROPERTIES BUILD_RPATH "$ORIGIN" INSTALL_RPATH "$ORIGIN")
+    endif()
 endif()
 
 # xt_capi_make_pic(<target>) (T-552, 2026-10-31 spec review 7.5): the static libraries a shared library links

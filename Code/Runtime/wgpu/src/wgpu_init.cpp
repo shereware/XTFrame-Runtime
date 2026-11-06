@@ -119,9 +119,9 @@ WGPUAdapter requestAdapter(WGPUInstance instance, bool forceFallback, WGPUBacken
     return req.adapter;
 }
 
-/// XT_WGPU_BACKEND -> instance backend mask; false for an unknown name.
-bool backendFromEnv(WGPUInstanceBackend& mask, std::string& name) {
-    name = envString("XT_WGPU_BACKEND");
+/// `name` (XT_WGPU_BACKEND, or WgpuHeadlessOptions::backend) -> instance backend mask; empty = the
+/// primary backends; false for an unknown name.
+bool backendFromName(const std::string& name, WGPUInstanceBackend& mask) {
     if (name.empty()) {
         mask = WGPUInstanceBackend_Primary;
         return true;
@@ -154,9 +154,11 @@ WgpuInit WgpuInit::headless(const WgpuHeadlessOptions& options) {
     r.targetFormat = options.targetFormat;
     r.sampleCount = options.sampleCount;
     WGPUInstanceBackend backends = WGPUInstanceBackend_Primary;
-    std::string backendName;
-    if (!backendFromEnv(backends, backendName)) {
-        r.error = "XT_WGPU_BACKEND=" + backendName + " is not one of vulkan, d3d12, metal, gl";
+    const bool fromOptions = !options.backend.empty();
+    const std::string backendName = fromOptions ? options.backend : envString("XT_WGPU_BACKEND");
+    if (!backendFromName(backendName, backends)) {
+        r.error = (fromOptions ? "backend '" + backendName + "'" : "XT_WGPU_BACKEND=" + backendName) +
+                  " is not one of vulkan, d3d12, metal, gl";
         return r;
     }
     WGPUInstanceExtras extras;
@@ -194,9 +196,11 @@ WgpuInit WgpuInit::headless(const WgpuHeadlessOptions& options) {
         r.adapter = requestAdapter(r.instance, fallback, backend, message);
     }
     if (r.adapter == nullptr) {
-        r.error = "no WebGPU adapter" +
-                  (backendName.empty() ? std::string() : " for XT_WGPU_BACKEND=" + backendName) + " (" +
-                  message + ")";
+        r.error =
+            "no WebGPU adapter" +
+            (backendName.empty() ? std::string()
+                                 : (fromOptions ? " for backend " : " for XT_WGPU_BACKEND=") + backendName) +
+            " (" + message + ")";
         r.release();
         return r;
     }

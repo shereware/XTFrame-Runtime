@@ -15,6 +15,7 @@
 #include "xt/perf.h"
 #include "xt/types.h"
 #include "xt/wgpu/wgpu_renderer.h"
+#include "xt/wgpu/wgpu_window.h"
 
 namespace xt {
 class TextShaper;
@@ -33,9 +34,9 @@ class GlyphAtlas;
 ///
 /// Device: `WgpuInit::headless()` -- the one place that reads XT_WGPU_BACKEND and XT_WGPU_FALLBACK
 /// (10 §10.10.1) -- then the surface is created on that instance and checked against the adapter.
-/// Surface: the preferred non-sRGB 8-bit format (BGRA8Unorm, else RGBA8Unorm, else the first one
-/// offered), Fifo (vsync) or Immediate / Mailbox, RENDER_ATTACHMENT (+ COPY_SRC when offered, so
-/// `readPixels` works on a window), reconfigured on resize and on an outdated / lost texture.
+/// Surface: `xt::wgpu::WgpuWindowSurface` (format, usage and present mode as its header says;
+/// COPY_SRC when offered, so `readPixels` works on a window), reconfigured on resize and on an
+/// outdated / lost texture.
 /// 4x MSAA is done inside WgpuDevice (a 4x attachment resolving into the frame's view); every frame
 /// clears, so a 4x surface never needs the host-content load that would ask for TEXTURE_BINDING.
 
@@ -92,18 +93,15 @@ public:
 
 private:
     bool initDevice(uint32_t sampleCount, WGPUTextureFormat format);
-    void configureSurface();
     void releaseFrame();
     void releaseOffscreen();
 
     xt::wgpu::WgpuInit m_init;
     xt::wgpu::WgpuRenderer m_renderer;
-    WGPUSurface m_surface = nullptr;
+    xt::wgpu::WgpuWindowSurface m_surface;
     WGPUTextureFormat m_format = WGPUTextureFormat_BGRA8Unorm;
-    WGPUTextureUsage m_usage = WGPUTextureUsage_RenderAttachment;
-    WGPUPresentMode m_presentMode = WGPUPresentMode_Fifo;
     WGPUTexture m_offscreen = nullptr;
-    WGPUTexture m_frameTexture = nullptr;  // surface texture of the current frame (owned)
+    WGPUTexture m_frameTexture = nullptr;  // the current frame's texture (the surface's or m_offscreen)
     WGPUTextureView m_frameView = nullptr;
     bool m_frameFromSurface = false;
     int m_width = 0, m_height = 0;

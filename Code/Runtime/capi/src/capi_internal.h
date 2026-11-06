@@ -28,6 +28,17 @@
 
 namespace xt::capi {
 
+/// T-636 (50 §50.z): the GPU resources of a surface attached to an `xt_gpu_target` (capi_gpu.cpp;
+/// empty without wgpu). Deleted through SurfaceGpuDeleter, defined where the type is complete.
+struct SurfaceGpu;
+struct SurfaceGpuDeleter {
+    void operator()(SurfaceGpu* gpu) const noexcept;
+};
+
+/// T-636: the render path a surface has used since its creation or its last xt_surface_detach_gpu
+/// (the two are never mixed, 50 §50.z).
+enum class RenderPath : uint8_t { None, Software, Gpu };
+
 /// Strings handed out by one object: a ring of kScratchSlots, so a pointer stays valid at least
 /// until the next call on that object (50.2 "strings").
 inline constexpr size_t kScratchSlots = 8;
@@ -213,6 +224,11 @@ struct xt_surface : public xt::ContextListener {
     /// T-635 (50 §50.y): the last xt_surface_save_state() text; its pointer stays valid until the
     /// next save_state / destroy / hot_reload on this surface.
     std::string stateJson;
+    /// T-636 (50 §50.z): the render path in use, the target the surface is attached to (Gpu only)
+    /// and its GPU resources on that target's device.
+    xt::capi::RenderPath renderPath = xt::capi::RenderPath::None;
+    xt_gpu_target* gpuTarget = nullptr;
+    std::unique_ptr<xt::capi::SurfaceGpu, xt::capi::SurfaceGpuDeleter> gpu;
 
     ~xt_surface() override;
     /// Takes everything down in the 50.3 order; safe to call twice.
@@ -264,5 +280,11 @@ void attachEmitListener(xt_surface& surface);
 
 /// Applies the uiscale of the current viewport: the override when > 0, else the spec rule.
 void applyUiScale(xt_surface& surface);
+
+/// T-636: releases the surface's GPU resources, detaches it from its target and resets its render
+/// path to None (capi_gpu.cpp). Safe on a surface that is not attached.
+void detachGpu(xt_surface& surface);
+/// T-636: the draw counters of the surface's last GPU render (false when it has none).
+bool gpuDrawCounts(const xt_surface& surface, uint32_t& executed, uint32_t& skipped);
 
 }  // namespace xt::capi

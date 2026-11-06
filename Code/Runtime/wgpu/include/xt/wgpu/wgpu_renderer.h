@@ -42,6 +42,9 @@ struct WgpuHeadlessOptions {
     uint32_t sampleCount = 1;
     /// Same as XT_WGPU_FALLBACK=1: ask for the software adapter (WARP, lavapipe) first, then any.
     bool allowFallback = false;
+    /// T-636 (50 §50.z `xt_gpu_target_desc::backend`): vulkan|d3d12|metal|gl in place of
+    /// XT_WGPU_BACKEND; empty = read XT_WGPU_BACKEND as before. Any other name fails.
+    std::string backend;
 };
 
 /// What `WgpuRenderer::init` draws with: a device and its queue (the renderer takes its own
@@ -59,8 +62,9 @@ struct WgpuInit {
     std::string error;
 
     /// Creates an instance, requests an adapter and a device and waits for both (§10.10.1):
-    ///   - XT_WGPU_BACKEND=vulkan|d3d12|metal|gl limits the instance to that backend (any other
-    ///     value fails with an error naming it); unset = the platform's primary backends;
+    ///   - XT_WGPU_BACKEND=vulkan|d3d12|metal|gl (or `options.backend` when not empty) limits the
+    ///     instance to that backend (any other value fails with an error naming it); unset = the
+    ///     platform's primary backends;
     ///   - a software adapter is used only with XT_WGPU_FALLBACK=1 (or `allowFallback`), which
     ///     asks for it first (forceFallbackAdapter) and takes any adapter when there is none.
     /// On failure `device` is null and `error` says why; whatever was created is released.

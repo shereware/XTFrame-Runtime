@@ -10,24 +10,6 @@
 
 namespace xt::backend {
 
-namespace {
-
-bool hasFormat(const WGPUSurfaceCapabilities& caps, WGPUTextureFormat format) {
-    for (size_t i = 0; i < caps.formatCount; ++i) {
-        if (caps.formats[i] == format) return true;
-    }
-    return false;
-}
-
-bool hasPresentMode(const WGPUSurfaceCapabilities& caps, WGPUPresentMode mode) {
-    for (size_t i = 0; i < caps.presentModeCount; ++i) {
-        if (caps.presentModes[i] == mode) return true;
-    }
-    return false;
-}
-
-}  // namespace
-
 RendererWgpu::RendererWgpu() = default;
 
 RendererWgpu::~RendererWgpu() { destroy(); }
@@ -56,68 +38,34 @@ bool RendererWgpu::create(const WgpuSurfaceSource& source, int width, int height
         destroy();
         return false;
     }
-    WGPUSurfaceDescriptor desc = WGPU_SURFACE_DESCRIPTOR_INIT;
-    WGPUSurfaceSourceWindowsHWND win32 = WGPU_SURFACE_SOURCE_WINDOWS_HWND_INIT;
-    WGPUSurfaceSourceXlibWindow xlib = WGPU_SURFACE_SOURCE_XLIB_WINDOW_INIT;
-    WGPUSurfaceSourceWaylandSurface wayland = WGPU_SURFACE_SOURCE_WAYLAND_SURFACE_INIT;
-    WGPUSurfaceSourceMetalLayer metal = WGPU_SURFACE_SOURCE_METAL_LAYER_INIT;
+    xt::wgpu::WgpuNativeWindow native;
     switch (source.kind) {
         case WgpuSurfaceSource::Kind::Win32:
-            win32.hinstance = source.display;
-            win32.hwnd = source.window;
-            desc.nextInChain = &win32.chain;
+            native.kind = xt::wgpu::WgpuNativeWindow::Kind::Win32;
             break;
         case WgpuSurfaceSource::Kind::X11:
-            xlib.display = source.display;
-            xlib.window = source.x11Window;
-            desc.nextInChain = &xlib.chain;
+            native.kind = xt::wgpu::WgpuNativeWindow::Kind::X11;
             break;
         case WgpuSurfaceSource::Kind::Wayland:
-            wayland.display = source.display;
-            wayland.surface = source.window;
-            desc.nextInChain = &wayland.chain;
+            native.kind = xt::wgpu::WgpuNativeWindow::Kind::Wayland;
             break;
         case WgpuSurfaceSource::Kind::Metal:
-            metal.layer = source.window;
-            desc.nextInChain = &metal.chain;
+            native.kind = xt::wgpu::WgpuNativeWindow::Kind::MetalLayer;
             break;
         case WgpuSurfaceSource::Kind::None:
-            m_error = "the window has no native handle for a WebGPU surface";
-            destroy();
-            return false;
+            break;
     }
-    m_surface = wgpuInstanceCreateSurface(m_init.instance, &desc);
-    if (m_surface == nullptr) {
-        m_error = "wgpuInstanceCreateSurface failed";
+    native.display = source.display;
+    native.window = source.window;
+    native.x11Window = source.x11Window;
+    if (!m_surface.create(m_init, native, vsync, m_error)) {
         destroy();
         return false;
     }
-    WGPUSurfaceCapabilities caps = WGPU_SURFACE_CAPABILITIES_INIT;
-    if (wgpuSurfaceGetCapabilities(m_surface, m_init.adapter, &caps) != WGPUStatus_Success ||
-        caps.formatCount == 0) {
-        wgpuSurfaceCapabilitiesFreeMembers(caps);
-        m_error = "the adapter cannot present to this window";
-        destroy();
-        return false;
-    }
-    // Non-sRGB 8-bit: the pipelines write premultiplied sRGB-encoded values as they are (like GL).
-    m_format = hasFormat(caps, WGPUTextureFormat_BGRA8Unorm)   ? WGPUTextureFormat_BGRA8Unorm
-               : hasFormat(caps, WGPUTextureFormat_RGBA8Unorm) ? WGPUTextureFormat_RGBA8Unorm
-                                                               : caps.formats[0];
-    m_usage = WGPUTextureUsage_RenderAttachment;
-    if ((caps.usages & WGPUTextureUsage_CopySrc) != 0) m_usage |= WGPUTextureUsage_CopySrc;
-    m_presentMode = WGPUPresentMode_Fifo;
-    if (!vsync) {
-        if (hasPresentMode(caps, WGPUPresentMode_Immediate)) {
-            m_presentMode = WGPUPresentMode_Immediate;
-        } else if (hasPresentMode(caps, WGPUPresentMode_Mailbox)) {
-            m_presentMode = WGPUPresentMode_Mailbox;
-        }
-    }
-    wgpuSurfaceCapabilitiesFreeMembers(caps);
+    m_format = m_surface.format();
     m_width = width > 0 ? width : 1;
     m_height = height > 0 ? height : 1;
-    configureSurface();
+    m_surface.configure(m_init.device, m_width, m_height);
     if (!initDevice(sampleCount, m_format)) {
         destroy();
         return false;
@@ -150,11 +98,7 @@ void RendererWgpu::destroy() {
     releaseFrame();
     m_renderer.shutdown();
     releaseOffscreen();
-    if (m_surface != nullptr) {
-        wgpuSurfaceUnconfigure(m_surface);
-        wgpuSurfaceRelease(m_surface);
-        m_surface = nullptr;
-    }
+    m_surface.release();
     m_init.release();
 }
 
@@ -166,34 +110,16 @@ void RendererWgpu::releaseOffscreen() {
     }
 }
 
-void RendererWgpu::configureSurface() {
-    if (m_surface == nullptr || m_init.device == nullptr) return;
-    WGPUSurfaceConfiguration config = WGPU_SURFACE_CONFIGURATION_INIT;
-    config.device = m_init.device;
-    config.format = m_format;
-    config.usage = m_usage;
-    config.width = static_cast<uint32_t>(m_width);
-    config.height = static_cast<uint32_t>(m_height);
-    config.alphaMode = WGPUCompositeAlphaMode_Auto;
-    config.presentMode = m_presentMode;
-    wgpuSurfaceConfigure(m_surface, &config);
-}
-
 void RendererWgpu::resize(int width, int height) {
     if (width <= 0 || height <= 0) return;  // minimized: keep the old size
     const bool changed = width != m_width || height != m_height;
     m_width = width;
     m_height = height;
-    if (m_surface != nullptr) {
-        if (changed) configureSurface();
+    if (m_surface.valid()) {
+        if (changed) m_surface.configure(m_init.device, m_width, m_height);
     } else if (m_init.device != nullptr && (changed || m_offscreen == nullptr)) {
         releaseOffscreen();
-        WGPUTextureDescriptor d = WGPU_TEXTURE_DESCRIPTOR_INIT;
-        d.usage =
-            WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_CopySrc | WGPUTextureUsage_TextureBinding;
-        d.size = WGPUExtent3D{static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1};
-        d.format = m_format;
-        m_offscreen = wgpuDeviceCreateTexture(m_init.device, &d);
+        m_offscreen = xt::wgpu::createRenderTexture(m_init.device, width, height, m_format);
     }
     if (m_renderer.device() != nullptr) m_renderer.resize(width, height);
 }
@@ -209,8 +135,11 @@ void RendererWgpu::setTextShaper(text::FtTextShaper* shaper) {
 #endif
 
 void RendererWgpu::releaseFrame() {
-    if (m_frameView != nullptr) wgpuTextureViewRelease(m_frameView);
-    if (m_frameTexture != nullptr && m_frameFromSurface) wgpuTextureRelease(m_frameTexture);
+    if (m_frameFromSurface) {
+        m_surface.releaseFrame();
+    } else if (m_frameView != nullptr) {
+        wgpuTextureViewRelease(m_frameView);
+    }
     m_frameView = nullptr;
     m_frameTexture = nullptr;
     m_frameFromSurface = false;
@@ -218,29 +147,17 @@ void RendererWgpu::releaseFrame() {
 
 void RendererWgpu::beginFrame() {
     releaseFrame();
-    if (m_surface == nullptr) {
+    if (!m_surface.valid()) {
         if (m_offscreen != nullptr) {
             m_frameTexture = m_offscreen;
             m_frameView = wgpuTextureCreateView(m_offscreen, nullptr);
         }
         return;
     }
-    for (int attempt = 0; attempt < 2; ++attempt) {
-        WGPUSurfaceTexture st = WGPU_SURFACE_TEXTURE_INIT;
-        wgpuSurfaceGetCurrentTexture(m_surface, &st);
-        if (st.status == WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal ||
-            st.status == WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal) {
-            m_frameTexture = st.texture;
-            m_frameFromSurface = true;
-            m_frameView = wgpuTextureCreateView(st.texture, nullptr);
-            return;
-        }
-        if (st.texture != nullptr) wgpuTextureRelease(st.texture);
-        if (st.status != WGPUSurfaceGetCurrentTextureStatus_Outdated &&
-            st.status != WGPUSurfaceGetCurrentTextureStatus_Lost) {
-            return;  // timeout / error: skip this frame
-        }
-        configureSurface();
+    if (m_surface.acquire()) {  // timeout / error: this frame is skipped
+        m_frameTexture = m_surface.frameTexture();
+        m_frameView = m_surface.frameView();
+        m_frameFromSurface = true;
     }
 }
 
@@ -255,7 +172,9 @@ void RendererWgpu::render(const CommandList& list, TextShaper* shaper, AssetReso
 bool RendererWgpu::readPixels(std::vector<uint8_t>& rgba, int& width, int& height) {
     // Offscreen: the texture keeps the last frame after present(); a surface texture only until then.
     WGPUTexture texture = m_frameTexture != nullptr ? m_frameTexture : m_offscreen;
-    if (texture == nullptr || (m_frameFromSurface && (m_usage & WGPUTextureUsage_CopySrc) == 0)) return false;
+    if (texture == nullptr || (m_frameFromSurface && (m_surface.usage() & WGPUTextureUsage_CopySrc) == 0)) {
+        return false;
+    }
     width = static_cast<int>(wgpuTextureGetWidth(texture));
     height = static_cast<int>(wgpuTextureGetHeight(texture));
     rgba.resize(static_cast<size_t>(width) * static_cast<size_t>(height) * 4u);
@@ -267,7 +186,12 @@ bool RendererWgpu::readPixels(std::vector<uint8_t>& rgba, int& width, int& heigh
 }
 
 void RendererWgpu::present() {
-    if (m_surface != nullptr && m_frameFromSurface && m_frameView != nullptr) wgpuSurfacePresent(m_surface);
+    if (m_frameFromSurface) {
+        m_surface.present();  // releases the surface's frame
+        m_frameView = nullptr;
+        m_frameTexture = nullptr;
+        m_frameFromSurface = false;
+    }
     releaseFrame();
 }
 

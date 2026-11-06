@@ -206,10 +206,6 @@ endif()
 add_subdirectory(Code/Runtime/sw)
 # xt_bundle's pack() links xt_compile/xt_flow/xt_sw (and xt_text), so it comes after them.
 add_subdirectory(Code/Runtime/bundle)
-# T-504 (50 §50.2): the C ABI over core / bundle / flow / sw (and text), so it comes after them.
-if(XT_BUILD_CAPI)
-    add_subdirectory(Code/Runtime/capi)
-endif()
 # xt_import writes a bundle source tree and verifies it with the compiler, so it comes after both.
 # T-400: the guards on editor-layer directories let the runtime export (Tools/Scripts/export_runtime.sh),
 # which leaves them out, configure from this same file.
@@ -224,6 +220,11 @@ if(XT_BUILD_GL)
 endif()
 if(XT_BUILD_WGPU)
     add_subdirectory(Code/Runtime/wgpu)
+endif()
+# T-504 (50 §50.2): the C ABI over core / bundle / flow / sw (and text), so it comes after them; T-636
+# (50 §50.z): and after xt_wgpu, which it links for the GPU target when XT_BUILD_WGPU is ON.
+if(XT_BUILD_CAPI)
+    add_subdirectory(Code/Runtime/capi)
 endif()
 if(XT_BUILD_SHELL)
     add_subdirectory(Code/Runtime/shell)
