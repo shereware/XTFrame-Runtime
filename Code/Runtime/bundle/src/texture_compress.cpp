@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <mutex>
 #include <string>
 
 #include "bc7enc.h"
@@ -29,13 +30,14 @@ constexpr uint32_t fourCc(char a, char b, char c, char d) {
            (static_cast<uint32_t>(static_cast<unsigned char>(d)) << 24);
 }
 
+/// T-652: once per process under std::call_once (two threads may pack at the same time); the encoder
+/// tables are read-only afterwards.
 void ensureEncoders() {
-    static bool initialized = false;
-    if (!initialized) {
+    static std::once_flag once;
+    std::call_once(once, [] {
         rgbcx::init();
         bc7enc_compress_block_init();
-        initialized = true;
-    }
+    });
 }
 
 /// Encodes one `w` x `h` level; blocks in row order, edge blocks padded by clamping.

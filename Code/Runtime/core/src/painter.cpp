@@ -515,9 +515,9 @@ void sortedElementChildren(const NodeArena& arena, NodeId node, std::vector<Node
     // call -- and pushPlan() calls this once per Group/Mask/Element node with children on every
     // single paint(), so a tree of any size reallocated repeatedly every frame. A function-local
     // `static` keeps their capacity across calls; sortedElementChildren() is not re-entrant
-    // (nothing here calls back into it) and Context is single-threaded (01.6), so a plain
-    // (non-thread_local) static is safe here. hit_test.cpp's hitTest() also calls this function
-    // but never concurrently with Painter.
+    // (nothing here calls back into it). T-652: `thread_local`, because Contexts of different
+    // bundles may run on different threads at the same time (50 §50.1); the contents never outlive a
+    // call. hit_test.cpp's hitTest() also calls this function but never concurrently with Painter.
     //
     // T-336 (05 §5.9.8, 06 §6.9): in a flex container the key is (z-index, `order`, document
     // order) -- CSS paints flex items in order-modified document order; an absolute child is not a
@@ -527,8 +527,8 @@ void sortedElementChildren(const NodeArena& arena, NodeId node, std::vector<Node
         float order;
         NodeId node;
     };
-    static std::vector<size_t> positions;
-    static std::vector<SortKey> keys;
+    static thread_local std::vector<size_t> positions;
+    static thread_local std::vector<SortKey> keys;
     positions.clear();
     keys.clear();
     const bool flex = arena.element(node).style.display == Display::Flex;

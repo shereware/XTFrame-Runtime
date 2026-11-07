@@ -1,4 +1,5 @@
 #include <cmath>
+#include <mutex>
 #include <string>
 
 #include "capi_internal.h"
@@ -14,8 +15,10 @@ namespace {
 
 thread_local std::string g_lastError;
 
-// The log sink. One thread per surface (50.1); the sink itself is process-wide, set by the host
-// before it opens anything.
+// The log sink: process-wide, set by the host (normally before it opens anything). T-652: bundles
+// may run on different threads at the same time (50.1), so the pair is read and written under a
+// mutex; the callback itself runs outside it, on the thread that logs.
+std::mutex g_logMutex;
 xt_log_fn g_logFn = nullptr;
 void* g_logUser = nullptr;
 
@@ -26,8 +29,15 @@ void setLastError(std::string message) { g_lastError = std::move(message); }
 const char* lastError() { return g_lastError.c_str(); }
 
 void log(int level, const std::string& message) {
-    if (g_logFn != nullptr) {
-        g_logFn(level, message.c_str(), g_logUser);
+    xt_log_fn fn = nullptr;
+    void* user = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_logMutex);
+        fn = g_logFn;
+        user = g_logUser;
+    }
+    if (fn != nullptr) {
+        fn(level, message.c_str(), user);
     }
 }
 
@@ -114,6 +124,7 @@ XT_CAPI const char* xt_capi_last_error(void) {
 
 XT_CAPI void xt_capi_set_log(xt_log_fn fn, void* user) {
     XT_CAPI_GUARD_VOID("xt_capi_set_log", {
+        std::lock_guard<std::mutex> lock(xt::capi::g_logMutex);
         xt::capi::g_logFn = fn;
         xt::capi::g_logUser = user;
     });

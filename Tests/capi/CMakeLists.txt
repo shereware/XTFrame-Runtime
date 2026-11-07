@@ -54,6 +54,7 @@ add_executable(xt_capi_tests
     test_capi_gpu_text.cpp
     test_capi_trim.cpp
     test_capi_partial.cpp
+    test_capi_threads.cpp
 )
 add_dependencies(xt_capi_tests xt_capi_test_bundles)
 target_include_directories(xt_capi_tests SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/Code/SDKs/doctest)

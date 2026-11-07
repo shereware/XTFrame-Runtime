@@ -7,9 +7,16 @@
  * (Docs/design/13, 22 and 23); the host rules of those chapters apply unchanged.
  *
  * Conventions (50.2):
- *  - Calling convention cdecl. One thread per surface; the library starts no thread. Callbacks run
- *    inside xt_surface_update / xt_surface_port_set_* / xt_surface_hot_reload (and the other calls
- *    that drive the document), on the caller's thread.
+ *  - Calling convention cdecl. The library starts no thread. Callbacks run inside xt_surface_update /
+ *    xt_surface_port_set_* / xt_surface_hot_reload (and the other calls that drive the document), on
+ *    the caller's thread.
+ *  - Threads (50.1, T-652): one thread per bundle. The calls on one bundle and on the surfaces created
+ *    from it are never made in parallel; different bundles, each with its own surfaces, may be driven
+ *    on different threads at the same time. xt_capi_abi_version, xt_capi_version_string and
+ *    xt_capi_last_error may be called from any thread at any time. The log callback of
+ *    xt_capi_set_log is process-wide and may be called from every thread that drives a bundle, at the
+ *    same time. An xt_gpu_target belongs to no bundle: the calls that use one target are never made in
+ *    parallel.
  *  - Strings passed in are UTF-8, NUL-terminated and only need to live for the call (the library
  *    copies them). A `const char*` handed out is owned by the object it came from and stays valid
  *    until the next call on that object; copy it to keep it.
@@ -110,8 +117,9 @@ XT_CAPI uint32_t    xt_bundle_reload(xt_bundle* b);
 XT_CAPI const char* xt_bundle_changed_ui_id(const xt_bundle* b, uint32_t index);
 
 /* --- Surface ---
-   Threads (50.1, T-552 / capi review K2): every call on one surface -- and on the bundle it came from --
-   is made on one and the same thread; the library takes no lock and starts no thread. */
+   Threads (50.1, T-652): one thread per bundle -- the calls on a surface and on the bundle it came from
+   (and its other surfaces) are never made in parallel; surfaces of different bundles may run on
+   different threads at the same time. The library takes no lock on them and starts no thread. */
 typedef struct xt_surface_desc {
     uint32_t struct_size;                /* = sizeof(xt_surface_desc) */
     int   width, height;                 /* output pixels (device pixels) */

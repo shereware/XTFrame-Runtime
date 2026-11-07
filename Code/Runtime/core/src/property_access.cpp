@@ -515,10 +515,10 @@ const char* propertyName(PropId prop) {
         // "effect[<i>].param<p>" fallback, always taken by this function. Use the
         // propertyName(arena, node, prop) overload below for the fully-resolved name.
         //
-        // Context is single-threaded (01.6), so a plain (non-thread_local) function-local static
-        // buffer is safe here, matching command_list.cpp/painter.cpp's existing use of the same
-        // pattern.
-        static char buf[32];
+        // T-652: a `thread_local` buffer, because Contexts of different bundles may run on
+        // different threads at the same time (50 §50.1); the name stays valid until the next call on
+        // the same thread.
+        static thread_local char buf[32];
         std::snprintf(buf, sizeof(buf), "effect[%u].param%u", rawEffectIndex(prop),
                       rawEffectParamIndex(prop));
         return buf;
@@ -801,9 +801,8 @@ const char* propertyName(const NodeArena& arena, NodeId node, PropId prop) {
     if (name == nullptr) {
         return propertyName(prop);
     }
-    // Context is single-threaded (01.6); see propertyName(PropId)'s identical use of a plain
-    // function-local static buffer just above.
-    static char buf[40];
+    // T-652: see propertyName(PropId)'s identical `thread_local` buffer just above.
+    static thread_local char buf[40];
     std::snprintf(buf, sizeof(buf), "effect[%u].%s", effectIndex, name);
     return buf;
 }

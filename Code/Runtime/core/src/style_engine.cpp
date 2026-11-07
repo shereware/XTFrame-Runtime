@@ -1787,10 +1787,10 @@ uint32_t StyleEngine::resolve(NodeArena& arena, float clock) {
     // the whole tree just to walk down to the dirty ones, every single update(). A function-local
     // `static` keeps their capacity across calls, the same effect as promoting them to StyleEngine
     // members without exposing the file-local Entry type through style_engine.h. resolve() is not
-    // re-entrant (see below) and Context is single-threaded (01.6), so a plain (non-thread_local)
-    // static is safe here.
-    static std::vector<Entry> entries;
-    static std::vector<Entry> sceneEntries;  // T-218: the element's scene-target declarations.
+    // re-entrant (see below). T-652: `thread_local`, because Contexts of different bundles may run
+    // on different threads at the same time (50 §50.1); the contents never outlive a call.
+    static thread_local std::vector<Entry> entries;
+    static thread_local std::vector<Entry> sceneEntries;  // T-218: the element's scene-target declarations.
     uint32_t processed = 0;
 
     // T-173: the condition-part inputs of selector matching (selector_match.h).
@@ -1822,7 +1822,7 @@ uint32_t StyleEngine::resolve(NodeArena& arena, float clock) {
     // scratch, untouched by anything NodeArena does internally, so no such reentrancy is possible.
     // Pruning descent at the first non-Element node is safe: Elements never nest inside a Text node
     // or an instantiated `anim` scene's Group/Path subtree.
-    static std::vector<NodeId> stack;
+    static thread_local std::vector<NodeId> stack;
     for (NodeId root = 0; root < arena.capacity(); ++root) {
         if (!arena.alive(root) || arena.kind(root) != NodeKind::Element ||
             arena.parent(root) != kInvalidNode || (arena.common(root).flags2 & kTemplate) != 0) {

@@ -103,16 +103,21 @@ Mat4 composeLocal3(const NodeCommon& c) {
 /// (Docs/design/19-3d-space.md §19.5's "不在任何根子樹內...既有行為完全不變").
 void updateWorldTransforms(NodeArena& arena, NodeId root, bool force) {
     // T-38 (Docs/design/01-architecture.md §1.7): function-local `static` scratch, reused/resized
-    // (not reallocated) across calls. Single-threaded, never called recursively (see T-38's note).
-    static std::vector<uint8_t> recompute;
-    static std::vector<uint8_t> recomputeOpacity;  // T-158: see the function comment.
+    // (not reallocated) across calls. Never called recursively (see T-38's note). T-652:
+    // `thread_local`, because Contexts of different bundles may run on different threads at the same
+    // time (50 §50.1); every vector is assigned below before it is read.
+    static thread_local std::vector<uint8_t> recompute;
+    static thread_local std::vector<uint8_t> recomputeOpacity;  // T-158: see the function comment.
     // Per-node context handed to a node's children (written when the node itself is processed,
     // read via the parent's slot when a child is processed -- preorder guarantees the parent's
     // slot is already written).
-    static std::vector<Mat2x3> outParent2D;  // A 2D child's world = outParent2D[parent] * local.
-    static std::vector<Mat4> outParentP;     // A 3D-layer child's world3 = outParentP[parent] * local3.
-    static std::vector<Mat4> outPlaneW3;     // The plane context a plain-2D child hands its own children.
-    static std::vector<uint8_t> outInSpace;  // 1 when the node is a space root or inside one's subtree.
+    static thread_local std::vector<Mat2x3> outParent2D;  // A 2D child's world = outParent2D[parent] * local.
+    static thread_local std::vector<Mat4>
+        outParentP;  // A 3D-layer child's world3 = outParentP[parent] * local3.
+    static thread_local std::vector<Mat4>
+        outPlaneW3;  // The plane context a plain-2D child hands its own children.
+    static thread_local std::vector<uint8_t>
+        outInSpace;  // 1 when the node is a space root or inside one's subtree.
     uint32_t cap = arena.capacity();
     recompute.assign(cap, 0);
     recomputeOpacity.assign(cap, 0);

@@ -1,6 +1,7 @@
 #include "sw_dds.h"
 
 #include <cstring>
+#include <mutex>
 #include <vector>
 
 #include "bc7decomp.h"
@@ -14,13 +15,12 @@ namespace xt::sw {
 
 namespace {
 
-/// One-time rgbcx table setup (its decoders read the BC1 interpolation tables).
+/// One-time rgbcx table setup (its decoders read the BC1 interpolation tables). T-652: once per
+/// process under std::call_once, because bundles may decode on different threads at the same time
+/// (50 §50.1); the tables are read-only afterwards.
 void ensureRgbcx() {
-    static bool initialized = false;
-    if (!initialized) {
-        rgbcx::init();
-        initialized = true;
-    }
+    static std::once_flag once;
+    std::call_once(once, [] { rgbcx::init(); });
 }
 
 }  // namespace

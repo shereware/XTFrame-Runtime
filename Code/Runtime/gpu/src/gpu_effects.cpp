@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <vector>
@@ -41,9 +42,8 @@ constexpr float kMaxDevicePx = 64.0f;
 
 float clampDevicePx64(float v) {
     if (v > kMaxDevicePx) {
-        static bool warned = false;
-        if (!warned) {
-            warned = true;
+        static std::atomic<bool> warned{false};  // T-652: bundles may render on different threads.
+        if (!warned.exchange(true)) {
             std::fprintf(stderr,
                          "xt::gpu effects: a radius-like effect parameter exceeded the 64 device px "
                          "cap; clamped (docs/design/18-effects.md \xc2\xa7"

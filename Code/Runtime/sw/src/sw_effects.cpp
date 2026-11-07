@@ -1,6 +1,7 @@
 #include "sw_effects.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -26,9 +27,8 @@ constexpr float kMaxDevicePx = 64.0f;
 /// warning.
 float clampDevicePx64(float v) {
     if (v > kMaxDevicePx) {
-        static bool warned = false;
-        if (!warned) {
-            warned = true;
+        static std::atomic<bool> warned{false};  // T-652: bundles may render on different threads.
+        if (!warned.exchange(true)) {
             std::fprintf(stderr,
                          "xt::sw effects: a radius-like effect parameter exceeded the 64 device px "
                          "cap; clamped (docs/design/18-effects.md \xc2\xa7"
