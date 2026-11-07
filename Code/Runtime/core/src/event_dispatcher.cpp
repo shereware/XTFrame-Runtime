@@ -770,6 +770,84 @@ void EventDispatcher::handlePointerUp(NodeArena& arena, NodeId root, const Input
     m_ptrDrag = PointerDragState{};  // T-394: the release ends a pointerdrag.
 }
 
+EventDispatcher::PointerState EventDispatcher::pointerState() const {
+    PointerState out;
+    out.player = m_pointerPlayer;
+    out.pos = m_pointerPos;
+    out.buttons = m_heldButtons;
+    out.hover = m_hoverNode;
+    out.pressed = m_activeNode;
+    out.inside = m_pointerIn;
+    return out;
+}
+
+void EventDispatcher::restorePointerState(NodeArena& arena, const PointerState& state) {
+    auto usable = [&arena](NodeId n) {
+        return n != kInvalidNode && arena.alive(n) && arena.kind(n) == NodeKind::Element;
+    };
+    // Hover: the bits move from the old chain to the new one, with no PointerLeave / Enter.
+    const NodeId hover = usable(state.hover) ? state.hover : kInvalidNode;
+    if (hover != m_hoverNode) {
+        std::vector<NodeId> oldChain;
+        std::vector<NodeId> newChain;
+        collectAncestorChain(arena, usable(m_hoverNode) ? m_hoverNode : kInvalidNode, oldChain);
+        collectAncestorChain(arena, hover, newChain);
+        for (const NodeId n : oldChain) {
+            if (std::find(newChain.begin(), newChain.end(), n) == newChain.end()) {
+                setElementStateBit(arena, n, static_cast<uint16_t>(kStateHover), false);
+            }
+        }
+        for (const NodeId n : newChain) {
+            setElementStateBit(arena, n, static_cast<uint16_t>(kStateHover), true);
+        }
+        m_hoverNode = hover;
+    }
+    // The press: the Active bits on the pressed element's chain (none when it is disabled, as at a
+    // PointerDown), the button held; a pending drag or pointerdrag does not carry over (a drag
+    // already started is left alone: ending it would dispatch).
+    for (const NodeId n : m_activeChain) {
+        if (arena.alive(n)) {
+            setElementStateBit(arena, n, static_cast<uint16_t>(kStateActive), false);
+        }
+    }
+    m_activeChain.clear();
+    if (m_drag.pending) {
+        m_drag = DragState{};
+    }
+    m_ptrDrag = PointerDragState{};
+    m_axisDrag = kInvalidNode;
+    m_dragEdit = kInvalidNode;
+    m_pressDragged = false;
+    m_consumedPress = false;
+    m_swallowButtons = false;
+    m_activeNode = usable(state.pressed) ? state.pressed : kInvalidNode;
+    if (m_activeNode != kInvalidNode) {
+        if (!isDisabled(arena, m_activeNode)) {
+            collectAncestorChain(arena, m_activeNode, m_activeChain);
+            for (const NodeId n : m_activeChain) {
+                setElementStateBit(arena, n, static_cast<uint16_t>(kStateActive), true);
+            }
+        }
+        m_pressButton = PointerButton::Left;  // The lowest held button.
+        for (uint8_t b = 0; b < 3; ++b) {
+            if ((state.buttons & (1u << b)) != 0) {
+                m_pressButton = static_cast<PointerButton>(b);
+                break;
+            }
+        }
+        m_pressTime = m_time;
+        m_pressPos = state.pos;
+        m_pressClicks = 0;
+    }
+    m_heldButtons = state.buttons;
+    m_pointerPos = state.pos;
+    m_lastPointer = state.pos;
+    m_pointerLocalPos = Vec2{};
+    m_pointerIn = state.inside;
+    m_hoverStale = false;
+    m_pointerPlayer = state.player < kMaxPlayers ? state.player : static_cast<uint8_t>(0);
+}
+
 void EventDispatcher::handlePointerCancel(NodeArena& arena) {
     // T-386 (08.11): the press is taken away -- PointerCancel to the active element (bubbling),
     // the active state cleared, no PointerUp / Click. Hover is untouched. Nothing pressed: no-op.
@@ -1373,7 +1451,8 @@ void EventDispatcher::handleInput(NodeArena& arena, NodeId root, const InputEven
     m_curModifiers = pointerInput ? input.modifiers : static_cast<uint8_t>(0);
     if (input.kind == InputEvent::PointerMove || input.kind == InputEvent::PointerDown ||
         input.kind == InputEvent::PointerUp) {
-        m_lastPointer = input.pos;  // T-201.
+        m_lastPointer = input.pos;      // T-201.
+        m_pointerPlayer = m_curPlayer;  // T-654.
     }
     switch (input.kind) {
         case InputEvent::PointerMove:

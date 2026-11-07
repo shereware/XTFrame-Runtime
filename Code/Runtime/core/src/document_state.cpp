@@ -17,6 +17,7 @@
 #include "mini_json.h"
 #include "text_edit.h"
 #include "timeline_group.h"
+#include "xt/charconv.h"
 #include "xt/context.h"
 #include "xt/document.h"
 #include "xt/property.h"
@@ -25,8 +26,8 @@
 /// Document::snapshotState / restoreState and the collect / check / apply code Context::hotReload
 /// shares (T-398; Docs/design/23-host-integration.md §23.ad.1, 22-bundle.md §22.10).
 ///
-/// Snapshot JSON (version 3; versions 1 and 2 are read too), every member optional on restore:
-///   {"version":3,
+/// Snapshot JSON (version 4; versions 1 to 3 are read too), every member optional on restore:
+///   {"version":4,
 ///    "ports":{"<qualified name>":"<setPortText() text>", ...},
 ///    "states":{"<element id>":["<state>", ...], ...},
 ///    "inputs":{"<element id>":{"value":"...","cursor":N,"anchor":N}, ...},
@@ -38,7 +39,11 @@
 ///                   "ended":B,"direction":"reverse"|"alternate"|"alternate-reverse"}, ...],
 ///    "classes":{"<element id>":{"add":["<class>", ...],"remove":["<class>", ...]}, ...},
 ///    "clock":{"seconds":S,"frame":N},
-///    "shown":B}
+///    "shown":B,
+///    "transitions":[{"id":"<element id>","property":"<PropId name>","from":"<value>","to":"<value>",
+///                    "elapsed":S,"duration":S,"easing":"<timing function>"}, ...],
+///    "pointer":{"<player>":{"x":X,"y":Y,"buttons":N,"hover":"<element id>","pressed":"<element id>",
+///               "inside":B}}}
 /// T-650 (23 XF-097 "快照版本 2"): `classes` lists the id'd DOCT elements whose runtime classes differ
 /// from their IR classes (both sides sorted); `clock` is the document clock (%.17g, so the float comes
 /// back bit for bit) and its update() count; `shown` says the initial show was done. A member left out
@@ -49,6 +54,18 @@
 /// `elapsed` Animator::elapsedSeconds() (%.17g); `direction` is written when not `normal` and only
 /// for reading. restoreState() matches them by (id, index, name) after a style pass at the restored
 /// clock, quietly; items it does not list start as usual.
+/// T-654 (23 XF-097 "快照版本 4"): `transitions` are the in-flight CSS `transition`s of id'd elements
+/// (one per element and property; the property by its propertyName(), `from` / `to` as style text:
+/// a number, a number and its unit (`12px`, `50%`, `auto`), `color(srgb r g b / a)`, or two / three
+/// numbers for a vec2 / vec3 -- 9 significant digits, so a float comes back bit for bit), `elapsed`
+/// the seconds since the transition's delay ended (%.17g; negative while still in the delay),
+/// `easing` `linear`, `cubic-bezier(...)` or `steps(n,start|end)`, left out for the other timing
+/// functions (restored from the element's own `transition`). restoreState() rebuilds them after the
+/// style pass at the restored clock, quietly (no transition events); entries without their element
+/// or property are ignored; transitions the document has and the snapshot does not list run on.
+/// `pointer` is the pointer state machine's state, keyed by the player of the last pointer input
+/// (the document has one pointer): position, held buttons (bit = PointerButton), hover and pressed
+/// element ids, inside the viewport. restoreState() sets it directly, dispatching nothing.
 /// Port values are text so restoreState() can hand them to setPortText() as they are: numbers with
 /// 9 significant digits (a float round-trips), Bool `true`/`false`, Enum the value name, Color
 /// `#rrggbb[aa]`, vec2/vec3 `x,y[,z]`, Struct / List the JSON setPortText() reads.
@@ -281,6 +298,402 @@ void appendStringList(std::string& out, const std::vector<std::string>& items) {
     out += ']';
 }
 
+// -- T-654 (23 XF-097 version 4): in-flight CSS transitions and the pointer state ------------------
+
+constexpr struct {
+    const char* name;
+    LengthUnit unit;
+} kLengthUnits[] = {
+    {"px", LengthUnit::Px},
+    {"%", LengthUnit::Percent},
+    {"em", LengthUnit::Em},
+    {"rem", LengthUnit::Rem},
+    {"vw", LengthUnit::Vw},
+    {"vh", LengthUnit::Vh},
+    {"vmin", LengthUnit::Vmin},
+    {"vmax", LengthUnit::Vmax},
+    {"safe-top", LengthUnit::SafeTop},
+    {"safe-right", LengthUnit::SafeRight},
+    {"safe-bottom", LengthUnit::SafeBottom},
+    {"safe-left", LengthUnit::SafeLeft},
+    {"uiscale", LengthUnit::UiScale},
+};
+
+/// `v` with `precision` significant digits in the C locale (9: a float comes back bit for bit).
+void appendDigits(std::string& out, double v, int precision) {
+    char buf[40];
+    const size_t n = formatFloat(buf, sizeof(buf), std::isfinite(v) ? v : 0.0, precision);
+    out.append(buf, n);
+}
+
+/// A transition end as style text; false for a value that has none (a path, stops, a calc()).
+bool valueText(const Value& v, std::string& out) {
+    out.clear();
+    switch (v.type) {
+        case ValueType::Float:
+            appendDigits(out, v.f, 9);
+            return true;
+        case ValueType::Length:
+            if (v.len.unit == LengthUnit::Auto) {
+                out = "auto";
+                return true;
+            }
+            for (const auto& u : kLengthUnits) {
+                if (u.unit == v.len.unit) {
+                    appendDigits(out, v.len.value, 9);
+                    out += u.name;
+                    return true;
+                }
+            }
+            return false;
+        case ValueType::Color:
+            out = "color(srgb ";
+            appendDigits(out, v.c.r, 9);
+            out += ' ';
+            appendDigits(out, v.c.g, 9);
+            out += ' ';
+            appendDigits(out, v.c.b, 9);
+            out += " / ";
+            appendDigits(out, v.c.a, 9);
+            out += ')';
+            return true;
+        case ValueType::Vec2:
+            appendDigits(out, v.v2.x, 9);
+            out += ' ';
+            appendDigits(out, v.v2.y, 9);
+            return true;
+        case ValueType::Vec3:
+            appendDigits(out, v.v3.x, 9);
+            out += ' ';
+            appendDigits(out, v.v3.y, 9);
+            out += ' ';
+            appendDigits(out, v.v3.z, 9);
+            return true;
+        default:
+            return false;
+    }
+}
+
+/// The numbers of `text` separated by single spaces (at most `max`); false on anything else.
+bool numbersOf(std::string_view text, float* out, size_t max, size_t& count) {
+    count = 0;
+    const char* p = text.data();
+    const char* end = p + text.size();
+    while (p < end) {
+        if (count == max) {
+            return false;
+        }
+        const std::from_chars_result r = fromChars(p, end, out[count]);
+        if (r.ec != std::errc() || !std::isfinite(out[count])) {
+            return false;
+        }
+        ++count;
+        p = r.ptr;
+        if (p < end) {
+            if (*p != ' ' || p + 1 == end) {
+                return false;
+            }
+            ++p;
+        }
+    }
+    return count > 0;
+}
+
+/// valueText()'s inverse.
+bool parseValueText(std::string_view text, Value& out) {
+    if (text == "auto") {
+        out = Value::ofLength(0, LengthUnit::Auto);
+        return true;
+    }
+    constexpr std::string_view kColor = "color(srgb ";
+    if (text.size() > kColor.size() && text.substr(0, kColor.size()) == kColor && text.back() == ')') {
+        const std::string_view inner = text.substr(kColor.size(), text.size() - kColor.size() - 1);
+        const size_t slash = inner.find(" / ");
+        float rgb[3] = {};
+        float alpha[1] = {};
+        size_t n = 0;
+        size_t na = 0;
+        if (slash == std::string_view::npos || !numbersOf(inner.substr(0, slash), rgb, 3, n) || n != 3 ||
+            !numbersOf(inner.substr(slash + 3), alpha, 1, na)) {
+            return false;
+        }
+        out = Value::ofColor(Color{rgb[0], rgb[1], rgb[2], alpha[0]});
+        return true;
+    }
+    if (text.find(' ') != std::string_view::npos) {
+        float v[3] = {};
+        size_t n = 0;
+        if (!numbersOf(text, v, 3, n) || n < 2) {
+            return false;
+        }
+        out = n == 2 ? Value::ofVec2(Vec2{v[0], v[1]}) : Value::ofVec3(Vec3{v[0], v[1], v[2]});
+        return true;
+    }
+    float f = 0;
+    const std::from_chars_result r = fromChars(text.data(), text.data() + text.size(), f);
+    if (r.ec != std::errc() || !std::isfinite(f)) {
+        return false;
+    }
+    const std::string_view unit(r.ptr, static_cast<size_t>(text.data() + text.size() - r.ptr));
+    if (unit.empty()) {
+        out = Value::ofFloat(f);
+        return true;
+    }
+    for (const auto& u : kLengthUnits) {
+        if (unit == u.name) {
+            out = Value::ofLength(f, u.unit);
+            return true;
+        }
+    }
+    return false;
+}
+
+/// `linear`, `cubic-bezier(x1,y1,x2,y2)` or `steps(n,start|end)`; "" for a timing function the
+/// restore takes from the element's own `transition` (hold, `linear()` points).
+std::string easingText(const Easing& e) {
+    std::string out;
+    if (e.kind == EasingKind::Linear) {
+        out = "linear";
+    } else if (e.kind == EasingKind::CubicBezier) {
+        out = "cubic-bezier(";
+        const float points[4] = {e.x1, e.y1, e.x2, e.y2};
+        for (int i = 0; i < 4; ++i) {
+            out += i > 0 ? "," : "";
+            appendDigits(out, points[i], 9);
+        }
+        out += ')';
+    } else if (e.kind == EasingKind::Steps) {
+        out = "steps(" + std::to_string(e.stepCount) + (e.stepsJumpEnd != 0 ? ",end)" : ",start)");
+    }
+    return out;
+}
+
+/// The arguments of `fn(...)` when `text` is that call.
+bool callArgs(std::string_view text, std::string_view fn, std::string_view& args) {
+    if (text.size() <= fn.size() + 1 || text.substr(0, fn.size()) != fn || text.back() != ')') {
+        return false;
+    }
+    args = text.substr(fn.size(), text.size() - fn.size() - 1);
+    return true;
+}
+
+/// easingText()'s inverse.
+bool parseEasingText(std::string_view text, Easing& out) {
+    if (text == "linear") {
+        out = Easing::linear();
+        return true;
+    }
+    std::string_view args;
+    if (callArgs(text, "cubic-bezier(", args)) {
+        float v[4] = {};
+        for (int i = 0; i < 4; ++i) {
+            const std::from_chars_result r = fromChars(args.data(), args.data() + args.size(), v[i]);
+            if (r.ec != std::errc() || !std::isfinite(v[i])) {
+                return false;
+            }
+            args.remove_prefix(static_cast<size_t>(r.ptr - args.data()));
+            if (i < 3) {
+                if (args.empty() || args.front() != ',') {
+                    return false;
+                }
+                args.remove_prefix(1);
+            }
+        }
+        if (!args.empty()) {
+            return false;
+        }
+        out = Easing::bezier(v[0], v[1], v[2], v[3]);
+        return true;
+    }
+    if (callArgs(text, "steps(", args)) {
+        const size_t comma = args.find(',');
+        if (comma == std::string_view::npos) {
+            return false;
+        }
+        const std::string_view count = args.substr(0, comma);
+        const std::string_view jump = args.substr(comma + 1);
+        uint32_t n = 0;
+        const std::from_chars_result r = std::from_chars(count.data(), count.data() + count.size(), n);
+        if (r.ec != std::errc() || r.ptr != count.data() + count.size() || n < 1 || n > 0xFFFF ||
+            (jump != "end" && jump != "start")) {
+            return false;
+        }
+        out = Easing::steps(static_cast<uint16_t>(n), jump == "end");
+        return true;
+    }
+    return false;
+}
+
+/// T-654: the version 4 members (`transitions`, `pointer`), each only when present.
+void parseVersion4(const Json& root, DocumentState& out) {
+    if (const Json* transitions = member(root, "transitions");
+        transitions != nullptr && transitions->kind == Json::Kind::Arr) {
+        for (const Json& v : transitions->items) {
+            const Json* id = member(v, "id");
+            const Json* property = member(v, "property");
+            const Json* from = member(v, "from");
+            const Json* to = member(v, "to");
+            const Json* easing = member(v, "easing");
+            const double elapsed = numberOr(member(v, "elapsed"), 0);
+            const double duration = numberOr(member(v, "duration"), 0);
+            if (id == nullptr || id->kind != Json::Kind::Str || property == nullptr ||
+                property->kind != Json::Kind::Str || from == nullptr || from->kind != Json::Kind::Str ||
+                to == nullptr || to->kind != Json::Kind::Str || !std::isfinite(elapsed) ||
+                !std::isfinite(duration) || duration <= 0) {
+                continue;
+            }
+            out.transitions.push_back(DocumentState::Transition{
+                id->s, property->s, from->s, to->s, elapsed, static_cast<float>(duration),
+                easing != nullptr && easing->kind == Json::Kind::Str ? easing->s : std::string()});
+        }
+    }
+    const Json* pointer = member(root, "pointer");
+    if (pointer == nullptr || pointer->kind != Json::Kind::Obj) {
+        return;
+    }
+    for (const auto& [player, v] : pointer->fields) {
+        if (player.size() != 1 || player[0] < '0' || player[0] >= static_cast<char>('0' + kMaxPlayers) ||
+            v.kind != Json::Kind::Obj) {
+            continue;
+        }
+        const Json* hover = member(v, "hover");
+        const Json* pressed = member(v, "pressed");
+        const double buttons = numberOr(member(v, "buttons"), 0);
+        DocumentState::Pointer entry;
+        entry.player = static_cast<uint8_t>(player[0] - '0');
+        entry.x = static_cast<float>(numberOr(member(v, "x"), 0));
+        entry.y = static_cast<float>(numberOr(member(v, "y"), 0));
+        entry.buttons = buttons > 0 && buttons < 256 ? static_cast<uint8_t>(buttons) : uint8_t{0};
+        entry.hover = hover != nullptr && hover->kind == Json::Kind::Str ? hover->s : std::string();
+        entry.pressed = pressed != nullptr && pressed->kind == Json::Kind::Str ? pressed->s : std::string();
+        entry.inside = boolOr(member(v, "inside"), false);
+        out.hasPointer = true;
+        out.pointer = std::move(entry);  // One pointer: the last entry wins.
+    }
+}
+
+void appendVersion4(std::string& out, const DocumentState& state) {
+    out += ",\"transitions\":[";
+    for (size_t i = 0; i < state.transitions.size(); ++i) {
+        const DocumentState::Transition& t = state.transitions[i];
+        out += i > 0 ? ",{\"id\":" : "{\"id\":";
+        appendString(out, t.id);
+        out += ",\"property\":";
+        appendString(out, t.property);
+        out += ",\"from\":";
+        appendString(out, t.from);
+        out += ",\"to\":";
+        appendString(out, t.to);
+        out += ",\"elapsed\":";
+        appendDigits(out, t.elapsed, 17);
+        out += ",\"duration\":";
+        appendDigits(out, t.duration, 9);
+        if (!t.easing.empty()) {
+            out += ",\"easing\":";
+            appendString(out, t.easing);
+        }
+        out += '}';
+    }
+    out += ']';
+    if (!state.hasPointer) {
+        return;
+    }
+    const DocumentState::Pointer& p = state.pointer;
+    out += ",\"pointer\":{\"" + std::to_string(p.player) + "\":{\"x\":";
+    appendDigits(out, p.x, 9);
+    out += ",\"y\":";
+    appendDigits(out, p.y, 9);
+    out += ",\"buttons\":" + std::to_string(p.buttons) + ",\"hover\":";
+    appendString(out, p.hover);
+    out += ",\"pressed\":";
+    appendString(out, p.pressed);
+    out += std::string(",\"inside\":") + (p.inside ? "true" : "false") + "}}";
+}
+
+/// The `transition` entry of `style` that covers `prop` (the first one, as StyleEngine picks), or
+/// null.
+const IrTransitionSpec* transitionSpecFor(const IrView& ir, const ComputedStyle& style, PropId prop) {
+    const std::span<const IrTransitionSpec> all = ir.style().transitions();
+    if (uint64_t{style.transitionOffset} + style.transitionCount > all.size()) {
+        return nullptr;
+    }
+    for (const IrTransitionSpec& spec : all.subspan(style.transitionOffset, style.transitionCount)) {
+        if (spec.prop == prop || spec.prop == 0xFFFFu) {
+            return &spec;
+        }
+    }
+    return nullptr;
+}
+
+/// T-654: the in-flight transitions of id'd elements on their own properties (not a scene node's,
+/// not an effect parameter's), sorted by (id, property) so equal states write equal text.
+void collectTransitions(const Document& doc, const NodeArena& arena, const Animator& animator, float clock,
+                        std::vector<DocumentState::Transition>& out) {
+    for (const Transition& tr : animator.transitions()) {
+        if (tr.written() != tr.node || !arena.alive(tr.node) || arena.kind(tr.node) != NodeKind::Element ||
+            arena.element(tr.node).id == kInvalidString || isEffectProp(tr.prop)) {
+            continue;
+        }
+        DocumentState::Transition entry;
+        entry.property = propertyName(tr.prop);
+        if (propertyByName(entry.property) != tr.prop || !valueText(tr.from, entry.from) ||
+            !valueText(tr.to, entry.to)) {
+            continue;
+        }
+        entry.id = std::string(doc.string(arena.element(tr.node).id));
+        entry.elapsed =
+            static_cast<double>(clock) - static_cast<double>(tr.startClock) - static_cast<double>(tr.delay);
+        entry.duration = tr.duration;
+        entry.easing = easingText(tr.easing);
+        out.push_back(std::move(entry));
+    }
+    std::sort(out.begin(), out.end(),
+              [](const DocumentState::Transition& a, const DocumentState::Transition& b) {
+                  return a.id != b.id ? a.id < b.id : a.property < b.property;
+              });
+}
+
+/// True when `v` can be written to an element's `prop` (setProperty()'s rule).
+bool fitsProperty(PropId prop, const Value& v) {
+    if (v.type == propertyType(prop)) {
+        return true;
+    }
+    return (prop == prop::TranslateX || prop == prop::TranslateY) &&
+           (v.type == ValueType::Length || v.type == ValueType::Vec2);
+}
+
+/// T-654: rebuilds the snapshot's transitions on the restored clock, after the style pass: each one
+/// gets the delay (and, when the snapshot has none, the easing) of the element's own `transition`
+/// for the property, and the start that puts it `elapsed` seconds past that delay at `clock`.
+void applyTransitions(const Document& doc, const NodeArena& arena, const IrView& ir, Animator& animator,
+                      float clock, const std::vector<DocumentState::Transition>& transitions) {
+    for (const DocumentState::Transition& snap : transitions) {
+        const NodeId node = doc.byId(snap.id).node;
+        const PropId prop = propertyByName(snap.property);
+        if (node == kInvalidNode || prop == prop::kInvalidProp || isEffectProp(prop) ||
+            !propertyApplies(NodeKind::Element, prop)) {
+            continue;
+        }
+        Transition tr;
+        tr.node = node;
+        tr.target = node;
+        tr.prop = prop;
+        if (!parseValueText(snap.from, tr.from) || !parseValueText(snap.to, tr.to) ||
+            tr.from.type != tr.to.type || !fitsProperty(prop, tr.from)) {
+            continue;
+        }
+        const IrTransitionSpec* spec = transitionSpecFor(ir, arena.element(node).style, prop);
+        tr.delay = spec != nullptr ? spec->delay : 0.0f;
+        tr.duration = snap.duration;
+        if (!parseEasingText(snap.easing, tr.easing)) {
+            tr.easing = spec != nullptr ? easingFromIr(spec->easing) : Easing::linear();
+        }
+        tr.startClock =
+            static_cast<float>(static_cast<double>(clock) - snap.elapsed - static_cast<double>(tr.delay));
+        animator.addTransition(tr);  // Replaces one the style pass started on the same property.
+    }
+}
+
 /// The DocumentState a snapshot JSON describes; false when it is not one.
 bool parseState(std::string_view text, DocumentState& out) {
     Json root;
@@ -288,7 +701,7 @@ bool parseState(std::string_view text, DocumentState& out) {
         return false;
     }
     const double version = numberOr(member(root, "version"), 0);
-    if (version != 1 && version != 2 && version != 3) {
+    if (version != 1 && version != 2 && version != 3 && version != 4) {
         return false;
     }
     if (const Json* ports = member(root, "ports"); ports != nullptr && ports->kind == Json::Kind::Obj) {
@@ -362,11 +775,12 @@ bool parseState(std::string_view text, DocumentState& out) {
     }
     parseVersion2(root, out);
     parseAnimations(root, out);
+    parseVersion4(root, out);
     return true;
 }
 
 std::string serializeState(const DocumentState& state) {
-    std::string out = "{\"version\":3,\"ports\":{";
+    std::string out = "{\"version\":4,\"ports\":{";
     for (size_t i = 0; i < state.ports.size(); ++i) {
         out += i > 0 ? "," : "";
         appendString(out, state.ports[i].name);
@@ -466,7 +880,9 @@ std::string serializeState(const DocumentState& state) {
                   std::isfinite(state.clockSeconds) ? state.clockSeconds : 0.0,
                   static_cast<unsigned long long>(state.clockFrame));
     out += clock;
-    out += state.shown == 1 ? "true}" : "false}";
+    out += state.shown == 1 ? "true" : "false";
+    appendVersion4(out, state);
+    out += '}';
     return out;
 }
 
@@ -586,6 +1002,17 @@ void Document::collectState(DocumentState& out, bool withPorts) {
         entry.rate = g.rate;
         out.timelines.push_back(std::move(entry));
     }
+    // T-654 (23 XF-097 version 4): in-flight CSS transitions and the pointer state.
+    collectTransitions(*this, m_arena, m_animator, m_clock, out.transitions);
+    const EventDispatcher::PointerState pointer = m_events->pointerState();
+    out.hasPointer = true;
+    out.pointer.player = pointer.player;
+    out.pointer.x = pointer.pos.x;
+    out.pointer.y = pointer.pos.y;
+    out.pointer.buttons = pointer.buttons;
+    out.pointer.hover = idOf(pointer.hover);
+    out.pointer.pressed = idOf(pointer.pressed);
+    out.pointer.inside = pointer.inside;
 }
 
 void Document::collectClasses(DocumentState& out) const {
@@ -773,6 +1200,20 @@ void Document::applyState(const DocumentState& state, bool exact) {
             setFocus(ElementRef{}, p);
         }
     }
+    // 4b. T-654: the pointer state, set directly (restoreState() only): no PointerEnter / Leave, a
+    // press goes on to its Click. Before the style pass below, so `:hover` / `:active` styles are
+    // part of it rather than a change that starts transitions.
+    if (exact && state.hasPointer) {
+        EventDispatcher::PointerState pointer;
+        pointer.player = state.pointer.player;
+        pointer.pos = Vec2{state.pointer.x, state.pointer.y};
+        pointer.buttons = state.pointer.buttons;
+        pointer.hover = state.pointer.hover.empty() ? kInvalidNode : byId(state.pointer.hover).node;
+        pointer.pressed = state.pointer.pressed.empty() ? kInvalidNode : byId(state.pointer.pressed).node;
+        pointer.inside = state.pointer.inside;
+        m_events->setTime(m_clock);  // The press time of a restored press.
+        m_events->restorePointerState(m_arena, pointer);
+    }
     // 5. Timeline groups: exactly the listed ones stay active, at their position.
     std::vector<bool> keep(m_timelineGroups->groups.size(), false);
     for (const DocumentState::Timeline& snap : state.timelines) {
@@ -803,8 +1244,13 @@ void Document::applyState(const DocumentState& state, bool exact) {
     // 5b. T-616 (04 §4.13): CSS `animation` items, by element id + position + `@keyframes` name,
     // after a style pass at this clock has played the new document's own (the custom states above
     // may have changed which `animation` declaration wins).
-    if (!state.animations.empty()) {
+    // T-654: the in-flight CSS transitions (restoreState() only) at the same spot.
+    const bool transitions = exact && !state.transitions.empty();
+    if (!state.animations.empty() || transitions) {
         layoutIfDirty();
+    }
+    if (transitions) {
+        applyTransitions(*this, m_arena, m_ir, m_animator, m_clock, state.transitions);
     }
     for (const DocumentState::Animation& snap : state.animations) {
         const NodeId node = byId(snap.id).node;
@@ -889,21 +1335,22 @@ Status Document::restoreState(std::string_view json) {
     if (!parseState(json, state)) {
         return Status::kInvalidArgument;
     }
+    // This document's handle in its Context (0: none) and whether it is the Context's only one.
+    DocumentHandle handle = 0;
+    bool alone = true;
+    for (size_t i = 0; m_context != nullptr && i < m_context->m_documents.size(); ++i) {
+        const Document* other = m_context->liveAt(i);
+        handle = other == this ? static_cast<DocumentHandle>(i + 1) : handle;
+        alone = alone && (other == nullptr || other == this);
+    }
     // T-650 (23 XF-097 version 2): the clock first, so the timeline groups and CSS animations below
     // are set against it. It is the Context's clock while this is the Context's only document (a
     // C ABI surface): the frames that follow run on the same clock values as the saved run's.
     if (state.hasClock) {
         m_clock = static_cast<float>(state.clockSeconds);
         m_frame = state.clockFrame;
-        if (m_context != nullptr) {
-            bool alone = true;
-            for (size_t i = 0; i < m_context->m_documents.size() && alone; ++i) {
-                const Document* other = m_context->liveAt(i);
-                alone = other == nullptr || other == this;
-            }
-            if (alone) {
-                m_context->m_clock = m_clock;
-            }
+        if (m_context != nullptr && alone) {
+            m_context->m_clock = m_clock;
         }
     }
     // First rule: restored before the first update() with the initial show done, the document counts
@@ -914,6 +1361,21 @@ Status Document::restoreState(std::string_view json) {
         m_initialShown = true;
     }
     applyState(state, /*exact=*/true);
+    // T-654: the Context routes the restored pointer here: the hovered surface (no PointerLeave from
+    // a move inside it) and, for a press, the capture its PointerUp goes to.
+    if (state.hasPointer && handle != 0) {
+        if (state.pointer.inside && (m_context->m_hoverSurface == 0 || alone)) {
+            m_context->m_hoverSurface = handle;
+        } else if (!state.pointer.inside && m_context->m_hoverSurface == handle) {
+            m_context->m_hoverSurface = 0;
+        }
+        const bool pressed = m_events->activeNode() != kInvalidNode;
+        if (pressed && (m_context->m_pointerCapture == 0 || alone)) {
+            m_context->m_pointerCapture = handle;
+        } else if (!pressed && m_context->m_pointerCapture == handle) {
+            m_context->m_pointerCapture = 0;
+        }
+    }
     // T-399 (08 §8.18): `bind:value` covers what is left of an edit with its port's value again.
     m_bindings->reapplyAllValues();
     return Status::kOk;

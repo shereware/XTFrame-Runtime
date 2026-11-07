@@ -110,7 +110,7 @@ TEST_CASE("t651: six CSS animation shapes round-trip; 30 frames equal the uninte
     Surface a(ir);
     const std::string snap = runAndSave(a);
     CAPTURE(snap);
-    CHECK(snap.find(R"({"version":3,)") == 0);
+    CHECK(snap.find(R"({"version":4,)") == 0);  // T-654: written as version 4.
     CHECK(snap.find(R"({"id":"alt","index":0,"name":"fade","elapsed":)") != std::string::npos);
     CHECK(snap.find(R"("direction":"alternate"})") != std::string::npos);
     CHECK(snap.find(R"({"id":"alt","index":1,"name":"tall",)") != std::string::npos);
@@ -172,12 +172,12 @@ TEST_CASE("t651: an animation the snapshot does not list starts from 0; the list
         Status::kOk);
 }
 
-TEST_CASE("t651: version 1 and 2 snapshots still load; version 4 does not") {
+TEST_CASE("t651: version 1 and 2 snapshots still load; version 5 does not (T-654: 4 does)") {
     const std::vector<uint8_t> ir = compiled("");
     Surface a(ir);
     const std::string snap = runAndSave(a);
     std::string v2 = snap;
-    v2.replace(0, std::strlen(R"({"version":3)"), R"({"version":2)");
+    v2.replace(0, std::strlen(R"({"version":4)"), R"({"version":2)");
     const size_t at = v2.find(R"(,"animations":[)");
     REQUIRE(at != std::string::npos);
     v2.erase(at, v2.find("],\"classes\"", at) + 1 - at);
@@ -191,7 +191,7 @@ TEST_CASE("t651: version 1 and 2 snapshots still load; version 4 does not") {
 
     Surface c(ir);
     CHECK(c.doc().restoreState(R"({"version":1,"states":{}})") == Status::kOk);
-    std::string v4 = snap;
-    v4.replace(0, std::strlen(R"({"version":3)"), R"({"version":4)");
-    CHECK(c.doc().restoreState(v4) == Status::kInvalidArgument);
+    std::string v5 = snap;
+    v5.replace(0, std::strlen(R"({"version":4)"), R"({"version":5)");
+    CHECK(c.doc().restoreState(v5) == Status::kInvalidArgument);
 }

@@ -245,6 +245,9 @@ public:
     uint32_t activeInstanceCount() const;
     /// Returns the number of currently active transitions.
     uint32_t transitionCount() const;
+    /// T-654 (23 XF-097 version 4): the active transitions, in no particular order. Read-only;
+    /// addTransition() restores one.
+    std::span<const Transition> transitions() const { return m_transitions; }
 
     /// Test-only introspection of scratch/pending vector capacities, used to verify evaluate()
     /// performs no allocations in steady state. See Docs/tasks/T-07.md.

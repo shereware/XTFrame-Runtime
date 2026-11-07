@@ -9,9 +9,9 @@
 #include "xt/types.h"
 
 /// Hit testing (08.2), the listener pool + bubbling dispatch (08.3) and the pointer state machine
-/// (08.4), all owned by one Document. Internal to xt_core (not installed under Code/Runtime/core/include): only
-/// Document (document.cpp) and its tests (test_hit_test.cpp, test_events.cpp, which the test
-/// target's include path adds Code/Runtime/core/src to) use this directly. See Docs/tasks/T-32.md.
+/// (08.4), all owned by one Document. Internal to xt_core (not installed under Code/Runtime/core/include):
+/// only Document (document.cpp) and its tests (test_hit_test.cpp, test_events.cpp, which the test target's
+/// include path adds Code/Runtime/core/src to) use this directly. See Docs/tasks/T-32.md.
 
 namespace xt {
 
@@ -209,6 +209,20 @@ public:
 
     NodeId hoverNode() const { return m_hoverNode; }
     NodeId activeNode() const { return m_activeNode; }
+    /// T-654 (23 XF-097 version 4): the pointer state machine's own state, as a snapshot keeps it.
+    struct PointerState {
+        uint8_t player = 0;   // The player of the last pointer move, press or release.
+        Vec2 pos{};           // The last pointer position (document space).
+        uint8_t buttons = 0;  // The held buttons (bit = PointerButton).
+        NodeId hover = kInvalidNode;
+        NodeId pressed = kInvalidNode;  // The element the press in progress is on.
+        bool inside = false;            // pointerIn().
+    };
+    PointerState pointerState() const;
+    /// Sets the pointer state directly, dispatching nothing: the Hover / Active state bits move to
+    /// the new chains (no PointerEnter / Leave), a pending drag or pointerdrag is dropped. A
+    /// restored press ends in a Click at its PointerUp under the 08.4 rules, as an ordinary press.
+    void restorePointerState(NodeArena& arena, const PointerState& state);
     /// Player 0's focus (mouse / keyboard).
     NodeId focusNode() const { return m_focus[0]; }
     /// T-194 (08.9): `player`'s focus (kInvalidNode for a player index >= kMaxPlayers).
@@ -506,9 +520,10 @@ private:
     // (Docs/tasks/T-33.md "拖曳（active 時 PointerMove）擴選"). Cleared on PointerUp.
     NodeId m_dragEdit = kInvalidNode;
     Vec2 m_pointerPos{};
-    bool m_pointerIn = false;   // T-552: see pointerIn().
-    bool m_hoverStale = false;  // T-552: see markHoverStale().
-    Vec2 m_lastPointer{};       // T-201: see pointerPosition().
+    bool m_pointerIn = false;     // T-552: see pointerIn().
+    bool m_hoverStale = false;    // T-552: see markHoverStale().
+    Vec2 m_lastPointer{};         // T-201: see pointerPosition().
+    uint8_t m_pointerPlayer = 0;  // T-654: the player of the last pointer move / press / release.
     // T-201: the `draggable="axis-x"` element a pointer press is dragging along (drag_drop.cpp).
     NodeId m_axisDrag = kInvalidNode;
     void axisDragValue(NodeArena& arena, Vec2 pos);

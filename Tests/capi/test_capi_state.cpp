@@ -177,7 +177,7 @@ TEST_CASE("capi state 3 (T-635): bad input is INVALID_ARGUMENT with nothing appl
     Frame rgba = newFrame();
     const std::string saved = setUpAndSave(s, rgba);
 
-    for (const char* bad : {static_cast<const char*>(nullptr), "", "{", "[]", "{\"version\":4}"}) {
+    for (const char* bad : {static_cast<const char*>(nullptr), "", "{", "[]", "{\"version\":5}"}) {
         CAPTURE((bad != nullptr ? bad : "(NULL)"));
         CHECK(xt_surface_load_state(s, bad) == XT_STATUS_INVALID_ARGUMENT);
         CHECK(std::strlen(xt_capi_last_error()) > 0);
@@ -324,7 +324,7 @@ TEST_CASE("capi state 6 (T-650): a clicked card's class is back on a fresh surfa
     }
     INFO(saved);
     CHECK(saved.find(R"("classes":{"card":{"add":["flipped"],"remove":[]}})") != std::string::npos);
-    CHECK(saved.find(R"("shown":true})") != std::string::npos);
+    CHECK(saved.find(R"("shown":true,)") != std::string::npos);
 
     {
         FlowSurface fresh(b, "flip", desc);
@@ -484,6 +484,138 @@ TEST_CASE(
         REQUIRE(xt_surface_update(plain.s, 0.0f) == XT_STATUS_OK);
         renderInto(plain.s, rest, kSize);
         CHECK(rest != orig);
+    }
+    CHECK(xt_bundle_close(b) == XT_STATUS_OK);
+}
+
+// -- T-654 (23 XF-097 "version 4"): in-flight CSS transitions and the pointer state ------------------
+
+namespace {
+
+/// Counts the XT_PORT_CONNECTION callbacks of two connection_watch ids.
+struct ConnectionCount {
+    uint32_t clickId = 0;
+    uint32_t enterId = 0;
+    int clicks = 0;
+    int enters = 0;
+    static void onPort(xt_surface* /*s*/, const xt_port_event* e, void* user) {
+        auto* self = static_cast<ConnectionCount*>(user);
+        if (e->kind != XT_PORT_CONNECTION) {
+            return;
+        }
+        self->clicks += e->listener_id == self->clickId ? 1 : 0;
+        self->enters += e->listener_id == self->enterId ? 1 : 0;
+    }
+};
+
+void pointerEvent(xt_surface* s, int32_t kind, float x, float y) {
+    xt_input_event e{};
+    e.struct_size = sizeof(e);
+    e.kind = kind;
+    e.x = x;
+    e.y = y;
+    e.gesture_scale = 1.0f;
+    REQUIRE(xt_surface_push_input(s, &e) == XT_STATUS_OK);
+}
+
+}  // namespace
+
+TEST_CASE(
+    "capi state 10 (T-654): loaded mid opacity transition: the first frame and 60 more are the saved run's") {
+    constexpr float kDt = 1.0f / 60.0f;
+    xt_bundle* b = xt_bundle_open(XT_CAPI_TEST_FLIP_BUNDLE);
+    REQUIRE_MESSAGE(b != nullptr, xt_capi_last_error());
+    const xt_surface_desc desc = flowDesc(kSize, kSize, 1.0f);
+    {
+        FlowSurface original(b, "flip", desc);
+        Frame orig = newFrame();
+        REQUIRE(xt_surface_update(original.s, 0.0f) == XT_STATUS_OK);
+        click(original.s, 32.0f, 32.0f);  // #card.Click -> toggleClass(flipped): the 1 s fade starts.
+        REQUIRE(xt_surface_update(original.s, 0.0f) == XT_STATUS_OK);
+        for (int f = 0; f < 20; ++f) {
+            REQUIRE(xt_surface_update(original.s, kDt) == XT_STATUS_OK);
+        }
+        renderInto(original.s, orig, kSize);
+        const char* json = xt_surface_save_state(original.s);
+        REQUIRE_MESSAGE(json != nullptr, xt_capi_last_error());
+        const std::string saved = json;
+        INFO(saved);
+        CHECK(saved.find(R"({"version":4,)") == 0);
+        CHECK(saved.find(
+                  R"("transitions":[{"id":"card","property":"Opacity","from":"1","to":"0","elapsed":)") !=
+              std::string::npos);
+
+        FlowSurface fresh(b, "flip", desc);
+        REQUIRE_MESSAGE(xt_surface_load_state(fresh.s, saved.c_str()) == XT_STATUS_OK, xt_capi_last_error());
+        Frame copy = newFrame();
+        REQUIRE(xt_surface_update(fresh.s, 0.0f) == XT_STATUS_OK);
+        renderInto(fresh.s, copy, kSize);
+        CHECK_MESSAGE(copy == orig, firstDifference(copy, orig, kSize));  // Mid-fade, not its end.
+        for (int f = 0; f < 60; ++f) {
+            CAPTURE(f);
+            REQUIRE(xt_surface_update(original.s, kDt) == XT_STATUS_OK);
+            REQUIRE(xt_surface_update(fresh.s, kDt) == XT_STATUS_OK);
+            renderInto(original.s, orig, kSize);
+            renderInto(fresh.s, copy, kSize);
+            REQUIRE_MESSAGE(copy == orig, firstDifference(copy, orig, kSize));
+        }
+        CHECK(fresh.visibility.shown == 0);
+
+        // Without `transitions` the fresh surface shows the fade's end at once: another frame.
+        std::string cut = saved;
+        const size_t at = cut.find(R"(,"transitions":[)");
+        REQUIRE(at != std::string::npos);
+        cut.erase(at, cut.find("],\"pointer\"", at) + 1 - at);
+        FlowSurface ended(b, "flip", desc);
+        REQUIRE(xt_surface_load_state(ended.s, cut.c_str()) == XT_STATUS_OK);
+        Frame end = newFrame();
+        REQUIRE(xt_surface_update(ended.s, 0.0f) == XT_STATUS_OK);
+        renderInto(ended.s, end, kSize);
+        Frame mid = newFrame();
+        FlowSurface again(b, "flip", desc);
+        REQUIRE(xt_surface_load_state(again.s, saved.c_str()) == XT_STATUS_OK);
+        REQUIRE(xt_surface_update(again.s, 0.0f) == XT_STATUS_OK);
+        renderInto(again.s, mid, kSize);
+        CHECK(end != mid);
+    }
+    CHECK(xt_bundle_close(b) == XT_STATUS_OK);
+}
+
+TEST_CASE(
+    "capi state 11 (T-654): a press held at the save ends in one Click after the load, no PointerEnter") {
+    xt_bundle* b = xt_bundle_open(XT_CAPI_TEST_FLIP_BUNDLE);
+    REQUIRE_MESSAGE(b != nullptr, xt_capi_last_error());
+    const xt_surface_desc desc = flowDesc(kSize, kSize, 1.0f);
+    {
+        FlowSurface original(b, "flip", desc);
+        REQUIRE(xt_surface_update(original.s, 0.0f) == XT_STATUS_OK);
+        pointerEvent(original.s, XT_INPUT_POINTER_MOVE, 32.0f, 32.0f);
+        pointerEvent(original.s, XT_INPUT_POINTER_DOWN, 32.0f, 32.0f);
+        REQUIRE(xt_surface_update(original.s, 0.0f) == XT_STATUS_OK);
+        const char* json = xt_surface_save_state(original.s);
+        REQUIRE_MESSAGE(json != nullptr, xt_capi_last_error());
+        const std::string saved = json;
+        INFO(saved);
+        CHECK(saved.find(R"("pointer":{"0":{"x":32,"y":32,"buttons":1,"hover":"card","pressed":"card",)"
+                         R"("inside":true}})") != std::string::npos);
+
+        FlowSurface fresh(b, "flip", desc);
+        ConnectionCount count;
+        REQUIRE(xt_surface_connection_watch(fresh.s, "#card.Click", &count.clickId) == XT_STATUS_OK);
+        REQUIRE(xt_surface_connection_watch(fresh.s, "#card.PointerEnter", &count.enterId) == XT_STATUS_OK);
+        REQUIRE(xt_surface_set_port_listener(fresh.s, &ConnectionCount::onPort, &count) == XT_STATUS_OK);
+        REQUIRE_MESSAGE(xt_surface_load_state(fresh.s, saved.c_str()) == XT_STATUS_OK, xt_capi_last_error());
+        REQUIRE(xt_surface_update(fresh.s, 0.0f) == XT_STATUS_OK);
+        CHECK(count.clicks == 0);
+        pointerEvent(fresh.s, XT_INPUT_POINTER_UP, 32.0f, 32.0f);
+        REQUIRE(xt_surface_update(fresh.s, 0.0f) == XT_STATUS_OK);
+        REQUIRE(xt_surface_update(fresh.s, 0.0f) == XT_STATUS_OK);
+        CHECK(count.clicks == 1);
+        CHECK(count.enters == 0);
+        const char* after = xt_surface_save_state(fresh.s);
+        REQUIRE(after != nullptr);
+        CHECK(std::string(after).find(R"("classes":{"card":{"add":["flipped"],"remove":[]}})") !=
+              std::string::npos);  // The flow took the Click.
     }
     CHECK(xt_bundle_close(b) == XT_STATUS_OK);
 }

@@ -69,6 +69,27 @@ struct DocumentState {
         std::vector<std::string> remove;  // IR classes the element no longer has, sorted.
     };
 
+    /// T-654 (23 XF-097 version 4): one in-flight CSS `transition` of an element with an id.
+    struct Transition {
+        std::string id;
+        std::string property;  // propertyName(): "Opacity", "BackgroundColor", ...
+        std::string from;      // The value as style text (see document_state.cpp).
+        std::string to;
+        double elapsed = 0;  // Seconds since the transition's delay ended (negative in the delay).
+        float duration = 0;
+        std::string easing;  // "" = the element's own `transition` easing for the property.
+    };
+    /// T-654: the pointer state machine's state (one per document: the player of its last input).
+    struct Pointer {
+        uint8_t player = 0;
+        float x = 0;  // Document space.
+        float y = 0;
+        uint8_t buttons = 0;  // Held PointerButton bits.
+        std::string hover;    // "" = none (or an element without an id).
+        std::string pressed;
+        bool inside = false;
+    };
+
     std::vector<Port> ports;
     std::vector<States> states;
     std::vector<Input> inputs;
@@ -84,6 +105,10 @@ struct DocumentState {
     double clockSeconds = 0;  // The document clock (a float, written with %.17g).
     uint64_t clockFrame = 0;  // Document::update() calls.
     int shown = -1;           // The initial show was done: 1, not yet: 0, not in the snapshot: -1.
+    // T-654 (23 XF-097 version 4); applied by restoreState() only.
+    std::vector<Transition> transitions;
+    bool hasPointer = false;
+    Pointer pointer;
 };
 
 }  // namespace xt

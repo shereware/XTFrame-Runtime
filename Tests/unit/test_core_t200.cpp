@@ -643,7 +643,7 @@ TEST_CASE("t398: snapshotState in one Context, restoreState in another, before i
     // Not a snapshot: nothing applied.
     CHECK(n.restoreState("{") == Status::kInvalidArgument);
     CHECK(n.restoreState("[]") == Status::kInvalidArgument);
-    CHECK(n.restoreState(R"({"version":4})") == Status::kInvalidArgument);  // T-651: 1, 2 and 3 load.
+    CHECK(n.restoreState(R"({"version":5})") == Status::kInvalidArgument);  // T-654: 1 to 4 load.
     // Unknown elements, ports, states and timelines are skipped.
     CHECK(n.restoreState(R"({"version":1,"ports":{"nope":"1","hp":"7"},"states":{"Zz":["Warn"]},)"
                          R"("timelines":[{"name":"none"}]})") == Status::kOk);
@@ -719,11 +719,11 @@ TEST_CASE("t650: runtime classes round-trip as add / remove deltas against the I
     h->step();
     const std::string snap = d.snapshotState();
     CAPTURE(snap);
-    CHECK(snap.find(R"({"version":3,)") == 0);
+    CHECK(snap.find(R"({"version":4,)") == 0);
     CHECK(snap.find(
               R"("classes":{"A":{"add":["red"],"remove":["big"]},"B":{"add":["red","zeta"],"remove":[]}})") !=
           std::string::npos);
-    CHECK(snap.find(R"("shown":true})") != std::string::npos);
+    CHECK(snap.find(R"("shown":true,)") != std::string::npos);
 
     Fresh f(h->ir);
     Document& n = f.doc();
@@ -774,7 +774,7 @@ TEST_CASE("t650: the clock round-trips bit for bit; restored before the first up
     // A snapshot taken before the first update says shown=false: the restored document shows as usual.
     Fresh early(h->ir);
     const std::string unshown = early.doc().snapshotState();
-    CHECK(unshown.find(R"("shown":false})") != std::string::npos);
+    CHECK(unshown.find(R"("shown":false,)") != std::string::npos);
     Fresh g(h->ir);
     REQUIRE(g.doc().restoreState(unshown) == Status::kOk);
     g.ctx.update(0.0f);
