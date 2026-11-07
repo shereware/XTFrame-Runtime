@@ -380,17 +380,37 @@ bool Animator::retarget(uint32_t id, TimelineId timelineId) {
     return true;
 }
 
-float Animator::elapsedSeconds(uint32_t id, float clock) const {
+double Animator::elapsedSeconds(uint32_t id, float clock) const {
     const Instance* inst = findInstance(id);
-    return inst == nullptr ? 0.0f : activeElapsed(*inst, clock);
+    if (inst == nullptr || inst->speed == 0.0f) {
+        return 0.0;
+    }
+    // activeElapsed() in double (T-651): sums and differences of a few floats are exact there.
+    const double speed = inst->speed;
+    const double elapsed = inst->paused != 0
+                               ? static_cast<double>(inst->pausedAt)
+                               : (static_cast<double>(clock) - inst->startClock - inst->delay) * speed;
+    const double origin =
+        speed < 0.0 ? static_cast<double>((inst->segEnd - inst->segStart) * inst->durationScale) : 0.0;
+    return (elapsed - origin) / speed;
 }
 
-void Animator::setElapsedSeconds(uint32_t id, float seconds, float clock) {
+void Animator::setElapsedSeconds(uint32_t id, double seconds, float clock) {
     Instance* inst = findInstance(id);
-    if (inst == nullptr || inst->speed == 0.0f) {
+    if (inst == nullptr || inst->speed == 0.0f || !std::isfinite(seconds)) {
         return;
     }
-    setActiveElapsed(*inst, seconds, clock);
+    // setActiveElapsed() in double (T-651): the inverse of elapsedSeconds() at the same clock gives
+    // back the saved startClock / pausedAt exactly.
+    const double speed = inst->speed;
+    const double origin =
+        speed < 0.0 ? static_cast<double>((inst->segEnd - inst->segStart) * inst->durationScale) : 0.0;
+    const double elapsed = origin + seconds * speed;
+    if (inst->paused != 0) {
+        inst->pausedAt = static_cast<float>(elapsed);
+    } else {
+        inst->startClock = static_cast<float>(static_cast<double>(clock) - inst->delay - elapsed / speed);
+    }
     resyncAfterJump(*inst, clock, /*quietFinish=*/true);
 }
 

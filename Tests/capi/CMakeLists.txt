@@ -25,7 +25,8 @@ xt_capi_pack_bundle(XT_CAPI_HUD_OVERLAY hud-overlay "${PROJECT_SOURCE_DIR}/Examp
 # T-552 (capi review K1 / K4): a one-box UI whose color follows `@media (prefers-reduced-motion)`.
 xt_capi_pack_bundle(XT_CAPI_DEVICE device "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/device")
 # T-561: a one-card UI whose flow toggles `flipped` on #card.Click, with an opacity transition; T-603:
-# a second UI, `intro`, whose flow plays its intro from lifecycle.shown.
+# a second UI, `intro`, whose flow plays its intro from lifecycle.shown; T-651: a third, `lit`, whose
+# click toggles `lit` on #card, starting three CSS animations (state snapshot version 3).
 xt_capi_pack_bundle(XT_CAPI_FLIP flip "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/flip")
 # T-617: a one-box UI whose color follows `localize` bindings of `@greeting` (strings en / zh-TW) and
 # whose flow writes system.languageChanged into the `heard` port.

@@ -70,6 +70,16 @@
         64
       ],
       "tags": []
+    },
+    {
+      "id": "lit",
+      "doc": "lit/lit.xt",
+      "flow": "lit/lit.xtflow",
+      "size": [
+        64,
+        64
+      ],
+      "tags": []
     }
   ],
   "shared": {

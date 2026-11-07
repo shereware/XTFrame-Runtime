@@ -177,7 +177,7 @@ TEST_CASE("capi state 3 (T-635): bad input is INVALID_ARGUMENT with nothing appl
     Frame rgba = newFrame();
     const std::string saved = setUpAndSave(s, rgba);
 
-    for (const char* bad : {static_cast<const char*>(nullptr), "", "{", "[]", "{\"version\":3}"}) {
+    for (const char* bad : {static_cast<const char*>(nullptr), "", "{", "[]", "{\"version\":4}"}) {
         CAPTURE((bad != nullptr ? bad : "(NULL)"));
         CHECK(xt_surface_load_state(s, bad) == XT_STATUS_INVALID_ARGUMENT);
         CHECK(std::strlen(xt_capi_last_error()) > 0);
@@ -430,6 +430,60 @@ TEST_CASE("capi state 8 (T-650): npdo main-menu loaded mid-rain: 60 frames equal
         }
         CHECK(xt_surface_is_timeline_playing(fresh.s, "", "rain") == 1);
         CHECK(fresh.visibility.shown == 0);
+    }
+    CHECK(xt_bundle_close(b) == XT_STATUS_OK);
+}
+
+TEST_CASE(
+    "capi state 9 (T-651): class-driven CSS animations loaded mid-run: 60 frames equal the uninterrupted "
+    "run") {
+    // fixtures/flip/lit: a click on #card toggles `lit`, which starts a 1.4 s infinite alternate
+    // pulse, a 320 ms forwards one-shot and a 0.2 s infinite blink.
+    constexpr float kDt = 1.0f / 60.0f;
+    xt_bundle* b = xt_bundle_open(XT_CAPI_TEST_FLIP_BUNDLE);
+    REQUIRE_MESSAGE(b != nullptr, xt_capi_last_error());
+    const xt_surface_desc desc = flowDesc(kSize, kSize, 1.0f);
+    {
+        FlowSurface original(b, "lit", desc);
+        Frame orig = newFrame();
+        for (int f = 0; f < 30; ++f) {
+            if (f == 12) {
+                click(original.s, 32.0f, 32.0f);
+            }
+            REQUIRE(xt_surface_update(original.s, f == 0 ? 0.0f : kDt) == XT_STATUS_OK);
+            renderInto(original.s, orig, kSize);
+        }
+        const char* json = xt_surface_save_state(original.s);
+        REQUIRE_MESSAGE(json != nullptr, xt_capi_last_error());
+        const std::string saved = json;
+        INFO(saved);
+        CHECK(saved.find(R"("classes":{"card":{"add":["lit"],"remove":[]}})") != std::string::npos);
+        CHECK(saved.find(R"({"id":"lamp","index":0,"name":"litpulse",)") != std::string::npos);
+        CHECK(saved.find(R"({"id":"pop","index":0,"name":"popin",)") != std::string::npos);
+        CHECK(saved.find(R"({"id":"blink","index":0,"name":"blinker",)") != std::string::npos);
+
+        FlowSurface fresh(b, "lit", desc);
+        REQUIRE_MESSAGE(xt_surface_load_state(fresh.s, saved.c_str()) == XT_STATUS_OK, xt_capi_last_error());
+        Frame copy = newFrame();
+        REQUIRE(xt_surface_update(fresh.s, 0.0f) == XT_STATUS_OK);
+        renderInto(fresh.s, copy, kSize);
+        CHECK_MESSAGE(copy == orig, firstDifference(copy, orig, kSize));  // The first frame: the saved one.
+        for (int f = 0; f < 60; ++f) {
+            CAPTURE(f);
+            REQUIRE(xt_surface_update(original.s, kDt) == XT_STATUS_OK);
+            REQUIRE(xt_surface_update(fresh.s, kDt) == XT_STATUS_OK);
+            renderInto(original.s, orig, kSize);
+            renderInto(fresh.s, copy, kSize);
+            REQUIRE_MESSAGE(copy == orig, firstDifference(copy, orig, kSize));
+        }
+        CHECK(fresh.visibility.shown == 0);
+
+        // Without the snapshot the lamp is at rest: another frame.
+        FlowSurface plain(b, "lit", desc);
+        Frame rest = newFrame();
+        REQUIRE(xt_surface_update(plain.s, 0.0f) == XT_STATUS_OK);
+        renderInto(plain.s, rest, kSize);
+        CHECK(rest != orig);
     }
     CHECK(xt_bundle_close(b) == XT_STATUS_OK);
 }

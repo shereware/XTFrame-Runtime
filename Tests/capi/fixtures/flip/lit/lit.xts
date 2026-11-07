@@ -1,0 +1,54 @@
+/* `lit` (toggled by a click on #card) starts three CSS animations: a 1.4 s infinite alternate pulse,
+   a 320 ms forwards one-shot and a 0.2 s infinite blink. */
+@keyframes litpulse {
+  from {
+    opacity: 0.2;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes popin {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes blinker {
+  from {
+    background-color: #000000;
+  }
+  to {
+    background-color: #ffff00;
+  }
+}
+#card {
+  background-color: #202020;
+}
+#lamp {
+  background-color: #ff8000;
+  opacity: 0.2;
+}
+#lamp,
+#pop,
+#blink {
+  pointer-events: none;
+}
+#pop {
+  background-color: #00c0ff;
+  opacity: 0;
+}
+#blink {
+  background-color: #000000;
+}
+#card.lit #lamp {
+  animation: litpulse 1.4s ease-in-out infinite alternate;
+}
+#card.lit #pop {
+  animation: popin 320ms ease-out forwards;
+}
+#card.lit #blink {
+  animation: blinker 0.2s linear infinite;
+}

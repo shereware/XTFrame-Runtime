@@ -290,7 +290,9 @@ XT_CAPI xt_status xt_surface_set_update_hook(xt_surface* s, xt_update_hook_fn fn
    T-650 (50.y addendum): version 2 snapshots add the runtime classes of the id'd elements, the
    document clock and whether the initial show was done; version 1 snapshots still load. Loaded
    before the first xt_surface_update, a snapshot of a shown surface skips the initial show: no
-   xt_visibility_fn "shown", no intro started by it -- the first frame is the saved one. */
+   xt_visibility_fn "shown", no intro started by it -- the first frame is the saved one.
+   T-651: version 3 snapshots add the CSS `animation` items, put back at their saved position;
+   versions 1 and 2 still load. */
 XT_CAPI const char* xt_surface_save_state(xt_surface* s);
 XT_CAPI xt_status xt_surface_load_state(xt_surface* s, const char* json);
 

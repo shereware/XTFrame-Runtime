@@ -1,0 +1,13 @@
+<xt version="2">
+
+  <body>
+    <div id="card">
+      <div id="lamp"></div>
+      <div id="pop"></div>
+      <div id="blink"></div>
+    </div>
+  </body>
+
+  <layout src="lit.layout.xts"/>
+  <style src="lit.xts"/>
+</xt>

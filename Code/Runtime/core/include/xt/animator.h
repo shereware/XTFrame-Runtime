@@ -153,12 +153,14 @@ public:
     /// T-616: the seconds the instance has played since its delay ended, in its own direction (a
     /// negative-speed instance counts from its segment end, as applyAnimationDiff seeks a reversed
     /// CSS animation), not counting paused time; negative while its delay runs. 0 for an unknown id.
-    float elapsedSeconds(uint32_t id, float clock) const;
+    /// T-651: computed in double, where the float differences are exact, so setElapsedSeconds() at
+    /// the same clock puts the instance back bit for bit (a state snapshot's frames stay identical).
+    double elapsedSeconds(uint32_t id, float clock) const;
     /// T-616: puts the instance at `seconds` of elapsedSeconds() (Document's runtime-state restore,
     /// 04 §4.13). Quiet: an instance this lands past its end counts as already finished (no
     /// onFinished), and no iteration or marker crossed by the jump is reported. No-op for an
     /// unknown id or a zero speed.
-    void setElapsedSeconds(uint32_t id, float seconds, float clock);
+    void setElapsedSeconds(uint32_t id, double seconds, float clock);
     /// T-616: true if the instance exists and is paused.
     bool isPaused(uint32_t id) const;
     /// True if the instance exists and is not finished.

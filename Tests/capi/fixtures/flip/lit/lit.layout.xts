@@ -1,0 +1,29 @@
+/* Three rows inside the clickable card: #lamp, #pop and #blink. */
+body {
+  width: 100vw;
+  height: 100vh;
+}
+#card {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100vw;
+  height: 100vh;
+}
+#lamp,
+#pop,
+#blink {
+  position: absolute;
+  left: 4px;
+  width: 56px;
+  height: 16px;
+}
+#lamp {
+  top: 4px;
+}
+#pop {
+  top: 24px;
+}
+#blink {
+  top: 44px;
+}

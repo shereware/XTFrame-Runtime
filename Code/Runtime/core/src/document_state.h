@@ -56,9 +56,10 @@ struct DocumentState {
         std::string id;
         uint32_t position = 0;
         std::string name;
-        float elapsed = 0;  // Animator::elapsedSeconds().
+        double elapsed = 0;  // Animator::elapsedSeconds().
         bool paused = false;
-        bool ended = false;  // Finished and dropped (no forwards fill): the new one is stopped.
+        bool ended = false;     // Finished and dropped (no forwards fill): the new one is stopped.
+        uint8_t direction = 0;  // T-651: IrAnimationSpec::direction, written for reading only.
     };
 
     /// T-650 (23 XF-097 version 2): one id'd element's runtime classes against its IR classes.
@@ -73,7 +74,7 @@ struct DocumentState {
     std::vector<Input> inputs;
     std::vector<Scroll> scrolls;
     std::vector<Timeline> timelines;
-    std::vector<Animation> animations;  // T-616; not part of the snapshotState() JSON.
+    std::vector<Animation> animations;  // T-616; in the snapshotState() JSON since version 3 (T-651).
     /// Each player's focused element id ("" = none).
     std::string focus[kMaxPlayers];
     // T-650 (23 XF-097 version 2). A version 1 snapshot has none of them (has* false, shown -1).

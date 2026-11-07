@@ -25,8 +25,8 @@
 /// Document::snapshotState / restoreState and the collect / check / apply code Context::hotReload
 /// shares (T-398; Docs/design/23-host-integration.md §23.ad.1, 22-bundle.md §22.10).
 ///
-/// Snapshot JSON (version 2; version 1 is read too), every member optional on restore:
-///   {"version":2,
+/// Snapshot JSON (version 3; versions 1 and 2 are read too), every member optional on restore:
+///   {"version":3,
 ///    "ports":{"<qualified name>":"<setPortText() text>", ...},
 ///    "states":{"<element id>":["<state>", ...], ...},
 ///    "inputs":{"<element id>":{"value":"...","cursor":N,"anchor":N}, ...},
@@ -34,6 +34,8 @@
 ///    "scroll":{"<element id>":[x,y], ...},
 ///    "timelines":[{"scope":"<id>","name":"...","t":S,"rate":R,"playing":B,"reverse":B,
 ///                  "loop":B,"hold":B}, ...],
+///    "animations":[{"id":"<element id>","index":N,"name":"<@keyframes>","elapsed":S,"paused":B,
+///                   "ended":B,"direction":"reverse"|"alternate"|"alternate-reverse"}, ...],
 ///    "classes":{"<element id>":{"add":["<class>", ...],"remove":["<class>", ...]}, ...},
 ///    "clock":{"seconds":S,"frame":N},
 ///    "shown":B}
@@ -42,6 +44,11 @@
 /// back bit for bit) and its update() count; `shown` says the initial show was done. A member left out
 /// (any version 1 snapshot) restores as before: classes untouched, the clock kept, the initial show
 /// as usual.
+/// T-651 (23 XF-097 "快照版本 3"): `animations` are the CSS `animation` items of id'd elements
+/// (DocumentState::Animation): `index` is the item's position in the element's `animation` list,
+/// `elapsed` Animator::elapsedSeconds() (%.17g); `direction` is written when not `normal` and only
+/// for reading. restoreState() matches them by (id, index, name) after a style pass at the restored
+/// clock, quietly; items it does not list start as usual.
 /// Port values are text so restoreState() can hand them to setPortText() as they are: numbers with
 /// 9 significant digits (a float round-trips), Bool `true`/`false`, Enum the value name, Color
 /// `#rrggbb[aa]`, vec2/vec3 `x,y[,z]`, Struct / List the JSON setPortText() reads.
@@ -240,6 +247,31 @@ void parseVersion2(const Json& root, DocumentState& out) {
     }
 }
 
+/// T-651: the version 3 `animations` member, when present.
+void parseAnimations(const Json& root, DocumentState& out) {
+    const Json* animations = member(root, "animations");
+    if (animations == nullptr || animations->kind != Json::Kind::Arr) {
+        return;
+    }
+    for (const Json& v : animations->items) {
+        const Json* id = member(v, "id");
+        const Json* name = member(v, "name");
+        const double elapsed = numberOr(member(v, "elapsed"), 0);
+        if (id == nullptr || id->kind != Json::Kind::Str || name == nullptr ||
+            name->kind != Json::Kind::Str || !std::isfinite(elapsed)) {
+            continue;
+        }
+        DocumentState::Animation entry;
+        entry.id = id->s;
+        entry.position = offsetOr(member(v, "index"));
+        entry.name = name->s;
+        entry.elapsed = elapsed;
+        entry.paused = boolOr(member(v, "paused"), false);
+        entry.ended = boolOr(member(v, "ended"), false);
+        out.animations.push_back(std::move(entry));
+    }
+}
+
 void appendStringList(std::string& out, const std::vector<std::string>& items) {
     out += '[';
     for (size_t i = 0; i < items.size(); ++i) {
@@ -256,7 +288,7 @@ bool parseState(std::string_view text, DocumentState& out) {
         return false;
     }
     const double version = numberOr(member(root, "version"), 0);
-    if (version != 1 && version != 2) {
+    if (version != 1 && version != 2 && version != 3) {
         return false;
     }
     if (const Json* ports = member(root, "ports"); ports != nullptr && ports->kind == Json::Kind::Obj) {
@@ -329,11 +361,12 @@ bool parseState(std::string_view text, DocumentState& out) {
         }
     }
     parseVersion2(root, out);
+    parseAnimations(root, out);
     return true;
 }
 
 std::string serializeState(const DocumentState& state) {
-    std::string out = "{\"version\":2,\"ports\":{";
+    std::string out = "{\"version\":3,\"ports\":{";
     for (size_t i = 0; i < state.ports.size(); ++i) {
         out += i > 0 ? "," : "";
         appendString(out, state.ports[i].name);
@@ -397,6 +430,25 @@ std::string serializeState(const DocumentState& state) {
         out += std::string(",\"reverse\":") + (g.reverse ? "true" : "false");
         out += std::string(",\"loop\":") + (g.loop ? "true" : "false");
         out += std::string(",\"hold\":") + (g.hold ? "true" : "false");
+        out += '}';
+    }
+    out += "],\"animations\":[";
+    for (size_t i = 0; i < state.animations.size(); ++i) {
+        static constexpr const char* kDirections[] = {"", "reverse", "alternate", "alternate-reverse"};
+        const DocumentState::Animation& a = state.animations[i];
+        out += i > 0 ? ",{\"id\":" : "{\"id\":";
+        appendString(out, a.id);
+        out += ",\"index\":" + std::to_string(a.position) + ",\"name\":";
+        appendString(out, a.name);
+        char elapsed[48];
+        std::snprintf(elapsed, sizeof(elapsed), ",\"elapsed\":%.17g",
+                      std::isfinite(a.elapsed) ? a.elapsed : 0.0);
+        out += elapsed;
+        out += std::string(",\"paused\":") + (a.paused ? "true" : "false");
+        out += std::string(",\"ended\":") + (a.ended ? "true" : "false");
+        if (a.direction > 0 && a.direction < 4) {
+            out += std::string(",\"direction\":\"") + kDirections[a.direction] + "\"";
+        }
         out += '}';
     }
     out += "],\"classes\":{";
@@ -504,6 +556,7 @@ void Document::collectState(DocumentState& out, bool withPorts) {
                 entry.ended = !m_animator.isActive(anim) && !m_animator.isFinished(anim);
                 entry.elapsed = m_animator.elapsedSeconds(anim, m_clock);
                 entry.paused = m_animator.isPaused(anim);
+                entry.direction = specs[i].direction;
                 out.animations.push_back(std::move(entry));
             }
         }
@@ -770,10 +823,10 @@ void Document::applyState(const DocumentState& state, bool exact) {
             m_animator.stop(anim);  // Quietly: it ended before.
             continue;
         }
-        m_animator.setElapsedSeconds(anim, snap.elapsed, m_clock);
         if (snap.paused && !m_animator.isPaused(anim)) {
-            m_animator.pause(anim, m_clock);
+            m_animator.pause(anim, m_clock);  // First, so the saved position lands in pausedAt exactly.
         }
+        m_animator.setElapsedSeconds(anim, snap.elapsed, m_clock);
     }
     // 6. Scroll offsets, against a fresh layout so they clamp to the real content.
     std::vector<std::pair<NodeId, Vec2>> scrolls;

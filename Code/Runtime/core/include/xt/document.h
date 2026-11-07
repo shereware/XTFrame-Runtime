@@ -764,9 +764,9 @@ public:
     /// positions (a layout pass runs first, layoutIfDirty(), so the offsets clamp to the real
     /// content). The snapshot is authoritative for what it covers: id'd elements it does not list
     /// lose their custom states and scroll offset, players it lists no focus for lose theirs.
-    /// Elements, ports, states and timelines this document does not have are skipped. T-650 (23
-    /// XF-097 version 2): also runtime classes, the clock and `shown` (see document_state.cpp); version
-    /// 1 still loads. kInvalidArgument when the text is not a snapshot, with nothing applied.
+    /// Elements, ports, states and timelines this document does not have are skipped. T-650 / T-651
+    /// (23 XF-097 versions 2 / 3): also runtime classes, the clock, `shown` and the CSS animations
+    /// (document_state.cpp); 1 and 2 still load. kInvalidArgument when not a snapshot, nothing applied.
     Status restoreState(std::string_view json);
     /// T-616 (04 §4.13): hotReload's state carry-over for an in-place reload; xt/runtime_state.h.
     RuntimeState captureRuntimeState();
