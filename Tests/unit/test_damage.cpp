@@ -1150,8 +1150,8 @@ TEST_CASE("damage: T-644 the hash diff is a longest common subsequence, with cap
 
 TEST_CASE("damage: T-644 a list over the command cap keeps the single changed range") {
     // kDamageDiffMaxCommands + 2 tiny boxes along the top row; the first and the last change colour.
-    const size_t count = kDamageDiffMaxCommands + 2;
-    auto build = [count](Color ends) {
+    constexpr size_t count = kDamageDiffMaxCommands + 2;
+    auto build = [](Color ends) {
         CommandList list = emptyList();
         for (size_t i = 0; i < count; ++i) {
             const float x = static_cast<float>(i % 380);

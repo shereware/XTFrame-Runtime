@@ -114,7 +114,7 @@ bool drive(const Scene& scene, xt_bundle* b, Outcome& out) {
         }
     }
     const int stride = scene.width * 4;
-    std::vector<uint8_t> rgba(static_cast<size_t>(stride) * scene.height, 0);
+    std::vector<uint8_t> rgba(static_cast<size_t>(stride) * static_cast<size_t>(scene.height), 0);
     for (int f = 0; ok && f < kFrames; ++f) {
         xt_damage damage{};
         ok = frameInput(scene, s, f, out);
