@@ -1028,6 +1028,8 @@ struct FrameBuilder::Impl {
     std::vector<Rect> contourBounds;
     /// Merge-walk scratch for rings.
     std::vector<float> ringAngles;
+    /// T-653: the clipped band of a ring with collapsed sides (fillCollapsedRing).
+    std::vector<Vec2> collapsedBand;
     static constexpr size_t kMaxDirectContours = 16;
 
     /// Copies `src` into `out.pts` (duplicates dropped, positive area) and returns true when it is
@@ -1286,6 +1288,65 @@ struct FrameBuilder::Impl {
         return t;
     }
 
+    /// T-653: below this band width (px) a ring side counts as collapsed (inner edge on the outer
+    /// edge). Coverage that thin rounds to 0 in 8 bits anyway.
+    static constexpr float kCollapsedRingWidth = 1e-3f;
+
+    /// T-653: the fringed ring when some of its sides are collapsed (`inner.normals` set). When
+    /// every inner edge but one lies on the outer boundary -- a border on one side only, as
+    /// `border-left` -- the band is the outer contour cut by that edge's half plane, which is
+    /// convex and drawn with the fringe like any convex fill. All collapsed: nothing to draw.
+    /// Otherwise (an L-shaped band) false, and the caller falls back to stencil-then-cover.
+    bool fillCollapsedRing(Contour& outer, const Contour& inner, const Mat2x3& deviceXf,
+                           const PaintRef& paint) {
+        const size_t n = outer.pts.size(), m = inner.pts.size();
+        auto onOuterEdge = [&](Vec2 a, Vec2 b) {
+            for (size_t i = 0; i < n; ++i) {
+                const Vec2 o = outer.pts[i], on = outer.normals[i];
+                const float da = (a.x - o.x) * on.x + (a.y - o.y) * on.y;
+                const float db = (b.x - o.x) * on.x + (b.y - o.y) * on.y;
+                if (std::fabs(da) <= kCollapsedRingWidth && std::fabs(db) <= kCollapsedRingWidth) {
+                    return true;
+                }
+            }
+            return false;
+        };
+        size_t freeEdge = m;
+        for (size_t j = 0; j < m; ++j) {
+            if (onOuterEdge(inner.pts[j], inner.pts[(j + 1) % m])) {
+                continue;
+            }
+            if (freeEdge != m) {
+                return false;  // two or more free edges: not a convex band
+            }
+            freeEdge = j;
+        }
+        if (freeEdge == m) {
+            return true;  // every side collapsed: a zero-width band draws nothing
+        }
+        // Clip the outer contour to the outside of the free edge (Sutherland-Hodgman, one plane).
+        const Vec2 a = inner.pts[freeEdge], nr = inner.normals[freeEdge];
+        auto side = [&](Vec2 p) { return (p.x - a.x) * nr.x + (p.y - a.y) * nr.y; };
+        std::vector<Vec2>& band = collapsedBand;
+        band.clear();
+        for (size_t i = 0; i < n; ++i) {
+            const Vec2 p = outer.pts[i], q = outer.pts[(i + 1) % n];
+            const float sp = side(p), sq = side(q);
+            if (sp >= 0.0f) {
+                band.push_back(p);
+            }
+            if ((sp >= 0.0f) != (sq >= 0.0f)) {
+                const float k = sp / (sp - sq);
+                band.push_back(Vec2{p.x + (q.x - p.x) * k, p.y + (q.y - p.y) * k});
+            }
+        }
+        if (!cleanConvexContour(band, outer)) {
+            return true;  // a degenerate sliver
+        }
+        fillConvex(outer, deviceXf, paint, true);
+        return true;
+    }
+
     /// Draws the band between convex `outer` and convex `inner` (both cleaned, inner inside
     /// outer) as one command: a merge walk around the inner's centroid zips the two contours into
     /// n + m triangles; the fringe insets the outer edge and pushes the inner edge into the band,
@@ -1355,8 +1416,10 @@ struct FrameBuilder::Impl {
         if (fringe) {
             computeMiters(inner);
             const float t = ringMinWidth(inner, outer);
-            if (t <= 1e-4f) {
-                return true;  // a zero-width band draws nothing
+            if (t <= kCollapsedRingWidth) {
+                // T-653: some sides have no width (a border on fewer than four sides); the
+                // uniform fringe below would fold over them. Nothing at all was drawn here before.
+                return fillCollapsedRing(outer, inner, deviceXf, paint);
             }
             fringeFor(t, woff, alphaScale);
         }
@@ -2324,6 +2387,142 @@ struct FrameBuilder::Impl {
     }
 #endif
 
+#ifndef XT_GPU_NO_TEXT
+    /// The atlas entry of glyph `i` of `cmd` rasterized at `size` px, at x `x` in its bitmap
+    /// space: `wholeX` gets the whole pixel and the entry the 1/4 px phase of the rest. A glyph
+    /// missing from the atlas is filled from its outline instead. True when there is a bitmap to
+    /// draw (the pending atlas uploads are done then).
+    bool atlasGlyph(const GlyphsCmd& cmd, uint32_t i, float x, float size, float dpr, TextShaper* shaper,
+                    float& wholeX, xt::text::AtlasEntry& entry) {
+        const uint32_t glyphId = list->glyphs[cmd.glyphOffset + i];
+        wholeX = std::floor(x);
+        int phase = static_cast<int>(std::lround((x - wholeX) * 4.0f));
+        if (phase >= 4) {
+            phase = 0;
+            wholeX += 1.0f;
+        }
+        const bool found =
+            glyphAtlas->lookup(cmd.font, glyphId, size, static_cast<float>(phase) * 0.25f, entry);
+        // Unlike xt_gl (which draws the batch before the repacked atlas is uploaded), a
+        // deferred frame cannot draw now: build() restarts the whole frame instead.
+        if (glyphAtlas->wasReset()) {
+            atlasResetSeen = true;
+        }
+        if (!found) {
+            doOutlineGlyph(cmd.font, glyphId, list->glyphPos[cmd.glyphOffset + i], cmd.size, cmd.xf, dpr,
+                           cmd.color, shaper);
+            return false;
+        }
+        if (entry.w == 0 || entry.h == 0) {
+            return false;
+        }
+        uploadPendingAtlas();
+        return true;
+    }
+
+    /// The corners (top-left `x`, `y`, clockwise) and UVs of `entry`'s quad, both grown by `pad`
+    /// texels on every side.
+    static void atlasQuad(const xt::text::AtlasEntry& entry, float x, float y, float pad, float texSize,
+                          Vec2 corners[4], Vec2 uvs[4]) {
+        const float x0 = x - pad, y0 = y - pad;
+        const float x1 = x + static_cast<float>(entry.w) + pad, y1 = y + static_cast<float>(entry.h) + pad;
+        const float u0 = (static_cast<float>(entry.x) - pad) / texSize;
+        const float v0 = (static_cast<float>(entry.y) - pad) / texSize;
+        const float u1 = (static_cast<float>(entry.x + entry.w) + pad) / texSize;
+        const float v1 = (static_cast<float>(entry.y + entry.h) + pad) / texSize;
+        corners[0] = Vec2{x0, y0};
+        corners[1] = Vec2{x1, y0};
+        corners[2] = Vec2{x1, y1};
+        corners[3] = Vec2{x0, y1};
+        uvs[0] = Vec2{u0, v0};
+        uvs[1] = Vec2{u1, v0};
+        uvs[2] = Vec2{u1, v1};
+        uvs[3] = Vec2{u0, v1};
+    }
+
+    /// T-653: the uniform bitmap scale of a rotated or skewed run: sqrt(|det|), so a rotation or a skew keeps
+    /// the run's own size and an animation of either never changes the atlas key.
+    static float transformedBitmapScale(const Mat2x3& deviceXf) {
+        return std::sqrt(std::fabs(deviceXf.a * deviceXf.d - deviceXf.b * deviceXf.c));
+    }
+
+    /// T-653: whether a plain run that may not use the axis-aligned atlas path (rotated or skewed)
+    /// is drawn from atlas bitmaps mapped through its transform (bilinear, so its edges are antialiased)
+    /// instead of from outlines. Only on a single-sampled target (`edgeFringe`): there stencil-then-cover has
+    /// no antialiasing, while a multisampled target keeps the exact outlines. Not under a 3D
+    /// projection, and within the same size limits as the axis-aligned atlas path.
+    bool transformedAtlasRun(const GlyphsCmd& cmd, const Mat2x3& deviceXf) {
+        if (!edgeFringe || glyphAtlas == nullptr || !atlasAllowed || projecting() ||
+            cmd.effect != GlyphEffect::None || cmd.rendering != TextRendering::Auto) {
+            return false;
+        }
+        // Only a transform that turns the run's axes off the pixel grid (a rotation other than a
+        // quarter turn, a skew): an axis-aligned mirror or stretch, and a quarter turn (sideways
+        // runs in vertical text), keep their outlines, whose edges stay on the grid.
+        const float scale = transformedBitmapScale(deviceXf);
+        if (!(scale > 0.0f) || !std::isfinite(scale)) {
+            return false;
+        }
+        // (cos(90deg) in float is not exactly 0, hence the relative epsilon.)
+        const float eps = 1e-5f * scale;
+        auto zero = [eps](float v) { return std::fabs(v) <= eps; };
+        if ((zero(deviceXf.b) && zero(deviceXf.c)) || (zero(deviceXf.a) && zero(deviceXf.d))) {
+            return false;
+        }
+        const float size = std::floor(cmd.size * scale * 4.0f + 0.5f) / 4.0f;
+        if (!(size > 0.0f) || size > kMaxAtlasGlyphPx) {
+            return false;
+        }
+        if (runIsBeingScaled(cmd, size)) {
+            ++scalingRuns;
+            return false;
+        }
+        return true;
+    }
+
+    /// T-653: draws the run from atlas bitmaps rasterized at `cmd.size * scale` (bitmap space =
+    /// the run's space times `scale`, on the same 1/4 px phase grid as the axis-aligned path),
+    /// each quad mapped to the device through `deviceXf`. The quad and its UVs are grown by half a
+    /// texel on every side, onto the atlas's empty 1 px margin, so the linear sampler fades every
+    /// edge to zero coverage instead of cutting it. A glyph missing from the atlas is filled from
+    /// its outline.
+    void doTransformedAtlasGlyphs(const GlyphsCmd& cmd, const Mat2x3& deviceXf, float dpr,
+                                  TextShaper* shaper) {
+        if (emit.scissor().empty()) {
+            return;
+        }
+        const float size = std::floor(cmd.size * transformedBitmapScale(deviceXf) * 4.0f + 0.5f) / 4.0f;
+        const float scale = size / cmd.size;
+        const Mat2x3 bitmapToDevice = mul(deviceXf, scaling(Vec2{1.0f / scale, 1.0f / scale}));
+        const float texSize = static_cast<float>(glyphAtlas->textureSize());
+        const uint32_t rgba = packPremultiplied(cmd.color);
+        for (auto& b : glyphBatch) {
+            b.clear();
+        }
+        for (uint32_t i = 0; i < cmd.glyphCount; ++i) {
+            const Vec2 glyphPos = list->glyphPos[cmd.glyphOffset + i];
+            float wholeX = 0.0f;
+            xt::text::AtlasEntry entry{};
+            if (!atlasGlyph(cmd, i, glyphPos.x * scale, size, dpr, shaper, wholeX, entry) ||
+                entry.texture >= 4) {
+                continue;
+            }
+            // Baseline on a whole bitmap row, as the axis-aligned path: under skewX the rows stay
+            // device rows, so the hinted bitmap is not smeared over two of them.
+            Vec2 corners[4], uvs[4];
+            atlasQuad(entry, wholeX + static_cast<float>(entry.bearingX),
+                      std::round(glyphPos.y * scale) - static_cast<float>(entry.bearingY), 0.5f, texSize,
+                      corners, uvs);
+            std::vector<Vertex>& verts = glyphBatch[entry.texture];
+            for (int c = 0; c < 4; ++c) {
+                const Vec2 d = apply(bitmapToDevice, corners[c]);
+                verts.push_back(Vertex{d.x, d.y, 1.0f, uvs[c].x, uvs[c].y, rgba});
+            }
+        }
+        flushGlyphBatch(coverageGamma(cmd.color));
+    }
+#endif
+
     void doGlyphs(const GlyphsCmd& cmd, float dpr, TextShaper* shaper) {
         if (cmd.glyphCount == 0) {
             return;
@@ -2373,6 +2572,12 @@ struct FrameBuilder::Impl {
 #endif
             return;
         }
+#ifndef XT_GPU_NO_TEXT
+        if (!useAtlas && transformedAtlasRun(cmd, deviceXf)) {
+            doTransformedAtlasGlyphs(cmd, deviceXf, dpr, shaper);
+            return;
+        }
+#endif
         if (!useAtlas) {
             for (uint32_t i = 0; i < cmd.glyphCount; ++i) {
                 uint32_t glyphId = list->glyphs[cmd.glyphOffset + i];
@@ -2394,45 +2599,16 @@ struct FrameBuilder::Impl {
         }
 
         for (uint32_t i = 0; i < cmd.glyphCount; ++i) {
-            uint32_t glyphId = list->glyphs[cmd.glyphOffset + i];
-            Vec2 glyphPos = list->glyphPos[cmd.glyphOffset + i];
-
-            const Vec2 posWorld = apply(cmd.xf, glyphPos);
-            float wholeX = std::floor(posWorld.x * dpr);
-            int phase = static_cast<int>(std::lround((posWorld.x * dpr - wholeX) * 4.0f));
-            if (phase >= 4) {
-                phase = 0;
-                wholeX += 1.0f;
-            }
-
+            const Vec2 posWorld = apply(cmd.xf, list->glyphPos[cmd.glyphOffset + i]);
+            float wholeX = 0.0f;
             xt::text::AtlasEntry entry{};
-            bool found =
-                glyphAtlas->lookup(cmd.font, glyphId, sizeDevice, static_cast<float>(phase) * 0.25f, entry);
-            // Unlike xt_gl (which draws the batch before the repacked atlas is uploaded), a
-            // deferred frame cannot draw now: build() restarts the whole frame instead.
-            if (glyphAtlas->wasReset()) {
-                atlasResetSeen = true;
-            }
-            if (!found) {
-                doOutlineGlyph(cmd.font, glyphId, glyphPos, cmd.size, cmd.xf, dpr, cmd.color, shaper);
+            if (!atlasGlyph(cmd, i, posWorld.x * dpr, sizeDevice, dpr, shaper, wholeX, entry)) {
                 continue;
             }
-            if (entry.w == 0 || entry.h == 0) {
-                continue;
-            }
-            uploadPendingAtlas();
-
-            float x = wholeX + static_cast<float>(entry.bearingX);
-            float y = std::round(posWorld.y * dpr) - static_cast<float>(entry.bearingY);
-            float w = static_cast<float>(entry.w);
-            float h = static_cast<float>(entry.h);
-            float u0 = static_cast<float>(entry.x) / texSize;
-            float v0 = static_cast<float>(entry.y) / texSize;
-            float u1 = static_cast<float>(entry.x + entry.w) / texSize;
-            float v1 = static_cast<float>(entry.y + entry.h) / texSize;
-
-            Vec2 corners[4] = {Vec2{x, y}, Vec2{x + w, y}, Vec2{x + w, y + h}, Vec2{x, y + h}};
-            Vec2 uvs[4] = {Vec2{u0, v0}, Vec2{u1, v0}, Vec2{u1, v1}, Vec2{u0, v1}};
+            Vec2 corners[4], uvs[4];
+            atlasQuad(entry, wholeX + static_cast<float>(entry.bearingX),
+                      std::round(posWorld.y * dpr) - static_cast<float>(entry.bearingY), 0.0f, texSize,
+                      corners, uvs);
             Vertex quad[4];
             bool allOk = true;
             for (int c = 0; c < 4; ++c) {

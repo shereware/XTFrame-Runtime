@@ -1,0 +1,22 @@
+body {
+  font-family: "Noto Sans", sans-serif;
+  background-color: #e8dcc4;
+}
+.note {
+  color: #203030;
+  border-left-width: 2px;
+  border-left-color: #b04020;
+}
+.s12,
+.s24 {
+  white-space: nowrap;
+}
+.s12 {
+  font-size: 12px;
+}
+.s24 {
+  font-size: 24px;
+}
+.box {
+  border: 1px #405060;
+}

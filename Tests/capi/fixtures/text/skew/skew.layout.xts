@@ -1,0 +1,41 @@
+/* T-653: 480x400 at uiscale 1. Three 120 px bands: axis-aligned (control), skewX(-6deg) and
+   rotate(3deg); each holds a note with a 2 px left border, 12 / 24 px text and a 1 px box. */
+body {
+  width: 100vw;
+  height: 100vh;
+}
+.note {
+  position: absolute;
+  left: 24px;
+  width: 420px;
+  height: 100px;
+  padding-left: 10px;
+}
+#Upright {
+  top: 10px;
+}
+#Skewed {
+  top: 140px;
+  transform: skewX(-6deg);
+}
+#Rotated {
+  top: 270px;
+  transform: rotate(3deg);
+}
+.s12,
+.s24,
+.box {
+  position: absolute;
+  left: 12px;
+}
+.s12 {
+  top: 6px;
+}
+.s24 {
+  top: 26px;
+}
+.box {
+  top: 66px;
+  width: 300px;
+  height: 24px;
+}

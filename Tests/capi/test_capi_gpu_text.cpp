@@ -7,6 +7,8 @@
 // word on their own; the 12 px lines, which both paths draw from the same hinted bitmaps with the
 // same gamma since T-647, to a channel difference of 2. The 24 / 48 px lines are only reported: they
 // are the documented 24-96 px band (10 §10.x T-263c: SW outlines, GPU light-hinted atlas bitmaps).
+// T-653: the bundle's second UI, `skew`, holds a note with a 2 px left border, 12 / 24 px text and a
+// 1 px box, axis-aligned, under skewX(-6deg) and under rotate(3deg) (case 4).
 // Without wgpu only the C struct is checked; with wgpu but no adapter the cases print SKIP and pass.
 
 #include <algorithm>
@@ -110,7 +112,7 @@ struct TextBundle {
     }
     TextBundle(const TextBundle&) = delete;
     TextBundle& operator=(const TextBundle&) = delete;
-    xt_surface* surface() {
+    xt_surface* surface(const char* ui = "text") {
         xt_surface_desc desc{};
         desc.struct_size = sizeof(desc);
         desc.width = kW;
@@ -118,22 +120,22 @@ struct TextBundle {
         desc.device_pixel_ratio = 1.0f;
         desc.premultiplied = 1;
         desc.system_fonts = 0;  // the bundled Noto Sans only: both paths shape with the same font
-        xt_surface* s = xt_surface_create(bundle, "text", &desc);
+        xt_surface* s = xt_surface_create(bundle, ui, &desc);
         REQUIRE_MESSAGE(s != nullptr, std::string(xt_capi_last_error()));
         surfaces.push_back(s);
         return s;
     }
     /// The SW reference: one update(0), premultiplied.
-    Image software() {
-        xt_surface* s = surface();
+    Image software(const char* ui = "text") {
+        xt_surface* s = surface(ui);
         Image px(static_cast<size_t>(kW) * kH * 4u, 0);
         REQUIRE(xt_surface_update(s, 0.0f) == XT_STATUS_OK);
         REQUIRE(xt_surface_render(s, px.data(), kW * 4, nullptr) == XT_STATUS_OK);
         return px;
     }
     /// A new surface drawn 1:1 onto `t` (transparent clear), read back.
-    Image gpu(xt_gpu_target* t) {
-        xt_surface* s = surface();
+    Image gpu(xt_gpu_target* t, const char* ui = "text") {
+        xt_surface* s = surface(ui);
         REQUIRE(xt_gpu_target_begin_frame(t, nullptr) == XT_STATUS_OK);
         REQUIRE(xt_surface_update(s, 0.0f) == XT_STATUS_OK);
         REQUIRE_MESSAGE(xt_surface_render_gpu(s, t, nullptr) == XT_STATUS_OK,
@@ -267,6 +269,88 @@ TEST_CASE(
     CHECK(xt_gpu_target_destroy(zero) == XT_STATUS_OK);
     CHECK(xt_gpu_target_destroy(four) == XT_STATUS_OK);
     CHECK(xt_gpu_target_destroy(legacy) == XT_STATUS_OK);
+}
+
+namespace {
+
+/// T-653: the `skew` UI of the same bundle -- three 120 px bands (axis-aligned, skewX(-6deg),
+/// rotate(3deg)), each a note with a 2 px left border, 12 / 24 px text and a 1 px box.
+const Region kSkewRegions[] = {
+    {"upright band", 0, 0, kW, 130, Rule::Tolerance},
+    {"skewX(-6deg) band", 0, 130, kW, 260, Rule::Tolerance},
+    {"rotate(3deg) band", 0, 260, kW, kH, Rule::Tolerance},
+    kWhole,
+};
+
+/// Whether pixel `i` of `px` is within 24 of the opaque colour `rgb` on every channel.
+bool nearColor(const Image& px, size_t i, uint32_t rgb) {
+    const int dr = std::abs(px[i] - static_cast<int>(rgb >> 16)),
+              dg = std::abs(px[i + 1] - static_cast<int>((rgb >> 8) & 0xffu)),
+              db = std::abs(px[i + 2] - static_cast<int>(rgb & 0xffu));
+    return std::max(dr, std::max(dg, db)) <= 24;
+}
+
+/// Pixels of the band whose colour is the border colour #b04020.
+int borderPixels(const Image& px, const Region& r) {
+    int n = 0;
+    for (int y = r.y0; y < r.y1; ++y) {
+        for (int x = r.x0; x < r.x1; ++x) {
+            n +=
+                nearColor(px, (static_cast<size_t>(y) * kW + static_cast<size_t>(x)) * 4u, 0xb04020u) ? 1 : 0;
+        }
+    }
+    return n;
+}
+
+/// Antialiased edge pixels of the band: near none of the fixture's flat colours (the background,
+/// the text, the left border, the box border).
+int blendedPixels(const Image& px, const Region& r) {
+    int n = 0;
+    for (int y = r.y0; y < r.y1; ++y) {
+        for (int x = r.x0; x < r.x1; ++x) {
+            const size_t i = (static_cast<size_t>(y) * kW + static_cast<size_t>(x)) * 4u;
+            const bool flat = nearColor(px, i, 0xe8dcc4u) || nearColor(px, i, 0x203030u) ||
+                              nearColor(px, i, 0xb04020u) || nearColor(px, i, 0x405060u);
+            n += flat ? 0 : 1;
+        }
+    }
+    return n;
+}
+
+}  // namespace
+
+TEST_CASE(
+    "capi gpu text 4 (T-653): skewed / rotated text and thin borders on the GPU target are within 10 "
+    "§10.10 of SW, 1x and 4x") {
+    TextBundle b;
+    const Image sw = b.software("skew");
+    for (const int samples : {1, 4}) {
+        CAPTURE(samples);
+        xt_gpu_target* t = createOrSkip(textDesc(samples));
+        if (t == nullptr) return;
+        const Image gpu = b.gpu(t, "skew");
+        for (const Region& r : kSkewRegions) {
+            const std::string name = r.name;
+            CAPTURE(name);
+            CHECK(meetsRule(gpu, sw, r, samples));
+        }
+        // The 2 px left border of every band is drawn (a one-sided border ring drew nothing on a
+        // single-sampled target before T-653, transformed or not).
+        for (const Region& r : {kSkewRegions[0], kSkewRegions[1], kSkewRegions[2]}) {
+            const std::string name = r.name;
+            CAPTURE(name);
+            const int ref = borderPixels(sw, r), got = borderPixels(gpu, r);
+            const int refAa = blendedPixels(sw, r), gotAa = blendedPixels(gpu, r);
+            std::printf("sample_count %d, %-26s: border px sw %d, gpu %d; blended px sw %d, gpu %d\n",
+                        samples, r.name, ref, got, refAa, gotAa);
+            CHECK(ref > 0);
+            CHECK(got * 2 >= ref);
+            // The transformed glyphs are antialiased at 1x too (stair-stepped before T-653).
+            CHECK(gotAa * 4 >= refAa * 3);
+        }
+        for (xt_surface* s : b.surfaces) (void)xt_surface_detach_gpu(s);
+        CHECK(xt_gpu_target_destroy(t) == XT_STATUS_OK);
+    }
 }
 
 #endif  // XT_CAPI_TEST_HAS_WGPU

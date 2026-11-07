@@ -2082,7 +2082,7 @@ TEST_CASE("gpu: DrawGlyphs uploads R8 atlas pages and emits Glyph commands") {
     CHECK(b.device.updates.size() == uploads);
 }
 
-TEST_CASE("gpu: rotated DrawGlyphs and a missing atlas fall back to outline fills") {
+TEST_CASE("gpu: rotated DrawGlyphs (multisampled target) and a missing atlas fall back to outline fills") {
     text::FtTextShaper shaper;
     REQUIRE(shaper.addFontFile(fontPath("NotoSans-Regular.subset.ttf")));
     text::GlyphAtlas atlas(shaper, 256);
@@ -2093,6 +2093,7 @@ TEST_CASE("gpu: rotated DrawGlyphs and a missing atlas fall back to outline fill
     b.builder.init(b.device);
     b.builder.resize(96, 32);
     b.builder.setGlyphAtlas(&atlas);
+    b.builder.setEdgeFringe(false);  // T-653: a multisampled target keeps the exact outlines
     b.builder.build(cl, &shaper, nullptr, nullptr, b.frame);
     checkFrameWellFormed(b.frame);
     CHECK(cmdsWith(b.frame, Shading::Glyph).empty());
@@ -2107,6 +2108,42 @@ TEST_CASE("gpu: rotated DrawGlyphs and a missing atlas fall back to outline fill
     buildInto(b2, plain, 96, 32, &shaper);
     CHECK(cmdsWith(b2.frame, Shading::Glyph).empty());
     CHECK(cmdsWith(b2.frame, StencilOp::WriteIncrWrap).size() == 1);
+}
+
+TEST_CASE("gpu: T-653 rotated / skewed DrawGlyphs on a single-sampled target are drawn from the atlas") {
+    text::FtTextShaper shaper;
+    REQUIRE(shaper.addFontFile(fontPath("NotoSans-Regular.subset.ttf")));
+    const Mat2x3 skew{1.0f, 0.0f, -0.105104f, 1.0f, 0.0f, 0.0f};  // skewX(-6deg)
+    for (const Mat2x3& xf :
+         {mul(translation(Vec2{48, 16}), rotationDeg(20.0f)), mul(translation(Vec2{8, 24}), skew)}) {
+        text::GlyphAtlas atlas(shaper, 256);
+        CommandList cl = buildGlyphsList(shaper, "Hi", 16.0f, Vec2{0, 0}, xf, Color{0, 0, 0, 1}, 96, 32);
+        Built b;
+        b.builder.init(b.device);
+        b.builder.resize(96, 32);
+        b.builder.setGlyphAtlas(&atlas);
+        b.builder.build(cl, &shaper, nullptr, nullptr, b.frame);
+        checkFrameWellFormed(b.frame);
+        const auto glyphs = cmdsWith(b.frame, Shading::Glyph);
+        REQUIRE(glyphs.size() == 1);
+        CHECK(glyphs[0]->sampler == Sampler::LinearClamp);
+        CHECK(glyphs[0]->vertexCount == 8);  // two quads, no stencil-then-cover
+        CHECK(cmdsWith(b.frame, StencilOp::WriteIncrWrap).empty());
+        CHECK(!b.device.updates.empty());
+        // The quads follow the transform: the left edge (corner 0 -> corner 3) is not vertical.
+        const Vertex& v0 = b.frame.vertices[glyphs[0]->baseVertex + 0];
+        const Vertex& v3 = b.frame.vertices[glyphs[0]->baseVertex + 3];
+        CHECK(std::fabs(v3.x - v0.x) > 0.5f);
+        // UVs reach half a texel past the entry (the atlas margin; clamped at the page edge).
+        const float halfTexel = 0.5f / 256.0f;
+        for (uint32_t i = 0; i < glyphs[0]->vertexCount; ++i) {
+            const Vertex& v = b.frame.vertices[glyphs[0]->baseVertex + i];
+            CHECK(v.u >= -halfTexel);
+            CHECK(v.u <= 1.0f + halfTexel);
+            CHECK(v.v >= -halfTexel);
+            CHECK(v.v <= 1.0f + halfTexel);
+        }
+    }
 }
 
 TEST_CASE("gpu: an atlas reset mid-frame rebuilds the frame against the repacked atlas") {

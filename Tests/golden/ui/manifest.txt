@@ -11,6 +11,9 @@ ui_img_fit img_fit.xt 256 256 0 ffffff
 ui_anim_in_box anim_in_box.xt 256 256 0 ffffff
 ui_visibility visibility.xt 256 256 0 ffffff
 ui_transform transform.xt 256 256 0 ffffff
+# T-653: 12 / 24 px text and 1 / 2 px borders under skewX(-6deg) and rotate(3deg) next to an
+# axis-aligned control (needs xt_text, @font-face); the GPU backends antialias transformed glyphs.
+ui_text_transform_skew ui_text_transform_skew.xt 320 256 0 e8dcc4
 ui_absolute_nested absolute_nested.xt 256 256 0 ffffff
 # T-30 text fixtures (docs/tasks/T-30.md "黃金圖"). Only run when xt_text is built (see
 # golden_ui.cpp); they use the OFL font subsets in tests/fonts via <style> @font-face.

@@ -1,0 +1,99 @@
+<xt version="2">
+
+  <body>
+    <div id="r0a" class="t12">Upright text 12 px</div>
+    <div id="r0b" class="t24">Text 24 px</div>
+    <div id="r0c" class="b1"></div>
+    <div id="r1a" class="t12 skew">Skewed text 12 px</div>
+    <div id="r1b" class="t24 skew">Text 24 px</div>
+    <div id="r1c" class="b1 skew"></div>
+    <div id="r2a" class="t12 rot">Rotated text 12 px</div>
+    <div id="r2b" class="t24 rot">Text 24 px</div>
+    <div id="r2c" class="b1 rot"></div>
+  </body>
+
+  <layout>
+    body {
+      width: 320px;
+      height: 256px;
+    }
+    .t12 {
+      position: absolute;
+      left: 16px;
+      width: 150px;
+      height: 20px;
+      padding-left: 8px;
+    }
+    .t24 {
+      position: absolute;
+      left: 180px;
+      width: 124px;
+      height: 32px;
+    }
+    .b1 {
+      position: absolute;
+      left: 16px;
+      width: 150px;
+      height: 24px;
+    }
+    #r0a {
+      top: 12px;
+    }
+    #r0b {
+      top: 12px;
+    }
+    #r0c {
+      top: 44px;
+    }
+    #r1a {
+      top: 92px;
+    }
+    #r1b {
+      top: 92px;
+    }
+    #r1c {
+      top: 124px;
+    }
+    #r2a {
+      top: 172px;
+    }
+    #r2b {
+      top: 172px;
+    }
+    #r2c {
+      top: 204px;
+    }
+    .skew {
+      transform: skewX(-6deg);
+    }
+    .rot {
+      transform: rotate(3deg);
+    }
+  </layout>
+  <style>
+    @font-face {
+      font-family: "Noto Sans";
+      src: "../../fonts/NotoSans-Regular.subset.ttf";
+    }
+    body {
+      background-color: #e8dcc4;
+      font-family: "Noto Sans";
+    }
+    /* T-653: 12 / 24 px text and 1 / 2 px borders, axis-aligned (top row), under skewX(-6deg)
+         (middle row) and rotate(3deg) (bottom row); the GPU backends must antialias the
+         transformed glyphs and keep the thin transformed borders, like SW. */
+    .t12 {
+      font-size: 12px;
+      color: #203030;
+      border-left-width: 2px;
+      border-left-color: #b04020;
+    }
+    .t24 {
+      font-size: 24px;
+      color: #203030;
+    }
+    .b1 {
+      border: 1px #405060;
+    }
+  </style>
+</xt>

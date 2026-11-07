@@ -34,7 +34,8 @@ xt_capi_pack_bundle(XT_CAPI_L10N l10n "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/l10n
 # T-635: four rows (a port-bound bar, custom states, a timeline, a scrolled box) for save / load state.
 xt_capi_pack_bundle(XT_CAPI_STATE state "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/state")
 # T-647: text at 12 / 24 / 48 px (light on dark, dark on transparent), a non-convex star and a 120 px
-# word, with bundled Noto Sans (publish.fonts), for the GPU-target text tolerance cases.
+# word, with bundled Noto Sans (publish.fonts), for the GPU-target text tolerance cases; T-653: a second
+# UI, `skew`, with text and thin borders under skewX / rotate.
 xt_capi_pack_bundle(XT_CAPI_TEXT text "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/text")
 # T-642: the npdo demo (hud / settings) for the partial-redraw equivalence cases (test_capi_partial.cpp).
 xt_capi_pack_bundle(XT_CAPI_NPDO npdo "${PROJECT_SOURCE_DIR}/Examples/demos/npdo/ui-project")

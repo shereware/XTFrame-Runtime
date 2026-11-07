@@ -1,0 +1,23 @@
+<xt version="2">
+
+  <body>
+    <div id="Upright" class="note">
+      <span class="s12">Upright note text 12px</span>
+      <span class="s24">Upright 24px</span>
+      <div class="box"></div>
+    </div>
+    <div id="Skewed" class="note">
+      <span class="s12">Skewed note text 12px</span>
+      <span class="s24">Skewed 24px</span>
+      <div class="box"></div>
+    </div>
+    <div id="Rotated" class="note">
+      <span class="s12">Rotated note text 12px</span>
+      <span class="s24">Rotated 24px</span>
+      <div class="box"></div>
+    </div>
+  </body>
+
+  <layout src="skew.layout.xts"/>
+  <style src="skew.xts"/>
+</xt>
