@@ -2013,7 +2013,7 @@ RigView Document::rigAt(size_t index) const {
 
 void Document::paint(CommandList& out) { paintAs(out, 0); }
 
-void Document::paintAs(CommandList& out, uint16_t source) {
+void Document::paintAs(CommandList& out, uint16_t source, bool boxShadowCommands) {
     PerfScope paintScope(*m_perf, &FrameStats::paintMs);
     ScopedLengthEnv lengthEnvScope(&m_lengthEnv);      // T-176: border-radius etc. in device units.
     if (m_root != kInvalidNode && m_surfaceVisible) {  // T-174: a hidden surface paints nothing.
@@ -2035,6 +2035,9 @@ void Document::paintAs(CommandList& out, uint16_t source) {
         m_painter.setIr(&m_ir);                // T-178: rich-text run styles and text effects.
         m_painter.setShaders(&m_shaderTable);  // T-203: custom effect shaders.
         m_painter.setSource(source);           // T-263d: whose AssetIds the commands carry.
+        // T-680: whether drop shadows may become DrawBoxShadow commands (Context / bake option).
+        m_painter.setBoxShadowCommands(boxShadowCommands);
+        m_painter.setShaper(m_shaper);  // T-680: glyph run boxes from the font's metrics.
         // T-194 (27.7): the drag ghost follows the pointer / the gamepad focus. T-394 (08.15): a
         // source with `drag-ghost="none"` hands the Painter no ghost.
         {

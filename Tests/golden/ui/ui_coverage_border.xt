@@ -1,0 +1,289 @@
+<xt version="2">
+
+  <!-- T-664 (10 section 10.11 ruling 6): the border cases at 1x, one 56x44 cell each -- a uniform
+       rounded ring, one side, two and three sides (L shapes), per-side colors square and rounded,
+       per-side widths of one color (0.5 / 1 / 4 / 1 px), dashed, dotted, an outline, and thin rings
+       of equal width (0.5 px rounded, 0.75 px square); the bottom two rows repeat them rotated 9 deg.
+       `double` is not a border style XTFrame has (none / solid / dashed / dotted). -->
+  <body>
+    <div id="uniformRound" class="cell"></div>
+    <div id="oneSide" class="cell"></div>
+    <div id="twoSides" class="cell"></div>
+    <div id="threeSides" class="cell"></div>
+    <div id="colorsSquare" class="cell"></div>
+    <div id="colorsRound" class="cell"></div>
+    <div id="mixedWidths" class="cell"></div>
+    <div id="dashed" class="cell"></div>
+    <div id="dotted" class="cell"></div>
+    <div id="outline" class="cell"></div>
+    <div id="thinRound" class="cell"></div>
+    <div id="thinSquare" class="cell"></div>
+    <div id="uniformRoundRot" class="cell"></div>
+    <div id="oneSideRot" class="cell"></div>
+    <div id="twoSidesRot" class="cell"></div>
+    <div id="threeSidesRot" class="cell"></div>
+    <div id="colorsSquareRot" class="cell"></div>
+    <div id="colorsRoundRot" class="cell"></div>
+    <div id="mixedWidthsRot" class="cell"></div>
+    <div id="dashedRot" class="cell"></div>
+    <div id="dottedRot" class="cell"></div>
+    <div id="outlineRot" class="cell"></div>
+    <div id="thinRoundRot" class="cell"></div>
+    <div id="thinSquareRot" class="cell"></div>
+  </body>
+
+  <layout>
+    body {
+      width: 480px;
+      height: 288px;
+      margin: 0;
+    }
+    .cell {
+      position: absolute;
+      width: 56px;
+      height: 44px;
+    }
+    #uniformRound {
+      left: 12px;
+      top: 14px;
+    }
+    #oneSide {
+      left: 92px;
+      top: 14px;
+    }
+    #twoSides {
+      left: 172px;
+      top: 14px;
+    }
+    #threeSides {
+      left: 252px;
+      top: 14px;
+    }
+    #colorsSquare {
+      left: 332px;
+      top: 14px;
+    }
+    #colorsRound {
+      left: 412px;
+      top: 14px;
+    }
+    #mixedWidths {
+      left: 12px;
+      top: 86px;
+    }
+    #dashed {
+      left: 92px;
+      top: 86px;
+    }
+    #dotted {
+      left: 172px;
+      top: 86px;
+    }
+    #outline {
+      left: 252px;
+      top: 86px;
+    }
+    #thinRound {
+      left: 332px;
+      top: 86px;
+    }
+    #thinSquare {
+      left: 412px;
+      top: 86px;
+    }
+    #uniformRoundRot {
+      left: 12px;
+      top: 158px;
+      transform: rotate(9deg);
+      transform-origin: 50% 50%;
+    }
+    #oneSideRot {
+      left: 92px;
+      top: 158px;
+      transform: rotate(9deg);
+      transform-origin: 50% 50%;
+    }
+    #twoSidesRot {
+      left: 172px;
+      top: 158px;
+      transform: rotate(9deg);
+      transform-origin: 50% 50%;
+    }
+    #threeSidesRot {
+      left: 252px;
+      top: 158px;
+      transform: rotate(9deg);
+      transform-origin: 50% 50%;
+    }
+    #colorsSquareRot {
+      left: 332px;
+      top: 158px;
+      transform: rotate(9deg);
+      transform-origin: 50% 50%;
+    }
+    #colorsRoundRot {
+      left: 412px;
+      top: 158px;
+      transform: rotate(9deg);
+      transform-origin: 50% 50%;
+    }
+    #mixedWidthsRot {
+      left: 12px;
+      top: 230px;
+      transform: rotate(9deg);
+      transform-origin: 50% 50%;
+    }
+    #dashedRot {
+      left: 92px;
+      top: 230px;
+      transform: rotate(9deg);
+      transform-origin: 50% 50%;
+    }
+    #dottedRot {
+      left: 172px;
+      top: 230px;
+      transform: rotate(9deg);
+      transform-origin: 50% 50%;
+    }
+    #outlineRot {
+      left: 252px;
+      top: 230px;
+      transform: rotate(9deg);
+      transform-origin: 50% 50%;
+    }
+    #thinRoundRot {
+      left: 332px;
+      top: 230px;
+      transform: rotate(9deg);
+      transform-origin: 50% 50%;
+    }
+    #thinSquareRot {
+      left: 412px;
+      top: 230px;
+      transform: rotate(9deg);
+      transform-origin: 50% 50%;
+    }
+  </layout>
+  <style>
+    body {
+      background-color: #ffffff;
+    }
+    .cell {
+      background-color: #f4f1de;
+    }
+    #uniformRound {
+      border-width: 3px;
+      border-color: #2a6f97;
+      border-radius: 14px;
+    }
+    #oneSide {
+      border-width: 0 0 0 3px;
+      border-color: #c0392b;
+    }
+    #twoSides {
+      border-width: 3px 0 0 3px;
+      border-color: #1d3557;
+    }
+    #threeSides {
+      border-width: 3px 3px 0 3px;
+      border-color: #6a4c93;
+    }
+    #colorsSquare {
+      border-width: 4px;
+      border-style: solid;
+      border-color: #e63946 #2a9d8f #457b9d #f4a261;
+    }
+    #colorsRound {
+      border-width: 4px;
+      border-style: solid;
+      border-color: #e63946 #2a9d8f #457b9d #f4a261;
+      border-radius: 14px;
+    }
+    #mixedWidths {
+      border-style: solid;
+      border-color: #264653;
+      border-width: 0.5px 1px 4px 1px;
+    }
+    #dashed {
+      border-width: 3px;
+      border-color: #264653;
+      border-style: dashed;
+    }
+    #dotted {
+      border-width: 4px;
+      border-color: #e76f51;
+      border-style: dotted;
+    }
+    #outline {
+      outline: 2px solid #8e44ad;
+      outline-offset: 2px;
+      border-radius: 10px;
+    }
+    #thinRound {
+      border-width: 0.5px;
+      border-color: #111111;
+      border-radius: 12px;
+    }
+    #thinSquare {
+      border-width: 0.75px;
+      border-color: #111111;
+    }
+    #uniformRoundRot {
+      border-width: 3px;
+      border-color: #2a6f97;
+      border-radius: 14px;
+    }
+    #oneSideRot {
+      border-width: 0 0 0 3px;
+      border-color: #c0392b;
+    }
+    #twoSidesRot {
+      border-width: 3px 0 0 3px;
+      border-color: #1d3557;
+    }
+    #threeSidesRot {
+      border-width: 3px 3px 0 3px;
+      border-color: #6a4c93;
+    }
+    #colorsSquareRot {
+      border-width: 4px;
+      border-style: solid;
+      border-color: #e63946 #2a9d8f #457b9d #f4a261;
+    }
+    #colorsRoundRot {
+      border-width: 4px;
+      border-style: solid;
+      border-color: #e63946 #2a9d8f #457b9d #f4a261;
+      border-radius: 14px;
+    }
+    #mixedWidthsRot {
+      border-style: solid;
+      border-color: #264653;
+      border-width: 0.5px 1px 4px 1px;
+    }
+    #dashedRot {
+      border-width: 3px;
+      border-color: #264653;
+      border-style: dashed;
+    }
+    #dottedRot {
+      border-width: 4px;
+      border-color: #e76f51;
+      border-style: dotted;
+    }
+    #outlineRot {
+      outline: 2px solid #8e44ad;
+      outline-offset: 2px;
+      border-radius: 10px;
+    }
+    #thinRoundRot {
+      border-width: 0.5px;
+      border-color: #111111;
+      border-radius: 12px;
+    }
+    #thinSquareRot {
+      border-width: 0.75px;
+      border-color: #111111;
+    }
+  </style>
+</xt>

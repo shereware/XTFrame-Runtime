@@ -3,6 +3,7 @@
 #include <span>
 #include <vector>
 
+#include "xt/box_shadow.h"
 #include "xt/command_list.h"
 #include "xt/types.h"
 #include "xt/value.h"
@@ -71,6 +72,19 @@ public:
     /// applies. Null (the default) means no projection: device pixels are plane points.
     static PaintEval make(const PaintRef& paint, std::span<const GradientStop> stops, const Mat2x3& xfDevice,
                           GradientLutCache& luts, const Mat3* screenToPlane = nullptr);
+
+    /// T-668 (Docs/design/10-backends.md §10.12 item 2): the paint of a blurred DrawBoxShadow --
+    /// `color` (non-premultiplied, alpha <= 1) times boxShadowCoverage() of `shape` with Gaussian
+    /// `sigma` (local units) at the device pixel centre mapped back through `xfDevice`'s inverse.
+    /// Rows of an axis-aligned transform share one boxShadowRow(); the values are exactly the
+    /// per-pixel formula's either way.
+    static PaintEval makeBoxShadow(const BoxShadowShape& shape, float sigma, const Color& color,
+                                   const Mat2x3& xfDevice);
+    /// T-680 ("補充 2" B.1): the same with `d`'s extra signed terms -- the coverage is
+    /// boxShadowCoverageSum() (each term's row shared like the single shape's). With no extra term
+    /// it is makeBoxShadow(d.shape, ...).
+    static PaintEval makeBoxShadow(const BoxShadowDraw& d, float sigma, const Color& color,
+                                   const Mat2x3& xfDevice);
 
     /// Returns the non-premultiplied color at device pixel center (px + 0.5, py + 0.5). Only the
     /// partially-clipped pixels at a span's edge still go through it; whole runs take `spanPremul`.
@@ -150,6 +164,15 @@ private:
     /// device pixel back into plane space (t is no longer affine along a span there).
     bool m_projective = false;
     Mat3 m_screenToPlane{};
+    /// T-668: makeBoxShadow()'s state (m_boxShadow set: every other paint field is unused).
+    bool m_boxShadow = false;
+    BoxShadowShape m_shadowShape{};
+    float m_shadowSigma = 1.0f;
+    Color m_shadowColor{};
+    /// T-680: the extra signed terms (m_shadowExtraCount 0..2).
+    uint32_t m_shadowExtraCount = 0;
+    BoxShadowShape m_shadowExtra[2]{};
+    float m_shadowExtraSign[2] = {0, 0};
 };
 
 }  // namespace xt::sw

@@ -26,7 +26,9 @@
 ///     packed elements (raw bytes for verbs/points/glyphs/glyphPos/dashes/shaderText, which are
 ///     already POD/no-padding types).
 ///   Not stored (T-263f): particles, particleInstances, imageMeshes, meshVertices, meshIndices --
-///   BakedWriter::writeFrame refuses a list with a DrawParticles or DrawImageMesh command.
+///   BakedWriter::writeFrame refuses a list with a DrawParticles or DrawImageMesh command, and
+///   (T-668) one with a DrawBoxShadow: paint the frames with Context::setBoxShadowCommands(false)
+///   (T-680), which keeps element drop shadows as the effect groups the format stores.
 ///
 /// `major` 2 (T-534, IR 3.0): PackedEffectInstance grew to 16 params + 4 colors (18 §18.2); a
 /// `major` 1 file is rejected (`.xtcl` is derived output -- re-bake it). The minor history below
@@ -406,6 +408,8 @@ public:
     /// `particleInstances`) and DrawImageMesh (`imageMeshes`, `meshVertices`, `meshIndices`), so a
     /// list with either command is refused the same way (false, nothing of the frame written,
     /// close() reports it) instead of written as a frame the player can only play back empty.
+    /// T-668 / T-680: likewise a DrawBoxShadow (a writer's Context turns them off with
+    /// setBoxShadowCommands(false)).
     bool writeFrame(uint32_t index, const CommandList& list);
     /// Flushes and closes the file. Returns false if any earlier write, or the close itself,
     /// failed. Safe to call more than once (a no-op after the first successful or failed close).

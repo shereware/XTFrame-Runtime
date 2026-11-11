@@ -39,8 +39,10 @@
 /// image content. T-656 (50 §50.ab item 1): a texture no surface uses any more (detach, trim, destroy)
 /// goes to the cache's idle list, bounded by the idle budget (xt_gpu_target_set_image_budget, default
 /// 64 MiB); xt_gpu_target_trim empties it and xt_gpu_target_memory_stats reports it. Each surface keeps
-/// its own glyph atlas (starting at 1024 x 1024, growing to 2048 x 2048), transient pool and surface
-/// texture.
+/// its own glyph atlas (starting at 1024 x 1024, growing to 2048 x 2048). T-675 (50 §50.ac item 2): the
+/// transient pool, the surface attachment sets and the dummy are the target's (in its WgpuSharedCache),
+/// and a surface takes its texture from the target's pool of surface textures and gives it back when
+/// hidden; a hidden surface keeps its renderer (xt_surface_trim, detach and destroy release it).
 /// Without wgpu (XT_BUILD_WGPU=OFF) every function only reports "built without wgpu".
 
 using xt::capi::fail;
@@ -147,29 +149,29 @@ struct SurfaceGpu {
         releaseTexture();
         renderer.shutdown();
     }
+    /// T-675 (50 §50.ac item 2): the texture goes back to the target's pool of surface textures.
     void releaseTexture() {
         if (handle != 0 && target != nullptr && target->composer.device() != nullptr) {
             target->composer.device()->unregisterExternalTexture(handle);
         }
         handle = 0;
-        if (view != nullptr) wgpuTextureViewRelease(view);
-        if (texture != nullptr) {
-            wgpuTextureDestroy(texture);
-            wgpuTextureRelease(texture);
+        if (texture != nullptr && target != nullptr) {
+            target->shared.releaseSurfaceTexture(texture, view);
+        } else if (view != nullptr) {
+            wgpuTextureViewRelease(view);
         }
         view = nullptr;
         texture = nullptr;
         width = height = 0;
     }
-    /// The texture at `w` x `h` (recreated when the size changed). False when it cannot be made.
+    /// The texture at `w` x `h` (another one when the size changed; T-675: from the target's pool, made
+    /// only when it has none of that size). False when it cannot be had.
     bool ensureTexture(int w, int h, bool& fresh) {
         fresh = false;
         if (texture != nullptr && handle != 0 && w == width && h == height) return true;
         releaseTexture();
-        texture = wgpu::createRenderTexture(target->init.device, w, h, WGPUTextureFormat_RGBA8Unorm,
-                                            "xt_capi surface");
+        texture = target->shared.acquireSurfaceTexture(w, h, WGPUTextureFormat_RGBA8Unorm, view);
         if (texture == nullptr) return false;
-        view = wgpuTextureCreateView(texture, nullptr);
         handle = target->composer.device()->registerExternalTexture(view, static_cast<uint16_t>(w),
                                                                     static_cast<uint16_t>(h));
         width = w;
@@ -200,10 +202,22 @@ void detachGpu(xt_surface& surface) {
     surface.target = sw::SwTarget{};
 }
 
-void releaseGpuResources(xt_surface& surface) {
+void releaseGpuResources(xt_surface& surface, bool everything) {
     if (surface.gpu == nullptr) return;
+    if (!everything) {
+        // T-675 (50 §50.ac item 2): trim-on-hide gives back the surface texture and the effect-cache
+        // targets (to the target's pools) and ends its image uses; the renderer and its small resources
+        // stay, so showing it again makes none of them.
+        SurfaceGpu& g = *surface.gpu;
+        g.releaseTexture();
+        g.renderer.trim();
+        g.built = false;  // the next frame is built in full (the Context reports `full` too)
+        log(0, "xt_surface: GPU textures returned to the target (" + surface.uiId + ")");
+        return;
+    }
     surface.gpu.reset();  // T-641: gpuTarget, `attached` and renderPath stay (still attached)
-    // The memory goes back to the target's device, whose allocator keeps it for the next resources.
+    // T-675: its textures go back to the target's pools; the rest goes back to the target's device,
+    // whose allocator keeps the memory for the next resources.
     log(0, "xt_surface: GPU resources released (" + surface.uiId + ")");
 }
 
@@ -304,15 +318,24 @@ void logSharedCache(xt_gpu_target& t) {
     const xt::wgpu::WgpuSharedStats s = t.shared.stats();
     const xt::wgpu::WgpuSharedStats& l = t.logged;
     if (s.imageCreates == l.imageCreates && s.imageReuses == l.imageReuses && s.imageFrees == l.imageFrees &&
-        s.pipelineSets == l.pipelineSets && s.pipelineBorrows == l.pipelineBorrows) {
+        s.pipelineSets == l.pipelineSets && s.pipelineBorrows == l.pipelineBorrows &&
+        s.textureCreates == l.textureCreates && s.poolFrees == l.poolFrees &&
+        s.attachmentSets == l.attachmentSets && s.surfaceTexturesIdle == l.surfaceTexturesIdle) {
         return;
     }
     t.logged = s;
-    xt::capi::log(0, "xt_gpu_target: shared image textures " + std::to_string(s.imageTextures) + " (" +
-                         std::to_string(s.imageBytes / 1024u) + " KiB; uploaded " +
-                         std::to_string(s.imageCreates) + ", reused " + std::to_string(s.imageReuses) +
-                         ", freed " + std::to_string(s.imageFrees) + "); pipeline sets " +
-                         std::to_string(s.pipelineSets) + ", borrowed " + std::to_string(s.pipelineBorrows));
+    // T-675: then every texture created on the target's device so far and the target-level pools
+    // (50 §50.ac item 2; tests and xt_gpu_mem_probe count the creates per scene switch here).
+    xt::capi::log(
+        0, "xt_gpu_target: shared image textures " + std::to_string(s.imageTextures) + " (" +
+               std::to_string(s.imageBytes / 1024u) + " KiB; uploaded " + std::to_string(s.imageCreates) +
+               ", reused " + std::to_string(s.imageReuses) + ", freed " + std::to_string(s.imageFrees) +
+               "); pipeline sets " + std::to_string(s.pipelineSets) + ", borrowed " +
+               std::to_string(s.pipelineBorrows) + "; textures created " + std::to_string(s.textureCreates) +
+               "; pools " + std::to_string(s.poolTextures) + " texture(s), " +
+               std::to_string(s.poolBytes / 1024u) + " KiB, attachment sets " +
+               std::to_string(s.attachmentSets) + ", idle surface textures " +
+               std::to_string(s.surfaceTexturesIdle) + ", pool frees " + std::to_string(s.poolFrees));
 }
 
 /// T-656: the counters of xt_gpu_target_memory_stats (50 §50.ab item 1), all fields.
@@ -326,13 +349,14 @@ xt_gpu_memory_stats collectMemoryStats(const xt_gpu_target& t) {
     m.image_idle_bytes = s.imageIdleBytes;
     m.image_evictions = s.imageEvictions;
     m.attached_surfaces = t.attached;
+    // T-675 (50 §50.ac item 2): the target-level pools -- transients, released cached targets, the
+    // surface attachment sets and the idle surface textures -- count as transient memory; a surface
+    // counts only the texture it holds. T-678 (50 §50.ac addendum item 2): the stencil attachments in
+    // there count at the backend's Stencil8 size (xt::wgpu::stencil8TexelBytes: 4 B/texel on D3D12).
+    m.transient_bytes = s.poolBytes;
     for (xt::capi::SurfaceGpu* g : t.gpus) {
         if (g->texture != nullptr) {  // WGPUTextureFormat_RGBA8Unorm, one sample
             m.surface_bytes += static_cast<uint64_t>(g->width) * static_cast<uint64_t>(g->height) * 4u;
-        }
-        if (xt::wgpu::WgpuDevice* dev = g->renderer.device()) {
-            m.surface_bytes += dev->surfaceAttachmentBytes();
-            m.transient_bytes += dev->lastStats().poolBytes;
         }
         m.atlas_bytes += g->renderer.stats().coverageAtlasBytes;  // T-660b: coverage atlas pages (R8)
 #ifdef XT_CAPI_GPU_ATLAS
@@ -341,10 +365,6 @@ xt_gpu_memory_stats collectMemoryStats(const xt_gpu_target& t) {
             m.atlas_bytes += static_cast<uint64_t>(g->atlas->textureCount()) * side * side;  // R8 pages
         }
 #endif
-    }
-    // The composer's pool too (read only; WgpuRenderer::device() has no const overload).
-    if (xt::wgpu::WgpuDevice* dev = const_cast<xt_gpu_target&>(t).composer.device()) {
-        m.transient_bytes += dev->lastStats().poolBytes;
     }
     return m;
 }
@@ -560,6 +580,8 @@ XT_CAPI xt_status xt_gpu_target_end_frame(xt_gpu_target* t) {
         t->inFrame = false;
         t->inflight.endFrame(t->init.queue);         // T-674: the frame's last submission index
         wgpuDevicePoll(t->init.device, 0, nullptr);  // let finished work be reclaimed, never waits
+        t->shared.endFrame();                        // T-675: the target-level pools age by these frames
+        logSharedCache(*t);
         if (!error.empty()) return fail(XT_STATUS_INTERNAL, "xt_gpu_target_end_frame: " + error);
         return XT_STATUS_OK;
     });
@@ -628,9 +650,12 @@ XT_CAPI xt_status xt_surface_render_gpu(xt_surface* s, xt_gpu_target* t, const x
             return fail(XT_STATUS_INVALID_ARGUMENT, "xt_surface_render_gpu: the surface is larger than " +
                                                         std::to_string(kMaxSide) + " px");
         }
-        if (s->gpu == nullptr && s->gpuTarget != nullptr && !s->ctx->isVisible(s->handle)) {
+        if ((s->gpu == nullptr || s->gpu->texture == nullptr) && s->gpuTarget != nullptr &&
+            !s->ctx->isVisible(s->handle)) {
             // T-641 (50 §50.aa item 4): released while hidden; a hidden surface paints nothing, so
-            // its resources are rebuilt only once it has something to draw again.
+            // its resources are rebuilt only once it has something to draw again. T-675 (50 §50.ac
+            // item 2): a hidden surface that gave its texture back (trim-on-hide) is not built either --
+            // an empty build would drop the gradient tables it keeps for the next show.
             xt::capi::DispatchScope scope(*s);
             s->ctx->render(s->list, &s->damage);
             if (s->list.commands.empty()) return XT_STATUS_OK;
@@ -737,9 +762,14 @@ XT_CAPI xt_status xt_gpu_target_trim(xt_gpu_target* t) {
         if (t->inFrame) return fail(XT_STATUS_INVALID_ARGUMENT, "xt_gpu_target_trim: called inside a frame");
         t->inflight.waitIdle(t->init.device);  // T-674: the GPU is done with everything before it is freed
         const uint32_t freed = t->shared.trimIdleImages();
+        // T-675 (50 §50.ac item 2): and every pooled texture no surface borrows (none is borrowed
+        // outside a frame).
+        const uint32_t pooled = t->shared.trimPools();
         wgpuDevicePoll(t->init.device, 0, nullptr);  // let the driver reclaim it, never waits
         logSharedCache(*t);
-        xt::capi::log(0, "xt_gpu_target: trimmed; " + std::to_string(freed) + " idle image texture(s) freed");
+        xt::capi::log(0, "xt_gpu_target: trimmed; " + std::to_string(freed) +
+                             " idle image texture(s) freed, " + std::to_string(pooled) +
+                             " pooled texture(s) freed");
         return XT_STATUS_OK;
     });
 }
@@ -780,7 +810,7 @@ void detachGpu(xt_surface& surface) {
     surface.renderPath = RenderPath::None;
 }
 
-void releaseGpuResources(xt_surface& surface) { surface.gpu.reset(); }
+void releaseGpuResources(xt_surface& surface, bool /*everything*/) { surface.gpu.reset(); }
 
 bool gpuDrawCounts(const xt_surface& /*surface*/, uint32_t& /*executed*/, uint32_t& /*skipped*/) {
     return false;

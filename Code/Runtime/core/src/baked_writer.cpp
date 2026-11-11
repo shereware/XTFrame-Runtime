@@ -589,12 +589,15 @@ bool BakedWriter::writeFrame(uint32_t index, const CommandList& list) {
     // format stores them (a minor version of its own), the frame is refused at the first such
     // command and nothing of it is written.
     for (const Command& command : list.commands) {
-        if (command.kind == CmdKind::DrawParticles || command.kind == CmdKind::DrawImageMesh) {
+        // T-668: nor a DrawBoxShadow (`.xtcl` minor 4 has no boxShadows pool either).
+        if (command.kind == CmdKind::DrawParticles || command.kind == CmdKind::DrawImageMesh ||
+            command.kind == CmdKind::DrawBoxShadow) {
             m_failed = true;
             // T-263g item 11: the command as dumpCommandList() names it.
-            m_lastError = std::string("baked frames cannot store ") +
-                          (command.kind == CmdKind::DrawParticles ? "DrawParticles" : "DrawImageMesh") +
-                          " commands yet";
+            const char* name = command.kind == CmdKind::DrawParticles   ? "DrawParticles"
+                               : command.kind == CmdKind::DrawImageMesh ? "DrawImageMesh"
+                                                                        : "DrawBoxShadow";
+            m_lastError = std::string("baked frames cannot store ") + name + " commands yet";
             return false;
         }
     }

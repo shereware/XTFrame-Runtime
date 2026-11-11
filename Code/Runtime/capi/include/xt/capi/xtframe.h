@@ -380,12 +380,15 @@ XT_CAPI xt_status xt_surface_detach_gpu(xt_surface* s);
 
 /* ---- Hidden surfaces and memory (50 §50.aa, T-641) ------------------------------------------------
    xt_surface_trim: frees the surface's frame scratch now -- the software renderer's layer pool,
-   effect buffers and masks; with a GPU target, the surface texture and renderer resources (it stays
-   attached). Any time, inside callbacks too. A visible surface repaints whole on its next render.
+   effect buffers and masks; with a GPU target, all of its GPU resources (it stays attached; its
+   textures go back to the target's pools, 50 §50.ac). Any time, inside callbacks too. A visible
+   surface repaints whole on its next render.
    xt_surface_set_trim_on_hide: 1 (the default) = the first xt_surface_update after the surface became
-   hidden (xt_surface_set_visible(s, 0), or a request_hide outro that ended) does the same; the frame
-   that shows it again allocates anew and renders the same pixels. 0 keeps the scratch while hidden
-   (a HUD toggled every few frames). */
+   hidden (xt_surface_set_visible(s, 0), or a request_hide outro that ended) does the same for the
+   software scratch; with a GPU target it gives back only its textures (the surface texture and its
+   effect-cache targets, to the target's pools, which a surface shown later takes them from) and keeps
+   its renderer (T-675). The frame that shows it again renders the same pixels. 0 keeps the scratch
+   while hidden (a HUD toggled every few frames). */
 XT_CAPI xt_status xt_surface_trim(xt_surface* s);
 XT_CAPI xt_status xt_surface_set_trim_on_hide(xt_surface* s, int enabled);
 
@@ -399,13 +402,17 @@ XT_CAPI xt_status xt_surface_set_trim_on_hide(xt_surface* s, int enabled);
    are destroyed until the rest fit). 0 = a texture is destroyed as soon as no surface uses it.
    NULL target -> XT_STATUS_INVALID_ARGUMENT. */
 XT_CAPI xt_status xt_gpu_target_set_image_budget(xt_gpu_target* t, uint64_t idle_bytes);
-/* Destroys every idle image texture of `t` now, then polls the device once without waiting so the
-   driver can reclaim the memory (call it when the host changes level / scene). Textures in use are
-   kept. Inside a frame (between begin_frame and end_frame) or NULL target -> XT_STATUS_INVALID_ARGUMENT,
+/* Destroys every idle image texture of `t` now, and every texture of the target's pools that no
+   surface is drawing with (idle 1x surface textures, attachment sets, transient and effect-cache
+   targets), then polls the device once without waiting so the driver can reclaim the memory (call it
+   when the host changes level / scene). Textures in use are kept. Inside a frame (between begin_frame and end_frame) or NULL target -> XT_STATUS_INVALID_ARGUMENT,
    nothing destroyed. */
 XT_CAPI xt_status xt_gpu_target_trim(xt_gpu_target* t);
 
-/* Memory the library accounts for itself (bytes from formats and sizes, not the driver's committed). */
+/* Memory the library accounts for itself (bytes from formats and sizes, not the driver's committed).
+   The numbers are content bytes (a stencil attachment at the size the backend creates it with: 4 bytes
+   per texel on D3D12); they leave out the allocator's alignment, each texture's minimum allocation and
+   the slack of its memory blocks. */
 typedef struct xt_gpu_memory_stats {
     uint32_t struct_size;          /* = sizeof(xt_gpu_memory_stats), set by the caller */
     uint32_t image_textures;       /* shared image textures alive (used or idle) */
@@ -414,8 +421,10 @@ typedef struct xt_gpu_memory_stats {
     uint32_t attached_surfaces;    /* surfaces attached to the target */
     uint64_t image_idle_bytes;     /* memory of the idle textures */
     uint64_t image_evictions;      /* idle textures destroyed so far (budget or xt_gpu_target_trim) */
-    uint64_t surface_bytes;        /* per attached surface: its 1x texture + MSAA color + stencil attachments */
-    uint64_t transient_bytes;      /* the renderers' transient target pools now */
+    uint64_t surface_bytes;        /* the 1x textures the attached surfaces hold now */
+    uint64_t transient_bytes;      /* the target's pools now: transient targets, released effect-cache
+                                      targets, the MSAA color + stencil attachment sets (one per surface
+                                      size, shared by the surfaces) and the idle 1x surface textures */
     uint64_t atlas_bytes;          /* the surfaces' glyph and coverage atlas pages (R8) */
 } xt_gpu_memory_stats;
 /* Fills `out` with `t`'s counters: only the fields `out->struct_size` covers are written (an older,

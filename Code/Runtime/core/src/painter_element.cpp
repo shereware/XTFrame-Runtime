@@ -467,57 +467,6 @@ bool emitElementBackground(const ElementData& data, const Mat2x3& world, float a
 
 namespace {
 
-/// T-201: appendRoundedRectPath()'s outline traced the other way round (counter-clockwise: TL
-/// corner, left edge, BL, bottom, BR, right edge, TR, top edge), so a ring of an outer and this
-/// inner outline fills with the nonzero rule and a side of zero width -- where the two outlines
-/// coincide -- cancels exactly instead of leaving an antialiasing seam (even-odd adds the two
-/// coincident edges' coverage).
-void appendRoundedRectPathReversed(Rect box, float rTL, float rTR, float rBR, float rBL,
-                                   std::vector<PathVerb>& verbs, std::vector<float>& points) {
-    const float x = box.x;
-    const float y = box.y;
-    const float w = box.w;
-    const float h = box.h;
-    const float k = kRoundedRectKappa;
-    auto point = [&points](float px, float py) {
-        points.push_back(px);
-        points.push_back(py);
-    };
-    auto line = [&](float px, float py) {
-        verbs.push_back(PathVerb::Line);
-        point(px, py);
-    };
-    auto cubic = [&](float x1, float y1, float x2, float y2, float x3, float y3) {
-        verbs.push_back(PathVerb::Cubic);
-        point(x1, y1);
-        point(x2, y2);
-        point(x3, y3);
-    };
-    verbs.push_back(PathVerb::Move);
-    point(x + rTL, y);
-    if (rTL > 0.0f) {
-        cubic(x + rTL - rTL * k, y, x, y + rTL - rTL * k, x, y + rTL);
-    }
-    line(x, y + h - rBL);
-    if (rBL > 0.0f) {
-        cubic(x, y + h - rBL + rBL * k, x + rBL - rBL * k, y + h, x + rBL, y + h);
-    }
-    line(x + w - rBR, y + h);
-    if (rBR > 0.0f) {
-        cubic(x + w - rBR + rBR * k, y + h, x + w, y + h - rBR + rBR * k, x + w, y + h - rBR);
-    }
-    line(x + w, y + rTR);
-    if (rTR > 0.0f) {
-        cubic(x + w, y + rTR - rTR * k, x + w - rTR + rTR * k, y, x + w - rTR, y);
-    }
-    line(x + rTL, y);
-    verbs.push_back(PathVerb::Close);
-}
-
-}  // namespace
-
-namespace {
-
 /// T-333 (05 §5.9.8): side `side`'s color (0 top, 1 right, 2 bottom, 3 left): its own
 /// base[BorderTopColor + side] when ComputedStyle::borderColorSides says so, else the legacy
 /// single BorderColor.
@@ -1002,38 +951,57 @@ float elementOutlineExtent(const ElementData& data) {
     return std::max(0.0f, offset + width);
 }
 
-void emitElementOutline(const ElementData& data, const Mat2x3& world, float alpha, CommandList& out,
-                        std::vector<PathVerb>& scratchVerbs, std::vector<float>& scratchPoints) {
+bool elementHasOutline(const ElementData& data) {
     float width = 0.0f;
     float offset = 0.0f;
+    return outlineMetrics(data.style, width, offset);
+}
+
+void elementBorderRadii(const ElementData& data, float r[4]) {
+    resolveRadii(data.style, data.box.width, data.box.height, r[0], r[1], r[2], r[3]);
+}
+
+bool elementOutlineRing(const ElementData& data, float& width, float& offset, Rect& outer, float ro[4],
+                        Rect& inner, float ri[4]) {
     if (!outlineMetrics(data.style, width, offset)) {
-        return;
-    }
-    const Color color = data.style.base[prop::OutlineColor].c;
-    if (color.a <= 0.0f) {
-        return;
+        return false;
     }
     const LayoutBox& box = data.box;
     const Rect borderBox{0, 0, box.width, box.height};
-    const Rect outer = growRect(borderBox, offset + width);
-    if (outer.w <= 0.0f || outer.h <= 0.0f) {
-        return;
-    }
-    const Rect inner = growRect(borderBox, offset);
+    outer = growRect(borderBox, offset + width);
+    inner = growRect(borderBox, offset);
 
     // Inner edge: the border radius plus the offset, clamped at 0; a square corner (radius 0)
     // stays square, as CSS draws it. The outer edge keeps the ring's width round a rounded corner
     // and stays square where the inner corner is square.
     float r[4];
     resolveRadii(data.style, box.width, box.height, r[0], r[1], r[2], r[3]);
-    float ri[4];
-    float ro[4];
     for (int i = 0; i < 4; ++i) {
         ri[i] = r[i] > 0.0f ? std::max(0.0f, r[i] + offset) : 0.0f;
         ro[i] = ri[i] > 0.0f ? ri[i] + width : 0.0f;
     }
     clampRoundedRectRadii(outer.w, outer.h, ro[0], ro[1], ro[2], ro[3]);
     clampRoundedRectRadii(inner.w, inner.h, ri[0], ri[1], ri[2], ri[3]);
+    return true;
+}
+
+void emitElementOutline(const ElementData& data, const Mat2x3& world, float alpha, CommandList& out,
+                        std::vector<PathVerb>& scratchVerbs, std::vector<float>& scratchPoints) {
+    float width = 0.0f;
+    float offset = 0.0f;
+    Rect outer, inner;
+    float ro[4];
+    float ri[4];
+    if (!elementOutlineRing(data, width, offset, outer, ro, inner, ri)) {
+        return;
+    }
+    const Color color = data.style.base[prop::OutlineColor].c;
+    if (color.a <= 0.0f) {
+        return;
+    }
+    if (outer.w <= 0.0f || outer.h <= 0.0f) {
+        return;
+    }
 
     scratchVerbs.clear();
     scratchPoints.clear();

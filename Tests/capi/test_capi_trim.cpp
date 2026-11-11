@@ -251,6 +251,7 @@ namespace {
 struct GpuLog {
     int released = 0;
     int rebuilt = 0;
+    int returned = 0;  ///< T-675: trim-on-hide gave the surface's textures back (renderer kept)
     GpuLog() { xt_capi_set_log(&GpuLog::onLog, this); }
     ~GpuLog() { xt_capi_set_log(nullptr, nullptr); }
     GpuLog(const GpuLog&) = delete;
@@ -259,6 +260,8 @@ struct GpuLog {
         auto* self = static_cast<GpuLog*>(user);
         if (level == 0 && std::strstr(message, "GPU resources released") != nullptr) ++self->released;
         if (level == 0 && std::strstr(message, "GPU resources rebuilt") != nullptr) ++self->rebuilt;
+        if (level == 0 && std::strstr(message, "GPU textures returned to the target") != nullptr)
+            ++self->returned;
     }
 };
 
@@ -279,18 +282,22 @@ void gpuHideAndShow(xt_gpu_target* t, bool trimOnHide) {
     std::printf("gpu (trim_on_hide %d): video MB %.1f -> %.1f -> %.1f; private MB %.1f -> %.1f -> %.1f\n",
                 trimOnHide ? 1 : 0, v0, v1, videoMb(), f.baseMb, renderedMb, privateMb());
     CHECK(hidden == Pixels(hidden.size(), 0));  // A hidden surface composites nothing.
-    CHECK(log.released == (trimOnHide ? 1 : 0));
-    CHECK(log.rebuilt == 0);  // Rendering a released hidden surface does not rebuild it.
+    // T-675 (50 §50.ac item 2): trim-on-hide gives back only the textures; the renderer stays.
+    CHECK(log.returned == (trimOnHide ? 1 : 0));
+    CHECK(log.released == 0);
+    CHECK(log.rebuilt == 0);
     // Still attached: the SW path is refused, the target cannot be destroyed.
     CHECK(xt_surface_render(f.s, f.rgba.data(), kW * 4, nullptr) == XT_STATUS_UNSUPPORTED);
     CHECK(xt_gpu_target_destroy(t) == XT_STATUS_BUSY);
     REQUIRE(xt_surface_set_visible(f.s, 1) == XT_STATUS_OK);
     CHECK(samePixels(gpuFrame(f.s, t, 0.0f), before));
-    CHECK(log.rebuilt == (trimOnHide ? 1 : 0));
-    // xt_surface_trim on the visible attached surface: released now, rebuilt by the next frame.
+    CHECK(log.rebuilt == 0);  // T-675: shown again with the renderer it kept
+    // xt_surface_trim on the visible attached surface: everything released now, rebuilt by the next
+    // frame.
     REQUIRE(xt_surface_trim(f.s) == XT_STATUS_OK);
+    CHECK(log.released == 1);
     CHECK(samePixels(gpuFrame(f.s, t, 0.0f), before));
-    CHECK(log.released == (trimOnHide ? 2 : 1));
+    CHECK(log.rebuilt == 1);
 }
 
 }  // namespace
@@ -301,7 +308,8 @@ void gpuHideAndShow(xt_gpu_target* t, bool trimOnHide) {
 // alike), and what a release frees is reused by the next resources on that target. So this case
 // checks the release itself (the info log), that the surface stays attached, and the re-show pixels;
 // the memory figures are printed.
-TEST_CASE("capi trim 4 (T-641): a hidden GPU-attached surface releases its resources, stays attached") {
+TEST_CASE(
+    "capi trim 4 (T-641, T-675): a hidden GPU-attached surface gives back its textures, stays attached") {
     xt_gpu_target* t = offscreenTarget();
     if (t == nullptr) return;
     gpuHideAndShow(t, true);

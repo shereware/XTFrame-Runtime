@@ -68,19 +68,23 @@ struct WgpuRenderer::Impl {
             lastError = in.error.empty() ? std::string("WgpuRenderer::init: no WebGPU device") : in.error;
             return false;
         }
-        std::string err;
-        device.setSharedCache(in.shared);  // T-648
-        if (!device.init(in.device, in.queue, in.targetFormat, in.sampleCount, err)) {
-            lastError = err;
-            return false;
-        }
         // From the adapter: wgpu-native does not implement wgpuDeviceGetAdapterInfo (it panics).
         WGPUAdapterInfo info = WGPU_ADAPTER_INFO_INIT;
+        WGPUBackendType backend = WGPUBackendType_Undefined;
         if (in.adapter != nullptr && wgpuAdapterGetInfo(in.adapter, &info) == WGPUStatus_Success) {
             adapterName = toString(info.device) + " (" + backendName(info.backendType) + ")";
+            backend = info.backendType;
             wgpuAdapterInfoFreeMembers(info);
         } else {
             adapterName = "unknown adapter";
+        }
+        std::string err;
+        device.setSharedCache(in.shared);  // T-648
+        device.setBackendType(backend);    // T-678: the Stencil8 byte counts
+        if (!device.init(in.device, in.queue, in.targetFormat, in.sampleCount, err)) {
+            lastError = err;
+            adapterName.clear();  // as before: named only once the device is initialized
+            return false;
         }
         builder.init(device);
         builder.setEdgeFringe(in.sampleCount <= 1);  // a multisampled target resolves edges itself
@@ -321,6 +325,14 @@ void WgpuRenderer::submit(WGPUTextureView target, PerfTracker* perf) {
     m_impl->submitFrame(target, stats);
 }
 
+void WgpuRenderer::trim() {
+    if (!m_impl->initialized) {
+        return;
+    }
+    m_impl->builder.trim();
+    m_impl->frameBuilt = false;
+}
+
 void WgpuRenderer::invalidateImages() { m_impl->builder.invalidateAllAssets(); }
 
 WgpuStats WgpuRenderer::stats() const {
@@ -354,6 +366,11 @@ WgpuStats WgpuRenderer::stats() const {
         s.coverageFallbacks = cov.fallbacks;
         s.coverageTiles = cov.tiles;  // T-672
         s.coverageUniformTiles = cov.uniformTiles;
+        const gpu::FrameBuilder::ClipStats clip = m_impl->builder.lastClipStats();  // T-663
+        s.clipSkipped = clip.skipped;
+        s.clipScissor = clip.scissor;
+        s.clipImageDirect = clip.imageDirect;
+        s.clipMaskLayers = clip.maskLayers;
     }
     s.uploadBytes = d.uploadBytes;
     s.planMs = d.planMs;

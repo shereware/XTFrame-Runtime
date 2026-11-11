@@ -1,0 +1,34 @@
+/* Five nested translucent panels (one layer inside the other) and two side panels over a backdrop. */
+body {
+  width: 100vw;
+  height: 100vh;
+}
+#back {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100vw;
+  height: 100vh;
+}
+#a {
+  position: absolute;
+  left: 4vw;
+  top: 4vh;
+  width: 88vw;
+  height: 88vh;
+}
+#a .panel {
+  position: absolute;
+  left: 5%;
+  top: 5%;
+  width: 90%;
+  height: 90%;
+}
+.side {
+  position: absolute;
+  top: 10vh;
+  width: 30vw;
+  height: 80vh;
+}
+#f { left: 2vw; }
+#g { left: 68vw; }

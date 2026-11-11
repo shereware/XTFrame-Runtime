@@ -120,7 +120,7 @@ void WgpuDevice::drawCmd(WGPURenderPassEncoder pass, const gpu::DrawCmd& cmd, ui
     uint32_t samples = m_sampleCount;
     bool hasStencil = true;
     if (target != gpu::kSurfaceTarget) {
-        const Pooled& p = m_pool[static_cast<size_t>(m_frameTargets[target - 1])];
+        const Pooled& p = pool()[static_cast<size_t>(m_frameTargets[target - 1])];
         format = detail::formatOf(p.format);
         samples = p.samples;
         hasStencil = p.depthStencilView != nullptr;
@@ -155,6 +155,9 @@ void WgpuDevice::drawCmd(WGPURenderPassEncoder pass, const gpu::DrawCmd& cmd, ui
             break;
         case Shading::ParticleSolid:
             shader = detail::kShParticleSolid;
+            break;
+        case Shading::BoxShadow:
+            shader = detail::kShBoxShadow;  // T-668
             break;
         case Shading::Effect:
             if (cmd.program == gpu::EffectProgram::Custom) {

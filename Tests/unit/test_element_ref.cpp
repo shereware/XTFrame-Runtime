@@ -364,8 +364,10 @@ TEST_CASE("ElementRef: setEffects(DropShadow) -> Document::paint dump contains P
     doc->paint(list);
     std::string dump;
     dumpCommandList(list, dump);
-    CHECK(dump.find("PushEffect") != std::string::npos);
-    CHECK(dump.find("PopEffect") != std::string::npos);
+    // T-668 (10 §10.12 item 2): #box is an opaque plain box, so its drop shadow reaches the list as
+    // a DrawBoxShadow instead of a PushEffect / PopEffect pair.
+    CHECK(dump.find("DrawBoxShadow") != std::string::npos);
+    CHECK(dump.find("PushEffect") == std::string::npos);
 }
 
 TEST_CASE("ElementRef: focus() and defaultAnimation()") {

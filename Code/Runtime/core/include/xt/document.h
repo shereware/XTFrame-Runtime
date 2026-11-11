@@ -1112,9 +1112,9 @@ private:
 
     Document();
 
-    /// paint() with every asset command stamped `source` (T-263d): Context::render's entry, after
-    /// it appended this Document's CommandSource to `out.sources` at that index.
-    void paintAs(CommandList& out, uint16_t source);
+    /// paint() with every asset command stamped `source` (T-263d; Context::render, after appending
+    /// this Document's CommandSource at that index); T-680: Context::setBoxShadowCommands' value.
+    void paintAs(CommandList& out, uint16_t source, bool boxShadowCommands = true);
     Status loadInternal(IrBlob blob, bool takeOwnership, TextShaper* shaper, AssetResolver* assets);
     void handleAnimationFinished(uint32_t id);
     void handleAnimationIteration(uint32_t id, uint32_t iteration);

@@ -126,6 +126,13 @@ struct WgpuStats {
     uint32_t coverageTiles = 0;             ///< T-672: edge tiles of the tiled fills drawn
     uint32_t coverageUniformTiles = 0;      ///< T-672: empty and full tiles of the tiled fills drawn
 
+    // T-663: how the build drew the clips that are stencil levels at 4x (gpu::FrameBuilder::lastClipStats);
+    // zeros for a reused frame.
+    uint32_t clipSkipped = 0;      ///< no clip needed (content inside the safe interior, or empty)
+    uint32_t clipScissor = 0;      ///< drawn as a scissor
+    uint32_t clipImageDirect = 0;  ///< one image drawn as a fringed convex polygon
+    uint32_t clipMaskLayers = 0;   ///< drawn as a mask layer
+
     // T-674 (Docs/design/50-c-abi.md §50.ac item 1): the waits of the last `framesInFlight().beginFrame`
     // (0 when the GPU was at most two frames behind) and their milliseconds.
     uint32_t inflightWaits = 0;
@@ -182,6 +189,11 @@ public:
     /// Drops every cached image texture (`gpu::FrameBuilder::invalidateAllAssets()`), as
     /// `GlRenderer::invalidateImages`.
     void invalidateImages();
+    /// T-675 (Docs/design/50-c-abi.md §50.ac item 2): what a hidden surface gives back while its
+    /// renderer stays (`gpu::FrameBuilder::trim`: the effect cache and band targets to the device's
+    /// pool, the image textures' uses ended); the device, its buffers, bind groups, gradient tables and
+    /// atlas pages stay. The next `build` is a full one.
+    void trim();
     WgpuStats stats() const;
     /// T-662 (Docs/design/10-backends.md §10.11 item 2, supplement 2): `gpu::FrameBuilder::
     /// wantsAnotherFrame()` of the frame last built -- a coverage shape the frame budget held back

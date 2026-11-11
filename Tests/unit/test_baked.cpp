@@ -892,3 +892,93 @@ TEST_CASE("Baked: T-255b writeFrame refuses an index at or past frameCount") {
     std::error_code ec;
     fs::remove(path, ec);
 }
+
+// T-680 (Docs/design/10-backends.md §10.12 item 2, "補充 2" A): with Context::setBoxShadowCommands
+// off -- what xtframe-bake does -- a convertible drop shadow stays a PushEffect group, the frame is
+// written and plays back unchanged; on (the default), the same frame holds a DrawBoxShadow, which
+// the format cannot store. The option reaches a Document loaded after it was set too.
+TEST_CASE(
+    "Baked: T-680 box shadow commands off keep a convertible shadow an effect group the writer stores") {
+    const char* text =
+        R"~(<xt><body><div style="position: absolute; left: 20px; top: 20px; width: 60px; height: 40px;
+               border-radius: 8px; background-color: #3060c0; effect: shadow(0px 4px 10px #000000a0)">
+             </div></body></xt>)~";
+    CompileOptions options;
+    options.emitMeta = false;
+    std::vector<SourceFile> files{{"main.xt", text}};
+    CompileResult result = compileDocumentFromStrings(files, "main.xt", options);
+    REQUIRE(result.ok());
+    const Rect viewport{0, 0, 120, 100};
+    auto count = [](const CommandList& list, CmdKind kind) {
+        size_t n = 0;
+        for (const Command& command : list.commands) {
+            n += command.kind == kind ? 1 : 0;
+        }
+        return n;
+    };
+
+    NullTextShaper shaper;
+    CommandList on;
+    {
+        Context ctx(ContextConfig{&shaper, nullptr});
+        CHECK(ctx.boxShadowCommands());  // the default
+        REQUIRE(ctx.loadDocument(IrBlob{result.ir.data(), result.ir.size()}, false).ok());
+        ctx.setViewport(viewport, 1.0f);
+        ctx.update(0.0f);
+        ctx.render(on);
+    }
+    REQUIRE(count(on, CmdKind::DrawBoxShadow) == 1);
+    CHECK(count(on, CmdKind::PushEffect) == 0);
+
+    CommandList off;
+    CommandList later;
+    {
+        Context ctx(ContextConfig{&shaper, nullptr});
+        REQUIRE(ctx.loadDocument(IrBlob{result.ir.data(), result.ir.size()}, false).ok());
+        ctx.setBoxShadowCommands(false);  // a Document already loaded
+        CHECK_FALSE(ctx.boxShadowCommands());
+        ctx.setViewport(viewport, 1.0f);
+        ctx.update(0.0f);
+        ctx.render(off);
+
+        Context ctx2(ContextConfig{&shaper, nullptr});
+        ctx2.setBoxShadowCommands(false);  // a Document loaded afterwards
+        REQUIRE(ctx2.loadDocument(IrBlob{result.ir.data(), result.ir.size()}, false).ok());
+        ctx2.setViewport(viewport, 1.0f);
+        ctx2.update(0.0f);
+        ctx2.render(later);
+    }
+    CHECK(count(off, CmdKind::DrawBoxShadow) == 0);
+    CHECK(count(off, CmdKind::PushEffect) == 1);
+    CHECK(count(off, CmdKind::PopEffect) == 1);
+    std::string offDump, laterDump;
+    dumpCommandList(off, offDump);
+    dumpCommandList(later, laterDump);
+    CHECK(offDump == laterDump);
+
+    const fs::path path = xt::test::tempDir() / "xt_test_baked_t680.xtcl";
+    {
+        BakedWriter refused;
+        REQUIRE(refused.open(path.string(), 1, 10.0f, viewport, 1.0f));
+        CHECK_FALSE(refused.writeFrame(0, on));
+        CHECK(std::string(refused.lastError()) == "baked frames cannot store DrawBoxShadow commands yet");
+        refused.close();
+    }
+    BakedWriter writer;
+    REQUIRE(writer.open(path.string(), 1, 10.0f, viewport, 1.0f));
+    REQUIRE(writer.writeFrame(0, off));
+    REQUIRE(writer.close());
+    std::vector<uint8_t> bytes = readFile(path.string());
+    BakedPlayer player;
+    REQUIRE(player.load(IrBlob{bytes.data(), bytes.size()}, /*takeOwnership=*/true) == Status::kOk);
+    CHECK(player.frame(0).sources.empty());  // T-263d: a played frame names no source
+    CommandList offNoSource = off;
+    offNoSource.sources.clear();
+    std::string expected;
+    dumpCommandList(offNoSource, expected);
+    std::string played;
+    dumpCommandList(player.frame(0), played);
+    CHECK(played == expected);
+    std::error_code ec;
+    fs::remove(path, ec);
+}

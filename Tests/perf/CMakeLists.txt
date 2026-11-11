@@ -56,6 +56,18 @@ if(TARGET xtframe-view)
     endforeach()
 endif()
 
+# T-673: first-frame layout of three text-heavy UIs of an external game bundle (the font fallback
+# cache's measurement). Not a gate: one frame with --perf, whose summary is the first frame's
+# layout ms. Off unless XT_PERF_TEXT_BUNDLE names the bundle directory (it is not in this repo).
+set(XT_PERF_TEXT_BUNDLE "" CACHE PATH "Bundle directory with UIs paper/board/debate for the T-673 first-frame report")
+if(TARGET xtframe-view AND XT_PERF_TEXT_BUNDLE)
+    foreach(xt_text_ui paper board debate)
+        add_test(NAME xt_perf_first_frame_${xt_text_ui}
+                 COMMAND xtframe-view "${XT_PERF_TEXT_BUNDLE}" --ui ${xt_text_ui} --headless --perf --frames 1)
+        set_tests_properties(xt_perf_first_frame_${xt_text_ui} PROPERTIES LABELS "perf-report")
+    endforeach()
+endif()
+
 # T-671 (Docs/design/50-c-abi.md §50.ab addendum 2, item 3): the GPU memory probe that
 # Tools/Scripts/gpu_mem_matrix.py runs once per combination. C ABI only; built with the shared library
 # and wgpu. The smoke test runs one round over the capi `flip` fixture bundle and checks the CSV.

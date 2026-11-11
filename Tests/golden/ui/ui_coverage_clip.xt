@@ -1,0 +1,223 @@
+<xt version="2">
+
+  <!-- T-663 (10 section 10.11 ruling 5 final): rounded and rotated clips at 1x. A rounded card whose
+       child stays inside (no clip), a scrolling list running past the top and bottom edges between
+       the corners (scissor), round and elliptical images, cover-fitted and rotated 10 deg (one
+       convex textured polygon), a card filled edge to edge by a gradient, a container rotated
+       12 deg with text and an image running out of it, and two nested rounded clips (mask layers). -->
+  <body>
+    <div id="inside" class="card">
+      <div id="insideChild"></div>
+    </div>
+    <div id="list" class="card">
+      <div id="items">
+        <div class="item"></div>
+        <div class="item"></div>
+        <div class="item"></div>
+        <div class="item"></div>
+        <div class="item"></div>
+      </div>
+    </div>
+    <div id="avatar" class="round"><img id="avatarImg" src="nine.png"/></div>
+    <div id="avatarRot" class="round"><img id="avatarRotImg" src="media/atlas.png"/></div>
+    <img id="ellipse" src="nine.png"/>
+    <div id="filled" class="card">
+      <div id="gradient"></div>
+    </div>
+    <div id="rotated">
+      <div id="rotatedText">Overflowing text</div>
+      <img id="rotatedImg" src="nine.png"/>
+    </div>
+    <div id="outer" class="card">
+      <div id="inner">
+        <div id="innerFill"></div>
+      </div>
+    </div>
+  </body>
+
+  <layout>
+    body {
+      width: 384px;
+      height: 320px;
+      margin: 0;
+    }
+    .card {
+      position: absolute;
+      width: 112px;
+      height: 80px;
+      overflow: hidden;
+    }
+    #inside {
+      left: 8px;
+      top: 8px;
+    }
+    #insideChild {
+      position: absolute;
+      left: 20px;
+      top: 18px;
+      width: 72px;
+      height: 44px;
+    }
+    #list {
+      left: 136px;
+      top: 8px;
+    }
+    #items {
+      position: absolute;
+      left: 18px;
+      top: -14px;
+      width: 76px;
+      height: 112px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .item {
+      height: 19px;
+    }
+    .round {
+      position: absolute;
+      width: 72px;
+      height: 72px;
+      overflow: hidden;
+    }
+    #avatar {
+      left: 264px;
+      top: 8px;
+    }
+    #avatarImg {
+      width: 72px;
+      height: 72px;
+    }
+    #avatarRot {
+      left: 8px;
+      top: 108px;
+      transform: rotate(10deg);
+      transform-origin: 50% 50%;
+    }
+    #avatarRotImg {
+      width: 72px;
+      height: 72px;
+    }
+    #ellipse {
+      position: absolute;
+      left: 96px;
+      top: 112px;
+      width: 96px;
+      height: 64px;
+    }
+    #filled {
+      left: 208px;
+      top: 104px;
+    }
+    #gradient {
+      position: absolute;
+      left: 0px;
+      top: 0px;
+      width: 112px;
+      height: 80px;
+    }
+    #rotated {
+      position: absolute;
+      left: 24px;
+      top: 212px;
+      width: 150px;
+      height: 70px;
+      overflow: hidden;
+      transform: rotate(12deg);
+      transform-origin: 50% 50%;
+    }
+    #rotatedText {
+      position: absolute;
+      left: -16px;
+      top: 6px;
+      width: 220px;
+      height: 30px;
+    }
+    #rotatedImg {
+      position: absolute;
+      left: 104px;
+      top: 34px;
+      width: 64px;
+      height: 48px;
+    }
+    #outer {
+      left: 232px;
+      top: 208px;
+      width: 128px;
+      height: 96px;
+    }
+    #inner {
+      position: absolute;
+      left: 8px;
+      top: 8px;
+      width: 112px;
+      height: 80px;
+      overflow: hidden;
+    }
+    #innerFill {
+      position: absolute;
+      left: -8px;
+      top: -8px;
+      width: 128px;
+      height: 96px;
+    }
+  </layout>
+  <style>
+    @font-face {
+      font-family: "Noto Sans";
+      src: "../../fonts/NotoSans-Regular.subset.ttf";
+    }
+    body {
+      background-color: #ffffff;
+      font-family: "Noto Sans";
+      color: #18324a;
+      white-space: nowrap;
+    }
+    .card {
+      border-radius: 16px;
+      background-color: #dfe6ee;
+    }
+    #insideChild {
+      background-color: #3a6ea5;
+    }
+    #list {
+      border-radius: 12px;
+    }
+    .item {
+      background-color: #c0504d;
+    }
+    .round {
+      border-radius: 50%;
+    }
+    #avatarImg {
+      object-fit: fill;
+    }
+    #avatarRotImg {
+      object-fit: cover;
+    }
+    #ellipse {
+      object-fit: fill;
+      clip-path: ellipse(50% 50% at 50% 50%);
+    }
+    #gradient {
+      background-gradient: linear-gradient(90deg, #1f77b4, #ff7f0e);
+    }
+    #rotated {
+      background-color: #f2e6c9;
+    }
+    #rotatedText {
+      font-size: 24px;
+    }
+    #outer {
+      border-radius: 20px;
+      background-color: #20262e;
+    }
+    #inner {
+      border-radius: 14px;
+    }
+    #innerFill {
+      background-gradient: linear-gradient(180deg, #2ca02c, #9467bd);
+    }
+  </style>
+</xt>

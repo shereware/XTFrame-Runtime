@@ -6,7 +6,8 @@
 #include <span>
 #include <vector>
 
-#include "effect_math.h"  // Code/Runtime/core/src: geometry and effect math shared with xt::gpu (T-414)
+#include "effect_math.h"   // Code/Runtime/core/src: geometry and effect math shared with xt::gpu (T-414)
+#include "rounded_rect.h"  // Code/Runtime/core/src: R' of a sharp DrawBoxShadow (T-668)
 #include "sw_blend.h"
 #include "sw_effects.h"
 #include "sw_layer.h"
@@ -14,6 +15,7 @@
 #include "sw_raster.h"
 #include "sw_simd.h"
 #include "xt/assert.h"
+#include "xt/box_shadow.h"
 #include "xt/damage.h"
 #include "xt/effect_utils.h"
 #include "xt/geom.h"
@@ -160,6 +162,9 @@ struct SwRenderer::Impl {
     std::vector<uint32_t> dashStarts;
     std::vector<uint8_t> dashClosed;
     std::vector<float> scaledDashes;
+    /// T-668: the path of a sharp DrawBoxShadow (capacity retained across frames).
+    std::vector<PathVerb> shadowVerbs;
+    std::vector<float> shadowPoints;
     std::vector<Vec2> strokeOutPoints;
     std::vector<uint32_t> strokeOutStarts;
     std::vector<Vec2> glyphPoints;
@@ -317,6 +322,7 @@ struct SwRenderer::Impl {
             case CmdKind::DrawImageQuad:
             case CmdKind::DrawParticles:
             case CmdKind::DrawImageMesh:
+            case CmdKind::DrawBoxShadow:
                 if (damageSkips(list, cmd, dpr)) {
                     ++skippedDraws;
                     return ci;
@@ -478,6 +484,9 @@ struct SwRenderer::Impl {
                 drawImageMeshCmd(list, c, dpr, assets, sourceIr(list, c.source, ir));
                 break;
             }
+            case CmdKind::DrawBoxShadow:
+                drawBoxShadowCmd(list.boxShadows[cmd.index], dpr);  // T-668
+                break;
             // Docs/design/18-effects.md §18.1/§18.5, Docs/tasks/T-53b.md: PushEffect opens a
             // bounded offscreen layer (boundsHint x dpr, clamped to the viewport); PopEffect runs
             // the node's effect stack over it and composites the result back (src-over, opacity
@@ -727,6 +736,7 @@ struct SwRenderer::Impl {
                 case CmdKind::DrawImageQuad:
                 case CmdKind::DrawParticles:
                 case CmdKind::DrawImageMesh:
+                case CmdKind::DrawBoxShadow:
                     ++skippedDraws;
                     break;
                 default:
@@ -1226,7 +1236,7 @@ struct SwRenderer::Impl {
             } else if (kind == CmdKind::FillPath || kind == CmdKind::StrokePath ||
                        kind == CmdKind::DrawImage || kind == CmdKind::DrawGlyphs ||
                        kind == CmdKind::DrawImageQuad || kind == CmdKind::DrawParticles ||
-                       kind == CmdKind::DrawImageMesh) {
+                       kind == CmdKind::DrawImageMesh || kind == CmdKind::DrawBoxShadow) {
                 ++skippedDraws;
             }
         }
@@ -1825,6 +1835,66 @@ struct SwRenderer::Impl {
                                          haveScreenToPlane ? &screenToPlane : nullptr);
         Target dst = layers.currentTarget(rootTarget());
         paintContours(flatPoints, flatStarts, cmd.rule, eval, dst);
+    }
+
+    /// T-668 (Docs/design/10-backends.md §10.12 item 2): an analytic box shadow. A Gaussian the
+    /// effect path treats as no blur draws R' itself through the rasterizer (the solid colour);
+    /// otherwise the quad R' outset by 3 sigma is painted with the coverage formula per pixel
+    /// (xt/box_shadow.h). Like a glyph effect, nothing under a 3D projection (the Painter never
+    /// emits one there).
+    void drawBoxShadowCmd(const BoxShadowCmd& cmd, float dpr) {
+        if (projecting()) {
+            return;
+        }
+        const Mat2x3 deviceXf = mul(deviceScale(dpr), cmd.xf);
+        BoxShadowDraw d;
+        if (!resolveBoxShadow(cmd, deviceXf, d)) {
+            return;
+        }
+        const BoxShadowShape& s = d.shape;
+        flatPoints.clear();
+        flatStarts.clear();
+        flatClosed.clear();
+        Target dst = layers.currentTarget(rootTarget());
+        const Color color{cmd.color.r, cmd.color.g, cmd.color.b, d.premul.a};
+        if (d.sharp) {
+            shadowVerbs.clear();
+            shadowPoints.clear();
+            appendRoundedRectPath(Rect{s.x0, s.y0, s.x1 - s.x0, s.y1 - s.y0}, s.r[0], s.r[1], s.r[2], s.r[3],
+                                  shadowVerbs, shadowPoints);
+            // T-680 ("補充 2" B.1): the nested O_out / O_in / R terms are the ring plus the box: O_in
+            // traced the other way round (the outline's own ring) and R, filled nonzero in one pass.
+            if (d.extraCount == 2) {
+                const BoxShadowShape& hole = d.extra[0];
+                const BoxShadowShape& box = d.extra[1];
+                appendRoundedRectPathReversed(Rect{hole.x0, hole.y0, hole.x1 - hole.x0, hole.y1 - hole.y0},
+                                              hole.r[0], hole.r[1], hole.r[2], hole.r[3], shadowVerbs,
+                                              shadowPoints);
+                appendRoundedRectPath(Rect{box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0}, box.r[0],
+                                      box.r[1], box.r[2], box.r[3], shadowVerbs, shadowPoints);
+            }
+            {
+                PerfFieldScope pathScope(timer(&FrameStats::swPathMs));
+                const float tol = flattenTolerance(deviceXf, shadowPoints);
+                flattenPath(shadowVerbs, shadowPoints, deviceXf, tol, flatPoints, flatStarts, flatClosed);
+            }
+            PaintRef paint{};
+            paint.kind = PaintKind::Solid;
+            paint.color = color;
+            const PaintEval eval = PaintEval::make(paint, {}, deviceXf, gradientLuts);
+            paintContours(flatPoints, flatStarts, FillRule::NonZero, eval, dst);
+            return;
+        }
+        const float reach = kBoxShadowSigmaReach * d.sigmaLocal;  // T-680: `s` contains the extra terms
+        const Vec2 quad[4] = {Vec2{s.x0 - reach, s.y0 - reach}, Vec2{s.x1 + reach, s.y0 - reach},
+                              Vec2{s.x1 + reach, s.y1 + reach}, Vec2{s.x0 - reach, s.y1 + reach}};
+        flatStarts.push_back(0);
+        for (const Vec2& q : quad) {
+            flatPoints.push_back(apply(deviceXf, q));
+        }
+        flatClosed.push_back(1);
+        const PaintEval eval = PaintEval::makeBoxShadow(d, d.sigmaLocal, color, deviceXf);
+        paintContours(flatPoints, flatStarts, FillRule::NonZero, eval, dst);
     }
 
     void strokePath(const CommandList& list, const StrokeCmd& cmd, float dpr) {

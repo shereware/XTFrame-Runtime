@@ -1,0 +1,40 @@
+target 384x320 vertices=652 indices=2772 cmds=20 passes=13 params=25
+transient 1: 128x96 rgba8 stencil=1
+transient 2: 128x96 rgba8 stencil=1
+transient 3: 128x96 rgba8 stencil=0
+transient 4: 160x128 rgba8 stencil=1
+transient 5: 160x128 rgba8 stencil=1
+transient 6: 160x128 rgba8 stencil=0
+pass 0: target=0 clear=0 copy=0 from=0 view=(0,0,384,320) cmds=6
+  0 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=480 verts=112 clip=(0,0,384,320)
+  1 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=150 verts=40 clip=(136,8,112,80)
+  2 Texture SrcOver TestEqualRef ref=0 tex=yes src=0 aux=0 linear idx=282 verts=64 clip=(0,0,384,320)
+  3 Texture SrcOver TestEqualRef ref=0 tex=yes src=0 aux=0 linear idx=282 verts=64 clip=(0,0,384,320)
+  4 Texture SrcOver TestEqualRef ref=0 tex=yes src=0 aux=0 linear idx=318 verts=72 clip=(0,0,384,320)
+  5 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=210 verts=48 clip=(0,0,384,320)
+pass 1: target=1 clear=1 copy=0 from=0 view=(207,103,128,96) cmds=1
+  6 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=210 verts=48 clip=(0,0,384,320)
+pass 2: target=2 clear=1 copy=0 from=0 view=(207,103,128,96) cmds=1
+  7 Gradient SrcOver TestEqualRef ref=0 tex=yes src=0 aux=0 linear idx=30 verts=8 clip=(0,0,384,320)
+pass 3: target=3 clear=0 copy=0 from=0 view=(207,103,128,96) cmds=1
+  8 Effect Replace None ref=0 program=MaskApply tex=no src=2 aux=1 linear idx=6 verts=4 clip=(207,103,128,96)
+pass 4: target=0 clear=0 copy=0 from=0 view=(0,0,384,320) cmds=4
+  9 Composite SrcOver None ref=0 tex=no src=3 aux=0 linear idx=6 verts=4 clip=(0,0,384,320)
+  10 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=30 verts=8 clip=(0,0,384,320)
+  11 Texture SrcOver TestEqualRef ref=0 tex=yes src=0 aux=0 linear idx=30 verts=8 clip=(0,0,384,320)
+  12 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=246 verts=56 clip=(0,0,384,320)
+pass 5: target=4 clear=1 copy=0 from=0 view=(224,192,160,128) cmds=1
+  13 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=246 verts=56 clip=(0,0,384,320)
+pass 6: target=5 clear=1 copy=0 from=0 view=(224,192,160,128) cmds=0
+pass 7: target=1 clear=1 copy=0 from=0 view=(239,215,128,96) cmds=1
+  14 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=210 verts=48 clip=(0,0,384,320)
+pass 8: target=2 clear=1 copy=0 from=0 view=(239,215,128,96) cmds=1
+  15 Gradient SrcOver TestEqualRef ref=0 tex=yes src=0 aux=0 linear idx=30 verts=8 clip=(0,0,384,320)
+pass 9: target=3 clear=0 copy=0 from=0 view=(239,215,128,96) cmds=1
+  16 Effect Replace None ref=0 program=MaskApply tex=no src=2 aux=1 linear idx=6 verts=4 clip=(239,215,128,96)
+pass 10: target=5 clear=0 copy=0 from=0 view=(224,192,160,128) cmds=1
+  17 Composite SrcOver None ref=0 tex=no src=3 aux=0 linear idx=6 verts=4 clip=(0,0,384,320)
+pass 11: target=6 clear=0 copy=0 from=0 view=(224,192,160,128) cmds=1
+  18 Effect Replace None ref=0 program=MaskApply tex=no src=5 aux=4 linear idx=6 verts=4 clip=(224,192,160,128)
+pass 12: target=0 clear=0 copy=0 from=0 view=(0,0,384,320) cmds=1
+  19 Composite SrcOver None ref=0 tex=no src=6 aux=0 linear idx=6 verts=4 clip=(0,0,384,320)

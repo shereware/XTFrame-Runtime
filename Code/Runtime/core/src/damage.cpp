@@ -1,10 +1,13 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <vector>
 
 #include "damage_internal.h"
+#include "xt/box_shadow.h"
 #include "xt/effect_utils.h"
 #include "xt/geom.h"
+#include "xt/text_shaper.h"
 
 /// Damage (dirty rectangle) computation from a command-list diff. See
 /// Docs/design/23-host-integration.md §23.2, Docs/tasks/T-98.md.
@@ -204,6 +207,30 @@ bool rectsIntersect(const Rect& a, const Rect& b) {
 /// Outsets `rect` by `amount` on every side.
 Rect outset(const Rect& rect, float amount) {
     return Rect{rect.x - amount, rect.y - amount, rect.w + 2 * amount, rect.h + 2 * amount};
+}
+
+/// A glyph run's coarse box before its `xf`: the baseline origins outset by the font size on every
+/// side bounds the run's ascent/descent and its first/last glyph's side bearings (T-98's "粗略框");
+/// T-178: a glyph effect (dilate R / blur 3 sigma = 1.5 R) reaches at most 2 R further. False for an
+/// empty or out-of-range run.
+bool glyphRunBox(const CommandList& list, const GlyphsCmd& c, Rect& box) {
+    if (c.glyphCount == 0 || c.glyphOffset + c.glyphCount > list.glyphPos.size()) {
+        return false;
+    }
+    Vec2 first = list.glyphPos[c.glyphOffset];
+    float minX = first.x;
+    float minY = first.y;
+    float maxX = minX;
+    float maxY = minY;
+    for (uint32_t i = 1; i < c.glyphCount; ++i) {
+        Vec2 p = list.glyphPos[c.glyphOffset + i];
+        minX = std::min(minX, p.x);
+        minY = std::min(minY, p.y);
+        maxX = std::max(maxX, p.x);
+        maxY = std::max(maxY, p.y);
+    }
+    box = outset(Rect{minX, minY, maxX - minX, maxY - minY}, c.size + 2.0f * c.effectRadius);
+    return true;
 }
 
 /// Largest length scale `xf` can apply to a direction vector (the larger column norm bounds the
@@ -584,6 +611,12 @@ void hashCommandList(const CommandList& list, std::vector<uint64_t>& out) {
                 hash = hashPool(hash, list.meshIndices, c.indexOffset, c.indexCount);
                 break;
             }
+            case CmdKind::DrawBoxShadow:
+                // T-668: all 4-byte fields (no padding, no pool offsets), so every field is hashed;
+                // T-680's unused extra terms are zero.
+                static_assert(sizeof(BoxShadowCmd) == 41 * sizeof(float), "BoxShadowCmd has padding");
+                hash = hashPod(hash, list.boxShadows[cmd.index]);
+                break;
             case CmdKind::PopClip:
             case CmdKind::PopLayer:
             case CmdKind::EndMaskContent:
@@ -595,6 +628,64 @@ void hashCommandList(const CommandList& list, std::vector<uint64_t>& out) {
         }
         out.push_back(hash);
     }
+}
+
+bool glyphRunInkBox(const CommandList& list, const GlyphsCmd& cmd, TextShaper* shaper, Rect& out) {
+    // T-664 (Docs/tasks/T-664.md item 5), moved from xt::gpu's clip_bounds.cpp by T-680.
+    if (shaper == nullptr || cmd.glyphCount == 0 || cmd.glyphOffset > list.glyphPos.size() ||
+        cmd.glyphCount > list.glyphPos.size() - cmd.glyphOffset || cmd.glyphOffset > list.glyphs.size() ||
+        cmd.glyphCount > list.glyphs.size() - cmd.glyphOffset || !std::isfinite(cmd.size) ||
+        !std::isfinite(cmd.effectRadius)) {
+        return false;
+    }
+    const FontMetrics m = shaper->metrics(cmd.font);
+    const float ascent = m.ascent * cmd.size;
+    const float descent = std::fabs(m.descent) * cmd.size;  // FontMetrics gives it either sign
+    if (!std::isfinite(ascent) || !std::isfinite(descent) || ascent < 0.0f || !(ascent + descent > 0.0f)) {
+        return false;
+    }
+    const Vec2* pos = list.glyphPos.data() + cmd.glyphOffset;
+    float minX = pos[0].x, minY = pos[0].y, maxX = pos[0].x, maxY = pos[0].y;
+    for (uint32_t i = 1; i < cmd.glyphCount; ++i) {
+        minX = std::min(minX, pos[i].x);
+        minY = std::min(minY, pos[i].y);
+        maxX = std::max(maxX, pos[i].x);
+        maxY = std::max(maxY, pos[i].y);
+    }
+    // The right end: the outlines of the glyphs within one size of the last origin. The scratch
+    // keeps its capacity across calls (no allocation per frame once warm).
+    static thread_local std::vector<PathVerb> verbs;
+    static thread_local std::vector<float> points;
+    float right = maxX;
+    for (uint32_t i = 0; i < cmd.glyphCount; ++i) {
+        if (pos[i].x < maxX - cmd.size) {
+            continue;
+        }
+        verbs.clear();
+        points.clear();
+        if (!shaper->glyphOutline(cmd.font, list.glyphs[cmd.glyphOffset + i], verbs, points)) {
+            right = std::max(right, pos[i].x + cmd.size);  // nothing to measure: as before
+            continue;
+        }
+        for (size_t k = 0; k + 1 < points.size(); k += 2) {
+            right = std::max(right, pos[i].x + points[k] * cmd.size);
+        }
+    }
+    const float half = 0.5f * cmd.size;
+    const float grow = 2.0f * cmd.effectRadius;  // T-178's reach of a glyph effect
+    const float x0 = minX - half - grow, x1 = right + half + grow;
+    const float y0 = minY - ascent - grow, y1 = maxY + descent + grow;
+    out = Rect{x0, y0, x1 - x0, y1 - y0};
+    return std::isfinite(out.x) && std::isfinite(out.y) && std::isfinite(out.w) && std::isfinite(out.h);
+}
+
+bool glyphRunInkBounds(const CommandList& list, const GlyphsCmd& cmd, TextShaper* shaper, Rect& out) {
+    Rect local;
+    if (!glyphRunInkBox(list, cmd, shaper, local)) {
+        return false;
+    }
+    out = transformedRect(cmd.xf, local);
+    return std::isfinite(out.x) && std::isfinite(out.y) && std::isfinite(out.w) && std::isfinite(out.h);
 }
 
 Rect commandBounds(const CommandList& list, const Command& cmd) {
@@ -618,26 +709,11 @@ Rect commandBounds(const CommandList& list, const Command& cmd) {
             return transformedRect(c.xf, c.dst);
         }
         case CmdKind::DrawGlyphs: {
-            // Coarse box: the baseline origins outset by the font size on every side bounds the
-            // run's ascent/descent and its first/last glyph's side bearings (T-98's "粗略框").
             const GlyphsCmd& c = list.glyphRuns[cmd.index];
-            if (c.glyphCount == 0 || c.glyphOffset + c.glyphCount > list.glyphPos.size()) {
+            Rect box;
+            if (!glyphRunBox(list, c, box)) {
                 return Rect{};
             }
-            Vec2 first = list.glyphPos[c.glyphOffset];
-            float minX = first.x;
-            float minY = first.y;
-            float maxX = minX;
-            float maxY = minY;
-            for (uint32_t i = 1; i < c.glyphCount; ++i) {
-                Vec2 p = list.glyphPos[c.glyphOffset + i];
-                minX = std::min(minX, p.x);
-                minY = std::min(minY, p.y);
-                maxX = std::max(maxX, p.x);
-                maxY = std::max(maxY, p.y);
-            }
-            // T-178: a glyph effect (dilate R / blur 3 sigma = 1.5 R) reaches at most 2 R further.
-            Rect box = outset(Rect{minX, minY, maxX - minX, maxY - minY}, c.size + 2.0f * c.effectRadius);
             return transformedRect(c.xf, box);
         }
         case CmdKind::PushClipRect: {
@@ -719,6 +795,11 @@ Rect commandBounds(const CommandList& list, const Command& cmd) {
             }
             return Rect{minX, minY, maxX - minX, maxY - minY};
         }
+        case CmdKind::DrawBoxShadow: {
+            // T-668: R' outset by 3 sigma (xt/box_shadow.h), the quad a backend draws.
+            const BoxShadowCmd& c = list.boxShadows[cmd.index];
+            return transformedRect(c.xf, boxShadowDrawRect(c));
+        }
         case CmdKind::PushTransform3D:
         case CmdKind::PopClip:
         case CmdKind::PopLayer:
@@ -730,6 +811,107 @@ Rect commandBounds(const CommandList& list, const Command& cmd) {
             return Rect{};  // Draws nothing by itself; the matching Push carries the bounds.
     }
     return Rect{};
+}
+
+bool commandBoundsInFrame(const CommandList& list, const Command& cmd, const Mat2x3& frame, Rect& out,
+                          bool& empty, TextShaper* shaper) {
+    // T-668 (Docs/tasks/T-668.md item 2): commandBounds()'s boxes, but each draw command's own
+    // geometry box is mapped through `frame * xf` directly instead of through the root-box AABB, so
+    // a rotated node's children are not inflated by a second axis-aligned box.
+    empty = false;
+    out = Rect{};
+    switch (cmd.kind) {
+        case CmdKind::FillPath: {
+            const FillCmd& c = list.fills[cmd.index];
+            if (c.path.pointCount < 2 || c.path.pointOffset + c.path.pointCount > list.points.size()) {
+                empty = true;
+                return true;
+            }
+            out = transformedPath(list, mul(frame, c.xf), c.path);
+            break;
+        }
+        case CmdKind::StrokePath: {
+            const StrokeCmd& c = list.strokes[cmd.index];
+            if (c.path.pointCount < 2 || c.path.pointOffset + c.path.pointCount > list.points.size()) {
+                empty = true;
+                return true;
+            }
+            const Mat2x3 m = mul(frame, c.xf);
+            // Always grown (commandBounds leaves a zero-size box alone; a zero-length stroke still
+            // draws its caps).
+            out = outset(transformedPath(list, m, c.path),
+                         strokeOutset(c.width, c.cap, c.join, c.miterLimit) * maxScale(m));
+            break;
+        }
+        case CmdKind::DrawImage: {
+            const ImageCmd& c = list.images[cmd.index];
+            out = transformedRect(mul(frame, c.xf), c.dst);
+            break;
+        }
+        case CmdKind::DrawGlyphs: {
+            const GlyphsCmd& c = list.glyphRuns[cmd.index];
+            Rect box;
+            if (!glyphRunBox(list, c, box)) {
+                empty = true;
+                return true;
+            }
+            // T-680 ("補充 2" B.2): the font-metric box where the shaper gives one.
+            Rect ink;
+            if (glyphRunInkBox(list, c, shaper, ink)) {
+                box = ink;
+            }
+            out = transformedRect(mul(frame, c.xf), box);
+            break;
+        }
+        case CmdKind::PushClipRect: {
+            const ClipRectCmd& c = list.clipRects[cmd.index];
+            out = transformedRect(mul(frame, c.xf), c.rect);
+            break;
+        }
+        case CmdKind::PushClipPath: {
+            const ClipPathCmd& c = list.clipPaths[cmd.index];
+            if (c.path.pointCount < 2 || c.path.pointOffset + c.path.pointCount > list.points.size()) {
+                empty = true;
+                return true;
+            }
+            out = transformedPath(list, mul(frame, c.xf), c.path);
+            break;
+        }
+        case CmdKind::DrawBoxShadow: {
+            const BoxShadowCmd& c = list.boxShadows[cmd.index];
+            out = transformedRect(mul(frame, c.xf), boxShadowDrawRect(c));
+            break;
+        }
+        case CmdKind::PushLayer:
+        case CmdKind::PushMask:
+        case CmdKind::PushEffect:
+        case CmdKind::PushProjection:
+        case CmdKind::DrawImageQuad:
+        case CmdKind::DrawParticles:
+        case CmdKind::DrawImageMesh: {
+            // Root-box boxes (a group's window, a quad's / mesh's points, particles).
+            const Rect r = commandBounds(list, cmd);
+            if (cmd.kind == CmdKind::DrawParticles || cmd.kind == CmdKind::DrawImageMesh) {
+                if (!(r.w > 0.0f) && !(r.h > 0.0f) && r.x == 0.0f && r.y == 0.0f) {
+                    empty = true;  // no instances / no vertices
+                    return true;
+                }
+            }
+            out = transformedRect(frame, r);
+            break;
+        }
+        case CmdKind::PushTransform3D:
+        case CmdKind::PopClip:
+        case CmdKind::PopLayer:
+        case CmdKind::EndMaskContent:
+        case CmdKind::PopMask:
+        case CmdKind::PopProjection:
+        case CmdKind::PopTransform3D:
+        case CmdKind::PopEffect:
+            empty = true;
+            return true;
+    }
+    return std::isfinite(out.x) && std::isfinite(out.y) && std::isfinite(out.w) && std::isfinite(out.h);
 }
 
 void computeDamage(const CommandList& prev, const CommandList& cur, Rect viewportDevice, DamageList& out) {

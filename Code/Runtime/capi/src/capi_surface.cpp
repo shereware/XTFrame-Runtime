@@ -66,7 +66,7 @@ void xt_surface::onReleaseRenderScratch(xt::Context& context) {
         return;
     }
     renderer.releaseScratch();
-    xt::capi::releaseGpuResources(*this);
+    xt::capi::releaseGpuResources(*this, explicitTrim);  // T-675: trim-on-hide keeps the renderer
 }
 
 namespace xt::capi {
@@ -555,7 +555,11 @@ XT_CAPI xt_status xt_surface_set_visible(xt_surface* s, int visible) {
 XT_CAPI xt_status xt_surface_trim(xt_surface* s) {
     XT_CAPI_GUARD("xt_surface_trim", {
         XT_CAPI_REQUIRE_SURFACE(s, "xt_surface_trim");
-        s->ctx->releaseRenderScratch();  // T-641 (50 §50.aa item 2); allowed inside callbacks.
+        // T-641 (50 §50.aa item 2); allowed inside callbacks. T-675 (50 §50.ac item 2): releases all
+        // of the GPU resources, the ones trim-on-hide keeps included.
+        s->explicitTrim = true;
+        s->ctx->releaseRenderScratch();
+        s->explicitTrim = false;
         return XT_STATUS_OK;
     });
 }

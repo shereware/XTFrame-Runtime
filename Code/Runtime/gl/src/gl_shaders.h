@@ -81,6 +81,112 @@ void main() {
 }
 )";
 
+/// T-668 `Shading::BoxShadow` (gpu_frame.h BoxShadowParams): the coverage formula of
+/// Code/Runtime/core/src/box_shadow.cpp (Docs/design/10-backends.md §10.12 item 2) at the local
+/// position `vUV` -- a 16-point Gauss-Legendre rule over y in [max(y0, p.y - 3 sigma),
+/// min(y1, p.y + 3 sigma)] of the Gaussian times the erf difference of the shape's span at that y --
+/// times the premultiplied `uColor`. `uShape` = (x0, y0, x1, y1), `uRadii` = (tl, tr, br, bl).
+/// Constants as xt/box_shadow.h (A&S Table 25.4 n = 16; A&S 7.1.26). Mirrors box_shadow.wgsl.
+/// T-680: `uTerms` = (extra term count 0..2, sign 1, sign 2) with the extra shapes in
+/// `uShape1`/`uRadii1` and `uShape2`/`uRadii2`; coverage = clamp(sum of sign x S, 0, 1).
+inline constexpr const char* kBoxShadowFrag = R"(#version 330 core
+in vec2 vUV;
+in vec4 vColor;
+out vec4 fragColor;
+uniform vec4 uShape;
+uniform vec4 uRadii;
+uniform float uSigma;
+uniform vec4 uColor;
+uniform vec4 uShape1;
+uniform vec4 uRadii1;
+uniform vec4 uShape2;
+uniform vec4 uRadii2;
+uniform vec3 uTerms;
+float bsErf(float x) {
+    float ax = abs(x);
+    float t = 1.0 / (1.0 + 0.3275911 * ax);
+    float poly = t * (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429))));
+    float y = 1.0 - poly * exp(-ax * ax);
+    return x < 0.0 ? -y : y;
+}
+vec2 bsSpan(vec4 sh, vec4 rd, float y) {
+    if (y < sh.y || y > sh.w) {
+        return vec2(0.0, 0.0);
+    }
+    float x0 = sh.x;
+    if (y < sh.y + rd.x) {
+        float d = sh.y + rd.x - y;
+        x0 = sh.x + rd.x - sqrt(max(0.0, rd.x * rd.x - d * d));
+    } else if (y > sh.w - rd.w) {
+        float d = y - (sh.w - rd.w);
+        x0 = sh.x + rd.w - sqrt(max(0.0, rd.w * rd.w - d * d));
+    }
+    float x1 = sh.z;
+    if (y < sh.y + rd.y) {
+        float d = sh.y + rd.y - y;
+        x1 = sh.z - rd.y + sqrt(max(0.0, rd.y * rd.y - d * d));
+    } else if (y > sh.w - rd.z) {
+        float d = y - (sh.w - rd.z);
+        x1 = sh.z - rd.z + sqrt(max(0.0, rd.z * rd.z - d * d));
+    }
+    return vec2(x0, x1);
+}
+float bsTerm(vec4 sh, vec4 rd, float y, float w, vec2 p, float invErf, float invTwoSigma2) {
+    vec2 s = bsSpan(sh, rd, y);
+    if (!(s.y > s.x)) {
+        return 0.0;
+    }
+    float t = y - p.y;
+    float wg = w * exp(-t * t * invTwoSigma2);
+    if (wg == 0.0) {
+        return 0.0;
+    }
+    return wg * (0.5 * (bsErf((s.y - p.x) * invErf) - bsErf((s.x - p.x) * invErf)));
+}
+float bsCoverage(vec4 sh, vec4 rd, vec2 p) {
+    float reach = 3.0 * uSigma;
+    float a = max(sh.y, p.y - reach);
+    float b = min(sh.w, p.y + reach);
+    if (!(a < b)) {
+        return 0.0;
+    }
+    float h = 0.5 * (b - a);
+    float m = 0.5 * (a + b);
+    float invErf = 1.0 / (uSigma * 1.41421356237309505);
+    float k = 1.0 / (2.0 * uSigma * uSigma);
+    float sum = 0.0;
+    sum += bsTerm(sh, rd, m - h * 0.0950125098376374, 0.1894506104550685, p, invErf, k);
+    sum += bsTerm(sh, rd, m + h * 0.0950125098376374, 0.1894506104550685, p, invErf, k);
+    sum += bsTerm(sh, rd, m - h * 0.2816035507792589, 0.1826034150449236, p, invErf, k);
+    sum += bsTerm(sh, rd, m + h * 0.2816035507792589, 0.1826034150449236, p, invErf, k);
+    sum += bsTerm(sh, rd, m - h * 0.4580167776572274, 0.1691565193950025, p, invErf, k);
+    sum += bsTerm(sh, rd, m + h * 0.4580167776572274, 0.1691565193950025, p, invErf, k);
+    sum += bsTerm(sh, rd, m - h * 0.6178762444026438, 0.1495959888165767, p, invErf, k);
+    sum += bsTerm(sh, rd, m + h * 0.6178762444026438, 0.1495959888165767, p, invErf, k);
+    sum += bsTerm(sh, rd, m - h * 0.7554044083550030, 0.1246289712555339, p, invErf, k);
+    sum += bsTerm(sh, rd, m + h * 0.7554044083550030, 0.1246289712555339, p, invErf, k);
+    sum += bsTerm(sh, rd, m - h * 0.8656312023878318, 0.0951585116824928, p, invErf, k);
+    sum += bsTerm(sh, rd, m + h * 0.8656312023878318, 0.0951585116824928, p, invErf, k);
+    sum += bsTerm(sh, rd, m - h * 0.9445750230732326, 0.0622535239386479, p, invErf, k);
+    sum += bsTerm(sh, rd, m + h * 0.9445750230732326, 0.0622535239386479, p, invErf, k);
+    sum += bsTerm(sh, rd, m - h * 0.9894009349916499, 0.0271524594117541, p, invErf, k);
+    sum += bsTerm(sh, rd, m + h * 0.9894009349916499, 0.0271524594117541, p, invErf, k);
+    return clamp(sum * h * 0.398942280401432678 / uSigma, 0.0, 1.0);
+}
+void main() {
+    vec2 p = vUV;
+    float coverage = bsCoverage(uShape, uRadii, p);
+    if (uTerms.x > 0.5) {
+        coverage += uTerms.y * bsCoverage(uShape1, uRadii1, p);
+        if (uTerms.x > 1.5) {
+            coverage += uTerms.z * bsCoverage(uShape2, uRadii2, p);
+        }
+        coverage = clamp(coverage, 0.0, 1.0);
+    }
+    fragColor = uColor * coverage;
+}
+)";
+
 /// T-660b `Shading::Solid` with `DrawCmd::coverage` (gpu_frame.h): `uCoverage` (unit 1) is the R8
 /// coverage page, sampled linearly at `vUV` (texel centres, 1:1 on the target's pixels); linear
 /// coverage, no gamma.

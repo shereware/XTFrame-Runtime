@@ -1,0 +1,20 @@
+<xt version="2">
+
+  <body>
+    <div id="back"></div>
+    <div id="a" class="panel">
+      <div id="b" class="panel">
+        <div id="c" class="panel">
+          <div id="d" class="panel">
+            <div id="e" class="panel"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="f" class="side"></div>
+    <div id="g" class="side"></div>
+  </body>
+
+  <layout src="effects.layout.xts"/>
+  <style src="effects.xts"/>
+</xt>

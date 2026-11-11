@@ -792,6 +792,13 @@ SimplifyStats flatten3DPass(CommandList& out, const CommandList& list, TextShape
                 copyImageMesh(out, list, src, 1.0f, inProjection ? &mappings : nullptr);
                 break;
             }
+            case CmdKind::DrawBoxShadow: {
+                // T-668: like PushEffect (whose drop shadow it replaces), passed through unchanged;
+                // the Painter never emits one inside a projection.
+                out.boxShadows.push_back(list.boxShadows[cmd.index]);
+                pushCommand(out, CmdKind::DrawBoxShadow, static_cast<uint32_t>(out.boxShadows.size() - 1));
+                break;
+            }
         }
     }
     return stats;
@@ -1170,6 +1177,23 @@ SimplifyStats CommandListSimplifier::simplify(const CommandList& in, CommandList
                     break;
                 }
                 copyImageMesh(out, list, list.imageMeshes[cmd.index], opacity, nullptr);
+                break;
+            }
+            case CmdKind::DrawBoxShadow: {
+                // T-668: a converted drop shadow, so `options.effects` drops it like the PushEffect
+                // it replaces (counted as one dropped effect); kept, the layer opacity folds into
+                // its colour like DrawImage's.
+                if (maskShapeDepth > 0) {
+                    break;
+                }
+                if (options.effects) {
+                    ++stats.droppedEffects;
+                    break;
+                }
+                BoxShadowCmd bs = list.boxShadows[cmd.index];
+                bs.color.a *= opacity;
+                out.boxShadows.push_back(bs);
+                pushCommand(out, CmdKind::DrawBoxShadow, static_cast<uint32_t>(out.boxShadows.size() - 1));
                 break;
             }
         }

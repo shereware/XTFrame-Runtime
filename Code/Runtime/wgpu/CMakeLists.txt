@@ -16,6 +16,7 @@ set(XT_WGSL_SOURCES
     src/shaders/particle_solid.wgsl
     src/shaders/coverage_solid.wgsl
     src/shaders/coverage_gradient.wgsl
+    src/shaders/box_shadow.wgsl
     src/shaders/fx_gauss_scalar.wgsl
     src/shaders/fx_gauss_color.wgsl
     src/shaders/fx_dilate.wgsl

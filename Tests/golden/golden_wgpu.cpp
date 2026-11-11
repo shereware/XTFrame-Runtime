@@ -1,5 +1,6 @@
 #include "golden_wgpu.h"
 
+#include <algorithm>
 #include <memory>
 #include <vector>
 
@@ -104,6 +105,56 @@ bool makeWgpuBackend(FrameBackend& out, std::string& err) {
 }
 
 std::string wgpuAdapterName() { return g_session ? g_session->adapter : std::string(); }
+
+int runWgpuOrderPairs(const std::vector<UiFixture>& fixtures, const std::string& uiDir, std::string& err) {
+    FrameBackend backend;
+    // A fresh renderer (and device): nothing of an earlier fixture survives.
+    auto fresh = [&backend, &err]() {
+        releaseWgpuBackend();
+        return makeWgpuBackend(backend, err);
+    };
+    const UiBackend ui = [&backend](const UiFixture& f, const xt::CommandList& cmds, xt::TextShaper* shaper,
+                                    xt::AssetResolver* assets, const xt::IrView* ir) {
+        return backend(f.width, f.height, f.clearColor, cmds, shaper, assets, ir);
+    };
+    std::vector<std::vector<uint8_t>> alone;
+    alone.reserve(fixtures.size());
+    for (const UiFixture& fx : fixtures) {
+        if (!fresh()) {
+            return -1;
+        }
+        alone.push_back(renderUiFixture(fx, uiDir, ui));
+    }
+    int failed = 0;
+    for (size_t a = 0; a < fixtures.size(); ++a) {
+        for (size_t b = 0; b < fixtures.size(); ++b) {
+            if (a == b) {
+                continue;
+            }
+            if (!fresh()) {
+                return -1;
+            }
+            (void)renderUiFixture(fixtures[a], uiDir, ui);
+            const std::vector<uint8_t> after = renderUiFixture(fixtures[b], uiDir, ui);
+            size_t differ = 0;
+            if (after.empty() || after.size() != alone[b].size()) {
+                differ = std::max(after.size(), alone[b].size());
+            } else {
+                for (size_t i = 0; i < after.size(); ++i) {
+                    differ += after[i] != alone[b][i] ? 1 : 0;
+                }
+            }
+            if (differ == 0 && !after.empty()) {
+                report("[PASS] order %s -> %s\n", fixtures[a].name.c_str(), fixtures[b].name.c_str());
+            } else {
+                report("[FAIL] order %s -> %s: %zu bytes differ from %s drawn alone\n",
+                       fixtures[a].name.c_str(), fixtures[b].name.c_str(), differ, fixtures[b].name.c_str());
+                ++failed;
+            }
+        }
+    }
+    return failed;
+}
 
 void releaseWgpuBackend() {
     if (!g_session) {

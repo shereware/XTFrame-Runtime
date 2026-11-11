@@ -35,4 +35,9 @@ void clampRoundedRectRadii(float w, float h, float& tl, float& tr, float& br, fl
 void appendRoundedRectPath(Rect box, float rTL, float rTR, float rBR, float rBL, std::vector<PathVerb>& verbs,
                            std::vector<float>& points);
 
+/// T-201: appendRoundedRectPath()'s outline traced the other way round (counter-clockwise), so a
+/// ring of an outer outline and this inner one fills with the nonzero rule (rounded_rect.cpp).
+void appendRoundedRectPathReversed(Rect box, float rTL, float rTR, float rBR, float rBL,
+                                   std::vector<PathVerb>& verbs, std::vector<float>& points);
+
 }  // namespace xt

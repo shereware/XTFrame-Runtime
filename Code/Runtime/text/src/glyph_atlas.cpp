@@ -104,7 +104,16 @@ bool GlyphAtlas::lookup(FontId font, uint32_t glyphId, float sizePx, float subpi
                                 static_cast<size_t>(bitmap.width),
                                 tex.pixels.begin() + static_cast<long>(dst));
                 }
-                markDirty(tex, x, y, bitmap.width, bitmap.height);
+                // T-677: the upload covers the glyph's 1 px margin ring too. The GPU paths sample it
+                // (T-653's transformed glyphs grow their quads half a texel onto it, and any linear
+                // sample at a glyph edge reads it) expecting 0, which only the CPU page guarantees:
+                // a device page that held another atlas's or a pre-reset glyph there, or a GL page
+                // created without data, would otherwise show that content at the glyph's edge.
+                const int mx0 = std::max(x - 1, 0);
+                const int my0 = std::max(y - 1, 0);
+                const int mx1 = std::min(x + bitmap.width + 1, textureSize());
+                const int my1 = std::min(y + bitmap.height + 1, textureSize());
+                markDirty(tex, mx0, my0, mx1 - mx0, my1 - my0);
                 AtlasEntry entry{static_cast<uint16_t>(i),
                                  static_cast<uint16_t>(x),
                                  static_cast<uint16_t>(y),

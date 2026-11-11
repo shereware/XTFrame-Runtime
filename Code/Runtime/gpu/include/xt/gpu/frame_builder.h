@@ -170,6 +170,14 @@ public:
     /// to this function from its resolver.
     void invalidateAllAssets();
 
+    /// T-675 (Docs/design/50-c-abi.md §50.ac item 2): lets go of what a hidden surface does not keep:
+    /// empties the effect result cache and releases the band targets (`releaseCachedTarget`: back to
+    /// the device, which keeps them for reuse), and gives back every image texture (a shared image:
+    /// `releaseSharedImage(tex, true)`, as `shutdown` does; others destroyed). The gradient tables, the
+    /// glyph atlas pages and the coverage atlas stay, so a later build does not make them again. The
+    /// last frame is forgotten (the next `build` is a full one).
+    void trim();
+
     /// T-162 static frame reuse: true when the `GpuFrame` the last `build` wrote may be submitted
     /// again, unchanged, for a frame whose CommandList is identical to that build's (the host
     /// knows this from `DamageList`: `!full && rects.empty()`). False when no frame was built
@@ -247,6 +255,17 @@ public:
         uint32_t uniformTiles = 0;      ///< T-672: empty and full tiles of the tiled fills drawn
     };
     CoverageStats lastCoverageStats() const;
+
+    /// T-663 (Docs/design/10-backends.md §10.11 ruling 5 final): how the last `build` drew the
+    /// clips that take a stencil level at 4x (rounded / rotated rects, clip paths), with
+    /// `setEdgeFringe(true)` and no 3D projection; all zero otherwise.
+    struct ClipStats {
+        uint32_t skipped = 0;  ///< the content stays inside the shape's safe interior (or is empty): no clip
+        uint32_t scissor = 0;  ///< axis-aligned on the pixel grid, corners untouched: a scissor level
+        uint32_t imageDirect = 0;  ///< one image drawn as a fringed convex polygon instead of clipped
+        uint32_t maskLayers = 0;   ///< the rest: the content composited through the shape's coverage
+    };
+    ClipStats lastClipStats() const;
 
 private:
     struct Impl;

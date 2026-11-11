@@ -106,6 +106,7 @@ add_executable(xt_tests
     unit/test_command_simplifier.cpp
     unit/test_command_list_validate.cpp
     unit/test_painter_effects.cpp
+    unit/test_box_shadow.cpp  # T-668
     unit/test_baked.cpp
     unit/test_event_integration.cpp
     unit/test_sw_effect_math.cpp

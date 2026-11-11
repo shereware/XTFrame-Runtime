@@ -107,4 +107,52 @@ void appendRoundedRectPath(Rect box, float rTL, float rTR, float rBR, float rBL,
     pushVerb(verbs, PathVerb::Close);
 }
 
+/// T-201 (moved from painter_element.cpp by T-680, which also needs it in xt::gpu):
+/// appendRoundedRectPath()'s outline traced the other way round (counter-clockwise: TL
+/// corner, left edge, BL, bottom, BR, right edge, TR, top edge), so a ring of an outer and this
+/// inner outline fills with the nonzero rule and a side of zero width -- where the two outlines
+/// coincide -- cancels exactly instead of leaving an antialiasing seam (even-odd adds the two
+/// coincident edges' coverage).
+void appendRoundedRectPathReversed(Rect box, float rTL, float rTR, float rBR, float rBL,
+                                   std::vector<PathVerb>& verbs, std::vector<float>& points) {
+    const float x = box.x;
+    const float y = box.y;
+    const float w = box.w;
+    const float h = box.h;
+    const float k = kRoundedRectKappa;
+    auto point = [&points](float px, float py) {
+        points.push_back(px);
+        points.push_back(py);
+    };
+    auto line = [&](float px, float py) {
+        verbs.push_back(PathVerb::Line);
+        point(px, py);
+    };
+    auto cubic = [&](float x1, float y1, float x2, float y2, float x3, float y3) {
+        verbs.push_back(PathVerb::Cubic);
+        point(x1, y1);
+        point(x2, y2);
+        point(x3, y3);
+    };
+    verbs.push_back(PathVerb::Move);
+    point(x + rTL, y);
+    if (rTL > 0.0f) {
+        cubic(x + rTL - rTL * k, y, x, y + rTL - rTL * k, x, y + rTL);
+    }
+    line(x, y + h - rBL);
+    if (rBL > 0.0f) {
+        cubic(x, y + h - rBL + rBL * k, x + rBL - rBL * k, y + h, x + rBL, y + h);
+    }
+    line(x + w - rBR, y + h);
+    if (rBR > 0.0f) {
+        cubic(x + w - rBR + rBR * k, y + h, x + w, y + h - rBR + rBR * k, x + w, y + h - rBR);
+    }
+    line(x + w, y + rTR);
+    if (rTR > 0.0f) {
+        cubic(x + w, y + rTR - rTR * k, x + w - rTR + rTR * k, y, x + w - rTR, y);
+    }
+    line(x + rTL, y);
+    verbs.push_back(PathVerb::Close);
+}
+
 }  // namespace xt

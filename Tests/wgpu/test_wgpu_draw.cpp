@@ -56,7 +56,8 @@ TEST_CASE("wgpu draw: T-263b a 16th nested stencil clip is cut to its bounding b
         addPopClip(cl);
     }
     addFillRect(cl, 0, 0, 8, 8, Color{0, 1, 0, 1});
-    Session s(kW, kH);
+    // T-663: at 1x rotated clips are mask layers (no stencil depth); the limit is a 4x matter.
+    Session s(kW, kH, 4);
     const std::vector<uint8_t> px = s.render(cl);
     CHECK_MESSAGE(s.error.find("clip depth limit") != std::string::npos, s.error);
     CHECK(pixel(px, kW, 64, 64)[0] > 240);

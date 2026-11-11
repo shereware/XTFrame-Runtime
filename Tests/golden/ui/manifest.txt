@@ -27,6 +27,15 @@ ui_coverage_stroke ui_coverage_stroke.xt 256 256 0 ffffff
 # T-662 (10 section 10.11 item 4): 120 / 200 px text, a vertical line, a line rotated 90 deg, scaleX(-1),
 # geometricPrecision, scale(1.6, 0.8) and 140 px CJK (needs xt_text, @font-face): outline glyphs.
 ui_coverage_text ui_coverage_text.xt 640 520 0 ffffff
+# T-663 (10 section 10.11 ruling 5 final): a rounded card whose child stays inside, a scrolling list past
+# its top and bottom between the corners, round / elliptical / cover-fitted / rotated images, a card filled
+# edge to edge, a container rotated 12 deg with text and an image running out (needs xt_text,
+# @font-face), two nested rounded clips; the GPU backends draw them without stencil clips at 1x.
+ui_coverage_clip ui_coverage_clip.xt 384 320 0 ffffff
+# T-664 (10 section 10.11 ruling 6): borders at 1x -- uniform rounded, one side, L shapes (2 and 3 sides),
+# per-side colors square and rounded, per-side widths of one color (0.5 / 1 / 4 / 1 px), dashed, dotted,
+# an outline, equal-width thin rings; the same rotated 9 deg.
+ui_coverage_border ui_coverage_border.xt 480 288 0 ffffff
 ui_absolute_nested absolute_nested.xt 256 256 0 ffffff
 # T-30 text fixtures (docs/tasks/T-30.md "黃金圖"). Only run when xt_text is built (see
 # golden_ui.cpp); they use the OFL font subsets in tests/fonts via <style> @font-face.
@@ -234,3 +243,8 @@ ui_v2_anchor_media_16x9 v2_anchor/media_long.xt 320 180 0 000000
 ui_v2_anchor_media_16x9_shorthand v2_anchor/media.xt 320 180 0 000000 same-as=ui_v2_anchor_media_16x9
 ui_v2_anchor_media_21x9 v2_anchor/media_long.xt 420 180 0 000000
 ui_v2_anchor_media_21x9_shorthand v2_anchor/media.xt 420 180 0 000000 same-as=ui_v2_anchor_media_21x9
+ui_box_shadow ui_box_shadow.xt 480 320 0.4 ffffff
+ui_box_shadow_kept ui_box_shadow_kept.xt 256 256 0 ffffff
+# T-680 (10 section 10.12 item 2, "補充 2" B): outlines (gap / touching / overlapping), text cards at the
+# edges of the font-metric box, near-opaque panels and the controls that stay a PushEffect (needs xt_text).
+ui_box_shadow_relaxed ui_box_shadow_relaxed.xt 480 400 0 ffffff

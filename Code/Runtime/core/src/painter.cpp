@@ -1,6 +1,7 @@
 #include "xt/painter.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <span>
 #include <utility>
@@ -12,6 +13,7 @@
 #include "painter_action.h"
 #include "shape_modifiers.h"
 #include "text_edit.h"
+#include "xt/assert.h"
 #include "xt/effect_utils.h"
 #include "xt/geom.h"
 #include "xt/layout.h"
@@ -42,6 +44,16 @@ void emitElementImage(const ElementData& data, const Mat2x3& world, float alpha,
 void emitElementOutline(const ElementData& data, const Mat2x3& world, float alpha, CommandList& out,
                         std::vector<PathVerb>& scratchVerbs, std::vector<float>& scratchPoints);
 float elementOutlineExtent(const ElementData& data);
+/// T-668: whether an outline ring is drawn at all (any offset), and the border box's four resolved
+/// corner radii exactly as emitElementBackground paints them (top-left, top-right, bottom-right,
+/// bottom-left).
+bool elementHasOutline(const ElementData& data);
+void elementBorderRadii(const ElementData& data, float r[4]);
+/// T-680: the outline ring's width and offset and its outer / inner edges (rectangles in the
+/// border box's frame and their corner radii) exactly as emitElementOutline draws them; false when
+/// no ring is drawn by the metrics (style none, a zero or non-finite width).
+bool elementOutlineRing(const ElementData& data, float& width, float& offset, Rect& outer, float ro[4],
+                        Rect& inner, float ri[4]);
 /// T-199 (26 §26.3.4): the `border-image` nine-slice, drawn instead of emitElementBorder when
 /// `style.borderImage` is set (painter_element.cpp).
 void emitElementBorderImage(const ElementData& data, const Mat2x3& world, float alpha, CommandList& out);
@@ -657,6 +669,9 @@ void Painter::runStack(const NodeArena& arena, CommandList& out) {
                 out.commands.push_back(Command{CmdKind::PopProjection, {}, 0});
                 break;
             case Action::Kind::PopEffect:
+                if (action.node != kInvalidNode && finishBoxShadowCandidate(out)) {
+                    break;  // T-668: the PushEffect became DrawBoxShadow commands.
+                }
                 out.commands.push_back(Command{CmdKind::PopEffect, {}, 0});
                 break;
         }
@@ -743,6 +758,9 @@ void Painter::paintGhost(const NodeArena& arena, CommandList& out) {
                 moveRect(fx.contentBounds);
                 break;
             }
+            case CmdKind::DrawBoxShadow:
+                out.boxShadows[cmd.index].xf = mul(shift, out.boxShadows[cmd.index].xf);  // T-668
+                break;
             case CmdKind::DrawImageMesh: {
                 // T-245: the vertices are already in world coordinates.
                 const ImageMeshCmd& mc = out.imageMeshes[cmd.index];
@@ -936,8 +954,17 @@ void Painter::enterNode(const NodeArena& arena, NodeId n, float inheritedAlpha, 
         m_stack.push_back(Action{Action::Kind::PopLayer, kInvalidNode, 0.0f, MaskMode::Alpha});
     }
     if (hasFx) {
+        const size_t pushPos = out.commands.size();
         pushEffectCmd(arena, n, out);
-        m_stack.push_back(Action{Action::Kind::PopEffect, kInvalidNode, 0.0f, MaskMode::Alpha});
+        Action pop{Action::Kind::PopEffect, kInvalidNode, 0.0f, MaskMode::Alpha};
+        // T-668 (10 §10.12 item 2): a node that may turn its drop shadows into DrawBoxShadow
+        // commands keeps its PushEffect for now; its PopEffect (node set) decides.
+        // (needsLayer implies opacity < 1 or a blend mode: condition 2 rejects it.)
+        // T-680: unless the option is off (BakedWriter, a backend without the command).
+        if (m_boxShadowCommands && beginBoxShadowCandidate(arena, n, alpha, pushPos, out)) {
+            pop.node = n;
+        }
+        m_stack.push_back(pop);
         if (needsLayer) {
             // T-160: the Layer wraps the Effect (18.1), so it must hold the effect's output too --
             // the content AABB alone clipped a shadow/glow to the element's own box (a 3 px line
@@ -1028,7 +1055,13 @@ void Painter::paintElement(const NodeArena& arena, NodeId n, float alpha, Comman
         }
         // T-325 (05 §5.9.8): the outline after the border and the element's own image, before the
         // overflow clip and the children; never through the effect chain.
+        const size_t outlinePos = out.commands.size();
         emitElementOutline(data, c.world, alpha, out, m_elemVerbsScratch, m_elemPointsScratch);
+        // T-680 ("補充 2" B.1): a box shadow candidate's own ring is contour, not content.
+        if (out.commands.size() > outlinePos && !m_boxShadowStack.empty() &&
+            m_boxShadowStack.back().node == n) {
+            m_boxShadowStack.back().outlineCmd = static_cast<uint32_t>(outlinePos);
+        }
     }
 
     // Rule 5: overflow clip wraps the children only (padding-box, in this Element's own world
@@ -1803,6 +1836,201 @@ void Painter::pushEffectCmd(const NodeArena& arena, NodeId n, CommandList& out) 
         push.flags[0] = kCommandSceneRead;
     }
     out.commands.push_back(push);
+}
+
+bool Painter::beginBoxShadowCandidate(const NodeArena& arena, NodeId n, float alpha, size_t pushPos,
+                                      const CommandList& out) {
+    // T-668 (Docs/design/10-backends.md §10.12 item 2, Docs/tasks/T-668.md item 2). The subtree has
+    // not been emitted yet, so condition 4 is decided at the PopEffect (finishBoxShadowCandidate)
+    // from the commands the subtree actually emitted: emitting them first and only then deciding
+    // leaves a node that does not convert byte-identical to before, and costs one walk over its
+    // own commands (no separate bounds pass over the arena).
+    const NodeCommon& c = arena.common(n);
+    const EffectCmd& ec = out.effectCmds.back();
+    BoxShadowCandidate cand;
+    cand.node = n;
+    cand.commandPos = static_cast<uint32_t>(pushPos);
+    cand.effectCmd = static_cast<uint32_t>(out.effectCmds.size() - 1);
+    cand.effectOffset = ec.effectOffset;
+    cand.effectCount = ec.effectCount;
+    cand.world = c.world;
+    BoxShadowJudgeInput& in = cand.input;
+    in.effects = std::span<const EffectInstance>(out.effects.data() + ec.effectOffset, ec.effectCount);
+    in.opacity = c.opacity;
+    in.blend = c.blend;
+    in.in3D = !m_mappingStack.empty() || c.is3D != 0;
+    in.paintAlpha = alpha;
+    if (arena.kind(n) == NodeKind::Element) {
+        const ElementData& data = arena.element(n);
+        in.isElement = true;
+        in.backgroundDrawn = data.style.visibility != Visibility::Hidden;
+        in.clipPath = data.clipShape.kind != ClipShapeKind::None;
+        in.backgroundAlpha = data.style.base[prop::BackgroundColor].c.a;
+        const ElementGradient& g = data.backgroundGradient;
+        bool opaque = g.kind != GradientKind::None && !g.stops.empty();
+        for (const GradientStop& s : g.stops) {
+            opaque = opaque && s.color.a == 1.0f;
+        }
+        in.gradientOpaque = opaque;
+        in.borderBox = Rect{0, 0, data.box.width, data.box.height};
+        elementBorderRadii(data, in.radii);
+        in.overflowClips = clipsOverflow(data);
+        in.outline = elementHasOutline(data);
+        // T-680 ("補充 2" B.1): a solid, opaque outline becomes part of the contour.
+        if (in.outline) {
+            in.outlineSolid = data.style.outlineStyle == 1;
+            in.outlineAlpha = data.style.base[prop::OutlineColor].c.a;
+            elementOutlineRing(data, cand.outlineWidth, cand.outlineOffset, cand.outlineOuter,
+                               cand.outlineOuterRadii, cand.outlineInner, cand.outlineInnerRadii);
+        }
+    }
+    in.skipContent = true;
+    const BoxShadowReject early = judgeBoxShadow(in);
+    if (early != BoxShadowReject::None) {
+        if (m_boxShadowLog != nullptr) {
+            m_boxShadowLog->push_back(BoxShadowDecision{n, early, 0});
+        }
+        return false;
+    }
+    in.skipContent = false;
+    in.effects = {};  // `out.effects` may grow while the subtree is emitted
+    m_boxShadowStack.push_back(cand);
+    return true;
+}
+
+bool Painter::finishBoxShadowCandidate(CommandList& out) {
+    XT_ASSERT(!m_boxShadowStack.empty());
+    if (m_boxShadowStack.empty()) {
+        return false;
+    }
+    const BoxShadowCandidate cand = m_boxShadowStack.back();
+    m_boxShadowStack.pop_back();
+    BoxShadowJudgeInput in = cand.input;
+    in.effects = std::span<const EffectInstance>(out.effects.data() + cand.effectOffset, cand.effectCount);
+    if (!in.overflowClips) {
+        // Condition 4: the conservative local bounds of every command the subtree emitted.
+        Mat2x3 frame;
+        in.contentKnown = invert(cand.world, frame);
+        in.contentEmpty = true;
+        bool any = false;
+        float x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+        for (size_t i = cand.commandPos + 1; in.contentKnown && i < out.commands.size(); ++i) {
+            if (i == cand.outlineCmd) {
+                continue;  // T-680: the node's own outline ring is contour (B.1)
+            }
+            Rect r;
+            bool empty = false;
+            if (!commandBoundsInFrame(out, out.commands[i], frame, r, empty, m_shaper)) {
+                in.contentKnown = false;
+                break;
+            }
+            if (empty) {
+                continue;
+            }
+            if (!any) {
+                x0 = r.x;
+                y0 = r.y;
+                x1 = r.x + r.w;
+                y1 = r.y + r.h;
+                any = true;
+            } else {
+                x0 = std::min(x0, r.x);
+                y0 = std::min(y0, r.y);
+                x1 = std::max(x1, r.x + r.w);
+                y1 = std::max(y1, r.y + r.h);
+            }
+        }
+        in.contentEmpty = !any;
+        in.contentBounds = Rect{x0, y0, x1 - x0, y1 - y0};
+    }
+    const BoxShadowReject reason = judgeBoxShadow(in);
+    if (reason != BoxShadowReject::None) {
+        if (m_boxShadowLog != nullptr) {
+            m_boxShadowLog->push_back(BoxShadowDecision{cand.node, reason, 0});
+        }
+        return false;
+    }
+
+    // Convert: one DrawBoxShadow per drop shadow in place of the PushEffect. The effect stack runs
+    // its entries in order, each composited over the previous result, so the last one ends up at
+    // the bottom: they are emitted last to first. Each keeps the effect's semantics -- offset /
+    // blur / spread in the node's local units under its world transform, a negative spread treated
+    // as 0 (18 §18.3, as xt::sw's applyDropShadow clamps it), the effect's opacity in the alpha.
+    const uint32_t count = cand.effectCount;
+    // T-680 ("補充 2" B.1): a solid opaque outline. Overlapping or touching the box (offset <= 0)
+    // the union is the ring's outer edge O_out (or R itself when the ring lies inside R); with a gap
+    // (offset > 0) it is S(O_out) - S(O_in) + S(R), the two extra terms.
+    Rect shapeRect = in.borderBox;
+    float shapeRadii[4] = {in.radii[0], in.radii[1], in.radii[2], in.radii[3]};
+    BoxShadowTerm extra[2]{};
+    uint32_t extraCount = 0;
+    if (in.outline) {
+        if (cand.outlineOffset > 0.0f || cand.outlineOffset + cand.outlineWidth >= 0.0f) {
+            shapeRect = cand.outlineOuter;
+            for (int i = 0; i < 4; ++i) {
+                shapeRadii[i] = cand.outlineOuterRadii[i];
+            }
+        }
+        if (cand.outlineOffset > 0.0f) {
+            extra[0].rect = cand.outlineInner;
+            extra[1].rect = in.borderBox;
+            for (int i = 0; i < 4; ++i) {
+                extra[0].radii[i] = cand.outlineInnerRadii[i];
+                extra[1].radii[i] = in.radii[i];
+            }
+            extra[0].sign = -1.0f;
+            extra[1].sign = 1.0f;
+            extraCount = 2;
+        }
+    }
+    std::array<Command, 8> stackCmds{};
+    std::vector<Command> heapCmds;
+    Command* cmds = stackCmds.data();
+    if (count > stackCmds.size()) {
+        heapCmds.resize(count);
+        cmds = heapCmds.data();
+    }
+    for (uint32_t k = 0; k < count; ++k) {
+        const EffectInstance& e = out.effects[cand.effectOffset + (count - 1 - k)];
+        BoxShadowCmd bs{};
+        bs.xf = cand.world;
+        bs.rect = shapeRect;
+        for (int i = 0; i < 4; ++i) {
+            bs.radii[i] = shapeRadii[i];
+        }
+        bs.extraCount = extraCount;
+        bs.extra[0] = extra[0];
+        bs.extra[1] = extra[1];
+        bs.offset = Vec2{e.params[0], e.params[1]};
+        bs.blur = e.params[2];
+        bs.spread = std::max(0.0f, e.params[3]);
+        bs.color = e.colors[0];
+        bs.color.a *= e.params[4];
+        cmds[k] = Command{CmdKind::DrawBoxShadow, {}, static_cast<uint32_t>(out.boxShadows.size())};
+        out.boxShadows.push_back(bs);
+    }
+    // Drop the effect payload this PushEffect owned; the PushEffects of its subtree come after it
+    // in both pools and move down.
+    const uint32_t fxIndex = cand.effectCmd;
+    out.effects.erase(out.effects.begin() + cand.effectOffset,
+                      out.effects.begin() + cand.effectOffset + count);
+    out.effectCmds.erase(out.effectCmds.begin() + fxIndex);
+    for (size_t j = fxIndex; j < out.effectCmds.size(); ++j) {
+        out.effectCmds[j].effectOffset -= count;
+    }
+    for (size_t i = cand.commandPos + 1; i < out.commands.size(); ++i) {
+        if (out.commands[i].kind == CmdKind::PushEffect) {
+            --out.commands[i].index;
+        }
+    }
+    out.commands[cand.commandPos] = cmds[0];
+    if (count > 1) {
+        out.commands.insert(out.commands.begin() + cand.commandPos + 1, cmds + 1, cmds + count);
+    }
+    if (m_boxShadowLog != nullptr) {
+        m_boxShadowLog->push_back(BoxShadowDecision{cand.node, BoxShadowReject::None, count});
+    }
+    return true;
 }
 
 Rect Painter::contentScreenBounds(const NodeArena& arena, NodeId n, const Mat2x3& xf, Rect viewport) {

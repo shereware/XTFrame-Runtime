@@ -47,4 +47,20 @@ struct DamageList {
 /// validateCommandList() accepted. The pools are indexed without range checks.
 Rect commandBounds(const CommandList& list, const Command& cmd);
 
+class TextShaper;
+
+/// T-664, moved here by T-680 (Docs/design/10-backends.md "10.12 定案 2 補充 2" B.2) so the Painter's
+/// box shadow test and xt::gpu's clip scan share one implementation: the conservative box of glyph
+/// run `cmd` in its own (`cmd.xf`) space -- vertically the glyph origins from the font's ascent
+/// above to its descent below (times the size); horizontally from half the size left of the first
+/// origin to half the size right of the run's right end. The advances are not in the command, so
+/// the right end is taken from the glyphs whose origin lies within one size of the last origin:
+/// each contributes its outline's right extent (control points included), or its origin plus the
+/// size when it has no outline. The box is grown by twice the glyph effect radius on every side.
+/// False (the caller keeps the origins grown by the size) without a shaper or glyphs, or when the
+/// metrics give no finite, positive ascent + descent.
+bool glyphRunInkBox(const CommandList& list, const GlyphsCmd& cmd, TextShaper* shaper, Rect& out);
+/// glyphRunInkBox() transformed by `cmd.xf` (the axis-aligned box of its four corners).
+bool glyphRunInkBounds(const CommandList& list, const GlyphsCmd& cmd, TextShaper* shaper, Rect& out);
+
 }  // namespace xt

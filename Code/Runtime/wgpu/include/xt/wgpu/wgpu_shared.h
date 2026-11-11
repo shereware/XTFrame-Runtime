@@ -1,5 +1,7 @@
 #pragma once
 
+#include <webgpu/webgpu.h>
+
 #include <cstdint>
 #include <memory>
 
@@ -22,9 +24,22 @@
 ///     kDefaultImageIdleBudget, 0 = destroyed as soon as unused) the oldest is destroyed. A texture
 ///     found again while idle leaves the list (no upload). `trimIdleImages` destroys every idle one.
 ///
-/// The transient pool, glyph atlas pages, effect caches and band targets stay per device. Not
-/// thread-safe: the devices that borrow a cache are used from one thread, as the cache itself. Every
-/// device that borrows it must be shut down before `shutdown` / destruction.
+///   - **Target-level pools** (T-675, 50 §50.ac item 2): the devices also borrow the cache's
+///     transient pool (T-678, 50 §50.ac addendum item 1: its byte budget is the most bytes one
+///     submit of the last target frame borrowed plus 16 MiB, set and applied by `endFrame`; least
+///     recently used first, never an entry used in that frame), its released effect-cache / band
+///     targets (16 MB, oldest first), its surface
+///     attachment sets (a 4x colour attachment and its stencil, or the stencil alone, one set per
+///     size, sample count and format, borrowed for the length of one submit) and its 1x1 dummy. The
+///     host returns surface textures it no longer shows to a pool of (size, format)
+///     (`releaseSurfaceTexture`) and takes them back (`acquireSurfaceTexture`). The pools age by the
+///     host's frames (`endFrame`): a transient or a released cached target unused for 1800 frames
+///     goes (at most one of each per frame), an idle surface texture or an unborrowed attachment set
+///     after 300; `trimPools` destroys every pooled texture no device borrows.
+///
+/// Glyph atlas pages, coverage atlas pages, gradient tables and the effect caches' entries stay per
+/// device. Not thread-safe: the devices that borrow a cache are used from one thread, as the cache
+/// itself. Every device that borrows it must be shut down before `shutdown` / destruction.
 
 namespace xt::wgpu {
 
@@ -42,6 +57,18 @@ struct WgpuSharedStats {
     uint32_t imageIdleTextures = 0;  ///< T-656: of `imageTextures`, those no device uses (idle list)
     uint64_t imageIdleBytes = 0;     ///< T-656: their memory
     uint64_t imageEvictions = 0;     ///< T-656: idle textures destroyed (budget or trimIdleImages)
+    /// T-675: every texture created on the cache's device since construction by the devices that
+    /// borrow it (images, gradient tables, atlas pages, transients, cached targets) and by the pools
+    /// (attachment sets, surface textures, the dummy).
+    uint32_t textureCreates = 0;
+    uint32_t poolTextures = 0;  ///< T-675: textures in the pools now (idle or borrowed)
+    /// T-675: their memory (texels x bytes x samples; T-678: a Stencil8 at the backend's bytes per
+    /// texel, `stencil8TexelBytes`). Content bytes: no allocator alignment or block slack.
+    uint64_t poolBytes = 0;
+    uint32_t attachmentSets = 0;       ///< T-675: surface attachment sets alive
+    uint64_t attachmentBytes = 0;      ///< T-675: their memory
+    uint32_t surfaceTexturesIdle = 0;  ///< T-675: idle surface textures in the pool
+    uint32_t poolFrees = 0;            ///< T-675: pooled textures destroyed (age, budget, trimPools)
 };
 
 class WgpuSharedCache {
@@ -65,6 +92,21 @@ public:
     uint64_t imageIdleBudget() const;
     /// T-656: destroys every idle texture; returns how many.
     uint32_t trimIdleImages();
+
+    /// T-675: a single-sample `width` x `height` texture of `format` (RENDER_ATTACHMENT |
+    /// TEXTURE_BINDING | COPY_SRC) and its view: an idle one of the pool, else a new one; null before a
+    /// device borrowed the cache, or when it cannot be made. The caller owns both until it gives them
+    /// back with `releaseSurfaceTexture` (or destroys them itself).
+    WGPUTexture acquireSurfaceTexture(int width, int height, WGPUTextureFormat format, WGPUTextureView& view);
+    /// T-675: puts a texture of `acquireSurfaceTexture` (and its view) back into the pool, idle from
+    /// this frame; nothing may use it until it is acquired again.
+    void releaseSurfaceTexture(WGPUTexture texture, WGPUTextureView view);
+    /// T-675: one host frame ended; ages the pools (see the file comment). T-678: first sets the
+    /// transient budget from the frame that ended and applies it.
+    void endFrame();
+    /// T-675: destroys every pooled texture no device borrows now (transients, released cached
+    /// targets, attachment sets, idle surface textures); returns how many textures.
+    uint32_t trimPools();
 
 private:
     friend class WgpuDevice;

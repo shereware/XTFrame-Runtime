@@ -30,6 +30,12 @@ struct RegisteredFont {
     FT_Face face = nullptr;
     std::vector<uint8_t> memory;
     std::string family;
+    /// T-673: `family` lower-cased with std::tolower (what the case-insensitive family match
+    /// compares), its FNV-1a hash, and the script hint groups (hintGroupFor()) it matches,
+    /// one bit per group. Computed once whenever `family` is set (FontTable::setFamily()).
+    std::string familyKey;
+    uint64_t familyHash = 0;
+    uint8_t hintGroups = 0;
     std::string subfamily;
     std::string postScriptName;
     uint16_t weight = 400;
@@ -113,8 +119,18 @@ public:
     /// for `codepoint` (FT_Get_Char_Index != 0), or `match(request)` if none does.
     FontId fontForCodepoint(const FontRequest& request, uint32_t codepoint) const;
 
+    /// T-673: changes whenever something fontForCodepoint() / match() decide by changes: a font
+    /// is registered, the fallback list changes, or opening a deferred font turns it broken or
+    /// corrects its family / weight / italic. A cache of fontForCodepoint() results is valid only
+    /// while this stays the same.
+    uint64_t generation() const { return generation_; }
+    /// T-673: how many times fontForCodepoint() has built and scanned its candidate list.
+    uint64_t fallbackScanCount() const { return fallbackScans_; }
+
 private:
     FT_Library library_ = nullptr;
+    mutable uint64_t generation_ = 0;
+    mutable uint64_t fallbackScans_ = 0;
     // mutable: face()/metrics()/match()/fontForCodepoint() stay logically const (they don't change
     // what the table reports, only whether a deferred font has been opened yet) while opening a
     // deferred FT_Face on first use (Docs/tasks/T-104.md).
@@ -131,6 +147,8 @@ private:
     // T-569: the instance of `base` at variable weight `wght` (0 = the face's own) with synthetic
     // bold `embolden`, made on first use; `base` itself when neither applies or opening fails.
     FontId instanceOf(FontId base, uint16_t wght, float embolden) const;
+    // T-673: sets `font.family` and its normalized forms (familyKey, familyHash, hintGroups).
+    static void setFamily(RegisteredFont& font, std::string family);
     // Reads weight/italic/variable range/CJK coverage from an open face (OS/2, fvar).
     void readFaceFacts(FT_Face face, RegisteredFont& font) const;
     // Opens fonts_[index].face if still deferred, updating openedCount_/broken as it goes. Returns

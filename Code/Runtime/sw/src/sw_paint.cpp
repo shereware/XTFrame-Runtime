@@ -166,7 +166,45 @@ float PaintEval::tAt(Vec2 devicePoint) const {
     return std::clamp(t, 0.0f, 1.0f);
 }
 
+PaintEval PaintEval::makeBoxShadow(const BoxShadowShape& shape, float sigma, const Color& color,
+                                   const Mat2x3& xfDevice) {
+    PaintEval e;
+    e.m_kind = PaintKind::Linear;  // not Solid: the span painter takes the per-pixel paths
+    e.m_boxShadow = true;
+    e.m_shadowShape = shape;
+    e.m_shadowSigma = sigma;
+    e.m_shadowColor = color;
+    Mat2x3 inv;
+    if (invert(xfDevice, inv)) {
+        e.m_inverse = inv;
+    }
+    return e;
+}
+
+PaintEval PaintEval::makeBoxShadow(const BoxShadowDraw& d, float sigma, const Color& color,
+                                   const Mat2x3& xfDevice) {
+    PaintEval e = makeBoxShadow(d.shape, sigma, color, xfDevice);
+    e.m_shadowExtraCount = d.extraCount < 2 ? d.extraCount : 2;
+    for (uint32_t k = 0; k < e.m_shadowExtraCount; ++k) {
+        e.m_shadowExtra[k] = d.extra[k];
+        e.m_shadowExtraSign[k] = d.extraSign[k];
+    }
+    return e;
+}
+
 Color PaintEval::at(float px, float py) const {
+    if (m_boxShadow) {
+        const Vec2 p = apply(m_inverse, Vec2{px + 0.5f, py + 0.5f});
+        float s = boxShadowCoverage(m_shadowShape, p.x, p.y, m_shadowSigma);
+        if (m_shadowExtraCount > 0) {
+            // T-680: the signed sum of the terms, clamped (boxShadowCoverageSum).
+            for (uint32_t k = 0; k < m_shadowExtraCount; ++k) {
+                s += m_shadowExtraSign[k] * boxShadowCoverage(m_shadowExtra[k], p.x, p.y, m_shadowSigma);
+            }
+            s = std::clamp(s, 0.0f, 1.0f);
+        }
+        return Color{m_shadowColor.r, m_shadowColor.g, m_shadowColor.b, m_shadowColor.a * s};
+    }
     if (m_kind == PaintKind::Solid) {
         return m_solid;
     }
@@ -245,6 +283,43 @@ PaintEval::SpanInfo PaintEval::spanPremul(int x, int y, int begin, int end, floa
             info.allOpaque = false;
         }
     };
+
+    if (m_boxShadow) {
+        // T-668: the formula per pixel; an axis-aligned transform gives every pixel of the row the
+        // same local y (apply()'s b * x term is a signed zero), so the row setup is shared.
+        const bool rowShared = m_inverse.b == 0.0f && m_inverse.c == 0.0f;
+        BoxShadowRow row;
+        BoxShadowRow extraRows[2];  // T-680: one row per extra term
+        const float cy = static_cast<float>(y) + 0.5f;
+        if (rowShared) {
+            const Vec2 p = apply(m_inverse, Vec2{static_cast<float>(x + begin) + 0.5f, cy});
+            boxShadowRow(m_shadowShape, p.y, m_shadowSigma, row);
+            for (uint32_t k = 0; k < m_shadowExtraCount; ++k) {
+                boxShadowRow(m_shadowExtra[k], p.y, m_shadowSigma, extraRows[k]);
+            }
+        }
+        const Color& c = m_shadowColor;
+        for (int i = begin; i < n; ++i) {
+            const Vec2 p = apply(m_inverse, Vec2{static_cast<float>(x + i) + 0.5f, cy});
+            if (!rowShared) {
+                boxShadowRow(m_shadowShape, p.y, m_shadowSigma, row);
+                for (uint32_t k = 0; k < m_shadowExtraCount; ++k) {
+                    boxShadowRow(m_shadowExtra[k], p.y, m_shadowSigma, extraRows[k]);
+                }
+            }
+            float coverage = boxShadowCoverageAt(row, p.x);
+            if (m_shadowExtraCount > 0) {
+                for (uint32_t k = 0; k < m_shadowExtraCount; ++k) {
+                    coverage += m_shadowExtraSign[k] * boxShadowCoverageAt(extraRows[k], p.x);
+                }
+                coverage = std::clamp(coverage, 0.0f, 1.0f);
+            }
+            const float a = c.a * coverage;
+            const float rgba[4] = {c.r * a, c.g * a, c.b * a, a};
+            write(i, rgba);
+        }
+        return info;
+    }
 
     if (m_degenerate) {
         const float* c = sample(1.0f);

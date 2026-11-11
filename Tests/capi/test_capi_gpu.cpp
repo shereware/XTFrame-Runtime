@@ -15,6 +15,12 @@
 // texture; its info lines carry the target's submit / pass totals.
 // T-674 (cases 16-17, 50 §50.ac item 1): at most two frames in flight per target, observed through the
 // frames-in-flight counters of the target's destroy line.
+// T-675 (cases 18-20, 50 §50.ac item 2): the target-level pools -- a scene switch creates no texture once
+// warm, surfaces of one size share one attachment set, the pools age and xt_gpu_target_trim empties them;
+// read through the textures-created and pool fields of the shared-cache info line. Cases 10, 12 and 15
+// count trim-on-hide's "GPU textures returned" line where they counted "GPU resources released".
+// T-678 (cases 21-22, 50 §50.ac addendum item 1): the transient pool's budget is the last target frame's
+// borrowed peak plus 16 MiB -- it shrinks after a switch to a lighter scene and never churns a steady one.
 
 #include <algorithm>
 #include <cmath>
@@ -433,8 +439,12 @@ namespace {
 struct SharedLog {
     unsigned long textures = 0, uploaded = 0, reused = 0, freed = 0, sets = 0, borrowed = 0;
     unsigned long destroyedFreed = 0;
+    /// T-675: every texture created on the target's device so far, and the target-level pools.
+    unsigned long created = 0, poolTextures = 0, attachmentSets = 0, idleSurfaceTextures = 0, poolFrees = 0;
     int lines = 0;
     int released = 0;
+    int returned = 0;  ///< T-675: trim-on-hide gave the textures back (the renderer stays)
+    int rebuilt = 0;   ///< T-675: a released surface built its renderer again
     bool destroyed = false;
     SharedLog() { xt_capi_set_log(&SharedLog::onLog, this); }
     ~SharedLog() { xt_capi_set_log(nullptr, nullptr); }
@@ -454,12 +464,21 @@ struct SharedLog {
             self->freed = after(message, "freed ");
             self->sets = after(message, "pipeline sets ");
             self->borrowed = after(message, "borrowed ");
+            self->created = after(message, "textures created ");
+            self->poolTextures = after(message, "; pools ");
+            self->attachmentSets = after(message, "attachment sets ");
+            self->idleSurfaceTextures = after(message, "idle surface textures ");
+            self->poolFrees = after(message, "pool frees ");
             ++self->lines;
         } else if (std::strstr(message, "xt_gpu_target: destroyed; ") == message) {
             self->destroyed = true;
             self->destroyedFreed = after(message, "destroyed; ");
         } else if (std::strstr(message, "GPU resources released") != nullptr) {
             ++self->released;
+        } else if (std::strstr(message, "GPU textures returned to the target") != nullptr) {
+            ++self->returned;
+        } else if (std::strstr(message, "GPU resources rebuilt") != nullptr) {
+            ++self->rebuilt;
         }
     }
 };
@@ -631,23 +650,30 @@ TEST_CASE("capi gpu 10 (T-648, T-656): a trimmed surface rebuilds from the share
             (void)shareFrame(t, p.s[1]);  // the other surface holds the textures too
             const Pixels before = shareFrame(t, p.s[0]);
             const unsigned long uploaded = log.uploaded, reused = log.reused, borrowed = log.borrowed;
-            // T-641: hidden for two frames releases the surface's GPU resources (it stays attached).
+            // T-641, T-675 (50 §50.ac item 2): hidden for two frames gives the surface's textures back to
+            // the target and ends its image uses; its renderer stays (it stays attached).
             REQUIRE(xt_surface_set_visible(p.s[0], 0) == XT_STATUS_OK);
             (void)shareFrame(t, p.s[0]);
             (void)shareFrame(t, p.s[0]);
-            CHECK(log.released == 1);
+            CHECK(log.returned == 1);
+            CHECK(log.released == 0);
             REQUIRE(xt_surface_set_visible(p.s[0], 1) == XT_STATUS_OK);
-            CHECK(shareFrame(t, p.s[0]) == before);  // rebuilt: same pixels
-            CHECK(log.uploaded == uploaded);         // ... from the shared textures
+            CHECK(shareFrame(t, p.s[0]) == before);  // same pixels
+            CHECK(log.rebuilt == 0);                 // the kept renderer
+            CHECK(log.uploaded == uploaded);         // ... draws from the shared textures
             CHECK(log.reused == reused + uploaded);
-            CHECK(log.borrowed == borrowed + 1);  // and the shared pipeline set
+            CHECK(log.borrowed == borrowed);  // no new renderer borrowed the pipeline set
             CHECK(log.sets == 1);
-            // xt_surface_trim on both: the textures go idle (within the default budget), none is freed,
-            // the next frames upload nothing.
+            // xt_surface_trim on both releases everything: the textures go idle (within the default
+            // budget), none is freed, the next frames upload nothing; the renderer is built again and
+            // borrows the shared pipeline set.
             REQUIRE(xt_surface_trim(p.s[0]) == XT_STATUS_OK);
             REQUIRE(xt_surface_trim(p.s[1]) == XT_STATUS_OK);
+            CHECK(log.released == 2);
             CHECK(memoryStats(t).image_idle_textures == uploaded);
             CHECK(shareFrame(t, p.s[0]) == before);
+            CHECK(log.rebuilt == 1);
+            CHECK(log.borrowed == borrowed + 1);
             CHECK(log.uploaded == uploaded);
             CHECK(log.freed == 0);
             for (xt_surface* s : p.s) REQUIRE(xt_surface_detach_gpu(s) == XT_STATUS_OK);
@@ -857,15 +883,16 @@ TEST_CASE("capi gpu 12 (T-656): hidden then shown within the budget uploads noth
         u.frames(t, 2);
         const unsigned long uploaded = log.uploaded;
         CHECK(uploaded == 3);
-        // T-641: hidden for two frames releases the surface's GPU resources (it stays attached).
+        // T-641, T-675: hidden for two frames gives the surface texture back to the target's pool and
+        // ends the image uses (the renderer stays; it stays attached).
         REQUIRE(xt_surface_set_visible(u.s, 0) == XT_STATUS_OK);
         u.frames(t, 2);
-        CHECK(log.released == 1);
+        CHECK(log.returned == 1);
         xt_gpu_memory_stats m = memoryStats(t);
         CHECK(m.attached_surfaces == 1);
         CHECK(m.image_textures == 3);
         CHECK(m.image_idle_textures == 3);
-        CHECK(m.surface_bytes == 0);  // released
+        CHECK(m.surface_bytes == 0);  // returned (counted in transient_bytes while idle in the pool)
         REQUIRE(xt_surface_set_visible(u.s, 1) == XT_STATUS_OK);
         u.frames(t, 1);
         CHECK(log.uploaded == uploaded);  // found on the idle list
@@ -1024,7 +1051,7 @@ TEST_CASE("capi gpu 15 (T-657): hidden then shown draws the same bytes from the 
         REQUIRE(log.uploaded == 3);
         REQUIRE(xt_surface_set_visible(u.s, 0) == XT_STATUS_OK);
         u.frames(t, 2);
-        CHECK(log.released == 1);
+        CHECK(log.returned == 1);  // T-675: the textures go back, the renderer stays
         CHECK(memoryStats(t).image_idle_textures == 3);
         REQUIRE(xt_surface_set_visible(u.s, 1) == XT_STATUS_OK);
         u.frames(t, 1);
@@ -1035,7 +1062,7 @@ TEST_CASE("capi gpu 15 (T-657): hidden then shown draws the same bytes from the 
         REQUIRE(xt_gpu_target_set_image_budget(t, 0) == XT_STATUS_OK);
         REQUIRE(xt_surface_set_visible(u.s, 0) == XT_STATUS_OK);
         u.frames(t, 2);
-        CHECK(log.released == 2);
+        CHECK(log.returned == 2);
         CHECK(memoryStats(t).image_textures == 0);
         REQUIRE(xt_surface_set_visible(u.s, 1) == XT_STATUS_OK);
         u.frames(t, 1);
@@ -1151,6 +1178,320 @@ TEST_CASE("capi gpu 17 (T-674): begin_frame does not wait while the GPU keeps up
     CHECK(log.waits == 0u);
     CHECK(log.peak <= 1u);
     CHECK(log.warnings == 0);
+}
+
+namespace {
+
+/// T-675: `ui` of the npdo bundle `b` as a kShareSize surface, hidden before its first update when
+/// `hidden` (destroyed by the caller).
+xt_surface* npdoSurface(xt_bundle* b, const char* ui, bool hidden) {
+    xt_surface_desc desc{};
+    desc.struct_size = sizeof(desc);
+    desc.width = kShareSize;
+    desc.height = kShareSize;
+    desc.device_pixel_ratio = 1.0f;
+    desc.premultiplied = 1;
+    xt_surface* s = xt_surface_create(b, ui, &desc);
+    REQUIRE_MESSAGE(s != nullptr, xt_capi_last_error());
+    if (hidden) REQUIRE(xt_surface_set_visible(s, 0) == XT_STATUS_OK);
+    return s;
+}
+
+}  // namespace
+
+// T-675 (50 §50.ac item 2): two surfaces of one size on one target (npdo main-menu and settings, one
+// bundle), each shown for a few frames while the other is hidden -- as a host changes scene -- and
+// back, ten times, every surface drawn every frame. From the third switch on a switch creates no
+// texture at all (the surface texture comes from the target's pool, the hidden surface kept its renderer,
+// tables and atlases, the transients and attachments are the target's), and every show draws the bytes
+// its first show drew. At 1x and 4x.
+TEST_CASE("capi gpu 18 (T-675): a scene switch on one target creates no texture from the third on") {
+    for (const int samples : {1, 4}) {
+        CAPTURE(samples);
+        SharedLog log;
+        xt_gpu_target* t = shareTarget(samples);
+        if (t == nullptr) return;
+        xt_bundle* b = xt_bundle_open(XT_CAPI_TEST_NPDO_BUNDLE);
+        REQUIRE_MESSAGE(b != nullptr, xt_capi_last_error());
+        xt_surface* s[2] = {npdoSurface(b, "main-menu", false), npdoSurface(b, "settings", true)};
+        const xt_rect all{0, 0, kShareSize, kShareSize};
+        auto both = [&] {
+            frame(t, {{s[0], all}, {s[1], all}});
+            return readback(t, kShareSize, kShareSize, kShareSize * 4);
+        };
+        Pixels first[2];
+        first[0] = both();  // main-menu's first show
+        (void)both();
+        std::vector<unsigned long> created;
+        int shown = 0;
+        for (int sw = 1; sw <= 20; ++sw) {
+            CAPTURE(sw);
+            const unsigned long before = log.created;
+            REQUIRE(xt_surface_set_visible(s[shown], 0) == XT_STATUS_OK);
+            shown = 1 - shown;
+            REQUIRE(xt_surface_set_visible(s[shown], 1) == XT_STATUS_OK);
+            const Pixels px = both();
+            (void)both();
+            CHECK(both() == px);  // still the same a few frames later
+            if (first[shown].empty()) {
+                first[shown] = px;
+            } else {
+                CHECK(px == first[shown]);
+            }
+            created.push_back(log.created - before);
+            if (sw >= 3) CHECK(log.created == before);
+        }
+        std::printf("samples %d: textures created per switch:", samples);
+        for (const unsigned long c : created) std::printf(" %lu", c);
+        std::printf("\n");
+        CHECK(log.released == 0);  // trim-on-hide never released a renderer ...
+        CHECK(log.rebuilt == 0);   // ... nor was one built again
+        CHECK(log.returned == 20);
+        CHECK(!transparent(first[1], kShareSize, kShareSize / 2, kShareSize / 2));  // settings drew
+        for (xt_surface* surface : s) xt_surface_destroy(surface);
+        (void)xt_bundle_close(b);
+        CHECK(xt_gpu_target_destroy(t) == XT_STATUS_OK);
+    }
+}
+
+namespace {
+
+constexpr int kPairSize = 200;
+
+/// T-675: a kPairSize surface of `ui` in the bundle at `dir` (the fixture closes the bundle).
+xt_surface* pairSurface(Fixture& f, const char* dir, const char* ui) { return f.surface(dir, ui, kPairSize); }
+
+/// The `side` half (0 left, 1 right) of a (2 kPairSize) x kPairSize readback.
+Pixels half(const Pixels& px, int side) {
+    Pixels out(static_cast<size_t>(kPairSize) * kPairSize * 4u);
+    for (int y = 0; y < kPairSize; ++y) {
+        std::memcpy(
+            out.data() + static_cast<size_t>(y) * kPairSize * 4u,
+            px.data() +
+                (static_cast<size_t>(y) * 2u * kPairSize + static_cast<size_t>(side * kPairSize)) * 4u,
+            static_cast<size_t>(kPairSize) * 4u);
+    }
+    return out;
+}
+
+}  // namespace
+
+// T-675 (50 §50.ac item 2): two surfaces of one size visible on one target share one attachment set
+// (the set count does not grow when the second is drawn; transient_bytes does not either -- the second
+// surface reuses the first one's transients). The text fixture draws non-convex shapes and glyph runs
+// with stencil-then-cover at 4x; flip draws a plain card with no stencil. Drawn together, in either
+// order, each is byte for byte what it is drawn alone (a fresh surface each time, so every frame is
+// built and drawn through the shared set): no stencil or colour of one leaks into the other.
+TEST_CASE("capi gpu 19 (T-675): surfaces of one size share one attachment set without leaking") {
+    for (const int samples : {4, 1}) {
+        CAPTURE(samples);
+        SharedLog log;
+        Fixture f;
+        xt_gpu_target_desc desc = offscreenDesc(2 * kPairSize, kPairSize);
+        desc.sample_count = samples;
+        xt_gpu_target* t = xt_gpu_target_create(&desc);
+        if (t == nullptr) {
+            const std::string error = xt_capi_last_error();
+            REQUIRE_MESSAGE(contains(error.c_str(), "no WebGPU adapter"), error);
+            std::printf("SKIP: no WebGPU adapter (%s)\n", error.c_str());
+            return;
+        }
+        f.targets.push_back(t);
+        const xt_rect left{0, 0, kPairSize, kPairSize}, right{kPairSize, 0, kPairSize, kPairSize};
+        auto shot = [&] { return readback(t, 2 * kPairSize, kPairSize, 2 * kPairSize * 4); };
+        // Each alone (the other side stays clear).
+        frame(t, {{pairSurface(f, XT_CAPI_TEST_TEXT_BUNDLE, "text"), left}});
+        const Pixels text = half(shot(), 0);
+        const unsigned long setsOne = log.attachmentSets;
+        const uint64_t transientOne = memoryStats(t).transient_bytes;
+        frame(t, {{pairSurface(f, XT_CAPI_TEST_FLIP_BUNDLE, "flip"), right}});
+        const Pixels card = half(shot(), 1);
+        CHECK(!transparent(card, kPairSize, kPairSize / 2, kPairSize / 2));
+        // Together, the stencil user first, then the other way round.
+        frame(t, {{pairSurface(f, XT_CAPI_TEST_TEXT_BUNDLE, "text"), left},
+                  {pairSurface(f, XT_CAPI_TEST_FLIP_BUNDLE, "flip"), right}});
+        Pixels px = shot();
+        CHECK(half(px, 0) == text);
+        CHECK(half(px, 1) == card);
+        CHECK(log.attachmentSets == setsOne);  // the composer's and the surfaces' one, as before
+        CHECK(memoryStats(t).transient_bytes == transientOne);
+        frame(t, {{pairSurface(f, XT_CAPI_TEST_FLIP_BUNDLE, "flip"), right},
+                  {pairSurface(f, XT_CAPI_TEST_TEXT_BUNDLE, "text"), left}});
+        px = shot();
+        CHECK(half(px, 0) == text);
+        CHECK(half(px, 1) == card);
+        CHECK(log.attachmentSets == setsOne);
+        std::printf("samples %d: %lu attachment set(s), transient %.2f MiB\n", samples, log.attachmentSets,
+                    static_cast<double>(memoryStats(t).transient_bytes) / static_cast<double>(kMiB));
+    }
+}
+
+// T-675 (50 §50.ac item 2): a hidden surface's texture waits in the target's pool for 300 frames, then
+// goes; xt_gpu_target_trim empties every pool at once; xt_surface_trim also releases what trim-on-hide
+// keeps, and the surface then draws the same bytes again.
+TEST_CASE("capi gpu 20 (T-675): pool ageing, xt_gpu_target_trim and xt_surface_trim") {
+    SharedLog log;
+    Fixture f;
+    xt_gpu_target* t = f.target(kShareSize, kShareSize);
+    if (t == nullptr) return;
+    xt_surface* s = f.surface(XT_CAPI_TEST_FLIP_BUNDLE, "flip", kShareSize);
+    const xt_rect all{0, 0, kShareSize, kShareSize};
+    frame(t, {{s, all}});
+    const Pixels first = readback(t, kShareSize, kShareSize, kShareSize * 4);
+    const uint64_t texture = uint64_t(kShareSize) * kShareSize * 4u;
+    CHECK(memoryStats(t).surface_bytes == texture);
+    // Hidden: the texture is idle in the pool (transient memory now), for 300 frames.
+    REQUIRE(xt_surface_set_visible(s, 0) == XT_STATUS_OK);
+    frame(t, {{s, all}});
+    CHECK(log.returned == 1);
+    xt_gpu_memory_stats m = memoryStats(t);
+    CHECK(m.surface_bytes == 0);
+    CHECK(m.transient_bytes >= texture);
+    CHECK(log.idleSurfaceTextures == 1);
+    const unsigned long frees = log.poolFrees;
+    for (int i = 0; i < 290; ++i) frame(t, {{s, all}});
+    CHECK(log.idleSurfaceTextures == 1);
+    CHECK(log.poolFrees == frees);
+    for (int i = 0; i < 20; ++i) frame(t, {{s, all}});
+    CHECK(log.idleSurfaceTextures == 0);  // gone after 300 frames without use
+    CHECK(log.poolFrees > frees);
+    CHECK(memoryStats(t).transient_bytes < m.transient_bytes);
+    // Shown again: a texture is made again, the same bytes drawn.
+    unsigned long created = log.created;
+    REQUIRE(xt_surface_set_visible(s, 1) == XT_STATUS_OK);
+    frame(t, {{s, all}});
+    CHECK(readback(t, kShareSize, kShareSize, kShareSize * 4) == first);
+    CHECK(log.created > created);
+    // xt_gpu_target_trim: every pooled texture goes at once (the idle surface texture, the attachment
+    // sets, the transients).
+    REQUIRE(xt_surface_set_visible(s, 0) == XT_STATUS_OK);
+    frame(t, {{s, all}});
+    CHECK(log.idleSurfaceTextures == 1);
+    REQUIRE(xt_gpu_target_trim(t) == XT_STATUS_OK);
+    m = memoryStats(t);
+    CHECK(m.transient_bytes == 0);
+    CHECK(log.idleSurfaceTextures == 0);
+    CHECK(log.attachmentSets == 0);
+    // xt_surface_trim on the hidden surface releases the renderer too; shown again it is built anew
+    // and draws the same bytes.
+    REQUIRE(xt_surface_trim(s) == XT_STATUS_OK);
+    CHECK(log.released == 1);
+    REQUIRE(xt_surface_set_visible(s, 1) == XT_STATUS_OK);
+    frame(t, {{s, all}});
+    CHECK(readback(t, kShareSize, kShareSize, kShareSize * 4) == first);
+    CHECK(log.rebuilt == 1);
+    // Ten switches later nothing more was made than the first show after the trim (the texture back
+    // from the pool, the renderer kept).
+    frame(t, {{s, all}});
+    created = log.created;
+    for (int i = 0; i < 10; ++i) {
+        REQUIRE(xt_surface_set_visible(s, 0) == XT_STATUS_OK);
+        frame(t, {{s, all}});
+        REQUIRE(xt_surface_set_visible(s, 1) == XT_STATUS_OK);
+        frame(t, {{s, all}});
+        CHECK(readback(t, kShareSize, kShareSize, kShareSize * 4) == first);
+    }
+    CHECK(log.created == created);
+}
+
+namespace {
+
+constexpr int kBudgetSize = 1024;
+
+/// T-678: an offscreen kBudgetSize target with `samples`, kept by `f`; null without an adapter.
+xt_gpu_target* budgetTarget(Fixture& f, int samples) {
+    xt_gpu_target_desc desc = offscreenDesc(kBudgetSize, kBudgetSize);
+    desc.sample_count = samples;
+    xt_gpu_target* t = xt_gpu_target_create(&desc);
+    if (t == nullptr) {
+        const std::string error = xt_capi_last_error();
+        REQUIRE_MESSAGE(contains(error.c_str(), "no WebGPU adapter"), error);
+        std::printf("SKIP: no WebGPU adapter (%s)\n", error.c_str());
+        return nullptr;
+    }
+    f.targets.push_back(t);
+    return t;
+}
+
+}  // namespace
+
+// T-678 (50 §50.ac addendum item 1): the target's transient pool keeps what the last target frame
+// borrowed plus 16 MiB. Scene A is fixtures/effects (nested translucent layers, blend modes, shadows,
+// glows, shine), whose first frame -- every effect cache being filled -- borrows far more than 16 MiB of
+// transients; scene B is the flip card (no effect). Every surface is drawn every frame, the hidden one
+// too, as a host does. A few frames after the switch to B the pool -- transient_bytes without the idle 1x
+// surface textures, which age by their own rule -- holds no more than B's own use (measured before A was
+// ever shown) plus 16 MiB, where T-675's budget (two full-surface entries, at least 64 MiB) kept A's.
+// Back to A, it draws the bytes it drew before. At 1x and 4x.
+TEST_CASE("capi gpu 21 (T-678): after a switch the transient pool shrinks to the new scene's use + 16 MiB") {
+    for (const int samples : {1, 4}) {
+        CAPTURE(samples);
+        SharedLog log;
+        Fixture f;
+        xt_gpu_target* t = budgetTarget(f, samples);
+        if (t == nullptr) return;
+        xt_surface* a = f.surface(XT_CAPI_TEST_EFFECTS_BUNDLE, "effects", kBudgetSize);
+        xt_surface* b = f.surface(XT_CAPI_TEST_FLIP_BUNDLE, "flip", kBudgetSize);
+        const xt_rect all{0, 0, kBudgetSize, kBudgetSize};
+        const uint64_t texture = uint64_t(kBudgetSize) * kBudgetSize * 4u;
+        auto draw = [&] { frame(t, {{a, all}, {b, all}}); };
+        auto shot = [&] { return readback(t, kBudgetSize, kBudgetSize, kBudgetSize * 4); };
+        auto pool = [&] { return memoryStats(t).transient_bytes - log.idleSurfaceTextures * texture; };
+        auto show = [&](bool sceneA) {
+            REQUIRE(xt_surface_set_visible(a, sceneA ? 1 : 0) == XT_STATUS_OK);
+            REQUIRE(xt_surface_set_visible(b, sceneA ? 0 : 1) == XT_STATUS_OK);
+        };
+        show(false);
+        for (int i = 0; i < 3; ++i) draw();
+        const uint64_t useB = pool();
+        show(true);
+        draw();
+        const uint64_t useA = pool();
+        draw();
+        draw();
+        const Pixels pxA = shot();
+        std::printf("samples %d: pool on B %.2f MiB, after A's first frame %.2f MiB", samples,
+                    static_cast<double>(useB) / static_cast<double>(kMiB),
+                    static_cast<double>(useA) / static_cast<double>(kMiB));
+        REQUIRE(useA > useB + 16 * kMiB);  // otherwise the check below would hold without the budget
+        show(false);
+        for (int i = 0; i < 3; ++i) draw();
+        std::printf(", back on B %.2f MiB\n", static_cast<double>(pool()) / static_cast<double>(kMiB));
+        CHECK(pool() <= useB + 16 * kMiB);
+        show(true);
+        draw();
+        CHECK(shot() == pxA);
+        draw();
+        CHECK(shot() == pxA);
+    }
+}
+
+// T-678 (50 §50.ac addendum item 1): the budget never makes a steady scene rebuild its transients. The
+// three effect-heaviest fixtures of the existing bundles (game-ui hud and pause, hud-overlay hud:
+// shadows, glows, shine, backdrop blurs, blend modes), each a surface of its own on one target, drawn
+// together frame after frame: from the third frame on no texture at all is created (the transients
+// included). At 1x and 4x.
+TEST_CASE("capi gpu 22 (T-678): a steady multi-effect scene creates no transient from the third frame on") {
+    for (const int samples : {1, 4}) {
+        CAPTURE(samples);
+        SharedLog log;
+        Fixture f;
+        xt_gpu_target* t = budgetTarget(f, samples);
+        if (t == nullptr) return;
+        xt_surface* s[3] = {f.surface(XT_CAPI_TEST_BUNDLE, "hud", kBudgetSize),
+                            f.surface(XT_CAPI_TEST_BUNDLE, "pause", kBudgetSize),
+                            f.surface(XT_CAPI_TEST_PORTS_BUNDLE, "hud", kBudgetSize)};
+        const xt_rect all{0, 0, kBudgetSize, kBudgetSize};
+        std::printf("samples %d: textures created per frame:", samples);
+        for (int i = 1; i <= 10; ++i) {
+            CAPTURE(i);
+            const unsigned long before = log.created;
+            frame(t, {{s[0], all}, {s[1], all}, {s[2], all}});
+            std::printf(" %lu", log.created - before);
+            if (i >= 3) CHECK(log.created == before);
+        }
+        std::printf("\n");
+    }
 }
 
 #ifdef _WIN32

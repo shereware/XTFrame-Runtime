@@ -162,7 +162,8 @@ TEST_CASE("Painter effects 4: boundsHint = content AABB outset by shadow's expan
     ElementData& data = arena.element(root);
     data.box.width = 100;
     data.box.height = 50;
-    data.style.base[prop::BackgroundColor] = Value::ofColor(Color{1, 1, 1, 1});
+    // T-668: a translucent background keeps the PushEffect (an opaque one becomes DrawBoxShadow).
+    data.style.base[prop::BackgroundColor] = Value::ofColor(Color{1, 1, 1, 0.5f});
     arena.common(root).translate = Vec2{20, 20};
 
     // shadow(10px 0 4px #000): expand = max(|10|,|0|) + spread(0) + 3*sigma(blur/2=2) = 10+0+6=16.

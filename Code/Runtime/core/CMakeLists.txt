@@ -41,6 +41,7 @@ add_library(xt_core STATIC
     src/document_state.cpp
     src/command_list.cpp
     src/effect_utils.cpp
+    src/box_shadow.cpp  # T-668
     src/shader_table.cpp
     src/command_simplifier.cpp
     src/baked_writer.cpp

@@ -1,0 +1,41 @@
+/* T-678: many large layers and effects -- five nested translucent panels (each a layer target of nearly
+   the surface's size while the ones inside it draw) and shadows, glows and shine, so one frame borrows
+   far more than 16 MiB of transient targets. */
+#back {
+  background-color: #203040;
+}
+.panel {
+  border-radius: 12px;
+  opacity: 0.9;
+}
+#a {
+  background-color: #c03030;
+  effect: shadow(0 10px 28px 0 #000000 0.55) glow(18px #f85149 1.2);
+}
+#b {
+  background-color: #30a040;
+  effect: glow(14px #58a6ff 1.1) shine(30deg 36px #ffffff 0.9 0.6 0);
+}
+#c {
+  background-color: #3050c0;
+  mix-blend-mode: screen;
+}
+#d {
+  background-color: #c0a030;
+  effect: glow(24px #1f6feb 0.5);
+}
+#e {
+  background-color: #a030c0;
+  mix-blend-mode: multiply;
+}
+.side {
+  border-radius: 8px;
+  background-color: #30c0c0;
+  opacity: 0.8;
+}
+#f {
+  effect: shadow(0 12px 32px 0 #000000 0.6) glow(10px #ffffff 0.8);
+}
+#g {
+  effect: glow(24px #ffb347 0.9) shadow(0 4px 12px 0 #000000 0.5);
+}

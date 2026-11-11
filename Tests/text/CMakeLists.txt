@@ -8,6 +8,7 @@ add_executable(xt_text_tests
     test_i18n_regression.cpp
     test_system_fonts.cpp
     test_font_weights.cpp
+    test_fallback_cache.cpp
 )
 target_include_directories(xt_text_tests SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/Code/SDKs/doctest)
 # test_ft_shaper.cpp exercises Code/Runtime/text/src/vo_table.h directly (Docs/tasks/T-29.md test list).

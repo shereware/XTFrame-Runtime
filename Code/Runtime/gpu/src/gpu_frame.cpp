@@ -39,6 +39,8 @@ const char* shadingName(Shading s) {
             return "ParticleTexture";
         case Shading::ParticleSolid:
             return "ParticleSolid";
+        case Shading::BoxShadow:
+            return "BoxShadow";
     }
     return "?";
 }

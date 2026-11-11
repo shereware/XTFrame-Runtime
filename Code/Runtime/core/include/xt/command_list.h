@@ -45,6 +45,8 @@ enum class CmdKind : uint8_t {
     DrawParticles = 19,  ///< Instanced particle quads; payload in CommandList::particles.
     // --- Docs/design/32-rigging-and-deformation.md §32.2.4: image meshes (T-245). ---
     DrawImageMesh = 20,  ///< Textured triangle mesh; payload in CommandList::imageMeshes.
+    // --- Docs/design/10-backends.md §10.12 item 2: analytic box shadows (T-668). ---
+    DrawBoxShadow = 21,  ///< A rounded-rectangle Gaussian shadow; payload in CommandList::boxShadows.
 };
 
 /// Deepest nesting of stencil clips the GPU backends apply (Docs/tasks/T-263a.md E8): the stencil
@@ -392,6 +394,47 @@ struct ParticlesCmd {
     uint32_t count;
 };
 
+/// Payload for `CmdKind::DrawBoxShadow` (Docs/design/10-backends.md §10.12 item 2, T-668): the
+/// drop shadow of a node whose content is exactly its opaque rounded border box, drawn without an
+/// offscreen layer. Same coordinate space and transform as the drop shadow it replaces: `rect`,
+/// `radii`, `offset`, `blur` and `spread` are in `xf`'s local units (the node's own, before its
+/// world transform). The shape `R'` is `rect` grown by `spread` (each radius + `spread`, at least
+/// 0) and moved by `offset`; its coverage blurred by a Gaussian of sigma = `blur` / 2 is painted
+/// with `color` (xt/box_shadow.h has the formula). The Painter emits it right before the node's
+/// own content. T-680 ("補充 2" B.1): up to two further signed terms (`extra`) share the offset,
+/// blur, spread and colour; the coverage is clamp(S(rect) + sum of sign x S(extra), 0, 1). The
+/// Painter emits them only as nested shapes -- `rect` = an outline's outer edge O_out, extra[0] =
+/// its inner edge O_in (sign -1), extra[1] = the border box R (sign +1) -- which the backends'
+/// no-blur path relies on (it fills them as the ring plus the box). All 4-byte fields, no padding
+/// (hashed as raw bytes).
+struct BoxShadowTerm {
+    /// A rounded rectangle (local) with circular corner radii top-left, top-right, bottom-right,
+    /// bottom-left.
+    Rect rect;
+    float radii[4];
+    /// +1 or -1.
+    float sign;
+};
+struct BoxShadowCmd {
+    /// Local -> root-box transform (the node's world transform).
+    Mat2x3 xf;
+    /// The node's border box `R` (local).
+    Rect rect;
+    /// Circular corner radii of `R`: top-left, top-right, bottom-right, bottom-left.
+    float radii[4];
+    /// Shadow offset (local units).
+    Vec2 offset;
+    /// CSS blur (local units); the Gaussian's sigma is blur / 2.
+    float blur;
+    /// Spread (local units; negative shrinks).
+    float spread;
+    /// Shadow colour, non-premultiplied; its alpha already includes the effect's opacity.
+    Color color;
+    /// T-680: how many of `extra` are used (0..2); unused terms are zero.
+    uint32_t extraCount;
+    BoxShadowTerm extra[2];
+};
+
 /// One vertex of a DrawImageMesh command (Docs/design/32-rigging-and-deformation.md §32.2.4,
 /// T-245): `p` is already in screen/root-box coordinates (the same space as ImageQuadCmd::p, i.e.
 /// the node's world transform applied); `uv` is the normalized texture coordinate (0..1).
@@ -552,6 +595,8 @@ struct CommandList {
     /// Triangle index pool referenced by ImageMeshCmd::indexOffset/indexCount (T-245); each index
     /// is relative to its command's `vertexOffset`.
     std::vector<uint16_t> meshIndices;
+    /// `DrawBoxShadow` payloads, indexed by `Command::index` (T-668).
+    std::vector<BoxShadowCmd> boxShadows;
     Rect viewport;  ///< this frame's logical viewport
     /// Ratio of physical to logical pixels for this frame.
     float devicePixelRatio = 1;

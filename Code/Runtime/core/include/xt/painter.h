@@ -5,6 +5,7 @@
 #include <utility>
 #include <vector>
 
+#include "xt/box_shadow.h"
 #include "xt/command_list.h"
 #include "xt/ir.h"
 #include "xt/node_arena.h"
@@ -18,7 +19,7 @@
 
 namespace xt {
 
-struct EditState;         // Code/Runtime/core/src/text_edit.h (private); only ever used through a pointer here.
+struct EditState;  // Code/Runtime/core/src/text_edit.h (private); only ever used through a pointer here.
 struct CompositionState;  // Code/Runtime/core/src/composition.h (private); likewise.
 
 // Code/Runtime/core/src/layer_collect.h (private); only ever used as std::vector element types below, with
@@ -123,7 +124,59 @@ public:
         m_placeholderColor = color != nullptr ? *color : Color{};
     }
 
+    /// T-668 (Docs/design/10-backends.md §10.12 item 2): one node with an `effect: shadow()` that
+    /// paint() considered for a DrawBoxShadow -- converted (`reason == None`, `shadows` commands
+    /// emitted) or kept as a PushEffect (the first of the six conditions that failed).
+    struct BoxShadowDecision {
+        NodeId node = kInvalidNode;
+        BoxShadowReject reason = BoxShadowReject::None;
+        uint32_t shadows = 0;
+    };
+    /// Borrows a vector paint() appends one BoxShadowDecision to per node with enabled effects
+    /// (not cleared here). nullptr (the default) records nothing.
+    void setBoxShadowLog(std::vector<BoxShadowDecision>* log) { m_boxShadowLog = log; }
+    /// T-680 (§10.12 item 2, "補充 2" A): false keeps every drop shadow a PushEffect (no node is
+    /// considered, nothing is logged); true (the default) converts as T-668 describes.
+    void setBoxShadowCommands(bool on) { m_boxShadowCommands = on; }
+    bool boxShadowCommands() const { return m_boxShadowCommands; }
+    /// T-680 ("補充 2" B.2): the shaper whose font metrics tighten a glyph run's box in the box
+    /// shadow test (xt::glyphRunInkBox); nullptr (the default) keeps the origins grown by the size.
+    void setShaper(TextShaper* shaper) { m_shaper = shaper; }
+
 private:
+    /// T-668: a node whose PushEffect may still become DrawBoxShadow commands once its subtree has
+    /// been emitted (decided at its PopEffect).
+    struct BoxShadowCandidate {
+        NodeId node = kInvalidNode;
+        uint32_t commandPos = 0;    ///< index of its PushEffect in CommandList::commands
+        uint32_t effectCmd = 0;     ///< its EffectCmd index
+        uint32_t effectOffset = 0;  ///< its effects in CommandList::effects
+        uint32_t effectCount = 0;
+        Mat2x3 world{};
+        BoxShadowJudgeInput input{};  ///< `effects` is re-pointed at the decision
+        /// T-680 ("補充 2" B.1): the node's own outline ring (input.outline) -- its outer and inner
+        /// edges as emitElementOutline draws them, and the index of its FillPath, which condition 4
+        /// leaves out (the ring is part of the contour, not content).
+        float outlineWidth = 0.0f;
+        float outlineOffset = 0.0f;
+        Rect outlineOuter{};
+        float outlineOuterRadii[4] = {0, 0, 0, 0};
+        Rect outlineInner{};
+        float outlineInnerRadii[4] = {0, 0, 0, 0};
+        uint32_t outlineCmd = UINT32_MAX;
+    };
+    std::vector<BoxShadowCandidate> m_boxShadowStack;
+    std::vector<BoxShadowDecision>* m_boxShadowLog = nullptr;
+    bool m_boxShadowCommands = true;  // T-680
+    TextShaper* m_shaper = nullptr;   // T-680: setShaper()
+    /// T-668: the early test at PushEffect time (conditions 1-3, 5, 6); true when the node stays a
+    /// candidate (pushed on m_boxShadowStack).
+    bool beginBoxShadowCandidate(const NodeArena& arena, NodeId n, float alpha, size_t pushPos,
+                                 const CommandList& out);
+    /// T-668: the decision at the node's PopEffect; true when the PushEffect was replaced by
+    /// DrawBoxShadow commands (no PopEffect is to be emitted).
+    bool finishBoxShadowCandidate(CommandList& out);
+
     // Per-node count of "drawable items" (a Path that fills or strokes, or an Image) in the
     // subtree rooted at that node (root included). Indexed by NodeId; recomputed at the start of
     // every paint() call (capacity retained across calls).

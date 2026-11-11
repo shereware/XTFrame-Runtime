@@ -174,7 +174,14 @@ struct FontDesc {
 /// requirement is on `xt_text`, not this interface. See Docs/design/07-text.md §7.2.
 class TextShaper {
 public:
+    TextShaper();
     virtual ~TextShaper() = default;
+
+    /// T-675 (Docs/design/10-backends.md §10.11, T-662 record): a number taken from a process-wide
+    /// counter when the shaper is made, so no other shaper made has it (a copy keeps it, with the same
+    /// fonts). Caches keyed by a shaper's FontIds use it, not the shaper's address, which a shaper
+    /// made later may reuse.
+    uint64_t generation() const { return m_generation; }
 
     /// Registers a font from an in-memory font file (the implementation takes ownership of the
     /// bytes). Returns false when this shaper cannot register fonts this way (the default) or the
@@ -215,6 +222,9 @@ public:
     bool glyphBitmap(FontId font, uint32_t glyphId, float sizePx, GlyphBitmap& out) {
         return glyphBitmap(font, glyphId, sizePx, 0.0f, out);
     }
+
+private:
+    uint64_t m_generation = 0;
 };
 
 /// A TextShaper with no fonts: match() always returns kInvalidFont, shape() always produces an

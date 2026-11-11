@@ -25,10 +25,13 @@
 /// "compileDocument -> Context -> update(time) -> render -> SwRenderer -> PNG -> compare" pipeline
 /// for every fixture listed in Tests/golden/ui/manifest.txt (Docs/tasks/T-27.md).
 ///
-/// Usage: xt_golden [--update] [--filter <substring>] [--backend sw|wgpu]
+/// Usage: xt_golden [--update] [--filter <terms>] [--backend sw|wgpu] [--order-pairs]
 ///   --update           Write the rendered image to expected/<name>.png instead of comparing.
-///   --filter <substr>  Only run fixtures whose name contains <substr>. Applies to both the
-///                      SceneBuilder fixtures and the Lottie manifest fixtures.
+///   --filter <terms>   Only run fixtures whose name contains <terms>. Applies to both the
+///                      SceneBuilder fixtures and the Lottie manifest fixtures. T-677: <terms> may
+///                      be several, separated by commas (a fixture matching any runs, in manifest
+///                      order); a term starting with '=' matches the whole name only
+///                      (`--filter =ui_text_wrap`). Tools/Scripts/golden_order_check.sh uses it.
 ///   --backend wgpu     T-438 (Docs/design/10-backends.md §10.10.3): draw every fixture with
 ///                      xt::wgpu (headless; XT_WGPU_BACKEND / XT_WGPU_FALLBACK apply) and compare it
 ///                      against the same SW expected images with the GPU/SW tolerance of 15 §15.3
@@ -36,6 +39,10 @@
 ///                      gl-only fixtures (custom effects) run too; the partial-redraw check (SW
 ///                      only) and --update do not. Without an adapter: `SKIP: no WebGPU adapter`,
 ///                      exit 0.
+///   --order-pairs      T-677 (wgpu only): instead of comparing with the expected images, draws the
+///                      UI fixtures matching --filter alone and in every ordered pair on fresh
+///                      renderers; each pair's second image must equal its alone image byte for
+///                      byte (golden_wgpu.h runWgpuOrderPairs). Exit 1 when a pair differs.
 /// Environment (T-267d): XT_GOLDEN_CHANNEL (default 2) and XT_GOLDEN_RATIO (default 0) set the
 /// compare tolerance for one run; XT_GOLDEN_VERBOSE=1 adds a [DIFF] line for every fixture that
 /// passes with differing pixels. Every line goes to stdout.
@@ -102,7 +109,29 @@ std::vector<uint8_t> renderFixture(const GoldenFixture& fx, const FrameBackend& 
 bool g_gpuTolerance = false;
 
 bool matchesFilter(const std::string& name, const std::string& filter) {
-    return filter.empty() || name.find(filter) != std::string::npos;
+    if (filter.empty()) {
+        return true;
+    }
+    // T-677: several terms separated by commas; a fixture matching any of them runs. A term is a
+    // substring of the name, or, starting with '=', the whole name.
+    size_t start = 0;
+    while (start <= filter.size()) {
+        const size_t comma = filter.find(',', start);
+        const size_t end = comma == std::string::npos ? filter.size() : comma;
+        const std::string term = filter.substr(start, end - start);
+        if (!term.empty() && term[0] == '=') {
+            if (name == term.substr(1)) {
+                return true;
+            }
+        } else if (!term.empty() && name.find(term) != std::string::npos) {
+            return true;
+        }
+        if (comma == std::string::npos) {
+            break;
+        }
+        start = comma + 1;
+    }
+    return false;
 }
 
 /// T-267a (review 2026-10-02 L6): every comparison here is SW against an SW-rendered golden (the
@@ -155,16 +184,52 @@ bool compareAndReport(const std::string& name, const std::vector<uint8_t>& actua
     return false;
 }
 
+#ifdef XT_GOLDEN_WGPU
+/// T-677: `--order-pairs` -- the UI fixtures matching `filter`, alone and in every ordered pair
+/// (golden_wgpu.h runWgpuOrderPairs). Called with the wgpu backend made; releases it.
+int runOrderPairs(const std::string& filter) {
+    const fs::path uiDir(goldenUiDir(XT_GOLDEN_UI_DIR));
+    std::vector<UiFixture> chosen;
+    for (const UiFixture& fx : loadUiManifest((uiDir / "manifest.txt").string())) {
+        if (matchesFilter(fx.name, filter)) {
+            chosen.push_back(fx);
+        }
+    }
+    if (chosen.size() < 2) {
+        report("xt_golden: --order-pairs needs at least two UI fixtures matching '%s'\n", filter.c_str());
+        releaseWgpuBackend();
+        return 2;
+    }
+    std::string err;
+    const int failed = runWgpuOrderPairs(chosen, uiDir.string(), err);
+    releaseWgpuBackend();
+    if (failed < 0) {
+        report("xt_golden: --order-pairs: %s\n", err.c_str());
+        return 2;
+    }
+    const size_t pairs = chosen.size() * (chosen.size() - 1);
+    if (failed > 0) {
+        report("xt_golden: %d/%zu ordered pair(s) differ\n", failed, pairs);
+        return 1;
+    }
+    report("xt_golden: all %zu ordered pair(s) identical\n", pairs);
+    return 0;
+}
+#endif
+
 }  // namespace
 
 static int runGolden(int argc, char** argv) {
     bool update = false;
+    bool orderPairs = false;
     std::string filter;
     std::string backendName = "sw";
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--update") {
             update = true;
+        } else if (arg == "--order-pairs") {
+            orderPairs = true;
         } else if (arg == "--backend") {
             if (i + 1 >= argc) {
                 report("xt_golden: --backend requires an argument (sw or wgpu)\n");
@@ -189,6 +254,10 @@ static int runGolden(int argc, char** argv) {
 
     FrameBackend backend = swFrameBackend();
     const bool gpu = backendName == "wgpu";
+    if (orderPairs && !gpu) {
+        report("xt_golden: --order-pairs needs --backend wgpu (the SW backend keeps no state)\n");
+        return 2;
+    }
     if (gpu) {
         if (update) {
             report("xt_golden: --update writes SW images only; drop --backend wgpu\n");
@@ -202,6 +271,9 @@ static int runGolden(int argc, char** argv) {
         }
         report("xt_golden: wgpu adapter: %s\n", wgpuAdapterName().c_str());
         g_gpuTolerance = true;
+        if (orderPairs) {
+            return runOrderPairs(filter);
+        }
 #else
         report("SKIP: no WebGPU adapter (xt_golden was built without xt_wgpu)\n");
         return 0;

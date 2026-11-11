@@ -1,0 +1,76 @@
+<xt version="2">
+
+  <!-- T-668 (10 section 10.12 item 2, "不轉換的情形維持原樣"): drop shadows that stay a PushEffect
+       -- a blur after the shadow in the effect chain, an outline, a child reaching past the box,
+       and a translucent background. Elliptical corners have no fixture: XTFrame's border-radius
+       is one circular radius per corner. -->
+  <body>
+    <div id="chain" class="cell"></div>
+    <div id="outline" class="cell"></div>
+    <div id="overflow" class="cell"><div id="child"></div></div>
+    <div id="translucent" class="cell"></div>
+  </body>
+
+  <layout>
+    body {
+      width: 256px;
+      height: 256px;
+      margin: 0;
+    }
+    .cell {
+      position: absolute;
+      width: 72px;
+      height: 52px;
+    }
+    #chain {
+      left: 28px;
+      top: 30px;
+    }
+    #outline {
+      left: 148px;
+      top: 30px;
+    }
+    #overflow {
+      left: 28px;
+      top: 150px;
+    }
+    #child {
+      position: absolute;
+      left: 52px;
+      top: 18px;
+      width: 36px;
+      height: 24px;
+    }
+    #translucent {
+      left: 148px;
+      top: 150px;
+    }
+  </layout>
+  <style>
+    #chain {
+      border-radius: 10px;
+      background-color: #3060c0;
+      effect: shadow(3px 5px 8px #000000a0) blur(1px);
+    }
+    #outline {
+      border-radius: 10px;
+      background-color: #e04040;
+      outline: 2px solid #202020;
+      outline-offset: 2px;
+      effect: shadow(3px 5px 8px #000000a0);
+    }
+    #overflow {
+      border-radius: 10px;
+      background-color: #20a060;
+      effect: shadow(3px 5px 8px #000000a0);
+    }
+    #child {
+      background-color: #f0c020;
+    }
+    #translucent {
+      border-radius: 10px;
+      background-color: #8040c0b0;
+      effect: shadow(3px 5px 8px #000000a0);
+    }
+  </style>
+</xt>

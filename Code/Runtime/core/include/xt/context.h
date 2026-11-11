@@ -498,6 +498,14 @@ public:
     /// decoder (xt_shell, the editor without Qt Multimedia); off by default.
     void setExternalPlaceholders(bool on);
     bool externalPlaceholders() const { return m_externalPlaceholders; }
+    /// T-680 (Docs/design/10-backends.md §10.12 item 2, "補充 2" A): every loaded Document (and
+    /// every later one) may turn element drop shadows into `DrawBoxShadow` commands (on, the
+    /// default) or keeps them as PushEffect groups (off: the CommandList is what it was before
+    /// T-668). Turn it off when the lists go to a consumer that does not implement DrawBoxShadow:
+    /// BakedWriter (`.xtcl` has no such command; `xtframe-bake` does this) or a custom backend /
+    /// GpuDevice without it. Takes effect from the next render().
+    void setBoxShadowCommands(bool on) { m_boxShadowCommands = on; }
+    bool boxShadowCommands() const { return m_boxShadowCommands; }
     /// T-178 (13.8.3 `setInputDevice`): switches DeviceInfo::input -- setDevice() with only the
     /// input changed, so `@media (input: ...)` follows and every `<glyph>` is re-resolved.
     Status setInputDevice(InputKind input);
@@ -675,6 +683,7 @@ private:
     IGlyphProvider* m_glyphProvider = nullptr;
     // T-191: setExternalPlaceholders(); render()'s external damage scratch.
     bool m_externalPlaceholders = false;
+    bool m_boxShadowCommands = true;  // T-680: setBoxShadowCommands().
     std::vector<Rect> m_externalDamageScratch;
     // T-194: per surface (index = handle - 1) stacking and input mode; the pointer's capture
     // surface (between a press and its release), the surface under the hover and the surface that

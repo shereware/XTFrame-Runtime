@@ -73,8 +73,12 @@ struct GpuFrameCounters {
     uint32_t coverageTiles = 0;  ///< T-672: edge / uniform tiles of the tiled fills
     uint32_t coverageUniformTiles = 0;
     uint64_t coverageAtlasBytes = 0;  ///< T-672: the coverage atlas pages (R8)
-    float buildMs = 0;                ///< FrameBuilder::build (0 for a reused frame)
-    float submitMs = 0;               ///< the device's encode and queue submit
+    uint32_t clipSkipped = 0;         ///< T-663: clips drawn without a clip, as a scissor,
+    uint32_t clipScissor = 0;         ///< as one image polygon, or as a mask layer
+    uint32_t clipImageDirect = 0;
+    uint32_t clipMaskLayers = 0;
+    float buildMs = 0;   ///< FrameBuilder::build (0 for a reused frame)
+    float submitMs = 0;  ///< the device's encode and queue submit
     /// T-670: live / peak non-sampler bindings of the wgpu device (WgpuDeviceStats); `hasBindings`
     /// is false for a renderer without them.
     bool hasBindings = false;

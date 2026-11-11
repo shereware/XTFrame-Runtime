@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "golden_common.h"
 
@@ -20,5 +21,13 @@ std::string wgpuAdapterName();
 
 /// Releases the device of `makeWgpuBackend` (call before exit).
 void releaseWgpuBackend();
+
+/// T-677 (Docs/tasks/T-677.md item 4): order independence over `fixtures` (UI fixtures of `uiDir`,
+/// at least two). Each fixture is drawn alone by a fresh renderer; then, for every ordered pair
+/// (A, B) with A != B, a fresh renderer draws A and then B, and B must equal its alone image byte
+/// for byte. Prints one `[PASS] order A -> B` / `[FAIL] order A -> B: <n> bytes differ` line per
+/// pair; returns the number of failed pairs (a fixture that cannot be rendered fails its pairs),
+/// or -1 (with `err`) when a renderer cannot be made. Replaces the device of makeWgpuBackend.
+int runWgpuOrderPairs(const std::vector<UiFixture>& fixtures, const std::string& uiDir, std::string& err);
 
 }  // namespace xt::golden

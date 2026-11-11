@@ -1,0 +1,159 @@
+<xt version="2">
+
+  <!-- T-668 (10 section 10.12 item 2): drop shadows that become DrawBoxShadow -- square corners,
+       equal and unequal radii, a radius above 3 sigma and one below sigma, positive and negative
+       spread (a negative spread is 0, as the effect path treats it), a blur whose 3 sigma exceeds
+       the box, the no-blur threshold both sides (blur 2.9 px and 2.8 px), a card rotated 7 deg and
+       one frame of a breathing shadow animation. -->
+  <body>
+    <div id="square" class="cell"></div>
+    <div id="equal" class="cell"></div>
+    <div id="unequal" class="cell"></div>
+    <div id="bigRadius" class="cell"></div>
+    <div id="smallRadius" class="cell"></div>
+    <div id="spreadPos" class="cell"></div>
+    <div id="spreadNeg" class="cell"></div>
+    <div id="hugeBlur" class="small"></div>
+    <div id="above" class="cell"></div>
+    <div id="below" class="cell"></div>
+    <div id="rotated" class="cell"></div>
+    <div id="breathe" class="cell"></div>
+  </body>
+
+  <layout>
+    body {
+      width: 480px;
+      height: 320px;
+      margin: 0;
+    }
+    .cell {
+      position: absolute;
+      width: 64px;
+      height: 44px;
+    }
+    .small {
+      position: absolute;
+      width: 16px;
+      height: 12px;
+    }
+    #square {
+      left: 28px;
+      top: 26px;
+    }
+    #equal {
+      left: 144px;
+      top: 26px;
+    }
+    #unequal {
+      left: 260px;
+      top: 26px;
+    }
+    #bigRadius {
+      left: 376px;
+      top: 26px;
+    }
+    #smallRadius {
+      left: 28px;
+      top: 132px;
+    }
+    #spreadPos {
+      left: 144px;
+      top: 132px;
+    }
+    #spreadNeg {
+      left: 260px;
+      top: 132px;
+    }
+    #hugeBlur {
+      left: 400px;
+      top: 148px;
+    }
+    #above {
+      left: 28.3px;
+      top: 238.6px;
+    }
+    #below {
+      left: 144.3px;
+      top: 238.6px;
+    }
+    #rotated {
+      left: 260px;
+      top: 238px;
+      transform: rotate(7deg);
+    }
+    #breathe {
+      left: 376px;
+      top: 238px;
+    }
+  </layout>
+  <style>
+    @keyframes breathe {
+      from {
+        effect: shadow(0px 2px 4px #ff8030a0);
+      }
+      to {
+        effect: shadow(0px 6px 20px 4px #ff8030ff);
+      }
+    }
+    #square {
+      background-color: #3060c0;
+      effect: shadow(4px 6px 8px #000000a0);
+    }
+    #equal {
+      border-radius: 10px;
+      background-color: #e04040;
+      effect: shadow(0px 6px 12px #00000099);
+    }
+    #unequal {
+      border-radius: 0px 8px 18px 4px;
+      background-gradient: linear-gradient(90deg, #20a060 0%, #f0c020 100%);
+      effect: shadow(-3px 5px 10px #1a2a80b0);
+    }
+    #bigRadius {
+      border-radius: 22px;
+      background-color: #8040c0;
+      effect: shadow(0px 4px 6px #000000cc);
+    }
+    #smallRadius {
+      border-radius: 2px;
+      background-color: #208080;
+      effect: shadow(0px 4px 16px #000000aa);
+    }
+    #spreadPos {
+      border-radius: 8px;
+      background-color: #c08020;
+      effect: shadow(2px 2px 8px 6px #00000088);
+    }
+    #spreadNeg {
+      border-radius: 12px;
+      background-color: #404040;
+      effect: shadow(0px 6px 10px -5px #000000aa);
+    }
+    #hugeBlur {
+      border-radius: 3px;
+      background-color: #ffffff;
+      effect: shadow(0px 0px 40px #000000ff);
+    }
+    #above {
+      border-radius: 9px;
+      background-color: #2080e0;
+      effect: shadow(3px 3px 2.9px #000000c0);
+    }
+    #below {
+      border-radius: 9px;
+      background-color: #2080e0;
+      effect: shadow(3px 3px 2.8px #000000c0);
+    }
+    #rotated {
+      border-radius: 10px;
+      background-color: #f0f0f0;
+      effect: shadow(0px 8px 14px #00000099);
+    }
+    #breathe {
+      border-radius: 12px;
+      background-color: #ffd0a0;
+      effect: shadow(0px 2px 4px #ff8030a0);
+      animation: breathe 1s linear 0s 1 normal both;
+    }
+  </style>
+</xt>

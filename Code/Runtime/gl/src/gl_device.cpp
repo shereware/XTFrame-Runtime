@@ -63,6 +63,15 @@ bool GlDevice::linkMain(Program& p, const char* frag, std::string& err) {
     p.uRect = glGetUniformLocation(p.id, "uRect");
     p.uTexSize = glGetUniformLocation(p.id, "uTexSize");
     p.uUvToLocal = glGetUniformLocation(p.id, "uUvToLocal");  // T-660b (kCoverageGradientFrag only).
+    p.uShape = glGetUniformLocation(p.id, "uShape");          // T-668 (kBoxShadowFrag only).
+    p.uRadii = glGetUniformLocation(p.id, "uRadii");
+    p.uSigma = glGetUniformLocation(p.id, "uSigma");
+    p.uColor = glGetUniformLocation(p.id, "uColor");
+    p.uShape1 = glGetUniformLocation(p.id, "uShape1");  // T-680 (kBoxShadowFrag only).
+    p.uRadii1 = glGetUniformLocation(p.id, "uRadii1");
+    p.uShape2 = glGetUniformLocation(p.id, "uShape2");
+    p.uRadii2 = glGetUniformLocation(p.id, "uRadii2");
+    p.uTerms = glGetUniformLocation(p.id, "uTerms");
     // Sampler units and the LUT width never change (T-159): set once. A -1 location is a no-op.
     glUseProgram(p.id);
     glUniform1i(glGetUniformLocation(p.id, "uTex"), 0);
@@ -97,6 +106,7 @@ bool GlDevice::init(std::string& err) {
                     linkMain(m_glyph, shaders::kGlyphFrag, err) &&
                     linkMain(m_coverageSolid, shaders::kCoverageSolidFrag, err) &&
                     linkMain(m_coverageGradient, shaders::kCoverageGradientFrag, err) &&
+                    linkMain(m_boxShadow, shaders::kBoxShadowFrag, err) &&
                     linkParticle(m_particleTexture, shaders::kParticleTextureFrag, err) &&
                     linkParticle(m_particleSolid, shaders::kParticleSolidFrag, err);
     bool compositeOk = false;
@@ -230,8 +240,8 @@ void GlDevice::shutdown() {
     if (m_particleVao != 0) glDeleteVertexArrays(1, &m_particleVao);
     m_particleVbo = m_particleVao = 0;
     m_particleCapacity = 0;
-    Program* progs[] = {&m_solid,     &m_gradient, &m_texture,       &m_textureStraight, &m_glyph,
-                        &m_composite, &m_resolve,  &m_coverageSolid, &m_coverageGradient};
+    Program* progs[] = {&m_solid,     &m_gradient, &m_texture,       &m_textureStraight,  &m_glyph,
+                        &m_composite, &m_resolve,  &m_coverageSolid, &m_coverageGradient, &m_boxShadow};
     for (Program* p : progs) {
         if (p->id != 0) glDeleteProgram(p->id);
         *p = Program{};
@@ -948,6 +958,36 @@ void GlDevice::drawCmd(const gpu::DrawCmd& cmd) {
         case Shading::ParticleTexture:
         case Shading::ParticleSolid:
             return;  // T-202: only DrawKind::Particles uses them (drawn above).
+        case Shading::BoxShadow: {
+            // T-668: nothing is drawn without its parameters (like the other parameter blocks).
+            size_t avail = 0;
+            const float* p = paramsAt(cmd.paramIndex, avail);
+            gpu::BoxShadowParams bp{};
+            if (p == nullptr || avail * sizeof(float) < sizeof(bp)) {
+                return;
+            }
+            std::memcpy(&bp, p, sizeof(bp));
+            Program& prog = m_boxShadow;
+            m_cache.useProgram(prog.id);
+            prog.shadow.stats = &m_cache.stats;
+            prog.shadow.setMat3(prog.uNdc, m_ndc);
+            prog.shadow.set4f(prog.uShape, bp.x0, bp.y0, bp.x1, bp.y1);
+            prog.shadow.set4f(prog.uRadii, bp.r[0], bp.r[1], bp.r[2], bp.r[3]);
+            prog.shadow.set1f(prog.uSigma, bp.sigma);
+            prog.shadow.set4f(prog.uColor, bp.color[0], bp.color[1], bp.color[2], bp.color[3]);
+            // T-680: the extra signed terms.
+            prog.shadow.set3f(prog.uTerms, bp.extraCount, bp.extraSign[0], bp.extraSign[1]);
+            if (bp.extraCount > 0.5f) {
+                const float* e1 = bp.extra[0];
+                const float* e2 = bp.extra[1];
+                prog.shadow.set4f(prog.uShape1, e1[0], e1[1], e1[2], e1[3]);
+                prog.shadow.set4f(prog.uRadii1, e1[4], e1[5], e1[6], e1[7]);
+                prog.shadow.set4f(prog.uShape2, e2[0], e2[1], e2[2], e2[3]);
+                prog.shadow.set4f(prog.uRadii2, e2[4], e2[5], e2[6], e2[7]);
+            }
+            m_geometry.drawRange(cmd.firstIndex, cmd.indexCount, cmd.baseVertex, m_cache.stats);
+            return;
+        }
     }
 }
 

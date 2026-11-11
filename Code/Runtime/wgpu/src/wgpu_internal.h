@@ -8,6 +8,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "xt/gpu/gpu_device.h"
@@ -21,6 +22,26 @@
 namespace xt::wgpu::detail {
 
 inline WGPUStringView label(const char* s) { return WGPUStringView{s, s != nullptr ? WGPU_STRLEN : 0}; }
+
+/// gl_device.cpp kTransientIdleFrames (T-163): a pooled transient idle this long goes, at most one per
+/// frame. T-675: on a WgpuSharedCache the frames are the target's (WgpuSharedCache::endFrame).
+inline constexpr uint32_t kTransientIdleFrames = 1800;
+/// T-678 (50 §50.ac addendum item 1): the transient pool's byte budget is the most bytes of transients
+/// borrowed at once in the last frame plus this much (so never below it): on a WgpuSharedCache the last
+/// target frame's peak over its submits (set by WgpuSharedCache::endFrame), else the last submit's.
+inline constexpr uint64_t kPoolBudgetHeadroomBytes = 16ull * 1024u * 1024u;
+/// gl_device.cpp kCachedFreeBudgetBytes (released cached targets kept for reuse).
+inline constexpr uint64_t kCachedFreeBudgetBytes = 16ull * 1024u * 1024u;
+/// T-675 (50 §50.ac item 2): an idle surface texture of a WgpuSharedCache's pool, and an unborrowed
+/// surface attachment set, go after this many target frames without use.
+inline constexpr uint32_t kSurfacePoolIdleFrames = 300;
+
+/// A 2D texture (one mip level) and its default view; release* destroys and releases both (T-675:
+/// shared by WgpuDevice and WgpuSharedCache).
+WGPUTexture makeTexture(WGPUDevice device, const char* name, uint32_t w, uint32_t h, WGPUTextureFormat format,
+                        uint32_t samples, WGPUTextureUsage usage);
+WGPUTextureView makeView(WGPUTexture t);
+void releaseTexture(WGPUTexture& t, WGPUTextureView& v);
 
 WGPUTextureFormat formatOf(gpu::TextureFormat fmt);
 
@@ -49,6 +70,7 @@ enum ShaderId : uint16_t {
     kShParticleSolid,
     kShCoverageSolid,     ///< T-660b: Solid with DrawCmd::coverage
     kShCoverageGradient,  ///< T-660b: Gradient with DrawCmd::coverage
+    kShBoxShadow,         ///< T-668: Shading::BoxShadow
     kShFxGaussScalar,
     kShFxGaussColor,
     kShFxDilate,
@@ -277,6 +299,81 @@ struct WgpuSharedCache::Impl {
     void applyIdleBudget();
     /// Releases the device reference once nothing created on it is left.
     void releaseDeviceIfUnused();
+
+    // -- T-675 (Docs/design/50-c-abi.md §50.ac item 2): the target-level pools the devices borrow
+    // from. Only the devices of one target use them, one at a time (50 §50.1), so a pooled texture is
+    // either idle here or used by the one device drawing now. --
+
+    /// Transient targets of every device (WgpuDevice::acquirePooled); slots keep their index.
+    std::vector<WgpuDevice::Pooled> transients;
+    /// T-678 (50 §50.ac addendum item 1): the most bytes of transients one submit of the current
+    /// target frame borrowed (WgpuDevice::submit; the devices submit one after another, so this is
+    /// the most borrowed at once) ...
+    uint64_t frameBorrowPeak = 0;
+    /// ... and the budget endFrame made of the frame that ended: frameBorrowPeak +
+    /// kPoolBudgetHeadroomBytes. LRU entries over it go then (and after each submit, as before).
+    uint64_t transientBudget = detail::kPoolBudgetHeadroomBytes;
+    /// T-678 (50 §50.ac addendum item 2): bytes per texel of a Stencil8 texture as the backend of the
+    /// cache's device creates it (stencil8TexelBytes; set by the first device that borrows it).
+    uint32_t stencilTexelBytes = 1;
+    /// Released effect-cache / band targets of every device, reused by exact size.
+    std::vector<WgpuDevice::FreeCached> cachedFree;
+    uint64_t cachedFreeBytes = 0;
+    /// Surface attachments (a 4x colour attachment when samples > 1, and a Stencil8 of the same
+    /// sample count), one set per (size, samples, format), borrowed by the device drawing its
+    /// surface for one submit.
+    struct AttachmentSet {
+        uint32_t width = 0, height = 0, samples = 1;
+        WGPUTextureFormat format = WGPUTextureFormat_Undefined;
+        WGPUTexture msaa = nullptr;
+        WGPUTextureView msaaView = nullptr;
+        WGPUTexture stencil = nullptr;  ///< null = empty slot
+        WGPUTextureView stencilView = nullptr;
+        bool borrowed = false;
+        uint32_t lastUsed = 0;
+        uint64_t bytes = 0;
+    };
+    std::vector<AttachmentSet> attachments;
+    /// Idle single-sample surface textures (WgpuSharedCache::releaseSurfaceTexture).
+    struct SurfaceTexture {
+        uint32_t width = 0, height = 0;
+        WGPUTextureFormat format = WGPUTextureFormat_Undefined;
+        WGPUTexture texture = nullptr;
+        WGPUTextureView view = nullptr;
+        uint32_t idleSince = 0;
+        uint64_t bytes = 0;
+    };
+    std::vector<SurfaceTexture> surfaceIdle;
+    /// The 1x1 transparent texture every device binds where a command has no texture.
+    WGPUTexture dummy = nullptr;
+    WGPUTextureView dummyView = nullptr;
+    /// Target frames (WgpuSharedCache::endFrame): the clock of every pool above.
+    uint32_t frame = 0;
+    /// Bumped whenever a pooled view that a device's bind groups may name (a transient, a cached
+    /// target) is destroyed; each device flushes its bind groups before its next submit when it
+    /// differs from the value it saw (WgpuDevice::m_seenViewGeneration).
+    uint64_t viewGeneration = 0;
+
+    /// Creates the dummy on `device` once (uploaded through `queue`). False when it cannot be made.
+    bool ensureDummy(WGPUQueue queue);
+    /// An unborrowed set of the key, made when there is none; its index, or -1 when it cannot be made.
+    int borrowAttachments(uint32_t width, uint32_t height, uint32_t samples, WGPUTextureFormat format);
+    void returnAttachments(int index);
+    /// Destroys pooled transient `p` (leaves an empty slot).
+    void destroyTransient(WgpuDevice::Pooled& p);
+    /// Destroys the oldest released cached targets while they exceed kCachedFreeBudgetBytes.
+    void trimCachedFree();
+    /// endFrame: sets the transient budget from the frame that ended and applies it
+    /// (applyTransientBudget), then ages every pool (one more target frame first).
+    void agePools();
+    /// T-678: transientBudget = frameBorrowPeak + kPoolBudgetHeadroomBytes (the peak starts again
+    /// at 0), then the least recently used transients go while the pool is over it -- never one used
+    /// in the frame that ended, and never the last one (WgpuDevice::trimPool's rule).
+    void applyTransientBudget();
+    /// Destroys every pooled texture no device borrows now; returns how many textures.
+    uint32_t destroyPools();
+    /// Fills the T-675 pool fields of `out`.
+    void poolStats(WgpuSharedStats& out) const;
 };
 
 /// WgpuDevice's GPU-side state (wgpu_device.cpp, wgpu_draw.cpp).

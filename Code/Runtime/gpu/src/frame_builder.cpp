@@ -15,12 +15,15 @@
 #include "frame_emit.h"
 #include "gpu_effects.h"
 #include "gradient_lut.h"
+#include "rounded_rect.h"  // Code/Runtime/core/src: R' of a sharp DrawBoxShadow (T-668)
 #include "xt/assert.h"
 #include "xt/asset_resolver.h"
+#include "xt/box_shadow.h"
 #include "xt/coverage_bitmap.h"
 #include "xt/damage.h"
 #include "xt/effect_utils.h"
 #include "xt/geom.h"
+#include "xt/gpu/clip_bounds.h"
 #include "xt/gpu/coverage_atlas.h"
 #include "xt/project3d.h"
 #include "xt/text_shaper.h"
@@ -447,6 +450,9 @@ struct FrameBuilder::Impl {
     // --- Per-build state -------------------------------------------------------------------
     const CommandList* list = nullptr;
     float currentDpr = 1.0f;
+    /// T-664: the shaper of the build in progress, for the clip scan's glyph run boxes
+    /// (clipContentBounds); null outside buildOnce.
+    TextShaper* clipShaper = nullptr;
     std::vector<project3d::Mapping> mappings;
 
     /// One clip level. Rect clips that stay axis-aligned become a scissor (no stencil); every
@@ -458,6 +464,8 @@ struct FrameBuilder::Impl {
         Geometry winding;  ///< the shape's fan triangles
         Geometry quad;     ///< its AABB cover quad
         FillRule rule = FillRule::NonZero;
+        /// T-663: a clip drawn as a mask layer (a Mask frame on frameStack); its PopClip pops it.
+        bool maskLayer = false;
     };
     std::vector<ClipLevel> clipStack;
     int clipDepth = 0;  ///< number of *stencil* levels currently active (0..15)
@@ -494,6 +502,9 @@ struct FrameBuilder::Impl {
     std::vector<Vec2> flatPoints;
     std::vector<uint32_t> flatStarts;
     std::vector<uint8_t> flatClosed;
+    /// T-668: the path of a sharp DrawBoxShadow (capacity retained across frames).
+    std::vector<PathVerb> shadowVerbs;
+    std::vector<float> shadowPoints;
     std::vector<Vec2> dashPoints;
     std::vector<uint32_t> dashStarts;
     std::vector<uint8_t> dashClosed;
@@ -512,6 +523,9 @@ struct FrameBuilder::Impl {
     std::vector<uint32_t> coverageStrokeStarts;
     std::vector<PathVerb> glyphOutlineVerbs;
     std::vector<float> glyphOutlinePoints;
+    /// T-676: per glyph of a rotated / skewed run, 1 = its coverage quad was refused and the
+    /// T-653 atlas path draws it (doTransformedRun).
+    std::vector<uint8_t> transformedRunFallback;
     std::vector<Vertex> meshVertexScratch;  // T-245: one DrawImageMesh's projected vertices.
     std::array<std::vector<Vertex>, 4> glyphBatch;
 
@@ -563,6 +577,28 @@ struct FrameBuilder::Impl {
     uint32_t statCoverageTiles = 0;         // T-672: edge tiles drawn (atlas texels)
     uint32_t statCoverageUniformTiles = 0;  // T-672: empty and full tiles of the tiled shapes drawn
     FrameBuilder::CoverageStats lastCoverageStats;
+
+    /// T-663 (§10.11 ruling 5 final): one clip's scan, from its Push to the matching PopClip.
+    struct ClipScan {
+        size_t pop = 0;        ///< index of the matching PopClip (when `found`)
+        bool found = false;    ///< the matching PopClip exists
+        bool reliable = true;  ///< every command in the range had a usable box (clipContentBounds)
+        bool any = false;      ///< `bounds` holds at least one box
+        Rect bounds;           ///< device-pixel union of the boxes, `C` of the ruling
+        uint32_t draws = 0;    ///< drawing commands in the range (nested ranges included)
+        uint32_t others = 0;   ///< every other command in the range (nested clips, groups, pops)
+        size_t firstDraw = 0;  ///< index of the first drawing command
+    };
+    /// Scans of this build attempt; `clipScanSlot[i]` is the entry of the clip at command `i`
+    /// plus one (0: not scanned yet). Sized lazily to the list on the first clip.
+    std::vector<ClipScan> clipScans;
+    std::vector<uint32_t> clipScanSlot;
+    std::vector<std::pair<size_t, ClipScan>> clipScanStack;  ///< scanClip's open nested ranges
+    /// The end of the commands being drawn (the list, or the Direct-mode run): a clip whose
+    /// PopClip lies beyond it keeps its stencil level.
+    size_t clipScanEnd = 0;
+    uint32_t statClipSkipped = 0, statClipScissor = 0, statClipImageDirect = 0, statClipMaskLayers = 0;
+    FrameBuilder::ClipStats lastClipStats;
 
     // ---------------------------------------------------------------------------------------
     // Lifetime.
@@ -1055,7 +1091,8 @@ struct FrameBuilder::Impl {
         if (coverageFirst && fillCoverage(*coverage, pts, deviceXf, rule, paint)) {
             return;
         }
-        if (fillDirect(pts, starts, deviceXf, rule, paint, edgeFringe && antialias)) {
+        if (fillDirect(pts, starts, deviceXf, rule, paint, edgeFringe && antialias,
+                       coverageAllowed && !coverageFirst)) {
             return;
         }
         if (coverageAllowed && !coverageFirst && fillCoverage(*coverage, pts, deviceXf, rule, paint)) {
@@ -1751,6 +1788,41 @@ struct FrameBuilder::Impl {
     /// edge). Coverage that thin rounds to 0 in 8 bits anyway.
     static constexpr float kCollapsedRingWidth = 1e-3f;
 
+    /// T-664: two side widths of a ring closer than this (px) count as equal. The flattened arcs
+    /// of a rounded ring of one width give chord pairs whose distance differs from the width by
+    /// up to the flattening tolerance; the straight sides of a CSS border are exact.
+    static constexpr float kRingSideWidthTolerance = kFlattenTolerance;
+
+    /// T-664 (Docs/tasks/T-664.md item 3): whether the ring's sides have different widths. A
+    /// side's width is the distance between an outer edge and an inner edge with the same outward
+    /// normal (needs `outer.normals` and `inner.normals`); the sides differ when the widest and
+    /// the thinnest such pair are more than kRingSideWidthTolerance apart. A ring with no parallel
+    /// pair (a circle) counts as even.
+    /// T-676 (Docs/tasks/T-676.md item 6): also true for a ring of even sides whose width (the
+    /// widest pair) is under 1 px by more than kCollapsedRingWidth -- a sub-pixel ring of one width
+    /// is drawn from coverage too, as the uneven ones. A ring with no parallel pair stays false.
+    static bool ringSidesUnevenOrThin(const Contour& inner, const Contour& outer) {
+        float lo = 1e9f, hi = -1e9f;
+        const size_t n = outer.pts.size(), m = inner.pts.size();
+        for (size_t i = 0; i < n; ++i) {
+            const Vec2 on = outer.normals[i];
+            for (size_t j = 0; j < m; ++j) {
+                const Vec2 in = inner.normals[j];
+                if (on.x * in.x + on.y * in.y < 1.0f - 1e-4f) {
+                    continue;
+                }
+                const float d =
+                    (outer.pts[i].x - inner.pts[j].x) * on.x + (outer.pts[i].y - inner.pts[j].y) * on.y;
+                lo = std::min(lo, d);
+                hi = std::max(hi, d);
+            }
+        }
+        if (hi < lo) {
+            return false;  // no parallel pair
+        }
+        return hi - lo > kRingSideWidthTolerance || hi < 1.0f - kCollapsedRingWidth;
+    }
+
     /// T-653: the fringed ring when some of its sides are collapsed (`inner.normals` set). When
     /// every inner edge but one lies on the outer boundary -- a border on one side only, as
     /// `border-left` -- the band is the outer contour cut by that edge's half plane, which is
@@ -1811,8 +1883,15 @@ struct FrameBuilder::Impl {
     /// n + m triangles; the fringe insets the outer edge and pushes the inner edge into the band,
     /// with alpha-0 rings beyond both. Returns false (nothing drawn) when a contour is not
     /// star-shaped around that centre, which only a degenerate input produces.
-    bool fillRing(Contour& outer, Contour& inner, const Mat2x3& deviceXf, const PaintRef& paint,
-                  bool fringe) {
+    /// T-664 (Docs/tasks/T-664.md item 3): also false when `coverageNext` (the caller draws the
+    /// shape as a coverage quad next), the fringe is on, the thinnest side is under 1 px (by more
+    /// than kCollapsedRingWidth: a 1 px side under a rotation measures a rounding error less) and the
+    /// sides have different widths (ringSidesUnevenOrThin): the fringe's one alpha scale (the thinnest
+    /// side's width) would dim every side; coverage gives each side its own.
+    /// T-676: and when the sides are of one width under 1 px (ringSidesUnevenOrThin): the fringe's
+    /// 2 px footprint at alpha = width is not SW's coverage of the thin band.
+    bool fillRing(Contour& outer, Contour& inner, const Mat2x3& deviceXf, const PaintRef& paint, bool fringe,
+                  bool coverageNext) {
         const size_t n = outer.pts.size(), m = inner.pts.size();
         Vec2 c{0, 0};
         for (const Vec2& p : inner.pts) {
@@ -1880,6 +1959,9 @@ struct FrameBuilder::Impl {
                 // uniform fringe below would fold over them. Nothing at all was drawn here before.
                 return fillCollapsedRing(outer, inner, deviceXf, paint);
             }
+            if (coverageNext && t < 1.0f - kCollapsedRingWidth && ringSidesUnevenOrThin(inner, outer)) {
+                return false;
+            }
             fringeFor(t, woff, alphaScale);
         }
         uint32_t innerRgba = 0;
@@ -1929,9 +2011,10 @@ struct FrameBuilder::Impl {
     }
 
     /// Tries the direct paths for `pts`/`starts` (see the section comment); false means the
-    /// caller must use stencil-then-cover.
+    /// caller must use stencil-then-cover. `coverageNext`: the caller tries a coverage quad before
+    /// stencil-then-cover (fillRing, T-664).
     bool fillDirect(std::span<const Vec2> pts, std::span<const uint32_t> starts, const Mat2x3& deviceXf,
-                    FillRule rule, const PaintRef& paint, bool fringe) {
+                    FillRule rule, const PaintRef& paint, bool fringe, bool coverageNext) {
         // Gather the non-degenerate contours.
         contourPool.clear();
         contourStarts.clear();
@@ -1985,7 +2068,7 @@ struct FrameBuilder::Impl {
                 computeMiters(contourA);
                 if (contourInside(contourB, contourA) &&
                     (rule == FillRule::EvenOdd || ringIsHoleUnderNonZero(pts, starts))) {
-                    return fillRing(contourA, contourB, deviceXf, paint, fringe);
+                    return fillRing(contourA, contourB, deviceXf, paint, fringe, coverageNext);
                 }
                 return false;
             }
@@ -2072,6 +2155,97 @@ struct FrameBuilder::Impl {
         fillShapeAndCover(flatPoints, flatStarts, deviceXf, cmd.rule, cmd.paint, cmd.antialias != 0,
                           coverage.path != nullptr ? &coverage : nullptr);
         projPaint = false;
+    }
+
+    /// T-668 (Docs/design/10-backends.md §10.12 item 2): an analytic box shadow, with no offscreen
+    /// target and no pass break. A Gaussian the effect path treats as no blur fills R' as a convex
+    /// shape (fringed when `edgeFringe`); otherwise one quad over R' outset by 3 sigma whose
+    /// `Shading::BoxShadow` fragment program evaluates xt/box_shadow.h's formula. Nothing under a 3D
+    /// projection (the Painter never emits one there; xt::sw skips it too).
+    void doBoxShadow(const BoxShadowCmd& cmd, float dpr) {
+        if (projecting() || emit.scissor().empty()) {
+            return;
+        }
+        const Mat2x3 deviceXf = deviceTransform(cmd.xf, dpr);
+        BoxShadowDraw d;
+        if (!resolveBoxShadow(cmd, deviceXf, d)) {
+            return;
+        }
+        const BoxShadowShape& s = d.shape;
+        if (d.sharp) {
+            shadowVerbs.clear();
+            shadowPoints.clear();
+            appendRoundedRectPath(Rect{s.x0, s.y0, s.x1 - s.x0, s.y1 - s.y0}, s.r[0], s.r[1], s.r[2], s.r[3],
+                                  shadowVerbs, shadowPoints);
+            // T-680 ("補充 2" B.1): the nested O_out / O_in / R terms are the ring plus the box, two
+            // shapes that do not overlap: the ring (O_in reversed, nonzero -- the outline's own ring,
+            // which the direct paths fringe) and then R, each a fill of its own. (xt::sw fills the
+            // three edges nonzero in one pass.)
+            if (d.extraCount == 2) {
+                const BoxShadowShape& hole = d.extra[0];
+                appendRoundedRectPathReversed(Rect{hole.x0, hole.y0, hole.x1 - hole.x0, hole.y1 - hole.y0},
+                                              hole.r[0], hole.r[1], hole.r[2], hole.r[3], shadowVerbs,
+                                              shadowPoints);
+            }
+            PaintRef paint{};
+            paint.kind = PaintKind::Solid;
+            paint.color = Color{cmd.color.r, cmd.color.g, cmd.color.b, d.premul.a};
+            auto fill = [&]() {
+                flatPoints.clear();
+                flatStarts.clear();
+                flatClosed.clear();
+                flattenPath(shadowVerbs, shadowPoints, deviceXf, kFlattenTolerance, flatPoints, flatStarts,
+                            flatClosed);
+                fillShapeAndCover(flatPoints, flatStarts, deviceXf, FillRule::NonZero, paint);
+            };
+            fill();
+            if (d.extraCount == 2) {
+                const BoxShadowShape& box = d.extra[1];
+                shadowVerbs.clear();
+                shadowPoints.clear();
+                appendRoundedRectPath(Rect{box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0}, box.r[0],
+                                      box.r[1], box.r[2], box.r[3], shadowVerbs, shadowPoints);
+                fill();
+            }
+            return;
+        }
+        const float reach = kBoxShadowSigmaReach * d.sigmaLocal;  // T-680: `s` contains the extra terms
+        const Vec2 local[4] = {Vec2{s.x0 - reach, s.y0 - reach}, Vec2{s.x1 + reach, s.y0 - reach},
+                               Vec2{s.x1 + reach, s.y1 + reach}, Vec2{s.x0 - reach, s.y1 + reach}};
+        Vertex v[4];
+        for (int i = 0; i < 4; ++i) {
+            const Vec2 p = apply(deviceXf, local[i]);
+            v[i] = Vertex{p.x, p.y, 1.0f, local[i].x, local[i].y, 0xFFFFFFFFu};
+        }
+        BoxShadowParams params{};
+        params.x0 = s.x0;
+        params.y0 = s.y0;
+        params.x1 = s.x1;
+        params.y1 = s.y1;
+        for (int i = 0; i < 4; ++i) {
+            params.r[i] = s.r[i];
+        }
+        params.sigma = d.sigmaLocal;
+        params.color[0] = d.premul.r;
+        params.color[1] = d.premul.g;
+        params.color[2] = d.premul.b;
+        params.color[3] = d.premul.a;
+        params.extraCount = static_cast<float>(d.extraCount);  // T-680
+        for (uint32_t k = 0; k < d.extraCount && k < 2; ++k) {
+            const BoxShadowShape& e = d.extra[k];
+            params.extraSign[k] = d.extraSign[k];
+            const float terms[8] = {e.x0, e.y0, e.x1, e.y1, e.r[0], e.r[1], e.r[2], e.r[3]};
+            for (int i = 0; i < 8; ++i) {
+                params.extra[k][i] = terms[i];
+            }
+        }
+        DrawCmd c;
+        c.shading = Shading::BoxShadow;
+        c.blend = Blend::SrcOver;
+        c.stencilOp = StencilOp::TestEqualRef;
+        c.stencilRef = static_cast<uint8_t>(clipDepth);
+        c.paramIndex = emit.pushParams(params);
+        emit.pushCmd(c, emit.quad(v));
     }
 
     void doStroke(const StrokeCmd& cmd, float dpr) {
@@ -2738,10 +2912,10 @@ struct FrameBuilder::Impl {
     // ---------------------------------------------------------------------------------------
 
     /// T-662 (Docs/tasks/T-662.md item 5): the coverage content hash of a glyph outline -- a tag,
-    /// the shaper (a FontId indexes that shaper's registry), the font, the glyph id and the size as
-    /// bits. A FontId names one face instance: its variable weight and synthetic bold (T-569) are
-    /// part of the id, so they are covered; the glyph's placement, size and any skew are in the raster
-    /// transform, which the key holds besides this hash. Never equal to a path's or stroke's hash
+    /// the shaper's generation (a FontId indexes that shaper's registry; T-675), the font, the glyph
+    /// id and the size as bits. A FontId names one face instance: its variable weight and synthetic bold
+    /// (T-569) are part of the id, so they are covered; the glyph's placement, size and any skew are in the
+    /// raster transform, which the key holds besides this hash. Never equal to a path's or stroke's hash
     /// except by collision.
     static uint64_t glyphContentHash(const TextShaper* shaper, FontId font, uint32_t glyphId, float size) {
         uint64_t h = 0x474C5950484F4C31ull;  // "GLYPHOL1"
@@ -2755,7 +2929,9 @@ struct FrameBuilder::Impl {
             std::memcpy(&u, &f, sizeof(u));
             return static_cast<uint64_t>(u);
         };
-        mix(static_cast<uint64_t>(reinterpret_cast<uintptr_t>(shaper)));
+        // T-675 (10 §10.11 T-662 record): the shaper's generation, not its address -- a shaper made
+        // after another was destroyed may take its address, and its FontIds name other faces.
+        mix(shaper->generation());
         mix(static_cast<uint64_t>(font));
         mix(static_cast<uint64_t>(glyphId));
         mix(bits(size));
@@ -2796,6 +2972,41 @@ struct FrameBuilder::Impl {
         source.glyphVerbs = glyphOutlineVerbs;
         source.glyphPoints = glyphOutlinePoints;
         fillShapeAndCover(flatPoints, flatStarts, deviceXf, FillRule::NonZero, paint, true, &source);
+    }
+
+    /// T-676 (Docs/tasks/T-676.md item 3): glyph `glyphId` of a rotated / skewed run as a coverage
+    /// quad only -- doOutlineGlyph's outline, key and fillCoverage, without its direct-fill and
+    /// stencil fallbacks. True when the glyph is handled (drawn, or an outline with no contours);
+    /// false when it has no outline or the coverage quad was refused (budget, atlas full, size),
+    /// and the caller draws it another way. A refusal for the frame budget counts as one
+    /// (statCoverageBudgetFallbacks), so the next frame redraws it (T-662).
+    bool outlineGlyphCoverage(FontId font, uint32_t glyphId, Vec2 glyphPos, float size, const Mat2x3& xf,
+                              float dpr, Color color, TextShaper* shaper) {
+        glyphOutlineVerbs.clear();
+        glyphOutlinePoints.clear();
+        if (shaper == nullptr ||
+            !shaper->glyphOutline(font, glyphId, glyphOutlineVerbs, glyphOutlinePoints)) {
+            return false;
+        }
+        const Mat2x3 local = mul(translation(glyphPos), scaling(Vec2{size, size}));
+        const Mat2x3 deviceXf = mul(deviceTransform(xf, dpr), local);
+        flatPoints.clear();
+        flatStarts.clear();
+        flatClosed.clear();
+        flattenPath(glyphOutlineVerbs, glyphOutlinePoints, deviceXf, kFlattenTolerance, flatPoints,
+                    flatStarts, flatClosed);
+        if (flatPoints.empty()) {
+            return true;
+        }
+        PaintRef paint{};
+        paint.kind = PaintKind::Solid;
+        paint.color = color;
+        CoverageSource source;
+        source.glyph = true;
+        source.glyphHash = glyphContentHash(shaper, font, glyphId, size);
+        source.glyphVerbs = glyphOutlineVerbs;
+        source.glyphPoints = glyphOutlinePoints;
+        return fillCoverage(source, flatPoints, deviceXf, FillRule::NonZero, paint);
     }
 
 #ifndef XT_GPU_NO_TEXT
@@ -3112,7 +3323,8 @@ struct FrameBuilder::Impl {
     }
 
     /// T-653: whether a plain run that may not use the axis-aligned atlas path (rotated or skewed)
-    /// is drawn from atlas bitmaps mapped through its transform (bilinear, so its edges are antialiased)
+    /// is drawn from atlas bitmaps mapped through its transform (T-676: from outline coverage quads
+    /// first, doTransformedRun) (bilinear, so its edges are antialiased)
     /// instead of from outlines. Only on a single-sampled target (`edgeFringe`): there stencil-then-cover has
     /// no antialiasing, while a multisampled target keeps the exact outlines. Not under a 3D
     /// projection, and within the same size limits as the axis-aligned atlas path.
@@ -3151,8 +3363,9 @@ struct FrameBuilder::Impl {
     /// texel on every side, onto the atlas's empty 1 px margin, so the linear sampler fades every
     /// edge to zero coverage instead of cutting it. A glyph missing from the atlas is filled from
     /// its outline.
-    void doTransformedAtlasGlyphs(const GlyphsCmd& cmd, const Mat2x3& deviceXf, float dpr,
-                                  TextShaper* shaper) {
+    /// T-676: with `only`, just the glyphs whose entry in it is non-zero (doTransformedRun's refusals).
+    void doTransformedAtlasGlyphs(const GlyphsCmd& cmd, const Mat2x3& deviceXf, float dpr, TextShaper* shaper,
+                                  const std::vector<uint8_t>* only = nullptr) {
         if (emit.scissor().empty()) {
             return;
         }
@@ -3165,6 +3378,9 @@ struct FrameBuilder::Impl {
             b.clear();
         }
         for (uint32_t i = 0; i < cmd.glyphCount; ++i) {
+            if (only != nullptr && (i >= only->size() || (*only)[i] == 0)) {
+                continue;
+            }
             const Vec2 glyphPos = list->glyphPos[cmd.glyphOffset + i];
             float wholeX = 0.0f;
             xt::text::AtlasEntry entry{};
@@ -3185,6 +3401,31 @@ struct FrameBuilder::Impl {
             }
         }
         flushGlyphBatch(coverageGamma(cmd.color));
+    }
+
+    /// T-676 (Docs/tasks/T-676.md item 3; 10 §10.11 "1x 畫面回報的查證"): a run transformedAtlasRun
+    /// accepts (rotated or skewed, <= kMaxAtlasGlyphPx, single-sampled) is drawn as SW draws it --
+    /// each glyph's outline as a coverage quad (outlineGlyphCoverage, T-662's key) -- instead of
+    /// from resampled hinted bitmaps. A glyph whose coverage quad is refused (frame budget, atlas
+    /// full) is drawn by the T-653 atlas path rather than stencil-then-cover; a budget refusal
+    /// asks for another frame (T-662's rule, through fillCoverage's count).
+    void doTransformedRun(const GlyphsCmd& cmd, const Mat2x3& deviceXf, float dpr, TextShaper* shaper) {
+        if (emit.scissor().empty()) {
+            return;
+        }
+        transformedRunFallback.assign(cmd.glyphCount, 0);
+        bool anyFallback = false;
+        for (uint32_t i = 0; i < cmd.glyphCount; ++i) {
+            if (!outlineGlyphCoverage(cmd.font, list->glyphs[cmd.glyphOffset + i],
+                                      list->glyphPos[cmd.glyphOffset + i], cmd.size, cmd.xf, dpr, cmd.color,
+                                      shaper)) {
+                transformedRunFallback[i] = 1;
+                anyFallback = true;
+            }
+        }
+        if (anyFallback) {
+            doTransformedAtlasGlyphs(cmd, deviceXf, dpr, shaper, &transformedRunFallback);
+        }
     }
 #endif
 
@@ -3239,7 +3480,7 @@ struct FrameBuilder::Impl {
         }
 #ifndef XT_GPU_NO_TEXT
         if (!useAtlas && transformedAtlasRun(cmd, deviceXf)) {
-            doTransformedAtlasGlyphs(cmd, deviceXf, dpr, shaper);
+            doTransformedRun(cmd, deviceXf, dpr, shaper);  // T-676
             return;
         }
 #endif
@@ -3301,6 +3542,16 @@ struct FrameBuilder::Impl {
     // ---------------------------------------------------------------------------------------
     // Clip (Docs/design/10-backends.md §10.3.3; rect clips as scissor per Docs/tasks/T-146.md).
     // ---------------------------------------------------------------------------------------
+
+    /// T-663: where a clip command sits (processCommand's clips; a dry walk passes none).
+    struct ClipSite {
+        const CommandList* cl = nullptr;
+        size_t index = 0;
+        AssetResolver* assets = nullptr;
+        const IrView* ir = nullptr;
+    };
+    /// T-663: clipImageDirect's polygon scratch.
+    std::vector<Vec2> clipPolyA, clipPolyB;
 
     void pushScissorLevel(const Scissor& next) {
         ClipLevel level;
@@ -3366,8 +3617,12 @@ struct FrameBuilder::Impl {
         emit.setScissor(detail::intersect(emit.scissor(), aabb));
     }
 
-    void doPushClipRect(const ClipRectCmd& cmd, float dpr) {
+    /// Pushes clip rect `cmd`. `site` (processCommand only; a dry walk passes none) lets T-663
+    /// decide the clip at 1x; returns the index of the last command consumed (the PopClip when the
+    /// whole range was drawn here), or `site->index` (0 without a site).
+    size_t doPushClipRect(const ClipRectCmd& cmd, float dpr, const ClipSite* site = nullptr) {
         flushPendingClears();
+        const size_t self = site != nullptr ? site->index : 0;
         Mat2x3 deviceXf = deviceTransform(cmd.xf, dpr);
         Vec2 corners[4] = {
             apply(deviceXf, Vec2{cmd.rect.x, cmd.rect.y}),
@@ -3382,7 +3637,7 @@ struct FrameBuilder::Impl {
                 q[i] = projectDevicePoint(corners[i], ok);
                 if (!ok) {
                     pushDegenerateClip();
-                    return;
+                    return self;
                 }
             }
             // A projected but untilted plane (perspective on an ancestor, no 3D rotation here)
@@ -3390,20 +3645,27 @@ struct FrameBuilder::Impl {
             Rect rect;
             if (axisAlignedQuad(std::span<const Vec2>(q, 4), rect)) {
                 pushScissorRect(rect);
-                return;
+                return self;
             }
             uint32_t starts[1] = {0};
             pushClipStencil(std::span<const Vec2>(q, 4), std::span<const uint32_t>(starts, 1),
                             FillRule::NonZero);
-            return;
+            return self;
         }
         if (xfKeepsAxisAlignment(deviceXf)) {
             pushScissorRect(boundsOf(std::span<const Vec2>(corners, 4)));
-            return;
+            return self;
         }
         uint32_t starts[1] = {0};
+        size_t consumed = self;
+        if (site != nullptr &&
+            clipAtOneX(*site, std::span<const Vec2>(corners, 4), std::span<const uint32_t>(starts, 1),
+                       deviceXf, nullptr, dpr, consumed)) {
+            return consumed;
+        }
         pushClipStencil(std::span<const Vec2>(corners, 4), std::span<const uint32_t>(starts, 1),
                         FillRule::NonZero);
+        return self;
     }
 
     /// True when the four corners `q` form an axis-aligned rectangle (each edge horizontal or
@@ -3434,23 +3696,30 @@ struct FrameBuilder::Impl {
         pushScissorLevel(detail::intersect(emit.scissor(), Scissor{x0, y0, x1 - x0, y1 - y0}));
     }
 
-    void doPushClipPath(const ClipPathCmd& cmd, float dpr) {
+    /// Pushes clip path `cmd`; `site` and the result as for doPushClipRect.
+    size_t doPushClipPath(const ClipPathCmd& cmd, float dpr, const ClipSite* site = nullptr) {
         flushPendingClears();
+        const size_t self = site != nullptr ? site->index : 0;
         Mat2x3 deviceXf = deviceTransform(cmd.xf, dpr);
         std::span<const float> rawPoints(list->points.data() + cmd.path.pointOffset, cmd.path.pointCount);
         float tol = projecting() ? flattenTolerance(deviceXf, rawPoints) : kFlattenTolerance;
         flatten(cmd.path, deviceXf, tol);
         if (projecting() && !projectPointsInPlace(flatPoints)) {
             pushDegenerateClip();
-            return;
+            return self;
         }
         // An unrounded overflow box or the simplifier's flattened clip rect: a scissor level.
         Rect rect;
         if (singleConvexContour(flatPoints, flatStarts) && axisAlignedQuad(contourA.pts, rect)) {
             pushScissorRect(rect);
-            return;
+            return self;
+        }
+        size_t consumed = self;
+        if (site != nullptr && clipAtOneX(*site, flatPoints, flatStarts, deviceXf, &cmd, dpr, consumed)) {
+            return consumed;
         }
         pushClipStencil(flatPoints, flatStarts, cmd.rule);
+        return self;
     }
 
     void doPopClip() {
@@ -3461,6 +3730,14 @@ struct FrameBuilder::Impl {
         }
         ClipLevel level = clipStack.back();
         clipStack.pop_back();
+        if (level.maskLayer) {
+            // T-663: the content and the shape's coverage go through the mask frame it opened.
+            emit.setScissor(level.prevScissor);
+            if (!frameStack.empty() && frameStack.back().kind == FrameKind::Mask) {
+                doPopMask();
+            }
+            return;
+        }
         if (level.stencil) {
             if (!level.prevScissor.empty() && targetHasStencil()) {
                 DrawCmd pop;
@@ -3475,6 +3752,574 @@ struct FrameBuilder::Impl {
             --clipDepth;
         }
         emit.setScissor(level.prevScissor);
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // T-663 (Docs/design/10-backends.md §10.11 ruling 5 final): rounded and rotated clips at 1x.
+    // A clip that would take a stencil level is first checked against the device box `C` of the
+    // commands up to its PopClip: content inside the shape's safe interior needs no clip; an
+    // axis-aligned shape on the pixel grid whose corners `C` misses is a scissor; a single image
+    // under a convex shape is drawn as one fringed convex polygon; everything else is drawn into
+    // a mask layer whose mask is the shape, filled by the existing (fringed / coverage) paths.
+    // ---------------------------------------------------------------------------------------
+
+    static bool isDrawCommand(CmdKind kind) {
+        switch (kind) {
+            case CmdKind::FillPath:
+            case CmdKind::StrokePath:
+            case CmdKind::DrawImage:
+            case CmdKind::DrawGlyphs:
+            case CmdKind::DrawImageQuad:
+            case CmdKind::DrawParticles:
+            case CmdKind::DrawImageMesh:
+            case CmdKind::DrawBoxShadow:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    static void uniteInto(ClipScan& s, const Rect& r) {
+        if (!s.any) {
+            s.bounds = r;
+            s.any = true;
+            return;
+        }
+        const float x0 = std::min(s.bounds.x, r.x), y0 = std::min(s.bounds.y, r.y);
+        const float x1 = std::max(s.bounds.x + s.bounds.w, r.x + r.w);
+        const float y1 = std::max(s.bounds.y + s.bounds.h, r.y + r.h);
+        s.bounds = Rect{x0, y0, x1 - x0, y1 - y0};
+    }
+
+    /// Adds nested range `inner` (its own scan) to `outer`'s.
+    static void mergeScan(ClipScan& outer, const ClipScan& inner) {
+        outer.reliable = outer.reliable && inner.reliable;
+        if (inner.any) {
+            uniteInto(outer, inner.bounds);
+        }
+        if (inner.draws > 0 && outer.draws == 0) {
+            outer.firstDraw = inner.firstDraw;
+        }
+        outer.draws += inner.draws;
+        outer.others += inner.others;
+    }
+
+    /// The scan of the clip at command `start` (a PushClipRect / PushClipPath): `C` is the union
+    /// of clipContentBounds over the commands up to the matching PopClip. The commands inside a
+    /// PushProjection are bounded by its window and skipped. Nested clips are scanned in the same
+    /// walk (no recursion) and remembered, so each range is scanned once per build attempt.
+    ClipScan scanClip(const CommandList& cl, size_t start) {
+        if (clipScanSlot.size() != cl.commands.size()) {
+            clipScanSlot.assign(cl.commands.size(), 0u);
+        }
+        if (clipScanSlot[start] != 0) {
+            return clipScans[clipScanSlot[start] - 1];
+        }
+        auto remember = [this](size_t at, const ClipScan& s) {
+            clipScans.push_back(s);
+            clipScanSlot[at] = static_cast<uint32_t>(clipScans.size());
+        };
+        clipScanStack.clear();
+        clipScanStack.emplace_back(start, ClipScan{});
+        int projectionDepth = 0;
+        for (size_t i = start + 1; i < cl.commands.size(); ++i) {
+            const Command& cmd = cl.commands[i];
+            if (projectionDepth > 0) {
+                if (cmd.kind == CmdKind::PushProjection) {
+                    ++projectionDepth;
+                } else if (cmd.kind == CmdKind::PopProjection) {
+                    --projectionDepth;
+                }
+                continue;
+            }
+            ClipScan& top = clipScanStack.back().second;
+            if (cmd.kind == CmdKind::PushClipRect || cmd.kind == CmdKind::PushClipPath) {
+                ++top.others;
+                if (clipScanSlot[i] != 0) {
+                    const ClipScan inner = clipScans[clipScanSlot[i] - 1];
+                    if (inner.found) {
+                        mergeScan(top, inner);
+                        i = inner.pop;
+                        continue;
+                    }
+                }
+                clipScanStack.emplace_back(i, ClipScan{});
+                continue;
+            }
+            if (cmd.kind == CmdKind::PopClip) {
+                ClipScan done = clipScanStack.back().second;
+                const size_t at = clipScanStack.back().first;
+                clipScanStack.pop_back();
+                done.pop = i;
+                done.found = true;
+                remember(at, done);
+                if (clipScanStack.empty()) {
+                    return done;
+                }
+                mergeScan(clipScanStack.back().second, done);
+                continue;
+            }
+            Rect r;
+            const ClipContentBounds kind = clipContentBounds(cl, cmd, currentDpr, r, clipShaper);
+            if (kind == ClipContentBounds::Unknown) {
+                top.reliable = false;
+            } else if (kind == ClipContentBounds::Box) {
+                uniteInto(top, r);
+            }
+            if (isDrawCommand(cmd.kind)) {
+                if (top.draws++ == 0) {
+                    top.firstDraw = i;
+                }
+            } else {
+                ++top.others;
+            }
+            if (cmd.kind == CmdKind::PushProjection) {
+                projectionDepth = 1;
+            }
+        }
+        // Unbalanced: every open range lacks its PopClip (found = false keeps their stencil levels).
+        ClipScan outer = clipScanStack.front().second;
+        for (const auto& range : clipScanStack) {
+            remember(range.first, range.second);
+        }
+        return outer;
+    }
+
+    /// The local frame of a convex clip shape: its bounding box `box` in the clip's own (local)
+    /// coordinates and, per corner (TL, TR, BR, BL), the width and height of the corner rectangle
+    /// the shape leaves (a rounded rect's radii; zero for a plain rect). The shape always holds
+    /// `box` minus the four corner rectangles: it is convex and touches every side of `box` along
+    /// the edge between two corner rectangles.
+    struct ClipFrame {
+        Rect box;
+        float cornerW[4] = {0, 0, 0, 0};
+        float cornerH[4] = {0, 0, 0, 0};
+    };
+
+    /// Builds `out` from the cleaned convex device contour `shape` mapped back through
+    /// `deviceXf`; false when the transform is not invertible.
+    static bool clipLocalFrame(const Contour& shape, const Mat2x3& deviceXf, ClipFrame& out) {
+        Mat2x3 inv;
+        if (!invert(deviceXf, inv) || shape.pts.empty()) {
+            return false;
+        }
+        float x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+        for (size_t i = 0; i < shape.pts.size(); ++i) {
+            const Vec2 p = apply(inv, shape.pts[i]);
+            if (i == 0) {
+                x0 = x1 = p.x;
+                y0 = y1 = p.y;
+            }
+            x0 = std::min(x0, p.x);
+            x1 = std::max(x1, p.x);
+            y0 = std::min(y0, p.y);
+            y1 = std::max(y1, p.y);
+        }
+        const float eps = 1e-4f * std::max(1.0f, std::max(x1 - x0, y1 - y0));
+        // Contact intervals on the four sides: top / bottom along x, left / right along y.
+        float topLo = x1, topHi = x0, botLo = x1, botHi = x0;
+        float leftLo = y1, leftHi = y0, rightLo = y1, rightHi = y0;
+        for (const Vec2& d : shape.pts) {
+            const Vec2 p = apply(inv, d);
+            if (p.y - y0 <= eps) {
+                topLo = std::min(topLo, p.x);
+                topHi = std::max(topHi, p.x);
+            }
+            if (y1 - p.y <= eps) {
+                botLo = std::min(botLo, p.x);
+                botHi = std::max(botHi, p.x);
+            }
+            if (p.x - x0 <= eps) {
+                leftLo = std::min(leftLo, p.y);
+                leftHi = std::max(leftHi, p.y);
+            }
+            if (x1 - p.x <= eps) {
+                rightLo = std::min(rightLo, p.y);
+                rightHi = std::max(rightHi, p.y);
+            }
+        }
+        auto nonNeg = [](float v) { return std::max(0.0f, v); };
+        out.box = Rect{x0, y0, x1 - x0, y1 - y0};
+        out.cornerW[0] = nonNeg(topLo - x0);
+        out.cornerH[0] = nonNeg(leftLo - y0);
+        out.cornerW[1] = nonNeg(x1 - topHi);
+        out.cornerH[1] = nonNeg(rightLo - y0);
+        out.cornerW[2] = nonNeg(x1 - botHi);
+        out.cornerH[2] = nonNeg(y1 - rightHi);
+        out.cornerW[3] = nonNeg(botLo - x0);
+        out.cornerH[3] = nonNeg(y1 - leftHi);
+        return true;
+    }
+
+    /// T-676 (Docs/design/10-backends.md §10.11, the ruling at the end of the T-664 record): `C` of
+    /// the clip at command `start` (matching PopClip at `pop`) in the clip shape's local
+    /// coordinates (`localFromDevice` = the inverse of the clip's device transform): the union of
+    /// clipContentBoundsInFrame over the commands of the range, each command's own local box mapped
+    /// through its transform relative to the clip, with kClipContentMarginPx device px expressed in
+    /// local units; the commands inside a PushProjection are bounded by its window and skipped, as
+    /// scanClip does. False when a command has no usable box (Unknown) or nothing has a box; the
+    /// caller then maps scanClip's device box back as before.
+    bool clipLocalContent(const CommandList& cl, size_t start, size_t pop, const Mat2x3& localFromDevice,
+                          float dpr, Rect& out) const {
+        const Mat2x3 frame = mul(localFromDevice, scaling(Vec2{dpr, dpr}));
+        // A device square of half side m maps to a parallelogram with these half extents.
+        const float m = kClipContentMarginPx;
+        const Vec2 margin{m * (std::fabs(localFromDevice.a) + std::fabs(localFromDevice.c)),
+                          m * (std::fabs(localFromDevice.b) + std::fabs(localFromDevice.d))};
+        ClipScan acc;
+        int projectionDepth = 0;
+        for (size_t i = start + 1; i < pop && i < cl.commands.size(); ++i) {
+            const Command& cmd = cl.commands[i];
+            if (projectionDepth > 0) {
+                if (cmd.kind == CmdKind::PushProjection) {
+                    ++projectionDepth;
+                } else if (cmd.kind == CmdKind::PopProjection) {
+                    --projectionDepth;
+                }
+                continue;
+            }
+            Rect r;
+            const ClipContentBounds kind = clipContentBoundsInFrame(cl, cmd, frame, margin, r, clipShaper);
+            if (kind == ClipContentBounds::Unknown) {
+                return false;
+            }
+            if (kind == ClipContentBounds::Box) {
+                uniteInto(acc, r);
+            }
+            if (cmd.kind == CmdKind::PushProjection) {
+                projectionDepth = 1;
+            }
+        }
+        if (!acc.any) {
+            return false;
+        }
+        out = acc.bounds;
+        return true;
+    }
+
+    /// True when local box `r` overlaps (with positive area) one of `frame`'s corner rectangles.
+    static bool touchesCorner(const ClipFrame& frame, const Rect& r) {
+        const Rect& b = frame.box;
+        const float cx0[4] = {b.x, b.x + b.w - frame.cornerW[1], b.x + b.w - frame.cornerW[2], b.x};
+        const float cy0[4] = {b.y, b.y, b.y + b.h - frame.cornerH[2], b.y + b.h - frame.cornerH[3]};
+        for (int k = 0; k < 4; ++k) {
+            const float w = frame.cornerW[k], h = frame.cornerH[k];
+            if (!(w > 0.0f) || !(h > 0.0f)) {
+                continue;
+            }
+            if (r.x < cx0[k] + w && r.x + r.w > cx0[k] && r.y < cy0[k] + h && r.y + r.h > cy0[k]) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// Ruling point 3: the clip range is one smooth DrawImage / DrawImageQuad (an affine
+    /// parallelogram) under convex `shape` (cleaned, device px): draws the shape intersected with
+    /// the image quad as one convex polygon textured through the quad's affine map, with the
+    /// fringe. False when the range does not qualify (the caller goes on to point 4).
+    bool clipImageDirect(const ClipSite& site, const ClipScan& scan, const Contour& shape, float dpr) {
+        if (scan.draws != 1 || scan.others != 0) {
+            return false;
+        }
+        const CommandList& cl = *site.cl;
+        const Command& cmd = cl.commands[scan.firstDraw];
+        Vec2 q[4];
+        Rect srcUv;
+        float opacity = 1.0f;
+        float variantScale = 1.0f;
+        AssetId asset = kInvalidAsset;
+        uint16_t source = 0;
+        if (cmd.kind == CmdKind::DrawImage) {
+            const ImageCmd& c = cl.images[cmd.index];
+            if (c.smooth == 0) {
+                return false;
+            }
+            const Mat2x3 xf = deviceTransform(c.xf, dpr);
+            q[0] = apply(xf, Vec2{c.dst.x, c.dst.y});
+            q[1] = apply(xf, Vec2{c.dst.x + c.dst.w, c.dst.y});
+            q[2] = apply(xf, Vec2{c.dst.x + c.dst.w, c.dst.y + c.dst.h});
+            q[3] = apply(xf, Vec2{c.dst.x, c.dst.y + c.dst.h});
+            srcUv = c.srcUv;
+            opacity = c.opacity;
+            variantScale = c.variantScale;
+            asset = c.asset;
+            source = c.source;
+        } else if (cmd.kind == CmdKind::DrawImageQuad) {
+            const ImageQuadCmd& c = cl.imageQuads[cmd.index];
+            if (c.smooth == 0) {
+                return false;
+            }
+            const Mat2x3 xf = scaling(Vec2{dpr, dpr});
+            for (int i = 0; i < 4; ++i) {
+                q[i] = apply(xf, c.p[i]);
+            }
+            srcUv = c.srcUv;
+            opacity = c.opacity;
+            variantScale = c.variantScale;
+            asset = c.asset;
+            source = c.source;
+        } else {
+            return false;
+        }
+        // The texture map is affine: the quad must be a parallelogram (any 2D-transformed rect is).
+        const float extent = std::max(std::fabs(q[2].x - q[0].x) + std::fabs(q[2].y - q[0].y),
+                                      std::fabs(q[3].x - q[1].x) + std::fabs(q[3].y - q[1].y));
+        const float tol = 1e-3f * std::max(1.0f, extent);
+        if (std::fabs(q[0].x + q[2].x - q[1].x - q[3].x) > tol ||
+            std::fabs(q[0].y + q[2].y - q[1].y - q[3].y) > tol) {
+            return false;
+        }
+        const Vec2 e1{q[1].x - q[0].x, q[1].y - q[0].y};
+        const Vec2 e3{q[3].x - q[0].x, q[3].y - q[0].y};
+        const float det = e1.x * e3.y - e1.y * e3.x;
+        if (!(std::fabs(det) > 1e-6f) || !std::isfinite(det)) {
+            return false;
+        }
+        ++statClipImageDirect;
+        const IrView* ir = enterSource(cl, source, site.assets, site.ir);
+        if (site.assets == nullptr || ir == nullptr || emit.scissor().empty()) {
+            return true;  // nothing to draw, as with the clip
+        }
+        Shading shading = Shading::Texture;
+        const TextureHandle tex = resolveImageTexture(asset, site.assets, ir, shading, variantScale);
+        if (tex == 0) {
+            return true;
+        }
+        // shape ∩ quad (Sutherland-Hodgman over the quad's four edges, both counter-clockwise in
+        // the positive-area sense cleanConvexContour normalises to).
+        std::vector<Vec2>& poly = clipPolyA;
+        std::vector<Vec2>& next = clipPolyB;
+        poly.assign(shape.pts.begin(), shape.pts.end());
+        const float orient = det > 0.0f ? 1.0f : -1.0f;
+        for (int k = 0; k < 4 && !poly.empty(); ++k) {
+            const Vec2 a = q[k], b = q[(k + 1) % 4];
+            // Inside = left of a->b for a positive-area quad: cross(b - a, p - a) * orient >= 0.
+            auto side = [&](Vec2 p) {
+                return ((b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x)) * orient;
+            };
+            next.clear();
+            for (size_t i = 0; i < poly.size(); ++i) {
+                const Vec2 p = poly[i], r = poly[(i + 1) % poly.size()];
+                const float sp = side(p), sr = side(r);
+                if (sp >= 0.0f) {
+                    next.push_back(p);
+                }
+                if ((sp >= 0.0f) != (sr >= 0.0f)) {
+                    const float t = sp / (sp - sr);
+                    next.push_back(Vec2{p.x + (r.x - p.x) * t, p.y + (r.y - p.y) * t});
+                }
+            }
+            poly.swap(next);
+        }
+        Contour& c = contourB;
+        if (!cleanConvexContour(poly, c)) {
+            return true;  // the image misses the shape (or only grazes it)
+        }
+        const Vec2 uv0{srcUv.x, srcUv.y};
+        const Vec2 du{srcUv.w, 0.0f};  // along e1 (dst left -> right)
+        const Vec2 dv{0.0f, srcUv.h};  // along e3 (dst top -> bottom)
+        fillConvexImage(c, q[0], e1, e3, det, uv0, du, dv, srcUv, opacity, tex, shading);
+        return true;
+    }
+
+    /// Draws convex `contour` (cleaned, device px) with fillConvex's fringe, textured: every
+    /// vertex takes the u,v of its position under the image's affine map (origin `o`, edge
+    /// vectors `e1` / `e3` with determinant `det`; u,v = `uv0` + s `du` + t `dv`), clamped to
+    /// `srcUv` so the ring repeats the edge texels (T-659's rule).
+    void fillConvexImage(Contour& contour, Vec2 o, Vec2 e1, Vec2 e3, float det, Vec2 uv0, Vec2 du, Vec2 dv,
+                         const Rect& srcUv, float opacity, TextureHandle tex, Shading shading) {
+        computeMiters(contour);
+        const float t = convexMinWidth(contour);
+        if (t <= 1e-4f) {
+            return;
+        }
+        float woff = 0.0f, alphaScale = 1.0f;
+        fringeFor(t, woff, alphaScale);
+        const uint32_t innerRgba = packPremultiplied(Color{1, 1, 1, opacity * alphaScale});
+        const float u0 = std::min(srcUv.x, srcUv.x + srcUv.w), u1 = std::max(srcUv.x, srcUv.x + srcUv.w);
+        const float v0 = std::min(srcUv.y, srcUv.y + srcUv.h), v1 = std::max(srcUv.y, srcUv.y + srcUv.h);
+        const size_t n = contour.pts.size();
+        const uint32_t nn = static_cast<uint32_t>(n);
+        Geometry g;
+        g.vertexCount = 2 * nn;
+        Vertex* out = emit.appendVertices(g.vertexCount, g.baseVertex);
+        for (size_t ring = 0; ring < 2; ++ring) {
+            const float offset = ring == 0 ? -woff : 1.0f - woff;
+            for (size_t i = 0; i < n; ++i) {
+                const Vec2 p{contour.pts[i].x + contour.miters[i].x * offset,
+                             contour.pts[i].y + contour.miters[i].y * offset};
+                const Vec2 d{p.x - o.x, p.y - o.y};
+                const float s = (d.x * e3.y - d.y * e3.x) / det;
+                const float r = (e1.x * d.y - e1.y * d.x) / det;
+                const float u = uv0.x + s * du.x + r * dv.x;
+                const float v = uv0.y + s * du.y + r * dv.y;
+                out[ring * n + i] = Vertex{
+                    p.x, p.y, 1.0f, std::clamp(u, u0, u1), std::clamp(v, v0, v1), ring == 0 ? innerRgba : 0u};
+            }
+        }
+        g.indexCount = (nn - 2) * 3 + nn * 6;
+        uint32_t* idx = emit.appendIndices(g.indexCount, g.firstIndex);
+        for (uint32_t j = 1; j + 1 < nn; ++j) {
+            *idx++ = 0;
+            *idx++ = j;
+            *idx++ = j + 1;
+        }
+        writeRingQuads(idx, 0, nn, nn);
+        DrawCmd c;
+        c.shading = shading;
+        c.texture = tex;
+        c.sampler = Sampler::LinearClamp;
+        c.blend = Blend::SrcOver;
+        c.stencilOp = StencilOp::TestEqualRef;
+        c.stencilRef = static_cast<uint8_t>(clipDepth);
+        emit.pushCmd(c, g);
+    }
+
+    /// Ruling point 4: opens a mask layer for the clip -- a transient holding the shape (filled
+    /// white by the existing paths: the convex `shape` with its fringe for a rect, the clip path
+    /// through doFill, i.e. fringed when convex and from the coverage atlas when not), then the
+    /// content transient; the PopClip composites the content through the shape's alpha (MaskApply
+    /// Alpha, as PushMask does). Both transients replay the outer stencil levels. The window is
+    /// the shape's box, narrowed to `C` when the scan bounded the content.
+    void pushClipMaskLayer(const ClipScan& scan, const Rect& shapeBounds, const ClipPathCmd* pathCmd,
+                           Contour* rectShape, const Mat2x3& deviceXf, float dpr) {
+        float x0 = shapeBounds.x - 1.0f, y0 = shapeBounds.y - 1.0f;
+        float x1 = shapeBounds.x + shapeBounds.w + 1.0f, y1 = shapeBounds.y + shapeBounds.h + 1.0f;
+        if (scan.reliable && scan.any) {
+            x0 = std::max(x0, scan.bounds.x);
+            y0 = std::max(y0, scan.bounds.y);
+            x1 = std::min(x1, scan.bounds.x + scan.bounds.w);
+            y1 = std::min(y1, scan.bounds.y + scan.bounds.h);
+        }
+        const float lo = -65536.0f, hi = 65536.0f;
+        const int ix0 = static_cast<int>(std::floor(std::clamp(x0, lo, hi)));
+        const int iy0 = static_cast<int>(std::floor(std::clamp(y0, lo, hi)));
+        const int ix1 = static_cast<int>(std::ceil(std::clamp(x1, lo, hi)));
+        const int iy1 = static_cast<int>(std::ceil(std::clamp(y1, lo, hi)));
+        const Scissor px = detail::intersect(Scissor{ix0, iy0, ix1 - ix0, iy1 - iy0}, emit.scissor());
+        if (px.empty()) {
+            pushDegenerateClip();  // nothing of it can show: the content is suppressed
+            return;
+        }
+        ++statClipMaskLayers;
+        const Scissor window = emit.targetWindow(px);
+        TargetFrame f;
+        f.kind = FrameKind::Mask;
+        f.parent = emit.currentTarget();
+        f.mode = MaskMode::Alpha;
+        f.a = openLayerTarget(window);
+        PaintRef white{};
+        white.kind = PaintKind::Solid;
+        white.color = Color{1, 1, 1, 1};
+        if (pathCmd != nullptr) {
+            FillCmd fill{};
+            fill.xf = pathCmd->xf;
+            fill.path = pathCmd->path;
+            fill.paint = white;
+            fill.rule = pathCmd->rule;
+            fill.antialias = 1;
+            doFill(fill, dpr);
+        } else if (rectShape != nullptr) {
+            fillConvex(*rectShape, deviceXf, white, true);
+        }
+        flushPendingClears();
+        f.b = emit.acquireTransient(TextureFormat::Rgba8, true, window);
+        emit.beginPass(f.b, true);
+        replayClips();
+        frameStack.push_back(std::move(f));
+        ClipLevel level;
+        level.stencil = false;
+        level.maskLayer = true;
+        level.prevScissor = emit.scissor();
+        clipStack.push_back(level);
+    }
+
+    /// The T-663 decision for a clip that would take a stencil level (`pts` / `starts`: its
+    /// flattened device shape; `pathCmd`: the clip path, null for a rotated rect). Only with the
+    /// fringe on (1x), outside 3D projections and when the matching PopClip lies in the commands
+    /// being drawn; otherwise false and the caller pushes the stencil level as before. True when
+    /// the clip was handled; `consumed` is then the last command index it took care of.
+    bool clipAtOneX(const ClipSite& site, std::span<const Vec2> pts, std::span<const uint32_t> starts,
+                    const Mat2x3& deviceXf, const ClipPathCmd* pathCmd, float dpr, size_t& consumed) {
+        if (!edgeFringe || projecting() || site.cl == nullptr || pts.empty()) {
+            return false;
+        }
+        const ClipScan scan = scanClip(*site.cl, site.index);
+        if (!scan.found || scan.pop >= clipScanEnd) {
+            return false;
+        }
+        if (scan.reliable && !scan.any) {
+            ++statClipSkipped;  // ruling point 4's last sentence: nothing in the range draws
+            consumed = scan.pop;
+            return true;
+        }
+        const bool convex = singleConvexContour(pts, starts);  // the cleaned shape in contourA
+        ClipFrame frame;
+        if (convex && scan.reliable && clipLocalFrame(contourA, deviceXf, frame)) {
+            Mat2x3 inv;
+            (void)invert(deviceXf, inv);  // clipLocalFrame checked it
+            Rect cLocal;
+            if (!clipLocalContent(*site.cl, site.index, scan.pop, inv, dpr, cLocal)) {
+                // No local union (a command without a usable box): the device box mapped back.
+                const Rect& c = scan.bounds;
+                const Vec2 cc[4] = {apply(inv, Vec2{c.x, c.y}), apply(inv, Vec2{c.x + c.w, c.y}),
+                                    apply(inv, Vec2{c.x + c.w, c.y + c.h}), apply(inv, Vec2{c.x, c.y + c.h})};
+                cLocal = boundsOf(std::span<const Vec2>(cc, 4));
+            }
+            const Rect& b = frame.box;
+            const bool inside = cLocal.x >= b.x && cLocal.y >= b.y && cLocal.x + cLocal.w <= b.x + b.w &&
+                                cLocal.y + cLocal.h <= b.y + b.h;
+            // Point 1: inside the box and clear of the corner rectangles.
+            if (inside && !touchesCorner(frame, cLocal)) {
+                ++statClipSkipped;
+                pushScissorLevel(emit.scissor());  // balances the PopClip; changes nothing
+                consumed = site.index;
+                return true;
+            }
+            // Point 2: axis-aligned, the box on whole device pixels, C (within the box) clear of
+            // the corners.
+            if (xfKeepsAxisAlignment(deviceXf)) {
+                const Vec2 bc[4] = {apply(deviceXf, Vec2{b.x, b.y}), apply(deviceXf, Vec2{b.x + b.w, b.y}),
+                                    apply(deviceXf, Vec2{b.x + b.w, b.y + b.h}),
+                                    apply(deviceXf, Vec2{b.x, b.y + b.h})};
+                constexpr float kGridEps = 1e-3f;  // T-659's imageQuadOnPixelGrid tolerance
+                auto whole = [](float v) { return std::fabs(v - std::round(v)) <= kGridEps; };
+                bool onGrid = true;
+                for (const Vec2& p : bc) {
+                    onGrid = onGrid && whole(p.x) && whole(p.y);
+                }
+                const float ix0 = std::max(cLocal.x, b.x), iy0 = std::max(cLocal.y, b.y);
+                const float ix1 = std::min(cLocal.x + cLocal.w, b.x + b.w),
+                            iy1 = std::min(cLocal.y + cLocal.h, b.y + b.h);
+                const Rect within{ix0, iy0, std::max(0.0f, ix1 - ix0), std::max(0.0f, iy1 - iy0)};
+                if (onGrid && !touchesCorner(frame, within)) {
+                    ++statClipScissor;
+                    pushScissorRect(boundsOf(std::span<const Vec2>(bc, 4)));
+                    consumed = site.index;
+                    return true;
+                }
+            }
+        }
+        // Point 3: one image under a convex shape.
+        if (convex && scan.draws == 1 && scan.others == 0) {
+            const Contour shape = contourA;  // clipImageDirect reuses contourB and the flatten scratch
+            if (clipImageDirect(site, scan, shape, dpr)) {
+                consumed = scan.pop;
+                return true;
+            }
+        }
+        // Point 4: a mask layer (the rect's shape is the cleaned corner contour in contourA).
+        Contour* rectShape = nullptr;
+        if (pathCmd == nullptr) {
+            if (!convex) {
+                return false;  // a degenerate rotated rect: keep the stencil level
+            }
+            rectShape = &contourA;
+        }
+        pushClipMaskLayer(scan, boundsOf(pts), pathCmd, rectShape, deviceXf, dpr);
+        consumed = site.index;
+        return true;
     }
 
     /// T-343 (23 §23.aa.3): in Direct mode the scene target has no stencil (a host LDR target);
@@ -4049,6 +4894,11 @@ struct FrameBuilder::Impl {
         statCoverageHits = statCoverageMisses = statCoverageFallbacks = 0;  // T-660b: per attempt
         statCoverageBudgetFallbacks = 0;                                    // T-662: likewise
         statCoverageTiles = statCoverageUniformTiles = 0;                   // T-672: likewise
+        statClipSkipped = statClipScissor = statClipImageDirect = statClipMaskLayers = 0;  // T-663
+        clipScans.clear();
+        clipScanSlot.clear();
+        clipScanEnd = cl.commands.size();
+        clipShaper = shaper;  // T-664: glyph run boxes from the font's metrics
         currentDpr = cl.devicePixelRatio;
         const float dpr = currentDpr;
         lastExternals.clear();
@@ -4070,6 +4920,7 @@ struct FrameBuilder::Impl {
         }
         finishBuildOnce();
         list = nullptr;
+        clipShaper = nullptr;
     }
 
     /// Executes command `ci` of `cl`; returns the index of the last command consumed (the
@@ -4094,12 +4945,14 @@ struct FrameBuilder::Impl {
                 case CmdKind::DrawGlyphs:
                     doGlyphs(cl.glyphRuns[cmd.index], dpr, shaper);
                     break;
-                case CmdKind::PushClipRect:
-                    doPushClipRect(cl.clipRects[cmd.index], dpr);
-                    break;
-                case CmdKind::PushClipPath:
-                    doPushClipPath(cl.clipPaths[cmd.index], dpr);
-                    break;
+                case CmdKind::PushClipRect: {
+                    const ClipSite site{&cl, ci, assets, ir};
+                    return doPushClipRect(cl.clipRects[cmd.index], dpr, &site);
+                }
+                case CmdKind::PushClipPath: {
+                    const ClipSite site{&cl, ci, assets, ir};
+                    return doPushClipPath(cl.clipPaths[cmd.index], dpr, &site);
+                }
                 case CmdKind::PopClip:
                     doPopClip();
                     break;
@@ -4179,6 +5032,9 @@ struct FrameBuilder::Impl {
                     const ImageMeshCmd& c = cl.imageMeshes[cmd.index];
                     doImageMesh(cl, c, dpr, assets, enterSource(cl, c.source, assets, ir));
                 } break;
+                case CmdKind::DrawBoxShadow:
+                    doBoxShadow(cl.boxShadows[cmd.index], dpr);  // T-668
+                    break;
             }
         }
         return ci;
@@ -4408,6 +5264,7 @@ struct FrameBuilder::Impl {
             return;
         }
         ++statBandRedraws;
+        clipScanEnd = run.end;  // T-663: a clip whose PopClip lies in a later run keeps its stencil level
         const TargetHandle t = emit.acquireTransient(TextureFormat::Rgba8, true, band.window);
         emit.beginPass(t, true);
         replayClips();
@@ -4546,6 +5403,7 @@ struct FrameBuilder::Impl {
                 continue;
             }
             currentCluster = runCluster[i];
+            clipScanEnd = run.end;  // T-663
             for (size_t ci = run.first; ci < run.end && ci < cl.commands.size(); ++ci) {
                 ci = processCommand(cl, ci, shaper, assets, ir, dpr);
             }
@@ -4691,6 +5549,8 @@ struct FrameBuilder::Impl {
         lastCoverageStats.uniformTiles = statCoverageUniformTiles;
         lastCoverageStats.rasterizedPixels = coverageAtlas.stats().frameRasterizedPixels;  // every attempt
         lastCoverageStats.atlasBytes = coverageAtlas.bytes();
+        lastClipStats = FrameBuilder::ClipStats{statClipSkipped, statClipScissor, statClipImageDirect,
+                                                statClipMaskLayers};  // T-663
         luts.endFrame();
         lastCacheStats.hits = statCacheHits;
         lastCacheStats.misses = statCacheMisses;
@@ -4779,6 +5639,26 @@ struct FrameBuilder::Impl {
             retry = true;
         }
         return !retry;
+    }
+
+    /// T-675 (Docs/design/50-c-abi.md §50.ac item 2): what a hidden surface gives back -- the effect
+    /// result cache and the band targets (released to the device, whose pool keeps them), and the image
+    /// textures (a shared image's use ends with `keep`: idle within its cache's budget). The gradient
+    /// tables, the glyph atlas pages and the coverage atlas stay.
+    void trim() {
+        lastBuildValid = false;
+        flushEffectCache();
+        releaseAllBands();
+        if (device != nullptr) {
+            for (const TextureEntry& entry : textureCache) {
+                releaseImage(entry, true);
+            }
+        }
+        textureCache.clear();
+        sourceSlots.clear();
+        listSources.clear();
+        listSourcesKey = 0;
+        currentSource = 0;
     }
 
     void invalidateAllAssets() {
@@ -4879,6 +5759,8 @@ void FrameBuilder::invalidateAsset(AssetId asset, const IrView* source) {
 
 void FrameBuilder::invalidateAllAssets() { m_impl->invalidateAllAssets(); }
 
+void FrameBuilder::trim() { m_impl->trim(); }
+
 void FrameBuilder::setEdgeFringe(bool enabled) {
     if (enabled != m_impl->edgeFringe) {
         m_impl->lastBuildValid = false;
@@ -4898,5 +5780,7 @@ const char* FrameBuilder::lastError() const { return m_impl->lastError.c_str(); 
 FrameBuilder::EffectCacheStats FrameBuilder::lastEffectCacheStats() const { return m_impl->lastCacheStats; }
 
 FrameBuilder::CoverageStats FrameBuilder::lastCoverageStats() const { return m_impl->lastCoverageStats; }
+
+FrameBuilder::ClipStats FrameBuilder::lastClipStats() const { return m_impl->lastClipStats; }
 
 }  // namespace xt::gpu

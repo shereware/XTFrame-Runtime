@@ -229,6 +229,9 @@ struct xt_surface : public xt::ContextListener {
     xt::capi::RenderPath renderPath = xt::capi::RenderPath::None;
     xt_gpu_target* gpuTarget = nullptr;
     std::unique_ptr<xt::capi::SurfaceGpu, xt::capi::SurfaceGpuDeleter> gpu;
+    /// T-675 (50 §50.ac item 2): set by xt_surface_trim around its Context::releaseRenderScratch(), so
+    /// onReleaseRenderScratch releases all of the GPU resources (trim-on-hide keeps the renderer).
+    bool explicitTrim = false;
 
     ~xt_surface() override;
     /// Takes everything down in the 50.3 order; safe to call twice.
@@ -288,8 +291,12 @@ void applyUiScale(xt_surface& surface);
 void detachGpu(xt_surface& surface);
 /// T-641 (50 §50.aa item 4): releases the surface's GPU texture and renderer resources but keeps it
 /// attached (render path, target); the next xt_surface_render_gpu that has something to draw
-/// rebuilds them. A no-op on a surface without GPU resources.
-void releaseGpuResources(xt_surface& surface);
+/// rebuilds them. A no-op on a surface without GPU resources. T-675 (50 §50.ac item 2): with
+/// `everything` false (trim-on-hide) only the surface texture and the effect-cache targets go back
+/// to the target's pools and the image uses end; the renderer, its device, buffers, bind groups,
+/// gradient tables and atlases stay for the next show. With `everything` (xt_surface_trim) all of it
+/// goes, textures to the pools as well.
+void releaseGpuResources(xt_surface& surface, bool everything);
 /// T-636: the draw counters of the surface's last GPU render (false when it has none).
 bool gpuDrawCounts(const xt_surface& surface, uint32_t& executed, uint32_t& skipped);
 

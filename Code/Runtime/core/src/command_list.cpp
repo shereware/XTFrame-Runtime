@@ -36,6 +36,7 @@ void CommandList::clear() {
     imageMeshes.clear();
     meshVertices.clear();
     meshIndices.clear();
+    boxShadows.clear();
     structureChecked = false;
     frameSerial = 0;
     sources.clear();
@@ -585,6 +586,55 @@ void dumpCommandList(const CommandList& list, std::string& out) {
                 }
                 break;
             }
+            case CmdKind::DrawBoxShadow: {
+                // T-668 (10 §10.12 item 2): every field of the payload.
+                const BoxShadowCmd& bs = list.boxShadows[cmd.index];
+                out += "DrawBoxShadow ";
+                appendXf(out, bs.xf);
+                out += " rect=";
+                appendRect(out, bs.rect);
+                out += " radii=[";
+                for (int i = 0; i < 4; ++i) {
+                    if (i != 0) {
+                        out += ' ';
+                    }
+                    appendFloat(out, bs.radii[i]);
+                }
+                out += "] offset=(";
+                appendFloat(out, bs.offset.x);
+                out += ',';
+                appendFloat(out, bs.offset.y);
+                out += ") blur=";
+                appendFloat(out, bs.blur);
+                out += " spread=";
+                appendFloat(out, bs.spread);
+                out += " color=(";
+                appendFloat(out, bs.color.r);
+                out += ',';
+                appendFloat(out, bs.color.g);
+                out += ',';
+                appendFloat(out, bs.color.b);
+                out += ',';
+                appendFloat(out, bs.color.a);
+                out += ')';
+                // T-680: the extra signed terms, only when there are any (T-668 lines unchanged).
+                for (uint32_t k = 0; k < bs.extraCount && k < 2; ++k) {
+                    const BoxShadowTerm& t = bs.extra[k];
+                    out += " term=(";
+                    appendFloat(out, t.sign);
+                    out += ' ';
+                    appendRect(out, t.rect);
+                    out += " [";
+                    for (int i = 0; i < 4; ++i) {
+                        if (i != 0) {
+                            out += ' ';
+                        }
+                        appendFloat(out, t.radii[i]);
+                    }
+                    out += "])";
+                }
+                break;
+            }
         }
         out += '\n';
     }
@@ -869,6 +919,12 @@ bool validateCommandList(const CommandList& list) {
                 }
                 break;
             }
+            case CmdKind::DrawBoxShadow:
+                // T-680: at most two extra terms.
+                if (index >= list.boxShadows.size() || list.boxShadows[index].extraCount > 2) {
+                    return false;
+                }
+                break;
             default:
                 return false;  // Not a CmdKind this build knows.
         }

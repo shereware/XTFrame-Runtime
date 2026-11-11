@@ -264,6 +264,10 @@ public:
         out.coverageTiles = s.coverageTiles;  // T-672
         out.coverageUniformTiles = s.coverageUniformTiles;
         out.coverageAtlasBytes = s.coverageAtlasBytes;
+        out.clipSkipped = s.clipSkipped;  // T-663
+        out.clipScissor = s.clipScissor;
+        out.clipImageDirect = s.clipImageDirect;
+        out.clipMaskLayers = s.clipMaskLayers;
         out.buildMs = s.buildMs;
         out.submitMs = s.submitMs;
         out.inflightWaits = s.inflightWaits;  // T-674

@@ -33,7 +33,12 @@
 /// COPY_DST) of its descriptor's size. As in gl_device.cpp (`acquireDrawTarget`), a transient that
 /// needs stencil is drawn through a 4x attachment resolving into it when the sample count is 4 and
 /// gets a Stencil8 attachment; every other transient (effect scratch, R32Float) is single-sample.
-/// The pool keeps entries by exact (size, format, samples, stencil) within the T-163 byte budget.
+/// The pool keeps entries by exact (size, format, samples, stencil) within a byte budget: T-678, the
+/// bytes the last submit borrowed plus 16 MiB (least recently used entries go first).
+/// T-675 (50 §50.ac item 2): a device that borrows a WgpuSharedCache draws from the cache's pools
+/// instead -- the transients, the released cached targets, the surface attachments (borrowed for one
+/// submit; every submit's first surface pass clears them or loads the host's content, so nothing of
+/// another device's frame shows) and the dummy -- see wgpu_shared.h.
 ///
 /// `submit` (T-438): the frame's vertex/index/instance buffers are uploaded incrementally into one
 /// of three rotating sets; the per-pass constants and every command's parameter block go into one
@@ -54,6 +59,11 @@
 namespace xt::wgpu {
 
 class WgpuSharedCache;
+
+/// T-678 (50 §50.ac addendum item 2): bytes per texel of a `WGPUTextureFormat_Stencil8` texture as
+/// `backend` creates it -- 4 on D3D12 (D24_UNORM_S8_UINT), else 1 (Metal, GL; Vulkan's choice among
+/// S8 / D24S8 / D32S8 is not visible through WebGPU and is counted as 1).
+uint32_t stencil8TexelBytes(WGPUBackendType backend);
 
 /// What the last `submit` did (for tests and tools; not a stable API).
 struct WgpuDeviceStats {
@@ -113,6 +123,10 @@ public:
     void setSharedCache(WgpuSharedCache* cache) { m_shared = cache; }
     /// T-648: true while this device borrows a WgpuSharedCache (set by `init`).
     bool sharing() const { return m_sharing != nullptr; }
+    /// T-678 (50 §50.ac addendum item 2): the backend of the adapter the next `init`'s device comes
+    /// from, for the byte counts of the Stencil8 attachments (`stencil8TexelBytes`); Undefined (the
+    /// default) counts one byte per texel.
+    void setBackendType(WGPUBackendType backend) { m_stencilTexelBytes = stencil8TexelBytes(backend); }
 
     /// Size of the surface target in pixels (the views passed to `setSurface`).
     void resize(int width, int height);
@@ -147,8 +161,10 @@ public:
     void releaseSharedImage(gpu::TextureHandle tex, bool keep) override;
     /// T-656 (50 §50.ab item 1, `xt_gpu_memory_stats.surface_bytes`): the memory of the surface
     /// attachments allocated now -- the MSAA color attachment (target format x samples) and the
-    /// stencil attachment (Stencil8, the format created, x samples) -- by format and size; 0 when
-    /// none is allocated. The surface texture itself is the caller's.
+    /// stencil attachment (Stencil8 x samples; T-678: at the backend's bytes per texel,
+    /// `stencil8TexelBytes`) -- by format and size; 0 when
+    /// none is allocated. The surface texture itself is the caller's. T-675: always 0 while the device
+    /// borrows a WgpuSharedCache (the sets are the cache's: `WgpuSharedStats::attachmentBytes`).
     uint64_t surfaceAttachmentBytes() const;
 
     /// T-150: makes a host texture view sampleable as a `TextureHandle` (for
@@ -189,7 +205,8 @@ public:
         return w;
     }
 
-private:
+    // -- Implementation types (public only so that wgpu_internal.h's WgpuSharedCache::Impl can hold
+    // them in its target-level pools, T-675; not an API). --
     struct Texture {
         WGPUTexture texture = nullptr;  ///< null for an external view
         WGPUTextureView view = nullptr;
@@ -215,7 +232,17 @@ private:
         bool inUse = false;
         uint32_t lastUsed = 0;
         uint64_t bytes = 0;
+        /// T-675: a slot of a pool keeps its index while it lives (other devices' frame targets name
+        /// it); a destroyed entry leaves an empty slot (`color` null) for the next one.
+        bool live() const { return color != nullptr; }
     };
+    /// A released cached target kept for reuse by exact size (T-163), with its release frame.
+    struct FreeCached {
+        Texture texture;
+        uint32_t releasedFrame = 0;
+    };
+
+private:
     /// A pass window in surface pixels (gpu_frame.h `Pass::view*`).
     struct Window {
         int x = 0, y = 0, w = 0, h = 0;
@@ -251,24 +278,30 @@ private:
 
     std::vector<Texture> m_textures;  ///< handle h = m_textures[h - 1]
     std::vector<uint32_t> m_freeTextures;
-    std::vector<Pooled> m_pool;
+    /// The transient pool of a device that shares none (T-675: a sharing device draws from its
+    /// WgpuSharedCache's pool instead; `pool()` names the one in use).
+    std::vector<Pooled> m_ownPool;
     uint64_t m_poolBudget = 0;
     std::vector<int> m_frameTargets;  ///< pool index of each transient of the last submit (-1: none)
     uint32_t m_frameCounter = 0;
-    /// Released cached targets kept for reuse by exact size (T-163), with their release frame.
-    struct FreeCached {
-        Texture texture;
-        uint32_t releasedFrame = 0;
-    };
-    std::vector<FreeCached> m_cachedFree;
-    uint64_t m_cachedFreeBytes = 0;
+    /// Released cached targets kept for reuse by exact size (T-163) when the device shares no cache
+    /// (T-675: else the cache's list; `cachedFree()`).
+    std::vector<FreeCached> m_ownCachedFree;
+    uint64_t m_ownCachedFreeBytes = 0;
+    /// T-675: the cache's `viewGeneration` this device's bind groups were last checked against.
+    uint64_t m_seenViewGeneration = 0;
+    /// T-678: bytes per texel of the Stencil8 textures this device creates (setBackendType).
+    uint32_t m_stencilTexelBytes = 1;
 
-    /// The surface's 4x color attachment and its stencil (sized by resize, created lazily).
+    /// The surface's 4x color attachment and its stencil (sized by resize, created lazily). T-675:
+    /// while the device shares a cache they are the cache's set of this size (`m_attachmentSet`),
+    /// borrowed for one submit, and not owned.
     WGPUTexture m_surfaceMsaa = nullptr;
     WGPUTextureView m_surfaceMsaaView = nullptr;
     WGPUTexture m_surfaceStencil = nullptr;
     WGPUTextureView m_surfaceStencilView = nullptr;
     int m_surfaceAttachW = 0, m_surfaceAttachH = 0;
+    int m_attachmentSet = -1;  ///< T-675: index of the borrowed set in the cache (-1: none)
 
     // -- Per-submit state --
     const gpu::GpuFrame* m_frame = nullptr;
@@ -292,11 +325,28 @@ private:
     bool ensureSurfaceAttachments();
     void releaseSurfaceAttachments();
     int acquirePooled(const gpu::TransientTargetDesc& desc);
-    static void releasePooled(Pooled& p);
     void trimPool();
     void trimCachedFree();
+    /// T-675: the pools in use -- the borrowed cache's (target level) or this device's own.
+    std::vector<Pooled>& pool();
+    const std::vector<Pooled>& pool() const;
+    std::vector<FreeCached>& cachedFree();
+    uint64_t& cachedFreeBytes();
+    /// T-675: the frame clock pool entries are stamped with (the cache's target frames, or this
+    /// device's submits).
+    uint32_t poolFrame() const;
+    uint64_t poolBudget() const;
+    /// T-675: a pooled or cached view was destroyed: flushes this device's bind groups and, when
+    /// sharing, tells the other devices of the cache to flush theirs before their next submit.
+    void noteViewsDestroyed();
+    /// T-675: a texture this device created on a shared cache's device (WgpuSharedStats).
+    void countTextureCreate();
+
+public:
+    static void releasePooled(Pooled& p);
     static void releaseTextureEntry(Texture& t);
 
+private:
     Window windowOf(gpu::TargetHandle target) const;
     /// The sampleable view of target `t` (a transient's resolve or color view; the surface view).
     WGPUTextureView sampleView(gpu::TargetHandle t) const;

@@ -20,12 +20,12 @@ using detail::label;
 
 namespace {
 
-/// gl_device.cpp kTransientIdleFrames (T-163): an entry idle this long goes, at most one per frame.
-constexpr uint32_t kTransientIdleFrames = 1800;
-/// gl_device.cpp kPoolBudgetFloorBytes; resize raises it to two full-surface draw targets.
-constexpr uint64_t kPoolBudgetFloorBytes = 64ull * 1024u * 1024u;
-/// gl_device.cpp kCachedFreeBudgetBytes.
-constexpr uint64_t kCachedFreeBudgetBytes = 16ull * 1024u * 1024u;
+using detail::kCachedFreeBudgetBytes;
+using detail::kPoolBudgetHeadroomBytes;
+using detail::kTransientIdleFrames;
+using detail::makeTexture;
+using detail::makeView;
+using detail::releaseTexture;
 /// The zero block at the start of the uniform buffer (one parameter binding).
 constexpr size_t kZeroBlockFloats = detail::kParamBlockBytes / sizeof(float);
 
@@ -50,33 +50,6 @@ uint32_t unitBytes(gpu::TextureFormat fmt) {
     return 0;
 }
 
-WGPUTexture makeTexture(WGPUDevice device, const char* name, uint32_t w, uint32_t h, WGPUTextureFormat format,
-                        uint32_t samples, WGPUTextureUsage usage) {
-    WGPUTextureDescriptor d = WGPU_TEXTURE_DESCRIPTOR_INIT;
-    d.label = label(name);
-    d.usage = usage;
-    d.dimension = WGPUTextureDimension_2D;
-    d.size = WGPUExtent3D{w, h, 1};
-    d.format = format;
-    d.mipLevelCount = 1;
-    d.sampleCount = samples;
-    return wgpuDeviceCreateTexture(device, &d);
-}
-
-WGPUTextureView makeView(WGPUTexture t) { return t != nullptr ? wgpuTextureCreateView(t, nullptr) : nullptr; }
-
-void releaseTexture(WGPUTexture& t, WGPUTextureView& v) {
-    if (v != nullptr) {
-        wgpuTextureViewRelease(v);
-        v = nullptr;
-    }
-    if (t != nullptr) {
-        wgpuTextureDestroy(t);
-        wgpuTextureRelease(t);
-        t = nullptr;
-    }
-}
-
 uint32_t roundUp(uint32_t v, uint32_t a) { return (v + a - 1) / a * a; }
 
 /// How many parameter floats a command's shader reads (gpu_frame.h's *Params sizes); 0 = none.
@@ -94,6 +67,8 @@ uint32_t paramFloats(const gpu::DrawCmd& cmd) {
             return sizeof(gpu::GlyphParams) / sizeof(float);
         case Shading::Composite:
             return sizeof(gpu::CompositeParams) / sizeof(float);
+        case Shading::BoxShadow:
+            return sizeof(gpu::BoxShadowParams) / sizeof(float);  // T-668
         case Shading::Effect:
             switch (cmd.program) {
                 case EffectProgram::GaussScalar:
@@ -136,6 +111,42 @@ uint32_t paramFloats(const gpu::DrawCmd& cmd) {
 }
 
 }  // namespace
+
+WGPUTexture detail::makeTexture(WGPUDevice device, const char* name, uint32_t w, uint32_t h,
+                                WGPUTextureFormat format, uint32_t samples, WGPUTextureUsage usage) {
+    WGPUTextureDescriptor d = WGPU_TEXTURE_DESCRIPTOR_INIT;
+    d.label = label(name);
+    d.usage = usage;
+    d.dimension = WGPUTextureDimension_2D;
+    d.size = WGPUExtent3D{w, h, 1};
+    d.format = format;
+    d.mipLevelCount = 1;
+    d.sampleCount = samples;
+    return wgpuDeviceCreateTexture(device, &d);
+}
+
+WGPUTextureView detail::makeView(WGPUTexture t) {
+    return t != nullptr ? wgpuTextureCreateView(t, nullptr) : nullptr;
+}
+
+void detail::releaseTexture(WGPUTexture& t, WGPUTextureView& v) {
+    if (v != nullptr) {
+        wgpuTextureViewRelease(v);
+        v = nullptr;
+    }
+    if (t != nullptr) {
+        wgpuTextureDestroy(t);
+        wgpuTextureRelease(t);
+        t = nullptr;
+    }
+}
+
+uint32_t stencil8TexelBytes(WGPUBackendType backend) {
+    // wgpu-hal: D3D12 creates Stencil8 as DXGI_FORMAT_D24_UNORM_S8_UINT; Metal as Stencil8 and GL /
+    // GLES as STENCIL_INDEX8 (one byte). Vulkan picks S8_UINT, D24_UNORM_S8_UINT or D32_SFLOAT_S8_UINT
+    // by what the driver supports, which WebGPU does not tell: counted as one byte, as any other.
+    return backend == WGPUBackendType_D3D12 ? 4u : 1u;
+}
 
 uint32_t bytesPerTexel(WGPUTextureFormat format) {
     switch (format) {
@@ -202,23 +213,35 @@ bool WgpuDevice::init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat targ
             return false;
         }
     }
-    m_gpu->dummy = makeTexture(device, "xt_wgpu dummy", 1, 1, WGPUTextureFormat_RGBA8Unorm, 1,
-                               WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst);
-    m_gpu->dummyView = makeView(m_gpu->dummy);
-    if (m_gpu->dummyView == nullptr) {
-        err = "WgpuDevice::init: texture creation failed";
-        shutdown();
-        return false;
+    if (m_sharing != nullptr) {
+        // T-675 (50 §50.ac item 2): the target's dummy (made by the first device that borrows the cache).
+        WgpuSharedCache::Impl& c = *m_sharing->m_impl;
+        if (!c.ensureDummy(queue)) {
+            err = "WgpuDevice::init: texture creation failed";
+            shutdown();
+            return false;
+        }
+        m_gpu->dummyView = c.dummyView;  // not owned: m_gpu->dummy stays null
+        m_seenViewGeneration = c.viewGeneration;
+    } else {
+        m_gpu->dummy = makeTexture(device, "xt_wgpu dummy", 1, 1, WGPUTextureFormat_RGBA8Unorm, 1,
+                                   WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst);
+        m_gpu->dummyView = makeView(m_gpu->dummy);
+        if (m_gpu->dummyView == nullptr) {
+            err = "WgpuDevice::init: texture creation failed";
+            shutdown();
+            return false;
+        }
+        const uint8_t zero[4] = {0, 0, 0, 0};
+        WGPUTexelCopyTextureInfo dst = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+        dst.texture = m_gpu->dummy;
+        WGPUTexelCopyBufferLayout layout = WGPU_TEXEL_COPY_BUFFER_LAYOUT_INIT;
+        layout.bytesPerRow = 4;
+        layout.rowsPerImage = 1;
+        const WGPUExtent3D one{1, 1, 1};
+        wgpuQueueWriteTexture(queue, &dst, zero, 4, &layout, &one);
     }
-    const uint8_t zero[4] = {0, 0, 0, 0};
-    WGPUTexelCopyTextureInfo dst = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
-    dst.texture = m_gpu->dummy;
-    WGPUTexelCopyBufferLayout layout = WGPU_TEXEL_COPY_BUFFER_LAYOUT_INIT;
-    layout.bytesPerRow = 4;
-    layout.rowsPerImage = 1;
-    const WGPUExtent3D one{1, 1, 1};
-    wgpuQueueWriteTexture(queue, &dst, zero, 4, &layout, &one);
-    m_poolBudget = kPoolBudgetFloorBytes;
+    m_poolBudget = kPoolBudgetHeadroomBytes;
     m_lastError.clear();
     return true;
 }
@@ -252,6 +275,7 @@ bool WgpuDevice::borrowSharedPipelines(WGPUTextureFormat format, uint32_t sample
         ++c.stats.pipelineBorrows;
     }
     m_gpu->pipelines = &c.pipelines;
+    c.stencilTexelBytes = m_stencilTexelBytes;  // T-678: every device on the cache's device has its backend
     // T-456 once per (format, samples) on the cache's device: its shader compiler is proven by then.
     const uint64_t probeKey = uint64_t(uint32_t(format)) << 8 | samples;
     if (std::find(c.probed.begin(), c.probed.end(), probeKey) == c.probed.end()) {
@@ -272,26 +296,38 @@ void WgpuDevice::shutdown() {
         m_gpu->uniforms.release();
         m_gpu->geometry.shutdown();
         m_gpu->ownPipelines.shutdown();  // T-648: a borrowed set stays with its cache
+        if (m_gpu->dummy == nullptr) m_gpu->dummyView = nullptr;  // T-675: the cache's
         releaseTexture(m_gpu->dummy, m_gpu->dummyView);
         m_gpu.reset();
     }
+    bool cachedReturned = false;
     for (Texture& t : m_textures) {
         if (t.sharedId != 0 && m_sharing != nullptr) {
             m_sharing->m_impl->releaseImage(t.sharedId, true);  // T-656: idle, within the budget
         }
+        if (t.cached && t.view != nullptr && m_sharing != nullptr) {
+            // T-675: a cached target still held goes back to the target's pool.
+            WgpuSharedCache::Impl& c = *m_sharing->m_impl;
+            c.cachedFree.push_back(FreeCached{t, c.frame});
+            c.cachedFreeBytes += uint64_t(t.width) * t.height * 4u;
+            t = Texture{};
+            cachedReturned = true;
+            continue;
+        }
         releaseTextureEntry(t);
     }
+    if (cachedReturned) m_sharing->m_impl->trimCachedFree();
     m_textures.clear();
     m_freeTextures.clear();
-    for (FreeCached& f : m_cachedFree) {
+    for (FreeCached& f : m_ownCachedFree) {
         releaseTextureEntry(f.texture);
     }
-    m_cachedFree.clear();
-    m_cachedFreeBytes = 0;
-    for (Pooled& p : m_pool) {
+    m_ownCachedFree.clear();
+    m_ownCachedFreeBytes = 0;
+    for (Pooled& p : m_ownPool) {
         releasePooled(p);
     }
-    m_pool.clear();
+    m_ownPool.clear();
     m_frameTargets.clear();
     releaseSurfaceAttachments();
     if (m_queue != nullptr) {
@@ -313,18 +349,58 @@ void WgpuDevice::shutdown() {
 void WgpuDevice::resize(int width, int height) {
     m_width = width > 0 ? width : 0;
     m_height = height > 0 ? height : 0;
-    // gl_device.cpp resize: two full-surface draw targets (color and stencil per sample plus the
-    // resolve), or the floor.
-    const uint64_t s = m_sampleCount;
-    const uint64_t entry = uint64_t(m_width) * uint64_t(m_height) * (s * 4u + s + (s > 1 ? 4u : 0u));
-    m_poolBudget = std::max(kPoolBudgetFloorBytes, 2u * entry);
+    // T-678: the pool budget follows what the frames borrow (submit), not the surface size.
+    if (m_sharing != nullptr) {
+        // T-675: the released cached targets are the target's (reused by exact size, so the other
+        // devices' sizes stay valid) and stay.
+        return;
+    }
     // Cached targets are window-sized: a resize invalidates every size (the builder flushes).
-    if (m_gpu && !m_cachedFree.empty()) m_gpu->releaseBindGroups();
-    for (FreeCached& f : m_cachedFree) {
+    if (m_gpu && !m_ownCachedFree.empty()) m_gpu->releaseBindGroups();
+    for (FreeCached& f : m_ownCachedFree) {
         releaseTextureEntry(f.texture);
     }
-    m_cachedFree.clear();
-    m_cachedFreeBytes = 0;
+    m_ownCachedFree.clear();
+    m_ownCachedFreeBytes = 0;
+}
+
+// -- T-675 (Docs/design/50-c-abi.md §50.ac item 2): the pools in use. --
+
+std::vector<WgpuDevice::Pooled>& WgpuDevice::pool() {
+    return m_sharing != nullptr ? m_sharing->m_impl->transients : m_ownPool;
+}
+
+const std::vector<WgpuDevice::Pooled>& WgpuDevice::pool() const {
+    return m_sharing != nullptr ? m_sharing->m_impl->transients : m_ownPool;
+}
+
+std::vector<WgpuDevice::FreeCached>& WgpuDevice::cachedFree() {
+    return m_sharing != nullptr ? m_sharing->m_impl->cachedFree : m_ownCachedFree;
+}
+
+uint64_t& WgpuDevice::cachedFreeBytes() {
+    return m_sharing != nullptr ? m_sharing->m_impl->cachedFreeBytes : m_ownCachedFreeBytes;
+}
+
+uint32_t WgpuDevice::poolFrame() const {
+    return m_sharing != nullptr ? m_sharing->m_impl->frame : m_frameCounter;
+}
+
+uint64_t WgpuDevice::poolBudget() const {
+    return m_sharing != nullptr ? m_sharing->m_impl->transientBudget : m_poolBudget;
+}
+
+void WgpuDevice::noteViewsDestroyed() {
+    if (m_gpu) m_gpu->releaseBindGroups();  // the cached bind groups may name the views
+    if (m_sharing != nullptr) {
+        WgpuSharedCache::Impl& c = *m_sharing->m_impl;
+        ++c.viewGeneration;
+        m_seenViewGeneration = c.viewGeneration;
+    }
+}
+
+void WgpuDevice::countTextureCreate() {
+    if (m_sharing != nullptr) ++m_sharing->m_impl->stats.textureCreates;
 }
 
 void WgpuDevice::setSurfaceClear(bool enabled, const WGPUColor& color) {
@@ -385,6 +461,7 @@ gpu::TextureHandle WgpuDevice::createTexture(const char* debugName, uint16_t w, 
     if (texture == nullptr) {
         return 0;
     }
+    countTextureCreate();  // T-675
     Texture t;
     t.texture = texture;
     t.view = makeView(texture);
@@ -513,10 +590,11 @@ void WgpuDevice::dropSharedUse(gpu::TextureHandle tex, bool keep) {
 }
 
 uint64_t WgpuDevice::surfaceAttachmentBytes() const {
+    if (m_sharing != nullptr) return 0;  // T-675: the target's sets (WgpuSharedStats::attachmentBytes)
     const uint64_t texels = uint64_t(m_surfaceAttachW) * uint64_t(m_surfaceAttachH) * m_sampleCount;
     uint64_t bytes = 0;
     if (m_surfaceMsaa != nullptr) bytes += texels * bytesPerTexel(m_targetFormat);
-    if (m_surfaceStencil != nullptr) bytes += texels;  // WGPUTextureFormat_Stencil8: one byte
+    if (m_surfaceStencil != nullptr) bytes += texels * m_stencilTexelBytes;  // T-678: Stencil8 as created
     return bytes;
 }
 
@@ -544,18 +622,21 @@ gpu::TextureHandle WgpuDevice::acquireCachedTarget(uint16_t w, uint16_t h, gpu::
     if (m_device == nullptr || fmt != gpu::TextureFormat::Rgba8 || w == 0 || h == 0) {
         return 0;
     }
-    // T-163: a released target of the same size is reused as it is (the store overwrites it).
-    for (size_t i = 0; i < m_cachedFree.size(); ++i) {
-        if (m_cachedFree[i].texture.width != w || m_cachedFree[i].texture.height != h) continue;
-        const Texture t = m_cachedFree[i].texture;
-        m_cachedFreeBytes -= uint64_t(w) * h * 4u;
-        m_cachedFree.erase(m_cachedFree.begin() + static_cast<std::ptrdiff_t>(i));
+    // T-163: a released target of the same size is reused as it is (the store overwrites it). T-675:
+    // from the target's list while sharing (another surface's released target is as good).
+    std::vector<FreeCached>& freeList = cachedFree();
+    for (size_t i = 0; i < freeList.size(); ++i) {
+        if (freeList[i].texture.width != w || freeList[i].texture.height != h) continue;
+        const Texture t = freeList[i].texture;
+        cachedFreeBytes() -= uint64_t(w) * h * 4u;
+        freeList.erase(freeList.begin() + static_cast<std::ptrdiff_t>(i));
         return addTexture(t);
     }
     Texture t;
     t.texture =
         makeTexture(m_device, "xt_wgpu cached target", w, h, WGPUTextureFormat_RGBA8Unorm, 1,
                     WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst | WGPUTextureUsage_CopySrc);
+    if (t.texture != nullptr) countTextureCreate();  // T-675
     t.view = makeView(t.texture);
     if (t.view == nullptr) {
         releaseTexture(t.texture, t.view);
@@ -572,22 +653,29 @@ void WgpuDevice::releaseCachedTarget(gpu::TextureHandle target) {
     if (t == nullptr || !t->cached) {
         return;
     }
-    m_cachedFree.push_back(FreeCached{*t, m_frameCounter});
-    m_cachedFreeBytes += uint64_t(t->width) * t->height * 4u;
+    cachedFree().push_back(FreeCached{*t, poolFrame()});
+    cachedFreeBytes() += uint64_t(t->width) * t->height * 4u;
     m_textures[target - 1] = Texture{};
     m_freeTextures.push_back(target);
     trimCachedFree();
 }
 
 void WgpuDevice::trimCachedFree() {
-    while (m_cachedFreeBytes > kCachedFreeBudgetBytes && !m_cachedFree.empty()) {
+    if (m_sharing != nullptr) {
+        // T-675: the target's list and budget; the other devices flush by the view generation.
+        WgpuSharedCache::Impl& c = *m_sharing->m_impl;
+        c.trimCachedFree();
+        if (m_seenViewGeneration != c.viewGeneration) noteViewsDestroyed();
+        return;
+    }
+    while (m_ownCachedFreeBytes > kCachedFreeBudgetBytes && !m_ownCachedFree.empty()) {
         size_t oldest = 0;
-        for (size_t i = 1; i < m_cachedFree.size(); ++i) {
-            if (m_cachedFree[i].releasedFrame < m_cachedFree[oldest].releasedFrame) oldest = i;
+        for (size_t i = 1; i < m_ownCachedFree.size(); ++i) {
+            if (m_ownCachedFree[i].releasedFrame < m_ownCachedFree[oldest].releasedFrame) oldest = i;
         }
-        Texture t = m_cachedFree[oldest].texture;
-        m_cachedFree.erase(m_cachedFree.begin() + static_cast<std::ptrdiff_t>(oldest));
-        m_cachedFreeBytes -= uint64_t(t.width) * t.height * 4u;
+        Texture t = m_ownCachedFree[oldest].texture;
+        m_ownCachedFree.erase(m_ownCachedFree.begin() + static_cast<std::ptrdiff_t>(oldest));
+        m_ownCachedFreeBytes -= uint64_t(t.width) * t.height * 4u;
         if (m_gpu) m_gpu->releaseBindGroups();
         releaseTextureEntry(t);
     }
@@ -620,6 +708,15 @@ void WgpuDevice::releasePooled(Pooled& p) {
 }
 
 void WgpuDevice::releaseSurfaceAttachments() {
+    if (m_sharing != nullptr) {
+        // T-675: the borrowed set goes back to the target (not destroyed).
+        m_sharing->m_impl->returnAttachments(m_attachmentSet);
+        m_attachmentSet = -1;
+        m_surfaceMsaa = m_surfaceStencil = nullptr;
+        m_surfaceMsaaView = m_surfaceStencilView = nullptr;
+        m_surfaceAttachW = m_surfaceAttachH = 0;
+        return;
+    }
     releaseTexture(m_surfaceMsaa, m_surfaceMsaaView);
     releaseTexture(m_surfaceStencil, m_surfaceStencilView);
     m_surfaceAttachW = m_surfaceAttachH = 0;
@@ -633,6 +730,26 @@ bool WgpuDevice::ensureSurfaceAttachments() {
         return true;
     }
     releaseSurfaceAttachments();
+    if (m_sharing != nullptr) {
+        // T-675 (50 §50.ac item 2): the target's set of this size, sample count and format, borrowed
+        // until the end of this submit. Its content is whatever the last borrower left: the first
+        // surface pass of every submit clears it or loads the host's content (encodePass), and the
+        // stencil is cleared there too.
+        WgpuSharedCache::Impl& c = *m_sharing->m_impl;
+        m_attachmentSet = c.borrowAttachments(static_cast<uint32_t>(m_width), static_cast<uint32_t>(m_height),
+                                              m_sampleCount, m_targetFormat);
+        if (m_attachmentSet < 0) {
+            return false;
+        }
+        const WgpuSharedCache::Impl::AttachmentSet& a = c.attachments[static_cast<size_t>(m_attachmentSet)];
+        m_surfaceMsaa = a.msaa;
+        m_surfaceMsaaView = a.msaaView;
+        m_surfaceStencil = a.stencil;
+        m_surfaceStencilView = a.stencilView;
+        m_surfaceAttachW = m_width;
+        m_surfaceAttachH = m_height;
+        return true;
+    }
     const uint32_t w = static_cast<uint32_t>(m_width), h = static_cast<uint32_t>(m_height);
     if (m_sampleCount > 1) {
         m_surfaceMsaa = makeTexture(m_device, "xt_wgpu surface msaa", w, h, m_targetFormat, m_sampleCount,
@@ -655,12 +772,13 @@ int WgpuDevice::acquirePooled(const gpu::TransientTargetDesc& desc) {
     // gets a stencil attachment (R32Float cannot be multisampled in WebGPU anyway).
     const bool stencil = desc.needStencil != 0 && desc.format == gpu::TextureFormat::Rgba8;
     const uint32_t samples = stencil ? m_sampleCount : 1u;
-    for (size_t i = 0; i < m_pool.size(); ++i) {
-        Pooled& p = m_pool[i];
-        if (!p.inUse && p.width == desc.width && p.height == desc.height && p.format == desc.format &&
-            p.samples == samples && p.stencil == stencil) {
+    std::vector<Pooled>& entries = pool();  // T-675: the target's while sharing
+    for (size_t i = 0; i < entries.size(); ++i) {
+        Pooled& p = entries[i];
+        if (p.live() && !p.inUse && p.width == desc.width && p.height == desc.height &&
+            p.format == desc.format && p.samples == samples && p.stencil == stencil) {
             p.inUse = true;
-            p.lastUsed = m_frameCounter;
+            p.lastUsed = poolFrame();
             return static_cast<int>(i);
         }
     }
@@ -692,50 +810,82 @@ int WgpuDevice::acquirePooled(const gpu::TransientTargetDesc& desc) {
         releasePooled(p);
         return -1;
     }
+    for (WGPUTexture made : {p.color, p.resolve, p.depthStencil}) {
+        if (made != nullptr) countTextureCreate();  // T-675
+    }
     const uint64_t px = uint64_t(desc.width) * desc.height;
-    p.bytes = px * (samples * 4u + (samples > 1 ? 4u : 0u) + (stencil ? samples : 0u));
+    p.bytes = px * (samples * 4u + (samples > 1 ? 4u : 0u) + (stencil ? samples * m_stencilTexelBytes : 0u));
     p.inUse = true;
-    p.lastUsed = m_frameCounter;
-    m_pool.push_back(p);
+    p.lastUsed = poolFrame();
     ++m_stats.transientCreates;
-    return static_cast<int>(m_pool.size() - 1);
+    for (size_t i = 0; i < entries.size(); ++i) {
+        if (!entries[i].live()) {  // T-675: an empty slot of the target's pool
+            entries[i] = p;
+            return static_cast<int>(i);
+        }
+    }
+    entries.push_back(p);
+    return static_cast<int>(entries.size() - 1);
 }
 
 void WgpuDevice::trimPool() {
     // T-163 (gl_fbo.h): over the byte budget, the least recently used entries go; under it, one
-    // entry idle for kTransientIdleFrames per frame. Called after the frame's submit.
-    auto erase = [this](size_t i) {
-        m_gpu->releaseBindGroups();  // the cached bind groups may name its views
-        releasePooled(m_pool[i]);
-        m_pool.erase(m_pool.begin() + static_cast<std::ptrdiff_t>(i));
-        for (int& t : m_frameTargets) {
-            if (t == static_cast<int>(i)) {
-                t = -1;
-            } else if (t > static_cast<int>(i)) {
-                --t;
+    // entry idle for kTransientIdleFrames per frame. Called after the frame's submit. T-675: while
+    // sharing, the pool, its budget and its frame clock are the target's (counted once for every
+    // device); an entry leaves an empty slot (other devices' frame targets keep their indices), and
+    // the idle rule runs once per target frame in WgpuSharedCache::endFrame instead.
+    std::vector<Pooled>& entries = pool();
+    const uint32_t now = poolFrame();
+    auto erase = [this, &entries](size_t i) {
+        if (m_sharing != nullptr) {
+            m_sharing->m_impl->destroyTransient(entries[i]);
+            noteViewsDestroyed();
+            for (int& t : m_frameTargets) {
+                if (t == static_cast<int>(i)) t = -1;
+            }
+        } else {
+            m_gpu->releaseBindGroups();  // the cached bind groups may name its views
+            releasePooled(entries[i]);
+            entries.erase(entries.begin() + static_cast<std::ptrdiff_t>(i));
+            for (int& t : m_frameTargets) {
+                if (t == static_cast<int>(i)) {
+                    t = -1;
+                } else if (t > static_cast<int>(i)) {
+                    --t;
+                }
             }
         }
         ++m_stats.transientDeletes;
     };
     uint64_t live = 0;
-    for (const Pooled& p : m_pool) live += p.bytes;
-    while (live > m_poolBudget && m_pool.size() > 1) {
-        size_t lru = 0;
-        for (size_t i = 1; i < m_pool.size(); ++i) {
-            if (m_pool[i].lastUsed < m_pool[lru].lastUsed) lru = i;
+    size_t liveCount = 0;
+    for (const Pooled& p : entries) {
+        if (!p.live()) continue;
+        live += p.bytes;
+        ++liveCount;
+    }
+    while (live > poolBudget() && liveCount > 1) {
+        size_t lru = entries.size();
+        for (size_t i = 0; i < entries.size(); ++i) {
+            if (entries[i].live() && (lru == entries.size() || entries[i].lastUsed < entries[lru].lastUsed))
+                lru = i;
         }
-        if (m_pool[lru].lastUsed == m_frameCounter) break;  // everything left was used this frame
-        live -= m_pool[lru].bytes;
+        if (entries[lru].lastUsed == now) break;  // everything left was used this frame
+        live -= entries[lru].bytes;
+        --liveCount;
         erase(lru);
     }
-    for (size_t i = 0; i < m_pool.size(); ++i) {
-        if (m_frameCounter - m_pool[i].lastUsed > kTransientIdleFrames) {
-            live -= m_pool[i].bytes;
-            erase(i);
-            break;
+    if (m_sharing == nullptr) {
+        for (size_t i = 0; i < entries.size(); ++i) {
+            if (m_frameCounter - entries[i].lastUsed > kTransientIdleFrames) {
+                live -= entries[i].bytes;
+                --liveCount;
+                erase(i);
+                break;
+            }
         }
     }
-    m_stats.poolEntries = static_cast<uint32_t>(m_pool.size());
+    m_stats.poolEntries = static_cast<uint32_t>(liveCount);
     m_stats.poolBytes = live;
 }
 
@@ -743,7 +893,7 @@ WGPUTexture WgpuDevice::transientTexture(gpu::TargetHandle target) const {
     if (target == 0 || target > m_frameTargets.size() || m_frameTargets[target - 1] < 0) {
         return nullptr;
     }
-    const Pooled& p = m_pool[static_cast<size_t>(m_frameTargets[target - 1])];
+    const Pooled& p = pool()[static_cast<size_t>(m_frameTargets[target - 1])];
     return p.resolve != nullptr ? p.resolve : p.color;
 }
 
@@ -751,7 +901,7 @@ uint32_t WgpuDevice::transientSampleCount(gpu::TargetHandle target) const {
     if (target == 0 || target > m_frameTargets.size() || m_frameTargets[target - 1] < 0) {
         return 0;
     }
-    return m_pool[static_cast<size_t>(m_frameTargets[target - 1])].samples;
+    return pool()[static_cast<size_t>(m_frameTargets[target - 1])].samples;
 }
 
 WgpuDevice::Window WgpuDevice::windowOf(gpu::TargetHandle target) const {
@@ -768,7 +918,7 @@ WGPUTextureView WgpuDevice::sampleView(gpu::TargetHandle t) const {
     if (t > m_frameTargets.size() || m_frameTargets[t - 1] < 0) {
         return nullptr;
     }
-    const Pooled& p = m_pool[static_cast<size_t>(m_frameTargets[t - 1])];
+    const Pooled& p = pool()[static_cast<size_t>(m_frameTargets[t - 1])];
     return p.resolveView != nullptr ? p.resolveView : p.colorView;
 }
 
@@ -851,8 +1001,8 @@ void WgpuDevice::planFrame(const gpu::GpuFrame& frame) {
         if (pass.target != gpu::kSurfaceTarget && pass.copySource != gpu::kSurfaceTarget &&
             pass.target <= n && pass.copySource <= n && m_frameTargets[pass.target - 1] >= 0 &&
             m_frameTargets[pass.copySource - 1] >= 0) {
-            const Pooled& dst = m_pool[static_cast<size_t>(m_frameTargets[pass.target - 1])];
-            const Pooled& src = m_pool[static_cast<size_t>(m_frameTargets[pass.copySource - 1])];
+            const Pooled& dst = pool()[static_cast<size_t>(m_frameTargets[pass.target - 1])];
+            const Pooled& src = pool()[static_cast<size_t>(m_frameTargets[pass.copySource - 1])];
             plan.copyW = std::min(plan.copyW, static_cast<int>(src.width) - plan.srcX);
             plan.copyH = std::min(plan.copyH, static_cast<int>(src.height) - plan.srcY);
             ctt = dst.samples == 1 && dst.format == src.format;
@@ -929,7 +1079,12 @@ void WgpuDevice::submit(const gpu::GpuFrame& frame) {
     auto t0 = Clock::now();
     m_frame = &frame;
     ++m_frameCounter;
-    for (Pooled& p : m_pool) {
+    if (m_sharing != nullptr && m_seenViewGeneration != m_sharing->m_impl->viewGeneration) {
+        // T-675: another device of the target destroyed pooled views these bind groups may name.
+        m_gpu->releaseBindGroups();
+        m_seenViewGeneration = m_sharing->m_impl->viewGeneration;
+    }
+    for (Pooled& p : pool()) {
         p.inUse = false;
     }
     m_frameTargets.assign(frame.transients.size(), -1);
@@ -937,6 +1092,21 @@ void WgpuDevice::submit(const gpu::GpuFrame& frame) {
         m_frameTargets[i] = acquirePooled(frame.transients[i]);
         if (m_frameTargets[i] < 0) {
             m_lastError = "submit: failed to create a transient target";
+        }
+    }
+    {
+        // T-678 (50 §50.ac addendum item 1): what this submit borrows sets the pool budget -- on a
+        // shared cache the target frame's peak (applied by WgpuSharedCache::endFrame), else this
+        // submit's (applied by trimPool below).
+        uint64_t borrowed = 0;
+        for (const int t : m_frameTargets) {
+            if (t >= 0) borrowed += pool()[static_cast<size_t>(t)].bytes;
+        }
+        if (m_sharing != nullptr) {
+            WgpuSharedCache::Impl& c = *m_sharing->m_impl;
+            c.frameBorrowPeak = std::max(c.frameBorrowPeak, borrowed);
+        } else {
+            m_poolBudget = borrowed + kPoolBudgetHeadroomBytes;
         }
     }
     planFrame(frame);
@@ -1020,9 +1190,10 @@ void WgpuDevice::submit(const gpu::GpuFrame& frame) {
     wgpuCommandEncoderRelease(enc);
     m_stats.queueMs = msSince(t0);
     g.releaseFrameBindGroups();
+    if (m_sharing != nullptr) releaseSurfaceAttachments();  // T-675: borrowed for this submit only
 
     trimPool();
-    m_stats.cachedTargets = static_cast<uint32_t>(m_cachedFree.size());
+    m_stats.cachedTargets = static_cast<uint32_t>(cachedFree().size());
     for (const Texture& t : m_textures) {
         if (t.cached && t.view != nullptr) ++m_stats.cachedTargets;
     }
@@ -1101,7 +1272,7 @@ void WgpuDevice::encodePass(WGPUCommandEncoder enc, size_t index, bool& surfaceS
         loadHost = first && m_sampleCount > 1 && !clearColor;
         surfaceStarted = true;
     } else {
-        const Pooled& p = m_pool[static_cast<size_t>(m_frameTargets[pass.target - 1])];
+        const Pooled& p = pool()[static_cast<size_t>(m_frameTargets[pass.target - 1])];
         colorView = p.colorView;
         colorTexture = p.color;
         resolveView = p.resolveView;
@@ -1146,7 +1317,7 @@ void WgpuDevice::encodePass(WGPUCommandEncoder enc, size_t index, bool& surfaceS
             wgpuRenderPassEncoderRelease(p);
             clearColor = clearStencil = false;
         }
-        const Pooled& src = m_pool[static_cast<size_t>(m_frameTargets[pass.copySource - 1])];
+        const Pooled& src = pool()[static_cast<size_t>(m_frameTargets[pass.copySource - 1])];
         WGPUTexelCopyTextureInfo s = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
         s.texture = src.resolve != nullptr ? src.resolve : src.color;
         s.origin = WGPUOrigin3D{static_cast<uint32_t>(plan.srcX), static_cast<uint32_t>(plan.srcY), 0};
@@ -1217,7 +1388,7 @@ void WgpuDevice::executeCacheStore(WGPUCommandEncoder enc, const gpu::CacheStore
         ++m_stats.skippedCopies;
         return;
     }
-    const Pooled& src = m_pool[static_cast<size_t>(m_frameTargets[store.src - 1])];
+    const Pooled& src = pool()[static_cast<size_t>(m_frameTargets[store.src - 1])];
     if (src.format != gpu::TextureFormat::Rgba8) {
         ++m_stats.skippedCopies;
         return;

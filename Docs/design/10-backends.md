@@ -328,3 +328,62 @@ class FileAssetResolver : public AssetResolver { /* 相對某根目錄讀檔 + s
 
 **T-662 實作記錄（#629，2026-11-11）**：A——`CoverageBitmap::coveredPixels`（掃描回呼內累加非零跨距，無額外掃描）、`budgetAllows()` 無參數（本幀已用 < 預算；首形狀特例移除）、`FrameBuilder::wantsAnotherFrame()`（只計預算退回）、`WgpuRenderer`／`GlRenderer` 轉發、C ABI `SurfaceGpu::repaint`（`xt_surface_render_gpu` 僅在 `!repaint` 且無 damage 時跳過）；`xtframe-view` 與編輯器預覽每 tick 都重建，無需改。B——輪廓字形先試覆蓋率圖集、再試直繪、最後 stencil；SW 的輪廓字形是線性覆蓋率不套 gamma（gamma 只在 < 24 px 的 hinted 位圖路徑），與圖集著色器一致。字形鍵＝（"GLYPHOL1"、shaper 指標、FontId、glyph id、字級、展平容差）。1x 對 SW：`ui_coverage_text`（新）5651 → 1257（餘下：1/4 px 位移量化在水平邊約 22 階；24～96 px 帶 GPU 用 hinted 圖集而 SW 填輪廓，T-263c 已記）、`ui_i18n_vertical_mixed` 175 → 0；capi 120 px 字的中間 alpha 像素 SW 1294／1x 1299／4x 778。Sherefox 1440p 1x：title draw 40.2 → 27.7、cutin 12.2 → 8.9；cutin 的縮放動畫期間大字每幀重新光柵化（build 0.18 → 0.39 ms 平均）。**待修（T-663 內順手）**：字形鍵含 shaper 指標——bundle 重載後新 shaper 可能落在同一位址而誤命中舊項；改用 shaper 的世代編號或在 shaper 更換時清空覆蓋率圖集。未編譯：Clang／GCC。
 
+**10.11 定案 5 定稿：圓角與旋轉裁切（2026-11-11；T-663）**
+
+裁切的抗鋸齒不為每個 draw 加新機制，而是先把「其實不需要裁切」的情形拿掉，剩下的才付成本。全部在 frame builder（GPU 路徑、`edgeFringe` 開時）判定，SW 與 painter 發出的命令不變。對每個會走 `pushClipStencil` 的裁切層（圓角矩形 overflow、圓角影像裁切、旋轉矩形、任意 clip path），在 Push 時向後掃到對應的 Pop，求出其間所有繪製命令的裝置空間包圍盒聯集 `C`（效果／圖層以其視窗為準；掃描結果按命令範圍記憶，同一 build 不重算）：
+
+1. **不裁**：`C` 完全落在裁切形狀的「安全內區」內——圓角矩形取各邊內縮對應圓角半徑後的內接矩形與兩條十字帶的聯集（即 `C` 不碰四個角的方塊且不超出外框）；旋轉矩形取 `C` 的四個角都在矩形內。此時不發任何裁切（不動 stencil、不動 scissor）。
+2. **scissor**：軸對齊的圓角矩形、`C` 超出外框但不碰四個角的方塊，且外框四邊落在裝置像素格上（同 T-659 的判定與容差）→ 以外框做 scissor（既有 `pushScissorRect`）。
+3. **圓角影像直繪**：裁切層內只有一個 `DrawImage`／`DrawImageQuad`、裁切形狀是凸的（圓角矩形、橢圓）→ 不建裁切，以影像著色的凸形填色繪製（`fillConvex` 加貼圖座標，UV 由影像 quad 的仿射映射求得；沿用 fringe）。影像 quad 沒有蓋滿裁切形狀時，先與 quad 求交（兩個凸多邊形的交集仍為凸）。
+4. **其餘**：改走既有的遮罩層路徑（`doPushMask`：內容畫進 transient，再以裁切形狀的覆蓋率作遮罩合成）——遮罩形狀由既有路徑繪製（凸形有 fringe、凹形走覆蓋率圖集），所以邊緣有抗鋸齒。巢狀裁切各自判定；內層若走遮罩層，外層的 stencil／scissor 照常作用於合成。
+5. 4x（`edgeFringe` 關）完全不變。統計加 `clipSkipped`、`clipScissor`、`clipImageDirect`、`clipMaskLayers`。
+6. 命中測試與佈局不受影響（只改繪製）。
+
+**T-663 實作記錄（#632，2026-11-11）**：`xt::gpu::clipContentBounds`（`clip_bounds.{h,cpp}`；以 `xt::commandBounds` × dpr 外擴 2 px，圖層／遮罩／效果／投影取 `boundsHint`，空 hint 視為 Unknown）；frame builder `scanClip`（每個範圍每次 build 掃一次並記憶）、`clipAtOneX`、`clipImageDirect`／`fillConvexImage`、`pushClipMaskLayer`。安全內區推廣到任何凸的單輪廓形狀（包圍盒扣掉四個角的矩形，角的大小取形狀與各邊的切點）。保留 stencil 的情形：3D 投影下、Direct 模式中 Pop 落在之後的 run、`dryWalk` 期間、退化的旋轉矩形。1x 對 SW：`ui_rounded_clip_children` 256 → 0、`ui_background_image` 60 → 0、`ui_clip_path` 1064 → 427、新 fixture `ui_coverage_clip` 1570 → 787（餘下全在旋轉的 24 px 文字，與裁切無關）。Sherefox：board／investigate／result／debate 的立繪圓角裁切走情形 3（debate 每幀 draw 95.3 → 92.3）；只有 notes 多出 pass（3.6 → 5.7／幀）——兩個 `.g-text`（`overflow: hidden`＋`skewX`）其實文字沒超出，但字形包圍盒以「原點外擴一個字級」估計而偏大，落入情形 4。**發現**：`ui_coverage_clip` 單獨跑 787、整套跑 883——輸出依賴先前 fixture 的狀態，疑為 T-662 字形鍵含 shaper 指標的誤命中（T-675 修）。未編譯：Clang／GCC。
+
+**T-664 實作記錄（#634，2026-11-11；一項裁決）**：盤點結果——1x 下已無任何邊框走 stencil（均勻環與 outline 走凸環 fringe、單邊走 collapsed ring、L 形與每邊不同色的圓角走覆蓋率圖集、直角不同色為四個凸梯形、dashed／dotted 為互不相碰的凸片），以測試鎖住。`ringSidesUneven`：同色環有任一邊 < 1 裝置像素且各邊寬度相差 > 0.25 px 時改走覆蓋率圖集（0.5／1／4／1 px 的環對 SW 692 → 0；旋轉 9° 431 → 149）；等寬薄環不變。`ui_game_hud` 的 133 個殘差像素：125 個是 3D 投影（`rotateY`）下的圓角裁切（T-663 規定投影下維持 stencil）、6 個是投影下的 fringe 圓角、2 個是光暈邊緣——都不屬 2D 路徑。`glyphRunInkBounds`（以字型 ascent／descent 收緊垂直範圍，水平以末字輪廓右緣加半個字級；24 組 run 的 SW 非零像素盒皆在回報盒內）。**未達**：Sherefox notes 的 `clipMaskLayers` 仍 0.53／幀——T-663 的掃描先在裝置空間取包圍盒、再映回裁切的本地座標取一次包圍盒，`skewX(-6deg)` 使兩側各多約 3.6 px。**裁決**：定案 5 的 `C` 改為「在裁切形狀的本地座標系中，各命令本地包圍盒（經命令自身對裁切的相對變換）的聯集」，不經裝置空間的軸對齊包圍盒；隨下一張碰裁切的單一併實作（T-676）。另記：等寬的次像素薄環（0.5／0.75 px）對 SW 仍有 296／400 個超差像素（2 px 的 fringe 足跡 vs SW 的實際覆蓋）——可比照不等寬者改走覆蓋率圖集，T-676 一併。未編譯：Clang／GCC。
+
+**10.12 定案 2 的規格補充：`DrawBoxShadow` 的公式與判定（2026-11-11；T-668）**
+
+*判定*（painter，`effect: shadow()` 的 drop shadow；全部成立才轉換，否則維持 PushEffect）：(1) 節點的效果鏈只有這一個 drop shadow（或多個 drop shadow——各自轉換；鏈中有其他種類的效果則不轉換）；(2) 節點自身不透明度為 1，且不是需要圖層的節點（混合模式、遮罩、3D 等）；(3) 節點有 alpha = 1 的純色或各色標 alpha 皆為 1 的漸層背景，背景繪製範圍是邊框盒（`background-clip: border-box`），圓角每個角的水平與垂直半徑相等（圓形角；四個角可各不相同）；(4) 節點是 `overflow` 非 visible，或其所有子孫（含文字、偽元素）的可繪包圍盒都落在邊框盒內——用保守的包圍盒，拿不準就不轉換；(5) 邊框若有，位於邊框盒內（本來就是）且不改變輪廓；`outline` 存在時不轉換（輪廓超出邊框盒）；(6) 陰影參數有限且模糊 ≥ 0。成立時輪廓＝邊框盒的圓角矩形 `R`（半徑 `r_tl, r_tr, r_br, r_bl`）。
+
+*命令*：`DrawBoxShadow { rect, radii[4], offset, blur, spread, color }`，在節點自身內容之前發出；與現有 drop shadow 相同的座標空間與變換。`R'` = `R` 向外擴 `spread`（半徑各加 `spread`，下限 0）再平移 `offset`。
+
+*覆蓋率*：令 `σ = blur / 2`（與現有高斯的定義一致）。`σ` 小於「現有路徑視為無模糊」的門檻時，覆蓋率 = `R'` 的解析覆蓋（以凸形填色＋fringe 繪製，或 SW 的光柵化器）。否則，對像素中心 `p`：
+
+`S(p) = ∫ G(y − p.y; σ) · ½ · [ erf((x₁(y) − p.x) / (σ√2)) − erf((x₀(y) − p.x) / (σ√2)) ] dy`
+
+其中 `[x₀(y), x₁(y)]` 是 `R'` 在高度 `y` 的水平範圍（圓角處由圓方程式求得，超出 `R'` 的 `y` 範圍為空）、`G` 是單位面積高斯。`y` 的積分以**固定 16 點的 Gauss–Legendre 求積**在區間 `[max(R'.top, p.y − 3σ), min(R'.bottom, p.y + 3σ)]` 上計算（區間為空則 `S = 0`）；`erf` 用 Abramowitz–Stegun 7.1.26 的有理近似（最大誤差 1.5e-7），GPU 與 SW 用同一組常數。輸出色 = `color`（預乘）× `S`。繪製範圍是 `R'` 外擴 `3σ` 的矩形（一個 quad；SW 逐像素計算）。這個公式是高斯與圓角矩形的真卷積（僅 y 向為數值積分），與現有「離屏＋降採樣高斯」的近似不同，因此轉換後的陰影像素會改變：SW golden 與 GPU golden 都要重產，重產的每一張由任務代理列出前後差異統計，主模型抽看確認是變得更接近真高斯而非出錯。
+
+*兩個後端同源*：SW（`xt_sw`）與 `xt_gpu`（wgpu、GL 的片段著色器）都實作同一公式；GPU 對 SW 的 golden 容差不變。CE 的 Host 後端不在本倉（該倉另行跟進；命令是新增的，舊後端遇到未知命令的行為須在任務中確認並回報）。
+
+*不轉換的情形維持原樣*，像素不變。
+
+**1x 畫面回報的查證（2026-11-11；遊戲 session 以 code.3 並排比對 1x／4x，回報 title 大字階梯、debate 動畫立繪塊狀）**：兩者都不是 1x 的缺陷。title 的 140 px 標題在 1x 有 184 個不同的邊緣灰階、對 SW 平均誤差 0.63／超差 471 px；4x 只有 5 級、0.83／2071 px。debate 立繪在同一動畫幀上 1x 與 4x 相符（平均差 0.01～0.03），兩張截圖落在待機動畫的不同相位；可見的顆粒是 3.4× 縮小、單層貼圖的取樣鋸齒（三條路徑皆同）→ T-665 提前。**量測方法的三個教訓**：(1) 以第 4 幀量測會漏掉有進場淡入的內容（T-662 的 title 數字沒量到標題本身）——量測一律取進場動畫結束後的幀；(2) `xtframe-view` 一律加入系統字型，而 XTAtrium 不設 `system_fonts`，兩者字形不同（遊戲內粗體為合成粗體）——view 加 `--no-system-fonts`；(3) 並排比對必須是同一 tick 的同一幀，且以 SW 為基準算數字，不以 4x 的觀感為準。**仍存在的 1x 差異**：≤ 96 px 的旋轉／傾斜文字（T-653 的位圖重取樣路徑）比 SW 軟且略淡（SW 與 4x 是畫輪廓）——改走輪廓覆蓋率，T-676。
+
+**T-677 實作記錄（#635，2026-11-11）**：「輸出依賴先前畫過的內容」的根因不在覆蓋率圖集，而在字形圖集：`GlyphAtlas::lookup` 的 `markDirty` 只上傳字形本身的矩形、不含它四周的 1 px 邊距；T-653 的旋轉／傾斜字形把 quad 與 UV 外擴半個 texel 到邊距上、3D 投影文字以線性取樣讀到邊距，兩者都假設裝置貼圖上的邊距為 0——但只有 CPU 頁保證。裝置頁在三種情況下不是 0：`setGlyphAtlas` 換了同尺寸的圖集而 frame builder 沿用裝置貼圖（`xt_golden` 每個 fixture 換一次；`Code/Backends` 的 renderer 在 shaper 更換時也會）、`GlyphAtlas::resetAll`（四頁全滿後重排）、GL 以 `nullptr` 建立的貼圖內容未定義。修法：髒矩形外擴 1 px（夾在頁內），只多上傳 0。影響：C ABI 宿主（renderer 與圖集同生共死、wgpu 新貼圖為 0）只在長時間執行填滿四頁字形圖集並 `resetAll` 之後才會出現（旋轉／傾斜／3D 文字邊緣帶到別的字形的殘墨）；v0.15.2 與 code.1～code.3 皆存在。被排除：`pathContentHash` 記憶（每次 build 清空）、字形覆蓋率鍵、分塊表頭與回收、頁成長後的 UV、漏傳、預算退回、效果快取跨文件。新增：`xt_golden --backend wgpu --order-pairs`、`--filter` 接受逗號與 `=` 全名、`Tools/Scripts/golden_order_check.sh`（整套 vs 逐一 vs 兩兩順序；版號單加跑）。已知未改：內容雜湊的查找只比鍵不比內容（64 位元碰撞理論上可能）。未編譯：Clang／GCC／Release；未測：Vulkan、實體 GL 驅動。
+
+**T-668 實作記錄（#636，2026-11-11）**：`xt::judgeBoxShadow`（`box_shadow.{h,cpp}`，回傳第一個不成立的條件）；painter 照常先發 PushEffect，到該節點的 PopEffect 時以子樹實際發出的命令（`xt::commandBoundsInFrame`）判定，成立則把 PushEffect 就地換成 `DrawBoxShadow`（不轉換的節點輸出逐位元組不變）。SW 與 GPU（wgpu、GL 皆完成）同公式；SW 的列共用路徑與逐像素公式浮點相同。對 64×64 超採樣暴力卷積的最大誤差 0.5～1.16／255（舊的離屏路徑在同樣情形為 2.6～29.3）；門檻以下（`boxBlurWidth(σ) ≤ 1`，即 σ < √2 裝置像素）與 FillPath 逐位元組相同。重產的既有 golden 只有 `ui_fx_shadow`（對舊圖 3 px 超差、對參考誤差 2.62 → 0.67）。解讀採用：inset shadow 視為其他種類的效果；多個 drop shadow 由後往前發出；負的 spread 取 0；公式在節點本地空間求值（skew／非均勻縮放下模糊在螢幕上各向異性，與離屏路徑的螢幕空間各向同性不同）；3D 投影下不發此命令。**Sherefox 的轉換率偏低**：debate 32 個陰影轉換 4 個（未轉換：效果鏈含其他效果 4、背景半透明 alpha 0.90～0.92 共 6、outline 1（即 `litpulse` 節點）、內容超出 17——其中 8 個只是字形包圍盒估得太粗、9 個是真的幾何超出）；board 25 轉 7、investigate 7 轉 1；debate passes 18.78 → 17.75。**兩個相容問題**：BakedWriter 不認得 `DrawBoxShadow`（`xtframe-bake` 遇到可轉換陰影即失敗，除非 `--simplify`）；沒有實作此命令的宿主後端會什麼都不畫（陰影消失）。未編譯：Clang／GCC。
+
+**10.12 定案 2 補充 2：相容開關與判定放寬（2026-11-11；T-680）**
+
+*A. 相容*：`Context`（或 painter 的選項，擇既有選項結構）新增 `boxShadowCommands`，**預設開**。`xtframe-bake` 與任何以 BakedWriter 輸出 `.xtcl` 的路徑在繪製時關閉它（輸出與 T-668 之前相同，烘焙不再失敗）；`.xtcl` 格式不動。後端能力：`Renderer`／後端介面若有能力查詢點則加一項「支援 `DrawBoxShadow`」，由 Context 在綁定不支援的 renderer 時自動關閉；沒有這種查詢點就只做選項，並在 23 章的宿主整合記錄（實作記錄由主模型補）註明自訂後端須實作此命令或關閉選項。
+
+*B. 放寬*（判定仍須讓解析式結果與離屏結果在 golden 容差內一致；每項各有 fixture）：
+1. **不透明 outline**：`outline` 為實線、色彩 alpha = 1 時不再拒絕。輪廓＝邊框盒 `R` ∪ outline 環；outline 環的外緣 `O_out`（`R` 外擴 `offset + width`）與內緣 `O_in`（`R` 外擴 `offset`）都是圓角矩形。卷積是線性的：`offset ≤ 0`（環與盒相接或重疊）→ 陰影＝`S(O_out)`；`offset > 0`（有縫）→ 陰影＝`S(O_out) − S(O_in) + S(R)`。`DrawBoxShadow` 擴充為最多三個帶正負號的圓角矩形項（同一 quad、同一片段著色器內加總後夾在 0..1），SW 同式。虛線／點線 outline、半透明 outline 仍拒絕。
+2. **文字包圍盒**：條件 4 對字形命令改用字型度量收緊（ascent／descent 與末字輪廓右緣，同 T-664 的 `glyphRunInkBounds` 的規則；把該函式下沉到 core 可用的位置供 painter 與 GPU 共用，不複製兩份）。
+3. **高不透明度背景**：背景 alpha `a ≥ 0.9`（純色，或漸層各色標 alpha 皆 ≥ 0.9 且相等）時視為均勻 alpha 的方塊，陰影＝`a · S(·)`。這是近似（子內容的不透明部分本應讓陰影局部更深，誤差上界為 `(1 − a) ×` 陰影色 alpha，且多半被盒本身遮住）；`a < 0.9` 仍拒絕。fixture 必須包含「文字貼邊＋位移陰影」的最壞情形並回報與離屏路徑的最大差。
+4. 仍拒絕：效果鏈含其他種類的效果、內容的幾何真的超出邊框盒、橢圓角、3D。
+
+**T-676 實作記錄（#638，2026-11-11；兩項裁決）**：`xtframe-view --no-system-fonts`。旋轉／傾斜的 ≤ 96 px 文字在 1x 改走輪廓覆蓋率（`outlineGlyphCoverage`／`doTransformedRun`；覆蓋率被拒的個別字形退回 T-653 的圖集路徑並要求補畫）：`ui_text_transform_skew` 1972 → 823、`ui_coverage_clip` 787 → 369；Sherefox（`--no-system-fonts`、720p、第 400 幀）notes 2576 → 1、result 5157 → 2178、evbook 4910 → 1807。等寬次像素薄環走圖集：0.5 px 圓角 296 → 0、0.75 px 直角 400 → 0。裁切包圍盒改在裁切的本地座標求聯集（`clipContentBoundsInFrame`）。`golden_order_check.sh` 通過（179 fixture、56 對）。
+
+*paper 的查證*：標題是 40 裝置像素、`font-weight: 700`（bundle 只有 Regular → 合成粗體）、無變換，落在 24～96 px 帶：GPU 用 hinted 字形圖集（`FT_LOAD_TARGET_LIGHT`、hint 後加粗、基線取 `round(y)`、gamma 1.2），SW 填未 hint 的輪廓（線性覆蓋率、精確原點）。主因是**基線取整**（271.52 → 272，位移 0.48 px），其次是 light hinting 改變橫筆位置（字腔不同），gamma 使邊緣約淡 3%；合成粗體兩邊強度相同，不是原因。把圖集上限暫時由 96 降到 24 的實驗：paper 8022 → 1166（最大 234 → 52）、title 2643 → 2361、result 5157 → 3837；覆蓋率圖集在 paper 由 7 項增為 91 項、一頁由 512² 長到 1024²、無回收。
+
+**裁決 1（T-681）**：1x（`edgeFringe` 開）下，GPU 的文字與 SW 用同一個門檻——字級 ≥ 24 裝置像素（SW 改填輪廓的同一條件，以 SW 的判斷式為準）的 run 走輪廓覆蓋率；< 24 px 維持 hinted 字形圖集（SW 在此也用 hinted 位圖）。4x 不變。T-681 必須量 CJK 密集畫面（Sherefox vn 的對話、paper 的內文）的圖集項數、頁數與回收次數；若出現持續回收，回報由主模型決定圖集頁數上限或文字鍵的次像素量化。
+
+**裁決 2（T-681）**：notes 的遮罩層仍在（`clipMaskLayers` 0.57／幀）不是座標系的問題，而是 `glyphRunInkBounds` 的估計規則太寬（左側加半個字級、垂直取 ascent＋descent）。改為逐字形的實際 ink 盒：以 shaper 取得每個字形輪廓的控制點包圍盒（或字形度量的 bearing／尺寸），經變換後聯集、外擴 1 裝置像素；無輪廓的字形（點陣字、emoji）以其位圖度量；拿不到時才退回今天的估計。此函式由 T-680 下沉到 core 後在該處修改。
+
+**10.11 定案 7 定稿：縮小取樣的規格（2026-11-11；T-665；任務單 `Docs/tasks/T-665.md` 的規格段，加上兩項開工前裁決）**：LOD 由 CPU 以仿射映射的線性部分明確算出（`ρ` = 每個裝置像素在 x、y 方向跨過的 texel 數取大者，`lod = max(0, log2 ρ)`），兩個 GPU 後端與 SW 同式；`lod = 0` 逐位元組不變；`lod > 0` 為兩層雙線性的線性混合。取代原定案 7 的「GPU ≥ 1.5×、SW ≥ 2×」門檻。**裁決 1（層尺寸）**：採硬體 mip 尺寸 `max(1, w >> k)`，下一層為上一層 (2x, 2y)～(2x+1, 2y+1) 在預乘空間的 2×2 box；奇數邊的最後一行／列不取樣（非 2 的冪的影像在低層有次 texel 的錯位，為已知限制；是否值得做 2×3／3×3 足跡的降採樣待實測）。**裁決 2（CPU 鏈的歸屬）**：`AssetResolver` 新增虛擬介面（預設回「無」）；`FileAssetResolver` 把鏈存在解碼項旁（延遲產生、隨項釋放、計入閒置預算）；resolver 回「無」時由 SW renderer 自己建並持有，鍵與失效規則比照 GPU frame builder 對借用影像的做法（view 指標＋asset epoch／source；`invalidateAsset`、source 釋放、shutdown／trim 時丟棄），不得是沒有失效的裸指標快取。BC 壓縮且無現成 mip 鏈的影像 GPU 維持單層，SW 對該影像也維持單層（「SW 與 GPU 取樣相同的層」）。未共用的貼圖同樣延遲產生 mip；`DrawImageQuad` 僅在裝置 quad 為平行四邊形時有 lod。
+
+**T-680 實作記錄（#639，2026-11-11；一項裁決）**：A——`Context::setBoxShadowCommands(bool)`（預設開，經 `Document::paintAs` 傳到 painter）；`xtframe-bake` 關閉它（四個場景的 `.xtcl` 與 T-668 之前的工具逐位元組相同），`xtframe-view --no-box-shadow`；BakedWriter 仍拒絕 `DrawBoxShadow`。本倉的 renderer（`SwRenderer`、經 `FrameBuilder` 的 wgpu／GL）皆已實作；宿主自訂的 `GpuDevice` 看不到命令，只會收到 `Shading::BoxShadow` 的繪製，須實作該著色或關閉選項（Context 不綁定 renderer，無法自動關閉）。B.1——`DrawBoxShadow` 加 `extraCount`＋`BoxShadowTerm extra[2]`（矩形、半徑、正負號）；outline `offset ≤ 0` 為單項（`O_out`，或環完全在盒內時為 `R`），`offset > 0` 為 `S(O_out) − S(O_in) + S(R)`，spread 使 `O_out` 與 `R` 外擴、`O_in` 內縮（縫合上時該對項消去）；節點自己的 outline 不計入條件 4；對暴力卷積最大誤差 0.84～1.19／255。B.2——`glyphRunInkBounds` 下沉到 core（`xt/damage.h`）。Sherefox 1440p 1x（第 300～600 幀平均）：debate 轉換 4 → 12／32，passes 13.85 → 4.99、效果快取未命中 1.00 → 0.01、`litpulse` 的離屏 pass 約 8.9 → 0／幀；board 7 → 11／25、investigate 1 → 5／7；board 與 investigate 的 draw 增加（41 → 57、23 → 38，陰影與內容分開畫）而 pass 不變。重產：`ui_box_shadow_kept`（其 outline 節點現在會轉換）。**B.3（背景 alpha ≥ 0.9）未併入**：最壞格與離屏路徑最大差 17（> 16 的 12 px），但同一格在不透明背景下與離屏路徑也差 17——差距多半來自離屏路徑自身的近似。**裁決**：停損條件的基準訂錯了；改以真值（實際內容 alpha——半透明背景與其上的不透明子內容——的精確高斯卷積，測試內暴力計算）為基準：解析式（含 B.3）對真值的最大誤差與 > 8 的像素數皆不高於離屏路徑對真值者，就併入 B.3；否則不併。由 T-681 執行（patch 在 `C:\Users\Bigspring\.claude\jobs\dccd3382\tmp\t680\b3_only.patch`）。未編譯：Clang／GCC。
+

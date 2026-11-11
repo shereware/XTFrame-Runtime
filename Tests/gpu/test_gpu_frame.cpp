@@ -30,6 +30,7 @@
 #include "xt/damage.h"
 #include "xt/document.h"
 #include "xt/effect_utils.h"
+#include "xt/gpu/clip_bounds.h"
 #include "xt/gpu/frame_builder.h"
 #include "xt/gpu/gpu_device.h"
 #include "xt/gpu/gpu_frame.h"
@@ -824,7 +825,17 @@ TEST_CASE("gpu: T-165 a rotating border ring never fans its hole (direct ring me
         cl.fills.push_back(fill);
         cl.commands.push_back(Command{CmdKind::FillPath, {}, 0});
         Built b;
+        // T-664: at 1x this squashed ring (0.52 px at the top and bottom, 2 px at the sides) is a
+        // thin ring of uneven sides, drawn from the coverage atlas; the merge walk is checked as a
+        // 4x target draws it.
+        b.builder.setEdgeFringe(false);
         buildInto(b, cl, 256, 128);
+        if (deg == 0) {
+            Built one;
+            buildInto(one, cl, 256, 128);
+            CHECK(one.frame.cmds.size() == 1);
+            CHECK(one.frame.cmds[0].coverage != 0);
+        }
         const GpuFrame& f = b.frame;
         // The ring takes the direct path: one Solid command, no stencil writes.
         REQUIRE(f.cmds.size() == 1);
@@ -1186,13 +1197,14 @@ TEST_CASE("gpu: an empty scissor suppresses draws but keeps the clip stack balan
     CHECK(b.frame.cmds[0].clipW == 64);
 }
 
-TEST_CASE("gpu: rotated PushClipRect becomes a stencil clip level") {
+TEST_CASE("gpu: rotated PushClipRect becomes a stencil clip level (4x)") {
     CommandList cl = makeList();
     addPushClipRect(cl, Rect{-10, -10, 20, 20}, mul(translation(Vec2{32, 32}), rotationDeg(30.0f)));
     addFillRect(cl, 0, 0, 64, 64, Color{0, 0, 1, 1});
     addPopClip(cl);
     addFillRect(cl, 0, 0, 64, 64, Color{1, 0, 0, 1});
     Built b;
+    b.builder.setEdgeFringe(false);  // T-663: at 1x this clip is not a stencil level (a mask layer)
     buildInto(b, cl, 64, 64);
     const GpuFrame& f = b.frame;
     // winding(4 corners) + ClipPush | convex fill (1, ref 1) | ClipPop | convex fill (1, ref 0)
@@ -1216,7 +1228,7 @@ TEST_CASE("gpu: rotated PushClipRect becomes a stencil clip level") {
     checkSnapshot("clip_rect_rotated", f);
 }
 
-TEST_CASE("gpu: PushClipPath nests stencil depth and replays into a layer") {
+TEST_CASE("gpu: PushClipPath nests stencil depth and replays into a layer (4x)") {
     CommandList cl = makeList();
     addPushClipPath(cl, 4, 4, 40, 40);
     addPushClipPath(cl, 8, 8, 40, 40);
@@ -1226,6 +1238,7 @@ TEST_CASE("gpu: PushClipPath nests stencil depth and replays into a layer") {
     addPopClip(cl);
     addPopClip(cl);
     Built b;
+    b.builder.setEdgeFringe(false);  // T-663: at 1x this clip is not a stencil level (a mask layer)
     buildInto(b, cl, 64, 64);
     const GpuFrame& f = b.frame;
     // Surface: 2 levels (4 cmds). Layer pass: replay 2 levels (4 cmds) + convex fill at ref 2
@@ -2133,7 +2146,10 @@ TEST_CASE("gpu: rotated DrawGlyphs (multisampled target) and a missing atlas fal
     CHECK(coverageCmdCount(b2.frame) >= 1);
 }
 
-TEST_CASE("gpu: T-653 rotated / skewed DrawGlyphs on a single-sampled target are drawn from the atlas") {
+// T-676 (Docs/tasks/T-676.md item 3): the rotated / skewed runs T-653 drew from resampled atlas
+// bitmaps are outline coverage quads on a single-sampled target, as SW fills their outlines; the T-653
+// path is only the fallback for a refused coverage quad (Tests/gpu/test_coverage_fill.cpp).
+TEST_CASE("gpu: T-676 rotated / skewed DrawGlyphs on a single-sampled target are outline coverage quads") {
     text::FtTextShaper shaper;
     REQUIRE(shaper.addFontFile(fontPath("NotoSans-Regular.subset.ttf")));
     const Mat2x3 skew{1.0f, 0.0f, -0.105104f, 1.0f, 0.0f, 0.0f};  // skewX(-6deg)
@@ -2147,25 +2163,27 @@ TEST_CASE("gpu: T-653 rotated / skewed DrawGlyphs on a single-sampled target are
         b.builder.setGlyphAtlas(&atlas);
         b.builder.build(cl, &shaper, nullptr, nullptr, b.frame);
         checkFrameWellFormed(b.frame);
-        const auto glyphs = cmdsWith(b.frame, Shading::Glyph);
-        REQUIRE(glyphs.size() == 1);
-        CHECK(glyphs[0]->sampler == Sampler::LinearClamp);
-        CHECK(glyphs[0]->vertexCount == 8);  // two quads, no stencil-then-cover
+        CHECK(cmdsWith(b.frame, Shading::Glyph).empty());
         CHECK(cmdsWith(b.frame, StencilOp::WriteIncrWrap).empty());
-        CHECK(!b.device.updates.empty());
-        // The quads follow the transform: the left edge (corner 0 -> corner 3) is not vertical.
-        const Vertex& v0 = b.frame.vertices[glyphs[0]->baseVertex + 0];
-        const Vertex& v3 = b.frame.vertices[glyphs[0]->baseVertex + 3];
-        CHECK(std::fabs(v3.x - v0.x) > 0.5f);
-        // UVs reach half a texel past the entry (the atlas margin; clamped at the page edge).
-        const float halfTexel = 0.5f / 256.0f;
-        for (uint32_t i = 0; i < glyphs[0]->vertexCount; ++i) {
-            const Vertex& v = b.frame.vertices[glyphs[0]->baseVertex + i];
-            CHECK(v.u >= -halfTexel);
-            CHECK(v.u <= 1.0f + halfTexel);
-            CHECK(v.v >= -halfTexel);
-            CHECK(v.v <= 1.0f + halfTexel);
-        }
+        REQUIRE(coverageCmdCount(b.frame) >= 1);
+        uint32_t coverageVertices = 0;
+        for (const DrawCmd& c : b.frame.cmds) coverageVertices += c.coverage != 0 ? c.vertexCount : 0;
+        CHECK(coverageVertices == 8);  // one quad per glyph
+        const FrameBuilder::CoverageStats s = b.builder.lastCoverageStats();
+        CHECK(s.misses == 2);
+        CHECK(s.fallbacks == 0);
+        CHECK_FALSE(b.builder.wantsAnotherFrame());
+        // Static: the next frame hits both bitmaps.
+        b.builder.build(cl, &shaper, nullptr, nullptr, b.frame);
+        CHECK(b.builder.lastCoverageStats().hits == 2);
+        CHECK(b.builder.lastCoverageStats().misses == 0);
+
+        // 4x (no edge fringe) keeps the outlines, never the atlas or the coverage quads.
+        b.builder.setEdgeFringe(false);
+        b.builder.build(cl, &shaper, nullptr, nullptr, b.frame);
+        CHECK(cmdsWith(b.frame, Shading::Glyph).empty());
+        CHECK(coverageCmdCount(b.frame) == 0);
+        CHECK(!cmdsWith(b.frame, StencilOp::WriteIncrWrap).empty());
     }
 }
 
@@ -3039,6 +3057,11 @@ TEST_CASE("gpu: UI documents build well-formed frames (snapshots)") {
         {"ui_coverage_fill.xt", "ui_coverage_fill", 256, 256, 0.0f},
         // T-661: strokes drawn from the coverage atlas (the long slanted polyline is tiled).
         {"ui_coverage_stroke.xt", "ui_coverage_stroke", 256, 256, 0.0f},
+        // T-663: rounded and rotated clips at 1x (no clip, scissor, image polygons, mask layers).
+        {"ui_coverage_clip.xt", "ui_coverage_clip", 384, 320, 0.0f},
+        // T-664: borders at 1x (fringed rings, collapsed rings, coverage for L shapes, rounded
+        // per-side colors and thin rings of uneven sides).
+        {"ui_coverage_border.xt", "ui_coverage_border", 480, 288, 0.0f},
     };
     for (const Doc& d : docs) {
         INFO("document: ", std::string(d.file));
@@ -3691,6 +3714,7 @@ TEST_CASE("gpu: T-263a a 16th nested clip is reduced to its bounding box and the
     }
     addFillRect(cl, 0, 0, 64, 64, Color{1, 0, 0, 1});
     Built b;
+    b.builder.setEdgeFringe(false);  // T-663: at 1x this clip is not a stencil level (a mask layer)
     buildInto(b, cl, 64, 64);
     CHECK(cmdsWith(b.frame, StencilOp::ClipPush).size() == kMaxClipDepth);
     CHECK(cmdsWith(b.frame, StencilOp::ClipPop).size() == kMaxClipDepth);
@@ -5306,3 +5330,832 @@ TEST_CASE("gpu: T-343 a blur above sigma 4 runs downsampled (Downsample, Gauss a
         CHECK(effectSequence(b.frame) == std::vector<P>{P::GaussColor, P::GaussColor});
     }
 }
+
+// =================================================================================================
+// T-663 (Docs/design/10-backends.md §10.11 ruling 5 final): rounded and rotated clips at 1x --
+// the clip scan's device bounds per command kind, the four outcomes (no clip, scissor, one image
+// polygon, mask layer), the empty range, nesting with masks / effects / replayed stencil levels,
+// and 4x unchanged.
+// =================================================================================================
+
+namespace {
+
+/// A rounded-rect path (appendRoundedRectPath's shape: kappa cubics, clockwise from the top edge).
+PathRef addRRectPath(CommandList& cl, float x, float y, float w, float h, float r) {
+    PathRef ref{};
+    ref.verbOffset = static_cast<uint32_t>(cl.verbs.size());
+    ref.pointOffset = static_cast<uint32_t>(cl.points.size());
+    const float k = 0.5522847498f;
+    auto pt = [&](float px, float py) {
+        cl.points.push_back(px);
+        cl.points.push_back(py);
+    };
+    auto line = [&](float px, float py) {
+        cl.verbs.push_back(PathVerb::Line);
+        pt(px, py);
+    };
+    auto cubic = [&](float x1, float y1, float x2, float y2, float x3, float y3) {
+        cl.verbs.push_back(PathVerb::Cubic);
+        pt(x1, y1);
+        pt(x2, y2);
+        pt(x3, y3);
+    };
+    cl.verbs.push_back(PathVerb::Move);
+    pt(x + r, y);
+    line(x + w - r, y);
+    cubic(x + w - r + r * k, y, x + w, y + r - r * k, x + w, y + r);
+    line(x + w, y + h - r);
+    cubic(x + w, y + h - r + r * k, x + w - r + r * k, y + h, x + w - r, y + h);
+    line(x + r, y + h);
+    cubic(x + r - r * k, y + h, x, y + h - r + r * k, x, y + h - r);
+    line(x, y + r);
+    cubic(x, y + r - r * k, x + r - r * k, y, x + r, y);
+    cl.verbs.push_back(PathVerb::Close);
+    ref.verbCount = static_cast<uint32_t>(cl.verbs.size()) - ref.verbOffset;
+    ref.pointCount = static_cast<uint32_t>(cl.points.size()) - ref.pointOffset;
+    return ref;
+}
+
+void addPushClipRRect(CommandList& cl, float x, float y, float w, float h, float r, Mat2x3 xf = Mat2x3{}) {
+    ClipPathCmd c{};
+    c.xf = xf;
+    c.path = addRRectPath(cl, x, y, w, h, r);
+    c.rule = FillRule::NonZero;
+    cl.clipPaths.push_back(c);
+    cl.commands.push_back(Command{CmdKind::PushClipPath, {}, static_cast<uint32_t>(cl.clipPaths.size() - 1)});
+}
+
+size_t stencilClipOps(const GpuFrame& f) {
+    return cmdsWith(f, StencilOp::WriteIncrWrap).size() + cmdsWith(f, StencilOp::WriteInvert).size() +
+           cmdsWith(f, StencilOp::ClipPush).size() + cmdsWith(f, StencilOp::ClipPop).size();
+}
+
+size_t maskApplies(const GpuFrame& f) {
+    size_t n = 0;
+    for (const DrawCmd& c : f.cmds) {
+        n += c.shading == Shading::Effect && c.program == EffectProgram::MaskApply ? 1 : 0;
+    }
+    return n;
+}
+
+/// A dpr-2 list with one command of each drawing kind, for clipContentBounds.
+struct BoundsList {
+    CommandList cl = makeList(256, 256);
+    BoundsList() { cl.devicePixelRatio = 2.0f; }
+};
+
+Rect devBox(float x, float y, float w, float h, float dpr) {
+    const float m = kClipContentMarginPx;
+    return Rect{x * dpr - m, y * dpr - m, w * dpr + 2 * m, h * dpr + 2 * m};
+}
+
+void checkRect(const Rect& a, const Rect& b) {
+    CHECK(a.x == doctest::Approx(b.x).epsilon(1e-4));
+    CHECK(a.y == doctest::Approx(b.y).epsilon(1e-4));
+    CHECK(a.w == doctest::Approx(b.w).epsilon(1e-4));
+    CHECK(a.h == doctest::Approx(b.h).epsilon(1e-4));
+}
+
+bool contains(const Rect& outer, const Rect& inner) {
+    return outer.x <= inner.x && outer.y <= inner.y && outer.x + outer.w >= inner.x + inner.w &&
+           outer.y + outer.h >= inner.y + inner.h;
+}
+
+}  // namespace
+
+TEST_CASE("gpu: T-663 clipContentBounds per command kind (device px, conservative)") {
+    BoundsList b;
+    CommandList& cl = b.cl;
+    const float dpr = 2.0f;
+    Rect r;
+    SUBCASE("FillPath: its transformed path; a degenerate one draws nothing") {
+        addFillRect(cl, 10, 20, 30, 40, Color{1, 0, 0, 1});
+        REQUIRE(clipContentBounds(cl, cl.commands.back(), dpr, r) == ClipContentBounds::Box);
+        checkRect(r, devBox(10, 20, 30, 40, dpr));
+        addFillRect(cl, 10, 20, 30, 0, Color{1, 0, 0, 1});
+        CHECK(clipContentBounds(cl, cl.commands.back(), dpr, r) == ClipContentBounds::Empty);
+        addFillRect(cl, 0, 0, 10, 10, Color{1, 0, 0, 1}, mul(translation(Vec2{50, 50}), rotationDeg(45.0f)));
+        REQUIRE(clipContentBounds(cl, cl.commands.back(), dpr, r) == ClipContentBounds::Box);
+        const float d = 10.0f * std::sqrt(2.0f);
+        checkRect(r, devBox(50 - d / 2, 50, d, d, dpr));
+    }
+    SUBCASE("StrokePath: the width and miters; a zero-length stroke is unknown (its caps draw)") {
+        StrokeCmd s{};
+        s.path = addRectPath(cl, 10, 10, 40, 20);
+        s.paint.kind = PaintKind::Solid;
+        s.paint.color = Color{0, 0, 0, 1};
+        s.width = 6.0f;
+        s.cap = LineCap::Butt;
+        s.join = LineJoin::Miter;
+        s.miterLimit = 4.0f;
+        cl.strokes.push_back(s);
+        cl.commands.push_back(Command{CmdKind::StrokePath, {}, 0});
+        REQUIRE(clipContentBounds(cl, cl.commands.back(), dpr, r) == ClipContentBounds::Box);
+        CHECK(contains(r, devBox(10 - 3, 10 - 3, 46, 26, dpr)));
+        StrokeCmd dot = s;
+        dot.path = addRectPath(cl, 20, 20, 0, 0);
+        dot.cap = LineCap::Round;
+        cl.strokes.push_back(dot);
+        cl.commands.push_back(Command{CmdKind::StrokePath, {}, 1});
+        CHECK(clipContentBounds(cl, cl.commands.back(), dpr, r) == ClipContentBounds::Unknown);
+    }
+    SUBCASE("DrawImage: its transformed destination") {
+        addDrawImage(cl, 0, Rect{4, 6, 20, 10}, 1.0f, true);
+        cl.images.back().xf = translation(Vec2{100, 0});
+        REQUIRE(clipContentBounds(cl, cl.commands.back(), dpr, r) == ClipContentBounds::Box);
+        checkRect(r, devBox(104, 6, 20, 10, dpr));
+    }
+    SUBCASE("DrawGlyphs: the origins grown by the font size and the glyph effect") {
+        GlyphsCmd g{};
+        g.size = 12.0f;
+        g.color = Color{0, 0, 0, 1};
+        g.glyphOffset = 0;
+        g.glyphCount = 2;
+        g.effectRadius = 1.5f;
+        cl.glyphs.push_back(1);
+        cl.glyphs.push_back(2);
+        cl.glyphPos.push_back(Vec2{40, 50});
+        cl.glyphPos.push_back(Vec2{60, 50});
+        cl.glyphRuns.push_back(g);
+        cl.commands.push_back(Command{CmdKind::DrawGlyphs, {}, 0});
+        REQUIRE(clipContentBounds(cl, cl.commands.back(), dpr, r) == ClipContentBounds::Box);
+        const float grow = 12.0f + 3.0f;
+        checkRect(r, devBox(40 - grow, 50 - grow, 20 + 2 * grow, 2 * grow, dpr));
+        GlyphsCmd none = g;
+        none.glyphCount = 0;
+        cl.glyphRuns.push_back(none);
+        cl.commands.push_back(Command{CmdKind::DrawGlyphs, {}, 1});
+        CHECK(clipContentBounds(cl, cl.commands.back(), dpr, r) == ClipContentBounds::Empty);
+    }
+    SUBCASE("DrawImageQuad, DrawParticles, DrawImageMesh: their command boxes") {
+        ImageQuadCmd q{};
+        q.p[0] = Vec2{10, 10};
+        q.p[1] = Vec2{30, 12};
+        q.p[2] = Vec2{28, 40};
+        q.p[3] = Vec2{8, 38};
+        q.srcUv = Rect{0, 0, 1, 1};
+        q.opacity = 1;
+        q.smooth = 1;
+        cl.imageQuads.push_back(q);
+        cl.commands.push_back(Command{CmdKind::DrawImageQuad, {}, 0});
+        REQUIRE(clipContentBounds(cl, cl.commands.back(), dpr, r) == ClipContentBounds::Box);
+        checkRect(r, devBox(8, 10, 22, 30, dpr));
+
+        ParticlesCmd p{};
+        p.texture = kInvalidAsset;
+        p.instanceOffset = 0;
+        p.count = 1;
+        xt::ParticleInstance inst{};
+        inst.x = 50;
+        inst.y = 60;
+        inst.w = 6;
+        inst.h = 8;
+        cl.particleInstances.push_back(inst);
+        cl.particles.push_back(p);
+        cl.commands.push_back(Command{CmdKind::DrawParticles, {}, 0});
+        REQUIRE(clipContentBounds(cl, cl.commands.back(), dpr, r) == ClipContentBounds::Box);
+        checkRect(r, devBox(45, 55, 10, 10, dpr));  // the square of the half diagonal (5)
+
+        ImageMeshCmd m{};
+        m.vertexOffset = 0;
+        m.vertexCount = 3;
+        m.indexOffset = 0;
+        m.indexCount = 3;
+        m.opacity = 1;
+        m.smooth = 1;
+        cl.meshVertices.push_back(MeshVertex{Vec2{70, 70}, Vec2{0, 0}});
+        cl.meshVertices.push_back(MeshVertex{Vec2{90, 72}, Vec2{1, 0}});
+        cl.meshVertices.push_back(MeshVertex{Vec2{80, 95}, Vec2{0, 1}});
+        cl.meshIndices.insert(cl.meshIndices.end(), {0, 1, 2});
+        cl.imageMeshes.push_back(m);
+        cl.commands.push_back(Command{CmdKind::DrawImageMesh, {}, 0});
+        REQUIRE(clipContentBounds(cl, cl.commands.back(), dpr, r) == ClipContentBounds::Box);
+        checkRect(r, devBox(70, 70, 20, 25, dpr));
+    }
+    SUBCASE("groups: their window; an empty hint (whole viewport) is unknown") {
+        addPushLayer(cl, 0.5f, BlendMode::Normal);
+        CHECK(clipContentBounds(cl, cl.commands.back(), dpr, r) == ClipContentBounds::Unknown);
+        cl.layers.back().boundsHint = Rect{5, 6, 7, 8};
+        REQUIRE(clipContentBounds(cl, cl.commands.back(), dpr, r) == ClipContentBounds::Box);
+        checkRect(r, devBox(5, 6, 7, 8, dpr));
+        addPushMask(cl, MaskMode::Alpha);
+        CHECK(clipContentBounds(cl, cl.commands.back(), dpr, r) == ClipContentBounds::Unknown);
+        cl.masks.back().boundsHint = Rect{1, 2, 3, 4};
+        REQUIRE(clipContentBounds(cl, cl.commands.back(), dpr, r) == ClipContentBounds::Box);
+        checkRect(r, devBox(1, 2, 3, 4, dpr));
+        addPushEffect(cl, {blurFx(4, 4)}, Mat2x3{}, Rect{10, 10, 40, 40}, Rect{20, 20, 20, 20});
+        REQUIRE(clipContentBounds(cl, cl.commands.back(), dpr, r) == ClipContentBounds::Box);
+        checkRect(r, devBox(10, 10, 40, 40, dpr));
+        addPushProjection(cl, mat4Identity());
+        cl.projections.back().boundsHint = Rect{0, 0, 64, 32};
+        REQUIRE(clipContentBounds(cl, cl.commands.back(), dpr, r) == ClipContentBounds::Box);
+        checkRect(r, devBox(0, 0, 64, 32, dpr));
+    }
+    SUBCASE("commands that draw nothing by themselves") {
+        addPushClipRect(cl, Rect{0, 0, 10, 10});
+        CHECK(clipContentBounds(cl, cl.commands.back(), dpr, r) == ClipContentBounds::Empty);
+        addPushClipPath(cl, 0, 0, 10, 10);
+        CHECK(clipContentBounds(cl, cl.commands.back(), dpr, r) == ClipContentBounds::Empty);
+        for (CmdKind k : {CmdKind::PopClip, CmdKind::PopLayer, CmdKind::EndMaskContent, CmdKind::PopMask,
+                          CmdKind::PopProjection, CmdKind::PopTransform3D, CmdKind::PopEffect}) {
+            CHECK(clipContentBounds(cl, Command{k, {}, 0}, dpr, r) == ClipContentBounds::Empty);
+        }
+        addPushTransform3D(cl, mat4Identity());
+        CHECK(clipContentBounds(cl, cl.commands.back(), dpr, r) == ClipContentBounds::Empty);
+    }
+    SUBCASE("a non-finite box is unknown") {
+        addFillRect(cl, 0, 0, 10, 10, Color{1, 0, 0, 1}, Mat2x3{std::nanf(""), 0, 0, 1, 0, 0});
+        CHECK(clipContentBounds(cl, cl.commands.back(), dpr, r) == ClipContentBounds::Unknown);
+    }
+}
+
+TEST_CASE("gpu: T-663 point 1: content inside the safe interior needs no clip") {
+    CommandList cl = makeList(128, 128);
+    addPushClipRRect(cl, 10, 10, 100, 80, 16);
+    addFillRect(cl, 30, 30, 60, 40, Color{0, 0, 1, 1});  // clear of the 16 px corner squares
+    addPopClip(cl);
+    Built b;
+    buildInto(b, cl, 128, 128);
+    const GpuFrame& f = b.frame;
+    CHECK(stencilClipOps(f) == 0);
+    REQUIRE(f.cmds.size() == 1);
+    CHECK(f.cmds[0].clipX == 0);
+    CHECK(f.cmds[0].clipW == 128);  // no scissor change either
+    CHECK(f.passes.size() == 1);
+    const FrameBuilder::ClipStats s = b.builder.lastClipStats();
+    CHECK(s.skipped == 1);
+    CHECK(s.scissor + s.imageDirect + s.maskLayers == 0);
+    checkSnapshot("clip_1x_skip", f);
+
+    SUBCASE("a rotated rect: C's corners inside the rect") {
+        CommandList rot = makeList(128, 128);
+        addPushClipRect(rot, Rect{-40, -30, 80, 60}, mul(translation(Vec2{64, 64}), rotationDeg(12.0f)));
+        addFillRect(rot, -10, -10, 20, 20, Color{0, 0, 1, 1},
+                    mul(translation(Vec2{64, 64}), rotationDeg(12.0f)));
+        addPopClip(rot);
+        Built r;
+        buildInto(r, rot, 128, 128);
+        CHECK(stencilClipOps(r.frame) == 0);
+        CHECK(r.builder.lastClipStats().skipped == 1);
+    }
+}
+
+TEST_CASE("gpu: T-663 point 2: an aligned rounded clip on whole pixels, corners untouched, is a scissor") {
+    CommandList cl = makeList(128, 128);
+    addPushClipRRect(cl, 10, 10, 100, 80, 16);
+    addFillRect(cl, 30, 0, 60, 128, Color{0, 0, 1, 1});  // past the top and bottom, between the corners
+    addPopClip(cl);
+    Built b;
+    buildInto(b, cl, 128, 128);
+    const GpuFrame& f = b.frame;
+    CHECK(stencilClipOps(f) == 0);
+    REQUIRE(f.cmds.size() == 1);
+    CHECK(f.cmds[0].clipX == 10);
+    CHECK(f.cmds[0].clipY == 10);
+    CHECK(f.cmds[0].clipW == 100);
+    CHECK(f.cmds[0].clipH == 80);
+    CHECK(f.passes.size() == 1);
+    CHECK(b.builder.lastClipStats().scissor == 1);
+    checkSnapshot("clip_1x_scissor", f);
+
+    SUBCASE("off the pixel grid: a mask layer instead") {
+        CommandList half = makeList(128, 128);
+        addPushClipRRect(half, 10.5f, 10, 100, 80, 16);
+        addFillRect(half, 30, 0, 60, 128, Color{0, 0, 1, 1});
+        addPopClip(half);
+        Built h;
+        buildInto(h, half, 128, 128);
+        CHECK(h.builder.lastClipStats().scissor == 0);
+        CHECK(h.builder.lastClipStats().maskLayers == 1);
+    }
+}
+
+TEST_CASE("gpu: T-663 point 3: one image under a convex shape is one fringed textured polygon") {
+    std::vector<uint8_t> bytes = emptyIr();
+    Result<IrView> viewResult = IrView::open(IrBlob{bytes.data(), bytes.size()});
+    REQUIRE(viewResult.ok());
+    TestAssetResolver assets;
+    const AssetId id = assets.add(makeChecker4x4());
+    CommandList cl = makeList(128, 128);
+    addPushClipRRect(cl, 20, 20, 72, 72, 36);  // a circle
+    addDrawImage(cl, id, Rect{20, 20, 72, 72}, 1.0f, true);
+    addPopClip(cl);
+    Built b;
+    buildInto(b, cl, 128, 128, nullptr, &assets, &viewResult.value());
+    const GpuFrame& f = b.frame;
+    CHECK(stencilClipOps(f) == 0);
+    CHECK(f.passes.size() == 1);
+    REQUIRE(f.cmds.size() == 1);
+    const DrawCmd& c = f.cmds[0];
+    CHECK(c.shading == Shading::Texture);
+    CHECK(c.sampler == Sampler::LinearClamp);
+    CHECK(c.vertexCount > 8);  // the circle's polygon and its alpha-0 ring
+    CHECK(c.vertexCount % 2 == 0);
+    for (uint32_t i = 0; i < c.vertexCount; ++i) {
+        const Vertex& v = f.vertices[c.baseVertex + i];
+        CHECK(v.u >= 0.0f);
+        CHECK(v.u <= 1.0f);
+        CHECK(v.v >= 0.0f);
+        CHECK(v.v <= 1.0f);
+        // u,v follow the image's map: x = 20 + 72 u inside the core ring.
+        if (i < c.vertexCount / 2) {
+            CHECK(v.x == doctest::Approx(20.0f + 72.0f * v.u).epsilon(1e-3));
+        }
+    }
+    CHECK(f.vertices[c.baseVertex + c.vertexCount - 1].rgba == 0u);
+    CHECK(b.builder.lastClipStats().imageDirect == 1);
+    checkSnapshot("clip_1x_image", f);
+
+    SUBCASE("rotated 10 deg with a smaller image: the shape cut by the image quad") {
+        CommandList rot = makeList(128, 128);
+        const Mat2x3 xf = mul(translation(Vec2{64, 64}), rotationDeg(10.0f));
+        ClipPathCmd cp{};
+        cp.xf = xf;
+        cp.path = addRRectPath(rot, -36, -36, 72, 72, 20);
+        cp.rule = FillRule::NonZero;
+        rot.clipPaths.push_back(cp);
+        rot.commands.push_back(Command{CmdKind::PushClipPath, {}, 0});
+        addDrawImage(rot, id, Rect{-36, -20, 72, 40}, 1.0f, true);
+        rot.images.back().xf = xf;
+        addPopClip(rot);
+        Built r;
+        buildInto(r, rot, 128, 128, nullptr, &assets, &viewResult.value());
+        CHECK(stencilClipOps(r.frame) == 0);
+        REQUIRE(r.frame.cmds.size() == 1);
+        CHECK(r.builder.lastClipStats().imageDirect == 1);
+    }
+    SUBCASE("point-sampled: a mask layer") {
+        cl.images.back().smooth = 0;
+        Built p;
+        buildInto(p, cl, 128, 128, nullptr, &assets, &viewResult.value());
+        CHECK(p.builder.lastClipStats().imageDirect == 0);
+        CHECK(p.builder.lastClipStats().maskLayers == 1);
+    }
+}
+
+TEST_CASE("gpu: T-663 point 4: other clips are one mask layer each, without stencil") {
+    CommandList cl = makeList(128, 128);
+    addPushClipRRect(cl, 10, 10, 100, 80, 16);
+    addFillGradient(cl, 10, 10, 100, 80);  // fills the card edge to edge: the corners are hit
+    addPopClip(cl);
+    Built b;
+    buildInto(b, cl, 128, 128);
+    const GpuFrame& f = b.frame;
+    CHECK(stencilClipOps(f) == 0);
+    CHECK(maskApplies(f) == 1);
+    CHECK(f.transients.size() >= 2);
+    CHECK(b.builder.lastClipStats().maskLayers == 1);
+    // The windows are the shape's box (grown by the 1 px fringe) narrowed to C.
+    CHECK(f.transients[0].needStencil == 1);
+    checkSnapshot("clip_1x_mask_layer", f);
+
+    SUBCASE("a rotated rect with content running out of it") {
+        CommandList rot = makeList(128, 128);
+        addPushClipRect(rot, Rect{-40, -20, 80, 40}, mul(translation(Vec2{64, 64}), rotationDeg(12.0f)));
+        addFillRect(rot, 0, 0, 128, 128, Color{0, 0, 1, 1});
+        addPopClip(rot);
+        Built r;
+        buildInto(r, rot, 128, 128);
+        CHECK(stencilClipOps(r.frame) == 0);
+        CHECK(maskApplies(r.frame) == 1);
+        CHECK(r.builder.lastClipStats().maskLayers == 1);
+    }
+    SUBCASE("a concave clip path: its mask comes from the coverage atlas") {
+        CommandList lc = makeList(128, 128);
+        addPushClipPath(lc, 10, 10, 100, 100);  // an L
+        addFillRect(lc, 0, 0, 128, 128, Color{0, 0, 1, 1});
+        addPopClip(lc);
+        Built l;
+        buildInto(l, lc, 128, 128);
+        CHECK(stencilClipOps(l.frame) == 0);
+        CHECK(maskApplies(l.frame) == 1);
+        CHECK(coverageCmdCount(l.frame) == 1);
+    }
+}
+
+TEST_CASE("gpu: T-663 an empty clip range is skipped whole") {
+    CommandList cl = makeList(128, 128);
+    addPushClipRRect(cl, 10, 10, 100, 80, 16);
+    addFillRect(cl, 30, 30, 0, 40, Color{0, 0, 1, 1});  // draws nothing
+    addPopClip(cl);
+    addFillRect(cl, 0, 0, 8, 8, Color{1, 0, 0, 1});
+    Built b;
+    buildInto(b, cl, 128, 128);
+    CHECK(stencilClipOps(b.frame) == 0);
+    REQUIRE(b.frame.cmds.size() == 1);
+    CHECK(b.frame.cmds[0].clipW == 128);
+    CHECK(b.builder.lastClipStats().skipped == 1);
+}
+
+TEST_CASE("gpu: T-663 mask-layer clips nest with each other, with masks and with effects") {
+    SUBCASE("two nested rounded clips: two mask layers, the inner composited into the outer's content") {
+        CommandList cl = makeList(128, 128);
+        addPushClipRRect(cl, 10, 10, 100, 100, 20);
+        addPushClipRRect(cl, 20, 20, 80, 80, 14);
+        addFillRect(cl, 0, 0, 128, 128, Color{0, 0, 1, 1});
+        addPopClip(cl);
+        addPopClip(cl);
+        Built b;
+        buildInto(b, cl, 128, 128);
+        CHECK(stencilClipOps(b.frame) == 0);
+        CHECK(maskApplies(b.frame) == 2);
+        CHECK(b.builder.lastClipStats().maskLayers == 2);
+        checkSnapshot("clip_1x_nested", b.frame);
+    }
+    SUBCASE("inside a real mask's content") {
+        CommandList cl = makeList(128, 128);
+        addPushMask(cl, MaskMode::Alpha);
+        addFillRect(cl, 0, 0, 64, 128, Color{1, 1, 1, 1});
+        cl.commands.push_back(Command{CmdKind::EndMaskContent, {}, 0});
+        addPushClipRRect(cl, 10, 10, 100, 100, 20);
+        addFillRect(cl, 0, 0, 128, 128, Color{0, 0, 1, 1});
+        addPopClip(cl);
+        cl.commands.push_back(Command{CmdKind::PopMask, {}, 0});
+        Built b;
+        buildInto(b, cl, 128, 128);
+        CHECK(stencilClipOps(b.frame) == 0);
+        CHECK(maskApplies(b.frame) == 2);
+        CHECK(b.builder.lastClipStats().maskLayers == 1);
+    }
+    SUBCASE("an effect inside the clip: its result lands in the clip's content transient") {
+        CommandList cl = makeList(128, 128);
+        addPushClipRRect(cl, 10, 10, 100, 100, 20);
+        addPushEffect(cl, {blurFx(4, 4)}, Mat2x3{}, Rect{0, 0, 128, 128}, Rect{0, 0, 128, 128});
+        addFillRect(cl, 0, 0, 128, 128, Color{0, 0, 1, 1});
+        addPopEffect(cl);
+        addPopClip(cl);
+        Built b;
+        buildInto(b, cl, 128, 128);
+        CHECK(stencilClipOps(b.frame) == 0);
+        CHECK(maskApplies(b.frame) == 1);
+        CHECK(b.builder.lastClipStats().maskLayers == 1);
+        // The last pass composites the masked result onto the surface.
+        REQUIRE(!b.frame.passes.empty());
+        CHECK(b.frame.passes.back().target == 0);
+    }
+    SUBCASE("under a projection the clip keeps its stencil level") {
+        CommandList cl = makeList(128, 128);
+        addPushProjection(cl, mat4Identity());
+        cl.projections.back().boundsHint = Rect{0, 0, 128, 128};
+        addPushClipRect(cl, Rect{-40, -20, 80, 40}, mul(translation(Vec2{64, 64}), rotationDeg(12.0f)));
+        addFillRect(cl, 0, 0, 128, 128, Color{0, 0, 1, 1});
+        addPopClip(cl);
+        cl.commands.push_back(Command{CmdKind::PopProjection, {}, 0});
+        Built b;
+        buildInto(b, cl, 128, 128);
+        CHECK(stencilClipOps(b.frame) > 0);
+        CHECK(maskApplies(b.frame) == 0);
+    }
+}
+
+TEST_CASE("gpu: T-663 Direct mode: a clip spanning runs stays a stencil level, replayed into a mask layer") {
+    // Run 0 opens clip A; the glass panel (a scene-read run) splits the list; clip A's PopClip lies
+    // in run 2, so A stays a stencil level (replayed into every band transient). Clip B lies inside
+    // run 2 and becomes a mask layer whose transients replay A.
+    CommandList cl = makeList(256, 192);
+    cl.hostTargetMode = HostTargetMode::Direct;
+    addPushClipRRect(cl, 8, 8, 240, 176, 24);
+    addFillRect(cl, 0, 0, 256, 192, Color{1, 0, 0, 1});
+    addGlassPanel(cl, Rect{100, 20, 60, 40}, 16.0f);
+    addPushClipRRect(cl, 20, 100, 100, 60, 12);
+    addFillRect(cl, 0, 90, 140, 80, Color{0, 0, 1, 1});
+    addPopClip(cl);
+    addPopClip(cl);
+    Built b;
+    buildInto(b, cl, 256, 192);
+    CHECK(cmdsWith(b.frame, StencilOp::ClipPush).size() >= 2);  // A, replayed in the bands
+    CHECK(maskApplies(b.frame) == 1);
+    CHECK(b.builder.lastClipStats().maskLayers == 1);
+}
+
+TEST_CASE("gpu: T-663 4x (no fringe) keeps every clip a stencil level") {
+    CommandList cl = makeList(128, 128);
+    addPushClipRRect(cl, 10, 10, 100, 80, 16);
+    addFillRect(cl, 30, 30, 60, 40, Color{0, 0, 1, 1});
+    addPopClip(cl);
+    Built b;
+    b.builder.setEdgeFringe(false);
+    buildInto(b, cl, 128, 128);
+    CHECK(stencilClipOps(b.frame) == 3);  // winding, ClipPush, ClipPop
+    const FrameBuilder::ClipStats s = b.builder.lastClipStats();
+    CHECK(s.skipped + s.scissor + s.imageDirect + s.maskLayers == 0);
+}
+
+// =================================================================================================
+// T-664 (Docs/design/10-backends.md §10.11 ruling 6): borders at 1x -- no border case reaches
+// stencil-then-cover, and a thin ring of uneven sides is drawn from the coverage atlas while thin
+// rings of one width keep the fringed ring.
+// T-676 (Docs/tasks/T-676.md item 6): thin rings of one width (under 1 px) are drawn from the coverage
+// atlas too; rings of 1 px or wider keep the fringed ring.
+// =================================================================================================
+
+namespace {
+
+size_t coverageCmds(const GpuFrame& f) {
+    size_t n = 0;
+    for (const DrawCmd& c : f.cmds) {
+        n += c.coverage != 0 ? 1 : 0;
+    }
+    return n;
+}
+
+size_t windingCmds(const GpuFrame& f) {
+    return cmdsWith(f, StencilOp::WriteIncrWrap).size() + cmdsWith(f, StencilOp::WriteInvert).size();
+}
+
+/// One 56x44 box at (20, 20) with `css` (border declarations), rotated `deg` degrees about its
+/// center, built at 1x (edgeFringe on) or, `fringe` false, as for a 4x target.
+void buildBorderBox(Built& b, const std::string& css, float deg, bool fringe = true) {
+    const std::string doc =
+        "<xt version=\"2\">\n  <body style=\"padding: 0\">\n    <div id=\"box\"/>\n  </body>\n"
+        "  <layout>\n    #box {\n      position: absolute;\n      left: 20px;\n      top: 20px;\n"
+        "      width: 56px;\n      height: 44px;\n      transform: rotate(" +
+        std::to_string(deg) +
+        "deg);\n      transform-origin: 50% 50%;\n    }\n  </layout>\n"
+        "  <style>\n    #box {\n" +
+        css + "\n    }\n  </style>\n</xt>";
+    TestAssetResolver assets;
+    UiDoc ui;
+    REQUIRE(loadUiString(ui, assets, doc, 128, 128));
+    b.builder.init(b.device);
+    b.builder.setEdgeFringe(fringe);
+    b.builder.resize(128, 128);
+    b.builder.build(ui.cmds, &ui.shaper, &assets, &ui.doc->ir(), b.frame);
+    checkFrameWellFormed(b.frame);
+}
+
+}  // namespace
+
+TEST_CASE("gpu: T-664 no border case reaches stencil-then-cover at 1x") {
+    UiDoc ui;
+    REQUIRE(loadUiFixture(ui, "ui_coverage_border.xt", 480, 288));
+    Built b;
+    buildInto(b, ui.cmds, 480, 288, &ui.shaper, ui.resolver.get(), &ui.doc->ir());
+    CHECK(windingCmds(b.frame) == 0);
+    CHECK(b.builder.lastCoverageStats().fallbacks == 0);
+    CHECK(coverageCmds(b.frame) > 0);  // the L shapes, rounded per-side colors and uneven thin rings
+}
+
+TEST_CASE("gpu: T-664 per-side widths of a thin ring") {
+    SUBCASE("a thin side among thick ones: coverage, not the fringed ring") {
+        for (float deg : {0.0f, 9.0f}) {
+            INFO("rotation ", deg);
+            Built b;
+            buildBorderBox(b, "border-width: 0.5px 4px 4px 4px; border-color: #264653;", deg);
+            CHECK(coverageCmds(b.frame) == 1);
+            CHECK(windingCmds(b.frame) == 0);
+            Built r;
+            buildBorderBox(r, "border-width: 0.5px 1px 4px 1px; border-color: #264653; border-radius: 10px;",
+                           deg);
+            CHECK(coverageCmds(r.frame) == 1);
+        }
+    }
+    SUBCASE("T-676: rings of one width under 1 px are coverage, not the fringed ring") {
+        for (const char* width : {"0.3px", "0.5px", "0.75px", "0.95px"}) {
+            for (const char* radius : {"0px", "4px", "12px", "50%"}) {
+                for (float deg : {0.0f, 9.0f, 30.0f, 45.0f, 77.0f}) {
+                    INFO("width ", width, " radius ", radius, " rotation ", deg);
+                    Built b;
+                    buildBorderBox(b,
+                                   std::string("border-width: ") + width +
+                                       "; border-color: #111111; border-radius: " + radius + ";",
+                                   deg);
+                    CHECK(coverageCmds(b.frame) == 1);
+                    CHECK(windingCmds(b.frame) == 0);
+                }
+            }
+        }
+    }
+    SUBCASE("rings of one width of 1 px or more keep the fringed ring (no coverage)") {
+        for (const char* width : {"1px", "1.5px", "2px"}) {
+            for (const char* radius : {"0px", "4px", "12px", "50%"}) {
+                for (float deg : {0.0f, 9.0f, 30.0f, 45.0f, 77.0f}) {
+                    INFO("width ", width, " radius ", radius, " rotation ", deg);
+                    Built b;
+                    buildBorderBox(b,
+                                   std::string("border-width: ") + width +
+                                       "; border-color: #111111; border-radius: " + radius + ";",
+                                   deg);
+                    CHECK(coverageCmds(b.frame) == 0);
+                    CHECK(windingCmds(b.frame) == 0);
+                }
+            }
+        }
+    }
+    SUBCASE("uneven sides all 1 px or wider keep the fringed ring") {
+        Built b;
+        buildBorderBox(b, "border-width: 1px 4px 2px 3px; border-color: #264653;", 9.0f);
+        CHECK(coverageCmds(b.frame) == 0);
+        CHECK(windingCmds(b.frame) == 0);
+    }
+    SUBCASE("4x (no fringe): unchanged, the ring is drawn directly") {
+        Built b;
+        buildBorderBox(b, "border-width: 0.5px 4px 4px 4px; border-color: #264653;", 9.0f, false);
+        CHECK(coverageCmds(b.frame) == 0);
+        CHECK(windingCmds(b.frame) == 0);
+    }
+}
+
+#ifndef XT_GPU_NO_TEXT
+
+// T-664 (Docs/tasks/T-664.md item 5): the clip scan's glyph run box from the font's metrics stays
+// conservative -- every pixel SW draws for the run lies inside it -- for Latin, CJK, combining
+// marks, a slanted ("italic") run, a rotated one and glyphs stacked as in an upright vertical
+// line, at a bitmap size and an outline size; and it is tighter than the origins grown by the size.
+namespace {
+
+/// Every run of `textStr` shaped with Noto Sans (falling back to Noto Sans SC) as GlyphsCmds of
+/// `list`, at `origin`, under `xf`; `stack` puts every glyph at the same x, one size apart in y.
+void addShapedRuns(text::FtTextShaper& shaper, CommandList& list, const std::string& textStr, float size,
+                   Vec2 origin, const Mat2x3& xf, bool stack) {
+    static const std::vector<std::string_view> families = {"Noto Sans", "Noto Sans SC"};
+    ShapeParams params;
+    params.font = FontRequest{std::span<const std::string_view>(families), 400, false};
+    params.size = size;
+    ShapeResult shaped;
+    shaper.shape(textStr, params, shaped);
+    REQUIRE(!shaped.runs.empty());
+    float penX = origin.x;
+    float penY = origin.y;
+    for (const ShapedRun& run : shaped.runs) {
+        GlyphsCmd cmd{};
+        cmd.xf = xf;
+        cmd.font = run.font;
+        cmd.size = size;
+        cmd.color = Color{0, 0, 0, 1};
+        cmd.glyphOffset = static_cast<uint32_t>(list.glyphs.size());
+        for (uint32_t i = 0; i < run.glyphCount; ++i) {
+            const ShapedGlyph& g = shaped.glyphs[run.glyphStart + i];
+            REQUIRE(g.glyphId != 0);  // every test glyph is in the fonts
+            list.glyphs.push_back(g.glyphId);
+            list.glyphPos.push_back(Vec2{penX + g.xOffset, penY + g.yOffset});
+            if (stack) {
+                penY += size;
+            } else {
+                penX += g.xAdvance;
+            }
+        }
+        cmd.glyphCount = static_cast<uint32_t>(list.glyphs.size()) - cmd.glyphOffset;
+        list.glyphRuns.push_back(cmd);
+        list.commands.push_back(
+            Command{CmdKind::DrawGlyphs, {}, static_cast<uint32_t>(list.glyphRuns.size() - 1)});
+    }
+}
+
+/// The box of the pixels with a nonzero alpha in a w x h RGBA buffer; false when there is none.
+bool inkBox(const std::vector<uint8_t>& px, int w, int h, Rect& out) {
+    int x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            if (px[(static_cast<size_t>(y) * w + x) * 4 + 3] != 0) {
+                x0 = std::min(x0, x);
+                y0 = std::min(y0, y);
+                x1 = std::max(x1, x);
+                y1 = std::max(y1, y);
+            }
+        }
+    }
+    if (x1 < 0) {
+        return false;
+    }
+    out = Rect{static_cast<float>(x0), static_cast<float>(y0), static_cast<float>(x1 - x0 + 1),
+               static_cast<float>(y1 - y0 + 1)};
+    return true;
+}
+
+}  // namespace
+
+TEST_CASE("gpu: T-664 glyph run boxes for the clip scan hold every drawn pixel") {
+    text::FtTextShaper shaper;
+    REQUIRE(shaper.addFontFile(fontPath("NotoSans-Regular.subset.ttf")));
+    REQUIRE(shaper.addFontFile(fontPath("NotoSansSC-Regular.subset.ttf")));
+    struct Case {
+        const char* name;
+        const char* text;
+        bool stack;
+    };
+    const Case cases[] = {
+        {"latin", "Hxgjpq fy", false},
+        {"cjk", "\xE6\xBC\xA2\xE5\xAD\x97\xE6\xB8\xAC\xE8\xA9\xA6", false},  // 漢字測試
+        // e + acute + diaeresis, a + tilde + acute, A + diaeresis + acute (stacked over a capital)
+        {"combining", "e\xCC\x81\xCC\x88 a\xCC\x83\xCC\x81 A\xCC\x88\xCC\x81", false},
+        {"vertical",
+         "\xE6\xBC\xA2"
+         "Wi\xE5\xAD\x97",
+         true},
+    };
+    struct Xf {
+        const char* name;
+        Mat2x3 m;
+    };
+    const Xf xfs[] = {
+        {"plain", Mat2x3{}},
+        {"italic (skewX -0.3)", Mat2x3{1.0f, 0.0f, -0.3f, 1.0f, 0.0f, 0.0f}},
+        {"rotated 9 deg", rotationDeg(9.0f)},
+    };
+    constexpr int kW = 512, kH = 400;
+    for (const Case& c : cases) {
+        for (const Xf& x : xfs) {
+            for (float size : {16.0f, 40.0f}) {
+                INFO(std::string(c.name), ", ", std::string(x.name), ", size ", size);
+                CommandList cl = makeList(kW, kH);
+                const Vec2 origin = c.stack ? Vec2{150.25f, 60.5f} : Vec2{60.25f, 120.5f};
+                addShapedRuns(shaper, cl, c.text, size, origin, x.m, c.stack);
+                std::vector<uint8_t> px(static_cast<size_t>(kW) * kH * 4, 0);
+                for (size_t k = 0; k < cl.commands.size(); ++k) {
+                    CommandList one = cl;
+                    one.commands.assign(1, cl.commands[k]);
+                    std::fill(px.begin(), px.end(), uint8_t{0});
+                    sw::SwRenderer renderer;
+                    renderer.setTarget(sw::SwTarget{px.data(), kW, kH, kW * 4});
+                    renderer.clear(Color{0, 0, 0, 0});
+                    renderer.render(one, &shaper, nullptr);
+                    Rect ink;
+                    REQUIRE(inkBox(px, kW, kH, ink));
+                    Rect box;
+                    REQUIRE(clipContentBounds(cl, cl.commands[k], 1.0f, box, &shaper) ==
+                            ClipContentBounds::Box);
+                    CHECK(contains(box, ink));
+                    Rect coarse;
+                    REQUIRE(clipContentBounds(cl, cl.commands[k], 1.0f, coarse) == ClipContentBounds::Box);
+                    CHECK(box.h < coarse.h);
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("gpu: T-664 glyph run box without usable metrics stays the coarse box") {
+    NullTextShaper none;  // metrics all 0
+    CommandList cl = makeList(128, 128);
+    GlyphsCmd cmd{};
+    cmd.size = 20.0f;
+    cmd.color = Color{0, 0, 0, 1};
+    cmd.glyphOffset = 0;
+    cmd.glyphCount = 1;
+    cl.glyphs.push_back(5);
+    cl.glyphPos.push_back(Vec2{40, 60});
+    cl.glyphRuns.push_back(cmd);
+    cl.commands.push_back(Command{CmdKind::DrawGlyphs, {}, 0});
+    Rect a, b;
+    REQUIRE(clipContentBounds(cl, cl.commands[0], 1.0f, a, &none) == ClipContentBounds::Box);
+    REQUIRE(clipContentBounds(cl, cl.commands[0], 1.0f, b) == ClipContentBounds::Box);
+    checkRect(a, b);
+}
+
+// T-676 (Docs/tasks/T-676.md item 5; 10 §10.11, the ruling at the end of the T-664 record): the clip
+// scan's `C` in the clip's local frame. A run under skewX(-6deg) measured in the frame of a clip with
+// the same transform is its own run-space box (no second axis-aligned box), grown by the device margin
+// in local units, and is narrower than its device box mapped back; with the identity frame at dpr 1 it
+// is clipContentBounds' box.
+TEST_CASE("gpu: T-676 clip-frame boxes are taken in the clip's local coordinates") {
+    text::FtTextShaper shaper;
+    REQUIRE(shaper.addFontFile(fontPath("NotoSans-Regular.subset.ttf")));
+    const Mat2x3 skew{1.0f, 0.0f, -0.105104f, 1.0f, 40.0f, 30.0f};  // skewX(-6deg), moved
+    CommandList cl = makeList(512, 256);
+    addShapedRuns(shaper, cl, "Hxgjpq fy", 26.0f, Vec2{0.0f, 20.0f}, skew, false);
+    REQUIRE(!cl.commands.empty());
+    const Command& cmd = cl.commands[0];
+    Mat2x3 frame;
+    REQUIRE(invert(skew, frame));  // root box -> the clip's local coordinates, dpr 1
+    const float m = kClipContentMarginPx;
+    const Vec2 margin{m * (std::fabs(frame.a) + std::fabs(frame.c)),
+                      m * (std::fabs(frame.b) + std::fabs(frame.d))};
+    Rect local;
+    REQUIRE(clipContentBoundsInFrame(cl, cmd, frame, margin, local, &shaper) == ClipContentBounds::Box);
+    // The run-space box: the same run with the identity transform.
+    GlyphsCmd plain = cl.glyphRuns[cmd.index];
+    plain.xf = Mat2x3{};
+    Rect runBox;
+    REQUIRE(glyphRunInkBounds(cl, plain, &shaper, runBox));
+    checkRect(local, Rect{runBox.x - margin.x, runBox.y - margin.y, runBox.w + 2.0f * margin.x,
+                          runBox.h + 2.0f * margin.y});
+    // The device box mapped back through the frame is wider (the skew's second axis-aligned box).
+    Rect device;
+    REQUIRE(clipContentBounds(cl, cmd, 1.0f, device, &shaper) == ClipContentBounds::Box);
+    const Vec2 dc[4] = {apply(frame, Vec2{device.x, device.y}),
+                        apply(frame, Vec2{device.x + device.w, device.y}),
+                        apply(frame, Vec2{device.x + device.w, device.y + device.h}),
+                        apply(frame, Vec2{device.x, device.y + device.h})};
+    float x0 = dc[0].x, x1 = dc[0].x;
+    for (const Vec2& p : dc) {
+        x0 = std::min(x0, p.x);
+        x1 = std::max(x1, p.x);
+    }
+    CHECK(local.x > x0 + 1.0f);
+    CHECK(local.x + local.w < x1 - 1.0f);
+    // Identity frame, dpr 1: the device box.
+    Rect same;
+    REQUIRE(clipContentBoundsInFrame(cl, cmd, Mat2x3{}, Vec2{m, m}, same, &shaper) == ClipContentBounds::Box);
+    checkRect(same, device);
+    // Kinds without a box keep their answers; an empty group window is Unknown.
+    Rect r;
+    CHECK(clipContentBoundsInFrame(cl, Command{CmdKind::PopClip, {}, 0}, frame, margin, r) ==
+          ClipContentBounds::Empty);
+    LayerCmd layer{};
+    cl.layers.push_back(layer);
+    CHECK(clipContentBoundsInFrame(cl, Command{CmdKind::PushLayer, {}, 0}, frame, margin, r) ==
+          ClipContentBounds::Unknown);
+}
+
+#endif  // XT_GPU_NO_TEXT

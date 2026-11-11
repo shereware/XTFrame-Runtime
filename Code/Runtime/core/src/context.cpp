@@ -769,7 +769,7 @@ void Context::render(CommandList& out, DamageList* damage) {
         Document* doc = m_documents[m_orderScratch[i] - 1].get();
         const uint16_t source = static_cast<uint16_t>(out.sources.size());
         out.sources.push_back(CommandSource{&doc->ir(), doc->ir().loadSerial()});
-        doc->paintAs(out, source);
+        doc->paintAs(out, source, m_boxShadowCommands);  // T-680
     }
     // T-263a: the Painter's own output; the backends need not check its structure every frame.
     // T-263b: Debug builds check it here, so a Painter bug that emits an unbalanced or

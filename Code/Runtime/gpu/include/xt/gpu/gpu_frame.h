@@ -134,6 +134,12 @@ enum class Shading : uint8_t {
     ParticleTexture = 8,
     /// T-202: a `DrawKind::Particles` command without texture: output = instance `rgba`.
     ParticleSolid = 9,
+    /// T-668 (Docs/design/10-backends.md §10.12 item 2): an analytic box shadow quad. `u,v` are the
+    /// command's local position (DrawBoxShadow's own space); `BoxShadowParams` at `paramIndex`;
+    /// output = `BoxShadowParams::color` (premultiplied) x the coverage of xt/box_shadow.h's
+    /// formula at `u,v` (16-point Gauss-Legendre over y, A&S 7.1.26 erf, the same constants).
+    /// Vertex `rgba` unused.
+    BoxShadow = 10,
 };
 
 /// Output blending. Sources are premultiplied.
@@ -362,6 +368,21 @@ struct GpuFrame {
 
 /// Width of the gradient lookup textures (`Shading::Gradient`, `EffectProgram::GradientMask`).
 inline constexpr uint16_t kGradientLutWidth = 256;
+
+/// T-668: `Shading::BoxShadow`. The shape `R'` = [x0, x1] x [y0, y1] with circular corner radii
+/// r[0..3] (top-left, top-right, bottom-right, bottom-left) and the Gaussian's `sigma`, all in the
+/// command's local units (= the vertex `u,v` space); `color` premultiplied. T-680 ("補充 2" B.1):
+/// `extraCount` (0..2, as a float) further shapes in `extra` (x0, y0, x1, y1, r[0..3] each) with
+/// their signs `extraSign`; the coverage is clamp(S(R') + sum of extraSign x S(extra), 0, 1).
+struct BoxShadowParams {
+    float x0, y0, x1, y1;
+    float r[4];
+    float sigma;
+    float extraCount;
+    float extraSign[2];
+    float color[4];
+    float extra[2][8];
+};
 
 /// `Shading::Gradient`. `kind` 2 = linear (t = dot(p - p0, p1 - p0) / |p1 - p0|^2), 3 = radial
 /// (t = |((p - p0).x / rx, (p - p0).y / ry)|); t is clamped to [0, 1]. `|p1 - p0|^2 <= 0` means

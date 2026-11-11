@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <functional>
 #include <mutex>
+#include <span>
 #include <string>
 #include <system_error>
 #include <unordered_map>
@@ -189,6 +190,124 @@ struct OutlineEntry {
     std::vector<float> points;
 };
 
+/// T-673: one fontForCodepoint() result. FontTable::fontForCodepoint() decides by the request's
+/// family names (compared case-insensitively, in order), its weight and italic flag, the codepoint
+/// (its hint group and every candidate's coverage) and the font table's state -- nothing else (no
+/// script, language or size). The table state is FallbackCache::generation; the rest is the key.
+struct FallbackEntry {
+    uint32_t codepoint = 0;
+    uint16_t chain = 0;  ///< FallbackCache::chains index: the lower-cased family names.
+    uint16_t weight = 0;
+    FontId font = kInvalidFont;  ///< The result; kInvalidFont when no font is registered.
+    uint8_t italic = 0;
+    uint8_t used = 0;
+};
+
+/// T-673: codepoint -> font cache of one shaper (Docs/tasks/T-673.md): a fixed open-addressing
+/// table, allocated once, cleared whole when it holds kCapacity entries or when the font table's
+/// generation changes. Docs/design/14-coding-standards.md §14.4: no allocation per lookup.
+struct FallbackCache {
+    static constexpr size_t kCapacity = 4096;
+    static constexpr size_t kSlots = 8192;  // power of two; load factor <= 1/2
+    /// Distinct family chains held at once; a new one past this clears the chains and the table.
+    static constexpr size_t kMaxChains = 1024;
+
+    std::vector<FallbackEntry> slots;
+    size_t count = 0;
+    uint64_t generation = 0;
+    std::vector<std::vector<std::string>> chains;
+    size_t lastChain = 0;
+
+    void clear() {
+        std::fill(slots.begin(), slots.end(), FallbackEntry{});
+        count = 0;
+    }
+
+    static bool sameChain(const std::vector<std::string>& chain, std::span<const std::string_view> families) {
+        if (chain.size() != families.size()) return false;
+        for (size_t i = 0; i < chain.size(); ++i) {
+            const std::string& key = chain[i];
+            const std::string_view name = families[i];
+            if (key.size() != name.size()) return false;
+            for (size_t k = 0; k < key.size(); ++k) {
+                if (static_cast<unsigned char>(key[k]) != std::tolower(static_cast<unsigned char>(name[k]))) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /// The chain id of `families` (family names lower-cased with std::tolower, the comparison
+    /// FontTable's family match uses). A new chain is stored once.
+    uint16_t chainId(std::span<const std::string_view> families) {
+        if (lastChain < chains.size() && sameChain(chains[lastChain], families)) {
+            return static_cast<uint16_t>(lastChain);
+        }
+        for (size_t i = 0; i < chains.size(); ++i) {
+            if (sameChain(chains[i], families)) {
+                lastChain = i;
+                return static_cast<uint16_t>(i);
+            }
+        }
+        if (chains.size() >= kMaxChains) {
+            chains.clear();
+            clear();
+        }
+        std::vector<std::string> chain;
+        chain.reserve(families.size());
+        for (const std::string_view name : families) {
+            std::string key(name);
+            for (char& c : key) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            chain.push_back(std::move(key));
+        }
+        chains.push_back(std::move(chain));
+        lastChain = chains.size() - 1;
+        return static_cast<uint16_t>(lastChain);
+    }
+
+    static size_t slotOf(uint32_t codepoint, uint16_t chain, uint16_t weight, bool italic) {
+        uint64_t h = (static_cast<uint64_t>(codepoint) << 32) ^ (static_cast<uint64_t>(chain) << 17) ^
+                     (static_cast<uint64_t>(weight) << 1) ^ (italic ? 1u : 0u);
+        h *= 0x9E3779B97F4A7C15ull;
+        return static_cast<size_t>(h >> 51) & (kSlots - 1);  // the top 13 bits
+    }
+
+    /// The cached result, or fontForCodepoint() (stored unless the font table changed meanwhile).
+    FontId lookup(const FontTable& fonts, const FontRequest& request, uint16_t chain, uint32_t codepoint) {
+        if (slots.empty()) slots.resize(kSlots);
+        if (fonts.generation() != generation) {
+            clear();
+            generation = fonts.generation();
+        }
+        const uint16_t weight = request.weight;
+        const uint8_t italic = request.italic ? 1 : 0;
+        size_t slot = slotOf(codepoint, chain, weight, request.italic);
+        while (slots[slot].used != 0) {
+            const FallbackEntry& e = slots[slot];
+            if (e.codepoint == codepoint && e.chain == chain && e.weight == weight && e.italic == italic) {
+                return e.font;
+            }
+            slot = (slot + 1) & (kSlots - 1);
+        }
+        const FontId font = fonts.fontForCodepoint(request, codepoint);
+        if (fonts.generation() != generation) {
+            // Opening a deferred font changed what matching sees: today's next lookup would see
+            // the new state, so this result is not kept.
+            clear();
+            generation = fonts.generation();
+            return font;
+        }
+        if (count >= kCapacity) {
+            clear();
+            slot = slotOf(codepoint, chain, weight, request.italic);
+        }
+        slots[slot] = FallbackEntry{codepoint, chain, weight, font, italic, 1};
+        ++count;
+        return font;
+    }
+};
+
 }  // namespace
 
 struct FtTextShaper::Impl {
@@ -197,6 +316,7 @@ struct FtTextShaper::Impl {
     std::unordered_map<FontId, hb_font_t*> hbFonts;
     std::unordered_map<GlyphCacheKey, OutlineEntry, GlyphCacheKeyHash> outlineCache;
     std::unordered_map<BitmapCacheKey, GlyphBitmap, BitmapCacheKeyHash> bitmapCache;
+    FallbackCache fallbackCache;  // T-673
 
     ~Impl() {
         for (auto& [id, font] : hbFonts) hb_font_destroy(font);
@@ -369,6 +489,11 @@ std::string FtTextShaper::missingCjkFamily(const std::vector<std::string>& stack
     return impl_->fonts.missingCjkFamily(stack);
 }
 
+uint64_t FtTextShaper::fallbackScanCount() const {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    return impl_->fonts.fallbackScanCount();
+}
+
 FontId FtTextShaper::match(const FontRequest& request) {
     std::lock_guard<std::mutex> lock(impl_->mutex);
     return impl_->fonts.match(request);
@@ -417,6 +542,7 @@ void FtTextShaper::shape(std::string_view utf8, const ShapeParams& params, Shape
     const std::vector<uint8_t> byteLevels = computeBidiLevels(utf8, params.paragraphDirection);
 
     const bool isVerticalMode = params.writingMode != WritingMode::HorizontalTb;
+    const uint16_t fallbackChain = impl_->fallbackCache.chainId(params.font.families);  // T-673
 
     std::vector<CpAttrs> attrs;
     attrs.reserve(codepoints.size());
@@ -434,8 +560,8 @@ void FtTextShaper::shape(std::string_view utf8, const ShapeParams& params, Shape
         a.script = s;
         prevScript = s;
 
-        // Step 3: font-fallback segmentation.
-        a.font = impl_->fonts.fontForCodepoint(params.font, dc.codepoint);
+        // Step 3: font-fallback segmentation (T-673: through the shaper's fallback cache).
+        a.font = impl_->fallbackCache.lookup(impl_->fonts, params.font, fallbackChain, dc.codepoint);
 
         // Step 5: vertical writing-mode orientation.
         a.vertical = 0;

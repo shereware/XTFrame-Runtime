@@ -143,7 +143,20 @@ bool italicFromSubfamily(std::string_view subfamily) {
 // Windows/macOS/Linux family for each script the i18n regression tests (Tests/text/test_i18n_
 // regression.cpp) exercise. It only reorders candidates; every fallback font is still tried if the
 // hinted ones don't have the glyph.
-const std::vector<std::string_view>& scriptFamilyHints(uint32_t codepoint) {
+// T-673: the same lists and ranges as before, numbered so a font's matches can be computed once
+// (RegisteredFont::hintGroups) instead of per lookup.
+enum HintGroup : int {
+    kHintNone = -1,
+    kHintHan,
+    kHintHangul,
+    kHintHebrew,
+    kHintArabic,
+    kHintThai,
+    kHintEmoji
+};
+constexpr int kHintGroupCount = 6;
+
+const std::vector<std::string_view>& hintGroupFamilies(int group) {
     static const std::vector<std::string_view> han = {
         "yahei",         "jhenghei",   "mingliu", "simsun",    "simhei",    "pingfang", "hiragino",
         "noto sans cjk", "source han", "meiryo",  "ms gothic", "ms mincho", "heiti",    "songti"};
@@ -158,20 +171,39 @@ const std::vector<std::string_view>& scriptFamilyHints(uint32_t codepoint) {
     static const std::vector<std::string_view> emoji = {"emoji", "segoe ui emoji", "apple color emoji",
                                                         "noto color emoji"};
     static const std::vector<std::string_view> empty;
-    if (codepoint >= 0x4E00 && codepoint <= 0x9FFF) return han;      // CJK Unified Ideographs
-    if (codepoint >= 0x3400 && codepoint <= 0x4DBF) return han;      // CJK Unified Ideographs Ext. A
-    if (codepoint >= 0x3040 && codepoint <= 0x30FF) return han;      // Hiragana/Katakana
+    switch (group) {
+        case kHintHan:
+            return han;
+        case kHintHangul:
+            return hangul;
+        case kHintHebrew:
+            return hebrew;
+        case kHintArabic:
+            return arabic;
+        case kHintThai:
+            return thai;
+        case kHintEmoji:
+            return emoji;
+        default:
+            return empty;
+    }
+}
+
+int hintGroupFor(uint32_t codepoint) {
+    if (codepoint >= 0x4E00 && codepoint <= 0x9FFF) return kHintHan;  // CJK Unified Ideographs
+    if (codepoint >= 0x3400 && codepoint <= 0x4DBF) return kHintHan;  // CJK Unified Ideographs Ext. A
+    if (codepoint >= 0x3040 && codepoint <= 0x30FF) return kHintHan;  // Hiragana/Katakana
     // T-569 (report R4): CJK and fullwidth punctuation look for a CJK font first, so a `，` or `。`
     // no requested family has is not drawn from whichever font sorts first.
-    if (codepoint >= 0x3000 && codepoint <= 0x303F) return han;      // CJK Symbols and Punctuation
-    if (codepoint >= 0xFF00 && codepoint <= 0xFFEF) return han;      // Halfwidth and Fullwidth Forms
-    if (codepoint >= 0xAC00 && codepoint <= 0xD7A3) return hangul;   // Hangul syllables
-    if (codepoint >= 0x0590 && codepoint <= 0x05FF) return hebrew;   // Hebrew
-    if (codepoint >= 0x0600 && codepoint <= 0x06FF) return arabic;   // Arabic
-    if (codepoint >= 0x0E00 && codepoint <= 0x0E7F) return thai;     // Thai
-    if (codepoint >= 0x1F300 && codepoint <= 0x1FAFF) return emoji;  // Misc. emoji blocks
-    if (codepoint >= 0x2600 && codepoint <= 0x27BF) return emoji;
-    return empty;
+    if (codepoint >= 0x3000 && codepoint <= 0x303F) return kHintHan;      // CJK Symbols and Punctuation
+    if (codepoint >= 0xFF00 && codepoint <= 0xFFEF) return kHintHan;      // Halfwidth and Fullwidth Forms
+    if (codepoint >= 0xAC00 && codepoint <= 0xD7A3) return kHintHangul;   // Hangul syllables
+    if (codepoint >= 0x0590 && codepoint <= 0x05FF) return kHintHebrew;   // Hebrew
+    if (codepoint >= 0x0600 && codepoint <= 0x06FF) return kHintArabic;   // Arabic
+    if (codepoint >= 0x0E00 && codepoint <= 0x0E7F) return kHintThai;     // Thai
+    if (codepoint >= 0x1F300 && codepoint <= 0x1FAFF) return kHintEmoji;  // Misc. emoji blocks
+    if (codepoint >= 0x2600 && codepoint <= 0x27BF) return kHintEmoji;
+    return kHintNone;
 }
 
 // A 16.16 `wght` axis value as a CSS weight (1..1000).
@@ -185,11 +217,37 @@ bool isCollectionPath(std::string_view path) {
     return iequals(ext, ".ttc") || iequals(ext, ".otc");
 }
 
-bool familyMatchesHints(std::string_view family, const std::vector<std::string_view>& hints) {
+// T-673: `familyKey` is already lower-cased (std::tolower) and every hint is lower-case ASCII, so
+// a plain substring search gives what containsCI(family, hint) gave.
+bool familyMatchesHints(std::string_view familyKey, const std::vector<std::string_view>& hints) {
     for (const std::string_view& h : hints) {
-        if (containsCI(family, h)) return true;
+        if (familyKey.find(h) != std::string_view::npos) return true;
     }
     return false;
+}
+
+constexpr uint64_t kFnvOffset = 1469598103934665603ull;
+constexpr uint64_t kFnvPrime = 1099511628211ull;
+
+// T-673: FNV-1a over `name` lower-cased with std::tolower, the form RegisteredFont::familyHash
+// holds; a cheap reject before keyEquals().
+uint64_t lowerHash(std::string_view name) {
+    uint64_t h = kFnvOffset;
+    for (const char c : name) {
+        h = (h ^ static_cast<uint64_t>(std::tolower(static_cast<unsigned char>(c)))) * kFnvPrime;
+    }
+    return h;
+}
+
+// T-673: iequals(family, name) for a `key` that is `family` already lower-cased.
+bool keyEquals(std::string_view key, std::string_view name) {
+    if (key.size() != name.size()) return false;
+    for (size_t i = 0; i < key.size(); ++i) {
+        if (static_cast<unsigned char>(key[i]) != std::tolower(static_cast<unsigned char>(name[i]))) {
+            return false;
+        }
+    }
+    return true;
 }
 
 }  // namespace
@@ -203,6 +261,21 @@ FontTable::~FontTable() {
     if (library_ != nullptr) FT_Done_FreeType(library_);
 }
 
+void FontTable::setFamily(RegisteredFont& font, std::string family) {
+    font.family = std::move(family);
+    font.familyKey.resize(font.family.size());
+    for (size_t i = 0; i < font.family.size(); ++i) {
+        font.familyKey[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(font.family[i])));
+    }
+    font.familyHash = lowerHash(font.family);
+    font.hintGroups = 0;
+    for (int group = 0; group < kHintGroupCount; ++group) {
+        if (familyMatchesHints(font.familyKey, hintGroupFamilies(group))) {
+            font.hintGroups = static_cast<uint8_t>(font.hintGroups | (1u << group));
+        }
+    }
+}
+
 bool FontTable::loadFace(std::vector<uint8_t> memory, RegisteredFont& out) const {
     FT_Face face = nullptr;
     const FT_Error err =
@@ -210,7 +283,7 @@ bool FontTable::loadFace(std::vector<uint8_t> memory, RegisteredFont& out) const
     if (err != 0 || face == nullptr) return false;
     out.face = face;
     out.memory = std::move(memory);
-    out.family = face->family_name != nullptr ? face->family_name : "";
+    setFamily(out, face->family_name != nullptr ? face->family_name : "");
     readFaceFacts(face, out);
     return true;
 }
@@ -269,6 +342,7 @@ bool FontTable::addFontMemory(std::vector<uint8_t> bytes) {
     RegisteredFont font;
     if (!loadFace(std::move(bytes), font)) return false;
     fonts_.push_back(std::move(font));
+    ++generation_;
     return true;
 }
 
@@ -283,7 +357,7 @@ uint32_t FontTable::addFontFileDeferred(std::string_view path, uint32_t maxFaces
         font.path = std::string(path);
         font.faceIndex = static_cast<long>(index);
         font.collection = faces > 1 || isCollectionPath(path);
-        font.family = std::move(info.family);
+        setFamily(font, std::move(info.family));
         font.subfamily = std::move(info.subfamily);
         font.postScriptName = std::move(info.postScriptName);
         if (info.weightClass != 0) {
@@ -306,10 +380,14 @@ uint32_t FontTable::addFontFileDeferred(std::string_view path, uint32_t maxFaces
         fonts_.push_back(std::move(font));
         ++added;
     }
+    if (added != 0) ++generation_;
     return added;
 }
 
-void FontTable::addFallbackFont(FontId id) { fallback_.push_back(id); }
+void FontTable::addFallbackFont(FontId id) {
+    fallback_.push_back(id);
+    ++generation_;
+}
 
 void FontTable::fonts(std::vector<FontDesc>& out) const {
     for (size_t i = 0; i < fonts_.size(); ++i) {
@@ -383,6 +461,9 @@ FontId FontTable::instanceOf(FontId base, uint16_t wght, float strength) const {
     const RegisteredFont& b = fonts_[base];
     inst.face = instanceFace;
     inst.family = b.family;
+    inst.familyKey = b.familyKey;
+    inst.familyHash = b.familyHash;
+    inst.hintGroups = b.hintGroups;
     inst.subfamily = b.subfamily;
     inst.postScriptName = b.postScriptName;
     inst.path = b.path;
@@ -414,6 +495,7 @@ FT_Face FontTable::openDeferred(size_t index) const {
                      f.path.c_str(), static_cast<int>(err));
         fallback_.erase(std::remove(fallback_.begin(), fallback_.end(), static_cast<FontId>(index)),
                         fallback_.end());
+        ++generation_;  // T-673: matching skips it from now on.
         return nullptr;
     }
     f.face = face;
@@ -423,27 +505,41 @@ FT_Face FontTable::openDeferred(size_t index) const {
     // refined now (Docs/tasks/T-104.md: FreeType's style flags beat the subfamily guess).
     const auto* os2 = static_cast<const TT_OS2*>(FT_Get_Sfnt_Table(face, FT_SFNT_OS2));
     if (os2 == nullptr || os2->version == 0xFFFF || os2->usWeightClass == 0) {
+        const uint16_t weight = f.weight;
+        const uint16_t weightMin = f.weightMin;
+        const uint16_t weightMax = f.weightMax;
+        const bool italic = f.italic;
         f.weight = (face->style_flags & FT_STYLE_FLAG_BOLD) != 0 ? 700 : 400;
         f.italic = (face->style_flags & FT_STYLE_FLAG_ITALIC) != 0;
         if (!f.variable) {
             f.weightMin = f.weight;
             f.weightMax = f.weight;
         }
+        // T-673: corrected facts change what matchFamily() picks from now on.
+        if (f.weight != weight || f.italic != italic || f.weightMin != weightMin ||
+            f.weightMax != weightMax) {
+            ++generation_;
+        }
     }
-    if (f.family.empty() && face->family_name != nullptr) f.family = face->family_name;
+    if (f.family.empty() && face->family_name != nullptr && face->family_name[0] != '\0') {
+        setFamily(f, face->family_name);
+        ++generation_;
+    }
     return face;
 }
 
 FontId FontTable::matchFamily(std::string_view family, uint16_t weight, bool italic) const {
     // T-569 (07 §7.20): italic match first, then CSS Fonts 4 weight ranking (weightRank()), ties
     // to the earlier-registered face. The family's heaviest face decides synthetic bold.
+    // T-673: compared against each font's precomputed lower-cased family (hash first).
+    const uint64_t hash = lowerHash(family);
     FontId best = kInvalidFont;
     int bestRank = 0;
     bool bestItalic = false;
     for (size_t i = 0; i < fonts_.size(); ++i) {
         const RegisteredFont& f = fonts_[i];
         if (f.broken || f.base != kInvalidFont) continue;
-        if (!iequals(f.family, family)) continue;
+        if (f.familyHash != hash || !keyEquals(f.familyKey, family)) continue;
         const int rank = weightRank(f.weightMin, f.weightMax, weight);
         const bool italicMatch = f.italic == italic;
         if (best == kInvalidFont || (italicMatch && !bestItalic) ||
@@ -456,8 +552,8 @@ FontId FontTable::matchFamily(std::string_view family, uint16_t weight, bool ita
     if (best == kInvalidFont) return best;
     uint16_t heaviest = 0;
     for (const RegisteredFont& f : fonts_) {
-        if (!f.broken && f.base == kInvalidFont && f.italic == fonts_[best].italic &&
-            iequals(f.family, family)) {
+        if (!f.broken && f.base == kInvalidFont && f.italic == fonts_[best].italic && f.familyHash == hash &&
+            keyEquals(f.familyKey, family)) {
             heaviest = std::max(heaviest, f.weightMax);
         }
     }
@@ -507,6 +603,7 @@ FT_Face FontTable::face(FontId font) const {
 }
 
 FontId FontTable::fontForCodepoint(const FontRequest& request, uint32_t codepoint) const {
+    ++fallbackScans_;
     std::vector<FontId> candidates;
     candidates.reserve(request.families.size() + fallback_.size());
     for (const std::string_view& family : request.families) {
@@ -517,13 +614,15 @@ FontId FontTable::fontForCodepoint(const FontRequest& request, uint32_t codepoin
     // Try fallback candidates whose (already-known, no open needed) name-table family hints at
     // this codepoint's script first, so a lazily-opened system-fallback list doesn't have to be
     // opened in full registration order before finding the one that actually has the glyph
-    // (Docs/tasks/T-104.md step 3; scriptFamilyHints() above).
-    const std::vector<std::string_view>& hints = scriptFamilyHints(codepoint);
+    // (Docs/tasks/T-104.md step 3; hintGroupFor() above). T-673: a font's hint-group matches are
+    // computed once (RegisteredFont::hintGroups); no group = no font matches.
+    const int group = hintGroupFor(codepoint);
+    const unsigned bit = group == kHintNone ? 0u : (1u << group);
     for (const FontId id : fallback_) {
-        if (!fonts_[id].broken && familyMatchesHints(fonts_[id].family, hints)) candidates.push_back(id);
+        if (!fonts_[id].broken && (fonts_[id].hintGroups & bit) != 0) candidates.push_back(id);
     }
     for (const FontId id : fallback_) {
-        if (!fonts_[id].broken && !familyMatchesHints(fonts_[id].family, hints)) candidates.push_back(id);
+        if (!fonts_[id].broken && (fonts_[id].hintGroups & bit) == 0) candidates.push_back(id);
     }
 
     for (const FontId id : candidates) {

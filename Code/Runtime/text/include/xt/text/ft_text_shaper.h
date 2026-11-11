@@ -98,6 +98,10 @@ public:
     /// if the glyph cannot be rasterized.
     bool glyphBitmap(FontId font, uint32_t glyphId, float size, float subpixelX, GlyphBitmap& out) override;
     using TextShaper::glyphBitmap;
+    /// T-673: how many times shape()'s font-fallback segmentation has scanned the candidate list
+    /// (the requested families plus the fallback list) instead of answering from this shaper's
+    /// fallback cache. Tests and perf reports only.
+    uint64_t fallbackScanCount() const;
 
 private:
     struct Impl;

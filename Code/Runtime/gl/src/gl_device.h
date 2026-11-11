@@ -117,11 +117,17 @@ private:
         GLint uEffect = -1, uRadius = -1, uRect = -1, uTexSize = -1;
         // T-660b: kCoverageGradientFrag's uv -> path-local map.
         GLint uUvToLocal = -1;
+        // T-668: kBoxShadowFrag's shape, radii, sigma and colour.
+        GLint uShape = -1, uRadii = -1, uSigma = -1, uColor = -1;
+        // T-680: the extra signed terms (count, sign 1, sign 2) and their shapes.
+        GLint uShape1 = -1, uRadii1 = -1, uShape2 = -1, uRadii2 = -1, uTerms = -1;
         UniformShadow shadow;
     };
     Program m_solid, m_gradient, m_texture, m_textureStraight, m_glyph, m_composite, m_resolve;
     /// T-660b: the coverage quad programs (Solid / Gradient with DrawCmd::coverage).
     Program m_coverageSolid, m_coverageGradient;
+    /// T-668: the analytic box shadow program (Shading::BoxShadow).
+    Program m_boxShadow;
     /// T-660b: one Solid / Gradient command with DrawCmd::coverage (state already applied).
     void drawCoverage(const gpu::DrawCmd& cmd);
     /// T-202: the instanced particle programs (kParticleVert) and their instance buffer.

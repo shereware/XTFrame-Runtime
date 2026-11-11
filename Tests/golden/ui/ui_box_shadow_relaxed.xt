@@ -1,0 +1,182 @@
+<xt version="2">
+
+  <!-- T-680 (10 section 10.12 item 2, "補充 2" B): drop shadows the relaxed conditions convert --
+       a solid opaque outline with a gap (three terms), touching (offset 0) and overlapping the
+       box (negative offset), and two cards whose text reaches the edges of the font-metric box.
+       The panels of alpha 0.9 and 0.92 (one with text at its edge and an offset shadow, the worst
+       case of the B.3 approximation) stay a PushEffect: B.3 is not part of T-680 (its worst case
+       differed from the offscreen path by more than the golden tolerance). The bottom row stays a
+       PushEffect too: a translucent outline, a background of alpha 0.89, text that really
+       overflows, an opaque outline over a 0.95 background. -->
+  <body>
+    <div id="olGap" class="cell"></div>
+    <div id="olZero" class="cell"></div>
+    <div id="olNeg" class="cell"></div>
+    <div id="textCard" class="card">Hxgjpq</div>
+    <div id="textCard2" class="card">Folio</div>
+    <div id="a90" class="cell"></div>
+    <div id="a92" class="cell"></div>
+    <div id="a92text" class="card">Hxgjpq</div>
+    <div id="olTranslucent" class="cell"></div>
+    <div id="a89" class="cell"></div>
+    <div id="textOver" class="card">Overflowing</div>
+    <div id="olOverAlpha" class="cell"></div>
+  </body>
+
+  <layout>
+    body {
+      width: 480px;
+      height: 400px;
+      margin: 0;
+    }
+    .cell {
+      position: absolute;
+      width: 80px;
+      height: 52px;
+    }
+    .card {
+      position: absolute;
+      height: 33px;
+      padding: 0 13px;
+    }
+    #olGap {
+      left: 30px;
+      top: 30px;
+    }
+    #olZero {
+      left: 190px;
+      top: 30px;
+    }
+    #olNeg {
+      left: 350px;
+      top: 30px;
+    }
+    #textCard {
+      left: 30px;
+      top: 130px;
+    }
+    #textCard2 {
+      left: 250px;
+      top: 130px;
+    }
+    #a90 {
+      left: 30px;
+      top: 220px;
+    }
+    #a92 {
+      left: 160px;
+      top: 220px;
+    }
+    #a92text {
+      left: 290px;
+      top: 226px;
+    }
+    #olTranslucent {
+      left: 30px;
+      top: 320px;
+    }
+    #a89 {
+      left: 140px;
+      top: 320px;
+    }
+    #textOver {
+      left: 250px;
+      top: 330px;
+      width: 60px;
+      padding: 0;
+    }
+    #olOverAlpha {
+      left: 380px;
+      top: 320px;
+      width: 70px;
+    }
+  </layout>
+  <style>
+    @font-face {
+      font-family: "Noto Sans";
+      src: "../../fonts/NotoSans-Regular.subset.ttf";
+    }
+    body {
+      font-family: "Noto Sans";
+    }
+    .card {
+      font-size: 24px;
+      line-height: 33px;
+      white-space: nowrap;
+    }
+    #olGap {
+      border-radius: 10px;
+      background-color: #3060c0;
+      outline: 3px solid #b8322a;
+      outline-offset: 4px;
+      effect: shadow(3px 5px 10px #000000a0);
+    }
+    #olZero {
+      border-radius: 10px;
+      background-color: #3060c0;
+      outline: 3px solid #b8322a;
+      outline-offset: 0px;
+      effect: shadow(3px 5px 10px #000000a0);
+    }
+    #olNeg {
+      border-radius: 10px;
+      background-color: #3060c0;
+      outline: 4px solid #b8322a;
+      outline-offset: -2px;
+      effect: shadow(-3px 5px 10px 2px #000000a0);
+    }
+    #textCard {
+      border-radius: 6px;
+      background-color: #f0e6d0;
+      color: #202020;
+      effect: shadow(0px 4px 10px #000000a0);
+    }
+    #textCard2 {
+      border-radius: 6px;
+      background-color: #20a060;
+      color: #ffffff;
+      effect: shadow(4px 4px 8px #00000099);
+    }
+    #a90 {
+      border-radius: 10px;
+      background-color: #8040c0e6;
+      effect: shadow(3px 5px 10px #000000a0);
+    }
+    #a92 {
+      border-radius: 10px;
+      background-color: #8040c0eb;
+      effect: shadow(3px 5px 10px #000000a0);
+    }
+    #a92text {
+      border-radius: 4px;
+      background-color: #161b22eb;
+      color: #ffffff;
+      effect: shadow(6px 8px 6px #000000ff);
+    }
+    #olTranslucent {
+      border-radius: 10px;
+      background-color: #3060c0;
+      outline: 3px solid #b8322a80;
+      outline-offset: 4px;
+      effect: shadow(3px 5px 10px #000000a0);
+    }
+    #a89 {
+      border-radius: 10px;
+      background-color: #8040c0e3;
+      effect: shadow(3px 5px 10px #000000a0);
+    }
+    #textOver {
+      border-radius: 4px;
+      background-color: #f0e6d0;
+      color: #202020;
+      effect: shadow(0px 4px 10px #000000a0);
+    }
+    #olOverAlpha {
+      border-radius: 10px;
+      background-color: #3060c0f2;
+      outline: 3px solid #b8322a;
+      outline-offset: 4px;
+      effect: shadow(3px 5px 10px #000000a0);
+    }
+  </style>
+</xt>

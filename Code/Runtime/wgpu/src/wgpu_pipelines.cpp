@@ -29,6 +29,7 @@ const char* const kShaderFiles[kShaderCount] = {
     shaders::k_particle_solid,
     shaders::k_coverage_solid,
     shaders::k_coverage_gradient,
+    shaders::k_box_shadow,
     shaders::k_fx_gauss_scalar,
     shaders::k_fx_gauss_color,
     shaders::k_fx_dilate,

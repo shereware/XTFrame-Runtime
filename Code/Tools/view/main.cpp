@@ -87,6 +87,7 @@
 ///                    [--msaa N] [--screenshot PATH] [--flow <file.xtflow>] [--headless] [--transparent]
 ///                    [--frames N]
 ///                    [--print-text <id>] [--perf] [--perf-csv <file>] [--show-damage] [--partial]
+///                    [--no-system-fonts] [--no-box-shadow]
 ///                    [--event "<frame> #<id>.<Port>[=<value>]"] [--pointer "<frame> <x> <y> [move|down|up]"]
 ///                    [--dump-flow-values] [--dump-every N] [--dump-commands]
 ///                    [--bind-texture <name>=<file.png>]
@@ -243,12 +244,20 @@
 /// also computed (without the overlay) under --perf, which then reports the `damage` phase time
 /// and the average share of the viewport the rectangles covered.
 ///
+/// --no-box-shadow (T-680, Docs/design/10-backends.md §10.12 item 2) turns
+/// Context::setBoxShadowCommands off: every element drop shadow stays an offscreen effect group
+/// instead of a DrawBoxShadow command (the before/after comparison of the analytic shadows).
+///
 /// --partial (T-642, Docs/design/23-host-integration.md §23.3) makes the --headless software path
 /// redraw like a host does: every frame after the first whose DamageList is not `full` clears only
 /// the dirty rectangles (SwRenderer::clearRects) and passes the DamageList to SwRenderer::render,
 /// so --perf / --perf-csv measure the partial-redraw cost instead of a full repaint per frame. A
 /// `full` frame (and frame 0) is cleared and drawn whole. It needs --headless and the default
 /// renderer; --show-damage is ignored with it (the outline would stay in the kept pixels).
+///
+/// --no-system-fonts (T-676) skips FtTextShaper::addSystemFonts() in both the headless and the
+/// windowed path, so text is shaped only with the bundle's own fonts -- the same as a C ABI host
+/// that does not set `system_fonts`. Without it the system fonts are added as before.
 ///
 /// --strict (T-392) compiles `.xt` input with CompileOptions::strict and, when a --headless run
 /// ends, prints every Document::warnings() entry as `xtframe-view: warning: <message>` on stderr
@@ -399,7 +408,9 @@ struct Args {
     int secondHeight = 0;
     bool perf = false;
     bool showDamage = false;
-    bool partial = false;  // T-642: --partial (headless SW redraws only the damage).
+    bool partial = false;        // T-642: --partial (headless SW redraws only the damage).
+    bool noSystemFonts = false;  // T-676: --no-system-fonts (bundle fonts only).
+    bool noBoxShadow = false;    // T-680: --no-box-shadow (Context::setBoxShadowCommands(false)).
     bool dumpFlowValues = false;
     bool dumpCommands = false;  // T-202: print the last headless frame's CommandList.
     std::string dumpPorts;      // T-401: --dump-ports <file>: the main UI's port table as JSON.
@@ -1029,6 +1040,10 @@ bool parseArgs(int argc, char** argv, Args& out) {
             out.showDamage = true;
         } else if (arg == "--partial") {
             out.partial = true;
+        } else if (arg == "--no-system-fonts") {
+            out.noSystemFonts = true;
+        } else if (arg == "--no-box-shadow") {
+            out.noBoxShadow = true;
         } else if (arg == "--perf-csv") {
             if (!needValue("--perf-csv", out.perfCsv)) {
                 return false;
@@ -1607,9 +1622,13 @@ void printUsage(std::FILE* out) {
         "  --show-damage           outline the dirty rectangles (needs --headless)\n"
         "  --partial               headless: redraw only the dirty rectangles each frame (the\n"
         "                          DamageList goes to the software renderer, as a host does)\n"
+        "  --no-system-fonts       do not add the system fonts (bundle fonts only, like a C ABI\n"
+        "                          host without system_fonts)\n"
         "  --bind-texture <name>=<file.png>\n"
         "                          bind the PNG as the host texture `engine://<name>` (repeatable;\n"
         "                          --headless binds its CPU pixels)\n"
+        "  --no-box-shadow         keep element drop shadows as offscreen effects (no\n"
+        "                          DrawBoxShadow commands; for before/after comparisons)\n"
         "  --play <timeline>       play the document's root @timeline before the first frame\n"
         "  --seek <seconds>        then seek it to that time (needs --play)\n"
         "  --device W:H            device aspect ratio for @media; viewport width = height x W/H\n"
@@ -1639,6 +1658,7 @@ struct GpuCounterTotals {
     double cacheHits = 0, cacheMisses = 0, cacheStores = 0;
     double coverageHits = 0, coverageMisses = 0, coverageRasterized = 0, coverageFallbacks = 0;  // T-660b
     double coverageTiles = 0, coverageUniformTiles = 0;                                          // T-672
+    double clipSkipped = 0, clipScissor = 0, clipImageDirect = 0, clipMaskLayers = 0;            // T-663
     uint64_t coverageAtlasBytes = 0;  // T-672: the last frame's
     double buildMs = 0, submitMs = 0;
     bool hasBindings = false;  // T-670: the last frame's live bindings, the run's peak
@@ -1668,6 +1688,10 @@ struct GpuCounterTotals {
         coverageFallbacks += c.coverageFallbacks;
         coverageTiles += c.coverageTiles;
         coverageUniformTiles += c.coverageUniformTiles;
+        clipSkipped += c.clipSkipped;
+        clipScissor += c.clipScissor;
+        clipImageDirect += c.clipImageDirect;
+        clipMaskLayers += c.clipMaskLayers;
         coverageAtlasBytes = c.coverageAtlasBytes;
         buildMs += c.buildMs;
         submitMs += c.submitMs;
@@ -1686,6 +1710,9 @@ struct GpuCounterTotals {
             cacheHits / n, cacheMisses / n, cacheStores / n, coverageHits / n, coverageMisses / n,
             coverageRasterized / n, coverageFallbacks / n, coverageTiles / n, coverageUniformTiles / n,
             static_cast<unsigned long long>(coverageAtlasBytes), buildMs / n, submitMs / n);
+        // T-663: clips that are stencil levels at 4x, by how the 1x build drew them.
+        std::printf(", clips skipped %.2f scissor %.2f image %.2f mask layers %.2f", clipSkipped / n,
+                    clipScissor / n, clipImageDirect / n, clipMaskLayers / n);
         if (hasBindings) {
             std::printf(", bindings %u/%u", liveBindings, peakBindings);
         }
@@ -2764,7 +2791,9 @@ int main(int argc, char** argv) {
 #ifndef XT_GL_NO_TEXT
         xt::text::FtTextShaper shaper;
         addBundleFonts(args, shaper);  // T-555: before the system fonts.
-        shaper.addSystemFonts();
+        if (!args.noSystemFonts) {
+            shaper.addSystemFonts();
+        }
 #if !defined(XT_BACKEND_NO_TEXT)
         if (frameTarget) {
             frameTarget->setTextShaper(&shaper);  // T-439: the GPU renderers' glyph atlas
@@ -2780,6 +2809,7 @@ int main(int argc, char** argv) {
         xt::Context ctx(xt::ContextConfig{&shaper, &assets});
         // T-191 (25.3.5b): no decoder here -- an unbound <video>/<external> shows its placeholder.
         ctx.setExternalPlaceholders(true);
+        ctx.setBoxShadowCommands(!args.noBoxShadow);  // T-680
         if (!bindExternalTextures(args, assets, /*upload=*/false)) {
             return 1;
         }
@@ -3112,6 +3142,7 @@ int main(int argc, char** argv) {
     }
     g_windowApp = &app;  // T-376: the window controls (winMinimize / winMaximize / winClose).
     app.context().addListener(&g_windowListener);
+    app.context().setBoxShadowCommands(!args.noBoxShadow);  // T-680
     if (args.assetRoots.empty()) {
         app.setAssetRoot(rootDir);
     } else {
@@ -3122,7 +3153,9 @@ int main(int argc, char** argv) {
     app.assetResolver().setFileStatusFn(&xt::fileStatusUtf8);
 #ifndef XT_GL_NO_TEXT
     addBundleFonts(args, app.textShaper());  // T-555: before the system fonts.
-    app.addSystemFonts();
+    if (!args.noSystemFonts) {
+        app.addSystemFonts();
+    }
 #endif
     // T-150: after setAssetRoot (which replaces the resolver), before the first update().
     if (!bindExternalTextures(args, app.assetResolver(), /*upload=*/true)) {

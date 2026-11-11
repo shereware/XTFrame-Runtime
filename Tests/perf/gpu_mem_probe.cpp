@@ -10,8 +10,9 @@
 //                    [--mode hide|destroy] [--trim-each-scene 0|1] [--image-budget <MiB|default>]
 //
 // --power sets XT_WGPU_POWER for this process (unset: the environment's). The library's log lines (adapter,
-// wgpu-native version, memory hints) go to stdout. Exit codes: 0 ok, 2 bad arguments, 1 a C ABI failure;
-// "SKIP: no WebGPU adapter" (exit 0) when no target can be created for want of an adapter.
+// wgpu-native version, memory hints) go to stdout, and before each scene a line "scene <round> <n> <ui>"
+// (T-675). Exit codes: 0 ok, 2 bad arguments, 1 a C ABI failure; "SKIP: no WebGPU adapter" (exit 0) when no
+// target can be created for want of an adapter.
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -400,6 +401,10 @@ int run(const Options& o) {
                     break;
                 }
             }
+            // T-675: marks the scene in the log, so the library's "textures created N" lines can be
+            // counted per scene switch.
+            std::printf("scene %d %d %s\n", round, sceneIndex, ids[k].c_str());
+            std::fflush(stdout);
             xt_surface_set_visible(surfaces[k], 1);
             previous = static_cast<int>(k);
             const double firstMs = frame(t, surfaces);

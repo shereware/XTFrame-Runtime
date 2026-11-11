@@ -1,3 +1,5 @@
+#include <atomic>
+
 #include "xt/node.h"
 #include "xt/text_shaper.h"
 
@@ -5,6 +7,15 @@
 /// Docs/design/07-text.md §7.2, Docs/tasks/T-28.md.
 
 namespace xt {
+
+namespace {
+
+/// T-675: the last generation given to a TextShaper (0 = none yet).
+std::atomic<uint64_t> g_shaperGeneration{0};
+
+}  // namespace
+
+TextShaper::TextShaper() : m_generation(g_shaperGeneration.fetch_add(1, std::memory_order_relaxed) + 1) {}
 
 FontId NullTextShaper::match(const FontRequest&) { return kInvalidFont; }
 

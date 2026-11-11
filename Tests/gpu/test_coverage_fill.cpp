@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstring>
 #include <map>
+#include <new>
 #include <span>
 #include <string>
 #include <string_view>
@@ -1120,6 +1121,316 @@ TEST_CASE("coverage text: a run scaled every frame is rasterized within the budg
     CHECK(s.fallbacks == 0);
     CHECK(countWindingCmds(frame) == 0);
     CHECK_FALSE(builder.wantsAnotherFrame());
+}
+
+// T-675 (Docs/design/10-backends.md §10.11, T-662 record): the coverage key of an outline glyph holds the
+// shaper's generation, not its address. A second shaper made in the storage of the first one (so at the
+// same address, as a bundle reload may do) gets the same FontId and glyph ids, and must not hit the
+// first one's bitmaps.
+TEST_CASE("coverage text: a new shaper at the same address does not hit the old shaper's glyphs") {
+    alignas(text::FtTextShaper) unsigned char storage[sizeof(text::FtTextShaper)];
+    auto* first = new (storage) text::FtTextShaper;
+    REQUIRE(first->addFontFile(glyphFontPath()));
+    const uint64_t firstGeneration = first->generation();
+    MirrorDevice dev;
+    FrameBuilder builder;
+    builder.init(dev);
+    builder.resize(400, 200);
+    GpuFrame frame;
+    // No glyph atlas: every glyph is an outline glyph, drawn as a coverage quad (edge fringe on).
+    CommandList cl = glyphRunList(*first, "HIl", 120.0f, Vec2{10, 130}, Mat2x3{}, 400, 200);
+    builder.build(cl, first, nullptr, nullptr, frame);
+    FrameBuilder::CoverageStats s = builder.lastCoverageStats();
+    REQUIRE(s.misses == 3);
+    builder.build(cl, first, nullptr, nullptr, frame);
+    s = builder.lastCoverageStats();
+    REQUIRE(s.hits == 3);  // the same shaper hits its own bitmaps
+
+    first->~FtTextShaper();
+    auto* second = new (storage) text::FtTextShaper;
+    REQUIRE(static_cast<void*>(second) == static_cast<void*>(storage));
+    REQUIRE(second->addFontFile(glyphFontPath()));
+    CHECK(second->generation() != firstGeneration);
+    CommandList again = glyphRunList(*second, "HIl", 120.0f, Vec2{10, 130}, Mat2x3{}, 400, 200);
+    REQUIRE(again.glyphRuns[0].font == cl.glyphRuns[0].font);  // the same FontId ...
+    REQUIRE(again.glyphs == cl.glyphs);                        // ... and glyph ids
+    builder.build(again, second, nullptr, nullptr, frame);
+    s = builder.lastCoverageStats();
+    CHECK(s.hits == 0);  // nothing of the destroyed shaper is taken for this one's
+    CHECK(s.misses == 3);
+    builder.build(again, second, nullptr, nullptr, frame);
+    CHECK(builder.lastCoverageStats().hits == 3);
+    second->~FtTextShaper();
+}
+
+namespace {
+
+/// `glyphs` (one DrawGlyphs run) drawn after a notched 1453 px square (about 2.1 Mpx covered, the
+/// frame's first coverage shape, so always rasterized), which uses up the frame budget on its miss.
+CommandList afterBudgetHog(CommandList glyphs) {
+    const Command run = glyphs.commands[0];
+    glyphs.commands.clear();
+    addPolygons(glyphs, {{0, 0, 1453, 0, 1453, 1453, 800, 1453, 726.5f, 1300, 653, 1453, 0, 1453}},
+                Mat2x3{1, 0, 0, 1, 10, 10}, FillRule::NonZero, solidPaint());
+    glyphs.commands.push_back(run);
+    return glyphs;
+}
+
+}  // namespace
+
+// T-676 (Docs/tasks/T-676.md item 3): a rotated / skewed run <= 96 px is drawn as SW draws it, from
+// its outlines through the coverage atlas (T-662's glyph key), not from resampled hinted bitmaps.
+TEST_CASE("coverage text: T-676 rotated and skewed runs are outline coverage quads; static frames hit") {
+    text::FtTextShaper shaper;
+    REQUIRE(shaper.addFontFile(glyphFontPath()));
+    const Mat2x3 skew{1.0f, 0.0f, -0.105104f, 1.0f, 30.0f, 60.0f};  // skewX(-6deg)
+    for (const Mat2x3& xf : {rotatedAt(-9, 30, 60), skew}) {
+        text::GlyphAtlas atlas(shaper, 512);
+        MirrorDevice dev;
+        FrameBuilder builder;
+        builder.init(dev);
+        builder.resize(400, 200);
+        builder.setGlyphAtlas(&atlas);
+        GpuFrame frame;
+        const CommandList cl = glyphRunList(shaper, "Hello", 24.0f, Vec2{0, 0}, xf, 400, 200);
+        builder.build(cl, &shaper, nullptr, nullptr, frame);
+        FrameBuilder::CoverageStats s = builder.lastCoverageStats();
+        CHECK(s.misses + s.hits == 5);
+        CHECK(s.misses >= 4);  // the two "l"s share a bitmap when their quarter-pixel phases match
+        CHECK(s.fallbacks == 0);
+        CHECK(countGlyphCmds(frame) == 0);
+        CHECK(countWindingCmds(frame) == 0);
+        CHECK(countCoverageQuads(frame) == 5);
+        CHECK_FALSE(builder.wantsAnotherFrame());
+        builder.build(cl, &shaper, nullptr, nullptr, frame);
+        s = builder.lastCoverageStats();
+        CHECK(s.hits == 5);
+        CHECK(s.misses == 0);
+        CHECK(s.rasterizedPixels == 0);
+    }
+}
+
+// T-676: a glyph of such a run whose coverage quad the frame budget refuses is drawn by the T-653
+// atlas path (never stencil-then-cover), and the refusal asks for another frame (T-662); the next
+// frame draws it as a coverage quad.
+TEST_CASE("coverage text: T-676 a rotated run over the budget falls back to the atlas, then completes") {
+    text::FtTextShaper shaper;
+    REQUIRE(shaper.addFontFile(glyphFontPath()));
+    text::GlyphAtlas atlas(shaper, 512);
+    MirrorDevice dev;
+    FrameBuilder builder;
+    builder.init(dev);
+    builder.resize(1600, 1600);
+    builder.setGlyphAtlas(&atlas);
+    GpuFrame frame;
+    const CommandList cl =
+        afterBudgetHog(glyphRunList(shaper, "Scale", 24.0f, Vec2{0, 0}, rotatedAt(12, 40, 1540), 1600, 1600));
+    builder.build(cl, &shaper, nullptr, nullptr, frame);
+    FrameBuilder::CoverageStats s = builder.lastCoverageStats();
+    CHECK(s.fallbacks == 5);  // the five glyphs of "Scale"
+    CHECK(countWindingCmds(frame) == 0);
+    CHECK(countGlyphCmds(frame) == 1);  // one batch of T-653 atlas quads
+    CHECK(builder.wantsAnotherFrame());
+    CHECK_FALSE(builder.lastFrameReusable(nullptr, nullptr));
+
+    builder.build(cl, &shaper, nullptr, nullptr, frame);
+    s = builder.lastCoverageStats();
+    CHECK(s.fallbacks == 0);
+    CHECK(countGlyphCmds(frame) == 0);
+    CHECK(countWindingCmds(frame) == 0);
+    CHECK_FALSE(builder.wantsAnotherFrame());
+}
+
+#endif  // XT_GPU_NO_TEXT
+
+// ---------------------------------------------------------------------------------------------
+// T-677 (Docs/tasks/T-677.md item 4): same input -> same output, whatever the builder drew before.
+// ---------------------------------------------------------------------------------------------
+
+namespace {
+
+/// What `f`'s coverage quads put on the target, independent of where their bitmaps sit in the
+/// atlas: per quad its device rect, colour and every texel it samples (read from the mirrored
+/// page; a quad with u0 == u1 samples one texel, a full tile), then the number of stencil
+/// fallbacks. Two frames with equal signatures draw the same pixels.
+std::vector<int64_t> coverageSignature(const MirrorDevice& dev, const GpuFrame& f) {
+    std::vector<int64_t> sig;
+    for (const DrawCmd& c : f.cmds) {
+        if (c.coverage == 0) {
+            continue;
+        }
+        const auto it = dev.textures.find(c.coverage);
+        REQUIRE(it != dev.textures.end());
+        const MirrorDevice::Tex& page = it->second;
+        REQUIRE(page.alive);
+        for (uint32_t q = 0; q + 4 <= c.vertexCount; q += 4) {
+            const Vertex& v0 = f.vertices[c.baseVertex + q];
+            const Vertex& v2 = f.vertices[c.baseVertex + q + 2];
+            const long x0 = std::lround(v0.x), y0 = std::lround(v0.y);
+            const long x1 = std::lround(v2.x), y1 = std::lround(v2.y);
+            sig.insert(sig.end(), {x0, y0, x1, y1, static_cast<int64_t>(v0.rgba)});
+            const bool fullU = v0.u == v2.u;
+            const bool fullV = v0.v == v2.v;
+            const long tx = std::lround(v0.u * page.w - (fullU ? 0.5f : 0.0f));
+            const long ty = std::lround(v0.v * page.h - (fullV ? 0.5f : 0.0f));
+            const long tw = fullU ? 1 : x1 - x0;
+            const long th = fullV ? 1 : y1 - y0;
+            REQUIRE(tx >= 0);
+            REQUIRE(ty >= 0);
+            REQUIRE(tx + tw <= page.w);
+            REQUIRE(ty + th <= page.h);
+            for (long y = 0; y < th; ++y) {
+                for (long x = 0; x < tw; ++x) {
+                    sig.push_back(
+                        page.r8[static_cast<size_t>(ty + y) * page.w + static_cast<size_t>(tx + x)]);
+                }
+            }
+        }
+    }
+    sig.push_back(static_cast<int64_t>(countWindingCmds(f)));
+    return sig;
+}
+
+/// The screen redrawn by the T-677 recycling test: concave shapes at several sizes, rotations and
+/// quarter-pixel phases, and a 600 px L stored as tiles (edge, empty and full ones).
+CommandList orderScreen() {
+    CommandList cl = makeList(1024, 1024);
+    addConcave(cl, 60, Mat2x3{1, 0, 0, 1, 10, 10});
+    addConcave(cl, 90, rotatedAt(17, 160, 30));
+    addConcave(cl, 45, Mat2x3{1, 0, 0, 1, 260.25f, 20.75f});
+    addConcave(cl, 120, rotatedAt(-33, 420.5f, 60.25f));
+    addConcave(cl, 600, Mat2x3{1, 0, 0, 1, 20.5f, 300.25f});
+    return cl;
+}
+
+}  // namespace
+
+TEST_CASE("coverage order: a screen redrawn after the atlas grew and every page was recycled is identical") {
+    MirrorDevice dev;
+    FrameBuilder builder;
+    builder.init(dev);
+    builder.resize(1024, 1024);
+    GpuFrame frame;
+    const CommandList screen = orderScreen();
+    // Fresh builder: page 0 starts at 512 and must grow for the L's 258 px tile boxes (the frame is
+    // built a second time then).
+    builder.build(screen, nullptr, nullptr, nullptr, frame);
+    FrameBuilder::CoverageStats s = builder.lastCoverageStats();
+    REQUIRE(s.fallbacks == 0);
+    REQUIRE(s.tiles > 0);
+    REQUIRE(s.uniformTiles > 0);
+    CHECK(s.atlasBytes >= 1024u * 1024u);  // page 0 grew
+    const std::vector<int64_t> first = coverageSignature(dev, frame);
+
+    // One 511..512 px shape per frame: every such box takes a 1024 page of its own, so six of them
+    // fill the four pages and recycle each, the screen's pages included (least recently used first).
+    for (int k = 0; k < 6; ++k) {
+        INFO("filler ", k);
+        CommandList filler = makeList(1024, 1024);
+        addConcave(filler, 508.5f + 0.1f * static_cast<float>(k), Mat2x3{1, 0, 0, 1, 300.25f, 10.5f});
+        builder.build(filler, nullptr, nullptr, nullptr, frame);
+        CHECK(builder.lastCoverageStats().fallbacks == 0);
+    }
+
+    builder.build(screen, nullptr, nullptr, nullptr, frame);
+    s = builder.lastCoverageStats();
+    CHECK(s.fallbacks == 0);
+    CHECK(s.rasterizedPixels > 0);  // its bitmaps were recycled and are rasterized again
+    CHECK(coverageSignature(dev, frame) == first);
+
+    builder.build(screen, nullptr, nullptr, nullptr, frame);
+    s = builder.lastCoverageStats();
+    CHECK(s.rasterizedPixels == 0);  // all cached now
+    CHECK(coverageSignature(dev, frame) == first);
+}
+
+#ifndef XT_GPU_NO_TEXT
+
+namespace {
+
+/// Checks the texel ring around every glyph quad of `f` (the texels a linear sample at the quad's
+/// edge reads besides the glyph's own: the 1 px margin the atlas keeps empty) is 0 on the mirrored
+/// device page.
+void checkGlyphMarginsZero(const MirrorDevice& dev, const GpuFrame& f) {
+    size_t quads = 0;
+    size_t nonZero = 0;
+    for (const DrawCmd& c : f.cmds) {
+        if (c.shading != Shading::Glyph || c.texture == 0) {
+            continue;
+        }
+        const auto it = dev.textures.find(c.texture);
+        REQUIRE(it != dev.textures.end());
+        const MirrorDevice::Tex& page = it->second;
+        REQUIRE(page.alive);
+        REQUIRE(page.fmt == TextureFormat::R8);
+        for (uint32_t q = 0; q + 4 <= c.vertexCount; q += 4) {
+            float u0 = 1e9f, v0 = 1e9f, u1 = -1e9f, v1 = -1e9f;
+            for (uint32_t k = 0; k < 4; ++k) {
+                const Vertex& v = f.vertices[c.baseVertex + q + k];
+                u0 = std::min(u0, v.u);
+                u1 = std::max(u1, v.u);
+                v0 = std::min(v0, v.v);
+                v1 = std::max(v1, v.v);
+            }
+            // Bilinear taps over [u0, u1] x [v0, v1]: texels lo..hi; the outermost ones are the ring.
+            const long lx = static_cast<long>(std::floor(u0 * page.w - 0.5f));
+            const long hx = static_cast<long>(std::ceil(u1 * page.w - 0.5f));
+            const long ly = static_cast<long>(std::floor(v0 * page.h - 0.5f));
+            const long hy = static_cast<long>(std::ceil(v1 * page.h - 0.5f));
+            ++quads;
+            for (long y = ly; y <= hy; ++y) {
+                for (long x = lx; x <= hx; ++x) {
+                    const bool ring = x == lx || x == hx || y == ly || y == hy;
+                    if (!ring || x < 0 || y < 0 || x >= page.w || y >= page.h) {
+                        continue;
+                    }
+                    nonZero += page.r8[static_cast<size_t>(y) * page.w + static_cast<size_t>(x)] != 0 ? 1 : 0;
+                }
+            }
+        }
+    }
+    CHECK(quads > 0);
+    CHECK(nonZero == 0);
+}
+
+}  // namespace
+
+// T-677: rotated atlas glyphs (T-653) grow their quads half a texel onto the glyph's margin. The
+// device page there must be 0 -- not the garbage of a page created without data (GL), nor the ink of
+// glyphs another atlas (a new document's, a bundle reload's) or a pre-reset packing left on a page
+// the builder keeps.
+TEST_CASE("glyph atlas: rotated atlas glyphs sample an empty margin, also after the atlas is replaced") {
+    text::FtTextShaper shaper;
+    REQUIRE(shaper.addFontFile(glyphFontPath()));
+    MirrorDevice dev;  // pages start as 0xCD, like a GL texture made without data
+    FrameBuilder builder;
+    builder.init(dev);
+    builder.resize(1600, 1600);
+    GpuFrame frame;
+    // T-676: a rotated run takes the T-653 atlas path only when its coverage quads are refused: each
+    // list starts with a shape that misses and uses up the frame budget.
+    const Mat2x3 rot = rotatedAt(12, 30, 1540);
+    {
+        text::GlyphAtlas first(shaper, 256);
+        builder.setGlyphAtlas(&first);
+        const CommandList ink =
+            afterBudgetHog(glyphRunList(shaper, "WMWMWMWMW", 24.0f, Vec2{0, 24}, rot, 1600, 1600));
+        builder.build(ink, &shaper, nullptr, nullptr, frame);
+        REQUIRE(countGlyphCmds(frame) >= 1);
+        checkGlyphMarginsZero(dev, frame);
+        builder.setGlyphAtlas(nullptr);
+    }
+    // A second atlas of the same size: the builder keeps its device pages, which hold the first
+    // atlas's glyphs where the second one packs its margins.
+    text::GlyphAtlas second(shaper, 256);
+    builder.setGlyphAtlas(&second);
+    // The square's bitmap is cached now: a slightly different square misses and hogs the budget again.
+    CommandList thin = afterBudgetHog(glyphRunList(shaper, "il.lil.il", 24.0f, Vec2{0, 24}, rot, 1600, 1600));
+    thin.fills[0].xf.e += 0.5f;
+    builder.build(thin, &shaper, nullptr, nullptr, frame);
+    REQUIRE(countGlyphCmds(frame) >= 1);
+    checkGlyphMarginsZero(dev, frame);
+    builder.setGlyphAtlas(nullptr);
 }
 
 #endif  // XT_GPU_NO_TEXT
