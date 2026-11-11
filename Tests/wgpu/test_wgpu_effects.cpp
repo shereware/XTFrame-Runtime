@@ -271,10 +271,16 @@ TEST_CASE("wgpu effects: a repeated effect segment is stored, then drawn from it
     Session s(kS, kS);
     const std::vector<uint8_t> first = s.render(cl);
     CHECK(s.renderer.stats().cacheStores == 0u);
+    CHECK(s.renderer.stats().fxCacheMisses == 1u);  // T-658: the builder's counters
+    CHECK(s.renderer.stats().fxCacheStores == 0u);
     const std::vector<uint8_t> second = s.render(cl);
     CHECK(s.renderer.stats().cacheStores == 1u);
+    CHECK(s.renderer.stats().fxCacheMisses == 1u);
+    CHECK(s.renderer.stats().fxCacheStores == 1u);
     const std::vector<uint8_t> third = s.render(cl);
     CHECK(s.renderer.stats().cacheStores == 0u);
+    CHECK(s.renderer.stats().fxCacheHits == 1u);
+    CHECK(s.renderer.stats().fxCacheMisses == 0u);
     CHECK_MESSAGE(s.error.empty(), s.error);
     golden::GoldenResult r2 = golden::compareRgba(second.data(), first.data(), kS, kS, 0, 0.0f);
     golden::GoldenResult r3 = golden::compareRgba(third.data(), first.data(), kS, kS, 1, 0.0f);

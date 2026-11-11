@@ -110,7 +110,41 @@ public:
     /// wants the dropped IR's textures gone at once forwards the call to
     /// FrameBuilder::invalidateAllAssets() (otherwise the builder drops them when a later source
     /// takes the IR's place, see FrameBuilder::build). Default: nothing to release.
+    /// T-657 (Docs/design/50-c-abi.md §50.ab item 2): Context::releaseRenderScratch() (trim and
+    /// trim-on-hide) calls it too, for every live Document, whose IR stays: the Document's next
+    /// lookup holds what it asks for again (an idle decode is taken back, a freed one decoded).
     virtual void releaseSource(const IrView& view) { (void)view; }
+
+    /// T-657 (Docs/design/50-c-abi.md §50.ab item 2): the content key a GPU backend computed for
+    /// an image it uploaded or found shared -- gpu::FrameBuilder's hash of the pixels imageView()
+    /// returned (or of the blocks compressedImage() returned) -- with their size and format. The
+    /// core does not know the hash; it only keeps the numbers.
+    struct ImageContentKey {
+        uint64_t lo = 0;
+        uint64_t hi = 0;
+        int width = 0;
+        int height = 0;
+        /// Rgba8 for decoded pixels (straight alpha), else the format of the compressed blocks.
+        DdsFormat format = DdsFormat::Rgba8;
+    };
+    /// T-657: records `key` for `image`, a pointer imageView() or compressedImage() returned and
+    /// that is still valid, so retainedImageKey() can answer after the pixels are released.
+    /// Default: nothing is kept.
+    virtual void retainImageKey(const void* image, const ImageContentKey& key) {
+        (void)image;
+        (void)key;
+    }
+    /// T-657: the key retained for the image imageView(asset, view, dpr) -- or compressedImage(),
+    /// whichever the key was computed from -- would return now, found without decoding it (its
+    /// pixels may have been freed). False when there is none or the resolver cannot tell without
+    /// reading the image; the caller then asks imageView() as before. Default: false.
+    virtual bool retainedImageKey(AssetId asset, const IrView& view, float dpr, ImageContentKey& out) {
+        (void)asset;
+        (void)view;
+        (void)dpr;
+        (void)out;
+        return false;
+    }
 
     /// T-199 (26 §26.3.4, 22 §22.10 `atlas[]`): what a bundle manifest knows about an image
     /// asset -- its manifest nine-slice and, for an asset packed into an atlas page, the cell it
@@ -344,6 +378,21 @@ public:
     /// as before (the host serialises every call).
     void setIdleDecodeBudget(size_t bytes);
 
+    /// T-657: kept per decoded file (its path below the roots, or an embedded image's content
+    /// key), and outlives the decode's pixels: a file's key while the file's size and modification
+    /// time are as they were at its decode (asked once when the key is looked up after the decode
+    /// was freed; dropped by revalidate(), forgetFile() and a new decode of the file with another
+    /// stamp), an embedded image's for good (its key names its bytes). A file decoded while no
+    /// file-status function was set keeps its key only as long as its decode. At most
+    /// kMaxRetainedKeys keys, the least recently retained going first.
+    void retainImageKey(const void* image, const ImageContentKey& key) override;
+    /// T-657: see AssetResolver::retainedImageKey. Mirrors imageView(asset, view, dpr)'s choice of
+    /// file (the variant, then the next smaller one; the candidates in order) without reading any:
+    /// a candidate with a retained key answers; one with a live or idle decode, or one that exists
+    /// on disk without a key, ends the search with false (as does a missing file-status function);
+    /// a missing one is skipped. An embedded asset's bytes are hashed once per IR load as before.
+    bool retainedImageKey(AssetId asset, const IrView& view, float dpr, ImageContentKey& out) override;
+
 private:
     friend struct FileAssetResolverTestAccess;  // T-263e: Tests/unit counts the slots and decoded bytes.
 
@@ -493,6 +542,22 @@ private:
         uint64_t mtime = 0;
     };
     std::vector<HeaderSize> m_headerSizes;
+    /// T-657: one retained content key (see retainImageKey()): the file key it is for, and the
+    /// file's stamp as it was at the decode the key was computed from (`hasStamp` false: none
+    /// could be asked, or an embedded image).
+    struct RetainedKey {
+        std::string file;
+        ImageContentKey key;
+        bool hasStamp = false;
+        uint64_t size = 0;
+        uint64_t mtime = 0;
+    };
+    static constexpr size_t kMaxRetainedKeys = 4096;
+    std::vector<RetainedKey> m_retainedKeys;  // least recently retained first
+    /// T-657: the retained key of the file key `file`, or nullptr.
+    RetainedKey* retainedKeyOf(std::string_view file);
+    /// T-657: removes the retained key of `file` (no-op when none).
+    void dropRetainedKey(std::string_view file);
     /// T-263c: the size and modification time of `root/name` in the first root that has it;
     /// false when none does. T-263e: asked through `m_fileStatus`; false when none is set.
     bool fileStamp(std::string_view name, uint64_t& size, uint64_t& mtime) const;

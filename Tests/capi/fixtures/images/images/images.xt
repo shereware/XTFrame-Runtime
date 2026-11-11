@@ -1,0 +1,10 @@
+<xt version="2">
+
+  <body>
+    <img id="a" src="../shared/img/a.png"/>
+    <img id="b" src="../shared/img/b.png"/>
+    <img id="c" src="../shared/img/c.png"/>
+  </body>
+
+  <layout src="images.layout.xts"/>
+</xt>

@@ -1,0 +1,13 @@
+<xt version="2">
+
+  <ports>
+    show: bool in
+  </ports>
+
+  <body>
+    <div id="card" bind:visible="show"></div>
+  </body>
+
+  <layout src="ghost.layout.xts"/>
+  <style src="ghost.xts"/>
+</xt>

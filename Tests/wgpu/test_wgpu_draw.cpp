@@ -1,6 +1,7 @@
 // T-438 part a (Docs/tasks/T-438.md item 8, Docs/design/10-backends.md §10.10.3): geometry and
 // compositing through WgpuDevice::submit -- stencil fills, clip depth, transient windows, 4x MSAA --
-// compared with xt::sw at 15 §15.3's GPU tolerance.
+// compared with xt::sw at 15 §15.3's GPU tolerance. T-658: one 4x resolve per surface frame (or one
+// before each pass reading the surface) and WgpuRenderer::build / submit.
 
 #include <algorithm>
 #include <cstdint>
@@ -9,7 +10,9 @@
 
 #include "doctest.h"
 #include "test_wgpu_draw_util.h"
+#include "xt/gpu/frame_builder.h"
 #include "xt/gpu/gpu_frame.h"
+#include "xt/wgpu/wgpu_device.h"
 
 using namespace xt;
 using namespace xt::wgpu::test;
@@ -153,4 +156,105 @@ TEST_CASE("wgpu draw: the geometry buffers upload only what changed (T-159)") {
     s.render(cl);
     s.render(cl);
     CHECK(s.renderer.stats().uploadBytes < first);
+}
+
+namespace {
+
+/// T-658: the number of passes of `cl`'s frame that draw into target 0 (a builder of its own on the
+/// session's device, edge fringe off as on a 4x target).
+uint32_t surfacePasses(Session& s, const CommandList& cl, int w, int h) {
+    gpu::FrameBuilder builder;
+    builder.init(*s.renderer.device());
+    builder.setEdgeFringe(false);
+    builder.resize(w, h);
+    gpu::GpuFrame frame;
+    builder.build(cl, nullptr, nullptr, nullptr, frame);
+    builder.shutdown();
+    uint32_t n = 0;
+    for (const gpu::Pass& p : frame.passes) n += p.target == gpu::kSurfaceTarget ? 1u : 0u;
+    return n;
+}
+
+}  // namespace
+
+TEST_CASE("wgpu draw: a 4x surface split by root layers and effects resolves once (T-658)") {
+    constexpr int kW = 128, kH = 128;
+    CommandList cl = makeList(kW, kH);
+    addFillRect(cl, 0, 0, 128, 40, Color{0.2f, 0.4f, 1, 1});
+    addPushLayer(cl, 0.6f, BlendMode::Normal, Rect{10, 10, 60, 60});
+    addFill(cl, addPolygon(cl, {Vec2{12, 12}, Vec2{68, 20}, Vec2{40, 40}, Vec2{30, 66}}), Color{1, 1, 0, 1});
+    addPopLayer(cl);
+    addFillRect(cl, 0, 70, 128, 20, Color{0, 1, 0, 1});
+    addPushEffect(cl, {effect(EffectKind::Blur, {3, 3})}, Rect{60, 60, 60, 60}, Rect{70, 70, 40, 40});
+    addFillRect(cl, 70, 70, 40, 40, Color{1, 0, 0, 1});
+    addPopEffect(cl);
+    addPushLayer(cl, 0.5f, BlendMode::Normal, Rect{20, 90, 60, 30});
+    addFillRect(cl, 22, 92, 56, 26, Color{1, 0, 1, 1});
+    addPopLayer(cl);
+    Session s(kW, kH, 4);
+    const std::vector<uint8_t> gpu = s.render(cl);
+    CHECK_MESSAGE(s.error.empty(), s.error);
+    const uint32_t surface = surfacePasses(s, cl, kW, kH);
+    CHECK(surface >= 4u);  // the three root composites each open a surface pass
+    const wgpu::WgpuDeviceStats& d = s.renderer.device()->lastStats();
+    CHECK(d.surfaceReads == 0u);
+    CHECK(d.resolves == 1u);  // was one per surface pass
+    CHECK(s.renderer.stats().resolves == 1u);
+    CHECK(matches(gpu, renderSw(cl, kW, kH), kW, kH, "4x root layers and effect"));
+    // The same frame again (a second submit of a fresh build): the same pixels, still one resolve.
+    const std::vector<uint8_t> again = s.render(cl);
+    CHECK(again == gpu);
+    CHECK(s.renderer.stats().resolves == 1u);
+}
+
+TEST_CASE("wgpu draw: a 4x surface resolves before each pass that reads it (T-658)") {
+    constexpr int kW = 128, kH = 128;
+    CommandList cl = makeList(kW, kH);
+    for (int i = 0; i < 8; ++i) {
+        addFillRect(cl, static_cast<float>(i) * 16.0f, 0, 16, kH,
+                    Color{static_cast<float>(i) / 7.0f, 0.5f, 1.0f - static_cast<float>(i) / 7.0f, 1});
+    }
+    // Two mix-blend layers on the surface (each reads a backdrop copy of it) and a backdrop blur
+    // (its pyramid starts with a copy of it), with surface draws between them; a Normal layer opens
+    // one more surface pass that no read follows directly (it does not resolve).
+    addPushLayer(cl, 0.9f, BlendMode::Multiply, Rect{8, 8, 48, 48});
+    addFillRect(cl, 10, 10, 44, 44, Color{0.9f, 0.3f, 0.6f, 0.8f});
+    addPopLayer(cl);
+    addFillRect(cl, 60, 8, 20, 20, Color{1, 1, 1, 1});
+    addPushLayer(cl, 0.7f, BlendMode::Normal, Rect{84, 8, 30, 30});
+    addFillRect(cl, 86, 10, 26, 26, Color{0, 0, 1, 1});
+    addPopLayer(cl);
+    addPushLayer(cl, 0.9f, BlendMode::Screen, Rect{64, 64, 48, 48});
+    addFillRect(cl, 66, 66, 44, 44, Color{0.2f, 0.8f, 0.3f, 0.8f});
+    addPopLayer(cl);
+    addFillRect(cl, 8, 100, 20, 20, Color{0, 0, 0, 1});
+    const Rect glass{20, 64, 40, 40};
+    addPushEffect(cl, {effect(EffectKind::BackdropBlur, {6})}, glass, glass);
+    addFillRect(cl, glass.x, glass.y, glass.w, glass.h, Color{1, 1, 1, 0.25f});
+    addPopEffect(cl);
+    Session s(kW, kH, 4);
+    const std::vector<uint8_t> gpu = s.render(cl);
+    CHECK_MESSAGE(s.error.empty(), s.error);
+    const wgpu::WgpuDeviceStats& d = s.renderer.device()->lastStats();
+    CHECK(d.surfaceReads == 3u);
+    CHECK(d.resolves == d.surfaceReads + 1u);
+    CHECK(surfacePasses(s, cl, kW, kH) == d.resolves + 1u);
+    CHECK(matches(gpu, renderSw(cl, kW, kH), kW, kH, "4x surface reads"));
+}
+
+TEST_CASE("wgpu draw: build and submit apart draw what render draws (T-658)") {
+    constexpr int kW = 64, kH = 64;
+    CommandList cl = makeList(kW, kH);
+    addFillRect(cl, 8, 8, 40, 40, Color{1, 0.5f, 0, 1});
+    Session s(kW, kH, 4);
+    const std::vector<uint8_t> whole = s.render(cl);
+    CHECK(s.renderer.build(cl, nullptr, nullptr) == 1u);
+    s.renderer.submit(s.target.view);
+    CHECK(std::string(s.renderer.lastError()).empty());
+    CHECK(s.read() == whole);
+    // An empty list builds no draw command; a submit after a resize without a build draws nothing.
+    CHECK(s.renderer.build(makeList(kW, kH), nullptr, nullptr) == 0u);
+    s.renderer.resize(kW, kH);
+    s.renderer.submit(s.target.view);
+    CHECK(std::string(s.renderer.lastError()).find("no frame was built") != std::string::npos);
 }

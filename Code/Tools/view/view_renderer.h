@@ -55,6 +55,21 @@ struct FrameTargetConfig {
     uint32_t sampleCount = 4;
 };
 
+/// T-658 (Docs/design/50-c-abi.md §50.ab item 3 iv): the GPU counters of one rendered frame
+/// (xt::wgpu::WgpuStats), averaged per frame by `--perf`.
+struct GpuFrameCounters {
+    uint32_t passes = 0;
+    uint32_t resolves = 0;
+    uint32_t drawCalls = 0;
+    uint32_t pipelineBinds = 0;
+    uint64_t uploadBytes = 0;
+    uint32_t effectCacheHits = 0;
+    uint32_t effectCacheMisses = 0;
+    uint32_t effectCacheStores = 0;
+    float buildMs = 0;   ///< FrameBuilder::build (0 for a reused frame)
+    float submitMs = 0;  ///< the device's encode and queue submit
+};
+
 /// Where the view's frame loop draws when it is not the shell or the plain xt_sw buffer.
 class FrameTarget {
 public:
@@ -73,6 +88,11 @@ public:
     virtual void setTextShaper(text::FtTextShaper* shaper) = 0;
 #endif
     virtual std::string description() const = 0;
+    /// T-658: the counters of the last `render`; false for a renderer that has none (sw, gl).
+    virtual bool gpuCounters(GpuFrameCounters& out) {
+        (void)out;
+        return false;
+    }
 };
 
 /// The gl / wgpu / sw target of `config`; null with `error` when it cannot be created (sw is only

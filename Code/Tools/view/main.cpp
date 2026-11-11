@@ -1631,6 +1631,40 @@ void printUsage(std::FILE* out) {
         "exit codes: 0 success, 1 load/write error, 2 argument error\n");
 }
 
+/// T-658 (Docs/design/50-c-abi.md §50.ab item 3 iv): a GPU renderer's counters (wgpu: WgpuStats) summed
+/// over the run; --perf prints them as one line of per-frame averages after the summary table.
+struct GpuCounterTotals {
+    uint32_t frames = 0;
+    double passes = 0, resolves = 0, drawCalls = 0, pipelineBinds = 0, uploadBytes = 0;
+    double cacheHits = 0, cacheMisses = 0, cacheStores = 0;
+    double buildMs = 0, submitMs = 0;
+    void add(const xt::view::GpuFrameCounters& c) {
+        ++frames;
+        passes += c.passes;
+        resolves += c.resolves;
+        drawCalls += c.drawCalls;
+        pipelineBinds += c.pipelineBinds;
+        uploadBytes += static_cast<double>(c.uploadBytes);
+        cacheHits += c.effectCacheHits;
+        cacheMisses += c.effectCacheMisses;
+        cacheStores += c.effectCacheStores;
+        buildMs += c.buildMs;
+        submitMs += c.submitMs;
+    }
+    void print(const char* renderer) const {
+        if (frames == 0) {
+            return;
+        }
+        const double n = frames;
+        std::printf(
+            "  %s per frame: passes %.2f, resolves %.2f, drawCalls %.2f, pipelineBinds %.2f, "
+            "uploadBytes %.0f, effect cache hits %.2f misses %.2f stores %.2f, "
+            "build ms %.3f, submit ms %.3f\n",
+            renderer, passes / n, resolves / n, drawCalls / n, pipelineBinds / n, uploadBytes / n,
+            cacheHits / n, cacheMisses / n, cacheStores / n, buildMs / n, submitMs / n);
+    }
+};
+
 /// Docs/design/21-perf-tracing.md §21.3: the end-of-run summary table, on stdout so CI and an AI
 /// agent can read it. Times are milliseconds; `render`/`effects`/`text` come from the backend and
 /// are CPU time (the GL backend never calls glFinish).
@@ -2855,6 +2889,7 @@ int main(int argc, char** argv) {
             frameCount = args.screenshot.empty() ? UINT32_MAX : args.warmup + 1;
         }
         double lastTime = windowLoop ? frameTarget->seconds() : 0.0;
+        GpuCounterTotals gpuTotals;  // T-658
         for (uint32_t frame = 0; frame < frameCount; ++frame) {
             float frameDt = frame == 0 ? 0.0f : dt;
             if (windowLoop) {
@@ -2894,6 +2929,10 @@ int main(int argc, char** argv) {
                 // T-439: gl / wgpu (or windowed sw) instead of the xt_sw buffer.
                 frameTarget->render(list, &shaper, &assets, irView, &ctx.perf(),
                                     trackDamage ? &damage : nullptr);
+                xt::view::GpuFrameCounters counters;
+                if (args.perf && frameTarget->gpuCounters(counters)) {
+                    gpuTotals.add(counters);
+                }
                 const bool keepForShot = windowLoop && !args.screenshot.empty() && frame + 1 == frameCount;
                 if (!keepForShot) {
                     frameTarget->present();
@@ -2932,6 +2971,7 @@ int main(int argc, char** argv) {
         if (args.perf) {
             printPerfSummary(ctx.perf().summary(frameCount),
                              frameCount > 0 ? 100.0f * damageAreaSum / static_cast<float>(frameCount) : 0.0f);
+            gpuTotals.print(xt::view::rendererName(chosenRenderer));
         }
         // T-125: --screenshot works headless too -- the software buffer above already holds the
         // last frame, so nothing needs a GL context. T-439: a FrameTarget is read back instead.

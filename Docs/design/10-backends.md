@@ -251,3 +251,32 @@ class FileAssetResolver : public AssetResolver { /* 相對某根目錄讀檔 + s
 > 實作記錄（T-456）：shader module 與每支 render pipeline 的建立都包在 Validation＋OutOfMemory 兩層 error scope（wgpu-native 不接受 Internal 過濾器，傳入即 panic）裡，失敗的管線鍵快取為「不可用」、由第一個需要它的 `submit` 在 `lastError` 報一次（之後不再重報）、其 `DrawCmd` 略過而其餘照畫，無效管線永遠到不了 `wgpuQueueSubmit`；`WgpuDevice::init`（因此 `WgpuRenderer::init`）先以一支無繫結的最小 WGSL 管線預檢後端的 shader 編譯器，失敗即回 false 並說明（T-440 的 D3Dcompiler ps_5_1 情況由此交給編輯器的退回鏈），預檢 WGSL 可由測試掛點 `WgpuDevice::setProbeShaderForTesting` 替換。
 
 > 實作記錄（T-457）：uniform 緩衝成長時舊緩衝先釋放再建新緩衝，新 `WGPUBuffer` 可能重用舊位址，原本以 handle 比對是否重建 group 0／1 bind group 因此漏判（Vulkan challenge-menu 的「offset 65536 超出 65536 位元組緩衝」panic），改為 `ShadowBuffer::generation` 每次建立遞增、bind group 依代數重建，並在上傳大小超過緩衝時略過該幀繪製；編輯器的 windeployqt 加 `--no-system-d3d-compiler` 並刪除殘留的 `D3Dcompiler_47.dll`，`xt_runtime_output.cmake` 在共用 bin/ 仍有該檔時發 configure 警告；`GlRenderer` 的 `effectsMs`／`textMs` 填入 Effect／Glyph 命令的 CPU 繪製時間（與 xt_wgpu 同義）。
+
+## 10.11 不靠 MSAA 的抗鋸齒（2026-11-11 定案；Sherefox 記憶體與 GPU 調查；使用者：參考 Godot 的 UI 抗鋸齒、細線用 mip 與過濾；`Docs/reviews/2026-11-11-ui-antialiasing-godot.md`）
+
+**目標**：UI 表面預設以 1x 繪製，品質不低於現在的 4x，並以 SW 光柵化（09）為像素基準。換得：全螢幕 surface 由 22 B/px 降為 5 B/px（1440p 88.5 → 18.4 MB）、layer／mask transient 由 24 降為 5 B/px、所有 resolve 與 4x load／store 消失；XTAtrium 實測 4x 比 1x 多約 256 MB GPU 專用與 280 MB private。
+
+**現況（調查結論）**：1x 時 `edgeFringe` 已開——凸形填色、凸環邊框、單邊邊框、單段線、軸對齊與旋轉／傾斜的圖集文字都有 1 裝置像素、變換後計算的覆蓋率邊緣，次像素寬度以 alpha = 寬度補償而不消失。Godot 4.7.2 不開 MSAA 時靠的也是這一類（CPU 羽化幾何），且它的羽化寬度是本地單位、直角方塊與多邊形沒有 AA；所以本節不是照搬 Godot，而是把我們已有的做法補到涵蓋全部內容。1x 仍是硬邊的只有走 stencil-then-cover 的內容與無邊緣處理的影像 quad。
+
+**定案**（每項一張單，依序做，每張併入並確認像素後才開下一張）：
+
+1. **影像 quad 邊緣羽化（T-659）**：非軸對齊的 `DrawImage`／`DrawImageQuad` 外加一圈 1 裝置像素、alpha 0、UV 夾在邊緣的頂點（與 `fillConvex` 的 fringe 同規則：核心內縮 `woff`）。軸對齊且落在像素格上的影像不變。只在 `edgeFringe` 開時生效。
+2. **覆蓋率圖集（T-660 基礎＋凹形填色／SVG）**：`xt_gpu` 新增 R8 覆蓋率圖集（與字形圖集同型，獨立頁）；走 `fillShapeAndCover` 的填色改為：以 SW 的解析光柵化器（`sw_raster` 的 signed-area 累積；抽成 `xt_core` 可共用的無相依單元，SW 行為不變）把「路徑 × 當前變換的線性部分」光柵化成覆蓋率位圖，存入圖集，以一個貼圖 quad 繪製（著色與漸層照原 `Shading` 乘上覆蓋率）。
+   - 鍵：路徑內容雜湊、fill rule、變換線性部分（量化到 1/64）、次像素位移（量化到 1/4 px）。平移不重新光柵化。
+   - 上限：位圖單邊 > 1024 裝置像素、或同一幀新光柵化的像素總量超過預算（預設 2 Mpx／幀）時，該形狀本幀退回 stencil-then-cover（硬邊），下一幀再試；避免形變動畫造成尖峰。
+   - 淘汰：頁滿時以未使用幀數最久者整頁回收（同字形圖集）；`xt_gpu_memory_stats.atlas_bytes` 計入。
+   - 只在 `edgeFringe` 開（1x）時啟用；4x 行為不變。
+3. **筆畫（T-661）**：`doStroke` 中未被凸形直繪接住的筆畫（折線、封閉、有接合與端點）走定案 2 的圖集（對 `strokeToFill` 的輪廓做 NonZero 覆蓋率）。次像素寬度由覆蓋率自然得到「不斷、alpha 隨寬度」。
+4. **輪廓文字（T-662）**：`doOutlineGlyph` 的各種情形（> 96 px、縮放中、直排／四分之一轉、鏡像、非 auto）改走定案 2 的圖集，以字形輪廓為路徑；3D 投影維持輪廓路徑（另案）。縮放動畫中每幀變換不同會持續新光柵化，受定案 2 的每幀預算約束。
+5. **圓角與旋轉裁切（T-663）**：
+   - (a) 「單一影像＋圓角裁切」（圓角圖片、頭像）不建裁切層：以影像著色的凸圓角矩形填色（`fillConvex` 加貼圖座標）直繪。
+   - (b) 其餘圓角矩形／旋轉矩形裁切：stencil 仍決定內部（二值），另以定案 2 的覆蓋率位圖作邊緣——裁切層結束時，對裁切輪廓外緣 1 px 環帶內被畫到的像素乘上覆蓋率。實作方式（解析式 rrect 於片段著色器，或 R8 裁切遮罩合成）在 T-663 開單前由主模型依 T-660 的實測再定，本節先不定。
+6. **L 形與每邊不同色的圓角邊框（T-664）**：走定案 2 的圖集；順手修 `ringMinWidth` 以最薄邊縮放整環 alpha 的問題（改為各邊各自的寬度）。
+7. **縮小取樣（T-665）**：影像貼圖在第一次被以 ≥ 1.5× 縮小繪製時才產生 mip 鏈（預乘後 2×2 box，GPU blit 鏈），取樣器改三線性；沒被縮小過的貼圖維持單層（不白付 33% 記憶體）。DDS 既有 mip 鏈直接上傳。SW 基準同步：`drawImage` 在縮小 ≥ 2× 時改用與 GPU mip 等價的 box 預過濾（SW golden 會變，T-665 內重產並逐張人工確認是變好）。合成器把 surface 縮小畫進 `dest` 的情形不在本單。
+8. **預設取樣數改為 1（T-666）**：定案 1～6 併入後，`xt_gpu_target_desc.sample_count` 的 0 改為代表 1；4 仍可指定（行為與今天相同，`edgeFringe` 關）。`xtframe-view --msaa` 預設同步改 1。屬行為變更，隨下一個 minor 版號並通知宿主。
+9. **驗收方式**：每張單加 1x 的 GPU vs SW golden（既有 wgpu golden 本來就是 1x 對 SW、16 階／3%），並在報告附 4x／1x／SW 三方裁切對照圖的路徑；`Tests/gpu/golden/*.txt` 結構快照依單重產。CPU 成本以 `view --perf` 的 build ms 報告，靜態畫面（圖集全命中）不得高於修改前。
+
+**不做**：MSDF／SDF 文字（失去 hinting、第二條文字路徑）；選擇性 MSAA（保留了要拿掉的東西）；全面改為著色器解析式圖元（三個後端都要動，效益與圖集重疊）。GL 後端（10.3）沿用 `xt_gpu` 的同一套，隨各單自動取得；CE 的 Host 後端不在本倉。
+
+**T-659 實作記錄（#621，2026-11-11）**：`frame_builder.cpp` 的 `imageQuadOnPixelGrid`／`drawImageQuadEdges`／`drawFringedImageQuad`。「在像素格上」＝裝置空間每邊 |dx| 或 |dy| ≤ 1e-3 且每個角的 x、y 距整數 ≤ 1e-3（同 SW 的 `kAxisEps`）；羽化條件：`edgeFringe` 開、`smooth != 0`、非投影、不在格上、嚴格凸。新 fixture `ui_image_transform`（旋轉 7°、skewX、非整數縮放、格上對照、圖集格旋轉）：1x GPU 對 SW 超差像素 620 → 7（餘下在 quad 角，miter 高估，同 `fillConvex`）、最大通道差 133 → 31；4x 逐位元組不變；既有結構快照無一變動。未處理：3D 投影影像、`DrawImageMesh`、粒子；旋轉九宮格的格縫與 SW 同樣可見。
+

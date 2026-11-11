@@ -53,6 +53,7 @@ struct WgpuRenderer::Impl {
     gpu::GpuFrame frame;
     bool initialized = false;
     bool frameReused = false;
+    bool frameBuilt = false;  ///< T-658: `frame` was built since init / resize (submit may draw it)
     int width = 0, height = 0;
     float buildMs = 0, submitMs = 0;
     std::string adapterName;
@@ -96,6 +97,7 @@ struct WgpuRenderer::Impl {
         builder.shutdown();
         device.shutdown();
         frame.clear();
+        frameBuilt = false;
         adapterName.clear();
         initialized = false;
     }
@@ -103,6 +105,7 @@ struct WgpuRenderer::Impl {
     void resize(int w, int h) {
         width = w;
         height = h;
+        frameBuilt = false;
         if (!initialized) {
             return;
         }
@@ -114,24 +117,48 @@ struct WgpuRenderer::Impl {
                 const IrView* ir, PerfTracker* perf, const DamageList* damage) {
         FrameStats* stats = (perf != nullptr && perf->enabled()) ? &perf->current() : nullptr;
         PerfFieldScope renderScope(stats != nullptr ? &stats->renderMs : nullptr);
+        if (initialized && target == nullptr) {
+            lastError = "WgpuRenderer::render: no target view";
+            buildMs = submitMs = 0;
+            return;
+        }
+        if (buildFrame(list, shaper, assets, ir, perf, damage)) {
+            submitFrame(target, stats);
+        }
+    }
+
+    /// T-658: the build half of render(); false (and lastError) when nothing can be built.
+    bool buildFrame(const CommandList& list, TextShaper* shaper, AssetResolver* assets, const IrView* ir,
+                    PerfTracker* perf, const DamageList* damage) {
         lastError.clear();
         buildMs = submitMs = 0;
         if (!initialized) {
             lastError = "WgpuRenderer::init was not called";
-            return;
+            return false;
         }
-        if (target == nullptr) {
-            lastError = "WgpuRenderer::render: no target view";
-            return;
-        }
-        device.setSurface(target);
         frameReused = damage != nullptr && !damage->full && damage->rects.empty() &&
-                      builder.lastFrameReusable(assets, ir);
+                      builder.lastFrameReusable(assets, ir) && frameBuilt;
         if (!frameReused) {
             const auto b0 = std::chrono::steady_clock::now();
             builder.build(list, shaper, assets, ir, frame, perf, damage);
             buildMs = std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - b0).count();
         }
+        frameBuilt = true;
+        return true;
+    }
+
+    /// T-658: the submit half of render(): the built frame into `target`.
+    void submitFrame(WGPUTextureView target, FrameStats* stats) {
+        if (!initialized || !frameBuilt) {
+            lastError = initialized ? "WgpuRenderer::submit: no frame was built"
+                                    : "WgpuRenderer::init was not called";
+            return;
+        }
+        if (target == nullptr) {
+            lastError = "WgpuRenderer::submit: no target view";
+            return;
+        }
+        device.setSurface(target);
         const auto s0 = std::chrono::steady_clock::now();
         device.submit(frame);
         submitMs = std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - s0).count();
@@ -274,6 +301,22 @@ void WgpuRenderer::render(const CommandList& list, TextShaper* shaper, AssetReso
     m_impl->render(list, shaper, assets, target, ir, perf, damage);
 }
 
+uint32_t WgpuRenderer::build(const CommandList& list, TextShaper* shaper, AssetResolver* assets,
+                             const IrView* ir, PerfTracker* perf, const DamageList* damage) {
+    FrameStats* stats = (perf != nullptr && perf->enabled()) ? &perf->current() : nullptr;
+    PerfFieldScope renderScope(stats != nullptr ? &stats->renderMs : nullptr);
+    if (!m_impl->buildFrame(list, shaper, assets, ir, perf, damage)) {
+        return 0;
+    }
+    return static_cast<uint32_t>(m_impl->frame.cmds.size());
+}
+
+void WgpuRenderer::submit(WGPUTextureView target, PerfTracker* perf) {
+    FrameStats* stats = (perf != nullptr && perf->enabled()) ? &perf->current() : nullptr;
+    PerfFieldScope renderScope(stats != nullptr ? &stats->renderMs : nullptr);
+    m_impl->submitFrame(target, stats);
+}
+
 void WgpuRenderer::invalidateImages() { m_impl->builder.invalidateAllAssets(); }
 
 WgpuStats WgpuRenderer::stats() const {
@@ -282,6 +325,7 @@ WgpuStats WgpuRenderer::stats() const {
     s.buildMs = m_impl->buildMs;
     s.submitMs = m_impl->submitMs;
     s.passes = d.passes;
+    s.resolves = d.resolves;
     s.clears = d.clears;
     s.skippedCmds = d.skippedCmds;
     s.transientCreates = d.transientCreates;
@@ -291,6 +335,12 @@ WgpuStats WgpuRenderer::stats() const {
     s.copies = d.copies;
     s.blits = d.blits;
     s.cacheStores = d.cacheStores;
+    if (!m_impl->frameReused) {  // T-658: the build's effect cache counters
+        const gpu::FrameBuilder::EffectCacheStats c = m_impl->builder.lastEffectCacheStats();
+        s.fxCacheHits = c.hits;
+        s.fxCacheMisses = c.misses;
+        s.fxCacheStores = c.stores;
+    }
     s.uploadBytes = d.uploadBytes;
     s.planMs = d.planMs;
     s.uploadMs = d.uploadMs;

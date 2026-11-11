@@ -84,6 +84,7 @@ struct WgpuStats {
     float buildMs = 0;              ///< FrameBuilder::build (0 when the frame was reused)
     float submitMs = 0;             ///< WgpuDevice::submit (CPU encoding and queue submit)
     uint32_t passes = 0;            ///< render passes encoded
+    uint32_t resolves = 0;          ///< T-658: 4x resolves into the target view (WgpuDeviceStats)
     uint32_t clears = 0;            ///< passes that cleared their color attachment
     uint32_t skippedCmds = 0;       ///< draw commands that could not be executed
     uint32_t transientCreates = 0;  ///< transient targets created this frame
@@ -93,6 +94,9 @@ struct WgpuStats {
     uint32_t copies = 0;            ///< copy passes done with copyTextureToTexture
     uint32_t blits = 0;             ///< copy passes / surface loads done with a blit draw
     uint32_t cacheStores = 0;       ///< effect-cache / band stores
+    uint32_t fxCacheHits = 0;       ///< T-658: effect segments the build drew from the cache
+    uint32_t fxCacheMisses = 0;     ///< T-658: cacheable effect segments the build drew in full
+    uint32_t fxCacheStores = 0;     ///< T-658: effect results the build stores (0s: frame reused)
     uint64_t uploadBytes = 0;       ///< geometry and uniform bytes written this frame
     float planMs = 0;               ///< submitMs split: targets, pass plan, uniform packing
     float uploadMs = 0;             ///< submitMs split: geometry and uniform writes
@@ -132,6 +136,16 @@ public:
     /// time encoding effect passes and glyph draws, T-438 item 14) and, from the builder, `gpuBuildMs`.
     void render(const CommandList& list, TextShaper* shaper, AssetResolver* assets, WGPUTextureView target,
                 const IrView* ir = nullptr, PerfTracker* perf = nullptr, const DamageList* damage = nullptr);
+    /// T-658 (50 §50.ab item 3 ii / iii): `render` in two halves, for a host that skips a frame with
+    /// nothing to draw before it has a target. `build` makes the frame (or keeps the last one, as
+    /// `render` does for an unchanged `damage`) and returns its draw command count; it touches no
+    /// target and makes no attachment. `submit` draws the frame of the last `build` into `target`
+    /// (nothing without a build since init / resize; `lastError` says so). Both add their time to
+    /// `perf`'s `renderMs`, as `render` does with its whole duration.
+    uint32_t build(const CommandList& list, TextShaper* shaper, AssetResolver* assets,
+                   const IrView* ir = nullptr, PerfTracker* perf = nullptr,
+                   const DamageList* damage = nullptr);
+    void submit(WGPUTextureView target, PerfTracker* perf = nullptr);
 
 #ifndef XT_GPU_NO_TEXT
     /// Injects the glyph atlas DrawGlyphs samples from, as `GlRenderer::setGlyphAtlas`. Not owned;

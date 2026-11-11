@@ -262,7 +262,7 @@ void WgpuDevice::shutdown() {
     }
     for (Texture& t : m_textures) {
         if (t.sharedId != 0 && m_sharing != nullptr) {
-            m_sharing->m_impl->releaseImage(t.sharedId, true);  // T-648: kept for the cache's life
+            m_sharing->m_impl->releaseImage(t.sharedId, true);  // T-656: idle, within the budget
         }
         releaseTextureEntry(t);
     }
@@ -456,8 +456,7 @@ gpu::TextureHandle WgpuDevice::findSharedImage(const gpu::ImageKey& key, uint16_
     t.height = h;
     t.external = true;
     t.sharedId = id;
-    if (image.uses++ == 0) ++c.stats.imagesInUse;
-    ++c.stats.imageReuses;
+    c.useImage(id);  // T-656: off the idle list
     return addTexture(t);
 }
 
@@ -496,6 +495,14 @@ void WgpuDevice::dropSharedUse(gpu::TextureHandle tex, bool keep) {
     if (m_sharing != nullptr) {
         m_sharing->m_impl->releaseImage(id, keep);
     }
+}
+
+uint64_t WgpuDevice::surfaceAttachmentBytes() const {
+    const uint64_t texels = uint64_t(m_surfaceAttachW) * uint64_t(m_surfaceAttachH) * m_sampleCount;
+    uint64_t bytes = 0;
+    if (m_surfaceMsaa != nullptr) bytes += texels * bytesPerTexel(m_targetFormat);
+    if (m_surfaceStencil != nullptr) bytes += texels;  // WGPUTextureFormat_Stencil8: one byte
+    return bytes;
 }
 
 gpu::TextureHandle WgpuDevice::registerExternalTexture(WGPUTextureView view, uint16_t width,
@@ -955,6 +962,7 @@ void WgpuDevice::submit(const gpu::GpuFrame& frame) {
     // large keeps them all in range; anything else (a failed growth) skips the frame's draws.
     const bool groupsOk = g.uniforms.buffer != nullptr && g.passGroup != nullptr && g.paramGroup != nullptr &&
                           g.uniforms.capacity >= m_uniformData.size() * sizeof(float);
+    planSurfaceResolves(groupsOk, surfaceOk);
     for (size_t i = 0; i < frame.passes.size(); ++i) {
         const gpu::Pass& pass = frame.passes[i];
         if (!groupsOk || (pass.target == gpu::kSurfaceTarget && !surfaceOk)) {
@@ -985,6 +993,7 @@ void WgpuDevice::submit(const gpu::GpuFrame& frame) {
         wgpuRenderPassEncoderRelease(p);
         ++m_stats.passes;
         ++m_stats.clears;
+        if (ca.resolveTarget != nullptr) ++m_stats.resolves;
     }
     m_stats.encodeMs = msSince(t0);
     t0 = Clock::now();
@@ -1015,6 +1024,37 @@ void WgpuDevice::submit(const gpu::GpuFrame& frame) {
     m_frame = nullptr;
 }
 
+void WgpuDevice::planSurfaceResolves(bool groupsOk, bool surfaceOk) {
+    // T-658 (50 §50.ab item 3 i): a 4x surface pass stores its attachment and resolves into the view
+    // only when it is the frame's last surface pass, or the last one before a pass that reads the
+    // view. The only reader is a pass copying from target 0 (a blit: mix-blend backdrops, backdrop
+    // blur pyramids, Direct-mode scene reads); draws never sample target 0 (drawCmd binds a dummy) and
+    // cache stores never copy from it. Each resolve writes the whole view, so the view after the last
+    // one is what resolving every pass left.
+    const gpu::GpuFrame& frame = *m_frame;
+    m_resolveSurface.assign(frame.passes.size(), 0);
+    m_stats.surfaceReads = 0;
+    if (!groupsOk) {
+        return;  // nothing is encoded
+    }
+    int lastSurface = -1;
+    for (size_t i = 0; i < frame.passes.size(); ++i) {
+        const gpu::Pass& pass = frame.passes[i];
+        if (pass.target != gpu::kSurfaceTarget &&
+            (pass.target > m_frameTargets.size() || m_frameTargets[pass.target - 1] < 0)) {
+            continue;  // skipped by submit
+        }
+        if (m_plans[i].copyMode == 2 && pass.copySource == gpu::kSurfaceTarget) {
+            ++m_stats.surfaceReads;
+            if (lastSurface >= 0) m_resolveSurface[static_cast<size_t>(lastSurface)] = 1;
+        }
+        if (pass.target == gpu::kSurfaceTarget && surfaceOk) {
+            lastSurface = static_cast<int>(i);
+        }
+    }
+    if (lastSurface >= 0) m_resolveSurface[static_cast<size_t>(lastSurface)] = 1;
+}
+
 void WgpuDevice::encodePass(WGPUCommandEncoder enc, size_t index, bool& surfaceStarted) {
     const gpu::GpuFrame& frame = *m_frame;
     const gpu::Pass& pass = frame.passes[index];
@@ -1030,7 +1070,7 @@ void WgpuDevice::encodePass(WGPUCommandEncoder enc, size_t index, bool& surfaceS
     WGPUColor color = transparent;
     if (pass.target == gpu::kSurfaceTarget) {
         colorView = m_sampleCount > 1 ? m_surfaceMsaaView : m_surface;
-        resolveView = m_sampleCount > 1 ? m_surface : nullptr;
+        resolveView = m_sampleCount > 1 && m_resolveSurface[index] != 0 ? m_surface : nullptr;  // T-658
         stencilView = m_surfaceStencilView;
         const bool first = !surfaceStarted;
         clearColor = (first && m_clearSurface) || pass.clear != 0;
@@ -1074,6 +1114,7 @@ void WgpuDevice::encodePass(WGPUCommandEncoder enc, size_t index, bool& surfaceS
         }
         ++m_stats.passes;
         if (clear) ++m_stats.clears;
+        if (resolve != nullptr && view == m_surfaceMsaaView) ++m_stats.resolves;
         return wgpuCommandEncoderBeginRenderPass(enc, &rp);
     };
 

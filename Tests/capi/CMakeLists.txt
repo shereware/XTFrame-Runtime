@@ -26,7 +26,8 @@ xt_capi_pack_bundle(XT_CAPI_HUD_OVERLAY hud-overlay "${PROJECT_SOURCE_DIR}/Examp
 xt_capi_pack_bundle(XT_CAPI_DEVICE device "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/device")
 # T-561: a one-card UI whose flow toggles `flipped` on #card.Click, with an opacity transition; T-603:
 # a second UI, `intro`, whose flow plays its intro from lifecycle.shown; T-651: a third, `lit`, whose
-# click toggles `lit` on #card, starting three CSS animations (state snapshot version 3).
+# click toggles `lit` on #card, starting three CSS animations (state snapshot version 3); T-658: a
+# fourth, `ghost`, whose only card is hidden until its `show` port is true (an empty GPU surface).
 xt_capi_pack_bundle(XT_CAPI_FLIP flip "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/flip")
 # T-617: a one-box UI whose color follows `localize` bindings of `@greeting` (strings en / zh-TW) and
 # whose flow writes system.languageChanged into the `heard` port.
@@ -39,11 +40,15 @@ xt_capi_pack_bundle(XT_CAPI_STATE state "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/st
 xt_capi_pack_bundle(XT_CAPI_TEXT text "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/text")
 # T-642: the npdo demo (hud / settings) for the partial-redraw equivalence cases (test_capi_partial.cpp).
 xt_capi_pack_bundle(XT_CAPI_NPDO npdo "${PROJECT_SOURCE_DIR}/Examples/demos/npdo/ui-project")
+# T-656: three 1024 x 1024 images on a 256 x 256 UI; test_capi_gpu.cpp copies the bundle and rewrites
+# its images with new pixels every round (the GPU target's image idle budget).
+xt_capi_pack_bundle(XT_CAPI_IMAGES images "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/images")
 add_custom_target(xt_capi_test_bundles
     DEPENDS "${XT_CAPI_GAME_UI}/manifest.json" "${XT_CAPI_HUD_OVERLAY}/manifest.json"
             "${XT_CAPI_DEVICE}/manifest.json" "${XT_CAPI_FLIP}/manifest.json"
             "${XT_CAPI_L10N}/manifest.json" "${XT_CAPI_STATE}/manifest.json"
-            "${XT_CAPI_NPDO}/manifest.json" "${XT_CAPI_TEXT}/manifest.json")
+            "${XT_CAPI_NPDO}/manifest.json" "${XT_CAPI_TEXT}/manifest.json"
+            "${XT_CAPI_IMAGES}/manifest.json")
 
 add_executable(xt_capi_tests
     test_main.cpp
@@ -68,7 +73,8 @@ target_compile_definitions(xt_capi_tests PRIVATE
     XT_CAPI_TEST_L10N_BUNDLE="${XT_CAPI_L10N}"
     XT_CAPI_TEST_STATE_BUNDLE="${XT_CAPI_STATE}"
     XT_CAPI_TEST_NPDO_BUNDLE="${XT_CAPI_NPDO}"
-    XT_CAPI_TEST_TEXT_BUNDLE="${XT_CAPI_TEXT}")
+    XT_CAPI_TEST_TEXT_BUNDLE="${XT_CAPI_TEXT}"
+    XT_CAPI_TEST_IMAGES_BUNDLE="${XT_CAPI_IMAGES}")
 # Only the C header (and xt/version.h's macros, for case 1) -- the runtime is reached through the
 # shared library alone. nlohmann reads the packed manifest for case 2.
 target_include_directories(xt_capi_tests PRIVATE ${PROJECT_SOURCE_DIR}/Code/Runtime/core/include)

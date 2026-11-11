@@ -246,6 +246,20 @@ public:
         return std::string("wgpu ") + (m_windowed ? "(sdl2 window, " : "(offscreen, ") +
                m_renderer.adapterName() + ")";
     }
+    bool gpuCounters(GpuFrameCounters& out) override {
+        const xt::wgpu::WgpuStats s = m_renderer.renderer().stats();
+        out.passes = s.passes;
+        out.resolves = s.resolves;
+        out.drawCalls = s.drawCalls;
+        out.pipelineBinds = s.pipelineBinds;
+        out.uploadBytes = s.uploadBytes;
+        out.effectCacheHits = s.fxCacheHits;
+        out.effectCacheMisses = s.fxCacheMisses;
+        out.effectCacheStores = s.fxCacheStores;
+        out.buildMs = s.buildMs;
+        out.submitMs = s.submitMs;
+        return true;
+    }
 
 private:
     backend::PlatformSdl2 m_platform;

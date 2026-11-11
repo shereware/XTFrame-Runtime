@@ -388,6 +388,40 @@ XT_CAPI xt_status xt_surface_detach_gpu(xt_surface* s);
    (a HUD toggled every few frames). */
 XT_CAPI xt_status xt_surface_trim(xt_surface* s);
 XT_CAPI xt_status xt_surface_set_trim_on_hide(xt_surface* s, int enabled);
+
+/* ---- GPU target memory (50 §50.ab, T-656; appended, ABI version unchanged) -------------------------
+   A target keeps one texture per bundle image content for all its surfaces. A texture no surface uses
+   (its surfaces were destroyed, detached, trimmed or hidden) stays on the target's idle list, so a
+   surface shown again does not upload it again; once the idle textures together exceed the idle
+   budget (default 64 MiB), the ones left unused longest are destroyed. Without wgpu every function
+   here returns XT_STATUS_UNSUPPORTED. */
+/* Sets the idle budget of `t`'s image textures in bytes and applies it now (the oldest idle textures
+   are destroyed until the rest fit). 0 = a texture is destroyed as soon as no surface uses it.
+   NULL target -> XT_STATUS_INVALID_ARGUMENT. */
+XT_CAPI xt_status xt_gpu_target_set_image_budget(xt_gpu_target* t, uint64_t idle_bytes);
+/* Destroys every idle image texture of `t` now, then polls the device once without waiting so the
+   driver can reclaim the memory (call it when the host changes level / scene). Textures in use are
+   kept. Inside a frame (between begin_frame and end_frame) or NULL target -> XT_STATUS_INVALID_ARGUMENT,
+   nothing destroyed. */
+XT_CAPI xt_status xt_gpu_target_trim(xt_gpu_target* t);
+
+/* Memory the library accounts for itself (bytes from formats and sizes, not the driver's committed). */
+typedef struct xt_gpu_memory_stats {
+    uint32_t struct_size;          /* = sizeof(xt_gpu_memory_stats), set by the caller */
+    uint32_t image_textures;       /* shared image textures alive (used or idle) */
+    uint64_t image_bytes;          /* their memory */
+    uint32_t image_idle_textures;  /* of image_textures, those no surface uses */
+    uint32_t attached_surfaces;    /* surfaces attached to the target */
+    uint64_t image_idle_bytes;     /* memory of the idle textures */
+    uint64_t image_evictions;      /* idle textures destroyed so far (budget or xt_gpu_target_trim) */
+    uint64_t surface_bytes;        /* per attached surface: its 1x texture + MSAA color + stencil attachments */
+    uint64_t transient_bytes;      /* the renderers' transient target pools now */
+    uint64_t atlas_bytes;          /* the surfaces' glyph atlas pages (R8) */
+} xt_gpu_memory_stats;
+/* Fills `out` with `t`'s counters: only the fields `out->struct_size` covers are written (an older,
+   shorter struct gets its prefix; struct_size itself is not written). NULL target or `out` ->
+   XT_STATUS_INVALID_ARGUMENT. */
+XT_CAPI xt_status xt_gpu_target_memory_stats(const xt_gpu_target* t, xt_gpu_memory_stats* out);
 /* clang-format on */
 
 #ifdef __cplusplus

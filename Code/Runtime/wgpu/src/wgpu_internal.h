@@ -245,9 +245,13 @@ struct WgpuSharedCache::Impl {
         WGPUTextureView view = nullptr;
         uint32_t uses = 0;  ///< device handles naming it
         uint64_t bytes = 0;
+        bool idle = false;  ///< T-656: in `idle` (no use)
     };
     std::vector<Image> images;  ///< id i + 1 = images[i]
     std::vector<uint32_t> freeIds;
+    /// T-656: ids of the unused images, oldest (first left unused) first.
+    std::vector<uint32_t> idle;
+    uint64_t idleBudget = WgpuSharedCache::kDefaultImageIdleBudget;
     WgpuSharedStats stats;
 
     /// True when a WgpuDevice on `dev` may borrow this cache (it adopts `dev` when it has none).
@@ -257,9 +261,18 @@ struct WgpuSharedCache::Impl {
     /// Takes ownership of `texture` / `view` as the image of `key` with one use; returns its id.
     uint32_t addImage(const gpu::ImageKey& key, uint16_t w, uint16_t h, gpu::TextureFormat fmt,
                       WGPUTexture texture, WGPUTextureView view, uint64_t bytes);
-    /// Ends one use of image `id` (see gpu::GpuDevice::releaseSharedImage for `keep`).
+    /// T-656: one more use of the live image `id` (found by findImage); takes it off the idle list.
+    void useImage(uint32_t id);
+    /// Ends one use of image `id` (see gpu::GpuDevice::releaseSharedImage for `keep`). T-656: with
+    /// `keep`, an image left unused goes to the idle list (then the budget is applied).
     void releaseImage(uint32_t id, bool keep);
     void destroyImage(Image& image);
+    /// T-656: takes image `id` off the idle list (no-op when it is not on it).
+    void leaveIdle(uint32_t id);
+    /// T-656: destroys idle image `id` (counted as an eviction).
+    void evictIdle(uint32_t id);
+    /// T-656: evicts the oldest idle images while the idle bytes exceed `idleBudget`.
+    void applyIdleBudget();
     /// Releases the device reference once nothing created on it is left.
     void releaseDeviceIfUnused();
 };

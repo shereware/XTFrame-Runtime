@@ -2,6 +2,8 @@
 
 #include <webgpu/webgpu.h>
 
+#include <algorithm>
+
 #include "wgpu_internal.h"
 
 /// WgpuSharedCache (T-648): see wgpu_shared.h. The device side (borrowing the pipeline set,
@@ -20,6 +22,7 @@ void WgpuSharedCache::shutdown() {
     }
     c.images.clear();
     c.freeIds.clear();
+    c.idle.clear();
     if (c.pipelinesReady) {
         c.pipelines.shutdown();
         c.pipelinesReady = false;
@@ -28,10 +31,29 @@ void WgpuSharedCache::shutdown() {
     c.stats.imageTextures = 0;
     c.stats.imagesInUse = 0;
     c.stats.imageBytes = 0;
+    c.stats.imageIdleTextures = 0;
+    c.stats.imageIdleBytes = 0;
     c.releaseDeviceIfUnused();
 }
 
 WgpuSharedStats WgpuSharedCache::stats() const { return m_impl->stats; }
+
+void WgpuSharedCache::setImageIdleBudget(uint64_t bytes) {
+    m_impl->idleBudget = bytes;
+    m_impl->applyIdleBudget();
+}
+
+uint64_t WgpuSharedCache::imageIdleBudget() const { return m_impl->idleBudget; }
+
+uint32_t WgpuSharedCache::trimIdleImages() {
+    Impl& c = *m_impl;
+    uint32_t n = 0;
+    while (!c.idle.empty()) {
+        c.evictIdle(c.idle.front());
+        ++n;
+    }
+    return n;
+}
 
 bool WgpuSharedCache::Impl::adopt(WGPUDevice dev) {
     if (dev == nullptr) {
@@ -82,24 +104,78 @@ uint32_t WgpuSharedCache::Impl::addImage(const gpu::ImageKey& key, uint16_t w, u
     return static_cast<uint32_t>(images.size());
 }
 
+void WgpuSharedCache::Impl::useImage(uint32_t id) {
+    Image& image = images[id - 1];
+    if (image.uses++ == 0) {
+        ++stats.imagesInUse;
+        leaveIdle(id);  // T-656: found again while idle (no upload)
+    }
+    ++stats.imageReuses;
+}
+
 void WgpuSharedCache::Impl::releaseImage(uint32_t id, bool keep) {
     if (id == 0 || id > images.size() || images[id - 1].view == nullptr) {
         return;
     }
     Image& image = images[id - 1];
-    if (image.uses > 0 && --image.uses == 0) {
+    if (image.uses > 0) {
+        if (--image.uses > 0) {
+            return;
+        }
         --stats.imagesInUse;
     }
-    if (image.uses == 0 && !keep) {
-        destroyImage(image);
+    if (!keep) {
+        destroyImage(image);  // also takes it off the idle list
         ++stats.imageFrees;
         freeIds.push_back(id);
+        return;
+    }
+    if (!image.idle) {
+        // T-656 (50 §50.ab item 1): kept, but only within the idle budget.
+        image.idle = true;
+        idle.push_back(id);
+        ++stats.imageIdleTextures;
+        stats.imageIdleBytes += image.bytes;
+        applyIdleBudget();
+    }
+}
+
+void WgpuSharedCache::Impl::leaveIdle(uint32_t id) {
+    Image& image = images[id - 1];
+    if (!image.idle) {
+        return;
+    }
+    image.idle = false;
+    const auto it = std::find(idle.begin(), idle.end(), id);
+    if (it != idle.end()) {
+        idle.erase(it);
+    }
+    if (stats.imageIdleTextures > 0) {
+        --stats.imageIdleTextures;
+    }
+    stats.imageIdleBytes -= image.bytes <= stats.imageIdleBytes ? image.bytes : stats.imageIdleBytes;
+}
+
+void WgpuSharedCache::Impl::evictIdle(uint32_t id) {
+    leaveIdle(id);
+    destroyImage(images[id - 1]);
+    ++stats.imageFrees;
+    ++stats.imageEvictions;
+    freeIds.push_back(id);
+}
+
+void WgpuSharedCache::Impl::applyIdleBudget() {
+    while (stats.imageIdleBytes > idleBudget && !idle.empty()) {
+        evictIdle(idle.front());
     }
 }
 
 void WgpuSharedCache::Impl::destroyImage(Image& image) {
     if (image.view == nullptr) {
         return;
+    }
+    if (image.idle) {
+        leaveIdle(static_cast<uint32_t>(&image - images.data()) + 1u);
     }
     if (image.uses > 0 && stats.imagesInUse > 0) {
         --stats.imagesInUse;

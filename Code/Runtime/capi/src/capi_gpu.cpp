@@ -34,9 +34,11 @@
 /// SrcOver) submitted to its composer's WgpuDevice -- the existing draw path, no shader of its own.
 /// T-648 (50 §50.z addendum): the target owns a WgpuSharedCache that its composer and every attached
 /// surface's renderer borrow -- one pipeline set (compiled once per target) and one texture per bundle
-/// image content, kept until the target is destroyed (a surface's detach, trim or destroy does not
-/// free them). Each surface keeps its own glyph atlas (starting at 1024 x 1024, growing to 2048 x 2048),
-/// transient pool and surface texture.
+/// image content. T-656 (50 §50.ab item 1): a texture no surface uses any more (detach, trim, destroy)
+/// goes to the cache's idle list, bounded by the idle budget (xt_gpu_target_set_image_budget, default
+/// 64 MiB); xt_gpu_target_trim empties it and xt_gpu_target_memory_stats reports it. Each surface keeps
+/// its own glyph atlas (starting at 1024 x 1024, growing to 2048 x 2048), transient pool and surface
+/// texture.
 /// Without wgpu (XT_BUILD_WGPU=OFF) every function only reports "built without wgpu".
 
 using xt::capi::fail;
@@ -54,10 +56,20 @@ struct xt_gpu_target {
     xt::wgpu::WgpuSharedCache shared;
     /// T-648: the shared-cache counters as last logged (xt_surface_render_gpu logs on a change).
     xt::wgpu::WgpuSharedStats logged;
+    /// T-656: the GPU resources of the attached surfaces that have them (xt_gpu_target_memory_stats);
+    /// each SurfaceGpu adds itself when built and removes itself when destroyed.
+    std::vector<xt::capi::SurfaceGpu*> gpus;
     xt::wgpu::WgpuRenderer composer;  ///< its WgpuDevice composites; also readback
     int width = 0, height = 0;
     uint32_t sampleCount = 4;  ///< T-647: the attached surfaces' renderers (1 or 4)
     bool inFrame = false;
+    /// T-658 (sheet item 3): begin_frame's clear, submitted with the frame's first composite (or by
+    /// end_frame / readback when nothing was composited before them) -- one submit instead of two.
+    bool clearPending = false;
+    WGPUColor pendingClear = {0, 0, 0, 0};
+    /// T-658: the submits and render passes made on this target so far (composer and surface renderers);
+    /// logged when a surface stops or starts drawing (tests read them there).
+    uint64_t submits = 0, passes = 0;
     WGPUTexture frameTexture = nullptr;   ///< the frame's texture (window's or `offscreen`), not owned
     WGPUTextureView frameView = nullptr;  ///< the frame's view (owned for `offscreen` only)
     uint32_t attached = 0;                ///< surfaces attached (destroy refuses while > 0)
@@ -110,8 +122,19 @@ struct SurfaceGpu {
     gpu::TextureHandle handle = 0;
     int width = 0, height = 0;
     uint32_t executed = 0, skipped = 0;
+    /// T-658: the size the renderer was last resized to (its builder and device).
+    int renderWidth = 0, renderHeight = 0;
+    /// T-658 (50 §50.ab item 3 ii / iii): a frame was built since these resources were made, and whether that
+    /// frame had no draw command -- such a surface is neither drawn nor composited, and its texture (and
+    /// the renderer's 4x attachments) are not made until a frame has something to draw.
+    bool built = false;
+    bool empty = false;
 
     ~SurfaceGpu() {
+        if (target != nullptr) {  // T-656
+            target->gpus.erase(std::remove(target->gpus.begin(), target->gpus.end(), this),
+                               target->gpus.end());
+        }
         releaseTexture();
         renderer.shutdown();
     }
@@ -142,9 +165,16 @@ struct SurfaceGpu {
                                                                     static_cast<uint16_t>(h));
         width = w;
         height = h;
-        renderer.resize(w, h);
         fresh = true;
         return handle != 0;
+    }
+    /// Resizes the renderer to `w` x `h` when it is not that size yet. True when it was resized.
+    bool ensureRenderSize(int w, int h) {
+        if (w == renderWidth && h == renderHeight) return false;
+        renderer.resize(w, h);
+        renderWidth = w;
+        renderHeight = h;
+        return true;
     }
 };
 
@@ -187,19 +217,30 @@ WGPUColor clearColor(const float* rgba) {
     return WGPUColor{unit(rgba[0]) * a, unit(rgba[1]) * a, unit(rgba[2]) * a, a};
 }
 
-/// Submits `t->frame` into the frame's view with the composer's device (clearing to `clear` first
-/// when given). Empty string, or the device's error.
-std::string submitComposite(xt_gpu_target& t, const WGPUColor* clear) {
+/// Submits `t->frame` into the frame's view with the composer's device, clearing first when
+/// begin_frame's clear is still pending (T-658: the clear rides on the frame's first composite; the
+/// same pixels as a clear pass of its own, then a loaded pass). Empty string, or the device's error.
+std::string submitComposite(xt_gpu_target& t) {
     xt::wgpu::WgpuDevice* dev = t.composer.device();
     if (dev == nullptr || t.frameView == nullptr) return std::string();
     dev->setSurface(t.frameView);
-    dev->setSurfaceClear(clear != nullptr, clear != nullptr ? *clear : WGPUColor{0, 0, 0, 0});
+    dev->setSurfaceClear(t.clearPending, t.pendingClear);
+    t.clearPending = false;
     t.frame.targetWidth = t.width;
     t.frame.targetHeight = t.height;
     dev->submit(t.frame);
     dev->setSurfaceClear(false, WGPUColor{0, 0, 0, 0});
     dev->setSurface(nullptr);
+    ++t.submits;
+    t.passes += dev->lastStats().passes;
     return dev->lastError();
+}
+
+/// T-658: begin_frame's clear on its own when no composite carried it (end_frame, readback).
+std::string flushPendingClear(xt_gpu_target& t) {
+    if (!t.clearPending) return std::string();
+    t.frame.clear();  // no pass: the device's own clear pass
+    return submitComposite(t);
 }
 
 /// One textured quad of `handle` over `dest` (target pixels), scissored to the target.
@@ -264,11 +305,45 @@ void logSharedCache(xt_gpu_target& t) {
                          std::to_string(s.pipelineSets) + ", borrowed " + std::to_string(s.pipelineBorrows));
 }
 
+/// T-656: the counters of xt_gpu_target_memory_stats (50 §50.ab item 1), all fields.
+xt_gpu_memory_stats collectMemoryStats(const xt_gpu_target& t) {
+    xt_gpu_memory_stats m;
+    std::memset(&m, 0, sizeof m);
+    const xt::wgpu::WgpuSharedStats s = t.shared.stats();
+    m.image_textures = s.imageTextures;
+    m.image_bytes = s.imageBytes;
+    m.image_idle_textures = s.imageIdleTextures;
+    m.image_idle_bytes = s.imageIdleBytes;
+    m.image_evictions = s.imageEvictions;
+    m.attached_surfaces = t.attached;
+    for (xt::capi::SurfaceGpu* g : t.gpus) {
+        if (g->texture != nullptr) {  // WGPUTextureFormat_RGBA8Unorm, one sample
+            m.surface_bytes += static_cast<uint64_t>(g->width) * static_cast<uint64_t>(g->height) * 4u;
+        }
+        if (xt::wgpu::WgpuDevice* dev = g->renderer.device()) {
+            m.surface_bytes += dev->surfaceAttachmentBytes();
+            m.transient_bytes += dev->lastStats().poolBytes;
+        }
+#ifdef XT_CAPI_GPU_ATLAS
+        if (g->atlas != nullptr) {
+            const auto side = static_cast<uint64_t>(g->atlas->textureSize());
+            m.atlas_bytes += static_cast<uint64_t>(g->atlas->textureCount()) * side * side;  // R8 pages
+        }
+#endif
+    }
+    // The composer's pool too (read only; WgpuRenderer::device() has no const overload).
+    if (xt::wgpu::WgpuDevice* dev = const_cast<xt_gpu_target&>(t).composer.device()) {
+        m.transient_bytes += dev->lastStats().poolBytes;
+    }
+    return m;
+}
+
 /// Builds the GPU resources of `s` on `t` (its renderer on the target's device, its glyph atlas):
 /// on first attach, and again after a release (T-641). Empty, or why not.
 std::string buildSurfaceGpu(xt_surface& s, xt_gpu_target& t) {
     std::unique_ptr<xt::capi::SurfaceGpu, xt::capi::SurfaceGpuDeleter> gpu(new xt::capi::SurfaceGpu);
     gpu->target = &t;
+    t.gpus.push_back(gpu.get());  // T-656: removed again by ~SurfaceGpu
     xt::wgpu::WgpuInit in = t.init;
     in.targetFormat = WGPUTextureFormat_RGBA8Unorm;
     // T-647 (50 §50.z addendum): at 4 the renderer draws into its own 4x colour and stencil attachments
@@ -432,10 +507,9 @@ XT_CAPI xt_status xt_gpu_target_begin_frame(xt_gpu_target* t, const float clear_
             t->frameTexture = t->offscreen;
             t->frameView = wgpuTextureCreateView(t->offscreen, nullptr);
         }
-        t->frame.clear();  // no pass: the device's own clear pass
-        const WGPUColor clear = clearColor(clear_rgba);
-        const std::string error = submitComposite(*t, &clear);
-        if (!error.empty()) return fail(XT_STATUS_INTERNAL, "xt_gpu_target_begin_frame: " + error);
+        // T-658: submitted with the first composite of the frame, or by end_frame / readback.
+        t->pendingClear = clearColor(clear_rgba);
+        t->clearPending = t->frameView != nullptr;
         return XT_STATUS_OK;
     });
 }
@@ -446,6 +520,7 @@ XT_CAPI xt_status xt_gpu_target_end_frame(xt_gpu_target* t) {
         if (!t->inFrame) {
             return fail(XT_STATUS_INVALID_ARGUMENT, "xt_gpu_target_end_frame: no frame was begun");
         }
+        const std::string error = flushPendingClear(*t);  // T-658: nothing was composited
         if (t->windowed()) {
             t->window.present();  // releases the frame's texture
             t->frameView = nullptr;
@@ -455,6 +530,7 @@ XT_CAPI xt_status xt_gpu_target_end_frame(xt_gpu_target* t) {
         }
         t->inFrame = false;
         wgpuDevicePoll(t->init.device, 0, nullptr);  // let finished work be reclaimed, never waits
+        if (!error.empty()) return fail(XT_STATUS_INTERNAL, "xt_gpu_target_end_frame: " + error);
         return XT_STATUS_OK;
     });
 }
@@ -476,6 +552,11 @@ XT_CAPI xt_status xt_gpu_target_readback(xt_gpu_target* t, void* rgba, int strid
         if (t->windowed() && (t->window.usage() & WGPUTextureUsage_CopySrc) == 0) {
             return fail(XT_STATUS_UNSUPPORTED,
                         "xt_gpu_target_readback: this window's swapchain cannot be copied");
+        }
+        // T-658: inside a frame whose clear no composite has carried yet, the clear comes first.
+        const std::string clearError = flushPendingClear(*t);
+        if (!clearError.empty()) {
+            return fail(XT_STATUS_INTERNAL, "xt_gpu_target_readback: " + clearError);
         }
         std::vector<uint8_t> tight(rowBytes * static_cast<size_t>(t->height));
         if (!t->composer.readback(texture, std::span<uint8_t>(tight))) {
@@ -534,31 +615,59 @@ XT_CAPI xt_status xt_surface_render_gpu(xt_surface* s, xt_gpu_target* t, const x
             }
         }
         xt::capi::SurfaceGpu& g = *s->gpu;
-        bool fresh = false;
-        if (!g.ensureTexture(s->width, s->height, fresh)) {
-            return fail(XT_STATUS_INTERNAL, "xt_surface_render_gpu: the surface texture cannot be created");
-        }
+        const bool resized = g.ensureRenderSize(s->width, s->height);
         {
             xt::capi::DispatchScope scope(*s);
             s->ctx->render(s->list, &s->damage);
             // The texture keeps the last frame: an unchanged frame is not drawn again. Any change redraws
             // the whole texture (cleared), so the partial-damage path of the builder is not needed.
-            const bool unchanged = !fresh && !s->damage.full && s->damage.rects.empty();
+            const bool unchanged = g.built && !resized && !s->damage.full && s->damage.rects.empty();
             if (!unchanged) {
-                g.renderer.setClearColor(0, 0, 0, 0);
-                g.renderer.render(s->list, s->owner->shaper.get(), &s->owner->bundle->assets(), g.view,
-                                  nullptr, &s->ctx->perf(), nullptr);
-                const xt::wgpu::WgpuStats stats = g.renderer.stats();
-                g.executed = stats.drawCalls;
-                g.skipped = stats.skippedCmds;
+                xt::PerfTracker* perf = &s->ctx->perf();
+                const uint32_t draws = g.renderer.build(s->list, s->owner->shaper.get(),
+                                                        &s->owner->bundle->assets(), nullptr, perf, nullptr);
+                const bool wasEmpty = g.built && g.empty;
+                g.built = true;
+                g.empty = draws == 0;
+                if (g.empty) {
+                    // T-658 (50 §50.ab item 3 ii / iii): nothing to draw -- no texture, no 4x attachments,
+                    // no submit and no composite until a frame has something.
+                    g.executed = g.skipped = 0;
+                    if (!wasEmpty) {
+                        xt::capi::log(0, "xt_surface_render_gpu: " + s->uiId +
+                                             " has nothing to draw; not composited (" +
+                                             (g.texture != nullptr ? "texture kept" : "no texture") +
+                                             "; target " + std::to_string(t->submits) + " submits, " +
+                                             std::to_string(t->passes) + " passes)");
+                    }
+                } else {
+                    if (wasEmpty) {
+                        xt::capi::log(0, "xt_surface_render_gpu: " + s->uiId + " draws again (target " +
+                                             std::to_string(t->submits) + " submits, " +
+                                             std::to_string(t->passes) + " passes)");
+                    }
+                    bool fresh = false;
+                    if (!g.ensureTexture(s->width, s->height, fresh)) {
+                        g.built = false;  // drawn by the next call
+                        return fail(XT_STATUS_INTERNAL,
+                                    "xt_surface_render_gpu: the surface texture cannot be created");
+                    }
+                    g.renderer.setClearColor(0, 0, 0, 0);
+                    g.renderer.submit(g.view, perf);
+                    const xt::wgpu::WgpuStats stats = g.renderer.stats();
+                    g.executed = stats.drawCalls;
+                    g.skipped = stats.skippedCmds;
+                    ++t->submits;
+                    t->passes += stats.passes;
+                }
                 logSharedCache(*t);
                 if (g.renderer.lastError()[0] != '\0') {
                     xt::capi::log(2, std::string("xt_surface_render_gpu: ") + g.renderer.lastError());
                 }
             }
         }
-        if (t->frameView != nullptr && buildCompositeFrame(*t, g.handle, rect)) {
-            const std::string error = submitComposite(*t, nullptr);
+        if (!g.empty && t->frameView != nullptr && buildCompositeFrame(*t, g.handle, rect)) {
+            const std::string error = submitComposite(*t);
             if (!error.empty()) return fail(XT_STATUS_INTERNAL, "xt_surface_render_gpu: " + error);
         }
         return XT_STATUS_OK;
@@ -569,6 +678,47 @@ XT_CAPI xt_status xt_surface_detach_gpu(xt_surface* s) {
     XT_CAPI_GUARD("xt_surface_detach_gpu", {
         XT_CAPI_REQUIRE_SURFACE(s, "xt_surface_detach_gpu");
         xt::capi::detachGpu(*s);
+        return XT_STATUS_OK;
+    });
+}
+
+// -- T-656 (50 §50.ab item 1): the target's image budget, trim and memory counters. --
+
+XT_CAPI xt_status xt_gpu_target_set_image_budget(xt_gpu_target* t, uint64_t idle_bytes) {
+    XT_CAPI_GUARD("xt_gpu_target_set_image_budget", {
+        if (t == nullptr)
+            return fail(XT_STATUS_INVALID_ARGUMENT, "xt_gpu_target_set_image_budget: target is NULL");
+        t->shared.setImageIdleBudget(idle_bytes);
+        logSharedCache(*t);
+        return XT_STATUS_OK;
+    });
+}
+
+XT_CAPI xt_status xt_gpu_target_trim(xt_gpu_target* t) {
+    XT_CAPI_GUARD("xt_gpu_target_trim", {
+        if (t == nullptr) return fail(XT_STATUS_INVALID_ARGUMENT, "xt_gpu_target_trim: target is NULL");
+        if (t->inFrame) return fail(XT_STATUS_INVALID_ARGUMENT, "xt_gpu_target_trim: called inside a frame");
+        const uint32_t freed = t->shared.trimIdleImages();
+        wgpuDevicePoll(t->init.device, 0, nullptr);  // let the driver reclaim it, never waits
+        logSharedCache(*t);
+        xt::capi::log(0, "xt_gpu_target: trimmed; " + std::to_string(freed) + " idle image texture(s) freed");
+        return XT_STATUS_OK;
+    });
+}
+
+XT_CAPI xt_status xt_gpu_target_memory_stats(const xt_gpu_target* t, xt_gpu_memory_stats* out) {
+    XT_CAPI_GUARD("xt_gpu_target_memory_stats", {
+        if (t == nullptr || out == nullptr) {
+            return fail(XT_STATUS_INVALID_ARGUMENT, "xt_gpu_target_memory_stats: target or out is NULL");
+        }
+        const xt_gpu_memory_stats m = collectMemoryStats(*t);
+        // Only the fields `struct_size` covers (struct_size itself is the caller's).
+        const size_t size = std::min<size_t>(out->struct_size, sizeof m);
+        if (size > sizeof m.struct_size) {
+            std::memcpy(reinterpret_cast<uint8_t*>(out) + sizeof m.struct_size,
+                        reinterpret_cast<const uint8_t*>(&m) + sizeof m.struct_size,
+                        size - sizeof m.struct_size);
+        }
         return XT_STATUS_OK;
     });
 }
@@ -643,6 +793,19 @@ XT_CAPI xt_status xt_surface_render_gpu(xt_surface* /*s*/, xt_gpu_target* /*t*/,
 
 XT_CAPI xt_status xt_surface_detach_gpu(xt_surface* /*s*/) {
     XT_CAPI_GUARD("xt_surface_detach_gpu", { return withoutWgpu("xt_surface_detach_gpu"); });
+}
+
+XT_CAPI xt_status xt_gpu_target_set_image_budget(xt_gpu_target* /*t*/, uint64_t /*idle_bytes*/) {
+    XT_CAPI_GUARD("xt_gpu_target_set_image_budget",
+                  { return withoutWgpu("xt_gpu_target_set_image_budget"); });
+}
+
+XT_CAPI xt_status xt_gpu_target_trim(xt_gpu_target* /*t*/) {
+    XT_CAPI_GUARD("xt_gpu_target_trim", { return withoutWgpu("xt_gpu_target_trim"); });
+}
+
+XT_CAPI xt_status xt_gpu_target_memory_stats(const xt_gpu_target* /*t*/, xt_gpu_memory_stats* /*out*/) {
+    XT_CAPI_GUARD("xt_gpu_target_memory_stats", { return withoutWgpu("xt_gpu_target_memory_stats"); });
 }
 
 }  // extern "C"

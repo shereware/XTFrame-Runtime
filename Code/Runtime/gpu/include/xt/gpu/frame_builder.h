@@ -207,6 +207,15 @@ public:
     /// decode, a transient-target limit hit).
     const char* lastError() const;
 
+    /// T-658 (Docs/design/50-c-abi.md §50.ab item 3 iv): what the effect result cache (T-162) did in
+    /// the last `build` (zero after a build that drew nothing). Only cacheable segments count.
+    struct EffectCacheStats {
+        uint32_t hits = 0;    ///< segments drawn from their cached result (one quad)
+        uint32_t misses = 0;  ///< cacheable segments drawn in full
+        uint32_t stores = 0;  ///< results the frame copies into the cache (`GpuFrame::cacheStores`)
+    };
+    EffectCacheStats lastEffectCacheStats() const;
+
 private:
     struct Impl;
     std::unique_ptr<Impl> m_impl;

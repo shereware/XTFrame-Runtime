@@ -460,7 +460,10 @@ public:
     /// T-641 (50 §50.aa item 2): tells every listener to free its renderer's frame scratch
     /// (ContextListener::onReleaseRenderScratch) and makes the next render() report `full`, so a
     /// visible Context repaints whole. Callable at any time, callbacks included (not from inside
-    /// a backend's render of this Context's list).
+    /// a backend's render of this Context's list). T-657 (50 §50.ab item 2): then calls
+    /// AssetResolver::releaseSource() on ContextConfig::assets for every live Document, so their
+    /// decoded images go to the resolver's idle list (every imageView() pointer obtained before
+    /// counts as invalid); the next lookup takes them back or decodes them again.
     void releaseRenderScratch();
     /// T-175 (13.8.1, 27.3.1 multi-instance): the instance id `handle`'s host events and port
     /// events carry (Document::setInstanceId); kept across reloadDocument(). kInvalidArgument for

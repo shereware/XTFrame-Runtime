@@ -1,0 +1,12 @@
+/* One card over the whole surface, hidden until the `show` port is true. */
+body {
+  width: 100vw;
+  height: 100vh;
+}
+#card {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  width: 48px;
+  height: 48px;
+}

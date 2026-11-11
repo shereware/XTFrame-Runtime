@@ -14,6 +14,9 @@ ui_transform transform.xt 256 256 0 ffffff
 # T-653: 12 / 24 px text and 1 / 2 px borders under skewX(-6deg) and rotate(3deg) next to an
 # axis-aligned control (needs xt_text, @font-face); the GPU backends antialias transformed glyphs.
 ui_text_transform_skew ui_text_transform_skew.xt 320 256 0 e8dcc4
+# T-659 (10 section 10.11 item 1): images rotated 7 deg, skewed, scaled to fractional edges and an
+# atlas cell rotated, next to an axis-aligned control; the GPU backends fringe the off-grid edges at 1x.
+ui_image_transform ui_image_transform.xt 256 256 0 ffffff
 ui_absolute_nested absolute_nested.xt 256 256 0 ffffff
 # T-30 text fixtures (docs/tasks/T-30.md "黃金圖"). Only run when xt_text is built (see
 # golden_ui.cpp); they use the OFL font subsets in tests/fonts via <style> @font-face.

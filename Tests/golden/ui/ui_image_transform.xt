@@ -1,0 +1,79 @@
+<xt version="2">
+
+  <!-- T-659 (10 section 10.11 item 1): image quads whose edges are off the device pixel grid --
+       rotated 7 deg, skewed, scaled to fractional edges, an atlas cell rotated -- next to an
+       axis-aligned control on whole pixels. At 1x the GPU backends fringe the off-grid edges. -->
+  <body>
+    <img id="rot" src="nine.png"/>
+    <img id="skew" src="nine.png"/>
+    <img id="frac" src="nine.png"/>
+    <img id="ctrl" src="nine.png"/>
+    <sequence id="cell" src="media/atlas.png" frame-size="8x4" fps="4"></sequence>
+  </body>
+
+  <layout>
+    body {
+      margin: 0;
+    }
+    #rot {
+      position: absolute;
+      left: 24px;
+      top: 24px;
+      width: 72px;
+      height: 72px;
+      transform: rotate(7deg);
+      transform-origin: 50% 50%;
+    }
+    #skew {
+      position: absolute;
+      left: 136px;
+      top: 24px;
+      width: 72px;
+      height: 72px;
+      transform: skewX(-12deg);
+      transform-origin: 50% 50%;
+    }
+    #frac {
+      position: absolute;
+      left: 24px;
+      top: 136px;
+      width: 72px;
+      height: 72px;
+      transform: scale(0.873);
+      transform-origin: 0 0;
+    }
+    #ctrl {
+      position: absolute;
+      left: 136px;
+      top: 136px;
+      width: 48px;
+      height: 48px;
+    }
+    #cell {
+      position: absolute;
+      left: 192px;
+      top: 160px;
+      width: 48px;
+      height: 24px;
+      transform: rotate(-9deg);
+      transform-origin: 50% 50%;
+    }
+  </layout>
+  <style>
+    #rot {
+      object-fit: fill;
+    }
+    #skew {
+      object-fit: fill;
+    }
+    #frac {
+      object-fit: fill;
+    }
+    #ctrl {
+      object-fit: fill;
+    }
+    #cell {
+      object-fit: fill;
+    }
+  </style>
+</xt>

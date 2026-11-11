@@ -435,6 +435,11 @@ struct FrameBuilder::Impl {
     uint32_t statBandRedraws = 0;
     uint32_t statBackdropCopyPx = 0;
     uint32_t statPyramidLevels = 0;
+    /// T-658: the effect result cache's hits and misses of the build attempt in progress (the last one
+    /// counts: an atlas restart builds again).
+    uint32_t statCacheHits = 0;
+    uint32_t statCacheMisses = 0;
+    FrameBuilder::EffectCacheStats lastCacheStats;
 
     // --- Per-build state -------------------------------------------------------------------
     const CommandList* list = nullptr;
@@ -1735,6 +1740,27 @@ struct FrameBuilder::Impl {
             }
             return 0;
         };
+        // T-657 (50 §50.ab item 2): on a sharing device, the content key the resolver kept from an
+        // earlier upload of this image finds its shared texture without the pixels -- which may
+        // have been released (a trimmed or hidden surface) and would have to be decoded again just
+        // to hash them. Not found: the pixels are asked for below, as before.
+        const bool share = device->sharesImageTextures();
+        if (share) {
+            AssetResolver::ImageContentKey kept;
+            if (assets->retainedImageKey(asset, *ir, scale, kept) && kept.width > 0 && kept.height > 0 &&
+                kept.width <= 65535 && kept.height <= 65535 && !overTextureLimit(kept.width, kept.height)) {
+                const bool isStraight = kept.format != DdsFormat::Rgba8;
+                const TextureFormat fmt = kept.format == DdsFormat::Bc1   ? TextureFormat::Bc1
+                                          : kept.format == DdsFormat::Bc3 ? TextureFormat::Bc3
+                                          : kept.format == DdsFormat::Bc7 ? TextureFormat::Bc7
+                                                                          : TextureFormat::Rgba8;
+                if (TextureHandle found =
+                        device->findSharedImage(ImageKey{kept.lo, kept.hi}, static_cast<uint16_t>(kept.width),
+                                                static_cast<uint16_t>(kept.height), fmt)) {
+                    return remember(nullptr, found, isStraight, kept.width, kept.height, true);
+                }
+            }
+        }
         // T-199 (23 §23.8): a block-compressed asset is uploaded as it is (straight alpha); a
         // device that cannot take the format returns 0 and the decoded pixels are used instead.
         if (const CompressedImage* compressed = assets->compressedImage(asset, *ir, scale)) {
@@ -1756,7 +1782,6 @@ struct FrameBuilder::Impl {
                 const auto w = static_cast<uint16_t>(compressed->width);
                 const auto h = static_cast<uint16_t>(compressed->height);
                 // T-648: on a sharing device, one texture per content on the owner's devices.
-                const bool share = device->sharesImageTextures();
                 TextureHandle tex = 0;
                 if (share) {
                     const ImageKey key = imageContentKey(
@@ -1766,6 +1791,11 @@ struct FrameBuilder::Impl {
                     if (tex == 0) {
                         tex = device->createSharedImage(key, "xt image (bc)", w, h, fmt,
                                                         compressed->blocks.data());
+                    }
+                    if (tex != 0) {  // T-657: kept for the next builder that needs it (above).
+                        assets->retainImageKey(compressed, AssetResolver::ImageContentKey{
+                                                               key.lo, key.hi, compressed->width,
+                                                               compressed->height, compressed->format});
                     }
                 } else {
                     tex = device->createTexture("xt image (bc)", w, h, fmt, compressed->blocks.data());
@@ -1815,11 +1845,16 @@ struct FrameBuilder::Impl {
         const auto h = static_cast<uint16_t>(image.height);
         // T-648: on a sharing device the texture of the same pixels may exist already (another
         // surface of the target uploaded it): no premultiply, no upload.
-        const bool share = device->sharesImageTextures();
         ImageKey key;
+        // T-657: the key, kept by the resolver for the next builder that needs it (above).
+        auto retain = [&] {
+            assets->retainImageKey(view, AssetResolver::ImageContentKey{key.lo, key.hi, image.width,
+                                                                        image.height, DdsFormat::Rgba8});
+        };
         if (share) {
             key = imageContentKey(image.rgba.data(), count * 4);
             if (TextureHandle found = device->findSharedImage(key, w, h, TextureFormat::Rgba8)) {
+                retain();
                 return remember(view, found, false, image.width, image.height, true);
             }
         }
@@ -1858,6 +1893,9 @@ struct FrameBuilder::Impl {
             failed.failedAt = frameCount;
             textureCache.push_back(failed);
             return 0;
+        }
+        if (share) {
+            retain();
         }
         return remember(view, tex, false, image.width, image.height, share);
     }
@@ -1919,6 +1957,123 @@ struct FrameBuilder::Impl {
         emit.pushCmd(c, emit.quad(v));
     }
 
+    /// T-659 (10 §10.11 item 1): true when the device-space image quad `v` lies on the pixel
+    /// grid -- every edge horizontal or vertical and every corner on a whole pixel, within
+    /// 1e-3 px (corners come out of float matrix products; same tolerance as the SW renderer's
+    /// axis-aligned image quad test). Such a quad keeps its hard, byte-identical edges.
+    static bool imageQuadOnPixelGrid(const Vertex v[4]) {
+        constexpr float kGridEps = 1e-3f;
+        auto whole = [](float x) { return std::fabs(x - std::round(x)) <= kGridEps; };
+        for (int i = 0; i < 4; ++i) {
+            const Vertex& a = v[i];
+            const Vertex& b = v[(i + 1) % 4];
+            if (!whole(a.x) || !whole(a.y)) {
+                return false;
+            }
+            if (std::fabs(a.x - b.x) > kGridEps && std::fabs(a.y - b.y) > kGridEps) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// T-659: an image quad (DrawImage / DrawImageQuad corners `v`, clockwise from the top-left of
+    /// `srcUv`) goes through drawFringedImageQuad when the fringe is on (1x), the image is sampled
+    /// bilinearly (`smooth = 0` keeps pixel-art edges hard), it is not under a 3D projection
+    /// (homogeneous w, not handled) and its edges are off the pixel grid; otherwise, or when the
+    /// quad is not convex, unchanged.
+    void drawImageQuadEdges(const Vertex v[4], const Rect& srcUv, float opacity, TextureHandle tex,
+                            bool smooth, Shading shading) {
+        if (edgeFringe && smooth && !projecting() && !imageQuadOnPixelGrid(v) &&
+            drawFringedImageQuad(v, srcUv, opacity, tex, shading)) {
+            return;
+        }
+        drawHomogeneousQuad(v, tex, smooth, shading);
+    }
+
+    /// T-659: draws image quad `v` (w = 1) with fillConvex's fringe: the core inset by `woff`,
+    /// an alpha-0 ring `1 - woff` outside (fringeFor over the quad's device-space minimum width),
+    /// the opacity scaled by `alphaScale`. Every offset vertex takes the u,v of its position under
+    /// the affine map of its corner's two edges, clamped to `srcUv` (the image, or its atlas cell /
+    /// cropped sub-rectangle), so the ring repeats the edge texels and never samples past them.
+    /// False (nothing emitted) when the quad is not convex.
+    bool drawFringedImageQuad(const Vertex v[4], const Rect& srcUv, float opacity, TextureHandle tex,
+                              Shading shading) {
+        Vec2 uv[4];
+        Contour& contour = contourA;
+        contour.pts.resize(4);
+        float area = 0.0f;
+        for (int i = 0; i < 4; ++i) {
+            contour.pts[i] = Vec2{v[i].x, v[i].y};
+            uv[i] = Vec2{v[i].u, v[i].v};
+            area += v[i].x * v[(i + 1) % 4].y - v[(i + 1) % 4].x * v[i].y;
+        }
+        if (area < 0.0f) {  // mirrored: positive-area order, as computeMiters expects
+            std::swap(contour.pts[1], contour.pts[3]);
+            std::swap(uv[1], uv[3]);
+        }
+        for (int i = 0; i < 4; ++i) {
+            const Vec2 a = contour.pts[i], b = contour.pts[(i + 1) % 4], c = contour.pts[(i + 2) % 4];
+            const float cross = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
+            if (!(cross > 0.0f)) {
+                return false;
+            }
+        }
+        if (emit.scissor().empty()) {
+            return true;
+        }
+        computeMiters(contour);
+        const float t = convexMinWidth(contour);
+        if (t <= 1e-4f) {
+            return true;
+        }
+        float woff = 0.0f, alphaScale = 1.0f;
+        fringeFor(t, woff, alphaScale);
+        const uint32_t innerRgba = packPremultiplied(Color{1, 1, 1, opacity * alphaScale});
+        const float u0 = std::min(srcUv.x, srcUv.x + srcUv.w), u1 = std::max(srcUv.x, srcUv.x + srcUv.w);
+        const float v0 = std::min(srcUv.y, srcUv.y + srcUv.h), v1 = std::max(srcUv.y, srcUv.y + srcUv.h);
+
+        Geometry g;
+        g.vertexCount = 8;
+        Vertex* out = emit.appendVertices(g.vertexCount, g.baseVertex);
+        for (int i = 0; i < 4; ++i) {
+            const int next = (i + 1) % 4, prev = (i + 3) % 4;
+            const Vec2 p = contour.pts[i];
+            const Vec2 e1{contour.pts[next].x - p.x, contour.pts[next].y - p.y};
+            const Vec2 e0{contour.pts[prev].x - p.x, contour.pts[prev].y - p.y};
+            const float det = e1.x * e0.y - e1.y * e0.x;  // != 0: the corner is convex
+            const Vec2 m = contour.miters[i];
+            for (int ring = 0; ring < 2; ++ring) {
+                const float offset = ring == 0 ? -woff : 1.0f - woff;
+                const Vec2 d{m.x * offset, m.y * offset};
+                const float s = (d.x * e0.y - d.y * e0.x) / det;  // along e1
+                const float r = (e1.x * d.y - e1.y * d.x) / det;  // along e0
+                const float u = uv[i].x + s * (uv[next].x - uv[i].x) + r * (uv[prev].x - uv[i].x);
+                const float w = uv[i].y + s * (uv[next].y - uv[i].y) + r * (uv[prev].y - uv[i].y);
+                Vertex& o = out[ring * 4 + i];
+                o = Vertex{p.x + d.x, p.y + d.y, 1.0f, std::clamp(u, u0, u1), std::clamp(w, v0, v1), 0u};
+                o.rgba = ring == 0 ? innerRgba : 0u;
+            }
+        }
+        g.indexCount = 6 + 4 * 6;
+        uint32_t* idx = emit.appendIndices(g.indexCount, g.firstIndex);
+        const uint32_t fan[6] = {0, 1, 2, 0, 2, 3};
+        for (uint32_t k : fan) {
+            *idx++ = k;
+        }
+        writeRingQuads(idx, 0, 4, 4);
+
+        DrawCmd c;
+        c.shading = shading;
+        c.texture = tex;
+        c.sampler = Sampler::LinearClamp;
+        c.blend = Blend::SrcOver;
+        c.stencilOp = StencilOp::TestEqualRef;
+        c.stencilRef = static_cast<uint8_t>(clipDepth);
+        emit.pushCmd(c, g);
+        return true;
+    }
+
     void doImage(const ImageCmd& cmd, float dpr, AssetResolver* assets, const IrView* ir) {
         if (assets == nullptr || ir == nullptr) {
             return;
@@ -1951,7 +2106,7 @@ struct FrameBuilder::Impl {
             }
             v[i] = Vertex{hp.x, hp.y, hp.w, uv[i].x, uv[i].y, rgba};
         }
-        drawHomogeneousQuad(v, tex, cmd.smooth != 0, shading);
+        drawImageQuadEdges(v, cmd.srcUv, cmd.opacity, tex, cmd.smooth != 0, shading);
     }
 
     /// T-202 (Docs/tasks/T-202.md item 5): one instanced `DrawKind::Particles` command; the
@@ -2046,7 +2201,7 @@ struct FrameBuilder::Impl {
             }
             v[i] = Vertex{hp.x, hp.y, hp.w, uv[i].x, uv[i].y, rgba};
         }
-        drawHomogeneousQuad(v, tex, cmd.smooth != 0, shading);
+        drawImageQuadEdges(v, cmd.srcUv, cmd.opacity, tex, cmd.smooth != 0, shading);
     }
 
     /// T-245 (Docs/design/32-rigging-and-deformation.md §32.2.4): the mesh's vertices go through
@@ -3385,6 +3540,7 @@ struct FrameBuilder::Impl {
         lastExternals.clear();
         beginCacheBuild();
         statBandRedraws = statBackdropCopyPx = statPyramidLevels = 0;  // T-343: per attempt
+        statCacheHits = statCacheMisses = 0;                           // T-658: likewise
         bandPending = 0;
 #ifndef XT_GPU_NO_TEXT
         curRunSizes.clear();
@@ -3490,8 +3646,10 @@ struct FrameBuilder::Impl {
                         }
                         CacheEntry* entry = findCacheEntry(seg.hash);
                         if (entry != nullptr && emitCachedEffect(c, *entry)) {
+                            ++statCacheHits;
                             return seg.end;  // the whole segment came from the cache
                         }
+                        ++statCacheMisses;
                     }
                     doPushEffect(c, dpr, seg);
                     break;
@@ -3928,6 +4086,7 @@ struct FrameBuilder::Impl {
         frameCounted = false;
         lastError.clear();
         lastBuildValid = false;
+        lastCacheStats = FrameBuilder::EffectCacheStats{};
         XT_ASSERT(device != nullptr);
         if (device == nullptr) {
             out.clear();
@@ -3993,6 +4152,9 @@ struct FrameBuilder::Impl {
         buildOnce(cl, shaper, assets, ir, out);
 #endif
         luts.endFrame();
+        lastCacheStats.hits = statCacheHits;
+        lastCacheStats.misses = statCacheMisses;
+        lastCacheStats.stores = static_cast<uint32_t>(out.cacheStores.size());
         endCacheBuild();
         if (directMode) {
             endDirectBuild();
@@ -4184,5 +4346,7 @@ bool FrameBuilder::lastFrameReusable(AssetResolver* assets, const IrView* ir) co
 }
 
 const char* FrameBuilder::lastError() const { return m_impl->lastError.c_str(); }
+
+FrameBuilder::EffectCacheStats FrameBuilder::lastEffectCacheStats() const { return m_impl->lastCacheStats; }
 
 }  // namespace xt::gpu

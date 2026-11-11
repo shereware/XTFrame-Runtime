@@ -25,7 +25,9 @@
 ///
 /// Targets (§10.10.2 Pass row): target 0 is the view `setSurface` names (`resize` gives its size);
 /// with a sample count of 4 the surface is drawn into a 4x attachment of the target format that
-/// resolves into that view, and has a Stencil8 attachment of the same sample count. Transient `i`
+/// resolves into that view, and has a Stencil8 attachment of the same sample count (T-658: only the
+/// frame's last surface pass, and the last one before a pass that copies from the surface, resolve;
+/// the others store the 4x attachment for the next). Transient `i`
 /// is a pooled `Rgba8Unorm` / `R32Float` texture (RENDER_ATTACHMENT | TEXTURE_BINDING | COPY_SRC |
 /// COPY_DST) of its descriptor's size. As in gl_device.cpp (`acquireDrawTarget`), a transient that
 /// needs stencil is drawn through a 4x attachment resolving into it when the sample count is 4 and
@@ -56,6 +58,8 @@ class WgpuSharedCache;
 struct WgpuDeviceStats {
     uint32_t passes = 0;            ///< render passes encoded
     uint32_t clears = 0;            ///< of which cleared their color attachment
+    uint32_t resolves = 0;          ///< T-658: surface passes that resolved the 4x attachment into it
+    uint32_t surfaceReads = 0;      ///< T-658: passes that copy from the surface (each resolved before)
     uint32_t drawCalls = 0;         ///< draw / drawIndexed calls (blits included)
     uint32_t pipelineBinds = 0;     ///< setPipeline calls
     uint32_t bindGroups = 0;        ///< texture bind groups created this submit
@@ -136,6 +140,11 @@ public:
     gpu::TextureHandle createSharedImage(const gpu::ImageKey& key, const char* debugName, uint16_t w,
                                          uint16_t h, gpu::TextureFormat fmt, const void* initial) override;
     void releaseSharedImage(gpu::TextureHandle tex, bool keep) override;
+    /// T-656 (50 §50.ab item 1, `xt_gpu_memory_stats.surface_bytes`): the memory of the surface
+    /// attachments allocated now -- the MSAA color attachment (target format x samples) and the
+    /// stencil attachment (Stencil8, the format created, x samples) -- by format and size; 0 when
+    /// none is allocated. The surface texture itself is the caller's.
+    uint64_t surfaceAttachmentBytes() const;
 
     /// T-150: makes a host texture view sampleable as a `TextureHandle` (for
     /// `AssetResolver::setExternalTexture`). Not owned: the host keeps it alive until
@@ -258,6 +267,7 @@ private:
     std::vector<Window> m_windows;  ///< each transient's window (its last pass's)
     std::vector<PassPlan> m_plans;
     std::vector<uint32_t> m_cmdParamOffsets;  ///< group 1 dynamic offset per command
+    std::vector<uint8_t> m_resolveSurface;    ///< T-658: per pass, 1 = a surface pass that resolves
     std::vector<float> m_uniformData;
 
     std::string m_lastError;
@@ -283,6 +293,9 @@ private:
     WGPUTextureView sampleView(gpu::TargetHandle t) const;
     /// Plans every pass (windows, copies) and fills the uniform buffer.
     void planFrame(const gpu::GpuFrame& frame);
+    /// T-658: which surface passes resolve the 4x attachment (`m_resolveSurface`): the last one and
+    /// the last one before each pass reading target 0. `groupsOk` / `surfaceOk` as submit skips.
+    void planSurfaceResolves(bool groupsOk, bool surfaceOk);
     /// Encodes pass `index` (its copy, its commands and its cache stores).
     void encodePass(WGPUCommandEncoder enc, size_t index, bool& surfaceStarted);
     /// Draws one command into the open pass (wgpu_draw.cpp).

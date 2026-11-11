@@ -1023,3 +1023,135 @@ TEST_CASE("Context::documentSerial: T-260c one serial per installed Document, 0 
     ctx.unloadDocument(handle);
     CHECK(ctx.documentSerial(handle) == 0);
 }
+
+// T-657 (Docs/design/50-c-abi.md §50.ab item 2): trim and trim-on-hide (Context::releaseRenderScratch)
+// let the Documents go of their decoded images -- into the resolver's idle list, within its budget --
+// and the first frame shown again takes them back (or decodes them again) with the same pixels.
+namespace {
+
+/// One SW frame of `f`'s Context (update(0), render, draw into a fresh 16 x 8 buffer).
+std::vector<uint8_t> t657SwFrame(IdleFixture& f, DocumentHandle handle) {
+    f.ctx.update(0.0f);
+    CommandList list;
+    f.ctx.render(list);
+    std::vector<uint8_t> px(16u * 8u * 4u, 0);
+    sw::SwRenderer renderer;
+    renderer.setTarget(sw::SwTarget{px.data(), 16, 8, 16 * 4});
+    renderer.clear(Color{0, 0, 0, 0});
+    renderer.render(list, nullptr, &f.assets, &f.ctx.document(handle)->ir());
+    return px;
+}
+
+}  // namespace
+
+TEST_CASE("Context: T-657 a hidden Document's decodes go idle; shown again the SW frame is the same") {
+    using Access = FileAssetResolverTestAccess;
+    IdleFixture f("xt_t657_hide_sw");
+    writeImage(f.dir / "a.bmp", bmp2x2(120));
+    writeImage(f.dir / "b.bmp", bmp2x2(30));
+    const DocumentHandle handle = f.load(compileNamed(f.dir, {"a.bmp", "b.bmp"}));
+    f.ctx.setViewport(Rect{0, 0, 16, 8}, 1.0f);
+    const std::vector<uint8_t> before = t657SwFrame(f, handle);
+    CHECK(std::any_of(before.begin(), before.end(), [](uint8_t v) { return v != 0; }));
+    CHECK(g_t263gDecodes == 2);
+    const size_t bytes = Access::decodedBytes(f.assets);
+    CHECK(bytes > 0);
+    CHECK(Access::idleBytes(f.assets) == 0);  // all live
+
+    // Hidden: the update that ends with nothing visible releases (T-641) -- the decodes are idle now.
+    REQUIRE(f.ctx.setVisible(handle, false) == Status::kOk);
+    f.ctx.update(0.0f);
+    CHECK(Access::idleCount(f.assets) == 2);
+    CHECK(Access::idleBytes(f.assets) == bytes);  // nothing live
+    CHECK(Access::idleBytes(f.assets) <= size_t{32} * 1024 * 1024);
+    REQUIRE(f.ctx.setVisible(handle, true) == Status::kOk);
+    CHECK(t657SwFrame(f, handle) == before);
+    CHECK(g_t263gDecodes == 2);  // taken back from the idle list
+    CHECK(Access::idleCount(f.assets) == 0);
+
+    // xt_surface_trim on a visible surface goes the same way.
+    f.ctx.releaseRenderScratch();
+    CHECK(Access::idleCount(f.assets) == 2);
+    CHECK(t657SwFrame(f, handle) == before);
+    CHECK(g_t263gDecodes == 2);
+
+    // Idle budget 0: hidden frees the pixels, shown decodes them again, same frame.
+    f.assets.setIdleDecodeBudget(0);
+    REQUIRE(f.ctx.setVisible(handle, false) == Status::kOk);
+    f.ctx.update(0.0f);
+    CHECK(Access::decodedBytes(f.assets) == 0);
+    REQUIRE(f.ctx.setVisible(handle, true) == Status::kOk);
+    CHECK(t657SwFrame(f, handle) == before);
+    CHECK(g_t263gDecodes == 4);
+}
+
+TEST_CASE("FileAssetResolver: T-657 a retained content key outlives the pixels; a changed file voids it") {
+    using Access = FileAssetResolverTestAccess;
+    using Key = AssetResolver::ImageContentKey;
+    IdleFixture f("xt_t657_retained_key");
+    f.assets.setFileStatusFn(reloadTestFileStatus);
+    writeImage(f.dir / "a.bmp", bmp2x2(10));
+    const DocumentHandle handle = f.load(compileNamed(f.dir, {"a.bmp"}));
+    const IrView& view = f.ctx.document(handle)->ir();
+    Key key;
+    CHECK_FALSE(f.assets.retainedImageKey(0, view, 1.0f, key));  // nothing retained yet
+    f.assets.retainImageKey(f.assets.imageView(0, view, 1.0f), Key{1, 2, 2, 2, DdsFormat::Rgba8});
+    REQUIRE(f.assets.retainedImageKey(0, view, 1.0f, key));
+    CHECK(key.lo == 1);
+    CHECK(key.hi == 2);
+    CHECK(key.width == 2);
+
+    // The pixels freed (budget 0 + a release): the key is still there, nothing is decoded; a 2x
+    // lookup finds no `a@2x.bmp` and falls back to the 1x key, as imageView() would.
+    f.assets.setIdleDecodeBudget(0);
+    f.ctx.releaseRenderScratch();
+    CHECK(Access::decodedBytes(f.assets) == 0);
+    key = Key{};
+    REQUIRE(f.assets.retainedImageKey(0, view, 1.0f, key));
+    CHECK(key.lo == 1);
+    CHECK(f.assets.retainedImageKey(0, view, 2.0f, key));
+    CHECK(g_t263gDecodes == 1);
+
+    // Rewritten while the pixels are gone: the stamp no longer matches, the key goes.
+    writeImage(f.dir / "a.bmp", bmp2x2(99));
+    std::filesystem::last_write_time(
+        f.dir / "a.bmp", std::filesystem::last_write_time(f.dir / "a.bmp") + std::chrono::seconds(2));
+    CHECK_FALSE(f.assets.retainedImageKey(0, view, 1.0f, key));
+    CHECK(f.red(handle, "a.bmp") == 99);
+
+    // revalidate() voids a key whose file changed (idle decode within the budget this time).
+    f.assets.setIdleDecodeBudget(size_t{32} * 1024 * 1024);
+    f.assets.retainImageKey(f.assets.imageView(0, view, 1.0f), Key{3, 4, 2, 2, DdsFormat::Rgba8});
+    f.ctx.releaseRenderScratch();
+    CHECK(Access::idleCount(f.assets) == 1);
+    REQUIRE(f.assets.retainedImageKey(0, view, 1.0f, key));
+    CHECK(key.lo == 3);
+    writeImage(f.dir / "a.bmp", bmp2x2(5));
+    std::filesystem::last_write_time(
+        f.dir / "a.bmp", std::filesystem::last_write_time(f.dir / "a.bmp") + std::chrono::seconds(4));
+    CHECK(f.assets.revalidate() == 1);
+    CHECK_FALSE(f.assets.retainedImageKey(0, view, 1.0f, key));
+    CHECK(f.red(handle, "a.bmp") == 5);
+
+    // forgetFile() voids it too.
+    f.assets.retainImageKey(f.assets.imageView(0, view, 1.0f), Key{5, 6, 2, 2, DdsFormat::Rgba8});
+    REQUIRE(f.assets.retainedImageKey(0, view, 1.0f, key));
+    f.assets.forgetFile("a.bmp");
+    CHECK_FALSE(f.assets.retainedImageKey(0, view, 1.0f, key));
+}
+
+TEST_CASE("FileAssetResolver: T-657 an embedded image's retained key is found after its pixels are freed") {
+    using Access = FileAssetResolverTestAccess;
+    using Key = AssetResolver::ImageContentKey;
+    IdleFixture f("xt_t657_retained_embedded");
+    f.assets.setIdleDecodeBudget(0);
+    const DocumentHandle handle = f.load(compileEmbedded(f.dir, bmp2x2(77)));
+    const IrView& view = f.ctx.document(handle)->ir();
+    f.assets.retainImageKey(f.assets.imageView(0, view), Key{7, 8, 2, 2, DdsFormat::Rgba8});
+    f.ctx.releaseRenderScratch();
+    CHECK(Access::decodedBytes(f.assets) == 0);
+    Key key;
+    REQUIRE(f.assets.retainedImageKey(0, view, 1.0f, key));
+    CHECK(key.lo == 7);
+    CHECK(g_t263gDecodes == 1);
+}

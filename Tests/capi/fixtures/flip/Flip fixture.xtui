@@ -80,6 +80,15 @@
         64
       ],
       "tags": []
+    },
+    {
+      "id": "ghost",
+      "doc": "ghost/ghost.xt",
+      "size": [
+        64,
+        64
+      ],
+      "tags": []
     }
   ],
   "shared": {

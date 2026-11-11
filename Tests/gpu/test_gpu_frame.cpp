@@ -2710,6 +2710,113 @@ TEST_CASE("gpu: DrawImage creates one premultiplied texture per asset and invali
     CHECK(b.device.aliveCount() == 0);
 }
 
+// T-659 (10 §10.11 item 1): image quads off the pixel grid get fillConvex's fringe at 1x.
+TEST_CASE("gpu: T-659 a rotated DrawImage gets an alpha-0 ring with u,v clamped to its source rectangle") {
+    std::vector<uint8_t> bytes = emptyIr();
+    Result<IrView> viewResult = IrView::open(IrBlob{bytes.data(), bytes.size()});
+    REQUIRE(viewResult.ok());
+    TestAssetResolver assets;
+    AssetId id = assets.add(makeChecker4x4());
+
+    CommandList cl = makeList();
+    addDrawImage(cl, id, Rect{16, 16, 32, 32}, 0.5f, true);
+    cl.images.back().xf = rotationDeg(7.0f);
+    cl.images.back().srcUv = Rect{0.25f, 0.5f, 0.5f, 0.25f};  // an atlas-cell-like sub-rectangle
+    Built b;
+    buildInto(b, cl, 64, 64, nullptr, &assets, &viewResult.value());
+    auto imgs = cmdsWith(b.frame, Shading::Texture);
+    REQUIRE(imgs.size() == 1);
+    CHECK(imgs[0]->sampler == Sampler::LinearClamp);
+    REQUIRE(imgs[0]->vertexCount == 8);
+    CHECK(imgs[0]->indexCount == 30);
+    const Vertex* v = &b.frame.vertices[imgs[0]->baseVertex];
+    int clampedU = 0;
+    for (int i = 0; i < 8; ++i) {
+        CHECK(v[i].w == 1.0f);
+        CHECK(v[i].rgba == (i < 4 ? 0x80808080u : 0u));
+        CHECK(v[i].u >= 0.25f);
+        CHECK(v[i].u <= 0.75f);
+        CHECK(v[i].v >= 0.5f);
+        CHECK(v[i].v <= 0.75f);
+        if (i >= 4 && (v[i].u == 0.25f || v[i].u == 0.75f)) ++clampedU;
+    }
+    CHECK(clampedU == 4);  // every outer corner sits past both edges, so its u is clamped
+    // The core is inset 0.5 px and the ring 0.5 px outside: 1 px apart along each edge normal,
+    // sqrt(2) along a right angle's miter.
+    for (int i = 0; i < 4; ++i) {
+        const float dx = v[i + 4].x - v[i].x, dy = v[i + 4].y - v[i].y;
+        CHECK(std::sqrt(dx * dx + dy * dy) == doctest::Approx(std::sqrt(2.0f)).epsilon(1e-3));
+    }
+    // The core's u,v follow the image's affine map: inset corner 0 is 0.5 px of 32 in from the
+    // sub-rectangle's top-left along both axes.
+    CHECK(v[0].u == doctest::Approx(0.25f + 0.5f * 0.5f / 32.0f).epsilon(1e-3));
+    CHECK(v[0].v == doctest::Approx(0.5f + 0.25f * 0.5f / 32.0f).epsilon(1e-3));
+}
+
+TEST_CASE("gpu: T-659 image quads on the pixel grid, point-sampled, at 4x or projected stay plain quads") {
+    std::vector<uint8_t> bytes = emptyIr();
+    Result<IrView> viewResult = IrView::open(IrBlob{bytes.data(), bytes.size()});
+    REQUIRE(viewResult.ok());
+    TestAssetResolver assets;
+    AssetId id = assets.add(makeChecker4x4());
+    struct Case {
+        const char* name;
+        Mat2x3 xf;
+        Rect dst;
+        bool smooth;
+        bool fringeOn;
+        uint32_t vertices;
+    };
+    const Case cases[] = {
+        {"axis-aligned, whole pixels", Mat2x3{}, Rect{8, 8, 32, 16}, true, true, 4},
+        {"quarter turn, whole pixels", rotationDeg(90.0f), Rect{8, -40, 32, 16}, true, true, 4},
+        {"mirrored, whole pixels", scaling(Vec2{-1, 1}), Rect{-40, 8, 32, 16}, true, true, 4},
+        {"axis-aligned, fractional edges", Mat2x3{}, Rect{8.5f, 8, 32, 16.25f}, true, true, 8},
+        {"mirrored, fractional edges", scaling(Vec2{-1, 1}), Rect{-40.5f, 8, 32, 16}, true, true, 8},
+        {"rotated, point-sampled", rotationDeg(7.0f), Rect{16, 16, 32, 32}, false, true, 4},
+        {"rotated, fringe off (4x)", rotationDeg(7.0f), Rect{16, 16, 32, 32}, true, false, 4},
+    };
+    for (const Case& k : cases) {
+        INFO(k.name);
+        CommandList cl = makeList();
+        addDrawImage(cl, id, k.dst, 1.0f, k.smooth);
+        cl.images.back().xf = k.xf;
+        Built b;
+        b.builder.init(b.device);
+        b.builder.resize(64, 64);
+        b.builder.setEdgeFringe(k.fringeOn);
+        b.builder.build(cl, nullptr, &assets, &viewResult.value(), b.frame);
+        checkFrameWellFormed(b.frame);
+        auto imgs = cmdsWith(b.frame, Shading::Texture);
+        REQUIRE(imgs.size() == 1);
+        CHECK(imgs[0]->vertexCount == k.vertices);
+        CHECK(imgs[0]->sampler == (k.smooth ? Sampler::LinearClamp : Sampler::PointClamp));
+        if (k.vertices == 8) {
+            // Mirrored or not, the ring lies outside the core.
+            const Vertex* v = &b.frame.vertices[imgs[0]->baseVertex];
+            const float cx = (v[0].x + v[2].x) * 0.5f, cy = (v[0].y + v[2].y) * 0.5f;
+            for (int i = 0; i < 4; ++i) {
+                const float in = std::hypot(v[i].x - cx, v[i].y - cy);
+                const float out = std::hypot(v[i + 4].x - cx, v[i + 4].y - cy);
+                CHECK(out > in);
+            }
+        }
+    }
+
+    // A projected DrawImage (homogeneous w) is not fringed.
+    CommandList cl = makeList();
+    addPushProjection(cl, cssPerspectiveViewProj(150.0f, Vec2{32, 32}).viewProj);
+    addPushTransform3D(cl, mat4RotateY(30.0f));
+    addDrawImage(cl, id, Rect{8, 8, 48, 48}, 1.0f, true);
+    cl.commands.push_back(Command{CmdKind::PopTransform3D, {}, 0});
+    cl.commands.push_back(Command{CmdKind::PopProjection, {}, 0});
+    Built b;
+    buildInto(b, cl, 64, 64, nullptr, &assets, &viewResult.value());
+    auto imgs = cmdsWith(b.frame, Shading::Texture);
+    REQUIRE(imgs.size() == 1);
+    CHECK(imgs[0]->vertexCount == 4);
+}
+
 // =================================================================================================
 // 5. Projection: homogeneous image quads have w != 1; paths are CPU-projected.
 // =================================================================================================
@@ -2899,6 +3006,8 @@ TEST_CASE("gpu: UI documents build well-formed frames (snapshots)") {
         {"ui_fx_blur.xt", "ui_fx_blur", 256, 256, 0.0f},
         {"ui_fx_stack.xt", "ui_fx_stack", 256, 256, 0.0f},
         {"ui_3d_card_flip.xt", "ui_3d_card_flip", 256, 256, 0.0f},
+        // T-659: fringed (rotated, skewed, fractional, atlas cell) and plain (on-grid) image quads.
+        {"ui_image_transform.xt", "ui_image_transform", 256, 256, 0.0f},
     };
     for (const Doc& d : docs) {
         INFO("document: ", std::string(d.file));

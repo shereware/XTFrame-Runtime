@@ -721,6 +721,12 @@ void Context::releaseRenderScratch() {
             listener->onReleaseRenderScratch(*this);
         }
     }
+    // T-657 (50 §50.ab item 2): the Documents let go of their decoded images too (into the
+    // resolver's idle list, within its budget); the next lookup -- the first frame shown again --
+    // takes them back or decodes them. After the renderers: they no longer use the pixels.
+    for (size_t i = 0; i < m_documents.size(); ++i) {
+        releaseSourceOf(m_config.assets, liveAt(i));
+    }
 }
 
 void Context::render(CommandList& out, DamageList* damage) {

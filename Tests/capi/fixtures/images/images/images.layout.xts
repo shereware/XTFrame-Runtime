@@ -1,0 +1,22 @@
+/* T-656: three 1024 x 1024 images, each drawn at 128 x 128 (uploaded at their own size). */
+body {
+  width: 100vw;
+  height: 100vh;
+}
+#a, #b, #c {
+  position: absolute;
+  width: 128px;
+  height: 128px;
+}
+#a {
+  left: 0;
+  top: 0;
+}
+#b {
+  left: 128px;
+  top: 0;
+}
+#c {
+  left: 0;
+  top: 128px;
+}

@@ -171,6 +171,15 @@ uint64_t embeddedBytesHash(std::span<const uint8_t> bytes) {
     return hash;
 }
 
+/// The file key of an embedded image of `size` bytes hashing to `hash` (T-215, T-263g ruling 10):
+/// it starts with the byte 0x01 (split from "embedded" so the hex escape does not swallow the
+/// 'e'), which no file path does.
+std::string embeddedFileKey(size_t size, uint64_t hash) {
+    return "\x01"
+           "embedded:" +
+           std::to_string(size) + ":" + std::to_string(hash);
+}
+
 }  // namespace
 
 bool FileAssetResolver::readBytes(std::string_view name, std::vector<uint8_t>& out) {
@@ -378,12 +387,8 @@ bool FileAssetResolver::readAssetBytes(AssetId asset, const IrView& view, int va
         out.assign(bytes.begin(), bytes.end());
         // T-215: keyed by content (FNV-1a + size), so two IRs that embed the same image share
         // one decode, and (T-263g ruling 10) a decode on the idle list is found again by the
-        // same bytes in a recompiled IR. The key starts with the byte 0x01 (split from "embedded"
-        // so the hex escape does not swallow the 'e'), which no file path does.
-        fileKey =
-            "\x01"
-            "embedded:" +
-            std::to_string(bytes.size()) + ":" + std::to_string(embeddedBytesHash(bytes));
+        // same bytes in a recompiled IR.
+        fileKey = embeddedFileKey(bytes.size(), embeddedBytesHash(bytes));
         ++m_embeddedHashes;
         return true;
     }
@@ -470,6 +475,13 @@ size_t FileAssetResolver::decodeNew(const std::vector<uint8_t>& bytes, const std
         // T-263c ruling 5: what revalidate() compares the disk with. Once per decoded file;
         // embedded bytes (their key starts with \x01) are not a file.
         file.hasStamp = fileKey.front() != '\x01' && fileStamp(fileKey, file.size, file.mtime);
+        // T-657: a key retained for the file stays only when this decode read the file it was
+        // computed from (same stamp); an embedded image's key names its bytes and always stays.
+        if (const RetainedKey* kept = retainedKeyOf(fileKey);
+            kept != nullptr && fileKey.front() != '\x01' &&
+            !(kept->hasStamp && file.hasStamp && kept->size == file.size && kept->mtime == file.mtime)) {
+            dropRetainedKey(fileKey);
+        }
         m_fileEntry.push_back(std::move(file));
         // T-452: once decoded, the decode is the authority on the size (and the one revalidate()
         // compares); the header-only size of the file goes.
@@ -842,6 +854,12 @@ void FileAssetResolver::freeEntry(size_t index) {
     m_entries[index] = Entry{};  // Move-assigned from an empty one: the pixels are freed.
     for (size_t i = 0; i < m_fileEntry.size();) {
         if (m_fileEntry[i].entry == index) {
+            // T-657: a file's retained key outlives the pixels only when its stamp can tell
+            // whether the file is still the one decoded.
+            const FileEntry& file = m_fileEntry[i];
+            if (file.key.front() != '\x01' && !file.hasStamp) {
+                dropRetainedKey(file.key);
+            }
             m_fileEntry.erase(m_fileEntry.begin() + static_cast<std::ptrdiff_t>(i));
         } else {
             ++i;
@@ -867,6 +885,7 @@ void FileAssetResolver::trimIdle() {
 
 void FileAssetResolver::forgetFile(std::string_view file) {
     std::erase_if(m_headerSizes, [file](const HeaderSize& h) { return h.key == file; });  // T-452
+    dropRetainedKey(file);  // T-657: the file was rewritten under the same name.
     for (size_t i = 0; i < m_fileEntry.size(); ++i) {
         if (m_fileEntry[i].key != file) {
             continue;
@@ -931,6 +950,7 @@ size_t FileAssetResolver::revalidate() {
         // may be in use); unlike there, the assets that resolved to it are looked up afresh.
         const size_t index = file.entry;
         const size_t resolved = index + 1;
+        dropRetainedKey(file.key);  // T-657: the key named the old content.
         if (m_entries[index].idle) {
             // T-263g: no live source uses it: freed at once, with its key and waiting slots
             // (`file` is gone with the key; `i` now names the next one).
@@ -977,7 +997,133 @@ size_t FileAssetResolver::revalidate() {
             named.slot.headerOk = false;
         }
     }
+    // T-657: a file's retained key whose decode is gone is compared the same way (with the stamp
+    // of the decode it was computed from); one whose decode changed went with it above.
+    std::erase_if(m_retainedKeys, [this](const RetainedKey& kept) {
+        if (kept.file.front() == '\x01' || cachedFile(kept.file) != kFailed) {
+            return false;
+        }
+        uint64_t size = 0;
+        uint64_t mtime = 0;
+        return !(kept.hasStamp && fileStamp(kept.file, size, mtime) && size == kept.size &&
+                 mtime == kept.mtime);
+    });
     return discarded;
+}
+
+// --- T-657: retained content keys --------------------------------------------------------------
+
+FileAssetResolver::RetainedKey* FileAssetResolver::retainedKeyOf(std::string_view file) {
+    for (RetainedKey& kept : m_retainedKeys) {
+        if (kept.file == file) {
+            return &kept;
+        }
+    }
+    return nullptr;
+}
+
+void FileAssetResolver::dropRetainedKey(std::string_view file) {
+    std::erase_if(m_retainedKeys, [file](const RetainedKey& kept) { return kept.file == file; });
+}
+
+void FileAssetResolver::retainImageKey(const void* image, const ImageContentKey& key) {
+    if (image == nullptr) {
+        return;
+    }
+    for (size_t index = 0; index < m_entries.size(); ++index) {
+        const Entry& entry = m_entries[index];
+        if (static_cast<const void*>(&entry.image) != image &&
+            static_cast<const void*>(&entry.compressed) != image) {
+            continue;
+        }
+        if (!entry.ok) {
+            return;
+        }
+        for (const FileEntry& file : m_fileEntry) {
+            if (file.entry != index) {
+                continue;
+            }
+            RetainedKey kept;
+            kept.file = file.key;
+            kept.key = key;
+            kept.hasStamp = file.hasStamp;
+            kept.size = file.size;
+            kept.mtime = file.mtime;
+            dropRetainedKey(file.key);
+            m_retainedKeys.push_back(std::move(kept));
+            if (m_retainedKeys.size() > kMaxRetainedKeys) {
+                m_retainedKeys.erase(m_retainedKeys.begin());
+            }
+            return;
+        }
+        return;  // No file key (forgotten): nothing could find the key again.
+    }
+}
+
+bool FileAssetResolver::retainedImageKey(AssetId asset, const IrView& view, float dpr, ImageContentKey& out) {
+    const std::span<const IrAsset> assets = view.assets().assets();
+    const size_t index = static_cast<size_t>(asset);
+    if (index >= assets.size() || m_retainedKeys.empty()) {
+        return false;
+    }
+    const IrAsset& irAsset = assets[index];
+    if (irAsset.embedded != 0) {
+        // No variant (imageView() falls back to the 1x bytes). The slot hashes the bytes once per
+        // load of the IR, as imageView() would; that hash names the decode.
+        if (slotFor(asset, view, 0) == nullptr) {
+            return false;
+        }
+        const std::span<const uint8_t> bytes = view.assets().data(irAsset);
+        const std::vector<EmbeddedSlot>& slots = m_embedded[0];
+        const auto it = std::lower_bound(slots.begin(), slots.end(), bytes.data(),
+                                         [](const EmbeddedSlot& s, const uint8_t* data) {
+                                             return std::less<const uint8_t*>()(s.data, data);
+                                         });
+        if (it == slots.end() || it->data != bytes.data()) {
+            return false;
+        }
+        const RetainedKey* kept = retainedKeyOf(embeddedFileKey(it->size, it->hash));
+        if (kept == nullptr) {
+            return false;
+        }
+        out = kept->key;
+        return true;
+    }
+    if (m_fileStatus == nullptr) {
+        return false;  // Neither a freed decode's file nor a missing candidate can be checked.
+    }
+    std::vector<std::string> files;
+    for (int variant = variantFor(dpr); variant >= 0; --variant) {
+        files.clear();
+        fileCandidates(asset, view, variant, files);
+        for (const std::string& file : files) {
+            const bool decoded = cachedFile(file) != kFailed;
+            if (const RetainedKey* kept = retainedKeyOf(file)) {
+                if (!decoded) {
+                    // The pixels were freed: the key holds while the file is the one decoded.
+                    uint64_t size = 0;
+                    uint64_t mtime = 0;
+                    if (!kept->hasStamp || !fileStamp(file, size, mtime) || size != kept->size ||
+                        mtime != kept->mtime) {
+                        dropRetainedKey(file);
+                        return false;
+                    }
+                }
+                out = kept->key;
+                return true;
+            }
+            if (decoded) {
+                return false;  // imageView() takes this decode without decoding.
+            }
+            uint64_t size = 0;
+            uint64_t mtime = 0;
+            if (fileStamp(file, size, mtime)) {
+                return false;  // There, with no key: only reading it tells its content.
+            }
+            // Missing: imageView() would try the next candidate, then the next smaller variant.
+        }
+    }
+    return false;
 }
 
 bool FileAssetResolver::decodeImage(AssetId asset, const IrView& view, ImageData& out) {

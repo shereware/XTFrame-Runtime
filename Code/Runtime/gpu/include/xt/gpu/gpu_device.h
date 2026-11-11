@@ -159,8 +159,9 @@ public:
 
     /// Ends one use of a texture from `findSharedImage` / `createSharedImage` (the handle is gone).
     /// `keep`: the builder is shutting down (its surface was detached, trimmed or destroyed), and
-    /// the texture stays for the owner's lifetime even when nothing uses it; otherwise (an eviction
-    /// or an invalidation) it is destroyed once no device uses it. Ignores 0.
+    /// the texture stays with the owner even when nothing uses it (T-656: on the owner's idle list,
+    /// within its budget); otherwise (an eviction or an invalidation) it is destroyed once no device
+    /// uses it. Ignores 0.
     virtual void releaseSharedImage(TextureHandle tex, bool keep) {
         (void)keep;
         destroyTexture(tex);

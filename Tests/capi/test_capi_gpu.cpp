@@ -7,18 +7,28 @@
 // "built without wgpu" answers are checked. With wgpu but no adapter the cases print SKIP and pass.
 // T-648 (cases 8-10, at sample counts 1 and 4): the target's shared image textures and pipeline set,
 // observed through its info log lines (npdo `settings`, two surfaces of one bundle).
+// T-656 (cases 9-13, 50 §50.ab item 1): the idle budget of those textures, xt_gpu_target_trim and
+// xt_gpu_target_memory_stats; cases 11-13 and 15 use fixtures/images (three 1024 x 1024 images), case 11
+// rewriting its images with new pixels every round in a copy under the test temp root.
+// T-658 (case 14, Docs/design/50-c-abi.md §50.ab item 3): a surface whose frame has no draw command
+// (fixtures/flip `ghost`, its card hidden by a port) is neither drawn nor composited and gets no
+// texture; its info lines carry the target's submit / pass totals.
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <initializer_list>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "../common/test_temp.h"
 #include "doctest.h"
 #include "xt/capi/xtframe.h"
 
@@ -65,6 +75,12 @@ TEST_CASE("capi gpu 0 (T-636): a build without wgpu answers NULL / UNSUPPORTED")
     CHECK(xt_gpu_target_destroy(nullptr) == XT_STATUS_UNSUPPORTED);
     CHECK(xt_surface_render_gpu(nullptr, nullptr, nullptr) == XT_STATUS_UNSUPPORTED);
     CHECK(xt_surface_detach_gpu(nullptr) == XT_STATUS_UNSUPPORTED);
+    // T-656
+    CHECK(xt_gpu_target_set_image_budget(nullptr, 0) == XT_STATUS_UNSUPPORTED);
+    CHECK(xt_gpu_target_trim(nullptr) == XT_STATUS_UNSUPPORTED);
+    xt_gpu_memory_stats stats{};
+    stats.struct_size = sizeof stats;
+    CHECK(xt_gpu_target_memory_stats(nullptr, &stats) == XT_STATUS_UNSUPPORTED);
 }
 
 #else  // XT_CAPI_TEST_HAS_WGPU
@@ -494,6 +510,18 @@ Pixels shareFrame(xt_gpu_target* t, xt_surface* s) {
     return readback(t, kShareSize, kShareSize, kShareSize * 4);
 }
 
+/// T-656: xt_gpu_target_memory_stats of `t` (the whole struct).
+xt_gpu_memory_stats memoryStats(const xt_gpu_target* t) {
+    xt_gpu_memory_stats m;
+    std::memset(&m, 0, sizeof m);
+    m.struct_size = sizeof m;
+    REQUIRE_MESSAGE(xt_gpu_target_memory_stats(t, &m) == XT_STATUS_OK, xt_capi_last_error());
+    return m;
+}
+
+constexpr uint64_t kMiB = uint64_t(1) << 20;
+constexpr uint64_t kDefaultIdleBudget = 64 * kMiB;  // 50 §50.ab item 1
+
 }  // namespace
 
 TEST_CASE("capi gpu 8 (T-648): two surfaces of one bundle on one target upload each image once") {
@@ -522,6 +550,14 @@ TEST_CASE("capi gpu 8 (T-648): two surfaces of one bundle on one target upload e
             CHECK(log.borrowed == 2);
             CHECK(first == second);  // the shared textures draw what the uploaded ones drew
             for (xt_surface* s : p.s) REQUIRE(xt_surface_detach_gpu(s) == XT_STATUS_OK);
+            // T-656: unused now, idle within the default budget (npdo settings: well under 64 MiB).
+            const xt_gpu_memory_stats m = memoryStats(t);
+            CHECK(m.image_textures == uploaded);
+            CHECK(m.image_idle_textures == uploaded);
+            CHECK(m.image_idle_bytes == m.image_bytes);
+            CHECK(m.image_idle_bytes <= kDefaultIdleBudget);
+            CHECK(m.image_evictions == 0);
+            CHECK(m.attached_surfaces == 0);
         }
         CHECK(xt_gpu_target_destroy(t) == XT_STATUS_OK);
         CHECK(log.destroyed);
@@ -530,7 +566,7 @@ TEST_CASE("capi gpu 8 (T-648): two surfaces of one bundle on one target upload e
 }
 
 TEST_CASE(
-    "capi gpu 9 (T-648): a detach keeps the shared textures; the other surface draws on; destroy frees") {
+    "capi gpu 9 (T-648, T-656): a detach leaves the shared textures idle within the budget; budget 0 frees") {
     for (const int samples : {1, 4}) {
         CAPTURE(samples);
         SharedLog log;
@@ -545,8 +581,12 @@ TEST_CASE(
             REQUIRE(uploaded > 0);
             REQUIRE(xt_surface_detach_gpu(p.s[0]) == XT_STATUS_OK);
             CHECK(shareFrame(t, p.s[1]) == before);  // the other surface still draws its images
-            // Both detached: the textures stay with the target, used by no surface ...
+            // Both detached: the textures stay with the target, used by no surface (idle, within the
+            // default 64 MiB budget) ...
             REQUIRE(xt_surface_detach_gpu(p.s[1]) == XT_STATUS_OK);
+            xt_gpu_memory_stats m = memoryStats(t);
+            CHECK(m.image_idle_textures == uploaded);
+            CHECK(m.image_idle_bytes <= kDefaultIdleBudget);
             const unsigned long reused = log.reused;
             // ... and a surface attached again finds every one of them (no upload).
             CHECK(shareFrame(t, p.s[1]) == before);
@@ -554,16 +594,31 @@ TEST_CASE(
             CHECK(log.reused == reused + uploaded);
             CHECK(log.freed == 0);
             CHECK(log.textures == uploaded);
+            m = memoryStats(t);
+            CHECK(m.image_idle_textures == 0);  // in use again
+            CHECK(m.image_textures == uploaded);
+            // Budget 0: a texture is destroyed as soon as no surface uses it ...
+            REQUIRE(xt_gpu_target_set_image_budget(t, 0) == XT_STATUS_OK);
             REQUIRE(xt_surface_detach_gpu(p.s[1]) == XT_STATUS_OK);
+            m = memoryStats(t);
+            CHECK(m.image_textures == 0);
+            CHECK(m.image_bytes == 0);
+            CHECK(m.image_idle_textures == 0);
+            CHECK(m.image_evictions == uploaded);
+            // ... so attaching again uploads again, and draws the same.
+            CHECK(shareFrame(t, p.s[1]) == before);
+            CHECK(log.uploaded == 2 * uploaded);
+            REQUIRE(xt_surface_detach_gpu(p.s[1]) == XT_STATUS_OK);
+            CHECK(memoryStats(t).image_textures == 0);
         }
         CHECK(!log.destroyed);
-        CHECK(xt_gpu_target_destroy(t) == XT_STATUS_OK);  // frees them
+        CHECK(xt_gpu_target_destroy(t) == XT_STATUS_OK);
         CHECK(log.destroyed);
-        CHECK(log.destroyedFreed == uploaded);
+        CHECK(log.destroyedFreed == 0);  // nothing was left
     }
 }
 
-TEST_CASE("capi gpu 10 (T-648): a trimmed surface rebuilds from the shared textures and pipelines") {
+TEST_CASE("capi gpu 10 (T-648, T-656): a trimmed surface rebuilds from the shared textures and pipelines") {
     for (const int samples : {1, 4}) {
         CAPTURE(samples);
         SharedLog log;
@@ -585,9 +640,11 @@ TEST_CASE("capi gpu 10 (T-648): a trimmed surface rebuilds from the shared textu
             CHECK(log.reused == reused + uploaded);
             CHECK(log.borrowed == borrowed + 1);  // and the shared pipeline set
             CHECK(log.sets == 1);
-            // xt_surface_trim on both: no texture is freed, the next frames upload nothing.
+            // xt_surface_trim on both: the textures go idle (within the default budget), none is freed,
+            // the next frames upload nothing.
             REQUIRE(xt_surface_trim(p.s[0]) == XT_STATUS_OK);
             REQUIRE(xt_surface_trim(p.s[1]) == XT_STATUS_OK);
+            CHECK(memoryStats(t).image_idle_textures == uploaded);
             CHECK(shareFrame(t, p.s[0]) == before);
             CHECK(log.uploaded == uploaded);
             CHECK(log.freed == 0);
@@ -595,6 +652,396 @@ TEST_CASE("capi gpu 10 (T-648): a trimmed surface rebuilds from the shared textu
         }
         CHECK(xt_gpu_target_destroy(t) == XT_STATUS_OK);
     }
+}
+
+namespace {
+
+constexpr int kImagesSize = 256;  // fixtures/images: the UI's size
+constexpr int kImageSide = 1024;  // ... and each of its three images'
+
+/// A PNG of `side` x `side` RGBA8 pixels, stored (uncompressed deflate), whose content depends on
+/// `seed` (every seed gives other pixels).
+std::vector<uint8_t> makePng(int side, uint32_t seed) {
+    static uint32_t crcTable[256];
+    if (crcTable[1] == 0) {
+        for (uint32_t n = 0; n < 256; ++n) {
+            uint32_t c = n;
+            for (int k = 0; k < 8; ++k) c = (c & 1u) ? 0xEDB88320u ^ (c >> 1) : c >> 1;
+            crcTable[n] = c;
+        }
+    }
+    std::vector<uint8_t> raw;  // filter byte 0 + one row
+    const size_t row = static_cast<size_t>(side) * 4u + 1u;
+    raw.reserve(row * static_cast<size_t>(side));
+    for (int y = 0; y < side; ++y) {
+        raw.push_back(0);
+        for (int x = 0; x < side; ++x) {
+            raw.push_back(static_cast<uint8_t>(x + static_cast<int>(seed) * 37));
+            raw.push_back(static_cast<uint8_t>(y ^ static_cast<int>(seed)));
+            raw.push_back(static_cast<uint8_t>(seed * 7u));
+            raw.push_back(255);
+        }
+    }
+    std::vector<uint8_t> z = {0x78, 0x01};
+    uint32_t a = 1, b = 0;
+    for (size_t i = 0; i < raw.size(); i += 65535) {
+        const size_t n = std::min<size_t>(65535, raw.size() - i);
+        z.push_back(i + n == raw.size() ? 1 : 0);
+        z.push_back(static_cast<uint8_t>(n));
+        z.push_back(static_cast<uint8_t>(n >> 8));
+        z.push_back(static_cast<uint8_t>(~n));
+        z.push_back(static_cast<uint8_t>(~n >> 8));
+        z.insert(z.end(), raw.begin() + static_cast<std::ptrdiff_t>(i),
+                 raw.begin() + static_cast<std::ptrdiff_t>(i + n));
+    }
+    for (const uint8_t v : raw) {
+        a = (a + v) % 65521u;
+        b = (b + a) % 65521u;
+    }
+    const uint32_t adler = (b << 16) | a;
+    for (int k = 3; k >= 0; --k) z.push_back(static_cast<uint8_t>(adler >> (8 * k)));
+    std::vector<uint8_t> png = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
+    auto be32 = [&png](uint32_t v) {
+        for (int k = 3; k >= 0; --k) png.push_back(static_cast<uint8_t>(v >> (8 * k)));
+    };
+    auto chunk = [&](const char* type, const std::vector<uint8_t>& data) {
+        be32(static_cast<uint32_t>(data.size()));
+        const size_t from = png.size();
+        png.insert(png.end(), type, type + 4);
+        png.insert(png.end(), data.begin(), data.end());
+        uint32_t c = 0xFFFFFFFFu;
+        for (size_t i = from; i < png.size(); ++i) c = crcTable[(c ^ png[i]) & 0xFFu] ^ (c >> 8);
+        be32(c ^ 0xFFFFFFFFu);
+    };
+    std::vector<uint8_t> ihdr;
+    for (int k = 3; k >= 0; --k) ihdr.push_back(static_cast<uint8_t>(static_cast<uint32_t>(side) >> (8 * k)));
+    for (int k = 3; k >= 0; --k) ihdr.push_back(static_cast<uint8_t>(static_cast<uint32_t>(side) >> (8 * k)));
+    ihdr.insert(ihdr.end(), {8, 6, 0, 0, 0});  // 8 bit RGBA, no interlace
+    chunk("IHDR", ihdr);
+    chunk("IDAT", z);
+    chunk("IEND", {});
+    return png;
+}
+
+/// A `kImagesSize` surface of the `images` UI of the bundle at `dir` (the bundle stays open with it).
+struct ImagesSurface {
+    xt_bundle* bundle = nullptr;
+    xt_surface* s = nullptr;
+    explicit ImagesSurface(const std::string& dir) {
+        bundle = xt_bundle_open(dir.c_str());
+        REQUIRE_MESSAGE(bundle != nullptr, xt_capi_last_error());
+        xt_surface_desc desc{};
+        desc.struct_size = sizeof(desc);
+        desc.width = kImagesSize;
+        desc.height = kImagesSize;
+        desc.device_pixel_ratio = 1.0f;
+        desc.premultiplied = 1;
+        s = xt_surface_create(bundle, "images", &desc);
+        REQUIRE_MESSAGE(s != nullptr, xt_capi_last_error());
+    }
+    ~ImagesSurface() {
+        xt_surface_destroy(s);
+        (void)xt_bundle_close(bundle);
+    }
+    ImagesSurface(const ImagesSurface&) = delete;
+    ImagesSurface& operator=(const ImagesSurface&) = delete;
+    void frames(xt_gpu_target* t, int n) {
+        for (int i = 0; i < n; ++i) frame(t, {{s, xt_rect{0, 0, kImagesSize, kImagesSize}}});
+    }
+};
+
+}  // namespace
+
+namespace {
+
+/// T-658: the `ghost` surface's "has nothing to draw" / "draws again" info lines, with the target's
+/// submit and pass totals they carry (latest values); removed at scope end.
+struct EmptyLog {
+    int empty = 0, again = 0;
+    bool noTexture = false;
+    unsigned long emptySubmits = 0, emptyPasses = 0, againSubmits = 0, againPasses = 0;
+    EmptyLog() { xt_capi_set_log(&EmptyLog::onLog, this); }
+    ~EmptyLog() { xt_capi_set_log(nullptr, nullptr); }
+    EmptyLog(const EmptyLog&) = delete;
+    EmptyLog& operator=(const EmptyLog&) = delete;
+    static void onLog(int level, const char* message, void* user) {
+        auto* self = static_cast<EmptyLog*>(user);
+        if (level != 0 || std::strstr(message, "xt_surface_render_gpu: ghost ") != message) return;
+        if (std::strstr(message, " has nothing to draw") != nullptr) {
+            ++self->empty;
+            self->noTexture = std::strstr(message, "no texture") != nullptr;
+            self->emptySubmits = SharedLog::after(message, "target ");
+            self->emptyPasses = SharedLog::after(message, " submits, ");
+        } else if (std::strstr(message, " draws again") != nullptr) {
+            ++self->again;
+            self->againSubmits = SharedLog::after(message, "target ");
+            self->againPasses = SharedLog::after(message, " submits, ");
+        }
+    }
+};
+
+}  // namespace
+
+TEST_CASE("capi gpu 11 (T-656): new images every round on one target stay within the idle budget") {
+    namespace fs = std::filesystem;
+    for (const bool zeroBudget : {true, false}) {
+        CAPTURE(zeroBudget);
+        xt_gpu_target* t = makeTarget(kImagesSize, kImagesSize);
+        if (t == nullptr) return;
+        if (zeroBudget) REQUIRE(xt_gpu_target_set_image_budget(t, 0) == XT_STATUS_OK);
+        const fs::path dir = xt::test::tempDir() / (zeroBudget ? "t656-images-0" : "t656-images-default");
+        std::error_code ec;
+        fs::remove_all(dir, ec);
+        fs::copy(fs::path(XT_CAPI_TEST_IMAGES_BUNDLE), dir, fs::copy_options::recursive, ec);
+        REQUIRE_MESSAGE(!ec, ec.message());
+        std::vector<fs::path> pngs;
+        for (const fs::directory_entry& e : fs::directory_iterator(dir / "assets")) {
+            if (e.path().extension() == ".png") pngs.push_back(e.path());
+        }
+        std::sort(pngs.begin(), pngs.end());
+        REQUIRE(pngs.size() == 3);
+        const uint64_t perImage = uint64_t(kImageSide) * kImageSide * 4u;
+        std::vector<uint64_t> bytesAfter;
+        for (uint32_t round = 0; round < 8; ++round) {
+            CAPTURE(round);
+            for (size_t i = 0; i < pngs.size(); ++i) {  // new pixels: new textures
+                const std::vector<uint8_t> png =
+                    makePng(kImageSide, round * 3u + static_cast<uint32_t>(i) + 1u);
+                std::ofstream out(pngs[i], std::ios::binary | std::ios::trunc);
+                out.write(reinterpret_cast<const char*>(png.data()),
+                          static_cast<std::streamsize>(png.size()));
+                REQUIRE(out.good());
+            }
+            {
+                ImagesSurface u(dir.string());
+                u.frames(t, 3);
+                const xt_gpu_memory_stats m = memoryStats(t);
+                CHECK(m.image_textures - m.image_idle_textures == 3);  // this round's three, in use
+                CHECK(m.attached_surfaces == 1);
+            }  // destroyed: its textures are no longer used
+            const xt_gpu_memory_stats m = memoryStats(t);
+            CHECK(m.attached_surfaces == 0);
+            CHECK(m.image_bytes == m.image_idle_bytes);
+            if (zeroBudget) {
+                CHECK(m.image_bytes == 0);
+                CHECK(m.image_textures == 0);
+                CHECK(m.image_evictions == 3u * (round + 1u));  // each evicted as soon as unused
+            } else {
+                CHECK(m.image_idle_bytes <= kDefaultIdleBudget);
+                CHECK(m.image_idle_bytes == uint64_t(m.image_idle_textures) * perImage);
+            }
+            bytesAfter.push_back(m.image_bytes);
+        }
+        std::printf("budget %s: image bytes after each round (MiB):", zeroBudget ? "0" : "default");
+        for (const uint64_t b : bytesAfter) std::printf(" %.0f", static_cast<double>(b) / kMiB);
+        std::printf("\n");
+        if (!zeroBudget) {
+            // 12 MiB a round: the budget is reached in round 6, after which the bytes stay flat.
+            CHECK(bytesAfter[5] == bytesAfter[6]);
+            CHECK(bytesAfter[6] == bytesAfter[7]);
+            CHECK(bytesAfter[7] <= kDefaultIdleBudget);
+            CHECK(memoryStats(t).image_evictions > 0);
+        }
+        CHECK(xt_gpu_target_destroy(t) == XT_STATUS_OK);
+    }
+}
+
+TEST_CASE("capi gpu 12 (T-656): hidden then shown within the budget uploads nothing again") {
+    SharedLog log;
+    xt_gpu_target* t = makeTarget(kImagesSize, kImagesSize);
+    if (t == nullptr) return;
+    {
+        ImagesSurface u(XT_CAPI_TEST_IMAGES_BUNDLE);
+        u.frames(t, 2);
+        const unsigned long uploaded = log.uploaded;
+        CHECK(uploaded == 3);
+        // T-641: hidden for two frames releases the surface's GPU resources (it stays attached).
+        REQUIRE(xt_surface_set_visible(u.s, 0) == XT_STATUS_OK);
+        u.frames(t, 2);
+        CHECK(log.released == 1);
+        xt_gpu_memory_stats m = memoryStats(t);
+        CHECK(m.attached_surfaces == 1);
+        CHECK(m.image_textures == 3);
+        CHECK(m.image_idle_textures == 3);
+        CHECK(m.surface_bytes == 0);  // released
+        REQUIRE(xt_surface_set_visible(u.s, 1) == XT_STATUS_OK);
+        u.frames(t, 1);
+        CHECK(log.uploaded == uploaded);  // found on the idle list
+        m = memoryStats(t);
+        CHECK(m.image_textures == 3);
+        CHECK(m.image_idle_textures == 0);
+        CHECK(m.image_evictions == 0);
+        REQUIRE(xt_surface_detach_gpu(u.s) == XT_STATUS_OK);
+    }
+    CHECK(xt_gpu_target_destroy(t) == XT_STATUS_OK);
+}
+
+TEST_CASE("capi gpu 13 (T-656): xt_gpu_target_trim, the budget applied at once and the memory stats") {
+    SharedLog log;
+    xt_gpu_target* t = makeTarget(kImagesSize, kImagesSize);
+    if (t == nullptr) return;
+    CHECK(xt_gpu_target_set_image_budget(nullptr, 0) == XT_STATUS_INVALID_ARGUMENT);
+    CHECK(xt_gpu_target_trim(nullptr) == XT_STATUS_INVALID_ARGUMENT);
+    xt_gpu_memory_stats bad{};
+    bad.struct_size = sizeof bad;
+    CHECK(xt_gpu_target_memory_stats(nullptr, &bad) == XT_STATUS_INVALID_ARGUMENT);
+    CHECK(xt_gpu_target_memory_stats(t, nullptr) == XT_STATUS_INVALID_ARGUMENT);
+    const uint64_t perImage = uint64_t(kImageSide) * kImageSide * 4u;
+    {
+        ImagesSurface u(XT_CAPI_TEST_IMAGES_BUNDLE);
+        u.frames(t, 2);
+        xt_gpu_memory_stats m = memoryStats(t);
+        CHECK(m.attached_surfaces == 1);
+        CHECK(m.image_textures == 3);
+        CHECK(m.image_bytes == 3 * perImage);
+        // The surface texture (RGBA8) at least, and with the default 4x its MSAA color and stencil.
+        const uint64_t texture = uint64_t(kImagesSize) * kImagesSize * 4u;
+        CHECK(m.surface_bytes >= texture);
+        CHECK(m.surface_bytes <= texture * 6u);
+        // A shorter struct gets only its prefix.
+        xt_gpu_memory_stats prefix;
+        std::memset(&prefix, 0xAB, sizeof prefix);
+        prefix.struct_size = static_cast<uint32_t>(offsetof(xt_gpu_memory_stats, image_idle_textures));
+        REQUIRE(xt_gpu_target_memory_stats(t, &prefix) == XT_STATUS_OK);
+        CHECK(prefix.image_textures == 3);
+        CHECK(prefix.image_bytes == 3 * perImage);
+        CHECK(prefix.image_idle_textures == 0xABABABABu);
+        CHECK(prefix.atlas_bytes == 0xABABABABABABABABull);
+        // Inside a frame: refused, nothing destroyed.
+        REQUIRE(xt_gpu_target_begin_frame(t, nullptr) == XT_STATUS_OK);
+        CHECK(xt_gpu_target_trim(t) == XT_STATUS_INVALID_ARGUMENT);
+        CHECK(contains(xt_capi_last_error(), "inside a frame"));
+        REQUIRE(xt_gpu_target_end_frame(t) == XT_STATUS_OK);
+        REQUIRE(xt_surface_detach_gpu(u.s) == XT_STATUS_OK);
+        m = memoryStats(t);
+        CHECK(m.attached_surfaces == 0);
+        CHECK(m.surface_bytes == 0);
+        CHECK(m.image_idle_textures == 3);
+        CHECK(m.image_idle_bytes == 3 * perImage);
+        // A smaller budget applies at once: the oldest go until the rest fit (one 4 MiB texture).
+        REQUIRE(xt_gpu_target_set_image_budget(t, perImage + perImage / 2) == XT_STATUS_OK);
+        m = memoryStats(t);
+        CHECK(m.image_idle_textures == 1);
+        CHECK(m.image_idle_bytes == perImage);
+        CHECK(m.image_evictions == 2);
+        // Trim: every idle texture goes.
+        REQUIRE(xt_gpu_target_trim(t) == XT_STATUS_OK);
+        m = memoryStats(t);
+        CHECK(m.image_textures == 0);
+        CHECK(m.image_bytes == 0);
+        CHECK(m.image_idle_textures == 0);
+        CHECK(m.image_idle_bytes == 0);
+        CHECK(m.image_evictions == 3);
+        CHECK(xt_gpu_target_trim(t) == XT_STATUS_OK);  // nothing left: still OK
+        // Drawn again: uploaded again.
+        const unsigned long uploaded = log.uploaded;
+        u.frames(t, 1);
+        CHECK(log.uploaded == uploaded + 3);
+        CHECK(memoryStats(t).image_textures == 3);
+        REQUIRE(xt_surface_detach_gpu(u.s) == XT_STATUS_OK);
+    }
+    CHECK(xt_gpu_target_destroy(t) == XT_STATUS_OK);
+}
+
+TEST_CASE("capi gpu 14 (T-658): a surface with nothing to draw is not drawn, composited or given a texture") {
+    constexpr int kSize = 96;
+    for (const int samples : {1, 4}) {
+        CAPTURE(samples);
+        EmptyLog log;
+        Fixture f;
+        xt_gpu_target_desc desc = offscreenDesc(kSize, kSize);
+        desc.sample_count = samples;
+        xt_gpu_target* t = xt_gpu_target_create(&desc);
+        if (t == nullptr) {
+            const std::string error = xt_capi_last_error();
+            REQUIRE_MESSAGE(contains(error.c_str(), "no WebGPU adapter"), error);
+            std::printf("SKIP: no WebGPU adapter (%s)\n", error.c_str());
+            return;
+        }
+        f.targets.push_back(t);
+        // The `ghost` fixture: its only card is hidden until the `show` port is true.
+        xt_surface* ghost = f.surface(XT_CAPI_TEST_FLIP_BUNDLE, "ghost", 64);
+        const xt_rect gr{16, 16, 64, 64};
+        const Pixels none(static_cast<size_t>(kSize) * kSize * 4u, 0);
+        // Four frames of the empty surface alone: the frame's clear is the only work, no texture.
+        for (int i = 0; i < 4; ++i) {
+            frame(t, {{ghost, gr}});
+            CHECK(readback(t, kSize, kSize, kSize * 4) == none);
+        }
+        CHECK(log.empty == 1);  // logged once, when it became empty
+        CHECK(log.noTexture);
+        CHECK(memoryStats(t).surface_bytes == 0u);  // no texture, no 4x attachments
+        xt_frame_stats stats{};
+        REQUIRE(xt_surface_frame_stats(ghost, &stats) == XT_STATUS_OK);
+        CHECK(stats.executed_draws == 0u);
+        // The content appears: the next frame draws it.
+        const uint32_t show = xt_surface_port_lookup(ghost, "show");
+        REQUIRE(xt_surface_port_set_bool(ghost, show, 1) == XT_STATUS_OK);
+        frame(t, {{ghost, gr}});
+        REQUIRE(log.again == 1);
+        // Between the two lines: one submit and one pass per frame (end_frame's clear), nothing of the
+        // empty surface (no renderer submit, no composite).
+        CHECK(log.againSubmits - log.emptySubmits == 4u);
+        CHECK(log.againPasses - log.emptyPasses == 4u);
+        const Pixels shown = readback(t, kSize, kSize, kSize * 4);
+        CHECK(at(shown, kSize, 48, 48)[1] == 255);  // the green card, premultiplied opaque
+        CHECK(at(shown, kSize, 48, 48)[3] == 255);
+        CHECK(transparent(shown, kSize, 4, 4));
+        REQUIRE(xt_surface_frame_stats(ghost, &stats) == XT_STATUS_OK);
+        CHECK(stats.executed_draws > 0u);
+        CHECK(memoryStats(t).surface_bytes > 0u);
+
+        // Hidden again over another surface: the target reads back as if it had not been drawn.
+        xt_surface* flip = flipSurface(f, 32);
+        frame(t, {{flip, xt_rect{0, 0, 96, 96}}});
+        const Pixels alone = readback(t, kSize, kSize, kSize * 4);
+        REQUIRE(xt_surface_port_set_bool(ghost, show, 0) == XT_STATUS_OK);
+        frame(t, {{flip, xt_rect{0, 0, 96, 96}}, {ghost, gr}});
+        CHECK(readback(t, kSize, kSize, kSize * 4) == alone);
+        CHECK(log.empty == 2);
+        CHECK(!log.noTexture);  // the texture made while it drew is kept
+        frame(t, {{flip, xt_rect{0, 0, 96, 96}}, {ghost, gr}});
+        CHECK(readback(t, kSize, kSize, kSize * 4) == alone);
+        CHECK(log.empty == 2);
+    }
+}
+
+// T-657 (50 §50.ab item 2): hiding also lets the surface's Document go of its decoded images; shown
+// again, the rebuilt renderer finds the shared textures by the keys the bundle's resolver kept (no
+// decode -- counted in Tests/gpu/test_gpu_retained_key.cpp, the C ABI has no decode count) and draws
+// the same bytes. With the target's image budget 0 the textures are gone and everything is uploaded
+// again, still the same bytes.
+TEST_CASE("capi gpu 15 (T-657): hidden then shown draws the same bytes from the shared textures") {
+    SharedLog log;
+    xt_gpu_target* t = makeTarget(kImagesSize, kImagesSize);
+    if (t == nullptr) return;
+    {
+        ImagesSurface u(XT_CAPI_TEST_IMAGES_BUNDLE);
+        u.frames(t, 2);
+        const Pixels before = readback(t, kImagesSize, kImagesSize, kImagesSize * 4);
+        REQUIRE(log.uploaded == 3);
+        REQUIRE(xt_surface_set_visible(u.s, 0) == XT_STATUS_OK);
+        u.frames(t, 2);
+        CHECK(log.released == 1);
+        CHECK(memoryStats(t).image_idle_textures == 3);
+        REQUIRE(xt_surface_set_visible(u.s, 1) == XT_STATUS_OK);
+        u.frames(t, 1);
+        CHECK(readback(t, kImagesSize, kImagesSize, kImagesSize * 4) == before);
+        CHECK(log.uploaded == 3);  // nothing uploaded again
+        CHECK(memoryStats(t).image_idle_textures == 0);
+        // Budget 0: hidden destroys the textures; shown uploads all three again.
+        REQUIRE(xt_gpu_target_set_image_budget(t, 0) == XT_STATUS_OK);
+        REQUIRE(xt_surface_set_visible(u.s, 0) == XT_STATUS_OK);
+        u.frames(t, 2);
+        CHECK(log.released == 2);
+        CHECK(memoryStats(t).image_textures == 0);
+        REQUIRE(xt_surface_set_visible(u.s, 1) == XT_STATUS_OK);
+        u.frames(t, 1);
+        CHECK(readback(t, kImagesSize, kImagesSize, kImagesSize * 4) == before);
+        CHECK(log.uploaded == 6);
+        REQUIRE(xt_surface_detach_gpu(u.s) == XT_STATUS_OK);
+    }
+    CHECK(xt_gpu_target_destroy(t) == XT_STATUS_OK);
 }
 
 #ifdef _WIN32
