@@ -1,0 +1,46 @@
+/* T-662: 1500x1000, uiscale 2.5 (the project's logical height is 400). Six notched squares of
+   720..725 device px (about 0.5 Mpx of covered pixels each, 3 Mpx in all: over the GPU coverage
+   atlas's 2 Mpx frame budget), overlapping. */
+body {
+  width: 100vw;
+  height: 100vh;
+}
+.notch {
+  position: absolute;
+}
+#N0 {
+  left: 4px;
+  top: 4px;
+  width: 288px;
+  height: 288px;
+}
+#N1 {
+  left: 156px;
+  top: 4px;
+  width: 288.4px;
+  height: 288.4px;
+}
+#N2 {
+  left: 308px;
+  top: 4px;
+  width: 288.8px;
+  height: 288.8px;
+}
+#N3 {
+  left: 4px;
+  top: 108px;
+  width: 289.2px;
+  height: 289.2px;
+}
+#N4 {
+  left: 156px;
+  top: 108px;
+  width: 289.6px;
+  height: 289.6px;
+}
+#N5 {
+  left: 308px;
+  top: 108px;
+  width: 290px;
+  height: 290px;
+}

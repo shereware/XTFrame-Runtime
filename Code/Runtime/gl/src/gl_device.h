@@ -115,9 +115,15 @@ private:
               uMode = -1, uOpacity = -1, uSamples = -1;
         // T-178: kGlyphFrag's text-effect uniforms.
         GLint uEffect = -1, uRadius = -1, uRect = -1, uTexSize = -1;
+        // T-660b: kCoverageGradientFrag's uv -> path-local map.
+        GLint uUvToLocal = -1;
         UniformShadow shadow;
     };
     Program m_solid, m_gradient, m_texture, m_textureStraight, m_glyph, m_composite, m_resolve;
+    /// T-660b: the coverage quad programs (Solid / Gradient with DrawCmd::coverage).
+    Program m_coverageSolid, m_coverageGradient;
+    /// T-660b: one Solid / Gradient command with DrawCmd::coverage (state already applied).
+    void drawCoverage(const gpu::DrawCmd& cmd);
     /// T-202: the instanced particle programs (kParticleVert) and their instance buffer.
     struct ParticleProgram {
         GLuint id = 0;

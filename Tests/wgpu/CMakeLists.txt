@@ -10,6 +10,8 @@ add_executable(xt_wgpu_tests
 )
 target_include_directories(xt_wgpu_tests SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/Code/SDKs/doctest)
 target_compile_definitions(xt_wgpu_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)
+# T-670: wgpu_util.h (planInstance, kMaxNonSamplerBindings) is internal to xt_wgpu.
+target_include_directories(xt_wgpu_tests PRIVATE ${PROJECT_SOURCE_DIR}/Code/Runtime/wgpu/src)
 # T-438: the draw cases compare with xt::sw (golden_common.h's compareRgba) and compile fixtures.
 target_link_libraries(xt_wgpu_tests PRIVATE xt_wgpu xt_gpu xt_core xt_compile xt_sw xt_golden_fixtures)
 target_compile_definitions(xt_wgpu_tests PRIVATE XT_GOLDEN_UI_DIR="${PROJECT_SOURCE_DIR}/Tests/golden/ui")

@@ -3,10 +3,12 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <string>
 
 #include "wgpu_internal.h"
+#include "wgpu_util.h"
 
 /// WgpuDevice (T-437 skeleton, T-438 submit): see wgpu_device.h. Docs/design/10-backends.md
 /// §10.10.2 for the mapping; gl_device.cpp is the behaviour reference (windows, scissors, copies,
@@ -85,8 +87,9 @@ uint32_t paramFloats(const gpu::DrawCmd& cmd) {
         return sizeof(gpu::ParticleParams) / sizeof(float);
     }
     switch (cmd.shading) {
-        case Shading::Gradient:
-            return sizeof(gpu::GradientParams) / sizeof(float);
+        case Shading::Gradient:  // T-660b: a coverage quad's gradient carries its uv -> local map
+            return (cmd.coverage != 0 ? sizeof(gpu::CoverageGradientParams) : sizeof(gpu::GradientParams)) /
+                   sizeof(float);
         case Shading::Glyph:
             return sizeof(gpu::GlyphParams) / sizeof(float);
         case Shading::Composite:
@@ -218,6 +221,18 @@ bool WgpuDevice::init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat targ
     m_poolBudget = kPoolBudgetFloorBytes;
     m_lastError.clear();
     return true;
+}
+
+void WgpuDevice::Gpu::noteBindings() {
+    const uint32_t live = liveBindings();
+    peakBindings = std::max(peakBindings, live);
+    if (live > kBindingsWarnThreshold && !bindingsWarned) {
+        bindingsWarned = true;  // T-670: once per device
+        std::fprintf(stderr,
+                     "xt::wgpu: %u live non-sampler bindings on one device, over 75%% of the "
+                     "maxNonSamplerBindings limit %u\n",
+                     live, kMaxNonSamplerBindings);
+    }
 }
 
 void WgpuDevice::setProbeShaderForTesting(const char* wgsl) { detail::setProbeShaderOverride(wgsl); }
@@ -951,6 +966,8 @@ void WgpuDevice::submit(const gpu::GpuFrame& frame) {
         e.size = detail::kParamBlockBytes;
         d.layout = g.pipelines->paramLayout();
         g.paramGroup = wgpuDeviceCreateBindGroup(m_device, &d);
+        g.uniformBindings = 2;  // T-670: one uniform buffer each
+        g.noteBindings();
         g.groupsGeneration = g.uniforms.generation;
     }
     m_stats.uploadMs = msSince(t0);
@@ -998,7 +1015,7 @@ void WgpuDevice::submit(const gpu::GpuFrame& frame) {
     m_stats.encodeMs = msSince(t0);
     t0 = Clock::now();
     WGPUCommandBuffer cb = wgpuCommandEncoderFinish(enc, nullptr);
-    wgpuQueueSubmit(m_queue, 1, &cb);
+    m_lastSubmission = wgpuQueueSubmitForIndex(m_queue, 1, &cb);  // T-674: frames in flight
     wgpuCommandBufferRelease(cb);
     wgpuCommandEncoderRelease(enc);
     m_stats.queueMs = msSince(t0);
@@ -1009,6 +1026,8 @@ void WgpuDevice::submit(const gpu::GpuFrame& frame) {
     for (const Texture& t : m_textures) {
         if (t.cached && t.view != nullptr) ++m_stats.cachedTargets;
     }
+    m_stats.liveBindings = g.liveBindings();  // T-670
+    m_stats.peakBindings = g.peakBindings;
     // T-456: pipelines that failed this submit (each key once; their draws were skipped).
     const std::string pipelineErrors = g.pipelines->takeError();
     if (!pipelineErrors.empty()) {

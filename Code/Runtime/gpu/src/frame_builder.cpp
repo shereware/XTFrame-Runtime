@@ -6,6 +6,7 @@
 #include <cstring>
 #include <span>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -16,9 +17,11 @@
 #include "gradient_lut.h"
 #include "xt/assert.h"
 #include "xt/asset_resolver.h"
+#include "xt/coverage_bitmap.h"
 #include "xt/damage.h"
 #include "xt/effect_utils.h"
 #include "xt/geom.h"
+#include "xt/gpu/coverage_atlas.h"
 #include "xt/project3d.h"
 #include "xt/text_shaper.h"
 
@@ -497,6 +500,16 @@ struct FrameBuilder::Impl {
     std::vector<float> scaledDashes;
     std::vector<Vec2> strokeOutPoints;
     std::vector<uint32_t> strokeOutStarts;
+    // T-661: a stroke's outline rebuilt under the coverage raster transform (fillCoverage), apart
+    // from the buffers above, which still hold the device outline the caller may fall back to.
+    std::vector<Vec2> coverageFlatPoints;
+    std::vector<uint32_t> coverageFlatStarts;
+    std::vector<uint8_t> coverageFlatClosed;
+    std::vector<Vec2> coverageDashPoints;
+    std::vector<uint32_t> coverageDashStarts;
+    std::vector<uint8_t> coverageDashClosed;
+    std::vector<Vec2> coverageStrokePoints;
+    std::vector<uint32_t> coverageStrokeStarts;
     std::vector<PathVerb> glyphOutlineVerbs;
     std::vector<float> glyphOutlinePoints;
     std::vector<Vertex> meshVertexScratch;  // T-245: one DrawImageMesh's projected vertices.
@@ -516,6 +529,40 @@ struct FrameBuilder::Impl {
     GradientParams lastGradient{};
     uint32_t lastGradientIndex = 0;
     bool haveLastGradient = false;
+    CoverageGradientParams lastCoverageGradient{};
+    uint32_t lastCoverageGradientIndex = 0;
+    bool haveLastCoverageGradient = false;
+
+    // T-660b (Docs/design/10-backends.md §10.11 item 2): the coverage atlas of 1x concave fills.
+    CoverageAtlas coverageAtlas;
+    CoverageBitmap coverageBitmap;             ///< rasterizeCoverage scratch
+    std::vector<CoverageEntry> coverageTiles;  ///< T-672: the tiles of the tiled shape being drawn
+    static constexpr int kCoveragePages = CoverageAtlas::kDefaultMaxPages;
+    /// Device pages of the atlas (R8) and the side each was created at (a grown page is made again).
+    TextureHandle coverageTextures[kCoveragePages] = {};
+    int coverageTextureSizes[kCoveragePages] = {};
+    /// Set when a page grew during the current build attempt: quads emitted before carry stale uvs.
+    bool coverageResizedSeen = false;
+    /// Path content hashes of this build, keyed by the path's pool offsets (verbOffset << 32 |
+    /// pointOffset); the counts are compared too.
+    struct PathHashMemo {
+        uint32_t verbCount = 0;
+        uint32_t pointCount = 0;
+        uint64_t hash = 0;
+    };
+    std::unordered_map<uint64_t, PathHashMemo> pathHashMemo;
+    // Per build attempt (the last attempt's are reported).
+    uint32_t statCoverageHits = 0;
+    uint32_t statCoverageMisses = 0;
+    uint32_t statCoverageFallbacks = 0;
+    /// T-662 (§10.11 item 2, supplement 2): fills of this attempt held back by the frame budget
+    /// only (a later build draws them from the atlas); size-limit fallbacks are not counted.
+    uint32_t statCoverageBudgetFallbacks = 0;
+    /// T-662: statCoverageBudgetFallbacks of the last build's final attempt (wantsAnotherFrame()).
+    uint32_t lastBudgetFallbacks = 0;
+    uint32_t statCoverageTiles = 0;         // T-672: edge tiles drawn (atlas texels)
+    uint32_t statCoverageUniformTiles = 0;  // T-672: empty and full tiles of the tiled shapes drawn
+    FrameBuilder::CoverageStats lastCoverageStats;
 
     // ---------------------------------------------------------------------------------------
     // Lifetime.
@@ -561,6 +608,7 @@ struct FrameBuilder::Impl {
             }
             atlasTextureSize = 0;
 #endif
+            releaseCoverageAtlas();
             luts.shutdown();
         }
         textureCache.clear();
@@ -929,6 +977,18 @@ struct FrameBuilder::Impl {
     /// `GradientParams` of `paint` in the frame's pool; identical to the previous gradient's
     /// -> the same index, so consecutive fills of one gradient batch.
     uint32_t gradientParamIndex(const PaintRef& paint) {
+        const GradientParams gp = gradientParamsOf(paint);
+        if (haveLastGradient && std::memcmp(&gp, &lastGradient, sizeof(gp)) == 0) {
+            return lastGradientIndex;
+        }
+        lastGradient = gp;
+        lastGradientIndex = emit.pushParams(gp);
+        haveLastGradient = true;
+        return lastGradientIndex;
+    }
+
+    /// The `GradientParams` of `paint` (its kind, end points, radii and alpha).
+    static GradientParams gradientParamsOf(const PaintRef& paint) {
         GradientParams gp{};
         gp.kind = static_cast<float>(paint.kind);
         gp.p0x = paint.p0.x;
@@ -947,25 +1007,58 @@ struct FrameBuilder::Impl {
         gp.rx = rx;
         gp.ry = ry;
         gp.alpha = paint.color.a;
-        if (haveLastGradient && std::memcmp(&gp, &lastGradient, sizeof(gp)) == 0) {
-            return lastGradientIndex;
-        }
-        lastGradient = gp;
-        lastGradientIndex = emit.pushParams(gp);
-        haveLastGradient = true;
-        return lastGradientIndex;
+        return gp;
     }
+
+    /// What a coverage bitmap is rasterized from (T-661): a FillPath's path under the raster
+    /// transform, or a StrokePath's path stroked as SW and doStroke stroke it -- flattened under
+    /// the raster transform, dashed with `dashes`/`dashPhase` and turned into a fill by
+    /// strokeToFill at `width` (all already in device units: the stroke is expanded in device
+    /// space), filled NonZero.
+    /// T-662: or a glyph outline (`glyphVerbs`/`glyphPoints`, em units, put in place and sized by
+    /// the raster transform as SW's buildGlyphContours does), filled NonZero, whose content hash is
+    /// `glyphHash` (font identity, glyph id and size; see glyphContentHash) instead of a hash of
+    /// its points. `path` is unused then.
+    struct CoverageSource {
+        const PathRef* path = nullptr;
+        bool stroke = false;
+        bool glyph = false;
+        uint64_t glyphHash = 0;
+        std::span<const PathVerb> glyphVerbs;
+        std::span<const float> glyphPoints;
+        float width = 0.0f;
+        LineCap cap = LineCap::Butt;
+        LineJoin join = LineJoin::Miter;
+        float miterLimit = 0.0f;
+        std::span<const float> dashes;
+        float dashPhase = 0.0f;
+    };
 
     /// Fills `pts`/`starts` (already in surface pixels, projected if need be) with `paint`.
     /// Convex shapes take the direct paths (`fillDirect`); everything else is stencil-then-cover
     /// with its clear deferred (`pendingClears`).
+    /// T-660b: `coverage` (unprojected FillPath and, T-661, StrokePath: what the shape is made
+    /// from) lets a shape the direct paths do not take be drawn as a coverage quad (fillCoverage)
+    /// when `edgeFringe` and `antialias` are on; it falls back to stencil-then-cover when that is
+    /// not possible.
+    /// T-662: a glyph outline (`coverage->glyph`) tries the coverage quad before the direct paths,
+    /// so a convex glyph is drawn like the other glyphs of its run (10 §10.11 item 4); it takes the
+    /// direct paths only when the coverage quad is not possible.
     void fillShapeAndCover(std::span<const Vec2> pts, std::span<const uint32_t> starts,
                            const Mat2x3& deviceXf, FillRule rule, const PaintRef& paint,
-                           bool antialias = true) {
+                           bool antialias = true, const CoverageSource* coverage = nullptr) {
         if (paint.kind == PaintKind::None || pts.empty() || emit.scissor().empty()) {
             return;
         }
+        const bool coverageAllowed = coverage != nullptr && edgeFringe && antialias && !projecting();
+        const bool coverageFirst = coverageAllowed && coverage->glyph;
+        if (coverageFirst && fillCoverage(*coverage, pts, deviceXf, rule, paint)) {
+            return;
+        }
         if (fillDirect(pts, starts, deviceXf, rule, paint, edgeFringe && antialias)) {
+            return;
+        }
+        if (coverageAllowed && !coverageFirst && fillCoverage(*coverage, pts, deviceXf, rule, paint)) {
             return;
         }
         const bool gradient = isGradientKind(paint.kind);
@@ -1006,6 +1099,367 @@ struct FrameBuilder::Impl {
 
         // Pass 3: clear the winding nibble across the AABB -- deferred (see pendingClears).
         pendingClears.push_back(bounds);
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // T-660b coverage quads (Docs/design/10-backends.md §10.11 item 2, Docs/tasks/T-660b.md).
+    // ---------------------------------------------------------------------------------------
+
+    /// T-661 (Docs/tasks/T-661.md item 2): the content hash of a stroke -- the path's content
+    /// hash, a tag for "stroked, expanded in device space at kFlattenTolerance", then the device
+    /// width, cap, join, miter limit, the device dash array (count and values) and phase, as bit
+    /// patterns. Two strokes differing in any of them get different hashes, and none equals the
+    /// path's own fill hash.
+    static uint64_t strokeContentHash(uint64_t pathHash, const CoverageSource& s) {
+        uint64_t h = pathHash ^ 0x9E3779B97F4A7C15ull;  // the stroke tag
+        auto mix = [&h](uint64_t v) {
+            h ^= v + 0x9E3779B97F4A7C15ull + (h << 6) + (h >> 2);
+            h *= 0xBF58476D1CE4E5B9ull;
+            h ^= h >> 31;
+        };
+        auto bits = [](float f) {
+            uint32_t u = 0;
+            std::memcpy(&u, &f, sizeof(u));
+            return static_cast<uint64_t>(u);
+        };
+        mix(0x5354524B44455631ull);  // "STRKDEV1": device-space expansion
+        mix(bits(kFlattenTolerance));
+        mix(bits(s.width));
+        mix(static_cast<uint64_t>(s.cap) | static_cast<uint64_t>(s.join) << 8);
+        mix(bits(s.miterLimit));
+        mix(static_cast<uint64_t>(s.dashes.size()));
+        for (float d : s.dashes) {
+            mix(bits(d));
+        }
+        mix(bits(s.dashPhase));
+        return h;
+    }
+
+    /// T-661: the stroke outline of `s` under `rasterXf` (doStroke's own steps, at the raster
+    /// transform instead of the device one), rasterized NonZero into coverageBitmap.
+    bool rasterizeStrokeCoverage(const CoverageSource& s, const Mat2x3& rasterXf) {
+        const std::span<const PathVerb> verbs(list->verbs.data() + s.path->verbOffset, s.path->verbCount);
+        const std::span<const float> points(list->points.data() + s.path->pointOffset, s.path->pointCount);
+        coverageFlatPoints.clear();
+        coverageFlatStarts.clear();
+        coverageFlatClosed.clear();
+        flattenPath(verbs, points, rasterXf, kFlattenTolerance, coverageFlatPoints, coverageFlatStarts,
+                    coverageFlatClosed);
+        const std::vector<Vec2>* srcPoints = &coverageFlatPoints;
+        const std::vector<uint32_t>* srcStarts = &coverageFlatStarts;
+        const std::vector<uint8_t>* srcClosed = &coverageFlatClosed;
+        if (!s.dashes.empty()) {
+            coverageDashPoints.clear();
+            coverageDashStarts.clear();
+            coverageDashClosed.clear();
+            applyDash(coverageFlatPoints, coverageFlatStarts, coverageFlatClosed, s.dashes, s.dashPhase,
+                      coverageDashPoints, coverageDashStarts, coverageDashClosed);
+            srcPoints = &coverageDashPoints;
+            srcStarts = &coverageDashStarts;
+            srcClosed = &coverageDashClosed;
+        }
+        coverageStrokePoints.clear();
+        coverageStrokeStarts.clear();
+        strokeToFill(*srcPoints, *srcStarts, *srcClosed, s.width, s.cap, s.join, s.miterLimit,
+                     kFlattenTolerance, coverageStrokePoints, coverageStrokeStarts);
+        return rasterizeCoverageContours(coverageStrokePoints, coverageStrokeStarts, FillRule::NonZero,
+                                         coverageBitmap);
+    }
+
+    /// Content hash of `path` (its verbs, then its points, as bytes); memoized per build by pool
+    /// offsets.
+    uint64_t pathContentHash(const PathRef& path) {
+        const uint64_t slot = static_cast<uint64_t>(path.verbOffset) << 32 | path.pointOffset;
+        auto it = pathHashMemo.find(slot);
+        if (it != pathHashMemo.end() && it->second.verbCount == path.verbCount &&
+            it->second.pointCount == path.pointCount) {
+            return it->second.hash;
+        }
+        const ImageKey v =
+            imageContentKey(reinterpret_cast<const uint8_t*>(list->verbs.data() + path.verbOffset),
+                            static_cast<size_t>(path.verbCount) * sizeof(PathVerb));
+        const ImageKey p =
+            imageContentKey(reinterpret_cast<const uint8_t*>(list->points.data() + path.pointOffset),
+                            static_cast<size_t>(path.pointCount) * sizeof(float));
+        const uint64_t hash =
+            (v.lo * 11400714785074694791ull) ^ p.lo ^ (p.hi * 14029467366897019727ull) ^ v.hi;
+        pathHashMemo[slot] = PathHashMemo{path.verbCount, path.pointCount, hash};
+        return hash;
+    }
+
+    /// The device texture of coverage page `page`, (re)created at the page's current side.
+    TextureHandle ensureCoverageTexture(uint16_t page) {
+        if (page >= kCoveragePages) {
+            return 0;
+        }
+        const int size = coverageAtlas.pageSize(page);
+        TextureHandle& tex = coverageTextures[page];
+        if (tex != 0 && coverageTextureSizes[page] == size) {
+            return tex;
+        }
+        // A grown page is made again at its new size (the whole grown page is pending upload).
+        device->destroyTexture(tex);
+        const auto side = static_cast<uint16_t>(std::clamp(size, 0, 65535));
+        tex = device->createTexture("xt coverage atlas", side, side, TextureFormat::R8, nullptr);
+        coverageTextureSizes[page] = tex != 0 ? size : 0;
+        return tex;
+    }
+
+    /// Hands every pending atlas change to the device (end of build()).
+    void uploadPendingCoverage() {
+        coverageAtlas.flushUploads(
+            [this](uint16_t page, int x, int y, int w, int h, const uint8_t* pixels, int stride) {
+                if (w <= 0 || h <= 0) {
+                    return;
+                }
+                const TextureHandle tex = ensureCoverageTexture(page);
+                if (tex == 0) {
+                    return;
+                }
+                const uint8_t* region =
+                    pixels + static_cast<size_t>(y) * static_cast<size_t>(stride) + static_cast<size_t>(x);
+                device->updateTexture(tex, static_cast<uint16_t>(x), static_cast<uint16_t>(y),
+                                      static_cast<uint16_t>(w), static_cast<uint16_t>(h), region,
+                                      static_cast<size_t>(stride));
+            });
+    }
+
+    void releaseCoverageAtlas() {
+        for (int i = 0; i < kCoveragePages; ++i) {
+            device->destroyTexture(coverageTextures[i]);
+            coverageTextures[i] = 0;
+            coverageTextureSizes[i] = 0;
+        }
+        coverageAtlas = CoverageAtlas();
+        coverageBitmap = CoverageBitmap();
+        coverageTiles = std::vector<CoverageEntry>();
+        pathHashMemo.clear();
+        coverageResizedSeen = false;
+        lastCoverageStats = FrameBuilder::CoverageStats{};
+        lastBudgetFallbacks = 0;
+    }
+
+    /// `CoverageGradientParams` of `paint` drawn through `uvToLocal`; identical to the previous
+    /// one -> the same index.
+    uint32_t coverageGradientParamIndex(const PaintRef& paint, const Mat2x3& uvToLocal) {
+        CoverageGradientParams cp{};
+        cp.gradient = gradientParamsOf(paint);
+        cp.uvToLocal[0] = uvToLocal.a;
+        cp.uvToLocal[1] = uvToLocal.b;
+        cp.uvToLocal[2] = uvToLocal.c;
+        cp.uvToLocal[3] = uvToLocal.d;
+        cp.uvToLocal[4] = uvToLocal.e;
+        cp.uvToLocal[5] = uvToLocal.f;
+        if (haveLastCoverageGradient && std::memcmp(&cp, &lastCoverageGradient, sizeof(cp)) == 0) {
+            return lastCoverageGradientIndex;
+        }
+        lastCoverageGradient = cp;
+        lastCoverageGradientIndex = emit.pushParams(cp);
+        haveLastCoverageGradient = true;
+        return lastCoverageGradientIndex;
+    }
+
+    /// Draws the fill of `path` under `deviceXf` as one coverage quad (Docs/tasks/T-660b.md item
+    /// 3): the bitmap of (path, rule, linear part, quarter-pixel phase) from the atlas, rasterized
+    /// and inserted on a miss, placed at the whole-pixel translation. False (the caller draws it
+    /// with stencil-then-cover, hard edged) when the transform is not cacheable, the bitmap would
+    /// exceed the frame budget or kMaxCoverageBitmapSide, rasterization or the insert fails, or
+    /// the page has no device texture. `pts` = the flattened device contours (for the box).
+    /// T-672 (§10.11 item 2, large-shape tiling): a bitmap wider or taller than
+    /// kCoverageTileThreshold is stored and drawn as kCoverageTileSide tiles (drawCoverageTiles); a
+    /// tiled shape missing any tile is rasterized again and the missing tiles put back.
+    /// T-661: `source` may be a stroke (its outline is rebuilt under the raster transform on a
+    /// miss; `pts` is then the device outline).
+    bool fillCoverage(const CoverageSource& source, std::span<const Vec2> pts, const Mat2x3& deviceXf,
+                      FillRule rule, const PaintRef& paint) {
+        CoverageKey key;
+        int32_t wholeX = 0, wholeY = 0;
+        uint8_t subX = 0, subY = 0;
+        const uint64_t hash = source.glyph    ? source.glyphHash
+                              : source.stroke ? strokeContentHash(pathContentHash(*source.path), source)
+                                              : pathContentHash(*source.path);
+        if (!makeCoverageKey(hash, rule, deviceXf, key) ||
+            !splitCoverageTranslation(deviceXf.e, wholeX, subX) ||
+            !splitCoverageTranslation(deviceXf.f, wholeY, subY)) {
+            ++statCoverageFallbacks;
+            return false;
+        }
+        CoverageEntry entry;
+        bool cached = coverageAtlas.lookup(key, entry);
+        if (cached && entry.kind == CoverageEntryKind::Tiled) {
+            cached = coverageAtlas.lookupTiles(key, entry, coverageTiles);
+        }
+        if (cached) {
+            ++statCoverageHits;
+        } else {
+            ++statCoverageMisses;
+            // The bitmap's size from the device box (rounded outward, 1 px border each side).
+            const Rect b = boundsOf(pts);
+            const double bw =
+                std::ceil(static_cast<double>(b.x) + b.w) - std::floor(static_cast<double>(b.x)) + 3.0;
+            const double bh =
+                std::ceil(static_cast<double>(b.y) + b.h) - std::floor(static_cast<double>(b.y)) + 3.0;
+            if (!(bw > 0.0 && bh > 0.0) || bw > kMaxCoverageBitmapSide + 3.0 ||
+                bh > kMaxCoverageBitmapSide + 3.0) {
+                ++statCoverageFallbacks;
+                return false;
+            }
+            if (!coverageAtlas.budgetAllows()) {
+                // T-662: held back by the frame budget -- the next build draws it (wantsAnotherFrame).
+                ++statCoverageFallbacks;
+                ++statCoverageBudgetFallbacks;
+                return false;
+            }
+            Mat2x3 rasterXf = deviceXf;  // the linear part and the quantized fraction of the move
+            rasterXf.e = static_cast<float>(subX) * 0.25f;
+            rasterXf.f = static_cast<float>(subY) * 0.25f;
+            bool rasterized = false;
+            if (source.glyph) {
+                rasterized =
+                    rasterizeCoverage(source.glyphVerbs, source.glyphPoints, rasterXf, rule, coverageBitmap);
+            } else if (source.stroke) {
+                rasterized = rasterizeStrokeCoverage(source, rasterXf);
+            } else {
+                const PathRef& path = *source.path;
+                const std::span<const PathVerb> verbs(list->verbs.data() + path.verbOffset, path.verbCount);
+                const std::span<const float> points(list->points.data() + path.pointOffset, path.pointCount);
+                rasterized = rasterizeCoverage(verbs, points, rasterXf, rule, coverageBitmap);
+            }
+            if (!rasterized) {
+                ++statCoverageFallbacks;
+                return false;
+            }
+            // T-662: the budget counts the pixels the rasterizer covered, not the bitmap's box.
+            coverageAtlas.noteRasterized(coverageBitmap.coveredPixels);
+            const bool tiled = coverageBitmap.width > kCoverageTileThreshold ||
+                               coverageBitmap.height > kCoverageTileThreshold;
+            const bool inserted = tiled ? coverageAtlas.insertTiles(key, coverageBitmap, entry, coverageTiles)
+                                        : coverageAtlas.insert(key, coverageBitmap, entry);
+            if (coverageAtlas.wasResized()) {
+                coverageResizedSeen = true;
+            }
+            if (!inserted) {
+                ++statCoverageFallbacks;
+                return false;
+            }
+        }
+        if (entry.kind == CoverageEntryKind::Tiled) {
+            return drawCoverageTiles(entry, wholeX, wholeY, deviceXf, paint);
+        }
+        const TextureHandle tex = ensureCoverageTexture(entry.page);
+        if (tex == 0) {
+            ++statCoverageFallbacks;
+            return false;
+        }
+
+        // The quad: whole device pixels, the bitmap's texels 1:1 on them.
+        const float x0 = static_cast<float>(static_cast<int64_t>(wholeX) + entry.offsetX);
+        const float y0 = static_cast<float>(static_cast<int64_t>(wholeY) + entry.offsetY);
+        const float x1 = x0 + static_cast<float>(entry.width);
+        const float y1 = y0 + static_cast<float>(entry.height);
+        emitCoverageQuad(entry, tex, x0, y0, x1, y1, deviceXf, paint);
+        return true;
+    }
+
+    /// One coverage quad at device rect (x0, y0)-(x1, y1) sampling `entry`'s uv rect on `tex`
+    /// (T-660b's quad; T-672 also uses it for edge tiles and, with u0 == u1 and v0 == v1, for runs
+    /// of full tiles of a Solid paint).
+    void emitCoverageQuad(const CoverageEntry& entry, TextureHandle tex, float x0, float y0, float x1,
+                          float y1, const Mat2x3& deviceXf, const PaintRef& paint) {
+        DrawCmd c;
+        c.blend = Blend::SrcOver;
+        c.stencilOp = StencilOp::TestEqualRef;
+        c.stencilRef = static_cast<uint8_t>(clipDepth);
+        c.sampler = Sampler::LinearClamp;
+        c.coverage = tex;
+        uint32_t rgba = 0xFFFFFFFFu;
+        if (isGradientKind(paint.kind)) {
+            // uv -> device (texel scale 1:1) -> path-local through the cover pass's own inverse.
+            const float side = static_cast<float>(coverageAtlas.pageSize(entry.page));
+            const Mat2x3 deviceFromUv{side, 0.0f, 0.0f, side, x0 - entry.u0 * side, y0 - entry.v0 * side};
+            c.shading = Shading::Gradient;
+            c.texture = luts.get(gradientStops(paint));
+            c.paramIndex = coverageGradientParamIndex(paint, mul(safeInverse(deviceXf), deviceFromUv));
+        } else {
+            c.shading = Shading::Solid;
+            rgba = packPremultiplied(paint.color);
+        }
+        const Vertex v[4] = {
+            Vertex{x0, y0, 1.0f, entry.u0, entry.v0, rgba},
+            Vertex{x1, y0, 1.0f, entry.u1, entry.v0, rgba},
+            Vertex{x1, y1, 1.0f, entry.u1, entry.v1, rgba},
+            Vertex{x0, y1, 1.0f, entry.u0, entry.v1, rgba},
+        };
+        emit.pushCmd(c, emit.quad(v));
+    }
+
+    /// T-672: draws the tiled shape `header` from `coverageTiles` (row-major, as lookupTiles /
+    /// insertTiles left them) placed at the whole-pixel translation: empty tiles are skipped, edge
+    /// tiles are coverage quads like a small shape's bitmap, and horizontally adjacent full tiles
+    /// on the same page are one quad -- for a Solid paint sampling the page's reserved all-255
+    /// block; for a gradient a plain Gradient cover quad (coverage 1), since the coverage gradient
+    /// shader takes the paint position from the uv, which is constant on a full tile. False (the
+    /// caller falls back) only when a page has no device texture; nothing is emitted then.
+    bool drawCoverageTiles(const CoverageEntry& header, int32_t wholeX, int32_t wholeY,
+                           const Mat2x3& deviceXf, const PaintRef& paint) {
+        int cols = 0, rows = 0;
+        if (!coverageTileGrid(header.width, header.height, cols, rows) ||
+            coverageTiles.size() != static_cast<size_t>(cols) * static_cast<size_t>(rows)) {
+            ++statCoverageFallbacks;
+            return false;
+        }
+        for (const CoverageEntry& t : coverageTiles) {
+            if (t.kind != CoverageEntryKind::Empty && ensureCoverageTexture(t.page) == 0) {
+                ++statCoverageFallbacks;
+                return false;
+            }
+        }
+        const bool gradient = isGradientKind(paint.kind);
+        for (int ty = 0; ty < rows; ++ty) {
+            const CoverageEntry* row =
+                coverageTiles.data() + static_cast<size_t>(ty) * static_cast<size_t>(cols);
+            for (int tx = 0; tx < cols; ++tx) {
+                const CoverageEntry& t = row[tx];
+                const float x0 = static_cast<float>(static_cast<int64_t>(wholeX) + t.offsetX);
+                const float y0 = static_cast<float>(static_cast<int64_t>(wholeY) + t.offsetY);
+                const float y1 = y0 + static_cast<float>(t.height);
+                if (t.kind == CoverageEntryKind::Empty) {
+                    ++statCoverageUniformTiles;
+                    continue;
+                }
+                if (t.kind == CoverageEntryKind::Bitmap) {
+                    ++statCoverageTiles;
+                    emitCoverageQuad(t, coverageTextures[t.page], x0, y0, x0 + static_cast<float>(t.width),
+                                     y1, deviceXf, paint);
+                    continue;
+                }
+                // A run of full tiles on one page.
+                int end = tx;
+                float x1 = x0 + static_cast<float>(t.width);
+                while (end + 1 < cols && row[end + 1].kind == CoverageEntryKind::Full &&
+                       row[end + 1].page == t.page) {
+                    ++end;
+                    x1 += static_cast<float>(row[end].width);
+                }
+                statCoverageUniformTiles += static_cast<uint32_t>(end - tx + 1);
+                if (gradient) {
+                    DrawCmd cover;
+                    cover.blend = Blend::SrcOver;
+                    cover.stencilOp = StencilOp::TestEqualRef;
+                    cover.stencilRef = static_cast<uint8_t>(clipDepth);
+                    cover.shading = Shading::Gradient;
+                    cover.texture = luts.get(gradientStops(paint));
+                    cover.sampler = Sampler::LinearClamp;
+                    cover.paramIndex = gradientParamIndex(paint);
+                    const Rect r{x0, y0, x1 - x0, y1 - y0};
+                    emit.pushCmd(cover, emitBoundsQuad(r, safeInverse(deviceXf), true, 0xFFFFFFFFu));
+                } else {
+                    emitCoverageQuad(t, coverageTextures[t.page], x0, y0, x1, y1, deviceXf, paint);
+                }
+                tx = end;
+            }
+        }
+        return true;
     }
 
     // ---------------------------------------------------------------------------------------
@@ -1611,7 +2065,12 @@ struct FrameBuilder::Impl {
             return;  // §19.7: the whole path is dropped.
         }
         projPaint = projGradient;
-        fillShapeAndCover(flatPoints, flatStarts, deviceXf, cmd.rule, cmd.paint, cmd.antialias != 0);
+        CoverageSource coverage;
+        if (!projecting() && edgeFringe && cmd.antialias != 0) {
+            coverage.path = &cmd.path;
+        }
+        fillShapeAndCover(flatPoints, flatStarts, deviceXf, cmd.rule, cmd.paint, cmd.antialias != 0,
+                          coverage.path != nullptr ? &coverage : nullptr);
         projPaint = false;
     }
 
@@ -1656,7 +2115,23 @@ struct FrameBuilder::Impl {
             return;
         }
         projPaint = projGradient;
-        fillShapeAndCover(strokeOutPoints, strokeOutStarts, deviceXf, FillRule::NonZero, cmd.paint);
+        // T-661 (§10.11 item 3): a stroke the direct paths do not take goes on the coverage atlas
+        // at 1x, its outline made exactly as above (and as SW makes it).
+        CoverageSource coverage;
+        if (!projecting() && edgeFringe) {
+            coverage.path = &cmd.path;
+            coverage.stroke = true;
+            coverage.width = cmd.width * scale;
+            coverage.cap = cmd.cap;
+            coverage.join = cmd.join;
+            coverage.miterLimit = cmd.miterLimit;
+            if (cmd.dashCount > 0) {
+                coverage.dashes = scaledDashes;
+                coverage.dashPhase = cmd.dashPhase * scale;
+            }
+        }
+        fillShapeAndCover(strokeOutPoints, strokeOutStarts, deviceXf, FillRule::NonZero, cmd.paint, true,
+                          coverage.path != nullptr ? &coverage : nullptr);
         projPaint = false;
     }
 
@@ -2262,6 +2737,36 @@ struct FrameBuilder::Impl {
     // DrawGlyphs (Docs/design/10-backends.md §10.3.4).
     // ---------------------------------------------------------------------------------------
 
+    /// T-662 (Docs/tasks/T-662.md item 5): the coverage content hash of a glyph outline -- a tag,
+    /// the shaper (a FontId indexes that shaper's registry), the font, the glyph id and the size as
+    /// bits. A FontId names one face instance: its variable weight and synthetic bold (T-569) are
+    /// part of the id, so they are covered; the glyph's placement, size and any skew are in the raster
+    /// transform, which the key holds besides this hash. Never equal to a path's or stroke's hash
+    /// except by collision.
+    static uint64_t glyphContentHash(const TextShaper* shaper, FontId font, uint32_t glyphId, float size) {
+        uint64_t h = 0x474C5950484F4C31ull;  // "GLYPHOL1"
+        auto mix = [&h](uint64_t v) {
+            h ^= v + 0x9E3779B97F4A7C15ull + (h << 6) + (h >> 2);
+            h *= 0xBF58476D1CE4E5B9ull;
+            h ^= h >> 31;
+        };
+        auto bits = [](float f) {
+            uint32_t u = 0;
+            std::memcpy(&u, &f, sizeof(u));
+            return static_cast<uint64_t>(u);
+        };
+        mix(static_cast<uint64_t>(reinterpret_cast<uintptr_t>(shaper)));
+        mix(static_cast<uint64_t>(font));
+        mix(static_cast<uint64_t>(glyphId));
+        mix(bits(size));
+        mix(bits(kFlattenTolerance));
+        return h;
+    }
+
+    /// T-662 (10 §10.11 item 4): with `edgeFringe` on and no 3D projection, the glyph is drawn as
+    /// a coverage quad (fillCoverage) rasterized from the same outline and flattening SW uses
+    /// (buildGlyphContours: em outline x size, moved to the glyph origin, kFlattenTolerance), keyed
+    /// by glyphContentHash; otherwise, or when that is not possible, as before.
     void doOutlineGlyph(FontId font, uint32_t glyphId, Vec2 glyphPos, float size, const Mat2x3& xf, float dpr,
                         Color color, TextShaper* shaper) {
         if (shaper == nullptr) {
@@ -2285,7 +2790,12 @@ struct FrameBuilder::Impl {
         PaintRef paint{};
         paint.kind = PaintKind::Solid;
         paint.color = color;
-        fillShapeAndCover(flatPoints, flatStarts, deviceXf, FillRule::NonZero, paint);
+        CoverageSource source;
+        source.glyph = true;
+        source.glyphHash = glyphContentHash(shaper, font, glyphId, size);
+        source.glyphVerbs = glyphOutlineVerbs;
+        source.glyphPoints = glyphOutlinePoints;
+        fillShapeAndCover(flatPoints, flatStarts, deviceXf, FillRule::NonZero, paint, true, &source);
     }
 
 #ifndef XT_GPU_NO_TEXT
@@ -3535,6 +4045,10 @@ struct FrameBuilder::Impl {
         pendingClears.clear();
         glyphParamCount = 0;
         haveLastGradient = false;
+        haveLastCoverageGradient = false;
+        statCoverageHits = statCoverageMisses = statCoverageFallbacks = 0;  // T-660b: per attempt
+        statCoverageBudgetFallbacks = 0;                                    // T-662: likewise
+        statCoverageTiles = statCoverageUniformTiles = 0;                   // T-672: likewise
         currentDpr = cl.devicePixelRatio;
         const float dpr = currentDpr;
         lastExternals.clear();
@@ -4087,6 +4601,7 @@ struct FrameBuilder::Impl {
         lastError.clear();
         lastBuildValid = false;
         lastCacheStats = FrameBuilder::EffectCacheStats{};
+        lastBudgetFallbacks = 0;  // T-662
         XT_ASSERT(device != nullptr);
         if (device == nullptr) {
             out.clear();
@@ -4126,11 +4641,22 @@ struct FrameBuilder::Impl {
         directFallback = false;
         statBands = statBandRedraws = statBackdropCopyPx = statPyramidLevels = 0;
         bandPending = 0;
+        // T-660b: the coverage atlas's frame (use marks, the rasterization budget).
+        coverageAtlas.beginFrame();
+        coverageResizedSeen = false;
+        pathHashMemo.clear();
 #ifndef XT_GPU_NO_TEXT
         atlasAllowed = true;
         atlasResetSeen = false;
         effectRunReported = false;
         buildOnce(cl, shaper, assets, ir, out);
+        if (coverageResizedSeen && !atlasResetSeen) {
+            // T-660b: a coverage page grew mid-frame, so quads emitted before it carry uvs of the
+            // old side. Every coverage bitmap of this frame is now cached: a second attempt hits.
+            // (A page grows at most once: only the first page starts small.)
+            coverageResizedSeen = false;
+            buildOnce(cl, shaper, assets, ir, out);
+        }
         if (atlasResetSeen) {
             // The atlas was repacked mid-frame, so quads emitted before the reset point at stale
             // texels. Every glyph of this frame is now cached (or provably does not fit), so a
@@ -4150,7 +4676,21 @@ struct FrameBuilder::Impl {
         prevRunSizes.swap(curRunSizes);
 #else
         buildOnce(cl, shaper, assets, ir, out);
+        if (coverageResizedSeen) {
+            coverageResizedSeen = false;
+            buildOnce(cl, shaper, assets, ir, out);
+        }
 #endif
+        uploadPendingCoverage();
+        coverageAtlas.endFrame();
+        lastCoverageStats.hits = statCoverageHits;
+        lastCoverageStats.misses = statCoverageMisses;
+        lastCoverageStats.fallbacks = statCoverageFallbacks;
+        lastBudgetFallbacks = statCoverageBudgetFallbacks;  // T-662
+        lastCoverageStats.tiles = statCoverageTiles;
+        lastCoverageStats.uniformTiles = statCoverageUniformTiles;
+        lastCoverageStats.rasterizedPixels = coverageAtlas.stats().frameRasterizedPixels;  // every attempt
+        lastCoverageStats.atlasBytes = coverageAtlas.bytes();
         luts.endFrame();
         lastCacheStats.hits = statCacheHits;
         lastCacheStats.misses = statCacheMisses;
@@ -4176,6 +4716,12 @@ struct FrameBuilder::Impl {
         ++frameCount;
         frameCounted = true;
         if (!lastBuildValid || cachePending > 0 || bandPending > 0) {
+            return false;
+        }
+        if (coverageAtlas.hasPendingUploads()) {  // T-660b
+            return false;
+        }
+        if (lastBudgetFallbacks > 0) {  // T-662: a shape the budget held back is drawn by a build
             return false;
         }
         // E4: the frame was built from another IR or resolver (see build()). T-263d: a frame
@@ -4345,8 +4891,12 @@ bool FrameBuilder::lastFrameReusable(AssetResolver* assets, const IrView* ir) co
     return m_impl->lastFrameReusable(assets, ir);
 }
 
+bool FrameBuilder::wantsAnotherFrame() const { return m_impl->lastBudgetFallbacks > 0; }
+
 const char* FrameBuilder::lastError() const { return m_impl->lastError.c_str(); }
 
 FrameBuilder::EffectCacheStats FrameBuilder::lastEffectCacheStats() const { return m_impl->lastCacheStats; }
+
+FrameBuilder::CoverageStats FrameBuilder::lastCoverageStats() const { return m_impl->lastCoverageStats; }
 
 }  // namespace xt::gpu

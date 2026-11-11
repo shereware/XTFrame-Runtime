@@ -230,6 +230,23 @@ std::vector<const DrawCmd*> cmdsWith(const GpuFrame& f, StencilOp op) {
     return out;
 }
 
+/// T-662: uploads into the glyph atlas's pages only (the coverage atlas has pages of its own).
+size_t glyphAtlasUpdates(const FakeDevice& device) {
+    size_t n = 0;
+    for (const UpdateRecord& u : device.updates) {
+        const auto it = device.textures.find(u.tex);
+        n += it != device.textures.end() && it->second.name == "xt glyph atlas" ? 1 : 0;
+    }
+    return n;
+}
+
+/// T-662: the commands drawing coverage-atlas quads (1x outline glyphs among them).
+size_t coverageCmdCount(const GpuFrame& f) {
+    size_t n = 0;
+    for (const DrawCmd& c : f.cmds) n += c.coverage != 0 ? 1 : 0;
+    return n;
+}
+
 // -------------------------------------------------------------------------------------------
 // Hand-built CommandList helpers (same shapes as Tests/gl/test_gl_effects.cpp).
 // -------------------------------------------------------------------------------------------
@@ -643,6 +660,7 @@ TEST_CASE("gpu: FillPath emits winding, cover and clear commands") {
     addFillConcave(cl, 0, 0, 64, 64, Color{0, 1, 0, 0.5f}, Mat2x3{}, FillRule::EvenOdd);
     addFillGradient(cl, 10, 10, 20, 20, true);
     Built b;
+    b.builder.setEdgeFringe(false);  // T-660b: with the fringe on, these are coverage quads
     buildInto(b, cl, 64, 64);
     const GpuFrame& f = b.frame;
 
@@ -988,12 +1006,12 @@ TEST_CASE("gpu: T-155 NonZero rings need opposite windings; nested same-winding 
     Built b;
     buildInto(b, cl, 64, 64);
     const GpuFrame& f = b.frame;
-    // ring (1) | winding, cover, clear (3)
-    REQUIRE(f.cmds.size() == 4);
+    // ring (1) | T-660b: the nested same-winding pair is a coverage quad (1)
+    REQUIRE(f.cmds.size() == 2);
     CHECK(f.cmds[0].shading == Shading::Solid);
     CHECK(f.cmds[0].vertexCount == 16);
-    CHECK(f.cmds[1].stencilOp == StencilOp::WriteIncrWrap);
-    CHECK(f.cmds[3].stencilOp == StencilOp::ClearRect);
+    CHECK(f.cmds[1].coverage != 0);
+    CHECK(f.cmds[1].stencilOp == StencilOp::TestEqualRef);
 }
 
 TEST_CASE("gpu: T-155 disjoint convex contours of one path are fans in one command") {
@@ -1004,11 +1022,13 @@ TEST_CASE("gpu: T-155 disjoint convex contours of one path are fans in one comma
     Built b;
     buildInto(b, cl, 64, 64);
     const GpuFrame& f = b.frame;
-    REQUIRE(f.cmds.size() == 4);
+    // T-660b: the second pair (fringes would overlap) is a coverage quad.
+    REQUIRE(f.cmds.size() == 2);
     CHECK(f.cmds[0].shading == Shading::Solid);
     CHECK(f.cmds[0].vertexCount == 16);
     CHECK(f.cmds[0].indexCount == 60);
-    CHECK(f.cmds[1].stencilOp == StencilOp::WriteIncrWrap);
+    CHECK(f.cmds[1].coverage != 0);
+    CHECK(f.cmds[1].vertexCount == 4);
 }
 
 TEST_CASE("gpu: T-155 a rectangular PushClipPath becomes a scissor level") {
@@ -1079,6 +1099,7 @@ TEST_CASE("gpu: T-155 stencil fills defer their ClearRect until a winding overla
     addFillConcave(cl, 0, 0, 20, 20, Color{1, 1, 0, 1});
     addPopClip(cl);
     Built b;
+    b.builder.setEdgeFringe(false);  // T-660b: with the fringe on, these are coverage quads
     buildInto(b, cl, 64, 64);
     const GpuFrame& f = b.frame;
     // W C | W C | Clear(2 rects) | W C | Clear(1) | W C | Clear(1)
@@ -2107,7 +2128,9 @@ TEST_CASE("gpu: rotated DrawGlyphs (multisampled target) and a missing atlas fal
         buildGlyphsList(shaper, "Hi", 16.0f, Vec2{4, 24}, Mat2x3{}, Color{0, 0, 0, 1}, 96, 32);
     buildInto(b2, plain, 96, 32, &shaper);
     CHECK(cmdsWith(b2.frame, Shading::Glyph).empty());
-    CHECK(cmdsWith(b2.frame, StencilOp::WriteIncrWrap).size() == 1);
+    // T-662: on a single-sampled target the outline glyphs are coverage-atlas quads.
+    CHECK(cmdsWith(b2.frame, StencilOp::WriteIncrWrap).empty());
+    CHECK(coverageCmdCount(b2.frame) >= 1);
 }
 
 TEST_CASE("gpu: T-653 rotated / skewed DrawGlyphs on a single-sampled target are drawn from the atlas") {
@@ -2172,7 +2195,9 @@ TEST_CASE("gpu: an atlas reset mid-frame rebuilds the frame against the repacked
     if (!glyphCmds.empty()) {
         CHECK(!sawReset);
     }
-    CHECK((!glyphCmds.empty() || !cmdsWith(b.frame, StencilOp::WriteIncrWrap).empty()));
+    // T-662: the outline fallback is a coverage quad on this single-sampled target.
+    CHECK((!glyphCmds.empty() || !cmdsWith(b.frame, StencilOp::WriteIncrWrap).empty() ||
+           coverageCmdCount(b.frame) > 0));
 }
 
 // T-270b: ElementRef::setText overwrites the Text node's runtime text slot in place (same StringId,
@@ -2437,8 +2462,10 @@ TEST_CASE("gpu: T-263b atlas glyphs are rasterized at the run's scaled size") {
         Built b;
         buildWithAtlas(b, shaper, atlas, flipped);
         CHECK(cmdsWith(b.frame, Shading::Glyph).empty());
-        CHECK(cmdsWith(b.frame, StencilOp::WriteIncrWrap).size() == 1);  // the concave "H"
-        CHECK(b.device.updates.empty());
+        // T-662: at 1x the outlines are coverage-atlas quads (stencil-then-cover before).
+        CHECK(cmdsWith(b.frame, StencilOp::WriteIncrWrap).empty());
+        CHECK(coverageCmdCount(b.frame) >= 1);
+        CHECK(glyphAtlasUpdates(b.device) == 0);
         // ...and its glyph effect is not drawn at all (SW draws none for such a run).
         flipped.glyphRuns[0].effect = GlyphEffect::Blur;
         flipped.glyphRuns[0].effectRadius = 2.0f;
@@ -2473,7 +2500,7 @@ TEST_CASE("gpu: T-263c a run being scaled stays off the atlas until its size hol
 
     buildAt(1.0f);  // first seen: the atlas, as a static label always was
     CHECK(cmdsWith(b.frame, Shading::Glyph).size() == 1);
-    const size_t firstUploads = b.device.updates.size();
+    const size_t firstUploads = glyphAtlasUpdates(b.device);  // T-662: not the coverage atlas
     CHECK(firstUploads > 0);
     float scale = 1.0f;
     for (int frame = 1; frame < 30; ++frame) {
@@ -2481,17 +2508,17 @@ TEST_CASE("gpu: T-263c a run being scaled stays off the atlas until its size hol
         scale = 1.0f + 0.05f * static_cast<float>(frame);
         buildAt(scale);
         CHECK(outlined());
-        CHECK(b.device.updates.size() == firstUploads);  // nothing rasterized into the atlas
+        CHECK(glyphAtlasUpdates(b.device) == firstUploads);  // nothing rasterized into the atlas
     }
     // The animation stopped: the next frame has the size of the one before and is back on the atlas.
     buildAt(scale);
     CHECK(cmdsWith(b.frame, Shading::Glyph).size() == 1);
     CHECK(cmdsWith(b.frame, StencilOp::WriteIncrWrap).empty());
-    const size_t settledUploads = b.device.updates.size();
+    const size_t settledUploads = glyphAtlasUpdates(b.device);
     CHECK(settledUploads > firstUploads);
     buildAt(scale);
     CHECK(cmdsWith(b.frame, Shading::Glyph).size() == 1);
-    CHECK(b.device.updates.size() == settledUploads);
+    CHECK(glyphAtlasUpdates(b.device) == settledUploads);
 }
 
 TEST_CASE("gpu: T-263c a run rasterized larger than kMaxAtlasGlyphPx is filled from outlines") {
@@ -2514,10 +2541,10 @@ TEST_CASE("gpu: T-263c a run rasterized larger than kMaxAtlasGlyphPx is filled f
         buildWithAtlas(b, shaper, atlas, cl);
         CHECK(cmdsWith(b.frame, Shading::Glyph).empty());
         CHECK(!cmdsWith(b.frame, Shading::Solid).empty());
-        CHECK(b.device.updates.empty());
+        CHECK(glyphAtlasUpdates(b.device) == 0);  // T-662: the coverage atlas uploads its own pages
         b.builder.build(cl, &shaper, nullptr, nullptr, b.frame);  // held for a frame: still outlines
         CHECK(cmdsWith(b.frame, Shading::Glyph).empty());
-        CHECK(b.device.updates.empty());
+        CHECK(glyphAtlasUpdates(b.device) == 0);  // T-662: the coverage atlas uploads its own pages
     }
 }
 
@@ -2559,7 +2586,7 @@ TEST_CASE("gpu: T-263e a glyph-effect run over a quarter of an atlas page is dra
         Built b;
         buildWithAtlas(b, shaper, atlas, label);  // a small label already lives in the atlas
         REQUIRE(cmdsWith(b.frame, Shading::Glyph).size() == 1);
-        const size_t labelUploads = b.device.updates.size();
+        const size_t labelUploads = glyphAtlasUpdates(b.device);  // T-662: not the coverage atlas
         REQUIRE(labelUploads > 0);
         const std::vector<float> labelUvs = glyphUvs(b.frame);
 
@@ -2568,8 +2595,8 @@ TEST_CASE("gpu: T-263e a glyph-effect run over a quarter of an atlas page is dra
             b.builder.build(effectRun, &shaper, nullptr, nullptr, b.frame);
             checkFrameWellFormed(b.frame);
             CHECK(cmdsWith(b.frame, Shading::Glyph).empty());
-            CHECK(!cmdsWith(b.frame, Shading::Solid).empty());  // the glyph outlines, filled
-            CHECK(b.device.updates.size() == labelUploads);     // nothing went into the atlas
+            CHECK(!cmdsWith(b.frame, Shading::Solid).empty());   // the glyph outlines, filled
+            CHECK(glyphAtlasUpdates(b.device) == labelUploads);  // nothing went into the atlas
             CHECK(std::string(b.builder.lastError()) ==
                   "glyph effect run too large for the atlas; drawn without its effect");
         }
@@ -2577,7 +2604,7 @@ TEST_CASE("gpu: T-263e a glyph-effect run over a quarter of an atlas page is dra
         b.builder.build(label, &shaper, nullptr, nullptr, b.frame);
         CHECK(cmdsWith(b.frame, Shading::Glyph).size() == 1);
         CHECK(glyphUvs(b.frame) == labelUvs);
-        CHECK(b.device.updates.size() == labelUploads);
+        CHECK(glyphAtlasUpdates(b.device) == labelUploads);
         CHECK(std::string(b.builder.lastError()).empty());
     }
     SUBCASE("a run of one repeated glyph counts it once") {
@@ -3008,6 +3035,10 @@ TEST_CASE("gpu: UI documents build well-formed frames (snapshots)") {
         {"ui_3d_card_flip.xt", "ui_3d_card_flip", 256, 256, 0.0f},
         // T-659: fringed (rotated, skewed, fractional, atlas cell) and plain (on-grid) image quads.
         {"ui_image_transform.xt", "ui_image_transform", 256, 256, 0.0f},
+        // T-660b: concave fills drawn from the coverage atlas (one over 1024 px falls back).
+        {"ui_coverage_fill.xt", "ui_coverage_fill", 256, 256, 0.0f},
+        // T-661: strokes drawn from the coverage atlas (the long slanted polyline is tiled).
+        {"ui_coverage_stroke.xt", "ui_coverage_stroke", 256, 256, 0.0f},
     };
     for (const Doc& d : docs) {
         INFO("document: ", std::string(d.file));

@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- T-660b (10 section 10.11 item 2): concave and multi-contour fills, which the GPU backends draw
+       from the coverage atlas at 1x. -->
+  <defs>
+    <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff3b30"/>
+      <stop offset="1" stop-color="#1144ee"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Row 1: a concave five-point star (solid); an even-odd donut with a star-shaped hole (linear
+       gradient; a convex hole would take the direct ring path instead); a multi-contour icon (a
+       triangle with an exclamation mark cut out, even-odd). -->
+  <polygon points="40,6 48.23,28.67 72.34,29.49 53.31,44.33 59.98,67.51 40,54 20.02,67.51 26.69,44.33 7.66,29.49 31.77,28.67"
+           fill="#3366cc"/>
+  <path d="M128 6 A 34 34 0 1 1 127.99 6 Z
+           M128 22 L131.44 31.69 L140.73 27.27 L136.31 36.56 L146 40 L136.31 43.44 L140.73 52.73
+           L131.44 48.31 L128 58 L124.56 48.31 L115.27 52.73 L119.69 43.44 L110 40 L119.69 36.56
+           L115.27 27.27 L124.56 31.69 Z"
+        fill="url(#lg)" fill-rule="evenodd"/>
+  <path d="M216 8 L250 68 L182 68 Z M212 28 H220 L218.5 50 H213.5 Z M212.5 55 H219.5 V62 H212.5 Z"
+        fill="#cc5500" fill-rule="evenodd"/>
+
+  <!-- Row 2: a concave arrow rotated 17 degrees; the same L shape twice, the second copy moved by a
+       further 0.3 px (another quarter-pixel phase). -->
+  <g transform="rotate(17 48 120)">
+    <polygon points="12,108 52,108 52,92 84,120 52,148 52,132 12,132 24,120" fill="#22aa55"/>
+  </g>
+  <g transform="translate(120 88)">
+    <path d="M0 0 H14 V40 H44 V54 H0 Z" fill="#8844aa"/>
+  </g>
+  <g transform="translate(180.3 88.3)">
+    <path d="M0 0 H14 V40 H44 V54 H0 Z" fill="#8844aa"/>
+  </g>
+
+  <!-- Row 3: a concave shape wider than 1024 px (mostly off the image): its coverage bitmap is over
+       the limit, so it is drawn with stencil-then-cover (hard edged) on the GPU. -->
+  <path d="M-1400 236 H200 V190 H216 V250 H-1400 Z" fill="#2288aa"/>
+</svg>

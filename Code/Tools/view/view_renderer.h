@@ -66,8 +66,23 @@ struct GpuFrameCounters {
     uint32_t effectCacheHits = 0;
     uint32_t effectCacheMisses = 0;
     uint32_t effectCacheStores = 0;
-    float buildMs = 0;   ///< FrameBuilder::build (0 for a reused frame)
-    float submitMs = 0;  ///< the device's encode and queue submit
+    uint32_t coverageHits = 0;  ///< T-660b: the coverage atlas (FrameBuilder::lastCoverageStats)
+    uint32_t coverageMisses = 0;
+    uint64_t coverageRasterizedPixels = 0;
+    uint32_t coverageFallbacks = 0;
+    uint32_t coverageTiles = 0;  ///< T-672: edge / uniform tiles of the tiled fills
+    uint32_t coverageUniformTiles = 0;
+    uint64_t coverageAtlasBytes = 0;  ///< T-672: the coverage atlas pages (R8)
+    float buildMs = 0;                ///< FrameBuilder::build (0 for a reused frame)
+    float submitMs = 0;               ///< the device's encode and queue submit
+    /// T-670: live / peak non-sampler bindings of the wgpu device (WgpuDeviceStats); `hasBindings`
+    /// is false for a renderer without them.
+    bool hasBindings = false;
+    uint32_t liveBindings = 0;
+    uint32_t peakBindings = 0;
+    /// T-674: waits of the frame's begin for the GPU (more than two frames behind) and their ms.
+    uint32_t inflightWaits = 0;
+    float inflightWaitMs = 0;
 };
 
 /// Where the view's frame loop draws when it is not the shell or the plain xt_sw buffer.

@@ -142,8 +142,9 @@ public:
     /// convex contour is drawn directly with a 1 px coverage fringe (a ring of alpha-0 vertices
     /// around an inset fan) so its edges are smooth on a target without multisampling. A host
     /// whose target is multisampled turns it off, since MSAA already resolves the edge and the
-    /// two together thin the shape by about a quarter pixel. Concave and multi-contour fills
-    /// always go through stencil-then-cover and rely on MSAA either way.
+    /// two together thin the shape by about a quarter pixel. T-660b: with it on, concave and
+    /// multi-contour fills (FillPath) are drawn from the coverage atlas (`lastCoverageStats`);
+    /// with it off they go through stencil-then-cover and rely on MSAA.
     void setEdgeFringe(bool enabled);
 
     /// Drops the cached texture of `asset` (destroying it on the device); the next DrawImage of
@@ -190,7 +191,17 @@ public:
     /// due retry -- so that the host builds and the attempt is made on a screen where nothing
     /// else changes. A host that does not build then is not asked again for that retry; the
     /// attempt is made by its next build.
+    /// T-662: also false after a build that held a coverage shape back for the frame budget (see
+    /// wantsAnotherFrame).
     bool lastFrameReusable(AssetResolver* assets, const IrView* ir) const;
+
+    /// T-662 (Docs/design/10-backends.md §10.11 item 2, supplement 2): true when the last `build`
+    /// drew a coverage shape with stencil-then-cover (hard edged) only because the frame's
+    /// rasterization budget was used up; a further build draws it from the atlas. A host that
+    /// skips frames with nothing changed builds once more while this is true (as if everything
+    /// were dirty), until it is false. Shapes over the size limit do not count (another build
+    /// would not change them). False before any build and after `shutdown`.
+    bool wantsAnotherFrame() const;
 
     /// Effect result cache limits (T-162): total texels * 4 bytes of live cached targets, and
     /// their count. A segment that would exceed either is drawn every frame instead.
@@ -215,6 +226,27 @@ public:
         uint32_t stores = 0;  ///< results the frame copies into the cache (`GpuFrame::cacheStores`)
     };
     EffectCacheStats lastEffectCacheStats() const;
+
+    /// T-660b (Docs/design/10-backends.md §10.11 item 2): what the coverage atlas did in the last
+    /// `build` (hits, misses, fallbacks: of the frame it produced -- a build that had to start over
+    /// because an atlas grew counts its last attempt; rasterizedPixels: the whole call). With
+    /// `setEdgeFringe(true)`, a FillPath the direct paths do not take is drawn as one quad sampling
+    /// a cached coverage bitmap; it falls back to stencil-then-cover (hard edged) when its bitmap
+    /// would exceed 4096 px a side, when the frame's rasterization budget (2 Mpx of covered
+    /// pixels, counted after each shape, T-662) is already used up, when the atlas cannot hold it,
+    /// or when its transform is not finite. T-672: a bitmap over 512 px a side is stored and drawn
+    /// as 256 px tiles; uniform tiles take no atlas space. Not counted at all: fills under a 3D
+    /// projection or with `antialias == 0` (always stencil-then-cover).
+    struct CoverageStats {
+        uint32_t hits = 0;              ///< fills drawn from a bitmap already in the atlas
+        uint32_t misses = 0;            ///< fills whose bitmap was not in the atlas
+        uint64_t rasterizedPixels = 0;  ///< covered pixels of the bitmaps this build call rasterized (T-662)
+        uint32_t fallbacks = 0;         ///< eligible fills drawn with stencil-then-cover instead
+        uint64_t atlasBytes = 0;        ///< the atlas pages' bytes (R8; the device holds a copy)
+        uint32_t tiles = 0;             ///< T-672: edge tiles (held in the atlas) of the tiled fills drawn
+        uint32_t uniformTiles = 0;      ///< T-672: empty and full tiles of the tiled fills drawn
+    };
+    CoverageStats lastCoverageStats() const;
 
 private:
     struct Impl;

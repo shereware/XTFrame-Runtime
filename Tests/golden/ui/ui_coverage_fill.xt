@@ -1,0 +1,25 @@
+<xt version="2">
+
+  <!-- T-660b (10 section 10.11 item 2): concave fills -- a five-point star, an even-odd donut with a
+       linear gradient, a multi-contour icon, a concave shape rotated 17 deg, one shape twice 0.3 px
+       apart, and a concave shape wider than 1024 px. At 1x the GPU backends draw them from the
+       coverage atlas (the last one falls back to stencil-then-cover). -->
+  <body>
+    <img id="icon" src="coverage_fill.svg"/>
+  </body>
+
+  <layout>
+    body {
+      margin: 0;
+    }
+    #icon {
+      width: 256px;
+      height: 256px;
+    }
+  </layout>
+  <style>
+    #icon {
+      object-fit: fill;
+    }
+  </style>
+</xt>

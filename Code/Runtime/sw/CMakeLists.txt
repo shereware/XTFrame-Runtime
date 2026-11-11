@@ -16,7 +16,6 @@ endif()
 
 add_library(xt_sw STATIC
     src/sw_renderer.cpp
-    src/sw_raster.cpp
     src/sw_png.cpp
     src/sw_paint.cpp
     src/sw_blend.cpp

@@ -13,6 +13,8 @@
 // T-658 (case 14, Docs/design/50-c-abi.md §50.ab item 3): a surface whose frame has no draw command
 // (fixtures/flip `ghost`, its card hidden by a port) is neither drawn nor composited and gets no
 // texture; its info lines carry the target's submit / pass totals.
+// T-674 (cases 16-17, 50 §50.ac item 1): at most two frames in flight per target, observed through the
+// frames-in-flight counters of the target's destroy line.
 
 #include <algorithm>
 #include <cmath>
@@ -1042,6 +1044,113 @@ TEST_CASE("capi gpu 15 (T-657): hidden then shown draws the same bytes from the 
         REQUIRE(xt_surface_detach_gpu(u.s) == XT_STATUS_OK);
     }
     CHECK(xt_gpu_target_destroy(t) == XT_STATUS_OK);
+}
+
+namespace {
+
+/// T-674: the target's destroy line ("...; frames in flight: W wait(s), X ms, peak P; S submits, Q passes")
+/// and the begin_frame warnings (xt_capi_set_log; removed at scope end).
+struct InflightLog {
+    bool destroyed = false;
+    unsigned long waits = 0, peak = 0, submits = 0, passes = 0;
+    double waitMs = -1;
+    int warnings = 0;
+    InflightLog() { xt_capi_set_log(&InflightLog::onLog, this); }
+    ~InflightLog() { xt_capi_set_log(nullptr, nullptr); }
+    InflightLog(const InflightLog&) = delete;
+    InflightLog& operator=(const InflightLog&) = delete;
+    static void onLog(int level, const char* message, void* user) {
+        auto* self = static_cast<InflightLog*>(user);
+        if (level == 1 && std::strstr(message, "xt_gpu_target_begin_frame: ") == message) ++self->warnings;
+        if (level != 0 || std::strstr(message, "xt_gpu_target: destroyed; ") != message) return;
+        const char* p = std::strstr(message, "; frames in flight: ");
+        if (p == nullptr) return;
+        self->destroyed = true;
+        self->waits = SharedLog::after(p, "frames in flight: ");
+        const char* ms = std::strstr(p, " wait(s), ");
+        self->waitMs = ms != nullptr ? std::strtod(ms + std::strlen(" wait(s), "), nullptr) : -1;
+        self->peak = SharedLog::after(p, ", peak ");
+        const char* totals = std::strchr(p + 1, ';');
+        if (totals != nullptr) {
+            self->submits = std::strtoul(totals + 2, nullptr, 10);
+            self->passes = SharedLog::after(totals, " submits, ");
+        }
+    }
+};
+
+}  // namespace
+
+// T-674 (50 §50.ac item 1): 300 frames of an animated multi-pass UI (npdo main-menu) on an offscreen target,
+// no readback: begin_frame keeps at most two frames in flight (the most frames found unfinished at a
+// begin_frame, read from the destroy line, is at most 2), and the frames go on without a warning.
+TEST_CASE("capi gpu 16 (T-674): 300 frames keep at most two frames in flight") {
+    constexpr int kSize = 256;
+    InflightLog log;
+    {
+        Fixture f;
+        xt_gpu_target* t = makeTarget(kSize, kSize);
+        if (t == nullptr) return;
+        xt_bundle* b = xt_bundle_open(XT_CAPI_TEST_NPDO_BUNDLE);
+        REQUIRE_MESSAGE(b != nullptr, xt_capi_last_error());
+        f.bundles.push_back(b);
+        xt_surface_desc desc{};
+        desc.struct_size = sizeof(desc);
+        desc.width = kSize;
+        desc.height = kSize;
+        desc.device_pixel_ratio = 1.0f;
+        desc.premultiplied = 1;
+        desc.run_flow = 1;  // lifecycle.shown plays the intro, rain and fog: every frame changes
+        xt_surface* s = xt_surface_create(b, "main-menu", &desc);
+        REQUIRE_MESSAGE(s != nullptr, xt_capi_last_error());
+        f.surfaces.push_back(s);
+        for (int i = 0; i < 300; ++i) {
+            REQUIRE(xt_gpu_target_begin_frame(t, nullptr) == XT_STATUS_OK);
+            REQUIRE(xt_surface_update(s, 1.0f / 60.0f) == XT_STATUS_OK);
+            REQUIRE_MESSAGE(xt_surface_render_gpu(s, t, nullptr) == XT_STATUS_OK, xt_capi_last_error());
+            REQUIRE(xt_gpu_target_end_frame(t) == XT_STATUS_OK);
+        }
+        REQUIRE(xt_surface_detach_gpu(s) == XT_STATUS_OK);
+        REQUIRE(xt_gpu_target_destroy(t) == XT_STATUS_OK);
+    }
+    REQUIRE(log.destroyed);
+    std::printf("frames in flight over 300 frames: %lu wait(s), %.3f ms, peak %lu; %lu submits, %lu passes\n",
+                log.waits, log.waitMs, log.peak, log.submits, log.passes);
+    CHECK(log.peak <= 2u);
+    CHECK(log.warnings == 0);
+    CHECK(log.waitMs >= 0.0);
+    CHECK(log.submits >= 300u);
+    CHECK(log.submits >= 550u);       // the surface is redrawn on (nearly) every frame, then composited
+    CHECK(log.passes > log.submits);  // the fixture has frames of more than one pass
+}
+
+// T-674: a GPU that keeps up is never waited for -- every frame is read back (a blocking wait for all of
+// it), so each begin_frame finds the frame two back done; xt_gpu_target_trim waits for the rest first.
+TEST_CASE("capi gpu 17 (T-674): begin_frame does not wait while the GPU keeps up") {
+    constexpr int kSize = 64;
+    InflightLog log;
+    {
+        Fixture f;
+        xt_gpu_target* t = makeTarget(kSize, kSize);
+        if (t == nullptr) return;
+        xt_surface* s = flipSurface(f, kSize);
+        const xt_rect all{0, 0, kSize, kSize};
+        Pixels first;
+        for (int i = 0; i < 20; ++i) {
+            frame(t, {{s, all}});
+            const Pixels px = readback(t, kSize, kSize, kSize * 4);
+            if (i == 0) first = px;
+            CHECK(px == first);
+        }
+        REQUIRE(xt_gpu_target_trim(t) == XT_STATUS_OK);
+        frame(t, {{s, all}});
+        CHECK(readback(t, kSize, kSize, kSize * 4) == first);
+        REQUIRE(xt_surface_detach_gpu(s) == XT_STATUS_OK);
+        REQUIRE(xt_gpu_target_destroy(t) == XT_STATUS_OK);
+    }
+    REQUIRE(log.destroyed);
+    CHECK(log.waits == 0u);
+    CHECK(log.peak <= 1u);
+    CHECK(log.warnings == 0);
 }
 
 #ifdef _WIN32

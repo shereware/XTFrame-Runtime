@@ -25,6 +25,7 @@ WGPUBindGroup WgpuDevice::Gpu::bindGroup(WGPUDevice device, const detail::BindGr
                 wgpuBindGroupRelease(kv.second);
             }
             bindGroups.clear();
+            cachedBindings = 0;  // T-670
         }
     }
     WGPUBindGroupEntry e[4] = {WGPU_BIND_GROUP_ENTRY_INIT, WGPU_BIND_GROUP_ENTRY_INIT,
@@ -54,6 +55,10 @@ WGPUBindGroup WgpuDevice::Gpu::bindGroup(WGPUDevice device, const detail::BindGr
     d.entries = e;
     WGPUBindGroup bg = wgpuDeviceCreateBindGroup(device, &d);
     ++creates;
+    for (size_t i = 0; i < count; ++i) {  // T-670: live non-sampler bindings
+        (perFrame ? frameBindings : cachedBindings) += e[i].sampler == nullptr ? 1u : 0u;
+    }
+    noteBindings();
     if (perFrame) {
         frameBindGroups.push_back(bg);
     } else {
@@ -125,11 +130,13 @@ void WgpuDevice::drawCmd(WGPURenderPassEncoder pass, const gpu::DrawCmd& cmd, ui
     uint16_t shader = detail::kShSolid;
     switch (cmd.shading) {
         case Shading::Solid:
+            shader = cmd.coverage != 0 ? detail::kShCoverageSolid : detail::kShSolid;  // T-660b
+            break;
         case Shading::StencilOnly:
             shader = detail::kShSolid;
             break;
         case Shading::Gradient:
-            shader = detail::kShGradient;
+            shader = cmd.coverage != 0 ? detail::kShCoverageGradient : detail::kShGradient;
             break;
         case Shading::Texture:
             shader = detail::kShTexture;
@@ -240,6 +247,14 @@ void WgpuDevice::drawCmd(WGPURenderPassEncoder pass, const gpu::DrawCmd& cmd, ui
         case Shading::Gradient:
         case Shading::Glyph:
             bk.v0 = textureView(cmd.texture);  // gl_device.cpp: always LinearClamp
+            if (cmd.shading == Shading::Gradient && cmd.coverage != 0) {
+                bk.v1 = textureView(cmd.coverage);  // T-660b: t1 = the coverage page
+            }
+            break;
+        case Shading::Solid:
+            if (cmd.coverage != 0) {
+                bk.v0 = textureView(cmd.coverage);  // T-660b: t0 = the coverage page, LinearClamp
+            }
             break;
         case Shading::Composite:
         case Shading::Effect:

@@ -267,6 +267,15 @@ struct DrawCmd {
     /// `ParticleParams`.
     uint32_t firstInstance = 0;
     uint32_t instanceCount = 0;
+    /// T-660b (Docs/design/10-backends.md §10.11 item 2): the coverage quad. 0 = none. Nonzero only
+    /// with `Shading::Solid` or `Shading::Gradient` (every other shading ignores it): an R8 texture
+    /// whose red channel, sampled LinearClamp at the vertex `u,v`, multiplies the shading's whole
+    /// output (linear coverage, no gamma). The builder draws such quads on whole device pixels
+    /// with the texture's texels 1:1 on the target's pixels. `Solid`: output = vertex `rgba` *
+    /// coverage. `Gradient`: `paramIndex` holds `CoverageGradientParams`, and the path-local
+    /// position the gradient is evaluated at is `CoverageGradientParams::uvToLocal` applied to the
+    /// vertex `u,v` (not `u,v` themselves); output = the Gradient output * coverage.
+    TextureHandle coverage = 0;
 };
 
 /// A contiguous run of commands drawn into one target. Passes are executed in order.
@@ -363,6 +372,15 @@ struct GradientParams {
     float p0x, p0y, p1x, p1y;
     float rx, ry;
     float alpha;
+};
+
+/// T-660b: `Shading::Gradient` with `DrawCmd::coverage` set: the gradient's parameters, then the
+/// affine map from the vertex `u,v` (the coverage texture's coordinates) to the path-local
+/// position `p` the gradient is evaluated at:
+/// `p = (m[0] * u + m[2] * v + m[4], m[1] * u + m[3] * v + m[5])` (Mat2x3's a, b, c, d, e, f).
+struct CoverageGradientParams {
+    GradientParams gradient;
+    float uvToLocal[6];
 };
 
 /// `Shading::Glyph`: coverage gamma (Docs/design/23-host-integration.md §23.4). T-178 (tail):

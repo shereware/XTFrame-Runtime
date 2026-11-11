@@ -47,6 +47,8 @@ enum ShaderId : uint16_t {
     kShComposite,
     kShParticleTexture,
     kShParticleSolid,
+    kShCoverageSolid,     ///< T-660b: Solid with DrawCmd::coverage
+    kShCoverageGradient,  ///< T-660b: Gradient with DrawCmd::coverage
     kShFxGaussScalar,
     kShFxGaussColor,
     kShFxDilate,
@@ -299,6 +301,17 @@ struct WgpuDevice::Gpu {
     /// host may release that view and a new one may take its address.
     std::vector<WGPUBindGroup> frameBindGroups;
     static constexpr size_t kMaxBindGroups = 2048;
+    /// T-670 (50 §50.ab addendum 1 iii): live non-sampler bindings (texture views and buffers) of
+    /// passGroup + paramGroup, of bindGroups and of frameBindGroups; the peak since init, and whether
+    /// the one-time warning past kBindingsWarnThreshold (wgpu_util.h) was printed.
+    uint32_t uniformBindings = 0;
+    uint32_t cachedBindings = 0;
+    uint32_t frameBindings = 0;
+    uint32_t peakBindings = 0;
+    bool bindingsWarned = false;
+    uint32_t liveBindings() const { return uniformBindings + cachedBindings + frameBindings; }
+    /// After a create: updates the peak and warns once per device past the threshold (wgpu_device.cpp).
+    void noteBindings();
 
     // Encoder state of the open render pass.
     WGPURenderPipeline pipeline = nullptr;
@@ -319,6 +332,7 @@ struct WgpuDevice::Gpu {
             wgpuBindGroupRelease(kv.second);
         }
         bindGroups.clear();
+        cachedBindings = 0;
         releaseFrameBindGroups();
     }
     void releaseFrameBindGroups() {
@@ -326,6 +340,7 @@ struct WgpuDevice::Gpu {
             wgpuBindGroupRelease(bg);
         }
         frameBindGroups.clear();
+        frameBindings = 0;
     }
     /// The bind group of `key`, cached unless `perFrame` (see frameBindGroups).
     WGPUBindGroup bindGroup(WGPUDevice device, const detail::BindGroupKey& key, uint32_t& creates,

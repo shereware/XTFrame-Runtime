@@ -27,10 +27,11 @@ bool batchable(const DrawCmd& c) {
 }
 
 bool sameState(const DrawCmd& a, const DrawCmd& b) {
-    return a.texture == b.texture && a.src == b.src && a.aux == b.aux && a.paramIndex == b.paramIndex &&
-           a.shading == b.shading && a.blend == b.blend && a.stencilOp == b.stencilOp &&
-           a.stencilRef == b.stencilRef && a.sampler == b.sampler && a.program == b.program &&
-           a.clipX == b.clipX && a.clipY == b.clipY && a.clipW == b.clipW && a.clipH == b.clipH;
+    return a.texture == b.texture && a.coverage == b.coverage && a.src == b.src && a.aux == b.aux &&
+           a.paramIndex == b.paramIndex && a.shading == b.shading && a.blend == b.blend &&
+           a.stencilOp == b.stencilOp && a.stencilRef == b.stencilRef && a.sampler == b.sampler &&
+           a.program == b.program && a.clipX == b.clipX && a.clipY == b.clipY && a.clipW == b.clipW &&
+           a.clipH == b.clipH;
 }
 
 }  // namespace

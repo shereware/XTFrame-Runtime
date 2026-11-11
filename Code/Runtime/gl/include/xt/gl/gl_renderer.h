@@ -150,6 +150,10 @@ public:
     /// GL call counts of the last `render` (T-159).
     GlFrameStats frameStats() const;
 
+    /// T-662 (Docs/design/10-backends.md §10.11 item 2, supplement 2): `gpu::FrameBuilder::
+    /// wantsAnotherFrame()` of the frame last built, as `WgpuRenderer::wantsAnotherFrame`.
+    bool wantsAnotherFrame() const;
+
 private:
     struct Impl;
     std::unique_ptr<Impl> m_impl;

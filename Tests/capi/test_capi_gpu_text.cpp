@@ -234,7 +234,11 @@ TEST_CASE(
                     ref, at1, at4);
         CHECK(ref > 0);
         CHECK(at4 * 2 >= ref);  // 4x resolves edges to the SW coverage's order
-        CHECK(at4 > at1);       // single-sampled stencil-then-cover is a hard edge
+        // T-660b / T-662: at sample_count 1 the non-convex fill and the word's outline glyphs are
+        // drawn from the coverage atlas, whose bitmaps are SW's own coverage (10 section 10.11
+        // items 2 and 4): as many intermediate-alpha pixels as SW, give or take.
+        CHECK(at1 * 2 >= ref);
+        CHECK(at1 <= ref * 2);
     }
     for (xt_surface* s : b.surfaces) (void)xt_surface_detach_gpu(s);
     CHECK(xt_gpu_target_destroy(one) == XT_STATUS_OK);
@@ -351,6 +355,49 @@ TEST_CASE(
         for (xt_surface* s : b.surfaces) (void)xt_surface_detach_gpu(s);
         CHECK(xt_gpu_target_destroy(t) == XT_STATUS_OK);
     }
+}
+
+TEST_CASE("capi gpu text 5 (T-662): a static surface over the coverage budget repaints itself until done") {
+    // The `budget` UI: six notched squares of ~0.5 Mpx covered pixels each, 3 Mpx over the frame
+    // budget of 2 Mpx (10 section 10.11 item 2, supplement 2). The first frame draws the last ones
+    // hard edged; the next xt_surface_render_gpu draws again without any damage until the budget
+    // held nothing back, after which the frame is reused unchanged.
+    constexpr int bw = 1500, bh = 1000;
+    TextBundle b;
+    xt_gpu_target_desc desc = textDesc(1);
+    desc.width = bw;
+    desc.height = bh;
+    xt_gpu_target* t = createOrSkip(desc);
+    if (t == nullptr) return;
+    xt_surface_desc sd{};
+    sd.struct_size = sizeof(sd);
+    sd.width = bw;
+    sd.height = bh;
+    sd.device_pixel_ratio = 1.0f;
+    sd.premultiplied = 1;
+    sd.system_fonts = 0;
+    xt_surface* s = xt_surface_create(b.bundle, "budget", &sd);
+    REQUIRE_MESSAGE(s != nullptr, std::string(xt_capi_last_error()));
+    b.surfaces.push_back(s);
+    auto frame = [&]() {
+        REQUIRE(xt_gpu_target_begin_frame(t, nullptr) == XT_STATUS_OK);
+        REQUIRE(xt_surface_update(s, 0.0f) == XT_STATUS_OK);
+        REQUIRE_MESSAGE(xt_surface_render_gpu(s, t, nullptr) == XT_STATUS_OK,
+                        std::string(xt_capi_last_error()));
+        REQUIRE(xt_gpu_target_end_frame(t) == XT_STATUS_OK);
+        Image px(static_cast<size_t>(bw) * bh * 4u, 0);
+        REQUIRE_MESSAGE(xt_gpu_target_readback(t, px.data(), bw * 4) == XT_STATUS_OK,
+                        std::string(xt_capi_last_error()));
+        return px;
+    };
+    const Image first = frame();
+    std::vector<Image> frames;
+    for (int i = 0; i < 4; ++i) frames.push_back(frame());
+    CHECK(first != frames[0]);      // the shapes held back are drawn (antialiased) by frame 2
+    CHECK(frames[0] == frames[1]);  // ... and then the frame is complete and stays as it is
+    CHECK(frames[1] == frames[3]);
+    for (xt_surface* sf : b.surfaces) (void)xt_surface_detach_gpu(sf);
+    CHECK(xt_gpu_target_destroy(t) == XT_STATUS_OK);
 }
 
 #endif  // XT_CAPI_TEST_HAS_WGPU

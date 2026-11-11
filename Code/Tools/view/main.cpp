@@ -1637,9 +1637,23 @@ struct GpuCounterTotals {
     uint32_t frames = 0;
     double passes = 0, resolves = 0, drawCalls = 0, pipelineBinds = 0, uploadBytes = 0;
     double cacheHits = 0, cacheMisses = 0, cacheStores = 0;
+    double coverageHits = 0, coverageMisses = 0, coverageRasterized = 0, coverageFallbacks = 0;  // T-660b
+    double coverageTiles = 0, coverageUniformTiles = 0;                                          // T-672
+    uint64_t coverageAtlasBytes = 0;  // T-672: the last frame's
     double buildMs = 0, submitMs = 0;
+    bool hasBindings = false;  // T-670: the last frame's live bindings, the run's peak
+    uint32_t liveBindings = 0, peakBindings = 0;
+    uint64_t inflightWaits = 0;  // T-674: totals over the run
+    double inflightWaitMs = 0;
     void add(const xt::view::GpuFrameCounters& c) {
         ++frames;
+        inflightWaits += c.inflightWaits;
+        inflightWaitMs += c.inflightWaitMs;
+        if (c.hasBindings) {
+            hasBindings = true;
+            liveBindings = c.liveBindings;
+            peakBindings = std::max(peakBindings, c.peakBindings);
+        }
         passes += c.passes;
         resolves += c.resolves;
         drawCalls += c.drawCalls;
@@ -1648,6 +1662,13 @@ struct GpuCounterTotals {
         cacheHits += c.effectCacheHits;
         cacheMisses += c.effectCacheMisses;
         cacheStores += c.effectCacheStores;
+        coverageHits += c.coverageHits;
+        coverageMisses += c.coverageMisses;
+        coverageRasterized += static_cast<double>(c.coverageRasterizedPixels);
+        coverageFallbacks += c.coverageFallbacks;
+        coverageTiles += c.coverageTiles;
+        coverageUniformTiles += c.coverageUniformTiles;
+        coverageAtlasBytes = c.coverageAtlasBytes;
         buildMs += c.buildMs;
         submitMs += c.submitMs;
     }
@@ -1659,9 +1680,19 @@ struct GpuCounterTotals {
         std::printf(
             "  %s per frame: passes %.2f, resolves %.2f, drawCalls %.2f, pipelineBinds %.2f, "
             "uploadBytes %.0f, effect cache hits %.2f misses %.2f stores %.2f, "
-            "build ms %.3f, submit ms %.3f\n",
+            "coverage hits %.2f misses %.2f rasterized px %.0f fallbacks %.2f tiles %.2f uniform tiles %.2f "
+            "atlas bytes %llu, build ms %.3f, submit ms %.3f",
             renderer, passes / n, resolves / n, drawCalls / n, pipelineBinds / n, uploadBytes / n,
-            cacheHits / n, cacheMisses / n, cacheStores / n, buildMs / n, submitMs / n);
+            cacheHits / n, cacheMisses / n, cacheStores / n, coverageHits / n, coverageMisses / n,
+            coverageRasterized / n, coverageFallbacks / n, coverageTiles / n, coverageUniformTiles / n,
+            static_cast<unsigned long long>(coverageAtlasBytes), buildMs / n, submitMs / n);
+        if (hasBindings) {
+            std::printf(", bindings %u/%u", liveBindings, peakBindings);
+        }
+        // T-674: totals, not per frame -- begin-of-frame waits for a GPU more than two frames behind.
+        std::printf(", inflightWaits %llu (%.3f ms total)", static_cast<unsigned long long>(inflightWaits),
+                    inflightWaitMs);
+        std::printf("\n");
     }
 };
 
@@ -2686,8 +2717,8 @@ int main(int argc, char** argv) {
     // T-179: outlives every Context below (declared before them).
     xt::bundle::BundleLocalizationProvider localization;
 
-    g_stripEditorOnly = !args.scene.empty();  // T-343
-    g_strict = args.strict;                   // T-392
+    g_stripEditorOnly = !args.scene.empty();    // T-343
+    g_strict = args.strict;                     // T-392
     g_diagnosticsFile.path = args.diagnostics;  // T-576
     g_diagnosticsFile.source = args.input;
     // T-439: --renderer. A renderer other than the shell's (windowed) or other than xt_sw

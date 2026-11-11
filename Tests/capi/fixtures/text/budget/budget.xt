@@ -1,0 +1,26 @@
+<xt version="2">
+
+  <body>
+    <svg id="N0" class="notch" viewBox="0 0 100 100" width="288" height="288">
+      <path d="M0 0 L100 0 L100 100 L60 100 L50 80 L40 100 L0 100 Z" fill="#3060c0"/>
+    </svg>
+    <svg id="N1" class="notch" viewBox="0 0 100 100" width="288.4" height="288.4">
+      <path d="M0 0 L100 0 L100 100 L60 100 L50 80 L40 100 L0 100 Z" fill="#3060c0"/>
+    </svg>
+    <svg id="N2" class="notch" viewBox="0 0 100 100" width="288.8" height="288.8">
+      <path d="M0 0 L100 0 L100 100 L60 100 L50 80 L40 100 L0 100 Z" fill="#3060c0"/>
+    </svg>
+    <svg id="N3" class="notch" viewBox="0 0 100 100" width="289.2" height="289.2">
+      <path d="M0 0 L100 0 L100 100 L60 100 L50 80 L40 100 L0 100 Z" fill="#3060c0"/>
+    </svg>
+    <svg id="N4" class="notch" viewBox="0 0 100 100" width="289.6" height="289.6">
+      <path d="M0 0 L100 0 L100 100 L60 100 L50 80 L40 100 L0 100 Z" fill="#3060c0"/>
+    </svg>
+    <svg id="N5" class="notch" viewBox="0 0 100 100" width="290" height="290">
+      <path d="M0 0 L100 0 L100 100 L60 100 L50 80 L40 100 L0 100 Z" fill="#3060c0"/>
+    </svg>
+  </body>
+
+  <layout src="budget.layout.xts"/>
+  <style src="budget.xts"/>
+</xt>

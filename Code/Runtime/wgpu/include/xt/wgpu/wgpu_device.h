@@ -1,6 +1,7 @@
 #pragma once
 
 #include <webgpu/webgpu.h>
+#include <webgpu/wgpu.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -81,6 +82,10 @@ struct WgpuDeviceStats {
     float queueMs = 0;              ///< command buffer finish and queue submit
     float effectsMs = 0;            ///< CPU time encoding Shading::Effect commands
     float textMs = 0;               ///< CPU time encoding Shading::Glyph commands
+    /// T-670 (50 §50.ab addendum 1 iii): non-sampler bindings (texture views, buffers) of this
+    /// device's bind groups alive after the submit, and the most alive at once since init.
+    uint32_t liveBindings = 0;
+    uint32_t peakBindings = 0;
 };
 
 class WgpuDevice : public gpu::GpuDevice {
@@ -173,6 +178,9 @@ public:
     /// are skipped in that and every later submit while the rest of the frame is drawn.
     const std::string& lastError() const { return m_lastError; }
     const WgpuDeviceStats& lastStats() const { return m_stats; }
+    /// T-674 (50 §50.ac item 1): the `wgpuQueueSubmitForIndex` index of the last `submit` that reached
+    /// the queue; 0 before the first (wgpu numbers submissions from 1).
+    WGPUSubmissionIndex lastSubmissionIndex() const { return m_lastSubmission; }
     /// T-203: the one-time warnings raised since the last call (a custom effect shader that failed
     /// to compile), then cleared.
     std::string takeWarning() {
@@ -271,6 +279,7 @@ private:
     std::vector<float> m_uniformData;
 
     std::string m_lastError;
+    WGPUSubmissionIndex m_lastSubmission = 0;  ///< T-674
     std::string m_warning;
     WgpuDeviceStats m_stats;
 

@@ -179,6 +179,9 @@ void dumpGpuFrame(const GpuFrame& frame, std::string& out) {
                 std::snprintf(buf, sizeof(buf), " particles=%u+%u", cmd.firstInstance, cmd.instanceCount);
                 out += buf;
             }
+            if (cmd.coverage != 0) {  // T-660b: frames without coverage quads dump as before
+                out += " coverage=yes";
+            }
             std::snprintf(buf, sizeof(buf), " tex=%s src=%u aux=%u %s idx=%u verts=%u clip=(%d,%d,%d,%d)\n",
                           cmd.texture != 0 ? "yes" : "no", cmd.src, cmd.aux, samplerName(cmd.sampler),
                           cmd.indexCount, cmd.vertexCount, cmd.clipX, cmd.clipY, cmd.clipW, cmd.clipH);

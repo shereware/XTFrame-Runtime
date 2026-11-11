@@ -152,6 +152,8 @@ void GlRenderer::invalidateImages() { m_impl->builder.invalidateAllAssets(); }
 
 const char* GlRenderer::lastError() const { return m_impl->lastError.c_str(); }
 
+bool GlRenderer::wantsAnotherFrame() const { return m_impl->builder.wantsAnotherFrame(); }
+
 const char* GlRenderer::lastWarning() const { return m_impl->lastWarning.c_str(); }
 
 int GlRenderer::sampleCount() const { return m_impl->samples; }

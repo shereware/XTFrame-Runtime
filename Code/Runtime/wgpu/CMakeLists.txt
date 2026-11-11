@@ -14,6 +14,8 @@ set(XT_WGSL_SOURCES
     src/shaders/composite.wgsl
     src/shaders/particle_texture.wgsl
     src/shaders/particle_solid.wgsl
+    src/shaders/coverage_solid.wgsl
+    src/shaders/coverage_gradient.wgsl
     src/shaders/fx_gauss_scalar.wgsl
     src/shaders/fx_gauss_color.wgsl
     src/shaders/fx_dilate.wgsl
@@ -55,6 +57,7 @@ add_library(xt_wgpu STATIC
     src/wgpu_geometry.cpp
     src/wgpu_renderer.cpp
     src/wgpu_shared.cpp
+    src/wgpu_inflight.cpp
     src/wgpu_window.cpp
     "${xt_wgsl_header}"
 )

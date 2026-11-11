@@ -1,0 +1,5 @@
+target 256x256 vertices=52 indices=78 cmds=3 passes=1 params=14
+pass 0: target=0 clear=0 copy=0 from=0 view=(0,0,256,256) cmds=3
+  0 Solid SrcOver TestEqualRef ref=0 coverage=yes tex=no src=0 aux=0 linear idx=6 verts=4 clip=(0,0,256,256)
+  1 Gradient SrcOver TestEqualRef ref=0 coverage=yes tex=yes src=0 aux=0 linear idx=6 verts=4 clip=(0,0,256,256)
+  2 Solid SrcOver TestEqualRef ref=0 coverage=yes tex=no src=0 aux=0 linear idx=66 verts=44 clip=(0,0,256,256)

@@ -96,6 +96,7 @@ bool RendererWgpu::createOffscreen(int width, int height, uint32_t sampleCount) 
 
 void RendererWgpu::destroy() {
     releaseFrame();
+    m_renderer.framesInFlight().waitIdle(m_init.device);  // T-674: the GPU is done before anything is freed
     m_renderer.shutdown();
     releaseOffscreen();
     m_surface.release();
@@ -147,6 +148,11 @@ void RendererWgpu::releaseFrame() {
 
 void RendererWgpu::beginFrame() {
     releaseFrame();
+    // T-674 (Docs/design/50-c-abi.md §50.ac item 1): at most two frames in flight -- waits only while
+    // the GPU is more than two frames behind (an offscreen loop has no present to hold it back).
+    m_renderer.framesInFlight().beginFrame(m_init.device, m_init.queue);
+    const std::string inflightWarning = m_renderer.framesInFlight().takeWarning();
+    if (!inflightWarning.empty()) m_error = inflightWarning;
     if (!m_surface.valid()) {
         if (m_offscreen != nullptr) {
             m_frameTexture = m_offscreen;
@@ -186,6 +192,7 @@ bool RendererWgpu::readPixels(std::vector<uint8_t>& rgba, int& width, int& heigh
 }
 
 void RendererWgpu::present() {
+    m_renderer.framesInFlight().endFrame(m_init.queue);  // T-674
     if (m_frameFromSurface) {
         m_surface.present();  // releases the surface's frame
         m_frameView = nullptr;

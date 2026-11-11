@@ -17,6 +17,16 @@ ui_text_transform_skew ui_text_transform_skew.xt 320 256 0 e8dcc4
 # T-659 (10 section 10.11 item 1): images rotated 7 deg, skewed, scaled to fractional edges and an
 # atlas cell rotated, next to an axis-aligned control; the GPU backends fringe the off-grid edges at 1x.
 ui_image_transform ui_image_transform.xt 256 256 0 ffffff
+# T-660b (10 section 10.11 item 2): concave star, even-odd gradient donut, multi-contour icon, a
+# rotated concave shape, one shape twice 0.3 px apart, a concave shape over 1024 px (fallback).
+ui_coverage_fill ui_coverage_fill.xt 256 256 0 ffffff
+# T-661 (10 section 10.11 item 3): 2 px polylines (miter, round, bevel), a 1.5 px rounded rectangle
+# outline, 0.5 / 0.25 px polylines, a rotated dashed polyline whose dashes touch, a stroked icon and
+# a 1 px slanted polyline about 2450 px long (tiled).
+ui_coverage_stroke ui_coverage_stroke.xt 256 256 0 ffffff
+# T-662 (10 section 10.11 item 4): 120 / 200 px text, a vertical line, a line rotated 90 deg, scaleX(-1),
+# geometricPrecision, scale(1.6, 0.8) and 140 px CJK (needs xt_text, @font-face): outline glyphs.
+ui_coverage_text ui_coverage_text.xt 640 520 0 ffffff
 ui_absolute_nested absolute_nested.xt 256 256 0 ffffff
 # T-30 text fixtures (docs/tasks/T-30.md "黃金圖"). Only run when xt_text is built (see
 # golden_ui.cpp); they use the OFL font subsets in tests/fonts via <style> @font-face.

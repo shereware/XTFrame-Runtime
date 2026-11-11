@@ -11,6 +11,7 @@
 #include "xt/damage.h"
 #include "xt/ir.h"
 #include "xt/perf.h"
+#include "xt/wgpu/wgpu_inflight.h"
 
 /// WebGPU backend (Docs/design/10-backends.md §10.10, T-437): `CommandList` -> `gpu::FrameBuilder`
 /// -> `GpuFrame` -> `WgpuDevice::submit`, with the interface of `GlRenderer` (§10.3) where the two
@@ -65,13 +66,23 @@ struct WgpuInit {
     WgpuSharedCache* shared = nullptr;
     /// Why `headless()` returned no device (empty otherwise).
     std::string error;
+    /// T-671 (50 §50.ab addendum 2, items 1 and 5): what `headless()` chose, one line each, for the
+    /// caller's log: the adapter (name, backend, integrated/discrete, XT_WGPU_POWER), then the
+    /// wgpu-native version and the memory hints in effect (XT_WGPU_MEMORY_HINTS).
+    std::string notes;
 
     /// Creates an instance, requests an adapter and a device and waits for both (§10.10.1):
     ///   - XT_WGPU_BACKEND=vulkan|d3d12|metal|gl (or `options.backend` when not empty) limits the
     ///     instance to that backend (any other value fails with an error naming it); unset = the
-    ///     platform's primary backends;
+    ///     platform's primary backends (T-670: on Windows a D3D12-only instance first, and the
+    ///     primary backends only when it gives no adapter or device);
+    ///   - the device requires maxNonSamplerBindings 131072 (T-670), and the base limits when that
+    ///     request fails;
     ///   - a software adapter is used only with XT_WGPU_FALLBACK=1 (or `allowFallback`), which
-    ///     asks for it first (forceFallbackAdapter) and takes any adapter when there is none.
+    ///     asks for it first (forceFallbackAdapter) and takes any adapter when there is none;
+    ///   - XT_WGPU_POWER=low|high picks the adapter's power preference (unset = high performance);
+    ///   - only with a wgpu-native that has memory hints (XT_WGPU_HAS_MEMORY_HINTS, T-671):
+    ///     XT_WGPU_MEMORY_HINTS=performance|usage|manual:<startMiB>:<maxMiB>, unset = usage.
     /// On failure `device` is null and `error` says why; whatever was created is released.
     static WgpuInit headless(const WgpuHeadlessOptions& options = {});
     /// Releases the references `headless()` created (device, queue, adapter, instance) and nulls
@@ -104,6 +115,21 @@ struct WgpuStats {
     float queueMs = 0;              ///< submitMs split: command buffer finish + queue submit
     float effectsMs = 0;            ///< CPU time encoding effect passes (part of submitMs)
     float textMs = 0;               ///< CPU time encoding glyph draws (part of submitMs)
+
+    // T-660b: the coverage atlas (gpu::FrameBuilder::lastCoverageStats); zeros for a reused frame,
+    // except coverageAtlasBytes, which is always set.
+    uint32_t coverageHits = 0;              ///< fills drawn from a cached coverage bitmap
+    uint32_t coverageMisses = 0;            ///< fills whose coverage bitmap was not cached
+    uint64_t coverageRasterizedPixels = 0;  ///< coverage pixels the build rasterized
+    uint32_t coverageFallbacks = 0;         ///< eligible fills drawn with stencil-then-cover
+    uint64_t coverageAtlasBytes = 0;        ///< the builder's coverage atlas pages (R8)
+    uint32_t coverageTiles = 0;             ///< T-672: edge tiles of the tiled fills drawn
+    uint32_t coverageUniformTiles = 0;      ///< T-672: empty and full tiles of the tiled fills drawn
+
+    // T-674 (Docs/design/50-c-abi.md §50.ac item 1): the waits of the last `framesInFlight().beginFrame`
+    // (0 when the GPU was at most two frames behind) and their milliseconds.
+    uint32_t inflightWaits = 0;
+    float inflightWaitMs = 0;
 };
 
 class WgpuRenderer {
@@ -157,6 +183,10 @@ public:
     /// `GlRenderer::invalidateImages`.
     void invalidateImages();
     WgpuStats stats() const;
+    /// T-662 (Docs/design/10-backends.md §10.11 item 2, supplement 2): `gpu::FrameBuilder::
+    /// wantsAnotherFrame()` of the frame last built -- a coverage shape the frame budget held back
+    /// is drawn hard edged; a host that skips unchanged frames renders once more while this is true.
+    bool wantsAnotherFrame() const;
     /// The adapter's device name and backend, e.g. "NVIDIA GeForce RTX 4070 Ti (D3D12)", read from
     /// `WgpuInit::adapter` ("unknown adapter" when the host gave none); empty before init.
     const char* adapterName() const;
@@ -175,6 +205,10 @@ public:
     const char* lastWarning() const;
     /// The device (textures, transient introspection) for tests and tools; null before init.
     WgpuDevice* device();
+    /// T-674 (50 §50.ac item 1): the frame limit of a host's own frame loop; every `submit` / `render`
+    /// notes its submission index here. Its frames begin and end only when the host calls
+    /// `beginFrame` / `endFrame` (Code/Backends/xt_renderer_wgpu.cpp); `shutdown` resets it.
+    WgpuFramesInFlight& framesInFlight();
 
 private:
     struct Impl;

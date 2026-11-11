@@ -81,6 +81,59 @@ void main() {
 }
 )";
 
+/// T-660b `Shading::Solid` with `DrawCmd::coverage` (gpu_frame.h): `uCoverage` (unit 1) is the R8
+/// coverage page, sampled linearly at `vUV` (texel centres, 1:1 on the target's pixels); linear
+/// coverage, no gamma.
+inline constexpr const char* kCoverageSolidFrag = R"(#version 330 core
+in vec2 vUV;
+in vec4 vColor;
+out vec4 fragColor;
+uniform sampler2D uCoverage;
+void main() {
+    fragColor = vColor * texture(uCoverage, vUV).r;
+}
+)";
+
+/// T-660b `Shading::Gradient` with `DrawCmd::coverage` (gpu_frame.h CoverageGradientParams):
+/// kGradientFrag evaluated at the path-local position `uUvToLocal * vec3(vUV, 1)`, times the
+/// coverage of `uCoverage` (unit 1) at `vUV`. `uLut` stays on unit 0.
+inline constexpr const char* kCoverageGradientFrag = R"(#version 330 core
+in vec2 vUV;
+in vec4 vColor;
+out vec4 fragColor;
+uniform sampler2D uLut;
+uniform sampler2D uCoverage;
+uniform int uKind;        // 2 linear, 3 radial, 4 conic (xt::PaintKind)
+uniform vec2 uP0;
+uniform vec2 uP1;
+uniform vec2 uRadialAxes;
+uniform float uPaintAlpha;
+uniform float uLutWidth;
+uniform mat3 uUvToLocal;
+void main() {
+    vec2 local = (uUvToLocal * vec3(vUV, 1.0)).xy;
+    vec2 d = uP1 - uP0;
+    float lenSq = dot(d, d);
+    float t;
+    if (lenSq <= 0.0) {
+        t = 1.0;
+    } else {
+        vec2 v = local - uP0;
+        if (uKind == 4) {
+            t = atan(d.x * v.y - d.y * v.x, dot(d, v)) * 0.15915494309;
+            t = t < 0.0 ? t + 1.0 : t;
+        } else {
+            t = (uKind == 3) ? length(v / uRadialAxes) : (dot(v, d) / lenSq);
+        }
+        t = clamp(t, 0.0, 1.0);
+    }
+    float u = (t * (uLutWidth - 1.0) + 0.5) / uLutWidth;
+    vec4 c = texture(uLut, vec2(u, 0.5));
+    float a = c.a * uPaintAlpha * vColor.a * texture(uCoverage, vUV).r;
+    fragColor = vec4(c.rgb * a, a);
+}
+)";
+
 inline constexpr const char* kTextureFrag = R"(#version 330 core
 in vec2 vUV;
 in vec4 vColor;

@@ -1,0 +1,116 @@
+<xt version="2">
+
+  <body>
+    <div id="s120" class="t">Ag</div>
+    <div id="s200" class="t">R</div>
+    <div id="cjk" class="t">世界</div>
+    <div id="vert" class="t">Ab世界</div>
+    <div id="rot" class="t">Rot 90</div>
+    <div id="mirror" class="t">Mirror</div>
+    <div id="precise" class="t">Precise</div>
+    <div id="stretch" class="t">Stretch</div>
+  </body>
+
+  <layout>
+    body {
+      width: 640px;
+      height: 520px;
+    }
+    .t {
+      position: absolute;
+    }
+    #s120 {
+      left: 8px;
+      top: 0px;
+      width: 160px;
+      height: 170px;
+    }
+    #s200 {
+      left: 170px;
+      top: 0px;
+      width: 150px;
+      height: 280px;
+    }
+    #cjk {
+      left: 330px;
+      top: 20px;
+      width: 300px;
+      height: 200px;
+    }
+    #vert {
+      left: 140px;
+      top: 290px;
+      width: 60px;
+      height: 220px;
+    }
+    #rot {
+      left: 0px;
+      top: 330px;
+      width: 130px;
+      height: 50px;
+      transform: rotate(90deg);
+    }
+    #mirror {
+      left: 230px;
+      top: 290px;
+      width: 160px;
+      height: 50px;
+      transform: scaleX(-1);
+    }
+    #precise {
+      left: 230px;
+      top: 350px;
+      width: 160px;
+      height: 50px;
+    }
+    #stretch {
+      left: 230px;
+      top: 430px;
+      width: 160px;
+      height: 50px;
+      transform: scale(1.6, 0.8);
+    }
+  </layout>
+  <style>
+    @font-face {
+      font-family: "Noto Sans";
+      src: "../../fonts/NotoSans-Regular.subset.ttf";
+    }
+    @font-face {
+      font-family: "Noto Sans SC";
+      src: "../../fonts/NotoSansSC-Regular.subset.ttf";
+    }
+    /* T-662 (10 section 10.11 item 4): every case of the GPU outline-glyph path at 1x -- 120 / 200
+         px text, a vertical line, a line rotated 90 deg, a mirrored line, geometricPrecision, a
+         non-uniform stretch and 140 px CJK; SW is the reference. */
+    body {
+      background-color: #ffffff;
+      font-family: "Noto Sans", "Noto Sans SC";
+      color: #202830;
+      white-space: nowrap;
+    }
+    #s120 {
+      font-size: 120px;
+    }
+    #s200 {
+      font-size: 200px;
+    }
+    #cjk {
+      font-family: "Noto Sans SC";
+      font-size: 140px;
+    }
+    #vert {
+      writing-mode: vertical-rl;
+      font-size: 36px;
+    }
+    #rot,
+    #mirror,
+    #precise,
+    #stretch {
+      font-size: 36px;
+    }
+    #precise {
+      text-rendering: geometricPrecision;
+    }
+  </style>
+</xt>

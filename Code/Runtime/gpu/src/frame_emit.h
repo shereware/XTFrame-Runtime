@@ -125,7 +125,8 @@ public:
     /// writes the stencil nor cares about draw boundaries (Solid/Gradient/Texture/
     /// TextureStraight/Glyph with stencil None or TestEqualRef) or a ClearRect, the previous
     /// command of the open pass has identical state (shading, blend, stencil op/ref, texture,
-    /// sampler, program, paramIndex, src/aux, scissor) and its geometry ends exactly where `g`
+    /// coverage (T-660b), sampler, program, paramIndex, src/aux, scissor) and its geometry ends
+    /// exactly where `g`
     /// begins, `g` is folded into that command (its indices rebased onto the earlier baseVertex)
     /// and the earlier command is returned instead of a new one.
     DrawCmd& pushCmd(DrawCmd cmd, const Geometry& g);

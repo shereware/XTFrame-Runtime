@@ -416,7 +416,7 @@ typedef struct xt_gpu_memory_stats {
     uint64_t image_evictions;      /* idle textures destroyed so far (budget or xt_gpu_target_trim) */
     uint64_t surface_bytes;        /* per attached surface: its 1x texture + MSAA color + stencil attachments */
     uint64_t transient_bytes;      /* the renderers' transient target pools now */
-    uint64_t atlas_bytes;          /* the surfaces' glyph atlas pages (R8) */
+    uint64_t atlas_bytes;          /* the surfaces' glyph and coverage atlas pages (R8) */
 } xt_gpu_memory_stats;
 /* Fills `out` with `t`'s counters: only the fields `out->struct_size` covers are written (an older,
    shorter struct gets its prefix; struct_size itself is not written). NULL target or `out` ->

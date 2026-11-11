@@ -13,6 +13,8 @@ add_library(xt_core STATIC
     src/sha256.cpp
     src/ir_view.cpp
     src/geom_flatten.cpp
+    src/coverage_raster.cpp  # T-660a: moved from xt_sw
+    src/coverage_bitmap.cpp  # T-660a
     src/geom_stroke.cpp
     src/geom_dash.cpp
     src/path_trim.cpp

@@ -37,6 +37,7 @@ add_executable(xt_tests
     unit/test_lottie_parser.cpp
     unit/test_parse_svg.cpp
     unit/test_sw_raster.cpp
+    unit/test_coverage_bitmap.cpp  # T-660a
     unit/test_sw_renderer.cpp
     unit/test_context.cpp
     unit/test_damage.cpp

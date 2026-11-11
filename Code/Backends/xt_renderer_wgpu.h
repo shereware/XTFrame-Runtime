@@ -37,6 +37,8 @@ class GlyphAtlas;
 /// Surface: `xt::wgpu::WgpuWindowSurface` (format, usage and present mode as its header says;
 /// COPY_SRC when offered, so `readPixels` works on a window), reconfigured on resize and on an
 /// outdated / lost texture.
+/// Frames in flight (T-674): `beginFrame` waits while the GPU is more than two frames behind
+/// (`xt::wgpu::WgpuFramesInFlight` of the renderer), `present` ends the frame, `destroy` waits for all.
 /// 4x MSAA is done inside WgpuDevice (a 4x attachment resolving into the frame's view); every frame
 /// clears, so a 4x surface never needs the host-content load that would ask for TEXTURE_BINDING.
 

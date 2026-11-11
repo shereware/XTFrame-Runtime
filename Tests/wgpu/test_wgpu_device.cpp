@@ -4,12 +4,14 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
 
 #include "doctest.h"
 #include "test_wgpu_common.h"
+#include "wgpu_util.h"  // T-670: planInstance, kMaxNonSamplerBindings (Code/Runtime/wgpu/src)
 #include "xt/command_list.h"
 #include "xt/gpu/gpu_frame.h"
 #include "xt/wgpu/wgpu_device.h"
@@ -435,4 +437,130 @@ TEST_CASE("wgpu: parameter blocks that fill or overrun a uniform buffer step bin
     xt::CommandList list;
     r.render(list, nullptr, nullptr, target.view);
     CHECK_MESSAGE(std::string(r.lastError()).empty(), r.lastError());
+}
+
+// T-670 (Docs/design/50-c-abi.md §50.ab addendum 1 i): the instance masks headless() tries. The
+// D3D12-only -> Primary retry has no injection point in a real device request, so the choice of
+// masks is tested here as a pure function (wgpu_util.h planInstance).
+TEST_CASE("wgpu: instance backend plan (T-670)") {
+    xt::wgpu::InstancePlan plan;
+    REQUIRE(xt::wgpu::planInstance("", true, plan));
+    CHECK(plan.first == WGPUInstanceBackend_DX12);
+    CHECK(plan.retryPrimary);
+    REQUIRE(xt::wgpu::planInstance("", false, plan));
+    CHECK(plan.first == WGPUInstanceBackend_Primary);
+    CHECK_FALSE(plan.retryPrimary);
+    const struct {
+        const char* name;
+        WGPUInstanceBackend mask;
+    } named[] = {{"vulkan", WGPUInstanceBackend_Vulkan},
+                 {"d3d12", WGPUInstanceBackend_DX12},
+                 {"metal", WGPUInstanceBackend_Metal},
+                 {"gl", WGPUInstanceBackend_GL}};
+    for (const auto& n : named) {
+        for (bool windows : {true, false}) {
+            REQUIRE(xt::wgpu::planInstance(n.name, windows, plan));
+            CHECK(plan.first == n.mask);
+            CHECK_FALSE(plan.retryPrimary);  // an explicit backend never falls back
+        }
+    }
+    CHECK_FALSE(xt::wgpu::planInstance("dx11", true, plan));
+}
+
+TEST_CASE("wgpu: headless device on the default backend, smaller descriptor heap (T-670)") {
+    const WgpuInit& in = xt::wgpu::test::sharedInit();
+    REQUIRE(in.adapter != nullptr);
+    WGPUAdapterInfo info = WGPU_ADAPTER_INFO_INIT;
+    REQUIRE(wgpuAdapterGetInfo(in.adapter, &info) == WGPUStatus_Success);
+    const WGPUBackendType backend = info.backendType;
+    const WGPUAdapterType type = info.adapterType;
+    wgpuAdapterInfoFreeMembers(info);
+#if defined(_WIN32)
+    size_t envLen = 0;
+    char env[64] = {0};
+    if (getenv_s(&envLen, env, sizeof(env), "XT_WGPU_BACKEND") != 0 || envLen <= 1) {
+        if (type != WGPUAdapterType_CPU) {
+            CHECK(backend == WGPUBackendType_D3D12);  // the DX12-only instance, no Primary retry
+        }
+    }
+#else
+    (void)backend;
+    (void)type;
+#endif
+    WGPUNativeLimits native = WGPU_NATIVE_LIMITS_INIT;
+    WGPULimits limits = WGPU_LIMITS_INIT;
+    limits.nextInChain = &native.chain;
+    wgpuDeviceGetLimits(in.device, &limits);
+    CHECK(native.maxNonSamplerBindings == xt::wgpu::kMaxNonSamplerBindings);
+    CHECK(limits.maxTextureDimension2D >= 8192u);  // the other limits are the base ones, as before
+}
+
+namespace {
+
+/// One 16x16 pass drawing a quad with `shading` (sampling `tex` when not 0) into `target`.
+void submitQuad(WgpuDevice& dev, WGPUTextureView target, xt::gpu::Shading shading,
+                xt::gpu::TextureHandle tex) {
+    const uint32_t white = 0xFFFFFFFFu;
+    xt::gpu::GpuFrame frame;
+    frame.targetWidth = 16;
+    frame.targetHeight = 16;
+    frame.vertices = {
+        {0, 0, 1, 0, 0, white}, {16, 0, 1, 1, 0, white}, {16, 16, 1, 1, 1, white}, {0, 16, 1, 0, 1, white}};
+    frame.indices = {0, 1, 2, 0, 2, 3};
+    frame.params.assign(64, 0.0f);
+    xt::gpu::DrawCmd cmd;
+    cmd.indexCount = 6;
+    cmd.vertexCount = 4;
+    cmd.shading = shading;
+    cmd.blend = xt::gpu::Blend::SrcOver;
+    cmd.texture = tex;
+    cmd.clipW = 16;
+    cmd.clipH = 16;
+    frame.cmds = {cmd};
+    xt::gpu::Pass p;
+    p.target = 0;
+    p.firstCmd = 0;
+    p.cmdCount = 1;
+    frame.passes = {p};
+    dev.setSurface(target);
+    dev.setSurfaceClear(true, WGPUColor{0, 0, 0, 0});
+    dev.submit(frame);
+    dev.setSurface(nullptr);
+}
+
+}  // namespace
+
+TEST_CASE("wgpu: live non-sampler bindings are counted per device (T-670)") {
+    WgpuRenderer r;
+    REQUIRE(r.init(withSamples(1)));
+    WgpuDevice& dev = *r.device();
+    Target target(xt::wgpu::test::sharedInit().device, 16, 16, WGPUTextureFormat_RGBA8Unorm);
+    r.resize(16, 16);
+
+    // Group 0 / group 1 (one uniform buffer each) and the solid draw's texture group (3 views).
+    submitQuad(dev, target.view, xt::gpu::Shading::Solid, 0);
+    REQUIRE_MESSAGE(dev.lastError().empty(), dev.lastError());
+    const uint32_t base = dev.lastStats().liveBindings;
+    CHECK(base == 2u + 3u);
+    CHECK(dev.lastStats().peakBindings >= base);
+
+    // A texture draw adds one cached group of 3 views.
+    std::vector<uint8_t> texels(4 * 4 * 4, 0xFF);
+    const xt::gpu::TextureHandle tex =
+        dev.createTexture("t670", 4, 4, xt::gpu::TextureFormat::Rgba8, texels.data());
+    REQUIRE(tex != 0);
+    submitQuad(dev, target.view, xt::gpu::Shading::Texture, tex);
+    REQUIRE_MESSAGE(dev.lastError().empty(), dev.lastError());
+    REQUIRE(dev.lastStats().drawCalls == 1u);
+    const uint32_t withTexture = dev.lastStats().liveBindings;
+    CHECK(withTexture == base + 3u);
+    CHECK(dev.lastStats().peakBindings >= withTexture);
+
+    // Destroying the texture flushes the cached groups; the next solid frame is back to the base.
+    dev.destroyTexture(tex);
+    submitQuad(dev, target.view, xt::gpu::Shading::Solid, 0);
+    REQUIRE_MESSAGE(dev.lastError().empty(), dev.lastError());
+    CHECK(dev.lastStats().liveBindings == base);
+    CHECK(dev.lastStats().peakBindings >= withTexture);
+    CHECK(dev.lastStats().peakBindings >= dev.lastStats().liveBindings);
 }

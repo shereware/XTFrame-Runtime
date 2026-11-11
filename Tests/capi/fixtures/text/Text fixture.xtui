@@ -69,6 +69,16 @@
       ],
       "tags": []
     }
+,
+    {
+      "id": "budget",
+      "doc": "budget/budget.xt",
+      "size": [
+        1500,
+        1000
+      ],
+      "tags": []
+    }
   ],
   "shared": {
     "assetRoot": "shared",

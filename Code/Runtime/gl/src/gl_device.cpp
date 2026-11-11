@@ -62,12 +62,14 @@ bool GlDevice::linkMain(Program& p, const char* frag, std::string& err) {
     p.uRadius = glGetUniformLocation(p.id, "uRadius");
     p.uRect = glGetUniformLocation(p.id, "uRect");
     p.uTexSize = glGetUniformLocation(p.id, "uTexSize");
+    p.uUvToLocal = glGetUniformLocation(p.id, "uUvToLocal");  // T-660b (kCoverageGradientFrag only).
     // Sampler units and the LUT width never change (T-159): set once. A -1 location is a no-op.
     glUseProgram(p.id);
     glUniform1i(glGetUniformLocation(p.id, "uTex"), 0);
     glUniform1i(glGetUniformLocation(p.id, "uLut"), 0);
     glUniform1i(glGetUniformLocation(p.id, "uSrc"), 0);
     glUniform1i(glGetUniformLocation(p.id, "uDst"), 1);
+    glUniform1i(glGetUniformLocation(p.id, "uCoverage"), 1);  // T-660b
     glUniform1f(glGetUniformLocation(p.id, "uLutWidth"), static_cast<float>(gpu::kGradientLutWidth));
     return true;
 }
@@ -93,6 +95,8 @@ bool GlDevice::init(std::string& err) {
                     linkMain(m_texture, shaders::kTextureFrag, err) &&
                     linkMain(m_textureStraight, shaders::kTextureStraightFrag, err) &&
                     linkMain(m_glyph, shaders::kGlyphFrag, err) &&
+                    linkMain(m_coverageSolid, shaders::kCoverageSolidFrag, err) &&
+                    linkMain(m_coverageGradient, shaders::kCoverageGradientFrag, err) &&
                     linkParticle(m_particleTexture, shaders::kParticleTextureFrag, err) &&
                     linkParticle(m_particleSolid, shaders::kParticleSolidFrag, err);
     bool compositeOk = false;
@@ -226,8 +230,8 @@ void GlDevice::shutdown() {
     if (m_particleVao != 0) glDeleteVertexArrays(1, &m_particleVao);
     m_particleVbo = m_particleVao = 0;
     m_particleCapacity = 0;
-    Program* progs[] = {&m_solid, &m_gradient,  &m_texture, &m_textureStraight,
-                        &m_glyph, &m_composite, &m_resolve};
+    Program* progs[] = {&m_solid,     &m_gradient, &m_texture,       &m_textureStraight, &m_glyph,
+                        &m_composite, &m_resolve,  &m_coverageSolid, &m_coverageGradient};
     for (Program* p : progs) {
         if (p->id != 0) glDeleteProgram(p->id);
         *p = Program{};
@@ -775,6 +779,42 @@ const float* GlDevice::paramsAt(uint32_t index, size_t& available) const {
     return m_frame->params.data() + index;
 }
 
+void GlDevice::drawCoverage(const gpu::DrawCmd& cmd) {
+    // T-660b: the coverage page on unit 1 (our own R8 texture: linear and clamped since creation).
+    if (cmd.shading == gpu::Shading::Solid) {
+        Program& prog = m_coverageSolid;
+        m_cache.useProgram(prog.id);
+        prog.shadow.stats = &m_cache.stats;
+        prog.shadow.setMat3(prog.uNdc, m_ndc);
+        m_cache.bindTexture(1, static_cast<GLuint>(cmd.coverage));
+        m_geometry.drawRange(cmd.firstIndex, cmd.indexCount, cmd.baseVertex, m_cache.stats);
+        return;
+    }
+    size_t avail = 0;
+    const float* p = paramsAt(cmd.paramIndex, avail);
+    gpu::CoverageGradientParams cp{};
+    if (p == nullptr || avail * sizeof(float) < sizeof(cp)) {
+        return;
+    }
+    std::memcpy(&cp, p, sizeof(cp));
+    const gpu::GradientParams& gp = cp.gradient;
+    Program& prog = m_coverageGradient;
+    m_cache.useProgram(prog.id);
+    prog.shadow.stats = &m_cache.stats;
+    prog.shadow.setMat3(prog.uNdc, m_ndc);
+    bindSampled(cmd.texture, gpu::Sampler::LinearClamp);
+    m_cache.bindTexture(1, static_cast<GLuint>(cmd.coverage));
+    prog.shadow.set1i(prog.uKind, static_cast<int>(gp.kind));
+    prog.shadow.set2f(prog.uP0, gp.p0x, gp.p0y);
+    prog.shadow.set2f(prog.uP1, gp.p1x, gp.p1y);
+    prog.shadow.set2f(prog.uRadialAxes, gp.rx, gp.ry);
+    prog.shadow.set1f(prog.uPaintAlpha, gp.alpha);
+    const float* m = cp.uvToLocal;  // column-major mat3: (a, b, 0), (c, d, 0), (e, f, 1)
+    const float uvToLocal[9] = {m[0], m[1], 0.0f, m[2], m[3], 0.0f, m[4], m[5], 1.0f};
+    prog.shadow.setMat3(prog.uUvToLocal, uvToLocal);
+    m_geometry.drawRange(cmd.firstIndex, cmd.indexCount, cmd.baseVertex, m_cache.stats);
+}
+
 void GlDevice::drawCmd(const gpu::DrawCmd& cmd) {
     using gpu::Shading;
     // Inputs first: resolving a multisampled input changes the draw framebuffer, viewport and
@@ -800,6 +840,10 @@ void GlDevice::drawCmd(const gpu::DrawCmd& cmd) {
     }
     m_geometry.bindFrame(m_cache);
 
+    if (cmd.coverage != 0 && (cmd.shading == Shading::Solid || cmd.shading == Shading::Gradient)) {
+        drawCoverage(cmd);  // T-660b
+        return;
+    }
     switch (cmd.shading) {
         case Shading::Solid:
         case Shading::StencilOnly:

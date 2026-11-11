@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -17,6 +18,7 @@
 
 #include "xt/gpu/gpu_frame.h"
 #include "xt/wgpu/wgpu_device.h"
+#include "xt/wgpu/wgpu_inflight.h"
 #include "xt/wgpu/wgpu_renderer.h"
 #include "xt/wgpu/wgpu_shared.h"
 #include "xt/wgpu/wgpu_window.h"
@@ -70,6 +72,9 @@ struct xt_gpu_target {
     /// T-658: the submits and render passes made on this target so far (composer and surface renderers);
     /// logged when a surface stops or starts drawing (tests read them there).
     uint64_t submits = 0, passes = 0;
+    /// T-674 (50 §50.ac item 1): at most two frames in flight -- every submit on the target's device
+    /// (composer and surface renderers) notes its index; begin_frame waits for the frame two back.
+    xt::wgpu::WgpuFramesInFlight inflight;
     WGPUTexture frameTexture = nullptr;   ///< the frame's texture (window's or `offscreen`), not owned
     WGPUTextureView frameView = nullptr;  ///< the frame's view (owned for `offscreen` only)
     uint32_t attached = 0;                ///< surfaces attached (destroy refuses while > 0)
@@ -129,6 +134,10 @@ struct SurfaceGpu {
     /// the renderer's 4x attachments) are not made until a frame has something to draw.
     bool built = false;
     bool empty = false;
+    /// T-662 (10 §10.11 item 2, supplement 2): the last build held a coverage shape back for the
+    /// frame budget (`WgpuRenderer::wantsAnotherFrame`), so the next render builds again even
+    /// without damage, as if the whole surface were dirty.
+    bool repaint = false;
 
     ~SurfaceGpu() {
         if (target != nullptr) {  // T-656
@@ -231,6 +240,7 @@ std::string submitComposite(xt_gpu_target& t) {
     dev->submit(t.frame);
     dev->setSurfaceClear(false, WGPUColor{0, 0, 0, 0});
     dev->setSurface(nullptr);
+    if (dev->lastSubmissionIndex() != 0) t.inflight.noteSubmit(dev->lastSubmissionIndex());  // T-674
     ++t.submits;
     t.passes += dev->lastStats().passes;
     return dev->lastError();
@@ -324,6 +334,7 @@ xt_gpu_memory_stats collectMemoryStats(const xt_gpu_target& t) {
             m.surface_bytes += dev->surfaceAttachmentBytes();
             m.transient_bytes += dev->lastStats().poolBytes;
         }
+        m.atlas_bytes += g->renderer.stats().coverageAtlasBytes;  // T-660b: coverage atlas pages (R8)
 #ifdef XT_CAPI_GPU_ATLAS
         if (g->atlas != nullptr) {
             const auto side = static_cast<uint64_t>(g->atlas->textureSize());
@@ -428,6 +439,12 @@ XT_CAPI xt_gpu_target* xt_gpu_target_create(const xt_gpu_target_desc* desc) {
         options.backend = desc->backend != nullptr ? desc->backend : "";
         t->init = xt::wgpu::WgpuInit::headless(options);
         if (t->init.device == nullptr) return failNull(t->init.error);
+        // T-671 (50 §50.ab addendum 2, items 1 and 5): the adapter and the memory strategy in effect.
+        for (size_t at = 0; at < t->init.notes.size();) {
+            const size_t nl = std::min(t->init.notes.find('\n', at), t->init.notes.size());
+            xt::capi::log(0, "xt_gpu_target: " + t->init.notes.substr(at, nl - at));
+            at = nl + 1;
+        }
         if (native.kind != xt::wgpu::WgpuNativeWindow::Kind::None) {
             std::string error;
             if (!t->window.create(t->init, native, desc->vsync != 0, error)) return failNull(error);
@@ -457,10 +474,18 @@ XT_CAPI xt_status xt_gpu_target_destroy(xt_gpu_target* t) {
                                             " surface(s) still attached; destroy them or call "
                                             "xt_surface_detach_gpu first");
         }
+        t->inflight.waitIdle(t->init.device);  // T-674: the GPU is done with everything before it is freed
         const uint32_t images = t->shared.stats().imageTextures;
+        // T-674: the frames-in-flight counters and the target's submit / pass totals, for tests and tools.
+        char waitMs[32];
+        std::snprintf(waitMs, sizeof waitMs, "%.3f", t->inflight.waitMs());
+        const std::string inflight =
+            "; frames in flight: " + std::to_string(t->inflight.waits()) + " wait(s), " + waitMs +
+            " ms, peak " + std::to_string(t->inflight.peakInFlight()) + "; " + std::to_string(t->submits) +
+            " submits, " + std::to_string(t->passes) + " passes";
         delete t;
-        xt::capi::log(
-            0, "xt_gpu_target: destroyed; " + std::to_string(images) + " shared image texture(s) freed");
+        xt::capi::log(0, "xt_gpu_target: destroyed; " + std::to_string(images) +
+                             " shared image texture(s) freed" + inflight);
         return XT_STATUS_OK;
     });
 }
@@ -497,6 +522,10 @@ XT_CAPI xt_status xt_gpu_target_begin_frame(xt_gpu_target* t, const float clear_
                 XT_STATUS_INVALID_ARGUMENT,
                 "xt_gpu_target_begin_frame: the previous frame was not ended (xt_gpu_target_end_frame)");
         }
+        // T-674 (50 §50.ac item 1): waits only while the GPU is more than two frames behind.
+        t->inflight.beginFrame(t->init.device, t->init.queue);
+        const std::string inflightWarning = t->inflight.takeWarning();
+        if (!inflightWarning.empty()) xt::capi::log(1, "xt_gpu_target_begin_frame: " + inflightWarning);
         t->inFrame = true;
         if (t->windowed()) {
             if (t->window.acquire()) {  // else: skipped (minimized, timeout)
@@ -529,6 +558,7 @@ XT_CAPI xt_status xt_gpu_target_end_frame(xt_gpu_target* t) {
             t->releaseFrame();  // the work is already submitted
         }
         t->inFrame = false;
+        t->inflight.endFrame(t->init.queue);         // T-674: the frame's last submission index
         wgpuDevicePoll(t->init.device, 0, nullptr);  // let finished work be reclaimed, never waits
         if (!error.empty()) return fail(XT_STATUS_INTERNAL, "xt_gpu_target_end_frame: " + error);
         return XT_STATUS_OK;
@@ -621,13 +651,16 @@ XT_CAPI xt_status xt_surface_render_gpu(xt_surface* s, xt_gpu_target* t, const x
             s->ctx->render(s->list, &s->damage);
             // The texture keeps the last frame: an unchanged frame is not drawn again. Any change redraws
             // the whole texture (cleared), so the partial-damage path of the builder is not needed.
-            const bool unchanged = g.built && !resized && !s->damage.full && s->damage.rects.empty();
+            // T-662: a frame whose budget held a coverage shape back is drawn again until none is.
+            const bool unchanged =
+                g.built && !resized && !g.repaint && !s->damage.full && s->damage.rects.empty();
             if (!unchanged) {
                 xt::PerfTracker* perf = &s->ctx->perf();
                 const uint32_t draws = g.renderer.build(s->list, s->owner->shaper.get(),
                                                         &s->owner->bundle->assets(), nullptr, perf, nullptr);
                 const bool wasEmpty = g.built && g.empty;
                 g.built = true;
+                g.repaint = g.renderer.wantsAnotherFrame();
                 g.empty = draws == 0;
                 if (g.empty) {
                     // T-658 (50 §50.ab item 3 ii / iii): nothing to draw -- no texture, no 4x attachments,
@@ -657,6 +690,10 @@ XT_CAPI xt_status xt_surface_render_gpu(xt_surface* s, xt_gpu_target* t, const x
                     const xt::wgpu::WgpuStats stats = g.renderer.stats();
                     g.executed = stats.drawCalls;
                     g.skipped = stats.skippedCmds;
+                    if (xt::wgpu::WgpuDevice* d = g.renderer.device();
+                        d != nullptr && d->lastSubmissionIndex() != 0) {
+                        t->inflight.noteSubmit(d->lastSubmissionIndex());  // T-674
+                    }
                     ++t->submits;
                     t->passes += stats.passes;
                 }
@@ -698,6 +735,7 @@ XT_CAPI xt_status xt_gpu_target_trim(xt_gpu_target* t) {
     XT_CAPI_GUARD("xt_gpu_target_trim", {
         if (t == nullptr) return fail(XT_STATUS_INVALID_ARGUMENT, "xt_gpu_target_trim: target is NULL");
         if (t->inFrame) return fail(XT_STATUS_INVALID_ARGUMENT, "xt_gpu_target_trim: called inside a frame");
+        t->inflight.waitIdle(t->init.device);  // T-674: the GPU is done with everything before it is freed
         const uint32_t freed = t->shared.trimIdleImages();
         wgpuDevicePoll(t->init.device, 0, nullptr);  // let the driver reclaim it, never waits
         logSharedCache(*t);

@@ -4,6 +4,7 @@
 // before each pass reading the surface) and WgpuRenderer::build / submit.
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -257,4 +258,67 @@ TEST_CASE("wgpu draw: build and submit apart draw what render draws (T-658)") {
     s.renderer.resize(kW, kH);
     s.renderer.submit(s.target.view);
     CHECK(std::string(s.renderer.lastError()).find("no frame was built") != std::string::npos);
+}
+
+TEST_CASE("wgpu draw: T-661 a 0.25 px polyline at 1x stays continuous and its coverage matches SW") {
+    // Docs/tasks/T-661.md items 4 and 6: a stroke narrower than a device pixel is drawn from the
+    // coverage atlas -- every column along the shallow segment and every row along the steep one
+    // has non-zero alpha, and the summed coverage is SW's within 3 %.
+    constexpr int kW = 160, kH = 128;
+    CommandList cl = makeList(kW, kH);
+    PathRef path = emptyPath(cl);
+    const Vec2 pts[3] = {Vec2{10.3f, 20.6f}, Vec2{150.2f, 52.1f}, Vec2{120.7f, 118.4f}};
+    for (int i = 0; i < 3; ++i) {
+        cl.verbs.push_back(i == 0 ? PathVerb::Move : PathVerb::Line);
+        cl.points.push_back(pts[i].x);
+        cl.points.push_back(pts[i].y);
+    }
+    path.verbCount = 3;
+    path.pointCount = 6;
+    StrokeCmd s{};
+    s.path = path;
+    s.paint.kind = PaintKind::Solid;
+    s.paint.color = Color{1, 1, 1, 1};
+    s.width = 0.25f;
+    s.cap = LineCap::Butt;
+    s.join = LineJoin::Miter;
+    s.miterLimit = 4.0f;
+    cl.strokes.push_back(s);
+    cl.commands.push_back(Command{CmdKind::StrokePath, {}, 0});
+
+    Session session(kW, kH);
+    const std::vector<uint8_t> gpu = session.render(cl);
+    CHECK_MESSAGE(session.error.empty(), session.error);
+    const std::vector<uint8_t> sw = renderSw(cl, kW, kH);
+    CHECK(matches(gpu, sw, kW, kH, "0.25 px polyline"));
+
+    // Shallow segment: every column strictly between its ends has a lit pixel.
+    int gaps = 0;
+    for (int x = 12; x <= 148; ++x) {
+        bool lit = false;
+        for (int y = 0; y < kH && !lit; ++y) {
+            lit = pixel(gpu, kW, x, y)[0] > 0 && y < 60;
+        }
+        gaps += lit ? 0 : 1;
+    }
+    CHECK(gaps == 0);
+    // Steep segment: every row strictly between its ends has a lit pixel right of x = 118.
+    gaps = 0;
+    for (int y = 54; y <= 116; ++y) {
+        bool lit = false;
+        for (int x = 118; x < kW && !lit; ++x) {
+            lit = pixel(gpu, kW, x, y)[0] > 0;
+        }
+        gaps += lit ? 0 : 1;
+    }
+    CHECK(gaps == 0);
+    // Integrated coverage (the red channel of white on black).
+    double sumGpu = 0, sumSw = 0;
+    for (size_t i = 0; i < gpu.size(); i += 4) {
+        sumGpu += gpu[i];
+        sumSw += sw[i];
+    }
+    INFO("coverage sum gpu ", sumGpu, " sw ", sumSw);
+    REQUIRE(sumSw > 0);
+    CHECK(std::fabs(sumGpu - sumSw) / sumSw <= 0.03);
 }

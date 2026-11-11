@@ -19,7 +19,18 @@ function(_xt_wgpu_disable reason)
     set(XT_BUILD_WGPU OFF PARENT_SCOPE)
 endfunction()
 
-xt_sdk_prebuilt(wgpu-native "${XT_PLATFORM_TAG}" _xt_wgpu_dir _xt_wgpu_reason)
+# T-671 (50 §50.ab addendum 2, item 1): an experimental, locally built wgpu-native in place of the pinned
+# one (Tools/Scripts/build_wgpu_native_trunk.sh lays the directory out: include/webgpu/{webgpu.h,wgpu.h},
+# lib/, COMMIT.txt). Empty (the default) = the pinned PREBUILT entry; shipping builds never set it.
+set(XT_WGPU_NATIVE_OVERRIDE_DIR "" CACHE PATH
+    "Experimental: a wgpu-native directory (include/webgpu + lib) replacing the pinned prebuilt one; empty = pinned")
+if(NOT XT_WGPU_NATIVE_OVERRIDE_DIR STREQUAL "")
+    file(TO_CMAKE_PATH "${XT_WGPU_NATIVE_OVERRIDE_DIR}" _xt_wgpu_dir)
+    set(_xt_wgpu_reason "")
+    message(STATUS "xt_wgpu: XT_WGPU_NATIVE_OVERRIDE_DIR=${_xt_wgpu_dir} replaces the pinned wgpu-native")
+else()
+    xt_sdk_prebuilt(wgpu-native "${XT_PLATFORM_TAG}" _xt_wgpu_dir _xt_wgpu_reason)
+endif()
 if(_xt_wgpu_dir STREQUAL "")
     _xt_wgpu_disable("${_xt_wgpu_reason}")
     return()
@@ -59,6 +70,31 @@ if(NOT TARGET xt::wgpu_native)
     endif()
 endif()
 message(STATUS "xt_wgpu: wgpu-native from ${_xt_wgpu_dir}")
+
+# T-671: WGPUDeviceExtras.memoryHints (wgpu-native PR #619; not in the pinned v29.0.1.1) -> the
+# XT_WGPU_MEMORY_HINTS switch of WgpuInit::headless. Re-checked on every configure: the directory may change.
+include(CheckStructHasMember)
+unset(XT_WGPU_HAS_MEMORY_HINTS CACHE)
+set(_xt_wgpu_saved_includes "${CMAKE_REQUIRED_INCLUDES}")
+set(CMAKE_REQUIRED_INCLUDES "${_xt_wgpu_dir}/include")
+check_struct_has_member("WGPUDeviceExtras" memoryHints "webgpu/webgpu.h;webgpu/wgpu.h" XT_WGPU_HAS_MEMORY_HINTS
+                        LANGUAGE C)
+set(CMAKE_REQUIRED_INCLUDES "${_xt_wgpu_saved_includes}")
+if(XT_WGPU_HAS_MEMORY_HINTS)
+    set_property(TARGET xt::wgpu_native APPEND PROPERTY INTERFACE_COMPILE_DEFINITIONS XT_WGPU_HAS_MEMORY_HINTS)
+endif()
+# The build's identity for the target-creation log line: COMMIT.txt of an override directory (a local build
+# reports version 0.0.0.0 through wgpuGetVersion), else "pinned".
+set(_xt_wgpu_source "pinned")
+if(NOT XT_WGPU_NATIVE_OVERRIDE_DIR STREQUAL "")
+    set(_xt_wgpu_source "override")
+    if(EXISTS "${_xt_wgpu_dir}/COMMIT.txt")
+        file(STRINGS "${_xt_wgpu_dir}/COMMIT.txt" _xt_wgpu_commit LIMIT_COUNT 1)
+        set(_xt_wgpu_source "override ${_xt_wgpu_commit}")
+    endif()
+endif()
+set_property(TARGET xt::wgpu_native APPEND PROPERTY INTERFACE_COMPILE_DEFINITIONS
+             "XT_WGPU_NATIVE_SOURCE=\"${_xt_wgpu_source}\"")
 
 # bin/<tag>/<Config>/ (and its tests/ and examples/) get the library at configure time; executables
 # that link xt_wgpu call xt_copy_runtime_library(<target> xt::wgpu_native) for the copy next to them

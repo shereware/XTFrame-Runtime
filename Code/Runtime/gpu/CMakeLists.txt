@@ -9,6 +9,7 @@ add_library(xt_gpu STATIC
     src/gradient_lut.cpp
     src/gpu_effects.cpp
     src/frame_builder.cpp
+    src/coverage_atlas.cpp  # T-660a: R8 coverage atlas (Docs/design/10-backends.md §10.11 item 2)
 )
 target_include_directories(xt_gpu PUBLIC include)
 # T-162: the effect result cache keys segments with core's per-command hash (damage_internal.h),

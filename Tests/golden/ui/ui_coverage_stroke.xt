@@ -1,0 +1,25 @@
+<xt version="2">
+
+  <!-- T-661 (10 section 10.11 item 3): strokes -- 2 px polylines (miter, round, bevel joins), a
+       closed rounded rectangle outline 1.5 px wide, 0.5 px and 0.25 px polylines, a dashed polyline
+       rotated 13 deg whose dashes touch, a stroked icon and a 1 px slanted polyline about 2450 px
+       long (tiled). At 1x the GPU backends draw them from the coverage atlas. -->
+  <body>
+    <img id="icon" src="coverage_stroke.svg"/>
+  </body>
+
+  <layout>
+    body {
+      margin: 0;
+    }
+    #icon {
+      width: 256px;
+      height: 256px;
+    }
+  </layout>
+  <style>
+    #icon {
+      object-fit: fill;
+    }
+  </style>
+</xt>

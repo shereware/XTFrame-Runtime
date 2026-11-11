@@ -55,3 +55,31 @@ if(TARGET xtframe-view)
         set_tests_properties(xt_perf_flow_big_${xt_flow_big} PROPERTIES LABELS "perf-report")
     endforeach()
 endif()
+
+# T-671 (Docs/design/50-c-abi.md §50.ab addendum 2, item 3): the GPU memory probe that
+# Tools/Scripts/gpu_mem_matrix.py runs once per combination. C ABI only; built with the shared library
+# and wgpu. The smoke test runs one round over the capi `flip` fixture bundle and checks the CSV.
+if(TARGET xt_capi AND TARGET xt_wgpu)
+    add_executable(xt_gpu_mem_probe gpu_mem_probe.cpp)
+    target_link_libraries(xt_gpu_mem_probe PRIVATE xt_capi)
+    if(WIN32)
+        target_link_libraries(xt_gpu_mem_probe PRIVATE dxgi)
+        add_custom_command(TARGET xt_gpu_mem_probe POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:xt_capi>" "$<TARGET_FILE_DIR:xt_gpu_mem_probe>"
+            VERBATIM)
+    endif()
+    xt_copy_runtime_library(xt_gpu_mem_probe xt::wgpu_native)
+    xt_enable_exceptions(xt_gpu_mem_probe)
+    xt_no_rtti(xt_gpu_mem_probe)
+    xt_set_warnings(xt_gpu_mem_probe)
+    if(TARGET xtframe-pack)
+        # Packed by Tests/capi/CMakeLists.txt (xt_capi_test_bundles, defined after this directory).
+        add_dependencies(xt_gpu_mem_probe xt_capi_test_bundles)
+        add_test(NAME xt_gpu_mem_probe_smoke
+                 COMMAND "${CMAKE_COMMAND}" "-DPROBE=$<TARGET_FILE:xt_gpu_mem_probe>"
+                         "-DBUNDLE=${PROJECT_BINARY_DIR}/Tests/capi/flip-bundle"
+                         "-DOUT=${CMAKE_CURRENT_BINARY_DIR}/gpu_mem_probe_smoke.csv"
+                         -P "${CMAKE_CURRENT_SOURCE_DIR}/gpu_mem_probe_smoke.cmake")
+        set_tests_properties(xt_gpu_mem_probe_smoke PROPERTIES SKIP_REGULAR_EXPRESSION "SKIP: no WebGPU adapter")
+    endif()
+endif()

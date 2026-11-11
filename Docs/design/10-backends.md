@@ -280,3 +280,51 @@ class FileAssetResolver : public AssetResolver { /* 相對某根目錄讀檔 + s
 
 **T-659 實作記錄（#621，2026-11-11）**：`frame_builder.cpp` 的 `imageQuadOnPixelGrid`／`drawImageQuadEdges`／`drawFringedImageQuad`。「在像素格上」＝裝置空間每邊 |dx| 或 |dy| ≤ 1e-3 且每個角的 x、y 距整數 ≤ 1e-3（同 SW 的 `kAxisEps`）；羽化條件：`edgeFringe` 開、`smooth != 0`、非投影、不在格上、嚴格凸。新 fixture `ui_image_transform`（旋轉 7°、skewX、非整數縮放、格上對照、圖集格旋轉）：1x GPU 對 SW 超差像素 620 → 7（餘下在 quad 角，miter 高估，同 `fillConvex`）、最大通道差 133 → 31；4x 逐位元組不變；既有結構快照無一變動。未處理：3D 投影影像、`DrawImageMesh`、粒子；旋轉九宮格的格縫與 SW 同樣可見。
 
+
+## 10.12 GPU 路徑的每幀成本：只畫變動的部分（2026-11-11 定案；Sherefox debate 調查與 T-658 計數）
+
+**事實**（debate、1440p、T-658 之後）：每幀 18.8 個 render pass、146 個 draw call、132 次 pipeline 綁定、效果快取命中 16.4／未命中 2.0；任何一個節點變動就整張 surface 重建重畫（C ABI 的 surface 走 Layer 模式，damage 只在 Direct 模式使用）；約 98% 的 tick 是髒的。SW 路徑已有 damage 局部重繪（23 §23.2，T-642／T-644），GPU 路徑沒有對應物。
+
+**目標**（同一場景、同一解析度，穩態每幀）：重畫的像素量與 damage 面積同階而不是整張；render pass ≤ 4；動態參數的方塊陰影 0 個離屏 pass；靜止的幀 0 個 pass（已是）。
+
+**定案**（每項一張單，依序；排在 10.11 的 T-660b 之後穿插，順序由主模型依量測調整）：
+
+1. **GPU damage 局部重繪（T-667）**：Layer 模式的 surface 貼圖跨幀保留為上一幀內容；有 damage 且非全髒時，frame builder 只建「包圍盒與 damage 矩形集合相交」的命令，surface pass 以 `LoadOp::Load` 開啟，先以 damage 矩形清除（scissor＋clear quad，混合模式 Copy），再於同一 scissor 內繪製。
+   - damage 來源與 SW 相同（`Context` 的多範圍 damage，T-644）；矩形數 > 8 或總面積 > surface 的 60% → 當全髒。
+   - 與 damage 相交的 PushEffect／PushLayer 區段整段重建（效果快取照常命中）；不相交者整段跳過。
+   - 4x 時 MSAA 色彩附件同樣跨幀保留（已是持久附件）；resolve 仍整面一次（wgpu 無局部 resolve）。1x 無此成本。
+   - 讀取 surface 的 pass（backdrop、非 Normal 混合）出現在該幀時，該幀當全髒（先求正確；之後再放寬）。
+   - trim／resize／裝置重建／`edgeFringe` 或取樣數變更後第一幀全髒。
+   - 驗收：對同一段動畫，局部重繪與強制全髒逐位元組相同（`xtframe-view --partial` 擴到 wgpu）；`WgpuStats` 加 `damagePixels`、`skippedCommands`。
+2. **方塊陰影不走離屏（T-668）**：painter 在發出 `effect: shadow()`（drop shadow）時判定內容輪廓是否為「一個（圓角）矩形」——節點有不透明度 1 的背景填滿自己的邊框盒、沒有會超出該盒的子內容（`overflow` 非 visible，或所有子孫的可繪包圍盒都在盒內）、背景自身 alpha = 1。成立時不發 PushEffect，改發 `DrawBoxShadow`（圓角矩形、位移、模糊、擴散、色彩）命令，然後照常畫內容：
+   - 模糊 = 0：以陰影色畫位移並擴張後的圓角矩形（凸形填色，沿用 fringe）。
+   - 模糊 > 0：一個 quad、片段著色器以圓角矩形高斯的閉式近似計算覆蓋率（矩形部分用 erf 的解析積分，圓角以徑向修正；公式與常數寫進任務單），不建任何離屏目標、不斷 surface pass。
+   - SW 以同一公式實作 `DrawBoxShadow`（兩個後端同源，互為基準）；與原本「離屏＋高斯」的差異在任務單內量測，超過 golden 容差的情形回報由主模型裁決（改公式或限縮判定條件），不得自行放寬容差。
+   - 判定不成立的陰影（文字、SVG、透明或不規則內容）維持現有離屏路徑。
+   - 動畫只改陰影參數（如 Sherefox 的 `litpulse`）時，每幀成本 = 一個 draw。
+3. **不重疊的不透明度群組不建圖層（T-669）**：`opacity < 1` 且有 2 個以上可繪子項的節點，若各子項的可繪包圍盒兩兩不相交且群組內沒有混合模式／效果／裁切層，painter 把群組 alpha 乘進各子項，不發 PushLayer。相交或無法判定時維持圖層。像素與圖層合成在數學上相同（各自預乘後 SrcOver 於同一背景），以逐位元組或 1 階內為驗收。
+4. **批次**（先量再定，不在本節定案）：T-660b 併入後（stencil 路徑大幅減少）重新取 `view --perf` 的 draw／pipelineBinds，另派唯讀調查列出 pipeline 切換的實際序列，再決定是否把 Solid／Gradient／Image／Coverage 併成單一 pipeline。
+5. **不做**：為 4x 做局部 resolve 的變通；跨 surface 的合併繪製（surface 直畫目標，PENDING B6）。
+
+**T-660a 實作記錄（#623，2026-11-11）**：`xt::CoverageRasterizer`（自 `sw_raster.cpp` 原樣搬入 `core/src/coverage_raster.cpp`；`sw_raster.h` 留別名）、`xt::rasterizeCoverage(verbs, points, deviceFromLocal, rule, CoverageBitmap&)`（與 SW `fillPath` 同一個 `flattenPath`／`kFlattenTolerance` 0.25／輪廓封閉；包圍盒外擴 1 px；單邊上限 1024）、`xt::gpu::CoverageAtlas`（首頁 512² 長到 1024²、最多 4 頁、shelf 裝箱、鍵排序向量二分搜尋、整頁 LRU 回收、每幀預算 2 Mpx）。五個形狀的覆蓋率與 SW alpha 逐位元組相同；SW golden 175 全過。SW 與 frame builder 的展平相同，唯一差別是 SW 畫進偏移的圖層緩衝時多減一個原點。**10.11 定案 2 修正（T-660b 起）**：鍵的線性部分不量化，改存四個 float 的位元樣式（−0 正規化為 +0）——1/64 的量化在 512 px 的形狀上會造成數像素的誤差；靜態形狀本來就逐位元相同，動畫中的形狀無論如何都要重新光柵化。位移仍量化到 1/4 px。
+
+**T-660b 實作記錄（#624，2026-11-11）**：`DrawCmd::coverage`（R8 貼圖槽，只用於 Solid 與 Gradient；`PaintKind` 沒有影像著色，故不含 image pattern）、`CoverageGradientParams`（漸層參數＋ uv → 路徑本地的仿射）；wgpu `coverage_solid.wgsl`／`coverage_gradient.wgsl`、GL `kCoverageSolidFrag`／`kCoverageGradientFrag`（兩個裝置都完整實作）。frame builder `fillCoverage`：條件 `edgeFringe && antialias != 0 && !projecting()`；鍵為內容雜湊＋線性部分位元樣式＋1/4 px 位移（`splitCoverageTranslation` 處理進位）；頁在幀中成長時該幀重建一次。1x GPU 對 SW 的超差像素／最大通道差：`ui_coverage_fill`（新）1064／140 → 27／18（餘下為 1/4 px 位移量化）、`scene_taper` 1593／216 → 0／1、`lottie_path_bezier` 392 → 0、`lottie_star_polygon` 285 → 0、`ui_border_styles` 307 → 0；仍高者（`scene_modifiers`、`ui_svg_modifiers`、`ui_game_hud`）是筆畫與其他未接路徑（T-661 起）。4x 逐位元組不變；debate 靜態 build ms 無退步。既有測試改動：capi `gpu text 2` 的星形改為斷言 1x 與 SW 的中間 alpha 像素數相當。**待處理**：> 1024 px 的凹形退回硬邊（debate 1440p 每幀 1 個）——T-661 開單時一併決定（分塊或提高上限）。未編譯：Clang／GCC／Release。
+
+**10.11 定案 2 補充：大形狀分塊（2026-11-11；T-660b 實測 debate 1440p 每幀一個 > 1024 px 的凹形退回硬邊；筆畫常見「又長又細」同樣會超限；T-672）**
+
+1. `rasterizeCoverage` 的位圖單邊上限由 1024 提高到 **4096**（暫存位圖由呼叫端重用；超過者退回 stencil）。
+2. 位圖任一邊 > 512 的形狀**分塊**存入圖集：以位圖左上角為原點切成 256×256 的磚（邊緣的磚較小），每塊磚各自是一個圖集項，鍵＝形狀鍵＋磚座標 `(tx, ty)`。整個形狀一次光柵化後切磚。
+3. **均勻磚不佔空間**：全 0 的磚記為「空」（不畫、不存）；全 255 的磚記為「滿」，繪製時取樣圖集裡一個保留的全 255 texel 區（每頁建立時預留 4×4、UV 取其中心），與其他覆蓋率 quad 同一批次。只有跨越邊緣的磚才真正佔圖集。水平相鄰的「滿」磚合併成一個 quad。
+4. 任一磚未命中（例如所在頁被回收）→ 整個形狀重新光柵化並補回缺的磚（已在的磚不重插）。
+5. **預算**：每幀預算仍為 2 Mpx，但**該幀第一個需要光柵化的形狀不受預算阻擋**（否則大於預算的單一形狀永遠畫不出來）；之後的形狀照舊受限。
+6. 上限：磚數 > 1024 的形狀退回 stencil。
+7. 統計加 `coverageTiles`（存入的邊緣磚）、`coverageUniformTiles`。
+
+**T-672 實作記錄（#627，2026-11-11）**：`kMaxCoverageBitmapSide` 4096；`CoverageKey` 加 `uint8_t tile`（0＝整個形狀或分塊形狀的表頭項、1＝磚）與 `tileX／tileY`；`CoverageEntryKind {Bitmap, Empty, Full, Tiled}`、`lookupTiles`／`insertTiles`；每頁右下角保留 4×4 全 255 區（建立、成長、回收時寫入）。**解讀採用**：漸層的「滿」磚不取樣保留區（覆蓋率漸層著色器由 uv 推算著色位置，uv 恆定會把漸層壓成單色），改以一般 Gradient cover quad 繪製；純色滿磚照定案取樣保留區。均勻磚與表頭項掛在該形狀第一塊邊緣磚所在的頁、隨頁回收。debate 1440p 1x：fallbacks 1.03 → 0／幀、draw 148.6 → 146.6；該形狀是對齊像素格的 1600×104 面板，前後畫面逐位元組相同（7 塊磚全是邊緣磚）。`ui_coverage_fill` 對 SW 仍為 27／18（大形狀的邊都在整數像素上）。「磚數 > 1024 退回」經由填色無法觸及（4096 上限最多 256 塊），只在圖集層測試。未測：GL 套件；未編譯：Clang／GCC。
+
+**T-661 實作記錄（#628，2026-11-11）**：SW 的筆畫＝裝置空間展平 → 虛線（陣列與相位乘 `sqrt|det|·dpr`）→ `strokeToFill`（寬度乘同一比例）→ NonZero 光柵化；GPU 在圖集未命中時重複完全相同的步驟（`rasterizeStrokeCoverage`、`xt::rasterizeCoverageContours`），唯一差別是位移取 1/4 px。鍵雜湊裝置空間的實際幾何參數（寬度×比例、縮放後的虛線與相位、展平容差）。1x GPU 對 SW 的超差像素：`scene_modifiers` 1164 → 0、`scene_dash` 880 → 0、`lottie_gradient_stroke` 824 → 0、`ui_svg_basic` 731 → 0、`ui_svg_modifiers` 658 → 14、`ui_game_hud` 713 → 133（餘下未查，屬後續路徑）、新 fixture `ui_coverage_stroke` 2385 → 82（旋轉虛線的 1/4 px 位移量化）。0.25 px 折線連續、無缺口。Sherefox debate 1440p 1x：draw 146.6 → 95.3／幀、coverage hits 22.3、圖集 3 MiB、穩態 misses 0、build ms 持平。未做：3D 投影下的筆畫。未編譯：Clang／GCC。
+
+**10.11 定案 2 補充 2：預算退回的幀必須補畫（2026-11-11；T-660b 解讀 7 揭露的缺口；T-662 內處理）**：因每幀預算而退回 stencil（硬邊）的形狀，在靜態畫面上若該幀被判為可重用，就會一直停在硬邊。定案：某次 build 有「因預算退回」的形狀時，(1) `lastFrameReusable` 回 false；(2) frame builder 提供 `wantsAnotherFrame()`，renderer 往上傳遞——C ABI 的 surface 把它視為下一次 `xt_surface_update`／render 的全髒 damage（即使文件沒有變動也重畫一次），`xtframe-view` 與編輯器預覽同樣再畫一幀；直到沒有預算退回為止。因尺寸上限（> 4096）而退回的不算（重畫也不會變）。另：預算的計量由「位圖包圍盒面積」改為「光柵化器實際走訪的像素數（各掃描線有覆蓋的跨距總和）」的事後記帳——細長斜線的包圍盒很大但實際工作量很小；事前的 `budgetAllows` 檢查改為只看「本幀已用量是否已達預算」。
+
+**T-662 實作記錄（#629，2026-11-11）**：A——`CoverageBitmap::coveredPixels`（掃描回呼內累加非零跨距，無額外掃描）、`budgetAllows()` 無參數（本幀已用 < 預算；首形狀特例移除）、`FrameBuilder::wantsAnotherFrame()`（只計預算退回）、`WgpuRenderer`／`GlRenderer` 轉發、C ABI `SurfaceGpu::repaint`（`xt_surface_render_gpu` 僅在 `!repaint` 且無 damage 時跳過）；`xtframe-view` 與編輯器預覽每 tick 都重建，無需改。B——輪廓字形先試覆蓋率圖集、再試直繪、最後 stencil；SW 的輪廓字形是線性覆蓋率不套 gamma（gamma 只在 < 24 px 的 hinted 位圖路徑），與圖集著色器一致。字形鍵＝（"GLYPHOL1"、shaper 指標、FontId、glyph id、字級、展平容差）。1x 對 SW：`ui_coverage_text`（新）5651 → 1257（餘下：1/4 px 位移量化在水平邊約 22 階；24～96 px 帶 GPU 用 hinted 圖集而 SW 填輪廓，T-263c 已記）、`ui_i18n_vertical_mixed` 175 → 0；capi 120 px 字的中間 alpha 像素 SW 1294／1x 1299／4x 778。Sherefox 1440p 1x：title draw 40.2 → 27.7、cutin 12.2 → 8.9；cutin 的縮放動畫期間大字每幀重新光柵化（build 0.18 → 0.39 ms 平均）。**待修（T-663 內順手）**：字形鍵含 shaper 指標——bundle 重載後新 shaper 可能落在同一位址而誤命中舊項；改用 shaper 的世代編號或在 shaper 更換時清空覆蓋率圖集。未編譯：Clang／GCC。
+

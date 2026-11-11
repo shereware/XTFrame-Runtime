@@ -56,6 +56,7 @@ struct WgpuRenderer::Impl {
     bool frameBuilt = false;  ///< T-658: `frame` was built since init / resize (submit may draw it)
     int width = 0, height = 0;
     float buildMs = 0, submitMs = 0;
+    WgpuFramesInFlight framesInFlight;  ///< T-674
     std::string adapterName;
     std::string lastError;
     std::string lastWarning;
@@ -96,6 +97,7 @@ struct WgpuRenderer::Impl {
         }
         builder.shutdown();
         device.shutdown();
+        framesInFlight.reset();  // T-674
         frame.clear();
         frameBuilt = false;
         adapterName.clear();
@@ -162,6 +164,8 @@ struct WgpuRenderer::Impl {
         const auto s0 = std::chrono::steady_clock::now();
         device.submit(frame);
         submitMs = std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - s0).count();
+        if (device.lastSubmissionIndex() != 0)
+            framesInFlight.noteSubmit(device.lastSubmissionIndex());  // T-674
         device.setSurface(nullptr);
         lastWarning = device.takeWarning();
         if (stats != nullptr) {
@@ -335,11 +339,21 @@ WgpuStats WgpuRenderer::stats() const {
     s.copies = d.copies;
     s.blits = d.blits;
     s.cacheStores = d.cacheStores;
+    s.coverageAtlasBytes = m_impl->builder.lastCoverageStats().atlasBytes;
+    s.inflightWaits = m_impl->framesInFlight.frameWaits();  // T-674
+    s.inflightWaitMs = m_impl->framesInFlight.frameWaitMs();
     if (!m_impl->frameReused) {  // T-658: the build's effect cache counters
         const gpu::FrameBuilder::EffectCacheStats c = m_impl->builder.lastEffectCacheStats();
         s.fxCacheHits = c.hits;
         s.fxCacheMisses = c.misses;
         s.fxCacheStores = c.stores;
+        const gpu::FrameBuilder::CoverageStats cov = m_impl->builder.lastCoverageStats();  // T-660b
+        s.coverageHits = cov.hits;
+        s.coverageMisses = cov.misses;
+        s.coverageRasterizedPixels = cov.rasterizedPixels;
+        s.coverageFallbacks = cov.fallbacks;
+        s.coverageTiles = cov.tiles;  // T-672
+        s.coverageUniformTiles = cov.uniformTiles;
     }
     s.uploadBytes = d.uploadBytes;
     s.planMs = d.planMs;
@@ -359,6 +373,8 @@ bool WgpuRenderer::readback(WGPUTexture texture, std::span<uint8_t> out) {
 
 const char* WgpuRenderer::lastError() const { return m_impl->lastError.c_str(); }
 
+bool WgpuRenderer::wantsAnotherFrame() const { return m_impl->builder.wantsAnotherFrame(); }
+
 const char* WgpuRenderer::lastWarning() const { return m_impl->lastWarning.c_str(); }
 
 #ifndef XT_GPU_NO_TEXT
@@ -366,5 +382,6 @@ void WgpuRenderer::setGlyphAtlas(xt::text::GlyphAtlas* atlas) { m_impl->builder.
 #endif
 
 WgpuDevice* WgpuRenderer::device() { return m_impl->initialized ? &m_impl->device : nullptr; }
+WgpuFramesInFlight& WgpuRenderer::framesInFlight() { return m_impl->framesInFlight; }
 
 }  // namespace xt::wgpu

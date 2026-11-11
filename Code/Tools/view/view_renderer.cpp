@@ -8,6 +8,7 @@
 #include "xt_renderer_gl3.h"
 #endif
 #ifdef XT_VIEW_WGPU
+#include "xt/wgpu/wgpu_device.h"  // T-670: WgpuDeviceStats live / peak bindings
 #include "xt_renderer_wgpu.h"
 #endif
 
@@ -256,8 +257,22 @@ public:
         out.effectCacheHits = s.fxCacheHits;
         out.effectCacheMisses = s.fxCacheMisses;
         out.effectCacheStores = s.fxCacheStores;
+        out.coverageHits = s.coverageHits;  // T-660b
+        out.coverageMisses = s.coverageMisses;
+        out.coverageRasterizedPixels = s.coverageRasterizedPixels;
+        out.coverageFallbacks = s.coverageFallbacks;
+        out.coverageTiles = s.coverageTiles;  // T-672
+        out.coverageUniformTiles = s.coverageUniformTiles;
+        out.coverageAtlasBytes = s.coverageAtlasBytes;
         out.buildMs = s.buildMs;
         out.submitMs = s.submitMs;
+        out.inflightWaits = s.inflightWaits;  // T-674
+        out.inflightWaitMs = s.inflightWaitMs;
+        if (const xt::wgpu::WgpuDevice* device = m_renderer.renderer().device()) {  // T-670
+            out.hasBindings = true;
+            out.liveBindings = device->lastStats().liveBindings;
+            out.peakBindings = device->lastStats().peakBindings;
+        }
         return true;
     }
 

@@ -1,9 +1,10 @@
-#include "sw_raster.h"
+#include "xt/coverage_raster.h"
 
 #include <algorithm>
 #include <cmath>
 
-/// See Docs/design/10-backends.md §10.2.1, Docs/tasks/T-11.md "光柵器（sw_raster.h/.cpp）".
+/// See Docs/design/10-backends.md §10.2.1, Docs/tasks/T-660a.md (moved from xt_sw), Docs/tasks/T-11.md
+/// "光柵器（sw_raster.h/.cpp）".
 ///
 /// addLine decomposes a line segment into per-(row, column) cell contributions by walking the
 /// segment's parameter t in [0, 1] (clipped to the visible row range) and splitting at every row
@@ -25,7 +26,7 @@
 /// intermediate split points there are, so a line's total cover contribution to a row always
 /// equals lround(yRowExit) - lround(yRowEntry).
 
-namespace xt::sw {
+namespace xt {
 
 namespace {
 
@@ -38,11 +39,11 @@ struct AxisMap {
 
 }  // namespace
 
-void Rasterizer::reset(int width, int height) {
+void CoverageRasterizer::reset(int width, int height) {
     m_sweepY0 = 0;
     m_sweepY1 = height;
     if (width != m_width || height != m_height) {
-        m_rows.assign(height > 0 ? static_cast<size_t>(height) : size_t{0}, std::vector<Cell>{});
+        m_rows.assign(height > 0 ? static_cast<size_t>(height) : size_t{0}, std::vector<CoverageCell>{});
         m_width = width;
         m_height = height;
         m_minRow = 0;
@@ -58,7 +59,7 @@ void Rasterizer::reset(int width, int height) {
     m_maxRow = -1;
 }
 
-void Rasterizer::addLine(Vec2 p0, Vec2 p1) {
+void CoverageRasterizer::addLine(Vec2 p0, Vec2 p1) {
     if (m_width <= 0 || m_height <= 0) {
         return;
     }
@@ -74,14 +75,14 @@ void Rasterizer::addLine(Vec2 p0, Vec2 p1) {
     const float dyf = p1.y - p0.y;
     const double dx = std::isfinite(dxf) ? static_cast<double>(dxf) : static_cast<double>(p1.x) - p0.x;
     const double dy = std::isfinite(dyf) ? static_cast<double>(dyf) : static_cast<double>(p1.y) - p0.y;
-    AxisMap ax{static_cast<double>(p0.x) * kOnePixel, dx * kOnePixel};
-    AxisMap ay{static_cast<double>(p0.y) * kOnePixel, dy * kOnePixel};
+    AxisMap ax{static_cast<double>(p0.x) * kCoverageOnePixel, dx * kCoverageOnePixel};
+    AxisMap ay{static_cast<double>(p0.y) * kCoverageOnePixel, dy * kCoverageOnePixel};
 
     if (ay.delta == 0.0) {
         return;  // horizontal segments cross no scanline and contribute no winding.
     }
 
-    const double heightFx = static_cast<double>(m_height) * kOnePixel;
+    const double heightFx = static_cast<double>(m_height) * kCoverageOnePixel;
 
     // Visible t-range: the portion of the segment whose y lies in [0, heightFx].
     double tBoundA = (0.0 - ay.origin) / ay.delta;
@@ -102,10 +103,10 @@ void Rasterizer::addLine(Vec2 p0, Vec2 p1) {
     const double yHiV = ay.at(tHi);
     const double yMin = std::min(yLoV, yHiV);
     const double yMax = std::max(yLoV, yHiV);
-    const auto rowFirst = static_cast<int64_t>(std::floor(yMin / kOnePixel)) + 1;
-    const auto rowLast = static_cast<int64_t>(std::ceil(yMax / kOnePixel)) - 1;
+    const auto rowFirst = static_cast<int64_t>(std::floor(yMin / kCoverageOnePixel)) + 1;
+    const auto rowLast = static_cast<int64_t>(std::ceil(yMax / kCoverageOnePixel)) - 1;
     for (int64_t r = rowFirst; r <= rowLast; ++r) {
-        double boundaryY = static_cast<double>(r) * kOnePixel;
+        double boundaryY = static_cast<double>(r) * kCoverageOnePixel;
         double t = (boundaryY - ay.origin) / ay.delta;
         if (t > tLo && t < tHi) {
             ts.push_back(t);
@@ -121,11 +122,11 @@ void Rasterizer::addLine(Vec2 p0, Vec2 p1) {
         // clamped to -1 / width anyway -- so a huge x extent no longer means one cell per column.
         const double colLimit = static_cast<double>(m_width);
         const auto colFirst =
-            static_cast<int64_t>(std::clamp(std::floor(xMin / kOnePixel) + 1.0, -1.0, colLimit));
+            static_cast<int64_t>(std::clamp(std::floor(xMin / kCoverageOnePixel) + 1.0, -1.0, colLimit));
         const auto colLast =
-            static_cast<int64_t>(std::clamp(std::ceil(xMax / kOnePixel) - 1.0, -1.0, colLimit));
+            static_cast<int64_t>(std::clamp(std::ceil(xMax / kCoverageOnePixel) - 1.0, -1.0, colLimit));
         for (int64_t c = colFirst; c <= colLast; ++c) {
-            double boundaryX = static_cast<double>(c) * kOnePixel;
+            double boundaryX = static_cast<double>(c) * kCoverageOnePixel;
             double t = (boundaryX - ax.origin) / ax.delta;
             if (t > tLo && t < tHi) {
                 ts.push_back(t);
@@ -150,7 +151,7 @@ void Rasterizer::addLine(Vec2 p0, Vec2 p1) {
     //
     // At the segment's true endpoints (t == 0 or t == 1) the Y is taken directly from p0.y/p1.y
     // rather than through `ay.at(t)` (== ay.origin + t * ay.delta): floating-point addition is not
-    // exactly associative, so `origin + 1.0*delta` can differ from `p1.y * kOnePixel` in the low
+    // exactly associative, so `origin + 1.0*delta` can differ from `p1.y * kCoverageOnePixel` in the low
     // bit even though they are mathematically equal. Two contour edges sharing a vertex (this
     // segment's p1 == the next segment's p0) must round that shared Y to the *same* integer, or the
     // per-row cover sum stops telescoping to 0 across the contour; using the direct multiply on
@@ -161,9 +162,9 @@ void Rasterizer::addLine(Vec2 p0, Vec2 p1) {
         const double t = ts[i];
         double y;
         if (t <= 0.0) {
-            y = static_cast<double>(p0.y) * kOnePixel;
+            y = static_cast<double>(p0.y) * kCoverageOnePixel;
         } else if (t >= 1.0) {
-            y = static_cast<double>(p1.y) * kOnePixel;
+            y = static_cast<double>(p1.y) * kCoverageOnePixel;
         } else {
             y = ay.at(t);
         }
@@ -172,8 +173,8 @@ void Rasterizer::addLine(Vec2 p0, Vec2 p1) {
 
     // T-258a: x is clamped to [-2, width + 1] px. Every sub-segment inside the target already lies
     // within it; one outside lands in the clamped column -1 / width, whose area is never swept.
-    const double xClampLo = -2.0 * kOnePixel;
-    const double xClampHi = (static_cast<double>(m_width) + 1.0) * kOnePixel;
+    const double xClampLo = -2.0 * kCoverageOnePixel;
+    const double xClampHi = (static_cast<double>(m_width) + 1.0) * kCoverageOnePixel;
     for (size_t i = 0; i + 1 < ts.size(); ++i) {
         const double tA = ts[i];
         const double tB = ts[i + 1];
@@ -182,18 +183,18 @@ void Rasterizer::addLine(Vec2 p0, Vec2 p1) {
         const double ymid = (ay.at(tA) + ay.at(tB)) * 0.5;
         const double xmid = (xa + xb) * 0.5;
 
-        auto row = static_cast<int64_t>(std::floor(ymid / kOnePixel));
+        auto row = static_cast<int64_t>(std::floor(ymid / kCoverageOnePixel));
         row = std::clamp<int64_t>(row, 0, m_height - 1);  // guard against float rounding at edges.
 
-        auto trueCol = static_cast<int64_t>(std::floor(xmid / kOnePixel));
+        auto trueCol = static_cast<int64_t>(std::floor(xmid / kCoverageOnePixel));
         int32_t clampedCol = static_cast<int32_t>(std::clamp<int64_t>(trueCol, -1, m_width));
 
-        const double fx1 = xa - static_cast<double>(trueCol) * kOnePixel;
-        const double fx2 = xb - static_cast<double>(trueCol) * kOnePixel;
+        const double fx1 = xa - static_cast<double>(trueCol) * kCoverageOnePixel;
+        const double fx2 = xb - static_cast<double>(trueCol) * kCoverageOnePixel;
         const int32_t cover = yFixed[i + 1] - yFixed[i];
         const double area = (fx1 + fx2) * static_cast<double>(cover);
 
-        Cell cell{};
+        CoverageCell cell{};
         cell.x = clampedCol;
         cell.cover = cover;
         cell.area = static_cast<int32_t>(std::lround(area));
@@ -209,8 +210,8 @@ void Rasterizer::addLine(Vec2 p0, Vec2 p1) {
     }
 }
 
-void Rasterizer::sortAndMergeRow(std::vector<Cell>& row) {
-    std::sort(row.begin(), row.end(), [](const Cell& a, const Cell& b) { return a.x < b.x; });
+void CoverageRasterizer::sortAndMergeRow(std::vector<CoverageCell>& row) {
+    std::sort(row.begin(), row.end(), [](const CoverageCell& a, const CoverageCell& b) { return a.x < b.x; });
     size_t writeIdx = 0;
     for (size_t readIdx = 0; readIdx < row.size(); ++readIdx) {
         if (writeIdx > 0 && row[writeIdx - 1].x == row[readIdx].x) {
@@ -224,7 +225,7 @@ void Rasterizer::sortAndMergeRow(std::vector<Cell>& row) {
     row.resize(writeIdx);
 }
 
-uint8_t Rasterizer::mapCoverage(FillRule rule, int32_t c) {
+uint8_t CoverageRasterizer::mapCoverage(FillRule rule, int32_t c) {
     if (rule == FillRule::NonZero) {
         int32_t v = std::min<int32_t>(255, std::abs(c));
         return static_cast<uint8_t>(v);
@@ -235,4 +236,4 @@ uint8_t Rasterizer::mapCoverage(FillRule rule, int32_t c) {
     return static_cast<uint8_t>(std::min(255, v));
 }
 
-}  // namespace xt::sw
+}  // namespace xt
