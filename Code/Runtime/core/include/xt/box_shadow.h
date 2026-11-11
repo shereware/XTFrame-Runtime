@@ -210,13 +210,17 @@ inline constexpr float kBoxShadowContentEpsilon = 1e-3f;
 /// The six conditions of §10.12, in order; the first that fails is returned.
 BoxShadowReject judgeBoxShadow(const BoxShadowJudgeInput& in);
 
+class GlyphInkMemo;  // xt/damage.h
+
 /// The local bounds of command `cmd` of `list` in the frame `frame` maps root-box coordinates
 /// into: each draw command's own geometry box under `frame * xf` (xt::commandBounds' boxes, glyph
 /// runs and strokes grown as it grows them), a group opener's / quad's / mesh's root-box box
 /// mapped through `frame`. `empty` is set for a command that draws nothing by itself. False when
 /// the box is not finite. T-680 ("補充 2" B.2): with `shaper`, a glyph run's box is the font-metric
 /// box of xt::glyphRunInkBox (xt/damage.h) where it is usable, else the origins grown by the size.
+/// T-684: with `memo`, that box comes from memo->inkBox() (the same box, asked of the shaper once
+/// per build / paint); nullptr calls glyphRunInkBox() directly.
 bool commandBoundsInFrame(const CommandList& list, const Command& cmd, const Mat2x3& frame, Rect& out,
-                          bool& empty, TextShaper* shaper = nullptr);
+                          bool& empty, TextShaper* shaper = nullptr, GlyphInkMemo* memo = nullptr);
 
 }  // namespace xt

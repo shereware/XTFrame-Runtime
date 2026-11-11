@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "../unit/file_asset_resolver_access.h"
 #include "doctest.h"
 #include "gl_loader.h"
 #include "golden_common.h"
@@ -36,6 +37,9 @@ constexpr int kH = 408;
 
 struct Target {
     gl::GLuint fbo = 0, color = 0, rbo = 0;
+    int kW = ::kW;  // T-686: the fixture's size (ui_image_minify's by default)
+    int kH = ::kH;
+    float clearRgb[3] = {1, 1, 1};
 
     void init() {
         using namespace xt::gl;
@@ -61,7 +65,7 @@ struct Target {
         glViewport(0, 0, kW, kH);
         glDisable(GL_SCISSOR_TEST);
         glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-        glClearColor(1, 1, 1, 1);
+        glClearColor(clearRgb[0], clearRgb[1], clearRgb[2], 1);
         glClearStencil(0);
         glClear(GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
     }
@@ -143,6 +147,73 @@ TEST_CASE(
         std::vector<uint8_t> glPixels = target.readTopDown();
         golden::GoldenResult cmp = golden::compareRgba(glPixels.data(), swPixels.data(), kW, kH, 16, 0.03f);
         std::printf("gl image minify (frame %d): diffPixels=%d maxChannelDiff=%d\n", frame,
+                    static_cast<int>(cmp.diffPixels), static_cast<int>(cmp.maxChannelDiff));
+        CHECK(cmp.pass);
+    }
+    renderer.shutdown();
+    target.destroy();
+}
+
+TEST_CASE("gl: T-686 BC7 images (ui_image_bc7.xt) upload their blocks and stored levels and match SW") {
+    constexpr int kBcW = 320;  // Tests/golden/ui/manifest.txt ui_image_bc7
+    constexpr int kBcH = 208;
+    const std::string dir = XT_GOLDEN_UI_DIR;
+    std::ifstream in(dir + "/ui_image_bc7.xt", std::ios::binary);
+    REQUIRE(in.good());
+    const std::string source((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    compile::CompileOptions options;
+    options.emitMeta = false;
+    options.rootDir = dir;
+    std::vector<compile::SourceFile> files{{"ui_image_bc7.xt", source}};
+    compile::CompileResult result = compile::compileDocumentFromStrings(files, "ui_image_bc7.xt", options);
+    REQUIRE(result.ok());
+    FileAssetResolver assets(dir, sw::decodeImageBytes);
+    std::unique_ptr<Document> doc;
+    REQUIRE(Document::load(IrBlob{result.ir.data(), result.ir.size()}, false, nullptr, &assets, doc) ==
+            Status::kOk);
+    doc->setViewport(Rect{0, 0, kBcW, kBcH});
+    doc->update(0);
+    CommandList list;
+    doc->paint(list);
+    list.viewport = Rect{0, 0, kBcW, kBcH};
+    list.devicePixelRatio = 1;
+
+    static bool loaded = false;
+    if (!loaded) {
+        REQUIRE(gl::loadGl(sdlLoadProc));
+        loaded = true;
+    }
+    Target target;
+    target.kW = kBcW;
+    target.kH = kBcH;
+    target.clearRgb[0] = 0xc8 / 255.0f;  // the fixture's clear colour, c8d0d8
+    target.clearRgb[1] = 0xd0 / 255.0f;
+    target.clearRgb[2] = 0xd8 / 255.0f;
+    target.init();
+    gl::GlRenderer renderer;
+    REQUIRE(renderer.init(sdlLoadProc));
+    renderer.resize(kBcW, kBcH);
+    std::vector<std::vector<uint8_t>> glFrames;
+    for (int frame = 0; frame < 2; ++frame) {
+        target.clear();
+        renderer.render(list, nullptr, &assets, &doc->ir());
+        glFrames.push_back(target.readTopDown());
+    }
+    // The GL device took the blocks (10 §10.13 ruling 1): nothing was decoded to RGBA for it.
+    CHECK(FileAssetResolverTestAccess::ddsRgbaDecodeCount(assets) == 0);
+
+    std::vector<uint8_t> swPixels(static_cast<size_t>(kBcW) * kBcH * 4, 0);
+    sw::SwRenderer sw;
+    sw::SwTarget swTarget{swPixels.data(), kBcW, kBcH, kBcW * 4};
+    sw.setTarget(swTarget);
+    sw.clear(Color{0xc8 / 255.0f, 0xd0 / 255.0f, 0xd8 / 255.0f, 1});
+    sw.render(list, nullptr, &assets, &doc->ir());
+    CHECK(FileAssetResolverTestAccess::ddsRgbaDecodeCount(assets) == 2);    // SW decodes each image once
+    CHECK(FileAssetResolverTestAccess::ddsLevelDecodeCount(assets) == 12);  // and their stored levels 1..6
+    for (int frame = 0; frame < 2; ++frame) {
+        golden::GoldenResult cmp = golden::compareRgba(glFrames[static_cast<size_t>(frame)].data(),
+                                                       swPixels.data(), kBcW, kBcH, 16, 0.03f);
+        std::printf("gl image bc7 (frame %d): diffPixels=%d maxChannelDiff=%d\n", frame,
                     static_cast<int>(cmp.diffPixels), static_cast<int>(cmp.maxChannelDiff));
         CHECK(cmp.pass);
     }

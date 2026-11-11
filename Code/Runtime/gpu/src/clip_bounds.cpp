@@ -31,7 +31,7 @@ Rect mapRect(const Mat2x3& m, const Rect& r) {
 }  // namespace
 
 ClipContentBounds clipContentBounds(const CommandList& list, const Command& cmd, float dpr, Rect& out,
-                                    TextShaper* shaper) {
+                                    TextShaper* shaper, GlyphInkMemo* memo) {
     out = Rect{};
     bool hint = false;  // the box is a group's window: an empty one means "whole viewport"
     switch (cmd.kind) {
@@ -63,9 +63,11 @@ ClipContentBounds clipContentBounds(const CommandList& list, const Command& cmd,
             return ClipContentBounds::Empty;
     }
     Rect r;
-    // T-681: the glyphs' ink boxes grown by one device pixel at this `dpr` (empty for spaces).
+    // T-681: the glyphs' ink boxes grown by one device pixel at this `dpr` (empty for spaces);
+    // T-684: remembered per build with a memo.
     if (cmd.kind != CmdKind::DrawGlyphs ||
-        !glyphRunInkBounds(list, list.glyphRuns[cmd.index], shaper, r, dpr)) {
+        !(memo != nullptr ? memo->inkBounds(list, cmd.index, shaper, r, dpr)
+                          : glyphRunInkBounds(list, list.glyphRuns[cmd.index], shaper, r, dpr))) {
         r = commandBounds(list, cmd);
     }
     if (!finiteRect(r) || !std::isfinite(dpr) || !(dpr > 0.0f)) {
@@ -86,7 +88,8 @@ ClipContentBounds clipContentBounds(const CommandList& list, const Command& cmd,
 }
 
 ClipContentBounds clipContentBoundsInFrame(const CommandList& list, const Command& cmd, const Mat2x3& frame,
-                                           Vec2 margin, Rect& out, TextShaper* shaper, float dpr) {
+                                           Vec2 margin, Rect& out, TextShaper* shaper, float dpr,
+                                           GlyphInkMemo* memo) {
     out = Rect{};
     bool hint = false;
     switch (cmd.kind) {
@@ -130,7 +133,8 @@ ClipContentBounds clipContentBoundsInFrame(const CommandList& list, const Comman
         // `dpr`) mapped through the run's transform relative to the frame; empty for spaces.
         const GlyphsCmd& run = list.glyphRuns[cmd.index];
         Rect local;
-        done = glyphRunInkBox(list, run, shaper, local, dpr);
+        done = memo != nullptr ? memo->inkBox(list, cmd.index, shaper, local, dpr)
+                               : glyphRunInkBox(list, run, shaper, local, dpr);
         if (done) {
             r = (local.w > 0.0f && local.h > 0.0f) ? mapRect(mul(frame, run.xf), local) : Rect{};
         }

@@ -23,6 +23,24 @@ void ensureRgbcx() {
     std::call_once(once, [] { rgbcx::init(); });
 }
 
+/// T-686 (Docs/design/10-backends.md §10.13 ruling 2): the decoded stored level 0 cut to the
+/// logical size the header's marker gives (a no-op without one).
+ImageData cropToLogical(ImageData image, const DdsInfo& info) {
+    if (info.logicalWidth == info.width && info.logicalHeight == info.height) {
+        return image;
+    }
+    ImageData cropped;
+    cropped.width = info.logicalWidth;
+    cropped.height = info.logicalHeight;
+    const size_t row = static_cast<size_t>(info.logicalWidth) * 4;
+    const size_t stride = static_cast<size_t>(info.width) * 4;
+    cropped.rgba.resize(row * static_cast<size_t>(info.logicalHeight));
+    for (size_t y = 0; y < static_cast<size_t>(info.logicalHeight); ++y) {
+        std::memcpy(cropped.rgba.data() + y * row, image.rgba.data() + y * stride, row);
+    }
+    return cropped;
+}
+
 }  // namespace
 
 bool decodeDdsBytes(const uint8_t* bytes, size_t size, ImageData& out) {
@@ -39,7 +57,7 @@ bool decodeDdsBytes(const uint8_t* bytes, size_t size, ImageData& out) {
     const uint8_t* data = bytes + info.dataOffset;
     if (info.format == DdsFormat::Rgba8) {
         std::memcpy(result.rgba.data(), data, w * h * 4);
-        out = std::move(result);
+        out = cropToLogical(std::move(result), info);
         return true;
     }
     ensureRgbcx();
@@ -78,7 +96,7 @@ bool decodeDdsBytes(const uint8_t* bytes, size_t size, ImageData& out) {
             }
         }
     }
-    out = std::move(result);
+    out = cropToLogical(std::move(result), info);
     return true;
 }
 

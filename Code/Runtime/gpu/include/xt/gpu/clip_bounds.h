@@ -1,6 +1,7 @@
 #pragma once
 
 #include "xt/command_list.h"
+#include "xt/damage.h"
 #include "xt/text_shaper.h"
 #include "xt/types.h"
 
@@ -32,8 +33,10 @@ enum class ClipContentBounds : uint8_t {
 /// ink boxes grown by one device pixel at `dpr`); without one, or when
 /// the metrics are unusable, it stays the origins grown by the font size. xt::commandBounds (core,
 /// SW damage) is unchanged. Only for a structurally valid list (like xt::commandBounds).
+/// T-684: with `memo`, the glyph run's box comes from memo->inkBounds() (the same box, asked of the
+/// shaper once per build); nullptr calls xt::glyphRunInkBounds() directly.
 ClipContentBounds clipContentBounds(const CommandList& list, const Command& cmd, float dpr, Rect& out,
-                                    TextShaper* shaper = nullptr);
+                                    TextShaper* shaper = nullptr, GlyphInkMemo* memo = nullptr);
 
 /// T-676 (Docs/design/10-backends.md §10.11, the ruling at the end of the T-664 record): the box of
 /// `cmd` in the frame `frame` maps root-box coordinates into -- a clip shape's own local coordinates
@@ -42,9 +45,10 @@ ClipContentBounds clipContentBounds(const CommandList& list, const Command& cmd,
 /// relative transform), a group opener's window mapped through `frame`, then grown by `margin`
 /// (kClipContentMarginPx device px expressed in frame units, per axis). Empty / Box / Unknown as
 /// clipContentBounds; an empty group window is Unknown. T-681: `dpr` is the device pixel ratio the
-/// glyph ink boxes take their one device pixel at (xt::glyphRunInkBox).
+/// glyph ink boxes take their one device pixel at (xt::glyphRunInkBox). T-684: `memo` as
+/// clipContentBounds (memo->inkBox()).
 ClipContentBounds clipContentBoundsInFrame(const CommandList& list, const Command& cmd, const Mat2x3& frame,
                                            Vec2 margin, Rect& out, TextShaper* shaper = nullptr,
-                                           float dpr = 1.0f);
+                                           float dpr = 1.0f, GlyphInkMemo* memo = nullptr);
 
 }  // namespace xt::gpu

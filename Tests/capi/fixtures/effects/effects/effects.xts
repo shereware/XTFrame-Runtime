@@ -1,6 +1,7 @@
 /* T-678: many large layers and effects -- five nested translucent panels (each a layer target of nearly
    the surface's size while the ones inside it draw) and shadows, glows and shine, so one frame borrows
-   far more than 16 MiB of transient targets. */
+   far more than 16 MiB of transient targets. T-685: the `heavy` port (default true) shows the nested panels;
+   false leaves the backdrop and the two side panels. */
 #back {
   background-color: #203040;
 }

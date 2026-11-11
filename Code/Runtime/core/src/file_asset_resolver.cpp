@@ -138,8 +138,8 @@ bool imageSizeFromHeader(std::span<const uint8_t> b, int& width, int& height) {
     }
     DdsInfo dds;
     if (parseDdsHeader(b.data(), n, dds)) {
-        width = dds.width;
-        height = dds.height;
+        width = dds.logicalWidth;  // T-686 (10 §10.13 ruling 2): the logical size, not the padded one
+        height = dds.logicalHeight;
         return true;
     }
     return false;
@@ -520,16 +520,28 @@ bool FileAssetResolver::headerSizeOf(const std::vector<std::string>& files, int&
 void FileAssetResolver::decodeInto(const std::vector<uint8_t>& bytes, Entry& entry) {
     entry.ok = false;
     entry.hasCompressed = false;
+    entry.rgbaReady = false;
+    entry.rgbaFailed = false;
     entry.mipsBuilt = false;  // T-665: a chain belongs to the pixels it was built from
     entry.mips.levels.clear();
     if (m_decode == nullptr) {
         return;
     }
     DdsInfo dds;
-    if (parseDdsHeader(bytes.data(), bytes.size(), dds) && dds.format != DdsFormat::Rgba8 &&
-        dds.format != DdsFormat::Unknown) {
+    const bool isDdsFile = parseDdsHeader(bytes.data(), bytes.size(), dds);
+    if (isDdsFile && dds.logicalRejected && !m_loggedLogicalSize) {
+        // T-686 (10 §10.13 ruling 2): an out-of-range marker is ignored; said once per resolver.
+        m_loggedLogicalSize = true;
+        std::fprintf(stderr,
+                     "xt: a DDS logical-size marker is out of range (it must be at most 3 texels below "
+                     "the stored size); the stored size %dx%d is used\n",
+                     dds.width, dds.height);
+    }
+    if (isDdsFile && dds.format != DdsFormat::Rgba8 && dds.format != DdsFormat::Unknown) {
         entry.compressed.width = dds.width;
         entry.compressed.height = dds.height;
+        entry.compressed.logicalWidth = dds.logicalWidth;
+        entry.compressed.logicalHeight = dds.logicalHeight;
         entry.compressed.format = dds.format;
         // T-665 (10 §10.11 item 7): a stored mip chain comes along, as far as the file holds whole
         // levels (hardware sizes; taken to be the chain xt/image_mips.h defines).
@@ -549,12 +561,96 @@ void FileAssetResolver::decodeInto(const std::vector<uint8_t>& bytes, Entry& ent
                                        bytes.begin() + static_cast<std::ptrdiff_t>(dds.dataOffset + total));
         entry.compressed.levels = levels;
         entry.hasCompressed = true;
+        // T-686 (10 §10.13 ruling 1): only the blocks are kept; pixelsOf() decodes level 0 when a
+        // caller asks for RGBA (the software renderer, a device without the format).
+        entry.ok = true;
+        return;
     }
     entry.ok = m_decode(bytes.data(), bytes.size(), entry.image);
-    if (!entry.ok) {
-        entry.hasCompressed = false;
-        entry.compressed.blocks.clear();
+    entry.rgbaReady = entry.ok;
+}
+
+const ImageData* FileAssetResolver::pixelsOf(const Entry* found) {
+    if (found == nullptr) {
+        return nullptr;
     }
+    Entry& entry = const_cast<Entry&>(*found);
+    if (!entry.hasCompressed || entry.rgbaReady) {
+        return &entry.image;
+    }
+    if (entry.rgbaFailed || m_decode == nullptr) {
+        return nullptr;
+    }
+    // T-686: level 0 handed to the decode function as a DDS file of its own (the function takes
+    // whole files), with the logical-size marker so a decoder that honours it crops; one that does
+    // not is cropped here.
+    const CompressedImage& c = entry.compressed;
+    const bool padded = c.logicalWidth != c.width || c.logicalHeight != c.height;
+    const std::vector<uint8_t> file =
+        makeDdsLevelFile(c.format, c.width, c.height, c.blocks.data(), c.blocks.size(),
+                         padded ? c.logicalWidth : 0, padded ? c.logicalHeight : 0);
+    ImageData pixels;
+    ++m_ddsRgbaDecodes;
+    bool ok = !file.empty() && m_decode(file.data(), file.size(), pixels);
+    if (ok && padded && pixels.width == c.width && pixels.height == c.height) {
+        ImageData cropped;
+        cropped.width = c.logicalWidth;
+        cropped.height = c.logicalHeight;
+        const size_t row = static_cast<size_t>(c.logicalWidth) * 4;
+        const size_t stride = static_cast<size_t>(c.width) * 4;
+        cropped.rgba.resize(row * static_cast<size_t>(c.logicalHeight));
+        for (size_t y = 0; y < static_cast<size_t>(c.logicalHeight); ++y) {
+            std::copy_n(pixels.rgba.data() + y * stride, row, cropped.rgba.data() + y * row);
+        }
+        pixels = std::move(cropped);
+    }
+    ok = ok && pixels.width == c.logicalWidth && pixels.height == c.logicalHeight &&
+         pixels.rgba.size() >= static_cast<size_t>(c.logicalWidth) * static_cast<size_t>(c.logicalHeight) * 4;
+    if (!ok) {
+        entry.rgbaFailed = true;
+        return nullptr;
+    }
+    entry.image = std::move(pixels);
+    entry.rgbaReady = true;
+    return &entry.image;
+}
+
+bool decodeStoredMipLevels(const CompressedImage& image, ImageDecodeFn decode, ImageMipChain& out) {
+    out.levels.clear();
+    out.straight = true;
+    out.levelUvScaleX =
+        image.width > 0 ? static_cast<float>(image.logicalWidth) / static_cast<float>(image.width) : 1.0f;
+    out.levelUvScaleY =
+        image.height > 0 ? static_cast<float>(image.logicalHeight) / static_cast<float>(image.height) : 1.0f;
+    if (decode == nullptr || image.levels <= 1) {
+        return false;
+    }
+    size_t offset = ddsLevelSize(image.format, image.width, image.height);
+    for (int k = 1; k < image.levels; ++k) {
+        const int lw = std::max(1, image.width >> k);
+        const int lh = std::max(1, image.height >> k);
+        const size_t size = ddsLevelSize(image.format, lw, lh);
+        if (size == 0 || offset + size > image.blocks.size()) {
+            out.levels.clear();
+            return false;
+        }
+        const std::vector<uint8_t> file =
+            makeDdsLevelFile(image.format, lw, lh, image.blocks.data() + offset, size);
+        ImageData pixels;
+        if (file.empty() || !decode(file.data(), file.size(), pixels) || pixels.width != lw ||
+            pixels.height != lh ||
+            pixels.rgba.size() < static_cast<size_t>(lw) * static_cast<size_t>(lh) * 4) {
+            out.levels.clear();
+            return false;
+        }
+        ImageMipLevel level;
+        level.width = lw;
+        level.height = lh;
+        level.rgba = std::move(pixels.rgba);
+        out.levels.push_back(std::move(level));
+        offset += size;
+    }
+    return true;
 }
 
 FileAssetResolver::Slot* FileAssetResolver::slotFor(AssetId asset, const IrView& view, int variant) {
@@ -1144,22 +1240,20 @@ bool FileAssetResolver::retainedImageKey(AssetId asset, const IrView& view, floa
 }
 
 bool FileAssetResolver::decodeImage(AssetId asset, const IrView& view, ImageData& out) {
-    const Entry* entry = ensureDecoded(asset, view, 0);
-    if (entry == nullptr) {
+    const ImageData* pixels = pixelsOf(ensureDecoded(asset, view, 0));
+    if (pixels == nullptr) {
         return false;
     }
-    out = entry->image;
+    out = *pixels;
     return true;
 }
 
 const ImageData* FileAssetResolver::imageView(AssetId asset, const IrView& view) {
-    const Entry* entry = ensureDecoded(asset, view, 0);
-    return entry != nullptr ? &entry->image : nullptr;
+    return pixelsOf(ensureDecoded(asset, view, 0));
 }
 
 const ImageData* FileAssetResolver::imageView(AssetId asset, const IrView& view, float dpr) {
-    const Entry* entry = ensureDecoded(asset, view, variantFor(dpr));
-    return entry != nullptr ? &entry->image : nullptr;
+    return pixelsOf(ensureDecoded(asset, view, variantFor(dpr)));
 }
 
 const CompressedImage* FileAssetResolver::compressedImage(AssetId asset, const IrView& view, float dpr) {
@@ -1175,6 +1269,20 @@ const ImageMipChain* FileAssetResolver::imageMipChain(AssetId asset, const IrVie
         return nullptr;
     }
     Entry& entry = const_cast<Entry&>(*found);
+    if (entry.hasCompressed) {
+        // T-686 (10 §10.13 ruling 3): the levels the file stored, decoded once; none without them
+        // (the GPU samples such an image at one level, and so does the software renderer).
+        if (entry.compressed.levels <= 1) {
+            return nullptr;
+        }
+        if (!entry.mipsBuilt) {
+            entry.mipsBuilt = true;
+            if (decodeStoredMipLevels(entry.compressed, m_decode, entry.mips)) {
+                m_ddsLevelDecodes += static_cast<size_t>(entry.compressed.levels - 1);
+            }
+        }
+        return entry.mips.levels.empty() ? nullptr : &entry.mips;
+    }
     if (!entry.mipsBuilt) {
         buildImageMipChain(entry.image, entry.mips);
         entry.mipsBuilt = true;
@@ -1221,7 +1329,13 @@ Vec2 FileAssetResolver::imageSize(AssetId asset, const IrView& view) {
             }
         }
     }
-    const ImageData* data = imageView(asset, view);
+    // T-686: a compressed DDS is sized by its (logical) header size, without decoding its pixels.
+    const Entry* entry = ensureDecoded(asset, view, 0);
+    if (entry != nullptr && entry->hasCompressed) {
+        return Vec2{static_cast<float>(entry->compressed.logicalWidth),
+                    static_cast<float>(entry->compressed.logicalHeight)};
+    }
+    const ImageData* data = pixelsOf(entry);
     if (data == nullptr) {
         return Vec2{0, 0};
     }

@@ -245,32 +245,41 @@ TEST_CASE(
     CHECK(xt_gpu_target_destroy(four) == XT_STATUS_OK);
 }
 
+// T-666 (10 section 10.11 item 8): 0 -- set, or past the end of an older desc -- means 1 since T-666
+// (it meant 4): the same bytes as an explicit 1, and not those of an explicit 4.
 TEST_CASE(
-    "capi gpu text 3 (T-647): sample_count 3 is refused, 0 means 4, an older struct_size still creates") {
+    "capi gpu text 3 (T-666): sample_count 3 is refused, 0 means 1, an older struct_size still creates") {
     for (const int bad : {3, 2, 8, -1}) {
         CAPTURE(bad);
         const xt_gpu_target_desc desc = textDesc(bad);
         CHECK(xt_gpu_target_create(&desc) == nullptr);
         CHECK(std::strstr(xt_capi_last_error(), "sample_count") != nullptr);
+        CHECK(std::strstr(xt_capi_last_error(), "0 = 1") != nullptr);
     }
     TextBundle b;
     xt_gpu_target* zero = createOrSkip(textDesc(0));
     if (zero == nullptr) return;
+    xt_gpu_target* one = createOrSkip(textDesc(1));
+    REQUIRE(one != nullptr);
     xt_gpu_target* four = createOrSkip(textDesc(4));
     REQUIRE(four != nullptr);
-    CHECK(b.gpu(zero) == b.gpu(four));
-    // A desc ending before sample_count (an older host): the field is not read, the target is 4x.
+    const Image atOne = b.gpu(one);
+    const Image atFour = b.gpu(four);
+    CHECK(atOne != atFour);  // the star and the 120 px word differ (capi gpu text 2)
+    CHECK(b.gpu(zero) == atOne);
+    // A desc ending before sample_count (an older host): the field is not read, the target is 1x.
     xt_gpu_target_desc old = textDesc(3);  // garbage past the old size must be ignored
     old.struct_size = kOldDescSize;
     xt_gpu_target* legacy = xt_gpu_target_create(&old);
     REQUIRE_MESSAGE(legacy != nullptr, std::string(xt_capi_last_error()));
-    CHECK(b.gpu(legacy) == b.gpu(four));
+    CHECK(b.gpu(legacy) == atOne);
     xt_gpu_target_desc tiny = textDesc(0);
     tiny.struct_size = kOldDescSize - 1;
     CHECK(xt_gpu_target_create(&tiny) == nullptr);
     CHECK(std::strstr(xt_capi_last_error(), "struct_size") != nullptr);
     for (xt_surface* s : b.surfaces) (void)xt_surface_detach_gpu(s);
     CHECK(xt_gpu_target_destroy(zero) == XT_STATUS_OK);
+    CHECK(xt_gpu_target_destroy(one) == XT_STATUS_OK);
     CHECK(xt_gpu_target_destroy(four) == XT_STATUS_OK);
     CHECK(xt_gpu_target_destroy(legacy) == XT_STATUS_OK);
 }

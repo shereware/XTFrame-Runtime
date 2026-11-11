@@ -321,7 +321,10 @@ XT_CAPI xt_status xt_surface_load_state(xt_surface* s, const char* json);
    Resize, device pixel ratio and input of a surface are unchanged. xt_frame_stats.render_ms of a GPU
    frame is the CPU time of building and submitting it (no present wait).
    A build without wgpu (XT_BUILD_WGPU=OFF): xt_gpu_target_create returns NULL with last_error
-   "built without wgpu"; every other function here returns XT_STATUS_UNSUPPORTED. */
+   "built without wgpu"; every other function here returns XT_STATUS_UNSUPPORTED.
+   T-666 (behaviour change, ABI version unchanged): xt_gpu_target_desc.sample_count 0 -- and an older,
+   shorter desc without the field -- means 1 from this version on; it meant 4 before. A host that wants
+   4x MSAA passes 4. */
 /* clang-format off */
 typedef struct xt_gpu_target xt_gpu_target;  /* opaque */
 
@@ -349,8 +352,9 @@ typedef struct xt_gpu_target_desc {
     int width, height;        /* pixels (> 0) */
     int vsync;                /* 1: Fifo; 0: Immediate, else Mailbox, else Fifo (windows only) */
     const char* backend;      /* NULL or "" = the XT_WGPU_BACKEND rule; else vulkan|d3d12|metal|gl */
-    int sample_count;         /* surface rendering MSAA: 0 = 4 (the default), 1 or 4; other values fail.
-                                 Read only when struct_size covers it: an older, shorter desc means 0 */
+    int sample_count;         /* surface rendering MSAA: 0 = 1 (the default; T-666, it was 4), 1 or 4;
+                                 other values fail. Read only when struct_size covers it: an older,
+                                 shorter desc means 0 */
 } xt_gpu_target_desc;
 
 /* NULL + last_error when no adapter / device can be had (the host falls back to xt_surface_render),

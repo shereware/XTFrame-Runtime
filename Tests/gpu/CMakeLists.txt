@@ -6,6 +6,7 @@ add_executable(xt_gpu_tests
     test_gpu_main.cpp
     test_gpu_frame.cpp
     test_gpu_retained_key.cpp
+    test_gpu_bc7.cpp  # T-686
     test_coverage_atlas.cpp  # T-660a
     test_coverage_fill.cpp  # T-660b
     test_box_shadow_truth.cpp  # T-681

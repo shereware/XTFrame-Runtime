@@ -8,7 +8,7 @@
 //   N]
 //                    [--width W] [--height H] [--msaa 1|4] [--backend <name>] [--power low|high]
 //                    [--mode hide|destroy] [--trim-each-scene 0|1] [--image-budget <MiB|default>]
-//                    [--prewarm-hidden N] [--no-system-fonts]
+//                    [--prewarm-hidden N] [--no-system-fonts] [--hold <ui> <frames>]
 //
 // T-683 (50 §50.ad): --prewarm-hidden N creates every surface of the sequence first, hidden, and runs N
 // frames (each updating every surface) before the first one is shown -- the host flow, where every surface
@@ -18,7 +18,12 @@
 // does). The time xt_gpu_target_create took is printed as "target_create <ms> ms".
 // --power sets XT_WGPU_POWER for this process (unset: the environment's). The library's log lines (adapter,
 // wgpu-native version, memory hints) go to stdout, and before each scene a line "scene <round> <n> <ui>"
-// (T-675). Exit codes: 0 ok, 2 bad arguments, 1 a C ABI failure; "SKIP: no WebGPU adapter" (exit 0) when no
+// (T-675). T-685: --hold <ui> <frames> shows the sequence in order up to <ui> (round 1), then keeps it shown
+// for <frames> more frames and stops (teardown follows); every 60 of those frames it prints a line "hold <ui>
+// <frame> textures created <n> pool textures <n> transient_bytes <n> max_frame_ms <ms> max_begin_ms <ms>
+// frames_over_33ms <n>" (textures created and pool textures from the library's last shared-cache line; the
+// maxima and the count over that interval; begin = the xt_gpu_target_begin_frame call), then a `hold` CSV
+// row. Exit codes: 0 ok, 2 bad arguments, 1 a C ABI failure; "SKIP: no WebGPU adapter" (exit 0) when no
 // target can be created for want of an adapter.
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
@@ -59,6 +64,8 @@ struct Options {
     int64_t imageBudgetMiB = -1;  ///< -1 = the library default
     int prewarmHidden = 0;        ///< T-683: hidden frames of every surface before the first show (0 = none)
     bool systemFonts = true;      ///< T-683: false = --no-system-fonts
+    std::string holdUi;           ///< T-685: --hold <ui> <frames> (empty = no hold)
+    int holdFrames = 0;
 };
 
 bool parseInt(const std::string& text, int lo, int hi, int& out) {
@@ -78,6 +85,15 @@ bool parseArgs(int argc, char** argv, Options& o) {
         const std::string key = argv[i];
         if (key == "--no-system-fonts") {  // T-683: the one option without a value
             o.systemFonts = false;
+            continue;
+        }
+        if (key == "--hold") {  // T-685: the one option with two values
+            if (i + 2 >= argc || !parseInt(argv[i + 2], 1, 10000000, o.holdFrames)) {
+                std::fprintf(stderr, "--hold needs <ui> <frames>\n");
+                return false;
+            }
+            o.holdUi = argv[i + 1];
+            i += 2;
             continue;
         }
         if (i + 1 >= argc) {
@@ -149,6 +165,14 @@ struct MemSample {
 };
 
 std::string g_adapterName;  ///< from the library's "xt_gpu_target: adapter '<name>'" log line
+/// T-685: "textures created" and "pools <n> texture(s)" of the library's last shared-cache line.
+unsigned long g_texturesCreated = 0;
+unsigned long g_poolTextures = 0;
+
+unsigned long numberAfter(const char* message, const char* key) {
+    const char* p = std::strstr(message, key);
+    return p != nullptr ? std::strtoul(p + std::strlen(key), nullptr, 10) : 0ul;
+}
 
 void onLog(int level, const char* message, void*) {
     std::printf("log%d %s\n", level, message);
@@ -158,6 +182,10 @@ void onLog(int level, const char* message, void*) {
         const char* name = message + std::strlen(key);
         const char* q = std::strchr(name, '\'');
         g_adapterName.assign(name, q != nullptr ? static_cast<size_t>(q - name) : std::strlen(name));
+    }
+    if (std::strncmp(message, "xt_gpu_target: shared image textures ", 37) == 0) {  // T-685
+        g_texturesCreated = numberAfter(message, "textures created ");
+        g_poolTextures = numberAfter(message, "; pools ");
     }
 }
 
@@ -321,9 +349,11 @@ bool resolveSequence(xt_bundle* b, const std::string& sequence, std::vector<std:
 }
 
 /// One frame of every live surface (hidden ones included, as a host loops over all of them); wall time in ms.
-double frame(xt_gpu_target* t, std::vector<xt_surface*>& surfaces) {
+/// T-685: `beginMs`, when given, receives the time xt_gpu_target_begin_frame took.
+double frame(xt_gpu_target* t, std::vector<xt_surface*>& surfaces, double* beginMs = nullptr) {
     const double t0 = nowMs();
     xt_gpu_target_begin_frame(t, nullptr);
+    if (beginMs != nullptr) *beginMs = nowMs() - t0;
     for (xt_surface* s : surfaces) {
         if (s != nullptr) {
             xt_surface_update(s, 1.0f / 60.0f);
@@ -332,6 +362,33 @@ double frame(xt_gpu_target* t, std::vector<xt_surface*>& surfaces) {
     }
     xt_gpu_target_end_frame(t);
     return nowMs() - t0;
+}
+
+/// T-685: --hold -- `o.holdFrames` more frames of the shown scene, a line every 60 (see the file comment).
+void hold(const Options& o, xt_gpu_target* t, std::vector<xt_surface*>& surfaces) {
+    double maxFrame = 0, maxBegin = 0;
+    int over = 0;
+    for (int i = 1; i <= o.holdFrames; ++i) {
+        double beginMs = 0;
+        const double ms = frame(t, surfaces, &beginMs);
+        maxFrame = std::max(maxFrame, ms);
+        maxBegin = std::max(maxBegin, beginMs);
+        if (ms > 33.0) ++over;
+        if (i % 60 == 0 || i == o.holdFrames) {
+            xt_gpu_memory_stats s{};
+            s.struct_size = sizeof s;
+            const bool haveStats = xt_gpu_target_memory_stats(t, &s) == XT_STATUS_OK;
+            std::printf(
+                "hold %s %d textures created %lu pool textures %lu transient_bytes %llu max_frame_ms %.2f "
+                "max_begin_ms %.2f frames_over_33ms %d\n",
+                o.holdUi.c_str(), i, g_texturesCreated, g_poolTextures,
+                haveStats ? static_cast<unsigned long long>(s.transient_bytes) : 0ull, maxFrame, maxBegin,
+                over);
+            std::fflush(stdout);
+            maxFrame = maxBegin = 0;
+            over = 0;
+        }
+    }
 }
 
 int run(const Options& o) {
@@ -350,7 +407,9 @@ int run(const Options& o) {
         return 1;
     }
     std::vector<std::string> ids;
-    if (!resolveSequence(b, o.sequence, ids)) {
+    if (!resolveSequence(b, o.sequence, ids) ||
+        (!o.holdUi.empty() && std::find(ids.begin(), ids.end(), o.holdUi) == ids.end())) {
+        if (!ids.empty()) std::fprintf(stderr, "--hold: UI '%s' is not in the sequence\n", o.holdUi.c_str());
         xt_bundle_close(b);
         std::fclose(f);
         return 2;
@@ -456,6 +515,12 @@ int run(const Options& o) {
             }
             const double steadyMs = o.framesPerScene > 1 ? rest / (o.framesPerScene - 1) : firstMs;
             writeRow(f, round, sceneIndex, "scene", ids[k], t, firstMs, steadyMs, start);
+            if (!o.holdUi.empty() && ids[k] == o.holdUi) {
+                hold(o, t, surfaces);
+                writeRow(f, round, sceneIndex, "hold", ids[k], t, -1, 0, start);
+                round = o.rounds;  // stop after the hold
+                break;
+            }
         }
     }
     for (xt_surface*& s : surfaces) {

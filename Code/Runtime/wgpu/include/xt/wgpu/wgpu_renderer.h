@@ -83,7 +83,8 @@ struct WgpuInit {
     ///     asks for it first (forceFallbackAdapter) and takes any adapter when there is none;
     ///   - XT_WGPU_POWER=low|high picks the adapter's power preference (unset = high performance);
     ///   - only with a wgpu-native that has memory hints (XT_WGPU_HAS_MEMORY_HINTS, T-671):
-    ///     XT_WGPU_MEMORY_HINTS=performance|usage|manual:<startMiB>:<maxMiB>, unset = usage.
+    ///     XT_WGPU_MEMORY_HINTS=performance|usage|manual:<startMiB>:<maxMiB>, unset = manual:32:64
+    ///     (T-685).
     /// On failure `device` is null and `error` says why; whatever was created is released.
     static WgpuInit headless(const WgpuHeadlessOptions& options = {});
     /// Releases the references `headless()` created (device, queue, adapter, instance) and nulls

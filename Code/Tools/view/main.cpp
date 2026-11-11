@@ -380,7 +380,7 @@ struct Args {
     std::string standardFontDir;
     int width = 1280;
     int height = 720;
-    int msaa = 4;
+    int msaa = 1;            // T-666 (10 §10.11 item 8): 1x by default; --msaa 4 for 4x MSAA
     std::string screenshot;  // Empty = interactive mode.
     std::string flow;        // Empty = no flow graph.
     std::string ui;          // --ui: which UI of a Bundle / UI Project to open.
@@ -1552,7 +1552,7 @@ void printUsage(std::FILE* out) {
         "  --root DIR              asset root (default: the input file's directory)\n"
         "  --width W --height H    viewport size in logical pixels (default 1280x720)\n"
         "  --msaa N                MSAA samples, 4 or 1 (none), for the windowed backend and\n"
-        "                          --renderer gl|wgpu (default 4)\n"
+        "                          --renderer gl|wgpu (default 1)\n"
         "  --screenshot PATH       render one frame (or, with --headless, the last one) to a PNG\n"
         "  --flow <file.xtflow>    load and tick a signal graph against the document\n"
         "                          (default: the input's own .xtflow, or a bundle UI's)\n"

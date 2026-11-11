@@ -222,6 +222,7 @@ xt_gpu_target* offscreenTarget() {
     desc.height = kH;
     desc.vsync = 1;
     desc.backend = "";
+    desc.sample_count = 4;  // T-666: written when 0 meant 4; keeps its 4x target
     xt_gpu_target* t = xt_gpu_target_create(&desc);
     if (t == nullptr) {
         const std::string error = xt_capi_last_error();

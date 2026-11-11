@@ -23,6 +23,7 @@ static int runSmoke(int argc, char** argv) {
     options.height = 120;
     options.hidden = true;
     options.vsync = false;
+    options.sampleCount = 4;  // T-666: written when 4 was the default; keeps the 4x renderers smoked
     if (!backend.create(options)) {
         const std::string why = backend.lastError();
         // T-458: a hosted CI runner has no OpenGL 3.3 driver either (WARP is D3D only), so a GL

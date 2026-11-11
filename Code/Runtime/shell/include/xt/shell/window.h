@@ -128,8 +128,10 @@ struct WindowConfig {
 
     /// Requests a vsync-locked swap interval when true.
     bool vsync = true;
-    /// Requested MSAA sample count for the GL context (0 disables multisampling).
-    int msaa = 4;
+    /// Requested MSAA sample count for the GL context (0 disables multisampling). T-684: 0 by
+    /// default, like the shipped GPU targets (T-666: one sample; the renderer then draws its own
+    /// edge coverage fringe); 4 asks for 4x MSAA.
+    int msaa = 0;
     /// Requests a high-DPI-aware window (drawable size may then exceed `width`/`height`).
     bool highDpi = true;
     /// Initial placement (Docs/tasks/T-156.md); see App::setFit(). When it is not Native (and the

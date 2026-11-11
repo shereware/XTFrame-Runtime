@@ -656,6 +656,81 @@ bool glyphRunMetricBox(const CommandList& list, const GlyphsCmd& cmd, TextShaper
     return true;
 }
 
+/// T-684 (Docs/tasks/T-684.md item 2): one glyph's outline control-point box in em units
+/// (untransformed), or that the shaper gives no outline for it (`outline` false), keyed by the
+/// shaper's generation (T-675: never reused by another shaper), the font and the glyph id.
+struct GlyphOutlineBox {
+    uint64_t generation = 0;
+    FontId font = 0;
+    uint32_t glyph = 0;
+    float x0 = 0.0f, y0 = 0.0f, x1 = 0.0f, y1 = 0.0f;
+    bool outline = false;
+};
+constexpr size_t kMaxGlyphOutlineBoxes = 4096;
+
+bool glyphOutlineBoxLess(const GlyphOutlineBox& a, const GlyphOutlineBox& b) {
+    if (a.generation != b.generation) {
+        return a.generation < b.generation;
+    }
+    if (a.font != b.font) {
+        return a.font < b.font;
+    }
+    return a.glyph < b.glyph;
+}
+
+/// The control-point box of `glyph`'s outline (false: no outline, or fewer than one point), from the
+/// per-thread cache; on a miss from TextShaper::glyphOutline(), remembered. The cache holds at most
+/// kMaxGlyphOutlineBoxes entries and is emptied when full; its storage is reserved once, so neither
+/// a hit nor a miss allocates once warm.
+bool glyphOutlineBox(TextShaper& shaper, FontId font, uint32_t glyph, GlyphOutlineBox& out) {
+    static thread_local std::vector<GlyphOutlineBox> boxes;
+    static thread_local std::vector<PathVerb> verbs;
+    static thread_local std::vector<float> points;
+    GlyphOutlineBox probe;
+    probe.generation = shaper.generation();
+    probe.font = font;
+    probe.glyph = glyph;
+    auto it = std::lower_bound(boxes.begin(), boxes.end(), probe, glyphOutlineBoxLess);
+    if (it != boxes.end() && it->generation == probe.generation && it->font == font && it->glyph == glyph) {
+        out = *it;
+        return out.outline;
+    }
+    verbs.clear();
+    points.clear();
+    if (shaper.glyphOutline(font, glyph, verbs, points) && points.size() >= 2) {
+        // The control points bound the outline (every segment lies in their convex hull).
+        probe.outline = true;
+        probe.x0 = probe.x1 = points[0];
+        probe.y0 = probe.y1 = points[1];
+        for (size_t k = 2; k + 1 < points.size(); k += 2) {
+            probe.x0 = std::min(probe.x0, points[k]);
+            probe.x1 = std::max(probe.x1, points[k]);
+            probe.y0 = std::min(probe.y0, points[k + 1]);
+            probe.y1 = std::max(probe.y1, points[k + 1]);
+        }
+    }
+    if (boxes.capacity() < kMaxGlyphOutlineBoxes) {
+        boxes.reserve(kMaxGlyphOutlineBoxes);
+    }
+    if (boxes.size() >= kMaxGlyphOutlineBoxes) {
+        boxes.clear();
+    }
+    it = std::lower_bound(boxes.begin(), boxes.end(), probe, glyphOutlineBoxLess);
+    boxes.insert(it, probe);
+    out = probe;
+    return out.outline;
+}
+
+/// glyphRunInkBounds() from run `cmd`'s glyphRunInkBox() result `local`.
+bool inkBoundsOfBox(const GlyphsCmd& cmd, const Rect& local, Rect& out) {
+    if (!(local.w > 0.0f) || !(local.h > 0.0f)) {
+        out = Rect{};  // no ink
+        return true;
+    }
+    out = transformedRect(cmd.xf, local);
+    return std::isfinite(out.x) && std::isfinite(out.y) && std::isfinite(out.w) && std::isfinite(out.h);
+}
+
 }  // namespace
 
 bool glyphRunInkBox(const CommandList& list, const GlyphsCmd& cmd, TextShaper* shaper, Rect& out, float dpr) {
@@ -688,8 +763,6 @@ bool glyphRunInkBox(const CommandList& list, const GlyphsCmd& cmd, TextShaper* s
     // also takes its bitmap's box there.
     const bool hinted = glyphRunUsesHintedBitmap(cmd, mul(scaling(Vec2{dpr, dpr}), cmd.xf));
     // The scratch keeps its capacity across calls (no allocation per frame once warm).
-    static thread_local std::vector<PathVerb> verbs;
-    static thread_local std::vector<float> points;
     static thread_local GlyphBitmap bitmap;
     const Vec2* pos = list.glyphPos.data() + cmd.glyphOffset;
     double x0 = 0.0, y0 = 0.0, x1 = 0.0, y1 = 0.0;
@@ -706,20 +779,12 @@ bool glyphRunInkBox(const CommandList& list, const GlyphsCmd& cmd, TextShaper* s
     };
     for (uint32_t i = 0; i < cmd.glyphCount; ++i) {
         const uint32_t glyphId = list.glyphs[cmd.glyphOffset + i];
-        verbs.clear();
-        points.clear();
-        if (shaper->glyphOutline(cmd.font, glyphId, verbs, points) && points.size() >= 2) {
-            // The control points bound the outline (every segment lies in their convex hull).
+        GlyphOutlineBox e;
+        if (glyphOutlineBox(*shaper, cmd.font, glyphId, e)) {
+            // The outline's control-point box (T-684: cached per glyph).
             measured = true;
-            float ex0 = points[0], ey0 = points[1], ex1 = points[0], ey1 = points[1];
-            for (size_t k = 2; k + 1 < points.size(); k += 2) {
-                ex0 = std::min(ex0, points[k]);
-                ex1 = std::max(ex1, points[k]);
-                ey0 = std::min(ey0, points[k + 1]);
-                ey1 = std::max(ey1, points[k + 1]);
-            }
             const double s = cmd.size;
-            add(pos[i].x + ex0 * s, pos[i].y + ey0 * s, pos[i].x + ex1 * s, pos[i].y + ey1 * s);
+            add(pos[i].x + e.x0 * s, pos[i].y + e.y0 * s, pos[i].x + e.x1 * s, pos[i].y + e.y1 * s);
             if (hinted && bitmapSize > 0.0f &&
                 shaper->glyphBitmap(cmd.font, glyphId, bitmapSize, 0.0f, bitmap) && bitmap.width > 0 &&
                 bitmap.height > 0) {
@@ -775,12 +840,56 @@ bool glyphRunInkBounds(const CommandList& list, const GlyphsCmd& cmd, TextShaper
     if (!glyphRunInkBox(list, cmd, shaper, local, dpr)) {
         return false;
     }
-    if (!(local.w > 0.0f) || !(local.h > 0.0f)) {
-        out = Rect{};  // no ink
-        return true;
+    return inkBoundsOfBox(cmd, local, out);
+}
+
+bool GlyphInkMemo::inkBox(const CommandList& list, uint32_t runIndex, TextShaper* shaper, Rect& out,
+                          float dpr) {
+    // T-684 (Docs/tasks/T-684.md item 2).
+    const GlyphsCmd& cmd = list.glyphRuns[runIndex];
+    if (shaper == nullptr) {
+        return glyphRunInkBox(list, cmd, shaper, out, dpr);  // asks no shaper: nothing to remember
     }
-    out = transformedRect(cmd.xf, local);
-    return std::isfinite(out.x) && std::isfinite(out.y) && std::isfinite(out.w) && std::isfinite(out.h);
+    if (runIndex >= m_entries.size()) {
+        m_entries.resize(std::max<size_t>(list.glyphRuns.size(), size_t{runIndex} + 1));
+    }
+    Entry& e = m_entries[runIndex];
+    const uint64_t generation = shaper->generation();
+    // Bitwise comparison of the floats: -0 / +0 and NaN payloads recompute (never a wrong hit).
+    const bool hit = e.epoch == m_epoch && e.generation == generation &&
+                     std::memcmp(&e.xf, &cmd.xf, sizeof(Mat2x3)) == 0 && e.font == cmd.font &&
+                     std::memcmp(&e.size, &cmd.size, sizeof(float)) == 0 &&
+                     std::memcmp(&e.effectRadius, &cmd.effectRadius, sizeof(float)) == 0 &&
+                     std::memcmp(&e.dpr, &dpr, sizeof(float)) == 0 && e.glyphOffset == cmd.glyphOffset &&
+                     e.glyphCount == cmd.glyphCount && e.rendering == cmd.rendering;
+    if (!hit) {
+        e.epoch = m_epoch;
+        e.generation = generation;
+        e.xf = cmd.xf;
+        e.font = cmd.font;
+        e.size = cmd.size;
+        e.effectRadius = cmd.effectRadius;
+        e.dpr = dpr;
+        e.glyphOffset = cmd.glyphOffset;
+        e.glyphCount = cmd.glyphCount;
+        e.rendering = cmd.rendering;
+        e.box = Rect{};
+        e.ok = glyphRunInkBox(list, cmd, shaper, e.box, dpr);
+    }
+    if (e.ok) {
+        out = e.box;
+    }
+    return e.ok;
+}
+
+bool GlyphInkMemo::inkBounds(const CommandList& list, uint32_t runIndex, TextShaper* shaper, Rect& out,
+                             float dpr) {
+    // glyphRunInkBounds() over the remembered box.
+    Rect local;
+    if (!inkBox(list, runIndex, shaper, local, dpr)) {
+        return false;
+    }
+    return inkBoundsOfBox(list.glyphRuns[runIndex], local, out);
 }
 
 Rect commandBounds(const CommandList& list, const Command& cmd) {
@@ -909,7 +1018,7 @@ Rect commandBounds(const CommandList& list, const Command& cmd) {
 }
 
 bool commandBoundsInFrame(const CommandList& list, const Command& cmd, const Mat2x3& frame, Rect& out,
-                          bool& empty, TextShaper* shaper) {
+                          bool& empty, TextShaper* shaper, GlyphInkMemo* memo) {
     // T-668 (Docs/tasks/T-668.md item 2): commandBounds()'s boxes, but each draw command's own
     // geometry box is mapped through `frame * xf` directly instead of through the root-box AABB, so
     // a rotated node's children are not inflated by a second axis-aligned box.
@@ -952,8 +1061,10 @@ bool commandBoundsInFrame(const CommandList& list, const Command& cmd, const Mat
             }
             // T-680 ("補充 2" B.2): the font-metric box where the shaper gives one; T-681: the
             // glyphs' own ink boxes (dpr 1: the Painter paints for any ratio), none for spaces.
+            // T-684: remembered per build / paint with a memo.
             Rect ink;
-            if (glyphRunInkBox(list, c, shaper, ink)) {
+            if (memo != nullptr ? memo->inkBox(list, cmd.index, shaper, ink)
+                                : glyphRunInkBox(list, c, shaper, ink)) {
                 if (!(ink.w > 0.0f) || !(ink.h > 0.0f)) {
                     empty = true;
                     return true;

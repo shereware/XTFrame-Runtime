@@ -8,6 +8,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -539,6 +540,14 @@ private:
     /// T-199: the block format an image gets under `--compress` (the assets.yaml `compress:`
     /// override first, then alpha demotes bc1 to bc3); None keeps the file as it is.
     BcFormat compressFormatFor(const std::string& canonicalSource, const ImageData& decoded) const;
+    /// T-687 (10 §10.13 ruling 5): under `auto`, true for an image (or atlas page) with a side under
+    /// kAutoCompressMinSide -- it is packed as it is.
+    bool autoKeeps(int w, int h) const {
+        return m_compressAuto && (w < kAutoCompressMinSide || h < kAutoCompressMinSide);
+    }
+    /// T-687 (rulings 2-4, 6): `pixels` as the DDS file encodePublishDds() writes, from the encode
+    /// cache when it holds it (stored there otherwise); empty on a degenerate image.
+    std::vector<uint8_t> encodeImage(const ImageData& pixels, BcFormat format);
     /// T-200 (§22.10 `symbols[]`): the contract summary of every symbol of the project.
     void packSymbolContracts();
     /// T-204 (§22.10 `glyphs[device]`): packs every `glyphs/<device>/<key>.<image ext>` under
@@ -599,6 +608,12 @@ private:
     int m_atlasMaxSize = 4096;
     int m_atlasPadding = 2;
     bool m_atlasMipmaps = false;
+    /// T-687: `auto` (m_compress is then Bc7) -- see autoKeeps().
+    bool m_compressAuto = false;
+    int m_encodeThreads = 1;
+    EncodeCache m_encodeCache;
+    /// T-687: canonical source path + "\n" + content name -> the name written for it this run.
+    std::unordered_map<std::string, std::string> m_encodedNameOf;
     bool m_fontSubset = false;
     /// Pass 2 (rewriteUis): rewriteAsset() only maps names, writes nothing.
     bool m_rewritePass = false;
@@ -729,14 +744,19 @@ std::string Packer::rewriteAsset(std::string_view sourceName, std::string_view r
     std::string written = bytes;
     std::string format;
     BcFormat bcFormat = BcFormat::None;
-    if (kind == kAssetKindImage && m_compress != BcFormat::None && !deferCompress() &&
-        isRasterExtension(lowerExtension(sourceName))) {
+    // T-687: a source already written this run (same file, same bytes) is not decoded and encoded
+    // again for every reference; it takes the deduplication path below with the name it got.
+    const std::string encodedKey = canonical + "\n" + contentName;
+    const auto encodedBefore = m_encodedNameOf.find(encodedKey);
+    if (encodedBefore != m_encodedNameOf.end() && m_assetIndex.count(encodedBefore->second) != 0) {
+        name = encodedBefore->second;
+    } else if (kind == kAssetKindImage && m_compress != BcFormat::None && !deferCompress() &&
+               isRasterExtension(lowerExtension(sourceName))) {
         ImageData decoded;
         if (sw::decodeImageBytes(reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size(), decoded)) {
             bcFormat = compressFormatFor(canonical, decoded);
             if (bcFormat != BcFormat::None) {
-                const std::vector<uint8_t> dds =
-                    encodeDds(decoded.rgba.data(), decoded.width, decoded.height, bcFormat, m_atlasMipmaps);
+                const std::vector<uint8_t> dds = encodeImage(decoded, bcFormat);
                 if (!dds.empty()) {
                     written.assign(dds.begin(), dds.end());
                     name = "assets/" + hex16(fnv1a64(bytes)) + ".dds";
@@ -746,6 +766,7 @@ std::string Packer::rewriteAsset(std::string_view sourceName, std::string_view r
         }
     }
     m_finalNameOf[contentName] = name;
+    m_encodedNameOf[encodedKey] = name;  // T-687
     m_referenced.push_back(canonical);
     m_assetSourcePath.emplace(name, canonical);
     if (std::find(uiAssets.begin(), uiAssets.end(), name) == uiAssets.end()) {
@@ -818,8 +839,7 @@ std::string Packer::rewriteAsset(std::string_view sourceName, std::string_view r
                 ImageData decoded2;
                 if (sw::decodeImageBytes(reinterpret_cast<const uint8_t*>(bytes2.data()), bytes2.size(),
                                          decoded2)) {
-                    const std::vector<uint8_t> dds = encodeDds(decoded2.rgba.data(), decoded2.width,
-                                                               decoded2.height, bcFormat, m_atlasMipmaps);
+                    const std::vector<uint8_t> dds = encodeImage(decoded2, bcFormat);
                     if (!dds.empty()) {
                         written2.assign(dds.begin(), dds.end());
                         name2 = "assets/" + hex16(fnv1a64(bytes)) + suffix + ".dds";
@@ -853,10 +873,39 @@ BcFormat Packer::compressFormatFor(const std::string& canonicalSource, const Ima
             return forced;
         }
     }
+    if (autoKeeps(decoded.width, decoded.height)) {
+        return BcFormat::None;  // T-687 (ruling 5): small images are not worth the quality loss.
+    }
     if (format == BcFormat::Bc1 && imageHasAlpha(decoded.rgba.data(), decoded.width, decoded.height)) {
         format = BcFormat::Bc3;  // 26.3.4: an icon with alpha never goes through BC1's 1-bit alpha.
     }
     return format;
+}
+
+std::vector<uint8_t> Packer::encodeImage(const ImageData& pixels, BcFormat format) {
+    if (pixels.width <= 0 || pixels.height <= 0 ||
+        pixels.rgba.size() < static_cast<size_t>(pixels.width) * static_cast<size_t>(pixels.height) * 4) {
+        return {};
+    }
+    std::string key;
+    std::vector<uint8_t> dds;
+    if (m_encodeCache.enabled()) {
+        key = publishEncodeKey(pixels.rgba.data(), pixels.width, pixels.height, format);
+        if (m_encodeCache.load(key, dds)) {
+            ++m_report.imagesEncoded;
+            ++m_report.encodeCacheHits;
+            return dds;
+        }
+    }
+    dds = encodePublishDds(pixels.rgba.data(), pixels.width, pixels.height, format, m_encodeThreads);
+    if (dds.empty()) {
+        return dds;
+    }
+    ++m_report.imagesEncoded;
+    if (m_encodeCache.enabled()) {
+        m_encodeCache.store(key, dds);
+    }
+    return dds;
 }
 
 void Packer::collectImageUses(const Document& doc, const IrView& view, const std::string& uiId) {
@@ -1051,9 +1100,11 @@ void Packer::buildAtlases() {
                     imageHasAlpha(pixels.rgba.data(), pixels.width, pixels.height)) {
                     format = BcFormat::Bc3;
                 }
+                if (autoKeeps(pixels.width, pixels.height)) {
+                    format = BcFormat::None;  // T-687: a page follows the `auto` rule by its own size.
+                }
                 if (format != BcFormat::None) {
-                    const std::vector<uint8_t> dds =
-                        encodeDds(pixels.rgba.data(), pixels.width, pixels.height, format, m_atlasMipmaps);
+                    const std::vector<uint8_t> dds = encodeImage(pixels, format);
                     const std::string relative = "atlas/" + stem + ".dds";
                     if (dds.empty() ||
                         !writeBytes(m_outDir / pathFromUtf8(relative), std::string(dds.begin(), dds.end()))) {
@@ -1144,8 +1195,7 @@ void Packer::compressDeferred() {
         if (m_assetIndex.count(name) != 0) {
             continue;
         }
-        const std::vector<uint8_t> dds =
-            encodeDds(decoded.rgba.data(), decoded.width, decoded.height, format, m_atlasMipmaps);
+        const std::vector<uint8_t> dds = encodeImage(decoded, format);
         if (dds.empty() || !writeBytes(m_outDir / pathFromUtf8(name), std::string(dds.begin(), dds.end()))) {
             error(asset.file, "cannot write '" + pathToUtf8(m_outDir / pathFromUtf8(name)) + "'");
             continue;
@@ -1157,8 +1207,7 @@ void Packer::compressDeferred() {
             const std::string twoXPath = twoX->second;
             ImageData decoded2;
             if (decodeFile(twoXPath, decoded2)) {
-                const std::vector<uint8_t> dds2 =
-                    encodeDds(decoded2.rgba.data(), decoded2.width, decoded2.height, format, m_atlasMipmaps);
+                const std::vector<uint8_t> dds2 = encodeImage(decoded2, format);
                 const std::string name2 = stem + "@2x.dds";
                 if (!dds2.empty() &&
                     writeBytes(m_outDir / pathFromUtf8(name2), std::string(dds2.begin(), dds2.end()))) {
@@ -1174,8 +1223,7 @@ void Packer::compressDeferred() {
             const std::string threeXPath = threeX->second;
             ImageData decoded3;
             if (decodeFile(threeXPath, decoded3)) {
-                const std::vector<uint8_t> dds3 =
-                    encodeDds(decoded3.rgba.data(), decoded3.width, decoded3.height, format, m_atlasMipmaps);
+                const std::vector<uint8_t> dds3 = encodeImage(decoded3, format);
                 const std::string name3 = stem + "@3x.dds";
                 if (!dds3.empty() &&
                     writeBytes(m_outDir / pathFromUtf8(name3), std::string(dds3.begin(), dds3.end()))) {
@@ -2676,10 +2724,38 @@ PackReport Packer::run() {
     }
 
     // T-199: the asset pipeline options (CLI first, then the UI Project's `publish.atlas`).
-    if (!parseBcFormat(m_options.compress, m_compress)) {
+    // T-687 (10 §10.13 ruling 5): an empty PackOptions::compress takes `publish.images.compress`.
+    std::string compressSetting = m_options.compress;
+    if (compressSetting.empty()) {
+        compressSetting = m_ui != nullptr ? m_ui->publish.images.compress : std::string("none");
+    }
+    m_compressAuto = compressSetting == "auto";
+    if (m_compressAuto) {
+        m_compress = BcFormat::Bc7;
+    } else if (!parseBcFormat(compressSetting, m_compress)) {
         error(m_project.id,
-              "pack: unknown --compress format '" + m_options.compress + "' (bc7|bc3|bc1|none)");
+              "pack: unknown --compress format '" + compressSetting + "' (bc7|bc3|bc1|auto|none)");
         return std::move(m_report);
+    }
+    m_report.compress = m_compressAuto ? std::string("auto") : std::string(bcFormatName(m_compress));
+    if (m_compress != BcFormat::None) {
+        // T-687 (ruling 6): threads and the encode cache, `<bundle>/../.xtframe-cache/bc/` by default.
+        m_encodeThreads = m_options.encodeThreads > 0
+                              ? m_options.encodeThreads
+                              : std::max(1, static_cast<int>(std::thread::hardware_concurrency()));
+        m_report.encodeThreads = static_cast<uint32_t>(m_encodeThreads);
+        if (m_options.encodeCache) {
+            fs::path cacheDir = pathFromUtf8(m_options.encodeCacheDir);
+            if (m_options.encodeCacheDir.empty()) {
+                cacheDir = fs::absolute(m_outDir, ec).lexically_normal();
+                if (!cacheDir.has_filename()) {
+                    cacheDir = cacheDir.parent_path();  // A trailing separator.
+                }
+                cacheDir = cacheDir.parent_path() / ".xtframe-cache" / "bc";
+            }
+            m_encodeCache = EncodeCache(pathToUtf8(cacheDir));
+            m_report.encodeCacheDir = m_encodeCache.dir();
+        }
     }
     m_atlas = m_options.atlas || (m_ui != nullptr && m_ui->publish.atlas.enabled);
     m_fontSubset = m_options.fontSubset;

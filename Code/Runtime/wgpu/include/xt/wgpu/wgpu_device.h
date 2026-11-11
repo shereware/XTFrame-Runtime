@@ -124,6 +124,17 @@ public:
     void setSharedCache(WgpuSharedCache* cache) { m_shared = cache; }
     /// T-648: true while this device borrows a WgpuSharedCache (set by `init`).
     bool sharing() const { return m_sharing != nullptr; }
+    /// T-685 (50 §50.ac addendum 2): while this device borrows a WgpuSharedCache, whether the
+    /// transients it borrows are recorded as borrowed by a user of its own (`named`; the C ABI: a
+    /// surface's device) or by the one anonymous user (the default; the composer). The cache's
+    /// budget never evicts a transient whose last borrower is a named user until that user lets
+    /// go of it (`releasePoolUse`, `shutdown`); only the 1800-frame ageing does. Call after `init`;
+    /// a device that shares no cache stays anonymous.
+    void setPoolUser(bool named);
+    /// T-685: the transients this device's user borrowed last become the anonymous user's, so the
+    /// cache's budget may evict them from the next `WgpuSharedCache::endFrame` on (the host hid, trimmed,
+    /// detached or destroyed its surface). One borrowed again afterwards is this user's again.
+    void releasePoolUse();
     /// T-678 (50 §50.ac addendum item 2): the backend of the adapter the next `init`'s device comes
     /// from, for the byte counts of the Stencil8 attachments (`stencil8TexelBytes`); Undefined (the
     /// default) counts one byte per texel.
@@ -260,6 +271,8 @@ public:
         bool inUse = false;
         uint32_t lastUsed = 0;
         uint64_t bytes = 0;
+        /// T-685: the user that borrowed it last (WgpuDevice::setPoolUser; 0 = the anonymous user).
+        uint32_t user = 0;
         /// T-675: a slot of a pool keeps its index while it lives (other devices' frame targets name
         /// it); a destroyed entry leaves an empty slot (`color` null) for the next one.
         bool live() const { return color != nullptr; }
@@ -303,6 +316,7 @@ private:
     std::unique_ptr<Gpu> m_gpu;
     WgpuSharedCache* m_shared = nullptr;   ///< T-648: setSharedCache
     WgpuSharedCache* m_sharing = nullptr;  ///< T-648: the cache borrowed since init (null: none)
+    uint32_t m_poolUser = 0;               ///< T-685: setPoolUser (0 = the anonymous user)
 
     std::vector<Texture> m_textures;  ///< handle h = m_textures[h - 1]
     std::vector<uint32_t> m_freeTextures;

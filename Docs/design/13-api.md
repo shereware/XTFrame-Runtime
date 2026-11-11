@@ -132,7 +132,7 @@ Result<Value> parseValue(PropId, std::string_view css);   // "12px"、"#ff0000"�
 
 ```cpp
 namespace xt::shell {
-struct WindowConfig { int width = 1280, height = 720; const char* title = "XTFrame"; bool vsync = true; int msaa = 4; };
+struct WindowConfig { int width = 1280, height = 720; const char* title = "XTFrame"; bool vsync = true; int msaa = 0; };  // T-684：預設不要求多重取樣的視窗緩衝（1x，邊緣由 renderer 的覆蓋率處理；10 §10.11）
 class App {
 public:
     App(const WindowConfig&);

@@ -589,7 +589,8 @@ void Painter::paint(const NodeArena& arena, NodeId root, CommandList& out) {
     m_overlayQueue.clear();
     m_overlayEntering = kInvalidNode;
     m_paintRoot = root;
-    out.time = m_clock;  // T-203: `xtTime` of custom effects (18.7).
+    m_glyphInkMemo.reset();  // T-684: nothing is kept from the previous paint
+    out.time = m_clock;      // T-203: `xtTime` of custom effects (18.7).
     const size_t firstImage = out.images.size();
     const size_t firstParticles = out.particles.size();
     const size_t firstMesh = out.imageMeshes.size();
@@ -1928,7 +1929,7 @@ bool Painter::finishBoxShadowCandidate(CommandList& out) {
             }
             Rect r;
             bool empty = false;
-            if (!commandBoundsInFrame(out, out.commands[i], frame, r, empty, m_shaper)) {
+            if (!commandBoundsInFrame(out, out.commands[i], frame, r, empty, m_shaper, &m_glyphInkMemo)) {
                 in.contentKnown = false;
                 break;
             }

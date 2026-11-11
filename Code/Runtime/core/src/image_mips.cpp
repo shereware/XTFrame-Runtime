@@ -118,6 +118,9 @@ void downsampleBox(const uint8_t* src, int w, int h, uint8_t* dst) {
 
 bool buildImageMipChain(const ImageData& image, ImageMipChain& out) {
     out.levels.clear();
+    out.straight = false;  // T-686: a built chain is premultiplied and covers each whole level
+    out.levelUvScaleX = 1.0f;
+    out.levelUvScaleY = 1.0f;
     const int w0 = image.width;
     const int h0 = image.height;
     if (w0 <= 0 || h0 <= 0 || image.rgba.size() < static_cast<size_t>(w0) * static_cast<size_t>(h0) * 4) {

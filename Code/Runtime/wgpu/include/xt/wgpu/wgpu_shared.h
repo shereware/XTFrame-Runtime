@@ -27,11 +27,12 @@
 ///   - **Target-level pools** (T-675, 50 §50.ac item 2): the devices also borrow the cache's
 ///     transient pool (T-678, 50 §50.ac addendum item 1: its byte budget is the most bytes one
 ///     submit of the last target frame borrowed plus 16 MiB, set and applied by `endFrame`; least
-///     recently used first, never an entry used in that frame), its released effect-cache / band
-///     targets (16 MB, oldest first), its surface
-///     attachment sets (a 4x colour attachment and its stencil, or the stencil alone, one set per
-///     size, sample count and format, borrowed for the length of one submit) and its 1x1 dummy. The
-///     host returns surface textures it no longer shows to a pool of (size, format)
+///     recently used first, never an entry used in that frame; T-685: nor one whose last borrower is a
+///     named user that has not let go of it -- WgpuDevice::setPoolUser / releasePoolUse), its released
+///     effect-cache / band targets (16 MB, oldest first), its surface attachment sets (a 4x colour attachment
+///     and its stencil, or the stencil alone, one set per size, sample count and format, borrowed for the
+///     length of one submit) and its 1x1 dummy. The host returns surface textures it no longer shows to a
+///     pool of (size, format)
 ///     (`releaseSurfaceTexture`) and takes them back (`acquireSurfaceTexture`). The pools age by the
 ///     host's frames (`endFrame`): a transient or a released cached target unused for 1800 frames
 ///     goes (at most one of each per frame), an idle surface texture or an unborrowed attachment set
@@ -90,6 +91,12 @@ struct WgpuSharedStats {
     uint64_t attachmentBytes = 0;      ///< T-675: their memory
     uint32_t surfaceTexturesIdle = 0;  ///< T-675: idle surface textures in the pool
     uint32_t poolFrees = 0;            ///< T-675: pooled textures destroyed (age, budget, trimPools)
+    /// T-685 (50 §50.ac addendum 2): of `poolBytes`, the transients the budget may not evict (their last
+    /// borrower is a named user that still holds them: WgpuDevice::setPoolUser); transients the budget
+    /// evicted and transients the 1800-frame ageing destroyed since construction (entries, not textures).
+    uint64_t poolProtectedBytes = 0;
+    uint32_t poolBudgetEvictions = 0;
+    uint32_t poolAgeEvictions = 0;
     /// T-683 (50 §50.ad item 2): the pipeline set's counters (wgpu_device.h WgpuPipelineCounters): shader
     /// compiles and pipeline creates while WgpuDevice::prewarmPipelines ran, and since it ended.
     uint32_t prewarmShaderCompiles = 0;

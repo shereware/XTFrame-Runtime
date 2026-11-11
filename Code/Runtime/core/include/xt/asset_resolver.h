@@ -34,10 +34,17 @@ struct ImageData {
 
 /// T-199 (Docs/design/26-layers-symbols-library.md §26.3.4, 23 §23.8): an image kept in a
 /// block-compressed form (a DDS file `xtframe-pack --compress` wrote), for a GPU backend that can
-/// upload it as is. Straight (non-premultiplied) alpha, row 0 = top, level 0 only.
+/// upload it as is. Straight (non-premultiplied) alpha, row 0 = top; T-665: with the levels the file
+/// stored.
 struct CompressedImage {
+    /// The stored (T-686: possibly padded) size of level 0, the DDS header's.
     int width = 0;
     int height = 0;
+    /// T-686 (Docs/design/10-backends.md §10.13 ruling 2): the image's size for layout and drawing --
+    /// the DDS logical-size marker's, else `width` x `height`. A backend sampling the blocks maps the
+    /// image's 0..1 uv to 0..logicalWidth / width (and likewise vertically) of the texture.
+    int logicalWidth = 0;
+    int logicalHeight = 0;
     /// Bc1, Bc3 or Bc7 (never Rgba8/Unknown).
     DdsFormat format = DdsFormat::Unknown;
     /// The 4x4 blocks of level 0, `ddsLevelSize(format, width, height)` bytes -- T-665: followed by
@@ -142,6 +149,10 @@ public:
         int height = 0;
         /// Rgba8 for decoded pixels (straight alpha), else the format of the compressed blocks.
         DdsFormat format = DdsFormat::Rgba8;
+        /// T-686: the logical size of compressed blocks (CompressedImage::logicalWidth/Height);
+        /// 0 = `width` x `height`.
+        int logicalWidth = 0;
+        int logicalHeight = 0;
     };
     /// T-657: records `key` for `image`, a pointer imageView() or compressedImage() returned and
     /// that is still valid, so retainedImageKey() can answer after the pixels are released.
@@ -260,6 +271,12 @@ private:
 /// `bytes` (an encoded image file's contents) into `out`. Returns false on failure.
 using ImageDecodeFn = bool (*)(const uint8_t* bytes, size_t size, ImageData& out);
 
+/// T-686 (Docs/design/10-backends.md §10.13 ruling 3): decodes the stored levels 1..levels-1 of
+/// `image` through `decode` (each handed over as a DDS file of its own) into `out`: straight alpha,
+/// at the stored level sizes, `out.straight` set and the uv scale logical / stored. False (no levels
+/// in `out`) when `image` stored no chain or a level cannot be decoded.
+bool decodeStoredMipLevels(const CompressedImage& image, ImageDecodeFn decode, ImageMipChain& out);
+
 /// T-263e: a file-status function, injected into FileAssetResolver like its decode function
 /// (xt_core itself asks the file system nothing: no `<filesystem>`, no `stat`). Reports the size
 /// in bytes and the last-write time -- an opaque tick count, only compared for equality -- of the
@@ -319,9 +336,16 @@ public:
     const ImageData* imageView(AssetId asset, const IrView& view, float dpr) override;
     /// T-199: the DDS blocks of an asset whose file (or `@2x` file) is a DDS (see
     /// AssetResolver::compressedImage); nullptr for any other file format.
+    /// T-686 (Docs/design/10-backends.md §10.13 ruling 1): a block-compressed DDS (BC1 / BC3 / BC7) is
+    /// kept as its blocks only; its RGBA pixels are decoded from level 0 the first time imageView() /
+    /// decodeImage() asks for them (and cropped to the logical size), never by this call or by
+    /// imageSize(). The blocks and the pixels each count against the idle budget once they exist.
     const CompressedImage* compressedImage(AssetId asset, const IrView& view, float dpr) override;
     /// T-665: the chain of imageView(asset, view, dpr)'s decode, built on first use, freed with the
     /// decode and counted with its pixels against the idle budget (setIdleDecodeBudget()).
+    /// T-686 (10 §10.13 ruling 3): for a DDS that stored a mip chain, the stored levels 1.. decoded
+    /// (straight alpha, ImageMipChain::straight, at their stored size with the logical uv scale);
+    /// nothing is built from level 0. nullptr for a DDS without a stored chain.
     const ImageMipChain* imageMipChain(AssetId asset, const IrView& view, float dpr) override;
 
     /// T-215: forgets every per-asset lookup (which decoded image each asset name or embedded
@@ -418,10 +442,15 @@ private:
     /// One decoded image (a file, or a whole atlas page), owned by the resolver.
     struct Entry {
         ImageData image;
-        /// Set when the file was a DDS: its level-0 blocks for the GPU.
+        /// Set when the file was a block-compressed DDS: its blocks (T-665: with the stored levels).
         bool hasCompressed = false;
         CompressedImage compressed;
         bool ok = false;
+        /// T-686: `image` holds the pixels (always, once `ok`, for a file that is not a compressed
+        /// DDS; for one, after the first pixelsOf()). `rgbaFailed`: that decode failed (the blocks stay
+        /// usable).
+        bool rgbaReady = false;
+        bool rgbaFailed = false;
         /// T-665: the mip chain of `image`, built by the first imageMipChain() and freed with the
         /// entry (counted against the idle budget with the pixels).
         bool mipsBuilt = false;
@@ -493,8 +522,13 @@ private:
     /// T-452: the header-only size of the first of `files` that exists -- from `m_headerSizes`, or
     /// read from the file and recorded there; false when none exists or its header tells no size.
     bool headerSizeOf(const std::vector<std::string>& files, int& width, int& height);
-    /// Decodes `bytes` (any decoder format, or DDS) into `entry`.
+    /// Decodes `bytes` (any decoder format, or DDS) into `entry`. T-686: a block-compressed DDS
+    /// keeps its blocks only (see pixelsOf()).
     void decodeInto(const std::vector<uint8_t>& bytes, Entry& entry);
+    /// T-686: the RGBA pixels of `entry` (nullptr when it is nullptr or they cannot be had), decoding
+    /// a compressed DDS's level 0 through the decode function on first use and cropping it to the
+    /// logical size. `entry` is live (ensureDecoded() took an idle one back).
+    const ImageData* pixelsOf(const Entry* entry);
     /// T-263e / T-263f / T-263g: lets go of the decode of each `Slot::entry` value in `dropped`
     /// (the entries of slots just removed or left without a source) that no slot a live source
     /// holds resolves to: onto the idle list, or freed (see idleEntry()); then trims the idle
@@ -553,6 +587,12 @@ private:
     /// and how often a file status was asked (fileStamp()).
     size_t m_readBytesCalls = 0;
     mutable size_t m_statCalls = 0;
+    /// T-686: test hooks -- how often a compressed DDS was decoded to RGBA (level 0), and how often
+    /// one of its stored mip levels was; and whether an out-of-range logical-size marker was
+    /// reported (once per resolver, to stderr).
+    size_t m_ddsRgbaDecodes = 0;
+    size_t m_ddsLevelDecodes = 0;
+    bool m_loggedLogicalSize = false;
     /// T-452: the header-only size of a file nobody decoded yet (T-160), kept across
     /// resetAssetIds() by the file's path with its size and modification time when it was read
     /// (`hasStamp` false: no status could be asked); revalidate() compares it like a decode.

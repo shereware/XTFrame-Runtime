@@ -32,7 +32,7 @@ Present (T-439):
 | `xt_platform_sdl2.*` | SDL 2.0.18+ | events, IME (TEXTEDITING), clipboard, DPI, GL context or native surface handles, window-framebuffer blit |
 | `xt_platform_win32.*` | Win32 | message loop, per-monitor DPI v2, WM_CHAR text, clipboard, StretchDIBits blit; IME is a hook only |
 | `xt_renderer_wgpu.*` | wgpu-native `webgpu.h` | `WgpuRenderer` on a `WGPUSurface` (Win32 / X11 / Wayland / Metal) or offscreen; `XT_WGPU_BACKEND` / `XT_WGPU_FALLBACK` |
-| `xt_renderer_gl3.*` | OpenGL 3.3 core | `GlRenderer` into its own (4x) FBO, blitted to the window |
+| `xt_renderer_gl3.*` | OpenGL 3.3 core | `GlRenderer` into its own FBO (4x MSAA when `BackendOptions::sampleCount` is 4; 1 by default since T-666), blitted to the window |
 | `xt_renderer_sw.*` | none | `SwRenderer` into a premultiplied buffer (damage rectangles), presented by the platform |
 | `xt_backend_sdl2_{wgpu,gl3,sw}.cpp`, `xt_backend_win32_wgpu.cpp` | | the combinations; `Examples/backends/minimal_sdl2_wgpu` |
 

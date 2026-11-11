@@ -207,16 +207,27 @@ std::string nativeVersionText() {
 }
 
 #if defined(XT_WGPU_HAS_MEMORY_HINTS)
+/// T-685 (50 §50.ab addendum 3): the shipping block range when XT_WGPU_MEMORY_HINTS is unset --
+/// device blocks of 32 MiB growing to 64 MiB.
+constexpr uint32_t kDefaultBlockStartMiB = 32;
+constexpr uint32_t kDefaultBlockMaxMiB = 64;
+
 /// T-671 (50 §50.ab addendum 2, items 1 and 6): XT_WGPU_MEMORY_HINTS = performance | usage |
-/// manual:<startMiB>:<maxMiB> into `extras`; unset = usage (the development default of an override build).
-/// A malformed value falls back to usage, said in the returned text.
+/// manual:<startMiB>:<maxMiB> into `extras`; unset = manual:32:64 (T-685, 50 §50.ab addendum 3).
+/// A malformed value falls back to that default, said in the returned text.
 std::string memoryHintsFromEnv(WGPUDeviceExtras& extras) {
     const std::string value = envString("XT_WGPU_MEMORY_HINTS");
-    extras.memoryHints = WGPUMemoryHints_MemoryUsage;
+    auto manual = [&extras](uint32_t startMiB, uint32_t maxMiB) {
+        extras.memoryHints = WGPUMemoryHints_Manual;
+        extras.suballocatedDeviceMemoryBlockSizeStart = static_cast<uint64_t>(startMiB) << 20;
+        extras.suballocatedDeviceMemoryBlockSizeEnd = static_cast<uint64_t>(maxMiB) << 20;
+        return "memory hints manual " + std::to_string(startMiB) + ".." + std::to_string(maxMiB) + " MiB";
+    };
     if (value.empty()) {
-        return "memory hints usage (default)";
+        return manual(kDefaultBlockStartMiB, kDefaultBlockMaxMiB) + " (default)";
     }
     if (value == "usage") {
+        extras.memoryHints = WGPUMemoryHints_MemoryUsage;
         return "memory hints usage";
     }
     if (value == "performance") {
@@ -235,12 +246,9 @@ std::string memoryHintsFromEnv(WGPUDeviceExtras& extras) {
         }
     }
     if (parsed && startMiB >= 1 && maxMiB >= startMiB && maxMiB <= 65536) {
-        extras.memoryHints = WGPUMemoryHints_Manual;
-        extras.suballocatedDeviceMemoryBlockSizeStart = static_cast<uint64_t>(startMiB) << 20;
-        extras.suballocatedDeviceMemoryBlockSizeEnd = static_cast<uint64_t>(maxMiB) << 20;
-        return "memory hints manual " + std::to_string(startMiB) + ".." + std::to_string(maxMiB) + " MiB";
+        return manual(startMiB, maxMiB);
     }
-    return "memory hints usage (default; XT_WGPU_MEMORY_HINTS=" + value +
+    return manual(kDefaultBlockStartMiB, kDefaultBlockMaxMiB) + " (default; XT_WGPU_MEMORY_HINTS=" + value +
            " is not performance, usage or manual:<startMiB>:<maxMiB>)";
 }
 #else

@@ -352,6 +352,8 @@ struct WgpuSharedCache::Impl {
     /// ... and the budget endFrame made of the frame that ended: frameBorrowPeak +
     /// kPoolBudgetHeadroomBytes. LRU entries over it go then (and after each submit, as before).
     uint64_t transientBudget = detail::kPoolBudgetHeadroomBytes;
+    /// T-685 (50 §50.ac addendum 2): the next named pool user (WgpuDevice::setPoolUser; 0 = anonymous).
+    uint32_t nextPoolUser = 1;
     /// T-678 (50 §50.ac addendum item 2): bytes per texel of a Stencil8 texture as the backend of the
     /// cache's device creates it (stencil8TexelBytes; set by the first device that borrows it).
     uint32_t stencilTexelBytes = 1;
@@ -400,6 +402,11 @@ struct WgpuSharedCache::Impl {
     void returnAttachments(int index);
     /// Destroys pooled transient `p` (leaves an empty slot).
     void destroyTransient(WgpuDevice::Pooled& p);
+    /// T-685: the budget may evict `p` only when its last borrower is the anonymous user (a named user
+    /// gives its transients to the anonymous user when it lets go of them: releasePoolUser).
+    static bool budgetMayEvict(const WgpuDevice::Pooled& p) { return p.user == 0; }
+    /// T-685: every transient whose last borrower is `user` becomes the anonymous user's.
+    void releasePoolUser(uint32_t user);
     /// Destroys the oldest released cached targets while they exceed kCachedFreeBudgetBytes.
     void trimCachedFree();
     /// endFrame: sets the transient budget from the frame that ended and applies it
@@ -407,7 +414,8 @@ struct WgpuSharedCache::Impl {
     void agePools();
     /// T-678: transientBudget = frameBorrowPeak + kPoolBudgetHeadroomBytes (the peak starts again
     /// at 0), then the least recently used transients go while the pool is over it -- never one used
-    /// in the frame that ended, and never the last one (WgpuDevice::trimPool's rule).
+    /// in the frame that ended, and never the last one (WgpuDevice::trimPool's rule). T-685: the bytes
+    /// of every live transient count, but only those budgetMayEvict allows go.
     void applyTransientBudget();
     /// Destroys every pooled texture no device borrows now; returns how many textures.
     uint32_t destroyPools();

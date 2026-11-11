@@ -1,8 +1,12 @@
 <xt version="2">
 
+  <ports>
+    heavy: bool in = true
+  </ports>
+
   <body>
     <div id="back"></div>
-    <div id="a" class="panel">
+    <div id="a" class="panel" bind:visible="heavy">
       <div id="b" class="panel">
         <div id="c" class="panel">
           <div id="d" class="panel">

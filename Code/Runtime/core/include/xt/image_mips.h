@@ -34,6 +34,14 @@ struct ImageMipLevel {
 struct ImageMipChain {
     /// `levels[k - 1]` is level k.
     std::vector<ImageMipLevel> levels;
+    /// T-686 (Docs/design/10-backends.md §10.13 ruling 3): the levels a DDS stored, decoded -- straight
+    /// alpha (sampled bilinearly, then premultiplied, as the GPU samples block-compressed levels) and
+    /// at their stored size: the image's 0..1 uv covers 0..levelUvScaleX x the level's width (the
+    /// logical / padded ratio of a DDS padded to a multiple of 4, ruling 2), likewise vertically.
+    /// false / 1 / 1 for a chain built by buildImageMipChain().
+    bool straight = false;
+    float levelUvScaleX = 1.0f;
+    float levelUvScaleY = 1.0f;
     /// The bytes the levels hold (what a cache counts against its budget).
     size_t byteSize() const;
 };

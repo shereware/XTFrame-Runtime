@@ -46,7 +46,13 @@ void xt_surface::onShown(xt::DocumentHandle document) {
 }
 
 void xt_surface::onHidden(xt::DocumentHandle document) {
-    if (document != handle || visibilityFn == nullptr) {
+    if (document != handle) {
+        return;
+    }
+    // T-685 (50 §50.ac addendum 2): hidden, so the target's pool budget may evict what it borrowed last
+    // (with trim-on-hide too; releaseGpuResources says it again).
+    xt::capi::releaseGpuPoolUse(*this);
+    if (visibilityFn == nullptr) {
         return;
     }
     xt::capi::callbackGuard("the visibility callback", [&] { visibilityFn(this, 0, visibilityUser); });

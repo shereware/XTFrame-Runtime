@@ -70,10 +70,51 @@ class TextShaper;
 /// degenerate transform, or when the estimate is needed and the metrics give no finite, positive
 /// ascent + descent. `dpr` 1 (the default; the Painter paints for any ratio) makes the device pixel
 /// one run unit at scale 1.
+/// T-684 (Docs/tasks/T-684.md item 2): each glyph's outline control-point box (untransformed, in em
+/// units) -- or that the shaper has no outline for it -- is kept in a small per-thread cache keyed
+/// by (TextShaper::generation(), FontId, glyph id), at most 4096 entries (emptied when full); a hit
+/// does not call TextShaper::glyphOutline(). The results are the same as without the cache.
 bool glyphRunInkBox(const CommandList& list, const GlyphsCmd& cmd, TextShaper* shaper, Rect& out,
                     float dpr = 1.0f);
 /// glyphRunInkBox() transformed by `cmd.xf` (the axis-aligned box of its four corners).
 bool glyphRunInkBounds(const CommandList& list, const GlyphsCmd& cmd, TextShaper* shaper, Rect& out,
                        float dpr = 1.0f);
+
+/// T-684 (Docs/tasks/T-684.md item 2): remembers glyphRunInkBox() per glyph command within one
+/// build or paint, so a run the clip scan or the box shadow test meets several times asks the
+/// shaper once. An entry is keyed by the command's index in `CommandList::glyphRuns` together with
+/// every input that changes the answer: the command's transform, font, size, `text-rendering`,
+/// glyph range and effect radius, `dpr` and the shaper's generation (a mismatch recomputes). reset()
+/// forgets every entry; the owner calls it at the start of each build / paint, so nothing is kept
+/// from one build to the next (the list's pools may have changed). Not thread-safe.
+class GlyphInkMemo {
+public:
+    /// Forgets every entry (O(1); the storage is kept).
+    void reset() { ++m_epoch; }
+    /// glyphRunInkBox(list, list.glyphRuns[runIndex], shaper, out, dpr), remembered. `runIndex` must
+    /// be a valid index (as the clip scan's and the Painter's commands are).
+    bool inkBox(const CommandList& list, uint32_t runIndex, TextShaper* shaper, Rect& out, float dpr = 1.0f);
+    /// glyphRunInkBounds() of the same run: inkBox() transformed by the run's `xf`.
+    bool inkBounds(const CommandList& list, uint32_t runIndex, TextShaper* shaper, Rect& out,
+                   float dpr = 1.0f);
+
+private:
+    struct Entry {
+        uint64_t epoch = 0;  ///< the reset() round it was filled in; another round = empty
+        uint64_t generation = 0;
+        Mat2x3 xf{};
+        FontId font = 0;
+        float size = 0.0f;
+        float effectRadius = 0.0f;
+        float dpr = 0.0f;
+        uint32_t glyphOffset = 0;
+        uint32_t glyphCount = 0;
+        TextRendering rendering = TextRendering::Auto;
+        bool ok = false;  ///< what glyphRunInkBox() returned
+        Rect box{};       ///< its box (meaningful when `ok`)
+    };
+    std::vector<Entry> m_entries;  ///< indexed by the run's index; grows, never shrinks
+    uint64_t m_epoch = 1;
+};
 
 }  // namespace xt

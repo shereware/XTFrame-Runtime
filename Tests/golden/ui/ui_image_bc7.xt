@@ -1,0 +1,123 @@
+<xt version="2">
+
+  <!-- T-686 (10 section 10.13 rulings 1, 2, 3, 7): two BC7 DDS images with stored mip chains and
+       alpha edges, made by Tests/bundle/test_asset_pipeline.cpp "T-686: the BC7 golden fixtures ...":
+       bc7_64.dds (64 x 64) and bc7_66x50.dds (logical 66 x 50, stored padded to 68 x 52 with the
+       'XTLS' marker). Each at 1:1 (intrinsic size: the logical one for the padded image), minified to
+       0.5 and 0.3 (stored levels), rotated, object-fit contain in a wider box, and magnified 2x. The
+       GPU backends upload the blocks and sample the stored levels; SW decodes the same levels. -->
+  <body>
+    <img id="a64" src="bc7_64.dds"/>
+    <img id="a50" src="bc7_64.dds"/>
+    <img id="a30" src="bc7_64.dds"/>
+    <img id="arot" src="bc7_64.dds"/>
+    <img id="b66" src="bc7_66x50.dds"/>
+    <img id="b50" src="bc7_66x50.dds"/>
+    <img id="b30" src="bc7_66x50.dds"/>
+    <img id="brot" src="bc7_66x50.dds"/>
+    <img id="bfit" src="bc7_66x50.dds"/>
+    <img id="b2x" src="bc7_66x50.dds"/>
+  </body>
+
+  <layout>
+    body {
+      margin: 0;
+    }
+    #a64 {
+      position: absolute;
+      left: 8px;
+      top: 8px;
+    }
+    #a50 {
+      position: absolute;
+      left: 80px;
+      top: 8px;
+      width: 32px;
+      height: 32px;
+    }
+    #a30 {
+      position: absolute;
+      left: 120px;
+      top: 8px;
+      width: 19.2px;
+      height: 19.2px;
+    }
+    #arot {
+      position: absolute;
+      left: 152px;
+      top: 14px;
+      width: 44.8px;
+      height: 44.8px;
+      transform: rotate(15deg);
+      transform-origin: 50% 50%;
+    }
+    #b66 {
+      position: absolute;
+      left: 216px;
+      top: 8px;
+    }
+    #b50 {
+      position: absolute;
+      left: 8px;
+      top: 84px;
+      width: 33px;
+      height: 25px;
+    }
+    #b30 {
+      position: absolute;
+      left: 48px;
+      top: 84px;
+      width: 19.8px;
+      height: 15px;
+    }
+    #brot {
+      position: absolute;
+      left: 80px;
+      top: 84px;
+      width: 46.2px;
+      height: 35px;
+      transform: rotate(-20deg);
+      transform-origin: 50% 50%;
+    }
+    #bfit {
+      position: absolute;
+      left: 8px;
+      top: 136px;
+      width: 120px;
+      height: 60px;
+    }
+    #b2x {
+      position: absolute;
+      left: 160px;
+      top: 84px;
+      width: 132px;
+      height: 100px;
+    }
+  </layout>
+  <style>
+    #a50 {
+      object-fit: fill;
+    }
+    #a30 {
+      object-fit: fill;
+    }
+    #arot {
+      object-fit: fill;
+    }
+    #b50 {
+      object-fit: fill;
+    }
+    #b30 {
+      object-fit: fill;
+    }
+    #brot {
+      object-fit: fill;
+    }
+    #bfit {
+      object-fit: contain;
+    }
+    #b2x {
+      object-fit: fill;
+    }
+  </style>
+</xt>

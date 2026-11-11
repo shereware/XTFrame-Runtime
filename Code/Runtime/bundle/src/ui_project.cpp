@@ -695,6 +695,25 @@ Result<UiProject> UiProject::load(std::string_view input, std::string* error) {
     if (project.publish.atlas.scope != "bundle") {
         project.publish.atlas.scope = "ui";
     }
+    // T-687 (10 §10.13 ruling 5): `publish.images.compress` = none | bc7 | auto; anything else is a
+    // load error (as `publish.fonts`).
+    if (const auto images = publish.find("images"); images != publish.end()) {
+        if (!images->is_object()) {
+            return failUiProject(Status::kInvalidArgument, error,
+                                 "'" + path + "': publish.images must be an object");
+        }
+        project.publish.images.present = true;
+        if (const auto compress = images->find("compress"); compress != images->end()) {
+            const std::string value = compress->is_string() ? compress->get<std::string>() : std::string();
+            if (value != "none" && value != "bc7" && value != "auto") {
+                return failUiProject(
+                    Status::kInvalidArgument, error,
+                    "'" + path + "': publish.images.compress must be \"none\", \"bc7\" or \"auto\"");
+            }
+            project.publish.images.compress = value;
+        }
+        project.publish.images.extraJson = extraKeys(*images, {"compress"});
+    }
     // T-527 (22 §22.10.3): an unknown value is a load error, not silently "system".
     if (const auto fonts = publish.find("fonts"); fonts != publish.end()) {
         if (!fonts->is_string() || !parseFontsMode(fonts->get<std::string>(), project.publish.fonts)) {
@@ -758,7 +777,7 @@ Result<UiProject> UiProject::load(std::string_view input, std::string* error) {
     }
     project.assets.extraJson = extraKeys(assets, {"sourceFolders"});
     project.extraPublishJson = extraKeys(publish, {"outDir", "languages", "embedImages", "embedFonts",
-                                                   "thumbnails", "atlas", "fonts", "targets"});
+                                                   "thumbnails", "atlas", "images", "fonts", "targets"});
 
     project.extraJson = extraKeys(root, {"version", "name", "id", "game", "spec", "uis", "shared", "preview",
                                          "target", "publish", "assets"});
@@ -877,6 +896,12 @@ Status UiProject::save(std::string* error) const {
     atlasObj["mipmaps"] = publish.atlas.mipmaps;
     atlasObj["scope"] = publish.atlas.scope;
     publishObj["atlas"] = std::move(atlasObj);
+    if (publish.images.present || publish.images.compress != "none") {
+        ordered_json imagesObj;
+        imagesObj["compress"] = publish.images.compress;  // T-687
+        appendExtra(imagesObj, publish.images.extraJson);
+        publishObj["images"] = std::move(imagesObj);
+    }
     if (publish.fonts != FontsMode::kSystem) {
         publishObj["fonts"] = fontsModeName(publish.fonts);  // T-527: absent = "system".
     }

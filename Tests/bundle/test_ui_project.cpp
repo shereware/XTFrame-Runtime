@@ -255,6 +255,64 @@ TEST_CASE("T-304: a retired publish target kind reads as dir and merges with a d
     CHECK(p2.publish.targets[1].lastPublished == "2026-09-27T08:00:00Z");
 }
 
+TEST_CASE("T-687: publish.images.compress round-trips; absent stays absent; a bad value is a load error") {
+    // Set, with an unknown sibling key: both come back.
+    const std::string dir = freshDir("t687_images");
+    writeText(dir + "/x.xtui", R"({ "version": 1, "id": "x", "uis": [ { "id": "a", "doc": "a.xt" } ],
+  "publish": { "images": { "compress": "auto", "note": "kept" } } })");
+    UiProject p = loadProject(dir);
+    CHECK(p.publish.images.compress == "auto");
+    CHECK(p.publish.images.present);
+    REQUIRE(p.save() == Status::kOk);
+    const std::string written = readText(dir + "/x.xtui");
+    CHECK(written.find("\"images\": {") != std::string::npos);
+    CHECK(written.find("\"compress\": \"auto\"") != std::string::npos);
+    CHECK(written.find("\"note\": \"kept\"") != std::string::npos);
+    UiProject again = loadProject(dir);
+    CHECK(again.publish.images.compress == "auto");
+    REQUIRE(again.save() == Status::kOk);
+    CHECK(readText(dir + "/x.xtui") == written);  // byte-stable
+
+    // An explicit "none" is kept as written; set in memory, "bc7" is written.
+    const std::string none = freshDir("t687_images_none");
+    writeText(none + "/x.xtui", R"({ "version": 1, "id": "x", "uis": [ { "id": "a", "doc": "a.xt" } ],
+  "publish": { "images": { "compress": "none" } } })");
+    UiProject n = loadProject(none);
+    CHECK(n.publish.images.compress == "none");
+    REQUIRE(n.save() == Status::kOk);
+    CHECK(readText(none + "/x.xtui").find("\"compress\": \"none\"") != std::string::npos);
+
+    // Absent: the default "none", and nothing is added on save.
+    const std::string absent = freshDir("t687_images_absent");
+    writeText(absent + "/x.xtui", R"({ "version": 1, "id": "x", "uis": [ { "id": "a", "doc": "a.xt" } ] })");
+    UiProject a = loadProject(absent);
+    CHECK(a.publish.images.compress == "none");
+    CHECK_FALSE(a.publish.images.present);
+    REQUIRE(a.save() == Status::kOk);
+    CHECK(readText(absent + "/x.xtui").find("\"images\"") == std::string::npos);
+    a.publish.images.compress = "bc7";
+    REQUIRE(a.save() == Status::kOk);
+    CHECK(loadProject(absent).publish.images.compress == "bc7");
+
+    // bc1 / bc3 have no project setting (10 §10.13 ruling 9), and neither has anything else.
+    for (const char* bad : {R"("bc3")", R"("BC7")", R"("")", "7"}) {
+        CAPTURE(std::string(bad));
+        const std::string badDir = freshDir("t687_images_bad");
+        writeText(badDir + "/x.xtui",
+                  std::string(R"({ "version": 1, "id": "x", "uis": [ { "id": "a", "doc": "a.xt" } ],
+  "publish": { "images": { "compress": )") +
+                      bad + " } } }");
+        std::string error;
+        CHECK(UiProject::load(badDir, &error).status() == Status::kInvalidArgument);
+        CHECK(error.find("publish.images.compress must be") != std::string::npos);
+    }
+    const std::string notObject = freshDir("t687_images_not_object");
+    writeText(notObject + "/x.xtui", R"({ "version": 1, "id": "x", "uis": [ { "id": "a", "doc": "a.xt" } ],
+  "publish": { "images": "bc7" } })");
+    std::string error;
+    CHECK(UiProject::load(notObject, &error).status() == Status::kInvalidArgument);
+}
+
 TEST_CASE("ui-project: missing keys read as the §30.1 defaults") {
     const std::string dir = freshDir("defaults");
     writeText(dir + "/x.xtui", R"({ "version": 1, "id": "x", "uis": [ { "id": "a", "doc": "a.xt" } ] })");

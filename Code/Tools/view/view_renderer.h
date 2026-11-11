@@ -51,8 +51,8 @@ struct FrameTargetConfig {
     bool windowed = false;
     bool hidden = false;
     const char* title = "XTFrame";
-    Color clear{1, 1, 1, 1};  ///< straight alpha
-    uint32_t sampleCount = 4;
+    Color clear{1, 1, 1, 1};   ///< straight alpha
+    uint32_t sampleCount = 1;  ///< 1 or 4; T-666: 1 by default (main.cpp sets it from --msaa)
 };
 
 /// T-658 (Docs/design/50-c-abi.md §50.ab item 3 iv): the GPU counters of one rendered frame

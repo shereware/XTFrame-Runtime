@@ -146,6 +146,18 @@ struct AtlasOptions {
     std::string scope = "ui";
 };
 
+/// T-687 (Docs/design/10-backends.md §10.13 ruling 5): `<name>.xtui:publish.images`.
+struct ImagesOptions {
+    /// `publish.images.compress`: "none" (the default: bitmaps are packed as they are), "bc7" (every
+    /// bitmap and atlas page becomes a BC7 DDS) or "auto" (only those with both sides >= 256 px);
+    /// `xtframe-pack --compress` overrides it. Any other value is a load error.
+    std::string compress = "none";
+    /// The `.xtui` had a `publish.images` object: written back even when it says "none".
+    bool present = false;
+    /// Unknown keys of `publish.images`, kept for round trips.
+    std::string extraJson;
+};
+
 /// T-212 (Docs/design/22-bundle.md §22.11.2): one place a UI Project was published to,
 /// `<name>.xtui:publish.targets[]`.
 struct PublishTarget {
@@ -173,6 +185,8 @@ struct UiProjectPublish {
     bool embedFonts = false;
     Vec2 thumbnail{320, 180};
     AtlasOptions atlas;
+    /// T-687: `publish.images` (written only when present or not "none").
+    ImagesOptions images;
     /// T-527 (22 §22.10.3): `publish.fonts` ("system" | "bundled"; absent = system; any other value
     /// is a load error). Written only when bundled.
     FontsMode fonts = FontsMode::kSystem;

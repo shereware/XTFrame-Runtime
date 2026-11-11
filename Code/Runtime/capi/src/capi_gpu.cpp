@@ -67,7 +67,7 @@ struct xt_gpu_target {
     std::vector<xt::capi::SurfaceGpu*> gpus;
     xt::wgpu::WgpuRenderer composer;  ///< its WgpuDevice composites; also readback
     int width = 0, height = 0;
-    uint32_t sampleCount = 4;  ///< T-647: the attached surfaces' renderers (1 or 4)
+    uint32_t sampleCount = 1;  ///< T-647: the attached surfaces' renderers (1 or 4; T-666: 0 = 1)
     bool inFrame = false;
     /// T-658 (sheet item 3): begin_frame's clear, submitted with the frame's first composite (or by
     /// end_frame / readback when nothing was composited before them) -- one submit instead of two.
@@ -212,6 +212,7 @@ void releaseGpuResources(xt_surface& surface, bool everything) {
         // stay, so showing it again makes none of them. T-683 (§50.ad item 3): its coverage atlas is
         // released too (the glyph atlas stays).
         SurfaceGpu& g = *surface.gpu;
+        releaseGpuPoolUse(surface);  // T-685
         g.releaseTexture();
         g.renderer.trim();
         g.built = false;  // the next frame is built in full (the Context reports `full` too)
@@ -222,6 +223,11 @@ void releaseGpuResources(xt_surface& surface, bool everything) {
     // T-675: its textures go back to the target's pools; the rest goes back to the target's device,
     // whose allocator keeps the memory for the next resources.
     log(0, "xt_surface: GPU resources released (" + surface.uiId + ")");
+}
+
+void releaseGpuPoolUse(xt_surface& surface) {
+    if (surface.gpu == nullptr) return;
+    if (wgpu::WgpuDevice* d = surface.gpu->renderer.device(); d != nullptr) d->releasePoolUse();
 }
 
 bool gpuDrawCounts(const xt_surface& surface, uint32_t& executed, uint32_t& skipped) {
@@ -330,7 +336,9 @@ void logSharedCache(xt_gpu_target& t) {
     t.logged = s;
     // T-675: then every texture created on the target's device so far and the target-level pools
     // (50 §50.ac item 2; tests and xt_gpu_mem_probe count the creates per scene switch here). T-683
-    // (§50.ad item 2): last, the pipeline set's shader compiles and pipeline creates since the prewarm.
+    // (§50.ad item 2): the pipeline set's shader compiles and pipeline creates since the prewarm. T-685
+    // (§50.ac addendum 2): last, the transient bytes the budget may not evict and the budget / ageing
+    // evictions so far.
     xt::capi::log(
         0, "xt_gpu_target: shared image textures " + std::to_string(s.imageTextures) + " (" +
                std::to_string(s.imageBytes / 1024u) + " KiB; uploaded " + std::to_string(s.imageCreates) +
@@ -342,7 +350,10 @@ void logSharedCache(xt_gpu_target& t) {
                std::to_string(s.attachmentSets) + ", idle surface textures " +
                std::to_string(s.surfaceTexturesIdle) + ", pool frees " + std::to_string(s.poolFrees) +
                "; after prewarm: shader compiles " + std::to_string(s.shaderCompiles) +
-               ", pipeline creates " + std::to_string(s.pipelineCreates));
+               ", pipeline creates " + std::to_string(s.pipelineCreates) + "; transient pool protected " +
+               std::to_string(s.poolProtectedBytes / 1024u) + " KiB, budget evictions " +
+               std::to_string(s.poolBudgetEvictions) + ", age evictions " +
+               std::to_string(s.poolAgeEvictions));
 }
 
 /// T-656: the counters of xt_gpu_target_memory_stats (50 §50.ab item 1), all fields.
@@ -391,6 +402,9 @@ std::string buildSurfaceGpu(xt_surface& s, xt_gpu_target& t) {
     in.shared = &t.shared;  // T-648: the target's pipelines and image textures
     in.error.clear();
     if (!gpu->renderer.init(in)) return std::string("WgpuRenderer::init: ") + gpu->renderer.lastError();
+    // T-685 (50 §50.ac addendum 2): the transients this surface borrows are its own while it is shown
+    // (the composer's stay the anonymous user's).
+    if (xt::wgpu::WgpuDevice* d = gpu->renderer.device(); d != nullptr) d->setPoolUser(true);
 #ifdef XT_CAPI_GPU_ATLAS
     if (s.owner->ftShaper != nullptr) {
         // T-648: one 1024 x 1024 page first, grown to the full 2048 x 2048 once it is full.
@@ -421,13 +435,14 @@ XT_CAPI xt_gpu_target* xt_gpu_target_create(const xt_gpu_target_desc* desc) {
         };
         if (desc == nullptr) return failNull("desc is NULL");
         // T-647: sample_count was appended; a desc ending before it (an older host) still creates.
+        // T-666 (10 §10.11 item 8): 0 -- set, or not covered by struct_size -- means 1 (it meant 4).
         constexpr size_t kMinDescSize = offsetof(xt_gpu_target_desc, sample_count);
         if (desc->struct_size < kMinDescSize) {
             return failNull("desc->struct_size is smaller than sizeof(xt_gpu_target_desc)");
         }
         const int samples = desc->struct_size >= sizeof(xt_gpu_target_desc) ? desc->sample_count : 0;
         if (samples != 0 && samples != 1 && samples != 4) {
-            return failNull("sample_count " + std::to_string(samples) + " (allowed: 0 = 4, 1, 4)");
+            return failNull("sample_count " + std::to_string(samples) + " (allowed: 0 = 1, 1, 4)");
         }
         if (desc->width <= 0 || desc->height <= 0 || desc->width > kMaxSide || desc->height > kMaxSide) {
             return failNull("width / height must be in 1.." + std::to_string(kMaxSide));
@@ -461,7 +476,7 @@ XT_CAPI xt_gpu_target* xt_gpu_target_create(const xt_gpu_target_desc* desc) {
         auto t = std::make_unique<xt_gpu_target>();
         t->width = desc->width;
         t->height = desc->height;
-        t->sampleCount = samples == 1 ? 1u : 4u;
+        t->sampleCount = samples == 4 ? 4u : 1u;
         xt::wgpu::WgpuHeadlessOptions options;
         options.backend = desc->backend != nullptr ? desc->backend : "";
         t->init = xt::wgpu::WgpuInit::headless(options);
@@ -828,6 +843,8 @@ void detachGpu(xt_surface& surface) {
 }
 
 void releaseGpuResources(xt_surface& surface, bool /*everything*/) { surface.gpu.reset(); }
+
+void releaseGpuPoolUse(xt_surface& /*surface*/) {}
 
 bool gpuDrawCounts(const xt_surface& /*surface*/, uint32_t& /*executed*/, uint32_t& /*skipped*/) {
     return false;

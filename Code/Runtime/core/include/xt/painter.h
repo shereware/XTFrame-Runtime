@@ -7,6 +7,7 @@
 
 #include "xt/box_shadow.h"
 #include "xt/command_list.h"
+#include "xt/damage.h"
 #include "xt/ir.h"
 #include "xt/node_arena.h"
 #include "xt/project3d.h"
@@ -169,6 +170,9 @@ private:
     std::vector<BoxShadowDecision>* m_boxShadowLog = nullptr;
     bool m_boxShadowCommands = true;  // T-680
     TextShaper* m_shaper = nullptr;   // T-680: setShaper()
+    /// T-684: the glyph runs' ink boxes condition 4 measured during this paint() (reset at its
+    /// start; nested candidates scan the same runs again).
+    GlyphInkMemo m_glyphInkMemo;
     /// T-668: the early test at PushEffect time (conditions 1-3, 5, 6); true when the node stays a
     /// candidate (pushed on m_boxShadowStack).
     bool beginBoxShadowCandidate(const NodeArena& arena, NodeId n, float alpha, size_t pushPos,

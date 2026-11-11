@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -12,16 +13,19 @@
 #include "atlas_pack.h"
 #include "doctest.h"
 #include "font_subset.h"
+#include "t687_project.h"
 #include "test_temp.h"
 #include "texture_compress.h"
 #include "xt/asset_resolver.h"
 #include "xt/bundle/bundle.h"
 #include "xt/bundle/pack.h"
 #include "xt/bundle/project_file.h"
+#include "xt/bundle/ui_project.h"
 #include "xt/command_list.h"
 #include "xt/context.h"
 #include "xt/dds.h"
 #include "xt/document.h"
+#include "xt/image_mips.h"
 #include "xt/ir.h"
 #include "xt/sw/sw_png.h"
 #include "xt/sw/sw_renderer.h"
@@ -626,11 +630,17 @@ TEST_CASE("pack --compress bc7: DDS assets, manifest format, decodable through t
         const CompressedImage* compressed = bundle->assets().compressedImage(i, view, 1.0f);
         REQUIRE(compressed != nullptr);
         CHECK(compressed->format == DdsFormat::Bc7);
-        CHECK(compressed->blocks.size() ==
-              ddsLevelSize(DdsFormat::Bc7, compressed->width, compressed->height));
+        // T-687 (10 §10.13 ruling 3): every packed DDS carries its full chain.
+        CHECK(compressed->levels == imageMipLevelCount(compressed->width, compressed->height));
+        size_t chain = 0;
+        for (int k = 0; k < compressed->levels; ++k) {
+            chain += ddsLevelSize(DdsFormat::Bc7, std::max(1, compressed->width >> k),
+                                  std::max(1, compressed->height >> k));
+        }
+        CHECK(compressed->blocks.size() == chain);
         const ImageData* pixels = bundle->assets().imageView(i, view, 1.0f);
         REQUIRE(pixels != nullptr);
-        CHECK(pixels->width == compressed->width);
+        CHECK(pixels->width == compressed->logicalWidth);
         sawCompressed = true;
     }
     CHECK(sawCompressed);
@@ -838,4 +848,640 @@ TEST_CASE("loadUi/reloadUi read the .xtir through the bundle file reader (T-240)
         CHECK(reloadUi(ctx, *opened.value(), loaded.value(), "hud").ok());
     }
     setBundleFileReader(nullptr);
+}
+
+namespace {
+
+/// T-686 (Docs/design/10-backends.md §10.13 rulings 2, 3, 7): the synthetic RGBA of the golden
+/// fixture ui_image_bc7 at its logical size -- a 2 px checker of two colours carrying a horizontal and
+/// a vertical gradient, cut by a disc whose edge ramps alpha over 4 px (transparent texels keep the
+/// colour they would have).
+std::vector<uint8_t> bc7FixturePattern(int w, int h) {
+    std::vector<uint8_t> rgba(static_cast<size_t>(w) * static_cast<size_t>(h) * 4);
+    const double cx = w * 0.5, cy = h * 0.5, r = std::min(w, h) * 0.46;
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            uint8_t* p =
+                rgba.data() + (static_cast<size_t>(y) * static_cast<size_t>(w) + static_cast<size_t>(x)) * 4;
+            const bool odd = ((x / 2) + (y / 2)) % 2 != 0;
+            p[0] = odd ? 230 : 30;
+            p[1] = static_cast<uint8_t>(odd ? 40 + x * 3 : 90);
+            p[2] = static_cast<uint8_t>(odd ? 60 : 140 + y);
+            const double d = std::hypot(x + 0.5 - cx, y + 0.5 - cy);
+            p[3] = static_cast<uint8_t>(std::clamp((r - d) * 64.0, 0.0, 255.0));
+        }
+    }
+    return rgba;
+}
+
+/// The DDS file of a fixture: the pattern padded to a multiple of 4 by repeating the edge texels,
+/// encoded as BC7 with its full chain (encodeDds), and -- when padded -- the logical-size marker
+/// (`DDS_HEADER.dwReserved1[0..2]` = 'XTLS', logical width, logical height) written into the header.
+std::vector<uint8_t> makeBc7Fixture(int w, int h) {
+    const std::vector<uint8_t> src = bc7FixturePattern(w, h);
+    const int pw = (w + 3) / 4 * 4, ph = (h + 3) / 4 * 4;
+    std::vector<uint8_t> padded(static_cast<size_t>(pw) * static_cast<size_t>(ph) * 4);
+    for (int y = 0; y < ph; ++y) {
+        for (int x = 0; x < pw; ++x) {
+            const size_t from = (static_cast<size_t>(std::min(y, h - 1)) * static_cast<size_t>(w) +
+                                 static_cast<size_t>(std::min(x, w - 1))) *
+                                4;
+            std::copy_n(src.data() + from, 4,
+                        padded.data() +
+                            (static_cast<size_t>(y) * static_cast<size_t>(pw) + static_cast<size_t>(x)) * 4);
+        }
+    }
+    std::vector<uint8_t> dds = encodeDds(padded.data(), pw, ph, BcFormat::Bc7, /*mipmaps=*/true);
+    if (!dds.empty() && (pw != w || ph != h)) {
+        const uint32_t marker[3] = {kDdsLogicalSizeTag, static_cast<uint32_t>(w), static_cast<uint32_t>(h)};
+        for (int i = 0; i < 3; ++i) {
+            for (int b = 0; b < 4; ++b) {
+                dds[static_cast<size_t>(4 + 28 + i * 4 + b)] = static_cast<uint8_t>(marker[i] >> (8 * b));
+            }
+        }
+    }
+    return dds;
+}
+
+/// XT_REGEN_BC7_FIXTURES=1 is set.
+bool regenBc7Fixtures() {
+    std::string value;
+#ifdef _MSC_VER
+    char* raw = nullptr;
+    size_t length = 0;
+    if (_dupenv_s(&raw, &length, "XT_REGEN_BC7_FIXTURES") == 0 && raw != nullptr) {
+        value = raw;
+        std::free(raw);
+    }
+#else
+    if (const char* raw = std::getenv("XT_REGEN_BC7_FIXTURES")) {
+        value = raw;
+    }
+#endif
+    return value == "1";
+}
+
+}  // namespace
+
+// T-686: how Tests/golden/ui/bc7_64.dds and bc7_66x50.dds (golden ui_image_bc7, the GL / gpu BC7 tests)
+// were made, and a check that the committed files are still that. XT_REGEN_BC7_FIXTURES=1 writes them
+// again (only the encoder's float arithmetic could make a fresh encode differ by a few code values).
+TEST_CASE("T-686: the BC7 golden fixtures are encodeDds of the synthetic pattern, padded and marked") {
+    struct Fixture {
+        int w, h;
+        const char* name;
+    };
+    for (const Fixture f : {Fixture{64, 64, "bc7_64.dds"}, Fixture{66, 50, "bc7_66x50.dds"}}) {
+        CAPTURE(f.name);
+        const std::vector<uint8_t> fresh = makeBc7Fixture(f.w, f.h);
+        REQUIRE_FALSE(fresh.empty());
+        const fs::path path = fs::path(std::string(XT_TEST_BUNDLE_DIR)) / ".." / "golden" / "ui" / f.name;
+        if (regenBc7Fixtures()) {
+            std::ofstream out(path, std::ios::binary | std::ios::trunc);
+            out.write(reinterpret_cast<const char*>(fresh.data()),
+                      static_cast<std::streamsize>(fresh.size()));
+            REQUIRE(out.good());
+        }
+        std::ifstream in(path, std::ios::binary);
+        REQUIRE(in.good());
+        const std::vector<uint8_t> committed((std::istreambuf_iterator<char>(in)),
+                                             std::istreambuf_iterator<char>());
+        DdsInfo info;
+        REQUIRE(parseDdsHeader(committed.data(), committed.size(), info));
+        CHECK(info.format == DdsFormat::Bc7);
+        CHECK(info.width == (f.w + 3) / 4 * 4);
+        CHECK(info.height == (f.h + 3) / 4 * 4);
+        CHECK(info.logicalWidth == f.w);
+        CHECK(info.logicalHeight == f.h);
+        CHECK_FALSE(info.logicalRejected);
+        CHECK(info.mipCount == imageMipLevelCount(info.width, info.height));
+        CHECK(committed.size() == fresh.size());
+        ImageData a, b;
+        REQUIRE(sw::decodeImageBytes(committed.data(), committed.size(), a));
+        REQUIRE(sw::decodeImageBytes(fresh.data(), fresh.size(), b));
+        CHECK(a.width == f.w);  // cut to the logical size
+        CHECK(a.height == f.h);
+        CHECK(psnr(a.rgba, b.rgba) > 45.0);
+        // What shows: premultiplied (BC7 spends little on the colour of transparent texels).
+        std::vector<uint8_t> shown = a.rgba, source = bc7FixturePattern(f.w, f.h);
+        premultiplyRgba8(shown.data(), shown.size() / 4, shown.data());
+        premultiplyRgba8(source.data(), source.size() / 4, source.data());
+        const double quality = psnr(shown, source);
+        MESSAGE(f.name, ": premultiplied PSNR against the pattern ", quality, " dB");
+        CHECK(quality > 30.0);
+    }
+}
+
+// ---------------------------------------------------------------------------------------------------
+// T-687 (Docs/design/10-backends.md §10.13 rulings 2-6): padding with the logical size, the mip chain,
+// the alpha bleed, `auto`, threads and the encode cache.
+
+namespace {
+
+namespace t687 = xt::test::t687;
+
+uint32_t le32At(const std::vector<uint8_t>& bytes, size_t at) {
+    return static_cast<uint32_t>(bytes[at]) | (static_cast<uint32_t>(bytes[at + 1]) << 8) |
+           (static_cast<uint32_t>(bytes[at + 2]) << 16) | (static_cast<uint32_t>(bytes[at + 3]) << 24);
+}
+
+const uint8_t* texel(const std::vector<uint8_t>& rgba, int w, int x, int y) {
+    return rgba.data() + (static_cast<size_t>(y) * static_cast<size_t>(w) + static_cast<size_t>(x)) * 4;
+}
+
+/// A fresh T-687 project (Tests/bundle/t687_project.h) with `publishJson` as its `publish` object.
+std::string t687Project(const std::string& name, const std::string& publishJson) {
+    const fs::path dir = xt::test::tempDir() / ("xt_t687_src_" + name);
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir, ec);
+    REQUIRE(t687::writeProject(dir, publishJson));
+    return dir.generic_string();
+}
+
+PackReport t687Pack(const std::string& source, const std::string& out, PackOptions options) {
+    std::string error;
+    Result<UiProject> project = UiProject::load(source, &error);
+    REQUIRE_MESSAGE(project.ok(), error);
+    options.outDir = out;
+    options.thumbnails = false;
+    PackReport report = pack(project.value(), options);
+    for (const compile::Diagnostic& d : report.diagnostics) {
+        MESSAGE(d.file, ": ", d.message);
+    }
+    return report;
+}
+
+/// Manifest `assets[]`: first source file name (e.g. "bg.png") -> format ("" = as it is).
+std::map<std::string, std::string> formatsBySource(const std::string& out) {
+    std::map<std::string, std::string> formats;
+    std::unique_ptr<Bundle> bundle = openBundle(out);
+    for (const AssetInfo& info : bundle->assetTable()) {
+        if (info.kind == "image" && !info.sources.empty()) {
+            formats[fs::path(info.sources[0]).filename().string()] = info.format;
+        }
+    }
+    return formats;
+}
+
+/// The packed file of source `name` (by the manifest).
+std::vector<uint8_t> packedFile(const std::string& out, const std::string& name) {
+    std::unique_ptr<Bundle> bundle = openBundle(out);
+    for (const AssetInfo& info : bundle->assetTable()) {
+        if (!info.sources.empty() && fs::path(info.sources[0]).filename().string() == name) {
+            const std::string text = readText(fs::path(out) / info.file);
+            return std::vector<uint8_t>(text.begin(), text.end());
+        }
+    }
+    FAIL("no packed file for " << name);
+    return {};
+}
+
+/// Renders the bundle's UI `m` at 640 x 320 through the software backend.
+std::vector<uint8_t> renderT687(Bundle& bundle) {
+    NullTextShaper shaper;
+    Context ctx(ContextConfig{&shaper, &bundle.assets()});
+    Result<DocumentHandle> handle = loadUi(ctx, bundle, "m");
+    REQUIRE(handle.ok());
+    ctx.setViewport(Rect{0, 0, 640, 320}, 1.0f);
+    ctx.update(0.0f);
+    std::vector<uint8_t> pixels(static_cast<size_t>(640) * 320 * 4, 0);
+    sw::SwTarget target{pixels.data(), 640, 320, 640 * 4};
+    CommandList list;
+    ctx.render(list);
+    sw::SwRenderer renderer;
+    renderer.setTarget(target);
+    renderer.clear(Color{0.5f, 0.5f, 0.5f, 1});
+    renderer.render(list, &shaper, &bundle.assets(), &ctx.document(handle.value())->ir(), nullptr);
+    return pixels;
+}
+
+/// What a pack writes that does not depend on the clock: every file under `assets/` and `atlas/`, and
+/// `manifest.json` without its `builtAt` line (`ui/*.xtir` carry their compile time in META; the
+/// manifest's `fileHash` leaves it out).
+std::map<std::string, std::string> stableFiles(const std::string& dir) {
+    std::map<std::string, std::string> files;
+    for (auto& [name, bytes] : snapshot(dir)) {
+        if (name.rfind("assets/", 0) == 0 || name.rfind("atlas/", 0) == 0) {
+            files[name] = bytes;
+        } else if (name == "manifest.json") {
+            std::string kept;
+            size_t start = 0;
+            while (start < bytes.size()) {
+                size_t end = bytes.find('\n', start);
+                end = end == std::string::npos ? bytes.size() : end + 1;
+                const std::string line = bytes.substr(start, end - start);
+                if (line.find("\"builtAt\"") == std::string::npos) {
+                    kept += line;
+                }
+                start = end;
+            }
+            files[name] = kept;
+        }
+    }
+    return files;
+}
+
+/// One channel (0..3) of an RGBA buffer.
+std::vector<uint8_t> channel(const std::vector<uint8_t>& rgba, size_t c) {
+    std::vector<uint8_t> out;
+    for (size_t i = c; i < rgba.size(); i += 4) {
+        out.push_back(rgba[i]);
+    }
+    return out;
+}
+
+/// The RGB of an RGBA buffer.
+std::vector<uint8_t> rgbOf(const std::vector<uint8_t>& rgba) {
+    std::vector<uint8_t> out;
+    for (size_t i = 0; i < rgba.size(); i += 4) {
+        out.insert(out.end(), rgba.begin() + static_cast<std::ptrdiff_t>(i),
+                   rgba.begin() + static_cast<std::ptrdiff_t>(i) + 3);
+    }
+    return out;
+}
+
+}  // namespace
+
+TEST_CASE("T-687: padding repeats the edge texels; the header has the padded size and the 'XTLS' marker") {
+    // padToBlockMultiple: 5 x 3 -> 8 x 4, the last column and row repeated.
+    std::vector<uint8_t> small(5 * 3 * 4);
+    for (size_t i = 0; i < small.size(); ++i) {
+        small[i] = static_cast<uint8_t>(i);
+    }
+    int pw = 0, ph = 0;
+    const std::vector<uint8_t> padded = padToBlockMultiple(small.data(), 5, 3, pw, ph);
+    REQUIRE(pw == 8);
+    REQUIRE(ph == 4);
+    for (int y = 0; y < 4; ++y) {
+        for (int x = 0; x < 8; ++x) {
+            CAPTURE(x);
+            CAPTURE(y);
+            CHECK(std::equal(texel(padded, 8, x, y), texel(padded, 8, x, y) + 4,
+                             texel(small, 5, std::min(x, 4), std::min(y, 2))));
+        }
+    }
+    // A 37 x 21 image: stored 40 x 24 with the full chain, logical size in dwReserved1[0..2].
+    const t687::Image img = t687::art(37, 21);
+    const std::vector<uint8_t> dds = encodePublishDds(img.rgba.data(), 37, 21, BcFormat::Bc7, 1);
+    DdsInfo info;
+    REQUIRE(parseDdsHeader(dds.data(), dds.size(), info));
+    CHECK(info.width == 40);
+    CHECK(info.height == 24);
+    CHECK(info.logicalWidth == 37);
+    CHECK(info.logicalHeight == 21);
+    CHECK_FALSE(info.logicalRejected);
+    CHECK(info.mipCount == imageMipLevelCount(40, 24));
+    CHECK(le32At(dds, 4 + 28) == kDdsLogicalSizeTag);
+    CHECK(le32At(dds, 4 + 32) == 37u);
+    CHECK(le32At(dds, 4 + 36) == 21u);
+    size_t chain = 0;
+    for (int k = 0; k < info.mipCount; ++k) {
+        chain += ddsLevelSize(DdsFormat::Bc7, std::max(1, 40 >> k), std::max(1, 24 >> k));
+    }
+    CHECK(dds.size() == 148 + chain);
+    ImageData decoded;
+    REQUIRE(sw::decodeImageBytes(dds.data(), dds.size(), decoded));
+    CHECK(decoded.width == 37);  // cut back to the logical size
+    CHECK(decoded.height == 21);
+    // Already a multiple of 4: no marker, and the reserved words stay zero.
+    const t687::Image aligned = t687::art(32, 16);
+    const std::vector<uint8_t> plain = encodePublishDds(aligned.rgba.data(), 32, 16, BcFormat::Bc7, 1);
+    REQUIRE(parseDdsHeader(plain.data(), plain.size(), info));
+    CHECK(info.width == 32);
+    CHECK(info.logicalWidth == 32);
+    CHECK(info.mipCount == imageMipLevelCount(32, 16));
+    for (size_t at = 4 + 28; at < 4 + 72; at += 4) {
+        CHECK(le32At(plain, at) == 0u);
+    }
+    // BC1 / BC3 (assets.yaml overrides) go through the same path.
+    const std::vector<uint8_t> bc3 = encodePublishDds(img.rgba.data(), 37, 21, BcFormat::Bc3, 1);
+    REQUIRE(parseDdsHeader(bc3.data(), bc3.size(), info));
+    CHECK(info.format == DdsFormat::Bc3);
+    CHECK(info.logicalWidth == 37);
+    CHECK(info.mipCount == imageMipLevelCount(40, 24));
+}
+
+TEST_CASE("T-687: a mip level is the alpha-weighted 2x2 mean, rounded with ties to even (hand-computed)") {
+    auto level1 = [](std::vector<uint8_t> src, int w, int h, int ew, int eh) {
+        int ow = 0, oh = 0;
+        std::vector<uint8_t> out = downsampleMipLevel(src.data(), w, h, ow, oh);
+        CHECK(ow == ew);
+        CHECK(oh == eh);
+        return out;
+    };
+    // Colour weighted by alpha, alpha the plain mean: sum(a) = 384.
+    //   r = (10*255 + 250*0 + 0*128 + 1*1) / 384 = 2551/384 = 6.64 -> 7
+    //   g = (20*255 + 1) / 384 = 5101/384 = 13.28 -> 13
+    //   b = (30*255 + 200*128 + 1) / 384 = 33251/384 = 86.59 -> 87;  a = 384/4 = 96
+    std::vector<uint8_t> out =
+        level1({10, 20, 30, 255, 250, 0, 0, 0, 0, 0, 200, 128, 1, 1, 1, 1}, 2, 2, 1, 1);
+    CHECK(out == std::vector<uint8_t>{7, 13, 87, 96});
+    // Ties to even: alpha 2/4 = 0.5 -> 0, 6/4 = 1.5 -> 2; colour (1*1 + 2*1)/2 = 1.5 -> 2,
+    // (2*1 + 3*1)/2 = 2.5 -> 2.
+    out = level1({1, 2, 0, 1, 2, 3, 0, 1, 9, 9, 9, 0, 9, 9, 9, 0}, 2, 2, 1, 1);
+    CHECK(out == std::vector<uint8_t>{2, 2, 0, 0});
+    out = level1({0, 0, 0, 3, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0}, 2, 2, 1, 1);
+    CHECK(out[3] == 2);
+    // sum(a) = 0: the plain mean of the colours, (1+2+3+4)/4 = 2.5 -> 2, (4+4+4+6)/4 = 4.5 -> 4.
+    out = level1({1, 4, 0, 0, 2, 4, 0, 0, 3, 4, 0, 0, 4, 6, 0, 0}, 2, 2, 1, 1);
+    CHECK(out == std::vector<uint8_t>{2, 4, 0, 0});
+    // Hardware sizes: an odd last column is not sampled, a 1-texel axis takes its texel twice.
+    out = level1({100, 0, 0, 255, 50, 0, 0, 255, 7, 7, 7, 255}, 3, 1, 1, 1);
+    CHECK(out == std::vector<uint8_t>{75, 0, 0, 255});
+    // Opaque: the same as T-665's premultiplied box (xt::downsampleBox) exactly.
+    const t687::Image bg = t687::background(37, 23);
+    int ow = 0, oh = 0;
+    const std::vector<uint8_t> mine = downsampleMipLevel(bg.rgba.data(), 37, 23, ow, oh);
+    std::vector<uint8_t> box(static_cast<size_t>(ow) * static_cast<size_t>(oh) * 4);
+    downsampleBox(bg.rgba.data(), 37, 23, box.data());
+    CHECK(mine == box);
+    // The stored chain of a flat colour decodes to that colour at every level.
+    const t687::Image flat = t687::flat(20, 12, 30, 140, 220, 255);
+    const std::vector<uint8_t> dds = encodePublishDds(flat.rgba.data(), 20, 12, BcFormat::Bc7, 1);
+    DdsInfo info;
+    REQUIRE(parseDdsHeader(dds.data(), dds.size(), info));
+    REQUIRE(info.mipCount == imageMipLevelCount(20, 12));
+    size_t at = info.dataOffset;
+    for (int k = 0; k < info.mipCount; ++k) {
+        const int lw = std::max(1, 20 >> k), lh = std::max(1, 12 >> k);
+        const size_t size = ddsLevelSize(DdsFormat::Bc7, lw, lh);
+        const std::vector<uint8_t> one = makeDdsLevelFile(DdsFormat::Bc7, lw, lh, dds.data() + at, size);
+        ImageData level;
+        REQUIRE(sw::decodeImageBytes(one.data(), one.size(), level));
+        CAPTURE(k);
+        CHECK(level.width == lw);
+        CHECK(std::abs(static_cast<int>(level.rgba[0]) - 30) <= 1);
+        CHECK(std::abs(static_cast<int>(level.rgba[1]) - 140) <= 1);
+        CHECK(std::abs(static_cast<int>(level.rgba[2]) - 220) <= 1);
+        CHECK(level.rgba[3] >= 254);  // bc7enc's mode 6 stores this opaque block as 254
+        at += size;
+    }
+}
+
+TEST_CASE("T-687: the bleed colours transparent texels from their nearest visible neighbours") {
+    // One source: every transparent texel takes its colour; alpha is untouched.
+    std::vector<uint8_t> row = {10, 20, 30, 255, 0, 255, 0, 0, 0, 255, 0, 0};
+    bleedTransparentTexels(row.data(), 3, 1);
+    CHECK(row == std::vector<uint8_t>{10, 20, 30, 255, 10, 20, 30, 0, 10, 20, 30, 0});
+    // Two sources at the same distance: their mean (ties to even: (10+21)/2 = 15.5 -> 16).
+    row = {10, 0, 0, 255, 0, 255, 0, 0, 21, 0, 0, 7};
+    bleedTransparentTexels(row.data(), 3, 1);
+    CHECK(row == std::vector<uint8_t>{10, 0, 0, 255, 16, 0, 0, 0, 21, 0, 0, 7});
+    // Nothing visible, or nothing transparent: unchanged.
+    std::vector<uint8_t> none = {1, 2, 3, 0, 4, 5, 6, 0};
+    bleedTransparentTexels(none.data(), 2, 1);
+    CHECK(none == std::vector<uint8_t>{1, 2, 3, 0, 4, 5, 6, 0});
+    // Far texels are reached too (ring by ring, whole image).
+    std::vector<uint8_t> wide(64 * 4, 0);
+    wide[0] = 99, wide[3] = 255;
+    bleedTransparentTexels(wide.data(), 64, 1);
+    CHECK(wide[63 * 4] == 99);
+
+    // Straight bilinear at an alpha edge: left half (200, 40, 40) opaque, right half transparent green.
+    // Halfway between the last opaque and the first transparent texel the premultiplied result must be
+    // (200, 40, 40) * 0.5 -- with the bleed; without it the green comes in.
+    constexpr int kW = 16, kH = 8;
+    t687::Image edge = t687::flat(kW, kH, 200, 40, 40, 255);
+    for (int y = 0; y < kH; ++y) {
+        for (int x = kW / 2; x < kW; ++x) {
+            uint8_t* p = edge.rgba.data() + (static_cast<size_t>(y) * kW + static_cast<size_t>(x)) * 4;
+            p[0] = 0, p[1] = 255, p[2] = 0, p[3] = 0;
+        }
+    }
+    auto edgeError = [&](const std::vector<uint8_t>& dds) {
+        ImageData d;
+        REQUIRE(sw::decodeImageBytes(dds.data(), dds.size(), d));
+        int worst = 0;
+        for (int y = 0; y < kH; ++y) {
+            const uint8_t* a = texel(d.rgba, kW, kW / 2 - 1, y);
+            const uint8_t* b = texel(d.rgba, kW, kW / 2, y);
+            const double alpha = (a[3] + b[3]) / 2.0 / 255.0;
+            const double expect[3] = {200 * 0.5, 40 * 0.5, 40 * 0.5};
+            for (int c = 0; c < 3; ++c) {
+                const double shown = (a[c] + b[c]) / 2.0 * alpha;  // straight lerp, then premultiply
+                worst = std::max(worst, static_cast<int>(std::lround(std::fabs(shown - expect[c]))));
+            }
+        }
+        return worst;
+    };
+    const int bled = edgeError(encodePublishDds(edge.rgba.data(), kW, kH, BcFormat::Bc7, 1));
+    const int raw = edgeError(encodeDds(edge.rgba.data(), kW, kH, BcFormat::Bc7, false));
+    MESSAGE("edge colour error: bled ", bled, ", without the bleed ", raw);
+    CHECK(bled <= 4);
+    CHECK(raw > 40);
+}
+
+TEST_CASE("T-687: auto compresses an image only when both sides are >= 256 px; the CLI value wins") {
+    const std::string source = t687Project("auto", R"({ "images": { "compress": "auto" } })");
+    const std::string out = outDir("t687_auto");
+    PackOptions options;
+    options.encodeCache = false;
+    const PackReport report = t687Pack(source, out, options);
+    REQUIRE(report.ok);
+    CHECK(report.compress == "auto");
+    std::map<std::string, std::string> formats = formatsBySource(out);
+    CHECK(formats["bg.png"] == "bc7");   // 512 x 288
+    CHECK(formats["art.png"] == "bc7");  // 302 x 300
+    CHECK(formats["wide.png"] == "");    // 300 x 255
+    CHECK(formats["icon.png"] == "");    // 64 x 64
+    CHECK(report.assetsCompressed == 2);
+    CHECK(report.imagesEncoded == 2);
+    // `--compress` overrides the project: none packs everything as it is, bc7 compresses everything.
+    options.compress = "none";
+    const std::string noneOut = outDir("t687_auto_none");
+    REQUIRE(t687Pack(source, noneOut, options).ok);
+    for (const auto& [name, format] : formatsBySource(noneOut)) {
+        CAPTURE(name);
+        CHECK(format.empty());
+    }
+    options.compress = "bc7";
+    const std::string bc7Out = outDir("t687_auto_bc7");
+    REQUIRE(t687Pack(source, bc7Out, options).ok);
+    for (const auto& [name, format] : formatsBySource(bc7Out)) {
+        CAPTURE(name);
+        CHECK(format == "bc7");
+    }
+    // An atlas page follows the rule by its own size.
+    options.compress = "auto";
+    options.atlas = true;
+    options.atlasScope = "bundle";
+    const std::string atlasOut = outDir("t687_auto_atlas");
+    const PackReport atlas = t687Pack(source, atlasOut, options);
+    REQUIRE(atlas.ok);
+    std::unique_ptr<Bundle> bundle = openBundle(atlasOut);
+    REQUIRE_FALSE(bundle->atlases().empty());
+    for (const AtlasInfo& page : bundle->atlases()) {
+        CAPTURE(page.name);
+        const bool big = page.width >= kAutoCompressMinSide && page.height >= kAutoCompressMinSide;
+        CHECK(page.format == (big ? "bc7" : ""));
+    }
+}
+
+TEST_CASE("T-687: publish.images.compress none or absent packs the same bytes; bc7 vs none quality") {
+    // Absent, "none" and `--compress none` give the same bundle, without any DDS or cache.
+    const std::string absent = t687Project("absent", "");
+    const std::string none = t687Project("none", R"({ "images": { "compress": "none" } })");
+    const std::string a = outDir("t687_absent");
+    const std::string b = outDir("t687_none");
+    const std::string c = outDir("t687_cli_none");
+    const PackReport ra = t687Pack(absent, a, PackOptions{});
+    REQUIRE(ra.ok);
+    CHECK(ra.compress == "none");
+    CHECK(ra.imagesEncoded == 0);
+    CHECK(ra.encodeCacheDir.empty());
+    REQUIRE(t687Pack(none, b, PackOptions{}).ok);
+    PackOptions cliNone;
+    cliNone.compress = "none";
+    REQUIRE(t687Pack(absent, c, cliNone).ok);
+    CHECK(stableFiles(a) == stableFiles(b));
+    CHECK(stableFiles(a) == stableFiles(c));
+    for (const auto& [file, bytes] : stableFiles(a)) {
+        CHECK(file.find(".dds") == std::string::npos);
+    }
+
+    // bc7 against none (the thresholds of the T-687 sheet: backgrounds >= 38 dB RGB, a large image
+    // with alpha >= 40 dB alpha; Sherefox measured 43-49 dB and 42-46.5 dB in the review of 2026-11-12).
+    const std::string bc7 = t687Project("bc7", R"({ "images": { "compress": "bc7" } })");
+    const std::string bc7Out = outDir("t687_bc7");
+    PackOptions noCache;
+    noCache.encodeCache = false;
+    REQUIRE(t687Pack(bc7, bc7Out, noCache).ok);
+    for (const auto& [name, format] : formatsBySource(bc7Out)) {
+        CAPTURE(name);
+        CHECK(format == "bc7");
+    }
+    ImageData bgDecoded, artDecoded;
+    const std::vector<uint8_t> bgDds = packedFile(bc7Out, "bg.png");
+    const std::vector<uint8_t> artDds = packedFile(bc7Out, "art.png");
+    REQUIRE(sw::decodeImageBytes(bgDds.data(), bgDds.size(), bgDecoded));
+    REQUIRE(sw::decodeImageBytes(artDds.data(), artDds.size(), artDecoded));
+    const t687::Image bgSource = t687::background();
+    const t687::Image artSource = t687::art();
+    REQUIRE(artDecoded.width == 302);  // logical size, the file is 304 wide
+    const double bgPsnr = psnr(rgbOf(bgSource.rgba), rgbOf(bgDecoded.rgba));
+    const double artAlphaPsnr = psnr(channel(artSource.rgba, 3), channel(artDecoded.rgba, 3));
+    std::unique_ptr<Bundle> plainBundle = openBundle(a);
+    std::unique_ptr<Bundle> bc7Bundle = openBundle(bc7Out);
+    const double framePsnr = psnr(rgbOf(renderT687(*plainBundle)), rgbOf(renderT687(*bc7Bundle)));
+    MESSAGE("bc7 vs none: background RGB ", bgPsnr, " dB, art alpha ", artAlphaPsnr, " dB, SW frame RGB ",
+            framePsnr, " dB");
+    CHECK(bgPsnr >= 38.0);
+    CHECK(artAlphaPsnr >= 40.0);
+    CHECK(framePsnr >= 38.0);
+}
+
+TEST_CASE("T-687: the encode cache -- hits, a changed image misses, damaged or foreign entries miss") {
+    const fs::path cacheRoot = xt::test::tempDir() / "xt_t687_cache_unit";
+    std::error_code ec;
+    fs::remove_all(cacheRoot, ec);
+    EncodeCache cache(cacheRoot.generic_string());
+    const t687::Image img = t687::art(40, 20);
+    const std::string key = publishEncodeKey(img.rgba.data(), 40, 20, BcFormat::Bc7);
+    const std::vector<uint8_t> dds = encodePublishDds(img.rgba.data(), 40, 20, BcFormat::Bc7, 1);
+    std::vector<uint8_t> got;
+    CHECK_FALSE(cache.load(key, got));
+    REQUIRE(cache.store(key, dds));
+    REQUIRE(cache.load(key, got));
+    CHECK(got == dds);
+    // The key names the format, the pixels and the encoder version.
+    t687::Image changed = img;
+    changed.rgba[5] ^= 1;
+    CHECK(publishEncodeKey(changed.rgba.data(), 40, 20, BcFormat::Bc7) != key);
+    CHECK(publishEncodeKey(img.rgba.data(), 40, 20, BcFormat::Bc3) != key);
+    CHECK(key.find(kPublishEncoderVersion) != std::string::npos);
+    // Damage the entry in four ways: each is a miss, and a store repairs it.
+    const std::string file = cache.fileFor(key);
+    const std::string good = readText(fs::path(file));
+    auto damaged = [&](const std::string& bytes) {
+        std::ofstream(fs::path(file), std::ios::binary | std::ios::trunc) << bytes;
+        std::vector<uint8_t> out;
+        return !cache.load(key, out);
+    };
+    std::string payloadFlip = good;
+    payloadFlip.back() = static_cast<char>(payloadFlip.back() ^ 0x5A);
+    CHECK(damaged(payloadFlip));
+    std::string otherVersion = good;
+    otherVersion[4] = 2;
+    CHECK(damaged(otherVersion));
+    CHECK(damaged(good.substr(0, good.size() / 2)));
+    std::string otherKey = good;
+    otherKey[12] = static_cast<char>(otherKey[12] ^ 1);  // first key byte
+    CHECK(damaged(otherKey));
+    REQUIRE(cache.store(key, dds));
+    REQUIRE(cache.load(key, got));
+    CHECK(got == dds);
+
+    // Through pack(): cold, all hits, one image changed, `--no-cache`; the same bytes each time.
+    const std::string source = t687Project("cache", R"({ "images": { "compress": "auto" } })");
+    const std::string out = outDir("t687_cache");
+    PackOptions options;
+    options.encodeCacheDir = (xt::test::tempDir() / "xt_t687_cache_pack").generic_string();
+    fs::remove_all(options.encodeCacheDir, ec);
+    const PackReport cold = t687Pack(source, out, options);
+    REQUIRE(cold.ok);
+    CHECK(cold.imagesEncoded == 2);
+    CHECK(cold.encodeCacheHits == 0);
+    CHECK(cold.encodeCacheDir == fs::path(options.encodeCacheDir).string());
+    const std::map<std::string, std::string> first = stableFiles(out);
+    const PackReport warm = t687Pack(source, out, options);
+    REQUIRE(warm.ok);
+    CHECK(warm.encodeCacheHits == 2);
+    CHECK(stableFiles(out) == first);
+    REQUIRE(t687::writeImage(fs::path(source) / "m" / "img" / "art.png", t687::art(302, 296)));
+    const PackReport oneChanged = t687Pack(source, out, options);
+    REQUIRE(oneChanged.ok);
+    CHECK(oneChanged.imagesEncoded == 2);
+    CHECK(oneChanged.encodeCacheHits == 1);
+    const std::string fresh = outDir("t687_cache_off");
+    PackOptions off;
+    off.encodeCache = false;
+    const PackReport noCache = t687Pack(source, fresh, off);
+    REQUIRE(noCache.ok);
+    CHECK(noCache.encodeCacheHits == 0);
+    CHECK(noCache.encodeCacheDir.empty());
+    std::map<std::string, std::string> withCache = stableFiles(out);
+    std::map<std::string, std::string> withoutCache = stableFiles(fresh);
+    // Only the asset files are compared (the second pack of `out` left the first art DDS behind).
+    for (const auto& [name, bytes] : withoutCache) {
+        CAPTURE(name);
+        CHECK(withCache[name] == bytes);
+    }
+    // The default directory is `<bundle>/../.xtframe-cache/bc/`.
+    const std::string defaultOut = outDir("t687_cache_default");
+    const PackReport byDefault = t687Pack(source, defaultOut, PackOptions{});
+    REQUIRE(byDefault.ok);
+    CHECK(fs::path(byDefault.encodeCacheDir) ==
+          (fs::absolute(fs::path(defaultOut)).parent_path() / ".xtframe-cache" / "bc").lexically_normal());
+    CHECK(fs::is_directory(fs::path(byDefault.encodeCacheDir)));
+}
+
+TEST_CASE("T-687: multi-threaded, single-threaded and cached encodes are the same bytes") {
+    const t687::Image art = t687::art();
+    const std::vector<uint8_t> one = encodePublishDds(art.rgba.data(), art.w, art.h, BcFormat::Bc7, 1);
+    const std::vector<uint8_t> many = encodePublishDds(art.rgba.data(), art.w, art.h, BcFormat::Bc7, 7);
+    CHECK(one == many);
+    const std::string source = t687Project("threads", R"({ "images": { "compress": "bc7" } })");
+    PackOptions single;
+    single.encodeThreads = 1;
+    single.encodeCache = false;
+    const std::string singleOut = outDir("t687_threads_1");
+    const PackReport singleReport = t687Pack(source, singleOut, single);
+    REQUIRE(singleReport.ok);
+    CHECK(singleReport.encodeThreads == 1);
+    PackOptions threaded;
+    threaded.encodeThreads = 8;
+    threaded.encodeCacheDir = (xt::test::tempDir() / "xt_t687_cache_threads").generic_string();
+    std::error_code ec;
+    fs::remove_all(threaded.encodeCacheDir, ec);
+    const std::string coldOut = outDir("t687_threads_8");
+    const PackReport cold = t687Pack(source, coldOut, threaded);
+    REQUIRE(cold.ok);
+    CHECK(cold.encodeThreads == 8);
+    const std::string warmOut = outDir("t687_threads_cached");
+    const PackReport warm = t687Pack(source, warmOut, threaded);
+    REQUIRE(warm.ok);
+    CHECK(warm.encodeCacheHits == warm.imagesEncoded);
+    CHECK(stableFiles(singleOut) == stableFiles(coldOut));
+    CHECK(stableFiles(singleOut) == stableFiles(warmOut));
 }

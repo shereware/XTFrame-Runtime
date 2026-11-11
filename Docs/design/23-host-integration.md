@@ -336,3 +336,12 @@ XTFrame 內建的 `Code/SDKs/nlohmann/json.hpp`（3.11.3）以**自己的 ABI �
 ## 23.af IR 3.0 宿主同步（2026-10-30；T-534；CE 側為 CE-64（雲端分支原寫 CE-62、原編號 §23.ab，主線 2026-11-04 移植時改號））
 
 `IrEffect`／`EffectInstance` 由 80 bytes 擴為 144 bytes（`params[16]`、`colors[4]`；18 §18.2），效果參數 PropId 重編（float 1..16、color 32..35、vec2 整體 64..78），IR major 2 → 3。CE 端：`XUI2DResources.h` 的效果結構、`GpuDevice.cpp` 的 `XTUI_SAME_SIZE`／`XTUI_SAME_OFFSET` 斷言與 `SCustomEffectParams`（`params[16]`、`colors[16]`）、HLSL 包裝的 cbuffer 參數注入（最多 16 個 float 分量 + 4 色）；`.xtir` 讀取改認 major 3。沒有行為變更；Sandbox 以重新 pack 的 bundle 驗證既有場景畫面相同。
+
+**宿主自訂 `GpuDevice` 後端的升級須知（2026-11-12；v0.15.2 之後的變更；唯讀檢查一個以 `FrameBuilder`＋自訂裝置整合、釘在 v0.15.0 的宿主所得）**
+
+1. `gpu::DrawCmd` 尾端新增 `coverage`（R8 覆蓋率貼圖槽，T-660b）——結構大小改變；以 `static_assert` 鏡射此結構的宿主會在編譯期被擋下，須同步。`mipLod`（T-665）與 `boxShadowMulti`（T-683）佔用原有填充，不改變大小，斷言抓不到。
+2. `Shading::BoxShadow`（T-668／T-680）：未實作者會漏畫被轉換的陰影；可實作該著色，或以 `Context::setBoxShadowCommands(false)` 關閉轉換（行為同舊版）。
+3. **覆蓋率 quad 目前無條件發出**：只要 `edgeFringe` 開（單取樣目標），凹形／SVG／筆畫／≥ 24 px 的文字就以「著色 × 覆蓋率貼圖」的 draw 送出；不讀 `coverage` 的裝置會把整個 quad 塗成實心——編得過但畫面錯。在 T-691（裝置能力查詢，預設不支援即退回舊路徑）併入前，這類宿主在單取樣目標上須自行實作覆蓋率取樣，或維持多重取樣（`edgeFringe` 關）。
+4. mip：`GpuDevice::requestMipChain` 的預設實作回「單層」，未覆寫的裝置不會收到帶 LOD 的 draw（拿不到 T-665 的品質，但不會出錯）。共用影像貼圖的四個介面皆有安全預設。
+5. 不需宿主配合即生效：字型後援快取（T-673）、隱藏時釋放解碼影像（T-657）。wgpu 後端內部的改動（池、在途幀、預編、區塊範圍）與自訂裝置無關。
+

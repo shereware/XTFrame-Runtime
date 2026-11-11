@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <map>
 #include <memory>
@@ -1263,6 +1264,122 @@ TEST_CASE("BoxShadow T-681: glyphRunInkBox -- device pixel, bitmap metrics, spac
     checkRect(box, Rect{0, 20, 110, 20});
     NullTextShaper none;
     CHECK_FALSE(glyphRunInkBox(cl, cl.glyphRuns[0], &none, box));
+}
+
+namespace {
+
+/// T-684: MetricShaper (glyph 5: no outline, a 6 x 8 bitmap) that counts its outline and bitmap calls.
+class CountingMetricShaper : public MetricShaper {
+public:
+    bool glyphOutline(FontId font, uint32_t glyph, std::vector<PathVerb>& verbs,
+                      std::vector<float>& points) override {
+        ++outlineCalls;
+        if (glyph == 5) {
+            return false;
+        }
+        return MetricShaper::glyphOutline(font, glyph, verbs, points);
+    }
+    bool glyphBitmap(FontId, uint32_t glyph, float, float, GlyphBitmap& out) override {
+        ++bitmapCalls;
+        out = GlyphBitmap{};
+        if (glyph != 5) {
+            return false;
+        }
+        out.width = 6;
+        out.height = 8;
+        out.bearingY = 7;
+        out.alpha.assign(48, 255);
+        return true;
+    }
+    int outlineCalls = 0;
+    int bitmapCalls = 0;
+};
+
+bool sameBits(const Rect& a, const Rect& b) { return std::memcmp(&a, &b, sizeof(Rect)) == 0; }
+
+}  // namespace
+
+TEST_CASE("BoxShadow T-684: glyph outline boxes are cached per shaper generation, font and glyph") {
+    CommandList cl = oneGlyphRun(Vec2{10, 36});
+    cl.glyphs.push_back(5);  // no outline: its bitmap
+    cl.glyphPos.push_back(Vec2{40, 36});
+    cl.glyphs.push_back(7);  // glyph 7 again
+    cl.glyphPos.push_back(Vec2{60, 36});
+    cl.glyphRuns[0].glyphCount = 3;
+    CountingMetricShaper shaper;
+    Rect first, again;
+    REQUIRE(glyphRunInkBox(cl, cl.glyphRuns[0], &shaper, first));
+    CHECK(shaper.outlineCalls == 2);  // glyphs 7 and 5, each once
+    // Every later call takes both boxes (and "no outline") from the cache; the box is the same.
+    REQUIRE(glyphRunInkBox(cl, cl.glyphRuns[0], &shaper, again));
+    REQUIRE(glyphRunInkBox(cl, cl.glyphRuns[0], &shaper, again, 2.0f));
+    REQUIRE(glyphRunInkBox(cl, cl.glyphRuns[0], &shaper, again));
+    CHECK(shaper.outlineCalls == 2);
+    CHECK(sameBits(first, again));
+    // The answer equals the uncached rule: a shaper of a new generation is asked again.
+    CountingMetricShaper fresh;
+    REQUIRE(glyphRunInkBox(cl, cl.glyphRuns[0], &fresh, again));
+    CHECK(fresh.outlineCalls == 2);
+    CHECK(sameBits(first, again));
+    // Another font of the same shaper is another key.
+    cl.glyphRuns[0].font = 1;
+    REQUIRE(glyphRunInkBox(cl, cl.glyphRuns[0], &shaper, again));
+    CHECK(shaper.outlineCalls == 4);
+    CHECK(sameBits(first, again));
+}
+
+TEST_CASE("BoxShadow T-684: GlyphInkMemo remembers a run's box until a key input changes or reset()") {
+    CommandList cl = oneGlyphRun(Vec2{10, 36});
+    cl.glyphs[0] = 5;  // a bitmap glyph: every glyphRunInkBox() asks for its bitmap
+    cl.glyphRuns[0].xf = translation(Vec2{3, 4});
+    CountingMetricShaper shaper;
+    GlyphInkMemo memo;
+    memo.reset();
+    Rect direct, remembered;
+    REQUIRE(glyphRunInkBox(cl, cl.glyphRuns[0], &shaper, direct));
+    const int perCall = shaper.bitmapCalls;
+    REQUIRE(perCall >= 1);
+    REQUIRE(memo.inkBox(cl, 0, &shaper, remembered));
+    CHECK(sameBits(direct, remembered));
+    REQUIRE(memo.inkBox(cl, 0, &shaper, remembered));
+    CHECK(shaper.bitmapCalls == 2 * perCall);  // the second inkBox() was remembered
+    // inkBounds() is glyphRunInkBounds() and reuses the same entry.
+    Rect bounds, directBounds;
+    REQUIRE(memo.inkBounds(cl, 0, &shaper, bounds));
+    CHECK(shaper.bitmapCalls == 2 * perCall);
+    REQUIRE(glyphRunInkBounds(cl, cl.glyphRuns[0], &shaper, directBounds));
+    CHECK(sameBits(bounds, directBounds));
+    int calls = shaper.bitmapCalls;
+    // Each key input recomputes: dpr, transform, size, the shaper (generation).
+    REQUIRE(memo.inkBox(cl, 0, &shaper, remembered, 2.0f));
+    CHECK(shaper.bitmapCalls == calls + perCall);
+    REQUIRE(glyphRunInkBox(cl, cl.glyphRuns[0], &shaper, direct, 2.0f));
+    CHECK(sameBits(direct, remembered));
+    calls = shaper.bitmapCalls;
+    cl.glyphRuns[0].xf = translation(Vec2{3, 5});
+    REQUIRE(memo.inkBox(cl, 0, &shaper, remembered, 2.0f));
+    CHECK(shaper.bitmapCalls == calls + perCall);
+    calls = shaper.bitmapCalls;
+    cl.glyphRuns[0].size = 30.0f;
+    REQUIRE(memo.inkBox(cl, 0, &shaper, remembered, 2.0f));
+    CHECK(shaper.bitmapCalls == calls + perCall);
+    REQUIRE(glyphRunInkBox(cl, cl.glyphRuns[0], &shaper, direct, 2.0f));
+    CHECK(sameBits(direct, remembered));
+    CountingMetricShaper other;
+    REQUIRE(memo.inkBox(cl, 0, &other, remembered, 2.0f));
+    CHECK(other.bitmapCalls == perCall);
+    // reset() forgets every entry (a new build / paint).
+    calls = shaper.bitmapCalls;
+    REQUIRE(memo.inkBox(cl, 0, &shaper, remembered, 2.0f));
+    REQUIRE(memo.inkBox(cl, 0, &shaper, remembered, 2.0f));
+    CHECK(shaper.bitmapCalls == calls + perCall);
+    memo.reset();
+    REQUIRE(memo.inkBox(cl, 0, &shaper, remembered, 2.0f));
+    CHECK(shaper.bitmapCalls == calls + 2 * perCall);
+    // A false answer is remembered as false (a degenerate transform).
+    cl.glyphRuns[0].xf = scaling(Vec2{0, 2});
+    CHECK_FALSE(memo.inkBox(cl, 0, &shaper, remembered));
+    CHECK_FALSE(memo.inkBounds(cl, 0, &shaper, remembered));
 }
 
 TEST_CASE("BoxShadow T-680: the node's own outline ring is contour, a child's outline is content") {

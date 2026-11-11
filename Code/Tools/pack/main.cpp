@@ -28,6 +28,12 @@
 /// Usage: xtframe-pack <project-dir | name.xtui | ui-project.json | bundle.xtproj | file.xt> [-o <out-dir>]
 ///                   [--ui <id>]... [--strict] [--no-thumbs] [--embed] [--prune] [--lang <list>]
 ///                   [--allow-placeholders] [--zip] [--fonts system|bundled] [--fonts-dir <dir>] [--verbose]
+///                   [--compress bc7|bc3|bc1|auto|none] [--no-cache] [--cache-dir <dir>]
+///
+/// T-687 (Docs/design/10-backends.md §10.13 rulings 5, 6): `--compress` overrides the UI Project's
+/// `publish.images.compress` (none | bc7 | auto; without either, none). Encoded DDS files are kept in
+/// `<out>/../.xtframe-cache/bc/` (`--cache-dir` names another directory, `--no-cache` turns it off);
+/// the bundle is the same byte for byte with or without it.
 ///        xtframe-pack --upgrade <bundle-dir>
 ///        xtframe-pack --upgrade --format 2 <project-dir | file.xt>
 ///        xtframe-pack --version
@@ -135,7 +141,8 @@ void printUsage() {
                  "[-o <out-dir>] "
                  "[--ui <id>]... [--strict] [--no-thumbs] [--embed] [--prune] [--lang <list>] "
                  "[--gen-ports cpp|cs <out>] [--atlas] [--atlas-scope ui|bundle] "
-                 "[--compress bc7|bc3|bc1|none] [--font-subset] [--fonts system|bundled] [--fonts-dir <dir>] "
+                 "[--compress bc7|bc3|bc1|auto|none] [--no-cache] [--cache-dir <dir>] [--font-subset] "
+                 "[--fonts system|bundled] [--fonts-dir <dir>] "
                  "[--allow-placeholders] [--zip] [--verbose]\n"
                  "       xtframe-pack --upgrade <bundle-dir>\n"
                  "       xtframe-pack --upgrade --format 2 <project-dir | file.xt>\n"
@@ -372,18 +379,29 @@ int packMain(int argc, char** argv) {
             options.atlasScope = argv[++i];
         } else if (arg == "--compress") {
             if (i + 1 >= argc) {
-                std::fprintf(stderr, "xtframe-pack: --compress requires bc7, bc3, bc1 or none\n");
+                std::fprintf(stderr, "xtframe-pack: --compress requires bc7, bc3, bc1, auto or none\n");
                 printUsage();
                 return 2;
             }
             const std::string format = argv[++i];
-            if (format != "bc7" && format != "bc3" && format != "bc1" && format != "none") {
-                std::fprintf(stderr, "xtframe-pack: --compress: unknown format '%s' (bc7|bc3|bc1|none)\n",
+            if (format != "bc7" && format != "bc3" && format != "bc1" && format != "auto" &&
+                format != "none") {
+                std::fprintf(stderr,
+                             "xtframe-pack: --compress: unknown format '%s' (bc7|bc3|bc1|auto|none)\n",
                              format.c_str());
                 printUsage();
                 return 2;
             }
             options.compress = format;
+        } else if (arg == "--no-cache") {
+            options.encodeCache = false;  // T-687
+        } else if (arg == "--cache-dir") {
+            if (i + 1 >= argc || std::string(argv[i + 1]).empty()) {
+                std::fprintf(stderr, "xtframe-pack: --cache-dir requires a directory\n");
+                printUsage();
+                return 2;
+            }
+            options.encodeCacheDir = argv[++i];  // T-687
         } else if (arg == "--font-subset") {
             options.fontSubset = true;
         } else if (arg == "--fonts") {
@@ -560,7 +578,17 @@ int packMain(int argc, char** argv) {
     }
     if (report.assetsCompressed != 0) {
         std::printf("xtframe-pack: compressed %u image(s) to DDS (%s)\n", report.assetsCompressed,
-                    options.compress.c_str());
+                    report.compress.c_str());
+    }
+    if (report.imagesEncoded != 0) {  // T-687
+        if (report.encodeCacheDir.empty()) {
+            std::printf("xtframe-pack: encoded %u DDS file(s) on %u thread(s), encode cache off\n",
+                        report.imagesEncoded, report.encodeThreads);
+        } else {
+            std::printf("xtframe-pack: encoded %u DDS file(s) on %u thread(s), %u from the encode cache %s\n",
+                        report.imagesEncoded, report.encodeThreads, report.encodeCacheHits,
+                        report.encodeCacheDir.c_str());
+        }
     }
     if (report.variants3x != 0) {
         std::printf("xtframe-pack: packed %u @3x variant(s)\n", report.variants3x);  // T-345

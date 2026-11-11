@@ -256,8 +256,20 @@ TEST_CASE("T-665 SwMipCache: built once, resolver chains, compressed without lev
     CHECK(cache.entries() == 1);
     // A block-compressed GPU form without a stored chain keeps the single level.
     CHECK(cache.chainFor(&resolver, view, comp, 1.0f, *resolver.imageView(comp, view)) == nullptr);
+    // T-686 (10 §10.13 ruling 3): one with a stored chain samples the stored levels, decoded (8x8 BC7:
+    // levels 1..3 of one block each after level 0's four), straight, never a chain built from level 0.
+    resolver.compressed.format = DdsFormat::Bc7;
+    resolver.compressed.width = resolver.compressed.logicalWidth = 8;
+    resolver.compressed.height = resolver.compressed.logicalHeight = 8;
+    resolver.compressed.blocks.assign(4 * 16 + 3 * 16, 0);
     resolver.compressed.levels = 4;
-    CHECK(cache.chainFor(&resolver, view, comp, 1.0f, *resolver.imageView(comp, view)) != nullptr);
+    const ImageMipChain* stored =
+        cache.chainFor(&resolver, view, comp, 1.0f, *resolver.imageView(comp, view));
+    REQUIRE(stored != nullptr);
+    CHECK(stored->straight);
+    CHECK(stored->levels.size() == 3);
+    CHECK(stored->levels[0].width == 4);
+    CHECK(stored->levels[2].width == 1);
     CHECK(cache.entries() == 2);
     cache.invalidateAsset(comp, nullptr);
     CHECK(cache.entries() == 1);

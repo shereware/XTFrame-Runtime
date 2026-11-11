@@ -252,14 +252,25 @@ void WgpuSharedCache::Impl::applyTransientBudget() {
     while (live > transientBudget && liveCount > 1) {
         size_t lru = transients.size();
         for (size_t i = 0; i < transients.size(); ++i) {
-            if (transients[i].live() &&
+            if (transients[i].live() && budgetMayEvict(transients[i]) &&
                 (lru == transients.size() || transients[i].lastUsed < transients[lru].lastUsed))
                 lru = i;
         }
-        if (transients[lru].lastUsed == frame) break;  // everything left was used in the frame that ended
+        // T-685: none left the budget may evict, or everything left was used in the frame that ended.
+        if (lru == transients.size() || transients[lru].lastUsed == frame) break;
         live -= transients[lru].bytes;
         --liveCount;
         destroyTransient(transients[lru]);  // the devices flush their bind groups by viewGeneration
+        ++stats.poolBudgetEvictions;
+    }
+}
+
+void WgpuSharedCache::Impl::releasePoolUser(uint32_t user) {
+    if (user == 0) {
+        return;
+    }
+    for (WgpuDevice::Pooled& p : transients) {
+        if (p.user == user) p.user = 0;
     }
 }
 
@@ -288,6 +299,7 @@ void WgpuSharedCache::Impl::agePools() {
     for (WgpuDevice::Pooled& p : transients) {
         if (p.live() && frame - p.lastUsed > detail::kTransientIdleFrames) {
             destroyTransient(p);
+            ++stats.poolAgeEvictions;  // T-685
             break;
         }
     }
@@ -338,11 +350,13 @@ void WgpuSharedCache::Impl::poolStats(WgpuSharedStats& out) const {
     out.poolBytes = 0;
     out.attachmentSets = 0;
     out.attachmentBytes = 0;
+    out.poolProtectedBytes = 0;
     out.surfaceTexturesIdle = static_cast<uint32_t>(surfaceIdle.size());
     for (const WgpuDevice::Pooled& p : transients) {
         if (!p.live()) continue;
         out.poolTextures += 1u + (p.resolve != nullptr ? 1u : 0u) + (p.depthStencil != nullptr ? 1u : 0u);
         out.poolBytes += p.bytes;
+        if (!budgetMayEvict(p)) out.poolProtectedBytes += p.bytes;  // T-685
     }
     out.poolTextures += static_cast<uint32_t>(cachedFree.size());
     out.poolBytes += cachedFreeBytes;

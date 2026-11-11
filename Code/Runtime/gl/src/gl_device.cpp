@@ -409,17 +409,21 @@ void GlDevice::updateTexture(gpu::TextureHandle tex, uint16_t x, uint16_t y, uin
 
 uint32_t GlDevice::requestMipChain(gpu::TextureHandle tex, const void* storedLevels,
                                    uint32_t storedLevelCount) {
-    // T-665: Rgba8 images only. Block-compressed images keep one level here (stored chains are
-    // not uploaded by this device), and the chain is made at the start of the next submit.
-    (void)storedLevels;
-    (void)storedLevelCount;
+    // T-665: an Rgba8 image's chain is made at the start of the next submit. T-686 (10 §10.13
+    // ruling 3): a block-compressed image uploads the levels its DDS stored, here and now; without
+    // them it keeps one level (as on wgpu).
     if (tex == 0 || m_textureLod.id == 0 || m_mipBox.id == 0) {
         return 1;
     }
     for (Texture& t : m_textures) {
         if (t.name != tex) continue;
         if (t.levels > 1) return t.levels;
-        if (t.format != gpu::TextureFormat::Rgba8 || t.width == 0 || t.height == 0) return 1;
+        if (t.width == 0 || t.height == 0) return 1;
+        if (t.format == gpu::TextureFormat::Bc1 || t.format == gpu::TextureFormat::Bc3 ||
+            t.format == gpu::TextureFormat::Bc7) {
+            return uploadStoredLevels(t, storedLevels, storedLevelCount);
+        }
+        if (t.format != gpu::TextureFormat::Rgba8) return 1;
         const int levels = imageMipLevelCount(t.width, t.height);
         if (levels <= 1) return 1;
         t.levels = static_cast<uint32_t>(levels);
@@ -428,6 +432,49 @@ uint32_t GlDevice::requestMipChain(gpu::TextureHandle tex, const void* storedLev
         return t.levels;
     }
     return 1;  // a host texture, or a target
+}
+
+uint32_t GlDevice::uploadStoredLevels(Texture& t, const void* storedLevels, uint32_t storedLevelCount) {
+    const uint32_t levels =
+        std::min(static_cast<uint32_t>(imageMipLevelCount(t.width, t.height)), storedLevelCount);
+    if (storedLevels == nullptr || levels <= 1) {
+        return 1;
+    }
+    const GLenum internalFormat = t.format == gpu::TextureFormat::Bc1   ? GL_COMPRESSED_RGBA_S3TC_DXT1_EXT
+                                  : t.format == gpu::TextureFormat::Bc3 ? GL_COMPRESSED_RGBA_S3TC_DXT5_EXT
+                                                                        : GL_COMPRESSED_RGBA_BPTC_UNORM_ARB;
+    const size_t blockBytes = t.format == gpu::TextureFormat::Bc1 ? 8 : 16;
+    while (glGetError() != 0) {
+    }
+    glBindTexture(GL_TEXTURE_2D, t.name);
+    m_cache.invalidateTextures();
+    setUploadUnpackState();  // E9, as in createTexture
+    // The stored levels 1.., back to back in DDS order (`storedLevels` starts after level 0).
+    const uint8_t* p = static_cast<const uint8_t*>(storedLevels);
+    uint64_t bytes = 0;
+    for (uint32_t k = 1; k < levels; ++k) {
+        const size_t lw = static_cast<size_t>(std::max(1, t.width >> k));
+        const size_t lh = static_cast<size_t>(std::max(1, t.height >> k));
+        const size_t size = ((lw + 3) / 4) * ((lh + 3) / 4) * blockBytes;
+        glCompressedTexImage2D(GL_TEXTURE_2D, static_cast<GLint>(k), internalFormat, static_cast<GLsizei>(lw),
+                               static_cast<GLsizei>(lh), 0, static_cast<GLsizei>(size), p);
+        p += size;
+        bytes += size;
+    }
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, static_cast<GLint>(levels - 1));
+    if (glGetError() != 0) {
+        // A driver that took level 0 but not the others: the texture stays single-level (an
+        // incomplete chain is never sampled with a mip filter).
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+        while (glGetError() != 0) {
+        }
+        return 1;
+    }
+    t.levels = levels;
+    ++m_mipChains;
+    m_mipBytes += bytes;
+    return t.levels;
 }
 
 void GlDevice::generatePendingMips() {

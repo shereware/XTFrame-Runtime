@@ -160,8 +160,10 @@ inline const uint8_t* levelTexel(const ImageMipLevel& lv, int x, int y) {
 }
 
 /// T-665: bilinear sample of a premultiplied level at texel coordinate (fx, fy) (the texel-centre
-/// half already subtracted), times `kv`.
-inline f32x4 sampleLevelAt(const ImageMipLevel& lv, float fx, float fy, f32x4 kv) {
+/// half already subtracted), times `kv`. T-686: a `straight` level (a DDS's stored level) is
+/// filtered straight and then premultiplied, as level 0 and the GPU's block-compressed levels are.
+inline f32x4 sampleLevelAt(const ImageMipLevel& lv, float fx, float fy, f32x4 kv, bool straight,
+                           f32x4 alphaMask) {
     const int x0 = fastFloor(fx);
     const int y0 = fastFloor(fy);
     const f32x4 tx = vsplat(fx - static_cast<float>(x0));
@@ -170,7 +172,8 @@ inline f32x4 sampleLevelAt(const ImageMipLevel& lv, float fx, float fy, f32x4 kv
     const f32x4 c10 = vloadU8(levelTexel(lv, x0 + 1, y0));
     const f32x4 c01 = vloadU8(levelTexel(lv, x0, y0 + 1));
     const f32x4 c11 = vloadU8(levelTexel(lv, x0 + 1, y0 + 1));
-    return simd::mul(vlerp(vlerp(c00, c10, tx), vlerp(c01, c11, tx), ty), kv);
+    const f32x4 c = vlerp(vlerp(c00, c10, tx), vlerp(c01, c11, tx), ty);
+    return straight ? premulSample(c, kv, alphaMask) : simd::mul(c, kv);
 }
 
 /// T-665: one trilinear sample at normalized (u, v) (already clamped to [0, 1]), premultiplied and
@@ -182,8 +185,11 @@ inline f32x4 sampleTrilinear(const ImageData& image, const ImageMipChain& mips, 
             return premulSample(sampleBilinear(image, u, v), kv, alphaMask);
         }
         const ImageMipLevel& lv = mips.levels[static_cast<size_t>(k - 1)];
-        return sampleLevelAt(lv, u * static_cast<float>(lv.width) - 0.5f,
-                             v * static_cast<float>(lv.height) - 0.5f, kv);
+        // T-686: a stored DDS level spans its logical part only (levelUvScale is 1 otherwise, which
+        // leaves the product exact).
+        return sampleLevelAt(lv, u * (static_cast<float>(lv.width) * mips.levelUvScaleX) - 0.5f,
+                             v * (static_cast<float>(lv.height) * mips.levelUvScaleY) - 0.5f, kv,
+                             mips.straight, alphaMask);
     };
     const f32x4 a = level(pick.lo);
     if (pick.t == 0.0f) {
@@ -438,7 +444,7 @@ bool sampleAxisSpan(const ImageData& image, bool smooth, const AxisMap& xm, int6
 /// fixed-point source coordinates `xm.at(i)`, `fy` of that level's texels, times `kv`, into
 /// `out[0, end - begin)`.
 void sampleLevelAxisSpan(const ImageMipLevel& lv, const AxisMap& xm, int64_t fy, int begin, int end, f32x4 kv,
-                         float* out) {
+                         bool straight, f32x4 alphaMask, float* out) {
     const int sy0 = fixedFloor(fy);
     const uint8_t* r0 = levelTexel(lv, 0, sy0);
     const uint8_t* r1 = levelTexel(lv, 0, sy0 + 1);
@@ -451,7 +457,9 @@ void sampleLevelAxisSpan(const ImageMipLevel& lv, const AxisMap& xm, int64_t fy,
         const f32x4 tx = vsplat(fixedFrac(fx));
         const f32x4 c = vlerp(vlerp(vloadU8(r0 + xa), vloadU8(r0 + xb), tx),
                               vlerp(vloadU8(r1 + xa), vloadU8(r1 + xb), tx), ty);
-        simd::store(out + static_cast<size_t>(i - begin) * 4, simd::mul(c, kv));
+        // T-686: a stored DDS level is straight (see sampleLevelAt).
+        simd::store(out + static_cast<size_t>(i - begin) * 4,
+                    straight ? premulSample(c, kv, alphaMask) : simd::mul(c, kv));
     }
 }
 
@@ -505,11 +513,14 @@ void drawImageAxisAligned(Target& target, Rasterizer& raster, const Mat2x3& inve
                     return;
                 }
                 const ImageMipLevel& lv = mips->levels[static_cast<size_t>(k - 1)];
-                const AxisMap lym = makeAxisMap(inverse.d, inverse.f, cmd.dst.y, cmd.dst.h, cmd.srcUv.y,
-                                                cmd.srcUv.h, static_cast<double>(lv.height), offset, y);
-                const AxisMap lxm = makeAxisMap(inverse.a, inverse.e, cmd.dst.x, cmd.dst.w, cmd.srcUv.x,
-                                                cmd.srcUv.w, static_cast<double>(lv.width), offset, x0);
-                sampleLevelAxisSpan(lv, lxm, lym.at(0), a - x0, b - x0, kv, out);
+                // T-686: a stored DDS level spans its logical part only (scale 1 otherwise: exact).
+                const AxisMap lym = makeAxisMap(
+                    inverse.d, inverse.f, cmd.dst.y, cmd.dst.h, cmd.srcUv.y, cmd.srcUv.h,
+                    static_cast<double>(static_cast<float>(lv.height) * mips->levelUvScaleY), offset, y);
+                const AxisMap lxm = makeAxisMap(
+                    inverse.a, inverse.e, cmd.dst.x, cmd.dst.w, cmd.srcUv.x, cmd.srcUv.w,
+                    static_cast<double>(static_cast<float>(lv.width) * mips->levelUvScaleX), offset, x0);
+                sampleLevelAxisSpan(lv, lxm, lym.at(0), a - x0, b - x0, kv, mips->straight, alphaMask, out);
             };
             forPieces(region, y, x0, x1, hint, [&](int a, int b) {
                 sampleLevel(pick.lo, a, b, span);

@@ -76,10 +76,11 @@ if(TARGET xtframe-view)
     if(TARGET xt_renderer_wgpu)
         list(APPEND _renderers wgpu)
     endif()
+    # T-666: --msaa 4 -- written when 4 was xtframe-view's default; the GPU shots keep their 4x path.
     foreach(_r IN LISTS _renderers)
         xt_add_expect_exit_test(xtframe-view_renderer_shot_${_r} CODE 0 OUTPUT "wrote screenshot "
             COMMAND ${_view} "${_hud}" --no-flow --headless --frames 2 --width 640 --height 360
-                    --renderer ${_r} --screenshot "${_out}/hud_${_r}.png")
+                    --renderer ${_r} --msaa 4 --screenshot "${_out}/hud_${_r}.png")
         set_tests_properties(xtframe-view_renderer_shot_${_r} PROPERTIES FIXTURES_SETUP xt_view_renderer_shots)
     endforeach()
     # Pairwise within the GPU/SW tolerance (a renderer that is unavailable at run time falls back

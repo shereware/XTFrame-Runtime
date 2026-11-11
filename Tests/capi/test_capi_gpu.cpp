@@ -25,6 +25,14 @@
 // first frame of a surface with analytic box shadows compiles none (the shared-cache line's "after
 // prewarm" counters); a hidden surface releases its coverage atlas (atlas_bytes falls) and draws the same
 // bytes when shown again. Fixture: fixtures/boxshadow.
+// T-685 (cases 26-27, 50 §50.ac addendum 2): a transient whose last borrower is a visible surface is not
+// evicted by the budget, only by the 1800-frame ageing -- a visible surface alternating between a heavy and
+// a light state (fixtures/effects, its `heavy` port) rebuilds nothing from its second period on, hidden it
+// gives its transients back to the budget; read through the shared-cache line's "transient pool protected",
+// "budget evictions" and "age evictions".
+// T-686 (case 28, 10 §10.13 ruling 1): fixtures/images with its three images replaced by BC7 DDS content
+// (full chains): image_bytes counts the blocks and the stored levels, and the idle budget applies as to
+// RGBA images.
 
 #include <algorithm>
 #include <cmath>
@@ -65,6 +73,9 @@ xt_gpu_target_desc offscreenDesc(int width, int height) {
     desc.height = height;
     desc.vsync = 1;
     desc.backend = "";
+    // T-666: the cases written when 0 meant 4 keep their 4x target by asking for it; the cases that
+    // loop over 1 and 4 set it themselves, and capi gpu 25 checks what 0 gives now.
+    desc.sample_count = 4;
     return desc;
 }
 
@@ -448,6 +459,8 @@ struct SharedLog {
     /// T-683: the prewarm line of the target's creation, and the shared-cache line's "after prewarm"
     /// counters.
     unsigned long prewarmedShaders = 0, prewarmedPipelines = 0, shaderCompiles = 0, pipelineCreates = 0;
+    /// T-685: the transient bytes (KiB) the budget may not evict, and the budget / ageing evictions so far.
+    unsigned long protectedKiB = 0, budgetEvictions = 0, ageEvictions = 0;
     int prewarms = 0;
     int lines = 0;
     int released = 0;
@@ -479,6 +492,9 @@ struct SharedLog {
             self->poolFrees = after(message, "pool frees ");
             self->shaderCompiles = after(message, "after prewarm: shader compiles ");
             self->pipelineCreates = after(message, "pipeline creates ");
+            self->protectedKiB = after(message, "transient pool protected ");
+            self->budgetEvictions = after(message, "budget evictions ");
+            self->ageEvictions = after(message, "age evictions ");
             ++self->lines;
         } else if (std::strstr(message, "xt_gpu_target: prewarmed ") == message) {
             self->prewarmedShaders = after(message, "prewarmed ");
@@ -944,7 +960,7 @@ TEST_CASE("capi gpu 13 (T-656): xt_gpu_target_trim, the budget applied at once a
         CHECK(m.attached_surfaces == 1);
         CHECK(m.image_textures == 3);
         CHECK(m.image_bytes == 3 * perImage);
-        // The surface texture (RGBA8) at least, and with the default 4x its MSAA color and stencil.
+        // The surface texture (RGBA8) at least, and at 4x its MSAA color and stencil.
         const uint64_t texture = uint64_t(kImagesSize) * kImagesSize * 4u;
         CHECK(m.surface_bytes >= texture);
         CHECK(m.surface_bytes <= texture * 6u);
@@ -991,6 +1007,100 @@ TEST_CASE("capi gpu 13 (T-656): xt_gpu_target_trim, the budget applied at once a
         REQUIRE(xt_surface_detach_gpu(u.s) == XT_STATUS_OK);
     }
     CHECK(xt_gpu_target_destroy(t) == XT_STATUS_OK);
+}
+
+namespace {
+
+/// T-686: a DX10 BC7 DDS of `side` x `side` with its full mip chain; the block bytes depend on
+/// `seed` (their decoded look does not matter here, only that each image is other content).
+std::vector<uint8_t> makeBc7Dds(int side, uint32_t seed) {
+    int levels = 1;
+    size_t blocks = 0;
+    for (int s = side;; s = std::max(1, s / 2), ++levels) {
+        blocks += static_cast<size_t>((s + 3) / 4) * static_cast<size_t>((s + 3) / 4) * 16u;
+        if (s == 1) break;
+    }
+    std::vector<uint8_t> dds(148 + blocks, 0);
+    auto le32 = [&dds](size_t at, uint32_t v) {
+        for (int k = 0; k < 4; ++k) dds[at + static_cast<size_t>(k)] = static_cast<uint8_t>(v >> (8 * k));
+    };
+    dds[0] = 'D', dds[1] = 'D', dds[2] = 'S', dds[3] = ' ';
+    le32(4, 124);
+    le32(8, 0x1u | 0x2u | 0x4u | 0x1000u | 0x20000u | 0x80000u);  // ... MIPMAPCOUNT, LINEARSIZE
+    le32(12, static_cast<uint32_t>(side));
+    le32(16, static_cast<uint32_t>(side));
+    le32(28, static_cast<uint32_t>(levels));
+    le32(76, 32);
+    le32(80, 0x4u);                                          // DDPF_FOURCC
+    le32(84, 'D' | ('X' << 8) | ('1' << 16) | ('0' << 24));  // "DX10"
+    le32(108, 0x1000u | 0x400000u | 0x8u);                   // TEXTURE | MIPMAP | COMPLEX
+    le32(128, 98);                                           // DXGI_FORMAT_BC7_UNORM
+    le32(132, 3);                                            // TEXTURE2D
+    le32(140, 1);
+    uint32_t x = seed * 2654435761u + 1u;
+    for (size_t i = 148; i < dds.size(); i += 16) {
+        dds[i] = 0x40;  // mode 6: every block is a valid BC7 block
+        for (size_t k = 1; k < 16; ++k) {
+            x = x * 1664525u + 1013904223u;
+            dds[i + k] = static_cast<uint8_t>(x >> 24);
+        }
+    }
+    return dds;
+}
+
+}  // namespace
+
+TEST_CASE("capi gpu 28 (T-686): BC7 images count their blocks with the stored levels, idle budget included") {
+    namespace fs = std::filesystem;
+    SharedLog log;
+    xt_gpu_target* t = makeTarget(kImagesSize, kImagesSize);
+    if (t == nullptr) return;
+    const fs::path dir = xt::test::tempDir() / "t686-images-bc7";
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::copy(fs::path(XT_CAPI_TEST_IMAGES_BUNDLE), dir, fs::copy_options::recursive, ec);
+    REQUIRE_MESSAGE(!ec, ec.message());
+    // The three images become BC7 DDS content under their names (the resolver tells a DDS by its bytes).
+    std::vector<fs::path> images;
+    for (const fs::directory_entry& e : fs::directory_iterator(dir / "assets")) {
+        if (e.path().extension() == ".png") images.push_back(e.path());
+    }
+    std::sort(images.begin(), images.end());
+    REQUIRE(images.size() == 3);
+    for (size_t i = 0; i < images.size(); ++i) {
+        const std::vector<uint8_t> dds = makeBc7Dds(kImageSide, static_cast<uint32_t>(i) + 1u);
+        std::ofstream out(images[i], std::ios::binary | std::ios::trunc);
+        out.write(reinterpret_cast<const char*>(dds.data()), static_cast<std::streamsize>(dds.size()));
+        REQUIRE(out.good());
+    }
+    // Level 0 (256 x 256 blocks of 16 bytes) and the stored levels 1..10 at their block sizes.
+    uint64_t perImage = 0;
+    for (int s = kImageSide;; s = std::max(1, s / 2)) {
+        perImage += uint64_t((s + 3) / 4) * uint64_t((s + 3) / 4) * 16u;
+        if (s == 1) break;
+    }
+    CHECK(perImage == 1048576u + 349552u);
+    {
+        ImagesSurface u(dir.string());
+        u.frames(t, 2);
+        CHECK(log.uploaded == 3);
+        xt_gpu_memory_stats m = memoryStats(t);
+        CHECK(m.image_textures == 3);
+        CHECK(m.image_bytes == 3 * perImage);  // blocks, with the levels the minified draws asked for
+        REQUIRE(xt_surface_detach_gpu(u.s) == XT_STATUS_OK);
+        m = memoryStats(t);
+        CHECK(m.image_idle_textures == 3);
+        CHECK(m.image_idle_bytes == 3 * perImage);
+        REQUIRE(xt_gpu_target_set_image_budget(t, perImage + perImage / 2) == XT_STATUS_OK);
+        m = memoryStats(t);
+        CHECK(m.image_idle_textures == 1);
+        CHECK(m.image_idle_bytes == perImage);
+        CHECK(m.image_evictions == 2);
+        REQUIRE(xt_gpu_target_trim(t) == XT_STATUS_OK);
+        CHECK(memoryStats(t).image_bytes == 0);
+    }
+    CHECK(xt_gpu_target_destroy(t) == XT_STATUS_OK);
+    fs::remove_all(dir, ec);
 }
 
 TEST_CASE("capi gpu 14 (T-658): a surface with nothing to draw is not drawn, composited or given a texture") {
@@ -1594,6 +1704,139 @@ TEST_CASE("capi gpu 24 (T-683): a hidden surface drops its coverage atlas and dr
     frame(t, {{cards, all}});
     CHECK(readback(t, kCardsSize, kCardsSize, kCardsSize * 4) == before);
     CHECK(memoryStats(t).atlas_bytes == shown);
+}
+
+// T-666 (10 §10.11 item 8): a desc whose sample_count is 0 makes a 1x target. The text fixture (stencil
+// user) drawn on targets of sample_count 0, 1 and 4: at 0 the target's pools hold what they hold at 1
+// (xt_gpu_memory_stats.transient_bytes: no 4x colour and stencil attachment set, which 4 adds) and
+// the bytes drawn are those of 1.
+TEST_CASE("capi gpu 25 (T-666): sample_count 0 makes a 1x target") {
+    struct Result {
+        uint64_t transient = 0;
+        Pixels px;
+    };
+    Result results[3];
+    const int counts[3] = {0, 1, 4};
+    for (int i = 0; i < 3; ++i) {
+        CAPTURE(counts[i]);
+        Fixture f;
+        xt_gpu_target_desc desc = offscreenDesc(kPairSize, kPairSize);
+        desc.sample_count = counts[i];
+        xt_gpu_target* t = xt_gpu_target_create(&desc);
+        if (t == nullptr) {
+            const std::string error = xt_capi_last_error();
+            REQUIRE_MESSAGE(contains(error.c_str(), "no WebGPU adapter"), error);
+            std::printf("SKIP: no WebGPU adapter (%s)\n", error.c_str());
+            return;
+        }
+        f.targets.push_back(t);
+        xt_surface* s = pairSurface(f, XT_CAPI_TEST_TEXT_BUNDLE, "text");
+        const xt_rect all{0, 0, kPairSize, kPairSize};
+        frame(t, {{s, all}});
+        frame(t, {{s, all}});
+        results[i].transient = memoryStats(t).transient_bytes;
+        results[i].px = readback(t, kPairSize, kPairSize, kPairSize * 4);
+        std::printf("sample_count %d: transient %llu bytes\n", counts[i],
+                    static_cast<unsigned long long>(results[i].transient));
+    }
+    CHECK(results[0].transient == results[1].transient);
+    CHECK(results[0].transient < results[2].transient);
+    CHECK(results[0].px == results[1].px);
+}
+
+// T-685 (50 §50.ac addendum 2): one visible surface alternates, period after period of 300 frames, between
+// fixtures/effects with its nested panels (`heavy`, 150 frames) and without them (150 frames) -- the
+// heavy state borrows many more transients than the light one, and an unchanged frame borrows none (it is
+// not drawn again), so T-678's budget alone evicted the heavy state's transients in every period and the
+// next period made them again. Their last borrower is the visible surface: from the second period on no
+// texture at all is created. Then the surface is hidden and the flip card shown instead: a few frames later
+// no transient is protected any more and the pool holds no more than the card's own use plus 16 MiB (the
+// transient budget, case 21) plus 16 MiB -- the released effect-cache targets of the hidden surface, kept
+// under their own unchanged budget (kCachedFreeBudgetBytes), count in transient_bytes as well; T-678's
+// code ends this sequence at the same bytes. At 1x and 4x.
+TEST_CASE(
+    "capi gpu 26 (T-685): a visible surface alternating states creates no texture from its second period") {
+    for (const int samples : {1, 4}) {
+        CAPTURE(samples);
+        SharedLog log;
+        Fixture f;
+        xt_gpu_target* t = budgetTarget(f, samples);
+        if (t == nullptr) return;
+        xt_surface* a = f.surface(XT_CAPI_TEST_EFFECTS_BUNDLE, "effects", kBudgetSize);
+        xt_surface* b = f.surface(XT_CAPI_TEST_FLIP_BUNDLE, "flip", kBudgetSize);
+        const uint32_t heavy = xt_surface_port_lookup(a, "heavy");
+        REQUIRE(heavy != 0);
+        const xt_rect all{0, 0, kBudgetSize, kBudgetSize};
+        const uint64_t texture = uint64_t(kBudgetSize) * kBudgetSize * 4u;
+        auto draw = [&] { frame(t, {{a, all}, {b, all}}); };
+        auto pool = [&] { return memoryStats(t).transient_bytes - log.idleSurfaceTextures * texture; };
+        auto show = [&](bool sceneA) {
+            REQUIRE(xt_surface_set_visible(a, sceneA ? 1 : 0) == XT_STATUS_OK);
+            REQUIRE(xt_surface_set_visible(b, sceneA ? 0 : 1) == XT_STATUS_OK);
+        };
+        show(false);
+        for (int i = 0; i < 3; ++i) draw();
+        const uint64_t useB = pool();
+        show(true);
+        constexpr int kPeriod = 300;
+        std::vector<unsigned long> created;
+        for (int period = 1; period <= 4; ++period) {
+            CAPTURE(period);
+            const unsigned long before = log.created;
+            REQUIRE(xt_surface_port_set_bool(a, heavy, 1) == XT_STATUS_OK);
+            for (int i = 0; i < kPeriod / 2; ++i) draw();
+            REQUIRE(xt_surface_port_set_bool(a, heavy, 0) == XT_STATUS_OK);
+            for (int i = 0; i < kPeriod / 2; ++i) draw();
+            created.push_back(log.created - before);
+            if (period >= 2) CHECK(log.created == before);
+        }
+        std::printf("samples %d: textures created per period:", samples);
+        for (const unsigned long c : created) std::printf(" %lu", c);
+        std::printf("; protected %lu KiB, budget evictions %lu", log.protectedKiB, log.budgetEvictions);
+        CHECK(log.protectedKiB > 0);
+        show(false);
+        for (int i = 0; i < 3; ++i) draw();
+        std::printf("; pool on B %.2f MiB, after hiding A %.2f MiB\n",
+                    static_cast<double>(useB) / static_cast<double>(kMiB),
+                    static_cast<double>(pool()) / static_cast<double>(kMiB));
+        CHECK(log.protectedKiB == 0);
+        CHECK(pool() <= useB + 16 * kMiB + 16 * kMiB);
+    }
+}
+
+// T-685 (50 §50.ac addendum 2): the protection is from the budget only. A visible surface leaves its heavy
+// state (fixtures/effects `heavy` false) and stays shown: its heavy transients stay in the pool -- no
+// budget eviction, transient_bytes unchanged -- for 1700 frames, and by 1800 + 100 frames the ageing has
+// destroyed them (and the protected bytes fall).
+TEST_CASE("capi gpu 27 (T-685): protected transients a visible surface no longer uses still age out") {
+    SharedLog log;
+    Fixture f;
+    xt_gpu_target* t = budgetTarget(f, 1);
+    if (t == nullptr) return;
+    xt_surface* a = f.surface(XT_CAPI_TEST_EFFECTS_BUNDLE, "effects", kBudgetSize);
+    const uint32_t heavy = xt_surface_port_lookup(a, "heavy");
+    REQUIRE(heavy != 0);
+    const xt_rect all{0, 0, kBudgetSize, kBudgetSize};
+    auto draw = [&] { frame(t, {{a, all}}); };
+    for (int i = 0; i < 3; ++i) draw();
+    const unsigned long protectedHeavy = log.protectedKiB;
+    REQUIRE(protectedHeavy > 0);
+    REQUIRE(xt_surface_port_set_bool(a, heavy, 0) == XT_STATUS_OK);
+    draw();
+    const uint64_t poolLight = memoryStats(t).transient_bytes;
+    const unsigned long budgetEvictions = log.budgetEvictions, ageEvictions = log.ageEvictions;
+    for (int i = 0; i < 1700; ++i) draw();
+    CHECK(memoryStats(t).transient_bytes == poolLight);
+    CHECK(log.budgetEvictions == budgetEvictions);
+    CHECK(log.ageEvictions == ageEvictions);
+    for (int i = 0; i < 200; ++i) draw();
+    std::printf("protected %lu KiB -> %lu KiB, transient %.2f -> %.2f MiB, age evictions %lu\n",
+                protectedHeavy, log.protectedKiB, static_cast<double>(poolLight) / static_cast<double>(kMiB),
+                static_cast<double>(memoryStats(t).transient_bytes) / static_cast<double>(kMiB),
+                log.ageEvictions - ageEvictions);
+    CHECK(log.ageEvictions > ageEvictions);
+    CHECK(log.protectedKiB < protectedHeavy);
+    CHECK(memoryStats(t).transient_bytes < poolLight);
 }
 
 #ifdef _WIN32

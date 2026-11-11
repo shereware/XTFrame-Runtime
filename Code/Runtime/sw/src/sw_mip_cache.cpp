@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include "xt/sw/sw_png.h"
+
 /// T-665: see sw_mip_cache.h.
 
 namespace xt::sw {
@@ -9,11 +11,11 @@ namespace xt::sw {
 const ImageMipChain* SwMipCache::chainFor(AssetResolver* assets, const IrView& ir, AssetId asset, float scale,
                                           const ImageData& image) {
     // Ruling to interpretation 4: an asset whose GPU form is block-compressed without a stored chain
-    // stays single-level on the GPU, so here too.
-    if (const CompressedImage* compressed = assets->compressedImage(asset, ir, scale)) {
-        if (compressed->levels <= 1) {
-            return nullptr;
-        }
+    // stays single-level on the GPU, so here too. T-686 (10 §10.13 ruling 3): one with a stored chain
+    // samples those levels (decoded below when the resolver keeps none), never a chain built here.
+    const CompressedImage* compressed = assets->compressedImage(asset, ir, scale);
+    if (compressed != nullptr && compressed->levels <= 1) {
+        return nullptr;
     }
     if (const ImageMipChain* own = assets->imageMipChain(asset, ir, scale)) {
         return own;
@@ -50,7 +52,8 @@ const ImageMipChain* SwMipCache::chainFor(AssetResolver* assets, const IrView& i
     e.image = &image;
     e.width = image.width;
     e.height = image.height;
-    if (!buildImageMipChain(image, e.chain)) {
+    if (compressed != nullptr ? !decodeStoredMipLevels(*compressed, decodeImageBytes, e.chain)
+                              : !buildImageMipChain(image, e.chain)) {
         return nullptr;
     }
     m_entries.push_back(std::move(e));

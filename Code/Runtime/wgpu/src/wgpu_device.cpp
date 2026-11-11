@@ -296,7 +296,27 @@ bool WgpuDevice::borrowSharedPipelines(WGPUTextureFormat format, uint32_t sample
     return true;
 }
 
+void WgpuDevice::setPoolUser(bool named) {
+    if (!named) {
+        releasePoolUse();
+        m_poolUser = 0;
+        return;
+    }
+    if (m_sharing == nullptr || m_poolUser != 0) {
+        return;
+    }
+    WgpuSharedCache::Impl& c = *m_sharing->m_impl;
+    if (c.nextPoolUser == 0) c.nextPoolUser = 1;  // 0 is the anonymous user
+    m_poolUser = c.nextPoolUser++;
+}
+
+void WgpuDevice::releasePoolUse() {
+    if (m_sharing != nullptr) m_sharing->m_impl->releasePoolUser(m_poolUser);
+}
+
 void WgpuDevice::shutdown() {
+    releasePoolUse();  // T-685: what this user borrowed last is the budget's again
+    m_poolUser = 0;
     if (m_gpu) {
         m_gpu->releaseBindGroups();
         if (m_gpu->passGroup != nullptr) wgpuBindGroupRelease(m_gpu->passGroup);
@@ -800,6 +820,7 @@ int WgpuDevice::acquirePooled(const gpu::TransientTargetDesc& desc) {
             p.format == desc.format && p.samples == samples && p.stencil == stencil) {
             p.inUse = true;
             p.lastUsed = poolFrame();
+            p.user = m_poolUser;  // T-685: the last borrower
             return static_cast<int>(i);
         }
     }
@@ -838,6 +859,7 @@ int WgpuDevice::acquirePooled(const gpu::TransientTargetDesc& desc) {
     p.bytes = px * (samples * 4u + (samples > 1 ? 4u : 0u) + (stencil ? samples * m_stencilTexelBytes : 0u));
     p.inUse = true;
     p.lastUsed = poolFrame();
+    p.user = m_poolUser;  // T-685
     ++m_stats.transientCreates;
     for (size_t i = 0; i < entries.size(); ++i) {
         if (!entries[i].live()) {  // T-675: an empty slot of the target's pool
@@ -888,13 +910,17 @@ void WgpuDevice::trimPool() {
     while (live > poolBudget() && liveCount > 1) {
         size_t lru = entries.size();
         for (size_t i = 0; i < entries.size(); ++i) {
-            if (entries[i].live() && (lru == entries.size() || entries[i].lastUsed < entries[lru].lastUsed))
+            // T-685: on a shared cache only entries whose last borrower let go of them (an own pool's
+            // entries are all the anonymous user's).
+            if (entries[i].live() && WgpuSharedCache::Impl::budgetMayEvict(entries[i]) &&
+                (lru == entries.size() || entries[i].lastUsed < entries[lru].lastUsed))
                 lru = i;
         }
-        if (entries[lru].lastUsed == now) break;  // everything left was used this frame
+        if (lru == entries.size() || entries[lru].lastUsed == now) break;  // none, or all used this frame
         live -= entries[lru].bytes;
         --liveCount;
         erase(lru);
+        if (m_sharing != nullptr) ++m_sharing->m_impl->stats.poolBudgetEvictions;
     }
     if (m_sharing == nullptr) {
         for (size_t i = 0; i < entries.size(); ++i) {

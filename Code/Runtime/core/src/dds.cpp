@@ -1,5 +1,6 @@
 #include "xt/dds.h"
 
+#include <algorithm>
 #include <cstring>
 
 /// See xt/dds.h. Layout reference: the DDS_HEADER / DDS_PIXELFORMAT / DDS_HEADER_DXT10 structures
@@ -134,8 +135,80 @@ bool parseDdsHeader(const uint8_t* bytes, size_t size, DdsInfo& out) {
     if (info.level0Size == 0 || info.dataOffset + info.level0Size > size) {
         return false;
     }
+    // T-686 (10 §10.13 ruling 2): dwReserved1[0..2] at offsets 28 / 32 / 36 of the header.
+    info.logicalWidth = info.width;
+    info.logicalHeight = info.height;
+    if (readLe32(h + 28) == kDdsLogicalSizeTag) {
+        const uint32_t lw = readLe32(h + 32);
+        const uint32_t lh = readLe32(h + 36);
+        if (lw > 0 && lh > 0 && lw <= width && lh <= height && width - lw < 4 && height - lh < 4) {
+            info.logicalWidth = static_cast<int>(lw);
+            info.logicalHeight = static_cast<int>(lh);
+        } else {
+            info.logicalRejected = true;
+        }
+    }
     out = info;
     return true;
+}
+
+namespace {
+
+void writeLe32(uint8_t* p, uint32_t v) {
+    p[0] = static_cast<uint8_t>(v);
+    p[1] = static_cast<uint8_t>(v >> 8);
+    p[2] = static_cast<uint8_t>(v >> 16);
+    p[3] = static_cast<uint8_t>(v >> 24);
+}
+
+}  // namespace
+
+std::vector<uint8_t> makeDdsLevelFile(DdsFormat format, int width, int height, const uint8_t* data,
+                                      size_t size, int logicalWidth, int logicalHeight) {
+    const size_t level = ddsLevelSize(format, width, height);
+    uint32_t dxgi = 0;
+    switch (format) {
+        case DdsFormat::Bc1:
+            dxgi = kDxgiBc1Unorm;
+            break;
+        case DdsFormat::Bc3:
+            dxgi = kDxgiBc3Unorm;
+            break;
+        case DdsFormat::Bc7:
+            dxgi = kDxgiBc7Unorm;
+            break;
+        case DdsFormat::Rgba8:
+            dxgi = kDxgiR8G8B8A8Unorm;
+            break;
+        default:
+            return {};
+    }
+    if (level == 0 || data == nullptr || size < level) {
+        return {};
+    }
+    std::vector<uint8_t> file(148 + level, 0);
+    uint8_t* p = file.data();
+    p[0] = 'D', p[1] = 'D', p[2] = 'S', p[3] = ' ';
+    uint8_t* h = p + 4;
+    writeLe32(h, 124);
+    writeLe32(h + 4, 0x1u | 0x2u | 0x4u | 0x1000u | 0x80000u);  // CAPS HEIGHT WIDTH PIXELFORMAT LINEARSIZE
+    writeLe32(h + 8, static_cast<uint32_t>(height));
+    writeLe32(h + 12, static_cast<uint32_t>(width));
+    writeLe32(h + 16, static_cast<uint32_t>(level));
+    if (logicalWidth > 0 && logicalHeight > 0) {
+        writeLe32(h + 28, kDdsLogicalSizeTag);
+        writeLe32(h + 32, static_cast<uint32_t>(logicalWidth));
+        writeLe32(h + 36, static_cast<uint32_t>(logicalHeight));
+    }
+    writeLe32(h + 72, 32);
+    writeLe32(h + 76, kDdpfFourCc);
+    writeLe32(h + 80, fourCc('D', 'X', '1', '0'));
+    writeLe32(h + 104, 0x1000u);  // DDSCAPS_TEXTURE
+    writeLe32(p + 128, dxgi);
+    writeLe32(p + 132, 3);  // D3D10_RESOURCE_DIMENSION_TEXTURE2D
+    writeLe32(p + 140, 1);  // arraySize
+    std::copy(data, data + level, p + 148);
+    return file;
 }
 
 }  // namespace xt

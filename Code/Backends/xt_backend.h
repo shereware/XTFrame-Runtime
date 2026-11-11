@@ -53,8 +53,9 @@ struct BackendOptions {
     bool hidden = false;
     /// Present synchronized to the display (Fifo / swap interval 1).
     bool vsync = true;
-    /// GPU renderers: 1 or 4 (4x MSAA, the default of the shell and the editor preview).
-    uint32_t sampleCount = 4;
+    /// GPU renderers: 1 or 4 (4x MSAA). T-666 (10 §10.11 item 8): 1 by default, as the C ABI GPU
+    /// target's sample_count 0.
+    uint32_t sampleCount = 1;
     /// Straight-alpha colour every frame starts from.
     Color clearColor{0.1f, 0.1f, 0.1f, 1.0f};
 };

@@ -1498,6 +1498,47 @@ TEST_CASE("coverage text: T-682 a glyph without an outline or contours is asked 
     }
 }
 
+// T-684 (Docs/tasks/T-684.md item 2): the clip scan's glyph ink boxes (xt::glyphRunInkBox) ask the
+// shaper for each glyph's outline once -- remembered per run within a build, the outline boxes kept
+// across builds -- so a static frame whose text sits inside a clip the scan decides asks for no
+// outline at all, and draws the same frame.
+TEST_CASE("coverage text: T-684 text inside a scanned clip asks for no outline on a static frame") {
+    CountingShaper shaper;
+    REQUIRE(shaper.addFontFile(glyphFontPath()));
+    text::GlyphAtlas atlas(shaper, 512);
+    MirrorDevice dev;
+    FrameBuilder builder;
+    builder.init(dev);
+    builder.resize(600, 200);
+    builder.setGlyphAtlas(&atlas);
+    // 16 px axis-aligned text (the hinted glyph atlas: no outline of its own) in a rotated clip rect,
+    // which takes a stencil level at 4x and so goes through the scan at 1x.
+    CommandList cl = glyphRunList(shaper, "Hello", 16.0f, Vec2{0, 0}, Mat2x3{1, 0, 0, 1, 40, 100}, 600, 200);
+    cl.clipRects.push_back(ClipRectCmd{rotatedAt(5, 20, 50), Rect{0, 0, 400, 100}});
+    cl.commands.insert(cl.commands.begin(), Command{CmdKind::PushClipRect, {}, 0});
+    cl.commands.push_back(Command{CmdKind::PopClip, {}, 0});
+    shaper.calls.clear();
+    GpuFrame first, later;
+    builder.build(cl, &shaper, nullptr, nullptr, first);
+    const FrameBuilder::ClipStats cs = builder.lastClipStats();
+    CHECK(cs.skipped + cs.scissor + cs.imageDirect + cs.maskLayers == 1);  // the scan decided it
+    REQUIRE(!shaper.calls.empty());
+    for (const auto& [glyph, count] : shaper.calls) {
+        CAPTURE(glyph);
+        CHECK(count == 1);  // once per build, whatever the number of scans and repeated letters
+    }
+    for (int i = 0; i < 3; ++i) {
+        shaper.calls.clear();
+        builder.build(cl, &shaper, nullptr, nullptr, later);
+        CHECK(shaper.calls.empty());
+        CHECK(sameFrame(first, later));
+        const FrameBuilder::ClipStats again = builder.lastClipStats();
+        CHECK(again.skipped == cs.skipped);
+        CHECK(again.scissor == cs.scissor);
+        CHECK(again.maskLayers == cs.maskLayers);
+    }
+}
+
 #endif  // XT_GPU_NO_TEXT
 
 // ---------------------------------------------------------------------------------------------

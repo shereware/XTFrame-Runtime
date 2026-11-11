@@ -43,6 +43,9 @@ add_library(xt_bundle STATIC
 target_link_libraries(xt_bundle PUBLIC xt_core xt_compile xt_flow xt_sw)
 # T-199: BC1/BC3/BC7 block encoders for `xtframe-pack --compress` (Code/SDKs/bc7enc, built by Code/Runtime/sw/).
 target_link_libraries(xt_bundle PRIVATE xt_bcn)
+# T-687: pack() encodes blocks on std::thread workers (src/texture_compress.cpp).
+find_package(Threads REQUIRED)
+target_link_libraries(xt_bundle PRIVATE Threads::Threads)
 # T-500: miniz (FetchContent pinned, Tools/CMake/xt_miniz.cmake) behind src/zip_archive.cpp
 # (`.xtsymbols` sets and `.xtb` bundles, store mode). PRIVATE: miniz.h never reaches include/xt/bundle/.
 include(${PROJECT_SOURCE_DIR}/Tools/CMake/xt_miniz.cmake)

@@ -20,6 +20,9 @@ ui_image_transform ui_image_transform.xt 256 256 0 ffffff
 # T-665 (10 section 10.11 item 7): one high-frequency image at 0.9 / 0.75 / 0.5 / 0.33 / 0.2, rotated
 # 15 deg at 0.3, non-uniform 0.3 x 0.8, and 1:1 / 2x controls; minified draws sample a mip chain.
 ui_image_minify ui_image_minify.xt 528 408 0 ffffff
+# T-686 (10 section 10.13): BC7 DDS images (bc7_64.dds; bc7_66x50.dds padded to 68 x 52 with the 'XTLS'
+# logical size) at 1:1, minified to 0.5 / 0.3 (stored mip levels), rotated, contained, magnified 2x.
+ui_image_bc7 ui_image_bc7.xt 320 208 0 c8d0d8
 # T-660b (10 section 10.11 item 2): concave star, even-odd gradient donut, multi-contour icon, a
 # rotated concave shape, one shape twice 0.3 px apart, a concave shape over 1024 px (fallback).
 ui_coverage_fill ui_coverage_fill.xt 256 256 0 ffffff

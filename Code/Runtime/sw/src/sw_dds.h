@@ -13,7 +13,8 @@
 namespace xt::sw {
 
 /// Decodes level 0 of `bytes` (a whole DDS file). False when the header is not one of
-/// xt::DdsFormat or the data is truncated.
+/// xt::DdsFormat or the data is truncated. T-686: a file with a valid logical-size marker
+/// (xt::kDdsLogicalSizeTag) comes out at its logical size (the padding cut off).
 bool decodeDdsBytes(const uint8_t* bytes, size_t size, ImageData& out);
 
 }  // namespace xt::sw

@@ -39,6 +39,26 @@ struct FileAssetResolverTestAccess {
     static size_t statCount(const FileAssetResolver& r) { return r.m_statCalls; }
     /// T-452: header-only sizes kept across resetAssetIds().
     static size_t headerSizeCount(const FileAssetResolver& r) { return r.m_headerSizes.size(); }
+    /// T-686: how often a compressed DDS was decoded to RGBA (level 0), and how many of its stored mip
+    /// levels were decoded; whether an out-of-range logical-size marker was reported.
+    static size_t ddsRgbaDecodeCount(const FileAssetResolver& r) { return r.m_ddsRgbaDecodes; }
+    static size_t ddsLevelDecodeCount(const FileAssetResolver& r) { return r.m_ddsLevelDecodes; }
+    static bool loggedLogicalSize(const FileAssetResolver& r) { return r.m_loggedLogicalSize; }
+    /// T-686: the RGBA and the block bytes the resolver keeps, apart.
+    static size_t rgbaBytes(const FileAssetResolver& r) {
+        size_t bytes = 0;
+        for (const FileAssetResolver::Entry& entry : r.m_entries) {
+            bytes += entry.image.rgba.capacity();
+        }
+        return bytes;
+    }
+    static size_t blockBytes(const FileAssetResolver& r) {
+        size_t bytes = 0;
+        for (const FileAssetResolver::Entry& entry : r.m_entries) {
+            bytes += entry.compressed.blocks.capacity();
+        }
+        return bytes;
+    }
 };
 
 }  // namespace xt

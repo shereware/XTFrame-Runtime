@@ -60,10 +60,23 @@ struct PackOptions {
     /// T-199: "ui" (one page set per UI) or "bundle" (one set for the whole bundle); empty = the
     /// UI Project's `publish.atlas.scope`, else "ui".
     std::string atlasScope;
-    /// T-199 (12.7 `--compress`): "none" (default), "bc1", "bc3" or "bc7": bitmap assets and
-    /// atlas pages are written as DDS in that block format (an image with alpha gets bc3 under
-    /// bc1; `manifest/assets.yaml` `compress: <fmt|none>` overrides per asset).
-    std::string compress = "none";
+    /// T-199 (12.7 `--compress`): "none", "bc1", "bc3", "bc7" or (T-687, 10 §10.13 ruling 5) "auto":
+    /// bitmap assets and atlas pages are written as DDS in that block format (an image with alpha
+    /// gets bc3 under bc1; `manifest/assets.yaml` `compress: <fmt|none>` overrides per asset; "auto"
+    /// = bc7 for an image or page whose sides are both >= 256 px, the rest as they are). T-687:
+    /// empty (the default) = the UI Project's `publish.images.compress`, else "none". Every DDS is
+    /// padded to a multiple of 4 (with the 'XTLS' logical size), carries its full mip chain and has
+    /// the colour of its alpha = 0 texels bled (rulings 2-4); `publish.atlas.mipmaps` no longer
+    /// changes a compressed image.
+    std::string compress;
+    /// T-687 (ruling 6): reuse and keep encoded DDS files in the encode cache (`--no-cache` clears
+    /// this). The output is the same byte for byte either way.
+    bool encodeCache = true;
+    /// T-687 (`--cache-dir`): the encode cache directory; empty = `<outDir>/../.xtframe-cache/bc/`.
+    std::string encodeCacheDir;
+    /// T-687 (ruling 6): threads that encode blocks; 0 = std::thread::hardware_concurrency(). The
+    /// output does not depend on it.
+    int encodeThreads = 0;
     /// T-199 (12.7 `--font-subset`): every bundled TrueType font is rewritten as
     /// `fonts/<stem>.subset.ttf` keeping only the glyphs the UIs' text and string tables use
     /// (plus ASCII); missing glyphs are reported as `i18n` warnings. Needs a full run.
@@ -147,6 +160,15 @@ struct PackReport {
     uint64_t atlasPixelsTotal = 0;
     /// T-199: assets (and atlas pages) written as DDS.
     uint32_t assetsCompressed = 0;
+    /// T-687: the compression setting in effect ("none", "bc1", "bc3", "bc7" or "auto").
+    std::string compress;
+    /// T-687: DDS files encoded this run, and of those taken from the encode cache instead.
+    uint32_t imagesEncoded = 0;
+    uint32_t encodeCacheHits = 0;
+    /// T-687: the threads blocks are encoded on (0 when compression is off) and the encode cache
+    /// directory (empty when the cache is off).
+    uint32_t encodeThreads = 0;
+    std::string encodeCacheDir;
     /// T-199: `@2x` variants found next to their source and packed.
     uint32_t variants2x = 0;
     /// T-345 (25 §25.4.2 item 4): `@3x` variants packed.

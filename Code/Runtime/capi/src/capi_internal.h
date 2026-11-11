@@ -297,6 +297,10 @@ void detachGpu(xt_surface& surface);
 /// gradient tables and atlases stay for the next show. With `everything` (xt_surface_trim) all of it
 /// goes, textures to the pools as well.
 void releaseGpuResources(xt_surface& surface, bool everything);
+/// T-685 (50 §50.ac addendum 2): the surface was hidden -- the transients its renderer's device borrowed
+/// last may be evicted by the target's pool budget again (xt::wgpu::WgpuDevice::releasePoolUse). Detach,
+/// destroy and xt_surface_trim do the same by shutting the device down. A no-op without GPU resources.
+void releaseGpuPoolUse(xt_surface& surface);
 /// T-636: the draw counters of the surface's last GPU render (false when it has none).
 bool gpuDrawCounts(const xt_surface& surface, uint32_t& executed, uint32_t& skipped);
 

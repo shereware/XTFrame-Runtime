@@ -69,8 +69,9 @@ public:
                        const void* data, size_t rowPitch) override;
     void destroyTexture(gpu::TextureHandle tex) override;
     /// T-665 (Docs/design/10-backends.md §10.11 item 7): an Rgba8 image gets its levels at the start
-    /// of the next submit (before any draw); block-compressed images, host textures and targets stay
-    /// single-level (returns 1), and so does every image when the two T-665 programs did not link.
+    /// of the next submit (before any draw); T-686: a block-compressed image takes the levels its DDS
+    /// stored at once (none stored: single-level); host textures and targets stay single-level
+    /// (returns 1), and so does every image when the two T-665 programs did not link.
     uint32_t requestMipChain(gpu::TextureHandle tex, const void* storedLevels = nullptr,
                              uint32_t storedLevelCount = 0) override;
     /// T-665: chains requested since init (cumulative), the bytes of their levels 1.. and the time
@@ -194,6 +195,10 @@ private:
     double m_mipMs = 0.0;
     /// T-665: makes the pending chains (level k = the 2x2 box mean of level k - 1, kMipBoxFrag).
     void generatePendingMips();
+    /// T-686 (Docs/design/10-backends.md §10.13 ruling 3): uploads the levels 1.. a DDS stored for
+    /// the block-compressed image `t` (glCompressedTexImage2D per level) and returns its level count;
+    /// 1 (single level) without stored levels or when the driver refuses them.
+    uint32_t uploadStoredLevels(Texture& t, const void* storedLevels, uint32_t storedLevelCount);
     /// T-665: binds image `tex` to unit 0 for a mip draw (GL_LINEAR_MIPMAP_NEAREST + textureLod).
     void bindSampledMip(GLuint tex);
 

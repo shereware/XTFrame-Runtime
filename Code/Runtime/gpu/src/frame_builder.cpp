@@ -259,6 +259,10 @@ struct FrameBuilder::Impl {
         /// T-263c ruling 1: the size of the uploaded image (an atlas page's, for a cell).
         int width = 0;
         int height = 0;
+        /// T-686 (Docs/design/10-backends.md §10.13 ruling 2): logical / stored size of a DDS padded
+        /// to a multiple of 4 -- the part of the texture the image's 0..1 uv covers; 1 otherwise.
+        float uvScaleX = 1.0f;
+        float uvScaleY = 1.0f;
         /// T-263d: what a texture-0 entry stands for. `refused`: the image is larger than the
         /// device's limit and is not tried again. Otherwise an upload failed in host frame
         /// `failedAt` (a `frameCount`), after `retries` earlier retries. T-263f: `announced` =
@@ -454,6 +458,9 @@ struct FrameBuilder::Impl {
     /// T-664: the shaper of the build in progress, for the clip scan's glyph run boxes
     /// (clipContentBounds); null outside buildOnce.
     TextShaper* clipShaper = nullptr;
+    /// T-684: the glyph run ink boxes the clip scans measured in the build attempt in progress
+    /// (reset by buildOnce; scanClip and clipLocalContent meet the same runs).
+    mutable GlyphInkMemo clipInkMemo;  // mutable: clipLocalContent() is const
     std::vector<project3d::Mapping> mappings;
 
     /// One clip level. Rect clips that stay axis-aligned become a scissor (no stencil); every
@@ -2384,8 +2391,12 @@ struct FrameBuilder::Impl {
             break;
         }
         auto remember = [&](const void* shared, TextureHandle tex, bool isStraight, int width, int height,
-                            bool isShared) {
+                            bool isShared, int logicalWidth = 0, int logicalHeight = 0) {
             TextureEntry entry;
+            if (logicalWidth > 0 && logicalHeight > 0 && (logicalWidth != width || logicalHeight != height)) {
+                entry.uvScaleX = static_cast<float>(logicalWidth) / static_cast<float>(width);
+                entry.uvScaleY = static_cast<float>(logicalHeight) / static_cast<float>(height);
+            }
             entry.asset = asset;
             entry.tex = tex;
             entry.variant = variant;
@@ -2446,7 +2457,8 @@ struct FrameBuilder::Impl {
                 if (TextureHandle found =
                         device->findSharedImage(ImageKey{kept.lo, kept.hi}, static_cast<uint16_t>(kept.width),
                                                 static_cast<uint16_t>(kept.height), fmt)) {
-                    return remember(nullptr, found, isStraight, kept.width, kept.height, true);
+                    return remember(nullptr, found, isStraight, kept.width, kept.height, true,
+                                    kept.logicalWidth, kept.logicalHeight);
                 }
             }
         }
@@ -2456,7 +2468,8 @@ struct FrameBuilder::Impl {
             bool isStraight = true;
             if (TextureHandle shared =
                     sharedTexture(compressed, compressed->width, compressed->height, isStraight)) {
-                return remember(compressed, shared, isStraight, compressed->width, compressed->height, false);
+                return remember(compressed, shared, isStraight, compressed->width, compressed->height, false,
+                                compressed->logicalWidth, compressed->logicalHeight);
             }
             TextureFormat fmt = TextureFormat::Bc7;
             if (compressed->format == DdsFormat::Bc1) {
@@ -2482,15 +2495,18 @@ struct FrameBuilder::Impl {
                                                         compressed->blocks.data());
                     }
                     if (tex != 0) {  // T-657: kept for the next builder that needs it (above).
-                        assets->retainImageKey(compressed, AssetResolver::ImageContentKey{
-                                                               key.lo, key.hi, compressed->width,
-                                                               compressed->height, compressed->format});
+                        assets->retainImageKey(
+                            compressed, AssetResolver::ImageContentKey{key.lo, key.hi, compressed->width,
+                                                                       compressed->height, compressed->format,
+                                                                       compressed->logicalWidth,
+                                                                       compressed->logicalHeight});
                     }
                 } else {
                     tex = device->createTexture("xt image (bc)", w, h, fmt, compressed->blocks.data());
                 }
                 if (tex != 0) {
-                    return remember(compressed, tex, true, compressed->width, compressed->height, share);
+                    return remember(compressed, tex, true, compressed->width, compressed->height, share,
+                                    compressed->logicalWidth, compressed->logicalHeight);
                 }
             }
         }
@@ -2641,6 +2657,22 @@ struct FrameBuilder::Impl {
         float straight = 0.0f;
     };
     ImageLod imageLod;
+
+    /// T-686 (Docs/design/10-backends.md §10.13 ruling 2): `uv` (the image's own 0..1 space, or its
+    /// atlas cell in it) mapped onto image texture `tex`: times logical / stored size for a DDS padded
+    /// to a multiple of 4, unchanged for every other texture.
+    Rect textureUv(TextureHandle tex, const Rect& uv) const {
+        for (const TextureEntry& entry : textureCache) {
+            if (entry.tex == tex && entry.source == currentSource) {
+                if (entry.uvScaleX == 1.0f && entry.uvScaleY == 1.0f) {
+                    return uv;
+                }
+                return Rect{uv.x * entry.uvScaleX, uv.y * entry.uvScaleY, uv.w * entry.uvScaleX,
+                            uv.h * entry.uvScaleY};
+            }
+        }
+        return uv;
+    }
 
     /// T-665: the size of image texture `tex` as the texture cache holds it for the current source;
     /// false when it is not a cached image (a host texture).
@@ -2844,6 +2876,7 @@ struct FrameBuilder::Impl {
         if (tex == 0) {
             return;
         }
+        const Rect srcUv = textureUv(tex, cmd.srcUv);  // T-686
         Mat2x3 deviceXf = deviceTransform(cmd.xf, dpr);
         Vec2 dstCorners[4] = {
             apply(deviceXf, Vec2{cmd.dst.x, cmd.dst.y}),
@@ -2852,10 +2885,10 @@ struct FrameBuilder::Impl {
             apply(deviceXf, Vec2{cmd.dst.x, cmd.dst.y + cmd.dst.h}),
         };
         Vec2 uv[4] = {
-            Vec2{cmd.srcUv.x, cmd.srcUv.y},
-            Vec2{cmd.srcUv.x + cmd.srcUv.w, cmd.srcUv.y},
-            Vec2{cmd.srcUv.x + cmd.srcUv.w, cmd.srcUv.y + cmd.srcUv.h},
-            Vec2{cmd.srcUv.x, cmd.srcUv.y + cmd.srcUv.h},
+            Vec2{srcUv.x, srcUv.y},
+            Vec2{srcUv.x + srcUv.w, srcUv.y},
+            Vec2{srcUv.x + srcUv.w, srcUv.y + srcUv.h},
+            Vec2{srcUv.x, srcUv.y + srcUv.h},
         };
         const uint32_t rgba = packPremultiplied(Color{1, 1, 1, cmd.opacity});
         Vertex v[4];
@@ -2870,10 +2903,10 @@ struct FrameBuilder::Impl {
         // T-665: a smooth, non-projected image samples trilinearly when minified (as SW does).
         int texW = 0, texH = 0;
         if (cmd.smooth != 0 && !projecting() && cachedTextureSize(tex, texW, texH)) {
-            armImageLod(tex, imageDrawLod(deviceXf, cmd.dst, cmd.srcUv, texW, texH), shading, cmd.asset,
-                        assets, ir, cmd.variantScale);
+            armImageLod(tex, imageDrawLod(deviceXf, cmd.dst, srcUv, texW, texH), shading, cmd.asset, assets,
+                        ir, cmd.variantScale);
         }
-        drawImageQuadEdges(v, cmd.srcUv, cmd.opacity, tex, cmd.smooth != 0, shading);
+        drawImageQuadEdges(v, srcUv, cmd.opacity, tex, cmd.smooth != 0, shading);
         imageLod = ImageLod{};
     }
 
@@ -2901,6 +2934,7 @@ struct FrameBuilder::Impl {
             shading = Shading::ParticleTexture;
             pp.straight = imageShading == Shading::TextureStraight ? 1.0f : 0.0f;
         }
+        const Rect texUv = textureUv(tex, Rect{0, 0, 1, 1});  // T-686: the instances' uv onto the texture
         const Mat2x3 x = deviceTransform(cmd.xf, dpr);
         pp.xf[0] = x.a;
         pp.xf[1] = x.b;
@@ -2932,10 +2966,10 @@ struct FrameBuilder::Impl {
             p.rot = src.rot;
             p.rgba = channel(src.rgba.r) | (channel(src.rgba.g) << 8) | (channel(src.rgba.b) << 16) |
                      (channel(src.rgba.a) << 24);
-            p.u0 = src.uv0.x;
-            p.v0 = src.uv0.y;
-            p.u1 = src.uv1.x;
-            p.v1 = src.uv1.y;
+            p.u0 = src.uv0.x * texUv.w;
+            p.v0 = src.uv0.y * texUv.h;
+            p.u1 = src.uv1.x * texUv.w;
+            p.v1 = src.uv1.y * texUv.h;
             frame.particleInstances.push_back(p);
         }
         c.instanceCount = cmd.count;
@@ -2952,11 +2986,12 @@ struct FrameBuilder::Impl {
             return;
         }
         Mat2x3 dprXf = scaling(Vec2{dpr, dpr});
+        const Rect srcUv = textureUv(tex, cmd.srcUv);  // T-686
         Vec2 uv[4] = {
-            Vec2{cmd.srcUv.x, cmd.srcUv.y},
-            Vec2{cmd.srcUv.x + cmd.srcUv.w, cmd.srcUv.y},
-            Vec2{cmd.srcUv.x + cmd.srcUv.w, cmd.srcUv.y + cmd.srcUv.h},
-            Vec2{cmd.srcUv.x, cmd.srcUv.y + cmd.srcUv.h},
+            Vec2{srcUv.x, srcUv.y},
+            Vec2{srcUv.x + srcUv.w, srcUv.y},
+            Vec2{srcUv.x + srcUv.w, srcUv.y + srcUv.h},
+            Vec2{srcUv.x, srcUv.y + srcUv.h},
         };
         const uint32_t rgba = packPremultiplied(Color{1, 1, 1, cmd.opacity});
         Vertex v[4];
@@ -2975,11 +3010,11 @@ struct FrameBuilder::Impl {
         if (cmd.smooth != 0 && !projecting() && cachedTextureSize(tex, texW, texH)) {
             const Vec2 q[4] = {apply(dprXf, cmd.p[0]), apply(dprXf, cmd.p[1]), apply(dprXf, cmd.p[2]),
                                apply(dprXf, cmd.p[3])};
-            if (imageQuadLod(q, cmd.srcUv, texW, texH, lod)) {
+            if (imageQuadLod(q, srcUv, texW, texH, lod)) {
                 armImageLod(tex, lod, shading, cmd.asset, assets, ir, cmd.variantScale);
             }
         }
-        drawImageQuadEdges(v, cmd.srcUv, cmd.opacity, tex, cmd.smooth != 0, shading);
+        drawImageQuadEdges(v, srcUv, cmd.opacity, tex, cmd.smooth != 0, shading);
         imageLod = ImageLod{};
     }
 
@@ -3006,6 +3041,7 @@ struct FrameBuilder::Impl {
         if (tex == 0) {
             return;
         }
+        const Rect texUv = textureUv(tex, Rect{0, 0, 1, 1});  // T-686: the vertices' uv onto the texture
         const Mat2x3 dprXf = scaling(Vec2{dpr, dpr});
         const uint32_t rgba = packPremultiplied(Color{1, 1, 1, cmd.opacity});
         meshVertexScratch.resize(cmd.vertexCount);
@@ -3016,7 +3052,7 @@ struct FrameBuilder::Impl {
             if (!ok) {
                 return;  // §19.7: dropped.
             }
-            meshVertexScratch[i] = Vertex{hp.x, hp.y, hp.w, src.uv.x, src.uv.y, rgba};
+            meshVertexScratch[i] = Vertex{hp.x, hp.y, hp.w, src.uv.x * texUv.w, src.uv.y * texUv.h, rgba};
         }
         Geometry g;
         Vertex* outVerts = emit.appendVertices(cmd.vertexCount, g.baseVertex);
@@ -4185,7 +4221,8 @@ struct FrameBuilder::Impl {
                 continue;
             }
             Rect r;
-            const ClipContentBounds kind = clipContentBounds(cl, cmd, currentDpr, r, clipShaper);
+            const ClipContentBounds kind =
+                clipContentBounds(cl, cmd, currentDpr, r, clipShaper, &clipInkMemo);
             if (kind == ClipContentBounds::Unknown) {
                 top.reliable = false;
             } else if (kind == ClipContentBounds::Box) {
@@ -4305,7 +4342,7 @@ struct FrameBuilder::Impl {
             }
             Rect r;
             const ClipContentBounds kind =
-                clipContentBoundsInFrame(cl, cmd, frame, margin, r, clipShaper, currentDpr);
+                clipContentBoundsInFrame(cl, cmd, frame, margin, r, clipShaper, currentDpr, &clipInkMemo);
             if (kind == ClipContentBounds::Unknown) {
                 return false;
             }
@@ -4412,6 +4449,7 @@ struct FrameBuilder::Impl {
         if (tex == 0) {
             return true;
         }
+        srcUv = textureUv(tex, srcUv);  // T-686
         // shape ∩ quad (Sutherland-Hodgman over the quad's four edges, both counter-clockwise in
         // the positive-area sense cleanConvexContour normalises to).
         std::vector<Vec2>& poly = clipPolyA;
@@ -4452,7 +4490,7 @@ struct FrameBuilder::Impl {
             float lod = 0.0f;
             if (cmd.kind == CmdKind::DrawImage) {
                 const ImageCmd& ic = cl.images[cmd.index];
-                lod = imageDrawLod(deviceTransform(ic.xf, dpr), ic.dst, ic.srcUv, texW, texH);
+                lod = imageDrawLod(deviceTransform(ic.xf, dpr), ic.dst, srcUv, texW, texH);
             } else if (!imageQuadLod(q, srcUv, texW, texH, lod)) {
                 lod = 0.0f;
             }
@@ -5241,6 +5279,7 @@ struct FrameBuilder::Impl {
         clipScanSlot.clear();
         clipScanEnd = cl.commands.size();
         clipShaper = shaper;  // T-664: glyph run boxes from the font's metrics
+        clipInkMemo.reset();  // T-684: nothing is kept from the previous build attempt
         currentDpr = cl.devicePixelRatio;
         const float dpr = currentDpr;
         lastExternals.clear();
