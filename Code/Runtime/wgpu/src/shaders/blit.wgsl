@@ -18,3 +18,18 @@ fn fs_blit(@builtin(position) fc: vec4f) -> @location(0) vec4f {
     let p = vec2i(floor(fc.xy)) + vec2i(uBlit.xy);
     return textureLoad(src, p, 0);
 }
+
+// T-665 (Docs/design/10-backends.md section 10.11 item 7): one mip level of an image texture as the
+// 2x2 box mean of the level above (`src`, a one-level view of it), each fetch clamped to its last
+// texel -- gpu_frame.h DownsampleParams' formula (fx_downsample.wgsl). The target level is
+// max(1, size >> 1), so on an odd edge the last row / column of `src` is not read (xt/image_mips.h).
+@fragment
+fn fs_mip_box(@builtin(position) fc: vec4f) -> @location(0) vec4f {
+    let srcMax = vec2i(textureDimensions(src)) - vec2i(1);
+    let s = vec2i(floor(fc.xy)) * 2;
+    let sum = textureLoad(src, clamp(s, vec2i(0), srcMax), 0) +
+              textureLoad(src, clamp(s + vec2i(1, 0), vec2i(0), srcMax), 0) +
+              textureLoad(src, clamp(s + vec2i(0, 1), vec2i(0), srcMax), 0) +
+              textureLoad(src, clamp(s + vec2i(1, 1), vec2i(0), srcMax), 0);
+    return sum * 0.25;
+}

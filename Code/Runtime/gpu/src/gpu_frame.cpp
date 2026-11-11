@@ -184,6 +184,12 @@ void dumpGpuFrame(const GpuFrame& frame, std::string& out) {
             if (cmd.coverage != 0) {  // T-660b: frames without coverage quads dump as before
                 out += " coverage=yes";
             }
+            if (cmd.mipLod != 0) {  // T-665: frames without minified mip draws dump as before
+                out += " mip=yes";
+            }
+            if (cmd.boxShadowMulti != 0) {  // T-683: frames without outlined box shadows dump as before
+                out += " multi=yes";
+            }
             std::snprintf(buf, sizeof(buf), " tex=%s src=%u aux=%u %s idx=%u verts=%u clip=(%d,%d,%d,%d)\n",
                           cmd.texture != 0 ? "yes" : "no", cmd.src, cmd.aux, samplerName(cmd.sampler),
                           cmd.indexCount, cmd.vertexCount, cmd.clipX, cmd.clipY, cmd.clipW, cmd.clipH);

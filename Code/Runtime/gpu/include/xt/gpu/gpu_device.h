@@ -166,6 +166,24 @@ public:
         (void)keep;
         destroyTexture(tex);
     }
+
+    /// T-665 (Docs/design/10-backends.md §10.11 item 7, Docs/tasks/T-665.md 規格 3): gives image
+    /// texture `tex` (from `createTexture` / `createSharedImage` / `findSharedImage`) its full mip
+    /// chain the first time the builder draws it minified, and returns the number of levels it has
+    /// afterwards (1 = it stays single-level: the device has no mip support, the texture is not an
+    /// image, or a block-compressed image comes without `storedLevels`). The handle stays the same:
+    /// the device makes a texture with every level, copies level 0, makes each further level the 2x2
+    /// box mean of the one above (xt/image_mips.h; Rgba8) or uploads `storedLevelCount` - 1 stored
+    /// levels from `storedLevels` (levels 1.. back to back, block-compressed formats), and puts it in
+    /// place of the old one (a shared image for every device of its owner) before any later draw of
+    /// it is executed. A texture that has its chain already returns its level count at once.
+    virtual uint32_t requestMipChain(TextureHandle tex, const void* storedLevels = nullptr,
+                                     uint32_t storedLevelCount = 0) {
+        (void)tex;
+        (void)storedLevels;
+        (void)storedLevelCount;
+        return 1;
+    }
 };
 
 }  // namespace xt::gpu

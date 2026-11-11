@@ -44,6 +44,11 @@ void WgpuSharedCache::shutdown() {
 WgpuSharedStats WgpuSharedCache::stats() const {
     WgpuSharedStats s = m_impl->stats;
     m_impl->poolStats(s);
+    const detail::Pipelines::Counters& p = m_impl->pipelines.counters();  // T-683
+    s.prewarmShaderCompiles = p.prewarmShaderCompiles;
+    s.prewarmPipelineCreates = p.prewarmPipelineCreates;
+    s.shaderCompiles = p.shaderCompiles;
+    s.pipelineCreates = p.pipelineCreates;
     return s;
 }
 

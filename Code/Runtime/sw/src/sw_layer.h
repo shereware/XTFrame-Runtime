@@ -410,6 +410,9 @@ private:
 struct ImageScratch {
     std::vector<float> span;
     std::vector<float> row;
+    /// T-665: the second level of a trilinear span and its pre-blended source row.
+    std::vector<float> span2;
+    std::vector<float> row2;
 };
 
 /// Rasterizes `cmd.dst` (transformed by `deviceXf`) as a quad and, for every covered device pixel,
@@ -421,9 +424,15 @@ struct ImageScratch {
 /// rotation or shear) takes the row-incremental fast path, anything else the per-pixel inverse mapping
 /// (Docs/tasks/T-149.md). See Docs/design/10-backends.md §10.2.5, Docs/tasks/T-12.md
 /// "描邊、Dash、ClipPath、圖片".
+///
+/// T-665 (Docs/design/10-backends.md §10.11 item 7, Docs/tasks/T-665.md): with `mips` (the chain of
+/// `image`, xt/image_mips.h) and `cmd.smooth`, a draw whose lod (xt::imageDrawLod) is > 0 samples the
+/// levels floor(lod) and ceil(lod) bilinearly and mixes them by the fraction; level 0 is sampled as
+/// before (straight bilinear, then premultiplied), the levels >= 1 are premultiplied. Null `mips` or
+/// lod 0: exactly the single-level sampling of before.
 void drawImage(Target& target, Rasterizer& raster, const Mat2x3& deviceXf, const ImageCmd& cmd,
                const ImageData& image, const uint8_t* clipMask, int clipWidth, ImageScratch& scratch,
-               const WriteRegion* region = nullptr);
+               const WriteRegion* region = nullptr, const ImageMipChain* mips = nullptr);
 
 /// Draws `image` warped into device-space quad `q` (4 corners, clockwise from top-left) via a
 /// perspective homography: `homographyFromQuad` maps `q` to the unit square, then every covered
@@ -432,9 +441,12 @@ void drawImage(Target& target, Rasterizer& raster, const Mat2x3& deviceXf, const
 /// the quad itself, same as drawImage's rotated-rect handling. A degenerate quad (homographyFromQuad
 /// fails) is skipped. `region` as for drawImage. See Docs/design/19-3d-space.md §19.7,
 /// Docs/tasks/T-45.md.
+/// T-665: `mips` as for drawImage, used only when `q` is a parallelogram (xt::imageQuadLod); the
+/// caller passes null under a 3D projection (which keeps the single-level sampling).
 void drawImageQuad(Target& target, Rasterizer& raster, const Vec2 q[4], Rect srcUv, float opacity,
                    uint8_t smooth, const ImageData& image, const uint8_t* clipMask, int clipWidth,
-                   ImageScratch& scratch, const WriteRegion* region = nullptr);
+                   ImageScratch& scratch, const WriteRegion* region = nullptr,
+                   const ImageMipChain* mips = nullptr);
 
 /// Draws the triangles of a DrawImageMesh (Docs/design/32-rigging-and-deformation.md §32.2.4,
 /// T-245): `indices` (3 per triangle, relative to `vertices`) over `vertices` already in *device*

@@ -10,13 +10,16 @@ set(XT_WGSL_SOURCES
     src/shaders/gradient.wgsl
     src/shaders/texture.wgsl
     src/shaders/texture_straight.wgsl
+    src/shaders/texture_lod.wgsl  # T-665
     src/shaders/glyph.wgsl
     src/shaders/composite.wgsl
     src/shaders/particle_texture.wgsl
     src/shaders/particle_solid.wgsl
     src/shaders/coverage_solid.wgsl
     src/shaders/coverage_gradient.wgsl
+    src/shaders/box_shadow_common.wgsl  # T-683: prepended to the two box shadow programs
     src/shaders/box_shadow.wgsl
+    src/shaders/box_shadow_multi.wgsl  # T-683
     src/shaders/fx_gauss_scalar.wgsl
     src/shaders/fx_gauss_color.wgsl
     src/shaders/fx_dilate.wgsl
@@ -52,6 +55,7 @@ add_custom_command(
 add_library(xt_wgpu STATIC
     src/wgpu_init.cpp
     src/wgpu_device.cpp
+    src/wgpu_mips.cpp  # T-665
     src/wgpu_draw.cpp
     src/wgpu_pipelines.cpp
     src/wgpu_custom.cpp

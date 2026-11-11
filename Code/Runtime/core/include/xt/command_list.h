@@ -251,7 +251,8 @@ struct GlyphsCmd {
 /// `deviceXf` = the device pixel ratio scale times `cmd.xf`: `text-rendering: auto`, and a
 /// transform that is a positive uniform scale plus a translation. A rotated, skewed, mirrored or
 /// non-uniformly scaled run has no bitmap that fits it. One definition for every backend
-/// (Docs/tasks/T-263b.md E3); a backend may add its own limits (the software renderer's 24 px).
+/// (Docs/tasks/T-263b.md E3); a backend may add its own limits (the 24 px of
+/// glyphRunUsesHintedBitmap()).
 inline bool glyphRunBitmapApplies(const GlyphsCmd& cmd, const Mat2x3& deviceXf) {
     return cmd.rendering == TextRendering::Auto && deviceXf.b == 0.0f && deviceXf.c == 0.0f &&
            deviceXf.a == deviceXf.d && deviceXf.a > 0.0f;
@@ -263,6 +264,22 @@ inline bool glyphRunBitmapApplies(const GlyphsCmd& cmd, const Mat2x3& deviceXf) 
 inline float glyphRunBitmapSize(const GlyphsCmd& cmd, const Mat2x3& deviceXf) {
     const float sizeDevice = cmd.size * std::fabs(deviceXf.a);
     return std::floor(sizeDevice * 4.0f + 0.5f) / 4.0f;
+}
+
+/// T-101 (Docs/design/23-host-integration.md §23.4): the device size, in px of
+/// glyphRunBitmapSize(), from which the software renderer fills a run's outlines instead of
+/// blitting its lightly hinted bitmaps.
+inline constexpr float kGlyphHintedBitmapMaxPx = 24.0f;
+
+/// T-681 (Docs/design/10-backends.md §10.11, ruling 1 of the T-676 record): whether the run `cmd`
+/// under `deviceXf` (the device pixel ratio scale times `cmd.xf`) is drawn from lightly hinted glyph
+/// bitmaps rather than filled outlines when it is not under a 3D projection -- the software
+/// renderer's own test, and the one a single-sampled GPU target uses to send a run to the glyph
+/// atlas (true) or to outline coverage (false): glyphRunBitmapApplies() and a bitmap size below
+/// kGlyphHintedBitmapMaxPx.
+inline bool glyphRunUsesHintedBitmap(const GlyphsCmd& cmd, const Mat2x3& deviceXf) {
+    return glyphRunBitmapApplies(cmd, deviceXf) &&
+           glyphRunBitmapSize(cmd, deviceXf) < kGlyphHintedBitmapMaxPx;
 }
 
 /// Payload for `CmdKind::PushClipRect`.

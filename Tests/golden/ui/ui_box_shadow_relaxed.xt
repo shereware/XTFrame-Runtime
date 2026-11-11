@@ -4,8 +4,8 @@
        a solid opaque outline with a gap (three terms), touching (offset 0) and overlapping the
        box (negative offset), and two cards whose text reaches the edges of the font-metric box.
        The panels of alpha 0.9 and 0.92 (one with text at its edge and an offset shadow, the worst
-       case of the B.3 approximation) stay a PushEffect: B.3 is not part of T-680 (its worst case
-       differed from the offscreen path by more than the golden tolerance). The bottom row stays a
+       case of the B.3 approximation) convert since T-681 (B.3, judged against ground truth in
+       Tests/gpu/test_box_shadow_truth.cpp). The bottom row stays a
        PushEffect too: a translucent outline, a background of alpha 0.89, text that really
        overflows, an opaque outline over a 0.95 background. -->
   <body>

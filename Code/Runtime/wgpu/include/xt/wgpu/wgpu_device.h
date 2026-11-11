@@ -12,6 +12,7 @@
 
 #include "xt/gpu/gpu_device.h"
 #include "xt/gpu/gpu_frame.h"
+#include "xt/wgpu/wgpu_shared.h"  // T-683: WgpuPipelinePrewarm, WgpuPipelineCounters
 
 /// WgpuDevice: the WebGPU implementation of `xt::gpu::GpuDevice` (Docs/design/10-backends.md
 /// §10.10, T-437 / T-438) over wgpu-native's `webgpu.h`.
@@ -159,6 +160,14 @@ public:
     gpu::TextureHandle createSharedImage(const gpu::ImageKey& key, const char* debugName, uint16_t w,
                                          uint16_t h, gpu::TextureFormat fmt, const void* initial) override;
     void releaseSharedImage(gpu::TextureHandle tex, bool keep) override;
+    /// T-665 (Docs/design/10-backends.md §10.11 item 7): a texture with every level replaces the
+    /// image's one-level texture (a shared image's for every device of the cache, whose bind groups
+    /// then flush through `viewGeneration`); level 0 is copied and each further level drawn as the
+    /// 2x2 box mean of the one above (blit.wgsl fs_mip_box) -- or uploaded from `storedLevels` for a
+    /// block-compressed image -- in a submission of its own, queued before any later draw. Rgba8 and
+    /// BC images only; host views, targets and BC images without stored levels stay single-level.
+    uint32_t requestMipChain(gpu::TextureHandle tex, const void* storedLevels = nullptr,
+                             uint32_t storedLevelCount = 0) override;
     /// T-656 (50 §50.ab item 1, `xt_gpu_memory_stats.surface_bytes`): the memory of the surface
     /// attachments allocated now -- the MSAA color attachment (target format x samples) and the
     /// stencil attachment (Stencil8 x samples; T-678: at the backend's bytes per texel,
@@ -194,6 +203,24 @@ public:
     /// are skipped in that and every later submit while the rest of the frame is drawn.
     const std::string& lastError() const { return m_lastError; }
     const WgpuDeviceStats& lastStats() const { return m_stats; }
+
+    /// T-683: builds one representative render pipeline of every built-in fragment program (custom
+    /// `.xtfx` programs excepted) and of the blit and mip box steps on this device's pipeline set --
+    /// the content programs for a target of `format` x `samples` with a stencil attachment, the effect
+    /// programs for a one-sample RGBA8 transient (wgpu_internal.h `Pipelines::prewarm`) -- so that no
+    /// later frame waits for a shader compile. Call after `init`, outside `submit`; nothing when not
+    /// initialized. A device that borrows a WgpuSharedCache prewarms the cache's set (every device of
+    /// it benefits) and, when every pipeline was made, marks (`format`, `samples`) as probed (T-456).
+    WgpuPipelinePrewarm prewarmPipelines(WGPUTextureFormat format, uint32_t samples);
+    /// T-683: the same for this device's own target format and sample count.
+    WgpuPipelinePrewarm prewarmPipelines() { return prewarmPipelines(m_targetFormat, m_sampleCount); }
+    /// T-683: the counters of this device's pipeline set (zeros before `init`).
+    WgpuPipelineCounters pipelineCounters() const;
+    /// T-665: the mip chains requestMipChain made since init (cumulative), the bytes of their levels
+    /// 1.. and the CPU time the calls took (ms; encoding and queueing, not the GPU's work).
+    uint32_t mipChainsMade() const { return m_mipChains; }
+    uint64_t mipChainBytes() const { return m_mipBytes; }
+    double mipChainMs() const { return m_mipMs; }
     /// T-674 (50 §50.ac item 1): the `wgpuQueueSubmitForIndex` index of the last `submit` that reached
     /// the queue; 0 before the first (wgpu numbers submissions from 1).
     WGPUSubmissionIndex lastSubmissionIndex() const { return m_lastSubmission; }
@@ -215,6 +242,7 @@ public:
         bool external = false;  ///< view not owned (registerExternalTexture)
         bool cached = false;    ///< an acquireCachedTarget target
         uint32_t sharedId = 0;  ///< T-648: a use of WgpuSharedCache image `sharedId` (external)
+        uint32_t levels = 1;    ///< T-665: mip levels (a shared image: the cache's Image::levels)
     };
     /// One pooled offscreen target: `color` is drawn into (4x when `samples` is 4) and resolves
     /// into `resolve`; with one sample `resolve` is null and `color` is the sampleable texture.
@@ -317,6 +345,9 @@ private:
     WgpuDeviceStats m_stats;
 
     const Texture* find(gpu::TextureHandle tex) const;
+    /// T-665: the view to sample `t` through -- for a shared image the cache's current one (another
+    /// device may have given it its mip chain since this entry was made).
+    WGPUTextureView viewOf(const Texture& t) const;
     gpu::TextureHandle addTexture(const Texture& t);
     /// T-648: borrows the pipeline set of `m_shared` (creating it on first use) for `init`.
     bool borrowSharedPipelines(WGPUTextureFormat format, uint32_t samples, std::string& err);
@@ -341,6 +372,12 @@ private:
     void noteViewsDestroyed();
     /// T-675: a texture this device created on a shared cache's device (WgpuSharedStats).
     void countTextureCreate();
+    /// T-665: requestMipChain's work (timed by it).
+    uint32_t makeMipChain(gpu::TextureHandle tex, const void* storedLevels, uint32_t storedLevelCount);
+    /// T-665: mip chains requestMipChain made (cumulative), their bytes and CPU time.
+    uint32_t m_mipChains = 0;
+    uint64_t m_mipBytes = 0;
+    double m_mipMs = 0.0;
 
 public:
     static void releasePooled(Pooled& p);

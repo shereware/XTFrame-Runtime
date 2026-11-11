@@ -1,0 +1,118 @@
+<xt version="2">
+
+  <!-- T-665 (10 section 10.11 item 7): one high-frequency 128 x 128 image (1 px and 2 px checkers,
+       a 1 px grid, diagonals, rings) drawn at 0.9, 0.75, 0.5, 0.33 and 0.2, rotated 15 deg at 0.3,
+       non-uniform 0.3 x 0.8, and 1:1 and 2x as controls. Minified draws sample their mip chain
+       trilinearly at the explicit lod (SW and GPU alike); the controls are unchanged. -->
+  <body>
+    <img id="s100" src="minify.png"/>
+    <img id="s90" src="minify.png"/>
+    <img id="s75" src="minify.png"/>
+    <img id="s50" src="minify.png"/>
+    <img id="s33" src="minify.png"/>
+    <img id="s20" src="minify.png"/>
+    <img id="rot" src="minify.png"/>
+    <img id="nonu" src="minify.png"/>
+    <img id="s200" src="minify.png"/>
+  </body>
+
+  <layout>
+    body {
+      margin: 0;
+    }
+    #s100 {
+      position: absolute;
+      left: 8px;
+      top: 8px;
+      width: 128px;
+      height: 128px;
+    }
+    #s90 {
+      position: absolute;
+      left: 144px;
+      top: 8px;
+      width: 115.2px;
+      height: 115.2px;
+    }
+    #s75 {
+      position: absolute;
+      left: 268px;
+      top: 8px;
+      width: 96px;
+      height: 96px;
+    }
+    #s50 {
+      position: absolute;
+      left: 372px;
+      top: 8px;
+      width: 64px;
+      height: 64px;
+    }
+    #s33 {
+      position: absolute;
+      left: 444px;
+      top: 8px;
+      width: 42.24px;
+      height: 42.24px;
+    }
+    #s20 {
+      position: absolute;
+      left: 496px;
+      top: 8px;
+      width: 25.6px;
+      height: 25.6px;
+    }
+    #rot {
+      position: absolute;
+      left: 16px;
+      top: 152px;
+      width: 38.4px;
+      height: 38.4px;
+      transform: rotate(15deg);
+      transform-origin: 50% 50%;
+    }
+    #nonu {
+      position: absolute;
+      left: 72px;
+      top: 152px;
+      width: 38.4px;
+      height: 102.4px;
+    }
+    #s200 {
+      position: absolute;
+      left: 128px;
+      top: 144px;
+      width: 256px;
+      height: 256px;
+    }
+  </layout>
+  <style>
+    #s100 {
+      object-fit: fill;
+    }
+    #s90 {
+      object-fit: fill;
+    }
+    #s75 {
+      object-fit: fill;
+    }
+    #s50 {
+      object-fit: fill;
+    }
+    #s33 {
+      object-fit: fill;
+    }
+    #s20 {
+      object-fit: fill;
+    }
+    #rot {
+      object-fit: fill;
+    }
+    #nonu {
+      object-fit: fill;
+    }
+    #s200 {
+      object-fit: fill;
+    }
+  </style>
+</xt>

@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "xt/dds.h"
+#include "xt/image_mips.h"
 #include "xt/ir.h"
 #include "xt/types.h"
 
@@ -39,8 +40,12 @@ struct CompressedImage {
     int height = 0;
     /// Bc1, Bc3 or Bc7 (never Rgba8/Unknown).
     DdsFormat format = DdsFormat::Unknown;
-    /// The 4x4 blocks of level 0, `ddsLevelSize(format, width, height)` bytes.
+    /// The 4x4 blocks of level 0, `ddsLevelSize(format, width, height)` bytes -- T-665: followed by
+    /// those of levels 1..levels-1 (hardware mip sizes) when the file stored a mip chain.
     std::vector<uint8_t> blocks;
+    /// T-665: levels in `blocks` (1 = level 0 only; a GPU then samples this image at one level, and
+    /// so does the software renderer).
+    int levels = 1;
 };
 
 /// Host-provided asset storage. `decodeImage`/`imageSize` need the `IrView` that referenced the
@@ -87,6 +92,17 @@ public:
     /// compressed or cannot be read. A GPU backend prefers this over the decoded pixels; the
     /// software backend always uses imageView(). Valid as long as imageView()'s pointer would be.
     virtual const CompressedImage* compressedImage(AssetId asset, const IrView& view, float dpr) {
+        (void)asset;
+        (void)view;
+        (void)dpr;
+        return nullptr;
+    }
+
+    /// T-665 (Docs/design/10-backends.md §10.11 item 7): the mip chain (xt/image_mips.h) of the image
+    /// imageView(asset, view, dpr) returns, built on first use and kept beside the decode, or nullptr
+    /// ("none") -- the software renderer then builds and keeps the chain itself. Valid as long as
+    /// imageView()'s pointer would be. Default: none.
+    virtual const ImageMipChain* imageMipChain(AssetId asset, const IrView& view, float dpr) {
         (void)asset;
         (void)view;
         (void)dpr;
@@ -304,6 +320,9 @@ public:
     /// T-199: the DDS blocks of an asset whose file (or `@2x` file) is a DDS (see
     /// AssetResolver::compressedImage); nullptr for any other file format.
     const CompressedImage* compressedImage(AssetId asset, const IrView& view, float dpr) override;
+    /// T-665: the chain of imageView(asset, view, dpr)'s decode, built on first use, freed with the
+    /// decode and counted with its pixels against the idle budget (setIdleDecodeBudget()).
+    const ImageMipChain* imageMipChain(AssetId asset, const IrView& view, float dpr) override;
 
     /// T-215: forgets every per-asset lookup (which decoded image each asset name or embedded
     /// byte range maps to, and the header-only sizes) for a host about to use this resolver with
@@ -403,6 +422,10 @@ private:
         bool hasCompressed = false;
         CompressedImage compressed;
         bool ok = false;
+        /// T-665: the mip chain of `image`, built by the first imageMipChain() and freed with the
+        /// entry (counted against the idle budget with the pixels).
+        bool mipsBuilt = false;
+        ImageMipChain mips;
         /// T-263g: on `m_idle` -- no live source resolves to it.
         bool idle = false;
     };

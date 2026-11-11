@@ -2385,8 +2385,12 @@ TEST_CASE(
 namespace {
 
 /// T-263b E3: the frame of `cl` built with a fresh 256 px atlas.
-void buildWithAtlas(Built& b, text::FtTextShaper& shaper, text::GlyphAtlas& atlas, const CommandList& cl) {
+/// T-681: `fringe` false builds for a multisampled target, where runs of 24 px and more are still
+/// glyph atlas runs (on a single-sampled one they are outline coverage, as SW fills them).
+void buildWithAtlas(Built& b, text::FtTextShaper& shaper, text::GlyphAtlas& atlas, const CommandList& cl,
+                    bool fringe = true) {
     b.builder.init(b.device);
+    b.builder.setEdgeFringe(fringe);
     b.builder.resize(static_cast<int>(cl.viewport.w * cl.devicePixelRatio),
                      static_cast<int>(cl.viewport.h * cl.devicePixelRatio));
     b.builder.setGlyphAtlas(&atlas);
@@ -2440,8 +2444,9 @@ TEST_CASE("gpu: T-263b atlas glyphs are rasterized at the run's scaled size") {
         text::GlyphAtlas atlasB(shaper, 256);
         Built a;
         Built b;
-        buildWithAtlas(a, shaper, atlasA, scaled);
-        buildWithAtlas(b, shaper, atlasB, plain);
+        // T-681: 24 device px, an atlas run only under MSAA.
+        buildWithAtlas(a, shaper, atlasA, scaled, false);
+        buildWithAtlas(b, shaper, atlasB, plain, false);
         CHECK(cmdsWith(a.frame, StencilOp::WriteIncrWrap).empty());  // still the atlas path
         checkSameGlyphQuads(a.frame, b.frame);
     }
@@ -2454,8 +2459,8 @@ TEST_CASE("gpu: T-263b atlas glyphs are rasterized at the run's scaled size") {
         text::GlyphAtlas atlasB(shaper, 256);
         Built a;
         Built b;
-        buildWithAtlas(a, shaper, atlasA, scaled);
-        buildWithAtlas(b, shaper, atlasB, plain);
+        buildWithAtlas(a, shaper, atlasA, scaled, false);  // T-681: 36 device px, MSAA
+        buildWithAtlas(b, shaper, atlasB, plain, false);
         checkSameGlyphQuads(a.frame, b.frame);
     }
     SUBCASE("a glyph effect follows the scale too") {
@@ -2505,6 +2510,7 @@ TEST_CASE("gpu: T-263c a run being scaled stays off the atlas until its size hol
     b.builder.init(b.device);
     b.builder.resize(256, 96);
     b.builder.setGlyphAtlas(&atlas);
+    b.builder.setEdgeFringe(false);  // T-681: the run grows past 24 px, an atlas run only under MSAA
     auto buildAt = [&](float scale) {
         // The same run (font, glyphs, positions); only its transform's scale moves.
         CommandList cl = buildGlyphsList(shaper, "Hello", 12.0f, Vec2{2, 12}, scaling(Vec2{scale, scale}),
@@ -2547,7 +2553,7 @@ TEST_CASE("gpu: T-263c a run rasterized larger than kMaxAtlasGlyphPx is filled f
         CommandList cl = buildGlyphsList(shaper, "Hi", 12.0f, Vec2{1, 12}, scaling(Vec2{8, 8}),
                                          Color{0, 0, 0, 1}, 256, 128);
         Built b;
-        buildWithAtlas(b, shaper, atlas, cl);
+        buildWithAtlas(b, shaper, atlas, cl, false);  // T-681: under MSAA (1x: outline coverage)
         CHECK(cmdsWith(b.frame, Shading::Glyph).size() == 1);
         CHECK(!b.device.updates.empty());
     }
@@ -5962,15 +5968,18 @@ TEST_CASE("gpu: T-664 per-side widths of a thin ring") {
 // conservative -- every pixel SW draws for the run lies inside it -- for Latin, CJK, combining
 // marks, a slanted ("italic") run, a rotated one and glyphs stacked as in an upright vertical
 // line, at a bitmap size and an outline size; and it is tighter than the origins grown by the size.
+// T-681 (Docs/tasks/T-681.md item 4): the same for the per-glyph ink boxes, directly (no clip margin)
+// at dpr 1 and 2, with synthetic bold runs and a skewed, scaled run added.
 namespace {
 
 /// Every run of `textStr` shaped with Noto Sans (falling back to Noto Sans SC) as GlyphsCmds of
 /// `list`, at `origin`, under `xf`; `stack` puts every glyph at the same x, one size apart in y.
+/// `weight` 700 over the Regular faces alone is a synthetic bold (T-569).
 void addShapedRuns(text::FtTextShaper& shaper, CommandList& list, const std::string& textStr, float size,
-                   Vec2 origin, const Mat2x3& xf, bool stack) {
+                   Vec2 origin, const Mat2x3& xf, bool stack, uint16_t weight = 400) {
     static const std::vector<std::string_view> families = {"Noto Sans", "Noto Sans SC"};
     ShapeParams params;
-    params.font = FontRequest{std::span<const std::string_view>(families), 400, false};
+    params.font = FontRequest{std::span<const std::string_view>(families), weight, false};
     params.size = size;
     ShapeResult shaped;
     shaper.shape(textStr, params, shaped);
@@ -6033,6 +6042,7 @@ TEST_CASE("gpu: T-664 glyph run boxes for the clip scan hold every drawn pixel")
         const char* name;
         const char* text;
         bool stack;
+        uint16_t weight = 400;
     };
     const Case cases[] = {
         {"latin", "Hxgjpq fy", false},
@@ -6043,6 +6053,9 @@ TEST_CASE("gpu: T-664 glyph run boxes for the clip scan hold every drawn pixel")
          "\xE6\xBC\xA2"
          "Wi\xE5\xAD\x97",
          true},
+        // T-681: synthetic bold (the Regular faces at weight 700), Latin and CJK.
+        {"bold latin", "Hxgjpq fyW", false, 700},
+        {"bold cjk", "\xE6\xBC\xA2\xE5\xAD\x97\xE6\xB8\xAC\xE8\xA9\xA6", false, 700},
     };
     struct Xf {
         const char* name;
@@ -6052,33 +6065,41 @@ TEST_CASE("gpu: T-664 glyph run boxes for the clip scan hold every drawn pixel")
         {"plain", Mat2x3{}},
         {"italic (skewX -0.3)", Mat2x3{1.0f, 0.0f, -0.3f, 1.0f, 0.0f, 0.0f}},
         {"rotated 9 deg", rotationDeg(9.0f)},
+        {"skewX -6 deg, scaled 1.3", Mat2x3{1.3f, 0.0f, -0.1366f, 1.3f, 0.0f, 0.0f}},  // T-681
     };
-    constexpr int kW = 512, kH = 400;
+    constexpr int kW = 768, kH = 512;
     for (const Case& c : cases) {
         for (const Xf& x : xfs) {
             for (float size : {16.0f, 40.0f}) {
-                INFO(std::string(c.name), ", ", std::string(x.name), ", size ", size);
-                CommandList cl = makeList(kW, kH);
-                const Vec2 origin = c.stack ? Vec2{150.25f, 60.5f} : Vec2{60.25f, 120.5f};
-                addShapedRuns(shaper, cl, c.text, size, origin, x.m, c.stack);
-                std::vector<uint8_t> px(static_cast<size_t>(kW) * kH * 4, 0);
-                for (size_t k = 0; k < cl.commands.size(); ++k) {
-                    CommandList one = cl;
-                    one.commands.assign(1, cl.commands[k]);
-                    std::fill(px.begin(), px.end(), uint8_t{0});
-                    sw::SwRenderer renderer;
-                    renderer.setTarget(sw::SwTarget{px.data(), kW, kH, kW * 4});
-                    renderer.clear(Color{0, 0, 0, 0});
-                    renderer.render(one, &shaper, nullptr);
-                    Rect ink;
-                    REQUIRE(inkBox(px, kW, kH, ink));
-                    Rect box;
-                    REQUIRE(clipContentBounds(cl, cl.commands[k], 1.0f, box, &shaper) ==
-                            ClipContentBounds::Box);
-                    CHECK(contains(box, ink));
-                    Rect coarse;
-                    REQUIRE(clipContentBounds(cl, cl.commands[k], 1.0f, coarse) == ClipContentBounds::Box);
-                    CHECK(box.h < coarse.h);
+                for (float dpr : {1.0f, 2.0f}) {
+                    INFO(std::string(c.name), ", ", std::string(x.name), ", size ", size, ", dpr ", dpr);
+                    CommandList cl = makeList(kW, kH);
+                    cl.devicePixelRatio = dpr;
+                    const Vec2 origin = c.stack ? Vec2{80.25f, 30.5f} : Vec2{20.25f, 80.5f};
+                    addShapedRuns(shaper, cl, c.text, size, origin, x.m, c.stack, c.weight);
+                    std::vector<uint8_t> px(static_cast<size_t>(kW) * kH * 4, 0);
+                    for (size_t k = 0; k < cl.commands.size(); ++k) {
+                        CommandList one = cl;
+                        one.commands.assign(1, cl.commands[k]);
+                        std::fill(px.begin(), px.end(), uint8_t{0});
+                        sw::SwRenderer renderer;
+                        renderer.setTarget(sw::SwTarget{px.data(), kW, kH, kW * 4});
+                        renderer.clear(Color{0, 0, 0, 0});
+                        renderer.render(one, &shaper, nullptr);
+                        Rect ink;
+                        REQUIRE(inkBox(px, kW, kH, ink));
+                        Rect box;
+                        REQUIRE(clipContentBounds(cl, cl.commands[k], dpr, box, &shaper) ==
+                                ClipContentBounds::Box);
+                        CHECK(contains(box, ink));
+                        Rect coarse;
+                        REQUIRE(clipContentBounds(cl, cl.commands[k], dpr, coarse) == ClipContentBounds::Box);
+                        CHECK(box.h < coarse.h);
+                        // T-681: the ink box itself (one device pixel grown, no clip margin), in device px.
+                        Rect run;
+                        REQUIRE(glyphRunInkBounds(cl, cl.glyphRuns[cl.commands[k].index], &shaper, run, dpr));
+                        CHECK(contains(Rect{run.x * dpr, run.y * dpr, run.w * dpr, run.h * dpr}, ink));
+                    }
                 }
             }
         }
@@ -6123,11 +6144,9 @@ TEST_CASE("gpu: T-676 clip-frame boxes are taken in the clip's local coordinates
                       m * (std::fabs(frame.b) + std::fabs(frame.d))};
     Rect local;
     REQUIRE(clipContentBoundsInFrame(cl, cmd, frame, margin, local, &shaper) == ClipContentBounds::Box);
-    // The run-space box: the same run with the identity transform.
-    GlyphsCmd plain = cl.glyphRuns[cmd.index];
-    plain.xf = Mat2x3{};
+    // The run-space box (T-681: its device pixel taken under the run's own skew).
     Rect runBox;
-    REQUIRE(glyphRunInkBounds(cl, plain, &shaper, runBox));
+    REQUIRE(glyphRunInkBox(cl, cl.glyphRuns[cmd.index], &shaper, runBox));
     checkRect(local, Rect{runBox.x - margin.x, runBox.y - margin.y, runBox.w + 2.0f * margin.x,
                           runBox.h + 2.0f * margin.y});
     // The device box mapped back through the frame is wider (the skew's second axis-aligned box).
@@ -6159,3 +6178,39 @@ TEST_CASE("gpu: T-676 clip-frame boxes are taken in the clip's local coordinates
 }
 
 #endif  // XT_GPU_NO_TEXT
+
+// T-683 (Docs/design/50-c-abi.md §50.ad item 1): a box shadow without extra terms draws with the
+// one-shape program (DrawCmd::boxShadowMulti 0), an outlined one (the three signed terms of T-680) with
+// the program of up to three shapes (1); the frame dump names only the latter.
+TEST_CASE("gpu: T-683 the builder picks the one-shape or the multi-shape box shadow program") {
+    CommandList cl = makeList();
+    BoxShadowCmd one{};
+    one.rect = Rect{6, 6, 18, 12};
+    one.offset = Vec2{1, 2};
+    one.blur = 6;
+    one.color = Color{0, 0, 0, 0.5f};
+    BoxShadowCmd outlined = one;
+    outlined.rect = Rect{30, 30, 24, 18};
+    outlined.extraCount = 2;
+    outlined.extra[0] = BoxShadowTerm{Rect{33, 33, 18, 12}, {0, 0, 0, 0}, -1.0f};
+    outlined.extra[1] = BoxShadowTerm{Rect{36, 36, 12, 6}, {0, 0, 0, 0}, 1.0f};
+    for (const BoxShadowCmd& bs : {one, outlined}) {
+        cl.commands.push_back(
+            Command{CmdKind::DrawBoxShadow, {}, static_cast<uint32_t>(cl.boxShadows.size())});
+        cl.boxShadows.push_back(bs);
+    }
+    Built b;
+    buildInto(b, cl, 64, 64);
+    std::vector<uint8_t> multi;
+    for (const DrawCmd& c : b.frame.cmds) {
+        if (c.shading == Shading::BoxShadow) multi.push_back(c.boxShadowMulti);
+    }
+    REQUIRE(multi.size() == 2);
+    CHECK(multi[0] == 0);
+    CHECK(multi[1] == 1);
+    std::string dump;
+    dumpGpuFrame(b.frame, dump);
+    const size_t first = dump.find(" multi=yes");
+    CHECK(first != std::string::npos);
+    CHECK(dump.find(" multi=yes", first + 1) == std::string::npos);
+}

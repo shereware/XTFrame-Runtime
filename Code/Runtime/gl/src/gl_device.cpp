@@ -9,6 +9,7 @@
 #include "gl_state.h"
 #include "gl_util.h"
 #include "xt/assert.h"
+#include "xt/image_mips.h"
 
 namespace xt::gl {
 
@@ -63,11 +64,11 @@ bool GlDevice::linkMain(Program& p, const char* frag, std::string& err) {
     p.uRect = glGetUniformLocation(p.id, "uRect");
     p.uTexSize = glGetUniformLocation(p.id, "uTexSize");
     p.uUvToLocal = glGetUniformLocation(p.id, "uUvToLocal");  // T-660b (kCoverageGradientFrag only).
-    p.uShape = glGetUniformLocation(p.id, "uShape");          // T-668 (kBoxShadowFrag only).
+    p.uShape = glGetUniformLocation(p.id, "uShape");          // T-668 (the box shadow programs only).
     p.uRadii = glGetUniformLocation(p.id, "uRadii");
     p.uSigma = glGetUniformLocation(p.id, "uSigma");
     p.uColor = glGetUniformLocation(p.id, "uColor");
-    p.uShape1 = glGetUniformLocation(p.id, "uShape1");  // T-680 (kBoxShadowFrag only).
+    p.uShape1 = glGetUniformLocation(p.id, "uShape1");  // T-680 (kBoxShadowMultiFrag only).
     p.uRadii1 = glGetUniformLocation(p.id, "uRadii1");
     p.uShape2 = glGetUniformLocation(p.id, "uShape2");
     p.uRadii2 = glGetUniformLocation(p.id, "uRadii2");
@@ -107,6 +108,7 @@ bool GlDevice::init(std::string& err) {
                     linkMain(m_coverageSolid, shaders::kCoverageSolidFrag, err) &&
                     linkMain(m_coverageGradient, shaders::kCoverageGradientFrag, err) &&
                     linkMain(m_boxShadow, shaders::kBoxShadowFrag, err) &&
+                    linkMain(m_boxShadowMulti, shaders::kBoxShadowMultiFrag, err) &&  // T-683
                     linkParticle(m_particleTexture, shaders::kParticleTextureFrag, err) &&
                     linkParticle(m_particleSolid, shaders::kParticleSolidFrag, err);
     bool compositeOk = false;
@@ -132,6 +134,21 @@ bool GlDevice::init(std::string& err) {
             glUseProgram(m_resolve.id);
             glUniform1i(glGetUniformLocation(m_resolve.id, "uSrc"), 0);
             resolveOk = true;
+        }
+    }
+    // T-665 (Docs/design/10-backends.md §10.11 item 7): the trilinear image program and the mip box
+    // step. Optional: without them every image stays single-level (requestMipChain returns 1).
+    m_textureLod = Program{};
+    m_mipBox = Program{};
+    if (ok && compositeOk && resolveOk) {
+        std::string lodErr;
+        if (linkMain(m_textureLod, shaders::kTextureLodFrag, lodErr)) {
+            m_textureLod.uLodParams = glGetUniformLocation(m_textureLod.id, "uLodParams");
+            m_mipBox.id = linkProgram(shaders::kResolveVert, shaders::kMipBoxFrag, lodErr);
+            if (m_mipBox.id != 0) {
+                glUseProgram(m_mipBox.id);
+                glUniform1i(glGetUniformLocation(m_mipBox.id, "uSrc"), 0);
+            }
         }
     }
     glUseProgram(static_cast<GLuint>(previous));
@@ -240,8 +257,12 @@ void GlDevice::shutdown() {
     if (m_particleVao != 0) glDeleteVertexArrays(1, &m_particleVao);
     m_particleVbo = m_particleVao = 0;
     m_particleCapacity = 0;
-    Program* progs[] = {&m_solid,     &m_gradient, &m_texture,       &m_textureStraight,  &m_glyph,
-                        &m_composite, &m_resolve,  &m_coverageSolid, &m_coverageGradient, &m_boxShadow};
+    Program* progs[] = {&m_solid,      &m_gradient, &m_texture,       &m_textureStraight,  &m_glyph,
+                        &m_composite,  &m_resolve,  &m_coverageSolid, &m_coverageGradient, &m_boxShadow,
+                        &m_textureLod, &m_mipBox};
+    if (m_mipFbo != 0) glDeleteFramebuffers(1, &m_mipFbo);
+    m_mipFbo = 0;
+    m_pendingMips.clear();
     for (Program* p : progs) {
         if (p->id != 0) glDeleteProgram(p->id);
         *p = Program{};
@@ -313,7 +334,7 @@ gpu::TextureHandle GlDevice::createTexture(const char* debugName, uint16_t w, ui
             glDeleteTextures(1, &tex);
             return 0;
         }
-        m_textures.push_back(Texture{tex, fmt, GL_LINEAR});
+        m_textures.push_back(Texture{tex, fmt, GL_LINEAR, w, h});
         return tex;
     }
     while (glGetError() != 0) {
@@ -342,7 +363,7 @@ gpu::TextureHandle GlDevice::createTexture(const char* debugName, uint16_t w, ui
         glDeleteTextures(1, &tex);
         return 0;
     }
-    m_textures.push_back(Texture{tex, fmt, GL_LINEAR});
+    m_textures.push_back(Texture{tex, fmt, GL_LINEAR, w, h});
     return tex;
 }
 
@@ -384,6 +405,93 @@ void GlDevice::updateTexture(gpu::TextureHandle tex, uint16_t x, uint16_t y, uin
         }
     }
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+}
+
+uint32_t GlDevice::requestMipChain(gpu::TextureHandle tex, const void* storedLevels,
+                                   uint32_t storedLevelCount) {
+    // T-665: Rgba8 images only. Block-compressed images keep one level here (stored chains are
+    // not uploaded by this device), and the chain is made at the start of the next submit.
+    (void)storedLevels;
+    (void)storedLevelCount;
+    if (tex == 0 || m_textureLod.id == 0 || m_mipBox.id == 0) {
+        return 1;
+    }
+    for (Texture& t : m_textures) {
+        if (t.name != tex) continue;
+        if (t.levels > 1) return t.levels;
+        if (t.format != gpu::TextureFormat::Rgba8 || t.width == 0 || t.height == 0) return 1;
+        const int levels = imageMipLevelCount(t.width, t.height);
+        if (levels <= 1) return 1;
+        t.levels = static_cast<uint32_t>(levels);
+        m_pendingMips.push_back(tex);
+        ++m_mipChains;
+        return t.levels;
+    }
+    return 1;  // a host texture, or a target
+}
+
+void GlDevice::generatePendingMips() {
+    if (m_pendingMips.empty()) {
+        return;
+    }
+    const auto t0 = std::chrono::steady_clock::now();
+    if (m_mipFbo == 0) {
+        glGenFramebuffers(1, &m_mipFbo);
+    }
+    m_cache.scissorTest(false);
+    m_cache.blendSrcOver(false);
+    m_cache.stencilTest(false);
+    m_cache.colorMask(true);
+    m_cache.useProgram(m_mipBox.id);
+    m_geometry.bindFrame(m_cache);  // attributes are not read (kResolveVert)
+    m_cache.bindDrawFramebuffer(m_mipFbo);
+    for (GLuint tex : m_pendingMips) {
+        const Texture* found = nullptr;
+        for (const Texture& t : m_textures) {
+            if (t.name == tex) found = &t;
+        }
+        if (found == nullptr) continue;  // destroyed since it was asked for
+        const Texture t = *found;
+        m_cache.bindTexture(0, tex);
+        m_cache.activeTexture(0);
+        setUploadUnpackState();  // no pixel unpack buffer for the null uploads
+        for (uint32_t k = 1; k < t.levels; ++k) {
+            const GLsizei lw = std::max(1, t.width >> k), lh = std::max(1, t.height >> k);
+            glTexImage2D(GL_TEXTURE_2D, static_cast<GLint>(k), static_cast<GLint>(GL_RGBA8), lw, lh, 0,
+                         GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        }
+        for (uint32_t k = 1; k < t.levels; ++k) {
+            // Only level k - 1 is sampled while level k is drawn (no feedback loop).
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, static_cast<GLint>(k - 1));
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, static_cast<GLint>(k - 1));
+            glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex,
+                                   static_cast<GLint>(k));
+            m_cache.viewport(0, 0, std::max(1, t.width >> k), std::max(1, t.height >> k));
+            glDrawArrays(GL_TRIANGLES, 0, 3);
+        }
+        glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, 0, 0);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, static_cast<GLint>(t.levels - 1));
+        m_mipBytes += static_cast<uint64_t>(t.width) * static_cast<uint64_t>(t.height) * 4u / 3u;
+    }
+    m_pendingMips.clear();
+    m_mipMs += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+}
+
+void GlDevice::bindSampledMip(GLuint tex) {
+    m_cache.bindTexture(0, tex);
+    for (Texture& t : m_textures) {
+        if (t.name != tex) continue;
+        if (t.filter != GL_LINEAR_MIPMAP_NEAREST) {
+            // The explicit lod picks whole levels (textureLod); each is filtered bilinearly.
+            m_cache.activeTexture(0);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                            static_cast<GLint>(GL_LINEAR_MIPMAP_NEAREST));
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, static_cast<GLint>(GL_LINEAR));
+            t.filter = GL_LINEAR_MIPMAP_NEAREST;
+        }
+        return;
+    }
 }
 
 void GlDevice::destroyTexture(gpu::TextureHandle tex) {
@@ -885,6 +993,23 @@ void GlDevice::drawCmd(const gpu::DrawCmd& cmd) {
         }
         case Shading::Texture:
         case Shading::TextureStraight: {
+            if (cmd.mipLod != 0 && m_textureLod.id != 0) {
+                // T-665: trilinear at the explicit lod (gpu_frame.h TextureLodParams).
+                size_t avail = 0;
+                const float* p = paramsAt(cmd.paramIndex, avail);
+                gpu::TextureLodParams lp;
+                if (p != nullptr && avail * sizeof(float) >= sizeof(lp)) {
+                    std::memcpy(static_cast<void*>(&lp), p, sizeof(lp));
+                }
+                Program& prog = m_textureLod;
+                m_cache.useProgram(prog.id);
+                prog.shadow.stats = &m_cache.stats;
+                prog.shadow.setMat3(prog.uNdc, m_ndc);
+                prog.shadow.set4f(prog.uLodParams, lp.lod, lp.maxLevel, lp.straight, 0.0f);
+                bindSampledMip(cmd.texture);
+                m_geometry.drawRange(cmd.firstIndex, cmd.indexCount, cmd.baseVertex, m_cache.stats);
+                return;
+            }
             // T-150: a host texture (TextureStraight, or Texture bound premultiplied) is a GL
             // texture name this device did not create; sampling it needs nothing more.
             Program& prog = cmd.shading == Shading::Texture ? m_texture : m_textureStraight;
@@ -967,7 +1092,8 @@ void GlDevice::drawCmd(const gpu::DrawCmd& cmd) {
                 return;
             }
             std::memcpy(&bp, p, sizeof(bp));
-            Program& prog = m_boxShadow;
+            // T-683 (50 §50.ad item 1): the one-shape program unless the builder chose the multi one.
+            Program& prog = cmd.boxShadowMulti != 0 ? m_boxShadowMulti : m_boxShadow;
             m_cache.useProgram(prog.id);
             prog.shadow.stats = &m_cache.stats;
             prog.shadow.setMat3(prog.uNdc, m_ndc);
@@ -1023,6 +1149,7 @@ void GlDevice::submit(const gpu::GpuFrame& frame) {
     m_geometry.uploadFrame(frame.vertices, frame.indices, m_cache);
     uploadParticles(frame);  // T-202
     m_cache.stats.uploadMs += msSince(t0);
+    generatePendingMips();  // T-665: before any draw samples them
     t0 = Clock::now();
 
     m_handles.assign(frame.transients.size(), -1);

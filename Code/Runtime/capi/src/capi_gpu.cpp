@@ -42,7 +42,9 @@
 /// its own glyph atlas (starting at 1024 x 1024, growing to 2048 x 2048). T-675 (50 §50.ac item 2): the
 /// transient pool, the surface attachment sets and the dummy are the target's (in its WgpuSharedCache),
 /// and a surface takes its texture from the target's pool of surface textures and gives it back when
-/// hidden; a hidden surface keeps its renderer (xt_surface_trim, detach and destroy release it).
+/// hidden; a hidden surface keeps its renderer (xt_surface_trim, detach and destroy release it). T-683
+/// (50 §50.ad items 2-3): xt_gpu_target_create prewarms every built-in shader for the surfaces' format and
+/// sample count, and a hidden surface also releases its coverage atlas (its glyph atlas stays).
 /// Without wgpu (XT_BUILD_WGPU=OFF) every function only reports "built without wgpu".
 
 using xt::capi::fail;
@@ -207,7 +209,8 @@ void releaseGpuResources(xt_surface& surface, bool everything) {
     if (!everything) {
         // T-675 (50 §50.ac item 2): trim-on-hide gives back the surface texture and the effect-cache
         // targets (to the target's pools) and ends its image uses; the renderer and its small resources
-        // stay, so showing it again makes none of them.
+        // stay, so showing it again makes none of them. T-683 (§50.ad item 3): its coverage atlas is
+        // released too (the glyph atlas stays).
         SurfaceGpu& g = *surface.gpu;
         g.releaseTexture();
         g.renderer.trim();
@@ -320,12 +323,14 @@ void logSharedCache(xt_gpu_target& t) {
     if (s.imageCreates == l.imageCreates && s.imageReuses == l.imageReuses && s.imageFrees == l.imageFrees &&
         s.pipelineSets == l.pipelineSets && s.pipelineBorrows == l.pipelineBorrows &&
         s.textureCreates == l.textureCreates && s.poolFrees == l.poolFrees &&
-        s.attachmentSets == l.attachmentSets && s.surfaceTexturesIdle == l.surfaceTexturesIdle) {
+        s.attachmentSets == l.attachmentSets && s.surfaceTexturesIdle == l.surfaceTexturesIdle &&
+        s.shaderCompiles == l.shaderCompiles && s.pipelineCreates == l.pipelineCreates) {
         return;
     }
     t.logged = s;
     // T-675: then every texture created on the target's device so far and the target-level pools
-    // (50 §50.ac item 2; tests and xt_gpu_mem_probe count the creates per scene switch here).
+    // (50 §50.ac item 2; tests and xt_gpu_mem_probe count the creates per scene switch here). T-683
+    // (§50.ad item 2): last, the pipeline set's shader compiles and pipeline creates since the prewarm.
     xt::capi::log(
         0, "xt_gpu_target: shared image textures " + std::to_string(s.imageTextures) + " (" +
                std::to_string(s.imageBytes / 1024u) + " KiB; uploaded " + std::to_string(s.imageCreates) +
@@ -335,7 +340,9 @@ void logSharedCache(xt_gpu_target& t) {
                "; pools " + std::to_string(s.poolTextures) + " texture(s), " +
                std::to_string(s.poolBytes / 1024u) + " KiB, attachment sets " +
                std::to_string(s.attachmentSets) + ", idle surface textures " +
-               std::to_string(s.surfaceTexturesIdle) + ", pool frees " + std::to_string(s.poolFrees));
+               std::to_string(s.surfaceTexturesIdle) + ", pool frees " + std::to_string(s.poolFrees) +
+               "; after prewarm: shader compiles " + std::to_string(s.shaderCompiles) +
+               ", pipeline creates " + std::to_string(s.pipelineCreates));
 }
 
 /// T-656: the counters of xt_gpu_target_memory_stats (50 §50.ab item 1), all fields.
@@ -482,6 +489,16 @@ XT_CAPI xt_gpu_target* xt_gpu_target_create(const xt_gpu_target_desc* desc) {
         if (!t->composer.init(in))
             return failNull(std::string("WgpuRenderer::init: ") + t->composer.lastError());
         t->composer.resize(t->width, t->height);
+        // T-683 (50 §50.ad item 2): every built-in program compiled now, for the surfaces' renderers
+        // (RGBA8, the target's sample count), so no first show waits for a shader compile.
+        const xt::wgpu::WgpuPipelinePrewarm warm =
+            t->composer.device()->prewarmPipelines(WGPUTextureFormat_RGBA8Unorm, t->sampleCount);
+        char ms[32];
+        std::snprintf(ms, sizeof ms, "%.1f", warm.ms);
+        xt::capi::log(warm.ok ? 0 : 1,
+                      "xt_gpu_target: prewarmed " + std::to_string(warm.shaders) + " shader(s), " +
+                          std::to_string(warm.pipelines) + " pipeline(s) in " + ms + " ms" +
+                          (warm.ok ? "" : " (a pipeline failed; its draws will be skipped)"));
         return t.release();
     });
 }

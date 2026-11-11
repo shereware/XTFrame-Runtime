@@ -53,6 +53,7 @@ add_executable(xt_tests
     unit/test_sw_blend.cpp
     unit/test_sw_layer_mask.cpp
     unit/test_sw_stroke_image.cpp
+    unit/test_image_mips.cpp  # T-665
     unit/test_sw_3d.cpp
     unit/test_sw_partial.cpp
     unit/test_sw_direct.cpp

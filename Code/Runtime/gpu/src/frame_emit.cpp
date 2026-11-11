@@ -31,7 +31,7 @@ bool sameState(const DrawCmd& a, const DrawCmd& b) {
            a.paramIndex == b.paramIndex && a.shading == b.shading && a.blend == b.blend &&
            a.stencilOp == b.stencilOp && a.stencilRef == b.stencilRef && a.sampler == b.sampler &&
            a.program == b.program && a.clipX == b.clipX && a.clipY == b.clipY && a.clipW == b.clipW &&
-           a.clipH == b.clipH;
+           a.clipH == b.clipH && a.mipLod == b.mipLod && a.boxShadowMulti == b.boxShadowMulti;
 }
 
 }  // namespace

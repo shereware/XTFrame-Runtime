@@ -46,12 +46,16 @@ xt_capi_pack_bundle(XT_CAPI_IMAGES images "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/
 # T-678: six large overlapping panels with shadows, glows and shine, whose frame borrows far more than
 # 16 MiB of transient targets (the transient pool budget case of test_capi_gpu.cpp).
 xt_capi_pack_bundle(XT_CAPI_EFFECTS effects "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/effects")
+# T-683: a card with a one-term and an outlined card with a three-term analytic drop shadow, and a
+# non-convex star (a coverage-atlas fill at one sample): the prewarm and coverage-release cases.
+xt_capi_pack_bundle(XT_CAPI_BOXSHADOW boxshadow "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/boxshadow")
 add_custom_target(xt_capi_test_bundles
     DEPENDS "${XT_CAPI_GAME_UI}/manifest.json" "${XT_CAPI_HUD_OVERLAY}/manifest.json"
             "${XT_CAPI_DEVICE}/manifest.json" "${XT_CAPI_FLIP}/manifest.json"
             "${XT_CAPI_L10N}/manifest.json" "${XT_CAPI_STATE}/manifest.json"
             "${XT_CAPI_NPDO}/manifest.json" "${XT_CAPI_TEXT}/manifest.json"
-            "${XT_CAPI_IMAGES}/manifest.json" "${XT_CAPI_EFFECTS}/manifest.json")
+            "${XT_CAPI_IMAGES}/manifest.json" "${XT_CAPI_EFFECTS}/manifest.json"
+            "${XT_CAPI_BOXSHADOW}/manifest.json")
 
 add_executable(xt_capi_tests
     test_main.cpp
@@ -78,7 +82,8 @@ target_compile_definitions(xt_capi_tests PRIVATE
     XT_CAPI_TEST_NPDO_BUNDLE="${XT_CAPI_NPDO}"
     XT_CAPI_TEST_TEXT_BUNDLE="${XT_CAPI_TEXT}"
     XT_CAPI_TEST_IMAGES_BUNDLE="${XT_CAPI_IMAGES}"
-    XT_CAPI_TEST_EFFECTS_BUNDLE="${XT_CAPI_EFFECTS}")
+    XT_CAPI_TEST_EFFECTS_BUNDLE="${XT_CAPI_EFFECTS}"
+    XT_CAPI_TEST_BOXSHADOW_BUNDLE="${XT_CAPI_BOXSHADOW}")
 # Only the C header (and xt/version.h's macros, for case 1) -- the runtime is reached through the
 # shared library alone. nlohmann reads the packed manifest for case 2.
 target_include_directories(xt_capi_tests PRIVATE ${PROJECT_SOURCE_DIR}/Code/Runtime/core/include)

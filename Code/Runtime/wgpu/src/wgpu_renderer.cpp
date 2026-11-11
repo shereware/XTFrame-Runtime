@@ -335,6 +335,10 @@ void WgpuRenderer::trim() {
 
 void WgpuRenderer::invalidateImages() { m_impl->builder.invalidateAllAssets(); }
 
+WgpuPipelinePrewarm WgpuRenderer::prewarmPipelines() {
+    return m_impl->initialized ? m_impl->device.prewarmPipelines() : WgpuPipelinePrewarm{};
+}
+
 WgpuStats WgpuRenderer::stats() const {
     const WgpuDeviceStats& d = m_impl->device.lastStats();
     WgpuStats s;
@@ -354,6 +358,11 @@ WgpuStats WgpuRenderer::stats() const {
     s.coverageAtlasBytes = m_impl->builder.lastCoverageStats().atlasBytes;
     s.inflightWaits = m_impl->framesInFlight.frameWaits();  // T-674
     s.inflightWaitMs = m_impl->framesInFlight.frameWaitMs();
+    const WgpuPipelineCounters pc = m_impl->device.pipelineCounters();  // T-683
+    s.prewarmShaderCompiles = pc.prewarmShaderCompiles;
+    s.prewarmPipelineCreates = pc.prewarmPipelineCreates;
+    s.shaderCompiles = pc.shaderCompiles;
+    s.pipelineCreates = pc.pipelineCreates;
     if (!m_impl->frameReused) {  // T-658: the build's effect cache counters
         const gpu::FrameBuilder::EffectCacheStats c = m_impl->builder.lastEffectCacheStats();
         s.fxCacheHits = c.hits;

@@ -5,6 +5,7 @@ add_executable(xt_gl_tests
     test_gl_3d.cpp
     test_gl_effects.cpp
     test_gl_particles.cpp
+    test_gl_mips.cpp  # T-665
     test_gl_direct.cpp
 )
 target_include_directories(xt_gl_tests SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/Code/SDKs/doctest)

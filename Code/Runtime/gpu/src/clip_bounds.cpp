@@ -1,5 +1,6 @@
 #include "xt/gpu/clip_bounds.h"
 
+#include <algorithm>
 #include <cmath>
 
 #include "xt/box_shadow.h"  // commandBoundsInFrame (T-676)
@@ -11,6 +12,20 @@ namespace {
 
 bool finiteRect(const Rect& r) {
     return std::isfinite(r.x) && std::isfinite(r.y) && std::isfinite(r.w) && std::isfinite(r.h);
+}
+
+/// The axis-aligned box of `r`'s four corners under `m`.
+Rect mapRect(const Mat2x3& m, const Rect& r) {
+    const Vec2 c[4] = {apply(m, Vec2{r.x, r.y}), apply(m, Vec2{r.x + r.w, r.y}),
+                       apply(m, Vec2{r.x + r.w, r.y + r.h}), apply(m, Vec2{r.x, r.y + r.h})};
+    float x0 = c[0].x, y0 = c[0].y, x1 = c[0].x, y1 = c[0].y;
+    for (const Vec2& p : c) {
+        x0 = std::min(x0, p.x);
+        y0 = std::min(y0, p.y);
+        x1 = std::max(x1, p.x);
+        y1 = std::max(y1, p.y);
+    }
+    return Rect{x0, y0, x1 - x0, y1 - y0};
 }
 
 }  // namespace
@@ -48,7 +63,9 @@ ClipContentBounds clipContentBounds(const CommandList& list, const Command& cmd,
             return ClipContentBounds::Empty;
     }
     Rect r;
-    if (cmd.kind != CmdKind::DrawGlyphs || !glyphRunInkBounds(list, list.glyphRuns[cmd.index], shaper, r)) {
+    // T-681: the glyphs' ink boxes grown by one device pixel at this `dpr` (empty for spaces).
+    if (cmd.kind != CmdKind::DrawGlyphs ||
+        !glyphRunInkBounds(list, list.glyphRuns[cmd.index], shaper, r, dpr)) {
         r = commandBounds(list, cmd);
     }
     if (!finiteRect(r) || !std::isfinite(dpr) || !(dpr > 0.0f)) {
@@ -69,7 +86,7 @@ ClipContentBounds clipContentBounds(const CommandList& list, const Command& cmd,
 }
 
 ClipContentBounds clipContentBoundsInFrame(const CommandList& list, const Command& cmd, const Mat2x3& frame,
-                                           Vec2 margin, Rect& out, TextShaper* shaper) {
+                                           Vec2 margin, Rect& out, TextShaper* shaper, float dpr) {
     out = Rect{};
     bool hint = false;
     switch (cmd.kind) {
@@ -109,11 +126,14 @@ ClipContentBounds clipContentBoundsInFrame(const CommandList& list, const Comman
     Rect r;
     bool done = false;
     if (cmd.kind == CmdKind::DrawGlyphs) {
-        // glyphRunInkBounds maps its run-space box through the run's transform: give it the
-        // run's transform relative to the frame.
-        GlyphsCmd run = list.glyphRuns[cmd.index];
-        run.xf = mul(frame, run.xf);
-        done = glyphRunInkBounds(list, run, shaper, r);
+        // The run-space ink box (T-681: its device pixel taken under the run's own transform at
+        // `dpr`) mapped through the run's transform relative to the frame; empty for spaces.
+        const GlyphsCmd& run = list.glyphRuns[cmd.index];
+        Rect local;
+        done = glyphRunInkBox(list, run, shaper, local, dpr);
+        if (done) {
+            r = (local.w > 0.0f && local.h > 0.0f) ? mapRect(mul(frame, run.xf), local) : Rect{};
+        }
     }
     if (!done) {
         bool empty = false;

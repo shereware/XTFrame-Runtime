@@ -59,6 +59,9 @@ uint32_t paramFloats(const gpu::DrawCmd& cmd) {
     if (cmd.kind == gpu::DrawKind::Particles) {
         return sizeof(gpu::ParticleParams) / sizeof(float);
     }
+    if (cmd.mipLod != 0 && (cmd.shading == Shading::Texture || cmd.shading == Shading::TextureStraight)) {
+        return sizeof(gpu::TextureLodParams) / sizeof(float);  // T-665
+    }
     switch (cmd.shading) {
         case Shading::Gradient:  // T-660b: a coverage quad's gradient carries its uv -> local map
             return (cmd.coverage != 0 ? sizeof(gpu::CoverageGradientParams) : sizeof(gpu::GradientParams)) /
@@ -112,15 +115,20 @@ uint32_t paramFloats(const gpu::DrawCmd& cmd) {
 
 }  // namespace
 
+bool detail::isCompressedFormat(gpu::TextureFormat fmt) { return isCompressed(fmt); }
+
+uint32_t detail::formatUnitBytes(gpu::TextureFormat fmt) { return unitBytes(fmt); }
+
 WGPUTexture detail::makeTexture(WGPUDevice device, const char* name, uint32_t w, uint32_t h,
-                                WGPUTextureFormat format, uint32_t samples, WGPUTextureUsage usage) {
+                                WGPUTextureFormat format, uint32_t samples, WGPUTextureUsage usage,
+                                uint32_t levels) {
     WGPUTextureDescriptor d = WGPU_TEXTURE_DESCRIPTOR_INIT;
     d.label = label(name);
     d.usage = usage;
     d.dimension = WGPUTextureDimension_2D;
     d.size = WGPUExtent3D{w, h, 1};
     d.format = format;
-    d.mipLevelCount = 1;
+    d.mipLevelCount = levels;
     d.sampleCount = samples;
     return wgpuDeviceCreateTexture(device, &d);
 }
@@ -422,7 +430,20 @@ const WgpuDevice::Texture* WgpuDevice::find(gpu::TextureHandle tex) const {
 
 WGPUTexture WgpuDevice::texture(gpu::TextureHandle tex) const {
     const Texture* t = find(tex);
+    if (t != nullptr && t->sharedId != 0 && m_sharing != nullptr) {
+        return m_sharing->m_impl->images[t->sharedId - 1].texture;  // T-665: the current one
+    }
     return t != nullptr ? t->texture : nullptr;
+}
+
+WGPUTextureView WgpuDevice::viewOf(const Texture& t) const {
+    if (t.sharedId != 0 && m_sharing != nullptr) {
+        const WgpuSharedCache::Impl::Image& image = m_sharing->m_impl->images[t.sharedId - 1];
+        if (image.view != nullptr) {
+            return image.view;
+        }
+    }
+    return t.view;
 }
 
 void WgpuDevice::releaseTextureEntry(Texture& t) {

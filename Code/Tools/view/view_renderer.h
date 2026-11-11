@@ -87,6 +87,10 @@ struct GpuFrameCounters {
     /// T-674: waits of the frame's begin for the GPU (more than two frames behind) and their ms.
     uint32_t inflightWaits = 0;
     float inflightWaitMs = 0;
+    /// T-665: mip chains the device made so far (cumulative), their level bytes and CPU ms.
+    uint32_t mipChains = 0;
+    uint64_t mipBytes = 0;
+    double mipMs = 0;
 };
 
 /// Where the view's frame loop draws when it is not the shell or the plain xt_sw buffer.

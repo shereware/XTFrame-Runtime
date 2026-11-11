@@ -21,6 +21,10 @@
 // count trim-on-hide's "GPU textures returned" line where they counted "GPU resources released".
 // T-678 (cases 21-22, 50 §50.ac addendum item 1): the transient pool's budget is the last target frame's
 // borrowed peak plus 16 MiB -- it shrinks after a switch to a lighter scene and never churns a steady one.
+// T-683 (cases 23-24, 50 §50.ad items 2-3): the target prewarms every built-in shader at creation, so the
+// first frame of a surface with analytic box shadows compiles none (the shared-cache line's "after
+// prewarm" counters); a hidden surface releases its coverage atlas (atlas_bytes falls) and draws the same
+// bytes when shown again. Fixture: fixtures/boxshadow.
 
 #include <algorithm>
 #include <cmath>
@@ -441,6 +445,10 @@ struct SharedLog {
     unsigned long destroyedFreed = 0;
     /// T-675: every texture created on the target's device so far, and the target-level pools.
     unsigned long created = 0, poolTextures = 0, attachmentSets = 0, idleSurfaceTextures = 0, poolFrees = 0;
+    /// T-683: the prewarm line of the target's creation, and the shared-cache line's "after prewarm"
+    /// counters.
+    unsigned long prewarmedShaders = 0, prewarmedPipelines = 0, shaderCompiles = 0, pipelineCreates = 0;
+    int prewarms = 0;
     int lines = 0;
     int released = 0;
     int returned = 0;  ///< T-675: trim-on-hide gave the textures back (the renderer stays)
@@ -469,7 +477,13 @@ struct SharedLog {
             self->attachmentSets = after(message, "attachment sets ");
             self->idleSurfaceTextures = after(message, "idle surface textures ");
             self->poolFrees = after(message, "pool frees ");
+            self->shaderCompiles = after(message, "after prewarm: shader compiles ");
+            self->pipelineCreates = after(message, "pipeline creates ");
             ++self->lines;
+        } else if (std::strstr(message, "xt_gpu_target: prewarmed ") == message) {
+            self->prewarmedShaders = after(message, "prewarmed ");
+            self->prewarmedPipelines = after(message, "shader(s), ");
+            ++self->prewarms;
         } else if (std::strstr(message, "xt_gpu_target: destroyed; ") == message) {
             self->destroyed = true;
             self->destroyedFreed = after(message, "destroyed; ");
@@ -686,6 +700,12 @@ namespace {
 
 constexpr int kImagesSize = 256;  // fixtures/images: the UI's size
 constexpr int kImageSide = 1024;  // ... and each of its three images'
+/// T-665 (Docs/design/10-backends.md §10.11 item 7, 50 §50.ab): the UI draws each image minified, so
+/// its texture carries a mip chain: levels 1..10 of a 1024 x 1024 RGBA8 image, (4^10 - 1) / 3 texels.
+constexpr uint64_t kImageMipBytes = (uint64_t(1) << 20) / 3u * 4u;
+/// One image texture as the target counts it: level 0 and its chain (about 4/3 of level 0).
+constexpr uint64_t kImageBytes = uint64_t(kImageSide) * kImageSide * 4u + kImageMipBytes;
+static_assert(kImageMipBytes == 1398100u, "levels 1..10 of 1024 x 1024 RGBA8");
 
 /// A PNG of `side` x `side` RGBA8 pixels, stored (uncompressed deflate), whose content depends on
 /// `seed` (every seed gives other pixels).
@@ -828,7 +848,7 @@ TEST_CASE("capi gpu 11 (T-656): new images every round on one target stay within
         }
         std::sort(pngs.begin(), pngs.end());
         REQUIRE(pngs.size() == 3);
-        const uint64_t perImage = uint64_t(kImageSide) * kImageSide * 4u;
+        const uint64_t perImage = kImageBytes;  // T-665: with its mip chain
         std::vector<uint64_t> bytesAfter;
         for (uint32_t round = 0; round < 8; ++round) {
             CAPTURE(round);
@@ -915,7 +935,8 @@ TEST_CASE("capi gpu 13 (T-656): xt_gpu_target_trim, the budget applied at once a
     bad.struct_size = sizeof bad;
     CHECK(xt_gpu_target_memory_stats(nullptr, &bad) == XT_STATUS_INVALID_ARGUMENT);
     CHECK(xt_gpu_target_memory_stats(t, nullptr) == XT_STATUS_INVALID_ARGUMENT);
-    const uint64_t perImage = uint64_t(kImageSide) * kImageSide * 4u;
+    const uint64_t perImage = kImageBytes;                                  // T-665: with its mip chain
+    CHECK(perImage * 3 == uint64_t(kImageSide) * kImageSide * 4u * 4 - 4);  // 4/3 of level 0, to the byte
     {
         ImagesSurface u(XT_CAPI_TEST_IMAGES_BUNDLE);
         u.frames(t, 2);
@@ -947,7 +968,7 @@ TEST_CASE("capi gpu 13 (T-656): xt_gpu_target_trim, the budget applied at once a
         CHECK(m.surface_bytes == 0);
         CHECK(m.image_idle_textures == 3);
         CHECK(m.image_idle_bytes == 3 * perImage);
-        // A smaller budget applies at once: the oldest go until the rest fit (one 4 MiB texture).
+        // A smaller budget applies at once: the oldest go until the rest fit (one texture with its chain).
         REQUIRE(xt_gpu_target_set_image_budget(t, perImage + perImage / 2) == XT_STATUS_OK);
         m = memoryStats(t);
         CHECK(m.image_idle_textures == 1);
@@ -1204,7 +1225,10 @@ xt_surface* npdoSurface(xt_bundle* b, const char* ui, bool hidden) {
 // back, ten times, every surface drawn every frame. From the third switch on a switch creates no
 // texture at all (the surface texture comes from the target's pool, the hidden surface kept its renderer,
 // tables and atlases, the transients and attachments are the target's), and every show draws the bytes
-// its first show drew. At 1x and 4x.
+// its first show drew. At 1x and 4x. T-683 (50 §50.ad item 3): at 1x the hidden surface releases its
+// coverage atlas, so a show makes that surface's coverage pages again -- from the third switch on each
+// switch creates exactly what the switch two before (the same surface shown) created, and at 4x (no
+// coverage atlas) still nothing.
 TEST_CASE("capi gpu 18 (T-675): a scene switch on one target creates no texture from the third on") {
     for (const int samples : {1, 4}) {
         CAPTURE(samples);
@@ -1239,7 +1263,8 @@ TEST_CASE("capi gpu 18 (T-675): a scene switch on one target creates no texture 
                 CHECK(px == first[shown]);
             }
             created.push_back(log.created - before);
-            if (sw >= 3) CHECK(log.created == before);
+            if (samples == 4 && sw >= 3) CHECK(log.created == before);
+            if (samples == 1 && sw >= 5) CHECK(created.back() == created[created.size() - 3]);  // T-683
         }
         std::printf("samples %d: textures created per switch:", samples);
         for (const unsigned long c : created) std::printf(" %lu", c);
@@ -1492,6 +1517,83 @@ TEST_CASE("capi gpu 22 (T-678): a steady multi-effect scene creates no transient
         }
         std::printf("\n");
     }
+}
+
+namespace {
+
+constexpr int kCardsSize = 128;
+
+/// T-683: an offscreen kCardsSize target with `samples` and the fixtures/boxshadow `cards` surface, both
+/// kept by `f`; the target is null without an adapter.
+xt_gpu_target* cardsTarget(Fixture& f, int samples, xt_surface*& cards) {
+    xt_gpu_target_desc desc = offscreenDesc(kCardsSize, kCardsSize);
+    desc.sample_count = samples;
+    xt_gpu_target* t = xt_gpu_target_create(&desc);
+    if (t == nullptr) {
+        const std::string error = xt_capi_last_error();
+        REQUIRE_MESSAGE(contains(error.c_str(), "no WebGPU adapter"), error);
+        std::printf("SKIP: no WebGPU adapter (%s)\n", error.c_str());
+        return nullptr;
+    }
+    f.targets.push_back(t);
+    cards = f.surface(XT_CAPI_TEST_BOXSHADOW_BUNDLE, "cards", kCardsSize);
+    return t;
+}
+
+}  // namespace
+
+// T-683 (50 §50.ad item 2): xt_gpu_target_create prewarms every built-in program (one info line with the
+// shader and pipeline counts), so the first frames of the first surface that draws box shadows -- one
+// term and three, the two programs -- compile no shader. At 1x and 4x.
+TEST_CASE("capi gpu 23 (T-683): after the prewarm the first box-shadow frame compiles no shader") {
+    for (const int samples : {1, 4}) {
+        CAPTURE(samples);
+        SharedLog log;
+        Fixture f;
+        xt_surface* cards = nullptr;
+        xt_gpu_target* t = cardsTarget(f, samples, cards);
+        if (t == nullptr) return;
+        REQUIRE(log.prewarms == 1);
+        std::printf("samples %d: prewarmed %lu shader(s), %lu pipeline(s)\n", samples, log.prewarmedShaders,
+                    log.prewarmedPipelines);
+        CHECK(log.prewarmedShaders >= 30);  // the 28 programs, the blit and the mip box step
+        CHECK(log.prewarmedPipelines >= log.prewarmedShaders);
+        const xt_rect all{0, 0, kCardsSize, kCardsSize};
+        for (int i = 0; i < 3; ++i) {
+            frame(t, {{cards, all}});
+            REQUIRE(log.lines > 0);
+            CHECK(log.shaderCompiles == 0);
+        }
+        std::printf("samples %d: pipelines created after the prewarm: %lu\n", samples, log.pipelineCreates);
+    }
+}
+
+// T-683 (50 §50.ad item 3): trim-on-hide releases the surface's coverage atlas (pages, CPU copies, keys) --
+// atlas_bytes falls by at least one page -- and shown again the surface rasterizes it anew and draws the
+// bytes it drew before, with atlas_bytes back where it was. At 1x (4x draws no coverage atlas).
+TEST_CASE("capi gpu 24 (T-683): a hidden surface drops its coverage atlas and draws the same bytes again") {
+    SharedLog log;
+    Fixture f;
+    xt_surface* cards = nullptr;
+    xt_gpu_target* t = cardsTarget(f, 1, cards);
+    if (t == nullptr) return;
+    const xt_rect all{0, 0, kCardsSize, kCardsSize};
+    frame(t, {{cards, all}});
+    frame(t, {{cards, all}});
+    const Pixels before = readback(t, kCardsSize, kCardsSize, kCardsSize * 4);
+    const uint64_t shown = memoryStats(t).atlas_bytes;
+    REQUIRE(xt_surface_set_visible(cards, 0) == XT_STATUS_OK);
+    frame(t, {{cards, all}});
+    frame(t, {{cards, all}});
+    CHECK(log.returned == 1);
+    const uint64_t hidden = memoryStats(t).atlas_bytes;
+    std::printf("atlas_bytes shown %llu, hidden %llu\n", static_cast<unsigned long long>(shown),
+                static_cast<unsigned long long>(hidden));
+    CHECK(hidden + 512u * 512u <= shown);  // at least the first coverage page (512 x 512 R8)
+    REQUIRE(xt_surface_set_visible(cards, 1) == XT_STATUS_OK);
+    frame(t, {{cards, all}});
+    CHECK(readback(t, kCardsSize, kCardsSize, kCardsSize * 4) == before);
+    CHECK(memoryStats(t).atlas_bytes == shown);
 }
 
 #ifdef _WIN32

@@ -51,16 +51,29 @@ class TextShaper;
 
 /// T-664, moved here by T-680 (Docs/design/10-backends.md "10.12 定案 2 補充 2" B.2) so the Painter's
 /// box shadow test and xt::gpu's clip scan share one implementation: the conservative box of glyph
-/// run `cmd` in its own (`cmd.xf`) space -- vertically the glyph origins from the font's ascent
-/// above to its descent below (times the size); horizontally from half the size left of the first
-/// origin to half the size right of the run's right end. The advances are not in the command, so
-/// the right end is taken from the glyphs whose origin lies within one size of the last origin:
-/// each contributes its outline's right extent (control points included), or its origin plus the
-/// size when it has no outline. The box is grown by twice the glyph effect radius on every side.
-/// False (the caller keeps the origins grown by the size) without a shaper or glyphs, or when the
-/// metrics give no finite, positive ascent + descent.
-bool glyphRunInkBox(const CommandList& list, const GlyphsCmd& cmd, TextShaper* shaper, Rect& out);
+/// run `cmd` in its own (`cmd.xf`) space.
+/// T-681 (Docs/design/10-backends.md §10.11, ruling 2 of the T-676 record): the union of every
+/// glyph's own ink box -- the control-point box of its outline (the shaper's outline already holds
+/// a synthetic bold), times the size, at the glyph's origin, united, for a run drawn from hinted
+/// bitmaps at `dpr` (glyphRunUsesHintedBitmap), with its hinted bitmap's box (one device pixel more
+/// left and right, half a pixel above and below, for the subpixel phase and the rounded
+/// baseline); a glyph without an outline by its
+/// bitmap's metrics at the run's size (grown by one run unit for the bitmap's pixel grid and
+/// subpixel phase); a glyph the shaper gives neither for (no outline, no bitmap: drawn by no
+/// backend) adds nothing -- grown by one device pixel (1 / (`dpr` times the smallest scale `cmd.xf`
+/// applies)) and by twice the glyph effect radius on every side; a run with no ink at all (spaces)
+/// gives an empty Rect (w = h = 0) and true. When the shaper's outline and
+/// bitmap calls give nothing for any glyph, the T-664 estimate is used instead: vertically the
+/// origins from the font's ascent above to its descent below, horizontally from half the size left
+/// of the first origin to one and a half sizes right of the last. False (the caller keeps the
+/// origins grown by the size) without a shaper or glyphs, for a non-finite size or `dpr`, a
+/// degenerate transform, or when the estimate is needed and the metrics give no finite, positive
+/// ascent + descent. `dpr` 1 (the default; the Painter paints for any ratio) makes the device pixel
+/// one run unit at scale 1.
+bool glyphRunInkBox(const CommandList& list, const GlyphsCmd& cmd, TextShaper* shaper, Rect& out,
+                    float dpr = 1.0f);
 /// glyphRunInkBox() transformed by `cmd.xf` (the axis-aligned box of its four corners).
-bool glyphRunInkBounds(const CommandList& list, const GlyphsCmd& cmd, TextShaper* shaper, Rect& out);
+bool glyphRunInkBounds(const CommandList& list, const GlyphsCmd& cmd, TextShaper* shaper, Rect& out,
+                       float dpr = 1.0f);
 
 }  // namespace xt

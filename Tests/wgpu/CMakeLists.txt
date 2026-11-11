@@ -8,6 +8,7 @@ add_executable(xt_wgpu_tests
     test_wgpu_draw.cpp
     test_wgpu_effects.cpp
     test_wgpu_box_shadow.cpp  # T-668
+    test_wgpu_mips.cpp  # T-665
 )
 target_include_directories(xt_wgpu_tests SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/Code/SDKs/doctest)
 target_compile_definitions(xt_wgpu_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)

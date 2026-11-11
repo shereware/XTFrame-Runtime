@@ -23,6 +23,7 @@ add_library(xt_sw STATIC
     src/sw_effect_math.cpp
     src/sw_effects.cpp
     src/sw_image.cpp
+    src/sw_mip_cache.cpp  # T-665
     src/sw_dds.cpp
     src/sw_glyphs.cpp
     src/sw_simd_dispatch.cpp

@@ -212,6 +212,47 @@ TEST_CASE("coverage fill: the second frame of a static screen hits every bitmap 
     CHECK(builder.lastCoverageStats().atlasBytes == 0);
 }
 
+// T-683 (Docs/design/50-c-abi.md §50.ad item 3): trim releases the coverage atlas -- its page is
+// destroyed and its bytes are 0 -- and the next build rasterizes the shapes again into a new page whose
+// quads sample exactly the bitmaps they sampled before, in an otherwise identical frame.
+TEST_CASE("coverage fill: T-683 trim releases the coverage atlas; the next build rasterizes it again") {
+    CommandList cl = makeList(256, 256);
+    addConcave(cl, 60, Mat2x3{1, 0, 0, 1, 10, 10});
+    MirrorDevice dev;
+    FrameBuilder builder;
+    builder.init(dev);
+    builder.resize(256, 256);
+    auto livePages = [&dev] {
+        size_t n = 0;
+        for (const auto& kv : dev.textures)
+            n += kv.second.alive && kv.second.fmt == TextureFormat::R8 ? 1 : 0;
+        return n;
+    };
+    GpuFrame frame;
+    builder.build(cl, nullptr, nullptr, nullptr, frame);
+    REQUIRE(builder.lastCoverageStats().atlasBytes == 512u * 512u);
+    REQUIRE(livePages() == 1);
+    checkQuadAgainstRaster(dev, frame, cl, 0);
+    std::string before;
+    dumpGpuFrame(frame, before);
+
+    builder.trim();
+    CHECK(builder.lastCoverageStats().atlasBytes == 0);
+    CHECK(livePages() == 0);
+
+    builder.build(cl, nullptr, nullptr, nullptr, frame);
+    const FrameBuilder::CoverageStats s = builder.lastCoverageStats();
+    CHECK(s.misses == 1);
+    CHECK(s.hits == 0);
+    CHECK(s.atlasBytes == 512u * 512u);
+    CHECK(livePages() == 1);
+    checkQuadAgainstRaster(dev, frame, cl, 0);
+    std::string after;
+    dumpGpuFrame(frame, after);
+    CHECK(after == before);
+    builder.shutdown();
+}
+
 TEST_CASE("coverage fill: a shape rotating every frame is rasterized every frame within the budget") {
     MirrorDevice dev;
     FrameBuilder builder;
@@ -1033,7 +1074,8 @@ TEST_CASE("coverage text: 120 px glyphs, convex ones too, are coverage quads; th
     CHECK(countWindingCmds(frame) >= 1);
 }
 
-TEST_CASE("coverage text: the same glyph twice in a run is one atlas entry; 96 px atlas text is unchanged") {
+TEST_CASE(
+    "coverage text: the same glyph twice in a run is one atlas entry; 96 px text is coverage, 16 px not") {
     text::FtTextShaper shaper;
     REQUIRE(shaper.addFontFile(glyphFontPath()));
     text::GlyphAtlas atlas(shaper, 512);
@@ -1051,11 +1093,61 @@ TEST_CASE("coverage text: the same glyph twice in a run is one atlas entry; 96 p
     CHECK(s.misses + s.hits == 2);
     CHECK(s.misses <= 1);  // the second "o" hits the first one's bitmap (or both hit after a regrow)
 
+    // T-681: a 96 px run, which SW fills from its outlines, is outline coverage quads too (it was a
+    // glyph atlas run before); a 16 px one, a hinted bitmap in SW, stays on the glyph atlas.
     CommandList small = glyphRunList(shaper, "Hello", 96.0f, Vec2{10, 140}, Mat2x3{}, 600, 200);
     builder.build(small, &shaper, nullptr, nullptr, frame);
     s = builder.lastCoverageStats();
+    CHECK(s.hits + s.misses == 5);
+    CHECK(s.fallbacks == 0);
+    CHECK(countGlyphCmds(frame) == 0);
+    CHECK(countCoverageQuads(frame) == 5);
+    CommandList tiny = glyphRunList(shaper, "Hello", 16.0f, Vec2{10, 140}, Mat2x3{}, 600, 200);
+    builder.build(tiny, &shaper, nullptr, nullptr, frame);
+    s = builder.lastCoverageStats();
     CHECK(s.hits + s.misses + s.fallbacks == 0);
     CHECK(countGlyphCmds(frame) == 1);
+}
+
+// T-681 (Docs/tasks/T-681.md item 1; 10 §10.11 ruling 1 of the T-676 record): on a single-sampled
+// target an axis-aligned run takes outline coverage exactly when SW fills its outlines
+// (xt::glyphRunUsesHintedBitmap: from 24 device px of the 1/4 px bitmap size), and the glyph atlas
+// below; under MSAA the atlas as before; geometricPrecision is always outlines.
+TEST_CASE("coverage text: T-681 the 1x atlas / coverage split is SW's 24 px threshold") {
+    text::FtTextShaper shaper;
+    REQUIRE(shaper.addFontFile(glyphFontPath()));
+    struct Case {
+        float size;
+        float dpr;
+        bool coverage;
+    };
+    // 23.875 rounds to the bitmap size 24 (outlines); 23.874 to 23.75 (bitmap); 12 at dpr 2 is 24.
+    for (const Case& c : {Case{23.0f, 1.0f, false}, Case{23.874f, 1.0f, false}, Case{23.875f, 1.0f, true},
+                          Case{24.0f, 1.0f, true}, Case{12.0f, 2.0f, true}, Case{11.5f, 2.0f, false},
+                          Case{60.0f, 1.0f, true}}) {
+        CAPTURE(c.size);
+        CAPTURE(c.dpr);
+        text::GlyphAtlas atlas(shaper, 512);
+        MirrorDevice dev;
+        FrameBuilder builder;
+        builder.init(dev);
+        builder.resize(static_cast<int>(400 * c.dpr), static_cast<int>(200 * c.dpr));
+        builder.setGlyphAtlas(&atlas);
+        GpuFrame frame;
+        CommandList cl = glyphRunList(shaper, "Hi", c.size, Vec2{10, 100}, Mat2x3{}, 400, 200);
+        cl.devicePixelRatio = c.dpr;
+        const GlyphsCmd& run = cl.glyphRuns[0];
+        CHECK(glyphRunUsesHintedBitmap(run, scaling(Vec2{c.dpr, c.dpr})) == !c.coverage);
+        builder.build(cl, &shaper, nullptr, nullptr, frame);
+        CHECK(countGlyphCmds(frame) == (c.coverage ? 0u : 1u));
+        CHECK(countCoverageQuads(frame) == (c.coverage ? 2u : 0u));
+        CHECK(countWindingCmds(frame) == 0);
+        // 4x: the glyph atlas up to 96 px, as before T-681.
+        builder.setEdgeFringe(false);
+        builder.build(cl, &shaper, nullptr, nullptr, frame);
+        CHECK(countGlyphCmds(frame) == 1);
+        CHECK(countCoverageQuads(frame) == 0);
+    }
 }
 
 TEST_CASE("coverage text: a run scaled every frame is rasterized within the budget, then completed") {
@@ -1239,6 +1331,171 @@ TEST_CASE("coverage text: T-676 a rotated run over the budget falls back to the 
     CHECK(countGlyphCmds(frame) == 0);
     CHECK(countWindingCmds(frame) == 0);
     CHECK_FALSE(builder.wantsAnotherFrame());
+}
+
+// T-681: a glyph of such a run whose coverage quad the frame budget refuses is drawn from the glyph
+// atlas (never stencil-then-cover), and the refusal asks for another frame (T-662); the next frame
+// draws it as a coverage quad.
+TEST_CASE("coverage text: T-681 a 1x run over the budget falls back to the glyph atlas, then completes") {
+    text::FtTextShaper shaper;
+    REQUIRE(shaper.addFontFile(glyphFontPath()));
+    text::GlyphAtlas atlas(shaper, 512);
+    MirrorDevice dev;
+    FrameBuilder builder;
+    builder.init(dev);
+    builder.resize(1600, 1600);
+    builder.setGlyphAtlas(&atlas);
+    GpuFrame frame;
+    const CommandList cl =
+        afterBudgetHog(glyphRunList(shaper, "Scale", 40.0f, Vec2{40, 1540}, Mat2x3{}, 1600, 1600));
+    builder.build(cl, &shaper, nullptr, nullptr, frame);
+    FrameBuilder::CoverageStats s = builder.lastCoverageStats();
+    CHECK(s.fallbacks == 5);  // the five glyphs of "Scale"
+    CHECK(countWindingCmds(frame) == 0);
+    CHECK(countGlyphCmds(frame) == 1);  // one batch of glyph atlas quads
+    CHECK(builder.wantsAnotherFrame());
+    CHECK_FALSE(builder.lastFrameReusable(nullptr, nullptr));
+
+    builder.build(cl, &shaper, nullptr, nullptr, frame);
+    s = builder.lastCoverageStats();
+    CHECK(s.fallbacks == 0);
+    CHECK(countGlyphCmds(frame) == 0);
+    CHECK(countWindingCmds(frame) == 0);
+    CHECK_FALSE(builder.wantsAnotherFrame());
+}
+
+// ---------------------------------------------------------------------------------------------
+// T-682 (Docs/tasks/T-682.md items 1 and 6): a glyph's coverage quad is looked up by key before any
+// outline is fetched; a static frame asks the shaper for no glyph outline.
+// ---------------------------------------------------------------------------------------------
+
+namespace {
+
+/// An FtTextShaper that counts glyphOutline calls per glyph id, answers "no outline" for
+/// `noOutline` and "no contours" (true, nothing) for `empty`.
+class CountingShaper : public text::FtTextShaper {
+public:
+    bool glyphOutline(FontId font, uint32_t glyphId, std::vector<PathVerb>& outVerbs,
+                      std::vector<float>& outPoints) override {
+        ++calls[glyphId];
+        if (glyphId == noOutline) {
+            outVerbs.clear();
+            outPoints.clear();
+            return false;
+        }
+        if (glyphId == empty) {
+            outVerbs.clear();
+            outPoints.clear();
+            return true;
+        }
+        return text::FtTextShaper::glyphOutline(font, glyphId, outVerbs, outPoints);
+    }
+    std::map<uint32_t, int> calls;
+    uint32_t noOutline = 0xFFFFFFFFu;
+    uint32_t empty = 0xFFFFFFFFu;
+};
+
+bool sameFrame(const GpuFrame& a, const GpuFrame& b) {
+    if (a.cmds.size() != b.cmds.size() || a.vertices.size() != b.vertices.size()) {
+        return false;
+    }
+    return a.vertices.empty() ||
+           std::memcmp(a.vertices.data(), b.vertices.data(), a.vertices.size() * sizeof(Vertex)) == 0;
+}
+
+}  // namespace
+
+TEST_CASE("coverage text: T-682 a static second frame asks the shaper for no glyph outline") {
+    text::FtTextShaper shaper;
+    REQUIRE(shaper.addFontFile(glyphFontPath()));
+    struct Case {
+        const char* name;
+        float size;
+        Mat2x3 xf;
+        bool glyphAtlas;
+    };
+    // T-681's axis-aligned outline runs, T-676's rotated / skewed ones, T-662's > 96 px outline
+    // glyphs (doOutlineGlyph), and outline glyphs without a glyph atlas.
+    const Mat2x3 skew{1.0f, 0.0f, -0.105104f, 1.0f, 30.0f, 60.0f};
+    for (const Case& c :
+         {Case{"axis 60 px", 60.0f, Mat2x3{1, 0, 0, 1, 10.25f, 120.5f}, true},
+          Case{"rotated 24 px", 24.0f, rotatedAt(-9, 30, 60), true}, Case{"skewed 24 px", 24.0f, skew, true},
+          Case{"120 px", 120.0f, Mat2x3{1, 0, 0, 1, 10, 130}, true},
+          Case{"no glyph atlas", 40.0f, Mat2x3{1, 0, 0, 1, 10, 100}, false}}) {
+        CAPTURE(c.name);
+        text::GlyphAtlas atlas(shaper, 512);
+        MirrorDevice dev;
+        FrameBuilder builder;
+        builder.init(dev);
+        builder.resize(600, 200);
+        if (c.glyphAtlas) {
+            builder.setGlyphAtlas(&atlas);
+        }
+        GpuFrame first, second, third;
+        const CommandList cl = glyphRunList(shaper, "Hello", c.size, Vec2{0, 0}, c.xf, 600, 200);
+        builder.build(cl, &shaper, nullptr, nullptr, first);
+        FrameBuilder::CoverageStats s = builder.lastCoverageStats();
+        CHECK(s.glyphOutlines >= 4);  // the misses (the two "l"s may share a bitmap)
+        CHECK(s.misses == s.glyphOutlines);
+        CHECK(s.fallbacks == 0);
+        CHECK(countCoverageQuads(first) == 5);
+        builder.build(cl, &shaper, nullptr, nullptr, second);
+        s = builder.lastCoverageStats();
+        CHECK(s.glyphOutlines == 0);
+        CHECK(s.hits == 5);
+        CHECK(s.misses == 0);
+        CHECK(s.rasterizedPixels == 0);
+        CHECK(sameFrame(first, second));
+        builder.build(cl, &shaper, nullptr, nullptr, third);
+        CHECK(builder.lastCoverageStats().glyphOutlines == 0);
+        CHECK(sameFrame(second, third));
+        // 4x (edge fringe off) keeps the outline paths: every outline glyph is fetched.
+        if (!c.glyphAtlas) {
+            builder.setEdgeFringe(false);
+            builder.build(cl, &shaper, nullptr, nullptr, third);
+            CHECK(builder.lastCoverageStats().glyphOutlines == 5);
+        }
+    }
+}
+
+TEST_CASE("coverage text: T-682 a glyph without an outline or contours is asked about only once") {
+    CountingShaper shaper;
+    REQUIRE(shaper.addFontFile(glyphFontPath()));
+    // T-681's axis-aligned path (60 px, with a glyph atlas), T-676's rotated path and the outline
+    // path without a glyph atlas (doOutlineGlyph).
+    for (int mode = 0; mode < 3; ++mode) {
+        CAPTURE(mode);
+        text::GlyphAtlas atlas(shaper, 512);
+        MirrorDevice dev;
+        FrameBuilder builder;
+        builder.init(dev);
+        builder.resize(600, 200);
+        if (mode != 2) {
+            builder.setGlyphAtlas(&atlas);
+        }
+        const Mat2x3 xf = mode == 1 ? rotatedAt(-9, 30, 100) : Mat2x3{1, 0, 0, 1, 10, 120};
+        const CommandList cl =
+            glyphRunList(shaper, "HIl", mode == 1 ? 24.0f : 60.0f, Vec2{0, 0}, xf, 600, 200);
+        REQUIRE(cl.glyphs.size() == 3);
+        shaper.noOutline = cl.glyphs[1];  // "I"
+        shaper.empty = cl.glyphs[2];      // "l"
+        shaper.calls.clear();
+        GpuFrame first, later;
+        builder.build(cl, &shaper, nullptr, nullptr, first);
+        CHECK(shaper.calls[cl.glyphs[0]] == 1);
+        CHECK(shaper.calls[cl.glyphs[1]] == 1);
+        CHECK(shaper.calls[cl.glyphs[2]] == 1);
+        CHECK(builder.lastCoverageStats().glyphOutlines == 3);
+        CHECK(countCoverageQuads(first) == 1);  // "H"
+        for (int i = 0; i < 3; ++i) {
+            builder.build(cl, &shaper, nullptr, nullptr, later);
+            CHECK(builder.lastCoverageStats().glyphOutlines == 0);
+            CHECK(sameFrame(first, later));
+        }
+        CHECK(shaper.calls[cl.glyphs[0]] == 1);
+        CHECK(shaper.calls[cl.glyphs[1]] == 1);
+        CHECK(shaper.calls[cl.glyphs[2]] == 1);
+    }
 }
 
 #endif  // XT_GPU_NO_TEXT

@@ -94,9 +94,10 @@ float glyphBitmapDeviceSize(const GlyphsCmd& cmd, const Mat2x3& deviceXf) {
 
 bool glyphBitmapPathApplies(const GlyphsCmd& cmd, const Mat2x3& deviceXf) {
     // §23.4: geometricPrecision means outlines, and no gamma; a rotated/skewed/mirrored/
-    // non-uniformly-scaled run cannot be drawn by blitting axis-aligned bitmaps. The test is the
-    // GPU atlas path's too (xt/command_list.h); the 24 px limit is this backend's own.
-    return glyphRunBitmapApplies(cmd, deviceXf) && glyphBitmapDeviceSize(cmd, deviceXf) < 24.0f;
+    // non-uniformly-scaled run cannot be drawn by blitting axis-aligned bitmaps; from 24 device px
+    // the outlines are filled. T-681: one definition in xt/command_list.h, which a single-sampled
+    // GPU target follows too.
+    return glyphRunUsesHintedBitmap(cmd, deviceXf);
 }
 
 uint32_t drawGlyphBitmaps(TextShaper& shaper, const CommandList& list, const GlyphsCmd& cmd,

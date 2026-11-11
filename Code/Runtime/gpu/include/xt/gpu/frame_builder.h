@@ -173,9 +173,10 @@ public:
     /// T-675 (Docs/design/50-c-abi.md §50.ac item 2): lets go of what a hidden surface does not keep:
     /// empties the effect result cache and releases the band targets (`releaseCachedTarget`: back to
     /// the device, which keeps them for reuse), and gives back every image texture (a shared image:
-    /// `releaseSharedImage(tex, true)`, as `shutdown` does; others destroyed). The gradient tables, the
-    /// glyph atlas pages and the coverage atlas stay, so a later build does not make them again. The
-    /// last frame is forgotten (the next `build` is a full one).
+    /// `releaseSharedImage(tex, true)`, as `shutdown` does; others destroyed). T-683 (§50.ad item 3):
+    /// the coverage atlas too (its pages, CPU copies and keys; `lastCoverageStats().atlasBytes` is 0
+    /// until a build makes it again). The gradient tables and the glyph atlas pages stay, so a later
+    /// build does not make them again. The last frame is forgotten (the next `build` is a full one).
     void trim();
 
     /// T-162 static frame reuse: true when the `GpuFrame` the last `build` wrote may be submitted
@@ -253,6 +254,8 @@ public:
         uint64_t atlasBytes = 0;        ///< the atlas pages' bytes (R8; the device holds a copy)
         uint32_t tiles = 0;             ///< T-672: edge tiles (held in the atlas) of the tiled fills drawn
         uint32_t uniformTiles = 0;      ///< T-672: empty and full tiles of the tiled fills drawn
+        /// T-682: glyph outlines this build asked of the shaper (none on a static frame at 1x).
+        uint32_t glyphOutlines = 0;
     };
     CoverageStats lastCoverageStats() const;
 

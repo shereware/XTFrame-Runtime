@@ -138,7 +138,7 @@ enum class Shading : uint8_t {
     /// command's local position (DrawBoxShadow's own space); `BoxShadowParams` at `paramIndex`;
     /// output = `BoxShadowParams::color` (premultiplied) x the coverage of xt/box_shadow.h's
     /// formula at `u,v` (16-point Gauss-Legendre over y, A&S 7.1.26 erf, the same constants).
-    /// Vertex `rgba` unused.
+    /// Vertex `rgba` unused. T-683: two programs, chosen by `DrawCmd::boxShadowMulti`.
     BoxShadow = 10,
 };
 
@@ -261,7 +261,16 @@ struct DrawCmd {
     uint8_t stencilRef = 0;
     Sampler sampler = Sampler::LinearClamp;
     EffectProgram program = EffectProgram::None;
-    uint8_t _pad[2] = {};
+    /// T-665 (Docs/design/10-backends.md §10.11 item 7): nonzero only with `Shading::Texture` /
+    /// `TextureStraight` (a minified image whose texture has its mip chain, see
+    /// GpuDevice::requestMipChain): `paramIndex` holds `TextureLodParams` and the sample is trilinear
+    /// at that explicit lod. 0: the single-level sampling of before (the same pipeline as ever).
+    uint8_t mipLod = 0;
+    /// T-683 (Docs/design/50-c-abi.md §50.ad item 1): `Shading::BoxShadow` only. 0: the one-shape
+    /// program (`BoxShadowParams::extraCount` 0 -- nearly every shadow; the extra terms are not read);
+    /// 1: the program of up to three signed shapes (an outlined shadow, extraCount 1..2). The output is
+    /// the same formula either way; the split keeps the common program small (its compile time).
+    uint8_t boxShadowMulti = 0;
     /// Scissor rectangle in *surface* pixels (always set; the pass window when nothing clips).
     /// The device clips it to the pass window and translates it into the target's own pixels.
     int16_t clipX = 0, clipY = 0, clipW = 0, clipH = 0;
@@ -541,6 +550,18 @@ struct CustomEffectParams {
 struct ParticleParams {
     float xf[6];
     float straight = 0;
+};
+
+/// T-665 `DrawCmd::mipLod`: `lod` > 0 (xt::imageDrawLod); `maxLevel` = the texture's last level.
+/// The levels lo = min(floor(lod), maxLevel) and hi = min(lo + 1, maxLevel) are each sampled
+/// bilinearly at the explicit level (`textureSampleLevel` / `textureLod`), premultiplied first when
+/// `straight != 0` (`Shading::TextureStraight`), and mixed by `lod - lo` (0 when lo = maxLevel); the
+/// result times the vertex `rgba`.
+struct TextureLodParams {
+    float lod = 0;
+    float maxLevel = 0;
+    float straight = 0;
+    float pad = 0;
 };
 
 /// `Downsample` (T-343, Docs/design/18-effects.md §18.15): the target is `dstW x dstH` texels,

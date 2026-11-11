@@ -1665,8 +1665,14 @@ struct GpuCounterTotals {
     uint32_t liveBindings = 0, peakBindings = 0;
     uint64_t inflightWaits = 0;  // T-674: totals over the run
     double inflightWaitMs = 0;
+    uint32_t mipChains = 0;  // T-665: totals over the run (the device's cumulative counts)
+    uint64_t mipBytes = 0;
+    double mipMs = 0;
     void add(const xt::view::GpuFrameCounters& c) {
         ++frames;
+        mipChains = c.mipChains;
+        mipBytes = c.mipBytes;
+        mipMs = c.mipMs;
         inflightWaits += c.inflightWaits;
         inflightWaitMs += c.inflightWaitMs;
         if (c.hasBindings) {
@@ -1719,6 +1725,9 @@ struct GpuCounterTotals {
         // T-674: totals, not per frame -- begin-of-frame waits for a GPU more than two frames behind.
         std::printf(", inflightWaits %llu (%.3f ms total)", static_cast<unsigned long long>(inflightWaits),
                     inflightWaitMs);
+        // T-665: totals -- mip chains made for minified images, their level bytes and CPU time.
+        std::printf(", mip chains %u (%llu bytes, %.3f ms total)", mipChains,
+                    static_cast<unsigned long long>(mipBytes), mipMs);
         std::printf("\n");
     }
 };

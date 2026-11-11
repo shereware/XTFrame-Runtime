@@ -520,6 +520,8 @@ bool FileAssetResolver::headerSizeOf(const std::vector<std::string>& files, int&
 void FileAssetResolver::decodeInto(const std::vector<uint8_t>& bytes, Entry& entry) {
     entry.ok = false;
     entry.hasCompressed = false;
+    entry.mipsBuilt = false;  // T-665: a chain belongs to the pixels it was built from
+    entry.mips.levels.clear();
     if (m_decode == nullptr) {
         return;
     }
@@ -529,9 +531,23 @@ void FileAssetResolver::decodeInto(const std::vector<uint8_t>& bytes, Entry& ent
         entry.compressed.width = dds.width;
         entry.compressed.height = dds.height;
         entry.compressed.format = dds.format;
-        entry.compressed.blocks.assign(
-            bytes.begin() + static_cast<std::ptrdiff_t>(dds.dataOffset),
-            bytes.begin() + static_cast<std::ptrdiff_t>(dds.dataOffset + dds.level0Size));
+        // T-665 (10 §10.11 item 7): a stored mip chain comes along, as far as the file holds whole
+        // levels (hardware sizes; taken to be the chain xt/image_mips.h defines).
+        size_t total = dds.level0Size;
+        int levels = 1;
+        const int fullChain = imageMipLevelCount(dds.width, dds.height);
+        while (levels < dds.mipCount && levels < fullChain) {
+            const size_t next =
+                ddsLevelSize(dds.format, std::max(1, dds.width >> levels), std::max(1, dds.height >> levels));
+            if (dds.dataOffset + total + next > bytes.size()) {
+                break;
+            }
+            total += next;
+            ++levels;
+        }
+        entry.compressed.blocks.assign(bytes.begin() + static_cast<std::ptrdiff_t>(dds.dataOffset),
+                                       bytes.begin() + static_cast<std::ptrdiff_t>(dds.dataOffset + total));
+        entry.compressed.levels = levels;
         entry.hasCompressed = true;
     }
     entry.ok = m_decode(bytes.data(), bytes.size(), entry.image);
@@ -815,7 +831,8 @@ void FileAssetResolver::idleEntry(size_t index) {
             findable = findable || s.slot.entry == index + 1;
         }
     }
-    const size_t bytes = entry.image.rgba.capacity() + entry.compressed.blocks.capacity();
+    const size_t bytes =
+        entry.image.rgba.capacity() + entry.compressed.blocks.capacity() + entry.mips.byteSize();  // T-665
     if (!entry.ok || !findable || m_idleBudget == 0 || bytes > m_idleBudget) {
         freeEntry(index);
         return;
@@ -1148,6 +1165,21 @@ const ImageData* FileAssetResolver::imageView(AssetId asset, const IrView& view,
 const CompressedImage* FileAssetResolver::compressedImage(AssetId asset, const IrView& view, float dpr) {
     const Entry* entry = ensureDecoded(asset, view, variantFor(dpr));
     return entry != nullptr && entry->hasCompressed ? &entry->compressed : nullptr;
+}
+
+const ImageMipChain* FileAssetResolver::imageMipChain(AssetId asset, const IrView& view, float dpr) {
+    // T-665: ensureDecoded() takes an idle decode back first, so the chain is never built (and its
+    // bytes never change) while the entry is counted on the idle list.
+    const Entry* found = ensureDecoded(asset, view, variantFor(dpr));
+    if (found == nullptr) {
+        return nullptr;
+    }
+    Entry& entry = const_cast<Entry&>(*found);
+    if (!entry.mipsBuilt) {
+        buildImageMipChain(entry.image, entry.mips);
+        entry.mipsBuilt = true;
+    }
+    return &entry.mips;
 }
 
 Vec2 FileAssetResolver::imageSize(AssetId asset, const IrView& view) {

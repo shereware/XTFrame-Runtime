@@ -165,6 +165,10 @@ inline constexpr GLenum GL_NEAREST = 0x2600;
 inline constexpr GLenum GL_LINEAR = 0x2601;
 inline constexpr GLenum GL_CLAMP_TO_EDGE = 0x812F;
 inline constexpr GLenum GL_REPEAT = 0x2901;
+// T-665: explicit-lod mip sampling and the level-by-level mip box step.
+inline constexpr GLenum GL_LINEAR_MIPMAP_NEAREST = 0x2701;
+inline constexpr GLenum GL_TEXTURE_BASE_LEVEL = 0x813C;
+inline constexpr GLenum GL_TEXTURE_MAX_LEVEL = 0x813D;
 
 inline constexpr GLenum GL_FRAMEBUFFER = 0x8D40;
 inline constexpr GLenum GL_RENDERBUFFER = 0x8D41;

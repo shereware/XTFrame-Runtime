@@ -43,6 +43,27 @@
 
 namespace xt::wgpu {
 
+/// T-683 (Docs/design/50-c-abi.md §50.ad item 2): the shader compiles and render pipeline creates of a
+/// device's pipeline set (its own, or the WgpuSharedCache's it borrows), counted apart while
+/// `WgpuDevice::prewarmPipelines` runs ("prewarm", summed over every prewarm) and after it (since the
+/// last prewarm ended; since the set was made when none ran). A shader compile is the first pipeline
+/// of a program and vertex stage (wgpu keeps the compiled shader on its device; a later blend /
+/// stencil / sample count of it only makes the pipeline) and every T-456 probe. Not a stable API.
+struct WgpuPipelineCounters {
+    uint32_t prewarmShaderCompiles = 0;
+    uint32_t prewarmPipelineCreates = 0;
+    uint32_t shaderCompiles = 0;
+    uint32_t pipelineCreates = 0;
+};
+
+/// T-683 (Docs/design/50-c-abi.md §50.ad item 2): what one `WgpuDevice::prewarmPipelines` did.
+struct WgpuPipelinePrewarm {
+    uint32_t shaders = 0;    ///< shader compiles it made (0 when every program was compiled before)
+    uint32_t pipelines = 0;  ///< render pipelines it created
+    double ms = 0;           ///< its wall time
+    bool ok = true;          ///< false: a pipeline failed (lastError names it after the next submit)
+};
+
 /// Counters of a `WgpuSharedCache` (for tests and tools; not a stable API).
 struct WgpuSharedStats {
     uint32_t imageTextures = 0;      ///< shared image textures alive (used or idle)
@@ -69,6 +90,12 @@ struct WgpuSharedStats {
     uint64_t attachmentBytes = 0;      ///< T-675: their memory
     uint32_t surfaceTexturesIdle = 0;  ///< T-675: idle surface textures in the pool
     uint32_t poolFrees = 0;            ///< T-675: pooled textures destroyed (age, budget, trimPools)
+    /// T-683 (50 §50.ad item 2): the pipeline set's counters (wgpu_device.h WgpuPipelineCounters): shader
+    /// compiles and pipeline creates while WgpuDevice::prewarmPipelines ran, and since it ended.
+    uint32_t prewarmShaderCompiles = 0;
+    uint32_t prewarmPipelineCreates = 0;
+    uint32_t shaderCompiles = 0;
+    uint32_t pipelineCreates = 0;
 };
 
 class WgpuSharedCache {

@@ -139,12 +139,15 @@ Rect boxShadowDrawRect(const BoxShadowCmd& cmd);
 /// Which of §10.12's six conditions failed first (None: the shadow converts).
 enum class BoxShadowReject : uint8_t {
     None = 0,
-    EffectChain = 1,      ///< (1) an enabled effect other than an outer drop shadow
-    NodeLayer = 2,        ///< (2) opacity < 1, a blend mode, a 3D node, or a faded paint alpha
-    Background = 3,       ///< (3) no opaque border-box background (or hidden, or a clip-path)
+    EffectChain = 1,  ///< (1) an enabled effect other than an outer drop shadow
+    NodeLayer = 2,    ///< (2) opacity < 1, a blend mode, a 3D node, or a faded paint alpha
+    /// (3) no border-box background of uniform alpha >= kBoxShadowMinBackgroundAlpha (T-681), or
+    /// hidden, or a clip-path
+    Background = 3,
     ContentOverflow = 4,  ///< (4) content may reach past the border box
-    Outline = 5,          ///< (5) an outline that is not solid and opaque (T-680)
-    Params = 6,           ///< (6) a parameter is not finite or the blur is negative
+    /// (5) an outline that is not solid and opaque (T-680), or (T-681) one over a background of alpha < 1
+    Outline = 5,
+    Params = 6,  ///< (6) a parameter is not finite or the blur is negative
 };
 
 /// The facts the test needs, gathered by the Painter from the node's computed style and from the
@@ -160,12 +163,15 @@ struct BoxShadowJudgeInput {
     float paintAlpha = 1.0f;
     /// (3): the node is an Element whose background is drawn (not `visibility: hidden`) on its whole
     /// border box (no `clip-path`); the background colour's alpha; whether a background gradient is
-    /// drawn and every one of its stops has alpha 1.
+    /// drawn and every one of its stops has alpha 1. T-681: whether a gradient is drawn at all, and
+    /// the alpha all of its stops share (-1 when they differ).
     bool isElement = false;
     bool backgroundDrawn = false;
     bool clipPath = false;
     float backgroundAlpha = 0.0f;
     bool gradientOpaque = false;
+    bool gradientDrawn = false;
+    float gradientAlpha = -1.0f;
     /// The border box (local) and its four circular corner radii (top-left, top-right,
     /// bottom-right, bottom-left), as the background is painted.
     Rect borderBox{};
@@ -185,6 +191,17 @@ struct BoxShadowJudgeInput {
     bool outlineSolid = false;
     float outlineAlpha = 0.0f;
 };
+
+/// T-681 ("補充 2" B.3): the lowest uniform background alpha a converted shadow accepts.
+inline constexpr float kBoxShadowMinBackgroundAlpha = 0.9f;
+
+/// T-681 ("補充 2" B.3): the uniform alpha `a` of the node's border-box background -- 1 when the
+/// colour or a gradient is opaque; otherwise the colour's alpha when only the colour is drawn, or
+/// the stops' common alpha when only a gradient (all stops equal) is drawn -- or 0 when there is no
+/// such uniform alpha of at least kBoxShadowMinBackgroundAlpha (a translucent colour under a
+/// translucent gradient, stops that differ, an alpha below 0.9). A converted shadow is painted with
+/// its colour's alpha times `a`.
+float boxShadowBackgroundAlpha(const BoxShadowJudgeInput& in);
 
 /// Tolerance (local px) of condition 4's "inside the border box": the subtree's bounds come back
 /// through the inverse of the node's transform, which is not exact in float.

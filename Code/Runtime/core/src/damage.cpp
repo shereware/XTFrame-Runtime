@@ -630,15 +630,13 @@ void hashCommandList(const CommandList& list, std::vector<uint64_t>& out) {
     }
 }
 
-bool glyphRunInkBox(const CommandList& list, const GlyphsCmd& cmd, TextShaper* shaper, Rect& out) {
-    // T-664 (Docs/tasks/T-664.md item 5), moved from xt::gpu's clip_bounds.cpp by T-680.
-    if (shaper == nullptr || cmd.glyphCount == 0 || cmd.glyphOffset > list.glyphPos.size() ||
-        cmd.glyphCount > list.glyphPos.size() - cmd.glyphOffset || cmd.glyphOffset > list.glyphs.size() ||
-        cmd.glyphCount > list.glyphs.size() - cmd.glyphOffset || !std::isfinite(cmd.size) ||
-        !std::isfinite(cmd.effectRadius)) {
-        return false;
-    }
-    const FontMetrics m = shaper->metrics(cmd.font);
+namespace {
+
+/// T-664's estimate of glyph run `cmd` (see glyphRunInkBox): the origins from the font's ascent
+/// above to its descent below, half the size left of the first origin to one and a half sizes right
+/// of the last. False when the metrics give no finite, positive ascent + descent.
+bool glyphRunMetricBox(const CommandList& list, const GlyphsCmd& cmd, TextShaper& shaper, Rect& out) {
+    const FontMetrics m = shaper.metrics(cmd.font);
     const float ascent = m.ascent * cmd.size;
     const float descent = std::fabs(m.descent) * cmd.size;  // FontMetrics gives it either sign
     if (!std::isfinite(ascent) || !std::isfinite(descent) || ascent < 0.0f || !(ascent + descent > 0.0f)) {
@@ -652,37 +650,134 @@ bool glyphRunInkBox(const CommandList& list, const GlyphsCmd& cmd, TextShaper* s
         maxX = std::max(maxX, pos[i].x);
         maxY = std::max(maxY, pos[i].y);
     }
-    // The right end: the outlines of the glyphs within one size of the last origin. The scratch
-    // keeps its capacity across calls (no allocation per frame once warm).
+    const float half = 0.5f * cmd.size;
+    const float x0 = minX - half, x1 = maxX + cmd.size + half;
+    out = Rect{x0, minY - ascent, x1 - x0, (maxY - minY) + ascent + descent};
+    return true;
+}
+
+}  // namespace
+
+bool glyphRunInkBox(const CommandList& list, const GlyphsCmd& cmd, TextShaper* shaper, Rect& out, float dpr) {
+    // T-664 (Docs/tasks/T-664.md item 5), moved from xt::gpu's clip_bounds.cpp by T-680; per glyph
+    // since T-681 (Docs/tasks/T-681.md item 4).
+    if (shaper == nullptr || cmd.glyphCount == 0 || cmd.glyphOffset > list.glyphPos.size() ||
+        cmd.glyphCount > list.glyphPos.size() - cmd.glyphOffset || cmd.glyphOffset > list.glyphs.size() ||
+        cmd.glyphCount > list.glyphs.size() - cmd.glyphOffset || !std::isfinite(cmd.size) ||
+        !std::isfinite(cmd.effectRadius) || !std::isfinite(dpr) || !(dpr > 0.0f)) {
+        return false;
+    }
+    // One device pixel in run units: 1 / (dpr x the smallest singular value of cmd.xf's linear part).
+    const double a = cmd.xf.a, b = cmd.xf.b, c = cmd.xf.c, d = cmd.xf.d;
+    const double sum = a * a + b * b + c * c + d * d;
+    const double det = a * d - b * c;
+    const double root = std::sqrt(std::max(0.0, sum * sum - 4.0 * det * det));
+    const double minScale = std::sqrt(std::max(0.0, 0.5 * (sum - root)));
+    if (!std::isfinite(minScale) || !(minScale > 1e-6)) {
+        return false;  // a degenerate (or non-finite) transform
+    }
+    const double devicePx = 1.0 / (static_cast<double>(dpr) * minScale);
+    // The bitmap size of a glyph without an outline: the run's size at its device scale, on the
+    // 1/4 px grid the shaper's bitmap cache keys on.
+    const double deviceScale = static_cast<double>(dpr) * std::sqrt(std::fabs(det));
+    const float bitmapSize =
+        static_cast<float>(std::floor(static_cast<double>(cmd.size) * deviceScale * 4.0 + 0.5) / 4.0);
+    // A run drawn from lightly hinted bitmaps (xt::sw below 24 device px, the GPU glyph atlas on a
+    // single-sampled target: glyphRunUsesHintedBitmap) can reach past its outline -- the hinting
+    // moves edges to the pixel grid and the baseline is rounded to a whole pixel -- so each glyph
+    // also takes its bitmap's box there.
+    const bool hinted = glyphRunUsesHintedBitmap(cmd, mul(scaling(Vec2{dpr, dpr}), cmd.xf));
+    // The scratch keeps its capacity across calls (no allocation per frame once warm).
     static thread_local std::vector<PathVerb> verbs;
     static thread_local std::vector<float> points;
-    float right = maxX;
-    for (uint32_t i = 0; i < cmd.glyphCount; ++i) {
-        if (pos[i].x < maxX - cmd.size) {
-            continue;
+    static thread_local GlyphBitmap bitmap;
+    const Vec2* pos = list.glyphPos.data() + cmd.glyphOffset;
+    double x0 = 0.0, y0 = 0.0, x1 = 0.0, y1 = 0.0;
+    bool ink = false;
+    bool measured = false;  // the shaper answered for some glyph (an outline or a bitmap)
+    auto add = [&](double gx0, double gy0, double gx1, double gy1) {
+        if (!ink) {
+            x0 = gx0, y0 = gy0, x1 = gx1, y1 = gy1;
+            ink = true;
+            return;
         }
+        x0 = std::min(x0, gx0), y0 = std::min(y0, gy0);
+        x1 = std::max(x1, gx1), y1 = std::max(y1, gy1);
+    };
+    for (uint32_t i = 0; i < cmd.glyphCount; ++i) {
+        const uint32_t glyphId = list.glyphs[cmd.glyphOffset + i];
         verbs.clear();
         points.clear();
-        if (!shaper->glyphOutline(cmd.font, list.glyphs[cmd.glyphOffset + i], verbs, points)) {
-            right = std::max(right, pos[i].x + cmd.size);  // nothing to measure: as before
+        if (shaper->glyphOutline(cmd.font, glyphId, verbs, points) && points.size() >= 2) {
+            // The control points bound the outline (every segment lies in their convex hull).
+            measured = true;
+            float ex0 = points[0], ey0 = points[1], ex1 = points[0], ey1 = points[1];
+            for (size_t k = 2; k + 1 < points.size(); k += 2) {
+                ex0 = std::min(ex0, points[k]);
+                ex1 = std::max(ex1, points[k]);
+                ey0 = std::min(ey0, points[k + 1]);
+                ey1 = std::max(ey1, points[k + 1]);
+            }
+            const double s = cmd.size;
+            add(pos[i].x + ex0 * s, pos[i].y + ey0 * s, pos[i].x + ex1 * s, pos[i].y + ey1 * s);
+            if (hinted && bitmapSize > 0.0f &&
+                shaper->glyphBitmap(cmd.font, glyphId, bitmapSize, 0.0f, bitmap) && bitmap.width > 0 &&
+                bitmap.height > 0) {
+                // The phase-0 bitmap from the floor of the origin: one device pixel more on either
+                // side for the floor and the 1/4 px phases, half a pixel above and below for the
+                // rounded baseline.
+                const double k = 1.0 / deviceScale;
+                add(pos[i].x + (bitmap.bearingX - 1.0) * k, pos[i].y - (bitmap.bearingY + 0.5) * k,
+                    pos[i].x + (bitmap.bearingX + bitmap.width + 1.0) * k,
+                    pos[i].y + (bitmap.height - bitmap.bearingY + 0.5) * k);
+            }
             continue;
         }
-        for (size_t k = 0; k + 1 < points.size(); k += 2) {
-            right = std::max(right, pos[i].x + points[k] * cmd.size);
+        // No outline (a space; a bitmap-only glyph such as an emoji): the bitmap's own box, in
+        // device px from the floor of the origin, brought back to run units, grown by one device
+        // pixel more for the pixel grid and the subpixel phase.
+        if (bitmapSize > 0.0f && shaper->glyphBitmap(cmd.font, glyphId, bitmapSize, 0.0f, bitmap)) {
+            measured = true;
+            if (bitmap.width > 0 && bitmap.height > 0) {
+                const double k = 1.0 / deviceScale;
+                add(pos[i].x + (bitmap.bearingX - 1.0) * k, pos[i].y - (bitmap.bearingY + 1.0) * k,
+                    pos[i].x + (bitmap.bearingX + bitmap.width + 1.0) * k,
+                    pos[i].y + (bitmap.height - bitmap.bearingY + 1.0) * k);
+            }
         }
+        // Neither: no backend draws this glyph (xt::sw skips it, the GPU atlas falls back to the
+        // missing outline), so it adds no ink.
     }
-    const float half = 0.5f * cmd.size;
-    const float grow = 2.0f * cmd.effectRadius;  // T-178's reach of a glyph effect
-    const float x0 = minX - half - grow, x1 = right + half + grow;
-    const float y0 = minY - ascent - grow, y1 = maxY + descent + grow;
-    out = Rect{x0, y0, x1 - x0, y1 - y0};
+    const double effectGrow = 2.0 * static_cast<double>(cmd.effectRadius);  // T-178's effect reach
+    if (!measured) {
+        // The shaper gives no outlines or bitmaps at all: T-664's estimate.
+        Rect estimate;
+        if (!glyphRunMetricBox(list, cmd, *shaper, estimate)) {
+            return false;
+        }
+        const float g = static_cast<float>(effectGrow);
+        out = Rect{estimate.x - g, estimate.y - g, estimate.w + 2.0f * g, estimate.h + 2.0f * g};
+        return std::isfinite(out.x) && std::isfinite(out.y) && std::isfinite(out.w) && std::isfinite(out.h);
+    }
+    if (!ink) {
+        out = Rect{};  // spaces only: nothing is drawn
+        return true;
+    }
+    const double grow = devicePx + effectGrow;
+    out = Rect{static_cast<float>(x0 - grow), static_cast<float>(y0 - grow),
+               static_cast<float>(x1 - x0 + 2.0 * grow), static_cast<float>(y1 - y0 + 2.0 * grow)};
     return std::isfinite(out.x) && std::isfinite(out.y) && std::isfinite(out.w) && std::isfinite(out.h);
 }
 
-bool glyphRunInkBounds(const CommandList& list, const GlyphsCmd& cmd, TextShaper* shaper, Rect& out) {
+bool glyphRunInkBounds(const CommandList& list, const GlyphsCmd& cmd, TextShaper* shaper, Rect& out,
+                       float dpr) {
     Rect local;
-    if (!glyphRunInkBox(list, cmd, shaper, local)) {
+    if (!glyphRunInkBox(list, cmd, shaper, local, dpr)) {
         return false;
+    }
+    if (!(local.w > 0.0f) || !(local.h > 0.0f)) {
+        out = Rect{};  // no ink
+        return true;
     }
     out = transformedRect(cmd.xf, local);
     return std::isfinite(out.x) && std::isfinite(out.y) && std::isfinite(out.w) && std::isfinite(out.h);
@@ -855,9 +950,14 @@ bool commandBoundsInFrame(const CommandList& list, const Command& cmd, const Mat
                 empty = true;
                 return true;
             }
-            // T-680 ("補充 2" B.2): the font-metric box where the shaper gives one.
+            // T-680 ("補充 2" B.2): the font-metric box where the shaper gives one; T-681: the
+            // glyphs' own ink boxes (dpr 1: the Painter paints for any ratio), none for spaces.
             Rect ink;
             if (glyphRunInkBox(list, c, shaper, ink)) {
+                if (!(ink.w > 0.0f) || !(ink.h > 0.0f)) {
+                    empty = true;
+                    return true;
+                }
                 box = ink;
             }
             out = transformedRect(mul(frame, c.xf), box);

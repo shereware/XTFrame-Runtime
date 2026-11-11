@@ -11,6 +11,7 @@
 #include "sw_blend.h"
 #include "sw_effects.h"
 #include "sw_layer.h"
+#include "sw_mip_cache.h"
 #include "sw_paint.h"
 #include "sw_raster.h"
 #include "sw_simd.h"
@@ -174,6 +175,8 @@ struct SwRenderer::Impl {
     std::vector<float> spanScratch;
     // Docs/tasks/T-149.md: DrawImage/DrawImageQuad sample and row scratch, kept across draws.
     ImageScratch imageScratch;
+    /// T-665: the chains built here for images whose resolver keeps none.
+    SwMipCache mipCache;
     /// T-245: a DrawImageMesh's vertices in device coordinates, kept across draws.
     std::vector<MeshVertex> meshScratch;
     /// This render()'s expanded gradient ramps (Docs/tasks/T-128.md step 2).
@@ -2044,14 +2047,21 @@ struct SwRenderer::Impl {
         Target dst = layers.currentTarget(rootTarget());
         const uint8_t* clipPtr = clipData();
         const WriteRegion region = drawRegion(dst);
-        // Docs/tasks/T-128.md step 1: image sampling is its own per-pixel loop, timed separately
-        // from swSpanMs (see FrameStats::swSpanImageMs). Asset decode above is deliberately
-        // outside the scope -- it is cached by the resolver, not per-pixel work.
-        PerfFieldScope imageScope(timer(&FrameStats::swSpanImageMs));
         if (!projecting()) {
-            drawImage(dst, raster, deviceXf, cmd, image, clipPtr, target.width, imageScratch, &region);
+            // T-665: the chain (resolver's or built here) of a smooth, non-host image; under a 3D
+            // projection, for a host texture and for point sampling there is none.
+            const ImageMipChain* mips =
+                cmd.smooth != 0 && !isExternalAsset(cmd.asset, *ir)
+                    ? mipCache.chainFor(assets, *ir, cmd.asset, dpr * cmd.variantScale, image)
+                    : nullptr;
+            // Docs/tasks/T-128.md step 1: image sampling is its own per-pixel loop, timed separately
+            // from swSpanMs (see FrameStats::swSpanImageMs). Asset decode above is deliberately
+            // outside the scope -- it is cached by the resolver, not per-pixel work.
+            PerfFieldScope imageScope(timer(&FrameStats::swSpanImageMs));
+            drawImage(dst, raster, deviceXf, cmd, image, clipPtr, target.width, imageScratch, &region, mips);
             return;
         }
+        PerfFieldScope imageScope(timer(&FrameStats::swSpanImageMs));
         // §19.7 DrawImage under projection: "dst 四角經 projectPoint 得裝置四邊形 q[4] ->
         // drawImageQuad".
         Vec2 planeCorners[4] = {
@@ -2139,9 +2149,14 @@ struct SwRenderer::Impl {
         Target dst = layers.currentTarget(rootTarget());
         const uint8_t* clipPtr = clipData();
         const WriteRegion region = drawRegion(dst);
+        // T-665: as DrawImage (no chain under a 3D projection, for a host texture or point sampling).
+        const ImageMipChain* mips =
+            cmd.smooth != 0 && !projecting() && !isExternalAsset(cmd.asset, *ir)
+                ? mipCache.chainFor(assets, *ir, cmd.asset, dpr * cmd.variantScale, image)
+                : nullptr;
         PerfFieldScope imageScope(timer(&FrameStats::swSpanImageMs));
         drawImageQuad(dst, raster, q, cmd.srcUv, cmd.opacity, cmd.smooth, image, clipPtr, target.width,
-                      imageScratch, &region);
+                      imageScratch, &region, mips);
     }
 
     /// T-245 (Docs/design/32-rigging-and-deformation.md §32.2.4): the vertices go through the
@@ -2310,13 +2325,23 @@ void SwRenderer::render(const CommandList& list, TextShaper* shaper, AssetResolv
     }
     m_impl->directDamage = nullptr;
     m_impl->endDamage();
-    m_impl->layers.endFrame();  // T-641: the layer pool's ageing (50 §50.aa item 3).
+    m_impl->layers.endFrame();     // T-641: the layer pool's ageing (50 §50.aa item 3).
+    m_impl->mipCache.endRender();  // T-665
 }
+
+void SwRenderer::invalidateAsset(AssetId asset, const IrView* source) {
+    m_impl->mipCache.invalidateAsset(asset, source);
+}
+
+void SwRenderer::invalidateAllAssets() { m_impl->mipCache.invalidateAll(); }
+
+size_t SwRenderer::mipCacheBytes() const { return m_impl->mipCache.bytes(); }
 
 void SwRenderer::releaseScratch() {
     Impl& m = *m_impl;
     m.resetStacks();
     m.layers.releasePool();
+    m.mipCache.clear();  // T-665
     m.fxScratchA = Surface{};
     m.fxScratchB = Surface{};
     m.fxResult = Surface{};

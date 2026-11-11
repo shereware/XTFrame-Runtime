@@ -276,6 +276,9 @@ public:
             out.hasBindings = true;
             out.liveBindings = device->lastStats().liveBindings;
             out.peakBindings = device->lastStats().peakBindings;
+            out.mipChains = device->mipChainsMade();  // T-665
+            out.mipBytes = device->mipChainBytes();
+            out.mipMs = device->mipChainMs();
         }
         return true;
     }

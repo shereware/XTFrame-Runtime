@@ -2,6 +2,7 @@
 // Host API: webgpu.h of wgpu-native v29.0.1.1 (Code/SDKs/versions.cmake), through xt_wgpu.
 #include "xt_renderer_wgpu.h"
 
+#include <cstdio>
 #include <span>
 
 #ifndef XT_BACKEND_NO_TEXT
@@ -22,6 +23,11 @@ bool RendererWgpu::initDevice(uint32_t sampleCount, WGPUTextureFormat format) {
         m_error = std::string("WgpuRenderer::init failed: ") + m_renderer.lastError();
         return false;
     }
+    // T-683 (Docs/design/50-c-abi.md §50.ad item 2): every built-in shader compiled now, not in the
+    // first frame that needs it. One info line (the wgpu module has no log sink: stderr, as T-670).
+    const xt::wgpu::WgpuPipelinePrewarm warm = m_renderer.prewarmPipelines();
+    std::fprintf(stderr, "xt::wgpu: prewarmed %u shader(s), %u pipeline(s) in %.1f ms%s\n", warm.shaders,
+                 warm.pipelines, warm.ms, warm.ok ? "" : " (a pipeline failed; its draws will be skipped)");
 #ifndef XT_BACKEND_NO_TEXT
     m_renderer.setGlyphAtlas(m_atlas.get());
 #endif

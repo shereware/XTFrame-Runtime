@@ -28,7 +28,8 @@ enum class ClipContentBounds : uint8_t {
 /// PushProjection their window (`boundsHint`, already grown by the effects' reach). An empty hint
 /// (the "whole viewport" default) or a non-finite value is Unknown.
 /// T-664 (Docs/tasks/T-664.md item 5): with `shaper`, a glyph run's box is tightened by its font's
-/// metrics (xt::glyphRunInkBounds, xt/damage.h; T-680 moved it to xt_core); without one, or when
+/// metrics (xt::glyphRunInkBounds, xt/damage.h; T-680 moved it to xt_core; T-681: the glyphs' own
+/// ink boxes grown by one device pixel at `dpr`); without one, or when
 /// the metrics are unusable, it stays the origins grown by the font size. xt::commandBounds (core,
 /// SW damage) is unchanged. Only for a structurally valid list (like xt::commandBounds).
 ClipContentBounds clipContentBounds(const CommandList& list, const Command& cmd, float dpr, Rect& out,
@@ -40,8 +41,10 @@ ClipContentBounds clipContentBounds(const CommandList& list, const Command& cmd,
 /// transform (xt::commandBoundsInFrame; a glyph run's glyphRunInkBounds box under the same
 /// relative transform), a group opener's window mapped through `frame`, then grown by `margin`
 /// (kClipContentMarginPx device px expressed in frame units, per axis). Empty / Box / Unknown as
-/// clipContentBounds; an empty group window is Unknown.
+/// clipContentBounds; an empty group window is Unknown. T-681: `dpr` is the device pixel ratio the
+/// glyph ink boxes take their one device pixel at (xt::glyphRunInkBox).
 ClipContentBounds clipContentBoundsInFrame(const CommandList& list, const Command& cmd, const Mat2x3& frame,
-                                           Vec2 margin, Rect& out, TextShaper* shaper = nullptr);
+                                           Vec2 margin, Rect& out, TextShaper* shaper = nullptr,
+                                           float dpr = 1.0f);
 
 }  // namespace xt::gpu

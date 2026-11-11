@@ -17,6 +17,9 @@ ui_text_transform_skew ui_text_transform_skew.xt 320 256 0 e8dcc4
 # T-659 (10 section 10.11 item 1): images rotated 7 deg, skewed, scaled to fractional edges and an
 # atlas cell rotated, next to an axis-aligned control; the GPU backends fringe the off-grid edges at 1x.
 ui_image_transform ui_image_transform.xt 256 256 0 ffffff
+# T-665 (10 section 10.11 item 7): one high-frequency image at 0.9 / 0.75 / 0.5 / 0.33 / 0.2, rotated
+# 15 deg at 0.3, non-uniform 0.3 x 0.8, and 1:1 / 2x controls; minified draws sample a mip chain.
+ui_image_minify ui_image_minify.xt 528 408 0 ffffff
 # T-660b (10 section 10.11 item 2): concave star, even-odd gradient donut, multi-contour icon, a
 # rotated concave shape, one shape twice 0.3 px apart, a concave shape over 1024 px (fallback).
 ui_coverage_fill ui_coverage_fill.xt 256 256 0 ffffff

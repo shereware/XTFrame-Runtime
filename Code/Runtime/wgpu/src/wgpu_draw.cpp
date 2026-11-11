@@ -138,11 +138,11 @@ void WgpuDevice::drawCmd(WGPURenderPassEncoder pass, const gpu::DrawCmd& cmd, ui
         case Shading::Gradient:
             shader = cmd.coverage != 0 ? detail::kShCoverageGradient : detail::kShGradient;
             break;
-        case Shading::Texture:
-            shader = detail::kShTexture;
+        case Shading::Texture:  // T-665: a mip draw samples at its explicit lod (TextureLodParams)
+            shader = cmd.mipLod != 0 ? detail::kShTextureLod : detail::kShTexture;
             break;
         case Shading::TextureStraight:
-            shader = detail::kShTextureStraight;
+            shader = cmd.mipLod != 0 ? detail::kShTextureLod : detail::kShTextureStraight;
             break;
         case Shading::Glyph:
             shader = detail::kShGlyph;
@@ -157,7 +157,8 @@ void WgpuDevice::drawCmd(WGPURenderPassEncoder pass, const gpu::DrawCmd& cmd, ui
             shader = detail::kShParticleSolid;
             break;
         case Shading::BoxShadow:
-            shader = detail::kShBoxShadow;  // T-668
+            // T-668; T-683: the builder chose the one-shape or the up-to-three-shape program.
+            shader = cmd.boxShadowMulti != 0 ? detail::kShBoxShadowMulti : detail::kShBoxShadow;
             break;
         case Shading::Effect:
             if (cmd.program == gpu::EffectProgram::Custom) {
@@ -234,7 +235,7 @@ void WgpuDevice::drawCmd(WGPURenderPassEncoder pass, const gpu::DrawCmd& cmd, ui
     bk.sampler = g.pipelines->sampler(gpu::Sampler::LinearClamp);
     auto textureView = [this, &g](gpu::TextureHandle h) {
         const Texture* t = find(h);
-        return t != nullptr ? t->view : g.dummyView;
+        return t != nullptr ? viewOf(*t) : g.dummyView;  // T-665: a shared image's current view
     };
     auto targetView = [this, &g](gpu::TargetHandle t) {
         WGPUTextureView v = sampleView(t);

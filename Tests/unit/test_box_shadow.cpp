@@ -440,9 +440,9 @@ TEST_CASE("BoxShadow judge (2): opacity just below 1, a blend mode, 3D, a faded 
     CHECK(judgeBoxShadow(f.in) == BoxShadowReject::NodeLayer);
 }
 
-TEST_CASE("BoxShadow judge (3): background alpha just below 1, a translucent stop, hidden, clip-path") {
+TEST_CASE("BoxShadow judge (3): background alpha just below 0.9, a translucent stop, hidden, clip-path") {
     JudgeFixture f;
-    f.in.backgroundAlpha = 0.999f;
+    f.in.backgroundAlpha = 0.89f;  // T-681 ("補充 2" B.3): 0.9 and above convert
     CHECK(judgeBoxShadow(f.in) == BoxShadowReject::Background);
     f.in.gradientOpaque = true;  // an opaque gradient over a translucent colour still fills the box
     CHECK(judgeBoxShadow(f.in) == BoxShadowReject::None);
@@ -631,7 +631,7 @@ TEST_CASE(
         NodeArena arena;
         const std::string name = v.name;
         NodeId root = makeBox(arena, kInvalidNode, 80, 60,
-                              name == "translucent" ? Color{1, 1, 1, 0.9f} : Color{1, 1, 1, 1});
+                              name == "translucent" ? Color{1, 1, 1, 0.89f} : Color{1, 1, 1, 1});
         std::vector<EffectInstance> fx{dropShadow(3, 3, 6, 0)};
         if (name == "blur") {
             EffectInstance blur{};
@@ -767,11 +767,9 @@ TEST_CASE("BoxShadow fixtures: ui_box_shadow converts all 12 shadows, ui_box_sha
 }
 
 // =================================================================================================
-// T-680 (Docs/design/10-backends.md "10.12 定案 2 補充 2", Docs/tasks/T-680.md item 5): the
-// relaxations B.1 (a solid opaque outline: signed terms) and B.2 (the font-metric glyph box), each
-// with a case that converts and one just past it. B.3 (a near-opaque background) is not part of
-// this change: its fixture cell differed from the offscreen path by more than the golden tolerance
-// (the task's stop condition).
+// T-680 / T-681 (Docs/design/10-backends.md "10.12 定案 2 補充 2", Docs/tasks/T-680.md item 5): the three
+// relaxations -- a solid opaque outline (signed terms), the font-metric glyph box, a near-opaque
+// background -- each with a case that converts and one just past it.
 // =================================================================================================
 
 namespace {
@@ -1070,7 +1068,8 @@ TEST_CASE("BoxShadow T-680 (B.1): the terms the Painter emits for an outline, an
     }
 }
 
-TEST_CASE("BoxShadow T-680 judge (5): a solid opaque outline converts; a dashed or translucent one not") {
+TEST_CASE(
+    "BoxShadow T-680 judge (5): solid opaque outline converts; dashed, translucent, or over alpha < 1 not") {
     JudgeFixture f;
     f.in.outline = true;
     f.in.outlineSolid = true;
@@ -1080,6 +1079,9 @@ TEST_CASE("BoxShadow T-680 judge (5): a solid opaque outline converts; a dashed 
     CHECK(judgeBoxShadow(f.in) == BoxShadowReject::Outline);
     f.in.outlineSolid = true;
     f.in.outlineAlpha = 0.999f;
+    CHECK(judgeBoxShadow(f.in) == BoxShadowReject::Outline);
+    f.in.outlineAlpha = 1.0f;
+    f.in.backgroundAlpha = 0.95f;  // the ring and the box would need different weights
     CHECK(judgeBoxShadow(f.in) == BoxShadowReject::Outline);
 }
 
@@ -1099,7 +1101,48 @@ TEST_CASE("BoxShadow T-680 painter: a translucent outline keeps the effect, an o
     }
 }
 
-TEST_CASE("BoxShadow T-680 (B.2): a glyph run judged by its font-metric box; 1 px past it is overflow") {
+TEST_CASE("BoxShadow T-681 judge (3): a uniform background alpha of 0.9 converts, 0.89 not") {
+    JudgeFixture f;
+    f.in.backgroundAlpha = 0.89f;
+    CHECK(judgeBoxShadow(f.in) == BoxShadowReject::Background);
+    CHECK(boxShadowBackgroundAlpha(f.in) == 0.0f);
+    f.in.backgroundAlpha = 0.9f;
+    CHECK(judgeBoxShadow(f.in) == BoxShadowReject::None);
+    CHECK(boxShadowBackgroundAlpha(f.in) == 0.9f);
+    // A gradient alone: equal stops >= 0.9 convert, unequal or lower ones do not.
+    f.in.backgroundAlpha = 0.0f;
+    f.in.gradientDrawn = true;
+    f.in.gradientAlpha = 0.92f;
+    CHECK(judgeBoxShadow(f.in) == BoxShadowReject::None);
+    CHECK(boxShadowBackgroundAlpha(f.in) == 0.92f);
+    f.in.gradientAlpha = -1.0f;  // stops differ
+    CHECK(judgeBoxShadow(f.in) == BoxShadowReject::Background);
+    f.in.gradientAlpha = 0.89f;
+    CHECK(judgeBoxShadow(f.in) == BoxShadowReject::Background);
+    // A translucent colour under a translucent gradient has no single alpha.
+    f.in.gradientAlpha = 0.95f;
+    f.in.backgroundAlpha = 0.95f;
+    CHECK(judgeBoxShadow(f.in) == BoxShadowReject::Background);
+    // An opaque gradient still makes the whole background opaque.
+    f.in.gradientOpaque = true;
+    CHECK(boxShadowBackgroundAlpha(f.in) == 1.0f);
+}
+
+TEST_CASE("BoxShadow T-681 painter: a 0.92 background converts with the shadow's alpha scaled by 0.92") {
+    NodeArena arena;
+    NodeId root = makeBox(arena, kInvalidNode, 60, 40, Color{0.1f, 0.1f, 0.1f, 0.92f});
+    const EffectInstance e = dropShadow(2, 3, 8, 0);  // colour alpha 0.5
+    REQUIRE(arena.assignEffects(root, std::span<const EffectInstance>(&e, 1), {}) == Status::kOk);
+    CommandList cmds;
+    std::vector<Painter::BoxShadowDecision> log;
+    paint(arena, root, cmds, &log);
+    REQUIRE(log.size() == 1);
+    CHECK(log[0].reason == BoxShadowReject::None);
+    REQUIRE(cmds.boxShadows.size() == 1);
+    CHECK(cmds.boxShadows[0].color.a == doctest::Approx(0.5f * 0.92f));
+}
+
+TEST_CASE("BoxShadow T-681 (B.2): a glyph run judged by its glyphs' ink box; 1 px past it is overflow") {
     MetricShaper shaper;
     JudgeFixture f;
     f.in.borderBox = Rect{0, 0, 100, 40};
@@ -1112,19 +1155,22 @@ TEST_CASE("BoxShadow T-680 (B.2): a glyph run judged by its font-metric box; 1 p
         f.in.contentBounds = r;
         return judgeBoxShadow(f.in);
     };
-    // Metric box [0, 30] x [20, 40]: inside the border box, touching its left and bottom edges.
-    CHECK(judgeAt(Vec2{10, 36}, &shaper) == BoxShadowReject::None);
+    // T-681: the outline's control box x 0..0.5 em, y -0.7..0.1 em at size 20 -- [0, 10] x [-14, 2]
+    // from the origin -- grown by one device pixel (dpr 1): [0, 12] x [22, 40] at (1, 37), inside the
+    // border box, touching its left and bottom edges.
+    CHECK(judgeAt(Vec2{1, 37}, &shaper) == BoxShadowReject::None);
     CHECK(f.in.contentBounds.y + f.in.contentBounds.h == doctest::Approx(40.0f));
+    CHECK(f.in.contentBounds.y == doctest::Approx(22.0f));
     CHECK(f.in.contentBounds.x == doctest::Approx(0.0f));
-    CHECK(f.in.contentBounds.x + f.in.contentBounds.w == doctest::Approx(30.0f));  // 0.5 em + half a size
+    CHECK(f.in.contentBounds.x + f.in.contentBounds.w == doctest::Approx(12.0f));
     // The coarse box (origins grown by the size) reaches 20 px past it.
-    CHECK(judgeAt(Vec2{10, 36}, nullptr) == BoxShadowReject::ContentOverflow);
-    // One px lower / one px further left: the metric box is 1 px past the border box.
-    CHECK(judgeAt(Vec2{10, 37}, &shaper) == BoxShadowReject::ContentOverflow);
-    CHECK(judgeAt(Vec2{9, 36}, &shaper) == BoxShadowReject::ContentOverflow);
-    // Without usable metrics the coarse box stays.
+    CHECK(judgeAt(Vec2{1, 37}, nullptr) == BoxShadowReject::ContentOverflow);
+    // One px lower / one px further left: the ink box is 1 px past the border box.
+    CHECK(judgeAt(Vec2{1, 38}, &shaper) == BoxShadowReject::ContentOverflow);
+    CHECK(judgeAt(Vec2{0, 37}, &shaper) == BoxShadowReject::ContentOverflow);
+    // Without usable metrics or outlines the coarse box stays.
     NullTextShaper none;
-    CHECK(judgeAt(Vec2{10, 36}, &none) == BoxShadowReject::ContentOverflow);
+    CHECK(judgeAt(Vec2{1, 37}, &none) == BoxShadowReject::ContentOverflow);
 }
 
 TEST_CASE("BoxShadow T-680: glyphRunInkBounds is glyphRunInkBox under the run's transform") {
@@ -1138,6 +1184,85 @@ TEST_CASE("BoxShadow T-680: glyphRunInkBounds is glyphRunInkBox under the run's 
     CHECK(world.y == doctest::Approx(7 + 2 * local.y));
     CHECK(world.w == doctest::Approx(2 * local.w));
     CHECK(world.h == doctest::Approx(2 * local.h));
+}
+
+namespace {
+
+/// T-681: no outlines; glyph 7 has a 10 x 12 bitmap whose top-left is (1, -9) from the origin at
+/// any size, glyph 3 (a space) an empty one, every other glyph none at all.
+class BitmapShaper : public MetricShaper {
+public:
+    bool glyphOutline(FontId, uint32_t, std::vector<PathVerb>&, std::vector<float>&) override {
+        return false;
+    }
+    bool glyphBitmap(FontId, uint32_t glyph, float, float, GlyphBitmap& out) override {
+        out = GlyphBitmap{};
+        if (glyph == 7) {
+            out.width = 10;
+            out.height = 12;
+            out.bearingX = 1;
+            out.bearingY = 9;
+            out.alpha.assign(120, 255);
+            return true;
+        }
+        return glyph == 3;
+    }
+};
+
+void checkRect(const Rect& a, const Rect& b) {
+    CHECK(a.x == doctest::Approx(b.x));
+    CHECK(a.y == doctest::Approx(b.y));
+    CHECK(a.w == doctest::Approx(b.w));
+    CHECK(a.h == doctest::Approx(b.h));
+}
+
+}  // namespace
+
+TEST_CASE("BoxShadow T-681: glyphRunInkBox -- device pixel, bitmap metrics, spaces, no answers") {
+    MetricShaper outlines;
+    CommandList cl = oneGlyphRun(Vec2{10, 36});
+    Rect box;
+    // The control box [10, 20] x [22, 38] grown by one device pixel: 1 at dpr 1, 0.5 at dpr 2, 0.25
+    // at dpr 2 under a scale of 2.
+    REQUIRE(glyphRunInkBox(cl, cl.glyphRuns[0], &outlines, box));
+    checkRect(box, Rect{9, 21, 12, 18});
+    REQUIRE(glyphRunInkBox(cl, cl.glyphRuns[0], &outlines, box, 2.0f));
+    checkRect(box, Rect{9.5f, 21.5f, 11, 17});
+    cl.glyphRuns[0].xf = scaling(Vec2{2, 2});
+    REQUIRE(glyphRunInkBox(cl, cl.glyphRuns[0], &outlines, box, 2.0f));
+    checkRect(box, Rect{9.75f, 21.75f, 10.5f, 16.5f});
+    cl.glyphRuns[0].xf = scaling(Vec2{0, 2});  // degenerate
+    CHECK_FALSE(glyphRunInkBox(cl, cl.glyphRuns[0], &outlines, box));
+    // No outline: the bitmap's box (device px = run units at scale 1, dpr 1) grown by one pixel for
+    // the grid and phase and one device pixel: x 10 + 1 - 2 .. 10 + 11 + 2, y 36 - 9 - 2 .. 36 + 3 + 2.
+    BitmapShaper bitmaps;
+    cl.glyphRuns[0].xf = Mat2x3{};
+    REQUIRE(glyphRunInkBox(cl, cl.glyphRuns[0], &bitmaps, box));
+    checkRect(box, Rect{9, 25, 14, 16});
+    // A space only: no ink, an empty box (commandBoundsInFrame reports it empty).
+    cl.glyphs[0] = 3;
+    REQUIRE(glyphRunInkBox(cl, cl.glyphRuns[0], &bitmaps, box));
+    CHECK(box.w == 0.0f);
+    CHECK(box.h == 0.0f);
+    Rect r;
+    bool empty = false;
+    REQUIRE(commandBoundsInFrame(cl, cl.commands[0], Mat2x3{}, r, empty, &bitmaps));
+    CHECK(empty);
+    // A glyph the shaper knows nothing of beside one it measures adds nothing.
+    cl.glyphs[0] = 7;
+    cl.glyphs.push_back(9);
+    cl.glyphPos.push_back(Vec2{80, 36});
+    cl.glyphRuns[0].glyphCount = 2;
+    REQUIRE(glyphRunInkBox(cl, cl.glyphRuns[0], &bitmaps, box));
+    checkRect(box, Rect{9, 25, 14, 16});
+    // No outlines and no bitmaps at all: T-664's estimate from the metrics (ascent 16, descent 4,
+    // half a size left of the first origin, one and a half sizes right of the last), and false
+    // without usable metrics.
+    cl.glyphs[0] = 9;
+    REQUIRE(glyphRunInkBox(cl, cl.glyphRuns[0], &bitmaps, box));
+    checkRect(box, Rect{0, 20, 110, 20});
+    NullTextShaper none;
+    CHECK_FALSE(glyphRunInkBox(cl, cl.glyphRuns[0], &none, box));
 }
 
 TEST_CASE("BoxShadow T-680: the node's own outline ring is contour, a child's outline is content") {

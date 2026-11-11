@@ -228,6 +228,22 @@ Rect boxShadowDrawRect(const BoxShadowCmd& cmd) {
     return Rect{s.x0 - reach, s.y0 - reach, (s.x1 - s.x0) + 2.0f * reach, (s.y1 - s.y0) + 2.0f * reach};
 }
 
+float boxShadowBackgroundAlpha(const BoxShadowJudgeInput& in) {
+    if (in.backgroundAlpha == 1.0f || in.gradientOpaque) {
+        return 1.0f;  // T-668's opaque background
+    }
+    // T-681 ("補充 2" B.3): one uniform alpha >= 0.9 -- the colour alone, or the gradient alone with
+    // equal stops. A translucent colour under a translucent gradient has no single alpha.
+    const bool colorDrawn = in.backgroundAlpha > 0.0f;
+    float a = 0.0f;
+    if (colorDrawn && !in.gradientDrawn) {
+        a = in.backgroundAlpha;
+    } else if (!colorDrawn && in.gradientDrawn) {
+        a = in.gradientAlpha;
+    }
+    return a >= kBoxShadowMinBackgroundAlpha && a <= 1.0f ? a : 0.0f;
+}
+
 BoxShadowReject judgeBoxShadow(const BoxShadowJudgeInput& in) {
     // (1) The chain holds only outer drop shadows (each one converts on its own).
     if (in.effects.empty()) {
@@ -244,9 +260,10 @@ BoxShadowReject judgeBoxShadow(const BoxShadowJudgeInput& in) {
     }
     // (3) An opaque background drawn on the whole border box, circular corners (the model has one
     // radius per corner, so they always are).
-    if (!in.isElement || !in.backgroundDrawn || in.clipPath ||
-        !(in.backgroundAlpha == 1.0f || in.gradientOpaque) || !(in.borderBox.w > 0.0f) ||
-        !(in.borderBox.h > 0.0f)) {
+    // T-681: or a uniform alpha of at least 0.9 (boxShadowBackgroundAlpha).
+    const float backgroundAlpha = boxShadowBackgroundAlpha(in);
+    if (!in.isElement || !in.backgroundDrawn || in.clipPath || !(backgroundAlpha > 0.0f) ||
+        !(in.borderBox.w > 0.0f) || !(in.borderBox.h > 0.0f)) {
         return BoxShadowReject::Background;
     }
     // (4) Nothing reaches past the border box: an overflow clip, or the subtree's bounds inside it.
@@ -265,7 +282,9 @@ BoxShadowReject judgeBoxShadow(const BoxShadowJudgeInput& in) {
         }
     }
     // (5) No outline, or (T-680, "補充 2" B.1) a solid opaque one: the contour is R plus the ring.
-    if (in.outline && (!in.outlineSolid || in.outlineAlpha != 1.0f)) {
+    // Over a background of alpha < 1 the ring (alpha 1) and the box (alpha a) would need different
+    // weights the terms do not carry, so that pair stays an effect.
+    if (in.outline && (!in.outlineSolid || in.outlineAlpha != 1.0f || backgroundAlpha != 1.0f)) {
         return BoxShadowReject::Outline;
     }
     // (6) Finite parameters, blur >= 0.

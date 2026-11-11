@@ -108,6 +108,14 @@ public:
     /// (the damage state reads "full"); the next render() allocates again and draws the same
     /// pixels. The target stays set. Not to be called during render().
     void releaseScratch();
+    /// T-665 (Docs/design/10-backends.md §10.11 item 7): drops the mip chains the renderer built for
+    /// `asset` (under the IR `source` only, when non-null) -- for images whose resolver keeps no chain
+    /// of its own (AssetResolver::imageMipChain), as gpu::FrameBuilder::invalidateAsset drops textures.
+    void invalidateAsset(AssetId asset, const IrView* source = nullptr);
+    /// T-665: drops every chain the renderer built (a new IR or resolver may reuse an image address).
+    void invalidateAllAssets();
+    /// T-665: bytes of the mip chains the renderer holds now (tests and tools).
+    size_t mipCacheBytes() const;
 
     /// Draw commands (FillPath/StrokePath/DrawImage/DrawGlyphs/DrawImageQuad) the last render()
     /// call actually executed, and how many it skipped as outside the damage rectangles. Both are

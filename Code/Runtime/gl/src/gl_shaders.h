@@ -81,27 +81,25 @@ void main() {
 }
 )";
 
-/// T-668 `Shading::BoxShadow` (gpu_frame.h BoxShadowParams): the coverage formula of
+/// T-668 / T-680 / T-683 `Shading::BoxShadow` (gpu_frame.h BoxShadowParams): the coverage formula of
 /// Code/Runtime/core/src/box_shadow.cpp (Docs/design/10-backends.md §10.12 item 2) at the local
-/// position `vUV` -- a 16-point Gauss-Legendre rule over y in [max(y0, p.y - 3 sigma),
-/// min(y1, p.y + 3 sigma)] of the Gaussian times the erf difference of the shape's span at that y --
-/// times the premultiplied `uColor`. `uShape` = (x0, y0, x1, y1), `uRadii` = (tl, tr, br, bl).
-/// Constants as xt/box_shadow.h (A&S Table 25.4 n = 16; A&S 7.1.26). Mirrors box_shadow.wgsl.
-/// T-680: `uTerms` = (extra term count 0..2, sign 1, sign 2) with the extra shapes in
-/// `uShape1`/`uRadii1` and `uShape2`/`uRadii2`; coverage = clamp(sum of sign x S, 0, 1).
-inline constexpr const char* kBoxShadowFrag = R"(#version 330 core
-in vec2 vUV;
-in vec4 vColor;
-out vec4 fragColor;
-uniform vec4 uShape;
+/// position `p` -- a 16-point Gauss-Legendre rule over y in [max(y0, p.y - 3 sigma),
+/// min(y1, p.y + 3 sigma)] of the Gaussian times the erf difference of the shape's span at that y.
+/// `uShape` = (x0, y0, x1, y1), `uRadii` = (tl, tr, br, bl), `uSigma`, the premultiplied `uColor`.
+/// Constants as xt/box_shadow.h (A&S Table 25.4 n = 16; A&S 7.1.26). T-683 (Docs/design/50-c-abi.md
+/// §50.ad item 1): the rule is a loop over the eight node / weight pairs of `const` arrays (each pair's
+/// - and + abscissa in that order, the summation order of the unrolled form). Shared by
+/// kBoxShadowFrag and kBoxShadowMultiFrag, after their `#version` line and inputs. Mirrors
+/// box_shadow_common.wgsl.
+#define XT_GL_BOX_SHADOW_COMMON \
+    R"(uniform vec4 uShape;
 uniform vec4 uRadii;
 uniform float uSigma;
 uniform vec4 uColor;
-uniform vec4 uShape1;
-uniform vec4 uRadii1;
-uniform vec4 uShape2;
-uniform vec4 uRadii2;
-uniform vec3 uTerms;
+const float BS_X[8] = float[8](0.0950125098376374, 0.2816035507792589, 0.4580167776572274, 0.6178762444026438,
+                               0.7554044083550030, 0.8656312023878318, 0.9445750230732326, 0.9894009349916499);
+const float BS_W[8] = float[8](0.1894506104550685, 0.1826034150449236, 0.1691565193950025, 0.1495959888165767,
+                               0.1246289712555339, 0.0951585116824928, 0.0622535239386479, 0.0271524594117541);
 float bsErf(float x) {
     float ax = abs(x);
     float t = 1.0 / (1.0 + 0.3275911 * ax);
@@ -155,34 +153,51 @@ float bsCoverage(vec4 sh, vec4 rd, vec2 p) {
     float invErf = 1.0 / (uSigma * 1.41421356237309505);
     float k = 1.0 / (2.0 * uSigma * uSigma);
     float sum = 0.0;
-    sum += bsTerm(sh, rd, m - h * 0.0950125098376374, 0.1894506104550685, p, invErf, k);
-    sum += bsTerm(sh, rd, m + h * 0.0950125098376374, 0.1894506104550685, p, invErf, k);
-    sum += bsTerm(sh, rd, m - h * 0.2816035507792589, 0.1826034150449236, p, invErf, k);
-    sum += bsTerm(sh, rd, m + h * 0.2816035507792589, 0.1826034150449236, p, invErf, k);
-    sum += bsTerm(sh, rd, m - h * 0.4580167776572274, 0.1691565193950025, p, invErf, k);
-    sum += bsTerm(sh, rd, m + h * 0.4580167776572274, 0.1691565193950025, p, invErf, k);
-    sum += bsTerm(sh, rd, m - h * 0.6178762444026438, 0.1495959888165767, p, invErf, k);
-    sum += bsTerm(sh, rd, m + h * 0.6178762444026438, 0.1495959888165767, p, invErf, k);
-    sum += bsTerm(sh, rd, m - h * 0.7554044083550030, 0.1246289712555339, p, invErf, k);
-    sum += bsTerm(sh, rd, m + h * 0.7554044083550030, 0.1246289712555339, p, invErf, k);
-    sum += bsTerm(sh, rd, m - h * 0.8656312023878318, 0.0951585116824928, p, invErf, k);
-    sum += bsTerm(sh, rd, m + h * 0.8656312023878318, 0.0951585116824928, p, invErf, k);
-    sum += bsTerm(sh, rd, m - h * 0.9445750230732326, 0.0622535239386479, p, invErf, k);
-    sum += bsTerm(sh, rd, m + h * 0.9445750230732326, 0.0622535239386479, p, invErf, k);
-    sum += bsTerm(sh, rd, m - h * 0.9894009349916499, 0.0271524594117541, p, invErf, k);
-    sum += bsTerm(sh, rd, m + h * 0.9894009349916499, 0.0271524594117541, p, invErf, k);
+    for (int i = 0; i < 8; ++i) {
+        float x = BS_X[i];
+        float w = BS_W[i];
+        sum += bsTerm(sh, rd, m - h * x, w, p, invErf, k);
+        sum += bsTerm(sh, rd, m + h * x, w, p, invErf, k);
+    }
     return clamp(sum * h * 0.398942280401432678 / uSigma, 0.0, 1.0);
 }
-void main() {
+)"
+
+/// T-668 / T-683: `Shading::BoxShadow` with one shape (DrawCmd::boxShadowMulti 0, nearly every
+/// shadow): `uColor` times the coverage of XT_GL_BOX_SHADOW_COMMON at `vUV`. Mirrors box_shadow.wgsl.
+inline constexpr const char* kBoxShadowFrag = R"(#version 330 core
+in vec2 vUV;
+in vec4 vColor;
+out vec4 fragColor;
+)" XT_GL_BOX_SHADOW_COMMON R"(void main() {
+    fragColor = uColor * bsCoverage(uShape, uRadii, vUV);
+}
+)";
+
+/// T-680 / T-683: `Shading::BoxShadow` with up to three signed shapes (DrawCmd::boxShadowMulti 1, an
+/// outlined shadow). `uTerms` = (extra term count 0..2, sign 1, sign 2) with the extra shapes in
+/// `uShape1`/`uRadii1` and `uShape2`/`uRadii2`; coverage = clamp(sum of sign x S, 0, 1), the terms
+/// added in that order. Mirrors box_shadow_multi.wgsl.
+inline constexpr const char* kBoxShadowMultiFrag = R"(#version 330 core
+in vec2 vUV;
+in vec4 vColor;
+out vec4 fragColor;
+uniform vec4 uShape1;
+uniform vec4 uRadii1;
+uniform vec4 uShape2;
+uniform vec4 uRadii2;
+uniform vec3 uTerms;
+)" XT_GL_BOX_SHADOW_COMMON R"(void main() {
     vec2 p = vUV;
     float coverage = bsCoverage(uShape, uRadii, p);
-    if (uTerms.x > 0.5) {
-        coverage += uTerms.y * bsCoverage(uShape1, uRadii1, p);
-        if (uTerms.x > 1.5) {
-            coverage += uTerms.z * bsCoverage(uShape2, uRadii2, p);
-        }
-        coverage = clamp(coverage, 0.0, 1.0);
+    vec4 shapes[2] = vec4[2](uShape1, uShape2);
+    vec4 radii[2] = vec4[2](uRadii1, uRadii2);
+    float signs[2] = float[2](uTerms.y, uTerms.z);
+    int extra = min(int(uTerms.x + 0.5), 2);
+    for (int t = 0; t < extra; ++t) {
+        coverage += signs[t] * bsCoverage(shapes[t], radii[t], p);
     }
+    coverage = clamp(coverage, 0.0, 1.0);
     fragColor = uColor * coverage;
 }
 )";
@@ -959,6 +974,49 @@ inline constexpr const char* kResolveVert = R"(#version 330 core
 void main() {
     vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
     gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}
+)";
+
+/// T-665 (Docs/design/10-backends.md §10.11 item 7; gpu_frame.h `TextureLodParams`): an image with
+/// `DrawCmd::mipLod`, trilinear at the explicit lod (uLodParams = lod, last level, straight). The
+/// texture's min filter is GL_LINEAR_MIPMAP_NEAREST, so each whole level is filtered bilinearly.
+/// Mirrors Code/Runtime/wgpu/src/shaders/texture_lod.wgsl.
+inline constexpr const char* kTextureLodFrag = R"(#version 330 core
+in vec2 vUV;
+in vec4 vColor;
+out vec4 fragColor;
+uniform sampler2D uTex;
+uniform vec4 uLodParams;
+vec4 levelSample(float level) {
+    vec4 s = textureLod(uTex, vUV, level);
+    return uLodParams.z != 0.0 ? vec4(s.rgb * s.a, s.a) : s;
+}
+void main() {
+    float lo = min(floor(uLodParams.x), uLodParams.y);
+    float hi = min(lo + 1.0, uLodParams.y);
+    float t = lo >= uLodParams.y ? 0.0 : uLodParams.x - lo;
+    vec4 s = levelSample(lo);
+    if (t > 0.0) {
+        s = mix(s, levelSample(hi), t);
+    }
+    fragColor = s * vColor;
+}
+)";
+
+/// T-665: one mip level of an image as the 2x2 box mean of the level above (the texture's base
+/// level while this runs), each fetch clamped to its last texel; texel rows in memory order on both
+/// sides, so no flip (xt/image_mips.h; Code/Runtime/wgpu/src/shaders/blit.wgsl fs_mip_box).
+inline constexpr const char* kMipBoxFrag = R"(#version 330 core
+out vec4 fragColor;
+uniform sampler2D uSrc;
+void main() {
+    ivec2 srcMax = textureSize(uSrc, 0) - ivec2(1);
+    ivec2 s = ivec2(gl_FragCoord.xy) * 2;
+    vec4 sum = texelFetch(uSrc, clamp(s, ivec2(0), srcMax), 0) +
+               texelFetch(uSrc, clamp(s + ivec2(1, 0), ivec2(0), srcMax), 0) +
+               texelFetch(uSrc, clamp(s + ivec2(0, 1), ivec2(0), srcMax), 0) +
+               texelFetch(uSrc, clamp(s + ivec2(1, 1), ivec2(0), srcMax), 0);
+    fragColor = sum * 0.25;
 }
 )";
 

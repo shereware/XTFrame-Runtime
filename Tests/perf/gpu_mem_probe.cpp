@@ -8,7 +8,14 @@
 //   N]
 //                    [--width W] [--height H] [--msaa 1|4] [--backend <name>] [--power low|high]
 //                    [--mode hide|destroy] [--trim-each-scene 0|1] [--image-budget <MiB|default>]
+//                    [--prewarm-hidden N] [--no-system-fonts]
 //
+// T-683 (50 §50.ad): --prewarm-hidden N creates every surface of the sequence first, hidden, and runs N
+// frames (each updating every surface) before the first one is shown -- the host flow, where every surface
+// exists and updates from start-up and a scene switch only changes visibility; a `prewarm_hidden` row follows
+// those frames.
+// --no-system-fonts creates the surfaces with `system_fonts` = 0 (the bundle's own fonts only, as a host
+// does). The time xt_gpu_target_create took is printed as "target_create <ms> ms".
 // --power sets XT_WGPU_POWER for this process (unset: the environment's). The library's log lines (adapter,
 // wgpu-native version, memory hints) go to stdout, and before each scene a line "scene <round> <n> <ui>"
 // (T-675). Exit codes: 0 ok, 2 bad arguments, 1 a C ABI failure; "SKIP: no WebGPU adapter" (exit 0) when no
@@ -50,6 +57,8 @@ struct Options {
     bool destroyMode = false;
     bool trimEachScene = false;
     int64_t imageBudgetMiB = -1;  ///< -1 = the library default
+    int prewarmHidden = 0;        ///< T-683: hidden frames of every surface before the first show (0 = none)
+    bool systemFonts = true;      ///< T-683: false = --no-system-fonts
 };
 
 bool parseInt(const std::string& text, int lo, int hi, int& out) {
@@ -67,6 +76,10 @@ bool parseInt(const std::string& text, int lo, int hi, int& out) {
 bool parseArgs(int argc, char** argv, Options& o) {
     for (int i = 1; i < argc; ++i) {
         const std::string key = argv[i];
+        if (key == "--no-system-fonts") {  // T-683: the one option without a value
+            o.systemFonts = false;
+            continue;
+        }
         if (i + 1 >= argc) {
             std::fprintf(stderr, "missing value after %s\n", key.c_str());
             return false;
@@ -100,6 +113,8 @@ bool parseArgs(int argc, char** argv, Options& o) {
         } else if (key == "--trim-each-scene") {
             ok = value == "0" || value == "1";
             o.trimEachScene = value == "1";
+        } else if (key == "--prewarm-hidden") {
+            ok = parseInt(value, 0, 100000, o.prewarmHidden);
         } else if (key == "--image-budget") {
             int mib = 0;
             if (value == "default") {
@@ -348,7 +363,9 @@ int run(const Options& o) {
     td.height = o.height;
     td.backend = o.backend.c_str();
     td.sample_count = o.msaa;
+    const double createStart = nowMs();
     xt_gpu_target* t = xt_gpu_target_create(&td);
+    const double createMs = nowMs() - createStart;
     if (t == nullptr) {
         const std::string error = xt_capi_last_error();
         xt_bundle_close(b);
@@ -360,6 +377,8 @@ int run(const Options& o) {
         std::fprintf(stderr, "xt_gpu_target_create: %s\n", error.c_str());
         return 1;
     }
+    std::printf("target_create %.1f ms\n", createMs);
+    std::fflush(stdout);
     pickDxgiAdapter();
     if (o.imageBudgetMiB >= 0) {
         xt_gpu_target_set_image_budget(t, static_cast<uint64_t>(o.imageBudgetMiB) << 20);
@@ -367,9 +386,42 @@ int run(const Options& o) {
     writeRow(f, 0, 0, "target_create", "", t, -1, 0, start);
 
     std::vector<xt_surface*> surfaces(ids.size(), nullptr);  // hide mode keeps them across rounds
+    auto makeSurface = [&](size_t k) -> xt_surface* {
+        xt_surface_desc d{};
+        d.struct_size = sizeof d;
+        d.width = o.width;
+        d.height = o.height;
+        d.device_pixel_ratio = 1.0f;
+        d.premultiplied = 1;
+        d.run_flow = 1;
+        d.system_fonts = o.systemFonts ? 1 : 0;
+        d.instance_id = static_cast<uint32_t>(k + 1);
+        xt_surface* s = xt_surface_create(b, ids[k].c_str(), &d);
+        if (s == nullptr) {
+            std::fprintf(stderr, "xt_surface_create(%s): %s\n", ids[k].c_str(), xt_capi_last_error());
+        }
+        return s;
+    };
     int previous = -1;
     int sceneIndex = 0;
     int status = 0;
+    if (o.prewarmHidden > 0) {  // T-683: the host flow -- every surface exists, hidden, before the first show
+        for (size_t k = 0; k < ids.size() && status == 0; ++k) {
+            surfaces[k] = makeSurface(k);
+            if (surfaces[k] == nullptr) {
+                status = 1;
+            } else {
+                xt_surface_set_visible(surfaces[k], 0);
+            }
+        }
+        const double p0 = nowMs();
+        for (int i = 0; i < o.prewarmHidden && status == 0; ++i) {
+            frame(t, surfaces);
+        }
+        std::printf("prewarm_hidden %d frames %.1f ms\n", o.prewarmHidden, nowMs() - p0);
+        std::fflush(stdout);
+        writeRow(f, 0, 0, "prewarm_hidden", "", t, -1, 0, start);
+    }
     for (int round = 1; round <= o.rounds && status == 0; ++round) {
         for (size_t k = 0; k < ids.size() && status == 0; ++k) {
             ++sceneIndex;
@@ -385,18 +437,8 @@ int run(const Options& o) {
                 }
             }
             if (surfaces[k] == nullptr) {
-                xt_surface_desc d{};
-                d.struct_size = sizeof d;
-                d.width = o.width;
-                d.height = o.height;
-                d.device_pixel_ratio = 1.0f;
-                d.premultiplied = 1;
-                d.run_flow = 1;
-                d.system_fonts = 1;
-                d.instance_id = static_cast<uint32_t>(k + 1);
-                surfaces[k] = xt_surface_create(b, ids[k].c_str(), &d);
+                surfaces[k] = makeSurface(k);
                 if (surfaces[k] == nullptr) {
-                    std::fprintf(stderr, "xt_surface_create(%s): %s\n", ids[k].c_str(), xt_capi_last_error());
                     status = 1;
                     break;
                 }

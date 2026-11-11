@@ -160,8 +160,9 @@ void pixelRange(float lo, float hi, int& first, int& last) {
 
 /// T-263c ruling 4: the largest bitmap size (device px) a glyph run is put on the atlas at; a
 /// larger run is filled from outlines, so one enlarged label cannot fill the atlas pages. GPU
-/// only: the software renderer keeps its own 24 px bitmap limit, and between the two a run is a
-/// hinted bitmap here and an outline fill there.
+/// only. T-681: on a single-sampled target (`edgeFringe`) a run from the software renderer's 24 px
+/// (xt::glyphRunUsesHintedBitmap) up to this size is drawn from outline coverage first, the atlas
+/// only taking the glyphs coverage refuses; under MSAA it is still a hinted bitmap here.
 [[maybe_unused]] constexpr float kMaxAtlasGlyphPx = 96.0f;
 
 /// T-263e ruling D: the share of one atlas page a single glyph-effect run may occupy (see
@@ -526,6 +527,21 @@ struct FrameBuilder::Impl {
     /// T-676: per glyph of a rotated / skewed run, 1 = its coverage quad was refused and the
     /// T-653 atlas path draws it (doTransformedRun).
     std::vector<uint8_t> transformedRunFallback;
+    /// T-682 (Docs/tasks/T-682.md item 1): what a glyph's first outline query said when it was not
+    /// an outline to rasterize -- NoOutline (glyphOutline false) or Empty (no contours) -- sorted by
+    /// (generation, font, glyph), so later builds take the same branch without asking the shaper.
+    /// Inserted on a miss only; emptied when it reaches kMaxGlyphOutlineNotes.
+    enum class GlyphOutlineKind : uint8_t { Contours, NoOutline, Empty };
+    struct GlyphOutlineNote {
+        uint64_t generation = 0;
+        FontId font = 0;
+        uint32_t glyph = 0;
+        GlyphOutlineKind kind = GlyphOutlineKind::Contours;
+    };
+    static constexpr size_t kMaxGlyphOutlineNotes = 4096;
+    std::vector<GlyphOutlineNote> glyphOutlineNotes;
+    /// T-682 (item 6): shaper glyphOutline calls of this build attempt (CoverageStats::glyphOutlines).
+    uint32_t statGlyphOutlines = 0;
     std::vector<Vertex> meshVertexScratch;  // T-245: one DrawImageMesh's projected vertices.
     std::array<std::vector<Vertex>, 4> glyphBatch;
 
@@ -1322,64 +1338,87 @@ struct FrameBuilder::Impl {
             return false;
         }
         CoverageEntry entry;
+        if (coverageLookup(key, entry)) {
+            ++statCoverageHits;
+        } else if (!coverageRasterize(source, pts, deviceXf, rule, key, entry)) {
+            return false;
+        }
+        return coverageDraw(entry, wholeX, wholeY, deviceXf, paint);
+    }
+
+    /// T-682 (split out of fillCoverage): the atlas entry of `key` -- for a tiled shape its header,
+    /// with the tiles in coverageTiles; false when it (or any of its tiles) is missing.
+    bool coverageLookup(const CoverageKey& key, CoverageEntry& entry) {
         bool cached = coverageAtlas.lookup(key, entry);
         if (cached && entry.kind == CoverageEntryKind::Tiled) {
             cached = coverageAtlas.lookupTiles(key, entry, coverageTiles);
         }
-        if (cached) {
-            ++statCoverageHits;
-        } else {
-            ++statCoverageMisses;
-            // The bitmap's size from the device box (rounded outward, 1 px border each side).
-            const Rect b = boundsOf(pts);
-            const double bw =
-                std::ceil(static_cast<double>(b.x) + b.w) - std::floor(static_cast<double>(b.x)) + 3.0;
-            const double bh =
-                std::ceil(static_cast<double>(b.y) + b.h) - std::floor(static_cast<double>(b.y)) + 3.0;
-            if (!(bw > 0.0 && bh > 0.0) || bw > kMaxCoverageBitmapSide + 3.0 ||
-                bh > kMaxCoverageBitmapSide + 3.0) {
-                ++statCoverageFallbacks;
-                return false;
-            }
-            if (!coverageAtlas.budgetAllows()) {
-                // T-662: held back by the frame budget -- the next build draws it (wantsAnotherFrame).
-                ++statCoverageFallbacks;
-                ++statCoverageBudgetFallbacks;
-                return false;
-            }
-            Mat2x3 rasterXf = deviceXf;  // the linear part and the quantized fraction of the move
-            rasterXf.e = static_cast<float>(subX) * 0.25f;
-            rasterXf.f = static_cast<float>(subY) * 0.25f;
-            bool rasterized = false;
-            if (source.glyph) {
-                rasterized =
-                    rasterizeCoverage(source.glyphVerbs, source.glyphPoints, rasterXf, rule, coverageBitmap);
-            } else if (source.stroke) {
-                rasterized = rasterizeStrokeCoverage(source, rasterXf);
-            } else {
-                const PathRef& path = *source.path;
-                const std::span<const PathVerb> verbs(list->verbs.data() + path.verbOffset, path.verbCount);
-                const std::span<const float> points(list->points.data() + path.pointOffset, path.pointCount);
-                rasterized = rasterizeCoverage(verbs, points, rasterXf, rule, coverageBitmap);
-            }
-            if (!rasterized) {
-                ++statCoverageFallbacks;
-                return false;
-            }
-            // T-662: the budget counts the pixels the rasterizer covered, not the bitmap's box.
-            coverageAtlas.noteRasterized(coverageBitmap.coveredPixels);
-            const bool tiled = coverageBitmap.width > kCoverageTileThreshold ||
-                               coverageBitmap.height > kCoverageTileThreshold;
-            const bool inserted = tiled ? coverageAtlas.insertTiles(key, coverageBitmap, entry, coverageTiles)
-                                        : coverageAtlas.insert(key, coverageBitmap, entry);
-            if (coverageAtlas.wasResized()) {
-                coverageResizedSeen = true;
-            }
-            if (!inserted) {
-                ++statCoverageFallbacks;
-                return false;
-            }
+        return cached;
+    }
+
+    /// T-682 (split out of fillCoverage): a miss of `key` -- rasterizes `source` under the linear
+    /// part of `deviceXf` and the key's quarter-pixel phase, within the size limit and the frame
+    /// budget, and inserts it into `entry`. False (counted as a fallback) when it is refused.
+    bool coverageRasterize(const CoverageSource& source, std::span<const Vec2> pts, const Mat2x3& deviceXf,
+                           FillRule rule, const CoverageKey& key, CoverageEntry& entry) {
+        const uint8_t subX = key.subX, subY = key.subY;
+        ++statCoverageMisses;
+        // The bitmap's size from the device box (rounded outward, 1 px border each side).
+        const Rect b = boundsOf(pts);
+        const double bw =
+            std::ceil(static_cast<double>(b.x) + b.w) - std::floor(static_cast<double>(b.x)) + 3.0;
+        const double bh =
+            std::ceil(static_cast<double>(b.y) + b.h) - std::floor(static_cast<double>(b.y)) + 3.0;
+        if (!(bw > 0.0 && bh > 0.0) || bw > kMaxCoverageBitmapSide + 3.0 ||
+            bh > kMaxCoverageBitmapSide + 3.0) {
+            ++statCoverageFallbacks;
+            return false;
         }
+        if (!coverageAtlas.budgetAllows()) {
+            // T-662: held back by the frame budget -- the next build draws it (wantsAnotherFrame).
+            ++statCoverageFallbacks;
+            ++statCoverageBudgetFallbacks;
+            return false;
+        }
+        Mat2x3 rasterXf = deviceXf;  // the linear part and the quantized fraction of the move
+        rasterXf.e = static_cast<float>(subX) * 0.25f;
+        rasterXf.f = static_cast<float>(subY) * 0.25f;
+        bool rasterized = false;
+        if (source.glyph) {
+            rasterized =
+                rasterizeCoverage(source.glyphVerbs, source.glyphPoints, rasterXf, rule, coverageBitmap);
+        } else if (source.stroke) {
+            rasterized = rasterizeStrokeCoverage(source, rasterXf);
+        } else {
+            const PathRef& path = *source.path;
+            const std::span<const PathVerb> verbs(list->verbs.data() + path.verbOffset, path.verbCount);
+            const std::span<const float> points(list->points.data() + path.pointOffset, path.pointCount);
+            rasterized = rasterizeCoverage(verbs, points, rasterXf, rule, coverageBitmap);
+        }
+        if (!rasterized) {
+            ++statCoverageFallbacks;
+            return false;
+        }
+        // T-662: the budget counts the pixels the rasterizer covered, not the bitmap's box.
+        coverageAtlas.noteRasterized(coverageBitmap.coveredPixels);
+        const bool tiled =
+            coverageBitmap.width > kCoverageTileThreshold || coverageBitmap.height > kCoverageTileThreshold;
+        const bool inserted = tiled ? coverageAtlas.insertTiles(key, coverageBitmap, entry, coverageTiles)
+                                    : coverageAtlas.insert(key, coverageBitmap, entry);
+        if (coverageAtlas.wasResized()) {
+            coverageResizedSeen = true;
+        }
+        if (!inserted) {
+            ++statCoverageFallbacks;
+            return false;
+        }
+        return true;
+    }
+
+    /// T-682 (split out of fillCoverage): draws `entry` at the whole-pixel translation (wholeX,
+    /// wholeY). False (counted as a fallback) when a page has no device texture.
+    bool coverageDraw(const CoverageEntry& entry, int32_t wholeX, int32_t wholeY, const Mat2x3& deviceXf,
+                      const PaintRef& paint) {
         if (entry.kind == CoverageEntryKind::Tiled) {
             return drawCoverageTiles(entry, wholeX, wholeY, deviceXf, paint);
         }
@@ -2241,6 +2280,7 @@ struct FrameBuilder::Impl {
         }
         DrawCmd c;
         c.shading = Shading::BoxShadow;
+        c.boxShadowMulti = d.extraCount > 0 ? 1 : 0;  // T-683: the one-shape program unless outlined
         c.blend = Blend::SrcOver;
         c.stencilOp = StencilOp::TestEqualRef;
         c.stencilRef = static_cast<uint8_t>(clipDepth);
@@ -2591,6 +2631,76 @@ struct FrameBuilder::Impl {
         lastExternals.push_back(r);
     }
 
+    /// T-665 (Docs/design/10-backends.md §10.11 item 7, Docs/tasks/T-665.md): the explicit lod of the
+    /// image draw in progress (doImage, doImageQuad, the T-663 rounded image), set by armImageLod and
+    /// cleared after the draw. Inactive: the single-level draw of before.
+    struct ImageLod {
+        bool active = false;
+        float lod = 0.0f;
+        float maxLevel = 0.0f;
+        float straight = 0.0f;
+    };
+    ImageLod imageLod;
+
+    /// T-665: the size of image texture `tex` as the texture cache holds it for the current source;
+    /// false when it is not a cached image (a host texture).
+    bool cachedTextureSize(TextureHandle tex, int& w, int& h) const {
+        for (const TextureEntry& entry : textureCache) {
+            if (entry.tex == tex && entry.source == currentSource && entry.width > 0 && entry.height > 0) {
+                w = entry.width;
+                h = entry.height;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// T-665: arms `imageLod` for the next draw of `tex` when `lod` > 0: the device gives the texture
+    /// its mip chain on the first minified draw (GpuDevice::requestMipChain; a block-compressed image
+    /// passes its stored levels, and stays single-level without them). Nothing is armed when the
+    /// texture keeps one level.
+    void armImageLod(TextureHandle tex, float lod, Shading shading, AssetId asset, AssetResolver* assets,
+                     const IrView* ir, float variantScale) {
+        imageLod = ImageLod{};
+        if (!(lod > 0.0f) || tex == 0 || device == nullptr) {
+            return;
+        }
+        const void* stored = nullptr;
+        uint32_t storedCount = 0;
+        if (shading == Shading::TextureStraight) {
+            const CompressedImage* compressed =
+                assets->compressedImage(asset, *ir, currentDpr * variantScale);
+            if (compressed != nullptr && compressed->levels > 1) {
+                const size_t level0 = ddsLevelSize(compressed->format, compressed->width, compressed->height);
+                if (compressed->blocks.size() > level0) {
+                    stored = compressed->blocks.data() + level0;
+                    storedCount = static_cast<uint32_t>(compressed->levels);
+                }
+            }
+        }
+        const uint32_t levels = device->requestMipChain(tex, stored, storedCount);
+        if (levels <= 1) {
+            return;
+        }
+        imageLod.active = true;
+        imageLod.lod = lod;
+        imageLod.maxLevel = static_cast<float>(levels - 1);
+        imageLod.straight = shading == Shading::TextureStraight ? 1.0f : 0.0f;
+    }
+
+    /// T-665: marks image draw `c` trilinear at the armed lod (its own TextureLodParams).
+    void applyImageLod(DrawCmd& c) {
+        if (!imageLod.active) {
+            return;
+        }
+        TextureLodParams p;
+        p.lod = imageLod.lod;
+        p.maxLevel = imageLod.maxLevel;
+        p.straight = imageLod.straight;
+        c.mipLod = 1;
+        c.paramIndex = emit.pushParams(p);
+    }
+
     void drawHomogeneousQuad(const Vertex v[4], TextureHandle tex, bool smooth,
                              Shading shading = Shading::Texture) {
         if (emit.scissor().empty()) {
@@ -2603,6 +2713,7 @@ struct FrameBuilder::Impl {
         c.blend = Blend::SrcOver;
         c.stencilOp = StencilOp::TestEqualRef;
         c.stencilRef = static_cast<uint8_t>(clipDepth);
+        applyImageLod(c);  // T-665
         emit.pushCmd(c, emit.quad(v));
     }
 
@@ -2719,6 +2830,7 @@ struct FrameBuilder::Impl {
         c.blend = Blend::SrcOver;
         c.stencilOp = StencilOp::TestEqualRef;
         c.stencilRef = static_cast<uint8_t>(clipDepth);
+        applyImageLod(c);  // T-665
         emit.pushCmd(c, g);
         return true;
     }
@@ -2755,7 +2867,14 @@ struct FrameBuilder::Impl {
             }
             v[i] = Vertex{hp.x, hp.y, hp.w, uv[i].x, uv[i].y, rgba};
         }
+        // T-665: a smooth, non-projected image samples trilinearly when minified (as SW does).
+        int texW = 0, texH = 0;
+        if (cmd.smooth != 0 && !projecting() && cachedTextureSize(tex, texW, texH)) {
+            armImageLod(tex, imageDrawLod(deviceXf, cmd.dst, cmd.srcUv, texW, texH), shading, cmd.asset,
+                        assets, ir, cmd.variantScale);
+        }
         drawImageQuadEdges(v, cmd.srcUv, cmd.opacity, tex, cmd.smooth != 0, shading);
+        imageLod = ImageLod{};
     }
 
     /// T-202 (Docs/tasks/T-202.md item 5): one instanced `DrawKind::Particles` command; the
@@ -2850,7 +2969,18 @@ struct FrameBuilder::Impl {
             }
             v[i] = Vertex{hp.x, hp.y, hp.w, uv[i].x, uv[i].y, rgba};
         }
+        // T-665: a parallelogram (not projected) samples trilinearly when minified (as SW does).
+        int texW = 0, texH = 0;
+        float lod = 0.0f;
+        if (cmd.smooth != 0 && !projecting() && cachedTextureSize(tex, texW, texH)) {
+            const Vec2 q[4] = {apply(dprXf, cmd.p[0]), apply(dprXf, cmd.p[1]), apply(dprXf, cmd.p[2]),
+                               apply(dprXf, cmd.p[3])};
+            if (imageQuadLod(q, cmd.srcUv, texW, texH, lod)) {
+                armImageLod(tex, lod, shading, cmd.asset, assets, ir, cmd.variantScale);
+            }
+        }
         drawImageQuadEdges(v, cmd.srcUv, cmd.opacity, tex, cmd.smooth != 0, shading);
+        imageLod = ImageLod{};
     }
 
     /// T-245 (Docs/design/32-rigging-and-deformation.md §32.2.4): the mesh's vertices go through
@@ -2917,43 +3047,230 @@ struct FrameBuilder::Impl {
     /// (T-569) are part of the id, so they are covered; the glyph's placement, size and any skew are in the
     /// raster transform, which the key holds besides this hash. Never equal to a path's or stroke's hash
     /// except by collision.
-    static uint64_t glyphContentHash(const TextShaper* shaper, FontId font, uint32_t glyphId, float size) {
+    /// T-682 (item 2): split in two -- the run's part (tag, generation, font: glyphHashSeed) and the
+    /// glyph's (id, size, tolerance: glyphHashFinish) -- mixed in the same order as before.
+    static void glyphHashMix(uint64_t& h, uint64_t v) {
+        h ^= v + 0x9E3779B97F4A7C15ull + (h << 6) + (h >> 2);
+        h *= 0xBF58476D1CE4E5B9ull;
+        h ^= h >> 31;
+    }
+    static uint64_t glyphHashBits(float f) {
+        uint32_t u = 0;
+        std::memcpy(&u, &f, sizeof(u));
+        return static_cast<uint64_t>(u);
+    }
+    static uint64_t glyphHashSeed(const TextShaper* shaper, FontId font) {
         uint64_t h = 0x474C5950484F4C31ull;  // "GLYPHOL1"
-        auto mix = [&h](uint64_t v) {
-            h ^= v + 0x9E3779B97F4A7C15ull + (h << 6) + (h >> 2);
-            h *= 0xBF58476D1CE4E5B9ull;
-            h ^= h >> 31;
-        };
-        auto bits = [](float f) {
-            uint32_t u = 0;
-            std::memcpy(&u, &f, sizeof(u));
-            return static_cast<uint64_t>(u);
-        };
         // T-675 (10 §10.11 T-662 record): the shaper's generation, not its address -- a shaper made
         // after another was destroyed may take its address, and its FontIds name other faces.
-        mix(shaper->generation());
-        mix(static_cast<uint64_t>(font));
-        mix(static_cast<uint64_t>(glyphId));
-        mix(bits(size));
-        mix(bits(kFlattenTolerance));
+        glyphHashMix(h, shaper->generation());
+        glyphHashMix(h, static_cast<uint64_t>(font));
         return h;
+    }
+    static uint64_t glyphHashFinish(uint64_t seed, uint32_t glyphId, float size) {
+        uint64_t h = seed;
+        glyphHashMix(h, static_cast<uint64_t>(glyphId));
+        glyphHashMix(h, glyphHashBits(size));
+        glyphHashMix(h, glyphHashBits(kFlattenTolerance));
+        return h;
+    }
+
+    /// T-682 (Docs/tasks/T-682.md item 2): what the glyphs of one run share for their coverage
+    /// lookup, computed once per run: the run's device transform, the run's part of the glyph hash,
+    /// and the key's fill rule and linear part -- the bits of deviceTransform(xf, dpr) x size, which
+    /// are those of every glyph's raster transform (a glyph's position only enters the translation).
+    struct GlyphCoverageRun {
+        TextShaper* shaper = nullptr;
+        FontId font = 0;
+        float size = 0;
+        Mat2x3 runXf;
+        uint64_t hashSeed = 0;
+        CoverageKey key;     ///< pathHash and subX / subY are set per glyph
+        bool keyed = false;  ///< the linear part is finite (makeCoverageKey accepts it)
+        PaintRef paint{};
+    };
+
+    void beginGlyphCoverageRun(GlyphCoverageRun& run, TextShaper* shaper, FontId font, float size,
+                               const Mat2x3& xf, float dpr, Color color) {
+        run.shaper = shaper;
+        run.font = font;
+        run.size = size;
+        run.runXf = deviceTransform(xf, dpr);
+        run.hashSeed = shaper != nullptr ? glyphHashSeed(shaper, font) : 0;
+        Mat2x3 linear = mul(run.runXf, scaling(Vec2{size, size}));
+        linear.e = 0.0f;
+        linear.f = 0.0f;
+        run.keyed = makeCoverageKey(0, FillRule::NonZero, linear, run.key);
+        run.paint = PaintRef{};
+        run.paint.kind = PaintKind::Solid;
+        run.paint.color = color;
+    }
+
+    static bool glyphNoteLess(const GlyphOutlineNote& a, const GlyphOutlineNote& b) {
+        if (a.generation != b.generation) return a.generation < b.generation;
+        if (a.font != b.font) return a.font < b.font;
+        return a.glyph < b.glyph;
+    }
+
+    /// T-682: the note of glyph (generation, font, glyph); Contours when there is none.
+    GlyphOutlineKind glyphOutlineNote(uint64_t generation, FontId font, uint32_t glyph) const {
+        if (glyphOutlineNotes.empty()) {
+            return GlyphOutlineKind::Contours;
+        }
+        const GlyphOutlineNote probe{generation, font, glyph, GlyphOutlineKind::Contours};
+        auto it = std::lower_bound(glyphOutlineNotes.begin(), glyphOutlineNotes.end(), probe, glyphNoteLess);
+        if (it == glyphOutlineNotes.end() || it->generation != generation || it->font != font ||
+            it->glyph != glyph) {
+            return GlyphOutlineKind::Contours;
+        }
+        return it->kind;
+    }
+
+    void noteGlyphOutline(uint64_t generation, FontId font, uint32_t glyph, GlyphOutlineKind kind) {
+        if (glyphOutlineNotes.size() >= kMaxGlyphOutlineNotes) {
+            glyphOutlineNotes.clear();
+        }
+        const GlyphOutlineNote note{generation, font, glyph, kind};
+        auto it = std::lower_bound(glyphOutlineNotes.begin(), glyphOutlineNotes.end(), note, glyphNoteLess);
+        glyphOutlineNotes.insert(it, note);
+    }
+
+    /// T-682: asks the shaper for glyph `glyphId`'s outline (glyphOutlineVerbs / Points) and
+    /// flattens it under `deviceXf` into flatPoints / Starts / Closed (as SW: kFlattenTolerance).
+    /// NoOutline and Empty (no contours -- independent of the transform) are noted, so later builds
+    /// do not ask again.
+    GlyphOutlineKind fetchGlyphOutline(const GlyphCoverageRun& run, uint32_t glyphId,
+                                       const Mat2x3& deviceXf) {
+        glyphOutlineVerbs.clear();
+        glyphOutlinePoints.clear();
+        ++statGlyphOutlines;
+        if (!run.shaper->glyphOutline(run.font, glyphId, glyphOutlineVerbs, glyphOutlinePoints)) {
+            noteGlyphOutline(run.shaper->generation(), run.font, glyphId, GlyphOutlineKind::NoOutline);
+            return GlyphOutlineKind::NoOutline;
+        }
+        flatPoints.clear();
+        flatStarts.clear();
+        flatClosed.clear();
+        flattenPath(glyphOutlineVerbs, glyphOutlinePoints, deviceXf, kFlattenTolerance, flatPoints,
+                    flatStarts, flatClosed);
+        if (flatPoints.empty()) {
+            noteGlyphOutline(run.shaper->generation(), run.font, glyphId, GlyphOutlineKind::Empty);
+            return GlyphOutlineKind::Empty;
+        }
+        return GlyphOutlineKind::Contours;
+    }
+
+    /// T-682: how glyphCoverage ended.
+    enum class GlyphCoverage : uint8_t {
+        Drawn,      ///< a coverage quad was emitted
+        Empty,      ///< the outline has no contours: nothing to draw
+        NoOutline,  ///< the shaper has no outline for the glyph
+        Refused,    ///< not cacheable or refused; the flattened outline is in flatPoints / Starts
+    };
+
+    /// T-682 (Docs/tasks/T-682.md item 1): glyph `glyphId` of `run` at `glyphPos` as a coverage
+    /// quad, looked up by key first. A glyph noted as having no outline or no contours takes that
+    /// branch at once; otherwise its key (T-675's: the glyph hash, the run's linear part, the
+    /// quarter-pixel phase) is looked up, and a hit is drawn without asking the shaper anything and
+    /// without allocating. Only a miss -- or a hit whose page has no texture, which needs the
+    /// fallback -- fetches and flattens the outline; a miss then rasterizes and inserts as
+    /// fillCoverage does. `deviceXf` gets the glyph's device transform (deviceTransform(xf, dpr) x
+    /// translation(glyphPos) x scaling(size), as before). The statistics and fallbacks are those of
+    /// the outline-first code this replaces.
+    GlyphCoverage glyphCoverage(const GlyphCoverageRun& run, uint32_t glyphId, Vec2 glyphPos,
+                                Mat2x3& deviceXf) {
+        if (run.shaper == nullptr) {
+            return GlyphCoverage::NoOutline;
+        }
+        switch (glyphOutlineNote(run.shaper->generation(), run.font, glyphId)) {
+            case GlyphOutlineKind::NoOutline:
+                return GlyphCoverage::NoOutline;
+            case GlyphOutlineKind::Empty:
+                return GlyphCoverage::Empty;
+            case GlyphOutlineKind::Contours:
+                break;
+        }
+        deviceXf = mul(run.runXf, mul(translation(glyphPos), scaling(Vec2{run.size, run.size})));
+        CoverageKey key = run.key;
+        int32_t wholeX = 0, wholeY = 0;
+        const bool keyed = run.keyed && splitCoverageTranslation(deviceXf.e, wholeX, key.subX) &&
+                           splitCoverageTranslation(deviceXf.f, wholeY, key.subY);
+        CoverageSource source;
+        source.glyph = true;
+        source.glyphHash = glyphHashFinish(run.hashSeed, glyphId, run.size);
+        key.pathHash = source.glyphHash;
+        CoverageEntry entry;
+        if (keyed && coverageLookup(key, entry)) {
+            ++statCoverageHits;
+            if (coverageDraw(entry, wholeX, wholeY, deviceXf, run.paint)) {
+                return GlyphCoverage::Drawn;
+            }
+            const GlyphOutlineKind got = fetchGlyphOutline(run, glyphId, deviceXf);  // for the fallback
+            return got == GlyphOutlineKind::Contours ? GlyphCoverage::Refused
+                   : got == GlyphOutlineKind::Empty  ? GlyphCoverage::Empty
+                                                     : GlyphCoverage::NoOutline;
+        }
+        const GlyphOutlineKind got = fetchGlyphOutline(run, glyphId, deviceXf);
+        if (got == GlyphOutlineKind::NoOutline) {
+            return GlyphCoverage::NoOutline;
+        }
+        if (got == GlyphOutlineKind::Empty) {
+            return GlyphCoverage::Empty;
+        }
+        if (!keyed) {
+            ++statCoverageFallbacks;  // fillCoverage's count for a key it cannot make
+            return GlyphCoverage::Refused;
+        }
+        source.glyphVerbs = glyphOutlineVerbs;
+        source.glyphPoints = glyphOutlinePoints;
+        if (!coverageRasterize(source, flatPoints, deviceXf, FillRule::NonZero, key, entry)) {
+            return GlyphCoverage::Refused;
+        }
+        return coverageDraw(entry, wholeX, wholeY, deviceXf, run.paint) ? GlyphCoverage::Drawn
+                                                                        : GlyphCoverage::Refused;
     }
 
     /// T-662 (10 §10.11 item 4): with `edgeFringe` on and no 3D projection, the glyph is drawn as
     /// a coverage quad (fillCoverage) rasterized from the same outline and flattening SW uses
     /// (buildGlyphContours: em outline x size, moved to the glyph origin, kFlattenTolerance), keyed
-    /// by glyphContentHash; otherwise, or when that is not possible, as before.
+    /// by the glyph content hash; otherwise, or when that is not possible, as before.
+    /// T-682: there the quad is looked up by key before any outline is fetched (glyphCoverage); a
+    /// refused quad takes the direct paths, then stencil-then-cover, as fillShapeAndCover does after
+    /// a refused glyph coverage quad.
     void doOutlineGlyph(FontId font, uint32_t glyphId, Vec2 glyphPos, float size, const Mat2x3& xf, float dpr,
                         Color color, TextShaper* shaper) {
         if (shaper == nullptr) {
             return;
         }
-        glyphOutlineVerbs.clear();
-        glyphOutlinePoints.clear();
-        if (!shaper->glyphOutline(font, glyphId, glyphOutlineVerbs, glyphOutlinePoints)) {
+        GlyphCoverageRun run;
+        beginGlyphCoverageRun(run, shaper, font, size, xf, dpr, color);
+        doOutlineGlyph(run, glyphId, glyphPos, xf, dpr);
+    }
+
+    /// T-682: doOutlineGlyph for a glyph of `run` (begun with the same font, size, xf, dpr and color).
+    void doOutlineGlyph(const GlyphCoverageRun& run, uint32_t glyphId, Vec2 glyphPos, const Mat2x3& xf,
+                        float dpr) {
+        if (run.shaper == nullptr) {
             return;
         }
-        Mat2x3 local = mul(translation(glyphPos), scaling(Vec2{size, size}));
+        if (edgeFringe && !projecting()) {
+            if (emit.scissor().empty()) {
+                return;  // fillShapeAndCover draws nothing then
+            }
+            Mat2x3 deviceXf;
+            if (glyphCoverage(run, glyphId, glyphPos, deviceXf) == GlyphCoverage::Refused) {
+                fillShapeAndCover(flatPoints, flatStarts, deviceXf, FillRule::NonZero, run.paint, true,
+                                  nullptr);
+            }
+            return;
+        }
+        glyphOutlineVerbs.clear();
+        glyphOutlinePoints.clear();
+        ++statGlyphOutlines;
+        if (!run.shaper->glyphOutline(run.font, glyphId, glyphOutlineVerbs, glyphOutlinePoints)) {
+            return;
+        }
+        Mat2x3 local = mul(translation(glyphPos), scaling(Vec2{run.size, run.size}));
         Mat2x3 deviceXf = mul(deviceTransform(xf, dpr), local);
         flatPoints.clear();
         flatStarts.clear();
@@ -2963,15 +3280,12 @@ struct FrameBuilder::Impl {
         if (projecting() && !projectPointsInPlace(flatPoints)) {
             return;
         }
-        PaintRef paint{};
-        paint.kind = PaintKind::Solid;
-        paint.color = color;
         CoverageSource source;
         source.glyph = true;
-        source.glyphHash = glyphContentHash(shaper, font, glyphId, size);
+        source.glyphHash = glyphHashFinish(run.hashSeed, glyphId, run.size);
         source.glyphVerbs = glyphOutlineVerbs;
         source.glyphPoints = glyphOutlinePoints;
-        fillShapeAndCover(flatPoints, flatStarts, deviceXf, FillRule::NonZero, paint, true, &source);
+        fillShapeAndCover(flatPoints, flatStarts, deviceXf, FillRule::NonZero, run.paint, true, &source);
     }
 
     /// T-676 (Docs/tasks/T-676.md item 3): glyph `glyphId` of a rotated / skewed run as a coverage
@@ -2980,33 +3294,11 @@ struct FrameBuilder::Impl {
     /// false when it has no outline or the coverage quad was refused (budget, atlas full, size),
     /// and the caller draws it another way. A refusal for the frame budget counts as one
     /// (statCoverageBudgetFallbacks), so the next frame redraws it (T-662).
-    bool outlineGlyphCoverage(FontId font, uint32_t glyphId, Vec2 glyphPos, float size, const Mat2x3& xf,
-                              float dpr, Color color, TextShaper* shaper) {
-        glyphOutlineVerbs.clear();
-        glyphOutlinePoints.clear();
-        if (shaper == nullptr ||
-            !shaper->glyphOutline(font, glyphId, glyphOutlineVerbs, glyphOutlinePoints)) {
-            return false;
-        }
-        const Mat2x3 local = mul(translation(glyphPos), scaling(Vec2{size, size}));
-        const Mat2x3 deviceXf = mul(deviceTransform(xf, dpr), local);
-        flatPoints.clear();
-        flatStarts.clear();
-        flatClosed.clear();
-        flattenPath(glyphOutlineVerbs, glyphOutlinePoints, deviceXf, kFlattenTolerance, flatPoints,
-                    flatStarts, flatClosed);
-        if (flatPoints.empty()) {
-            return true;
-        }
-        PaintRef paint{};
-        paint.kind = PaintKind::Solid;
-        paint.color = color;
-        CoverageSource source;
-        source.glyph = true;
-        source.glyphHash = glyphContentHash(shaper, font, glyphId, size);
-        source.glyphVerbs = glyphOutlineVerbs;
-        source.glyphPoints = glyphOutlinePoints;
-        return fillCoverage(source, flatPoints, deviceXf, FillRule::NonZero, paint);
+    /// T-682: through glyphCoverage -- looked up by key first, the outline fetched on a miss only.
+    bool outlineGlyphCoverage(const GlyphCoverageRun& run, uint32_t glyphId, Vec2 glyphPos) {
+        Mat2x3 deviceXf;
+        const GlyphCoverage r = glyphCoverage(run, glyphId, glyphPos, deviceXf);
+        return r == GlyphCoverage::Drawn || r == GlyphCoverage::Empty;
     }
 
 #ifndef XT_GPU_NO_TEXT
@@ -3415,10 +3707,11 @@ struct FrameBuilder::Impl {
         }
         transformedRunFallback.assign(cmd.glyphCount, 0);
         bool anyFallback = false;
+        GlyphCoverageRun run;  // T-682: shared by the run's glyphs
+        beginGlyphCoverageRun(run, shaper, cmd.font, cmd.size, cmd.xf, dpr, cmd.color);
         for (uint32_t i = 0; i < cmd.glyphCount; ++i) {
-            if (!outlineGlyphCoverage(cmd.font, list->glyphs[cmd.glyphOffset + i],
-                                      list->glyphPos[cmd.glyphOffset + i], cmd.size, cmd.xf, dpr, cmd.color,
-                                      shaper)) {
+            if (!outlineGlyphCoverage(run, list->glyphs[cmd.glyphOffset + i],
+                                      list->glyphPos[cmd.glyphOffset + i])) {
                 transformedRunFallback[i] = 1;
                 anyFallback = true;
             }
@@ -3468,10 +3761,11 @@ struct FrameBuilder::Impl {
                         effectRunReported = true;
                         lastError = "glyph effect run too large for the atlas; drawn without its effect";
                     }
+                    GlyphCoverageRun run;  // T-682: shared by the run's glyphs
+                    beginGlyphCoverageRun(run, shaper, cmd.font, cmd.size, cmd.xf, dpr, cmd.color);
                     for (uint32_t i = 0; i < cmd.glyphCount; ++i) {
-                        doOutlineGlyph(cmd.font, list->glyphs[cmd.glyphOffset + i],
-                                       list->glyphPos[cmd.glyphOffset + i], cmd.size, cmd.xf, dpr, cmd.color,
-                                       shaper);
+                        doOutlineGlyph(run, list->glyphs[cmd.glyphOffset + i],
+                                       list->glyphPos[cmd.glyphOffset + i], cmd.xf, dpr);
                     }
                 }
             }
@@ -3485,16 +3779,44 @@ struct FrameBuilder::Impl {
         }
 #endif
         if (!useAtlas) {
+            if (shaper == nullptr) {
+                return;
+            }
+            GlyphCoverageRun run;  // T-682: shared by the run's glyphs
+            beginGlyphCoverageRun(run, shaper, cmd.font, cmd.size, cmd.xf, dpr, cmd.color);
             for (uint32_t i = 0; i < cmd.glyphCount; ++i) {
-                uint32_t glyphId = list->glyphs[cmd.glyphOffset + i];
-                Vec2 glyphPos = list->glyphPos[cmd.glyphOffset + i];
-                doOutlineGlyph(cmd.font, glyphId, glyphPos, cmd.size, cmd.xf, dpr, cmd.color, shaper);
+                doOutlineGlyph(run, list->glyphs[cmd.glyphOffset + i], list->glyphPos[cmd.glyphOffset + i],
+                               cmd.xf, dpr);
             }
             return;
         }
 #ifndef XT_GPU_NO_TEXT
         if (emit.scissor().empty()) {
             return;
+        }
+        // T-681 (Docs/design/10-backends.md §10.11, ruling 1 of the T-676 record): single-sampled and
+        // not projected, a run the software renderer fills from outlines (24 device px and up, the
+        // shared xt::glyphRunUsesHintedBitmap) is drawn as SW draws it -- each glyph's outline as a
+        // coverage quad (outlineGlyphCoverage, T-662's key). A glyph whose coverage quad is refused
+        // (frame budget, atlas full) is drawn from the glyph atlas below; a budget refusal asks for
+        // another frame (T-662, through fillCoverage's count).
+        const std::vector<uint8_t>* atlasOnly = nullptr;
+        if (edgeFringe && !projecting() && !glyphRunUsesHintedBitmap(cmd, deviceXf)) {
+            transformedRunFallback.assign(cmd.glyphCount, 0);
+            bool anyFallback = false;
+            GlyphCoverageRun run;  // T-682: shared by the run's glyphs
+            beginGlyphCoverageRun(run, shaper, cmd.font, cmd.size, cmd.xf, dpr, cmd.color);
+            for (uint32_t i = 0; i < cmd.glyphCount; ++i) {
+                if (!outlineGlyphCoverage(run, list->glyphs[cmd.glyphOffset + i],
+                                          list->glyphPos[cmd.glyphOffset + i])) {
+                    transformedRunFallback[i] = 1;
+                    anyFallback = true;
+                }
+            }
+            if (!anyFallback) {
+                return;
+            }
+            atlasOnly = &transformedRunFallback;
         }
         const float sizeDevice = glyphRunBitmapSize(cmd, deviceXf);
         float texSize = static_cast<float>(glyphAtlas->textureSize());
@@ -3505,6 +3827,9 @@ struct FrameBuilder::Impl {
         }
 
         for (uint32_t i = 0; i < cmd.glyphCount; ++i) {
+            if (atlasOnly != nullptr && (*atlasOnly)[i] == 0) {
+                continue;  // T-681: drawn from outline coverage above
+            }
             const Vec2 posWorld = apply(cmd.xf, list->glyphPos[cmd.glyphOffset + i]);
             float wholeX = 0.0f;
             xt::text::AtlasEntry entry{};
@@ -3979,7 +4304,8 @@ struct FrameBuilder::Impl {
                 continue;
             }
             Rect r;
-            const ClipContentBounds kind = clipContentBoundsInFrame(cl, cmd, frame, margin, r, clipShaper);
+            const ClipContentBounds kind =
+                clipContentBoundsInFrame(cl, cmd, frame, margin, r, clipShaper, currentDpr);
             if (kind == ClipContentBounds::Unknown) {
                 return false;
             }
@@ -4119,7 +4445,21 @@ struct FrameBuilder::Impl {
         const Vec2 uv0{srcUv.x, srcUv.y};
         const Vec2 du{srcUv.w, 0.0f};  // along e1 (dst left -> right)
         const Vec2 dv{0.0f, srcUv.h};  // along e3 (dst top -> bottom)
+        // T-665: minified, trilinear at the image's lod -- DrawImage's from its transform, as SW
+        // computes it; DrawImageQuad's from its (parallelogram) corners.
+        int texW = 0, texH = 0;
+        if (!projecting() && cachedTextureSize(tex, texW, texH)) {
+            float lod = 0.0f;
+            if (cmd.kind == CmdKind::DrawImage) {
+                const ImageCmd& ic = cl.images[cmd.index];
+                lod = imageDrawLod(deviceTransform(ic.xf, dpr), ic.dst, ic.srcUv, texW, texH);
+            } else if (!imageQuadLod(q, srcUv, texW, texH, lod)) {
+                lod = 0.0f;
+            }
+            armImageLod(tex, lod, shading, asset, site.assets, ir, variantScale);
+        }
         fillConvexImage(c, q[0], e1, e3, det, uv0, du, dv, srcUv, opacity, tex, shading);
+        imageLod = ImageLod{};
         return true;
     }
 
@@ -4173,6 +4513,7 @@ struct FrameBuilder::Impl {
         c.blend = Blend::SrcOver;
         c.stencilOp = StencilOp::TestEqualRef;
         c.stencilRef = static_cast<uint8_t>(clipDepth);
+        applyImageLod(c);  // T-665
         emit.pushCmd(c, g);
     }
 
@@ -4894,6 +5235,7 @@ struct FrameBuilder::Impl {
         statCoverageHits = statCoverageMisses = statCoverageFallbacks = 0;  // T-660b: per attempt
         statCoverageBudgetFallbacks = 0;                                    // T-662: likewise
         statCoverageTiles = statCoverageUniformTiles = 0;                   // T-672: likewise
+        statGlyphOutlines = 0;                                              // T-682: likewise
         statClipSkipped = statClipScissor = statClipImageDirect = statClipMaskLayers = 0;  // T-663
         clipScans.clear();
         clipScanSlot.clear();
@@ -5547,6 +5889,7 @@ struct FrameBuilder::Impl {
         lastBudgetFallbacks = statCoverageBudgetFallbacks;  // T-662
         lastCoverageStats.tiles = statCoverageTiles;
         lastCoverageStats.uniformTiles = statCoverageUniformTiles;
+        lastCoverageStats.glyphOutlines = statGlyphOutlines;                               // T-682
         lastCoverageStats.rasterizedPixels = coverageAtlas.stats().frameRasterizedPixels;  // every attempt
         lastCoverageStats.atlasBytes = coverageAtlas.bytes();
         lastClipStats = FrameBuilder::ClipStats{statClipSkipped, statClipScissor, statClipImageDirect,
@@ -5643,8 +5986,9 @@ struct FrameBuilder::Impl {
 
     /// T-675 (Docs/design/50-c-abi.md §50.ac item 2): what a hidden surface gives back -- the effect
     /// result cache and the band targets (released to the device, whose pool keeps them), and the image
-    /// textures (a shared image's use ends with `keep`: idle within its cache's budget). The gradient
-    /// tables, the glyph atlas pages and the coverage atlas stay.
+    /// textures (a shared image's use ends with `keep`: idle within its cache's budget). T-683 (§50.ad
+    /// item 3): and the coverage atlas -- its pages, their CPU copies and the key table (a later build
+    /// rasterizes again what it draws). The gradient tables and the glyph atlas pages stay.
     void trim() {
         lastBuildValid = false;
         flushEffectCache();
@@ -5653,6 +5997,7 @@ struct FrameBuilder::Impl {
             for (const TextureEntry& entry : textureCache) {
                 releaseImage(entry, true);
             }
+            releaseCoverageAtlas();  // T-683
         }
         textureCache.clear();
         sourceSlots.clear();

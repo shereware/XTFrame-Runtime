@@ -68,6 +68,16 @@ public:
     void updateTexture(gpu::TextureHandle tex, uint16_t x, uint16_t y, uint16_t w, uint16_t h,
                        const void* data, size_t rowPitch) override;
     void destroyTexture(gpu::TextureHandle tex) override;
+    /// T-665 (Docs/design/10-backends.md §10.11 item 7): an Rgba8 image gets its levels at the start
+    /// of the next submit (before any draw); block-compressed images, host textures and targets stay
+    /// single-level (returns 1), and so does every image when the two T-665 programs did not link.
+    uint32_t requestMipChain(gpu::TextureHandle tex, const void* storedLevels = nullptr,
+                             uint32_t storedLevelCount = 0) override;
+    /// T-665: chains requested since init (cumulative), the bytes of their levels 1.. and the time
+    /// submit spent making them (ms).
+    uint32_t mipChainsMade() const { return m_mipChains; }
+    uint64_t mipChainBytes() const { return m_mipBytes; }
+    double mipChainMs() const { return m_mipMs; }
     void submit(const gpu::GpuFrame& frame) override;
     gpu::TextureHandle acquireCachedTarget(uint16_t w, uint16_t h, gpu::TextureFormat fmt) override;
     void releaseCachedTarget(gpu::TextureHandle target) override;
@@ -121,13 +131,18 @@ private:
         GLint uShape = -1, uRadii = -1, uSigma = -1, uColor = -1;
         // T-680: the extra signed terms (count, sign 1, sign 2) and their shapes.
         GLint uShape1 = -1, uRadii1 = -1, uShape2 = -1, uRadii2 = -1, uTerms = -1;
+        // T-665: kTextureLodFrag's lod, last level and straight flag.
+        GLint uLodParams = -1;
         UniformShadow shadow;
     };
     Program m_solid, m_gradient, m_texture, m_textureStraight, m_glyph, m_composite, m_resolve;
     /// T-660b: the coverage quad programs (Solid / Gradient with DrawCmd::coverage).
     Program m_coverageSolid, m_coverageGradient;
-    /// T-668: the analytic box shadow program (Shading::BoxShadow).
-    Program m_boxShadow;
+    /// T-668: the analytic box shadow program (Shading::BoxShadow); T-683: one shape, and the program of
+    /// up to three signed shapes (DrawCmd::boxShadowMulti).
+    Program m_boxShadow, m_boxShadowMulti;
+    /// T-665: the trilinear image program (DrawCmd::mipLod) and the mip box step.
+    Program m_textureLod, m_mipBox;
     /// T-660b: one Solid / Gradient command with DrawCmd::coverage (state already applied).
     void drawCoverage(const gpu::DrawCmd& cmd);
     /// T-202: the instanced particle programs (kParticleVert) and their instance buffer.
@@ -164,8 +179,23 @@ private:
         GLuint name = 0;
         gpu::TextureFormat format = gpu::TextureFormat::Rgba8;
         GLenum filter = GL_LINEAR;
+        /// T-665: the size of an image texture (0 for a target) and its mip levels.
+        int width = 0;
+        int height = 0;
+        uint32_t levels = 1;
     };
     std::vector<Texture> m_textures;
+    /// T-665: images requestMipChain gave a chain, made at the start of the next submit; the mip box
+    /// step's framebuffer; what was made (cumulative).
+    std::vector<GLuint> m_pendingMips;
+    GLuint m_mipFbo = 0;
+    uint32_t m_mipChains = 0;
+    uint64_t m_mipBytes = 0;
+    double m_mipMs = 0.0;
+    /// T-665: makes the pending chains (level k = the 2x2 box mean of level k - 1, kMipBoxFrag).
+    void generatePendingMips();
+    /// T-665: binds image `tex` to unit 0 for a mip draw (GL_LINEAR_MIPMAP_NEAREST + textureLod).
+    void bindSampledMip(GLuint tex);
 
     /// A persistent effect-result target (T-162): the texture (also listed in `m_textures`, so
     /// sampling it tracks its filter like any other) and the FBO the store blits into.

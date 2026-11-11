@@ -8,6 +8,7 @@ add_executable(xt_gpu_tests
     test_gpu_retained_key.cpp
     test_coverage_atlas.cpp  # T-660a
     test_coverage_fill.cpp  # T-660b
+    test_box_shadow_truth.cpp  # T-681
 )
 target_include_directories(xt_gpu_tests SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/Code/SDKs/doctest)
 target_compile_definitions(xt_gpu_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)

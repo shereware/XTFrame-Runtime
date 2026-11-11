@@ -18,11 +18,12 @@ struct FileAssetResolverTestAccess {
     static size_t embeddedSlotCount(const FileAssetResolver& r) {
         return r.m_embedded[0].size() + r.m_embedded[1].size();
     }
-    /// The bytes of every decoded image (and compressed block set) the resolver keeps.
+    /// The bytes of every decoded image (and compressed block set, T-665: and mip chain) the resolver
+    /// keeps.
     static size_t decodedBytes(const FileAssetResolver& r) {
         size_t bytes = 0;
         for (const FileAssetResolver::Entry& entry : r.m_entries) {
-            bytes += entry.image.rgba.capacity() + entry.compressed.blocks.capacity();
+            bytes += entry.image.rgba.capacity() + entry.compressed.blocks.capacity() + entry.mips.byteSize();
         }
         return bytes;
     }

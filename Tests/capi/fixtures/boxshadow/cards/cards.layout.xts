@@ -1,0 +1,31 @@
+/* A backdrop, two cards side by side and a star below them. */
+body {
+  width: 100vw;
+  height: 100vh;
+}
+#back {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100vw;
+  height: 100vh;
+}
+#card {
+  position: absolute;
+  left: 12px;
+  top: 14px;
+  width: 40px;
+  height: 30px;
+}
+#outlined {
+  position: absolute;
+  left: 76px;
+  top: 14px;
+  width: 36px;
+  height: 26px;
+}
+#star {
+  position: absolute;
+  left: 40px;
+  top: 70px;
+}

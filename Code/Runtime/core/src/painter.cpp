@@ -1872,6 +1872,14 @@ bool Painter::beginBoxShadowCandidate(const NodeArena& arena, NodeId n, float al
             opaque = opaque && s.color.a == 1.0f;
         }
         in.gradientOpaque = opaque;
+        // T-681 ("補充 2" B.3): a drawn gradient and the alpha its stops share (-1 when they differ).
+        in.gradientDrawn = g.kind != GradientKind::None && !g.stops.empty();
+        in.gradientAlpha = in.gradientDrawn ? g.stops.front().color.a : -1.0f;
+        for (const GradientStop& s : g.stops) {
+            if (s.color.a != in.gradientAlpha) {
+                in.gradientAlpha = -1.0f;
+            }
+        }
         in.borderBox = Rect{0, 0, data.box.width, data.box.height};
         elementBorderRadii(data, in.radii);
         in.overflowClips = clipsOverflow(data);
@@ -1957,6 +1965,8 @@ bool Painter::finishBoxShadowCandidate(CommandList& out) {
     // blur / spread in the node's local units under its world transform, a negative spread treated
     // as 0 (18 §18.3, as xt::sw's applyDropShadow clamps it), the effect's opacity in the alpha.
     const uint32_t count = cand.effectCount;
+    // T-681 ("補充 2" B.3): a near-opaque background paints the shadow at its alpha (1 when opaque).
+    const float backgroundAlpha = boxShadowBackgroundAlpha(in);
     // T-680 ("補充 2" B.1): a solid opaque outline. Overlapping or touching the box (offset <= 0)
     // the union is the ring's outer edge O_out (or R itself when the ring lies inside R); with a gap
     // (offset > 0) it is S(O_out) - S(O_in) + S(R), the two extra terms.
@@ -2006,6 +2016,7 @@ bool Painter::finishBoxShadowCandidate(CommandList& out) {
         bs.spread = std::max(0.0f, e.params[3]);
         bs.color = e.colors[0];
         bs.color.a *= e.params[4];
+        bs.color.a *= backgroundAlpha;
         cmds[k] = Command{CmdKind::DrawBoxShadow, {}, static_cast<uint32_t>(out.boxShadows.size())};
         out.boxShadows.push_back(bs);
     }

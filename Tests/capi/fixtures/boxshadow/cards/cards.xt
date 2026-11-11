@@ -1,0 +1,16 @@
+<xt version="2">
+
+  <!-- T-683: a card whose drop shadow is one analytic term, an outlined card whose shadow is three
+       (the two box-shadow programs) and a non-convex star (a coverage-atlas fill at one sample). -->
+  <body>
+    <div id="back"></div>
+    <div id="card"></div>
+    <div id="outlined"></div>
+    <svg id="star" viewBox="0 0 120 120" width="48" height="48">
+      <path d="M60 4 L73 46 L116 46 L81 72 L94 114 L60 88 L26 114 L39 72 L4 46 L47 46 Z" fill="#f0c020"/>
+    </svg>
+  </body>
+
+  <layout src="cards.layout.xts"/>
+  <style src="cards.xts"/>
+</xt>

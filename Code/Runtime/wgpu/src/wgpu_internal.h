@@ -36,14 +36,17 @@ inline constexpr uint64_t kCachedFreeBudgetBytes = 16ull * 1024u * 1024u;
 /// surface attachment set, go after this many target frames without use.
 inline constexpr uint32_t kSurfacePoolIdleFrames = 300;
 
-/// A 2D texture (one mip level) and its default view; release* destroys and releases both (T-675:
-/// shared by WgpuDevice and WgpuSharedCache).
+/// A 2D texture (one mip level; T-665: `levels` of them) and its default view; release* destroys and
+/// releases both (T-675: shared by WgpuDevice and WgpuSharedCache).
 WGPUTexture makeTexture(WGPUDevice device, const char* name, uint32_t w, uint32_t h, WGPUTextureFormat format,
-                        uint32_t samples, WGPUTextureUsage usage);
+                        uint32_t samples, WGPUTextureUsage usage, uint32_t levels = 1);
 WGPUTextureView makeView(WGPUTexture t);
 void releaseTexture(WGPUTexture& t, WGPUTextureView& v);
 
 WGPUTextureFormat formatOf(gpu::TextureFormat fmt);
+/// T-665 (wgpu_mips.cpp): whether `fmt` is block-compressed, and its bytes per texel or per 4x4 block.
+bool isCompressedFormat(gpu::TextureFormat fmt);
+uint32_t formatUnitBytes(gpu::TextureFormat fmt);
 
 /// Pops the validation error scope pushed before (waiting for its answer); empty when no error.
 std::string popErrorScope(WGPUDevice device);
@@ -64,13 +67,15 @@ enum ShaderId : uint16_t {
     kShGradient,
     kShTexture,
     kShTextureStraight,
+    kShTextureLod,  ///< T-665: Texture / TextureStraight with DrawCmd::mipLod
     kShGlyph,
     kShComposite,
     kShParticleTexture,
     kShParticleSolid,
     kShCoverageSolid,     ///< T-660b: Solid with DrawCmd::coverage
     kShCoverageGradient,  ///< T-660b: Gradient with DrawCmd::coverage
-    kShBoxShadow,         ///< T-668: Shading::BoxShadow
+    kShBoxShadow,         ///< T-668: Shading::BoxShadow (T-683: one shape)
+    kShBoxShadowMulti,    ///< T-683: Shading::BoxShadow with DrawCmd::boxShadowMulti (up to three shapes)
     kShFxGaussScalar,
     kShFxGaussColor,
     kShFxDilate,
@@ -127,6 +132,8 @@ public:
     /// The copy blit pipeline (blit.wgsl) for a target of `format` x `samples` (with or without a
     /// stencil attachment).
     WGPURenderPipeline blit(WGPUTextureFormat format, uint32_t samples, bool hasStencil);
+    /// T-665: the mip box step (blit.wgsl fs_mip_box, the blit layout) into an RGBA8Unorm level.
+    WGPURenderPipeline mipBox();
 
     WGPUBindGroupLayout passLayout() const { return m_bglPass; }
     WGPUBindGroupLayout paramLayout() const { return m_bglParams; }
@@ -146,6 +153,27 @@ public:
     /// an unknown or failed program.
     bool packCustom(const float* params, size_t available, float* out, uint16_t& shader) const;
     size_t customCount() const { return m_custom.size(); }
+
+    /// T-683 (Docs/design/50-c-abi.md §50.ad item 2): one representative render pipeline of every
+    /// built-in program (kShaderCount of them; `.xtfx` custom programs are not known yet) plus the blit
+    /// and the mip box step, so that no later draw waits for a shader compile -- wgpu keeps a compiled
+    /// shader on its device, and another blend / stencil / sample count of the same program then costs
+    /// only the pipeline. The content programs at `format` x `samples` with a stencil attachment,
+    /// SrcOver and TestEqualRef (what nearly every draw of a surface or layer uses; the particle
+    /// programs as DrawKind::Particles); Composite likewise with no stencil test (a Normal layer
+    /// composite); the effect programs at RGBA8Unorm, one sample, no stencil, Replace (an effect pass
+    /// into a transient); the blit at `format` x `samples` with stencil. Keys already built are not
+    /// built again. Returns false when one of them failed (named by `takeError`, as a draw's would be).
+    bool prewarm(WGPUTextureFormat format, uint32_t samples);
+    /// T-683: shader compiles (the first pipeline of a program and vertex stage of this set, a T-456
+    /// probe each time) and pipeline creates, counted apart while `prewarm` runs and after it.
+    struct Counters {
+        uint32_t prewarmShaderCompiles = 0;   ///< during the prewarms of this set (summed)
+        uint32_t prewarmPipelineCreates = 0;  ///< likewise
+        uint32_t shaderCompiles = 0;          ///< since the last prewarm ended (since init without one)
+        uint32_t pipelineCreates = 0;         ///< likewise
+    };
+    const Counters& counters() const { return m_counters; }
 
     /// The pipeline creation failures since the last call (one entry per failed key), then cleared.
     std::string takeError() {
@@ -175,7 +203,17 @@ private:
     std::unordered_map<uint64_t, WGPURenderPipeline> m_pipelines;
     std::vector<Custom> m_custom;
     std::string m_lastError;
+    Counters m_counters;               ///< T-683
+    bool m_prewarming = false;         ///< T-683: inside prewarm()
+    std::vector<uint32_t> m_compiled;  ///< T-683: (shader id << 2 | vertex stage) of every pipeline made
 
+    /// T-683: counts one pipeline create of `shader` with vertex stage `stage` (0 vs_main, 1 vs_quad,
+    /// 2 vs_particle, 3 the custom GLSL stage) and, the first time that pair is made, a shader compile.
+    void noteCreate(uint16_t shader, uint32_t stage);
+
+    /// blit() and mipBox() (`mip`): the blit module's pipelines.
+    WGPURenderPipeline blitModulePipeline(WGPUTextureFormat format, uint32_t samples, bool hasStencil,
+                                          bool mip);
     /// The raw creation call for `key` (the caller holds the error scopes).
     WGPURenderPipeline create(const PipelineKey& key, WGPUShaderModule fragment);
     /// Pops the creation scopes pushed before `p` was created: `p`, or null (released) when they
@@ -267,7 +305,8 @@ struct WgpuSharedCache::Impl {
         gpu::TextureFormat format = gpu::TextureFormat::Rgba8;
         WGPUTexture texture = nullptr;  ///< null = free slot
         WGPUTextureView view = nullptr;
-        uint32_t uses = 0;  ///< device handles naming it
+        uint32_t levels = 1;  ///< T-665: mip levels of `texture` (WgpuDevice::requestMipChain)
+        uint32_t uses = 0;    ///< device handles naming it
         uint64_t bytes = 0;
         bool idle = false;  ///< T-656: in `idle` (no use)
     };

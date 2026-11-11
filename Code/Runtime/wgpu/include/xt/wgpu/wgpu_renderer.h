@@ -12,6 +12,7 @@
 #include "xt/ir.h"
 #include "xt/perf.h"
 #include "xt/wgpu/wgpu_inflight.h"
+#include "xt/wgpu/wgpu_shared.h"  // T-683: WgpuPipelinePrewarm
 
 /// WebGPU backend (Docs/design/10-backends.md §10.10, T-437): `CommandList` -> `gpu::FrameBuilder`
 /// -> `GpuFrame` -> `WgpuDevice::submit`, with the interface of `GlRenderer` (§10.3) where the two
@@ -137,6 +138,13 @@ struct WgpuStats {
     // (0 when the GPU was at most two frames behind) and their milliseconds.
     uint32_t inflightWaits = 0;
     float inflightWaitMs = 0;
+
+    // T-683 (Docs/design/50-c-abi.md §50.ad item 2): the device's pipeline set (WgpuPipelineCounters;
+    // cumulative, not per frame): shader compiles and pipeline creates during prewarmPipelines and after.
+    uint32_t prewarmShaderCompiles = 0;
+    uint32_t prewarmPipelineCreates = 0;
+    uint32_t shaderCompiles = 0;
+    uint32_t pipelineCreates = 0;
 };
 
 class WgpuRenderer {
@@ -191,9 +199,12 @@ public:
     void invalidateImages();
     /// T-675 (Docs/design/50-c-abi.md §50.ac item 2): what a hidden surface gives back while its
     /// renderer stays (`gpu::FrameBuilder::trim`: the effect cache and band targets to the device's
-    /// pool, the image textures' uses ended); the device, its buffers, bind groups, gradient tables and
-    /// atlas pages stay. The next `build` is a full one.
+    /// pool, the image textures' uses ended; T-683: the coverage atlas released); the device, its buffers,
+    /// bind groups, gradient tables and glyph atlas pages stay. The next `build` is a full one.
     void trim();
+    /// T-683 (Docs/design/50-c-abi.md §50.ad item 2): `WgpuDevice::prewarmPipelines()` for the init's
+    /// target format and sample count (zeros before init). Hosts call it once after `init`.
+    WgpuPipelinePrewarm prewarmPipelines();
     WgpuStats stats() const;
     /// T-662 (Docs/design/10-backends.md §10.11 item 2, supplement 2): `gpu::FrameBuilder::
     /// wantsAnotherFrame()` of the frame last built -- a coverage shape the frame budget held back
