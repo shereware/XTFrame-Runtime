@@ -22,7 +22,7 @@ below. None of them are relicensed or modified beyond what each entry notes; see
 | [cpp-httplib](https://github.com/yhirose/cpp-httplib) | v0.58.0 | MIT | `Code/Editor/Service/` | Single-header HTTP server for the editor's MCP endpoint (loopback only) |
 | [miniz](https://github.com/richgel999/miniz) | 3.0.2 | MIT | `Code/Runtime/bundle/`, `Code/Editor/History/` | Store-mode ZIP read/write for `.xtsymbols` symbol sets and `.xtb` bundles; zlib-compatible deflate/inflate for the history core's loose objects |
 | [Noto Sans / Noto Sans SC / Noto Naskh Arabic / Noto Sans Hebrew / Noto Sans Thai / Noto Emoji](https://fonts.google.com/noto) subsets | see `Tests/fonts/README.md` | SIL Open Font License 1.1 | `Tests/fonts/` | Test-only fonts for shaping, bidi, and golden-image fixtures |
-| [wgpu-native](https://github.com/gfx-rs/wgpu-native) | v29.0.1.1 (prebuilt release binaries) | MIT / Apache License 2.0 (dual) | `Code/Runtime/wgpu/` | WebGPU implementation (`webgpu.h` + `wgpu.h`, shared library `wgpu_native`) behind the `xt_wgpu` backend |
+| [wgpu-native](https://github.com/gfx-rs/wgpu-native) | Windows x64: commit b83eb64 (prebuilt, XTFrame-Backends release); Linux x64, macOS arm64: v29.0.1.1 (prebuilt release binaries) | MIT / Apache License 2.0 (dual) | `Code/Runtime/wgpu/` | WebGPU implementation (`webgpu.h` + `wgpu.h`, shared library `wgpu_native`) behind the `xt_wgpu` backend |
 
 ## Vendored vs. fetched
 
