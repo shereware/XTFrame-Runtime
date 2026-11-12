@@ -28,7 +28,12 @@
 /// Usage: xtframe-pack <project-dir | name.xtui | ui-project.json | bundle.xtproj | file.xt> [-o <out-dir>]
 ///                   [--ui <id>]... [--strict] [--no-thumbs] [--embed] [--prune] [--lang <list>]
 ///                   [--allow-placeholders] [--zip] [--fonts system|bundled] [--fonts-dir <dir>] [--verbose]
-///                   [--compress bc7|bc3|bc1|auto|none] [--no-cache] [--cache-dir <dir>]
+///                   [--compress bc7|bc3|bc1|auto|none] [--no-cache] [--cache-dir <dir>] [--keep-stale]
+///
+/// T-693: a successful pack removes the files earlier packs left in the subdirectories it writes
+/// (`ui/`, `assets/`, `thumbs/`, `themes/`, `strings/`, `atlas/`, `fonts/`) and the known root files,
+/// keeping what another project's manifest found there lists (xt::bundle::PackOptions::keepStale);
+/// it prints one `removed N stale file(s)` line when it removed any. `--keep-stale` turns this off.
 ///
 /// T-687 (Docs/design/10-backends.md §10.13 rulings 5, 6): `--compress` overrides the UI Project's
 /// `publish.images.compress` (none | bc7 | auto; without either, none). Encoded DDS files are kept in
@@ -141,8 +146,8 @@ void printUsage() {
                  "[-o <out-dir>] "
                  "[--ui <id>]... [--strict] [--no-thumbs] [--embed] [--prune] [--lang <list>] "
                  "[--gen-ports cpp|cs <out>] [--atlas] [--atlas-scope ui|bundle] "
-                 "[--compress bc7|bc3|bc1|auto|none] [--no-cache] [--cache-dir <dir>] [--font-subset] "
-                 "[--fonts system|bundled] [--fonts-dir <dir>] "
+                 "[--compress bc7|bc3|bc1|auto|none] [--no-cache] [--cache-dir <dir>] [--keep-stale] "
+                 "[--font-subset] [--fonts system|bundled] [--fonts-dir <dir>] "
                  "[--allow-placeholders] [--zip] [--verbose]\n"
                  "       xtframe-pack --upgrade <bundle-dir>\n"
                  "       xtframe-pack --upgrade --format 2 <project-dir | file.xt>\n"
@@ -436,6 +441,8 @@ int packMain(int argc, char** argv) {
             options.embed = true;
         } else if (arg == "--prune") {
             options.prune = true;
+        } else if (arg == "--keep-stale") {
+            options.keepStale = true;  // T-693
         } else if (arg == "--bake-vectors") {
             // T-274: moved to the editor; nothing is packed.
             std::fprintf(
@@ -567,6 +574,10 @@ int packMain(int argc, char** argv) {
     std::printf("xtframe-pack: wrote %zu UI(s) to %s (%u asset(s), %u deduplicated, %u pruned)\n",
                 report.packedUis.size(), options.outDir.c_str(), report.assetsWritten,
                 report.assetsDeduplicated, report.assetsPruned);
+    if (report.staleFilesRemoved != 0) {  // T-693
+        std::printf("xtframe-pack: removed %u stale file(s) (%llu bytes) from %s\n", report.staleFilesRemoved,
+                    static_cast<unsigned long long>(report.staleBytesRemoved), options.outDir.c_str());
+    }
     if (report.atlasPages != 0) {  // T-199
         const double efficiency = report.atlasPixelsTotal == 0
                                       ? 0.0

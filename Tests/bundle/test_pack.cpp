@@ -284,6 +284,7 @@ TEST_CASE("pack: --prune deletes files the manifest no longer references") {
         PackOptions options;
         options.outDir = out;
         options.thumbnails = false;
+        options.keepStale = true;  // T-693: otherwise the default stale-file removal takes it.
         REQUIRE(pack(loadProject(source), options).ok);
         {
             std::ofstream junk(out + "/assets/deadbeefdeadbeef.png", std::ios::binary);

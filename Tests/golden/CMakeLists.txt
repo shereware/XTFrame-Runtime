@@ -67,8 +67,11 @@ add_test(NAME xt_golden COMMAND xt_golden)
 # T-438 (Docs/design/10-backends.md section 10.10.3): `xt_golden --backend wgpu` draws every fixture
 # with xt_wgpu (headless) against the same expected images, GPU tolerance; prints
 # `SKIP: no WebGPU adapter` and exits 0 on a machine without one.
+# T-689 (45 §45.8): golden_wgpu.{cpp,h} are exported with XTFrame-Backends and read from XT_BACKENDS_SOURCE_DIR
+# (the top-level CMakeLists.txt); the include directory is where golden_main.cpp finds golden_wgpu.h.
 if(TARGET xt_wgpu)
-    target_sources(xt_golden PRIVATE golden_wgpu.cpp)
+    target_sources(xt_golden PRIVATE "${XT_BACKENDS_SOURCE_DIR}/Tests/golden/golden_wgpu.cpp")
+    target_include_directories(xt_golden PRIVATE "${XT_BACKENDS_SOURCE_DIR}/Tests/golden")
     target_link_libraries(xt_golden PRIVATE xt_wgpu)
     target_compile_definitions(xt_golden PRIVATE XT_GOLDEN_WGPU=1)
     xt_copy_runtime_library(xt_golden xt::wgpu_native)

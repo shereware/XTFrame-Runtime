@@ -5,6 +5,14 @@ the **runtime**: the libraries a game engine or application links, the command-l
 server needs, their tests and the public design chapters. The authoring editor is a separate
 product and is not part of this repository.
 
+> **GPU backends are in [XTFrame-Backends](https://github.com/shereware/XTFrame-Backends).** The
+> concrete GPU devices (`xt_wgpu` over wgpu-native, `xt_gl`), the reference platform x renderer glue
+> (`Code/Backends`), the C ABI's GPU target, the `xtframe-view` window player and `xtframe-gpu-probe`
+> live there, with this repository as its `runtime/` git submodule (same tag). The `xtframe` library
+> built here is the same C ABI without wgpu: `xt_gpu_target_create` returns NULL and the other GPU
+> target functions return `XT_STATUS_UNSUPPORTED`. This repository ships no windowed viewer; use the
+> one that comes with the editor, or build XTFrame-Backends.
+
 > **Read-only snapshot.** This repository is exported from the XTFrame main repository by
 > `Tools/Scripts/export_runtime.sh`; every commit is one snapshot (`Source-Commit:` trailer). Pull
 > requests cannot be merged here directly; see [`CONTRIBUTING.md`](CONTRIBUTING.md).
@@ -14,9 +22,10 @@ product and is not part of this repository.
 - The runtime core, `xt_core`, has **zero third-party dependencies**, no exceptions and no RTTI: it
   loads IR, runs layout, style and the timeline/animation system, and produces a backend-agnostic
   draw **command list**.
-- A host engine renders the command list with its own pipeline, or uses one of the reference
-  Code/Backends: a software rasterizer (`xt_sw`) and an OpenGL 3.3 backend (`xt_gl`). `xt_shell` is an
-  SDL2 window and main loop for standalone desktop apps.
+- A host engine renders the command list with its own pipeline, or uses the software rasterizer
+  (`xt_sw`) here; `xt_gpu` is the device-neutral GPU frame builder a host's own `GpuDevice` builds on.
+  `xt_shell` is an SDL2 window and main loop for standalone desktop apps (it presents through
+  `xt_sw` in this repository).
 
 ## Modules
 
@@ -28,16 +37,14 @@ Code/Runtime/flow/      xt_flow     node-graph data logic that ships with a bund
 Code/Runtime/bundle/    xt_bundle   UI Project -> Bundle packing and Bundle loading
 Code/Runtime/text/      xt_text     reference FontProvider / TextShaper (FreeType, HarfBuzz)
 Code/Runtime/sw/        xt_sw       software rasterizer backend
-Code/Runtime/gpu/       xt_gpu      device-neutral GPU frame builder
-Code/Runtime/gl/        xt_gl       OpenGL 3.3 core-profile backend
+Code/Runtime/gpu/       xt_gpu      device-neutral GPU frame builder (the GpuDevice interface)
 Code/Runtime/shell/     xt_shell    SDL2 window + main loop for standalone desktop apps
-Code/Runtime/capi/      xt_capi     C ABI shared library (xtframe) for FFI hosts (Unity, ...)
+Code/Runtime/capi/      xt_capi     C ABI shared library (xtframe) for FFI hosts (Unity, ...);
+                                    the GPU target is in XTFrame-Backends
 Code/Runtime/platforms/android/     Android viewer app (SW presentation)
 tools/
   xtframe-compile      .xt / .xts / Lottie JSON -> .xtir
   xtframe-pack         UI Project -> Bundle
-  xtframe-view         standalone player (window or headless, screenshots, scripted events)
-  xtframe-gpu-probe    GPU frame builder diagnostics
 Tests/                 doctest unit tests, golden images, fuzz targets
 Examples/              engine_integration, desktop_app, lottie_player, demos, ui-project-starter
 Docs/design/           design chapters (the specification; Traditional Chinese)
@@ -70,10 +77,9 @@ ctest --preset ninja-gcc-debug
 
 | Option | Default | Effect |
 |---|---|---|
-| `XT_BUILD_GL` | `ON` | OpenGL 3.3 backend (`xt_gl`) |
-| `XT_BUILD_GPU` | `ON` | device-neutral GPU frame builder (`xt_gpu`; required by `xt_gl`) |
-| `XT_BUILD_SHELL` | `ON` | SDL2 shell (`xt_shell`) |
-| `XT_SHELL_GL` | `ON` | `xt_shell` presents through `xt_gl` (`OFF`: `xt_sw` + SDL_Renderer) |
+| `XT_BUILD_GPU` | `ON` | device-neutral GPU frame builder (`xt_gpu`) |
+| `XT_BUILD_SHELL` | `ON` | SDL2 shell (`xt_shell`; presents through `xt_sw` + SDL_Renderer here) |
+| `XT_BUILD_CAPI` | `OFF` | the C ABI shared library `xtframe` (`xt_capi`; GPU target functions report "built without wgpu") |
 | `XT_BUILD_TEXT` | `ON` | `xt_text` (fetches FreeType and HarfBuzz) |
 | `XT_BUILD_TOOLS` | `ON` | the `xtframe-*` command-line tools |
 | `XT_BUILD_TESTS` | `ON` | the test suites |
@@ -82,6 +88,8 @@ ctest --preset ninja-gcc-debug
 | `XT_RUNTIME_OUTPUT_DIR` | empty | output directory of every `xtframe-*` executable |
 
 `xt_core` alone needs none of the optional modules; every option adds a module on top of it.
+`XT_BUILD_GL`, `XT_BUILD_WGPU` and `XT_SHELL_GL` belong to the GPU backends: their directories are
+not in this repository, so the configure step turns them off with one status line each.
 
 ## Embedding in a host engine
 
@@ -126,10 +134,9 @@ assets (`AssetResolver`) and fonts (`TextShaper`). `Context::render()` can also 
 ```
 xtframe-compile <input.json | input.xt> -o <out.xtir> [--root DIR] [--embed-images]
 xtframe-pack    <project-dir | name.xtui | file.xt> [-o <out-dir>] [--ui <id>]... [--strict] [--no-thumbs]
-xtframe-view    <file.xtir | file.xt | file.json | bundle | project> [--headless --frames N] [--screenshot PNG]
 ```
 
-Run a tool without arguments to print its full usage (`xtframe-view --help` as well).
+Run a tool without arguments to print its full usage.
 
 ## License
 
@@ -138,4 +145,4 @@ MIT. See [`LICENSE`](LICENSE). Third-party components and their licenses are lis
 
 ---
 
-Exported from XTFrame 538895a48906 (2026-11-12, version 0.15.2).
+Exported from XTFrame 93ed053e7a06 (2026-11-12, version 0.16.0).

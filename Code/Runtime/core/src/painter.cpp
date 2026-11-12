@@ -1995,11 +1995,10 @@ bool Painter::finishBoxShadowCandidate(CommandList& out) {
         }
     }
     std::array<Command, 8> stackCmds{};
-    std::vector<Command> heapCmds;
     Command* cmds = stackCmds.data();
     if (count > stackCmds.size()) {
-        heapCmds.resize(count);
-        cmds = heapCmds.data();
+        m_boxShadowCmdScratch.resize(count);
+        cmds = m_boxShadowCmdScratch.data();
     }
     for (uint32_t k = 0; k < count; ++k) {
         const EffectInstance& e = out.effects[cand.effectOffset + (count - 1 - k)];

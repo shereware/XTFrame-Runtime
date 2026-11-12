@@ -82,6 +82,9 @@ struct UpdateRecord {
 
 class FakeDevice : public GpuDevice {
 public:
+    // T-691: stands in for xt_gl / xt_wgpu, which draw coverage quads and Shading::BoxShadow.
+    bool supportsCoverageDraws() const override { return true; }
+    bool supportsBoxShadowShading() const override { return true; }
     std::map<TextureHandle, TextureRecord> textures;
     std::vector<UpdateRecord> updates;
     int submits = 0;
@@ -231,15 +234,17 @@ std::vector<const DrawCmd*> cmdsWith(const GpuFrame& f, StencilOp op) {
     return out;
 }
 
+#ifndef XT_GPU_NO_TEXT
 /// T-662: uploads into the glyph atlas's pages only (the coverage atlas has pages of its own).
 size_t glyphAtlasUpdates(const FakeDevice& device) {
     size_t n = 0;
     for (const UpdateRecord& u : device.updates) {
         const auto it = device.textures.find(u.tex);
-        n += it != device.textures.end() && it->second.name == "xt glyph atlas" ? 1 : 0;
+        n += it != device.textures.end() && it->second.name == "xt glyph atlas" ? 1u : 0u;
     }
     return n;
 }
+#endif  // XT_GPU_NO_TEXT
 
 /// T-662: the commands drawing coverage-atlas quads (1x outline glyphs among them).
 size_t coverageCmdCount(const GpuFrame& f) {
@@ -740,10 +745,10 @@ TEST_CASE("gpu: a dpr of 2 scales positions and the gradient LUT is shared per s
     // T-155 edge fringe).
     const Vertex& v = b.frame.vertices[grads[1]->baseVertex];
     CHECK(v.x == doctest::Approx(40.5f));
-    // An unused LUT is destroyed on the next frame.
+    // T-695: an unused LUT is kept (destroyed only after 1800 unused frames; test_gradient_lut.cpp).
     CommandList empty = makeList();
     b.builder.build(empty, nullptr, nullptr, nullptr, b.frame);
-    CHECK(b.device.aliveCount() == 0);
+    CHECK(b.device.aliveCount() == 1);
 }
 
 // =================================================================================================
@@ -6016,7 +6021,7 @@ bool inkBox(const std::vector<uint8_t>& px, int w, int h, Rect& out) {
     int x0 = w, y0 = h, x1 = -1, y1 = -1;
     for (int y = 0; y < h; ++y) {
         for (int x = 0; x < w; ++x) {
-            if (px[(static_cast<size_t>(y) * w + x) * 4 + 3] != 0) {
+            if (px[(static_cast<size_t>(y) * static_cast<size_t>(w) + static_cast<size_t>(x)) * 4 + 3] != 0) {
                 x0 = std::min(x0, x);
                 y0 = std::min(y0, y);
                 x1 = std::max(x1, x);

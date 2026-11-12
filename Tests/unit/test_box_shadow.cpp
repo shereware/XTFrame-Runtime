@@ -194,7 +194,9 @@ double maxErrorAgainstReference(const ShadowCase& c) {
     for (int y = iy0; y <= iy1; y += 2) {
         for (int x = ix0; x <= ix1; x += 2) {
             const double expected = d.sharp ? ref.sharp(x, y) : ref.blurred(x + 0.5, y + 0.5);
-            const double got = buf[(static_cast<size_t>(y) * w + x) * 4 + 3] / 255.0;
+            const double got =
+                buf[(static_cast<size_t>(y) * static_cast<size_t>(w) + static_cast<size_t>(x)) * 4 + 3] /
+                255.0;
             worst = std::max(worst, std::fabs(got - expected));
         }
     }
@@ -298,7 +300,7 @@ TEST_CASE("BoxShadow: just below the threshold xt::sw draws R' exactly as a Fill
     const std::vector<uint8_t> b = render(fill);
     size_t differ = 0;
     for (size_t i = 0; i < a.size(); ++i) {
-        differ += a[i] != b[i] ? 1 : 0;
+        differ += a[i] != b[i] ? 1u : 0u;
     }
     CHECK(differ == 0);
     // For the report: the distance from the exact (64 x 64 supersampled) coverage of R'.
@@ -307,8 +309,12 @@ TEST_CASE("BoxShadow: just below the threshold xt::sw draws R' exactly as a Fill
     double worst = 0.0;
     for (int y = 28; y < 90; ++y) {
         for (int x = 28; x < 98; ++x) {
-            worst = std::max(worst, std::fabs(a[(static_cast<size_t>(y) * w + x) * 4 + 3] / 255.0 -
-                                              0.7 * ref.sharp(x, y)));
+            worst = std::max(
+                worst,
+                std::fabs(
+                    a[(static_cast<size_t>(y) * static_cast<size_t>(w) + static_cast<size_t>(x)) * 4 + 3] /
+                        255.0 -
+                    0.7 * ref.sharp(x, y)));
         }
     }
     MESSAGE("sharp R' vs exact geometric coverage: max error " << worst * 255.0 << " / 255 (flattening)");
@@ -827,7 +833,7 @@ std::vector<uint8_t> renderShadowsOnly(const CommandList& cmds, int w, int h) {
     }
     one.viewport = Rect{0, 0, static_cast<float>(w), static_cast<float>(h)};
     one.devicePixelRatio = 1;
-    std::vector<uint8_t> buf(static_cast<size_t>(w) * h * 4, 0);
+    std::vector<uint8_t> buf(static_cast<size_t>(w) * static_cast<size_t>(h) * 4, 0);
     SwRenderer renderer;
     renderer.setTarget(SwTarget{buf.data(), w, h, w * 4});
     renderer.clear(Color{0, 0, 0, 0});
@@ -988,7 +994,9 @@ double outlineCaseError(const OutlineCase& c, uint32_t& extraCount) {
     for (int y = iy0; y <= iy1; y += 2) {
         for (int x = ix0; x <= ix1; x += 2) {
             const double expected = ref.blurred(x + 0.5, y + 0.5);
-            const double got = buf[(static_cast<size_t>(y) * w + x) * 4 + 3] / 255.0;
+            const double got =
+                buf[(static_cast<size_t>(y) * static_cast<size_t>(w) + static_cast<size_t>(x)) * 4 + 3] /
+                255.0;
             worst = std::max(worst, std::fabs(got - expected));
         }
     }
@@ -1476,7 +1484,9 @@ TEST_CASE("BoxShadow T-680: below the threshold the three terms fill as the ring
     cl.boxShadows.push_back(bs);
     cl.commands.push_back(Command{CmdKind::DrawBoxShadow, {}, 0});
     const std::vector<uint8_t> buf = renderShadowsOnly(cl, 100, 80);
-    auto alphaAt = [&](int x, int y) { return buf[(static_cast<size_t>(y) * 100 + x) * 4 + 3]; };
+    auto alphaAt = [&](int x, int y) {
+        return buf[(static_cast<size_t>(y) * 100 + static_cast<size_t>(x)) * 4 + 3];
+    };
     CHECK(alphaAt(12, 40) == 255);  // the ring
     CHECK(alphaAt(18, 40) == 0);    // the gap
     CHECK(alphaAt(50, 40) == 255);  // the box

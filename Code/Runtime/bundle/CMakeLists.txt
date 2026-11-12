@@ -4,6 +4,7 @@ add_library(xt_bundle STATIC
     src/bundle.cpp
     src/pack.cpp
     src/pack_flow.cpp
+    src/stale_files.cpp
     src/manifest_writer.cpp
     src/localization.cpp
     src/ui_project.cpp

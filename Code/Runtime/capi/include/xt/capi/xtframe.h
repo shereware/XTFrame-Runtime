@@ -435,6 +435,29 @@ typedef struct xt_gpu_memory_stats {
    shorter struct gets its prefix; struct_size itself is not written). NULL target or `out` ->
    XT_STATUS_INVALID_ARGUMENT. */
 XT_CAPI xt_status xt_gpu_target_memory_stats(const xt_gpu_target* t, xt_gpu_memory_stats* out);
+
+/* ---- Image preload (50 §50.ae, T-688; appended, ABI version unchanged) -----------------------------
+   Reads and uploads images into `t`'s shared image cache now (a loading screen, a scene change), so the
+   first frame that draws them reads no file and uploads nothing: the same key and texture as a draw.
+   No surface is needed and nothing is drawn; inside or outside a frame; synchronous (uploaded when it
+   returns). A preloaded texture has no user: it is idle, the most recently used one, and counts against
+   the idle budget (set xt_gpu_target_set_image_budget first -- a preload larger than the budget evicts
+   its own first images). The variant (@2x / @3x) is the one a surface of the target's size picks under
+   the bundle's uiscale rule (device pixel ratio 1). No mip chain is made (the first minified draw makes
+   it); the levels a BC7 / BC1 / BC3 file stores are uploaded with it. `out_loaded` (may be NULL)
+   receives how many textures this call newly uploaded (images already in the cache are not counted).
+   An image that cannot be read or decoded is skipped and the rest are loaded: XT_STATUS_OK, with
+   xt_capi_last_error() naming the first such file. NULL t / b / name -> XT_STATUS_INVALID_ARGUMENT;
+   without wgpu -> XT_STATUS_UNSUPPORTED. */
+/* Every image the manifest lists in UI `ui_id`'s `assets` (kind "image"; fonts and the rest skipped).
+   Unknown UI -> XT_STATUS_NOT_FOUND; its .xtir unreadable -> XT_STATUS_IO_ERROR, invalid ->
+   XT_STATUS_INVALID_IR. */
+XT_CAPI xt_status xt_gpu_target_preload_ui(xt_gpu_target* t, xt_bundle* b, const char* ui_id,
+                                           uint32_t* out_loaded);
+/* One image, `asset` as a manifest `assets` string ("assets/<hash>.<ext>"). An asset no UI of the
+   bundle lists, or one that is not an image -> XT_STATUS_NOT_FOUND. */
+XT_CAPI xt_status xt_gpu_target_preload_image(xt_gpu_target* t, xt_bundle* b, const char* asset,
+                                              uint32_t* out_loaded);
 /* clang-format on */
 
 #ifdef __cplusplus

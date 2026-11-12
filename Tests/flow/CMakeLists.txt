@@ -22,6 +22,13 @@ target_compile_definitions(xt_flow_tests PRIVATE XT_TEST_FLOW_DIR="${CMAKE_CURRE
 target_compile_definitions(xt_flow_tests PRIVATE
     XT_EXAMPLES_DIR="${PROJECT_SOURCE_DIR}/Examples/desktop_app/ui")
 target_link_libraries(xt_flow_tests PRIVATE xt_core xt_compile xt_flow xt_bundle)
+# T-260c / T-689 (45 §45.8): test_flow_lifetime.cpp's xtframe-view case uses the header-only
+# Code/Tools/view/view_flow.h, read from XT_BACKENDS_SOURCE_DIR (exported with XTFrame-Backends); absent from
+# XTFrame-Runtime, where that one case is left out.
+if(EXISTS "${XT_BACKENDS_SOURCE_DIR}/Code/Tools/view/view_flow.h")
+    target_include_directories(xt_flow_tests PRIVATE "${XT_BACKENDS_SOURCE_DIR}/Code/Tools/view")
+    target_compile_definitions(xt_flow_tests PRIVATE XT_TEST_FLOW_HAS_VIEW)
+endif()
 xt_enable_exceptions(xt_flow_tests)
 xt_no_rtti(xt_flow_tests)
 xt_set_warnings(xt_flow_tests)

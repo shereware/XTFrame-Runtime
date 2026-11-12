@@ -62,6 +62,7 @@
 namespace xt {
 class TextShaper;
 class AssetResolver;
+class Context;
 }  // namespace xt
 
 #ifndef XT_GPU_NO_TEXT
@@ -270,9 +271,31 @@ public:
     };
     ClipStats lastClipStats() const;
 
+    /// T-691 (Docs/design/10-backends.md §10.14 item 5): what the last `build` drew differently or
+    /// left out because the device said it cannot draw it (`GpuDevice::supportsCoverageDraws` /
+    /// `supportsBoxShadowShading`); all zero for a device that supports both.
+    struct BuildStats {
+        /// Shapes that would have been drawn as coverage quads and took their earlier path instead
+        /// (stencil-then-cover, the glyph atlas, a stencil clip level). A thin or uneven ring that
+        /// the fringed ring path draws directly is not counted (it cannot be told apart there).
+        uint32_t coverageFallbacks = 0;
+        /// Blurred DrawBoxShadow commands not drawn (the device has no `Shading::BoxShadow`; the
+        /// host should call `Context::setBoxShadowCommands(false)`, which `lastError` says once).
+        uint32_t boxShadowSkipped = 0;
+    };
+    BuildStats lastBuildStats() const;
+
 private:
     struct Impl;
     std::unique_ptr<Impl> m_impl;
 };
+
+/// T-691 (Docs/design/10-backends.md §10.14 item 3): the paint-side half of the device's
+/// capabilities, for every place that connects a `Context` to a `GpuDevice` (call it when the
+/// device is made or replaced; calling it again is harmless). A device without
+/// `supportsBoxShadowShading()` turns `Context::setBoxShadowCommands` off, so the Painter keeps box
+/// shadows as drop-shadow effects; a capable device changes nothing -- in particular a host's own
+/// `setBoxShadowCommands(false)` is never turned back on.
+void applyDeviceCapabilities(const GpuDevice& device, Context& context);
 
 }  // namespace xt::gpu

@@ -37,6 +37,9 @@ namespace {
 /// A device that keeps a CPU copy of every R8 texture so a coverage quad's texels can be read back.
 class MirrorDevice : public GpuDevice {
 public:
+    // T-691: stands in for xt_gl / xt_wgpu, which draw coverage quads and Shading::BoxShadow.
+    bool supportsCoverageDraws() const override { return true; }
+    bool supportsBoxShadowShading() const override { return true; }
     struct Tex {
         uint16_t w = 0, h = 0;
         TextureFormat fmt = TextureFormat::Rgba8;
@@ -173,7 +176,10 @@ void checkQuadAgainstRaster(const MirrorDevice& dev, const GpuFrame& f, const Co
     for (int y = 0; y < bm.height; ++y) {
         for (int x = 0; x < bm.width; ++x) {
             const uint8_t got = page.r8[static_cast<size_t>(ty + y) * page.w + static_cast<size_t>(tx + x)];
-            mismatches += got != bm.pixels[static_cast<size_t>(y) * bm.width + x] ? 1 : 0;
+            mismatches += got != bm.pixels[static_cast<size_t>(y) * static_cast<size_t>(bm.width) +
+                                           static_cast<size_t>(x)]
+                              ? 1u
+                              : 0u;
         }
     }
     CHECK(mismatches == 0);
@@ -424,7 +430,7 @@ std::vector<uint8_t> coverageImage(const MirrorDevice& dev, const GpuFrame& f, i
                 for (int x = std::max(x0, 0); x < std::min(x1, w); ++x) {
                     const int sx = full ? tx : tx + (x - x0);
                     const int sy = full ? ty : ty + (y - y0);
-                    img[static_cast<size_t>(y) * w + x] =
+                    img[static_cast<size_t>(y) * static_cast<size_t>(w) + static_cast<size_t>(x)] =
                         page.r8[static_cast<size_t>(sy) * page.w + static_cast<size_t>(sx)];
                 }
             }
@@ -459,11 +465,12 @@ size_t coverageMismatches(const MirrorDevice& dev, const GpuFrame& f, const Comm
             REQUIRE(dy >= 0);
             REQUIRE(dx < w);
             REQUIRE(dy < h);
-            want[static_cast<size_t>(dy) * w + dx] = bm.pixels[static_cast<size_t>(y) * bm.width + x];
+            want[static_cast<size_t>(dy) * static_cast<size_t>(w) + static_cast<size_t>(dx)] =
+                bm.pixels[static_cast<size_t>(y) * static_cast<size_t>(bm.width) + static_cast<size_t>(x)];
         }
     }
     size_t mismatches = 0;
-    for (size_t i = 0; i < img.size(); ++i) mismatches += img[i] != want[i] ? 1 : 0;
+    for (size_t i = 0; i < img.size(); ++i) mismatches += img[i] != want[i] ? 1u : 0u;
     return mismatches;
 }
 
@@ -702,7 +709,10 @@ void checkStrokeQuadAgainstRaster(const MirrorDevice& dev, const GpuFrame& f, co
     for (int y = 0; y < bm.height; ++y) {
         for (int x = 0; x < bm.width; ++x) {
             const uint8_t got = page.r8[static_cast<size_t>(ty + y) * page.w + static_cast<size_t>(tx + x)];
-            mismatches += got != bm.pixels[static_cast<size_t>(y) * bm.width + x] ? 1 : 0;
+            mismatches += got != bm.pixels[static_cast<size_t>(y) * static_cast<size_t>(bm.width) +
+                                           static_cast<size_t>(x)]
+                              ? 1u
+                              : 0u;
         }
     }
     CHECK(mismatches == 0);
@@ -890,13 +900,15 @@ size_t coverageMismatchesAll(const MirrorDevice& dev, const GpuFrame& f, const C
                 REQUIRE(dy >= 0);
                 REQUIRE(dx < w);
                 REQUIRE(dy < h);
-                const uint8_t v = bm.pixels[static_cast<size_t>(y) * bm.width + x];
-                if (v != 0) want[static_cast<size_t>(dy) * w + dx] = v;
+                const uint8_t v = bm.pixels[static_cast<size_t>(y) * static_cast<size_t>(bm.width) +
+                                            static_cast<size_t>(x)];
+                if (v != 0)
+                    want[static_cast<size_t>(dy) * static_cast<size_t>(w) + static_cast<size_t>(dx)] = v;
             }
         }
     }
     size_t mismatches = 0;
-    for (size_t i = 0; i < img.size(); ++i) mismatches += img[i] != want[i] ? 1 : 0;
+    for (size_t i = 0; i < img.size(); ++i) mismatches += img[i] != want[i] ? 1u : 0u;
     return mismatches;
 }
 
@@ -1682,7 +1694,8 @@ void checkGlyphMarginsZero(const MirrorDevice& dev, const GpuFrame& f) {
                     if (!ring || x < 0 || y < 0 || x >= page.w || y >= page.h) {
                         continue;
                     }
-                    nonZero += page.r8[static_cast<size_t>(y) * page.w + static_cast<size_t>(x)] != 0 ? 1 : 0;
+                    nonZero +=
+                        page.r8[static_cast<size_t>(y) * page.w + static_cast<size_t>(x)] != 0 ? 1u : 0u;
                 }
             }
         }

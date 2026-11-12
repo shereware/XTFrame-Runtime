@@ -19,12 +19,14 @@
 #include "xt/assert.h"
 #include "xt/asset_resolver.h"
 #include "xt/box_shadow.h"
+#include "xt/context.h"
 #include "xt/coverage_bitmap.h"
 #include "xt/damage.h"
 #include "xt/effect_utils.h"
 #include "xt/geom.h"
 #include "xt/gpu/clip_bounds.h"
 #include "xt/gpu/coverage_atlas.h"
+#include "xt/gpu/image_texture.h"
 #include "xt/project3d.h"
 #include "xt/text_shaper.h"
 
@@ -177,39 +179,6 @@ std::string_view atlasPageOf(AssetId asset, const IrView& ir) {
     return index < assets.size() ? atlasAssetPage(ir.string(assets[index].name)) : std::string_view();
 }
 
-/// T-648: the content key of `bytes` bytes at `data` (an image's straight RGBA8 pixels or its
-/// compressed blocks) -- four xxh64-style lanes over 8-byte words, folded into two 64-bit halves.
-ImageKey imageContentKey(const uint8_t* data, size_t bytes) {
-    constexpr uint64_t kP1 = 11400714785074694791ull, kP2 = 14029467366897019727ull,
-                       kP3 = 1609587929392839161ull, kP4 = 9650029242287828579ull;
-    auto rotl = [](uint64_t v, int r) { return (v << r) | (v >> (64 - r)); };
-    auto mixIn = [&](uint64_t acc, uint64_t w) { return rotl(acc + w * kP2, 31) * kP1; };
-    uint64_t lane[4] = {kP1 + kP2, kP2, 0, 0 - kP1};
-    size_t i = 0;
-    for (; i + 32 <= bytes; i += 32) {
-        for (size_t k = 0; k < 4; ++k) {
-            uint64_t w = 0;
-            std::memcpy(&w, data + i + k * 8u, 8);
-            lane[k] = mixIn(lane[k], w);
-        }
-    }
-    for (size_t k = 0; i < bytes; ++i, k = (k + 1) & 3u) {
-        lane[k] = mixIn(lane[k], data[i]);
-    }
-    auto avalanche = [](uint64_t h) {
-        h ^= h >> 33;
-        h *= 14029467366897019727ull;
-        h ^= h >> 29;
-        h *= 1609587929392839161ull;
-        return h ^ (h >> 32);
-    };
-    const auto length = static_cast<uint64_t>(bytes);
-    ImageKey key;
-    key.lo = avalanche(rotl(lane[0], 1) + rotl(lane[1], 7) + rotl(lane[2], 12) + rotl(lane[3], 18) + length);
-    key.hi = avalanche((lane[0] * kP3) ^ (lane[1] * kP4) ^ rotl(lane[2], 23) ^ rotl(lane[3], 41) ^ ~length);
-    return key;
-}
-
 }  // namespace
 
 struct FrameBuilder::Impl {
@@ -219,6 +188,15 @@ struct FrameBuilder::Impl {
     std::string lastError;
     /// FrameBuilder::setEdgeFringe: 1 px coverage fringe on convex fills (off under MSAA).
     bool edgeFringe = true;
+    /// T-691 (10 §10.14): the device's capabilities, asked once per build.
+    bool deviceCoverage = true;
+    bool deviceBoxShadow = true;
+    /// T-691: whether a skipped DrawBoxShadow was already reported in `lastError` (once per builder).
+    bool boxShadowWarned = false;
+    /// T-691: this build's FrameBuilder::BuildStats counts (per attempt, like the coverage ones).
+    uint32_t statCapCoverageFallbacks = 0;
+    uint32_t statBoxShadowSkipped = 0;
+    FrameBuilder::BuildStats lastBuildStats;
 
     FrameEmitter emit;
     detail::GradientLutCache luts;
@@ -643,6 +621,7 @@ struct FrameBuilder::Impl {
     void init(GpuDevice& dev) {
         shutdown();
         device = &dev;
+        boxShadowWarned = false;  // T-691: reported once per device
         luts.init(device);
         // T-162: learn once whether the device caches, so a non-caching device never sees a
         // segment counted as "pending" (which would cost it one extra build per static period).
@@ -1109,10 +1088,17 @@ struct FrameBuilder::Impl {
         if (paint.kind == PaintKind::None || pts.empty() || emit.scissor().empty()) {
             return;
         }
-        const bool coverageAllowed = coverage != nullptr && edgeFringe && antialias && !projecting();
+        // T-691 (10 §10.14 item 2): a device without coverage draws gets the paths of before T-660b
+        // (the direct paths, then stencil-then-cover); a shape that would have taken the coverage
+        // quad is counted (a glyph: always; anything else: when the direct paths do not take it).
+        const bool coverageWanted = coverage != nullptr && edgeFringe && antialias && !projecting();
+        const bool coverageAllowed = coverageWanted && deviceCoverage;
         const bool coverageFirst = coverageAllowed && coverage->glyph;
         if (coverageFirst && fillCoverage(*coverage, pts, deviceXf, rule, paint)) {
             return;
+        }
+        if (coverageWanted && !deviceCoverage && coverage->glyph) {
+            ++statCapCoverageFallbacks;
         }
         if (fillDirect(pts, starts, deviceXf, rule, paint, edgeFringe && antialias,
                        coverageAllowed && !coverageFirst)) {
@@ -1120,6 +1106,9 @@ struct FrameBuilder::Impl {
         }
         if (coverageAllowed && !coverageFirst && fillCoverage(*coverage, pts, deviceXf, rule, paint)) {
             return;
+        }
+        if (coverageWanted && !deviceCoverage && !coverage->glyph) {
+            ++statCapCoverageFallbacks;
         }
         const bool gradient = isGradientKind(paint.kind);
         Mat2x3 inv = safeInverse(deviceXf);
@@ -2255,6 +2244,13 @@ struct FrameBuilder::Impl {
             }
             return;
         }
+        if (!deviceBoxShadow) {
+            // T-691 (10 §10.14 item 3): the device has no Shading::BoxShadow. The host should have
+            // painted with Context::setBoxShadowCommands(false); the shadow is left out, counted,
+            // and build() reports it once in lastError.
+            ++statBoxShadowSkipped;
+            return;
+        }
         const float reach = kBoxShadowSigmaReach * d.sigmaLocal;  // T-680: `s` contains the extra terms
         const Vec2 local[4] = {Vec2{s.x0 - reach, s.y0 - reach}, Vec2{s.x1 + reach, s.y0 - reach},
                                Vec2{s.x1 + reach, s.y1 + reach}, Vec2{s.x0 - reach, s.y1 + reach}};
@@ -2425,184 +2421,89 @@ struct FrameBuilder::Impl {
         // assets of the same page by their names in the IR (`atlas:<n>#<asset>`), and the image
         // is the one that was uploaded (same address, same size, same variant, same source).
         const std::string_view page = atlasPageOf(asset, *ir);
-        auto sharedTexture = [&](const void* shared, int width, int height,
-                                 bool& isStraight) -> TextureHandle {
-            if (shared == nullptr || page.empty()) {
+        // T-688 (50 §50.ae): the lookup, key and upload are xt::gpu::acquireImageTexture's (the C ABI's
+        // preload shares them); this builder's atlas page lookup is asked first, as before.
+        struct PageLookup final : ImageTextureLookup {
+            Impl* self = nullptr;
+            const IrView* ir = nullptr;
+            std::string_view page;
+            uint8_t variant = 0;
+            TextureHandle find(const void* shared, int width, int height, bool& isStraight) override {
+                if (shared == nullptr || page.empty()) {
+                    return 0;
+                }
+                for (const TextureEntry& entry : self->textureCache) {
+                    if (entry.shared == shared && entry.tex != 0 && entry.epoch == self->assetEpoch &&
+                        entry.source == self->currentSource && entry.variant == variant &&
+                        entry.width == width && entry.height == height &&
+                        atlasPageOf(entry.asset, *ir) == page) {
+                        isStraight = entry.straight;
+                        return entry.tex;
+                    }
+                }
                 return 0;
             }
-            for (const TextureEntry& entry : textureCache) {
-                if (entry.shared == shared && entry.tex != 0 && entry.epoch == assetEpoch &&
-                    entry.source == currentSource && entry.variant == variant && entry.width == width &&
-                    entry.height == height && atlasPageOf(entry.asset, *ir) == page) {
-                    isStraight = entry.straight;
-                    return entry.tex;
-                }
-            }
-            return 0;
         };
-        // T-657 (50 §50.ab item 2): on a sharing device, the content key the resolver kept from an
-        // earlier upload of this image finds its shared texture without the pixels -- which may
-        // have been released (a trimmed or hidden surface) and would have to be decoded again just
-        // to hash them. Not found: the pixels are asked for below, as before.
-        const bool share = device->sharesImageTextures();
-        if (share) {
-            AssetResolver::ImageContentKey kept;
-            if (assets->retainedImageKey(asset, *ir, scale, kept) && kept.width > 0 && kept.height > 0 &&
-                kept.width <= 65535 && kept.height <= 65535 && !overTextureLimit(kept.width, kept.height)) {
-                const bool isStraight = kept.format != DdsFormat::Rgba8;
-                const TextureFormat fmt = kept.format == DdsFormat::Bc1   ? TextureFormat::Bc1
-                                          : kept.format == DdsFormat::Bc3 ? TextureFormat::Bc3
-                                          : kept.format == DdsFormat::Bc7 ? TextureFormat::Bc7
-                                                                          : TextureFormat::Rgba8;
-                if (TextureHandle found =
-                        device->findSharedImage(ImageKey{kept.lo, kept.hi}, static_cast<uint16_t>(kept.width),
-                                                static_cast<uint16_t>(kept.height), fmt)) {
-                    return remember(nullptr, found, isStraight, kept.width, kept.height, true,
-                                    kept.logicalWidth, kept.logicalHeight);
-                }
+        PageLookup lookup;
+        lookup.self = this;
+        lookup.ir = ir;
+        lookup.page = page;
+        lookup.variant = variant;
+        ImageTextureRequest request;
+        request.device = device;
+        request.assets = assets;
+        request.ir = ir;
+        request.asset = asset;
+        request.scale = scale;
+        request.maxTexture = maxTexture;
+        request.lookup = &lookup;
+        const ImageTextureResult got = acquireImageTexture(request);
+        switch (got.outcome) {
+            case ImageTextureResult::Outcome::Ok:
+                return remember(got.image, got.tex, got.straight, got.width, got.height,
+                                !got.fromLookup && device->sharesImageTextures(), got.logicalWidth,
+                                got.logicalHeight);
+            case ImageTextureResult::Outcome::DecodeFailed:
+                lastError = "image decode failed";
+                return 0;
+            case ImageTextureResult::Outcome::BadSize:
+                lastError = "image has an unsupported size";
+                return 0;
+            case ImageTextureResult::Outcome::OverLimit: {
+                // Docs/tasks/T-263d.md part two: larger than the device says it can create. Not handed
+                // to createTexture at all; remembered with texture 0 until the asset is invalidated, and
+                // reported this once.
+                lastError = "image " + std::to_string(got.width) + "x" + std::to_string(got.height) +
+                            " exceeds the device texture limit " + std::to_string(maxTexture);
+                TextureEntry refused;
+                refused.asset = asset;
+                refused.variant = variant;
+                refused.owned = false;
+                refused.epoch = assetEpoch;
+                refused.source = currentSource;
+                refused.refused = true;
+                textureCache.push_back(refused);
+                return 0;
             }
+            case ImageTextureResult::Outcome::CreateFailed:
+                break;
         }
-        // T-199 (23 §23.8): a block-compressed asset is uploaded as it is (straight alpha); a
-        // device that cannot take the format returns 0 and the decoded pixels are used instead.
-        if (const CompressedImage* compressed = assets->compressedImage(asset, *ir, scale)) {
-            bool isStraight = true;
-            if (TextureHandle shared =
-                    sharedTexture(compressed, compressed->width, compressed->height, isStraight)) {
-                return remember(compressed, shared, isStraight, compressed->width, compressed->height, false,
-                                compressed->logicalWidth, compressed->logicalHeight);
-            }
-            TextureFormat fmt = TextureFormat::Bc7;
-            if (compressed->format == DdsFormat::Bc1) {
-                fmt = TextureFormat::Bc1;
-            } else if (compressed->format == DdsFormat::Bc3) {
-                fmt = TextureFormat::Bc3;
-            }
-            if (compressed->width > 0 && compressed->height > 0 && compressed->width <= 65535 &&
-                compressed->height <= 65535 && !overTextureLimit(compressed->width, compressed->height) &&
-                compressed->blocks.size() >=
-                    ddsLevelSize(compressed->format, compressed->width, compressed->height)) {
-                const auto w = static_cast<uint16_t>(compressed->width);
-                const auto h = static_cast<uint16_t>(compressed->height);
-                // T-648: on a sharing device, one texture per content on the owner's devices.
-                TextureHandle tex = 0;
-                if (share) {
-                    const ImageKey key = imageContentKey(
-                        compressed->blocks.data(),
-                        ddsLevelSize(compressed->format, compressed->width, compressed->height));
-                    tex = device->findSharedImage(key, w, h, fmt);
-                    if (tex == 0) {
-                        tex = device->createSharedImage(key, "xt image (bc)", w, h, fmt,
-                                                        compressed->blocks.data());
-                    }
-                    if (tex != 0) {  // T-657: kept for the next builder that needs it (above).
-                        assets->retainImageKey(
-                            compressed, AssetResolver::ImageContentKey{key.lo, key.hi, compressed->width,
-                                                                       compressed->height, compressed->format,
-                                                                       compressed->logicalWidth,
-                                                                       compressed->logicalHeight});
-                    }
-                } else {
-                    tex = device->createTexture("xt image (bc)", w, h, fmt, compressed->blocks.data());
-                }
-                if (tex != 0) {
-                    return remember(compressed, tex, true, compressed->width, compressed->height, share,
-                                    compressed->logicalWidth, compressed->logicalHeight);
-                }
-            }
-        }
-        // T-148: borrow the resolver's decoded image instead of copying it (T-199: the `@2x`
-        // variant at dpr >= 1.5; an atlas page is one image shared by its assets).
-        const ImageData* view = assets->imageView(asset, *ir, scale);
-        if (view == nullptr) {
-            lastError = "image decode failed";
-            return 0;
-        }
-        {
-            bool isStraight = false;
-            if (TextureHandle shared = sharedTexture(view, view->width, view->height, isStraight)) {
-                return remember(view, shared, isStraight, view->width, view->height, false);
-            }
-        }
-        const ImageData& image = *view;
-        if (image.width <= 0 || image.height <= 0 || image.width > 65535 || image.height > 65535 ||
-            image.rgba.size() < static_cast<size_t>(image.width) * static_cast<size_t>(image.height) * 4) {
-            lastError = "image has an unsupported size";
-            return 0;
-        }
-        // Docs/tasks/T-263d.md part two: larger than the device says it can create. Not handed
-        // to createTexture at all; remembered with texture 0 until the asset is invalidated, and
-        // reported this once.
-        if (overTextureLimit(image.width, image.height)) {
-            lastError = "image " + std::to_string(image.width) + "x" + std::to_string(image.height) +
-                        " exceeds the device texture limit " + std::to_string(maxTexture);
-            TextureEntry refused;
-            refused.asset = asset;
-            refused.variant = variant;
-            refused.owned = false;
-            refused.epoch = assetEpoch;
-            refused.source = currentSource;
-            refused.refused = true;
-            textureCache.push_back(refused);
-            return 0;
-        }
-        const size_t count = static_cast<size_t>(image.width) * static_cast<size_t>(image.height);
-        const auto w = static_cast<uint16_t>(image.width);
-        const auto h = static_cast<uint16_t>(image.height);
-        // T-648: on a sharing device the texture of the same pixels may exist already (another
-        // surface of the target uploaded it): no premultiply, no upload.
-        ImageKey key;
-        // T-657: the key, kept by the resolver for the next builder that needs it (above).
-        auto retain = [&] {
-            assets->retainImageKey(view, AssetResolver::ImageContentKey{key.lo, key.hi, image.width,
-                                                                        image.height, DdsFormat::Rgba8});
-        };
-        if (share) {
-            key = imageContentKey(image.rgba.data(), count * 4);
-            if (TextureHandle found = device->findSharedImage(key, w, h, TextureFormat::Rgba8)) {
-                retain();
-                return remember(view, found, false, image.width, image.height, true);
-            }
-        }
-        TextureHandle tex = 0;
-        {
-            // Premultiply on the CPU (gpu_frame.h: every texture is premultiplied). T-648: a scratch
-            // of this upload only, freed with it (it used to keep the largest image's size).
-            std::vector<uint8_t> premultiplied(count * 4);
-            for (size_t i = 0; i < count; ++i) {
-                const uint8_t* s = image.rgba.data() + i * 4;
-                uint8_t* d = premultiplied.data() + i * 4;
-                const uint32_t a = s[3];
-                d[0] = static_cast<uint8_t>((s[0] * a + 127u) / 255u);
-                d[1] = static_cast<uint8_t>((s[1] * a + 127u) / 255u);
-                d[2] = static_cast<uint8_t>((s[2] * a + 127u) / 255u);
-                d[3] = s[3];
-            }
-            tex = share ? device->createSharedImage(key, "xt image", w, h, TextureFormat::Rgba8,
-                                                    premultiplied.data())
-                        : device->createTexture("xt image", w, h, TextureFormat::Rgba8, premultiplied.data());
-        }
-        if (tex == 0) {
-            // Docs/tasks/T-263b.md E10: the device could not take this image (the upload failed,
-            // or it is larger than a limit the device does not report). Remembered with texture
-            // 0 -- the image is not drawn -- so the following frames do not premultiply and
-            // upload it again; T-263d: it is tried again later (see the lookup above), and an
-            // invalidateAsset()/invalidateAllAssets() forgets the failure altogether.
-            lastError = "createTexture failed for an image";
-            TextureEntry failed;
-            failed.asset = asset;
-            failed.variant = variant;
-            failed.owned = false;
-            failed.epoch = assetEpoch;
-            failed.source = currentSource;
-            failed.retries = retries;
-            failed.failedAt = frameCount;
-            textureCache.push_back(failed);
-            return 0;
-        }
-        if (share) {
-            retain();
-        }
-        return remember(view, tex, false, image.width, image.height, share);
+        // Docs/tasks/T-263b.md E10: the device could not take this image (the upload failed, or it is
+        // larger than a limit the device does not report). Remembered with texture 0 -- the image is
+        // not drawn -- so the following frames do not premultiply and upload it again; T-263d: it is
+        // tried again later (see the lookup above), and an invalidateAsset()/invalidateAllAssets()
+        // forgets the failure altogether.
+        lastError = "createTexture failed for an image";
+        TextureEntry failed;
+        failed.asset = asset;
+        failed.variant = variant;
+        failed.owned = false;
+        failed.epoch = assetEpoch;
+        failed.source = currentSource;
+        failed.retries = retries;
+        failed.failedAt = frameCount;
+        textureCache.push_back(failed);
+        return 0;
     }
 
     /// T-150: resolves the texture a DrawImage/DrawImageQuad samples. An `engine://` asset takes
@@ -2795,7 +2696,7 @@ struct FrameBuilder::Impl {
         Contour& contour = contourA;
         contour.pts.resize(4);
         float area = 0.0f;
-        for (int i = 0; i < 4; ++i) {
+        for (size_t i = 0; i < 4; ++i) {
             contour.pts[i] = Vec2{v[i].x, v[i].y};
             uv[i] = Vec2{v[i].u, v[i].v};
             area += v[i].x * v[(i + 1) % 4].y - v[(i + 1) % 4].x * v[i].y;
@@ -2804,7 +2705,7 @@ struct FrameBuilder::Impl {
             std::swap(contour.pts[1], contour.pts[3]);
             std::swap(uv[1], uv[3]);
         }
-        for (int i = 0; i < 4; ++i) {
+        for (size_t i = 0; i < 4; ++i) {
             const Vec2 a = contour.pts[i], b = contour.pts[(i + 1) % 4], c = contour.pts[(i + 2) % 4];
             const float cross = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
             if (!(cross > 0.0f)) {
@@ -2828,14 +2729,14 @@ struct FrameBuilder::Impl {
         Geometry g;
         g.vertexCount = 8;
         Vertex* out = emit.appendVertices(g.vertexCount, g.baseVertex);
-        for (int i = 0; i < 4; ++i) {
-            const int next = (i + 1) % 4, prev = (i + 3) % 4;
+        for (size_t i = 0; i < 4; ++i) {
+            const size_t next = (i + 1) % 4, prev = (i + 3) % 4;
             const Vec2 p = contour.pts[i];
             const Vec2 e1{contour.pts[next].x - p.x, contour.pts[next].y - p.y};
             const Vec2 e0{contour.pts[prev].x - p.x, contour.pts[prev].y - p.y};
             const float det = e1.x * e0.y - e1.y * e0.x;  // != 0: the corner is convex
             const Vec2 m = contour.miters[i];
-            for (int ring = 0; ring < 2; ++ring) {
+            for (size_t ring = 0; ring < 2; ++ring) {
                 const float offset = ring == 0 ? -woff : 1.0f - woff;
                 const Vec2 d{m.x * offset, m.y * offset};
                 const float s = (d.x * e0.y - d.y * e0.x) / det;  // along e1
@@ -3289,7 +3190,7 @@ struct FrameBuilder::Impl {
         if (run.shaper == nullptr) {
             return;
         }
-        if (edgeFringe && !projecting()) {
+        if (edgeFringe && deviceCoverage && !projecting()) {  // T-691: else the outline path below
             if (emit.scissor().empty()) {
                 return;  // fillShapeAndCover draws nothing then
             }
@@ -3810,6 +3711,12 @@ struct FrameBuilder::Impl {
         }
 #ifndef XT_GPU_NO_TEXT
         if (!useAtlas && transformedAtlasRun(cmd, deviceXf)) {
+            if (!deviceCoverage) {
+                // T-691 (10 §10.14 item 2): no coverage draws -- T-653's resampled atlas bitmaps.
+                statCapCoverageFallbacks += cmd.glyphCount;
+                doTransformedAtlasGlyphs(cmd, deviceXf, dpr, shaper);
+                return;
+            }
             doTransformedRun(cmd, deviceXf, dpr, shaper);  // T-676
             return;
         }
@@ -3837,7 +3744,12 @@ struct FrameBuilder::Impl {
         // (frame budget, atlas full) is drawn from the glyph atlas below; a budget refusal asks for
         // another frame (T-662, through fillCoverage's count).
         const std::vector<uint8_t>* atlasOnly = nullptr;
-        if (edgeFringe && !projecting() && !glyphRunUsesHintedBitmap(cmd, deviceXf)) {
+        const bool outlineCoverageRun =
+            edgeFringe && !projecting() && !glyphRunUsesHintedBitmap(cmd, deviceXf);
+        if (outlineCoverageRun && !deviceCoverage) {
+            statCapCoverageFallbacks += cmd.glyphCount;  // T-691: the whole run from the glyph atlas
+        }
+        if (outlineCoverageRun && deviceCoverage) {
             transformedRunFallback.assign(cmd.glyphCount, 0);
             bool anyFallback = false;
             GlyphCoverageRun run;  // T-682: shared by the run's glyphs
@@ -4695,6 +4607,11 @@ struct FrameBuilder::Impl {
                 return false;  // a degenerate rotated rect: keep the stencil level
             }
             rectShape = &contourA;
+        } else if (!convex && !deviceCoverage) {
+            // T-691 (10 §10.14 item 2): the mask of a concave clip path would be drawn from the
+            // coverage atlas; without coverage draws the clip keeps its stencil level.
+            ++statCapCoverageFallbacks;
+            return false;
         }
         pushClipMaskLayer(scan, boundsOf(pts), pathCmd, rectShape, deviceXf, dpr);
         consumed = site.index;
@@ -5275,6 +5192,7 @@ struct FrameBuilder::Impl {
         statCoverageTiles = statCoverageUniformTiles = 0;                   // T-672: likewise
         statGlyphOutlines = 0;                                              // T-682: likewise
         statClipSkipped = statClipScissor = statClipImageDirect = statClipMaskLayers = 0;  // T-663
+        statCapCoverageFallbacks = statBoxShadowSkipped = 0;                               // T-691
         clipScans.clear();
         clipScanSlot.clear();
         clipScanEnd = cl.commands.size();
@@ -5837,6 +5755,7 @@ struct FrameBuilder::Impl {
             ++frameCount;
         }
         frameCounted = false;
+        luts.beginFrame(frameCount);  // T-695: tables age in the builder's frames
         lastError.clear();
         lastBuildValid = false;
         lastCacheStats = FrameBuilder::EffectCacheStats{};
@@ -5861,7 +5780,9 @@ struct FrameBuilder::Impl {
         // list's sources when it names them, else the call's `ir`.
         ++buildCount;
         selectListSources(cl, assets, ir);
-        maxTexture = device->maxTextureSize();  // T-263d: once per build, not per texture
+        maxTexture = device->maxTextureSize();                 // T-263d: once per build, not per texture
+        deviceCoverage = device->supportsCoverageDraws();      // T-691 (10 §10.14 item 1)
+        deviceBoxShadow = device->supportsBoxShadowShading();  // T-691
         cacheEntriesAtBuildStart = cacheEntries.size();
         // T-343: the host's target mode. A device that cannot read target 0 draws in Layer mode.
         damage = damageList;
@@ -5932,7 +5853,14 @@ struct FrameBuilder::Impl {
         lastCoverageStats.rasterizedPixels = coverageAtlas.stats().frameRasterizedPixels;  // every attempt
         lastCoverageStats.atlasBytes = coverageAtlas.bytes();
         lastClipStats = FrameBuilder::ClipStats{statClipSkipped, statClipScissor, statClipImageDirect,
-                                                statClipMaskLayers};  // T-663
+                                                statClipMaskLayers};                                // T-663
+        lastBuildStats = FrameBuilder::BuildStats{statCapCoverageFallbacks, statBoxShadowSkipped};  // T-691
+        if (statBoxShadowSkipped > 0 && !boxShadowWarned && lastError.empty()) {
+            boxShadowWarned = true;  // reported once; a build with another message reports it later
+            lastError =
+                "box shadow shading is not supported by the device; blurred DrawBoxShadow commands are "
+                "not drawn (call Context::setBoxShadowCommands(false))";
+        }
         luts.endFrame();
         lastCacheStats.hits = statCacheHits;
         lastCacheStats.misses = statCacheMisses;
@@ -6166,5 +6094,13 @@ FrameBuilder::EffectCacheStats FrameBuilder::lastEffectCacheStats() const { retu
 FrameBuilder::CoverageStats FrameBuilder::lastCoverageStats() const { return m_impl->lastCoverageStats; }
 
 FrameBuilder::ClipStats FrameBuilder::lastClipStats() const { return m_impl->lastClipStats; }
+
+FrameBuilder::BuildStats FrameBuilder::lastBuildStats() const { return m_impl->lastBuildStats; }
+
+void applyDeviceCapabilities(const GpuDevice& device, Context& context) {
+    if (!device.supportsBoxShadowShading()) {
+        context.setBoxShadowCommands(false);  // only ever off: never over a host's own false
+    }
+}
 
 }  // namespace xt::gpu

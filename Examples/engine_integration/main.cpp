@@ -149,6 +149,7 @@ struct MyBackend {
                     break;
                 case xt::CmdKind::PushEffect:
                 case xt::CmdKind::PopEffect:
+                case xt::CmdKind::DrawBoxShadow:  // T-668: an effect command too (simplified away with them)
                     ++effectCmds;
                     break;
                 case xt::CmdKind::DrawParticles:

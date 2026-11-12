@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(XTFrame VERSION 0.15.2 LANGUAGES CXX C)
+project(XTFrame VERSION 0.16.0 LANGUAGES CXX C)
 
 # MSBuild compiles one file at a time per project unless /MP is given; apply it globally so the
 # FetchContent dependencies (SDL2, FreeType, HarfBuzz) build in parallel too.
@@ -27,6 +27,23 @@ endif()
 option(XT_BUILD_GL "Build OpenGL backend" ON)
 # Docs/design/10-backends.md §10.5: the device-neutral GPU frame builder (no GL/D3D inside).
 option(XT_BUILD_GPU "Build the device-neutral GPU frame builder (xt_gpu)" ON)
+# Docs/design/45-repository-layout.md §45.8 (T-689): the GPU device backends and what needs them
+# (Code/Runtime/{gl,wgpu}, Code/Backends, the C ABI's GPU target, Code/Tools/{view,gpu-probe},
+# Tests/{gl,wgpu,backends}, Examples/backends, Tools/CMake/xt_wgpu.cmake) are read from
+# XT_BACKENDS_SOURCE_DIR: this tree in the development repository (the default), the XTFrame-Backends
+# root when that repository adds this tree as its `runtime/` submodule (it sets the variable before
+# add_subdirectory(runtime)). In the XTFrame-Runtime mirror the directories are absent: each option or
+# module that needs one is off, with one status line.
+if(NOT DEFINED XT_BACKENDS_SOURCE_DIR)
+    set(XT_BACKENDS_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+endif()
+if(NOT EXISTS "${XT_BACKENDS_SOURCE_DIR}/Code/Runtime/gl/CMakeLists.txt")
+    if(XT_BUILD_GL)
+        message(STATUS "XT_BUILD_GL: OFF (Code/Runtime/gl is absent; the GPU backends are in XTFrame-Backends)")
+        set(XT_BUILD_GL OFF)
+    endif()
+    set(xt_gl_absent ON)
+endif()
 if(XT_BUILD_GL AND NOT XT_BUILD_GPU)
     message(FATAL_ERROR "XT_BUILD_GL requires XT_BUILD_GPU=ON (xt_gl is a GpuDevice over xt_gpu, T-147)")
 endif()
@@ -40,6 +57,10 @@ option(XT_BUILD_SHELL "Build SDL2 shell" ON)
 option(XT_SHELL_GL "xt_shell presents through xt_gl (OFF: xt_sw + SDL_Renderer)" ON)
 if(ANDROID)
     set(XT_SHELL_GL OFF CACHE BOOL "" FORCE)
+endif()
+if(xt_gl_absent AND XT_SHELL_GL)
+    message(STATUS "XT_SHELL_GL: OFF (Code/Runtime/gl is absent; xt_shell presents through xt_sw)")
+    set(XT_SHELL_GL OFF)
 endif()
 if(XT_BUILD_SHELL AND XT_SHELL_GL AND NOT XT_BUILD_GL)
     message(FATAL_ERROR "XT_SHELL_GL=ON requires XT_BUILD_GL=ON (or pass -DXT_SHELL_GL=OFF)")
@@ -177,11 +198,13 @@ endif()
 if(XT_BUILD_WGPU AND NOT XT_BUILD_GPU)
     message(STATUS "xt_wgpu: XT_BUILD_GPU=OFF, XT_BUILD_WGPU=OFF (xt_wgpu is a GpuDevice over xt_gpu)")
     set(XT_BUILD_WGPU OFF)
-elseif(XT_BUILD_WGPU AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Code/Runtime/wgpu/CMakeLists.txt")
+elseif(XT_BUILD_WGPU AND NOT EXISTS "${XT_BACKENDS_SOURCE_DIR}/Code/Runtime/wgpu/CMakeLists.txt")
+    message(STATUS "XT_BUILD_WGPU: OFF (Code/Runtime/wgpu is absent; the GPU backends are in XTFrame-Backends)")
     set(XT_BUILD_WGPU OFF)
 endif()
 if(XT_BUILD_WGPU)
-    include(Tools/CMake/xt_wgpu.cmake)  # may set XT_BUILD_WGPU OFF (no prebuilt for this platform)
+    # may set XT_BUILD_WGPU OFF (no prebuilt for this platform)
+    include("${XT_BACKENDS_SOURCE_DIR}/Tools/CMake/xt_wgpu.cmake")
 endif()
 
 # MSVC default CMAKE_CXX_FLAGS injects /EHsc. xt_core disables exceptions, so
@@ -215,11 +238,12 @@ endif()
 if(XT_BUILD_GPU)
     add_subdirectory(Code/Runtime/gpu)
 endif()
+# T-689 (45 §45.8): the binary directories are the ones a plain add_subdirectory() gave, in either layout.
 if(XT_BUILD_GL)
-    add_subdirectory(Code/Runtime/gl)
+    add_subdirectory("${XT_BACKENDS_SOURCE_DIR}/Code/Runtime/gl" "${CMAKE_CURRENT_BINARY_DIR}/Code/Runtime/gl")
 endif()
 if(XT_BUILD_WGPU)
-    add_subdirectory(Code/Runtime/wgpu)
+    add_subdirectory("${XT_BACKENDS_SOURCE_DIR}/Code/Runtime/wgpu" "${CMAKE_CURRENT_BINARY_DIR}/Code/Runtime/wgpu")
 endif()
 # T-504 (50 §50.2): the C ABI over core / bundle / flow / sw (and text), so it comes after them; T-636
 # (50 §50.z): and after xt_wgpu, which it links for the GPU target when XT_BUILD_WGPU is ON.
@@ -231,8 +255,10 @@ if(XT_BUILD_SHELL)
 endif()
 # Code/Backends/: reference platform x renderer glue (Code/Backends/README.md, 45 章 §45.7); every backend is
 # optional and self-skipping, so the directory is always added when present.
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Code/Backends/CMakeLists.txt")
-    add_subdirectory(Code/Backends)
+if(EXISTS "${XT_BACKENDS_SOURCE_DIR}/Code/Backends/CMakeLists.txt")
+    add_subdirectory("${XT_BACKENDS_SOURCE_DIR}/Code/Backends" "${CMAKE_CURRENT_BINARY_DIR}/Code/Backends")
+else()
+    message(STATUS "Code/Backends: absent, no platform / renderer parts (they are in XTFrame-Backends)")
 endif()
 # T-442 (17 §17.9): XT_QT_DIR, else the newest Qt 5.15 / 5.12 under Code/SDKs/Qt (Tools/CMake/xt_qt.cmake).
 if(XT_BUILD_EDITOR)

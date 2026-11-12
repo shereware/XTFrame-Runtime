@@ -90,6 +90,29 @@ void checkZeroAllocFrames(Context& ctx, CommandList& cmds, float dt, int frames)
     }
 }
 
+/// T-692: renders `cmds` into a 1280x720 SW target 3 times uncounted (the warm-up: the layer pool
+/// and the effect and mask scratch grow), then `frames` times counted; none may allocate.
+void checkZeroAllocSwFrames(const CommandList& cmds, TextShaper& shaper, int frames, const char* phase) {
+    std::vector<uint8_t> rgba(static_cast<size_t>(1280) * 720 * 4, 0);
+    sw::SwRenderer renderer;
+    renderer.setTarget(sw::SwTarget{rgba.data(), 1280, 720, 1280 * 4});
+    for (int i = 0; i < 3; ++i) {
+        renderer.render(cmds, &shaper, nullptr);
+    }
+    uint64_t total = 0;
+    for (int i = 0; i < frames; ++i) {
+        xt::perf::startCounting();
+        renderer.render(cmds, &shaper, nullptr);
+        const uint64_t n = xt::perf::count();
+        xt::perf::stopCounting();
+        if (n != 0) {
+            reportAllocSizes(phase, i);
+        }
+        total += n;
+    }
+    CHECK(total == 0);
+}
+
 /// Tests/lottie/shape_rect_fill.json's single static (non-animated) rectangle+fill layer,
 /// duplicated `count` times with distinct `ind`/`nm`, wrapped in one Lottie composition. See the
 /// file header for why this is generated rather than read from a fixture.
@@ -251,24 +274,7 @@ TEST_CASE("perf: T-641 static nested layers, 300 full SW frames allocate nothing
         layers += c.kind == CmdKind::PushLayer ? 1 : 0;
     }
     CHECK(layers >= 5);  // #panel, the 3 cards, #halo (a childless node folds its opacity into its paint)
-    std::vector<uint8_t> rgba(static_cast<size_t>(1280) * 720 * 4, 0);
-    sw::SwRenderer renderer;
-    renderer.setTarget(sw::SwTarget{rgba.data(), 1280, 720, 1280 * 4});
-    for (int i = 0; i < 3; ++i) {  // Warm-up: the pool, the effect and mask scratch grow.
-        renderer.render(cmds, &shaper, nullptr);
-    }
-    uint64_t total = 0;
-    for (int i = 0; i < 300; ++i) {
-        xt::perf::startCounting();
-        renderer.render(cmds, &shaper, nullptr);
-        const uint64_t n = xt::perf::count();
-        xt::perf::stopCounting();
-        if (n != 0) {
-            reportAllocSizes("SwRenderer::render()", i);
-        }
-        total += n;
-    }
-    CHECK(total == 0);
+    checkZeroAllocSwFrames(cmds, shaper, 300, "SwRenderer::render()");
 }
 
 // T-643: the effect passes' working buffers (blur levels, max-filter rows and columns, the distance
@@ -277,6 +283,12 @@ TEST_CASE("perf: T-641 static nested layers, 300 full SW frames allocate nothing
 // blur, outline, ColorAdjust, GradientMask, Shine, a stack of three, a backdrop blur -- and a
 // translucent Multiply layer, fully rendered every frame: after the warm-up, 300 frames allocate
 // nothing.
+// T-692: since T-668 / T-680 the painter turns the drop shadows of #shadow and #spread (plain opaque
+// boxes) into DrawBoxShadow commands by default, which would leave this case with 9 effect layers
+// and no off-screen drop-shadow pass at all. That pass still runs for hosts that turn the
+// conversion off (xtframe-bake, `xtframe-view --no-box-shadow`, custom backends), so this case keeps
+// it: the Context paints with setBoxShadowCommands(false) and all 11 effect layers stay effects.
+// The default (converted) frame is covered by the case below.
 TEST_CASE("perf: T-643 static effects, 300 full SW frames allocate nothing (effect scratch)") {
     CompileOptions options;
     options.rootDir = std::string(XT_PERF_FIXTURES_DIR);
@@ -285,6 +297,7 @@ TEST_CASE("perf: T-643 static effects, 300 full SW frames allocate nothing (effe
 
     NullTextShaper shaper;
     Context ctx(ContextConfig{&shaper, nullptr});
+    ctx.setBoxShadowCommands(false);
     ctx.setViewport(Rect{0, 0, 1280, 720}, 1.0f);
     Result<DocumentHandle> handle = ctx.loadDocument(IrBlob{result.ir.data(), result.ir.size()}, true);
     REQUIRE(handle.ok());
@@ -293,26 +306,49 @@ TEST_CASE("perf: T-643 static effects, 300 full SW frames allocate nothing (effe
     ctx.update(1.0f / 60.0f);
     ctx.render(cmds);
     int effects = 0;
+    int boxShadows = 0;
     for (const Command& c : cmds.commands) {
         effects += c.kind == CmdKind::PushEffect ? 1 : 0;
+        boxShadows += c.kind == CmdKind::DrawBoxShadow ? 1 : 0;
     }
     CHECK(effects >= 11);  // #multiply is a PushLayer, not an effect
-    std::vector<uint8_t> rgba(static_cast<size_t>(1280) * 720 * 4, 0);
-    sw::SwRenderer renderer;
-    renderer.setTarget(sw::SwTarget{rgba.data(), 1280, 720, 1280 * 4});
-    for (int i = 0; i < 3; ++i) {  // Warm-up: the pool and every effect buffer grow.
-        renderer.render(cmds, &shaper, nullptr);
+    CHECK(boxShadows == 0);
+    checkZeroAllocSwFrames(cmds, shaper, 300, "SwRenderer::render() with effects");
+}
+
+// T-692: the same scene with the default painter output (T-668 / T-680): #shadow and #spread are
+// drawn as DrawBoxShadow commands, the other 9 effect layers (inset, glow, blur, outline,
+// ColorAdjust, GradientMask, Shine, the stack, the backdrop blur) stay PushEffects. In steady state
+// neither the painter (Context::update + render, which makes the conversion) nor the SW renderer
+// (which draws the analytic shadows) allocates.
+TEST_CASE("perf: T-692 static effects with converted box shadows allocate nothing in steady state") {
+    CompileOptions options;
+    options.rootDir = std::string(XT_PERF_FIXTURES_DIR);
+    CompileResult result = compileDocument(fixturePath("effects_static.xt"), options);
+    requireNoErrors(result);
+
+    NullTextShaper shaper;
+    Context ctx(ContextConfig{&shaper, nullptr});
+    REQUIRE(ctx.boxShadowCommands());  // The default.
+    ctx.setViewport(Rect{0, 0, 1280, 720}, 1.0f);
+    Result<DocumentHandle> handle = ctx.loadDocument(IrBlob{result.ir.data(), result.ir.size()}, true);
+    REQUIRE(handle.ok());
+
+    CommandList cmds;
+    const float dt = 1.0f / 60.0f;
+    ctx.update(dt);  // Warm-up: 2 frames, uncounted.
+    ctx.render(cmds);
+    ctx.update(dt);
+    ctx.render(cmds);
+    checkZeroAllocFrames(ctx, cmds, dt, 10);
+
+    int effects = 0;
+    int boxShadows = 0;
+    for (const Command& c : cmds.commands) {
+        effects += c.kind == CmdKind::PushEffect ? 1 : 0;
+        boxShadows += c.kind == CmdKind::DrawBoxShadow ? 1 : 0;
     }
-    uint64_t total = 0;
-    for (int i = 0; i < 300; ++i) {
-        xt::perf::startCounting();
-        renderer.render(cmds, &shaper, nullptr);
-        const uint64_t n = xt::perf::count();
-        xt::perf::stopCounting();
-        if (n != 0) {
-            reportAllocSizes("SwRenderer::render() with effects", i);
-        }
-        total += n;
-    }
-    CHECK(total == 0);
+    CHECK(boxShadows >= 2);  // #shadow, #spread
+    CHECK(effects >= 9);
+    checkZeroAllocSwFrames(cmds, shaper, 100, "SwRenderer::render() with box shadows");
 }

@@ -424,3 +424,25 @@ eport.json`）**——對 SW 的「> 16 像素數／最大通道差／平均絕�
 
 **T-687 實作記錄（#648，2026-11-12）**：`.xtui` 的 `"publish": {"images": {"compress": "none"｜"bc7"｜"auto"}}`（預設 `none`；其他值為載入錯誤；往返保留）；CLI `--compress bc7|bc3|bc1|auto|none` 覆寫、`--no-cache`、`--cache-dir`；`PackOptions::compress` 預設空字串＝取專案設定（編輯器發佈等呼叫者也跟著設定走）。宿主以子行程呼叫 `xtframe-pack` 者不需傳旗標，在 `.xtui` 設定即可。補邊＋'XTLS'、完整 mip 鏈（整塊 alpha 為 0 的 2×2 取四個 texel 的平均）、透明補色（8 鄰域逐圈擴散、每層由補色後的上一層產生並再補色）套用於打包器寫出的所有 DDS（含 BC1／BC3 覆寫）；`auto` 下 `@2x／@3x` 跟隨 1x 的決定。快取鍵＝解碼後 RGBA 的 FNV-1a 64＋尺寸＋格式＋編碼器版本字串。`none` 的輸出與修改前逐位元組相同（僅 `builtAt` 與 `.xtir` 的編譯時間不同，同一工具兩次執行亦然）；多執行緒＝單執行緒＝快取，逐位元組相同。Sherefox（`auto`、13600K、20 執行緒）：首次編碼 10.8 s、全快取 2.7 s、改一張圖 2.6 s（修改前單執行緒 86 s／含 mip 123 s）；磁碟 47.7 → 92.2 MB；33 張走 BC7（11 張補邊）、11 張小圖不壓。PSNR：背景 RGB 43.2～49.1 dB、立繪 RGB 41.4～44.9／alpha 42.1～46.4；最差的是 640 px 的印章類（RGB 27.8～34.6、alpha 27.8～31.0）——屬 ≥ 256 px 而被 `auto` 納入，可用 `assets.yaml compress: none` 個別覆寫。執行時（宿主流程、1080p、1x；`none` → `auto`）：`image_bytes` 61.8 → 19.5 MiB；private RTX 621 → 473、UHD 653 → 434 MB；DXGI local 321 → 187／452 → 244 MB；首顯首幀 vn 124.8 → 16.3 ms（RTX）／108.2 → 19.3（UHD）、debate 99.8 → 42.4／102.5 → 54.1、paper 39.2 → 11.9／60.2 → 14.3。端到端（打包 → 載入 → wgpu 對 SW）三種設定皆 0 px 超差。已知：不透明的平坦區塊經 bc7enc mode 6 解出 alpha 254；`xtframe-view` 自動打包 UI Project 時會照專案設定編碼（首次較慢，之後走快取）——維持，預覽與出貨一致。未編譯：Linux／macOS（新增 `Threads::Threads`）；未測：Vulkan、Metal、GL 端到端。
 
+**T-692 記錄（#649，2026-11-12；輕量閘門沒跑到的失敗與一個缺陷）**：(1) `xt_perf` T-643「effects >= 11」得 9——方塊陰影轉換所致（`effects_static.xt` 的 `#shadow`、`#spread` 被轉換）；該案例改以 `setBoxShadowCommands(false)` 建 Context（保留 ≥ 11 個真正的效果層，涵蓋關閉轉換的宿主仍會走的離屏路徑）。(2) **缺陷**：`Painter::finishBoxShadowCandidate` 每次轉換都預設建構一個區域 `std::vector`，MSVC Debug 的迭代器除錯會為它配置 16 B——每個被轉換的陰影每幀一次，違反 14 §14.4；改為成員 `m_boxShadowCmdScratch`，輸出不變；新增案例斷言含轉換陰影的畫面 10 幀 update＋render 與 100 幀 SW 皆零配置。(3) `sym_TouchButton_cooling` 的 4046 px 差異**不是**方塊陰影（該按鈕沒有陰影），而是 T-665：冷卻的 `#Shade` 以 4×4 的點陣圖鋪底、垂直縮小 1.67×（lod 0.74），現在走三線性；回溯確認 #641 之前通過、之後失敗；重產該期望圖（色調平均不變、網點對比由標準差 17.4 降為 11.4）。(4) `Tests/import/test_dc_effects.cpp` F14 的期望改為 `DrawBoxShadow`。之後 CTest 151 項（不含編輯器與網路類）全過。`dev_check.sh` 的說明加註：改動效果、陰影、影像取樣或 painter 輸出時另跑 `perf` 與 `symbols`。未跑：編輯器與網路類套件、Release 的 `xt_perf`；未編譯：Clang／GCC。
+
+## 10.14 裝置能力查詢：沒跟上的 `GpuDevice` 不會畫錯（2026-11-12 定案；23 章「宿主自訂 `GpuDevice` 後端的升級須知」第 2、3 點的解法；T-691）
+
+**問題**：10.11／10.12 讓 frame builder 發出兩種舊裝置看不懂的 draw——帶 `coverage` 貼圖的 quad、`Shading::BoxShadow`。自訂 `GpuDevice` 的宿主升級後編得過，但前者被塗成實心、後者漏畫。
+
+**原則**：新的 draw 形式一律由裝置明說「我會」才發；預設值是「不會」。沒跟上的裝置拿到的 frame 與它上一次能正確畫出的形式相同，品質較低但不出錯。
+
+1. `GpuDevice` 追加兩個帶預設實作的虛擬函式（附加在介面尾端，不動既有順序）：
+   - `virtual bool supportsCoverageDraws() const { return false; }`——裝置會把 `DrawCmd::coverage` 當 R8 覆蓋率貼圖與著色結果相乘。
+   - `virtual bool supportsBoxShadowShading() const { return false; }`——裝置實作 `Shading::BoxShadow`（含 `boxShadowMulti`）。
+   `xt_wgpu`、`xt_gl` 兩者皆回 true（它們本來就實作）。`FrameBuilder::build` 每次 build 問一次。
+2. **覆蓋率**：`supportsCoverageDraws()` 為 false 時，frame builder 不發任何帶 `coverage` 的 draw，也不建立覆蓋率 atlas 貼圖——凹形填色、筆畫、輪廓文字、裁切、邊框一律走各自在 10.11 之前的路徑（凸形直畫＋fringe、stencil-then-cover、字形 atlas／hinted bitmap）。單取樣目標上這些形狀的邊緣回到沒有抗鋸齒，其餘正確。
+3. **方塊陰影**（2026-11-12 改判；原案「frame builder 把 `DrawBoxShadow` 展開回舊命令序列、與關閉轉換逐位元組相同」撤回——T-691 實作前查明：關閉轉換時 painter 走的是一般效果路徑 `PushEffect`＋整個子樹＋`PopEffect`，`DrawBoxShadow` 不帶子樹範圍、`EffectCmd` 的變換與邊界、原始效果參數與多重陰影的歸屬，無法還原；而且要不要轉換必須在 paint 時決定，frame builder 為時已晚）：
+   - 決定權在 paint 端：`Context::setBoxShadowCommands(device.supportsBoxShadowShading())`。本倉所有把 `Context` 接到 `GpuDevice` 的地方（C ABI 的 GPU 目標、shell、`Code/Backends` 的參考 renderer、`xtframe-view`、編輯器預覽）在建立或更換裝置時照此設定；SW 路徑不受影響（SW 自己會畫 `DrawBoxShadow`）。裝置回 false 的宿主因此自動得到舊的效果路徑，畫面正確。
+   - 保底：frame builder 在 `supportsBoxShadowShading()` 為 false 時收到模糊的 `DrawBoxShadow`，不發 `Shading::BoxShadow`、該陰影不畫，計數並在 `FrameBuilder::lastError` 報一次（訊息指名 `Context::setBoxShadowCommands(false)`）。這只發生在宿主自己接 `Context` 又沒照上一點設定時；銳利陰影（模糊 0）以路徑畫，不受影響。
+4. `supports…` 為 true 的裝置行為、像素、每幀配置數與今天完全相同。
+5. 覆蓋率能力為 false 不是錯誤，不寫 `lastError`。frame builder 的統計加兩個計數：本次 build 因能力不足而改走舊路徑的覆蓋率形狀數（被 fringe 環路徑直接接走、無從分辨者不計）、因能力不足而未畫的方塊陰影數。
+6. 23 章升級須知第 2、3 點隨實作更新：宿主什麼都不做即正確；要品質就實作並回 true。
+
+**T-691 實作記錄（#652，2026-11-12）**：兩個能力函式在 `GpuDevice` 尾端；`FrameBuilder::lastBuildStats()` 回 `BuildStats{coverageFallbacks, boxShadowSkipped}`；paint 端的接法是 `gpu::applyDeviceCapabilities(device, context)`（只關不開）。本倉唯一「`Context` 遇到非內建裝置」之處是編輯器的宿主預覽（`host_preview_widget.cpp`，每幀套用）；C ABI、shell、`Code/Backends`、`xtframe-view` 一律經內建的 wgpu／GL 裝置（皆回 true），未加呼叫。驗證：能力皆 false 的轉發裝置跑 181 個 fixture（1x）沒有收到覆蓋率 draw 或 BoxShadow；五個陰影 fixture 與關閉轉換逐位元組相同；凹形填色／筆畫／裁切與「fringe 關」逐位元組相同。未測：真實的宿主裝置、Vulkan、Metal。
+

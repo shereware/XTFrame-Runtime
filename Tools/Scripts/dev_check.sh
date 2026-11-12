@@ -43,6 +43,9 @@
 #           wasm = Tools/Scripts/build_wasm.sh then Tools/Scripts/check_wasm.sh (T-579, T-520, 52 §52.5, Experimental: the Node.js builds of the
 #           command-line tools against this machine's native Release ones); needs emcmake (Emscripten SDK on PATH, EMSDK or
 #           EMSCRIPTEN_ROOT) and builds its own tree, not the preset's; without emcmake: SKIPPED, not a failure)
+# T-692 checklist: changes to effects, shadows, image sampling or painter output: also run `perf` and
+# `symbols` (xt_perf's effect workloads and zero-allocation cases; the symbol library's SW previews).
+# --changed does not select them for Code/Runtime changes, and both caught regressions the usual gate missed.
 # T-470: qt512 is added by itself whenever editor_qt is asked for or xtframe-editor is a target (--no-qt512: not).
 # T-517: net runs xt_net_tests; ai runs xt_ai_tests and the CTest entries ai_replay_* (xtframe-editor --service
 # --agent on a replay script, Docs/design/51-builtin-ai.md §51.7), so it builds xtframe-editor too.

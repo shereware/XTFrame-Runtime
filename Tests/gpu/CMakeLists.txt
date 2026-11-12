@@ -10,6 +10,8 @@ add_executable(xt_gpu_tests
     test_coverage_atlas.cpp  # T-660a
     test_coverage_fill.cpp  # T-660b
     test_box_shadow_truth.cpp  # T-681
+    test_gpu_capabilities.cpp  # T-691
+    test_gradient_lut.cpp  # T-695
 )
 target_include_directories(xt_gpu_tests SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/Code/SDKs/doctest)
 target_compile_definitions(xt_gpu_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)

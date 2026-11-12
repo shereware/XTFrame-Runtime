@@ -311,8 +311,8 @@ ErrorStats compare(const std::vector<uint8_t>& img, const std::vector<double>& t
     for (int i = 0; i < w * h; ++i) {
         double worst = 0.0;
         for (int ch = 0; ch < 3; ++ch) {
-            worst = std::max(worst, std::fabs(img[static_cast<size_t>(i) * 4 + ch] -
-                                              truth[static_cast<size_t>(i) * 3 + ch]));
+            worst = std::max(worst, std::fabs(img[static_cast<size_t>(i) * 4 + static_cast<size_t>(ch)] -
+                                              truth[static_cast<size_t>(i) * 3 + static_cast<size_t>(ch)]));
         }
         e.maxErr = std::max(e.maxErr, worst);
         e.over8 += worst > 8.0 ? 1 : 0;
@@ -345,8 +345,9 @@ CellResult runCell(const TruthCell& c, const std::string& nodeSize) {
         const double ca = content[static_cast<size_t>(i) * 4 + 3] / 255.0;
         for (int ch = 0; ch < 3; ++ch) {
             const double shadowRgb = (c.color.r * 255.0 * sa) + (1.0 - sa) * 255.0;  // over white
-            const double cp = content[static_cast<size_t>(i) * 4 + ch] * ca;         // premultiplied
-            truth[static_cast<size_t>(i) * 3 + ch] = cp + (1.0 - ca) * shadowRgb;
+            const double cp =
+                content[static_cast<size_t>(i) * 4 + static_cast<size_t>(ch)] * ca;  // premultiplied
+            truth[static_cast<size_t>(i) * 3 + static_cast<size_t>(ch)] = cp + (1.0 - ca) * shadowRgb;
         }
     }
     r.analytic = compare(analytic, truth, c.w, c.h);

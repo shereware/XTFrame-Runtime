@@ -48,6 +48,9 @@ bool countingDecode(const uint8_t* bytes, size_t size, ImageData& out) {
 /// handed, as a device with TextureCompressionBC does.
 class BcDevice : public GpuDevice {
 public:
+    // T-691: stands in for xt_gl / xt_wgpu, which draw coverage quads and Shading::BoxShadow.
+    bool supportsCoverageDraws() const override { return true; }
+    bool supportsBoxShadowShading() const override { return true; }
     struct Made {
         TextureHandle tex = 0;
         uint16_t w = 0;

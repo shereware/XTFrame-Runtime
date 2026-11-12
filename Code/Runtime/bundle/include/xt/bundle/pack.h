@@ -37,6 +37,16 @@ struct PackOptions {
     /// Delete files under `assets/`, `ui/` and `thumbs/` the manifest no longer references
     /// (`--prune`); skipped when the run failed (T-262a).
     bool prune = false;
+    /// T-693 (`--keep-stale` sets this): keep the files earlier packs left in the output directory.
+    /// By default a successful run removes every regular file directly inside the subdirectories it
+    /// writes (`ui/`, `assets/`, `thumbs/`, `themes/`, `strings/`, `atlas/`, `fonts/`) and the known
+    /// root files (`bundle.xtflow`, the `.tmp` of an interrupted write) that it neither wrote nor
+    /// lists in its manifest, except the files the manifest found there before the run lists when that
+    /// manifest is another project's (another bundle id). Nothing is removed when the run failed, when
+    /// the directory does not hold the manifest the run wrote, or when the earlier `manifest.json`
+    /// could not be read; links and junctions are never followed, and a managed subdirectory the
+    /// encode cache (`encodeCacheDir`) points at is left alone.
+    bool keepStale = false;
     /// T-183: let pack(const UiProject&) write filled-in `measured` fields back to
     /// `manifest/assets.yaml`; a read-only caller (xtframe-browse) clears this.
     bool writeAssetsManifest = true;
@@ -130,6 +140,9 @@ struct PackReport {
     uint32_t assetsDeduplicated = 0;
     /// Files deleted by `PackOptions::prune`.
     uint32_t assetsPruned = 0;
+    /// T-693: files removed as stale (see PackOptions::keepStale) and their bytes.
+    uint32_t staleFilesRemoved = 0;
+    uint64_t staleBytesRemoved = 0;
     /// True when every requested UI compiled and was written.
     bool ok = false;
     /// T-183: pack() filled missing `measured` fields and wrote `manifest/assets.yaml` back.

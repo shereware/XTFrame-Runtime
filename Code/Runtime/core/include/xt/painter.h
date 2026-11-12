@@ -167,6 +167,10 @@ private:
         uint32_t outlineCmd = UINT32_MAX;
     };
     std::vector<BoxShadowCandidate> m_boxShadowStack;
+    /// T-692: the DrawBoxShadow commands of a conversion with more drop shadows than fit on the
+    /// stack; a member so a steady-state conversion allocates nothing (not even MSVC's Debug
+    /// container proxy of a local std::vector).
+    std::vector<Command> m_boxShadowCmdScratch;
     std::vector<BoxShadowDecision>* m_boxShadowLog = nullptr;
     bool m_boxShadowCommands = true;  // T-680
     TextShaper* m_shaper = nullptr;   // T-680: setShaper()

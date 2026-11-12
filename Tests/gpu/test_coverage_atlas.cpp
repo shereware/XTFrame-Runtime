@@ -547,13 +547,13 @@ TEST_CASE("CoverageAtlas: a tile lost to a recycled page is put back; cached til
     REQUIRE(atlas.insertTiles(keyFor(2), shape, header, tiles));
     CHECK(atlas.stats().recycles == 2);
     CHECK(atlas.stats().entries == entriesBefore);  // tile 3 back, the 1000 x 1000 bitmap gone
-    for (int i = 0; i < 3; ++i) {
+    for (size_t i = 0; i < 3; ++i) {
         CHECK(tiles[i].page == before[i].page);
         CHECK(tiles[i].u0 == before[i].u0);
         CHECK(tiles[i].v0 == before[i].v0);
     }
-    for (int i = 0; i < 4; ++i) {
-        checkTileTexels(atlas, tiles[i], shape, i * 256, 0);
+    for (size_t i = 0; i < 4; ++i) {
+        checkTileTexels(atlas, tiles[i], shape, static_cast<int>(i) * 256, 0);
     }
     std::vector<CoverageEntry> again;
     CHECK(atlas.lookupTiles(keyFor(2), header, again));

@@ -47,8 +47,9 @@ endif()
 
 # T-439 (45 §45.7): the smallest host on Code/Backends -- links one combination library, nothing else
 # of the backends.
+# T-689 (45 §45.8): Examples/backends is exported with XTFrame-Backends, read from XT_BACKENDS_SOURCE_DIR.
 if(TARGET xt_backend_sdl2_wgpu)
-    add_executable(minimal_sdl2_wgpu backends/minimal_sdl2_wgpu/main.cpp)
+    add_executable(minimal_sdl2_wgpu "${XT_BACKENDS_SOURCE_DIR}/Examples/backends/minimal_sdl2_wgpu/main.cpp")
     target_link_libraries(minimal_sdl2_wgpu PRIVATE xt_backend_sdl2_wgpu xt_core xt_sw xt_bundle)
     xt_copy_runtime_library(minimal_sdl2_wgpu xt::wgpu_native)
     xt_enable_exceptions(minimal_sdl2_wgpu)

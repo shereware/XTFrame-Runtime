@@ -5,7 +5,6 @@
 #include <string>
 #include <vector>
 
-#include "../../Code/Tools/view/view_flow.h"
 #include "doctest.h"
 #include "test_temp.h"
 #include "xt/compile/compile.h"
@@ -18,6 +17,11 @@
 #include "xt/flow/flow_runtime.h"
 #include "xt/input.h"
 #include "xt/text_shaper.h"
+// T-689 (45 §45.8): xtframe-view (Code/Tools/view) is exported with XTFrame-Backends; its case below is built
+// only where Tests/flow/CMakeLists.txt finds view_flow.h.
+#ifdef XT_TEST_FLOW_HAS_VIEW
+#include "view_flow.h"
+#endif
 
 /// T-260b: the flow runtimes against Documents that were replaced (reloadDocument) or unloaded,
 /// BundleContext::removeUi, what an unloading Document can still reach through the global flow,
@@ -617,6 +621,7 @@ TEST_CASE("T-260c: FlowRuntime::unload, at once and from a callback of its own")
     CHECK(ctx.document(next)->byId("Count").text() == "1");
 }
 
+#ifdef XT_TEST_FLOW_HAS_VIEW
 TEST_CASE("T-260c: xtframe-view R with a flow file that no longer parses") {
     NullTextShaper shaper;
     Context ctx{ContextConfig{&shaper, nullptr}};
@@ -648,3 +653,4 @@ TEST_CASE("T-260c: xtframe-view R with a flow file that no longer parses") {
     click(*ctx.document(handle), "Title");
     CHECK(ctx.document(handle)->byId("Count").text() == "0");
 }  // `runtime` goes first: nothing of the unloaded Document is touched.
+#endif  // XT_TEST_FLOW_HAS_VIEW

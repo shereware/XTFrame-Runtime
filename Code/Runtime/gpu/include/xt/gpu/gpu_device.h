@@ -184,6 +184,25 @@ public:
         (void)storedLevelCount;
         return 1;
     }
+
+    // -- Draw capabilities (T-691, Docs/design/10-backends.md §10.14). Appended with default
+    //    implementations: a device that says nothing only receives draws it could already draw. --
+
+    /// True when the device multiplies the shading result by `DrawCmd::coverage`, sampled as an R8
+    /// coverage texture (T-660b's coverage quads). False (the default): `FrameBuilder::build` emits
+    /// no draw with `coverage` and creates no coverage atlas texture; concave fills, strokes,
+    /// outline glyphs, clips and borders take their earlier paths (convex fills with the edge
+    /// fringe, stencil-then-cover, the glyph atlas), so their edges are not antialiased on a
+    /// single-sampled target. Asked once per build.
+    virtual bool supportsCoverageDraws() const { return false; }
+
+    /// True when the device implements `Shading::BoxShadow` (with `DrawCmd::boxShadowMulti`).
+    /// False (the default): whoever connects a `Context` to this device calls
+    /// `Context::setBoxShadowCommands(false)`, so box shadows stay ordinary drop-shadow effects; a
+    /// blurred `DrawBoxShadow` that still reaches `FrameBuilder::build` is not drawn, is counted
+    /// (`FrameBuilder::BuildStats::boxShadowSkipped`) and reported once in `lastError`. Asked once
+    /// per build.
+    virtual bool supportsBoxShadowShading() const { return false; }
 };
 
 }  // namespace xt::gpu

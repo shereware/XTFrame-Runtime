@@ -340,8 +340,8 @@ XTFrame 內建的 `Code/SDKs/nlohmann/json.hpp`（3.11.3）以**自己的 ABI �
 **宿主自訂 `GpuDevice` 後端的升級須知（2026-11-12；v0.15.2 之後的變更；唯讀檢查一個以 `FrameBuilder`＋自訂裝置整合、釘在 v0.15.0 的宿主所得）**
 
 1. `gpu::DrawCmd` 尾端新增 `coverage`（R8 覆蓋率貼圖槽，T-660b）——結構大小改變；以 `static_assert` 鏡射此結構的宿主會在編譯期被擋下，須同步。`mipLod`（T-665）與 `boxShadowMulti`（T-683）佔用原有填充，不改變大小，斷言抓不到。
-2. `Shading::BoxShadow`（T-668／T-680）：未實作者會漏畫被轉換的陰影；可實作該著色，或以 `Context::setBoxShadowCommands(false)` 關閉轉換（行為同舊版）。
-3. **覆蓋率 quad 目前無條件發出**：只要 `edgeFringe` 開（單取樣目標），凹形／SVG／筆畫／≥ 24 px 的文字就以「著色 × 覆蓋率貼圖」的 draw 送出；不讀 `coverage` 的裝置會把整個 quad 塗成實心——編得過但畫面錯。在 T-691（裝置能力查詢，預設不支援即退回舊路徑）併入前，這類宿主在單取樣目標上須自行實作覆蓋率取樣，或維持多重取樣（`edgeFringe` 關）。
+2. `Shading::BoxShadow`（T-668／T-680）與能力查詢（T-691，#652；10 §10.14）：`GpuDevice::supportsBoxShadowShading()` 預設 false。宿主在把 `Context` 接上自己的裝置時呼叫 `gpu::applyDeviceCapabilities(device, context)`（`xt/gpu/frame_builder.h`；裝置回 false 即 `setBoxShadowCommands(false)`，陰影走原本的效果路徑，畫面正確）。沒呼叫又沒實作者：模糊陰影不畫，`FrameBuilder::lastError` 報一次、`lastBuildStats().boxShadowSkipped` 計數。要省下離屏與模糊就實作該著色並回 true。
+3. **覆蓋率 quad**（T-691 起）：`GpuDevice::supportsCoverageDraws()` 預設 false——未覆寫的裝置不再收到帶 `coverage` 的 draw，凹形／筆畫／大字／凹形裁切退回 10.11 之前的路徑（單取樣目標上這些邊緣沒有抗鋸齒，其餘正確；`lastBuildStats().coverageFallbacks` 計數）。要 1x 抗鋸齒就實作「著色 × R8 覆蓋率貼圖」並回 true。v0.15.2-code.N 期間（T-691 之前）的版本無此保護。
 4. mip：`GpuDevice::requestMipChain` 的預設實作回「單層」，未覆寫的裝置不會收到帶 LOD 的 draw（拿不到 T-665 的品質，但不會出錯）。共用影像貼圖的四個介面皆有安全預設。
 5. 不需宿主配合即生效：字型後援快取（T-673）、隱藏時釋放解碼影像（T-657）。wgpu 後端內部的改動（池、在途幀、預編、區塊範圍）與自訂裝置無關。
 

@@ -11,8 +11,16 @@ set(xt_capi_sources
     src/capi_bundle.cpp
     src/capi_surface.cpp
     src/capi_ports.cpp
-    src/capi_gpu.cpp
 )
+# T-636 (50 §50.z), T-689 (45 §45.8 item 2): the GPU target over xt_wgpu when this build has it (the top level
+# adds this directory after xt_wgpu's), read from XT_BACKENDS_SOURCE_DIR (exported with XTFrame-Backends);
+# without it src/capi_gpu_stub.cpp, whose functions only report "built without wgpu". src/ is an include
+# directory (below) so that capi_gpu.cpp finds capi_internal.h when it lives in the XTFrame-Backends tree.
+if(TARGET xt_wgpu)
+    list(APPEND xt_capi_sources "${XT_BACKENDS_SOURCE_DIR}/Code/Runtime/capi/src/capi_gpu.cpp")
+else()
+    list(APPEND xt_capi_sources src/capi_gpu_stub.cpp)
+endif()
 if(EMSCRIPTEN)
     add_library(xt_capi STATIC ${xt_capi_sources})
     set_target_properties(xt_capi PROPERTIES OUTPUT_NAME xtframe)
@@ -28,6 +36,7 @@ else()
 endif()
 target_compile_definitions(xt_capi PRIVATE XT_CAPI_BUILD)
 target_include_directories(xt_capi PUBLIC include)
+target_include_directories(xt_capi PRIVATE src)
 # xt::bundle::detail::readFile / joinPath (Code/Runtime/bundle/src/bundle_json.h): the flow files and
 # the font assets are read through xt_bundle's own reader, so the T-240 file reader hook applies.
 target_include_directories(xt_capi PRIVATE ${PROJECT_SOURCE_DIR}/Code/Runtime/bundle/src)
@@ -37,7 +46,7 @@ if(XT_BUILD_TEXT)
     target_compile_definitions(xt_capi PRIVATE XT_CAPI_HAS_TEXT)
 endif()
 # T-636 (50 §50.z): the GPU target over xt_wgpu when this build has it (the top level adds this directory
-# after Code/Runtime/wgpu); without it src/capi_gpu.cpp only reports "built without wgpu". wgpu-native's
+# after Code/Runtime/wgpu); without it src/capi_gpu_stub.cpp only reports "built without wgpu". wgpu-native's
 # shared library is copied next to the library after each build (the same POST_BUILD copy as xtframe-view,
 # Tools/CMake/xt_runtime_output.cmake), so bin/<platform>/<Config>/ holds xtframe + wgpu_native together.
 if(TARGET xt_wgpu)

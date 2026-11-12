@@ -285,6 +285,12 @@ using UiBackend = std::function<std::vector<uint8_t>(const UiFixture& fx, const 
 /// fixtures).
 std::vector<uint8_t> renderUiFixture(const UiFixture& fx, const std::string& uiDir, const UiBackend& backend);
 
+/// T-691: renderUiFixture() with `prepare` called on the fixture's Context right after it is made
+/// (before the document loads) -- where a GPU host applies its device's capabilities
+/// (gpu::applyDeviceCapabilities). An empty `prepare` is the overload above.
+std::vector<uint8_t> renderUiFixture(const UiFixture& fx, const std::string& uiDir, const UiBackend& backend,
+                                     const std::function<void(xt::Context&)>& prepare);
+
 /// Runs a UI fixture's `.events` script (Docs/tasks/T-33b.md "事件腳本文法") against an already
 /// loaded Context/Document: each non-`update` line pushes one input event and runs `update(0)` so
 /// it is dispatched in its own frame. Returns false on the first bad line, with `err` set to

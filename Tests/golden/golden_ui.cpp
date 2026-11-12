@@ -844,6 +844,11 @@ std::vector<uint8_t> renderUiFixture(const UiFixture& fx, const std::string& uiD
 
 std::vector<uint8_t> renderUiFixture(const UiFixture& fx, const std::string& uiDir,
                                      const UiBackend& backend) {
+    return renderUiFixture(fx, uiDir, backend, {});
+}
+
+std::vector<uint8_t> renderUiFixture(const UiFixture& fx, const std::string& uiDir, const UiBackend& backend,
+                                     const std::function<void(xt::Context&)>& prepare) {
     const fs::path xtPath = fs::path(uiDir) / fx.xtPath;
 
     xt::compile::CompileOptions options;
@@ -874,6 +879,9 @@ std::vector<uint8_t> renderUiFixture(const UiFixture& fx, const std::string& uiD
     assetRoots.insert(assetRoots.end(), fx.assetRoots.begin(), fx.assetRoots.end());
     xt::FileAssetResolver resolver(std::move(assetRoots), xt::sw::decodeImageBytes);
     xt::Context ctx(xt::ContextConfig{&shaper, &resolver});
+    if (prepare) {
+        prepare(ctx);  // T-691
+    }
     ctx.setViewport(xt::Rect{0, 0, static_cast<float>(fx.width), static_cast<float>(fx.height)}, 1.0f);
 
     xt::Result<xt::DocumentHandle> handle =

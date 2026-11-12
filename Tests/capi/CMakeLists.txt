@@ -62,12 +62,22 @@ add_executable(xt_capi_tests
     test_capi.cpp
     test_capi_l10n.cpp
     test_capi_state.cpp
-    test_capi_gpu.cpp
-    test_capi_gpu_text.cpp
     test_capi_trim.cpp
     test_capi_partial.cpp
     test_capi_threads.cpp
 )
+# T-689 (45 §45.8): the GPU target cases are exported with XTFrame-Backends and read from
+# XT_BACKENDS_SOURCE_DIR (the top-level CMakeLists.txt) in a build with xt_wgpu; without it
+# test_capi_gpu_stub.cpp checks the "built without wgpu" answers. This directory is an include directory
+# so that test_capi_gpu.cpp's `#include "../common/test_temp.h"` resolves from the XTFrame-Backends tree.
+if(TARGET xt_wgpu)
+    target_sources(xt_capi_tests PRIVATE
+        "${XT_BACKENDS_SOURCE_DIR}/Tests/capi/test_capi_gpu.cpp"
+        "${XT_BACKENDS_SOURCE_DIR}/Tests/capi/test_capi_gpu_text.cpp")
+else()
+    target_sources(xt_capi_tests PRIVATE test_capi_gpu_stub.cpp)
+endif()
+target_include_directories(xt_capi_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 add_dependencies(xt_capi_tests xt_capi_test_bundles)
 target_include_directories(xt_capi_tests SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/Code/SDKs/doctest)
 # doctest needs the real standard headers, otherwise it conflicts with newer MSVC STL versions.

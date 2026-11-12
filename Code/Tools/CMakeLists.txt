@@ -123,17 +123,30 @@ if(EMSCRIPTEN)
 endif()
 endif()
 
+# T-689 (45 §45.8): xtframe-gpu-probe and xtframe-view are exported with XTFrame-Backends; their sources
+# are read from XT_BACKENDS_SOURCE_DIR (the top-level CMakeLists.txt) and are absent from XTFrame-Runtime.
+# Their `#include "../Common/..."` lines resolve through the Common/ include directory when they live in
+# the XTFrame-Backends tree (Common/../Common/...).
+set(xt_tools_backends_dir "${XT_BACKENDS_SOURCE_DIR}/Code/Tools")
+if(NOT EXISTS "${xt_tools_backends_dir}/gpu-probe/main.cpp")
+    message(STATUS "xtframe-gpu-probe: not built (Code/Tools/gpu-probe is absent; it is in XTFrame-Backends)")
+endif()
+if(NOT EXISTS "${xt_tools_backends_dir}/view/main.cpp")
+    message(STATUS "xtframe-view: not built (Code/Tools/view is absent; it is in XTFrame-Backends)")
+endif()
+
 # T-151: offline GPU-frame shape probe (FrameBuilder over a counting device, no GPU).
-if(XT_BUILD_GPU AND XT_BUILD_TEXT)
+if(XT_BUILD_GPU AND XT_BUILD_TEXT AND EXISTS "${xt_tools_backends_dir}/gpu-probe/main.cpp")
     add_executable(xtframe-gpu-probe
-        gpu-probe/main.cpp
+        ${xt_tools_backends_dir}/gpu-probe/main.cpp
     )
+    target_include_directories(xtframe-gpu-probe PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Common)
     target_link_libraries(xtframe-gpu-probe PRIVATE xt_core xt_bundle xt_gpu xt_sw xt_text)
     # T-159: `--gl` runs the frames through the real GlRenderer (hidden SDL2 window) and prints
     # the device's GL call counts; needs xt_gl's private gl_loader.h for the offscreen target.
     if(XT_BUILD_GL)
         target_compile_definitions(xtframe-gpu-probe PRIVATE XT_PROBE_GL)
-        target_include_directories(xtframe-gpu-probe PRIVATE ${PROJECT_SOURCE_DIR}/Code/Runtime/gl/src)
+        target_include_directories(xtframe-gpu-probe PRIVATE ${XT_BACKENDS_SOURCE_DIR}/Code/Runtime/gl/src)
         target_link_libraries(xtframe-gpu-probe PRIVATE xt_gl SDL2::SDL2-static)
         if(WIN32)
             # SDL2main; psapi for the process memory the T-163 tail report prints.
@@ -150,18 +163,19 @@ if(XT_BUILD_GPU AND XT_BUILD_TEXT)
     xt_set_warnings(xtframe-gpu-probe)
 endif()
 
-if(XT_BUILD_SHELL)
+if(XT_BUILD_SHELL AND EXISTS "${xt_tools_backends_dir}/view/main.cpp")
     add_executable(xtframe-view
-        view/main.cpp
-        view/view_renderer.cpp
+        ${xt_tools_backends_dir}/view/main.cpp
+        ${xt_tools_backends_dir}/view/view_renderer.cpp
     )
+    target_include_directories(xtframe-view PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Common)
     # xt_bundle (T-135, T-213): Bundle and UI Project inputs are read through xt_bundle (a UI
     # Project is packed with xt::bundle::pack() before it is opened).
     target_link_libraries(xtframe-view PRIVATE xt_core xt_compile xt_sw xt_shell xt_flow xt_bundle)
     # main.cpp's --bind-texture upload uses xt_gl's private gl_loader.h directly, same pattern as
     # Code/Runtime/shell/CMakeLists.txt for app.cpp/sdl_input.cpp. T-240: not on the SW presentation path.
     if(XT_SHELL_GL)
-        target_include_directories(xtframe-view PRIVATE ${PROJECT_SOURCE_DIR}/Code/Runtime/gl/src)
+        target_include_directories(xtframe-view PRIVATE ${XT_BACKENDS_SOURCE_DIR}/Code/Runtime/gl/src)
     endif()
     # T-439: --renderer sw|gl|wgpu through Code/Backends' part libraries (the renderers this build has).
     target_link_libraries(xtframe-view PRIVATE xt_platform_sdl2 xt_renderer_sw)
@@ -321,7 +335,7 @@ if(XT_BUILD_TESTS)
                      "-DREJECT_OUTPUT=${T263F_TWICE}" -P "${T263F_EXPECT}" --
                      $<TARGET_FILE:xtframe-compile> "${T263F_PROJECT}/ui/main/main.xt"
                      -o "${CMAKE_BINARY_DIR}/t263f-test-out/main.xtir")
-    if(XT_BUILD_SHELL)
+    if(TARGET xtframe-view)  # T-689: was XT_BUILD_SHELL; xtframe-view is absent from XTFrame-Runtime
         # The document by itself, and the whole project (packed into a scratch Bundle first: the
         # diagnostics of both UIs, one note).
         add_test(NAME t263f_bundle_project_view_symbols_note
@@ -391,7 +405,7 @@ if(XT_BUILD_TESTS)
 
     # T-56: `xtframe-view --flow` against Examples/desktop_app's ui/app.xt + ui/app.xtflow, headless
     # (no display in CI) for a few frames.
-    if(XT_BUILD_SHELL)
+    if(TARGET xtframe-view)  # T-689: was XT_BUILD_SHELL; xtframe-view is absent from XTFrame-Runtime
         set(XT_VIEW $<TARGET_FILE:xtframe-view>)
         xt_add_expect_exit_test(xtframe-view_flow CODE 0 OUTPUT "headless run complete"
             COMMAND ${XT_VIEW} "${PROJECT_SOURCE_DIR}/Examples/desktop_app/ui/app.xt"

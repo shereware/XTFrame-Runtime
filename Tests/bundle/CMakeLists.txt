@@ -25,6 +25,7 @@ add_executable(xt_bundle_tests
     test_zip_archive.cpp
     test_bundle_fonts.cpp
     test_default_language.cpp
+    test_pack_stale.cpp
 )
 target_include_directories(xt_bundle_tests SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/Code/SDKs/doctest)
 # doctest needs the real standard headers, otherwise it conflicts with newer MSVC STL versions.

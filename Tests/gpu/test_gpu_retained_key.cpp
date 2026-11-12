@@ -55,6 +55,9 @@ bool testFileStatus(std::string_view utf8Path, uint64_t& size, uint64_t& modifie
 /// texture stays while `keepUnused` (the target's idle list with room), else it goes at once.
 class SharingDevice : public GpuDevice {
 public:
+    // T-691: stands in for xt_gl / xt_wgpu, which draw coverage quads and Shading::BoxShadow.
+    bool supportsCoverageDraws() const override { return true; }
+    bool supportsBoxShadowShading() const override { return true; }
     struct Image {
         ImageKey key;
         uint16_t w = 0;

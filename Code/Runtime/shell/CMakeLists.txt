@@ -26,7 +26,7 @@ if(XT_SHELL_GL)
     # app.cpp/sdl_input.cpp use SDL's public headers (already SYSTEM via the SDL2::SDL2-static
     # target) and xt_gl's private gl_loader.h (shares the process-wide GL function-pointer globals
     # GlRenderer::init() loads -- see Tests/gl/CMakeLists.txt for the same pattern).
-    target_include_directories(xt_shell PRIVATE ${PROJECT_SOURCE_DIR}/Code/Runtime/gl/src)
+    target_include_directories(xt_shell PRIVATE ${XT_BACKENDS_SOURCE_DIR}/Code/Runtime/gl/src)
     # GlyphAtlas injection (Docs/tasks/T-31.md "app.cpp（建立 GlyphAtlas 並注入）"): xt_gl already
     # PUBLIC-links xt_text (and propagates XT_GL_NO_TEXT's absence/presence) when XT_BUILD_TEXT is
     # on -- see Code/Runtime/gl/CMakeLists.txt -- so app.cpp sees FtTextShaper/GlyphAtlas's headers

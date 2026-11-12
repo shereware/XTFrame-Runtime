@@ -19,6 +19,7 @@
 #include "font_subset.h"
 #include "manifest_writer.h"
 #include "pack_flow.h"
+#include "stale_files.h"
 #include "symbol_contracts.h"
 #include "texture_compress.h"
 #include "xt/asset_resolver.h"
@@ -451,6 +452,22 @@ private:
     /// Deletes files under `assets/`, `ui/`, `thumbs/`, `themes/` and `strings/` the manifest no
     /// longer references.
     void prune();
+    /// T-693: removes the files earlier packs left in the managed subdirectories (and the known root
+    /// files) that this run neither wrote nor lists, keeping every file another project's manifest
+    /// (`previous`) lists; see detail::removeStaleFiles(). `manifestExisted`: a `manifest.json` was
+    /// there before this run (when it could not be read, nothing is removed).
+    void removeStale(const ManifestData& previous, bool hadManifest, bool manifestExisted);
+    /// Writes `bytes` to `<out>/<relative>` and remembers `relative` as written this run (T-693).
+    bool writeOut(const std::string& relative, const std::string& bytes) {
+        m_written.push_back(relative);
+        return writeBytes(m_outDir / pathFromUtf8(relative), bytes);
+    }
+    /// writePngFile() into `<out>/<relative>`, remembered like writeOut().
+    bool writePngOut(const std::string& relative, const uint8_t* rgba, int width, int height,
+                     int strideBytes) {
+        m_written.push_back(relative);
+        return writePngFile(m_outDir / pathFromUtf8(relative), rgba, width, height, strideBytes);
+    }
     /// T-179 (§22.10, 12.7): copies the wanted `<root>/strings/<lang>.csv` tables to
     /// `<out>/strings/`, fills the manifest's `strings` and `fonts.fallback`, and lints the tables
     /// (`i18n`): keys a packed UI uses that a table lacks (or leaves empty), keys no UI uses (full
@@ -600,6 +617,8 @@ private:
     /// T-183: `assets/<hash16>.<ext>` -> canonicalAssetPath() of the first source file behind it.
     std::unordered_map<std::string, std::string> m_assetSourcePath;
     fs::path m_outDir;
+    /// T-693: every bundle-relative file name writeOut() / writePngOut() wrote (or tried to) this run.
+    std::vector<std::string> m_written;
 
     // T-199.
     BcFormat m_compress = BcFormat::None;
@@ -803,7 +822,7 @@ std::string Packer::rewriteAsset(std::string_view sourceName, std::string_view r
         }
     };
     warnIfUndecodable(bytes, std::string(sourceName));
-    if (!writeBytes(m_outDir / pathFromUtf8(name), written)) {
+    if (!writeOut(name, written)) {
         error(std::string(sourceName), "cannot write '" + pathToUtf8(m_outDir / pathFromUtf8(name)) + "'");
         return std::string();
     }
@@ -846,7 +865,7 @@ std::string Packer::rewriteAsset(std::string_view sourceName, std::string_view r
                     }
                 }
             }
-            if (writeBytes(m_outDir / pathFromUtf8(name2), written2)) {
+            if (writeOut(name2, written2)) {
                 variantFile = name2;
                 sources[name] = canonicalAssetPath(pathToUtf8(variantPath));
                 ++counter;
@@ -1106,8 +1125,7 @@ void Packer::buildAtlases() {
                 if (format != BcFormat::None) {
                     const std::vector<uint8_t> dds = encodeImage(pixels, format);
                     const std::string relative = "atlas/" + stem + ".dds";
-                    if (dds.empty() ||
-                        !writeBytes(m_outDir / pathFromUtf8(relative), std::string(dds.begin(), dds.end()))) {
+                    if (dds.empty() || !writeOut(relative, std::string(dds.begin(), dds.end()))) {
                         error(m_project.id,
                               "cannot write '" + pathToUtf8(m_outDir / pathFromUtf8(relative)) + "'");
                         return;
@@ -1118,8 +1136,8 @@ void Packer::buildAtlases() {
                     return;
                 }
                 const std::string relative = "atlas/" + stem + ".png";
-                if (!writePngFile(m_outDir / pathFromUtf8(relative), pixels.rgba.data(), pixels.width,
-                                  pixels.height, pixels.width * 4)) {
+                if (!writePngOut(relative, pixels.rgba.data(), pixels.width, pixels.height,
+                                 pixels.width * 4)) {
                     error(m_project.id,
                           "cannot write '" + pathToUtf8(m_outDir / pathFromUtf8(relative)) + "'");
                     return;
@@ -1196,7 +1214,7 @@ void Packer::compressDeferred() {
             continue;
         }
         const std::vector<uint8_t> dds = encodeImage(decoded, format);
-        if (dds.empty() || !writeBytes(m_outDir / pathFromUtf8(name), std::string(dds.begin(), dds.end()))) {
+        if (dds.empty() || !writeOut(name, std::string(dds.begin(), dds.end()))) {
             error(asset.file, "cannot write '" + pathToUtf8(m_outDir / pathFromUtf8(name)) + "'");
             continue;
         }
@@ -1209,8 +1227,7 @@ void Packer::compressDeferred() {
             if (decodeFile(twoXPath, decoded2)) {
                 const std::vector<uint8_t> dds2 = encodeImage(decoded2, format);
                 const std::string name2 = stem + "@2x.dds";
-                if (!dds2.empty() &&
-                    writeBytes(m_outDir / pathFromUtf8(name2), std::string(dds2.begin(), dds2.end()))) {
+                if (!dds2.empty() && writeOut(name2, std::string(dds2.begin(), dds2.end()))) {
                     m_pendingRemovals.push_back(m_outDir / pathFromUtf8(asset.variant2x));  // T-262a
                     asset.variant2x = name2;
                 }
@@ -1225,8 +1242,7 @@ void Packer::compressDeferred() {
             if (decodeFile(threeXPath, decoded3)) {
                 const std::vector<uint8_t> dds3 = encodeImage(decoded3, format);
                 const std::string name3 = stem + "@3x.dds";
-                if (!dds3.empty() &&
-                    writeBytes(m_outDir / pathFromUtf8(name3), std::string(dds3.begin(), dds3.end()))) {
+                if (!dds3.empty() && writeOut(name3, std::string(dds3.begin(), dds3.end()))) {
                     m_pendingRemovals.push_back(m_outDir / pathFromUtf8(asset.variant3x));
                     asset.variant3x = name3;
                 }
@@ -1301,7 +1317,7 @@ void Packer::subsetFonts() {
             fs::create_directories(m_outDir / "fonts", ec);
             createdDir = true;
         }
-        if (!writeBytes(m_outDir / pathFromUtf8(relative), std::string(out.begin(), out.end()))) {
+        if (!writeOut(relative, std::string(out.begin(), out.end()))) {
             error(asset.file, "cannot write '" + pathToUtf8(m_outDir / pathFromUtf8(relative)) + "'");
             continue;
         }
@@ -1383,7 +1399,7 @@ void Packer::rewriteUis() {
         addGlyphAssets(result, compileOptions.glyphImageAssets, uiAssets);  // T-571
         const std::string irBytes(reinterpret_cast<const char*>(result.ir.data()), result.ir.size());
         const std::string irRelative = "ui/" + ui.id + ".xtir";
-        if (!writeBytes(m_outDir / pathFromUtf8(irRelative), irBytes)) {
+        if (!writeOut(irRelative, irBytes)) {
             error(ui.id, "cannot write '" + pathToUtf8(m_outDir / pathFromUtf8(irRelative)) + "'");
             continue;
         }
@@ -1464,7 +1480,7 @@ void Packer::describeUi(Context& ctx, AssetResolver& assets, Document& doc, cons
     const int thumbH = std::max(1, toInt32Sat(m_project.publish.thumbnail.y));
     const std::vector<uint8_t> thumb = downscale(pixels, width, height, thumbW, thumbH);
     const std::string relative = "thumbs/" + ui.id + ".png";
-    if (writePngFile(m_outDir / pathFromUtf8(relative), thumb.data(), thumbW, thumbH, thumbW * 4)) {
+    if (writePngOut(relative, thumb.data(), thumbW, thumbH, thumbW * 4)) {
         out.thumb = relative;
     }
 }
@@ -1635,7 +1651,7 @@ bool Packer::packUi(const ProjectUi& ui, UiInfo& out) {
 
     const std::string irBytes(reinterpret_cast<const char*>(result.ir.data()), result.ir.size());
     const std::string irRelative = "ui/" + ui.id + ".xtir";
-    if (!writeBytes(m_outDir / pathFromUtf8(irRelative), irBytes)) {
+    if (!writeOut(irRelative, irBytes)) {
         error(ui.id, "cannot write '" + pathToUtf8(m_outDir / pathFromUtf8(irRelative)) + "'");
         return false;
     }
@@ -1651,7 +1667,7 @@ bool Packer::packUi(const ProjectUi& ui, UiInfo& out) {
 
     if (!flowFile.empty()) {
         const std::string flowRelative = "ui/" + ui.id + ".xtflow";
-        if (!writeBytes(m_outDir / pathFromUtf8(flowRelative), flowBytes)) {
+        if (!writeOut(flowRelative, flowBytes)) {
             error(ui.id, "cannot write '" + pathToUtf8(m_outDir / pathFromUtf8(flowRelative)) + "'");
             return false;
         }
@@ -2317,7 +2333,7 @@ void Packer::packTokens() {
             }
             text += "}\n";
         }
-        if (!writeBytes(m_outDir / pathFromUtf8(relative), text)) {
+        if (!writeOut(relative, text)) {
             error(m_project.id, "cannot write '" + pathToUtf8(m_outDir / pathFromUtf8(relative)) + "'");
             continue;
         }
@@ -2426,7 +2442,7 @@ void Packer::packStrings(bool incremental, const ManifestData& previous) {
             fs::create_directories(m_outDir / "strings", ec);
             createdDir = true;
         }
-        if (!writeBytes(m_outDir / pathFromUtf8(relative), text)) {
+        if (!writeOut(relative, text)) {
             error(m_project.id, "cannot write '" + pathToUtf8(m_outDir / pathFromUtf8(relative)) + "'");
             continue;
         }
@@ -2615,7 +2631,7 @@ void Packer::packGlobalFlow() {
         return;
     }
     const std::string relative = "bundle.xtflow";
-    if (!writeBytes(m_outDir / pathFromUtf8(relative), text)) {
+    if (!writeOut(relative, text)) {
         error(label, "cannot write '" + pathToUtf8(m_outDir / pathFromUtf8(relative)) + "'");
         return;
     }
@@ -2694,6 +2710,37 @@ void Packer::prune() {
             }
         }
     }
+}
+
+void Packer::removeStale(const ManifestData& previous, bool hadManifest, bool manifestExisted) {
+    if (manifestExisted && !hadManifest) {
+        return;  // T-693 item 2: whose files are there cannot be told; keep everything.
+    }
+    // T-693 item 4: only when the directory holds the manifest this run wrote.
+    ManifestData written;
+    if (!readManifest(genericPathToUtf8(m_outDir), written) || written.builtAt != m_manifest.builtAt ||
+        written.bundleId != m_manifest.bundleId || written.uis.size() != m_manifest.uis.size()) {
+        return;
+    }
+    detail::KeptBundleFiles keep;
+    keep.addManifest(m_manifest);
+    for (const std::string& relative : m_written) {
+        keep.add(relative);
+    }
+    // T-693 item 2: several UI Projects may pack into one directory in turn. The manifest found there
+    // before this run belongs to another project when its bundle id differs; every file it names is
+    // kept. A manifest of this same project describes what this run replaces.
+    if (hadManifest && previous.bundleId != m_project.id) {
+        keep.addManifest(previous);
+    }
+    // T-693 item 5: an encode cache pointed inside the bundle is not managed.
+    fs::path unmanaged;
+    if (!m_options.encodeCacheDir.empty()) {
+        unmanaged = pathFromUtf8(m_options.encodeCacheDir);
+    }
+    const detail::StaleRemoval removed = detail::removeStaleFiles(m_outDir, keep, unmanaged);
+    m_report.staleFilesRemoved = removed.files;
+    m_report.staleBytesRemoved = removed.bytes;
 }
 
 PackReport Packer::run() {
@@ -2777,6 +2824,7 @@ PackReport Packer::run() {
     // run rebuilds both from scratch, so assets nothing references any more simply drop out.
     const bool incremental = !m_options.onlyUis.empty();
     ManifestData previous;
+    const bool manifestExisted = fs::exists(m_outDir / "manifest.json", ec);  // T-693
     const bool hadManifest = readManifest(genericPathToUtf8(m_outDir), previous);
     if (incremental && hadManifest) {
         // T-262a: the kept UIs name atlas cells and subset fonts this run cannot rebuild.
@@ -2912,6 +2960,9 @@ PackReport Packer::run() {
 
     if (m_options.prune && m_report.ok) {  // T-262a: a failed run deletes nothing.
         prune();
+    }
+    if (!m_options.keepStale && m_report.ok) {  // T-693 item 3: a failed run deletes nothing.
+        removeStale(previous, hadManifest, manifestExisted);
     }
     return std::move(m_report);
 }

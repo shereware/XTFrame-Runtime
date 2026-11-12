@@ -507,12 +507,12 @@ void drawImageAxisAligned(Target& target, Rasterizer& raster, const Mat2x3& inve
                                        static_cast<double>(W), offset, x0);
         if (pick.active) {
             // T-665: trilinear -- each level keeps its own maps, anchored at the span's first pixel.
-            auto sampleLevel = [&](int k, int a, int b, float* out) {
-                if (k == 0) {
+            auto sampleLevel = [&](int level, int a, int b, float* out) {
+                if (level == 0) {
                     sampleAxisSpan(image, true, xm, fy, n, a - x0, b - x0, kv, alphaMask, out, rowBlend);
                     return;
                 }
-                const ImageMipLevel& lv = mips->levels[static_cast<size_t>(k - 1)];
+                const ImageMipLevel& lv = mips->levels[static_cast<size_t>(level - 1)];
                 // T-686: a stored DDS level spans its logical part only (scale 1 otherwise: exact).
                 const AxisMap lym = makeAxisMap(
                     inverse.d, inverse.f, cmd.dst.y, cmd.dst.h, cmd.srcUv.y, cmd.srcUv.h,
