@@ -107,6 +107,7 @@ xtframe/
 | 30-ui-project.md | UI Project（編輯端的核心容器；2026-10-14 重寫草案）：八個 part、跨 part 的身分與連結、標準符號庫、UI Project 空間與面板、現況歸位 |
 | 31-vector-authoring.md | 向量動畫製作：向量圖層模型、筆／節點／參數形狀、布林、修改器（執行期 vs 烘焙）、morph、運動路徑、cels、Lottie 進出、`vector.*` op；M24～M27（定案 2026-09-30） |
 | 32-rigging-and-deformation.md | 綁定與變形（定案 2026-10-01）：Bone／Skin（Rive 模型，頂點與兩把手各自權重；蒙皮空間 = 骨架群組空間）／IK、Transform、Spring 約束／求值順序（morph→蒙皮→修改器）／圖片網格 `<xt-mesh>` 與 `DrawImageMesh`／權重 `.xt` 可讀文字、IR 二進位／物理驅動雙向（§32.8）；單一 M27：T-243～T-248、CE-40 |
+| 33-world-layers.md | UI 寫進 3D 空間（草案 v0.1，2026-11-13，待審）：分層輸出——每個 3D 圖層畫成一張貼圖並帶它在空間根方框中的變換，宿主的攝影機取代 UI 的攝影機；宿主的體積（CE 的 UI Volume）、射線輸入、逐層不重畫、編輯器立體檢視；取代 40 §40.7.1 的草案 |
 | 35-design-system.md | UI Project 的設計文件 part（原「設計系統」；2026-10-14 降為 30 章 part 細節）：三層（參考／決定／執行）、`design/` 目錄、條目與連結、色彩庫是參考知識而非變數、生成的權威文件 `DESIGN.md`、版本、`design.*` op 與 S0 四入口、設計系統模式 |
 | 36-history.md | 歷史：存檔點與方案（定案 2026-10-11）：美術詞彙（存檔點、主線、方案、採用、比較、整理）↔ git；歷史面板與畫布牌子；AI 在方案上；底層 40 §40.3 |
 | 40-product-blueprint-v2.md | 產品藍圖 v2（草案 2026-10-01）：專案系統與 meta、git 相容內建歷史與語意 diff／合併、AI 分支工作流與專案記憶、契約綁定與 flow 生成、3D UI 與世界整合、媒體、主機、商業層；排在 BACKLOG C 之後 |

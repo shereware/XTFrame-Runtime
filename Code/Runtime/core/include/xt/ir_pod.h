@@ -576,13 +576,14 @@ enum class MediaFeature : uint8_t {
 /// < 8 file), and the optional META `behavior` tail; 9 = T-411's SetSource Port / Item (27
 /// §27.2.3) and converter steps on Number / String set() values. 3.0 (T-534, 18 §18.2): IrEffect
 /// grows to 16 float + 4 color slots and the effect-parameter PropIds are re-encoded; the minor
-/// restarts at 0 and 2.x files are rejected.
-inline constexpr uint16_t kIrFormatMinor = 0;
+/// restarts at 0 and 2.x files are rejected. 3.1 (T-701, 33 §33.2): StyleProp 281 `world-layer`
+/// (no layout change; a 3.0 runtime ignores the declaration).
+inline constexpr uint16_t kIrFormatMinor = 1;
 
 /// T-405 (02 §2.6): the highest StyleProp number an IR of this minor may carry (Code/Runtime/core/src/
 /// style_decode.h and Code/Runtime/compile/src/xts/xts_props.h static_assert their last StyleProp against
 /// it). A larger number is not an error: the declaration is ignored.
-inline constexpr uint16_t kStylePropLast = 280;
+inline constexpr uint16_t kStylePropLast = 281;
 
 /// `.xtir` file header (§2.2, 16 bytes).
 struct IrHeader {

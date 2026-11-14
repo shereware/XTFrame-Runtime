@@ -1,0 +1,185 @@
+/* World layers demo: colours, the `world-layer` switches and the three loops.
+   - #RingDash turns: content of the #Rings layer changes, so that layer is redrawn every frame.
+   - #Tags floats along z and flips once per loop: only the layer's own transform changes -- its
+     texture is drawn once.
+   - #Fore pulses: only the layer's own opacity changes -- its texture is drawn once.
+   The decorative layers carry `pointer-events: none`: a layer's box takes the pointer like any
+   element, and the ones in front would keep every ray from the panel behind them. */
+body {
+  font-family: "Noto Sans", "Segoe UI", "Helvetica", "DejaVu Sans";
+  color: #d8f3ff;
+  background-color: #05080d;
+}
+#Wall {
+  background-gradient: radial-gradient(70% 70% at 50% 45%, #12304a 0%, #0a1826 55%, #05080d 100%);
+}
+#Caption {
+  font-size: 18px;
+  letter-spacing: 2px;
+  color: #5f8aa6;
+}
+
+#Grid {
+  world-layer: on;
+  pointer-events: none;
+}
+.gv, .gh {
+  background-color: rgba(120, 210, 255, 0.28);
+}
+
+#Rings {
+  world-layer: on;
+  pointer-events: none;
+}
+.ring {
+  border-radius: 50%;
+}
+#RingOuter {
+  border: 2px #78dcff8c;
+}
+#RingDash {
+  border: 6px #7fe3ff;
+  border-style: dashed;
+  animation: ring-turn 18s linear infinite;
+}
+#RingInner {
+  border: 3px #ffd166;
+  effect: shadow(0px 0px 18px 0px #ffd16688);
+}
+#RingCore {
+  border-radius: 50%;
+  background-color: #ffd166;
+  effect: shadow(0px 0px 24px 4px #ffd166aa);
+}
+@keyframes ring-turn {
+  from {
+    rotate: 0deg;
+  }
+  to {
+    rotate: 360deg;
+  }
+}
+
+#Panel {
+  world-layer: on;
+  background-color: rgba(10, 26, 42, 0.92);
+  border: 2px #5fd0ff;
+  border-radius: 18px;
+}
+#PanelTitle {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: #ffffff;
+}
+.label {
+  font-size: 16px;
+  color: #9fc4d8;
+}
+.track {
+  background-color: rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+}
+.fill {
+  border-radius: 6px;
+  background-gradient: linear-gradient(90deg, #2f9bff 0%, #7fe3ff 100%);
+}
+#Fill3 {
+  background-gradient: linear-gradient(90deg, #ff6b6b 0%, #ffb36b 100%);
+}
+.num {
+  font-size: 16px;
+  font-weight: 700;
+  text-align: right;
+  color: #ffffff;
+}
+#Engage {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: #05080d;
+  background-color: #7fe3ff;
+  border-radius: 12px;
+  text-align: center;
+  line-height: 56px;
+}
+#Engage:hover {
+  background-color: #ffffff;
+}
+#Engage:active {
+  background-color: #ffd166;
+}
+
+#Tags {
+  world-layer: on;
+  pointer-events: none;
+  animation: tags-float 6s ease-in-out infinite;
+}
+/* Out towards the viewer, one full turn about Y, back to the layer's resting depth (230 px, as in
+   stage.layout.xts). */
+@keyframes tags-float {
+  0% {
+    transform: translateZ(230px) rotateY(0deg);
+  }
+  35% {
+    transform: translateZ(280px) rotateY(0deg);
+  }
+  65% {
+    transform: translateZ(280px) rotateY(360deg);
+  }
+  100% {
+    transform: translateZ(230px) rotateY(360deg);
+  }
+}
+.pin {
+  border-radius: 50%;
+  background-color: #7fe3ff;
+}
+.tagText {
+  font-size: 16px;
+  letter-spacing: 1px;
+  color: #e8fbff;
+}
+
+#Fore {
+  world-layer: on;
+  pointer-events: none;
+  animation: fore-pulse 2.4s ease-in-out infinite;
+}
+@keyframes fore-pulse {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+.corner {
+  border-color: #ff6b9a;
+  border-style: solid;
+  border-width: 0px;
+}
+#CornerTL {
+  border-left-width: 4px;
+  border-top-width: 4px;
+}
+#CornerTR {
+  border-right-width: 4px;
+  border-top-width: 4px;
+}
+#CornerBL {
+  border-left-width: 4px;
+  border-bottom-width: 4px;
+}
+#CornerBR {
+  border-right-width: 4px;
+  border-bottom-width: 4px;
+}
+#Beacon {
+  border-radius: 50%;
+  background-color: #ff6b9a;
+  effect: shadow(0px 0px 16px 2px #ff6b9acc);
+}

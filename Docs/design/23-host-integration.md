@@ -344,4 +344,5 @@ XTFrame 內建的 `Code/SDKs/nlohmann/json.hpp`（3.11.3）以**自己的 ABI �
 3. **覆蓋率 quad**（T-691 起）：`GpuDevice::supportsCoverageDraws()` 預設 false——未覆寫的裝置不再收到帶 `coverage` 的 draw，凹形／筆畫／大字／凹形裁切退回 10.11 之前的路徑（單取樣目標上這些邊緣沒有抗鋸齒，其餘正確；`lastBuildStats().coverageFallbacks` 計數）。要 1x 抗鋸齒就實作「著色 × R8 覆蓋率貼圖」並回 true。v0.15.2-code.N 期間（T-691 之前）的版本無此保護。
 4. mip：`GpuDevice::requestMipChain` 的預設實作回「單層」，未覆寫的裝置不會收到帶 LOD 的 draw（拿不到 T-665 的品質，但不會出錯）。共用影像貼圖的四個介面皆有安全預設。
 5. 不需宿主配合即生效：字型後援快取（T-673）、隱藏時釋放解碼影像（T-657）。wgpu 後端內部的改動（池、在途幀、預編、區塊範圍）與自訂裝置無關。
+6. （2026-11-13，CE-79 的教訓）以 `FrameBuilder`＋自訂裝置畫進**自己的 render target** 的宿主，必須每幀自行清除 target 0——frame builder 不替宿主清。漏掉時半透明像素逐幀累積（靜態畫面的誤差在數百幀內由 5 升到 15／255 後飽和）。另：宿主為效果快取建立的 target 不得在內容存入之後才執行「建立時清除」。兩者都是以 SW 輸出為基準做同幀逐像素比對才發現的；自訂裝置的宿主應備有這樣的比對工具（CE 側為 `xtui_capture`）。
 

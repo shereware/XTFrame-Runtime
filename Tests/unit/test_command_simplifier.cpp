@@ -416,13 +416,16 @@ uint32_t pushFill(CommandList& cl, PathRef path) {
 
 }  // namespace
 
-TEST_CASE("CommandListSimplifier: flatten3D projects a FillPath (translateZ perspective scale)") {
+TEST_CASE("CommandListSimplifier: flatten3D folds an affine translateZ plane into the FillPath (T-700)") {
     // Docs/tasks/T-49.md "測試": PushProjection{cssPerspective(200, (32,32))} +
     // PushTransform3D{translateZ = 100} (scale = 1 / (1 - 100/200) = 2 about the perspective
     // origin) over a 10x10 square centered on that origin (27,27)-(37,37) -> projects to the
     // task sheet's asserted (22,22)-(42,42) 20x20 result. (10x10, not literally "20x20", is the
     // *pre*-projection size that produces the sheet's stated *post*-projection numbers under this
     // scale=2 setup -- see the T-49 report's "uncovered cases".)
+    // T-700 (Docs/design/10-backends.md §10.15 item 3): the translateZ plane is affine, so the fill
+    // keeps its path and takes the fold (scale 2 about (32,32)) as its transform instead of being
+    // flattened and projected point by point; the covered region is the same.
     CameraSetup camera = cssPerspectiveViewProj(200.0f, Vec2{32, 32});
     Mat4 world3 = mat4Translate(Vec3{0, 0, 100});
 
@@ -445,20 +448,22 @@ TEST_CASE("CommandListSimplifier: flatten3D projects a FillPath (translateZ pers
         CHECK(cmd.kind != CmdKind::PopTransform3D);
     }
     REQUIRE(list.fills.size() == 1);
-    CHECK(stats.flattenedCommands >= 1);
+    CHECK(stats.flattenedCommands == 0);
 
     const FillCmd& fill = list.fills[0];
-    CHECK(fill.xf.a == doctest::Approx(1.0f));
-    CHECK(fill.xf.e == doctest::Approx(0.0f));
+    CHECK(fill.xf.a == doctest::Approx(2.0f));
+    CHECK(fill.xf.d == doctest::Approx(2.0f));
+    CHECK(fill.xf.e == doctest::Approx(-32.0f));
+    CHECK(fill.xf.f == doctest::Approx(-32.0f));
     REQUIRE(fill.path.pointCount == 8);
-    float minX = list.points[fill.path.pointOffset];
-    float minY = list.points[fill.path.pointOffset + 1];
-    float maxX = minX, maxY = minY;
+    float minX = 1e9f, minY = 1e9f, maxX = -1e9f, maxY = -1e9f;
     for (uint32_t i = 0; i < fill.path.pointCount; i += 2) {
-        minX = std::min(minX, list.points[fill.path.pointOffset + i]);
-        maxX = std::max(maxX, list.points[fill.path.pointOffset + i]);
-        minY = std::min(minY, list.points[fill.path.pointOffset + i + 1]);
-        maxY = std::max(maxY, list.points[fill.path.pointOffset + i + 1]);
+        const Vec2 q = apply(fill.xf, Vec2{list.points[fill.path.pointOffset + i],
+                                           list.points[fill.path.pointOffset + i + 1]});
+        minX = std::min(minX, q.x);
+        maxX = std::max(maxX, q.x);
+        minY = std::min(minY, q.y);
+        maxY = std::max(maxY, q.y);
     }
     CHECK(minX == doctest::Approx(22.0f).epsilon(0.5 / 22.0));
     CHECK(minY == doctest::Approx(22.0f).epsilon(0.5 / 22.0));
@@ -477,6 +482,25 @@ TEST_CASE("CommandListSimplifier: flatten3D projects a FillPath (translateZ pers
     CHECK(opaqueAt(41, 41));
     CHECK_FALSE(opaqueAt(10, 10));
     CHECK_FALSE(opaqueAt(50, 50));
+}
+
+TEST_CASE("CommandListSimplifier: flatten3D still projects a FillPath on a rotateY plane (T-700)") {
+    CameraSetup camera = cssPerspectiveViewProj(200.0f, Vec2{32, 32});
+    CommandList list;
+    list.viewport = Rect{0, 0, 64, 64};
+    pushProjection(list, camera.viewProj, Mat2x3{}, Rect{0, 0, 64, 64});
+    pushTransform3D(list, mat4RotateY(30.0f));
+    pushFill(list, addRectPath(list, 27, 27, 10, 10));
+    popTransform3D(list);
+    popProjection(list);
+
+    CommandListSimplifier simplifier;
+    SimplifyOptions options;
+    SimplifyStats stats = simplifier.simplify(list, options, nullptr);
+    REQUIRE(list.fills.size() == 1);
+    CHECK(stats.flattenedCommands >= 1);
+    CHECK(list.fills[0].xf.a == doctest::Approx(1.0f));
+    CHECK(list.fills[0].xf.e == doctest::Approx(0.0f));
 }
 
 TEST_CASE("CommandListSimplifier: flatten3D DrawImage stays DrawImage under an orthographic camera") {
@@ -506,7 +530,10 @@ TEST_CASE("CommandListSimplifier: flatten3D DrawImage stays DrawImage under an o
     CHECK(list.commands[0].kind == CmdKind::DrawImage);
     REQUIRE(list.images.size() == 1);
     CHECK(list.imageQuads.empty());
-    CHECK(stats.flattenedCommands == 1);
+    // T-700: viewProj = I is an affine plane: the image is copied as 2D content, not flattened.
+    CHECK(stats.flattenedCommands == 0);
+    CHECK(list.images[0].xf.a == 1.0f);
+    CHECK(list.images[0].xf.e == 0.0f);
 }
 
 TEST_CASE("CommandListSimplifier: flatten3D DrawImage becomes DrawImageQuad under rotateY perspective") {
@@ -578,9 +605,8 @@ TEST_CASE("CommandListSimplifier: flatten3D drops DrawGlyphs (no shaper) and cou
     CHECK(stats.droppedGlyphRuns == 1);
 }
 
-TEST_CASE("CommandListSimplifier: flatten3D degrades PushClipRect to PushClipPath under projection") {
-    CameraSetup camera = cssPerspectiveViewProj(0.0f, Vec2{0, 0});  // Identity: exact rect corners.
-
+TEST_CASE("CommandListSimplifier: flatten3D keeps a PushClipRect on an affine plane (T-700)") {
+    CameraSetup camera = cssPerspectiveViewProj(0.0f, Vec2{0, 0});  // Identity: an affine plane.
     CommandList list;
     list.viewport = Rect{0, 0, 64, 64};
     pushProjection(list, camera.viewProj, Mat2x3{}, Rect{0, 0, 64, 64});
@@ -590,6 +616,33 @@ TEST_CASE("CommandListSimplifier: flatten3D degrades PushClipRect to PushClipPat
     list.clipRects.push_back(clipRect);
     pushCmd(list, CmdKind::PushClipRect, 0);
     pushCmd(list, CmdKind::PopClip, 0);
+    popProjection(list);
+    CommandListSimplifier simplifier;
+    SimplifyOptions options;
+    options.clipPaths = false;
+    simplifier.simplify(list, options, nullptr);
+    REQUIRE(list.commands.size() == 2);
+    CHECK(list.commands[0].kind == CmdKind::PushClipRect);
+    REQUIRE(list.clipRects.size() == 1);
+    CHECK(list.clipRects[0].rect.x == 2.0f);
+    CHECK(list.clipRects[0].rect.w == 4.0f);
+}
+
+TEST_CASE("CommandListSimplifier: flatten3D degrades PushClipRect to PushClipPath under projection") {
+    // T-700: a projected plane (rotateY); an affine plane keeps the PushClipRect (case above).
+    CameraSetup camera = cssPerspectiveViewProj(200.0f, Vec2{0, 0});
+
+    CommandList list;
+    list.viewport = Rect{0, 0, 64, 64};
+    pushProjection(list, camera.viewProj, Mat2x3{}, Rect{0, 0, 64, 64});
+    pushTransform3D(list, mat4RotateY(20.0f));
+    ClipRectCmd clipRect{};
+    clipRect.xf = Mat2x3{};
+    clipRect.rect = Rect{2, 3, 4, 5};
+    list.clipRects.push_back(clipRect);
+    pushCmd(list, CmdKind::PushClipRect, 0);
+    pushCmd(list, CmdKind::PopClip, 0);
+    popTransform3D(list);
     popProjection(list);
 
     CommandListSimplifier simplifier;
@@ -606,15 +659,15 @@ TEST_CASE("CommandListSimplifier: flatten3D degrades PushClipRect to PushClipPat
     REQUIRE(list.clipPaths.size() == 1);
     CHECK(list.clipRects.empty());
     REQUIRE(list.clipPaths[0].path.pointCount == 8);
-    // Identity camera + identity rootXf/xf -> corners project back to the same rect.
+    // The corners went through the projection: the rect's x range is no longer exactly 2..6.
     float minX = list.points[list.clipPaths[0].path.pointOffset];
     float maxX = minX;
     for (uint32_t i = 0; i < list.clipPaths[0].path.pointCount; i += 2) {
         minX = std::min(minX, list.points[list.clipPaths[0].path.pointOffset + i]);
         maxX = std::max(maxX, list.points[list.clipPaths[0].path.pointOffset + i]);
     }
-    CHECK(minX == doctest::Approx(2.0f));
-    CHECK(maxX == doctest::Approx(6.0f));
+    CHECK(minX != doctest::Approx(2.0f));
+    CHECK(maxX > minX);
 }
 
 TEST_CASE("CommandListSimplifier: flatten3D leaves non-projected commands untouched") {

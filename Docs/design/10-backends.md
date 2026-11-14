@@ -446,3 +446,18 @@ eport.json`）**——對 SW 的「> 16 像素數／最大通道差／平均絕�
 
 **T-691 實作記錄（#652，2026-11-12）**：兩個能力函式在 `GpuDevice` 尾端；`FrameBuilder::lastBuildStats()` 回 `BuildStats{coverageFallbacks, boxShadowSkipped}`；paint 端的接法是 `gpu::applyDeviceCapabilities(device, context)`（只關不開）。本倉唯一「`Context` 遇到非內建裝置」之處是編輯器的宿主預覽（`host_preview_widget.cpp`，每幀套用）；C ABI、shell、`Code/Backends`、`xtframe-view` 一律經內建的 wgpu／GL 裝置（皆回 true），未加呼叫。驗證：能力皆 false 的轉發裝置跑 181 個 fixture（1x）沒有收到覆蓋率 draw 或 BoxShadow；五個陰影 fixture 與關閉轉換逐位元組相同；凹形填色／筆畫／裁切與「fringe 關」逐位元組相同。未測：真實的宿主裝置、Vulkan、Metal。
 
+## 10.15 3D 空間內的仿射平面不算投影（2026-11-13 定案；使用者回報 challenge-menu 右下角色腳下的圓圈在 1x 斷線；調查見 BACKLOG T-700；T-700）
+
+**事實**：`FrameBuilder` 的 `projecting()` 對 `PushProjection`…`PopProjection` 之間的**所有**內容為真，包含空間根自己平面上的一般 2D 內容。投影中 10.11 的 1x 路徑全部停用（覆蓋率填色與筆畫、影像 fringe、字形覆蓋率與 atlas、裁切邊緣、解析式方塊陰影），退到 stencil-then-cover 或輪廓路徑——1x 下沒有抗鋸齒。只要根元素寫了 `perspective`，整個 UI 就落入這個狀態（challenge-menu 除了 `#hud` 以外全部）。
+
+**裁決**：投影的品質退讓只該發生在真的有透視變形的平面上。
+
+1. 對目前平面（`viewProj · rootXf · world3` 限制在該平面 z = 0 上的 3×3 映射）判定是否**仿射**：齊次項 w 在平面上為常數（w 對 x、y 的係數相對於常數項的比值，在該 pass 的視窗範圍內造成的偏差小於 1/64 device px）。常見的兩種都成立：CSS `perspective` 根自己的平面（映射為恆等）、只有 `translateZ`／縮放／`rotateZ` 的圖層（整個平面離攝影機等距）。
+2. 仿射的平面：把映射摺進 2D 的 device 變換（除以常數 w），其內容視為**不在投影中**——走與一般 2D 內容完全相同的路徑（10.11 全部、10.12 的方塊陰影轉換在 frame builder 這一側的處理、nearest 取樣捷徑）。`rotateX`／`rotateY` 或攝影機斜看造成 w 變化的平面維持現行的投影路徑。
+3. 判定函式放在 `xt/project3d.h`（SW、GPU、simplifier 共用的那一份），GPU frame builder 採用；SW 與 simplifier 若對仿射平面也有品質較低的專用路徑，同樣採用，否則不動。
+4. 像素：仿射平面上的內容與「把同樣的仿射變換寫成 2D `transform`」的畫面相同（這是驗收條件）。既有 3D golden 中屬於仿射平面的部分會改變（文字由輪廓路徑變回字形 atlas／hinted bitmap、1x 邊緣得到抗鋸齒）；逐一檢視後更新期望圖。真正透視的平面像素不變。
+5. 深度排序、背面剔除、命中測試不受影響（它們在 painter／core，不看這個判定）。
+6. 不在本節：真正透視平面在 1x 下的抗鋸齒（投影後輪廓進覆蓋率 atlas）——另案，待 UI Volume 的設計定了再排。
+
+**T-700 實作記錄（#659，2026-11-13）**：`planeHomography`／`affinePlane`（`project3d.h`；w 對 x、y 無係數時直接判為仿射，否則以視窗四角回推平面上的 W、要求螢幕誤差上界 < 1/64 device px）。frame builder、SW、simplifier 三處都採用（SW 與 simplifier 原本在投影下也有較低品質的路徑）。仿射平面上的命令以 `fold · xf` 繪製，fold 為恆等時用原命令（根平面逐位元組相同）。既有 golden 無一變動；語料庫只有 challenge-menu 的 `#profile-block`（translateZ 圖層）改變：文字改走字形路徑、縮小的影像經 mip 取樣、環與弧走覆蓋率——1x 下 `#holo-arc` 由斷續變為連續。**與第 4 點預期不同**：4x 下變動不只文字，影像 mip 與展平容差也跟著 2D 路徑改變（符合「與 2D 相同」的驗收條件）。**未涵蓋**：painter 在任何 3D 空間內都不做方塊陰影轉換（`box_shadow.cpp` 的 `in3D`），所以仿射平面上的陰影仍走離屏效果——是否放寬另案（PENDING）。GL 後端未動。
+

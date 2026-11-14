@@ -40,6 +40,7 @@ void CommandList::clear() {
     structureChecked = false;
     frameSerial = 0;
     sources.clear();
+    worldLayers.clear();  // T-701
     // viewport / devicePixelRatio intentionally left untouched.
 }
 
@@ -636,6 +637,33 @@ void dumpCommandList(const CommandList& list, std::string& out) {
                 break;
             }
         }
+        out += '\n';
+    }
+    // T-701 (33 §33.2): the layers of a list painted in world-layer output, after the commands
+    // (nothing for every other list).
+    for (const WorldLayerRange& layer : list.worldLayers) {
+        out += "WorldLayer id=";
+        out += std::to_string(layer.id);
+        out += " order=";
+        out += std::to_string(layer.order);
+        out += " cmds=[";
+        out += std::to_string(layer.firstCommand);
+        out += ',';
+        out += std::to_string(layer.firstCommand + layer.commandCount);
+        out += ") rect=(";
+        appendFloat(out, layer.rect.x);
+        out += ',';
+        appendFloat(out, layer.rect.y);
+        out += ',';
+        appendFloat(out, layer.rect.w);
+        out += ',';
+        appendFloat(out, layer.rect.h);
+        out += ") opacity=";
+        appendFloat(out, layer.opacity);
+        out += " backface=";
+        out += std::to_string(static_cast<int>(layer.backfaceHidden));
+        out += " world3=";
+        appendMat4(out, layer.world3);
         out += '\n';
     }
 }

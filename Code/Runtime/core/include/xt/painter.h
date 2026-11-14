@@ -144,7 +144,51 @@ public:
     /// shadow test (xt::glyphRunInkBox); nullptr (the default) keeps the origins grown by the size.
     void setShaper(TextShaper* shaper) { m_shaper = shaper; }
 
+    /// T-701 (Docs/design/33-world-layers.md §33.4 item 2): true when the last paint() cut a world
+    /// layer's rectangle down to the allowed region (the root box grown by its own size on every
+    /// side); reset by every paint().
+    bool worldLayerClamped() const { return m_worldLayerClamped; }
+    /// T-706 (33 §33.14 item 1): borrows the list of the layers' previous rectangles
+    /// (NodeArena::WorldLayerState::previousRects), which paint() in world-layer output reads and
+    /// rewrites. nullptr (the default) computes every rectangle afresh. Not touched outside
+    /// world-layer output.
+    void setWorldLayerRects(std::vector<NodeArena::WorldLayerState::LayerRect>* rects) {
+        m_layerRects = rects;
+    }
+
 private:
+    // T-701 (33 §33.2): world-layer output (NodeArena::WorldLayerState::output). paint() emits the
+    // base layer's range (the ordinary traversal, which queues every world layer it meets instead
+    // of painting it), then one range per queued layer; layers met inside a layer are inserted
+    // right after it, so the queue's order is the paint order.
+    struct QueuedWorldLayer {
+        NodeId node = kInvalidNode;
+    };
+    std::vector<QueuedWorldLayer> m_layerQueue;
+    /// Where the next layer met by the traversal goes in m_layerQueue.
+    size_t m_layerInsertPos = 0;
+    /// The world layer whose range is being emitted (let through enterNode()); kInvalidNode in the
+    /// base range and outside world-layer output.
+    NodeId m_layerEntering = kInvalidNode;
+    /// m_mappingStack entries that are a world layer's own wrapper (0 or 1), not a 3D space.
+    size_t m_layerWrapDepth = 0;
+    bool m_worldLayerClamped = false;
+    /// T-706: the previous rectangles (setWorldLayerRects) and this paint's, swapped at its end.
+    std::vector<NodeArena::WorldLayerState::LayerRect>* m_layerRects = nullptr;
+    std::vector<NodeArena::WorldLayerState::LayerRect> m_layerRectsNext;
+    /// worldLayerBounds()'s walk: a pending node and the effect expansion its ancestors add.
+    std::vector<std::pair<NodeId, float>> m_layerBoundsStack;
+    /// paint() in world-layer output (painter_world_layers.cpp).
+    void paintWorldLayers(const NodeArena& arena, NodeId root, CommandList& out);
+    /// Emits the range of queued layer `index`; false when the layer has nothing to draw.
+    bool paintWorldLayer(const NodeArena& arena, size_t index, uint32_t order, CommandList& out);
+    /// The bounds of world layer `layer`'s content on its own plane, effects' expansion included;
+    /// `any` false when it draws nothing. `unbounded` when part of it cannot be bounded (a nested
+    /// 3D space with a point behind its camera).
+    Rect worldLayerBounds(const NodeArena& arena, NodeId layer, bool& any, bool& unbounded);
+    /// `c.opacity`, or 1 for the layer being entered (its opacity is the host's, 33 §33.5 item 3).
+    float ownOpacity(NodeId n, const NodeCommon& c) const { return n == m_layerEntering ? 1.0f : c.opacity; }
+
     /// T-668: a node whose PushEffect may still become DrawBoxShadow commands once its subtree has
     /// been emitted (decided at its PopEffect).
     struct BoxShadowCandidate {

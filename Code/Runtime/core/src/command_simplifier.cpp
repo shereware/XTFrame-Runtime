@@ -412,6 +412,44 @@ Mat2x3 affineFromRectToQuad(const Rect& dst, const Vec2 quad[4]) {
 SimplifyStats flatten3DPass(CommandList& out, const CommandList& list, TextShaper* shaper) {
     SimplifyStats stats{};
     std::vector<project3d::Mapping> mappings;
+    // T-700 (Docs/design/10-backends.md §10.15 item 3): per level, whether its current plane is affine
+    // and its fold. The content of an affine plane is copied as 2D content with the fold premultiplied
+    // into its transform, instead of being flattened, outlined (text) or dropped (particles).
+    struct PlaneState {
+        bool affine = false;
+        Mat2x3 fold{};
+    };
+    std::vector<PlaneState> planeStates;
+    // The affine test's viewport: the list's; without one, a huge one, so that only a plane with an
+    // exactly constant w counts as affine.
+    Rect planeViewport = list.viewport;
+    if (!(planeViewport.w > 0.0f && planeViewport.h > 0.0f)) {
+        planeViewport = Rect{-1e6f, -1e6f, 2e6f, 2e6f};
+    }
+    const float planeDpr = list.devicePixelRatio > 0.0f ? list.devicePixelRatio : 1.0f;
+    auto updatePlaneState = [&]() {
+        if (mappings.empty() || planeStates.size() != mappings.size()) {
+            return;
+        }
+        PlaneState& state = planeStates.back();
+        state = PlaneState{};
+        const bool outerAffine = planeStates.size() < 2 || planeStates[planeStates.size() - 2].affine;
+        Mat3 h;
+        if (outerAffine && project3d::planeHomography(mappings, h)) {
+            state.affine = project3d::affinePlane(h, planeViewport,
+                                                  project3d::kAffinePlaneTolerancePx / planeDpr, state.fold);
+        }
+    };
+    auto affinePlane = [&]() { return !planeStates.empty() && planeStates.back().affine; };
+    // `src` as the 2D command its affine plane draws (the fold premultiplied, in `tmp`).
+    auto fold = [&](const auto& src, auto& tmp) -> const auto& {
+        if (!affinePlane()) {
+            return src;
+        }
+        tmp = src;
+        tmp.xf = mul(planeStates.back().fold, src.xf);
+        return tmp;
+    };
 
     std::vector<PathVerb> projVerbs;
     std::vector<float> projPoints;
@@ -419,7 +457,8 @@ SimplifyStats flatten3DPass(CommandList& out, const CommandList& list, TextShape
     std::vector<float> glyphPoints;
 
     for (const Command& cmd : list.commands) {
-        bool inProjection = !mappings.empty();
+        // T-700: an affine plane's content is not "in a projection" (it is copied as 2D content).
+        bool inProjection = !mappings.empty() && !affinePlane();
         switch (cmd.kind) {
             case CmdKind::PushProjection: {
                 const ProjectionCmd& p = list.projections[cmd.index];
@@ -429,11 +468,14 @@ SimplifyStats flatten3DPass(CommandList& out, const CommandList& list, TextShape
                 m.rootXf = p.rootXf;
                 m.planeWorld3 = mat4Identity();
                 mappings.push_back(m);
+                planeStates.emplace_back();
+                updatePlaneState();
                 break;
             }
             case CmdKind::PopProjection: {
                 if (!mappings.empty()) {
                     mappings.pop_back();
+                    planeStates.pop_back();
                 }
                 break;
             }
@@ -443,16 +485,19 @@ SimplifyStats flatten3DPass(CommandList& out, const CommandList& list, TextShape
                     break;
                 }
                 mappings.back().planeWorld3 = list.transforms3[cmd.index].world3;
+                updatePlaneState();
                 break;
             }
             case CmdKind::PopTransform3D: {
                 if (!mappings.empty()) {
                     mappings.back().planeWorld3 = mat4Identity();
+                    updatePlaneState();
                 }
                 break;
             }
             case CmdKind::FillPath: {
-                const FillCmd& src = list.fills[cmd.index];
+                FillCmd tmp;
+                const FillCmd& src = fold(list.fills[cmd.index], tmp);
                 if (!inProjection) {
                     FillCmd fill{};
                     fill.xf = src.xf;
@@ -481,7 +526,8 @@ SimplifyStats flatten3DPass(CommandList& out, const CommandList& list, TextShape
                 break;
             }
             case CmdKind::StrokePath: {
-                const StrokeCmd& src = list.strokes[cmd.index];
+                StrokeCmd tmp;
+                const StrokeCmd& src = fold(list.strokes[cmd.index], tmp);
                 if (!inProjection) {
                     StrokeCmd stroke{};
                     stroke.xf = src.xf;
@@ -559,7 +605,8 @@ SimplifyStats flatten3DPass(CommandList& out, const CommandList& list, TextShape
                 break;
             }
             case CmdKind::DrawGlyphs: {
-                const GlyphsCmd& src = list.glyphRuns[cmd.index];
+                GlyphsCmd tmp;
+                const GlyphsCmd& src = fold(list.glyphRuns[cmd.index], tmp);
                 if (!inProjection) {
                     GlyphsCmd glyphs{};
                     glyphs.xf = src.xf;
@@ -614,7 +661,8 @@ SimplifyStats flatten3DPass(CommandList& out, const CommandList& list, TextShape
                 break;
             }
             case CmdKind::DrawImage: {
-                const ImageCmd& src = list.images[cmd.index];
+                ImageCmd tmp;
+                const ImageCmd& src = fold(list.images[cmd.index], tmp);
                 if (!inProjection) {
                     out.images.push_back(src);
                     pushCommand(out, CmdKind::DrawImage, static_cast<uint32_t>(out.images.size() - 1));
@@ -660,6 +708,11 @@ SimplifyStats flatten3DPass(CommandList& out, const CommandList& list, TextShape
                 const ImageQuadCmd& src = list.imageQuads[cmd.index];
                 if (!inProjection) {
                     out.imageQuads.push_back(src);
+                    if (affinePlane()) {
+                        for (Vec2& q : out.imageQuads.back().p) {
+                            q = apply(planeStates.back().fold, q);  // T-700
+                        }
+                    }
                     pushCommand(out, CmdKind::DrawImageQuad,
                                 static_cast<uint32_t>(out.imageQuads.size() - 1));
                     break;
@@ -680,7 +733,8 @@ SimplifyStats flatten3DPass(CommandList& out, const CommandList& list, TextShape
                 break;
             }
             case CmdKind::PushClipRect: {
-                const ClipRectCmd& src = list.clipRects[cmd.index];
+                ClipRectCmd tmp;
+                const ClipRectCmd& src = fold(list.clipRects[cmd.index], tmp);
                 if (!inProjection) {
                     out.clipRects.push_back(src);
                     pushCommand(out, CmdKind::PushClipRect, static_cast<uint32_t>(out.clipRects.size() - 1));
@@ -707,7 +761,8 @@ SimplifyStats flatten3DPass(CommandList& out, const CommandList& list, TextShape
                 break;
             }
             case CmdKind::PushClipPath: {
-                const ClipPathCmd& src = list.clipPaths[cmd.index];
+                ClipPathCmd tmp;
+                const ClipPathCmd& src = fold(list.clipPaths[cmd.index], tmp);
                 if (!inProjection) {
                     ClipPathCmd clip{};
                     clip.xf = src.xf;
@@ -775,7 +830,8 @@ SimplifyStats flatten3DPass(CommandList& out, const CommandList& list, TextShape
             }
             case CmdKind::DrawParticles: {
                 // T-202: particles have no projected form; dropped inside a projection.
-                const ParticlesCmd& src = list.particles[cmd.index];
+                ParticlesCmd tmp;
+                const ParticlesCmd& src = fold(list.particles[cmd.index], tmp);
                 if (inProjection) {
                     stats.droppedParticles += src.count;
                     break;
@@ -785,17 +841,21 @@ SimplifyStats flatten3DPass(CommandList& out, const CommandList& list, TextShape
             }
             case CmdKind::DrawImageMesh: {
                 // T-245: re-pooled; inside a projection every vertex is projected (affine triangles).
+                // T-700: on an affine plane too (the projection of an affine plane is its fold, and
+                // the mesh's 2D form has no transform to fold into).
                 const ImageMeshCmd& src = list.imageMeshes[cmd.index];
-                if (inProjection) {
+                const bool projectMesh = !mappings.empty();
+                if (projectMesh) {
                     ++stats.flattenedCommands;
                 }
-                copyImageMesh(out, list, src, 1.0f, inProjection ? &mappings : nullptr);
+                copyImageMesh(out, list, src, 1.0f, projectMesh ? &mappings : nullptr);
                 break;
             }
             case CmdKind::DrawBoxShadow: {
                 // T-668: like PushEffect (whose drop shadow it replaces), passed through unchanged;
-                // the Painter never emits one inside a projection.
-                out.boxShadows.push_back(list.boxShadows[cmd.index]);
+                // the Painter never emits one inside a projection. T-700: on an affine plane, folded.
+                BoxShadowCmd tmp;
+                out.boxShadows.push_back(fold(list.boxShadows[cmd.index], tmp));
                 pushCommand(out, CmdKind::DrawBoxShadow, static_cast<uint32_t>(out.boxShadows.size() - 1));
                 break;
             }

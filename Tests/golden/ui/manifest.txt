@@ -113,6 +113,9 @@ ui_3d_sort_two_layers ui_3d_sort_two_layers.xt 256 256 0 ffffff
 ui_3d_backface_hidden ui_3d_backface_hidden.xt 256 256 0 ffffff
 ui_3d_camera_tag ui_3d_camera_tag.xt 256 256 0 ffffff
 ui_3d_image_quad ui_3d_image_quad.xt 256 256 0 ffffff
+# T-701 (33 section 33.2 item 7): four elements with `world-layer: on` at their own depths (one
+# tilted) under a `perspective` root. A flat renderer ignores the switch: the 19-chapter projection.
+ui_world_layers_flat ui_world_layers_flat.xt 320 200 0 ffffff
 # T-55 effect golden fixtures (docs/tasks/T-55.md "黃金圖"; docs/design/18-effects.md §18.10's
 # row 15). ui_fx_glow/ui_fx_outline need xt_text (@font-face), like the ui_text_*/ui_3d_text_*
 # entries above.
@@ -239,6 +242,12 @@ ui_rounded_clip_children ui_rounded_clip_children.xt 256 256 0 0b0e12
 ui_3d_flip_0 ui_3d_flip.xt 256 256 0 0b0e12
 ui_3d_flip_90 ui_3d_flip.xt 256 256 0.48 0b0e12
 ui_3d_flip_180 ui_3d_flip.xt 256 256 1.0 0b0e12
+# T-702 (19 section 19.3 / 19.10): a 3D layer animated by @keyframes with translateZ and rotateY
+# (out along z and back while it flips about Y), sampled at three times; before T-702 the IR
+# validator rejected the translateZ track.
+ui_3d_z_flip_0 ui_3d_z_flip.xt 256 256 0.25 0b0e12
+ui_3d_z_flip_1 ui_3d_z_flip.xt 256 256 0.5 0b0e12
+ui_3d_z_flip_2 ui_3d_z_flip.xt 256 256 0.75 0b0e12
 # T-588 (Docs/design/54-source-format-v2.md 54.5.1): the game-ui HUD (Examples/demos/game-ui/hud,
 # compiled where it is) and the same layout written as a version 2 document with the anchor
 # shorthands (v2_anchor/hud.xt); a `same-as=` line must match its reference pixel for pixel. The

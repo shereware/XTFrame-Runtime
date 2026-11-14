@@ -1,11 +1,11 @@
 limit kBindTargetLast 14
 limit kConverterOpLast 43
 limit kIfTermLast 6
-limit kIrFormatMinor 0
+limit kIrFormatMinor 1
 limit kIrSelCondLast 17
 limit kPortTypeLast 12
 limit kSetSourceLast 10
-limit kStylePropLast 280
+limit kStylePropLast 281
 limit kTriggerActionLast 20
 limit kTriggerEventLast 41
 struct EasingPoint 8

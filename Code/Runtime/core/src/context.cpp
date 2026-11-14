@@ -15,6 +15,7 @@
 #include "file_open_utf8.h"
 #include "mini_css.h"
 #include "xt/asset_resolver.h"
+#include "xt/world_layer_output.h"
 
 /// Context: Document ownership, clock and per-frame update/render dispatch. See
 /// Docs/tasks/T-18.md. loadDocumentFile is Docs/tasks/T-18.md's carve-out of xt_core's
@@ -444,6 +445,31 @@ Status Context::setDevice(const DeviceInfo& device) {
     return Status::kOk;
 }
 
+void Context::setWorldLayerOutput(bool on) {
+    if (on != m_worldLayerOutput) {
+        m_damageBaseValid = false;  // the list is laid out differently: nothing to diff against
+    }
+    m_worldLayerOutput = on;
+    for (size_t i = 0; i < m_documents.size(); ++i) {
+        if (Document* doc = liveAt(i)) {
+            xt::setWorldLayerOutput(*doc, on);
+        }
+    }
+}
+
+void Context::pushPointerRay(const InputEvent& event, Vec3 origin, Vec3 direction) {
+    InputEvent queued = event;
+    queued.pos = Vec2{origin.x, origin.y};
+    if (direction.z != 0.0f) {
+        const float t = -origin.z / direction.z;
+        if (t >= 0.0f && std::isfinite(t)) {
+            queued.pos = Vec2{origin.x + direction.x * t, origin.y + direction.y * t};
+        }
+    }
+    m_pointerRays.push_back(PointerRay{m_inputQueue.size(), origin, direction});
+    pushInput(queued);
+}
+
 void Context::setHostTargetMode(HostTargetMode mode) {
     if (mode != m_hostTargetMode) {
         // The backends draw the whole surface differently under each mode: one full damage.
@@ -643,6 +669,8 @@ void Context::update(float dt) {
         // Document::update, so the scope does too.
         PerfScope inputScope(m_perf, &FrameStats::inputMs);
         m_updateEventsScratch.clear();
+        m_updateRaysScratch.clear();
+        m_updateRaysScratch.swap(m_pointerRays);  // T-701: indices into the drained queue
         drainInput(m_updateEventsScratch);
         // T-194: through the surface stack (Block / Pass / Watch, z order); with every surface at
         // the default (z 0, Block) this is the pre-T-194 "foreground Document takes all input".
@@ -651,6 +679,18 @@ void Context::update(float dt) {
         const size_t eventCount = m_updateEventsScratch.size();
         for (size_t i = 0; i < eventCount && i < m_updateEventsScratch.size(); ++i) {
             const InputEvent event = m_updateEventsScratch[i];
+            // T-701 (33 §33.6): an event pushed as a ray is hit tested with it (in world-layer
+            // output; elsewhere the ray is never read).
+            for (const PointerRay& ray : m_updateRaysScratch) {
+                if (ray.eventIndex != i) {
+                    continue;
+                }
+                for (size_t d = 0; d < m_documents.size(); ++d) {
+                    if (Document* doc = liveAt(d)) {
+                        setWorldLayerPointerRay(*doc, ray.origin, ray.direction, event.pos);
+                    }
+                }
+            }
             routeInput(event);
         }
         // T-270a (C12): the batch is dispatched (the dispatcher copies the composition text), so
@@ -769,6 +809,8 @@ void Context::render(CommandList& out, DamageList* damage) {
         Document* doc = m_documents[m_orderScratch[i] - 1].get();
         const uint16_t source = static_cast<uint16_t>(out.sources.size());
         out.sources.push_back(CommandSource{&doc->ir(), doc->ir().loadSerial()});
+        // T-701: a Document loaded since Context::setWorldLayerOutput was called.
+        xt::setWorldLayerOutput(*doc, m_worldLayerOutput);
         doc->paintAs(out, source, m_boxShadowCommands);  // T-680
     }
     // T-263a: the Painter's own output; the backends need not check its structure every frame.
@@ -888,6 +930,7 @@ void Context::drainInput(std::vector<InputEvent>& out) {
         out.push_back(event);
     }
     m_inputQueue.clear();
+    m_pointerRays.clear();  // T-701: their indices named the queue just emptied
 }
 
 void Context::bindTimelineEvents(Document& doc) {

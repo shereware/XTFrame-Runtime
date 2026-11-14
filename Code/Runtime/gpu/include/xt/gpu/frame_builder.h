@@ -73,6 +73,17 @@ class GlyphAtlas;
 
 namespace xt::gpu {
 
+/// T-701: the device textures of one glyph atlas' pages, for several FrameBuilders that draw from
+/// the same xt::text::GlyphAtlas (gpu::WorldLayerBuilder's per-layer builders). The atlas hands its
+/// pending pixels to whoever flushes first, so builders with a texture set each would miss one
+/// another's glyphs; with one shared set every flush lands where all of them sample. The owner
+/// zero-initializes it, keeps it alive while a builder points at it and destroys the textures
+/// (`GpuDevice::destroyTexture`) itself.
+struct GlyphAtlasTextures {
+    TextureHandle textures[4] = {0, 0, 0, 0};
+    int size = 0;  ///< the atlas' page size the textures were made for (0: none made)
+};
+
 class FrameBuilder {
 public:
     FrameBuilder();
@@ -96,7 +107,14 @@ public:
     /// Injects the glyph atlas DrawGlyphs samples from (Docs/design/10-backends.md §10.3.4). Not
     /// owned; the caller keeps it alive. Null (the default) makes every DrawGlyphs command use
     /// the outline-fill fallback.
-    void setGlyphAtlas(xt::text::GlyphAtlas* atlas);
+    /// T-701: `sharedPages` (null, the default: this builder's own textures) is the device texture
+    /// set of an atlas several builders draw from (GlyphAtlasTextures); the atlas must then be used
+    /// by those builders only.
+    void setGlyphAtlas(xt::text::GlyphAtlas* atlas, GlyphAtlasTextures* sharedPages = nullptr);
+    /// T-701: true once after a `build` during which the glyph atlas was reset or grew (the frame
+    /// itself was rebuilt, as ever): frames other builders made from the same atlas before that
+    /// moment name glyph positions that are gone, and their owner builds them again.
+    bool takeGlyphAtlasReset();
 #endif
 
     /// Builds `out` from `list`. `shaper` is only the DrawGlyphs outline fallback (no atlas, a
@@ -138,6 +156,17 @@ public:
     /// (null or `full` redraws every band). Layer mode ignores it.
     void build(const CommandList& list, TextShaper* shaper, AssetResolver* assets, const IrView* ir,
                GpuFrame& out, PerfTracker* perf = nullptr, const DamageList* damage = nullptr);
+
+    /// T-701 (Docs/design/33-world-layers.md §33.4): `build` for the commands
+    /// [`firstCommand`, `firstCommand` + `commandCount`) of `list` alone -- a self-contained range
+    /// (one WorldLayerRange of a list painted in world-layer output), drawn at `pixelRatio` device
+    /// px per logical px instead of `list.devicePixelRatio` and always in Layer target mode. The
+    /// surface (`resize`) is the range's own target. Everything else as `build`; in particular the
+    /// builder's caches and "previous build" comparisons then belong to that range, so
+    /// gpu::WorldLayerBuilder keeps one FrameBuilder per layer.
+    void buildRange(const CommandList& list, uint32_t firstCommand, uint32_t commandCount, float pixelRatio,
+                    TextShaper* shaper, AssetResolver* assets, const IrView* ir, GpuFrame& out,
+                    PerfTracker* perf = nullptr);
 
     /// Edge anti-aliasing for convex fills (Docs/tasks/T-155.md): on (the default), a single
     /// convex contour is drawn directly with a 1 px coverage fringe (a ring of alpha-0 vertices

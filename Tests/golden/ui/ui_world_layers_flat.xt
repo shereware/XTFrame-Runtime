@@ -1,0 +1,123 @@
+<xt version="2">
+
+  <body>
+    <div id="stage">
+      <div id="grid"></div>
+      <div id="rings"><div id="ring"></div><div id="core"></div></div>
+      <div id="panel"><div id="bar"></div><div id="button"></div></div>
+      <div id="mark"></div>
+    </div>
+  </body>
+
+  <layout>
+    #stage {
+      position: absolute;
+      left: 0px;
+      top: 0px;
+      width: 320px;
+      height: 200px;
+      perspective: 600px;
+    }
+    #grid {
+      position: absolute;
+      left: 16px;
+      top: 16px;
+      width: 288px;
+      height: 168px;
+      transform: translateZ(10px);
+    }
+    #rings {
+      position: absolute;
+      left: 30px;
+      top: 40px;
+      width: 120px;
+      height: 120px;
+      transform: translateZ(40px);
+    }
+    #ring {
+      position: absolute;
+      left: 10px;
+      top: 10px;
+      width: 100px;
+      height: 100px;
+    }
+    #core {
+      position: absolute;
+      left: 48px;
+      top: 48px;
+      width: 24px;
+      height: 24px;
+    }
+    #panel {
+      position: absolute;
+      left: 170px;
+      top: 44px;
+      width: 120px;
+      height: 110px;
+      transform: translateZ(70px) rotateY(-24deg);
+    }
+    #bar {
+      position: absolute;
+      left: 14px;
+      top: 20px;
+      width: 92px;
+      height: 10px;
+    }
+    #button {
+      position: absolute;
+      left: 14px;
+      top: 70px;
+      width: 92px;
+      height: 26px;
+    }
+    #mark {
+      position: absolute;
+      left: 268px;
+      top: 150px;
+      width: 16px;
+      height: 16px;
+      transform: translateZ(110px);
+    }
+  </layout>
+  <style>
+    #stage {
+      background-color: #0a1826;
+    }
+    #grid {
+      world-layer: on;
+      border: 1px #3a6a8c;
+      border-radius: 8px;
+    }
+    #rings {
+      world-layer: on;
+    }
+    #ring {
+      border: 4px #7fe3ff;
+      border-style: dashed;
+      border-radius: 50%;
+    }
+    #core {
+      border-radius: 50%;
+      background-color: #ffd166;
+    }
+    #panel {
+      world-layer: on;
+      background-color: #12304a;
+      border: 2px #5fd0ff;
+      border-radius: 10px;
+    }
+    #bar {
+      border-radius: 5px;
+      background-gradient: linear-gradient(90deg, #2f9bff 0%, #7fe3ff 100%);
+    }
+    #button {
+      border-radius: 8px;
+      background-color: #7fe3ff;
+    }
+    #mark {
+      world-layer: on;
+      border-radius: 50%;
+      background-color: #ff6b9a;
+    }
+  </style>
+</xt>

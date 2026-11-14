@@ -20,6 +20,7 @@
 #include "xt/context.h"
 #include "xt/project3d.h"
 #include "xt/property.h"
+#include "xt/world_layer_output.h"
 
 /// Document's public API (everything except the load flow, see document_load.cpp). See
 /// Docs/tasks/T-18.md, Docs/tasks/T-24.md (ElementRef class/state API), Docs/tasks/T-32.md
@@ -39,7 +40,11 @@ Document::Document()
       m_triggers(std::make_unique<TriggerRuntime>(*this)),
       m_bindings(std::make_unique<BindingRuntime>(*this)),
       m_repeats(std::make_unique<RepeatController>(*this)),
-      m_rigs(std::make_unique<std::vector<rig::RigState>>()) {}
+      m_rigs(std::make_unique<std::vector<rig::RigState>>()) {
+    // T-706 (33 §33.14 item 1): the layers' previous rectangles live with the arena's world-layer
+    // state; handed over once, so a frame outside world-layer output does no extra work.
+    m_painter.setWorldLayerRects(&m_arena.worldLayerState().previousRects);
+}
 Document::~Document() = default;
 
 Status Document::load(IrBlob blob, bool takeOwnership, TextShaper* shaper, AssetResolver* assets,
@@ -1800,6 +1805,10 @@ void Document::update(float clock) {
     if (m_arena.anyDirty(static_cast<uint8_t>(kDirtyStyle))) {
         PerfScope styleScope(*m_perf, &FrameStats::styleMs);
         styled += m_styleEngine.resolve(m_arena, clock);
+        // T-702 (19 §19.3): this pass re-derives is3D from the cascade; an Element evaluate() just
+        // wrote a 3D component to (e.g. held by a `forwards` animation that finished this frame)
+        // stays a 3D layer.
+        m_animator.reassertElement3D(m_arena);
     }
     // T-399 (08 §8.18): an input shown again (itself or an ancestor no longer `display: none`)
     // shows its `bind:value` port's value, not the user's leftover edit.
@@ -1830,6 +1839,7 @@ void Document::update(float clock) {
             {
                 PerfScope styleScope(*m_perf, &FrameStats::styleMs);
                 styled += m_styleEngine.resolve(m_arena, clock);
+                m_animator.reassertElement3D(m_arena);  // T-702, as above.
             }
             PerfScope layoutScope(*m_perf, &FrameStats::layoutMs);
             m_layoutEngine.layout(m_arena, m_root, m_viewport);
@@ -1839,6 +1849,7 @@ void Document::update(float clock) {
             {
                 PerfScope styleScope(*m_perf, &FrameStats::styleMs);
                 styled += m_styleEngine.resolve(m_arena, clock);
+                m_animator.reassertElement3D(m_arena);  // T-702, as above.
             }
             PerfScope layoutScope(*m_perf, &FrameStats::layoutMs);
             m_layoutEngine.layout(m_arena, m_root, m_viewport);
@@ -2026,6 +2037,10 @@ void Document::paintAs(CommandList& out, uint16_t source, bool boxShadowCommands
             m_layoutEngine.layout(m_arena, m_root, m_viewport);
             updateWorldTransforms(m_arena, m_root, m_forceTransform);
         }
+        if (m_arena.worldLayerState().pendingTransforms) {
+            // T-701: world-layer output changed since the last update(): the planes' transforms.
+            updateWorldTransforms(m_arena, m_root, true);
+        }
         // Docs/tasks/T-33.md "Painter": the caret blink phase and the EditState pool the caret /
         // selection geometry comes from are handed to the Painter just before it runs.
         m_painter.setClock(m_clock);
@@ -2052,6 +2067,17 @@ void Document::paintAs(CommandList& out, uint16_t source, bool boxShadowCommands
         const bool hasPlaceholderColor = m_styleEngine.tokenColor("--placeholder-color", placeholderColor);
         m_painter.setPlaceholderColor(hasPlaceholderColor ? &placeholderColor : nullptr);
         m_painter.paint(m_arena, m_root, out);
+        if (NodeArena::WorldLayerState& layers = m_arena.worldLayerState(); layers.output) {
+            // T-701 (33 §33.2 item 6, §33.4 item 2): each reported once per document.
+            if (layers.overLimit && !layers.warnedLimit) {
+                layers.warnedLimit = true;
+                m_warnings.emplace_back(kWarnWorldLayerLimit);
+            }
+            if (m_painter.worldLayerClamped() && !layers.warnedClamped) {
+                layers.warnedClamped = true;
+                m_warnings.emplace_back(kWarnWorldLayerClamped);
+            }
+        }
         if (m_painter.backgroundTilesCapped() && !m_warnedBackgroundTiles) {
             m_warnedBackgroundTiles = true;  // T-327 (05 §5.9.8).
             m_warnings.emplace_back(kWarnBackgroundTiles);

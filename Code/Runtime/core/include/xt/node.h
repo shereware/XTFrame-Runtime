@@ -298,7 +298,15 @@ struct NodeCommon {
     uint8_t is3D = 0;
     /// 1 = the node is hidden when its back face is toward the camera.
     uint8_t backfaceHidden = 0;
-    uint8_t _pad3d[2] = {};  ///< Padding, unused.
+    /// T-701 (Docs/design/33-world-layers.md §33.2): the author's `world-layer` switch (StyleProp
+    /// 281), copied from the cascade each resolve; 1 = on. Says nothing while the Document is not
+    /// in world-layer output (xt/world_layer_output.h).
+    uint8_t worldLayer = 0;
+    /// T-701: 1 = this node is a world layer of the frame -- `worldLayer` is on, the Document is in
+    /// world-layer output and the node is within the layer limit. Written by updateWorldTransforms();
+    /// always 0 outside world-layer output. While set, `world` is identity (the node's own box is
+    /// its layer plane's origin) and `world3` maps that plane to the document root's box.
+    uint8_t worldLayerActive = 0;
     /// Cache (Docs/design/19-3d-space.md §19.5): 1 = this node is a 3D space root (owns a camera,
     /// or is an Element with perspectivePx > 0, or is a scene root Group whose subtree has an
     /// is3D node). Recomputed by updateWorldTransforms() only when kDirtyTree is set (or force).
@@ -1187,6 +1195,10 @@ inline constexpr uint8_t kBorderStyleDotted = 3;
 inline constexpr uint8_t kUiScaleAuto = 0;   ///< The Document's uiscale (the project policy).
 inline constexpr uint8_t kUiScaleNone = 1;   ///< 1 x DeviceInfo::dpr (device pixels).
 inline constexpr uint8_t kUiScaleClamp = 2;  ///< The uiscale clamped to [uiScaleMin, uiScaleMax].
+/// 33 §33.2 item 6 (T-701): the most layers one Document hands out in world-layer output, the
+/// base layer (id 0) included; `world-layer: on` elements beyond it are painted where they are.
+inline constexpr uint32_t kMaxWorldLayers = 64;
+
 /// 05 §5.9.9 (T-345): `media-override` values (ComputedStyle::mediaOverride, StyleProp 274).
 inline constexpr uint8_t kMediaOverrideAuto = 0;  ///< `@media` rules switch `display` as usual.
 inline constexpr uint8_t kMediaOverrideShow = 1;  ///< `@media` rules never change `display`.
@@ -1237,6 +1249,9 @@ struct ComputedStyle {
     /// the cascade (T-47a) and copied to NodeCommon::backfaceHidden each resolve (19.3,
     /// Docs/tasks/T-43c.md).
     uint8_t backfaceHidden = 0;
+    /// `world-layer` (StyleProp 281, Docs/design/33-world-layers.md §33.2, T-701): 1 = on. Not
+    /// inherited, not animatable; copied to NodeCommon::worldLayer each resolve.
+    uint8_t worldLayer = 0;
     /// CSS-like `pointer-watch` (StyleProp 191, 27.2.5, T-174); 1 = true. Inherited; copied to
     /// NodeCommon::flags2's kPointerWatch each resolve.
     uint8_t pointerWatch = 0;

@@ -290,6 +290,47 @@ public:
         }
     }
 
+    // World-layer output (Docs/design/33-world-layers.md, T-701).
+
+    /// What the transform pass, the Painter and the hit test share about world-layer output. The
+    /// arena only stores it; xt/world_layer_output.h's functions write it.
+    struct WorldLayerState {
+        /// True while the owning Document is in world-layer output: updateWorldTransforms() then
+        /// marks the layers (NodeCommon::worldLayerActive), the Painter emits one command range
+        /// per layer and the hit test takes a ray.
+        bool output = false;
+        /// Set by updateWorldTransforms() when more elements asked for a layer than
+        /// kMaxWorldLayers allows (the extra ones are painted where they are).
+        bool overLimit = false;
+        /// The output was switched since the last transform pass: the next one recomputes
+        /// everything (updateWorldTransforms() reads and clears it).
+        bool pendingTransforms = false;
+        /// The owning Document reported kWarnWorldLayerLimit / kWarnWorldLayerClamped already.
+        bool warnedLimit = false;
+        bool warnedClamped = false;
+        /// The pointer's ray in root-box coordinates (33 §33.6), used by a hit test whose 2D
+        /// position equals `rayPos`; any other position is tested with the ray straight down -z
+        /// through it.
+        bool rayValid = false;
+        Vec3 rayOrigin{};
+        Vec3 rayDir{0, 0, -1};
+        Vec2 rayPos{};
+        /// T-706 (33 §33.14 item 1): one world layer's rectangle in the last frame painted in
+        /// world-layer output.
+        struct LayerRect {
+            NodeId id = kInvalidNode;
+            uint32_t generation = 0;
+            Rect rect{};
+        };
+        /// The rectangles of the layers the last paint emitted (base layer excluded), which the
+        /// next paint keeps while a layer's content still fits. The Painter rewrites it on every
+        /// paint in world-layer output (a layer not emitted is dropped); setWorldLayerOutput()
+        /// clears it on every switch; a reloaded Document starts with a new, empty one.
+        std::vector<LayerRect> previousRects;
+    };
+    WorldLayerState& worldLayerState() { return m_worldLayerState; }
+    const WorldLayerState& worldLayerState() const { return m_worldLayerState; }
+
     // Stats.
 
     /// Returns the total number of node slots (alive + free).
@@ -329,6 +370,7 @@ private:
     std::vector<MeshNodeData> m_meshes;             // T-243
     std::vector<uint8_t> m_dirty;
     std::vector<StringId> m_name;
+    WorldLayerState m_worldLayerState;  // T-701
 
     std::vector<uint32_t> m_generation;
     std::vector<NodeId> m_freeList;

@@ -48,6 +48,18 @@ HitResult hitTestDetailed(const NodeArena& arena, NodeId root, Vec2 pos, HitMode
 /// itself is display:none, or its world transform is singular).
 NodeId hitTest(const NodeArena& arena, NodeId root, Vec2 pos, HitMode mode = HitMode::Hover);
 
+/// T-701 (Docs/design/33-world-layers.md §33.6): the z a hit test of world-layer output starts its
+/// ray from when it only has a 2D position (the ray then runs straight down -z through it).
+inline constexpr float kWorldLayerOrthoRayZ = 1.0e5f;
+
+/// T-701 (33 §33.6): the hit test of world-layer output for the ray `origin` + t `direction`
+/// (t >= 0; root-box coordinates: logical px, +z toward the design-time viewer): the layers'
+/// planes from the nearest intersection to the farthest, coplanar ones last painted first, each
+/// with the ordinary 2D hit test at its plane point. Only meaningful while the arena is in
+/// world-layer output (NodeArena::WorldLayerState::output); `localPos` as hitTestDetailed().
+HitResult hitTestRay(const NodeArena& arena, NodeId root, Vec3 origin, Vec3 direction,
+                     HitMode mode = HitMode::Hover);
+
 /// Which built-in behavior an Element carries (Docs/tasks/T-33.md "規則精確化"), derived from its
 /// tag and (for `input`) its `type` attribute. Everything but None is focusable by tag.
 enum class WidgetKind : uint8_t { None, Button, TextInput, Checkbox, OtherInput };

@@ -427,6 +427,20 @@ public:
     /// which every backend reads; a change invalidates the damage base (the whole surface is
     /// reported dirty once).
     void setHostTargetMode(HostTargetMode mode);
+    /// T-701 (Docs/design/33-world-layers.md, tail addition): world-layer output for every loaded
+    /// Document (xt/world_layer_output.h; off by default). On: render() fills
+    /// CommandList::worldLayers -- one command range per layer, for a backend that draws each layer
+    /// into a texture of its own (gpu::WorldLayerBuilder) -- and pointer input is a ray
+    /// (pushPointerRay). A change invalidates the damage base.
+    void setWorldLayerOutput(bool on);
+    bool worldLayerOutput() const { return m_worldLayerOutput; }
+    /// T-701 (33 §33.6): pushInput() for a pointer event (PointerMove / PointerDown / PointerUp /
+    /// Wheel) given as the ray `origin` + t `direction` in root-box coordinates (logical px, x
+    /// right, y down, +z toward the design-time viewer) instead of a 2D position. `event.pos` is
+    /// replaced by the ray's point on the root plane (z = 0; the origin's x, y when the ray never
+    /// reaches it), which is what Event::pos reports. Outside world-layer output the event is
+    /// dispatched at that 2D position.
+    void pushPointerRay(const InputEvent& event, Vec3 origin, Vec3 direction);
     /// The mode last set by setHostTargetMode() (Layer until then).
     HostTargetMode hostTargetMode() const { return m_hostTargetMode; }
     /// T-343 (§23.aa.4): the host says whether its scene is standing still (a pause menu over a
@@ -684,6 +698,16 @@ private:
     // T-191: setExternalPlaceholders(); render()'s external damage scratch.
     bool m_externalPlaceholders = false;
     bool m_boxShadowCommands = true;  // T-680: setBoxShadowCommands().
+    bool m_worldLayerOutput = false;  // T-701: setWorldLayerOutput().
+    /// T-701: the rays of the queued pointer events pushed with pushPointerRay(): the event's
+    /// index in m_inputQueue and its ray; taken by update() with the queue.
+    struct PointerRay {
+        size_t eventIndex = 0;
+        Vec3 origin{};
+        Vec3 direction{};
+    };
+    std::vector<PointerRay> m_pointerRays;
+    std::vector<PointerRay> m_updateRaysScratch;
     std::vector<Rect> m_externalDamageScratch;
     // T-194: per surface (index = handle - 1) stacking and input mode; the pointer's capture
     // surface (between a press and its release), the surface under the hover and the surface that

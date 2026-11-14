@@ -27,7 +27,7 @@ static_assert(kLastLow < xt::prop::ModTrimStart, "StyleProp numbers collide with
 inline constexpr uint16_t kFirstHigh = 256;
 static_assert(kFirstHigh > xt::prop::ConstraintEnabled, "StyleProp numbers collide with rig PropIds");
 /// Highest StyleProp number.
-inline constexpr uint16_t kLast = HitSlopLeft;
+inline constexpr uint16_t kLast = WorldLayer;
 static_assert(kLast == xt::kStylePropLast, "update kStylePropLast (ir_pod.h) and 02 §2.12");
 static_assert(kLast < xt::prop::kEffectPropBase, "StyleProp numbers collide with effect PropIds");
 }  // namespace styleprop

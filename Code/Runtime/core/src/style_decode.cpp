@@ -115,6 +115,7 @@ void initNonAnimatableDefaults(ComputedStyle& style) {
     style.uiScaleMax = 0;
     style.uiScaleEff = 1;
     style.mediaOverride = kMediaOverrideAuto;
+    style.worldLayer = 0;                // T-701 (33 §33.2): off.
     style.appRegion = AppRegion::None;   // T-376 (05 §5.9.10).
     for (float& side : style.hitSlop) {  // T-386 (05 §5.9.11).
         side = 0;
@@ -256,6 +257,9 @@ bool applyEnumDecl(ComputedStyle& style, uint16_t prop, uint32_t enumValue) {
             return true;
         case styleprop::MediaOverride:  // T-345 (05 §5.9.9): 0 auto, 1 show, 2 hide.
             style.mediaOverride = static_cast<uint8_t>(enumValue <= kMediaOverrideHide ? enumValue : 0);
+            return true;
+        case styleprop::WorldLayer:  // T-701 (33 §33.2): 0 off, 1 on.
+            style.worldLayer = static_cast<uint8_t>(enumValue == 1 ? 1 : 0);
             return true;
         case styleprop::AppRegion:  // T-376 (05 §5.9.10): 0 none, 1 drag, 2 no-drag.
             style.appRegion = enumValue <= 2 ? static_cast<AppRegion>(enumValue) : AppRegion::None;

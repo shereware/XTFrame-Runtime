@@ -288,6 +288,8 @@ constexpr PropInfo kProps[] = {
     // `lang` is intentionally not registered: 05.4 says it comes from the `lang` HTML attribute,
     // not from CSS declarations (see T-22 report, uncovered case).
     {"backface-visibility", styleprop::BackfaceVisibility, StyleValueKind::Enum, false, false},
+    // T-701 (33 §33.2): the world-layer switch; not inherited, not animatable.
+    {"world-layer", styleprop::WorldLayer, StyleValueKind::Enum, false, false},
     {"text-rendering", styleprop::TextRendering, StyleValueKind::Enum, true, false},
     // `effect` (18-effects.md §18.4, T-51a): not inherited; `animatable = true` so
     // `transition: effect ...` is accepted by parseTransitionItem() (xts_values.cpp), which
@@ -458,6 +460,7 @@ constexpr EnumEntry kEnums[] = {
     {styleprop::TextOrientation, "sideways", 2},
 
     {styleprop::BackfaceVisibility, "visible", 0}, {styleprop::BackfaceVisibility, "hidden", 1},
+    {styleprop::WorldLayer, "off", 0}, {styleprop::WorldLayer, "on", 1},  // T-701 (33 §33.2).
 
     {styleprop::TextRendering, "auto", 0}, {styleprop::TextRendering, "geometricPrecision", 1},
 
@@ -915,6 +918,8 @@ StyleValue initialValue(uint16_t prop) {
             return stringValue("");
         case styleprop::BackfaceVisibility:
             return enumValueOf(0);  // visible
+        case styleprop::WorldLayer:
+            return enumValueOf(0);  // off (T-701)
         case styleprop::TextRendering:
             return enumValueOf(0);  // auto
         case styleprop::PointerWatch:

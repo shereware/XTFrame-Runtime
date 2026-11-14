@@ -271,6 +271,7 @@ constexpr NameEntry kNames[] = {
     {"perspective-origin", kPerspectiveOriginProp, Kind::PerspectiveOrigin},
     {"effect", sp::Effect, Kind::Effect},
     {"backface-visibility", sp::BackfaceVisibility, Kind::Enum},
+    {"world-layer", sp::WorldLayer, Kind::Enum},  // T-701 (33 §33.2).
     {"text-rendering", sp::TextRendering, Kind::Enum},
     {"display", sp::Display, Kind::Enum},
     {"position", sp::Position, Kind::Enum},
@@ -395,6 +396,7 @@ constexpr EnumEntry kEnums[] = {
     {sp::TextOrientation, "mixed", 0}, {sp::TextOrientation, "upright", 1},
     {sp::TextOrientation, "sideways", 2},
     {sp::BackfaceVisibility, "visible", 0}, {sp::BackfaceVisibility, "hidden", 1},
+    {sp::WorldLayer, "off", 0}, {sp::WorldLayer, "on", 1},  // T-701 (33 §33.2).
     {sp::TextRendering, "auto", 0}, {sp::TextRendering, "geometricPrecision", 1},
     {sp::PointerWatch, "false", 0}, {sp::PointerWatch, "true", 1},
     {sp::FocusNav, "auto", 0}, {sp::FocusNav, "explicit", 1}, {sp::FocusNav, "none", 2},

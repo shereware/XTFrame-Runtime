@@ -1681,7 +1681,9 @@ bool Packer::packUi(const ProjectUi& ui, UiInfo& out) {
     Result<DocumentHandle> loaded =
         ctx.loadDocument(IrBlob{result.ir.data(), result.ir.size()}, /*takeOwnership=*/false);
     if (!loaded.ok()) {
-        error(ui.id, "cannot load the packed '" + irRelative + "'");
+        // T-702: the validator's reason, when it is the IR that fails.
+        const std::string why = IrView::openError(IrBlob{result.ir.data(), result.ir.size()});
+        error(ui.id, "cannot load the packed '" + irRelative + "'" + (why.empty() ? "" : ": " + why));
         return false;
     }
     Document* doc = ctx.document(loaded.value());

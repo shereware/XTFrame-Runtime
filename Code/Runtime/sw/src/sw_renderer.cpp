@@ -273,6 +273,18 @@ struct SwRenderer::Impl {
     // across render() calls (cleared at the top of each one; Docs/tasks/T-45.md verification note).
     std::vector<project3d::Mapping> mappings;
     float currentDpr = 1.0f;  ///< The CommandList's devicePixelRatio for the render in progress.
+    /// T-700 (Docs/design/10-backends.md §10.15): per level of `mappings`, whether its current plane
+    /// is affine (project3d::affinePlane) and its folded 2D transform (plane -> logical screen px).
+    /// The top level's state is mirrored in `foldActive` / `planeFold`; capacity kept like mappings.
+    struct PlaneState {
+        bool affine = false;
+        Mat2x3 fold{};
+    };
+    std::vector<PlaneState> planeStates;
+    bool foldActive = false;  ///< the current plane is affine with a fold other than the identity
+    Mat2x3 planeFold{};
+    /// T-700: the viewport the affine test uses (the list's, logical px) for the render in progress.
+    Rect planeViewport{};
 
     // --- T-343 Direct target mode (Docs/design/23-host-integration.md §23.aa, 10 §10.9) -------
     // The host's canvas is its scene: never cleared here, read by the scene runs. The paint order
@@ -336,15 +348,22 @@ struct SwRenderer::Impl {
                 break;
         }
         switch (cmd.kind) {
-            case CmdKind::FillPath:
-                fillPath(list, list.fills[cmd.index], dpr);
+            // T-700: on an affine plane the commands with a transform are drawn as 2D commands with
+            // the fold premultiplied (planeCommand).
+            case CmdKind::FillPath: {
+                FillCmd tmp;
+                fillPath(list, planeCommand(list.fills[cmd.index], tmp), dpr);
                 break;
-            case CmdKind::StrokePath:
-                strokePath(list, list.strokes[cmd.index], dpr);
+            }
+            case CmdKind::StrokePath: {
+                StrokeCmd tmp;
+                strokePath(list, planeCommand(list.strokes[cmd.index], tmp), dpr);
                 break;
+            }
             case CmdKind::PushClipRect: {
                 PerfFieldScope clipScope(timer(&FrameStats::swClipMs));
-                const ClipRectCmd& c = list.clipRects[cmd.index];
+                ClipRectCmd tmp;
+                const ClipRectCmd& c = planeCommand(list.clipRects[cmd.index], tmp);
                 Mat2x3 deviceXf = mul(deviceScale(dpr), c.xf);
                 Box pixelBox;
                 if (!projecting() && pixelAlignedRect(deviceXf, c.rect, pixelBox)) {
@@ -370,7 +389,8 @@ struct SwRenderer::Impl {
             }
             case CmdKind::PushClipPath: {
                 PerfFieldScope clipScope(timer(&FrameStats::swClipMs));
-                const ClipPathCmd& c = list.clipPaths[cmd.index];
+                ClipPathCmd tmp;
+                const ClipPathCmd& c = planeCommand(list.clipPaths[cmd.index], tmp);
                 Mat2x3 deviceXf = mul(deviceScale(dpr), c.xf);
                 std::vector<uint8_t> newMask = acquireMask();
                 Box shape;
@@ -431,13 +451,15 @@ struct SwRenderer::Impl {
             // T-263d: an asset command's ids are those of its own source's IR -- the list's
             // CommandSource entry, or `ir` when the list names none (sourceIr()).
             case CmdKind::DrawImage: {
-                const ImageCmd& c = list.images[cmd.index];
+                ImageCmd tmp;
+                const ImageCmd& c = planeCommand(list.images[cmd.index], tmp);
                 drawImageCmd(list, c, dpr, assets, sourceIr(list, c.source, ir));
                 break;
             }
             case CmdKind::DrawGlyphs: {
                 PerfFieldScope textScope(stats != nullptr ? &stats->textMs : nullptr);
-                drawGlyphsCmd(list, list.glyphRuns[cmd.index], dpr, shaper);
+                GlyphsCmd tmp;
+                drawGlyphsCmd(list, planeCommand(list.glyphRuns[cmd.index], tmp), dpr, shaper);
                 break;
             }
             case CmdKind::PushProjection: {
@@ -448,6 +470,9 @@ struct SwRenderer::Impl {
                 mapping.rootXf = c.rootXf;
                 mapping.planeWorld3 = mat4Identity();
                 mappings.push_back(mapping);
+                planeStates.emplace_back();
+                planeViewport = list.viewport;
+                updatePlaneState();  // T-700
                 break;
             }
             case CmdKind::PopProjection:
@@ -457,6 +482,8 @@ struct SwRenderer::Impl {
                 XT_ASSERT(!mappings.empty());
                 if (!mappings.empty()) {
                     mappings.pop_back();
+                    planeStates.pop_back();
+                    syncPlaneFold();  // T-700: the outer level's state as it was computed
                 }
                 break;
             case CmdKind::PushTransform3D:
@@ -464,21 +491,29 @@ struct SwRenderer::Impl {
                 XT_ASSERT(!mappings.empty());
                 if (!mappings.empty()) {
                     mappings.back().planeWorld3 = list.transforms3[cmd.index].world3;
+                    updatePlaneState();  // T-700
                 }
                 break;
             case CmdKind::PopTransform3D:
                 XT_ASSERT(!mappings.empty());
                 if (!mappings.empty()) {
                     mappings.back().planeWorld3 = mat4Identity();
+                    updatePlaneState();  // T-700
                 }
                 break;
             case CmdKind::DrawImageQuad: {
-                const ImageQuadCmd& c = list.imageQuads[cmd.index];
+                ImageQuadCmd c = list.imageQuads[cmd.index];
+                if (foldActive) {
+                    for (Vec2& q : c.p) {
+                        q = apply(planeFold, q);  // T-700: the corners on an affine plane
+                    }
+                }
                 drawImageQuadCmd(c, dpr, assets, sourceIr(list, c.source, ir));
                 break;
             }
             case CmdKind::DrawParticles: {
-                const ParticlesCmd& c = list.particles[cmd.index];
+                ParticlesCmd tmp;
+                const ParticlesCmd& c = planeCommand(list.particles[cmd.index], tmp);
                 drawParticlesCmd(list, c, dpr, assets, sourceIr(list, c.source, ir));
                 break;
             }
@@ -487,9 +522,11 @@ struct SwRenderer::Impl {
                 drawImageMeshCmd(list, c, dpr, assets, sourceIr(list, c.source, ir));
                 break;
             }
-            case CmdKind::DrawBoxShadow:
-                drawBoxShadowCmd(list.boxShadows[cmd.index], dpr);  // T-668
+            case CmdKind::DrawBoxShadow: {
+                BoxShadowCmd tmp;
+                drawBoxShadowCmd(planeCommand(list.boxShadows[cmd.index], tmp), dpr);  // T-668
                 break;
+            }
             // Docs/design/18-effects.md §18.1/§18.5, Docs/tasks/T-53b.md: PushEffect opens a
             // bounded offscreen layer (boundsHint x dpr, clamped to the viewport); PopEffect runs
             // the node's effect stack over it and composites the result back (src-over, opacity
@@ -1093,7 +1130,60 @@ struct SwRenderer::Impl {
         return WriteRegion{intersectBox(clipBounds(), dstBox), currentNeed()};
     }
 
-    bool projecting() const { return !mappings.empty(); }
+    /// T-700 (§10.15 item 2): only a plane whose mapping is not affine is drawn projected; an affine
+    /// plane's content takes the 2D paths with its transform folded (`planeFold`).
+    bool projecting() const { return !mappings.empty() && !planeStates.back().affine; }
+
+    /// True inside any PushProjection (affine plane or not): the partial-redraw skips, which work
+    /// from the commands' own (plane) bounds, stay off there as before T-700.
+    bool inProjection() const { return !mappings.empty(); }
+
+    /// T-700: mirrors the top level's plane state into `foldActive` / `planeFold`.
+    void syncPlaneFold() {
+        foldActive = false;
+        planeFold = Mat2x3{};
+        if (!planeStates.empty() && planeStates.back().affine) {
+            const Mat2x3& f = planeStates.back().fold;
+            foldActive =
+                !(f.a == 1.0f && f.b == 0.0f && f.c == 0.0f && f.d == 1.0f && f.e == 0.0f && f.f == 0.0f);
+            planeFold = foldActive ? f : Mat2x3{};
+        }
+    }
+
+    /// T-700: the affine test of the top level's current plane, once per PushProjection /
+    /// PushTransform3D / PopTransform3D. A level under a non-affine one is never affine.
+    void updatePlaneState() {
+        if (!mappings.empty() && planeStates.size() == mappings.size()) {
+            PlaneState& state = planeStates.back();
+            state = PlaneState{};
+            const bool outerAffine = planeStates.size() < 2 || planeStates[planeStates.size() - 2].affine;
+            const float dpr = currentDpr > 0.0f ? currentDpr : 1.0f;
+            Mat3 h;
+            if (outerAffine && project3d::planeHomography(mappings, h)) {
+                // The pass's viewport: the list's (logical px), else the target's.
+                Rect viewport = planeViewport;
+                if (!(viewport.w > 0.0f && viewport.h > 0.0f)) {
+                    viewport = Rect{0.0f, 0.0f, static_cast<float>(target.width) / dpr,
+                                    static_cast<float>(target.height) / dpr};
+                }
+                state.affine =
+                    project3d::affinePlane(h, viewport, project3d::kAffinePlaneTolerancePx / dpr, state.fold);
+            }
+        }
+        syncPlaneFold();
+    }
+
+    /// T-700: `cmd` as the 2D command an affine plane draws (transform premultiplied by the fold, in
+    /// `tmp`); `cmd` itself when no fold is active.
+    template <class Cmd>
+    const Cmd& planeCommand(const Cmd& cmd, Cmd& tmp) const {
+        if (!foldActive) {
+            return cmd;
+        }
+        tmp = cmd;
+        tmp.xf = mul(planeFold, cmd.xf);
+        return tmp;
+    }
 
     /// Projects every point of `pts` in place (already in "plane space", i.e. deviceXf has already
     /// been applied) through the current mapping stack. Returns false (leaving `pts` partially
@@ -1155,6 +1245,9 @@ struct SwRenderer::Impl {
     /// dpr-scaled xf (the flattening transform); `rawPoints` is the unflattened path's point pool
     /// (fed to boundsOfPoints for the tolerance estimate only).
     float flattenTolerance(const Mat2x3& deviceXf, std::span<const float> rawPoints) const {
+        if (!projecting()) {
+            return kFlattenTolerance;  // T-700: an affine plane flattens as 2D content does
+        }
         return effect_math::flattenTolerance(mappings, deviceXf, rawPoints);
     }
 
@@ -1195,7 +1288,7 @@ struct SwRenderer::Impl {
     /// buffer, which an effect may read in full) and projected ones are never skipped, the same
     /// rule damageSkips() follows.
     bool sectionSkips(const Rect& boundsPx, bool layerFallback) const {
-        if (!partialRedraw || !layers.empty() || projecting()) {
+        if (!partialRedraw || !layers.empty() || inProjection()) {
             return false;
         }
         const int w = target.width;
@@ -1248,7 +1341,7 @@ struct SwRenderer::Impl {
     }
 
     bool damageSkips(const CommandList& list, const Command& cmd, float dpr) {
-        if (!partialRedraw || !layers.empty() || projecting()) {
+        if (!partialRedraw || !layers.empty() || inProjection()) {
             return false;
         }
         Rect box = commandBounds(list, cmd);
@@ -1519,6 +1612,8 @@ struct SwRenderer::Impl {
         }
         layers.resetStack();
         mappings.clear();
+        planeStates.clear();  // T-700
+        syncPlaneFold();
         effectDepth = 0;
         needStack.clear();
     }
@@ -2140,8 +2235,9 @@ struct SwRenderer::Impl {
         Mat2x3 dprXf = deviceScale(dpr);
         Vec2 q[4];
         for (int i = 0; i < 4; ++i) {
-            bool ok = false;
-            q[i] = projectDevicePoint(apply(dprXf, cmd.p[i]), ok);
+            bool ok = true;
+            // T-700: on an affine plane the corners already carry the fold (runCommand).
+            q[i] = projecting() ? projectDevicePoint(apply(dprXf, cmd.p[i]), ok) : apply(dprXf, cmd.p[i]);
             if (!ok) {
                 return;  // §19.7: dropped.
             }
@@ -2179,7 +2275,8 @@ struct SwRenderer::Impl {
         if (view == nullptr) {
             return;
         }
-        const Mat2x3 dprXf = deviceScale(dpr);
+        // T-700: on an affine plane the fold comes before the dpr scale.
+        const Mat2x3 dprXf = foldActive ? mul(deviceScale(dpr), planeFold) : deviceScale(dpr);
         const bool project = projecting();
         meshScratch.resize(cmd.vertexCount);
         for (uint32_t i = 0; i < cmd.vertexCount; ++i) {

@@ -54,6 +54,8 @@ add_library(xt_core STATIC
     src/painter.cpp
     src/particles.cpp
     src/painter_3d.cpp
+    src/painter_world_layers.cpp
+    src/world_layer_output.cpp
     src/painter_element.cpp
     src/hit_test.cpp
     src/event_dispatcher.cpp

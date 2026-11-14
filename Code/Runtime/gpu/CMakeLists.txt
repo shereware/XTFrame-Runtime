@@ -11,6 +11,7 @@ add_library(xt_gpu STATIC
     src/frame_builder.cpp
     src/image_texture.cpp  # T-688: image key + shared texture lookup / upload (Docs/design/50-c-abi.md §50.ae)
     src/coverage_atlas.cpp  # T-660a: R8 coverage atlas (Docs/design/10-backends.md §10.11 item 2)
+    src/world_layers.cpp  # T-701: per-layer targets for world-layer output (Docs/design/33-world-layers.md)
     src/clip_bounds.cpp  # T-663: the clip scan's device bounds (§10.11 ruling 5 final)
 )
 target_include_directories(xt_gpu PUBLIC include)

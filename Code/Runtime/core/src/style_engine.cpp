@@ -206,6 +206,13 @@ float resolveHitSlopLength(float value, LengthUnit unit, float fontSizeSelfPx, f
     }
 }
 
+/// T-702: a TranslateZ Length (translateZ()/translate3d()'s z: px, em or rem; 05.5 rejects `%`) in
+/// px. Not scaled by `ui-scale` (a compiled px translateZ never was); unresolvable -> 0.
+float translateZPx(const Length& len, float fontSizeSelfPx) {
+    float px = 0.0f;
+    return style_decode::lengthToPx(len, fontSizeSelfPx, px) ? px : 0.0f;
+}
+
 /// Applies one non-font-size declaration onto `next` (or, for transform-origin, onto
 /// `originX`/`originY`, staged the same way `next.base` is and committed by the caller). Must run
 /// after the font-size pass so `fontSizeSelfPx` is final.
@@ -225,6 +232,15 @@ void applyGeneralDecl(const IrView& ir, ComputedStyle& next, Length& originX, Le
         // can) is copied straight through, same as the plain-float props above. See
         // Docs/tasks/T-43c.md.
         case prop::TranslateZ:
+            // T-702: translateZ()/translate3d() in 05.5's fixed order compile to a Length decl
+            // (px, em or rem); a px value is its number, em / rem resolve here (they used to be
+            // read as px). The compose path writes a Float.
+            next.base[decl.prop] = Value::ofFloat(
+                decl.valueType == static_cast<uint8_t>(ValueType::Length)
+                    ? translateZPx(Length{irValueF32(decl.value, 0), static_cast<LengthUnit>(decl.value[4])},
+                                   fontSizeSelfPx)
+                    : irValueF32(decl.value, 0));
+            return;
         case prop::AnchorZ:
         case prop::RotationX:
         case prop::RotationY:
@@ -407,6 +423,15 @@ void applyRuntimeDecl(const IrView& ir, const SelectorMatchContext& strings, Com
         // style API) can already carry an already-decoded Float/Vec3 value straight through, same
         // as the plain-float props above. See Docs/tasks/T-43c.md.
         case prop::TranslateZ:
+            // T-702: setStyle("transform: translateZ(20px)") parses in 05.5's fixed order, which
+            // keeps the z as a Length; it used to be dropped here (only a Float, from the compose
+            // path, got through). Resolved as applyGeneralDecl does for the compiled decl.
+            if (value.type == ValueType::Float) {
+                next.base[decl.prop] = value;
+            } else if (value.type == ValueType::Length) {
+                next.base[decl.prop] = Value::ofFloat(translateZPx(value.len, fontSizeSelfPx));
+            }
+            return;
         case prop::AnchorZ:
         case prop::RotationX:
         case prop::RotationY:
@@ -671,6 +696,7 @@ void markNonAnimatableDirty(NodeArena& arena, NodeId node, const ComputedStyle& 
         oldStyle.pointerWatch != next.pointerWatch || oldStyle.cursor != next.cursor ||
         oldStyle.layerOverlay != next.layerOverlay || oldStyle.zIndex != next.zIndex ||
         oldStyle.backgroundImage != next.backgroundImage || oldStyle.backfaceHidden != next.backfaceHidden ||
+        oldStyle.worldLayer != next.worldLayer ||  // T-701 (33 §33.2)
         oldStyle.borderImage != next.borderImage || oldStyle.borderImageRepeat != next.borderImageRepeat ||
         oldStyle.borderImageFill != next.borderImageFill ||
         std::memcmp(oldStyle.borderImageSlice, next.borderImageSlice, sizeof(next.borderImageSlice)) != 0 ||
@@ -2463,6 +2489,12 @@ uint32_t StyleEngine::resolve(NodeArena& arena, float clock) {
                              orientation.v3.x != 0.0f || orientation.v3.y != 0.0f || orientation.v3.z != 0.0f;
                 common.is3D = now3D ? 1 : 0;
                 common.backfaceHidden = next.backfaceHidden;
+                // T-701 (33 §33.2): the world-layer switch. It moves the subtree onto a plane of its
+                // own in world-layer output, so a change recomputes the transforms below it.
+                if (common.worldLayer != next.worldLayer) {
+                    common.worldLayer = next.worldLayer;
+                    arena.markDirty(node, static_cast<uint8_t>(kDirtyTransform | kDirtyTree));
+                }
                 common.flags2 = next.pointerWatch != 0
                                     ? (common.flags2 | kPointerWatch)
                                     : (common.flags2 & ~static_cast<uint32_t>(kPointerWatch));

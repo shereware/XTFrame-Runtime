@@ -12,6 +12,7 @@ add_executable(xt_gpu_tests
     test_box_shadow_truth.cpp  # T-681
     test_gpu_capabilities.cpp  # T-691
     test_gradient_lut.cpp  # T-695
+    test_gpu_world_layers.cpp  # T-703
 )
 target_include_directories(xt_gpu_tests SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/Code/SDKs/doctest)
 target_compile_definitions(xt_gpu_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)
@@ -19,7 +20,8 @@ target_compile_definitions(xt_gpu_tests PRIVATE
     XT_GPU_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/golden"
     # T-267a: a mismatching snapshot's <name>.actual.txt is written here, never into the sources.
     XT_GPU_ACTUAL_DIR="${CMAKE_CURRENT_BINARY_DIR}/actual"
-    XT_GPU_UI_DIR="${PROJECT_SOURCE_DIR}/Tests/golden/ui")
+    XT_GPU_UI_DIR="${PROJECT_SOURCE_DIR}/Tests/golden/ui"
+    XT_EXAMPLES_DIR="${PROJECT_SOURCE_DIR}/Examples")  # T-703
 target_include_directories(xt_gpu_tests PRIVATE ${PROJECT_SOURCE_DIR}/Tests/golden)
 # The 3D case uses Code/Runtime/core/src's internal camera.h (cssPerspectiveViewProj), like Tests/gl/test_gl_3d.cpp.
 target_include_directories(xt_gpu_tests PRIVATE ${PROJECT_SOURCE_DIR}/Code/Runtime/core/src)

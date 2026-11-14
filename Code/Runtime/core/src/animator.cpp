@@ -827,6 +827,17 @@ bool Animator::noteStillValid(const Note& note, const NodeArena& arena) const {
 
 namespace {
 
+/// §19.3: an Element a PropId 16-22 is written to is a 3D layer while the write lasts.
+void forceElement3D(NodeArena& arena, NodeId node) {
+    NodeCommon& common = arena.common(node);
+    if (common.is3D == 0) {
+        common.is3D = 1;
+        arena.markDirty(node, static_cast<uint8_t>(kDirtyTransform | kDirtyTree));
+        arena.markDirtyAncestors(node, static_cast<uint8_t>(kDirtyTree),
+                                 nearestSpaceRootOrDocRoot(arena, node));
+    }
+}
+
 /// T-345: the properties whose animation moves a node (transform, position, inset, margins).
 bool isMotionProp(PropId p) {
     return (p <= prop::Orientation && p != prop::Opacity && p != prop::Visible && p != prop::AutoOrient) ||
@@ -852,6 +863,15 @@ void Animator::noteMotion(NodeArena& arena, NodeId node, PropId p) {
     if ((c.flags2 & kInMotion) == 0) {
         c.flags2 |= kInMotion;
         m_motion.push_back(node);
+    }
+}
+
+void Animator::reassertElement3D(NodeArena& arena) {
+    for (const Pending& p : m_pending) {
+        if (!p.ended && p.prop >= prop::TranslateZ && p.prop <= prop::Orientation && arena.alive(p.node) &&
+            arena.kind(p.node) == NodeKind::Element) {
+            forceElement3D(arena, p.node);
+        }
     }
 }
 
@@ -899,7 +919,7 @@ void Animator::evaluate(float clock, NodeArena& arena) {
                 stopCursor += value.stopCount;
             }
         }
-        m_pending.push_back(Pending{node, prop, value});
+        m_pending.push_back(Pending{node, prop, value, done});
         noteMotion(arena, node, prop);  // T-345
         if (done) {
             if (onTransitionEnd) {
@@ -1100,13 +1120,7 @@ void Animator::evaluate(float clock, NodeArena& arena) {
         // §19.3: a live Track/transition/override on an Element's PropId 16-22 forces is3D = 1
         // (Docs/tasks/T-43c.md). Not cleared here; the next style resolve restores it (19.3).
         if (kind == NodeKind::Element && p.prop >= prop::TranslateZ && p.prop <= prop::Orientation) {
-            NodeCommon& common = arena.common(p.node);
-            if (common.is3D == 0) {
-                common.is3D = 1;
-                arena.markDirty(p.node, static_cast<uint8_t>(kDirtyTransform | kDirtyTree));
-                arena.markDirtyAncestors(p.node, static_cast<uint8_t>(kDirtyTree),
-                                         nearestSpaceRootOrDocRoot(arena, p.node));
-            }
+            forceElement3D(arena, p.node);
         }
         setProperty(arena, p.node, p.prop, p.value);
     }

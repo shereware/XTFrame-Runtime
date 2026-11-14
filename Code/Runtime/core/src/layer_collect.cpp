@@ -49,6 +49,9 @@ void collectLayers(const NodeArena& arena, NodeId child, const Mat4& view, std::
             continue;  // Not drawn/hit-tested (19.4); no layers of interest below it either.
         }
         const NodeCommon& c = arena.common(n);
+        if (c.worldLayerActive != 0) {
+            continue;  // T-701 (33 §33.2): a world layer is painted and hit as a layer of its own.
+        }
         float childAlpha = top.alpha;
         if (c.is3D != 0) {
             Vec3 anchorPt{c.anchor.x, c.anchor.y, c.anchorZ};
@@ -87,10 +90,12 @@ void computeHas3D(const NodeArena& arena, NodeId root, std::vector<uint8_t>& has
     has3D.assign(arena.capacity(), 0);
     arena.traversePostorder(root, [&](NodeId n) {
         const NodeCommon& c = arena.common(n);
-        uint8_t v = c.is3D != 0 ? 1 : 0;
+        uint8_t v = (c.is3D != 0 && c.worldLayerActive == 0) ? 1 : 0;
         for (NodeId ch = arena.firstChild(n); ch != kInvalidNode; ch = arena.nextSibling(ch)) {
-            if (arena.common(ch).isSpaceRoot != 0) {
-                continue;  // Opaque: a nested root's subtree does not count toward its parent's has3D.
+            if (arena.common(ch).isSpaceRoot != 0 || arena.common(ch).worldLayerActive != 0) {
+                // Opaque: a nested root's subtree does not count toward its parent's has3D, and
+                // (T-701) neither does a world layer's.
+                continue;
             }
             if (has3D[ch] != 0) {
                 v = 1;

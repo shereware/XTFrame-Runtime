@@ -51,10 +51,14 @@ void resolveRuleSetVars(RuleSet& ruleSet, const TokenScope& tokens, std::string_
 
 /// Step 4 of Docs/tasks/T-23.md's pipeline: one TimelineBuilder per `@keyframes` block (added to
 /// `writer`), one IrKeyframesRef per block (appended to `style.keyframesRefs`), and the resulting
-/// name -> TimelineId map (used by step 5 to resolve `animation-name`).
+/// name -> TimelineId map (used by step 5 to resolve `animation-name`). T-705: a declaration of a
+/// non-animatable property gets a warning and no track; `timelineName` is the `@timeline` whose
+/// synthesized blocks (`<timelineName>__<path>`) these are, empty for the stylesheet's own
+/// `@keyframes`, so the warning names what the author wrote.
 void emitKeyframesTimelines(const RuleSet& ruleSet, IrWriter& writer, StyleBuilder& style,
                             std::string_view fileName, DiagnosticSink& sink,
-                            std::unordered_map<std::string, TimelineId>& outKeyframesByName);
+                            std::unordered_map<std::string, TimelineId>& outKeyframesByName,
+                            std::string_view timelineName = {});
 
 /// Step 5: expands each rule's grouped selector list into one IrRule per Selector (source order =
 /// expanded index), encodes every declaration, and turns `@font-face` into an ASST Font asset plus

@@ -1,0 +1,53 @@
+<xt version="2">
+
+  <body>
+    <div id="Stage">
+      <!-- Base layer: everything without `world-layer` (the back wall). -->
+      <div id="Wall"></div>
+      <span id="Caption">XTFrame world layers</span>
+
+      <!-- Layer 1: the grid, just in front of the wall. -->
+      <div id="Grid">
+        <div class="gv" id="gv1"></div><div class="gv" id="gv2"></div><div class="gv" id="gv3"></div>
+        <div class="gv" id="gv4"></div><div class="gv" id="gv5"></div><div class="gv" id="gv6"></div>
+        <div class="gv" id="gv7"></div>
+        <div class="gh" id="gh1"></div><div class="gh" id="gh2"></div><div class="gh" id="gh3"></div>
+        <div class="gh" id="gh4"></div>
+      </div>
+
+      <!-- Layer 2: concentric rings; the dashed one turns (this layer is redrawn every frame). -->
+      <div id="Rings">
+        <div id="RingOuter" class="ring"></div>
+        <div id="RingDash" class="ring"></div>
+        <div id="RingInner" class="ring"></div>
+        <div id="RingCore"></div>
+      </div>
+
+      <!-- Layer 3: the main panel, tilted. -->
+      <div id="Panel">
+        <span id="PanelTitle">SECTOR 7 / RELAY</span>
+        <div class="row" id="Row1"><span class="label">Signal</span><div class="track"><div class="fill" id="Fill1"></div></div><span class="num">86</span></div>
+        <div class="row" id="Row2"><span class="label">Power</span><div class="track"><div class="fill" id="Fill2"></div></div><span class="num">54</span></div>
+        <div class="row" id="Row3"><span class="label">Shield</span><div class="track"><div class="fill" id="Fill3"></div></div><span class="num">31</span></div>
+        <button id="Engage">ENGAGE</button>
+      </div>
+
+      <!-- Layer 4: the labels; the whole layer floats along z and flips (only its transform changes: no redraw). -->
+      <div id="Tags">
+        <div class="tag" id="TagA"><div class="pin"></div><span class="tagText">NODE A-12</span></div>
+        <div class="tag" id="TagB"><div class="pin"></div><span class="tagText">UPLINK 3</span></div>
+        <div class="tag" id="TagC"><div class="pin"></div><span class="tagText">DRONE BAY</span></div>
+      </div>
+
+      <!-- Layer 5: the foreground marks; the whole layer pulses (only its opacity changes). -->
+      <div id="Fore">
+        <div class="corner" id="CornerTL"></div><div class="corner" id="CornerTR"></div>
+        <div class="corner" id="CornerBL"></div><div class="corner" id="CornerBR"></div>
+        <div id="Beacon"></div>
+      </div>
+    </div>
+  </body>
+
+  <layout src="stage.layout.xts"/>
+  <style src="stage.xts"/>
+</xt>

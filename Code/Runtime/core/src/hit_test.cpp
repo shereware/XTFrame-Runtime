@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cmath>
 #include <vector>
 
 #include "camera.h"
@@ -157,6 +158,14 @@ HitResult hit3DRoot(const NodeArena& arena, NodeId root, const HitFrame& frame, 
         if (!sec.sorted) {
             // §19.9: "2D 段 -> 既有 2D 命中（posInPlane = s）".
             NodeId child = orderedChildren[sec.firstChild];
+            if (arena.common(child).worldLayerActive != 0) {
+                // T-703 (33 §33.13 item 2): a world layer is hit on its own plane only
+                // (hitWorldLayers). A layer is never 3D-sorted (computeHas3D), so it lands in a 2D
+                // segment of its own; entered here at `s` -- the root plane's point, taken as the
+                // layer's own coordinates since its `world` is identity -- it was hit a second time
+                // at its untransformed place.
+                continue;
+            }
             HitResult hit = hitNode(arena, child, s, mode, /*in3D=*/true, depth + 1);
             if (hit.node != kInvalidNode) {
                 return hit;
@@ -203,7 +212,7 @@ HitResult hit3DRoot(const NodeArena& arena, NodeId root, const HitFrame& frame, 
         for (size_t k = sec.childCount; k-- > 0;) {
             NodeId child = orderedChildren[sec.firstChild + k];
             const NodeCommon& cc = arena.common(child);
-            if (cc.is3D != 0 && cc.isSpaceRoot == 0) {
+            if ((cc.is3D != 0 && cc.isSpaceRoot == 0) || cc.worldLayerActive != 0) {
                 continue;
             }
             HitResult hit2d = hitNode(arena, child, s, mode, /*in3D=*/true, depth + 1);
@@ -246,6 +255,9 @@ HitResult hitNode(const NodeArena& arena, NodeId node, Vec2 pos, HitMode mode, b
             continue;  // Scene nodes and Text are never individually hit (08.2).
         }
         const NodeCommon& cc = arena.common(child);
+        if (cc.worldLayerActive != 0) {
+            continue;  // T-701 (33 §33.6): a world layer is hit on its own plane (hitWorldLayers).
+        }
         if (in3D && cc.is3D != 0 && cc.isSpaceRoot == 0) {
             // A 3D layer (not itself a root): belongs to some sorted segment's own candidate
             // list, tested independently by hit3DRoot() with its own ray-plane intersection --
@@ -290,6 +302,9 @@ void collectOverlays(const NodeArena& arena, NodeId root, std::vector<NodeId>& o
         if (arena.element(node).style.display == Display::None || c.visible == 0) {
             continue;
         }
+        if (node != root && c.worldLayerActive != 0) {
+            continue;  // T-701: inside a world layer an overlay is hit in place, on its plane.
+        }
         if (node != root && (c.flags2 & kLayerOverlay) != 0) {
             out.push_back(node);
         }
@@ -303,9 +318,136 @@ void collectOverlays(const NodeArena& arena, NodeId root, std::vector<NodeId>& o
     }
 }
 
+/// T-701 (33 §33.6): one world layer the ray may hit.
+struct LayerCandidate {
+    NodeId node = kInvalidNode;  ///< kInvalidNode = the base layer
+    uint32_t order = 0;          ///< paint order (0 = the base layer)
+    float t = 0;                 ///< ray parameter of the plane point
+    Vec2 q{};                    ///< the plane point, layer coordinates
+};
+
+/// T-701: every world layer under `root` in paint order (the Painter's queue order: a layer met
+/// inside another comes right after it), skipping what is not displayed.
+void collectWorldLayers(const NodeArena& arena, NodeId root, std::vector<NodeId>& out) {
+    std::vector<NodeId> stack{root};
+    std::vector<NodeId> children;
+    while (!stack.empty()) {
+        const NodeId node = stack.back();
+        stack.pop_back();
+        if (!arena.alive(node) || arena.kind(node) != NodeKind::Element) {
+            continue;
+        }
+        const NodeCommon& c = arena.common(node);
+        if (arena.element(node).style.display == Display::None || c.visible == 0) {
+            continue;
+        }
+        if (c.worldLayerActive != 0) {
+            out.push_back(node);
+        }
+        sortedElementChildren(arena, node, children);
+        for (size_t i = children.size(); i-- > 0;) {
+            stack.push_back(children[i]);
+        }
+    }
+}
+
+/// The base layer's hit test: the ordinary one (overlays first, then the tree), which no longer
+/// enters a world layer.
+HitResult hitBaseLayer(const NodeArena& arena, NodeId root, Vec2 pos, HitMode mode) {
+    std::vector<NodeId> overlays;
+    collectOverlays(arena, root, overlays);
+    for (size_t i = overlays.size(); i-- > 0;) {
+        HitResult hit = hitNode(arena, overlays[i], pos, mode);
+        if (hit.node != kInvalidNode) {
+            return hit;
+        }
+    }
+    return hitNode(arena, root, pos, mode);
+}
+
+/// T-701 (33 §33.6): the hit test of world-layer output. The ray `origin` + t `dir` (root-box
+/// coordinates) is intersected with every layer's plane; the layers are then tried from the
+/// nearest (smallest t >= 0) to the farthest -- coplanar ones last painted first -- each with the
+/// ordinary 2D hit test at its own plane point. A layer with `backface-visibility: hidden` is not
+/// hit from behind.
+HitResult hitWorldLayers(const NodeArena& arena, NodeId root, Vec3 origin, Vec3 dir, HitMode mode) {
+    std::vector<NodeId> layers;
+    collectWorldLayers(arena, root, layers);
+    std::vector<LayerCandidate> candidates;
+    candidates.reserve(layers.size() + 1);
+    const Vec3 p1{origin.x + dir.x, origin.y + dir.y, origin.z + dir.z};
+    auto consider = [&](NodeId node, uint32_t order, const Mat4& world3, bool backfaceHidden) {
+        Mat4 inv{};
+        if (!mat4Invert(world3, inv)) {
+            return;
+        }
+        const Vec3 q0 = mat4Transform(inv, origin);
+        const Vec3 q1 = mat4Transform(inv, p1);
+        if (q0.z == q1.z) {
+            return;  // parallel to the plane
+        }
+        const float t = q0.z / (q0.z - q1.z);
+        if (!(t >= 0.0f)) {
+            return;  // behind the ray's origin
+        }
+        if (backfaceHidden && !(q0.z > q1.z)) {
+            return;  // the ray reaches the plane from its back
+        }
+        candidates.push_back(
+            LayerCandidate{node, order, t, Vec2{q0.x + (q1.x - q0.x) * t, q0.y + (q1.y - q0.y) * t}});
+    };
+    if (arena.common(root).worldLayerActive == 0) {
+        consider(kInvalidNode, 0, mat4Identity(), false);
+    }
+    for (size_t i = 0; i < layers.size(); ++i) {
+        const NodeCommon& c = arena.common(layers[i]);
+        consider(layers[i], static_cast<uint32_t>(i + 1), c.world3, c.backfaceHidden != 0);
+    }
+    // Nearest first; planes the ray meets at the same place (within a tolerance) count as coplanar
+    // and the one painted last is on top. An insertion sort: "within a tolerance" is not a strict
+    // weak order, which std::sort requires, and the layers are few.
+    const auto before = [](const LayerCandidate& a, const LayerCandidate& b) {
+        const float tolerance = 1e-4f * std::max(1.0f, std::max(std::fabs(a.t), std::fabs(b.t)));
+        if (std::fabs(a.t - b.t) > tolerance) {
+            return a.t < b.t;
+        }
+        return a.order > b.order;
+    };
+    for (size_t i = 1; i < candidates.size(); ++i) {
+        const LayerCandidate moved = candidates[i];
+        size_t j = i;
+        for (; j > 0 && before(moved, candidates[j - 1]); --j) {
+            candidates[j] = candidates[j - 1];
+        }
+        candidates[j] = moved;
+    }
+    for (const LayerCandidate& candidate : candidates) {
+        const HitResult hit = candidate.node == kInvalidNode
+                                  ? hitBaseLayer(arena, root, candidate.q, mode)
+                                  : hitNode(arena, candidate.node, candidate.q, mode);
+        if (hit.node != kInvalidNode) {
+            return hit;
+        }
+    }
+    return HitResult{};
+}
+
 }  // namespace
 
+HitResult hitTestRay(const NodeArena& arena, NodeId root, Vec3 origin, Vec3 direction, HitMode mode) {
+    return hitWorldLayers(arena, root, origin, direction, mode);
+}
+
 HitResult hitTestDetailed(const NodeArena& arena, NodeId root, Vec2 pos, HitMode mode) {
+    // T-701 (33 §33.6): in world-layer output every hit test is a ray -- the pointer's own when
+    // `pos` is the position it was pushed with, else straight down -z through `pos`.
+    const NodeArena::WorldLayerState& layerState = arena.worldLayerState();
+    if (layerState.output) {
+        if (layerState.rayValid && pos.x == layerState.rayPos.x && pos.y == layerState.rayPos.y) {
+            return hitWorldLayers(arena, root, layerState.rayOrigin, layerState.rayDir, mode);
+        }
+        return hitWorldLayers(arena, root, Vec3{pos.x, pos.y, kWorldLayerOrthoRayZ}, Vec3{0, 0, -1}, mode);
+    }
     // T-194 (08.9): overlays hit first -- the last painted first -- without their ancestors'
     // overflow clip (their world transform already places them).
     std::vector<NodeId> overlays;

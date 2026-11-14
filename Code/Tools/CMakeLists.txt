@@ -167,6 +167,7 @@ if(XT_BUILD_SHELL AND EXISTS "${xt_tools_backends_dir}/view/main.cpp")
     add_executable(xtframe-view
         ${xt_tools_backends_dir}/view/main.cpp
         ${xt_tools_backends_dir}/view/view_renderer.cpp
+        ${xt_tools_backends_dir}/view/view_layers.cpp  # T-701: --layers / --layers-view
     )
     target_include_directories(xtframe-view PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Common)
     # xt_bundle (T-135, T-213): Bundle and UI Project inputs are read through xt_bundle (a UI

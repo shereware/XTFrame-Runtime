@@ -56,4 +56,25 @@ bool isBackface(std::span<const Mapping> stack, const Mat2x3& xf, Vec2 anchor);
 /// Returns identity if any of the five sample projections (center + 4 offsets) fails.
 Mat2x3 jacobianAt(std::span<const Mapping> stack, const Mat2x3& xf, Vec2 anchor);
 
+/// Docs/design/10-backends.md §10.15 item 1 (T-700): the largest screen deviation, in device px,
+/// that still lets a plane count as affine.
+inline constexpr float kAffinePlaneTolerancePx = 1.0f / 64.0f;
+
+/// §10.15 item 1 (T-700): the current plane's mapping -- the whole `stack` (outermost first) with
+/// every level's `viewProj * planeWorld3` restricted to its plane's z = 0 and followed by its
+/// `rootXf` -- as one 3x3 homography from plane coordinates (`xf` space, logical px) to the screen
+/// (logical px), column vectors (x, y, 1). Returns false (`out` unspecified) when a level's own
+/// homogeneous term at its plane origin is not above 1e-6 or a value is not finite; such a plane
+/// is never treated as affine. Does not allocate.
+bool planeHomography(std::span<const Mapping> stack, Mat3& out);
+
+/// §10.15 item 1 (T-700): true when the homography `h` (planeHomography's) is affine over
+/// `viewport` (screen rectangle, the units of `h`'s output): its homogeneous term w is positive and,
+/// for every screen point of `viewport`, the variation of w across the plane moves the projected
+/// point by less than `tolerance` (same units) from where the constant-w affine map puts it. An
+/// exactly constant w (no x, y terms: the root plane, translateZ / scale / rotateZ layers) is
+/// affine whatever `viewport` is. On true, `out` is `h` divided by its constant w (the folded 2D
+/// transform). Does not allocate.
+bool affinePlane(const Mat3& h, Rect viewport, float tolerance, Mat2x3& out);
+
 }  // namespace xt::project3d

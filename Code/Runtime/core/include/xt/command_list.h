@@ -556,6 +556,48 @@ struct CommandSource {
     uint32_t loadSerial;
 };
 
+/// T-701 (Docs/design/33-world-layers.md §33.2-§33.5): one layer of a list painted in world-layer
+/// output (Context::setWorldLayerOutput). The list is then a sequence of self-contained command
+/// ranges, one per entry of CommandList::worldLayers and in that order: every range balances its
+/// own clips / layers / masks / effects / projections and draws into a target of its own whose
+/// logical pixel (0, 0) is `rect`'s top-left corner (the range of a layer other than the base one
+/// is wrapped in a PushProjection whose `rootXf` is that translation, viewProj identity, so its
+/// plane is affine: Docs/design/10-backends.md §10.15). Not a command: no CmdKind was added, a
+/// backend that knows nothing of world layers finds an ordinary, valid list (whose ranges it would
+/// draw on top of one another, which is why world-layer output is asked for explicitly).
+struct WorldLayerRange {
+    /// The element whose `world-layer` switch made the layer (its NodeId, stable across frames);
+    /// 0 = the base layer, everything no switch covers.
+    uint32_t id = 0;
+    /// Paint order among the layers of one Document (0 = the base layer); the host's tie-break for
+    /// coplanar layers (33 §33.2 item 4).
+    uint32_t order = 0;
+    /// Commands [`firstCommand`, `firstCommand` + `commandCount`) of the list.
+    uint32_t firstCommand = 0;
+    uint32_t commandCount = 0;
+    /// Layer plane -> the Document root's box (logical px; x right, y down, +z toward the design-
+    /// time viewer, 19 §19.2). Every ancestor's 2D and 3D transform applied; no camera, no
+    /// `perspective`. Identity for the base layer.
+    Mat4 world3 = mat4Identity();
+    /// What the layer's target covers on the layer plane, logical px: the content's bounds with
+    /// the effects' expansion, grown outward to multiples of kWorldLayerRectStep (33 §33.4 item 2).
+    /// The base layer: the viewport.
+    Rect rect{};
+    /// The opacity the host applies to the whole layer: the element's own times its ancestors'
+    /// (33 §33.5 item 3). Not drawn into the layer's commands, so a fade redraws nothing.
+    float opacity = 1.0f;
+    /// CSS `backface-visibility: hidden` of the layer's element.
+    uint8_t backfaceHidden = 0;
+    uint8_t _pad = 0;  ///< Padding, unused (0).
+    /// Which entry of CommandList::sources (which Document) the layer belongs to; 0 in a list that
+    /// names no source. `id` is only unique within one Document.
+    uint16_t source = 0;
+};
+
+/// T-701 (33 §33.4 item 2): WorldLayerRange::rect is grown to multiples of this many logical px,
+/// so a layer whose content moves a little keeps its target size.
+inline constexpr float kWorldLayerRectStep = 32.0f;
+
 /// The single interface between xt_core and a rendering backend. See
 /// Docs/design/09-command-list.md §9.1-9.2.
 struct CommandList {
@@ -651,6 +693,10 @@ struct CommandList {
     /// Direct backend may also cache what the scene readers produced. Not serialized; clear()
     /// leaves it.
     bool sceneStatic = false;
+    /// T-701 (33 §33.2): the layers of a list painted in world-layer output, in paint order (see
+    /// WorldLayerRange); empty for every other list. Not serialized by the baked format; clear()
+    /// empties it.
+    std::vector<WorldLayerRange> worldLayers;
 
     /// Clears every vector (capacity retained), `structureChecked` and `frameSerial`; leaves
     /// viewport/devicePixelRatio, `hostTargetMode` and `sceneStatic` untouched.

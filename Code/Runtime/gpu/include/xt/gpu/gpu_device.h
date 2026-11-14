@@ -203,6 +203,51 @@ public:
     /// (`FrameBuilder::BuildStats::boxShadowSkipped`) and reported once in `lastError`. Asked once
     /// per build.
     virtual bool supportsBoxShadowShading() const { return false; }
+
+    // -- World layers (T-701, Docs/design/33-world-layers.md §33.8). Appended with default
+    //    implementations: a device that says nothing has no layer targets, and
+    //    gpu::WorldLayerBuilder reports that world-layer output is not supported on it. --
+
+    /// A persistent `w x h` Rgba8 color target (premultiplied alpha) for world layer `layerId` (the
+    /// WorldLayerRange id; a hint for the device's own bookkeeping and debug names -- several
+    /// Documents may use the same id). Its content survives across frames and is replaced only by
+    /// `submitLayer`; the handle is sampled like an uploaded texture (`Shading::Texture`, row 0 =
+    /// top) and is what the host draws the layer's quad with. Returns 0 when the device has no layer
+    /// targets (the default) or cannot allocate. Never called from within `submit`.
+    virtual TextureHandle acquireLayerTarget(uint32_t layerId, uint16_t w, uint16_t h) {
+        (void)layerId;
+        (void)w;
+        (void)h;
+        return 0;
+    }
+
+    /// T-703 (33 §33.13 item 4): `acquireLayerTarget` with what the layer's frames need. `stencil`
+    /// false: no command of the frames `submitLayer` will draw into it reads or writes the stencil
+    /// (every one is `StencilOp::None` or `TestEqualRef` at clip depth 0), so the device may draw
+    /// them without a stencil attachment; true: they need one, as `acquireLayerTarget`'s target
+    /// always had. gpu::WorldLayerBuilder calls only this one, and when the need changes it
+    /// releases the target and acquires a new one (the layer is drawn again). The default forwards
+    /// to `acquireLayerTarget`, so a device that implements only the three functions above keeps
+    /// working unchanged (with a stencil attachment for every layer, as before).
+    virtual TextureHandle acquireLayerTargetWithStencil(uint32_t layerId, uint16_t w, uint16_t h,
+                                                        bool stencil) {
+        (void)stencil;
+        return acquireLayerTarget(layerId, w, h);
+    }
+
+    /// Releases a target from `acquireLayerTarget` / `acquireLayerTargetWithStencil`. Ignores 0.
+    /// Never called from within `submit`.
+    virtual void releaseLayerTarget(TextureHandle target) { (void)target; }
+
+    /// `submit(frame)` with `target` (from `acquireLayerTarget(WithStencil)`; `frame.targetWidth` x
+    /// `frame.targetHeight` is its size) in the place of the output surface: the target is cleared
+    /// to transparent black, then the frame is drawn into it, single-sampled or resolved. The
+    /// device's own surface (its size, its bound target, what it keeps of the last frame) is as
+    /// before afterwards. The default draws nothing.
+    virtual void submitLayer(TextureHandle target, const GpuFrame& frame) {
+        (void)target;
+        (void)frame;
+    }
 };
 
 }  // namespace xt::gpu

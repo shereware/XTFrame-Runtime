@@ -596,11 +596,20 @@ void Painter::paint(const NodeArena& arena, NodeId root, CommandList& out) {
     const size_t firstMesh = out.imageMeshes.size();
     const size_t firstEffect = out.effectCmds.size();
 
+    m_layerQueue.clear();
+    m_layerInsertPos = 0;
+    m_layerEntering = kInvalidNode;
+    m_layerWrapDepth = 0;
+    m_worldLayerClamped = false;
     m_stack.clear();
-    m_stack.push_back(Action{Action::Kind::EnterNode, root, 1.0f, MaskMode::Alpha});
-    runStack(arena, out);
-    paintOverlays(arena, out);  // T-194 (08.9): `layer: overlay` subtrees, after the root.
-    paintGhost(arena, out);     // T-194 (27.7): the drag ghost on top of everything.
+    if (arena.worldLayerState().output) {
+        paintWorldLayers(arena, root, out);  // T-701 (33): one command range per layer.
+    } else {
+        m_stack.push_back(Action{Action::Kind::EnterNode, root, 1.0f, MaskMode::Alpha});
+        runStack(arena, out);
+        paintOverlays(arena, out);  // T-194 (08.9): `layer: overlay` subtrees, after the root.
+        paintGhost(arena, out);     // T-194 (27.7): the drag ghost on top of everything.
+    }
 
     // T-263d: every asset command appended above carries this document's ids; say whose they are.
     // (Source 0 is what the emitters' value-initialized commands already hold. ShaderRefs are
@@ -792,7 +801,8 @@ void Painter::computeDrawableCount(const NodeArena& arena, NodeId root) {
         // has3D[n]: does n's subtree contain an is3D node -- same rule as layer_collect::
         // computeHas3D (T-44a): a nested 3D space root's own subtree is opaque to this
         // computation (its layers belong to its own, separate projection; see collectLayers()).
-        uint8_t has3D = arena.common(n).is3D != 0 ? 1 : 0;
+        // T-701 (33 §33.2): a world layer is not a 3D layer of the space above it.
+        uint8_t has3D = (arena.common(n).is3D != 0 && arena.common(n).worldLayerActive == 0) ? 1 : 0;
         if (kind == NodeKind::Path) {
             const PathNodeData& p = arena.path(n);
             bool hasFill = p.fill.kind != PaintKind::None;
@@ -861,6 +871,9 @@ void Painter::computeDrawableCount(const NodeArena& arena, NodeId root) {
         }
         arena.forEachChild(n, [&](NodeId c) {
             const NodeCommon& cc = arena.common(c);
+            if (cc.worldLayerActive != 0) {
+                return;  // T-701: drawn in a range of its own, none of this node's content.
+            }
             if (cc.visible != 0 && cc.worldOpacity > 0.0f) {
                 count += m_drawableCount[c];
             }
@@ -878,12 +891,20 @@ void Painter::enterNode(const NodeArena& arena, NodeId n, float inheritedAlpha, 
     if (c.visible == 0 || c.worldOpacity <= 0.0f) {
         return;
     }
+    // T-701 (33 §33.2): a world layer met by the traversal is not painted here; its range comes
+    // after the one being emitted (unless it is the layer that range belongs to).
+    if (c.worldLayerActive != 0 && n != m_layerEntering) {
+        m_layerQueue.insert(m_layerQueue.begin() + static_cast<std::ptrdiff_t>(m_layerInsertPos),
+                            QueuedWorldLayer{n});
+        ++m_layerInsertPos;
+        return;
+    }
     // T-44b (Docs/design/19-3d-space.md §19.5-19.6).
     if (c.isSpaceRoot != 0) {
         emitRoot(arena, n, inheritedAlpha, out);
         return;
     }
-    if (!m_mappingStack.empty() && c.is3D != 0 && n != m_currentLayer) {
+    if (!m_mappingStack.empty() && c.is3D != 0 && n != m_currentLayer && n != m_layerEntering) {
         // Inside a 3D space root's subtree, an is3D node other than "the layer currently being
         // entered" (m_currentLayer, set by the EnterNodeLayer/EnterNode2D action that dispatched
         // here) is a separate layer in the sorted-segment layer list -- not painted from here.
@@ -932,10 +953,12 @@ void Painter::enterNode(const NodeArena& arena, NodeId n, float inheritedAlpha, 
     // since an effect must see the node's un-premultiplied content (its own opacity is folded
     // into the Layer, not into each paint's alpha).
     bool hasFx = hasEnabledEffects(arena, c) && drawable > 0;
+    // T-701: the opacity of the world layer being entered is the host's to apply (ownOpacity()).
+    const float opacity = ownOpacity(n, c);
     bool needsLayer =
-        hasFx ? (c.blend != static_cast<uint8_t>(BlendMode::Normal) || c.opacity < 1.0f)
-              : (c.blend != static_cast<uint8_t>(BlendMode::Normal) || (c.opacity < 1.0f && drawable >= 2));
-    float alpha = needsLayer ? 1.0f : inheritedAlpha * c.opacity;
+        hasFx ? (c.blend != static_cast<uint8_t>(BlendMode::Normal) || opacity < 1.0f)
+              : (c.blend != static_cast<uint8_t>(BlendMode::Normal) || (opacity < 1.0f && drawable >= 2));
+    float alpha = needsLayer ? 1.0f : inheritedAlpha * opacity;
     if (needsLayer) {
         uint32_t idx = static_cast<uint32_t>(out.layers.size());
         // T-133: the tight content AABB, clamped to the viewport, so the SW backend can allocate a
@@ -944,7 +967,7 @@ void Painter::enterNode(const NodeArena& arena, NodeId n, float inheritedAlpha, 
         // root contentScreenBounds ignores it and projects the subtree's corners instead.
         Rect layerBounds =
             clampToViewport(contentScreenBounds(arena, n, c.world, out.viewport), out.viewport);
-        out.layers.push_back(LayerCmd{c.opacity, static_cast<BlendMode>(c.blend), layerBounds});
+        out.layers.push_back(LayerCmd{opacity, static_cast<BlendMode>(c.blend), layerBounds});
         Command push{CmdKind::PushLayer, {}, idx};
         if (c.blend != static_cast<uint8_t>(BlendMode::Normal)) {
             // T-343 (23 §23.aa.2): a blend mode reads what lies below it (on the host scene in
@@ -1857,9 +1880,11 @@ bool Painter::beginBoxShadowCandidate(const NodeArena& arena, NodeId n, float al
     cand.world = c.world;
     BoxShadowJudgeInput& in = cand.input;
     in.effects = std::span<const EffectInstance>(out.effects.data() + ec.effectOffset, ec.effectCount);
-    in.opacity = c.opacity;
+    in.opacity = ownOpacity(n, c);
     in.blend = c.blend;
-    in.in3D = !m_mappingStack.empty() || c.is3D != 0;
+    // T-701: a world layer is drawn unprojected in its own target; its wrapper projection (a
+    // translation) and the 3D transform that only places its plane are no "3D space" here.
+    in.in3D = m_mappingStack.size() > m_layerWrapDepth || (c.is3D != 0 && n != m_layerEntering);
     in.paintAlpha = alpha;
     if (arena.kind(n) == NodeKind::Element) {
         const ElementData& data = arena.element(n);

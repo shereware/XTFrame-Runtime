@@ -3,6 +3,7 @@
 #include <charconv>
 #include <cmath>
 #include <cstring>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -1120,7 +1121,52 @@ std::string IrView::versionError(IrBlob blob) {
            std::to_string(kIrFormatMajor) + "); recompile the source";
 }
 
-Result<IrView> IrView::open(IrBlob blob, IrReadOptions options) {
+/// T-702: the section open() / validate() was in when it rejected the blob, and the check when
+/// the validator names it. Only filled in for openError(); open() passes no note.
+struct IrView::RejectNote {
+    std::string section;
+    std::string detail;
+};
+
+namespace {
+
+/// T-702: a track's ValueType byte as openError() prints it.
+std::string valueTypeText(uint8_t type) {
+    static const char* const kNames[] = {"Float",      "Vec2", "Color",     "Length",  "Path", "Stops",
+                                         "FloatArray", "Enum", "StringRef", "ListRef", "Vec3"};
+    return type < sizeof(kNames) / sizeof(kNames[0]) ? std::string(kNames[type]) : "#" + std::to_string(type);
+}
+
+/// A template so it can take IrView's private RejectNote without naming it.
+template <typename Note>
+void noteSection(Note* note, const char* section) {
+    if (note != nullptr) {
+        note->section = section;
+    }
+}
+
+}  // namespace
+
+std::string IrView::openError(IrBlob blob, IrReadOptions options) {
+    RejectNote note;
+    if (openNoted(blob, options, &note).ok()) {
+        return std::string();
+    }
+    std::string version = versionError(blob);
+    if (!version.empty()) {
+        return version;
+    }
+    if (note.section.empty()) {
+        note.section = "header";
+    }
+    return note.section + ": " + (note.detail.empty() ? std::string("fails validation") : note.detail);
+}
+
+Result<IrView> IrView::open(IrBlob blob, IrReadOptions options) { return openNoted(blob, options, nullptr); }
+
+Status IrView::validate(const IrView& view) { return validateNoted(view, nullptr); }
+
+Result<IrView> IrView::openNoted(IrBlob blob, IrReadOptions options, RejectNote* note) {
     if (blob.data == nullptr || blob.size < sizeof(IrHeader)) {
         return Result<IrView>::error(Status::kInvalidIr);
     }
@@ -1165,6 +1211,11 @@ Result<IrView> IrView::open(IrBlob blob, IrReadOptions options) {
         }
 
         uint32_t type = fourcc(ch->type[0], ch->type[1], ch->type[2], ch->type[3]);
+        if (note != nullptr) {
+            note->section.assign(reinterpret_cast<const char*>(ch->type), 4);
+            note->section += " chunk";
+            note->detail = "malformed, out of order or repeated";
+        }
 
         switch (type) {
             case kChunkSTRT:
@@ -1346,14 +1397,26 @@ Result<IrView> IrView::open(IrBlob blob, IrReadOptions options) {
     }
 
     if (stage != S_DOCT_DONE && stage != S_SRCM_DONE && stage != S_META_DONE) {
+        if (note != nullptr) {
+            note->section = "chunks";
+            note->detail = "a required chunk (STRT, ASST, STYL or DOCT) is missing";
+        }
         return Result<IrView>::error(
             Status::kInvalidIr);  // missing DOCT (also catches missing STRT/ASST/STYL)
     }
     if (offset != blob.size) {
+        if (note != nullptr) {
+            note->section = "chunks";
+            note->detail = "trailing bytes past the last chunk";
+        }
         return Result<IrView>::error(Status::kInvalidIr);  // trailing bytes past the last chunk
     }
+    if (note != nullptr) {
+        note->section.clear();
+        note->detail.clear();
+    }
 
-    Status vs = validate(view);
+    Status vs = validateNoted(view, note);
     if (vs != Status::kOk) {
         return Result<IrView>::error(vs);
     }
@@ -1367,10 +1430,11 @@ Result<IrView> IrView::open(IrBlob blob, IrReadOptions options) {
     return Result<IrView>::ok(std::move(view));
 }
 
-Status IrView::validate(const IrView& view) {
+Status IrView::validateNoted(const IrView& view, RejectNote* note) {
     uint32_t stringCount = view.m_strings.count();
 
     // -- ASST --
+    noteSection(note, "ASST");
     for (const IrAsset& a : view.m_assets.assets()) {
         if (!validStringId(a.name, stringCount)) {
             return Status::kInvalidIr;
@@ -1378,6 +1442,7 @@ Status IrView::validate(const IrView& view) {
     }
 
     // -- STYL --
+    noteSection(note, "STYL");
     const StyleChunk& style = view.m_style;
     for (const IrRule& rule : style.rules()) {
         if (!inPool(rule.selOffset, rule.selCount, style.selectorParts().size())) {
@@ -1449,14 +1514,17 @@ Status IrView::validate(const IrView& view) {
     const uint64_t varFallbackCount = view.m_vars.fallbacks().size();
     const uint64_t calcCount = view.m_calcs.calcs().size();
     // -- CALC / MDIA (T-176) --
+    noteSection(note, "CALC / MDIA");
     if (!validateCalcs(view.m_calcs, stringCount) || !validateMedia(view.m_media, style.rules().size())) {
         return Status::kInvalidIr;
     }
     // -- CLIP (T-332) --
+    noteSection(note, "CLIP");
     if (!validateClipShapes(view.m_clipShapes)) {
         return Status::kInvalidIr;
     }
     // -- GRID (T-338) --
+    noteSection(note, "GRID");
     if (!validateGrid(view.m_grid, stringCount)) {
         return Status::kInvalidIr;
     }
@@ -1470,6 +1538,7 @@ Status IrView::validate(const IrView& view) {
         }
     }
     // -- VARS (T-170) --
+    noteSection(note, "VARS");
     for (const IrVar& var : view.m_vars.tokens()) {
         if (!validateVar(var, stringCount)) {
             return Status::kInvalidIr;
@@ -1528,6 +1597,7 @@ Status IrView::validate(const IrView& view) {
     }
 
     // -- SCEN --
+    noteSection(note, "SCEN");
     for (const SceneChunk& scene : view.m_scenes) {
         if (!validStringId(scene.name(), stringCount)) {
             return Status::kInvalidIr;
@@ -1702,6 +1772,7 @@ Status IrView::validate(const IrView& view) {
     }
 
     // -- TLIN --
+    noteSection(note, "TLIN");
     for (size_t tlIndex = 0; tlIndex < view.m_timelines.size(); ++tlIndex) {
         const TimelineChunk& tl = view.m_timelines[tlIndex];
         // T-257b: TLIN i is SCEN i's timeline (Document::sceneTimeline()); a scene-local track
@@ -1720,12 +1791,27 @@ Status IrView::validate(const IrView& view) {
                 return Status::kInvalidIr;
             }
         }
+        size_t trackIndex = 0;
         for (const IrTrack& track : tl.tracks()) {
-            if (track.target == kInvalidNode) {
+            const size_t thisTrack = trackIndex++;
+            // T-702: openError()'s wording for a rejected track.
+            const auto trackReject = [&](const std::string& what) {
+                if (note != nullptr) {
+                    // T-705: an unknown property ("?") is named by its number instead.
+                    const std::string_view name = propertyName(track.prop);
+                    const std::string prop =
+                        name == "?" ? "prop " + std::to_string(track.prop) : std::string(name);
+                    note->detail = "timeline " + std::to_string(tlIndex) + " (\"" +
+                                   std::string(view.string(tl.name())) + "\") track " +
+                                   std::to_string(thisTrack) + " (" + prop + "): " + what;
+                }
                 return Status::kInvalidIr;
+            };
+            if (track.target == kInvalidNode) {
+                return trackReject("no target node");
             }
             if (track.kfCount < 1 || !inPool(track.kfOffset, track.kfCount, tl.keyframes().size())) {
-                return Status::kInvalidIr;
+                return trackReject("keyframe range outside the timeline");
             }
             std::span<const IrKeyframe> kfs = tl.keyframes().subspan(track.kfOffset, track.kfCount);
             ValueType type = static_cast<ValueType>(track.type);
@@ -1735,7 +1821,8 @@ Status IrView::validate(const IrView& view) {
             // repeat member); any other target is a scene node, which is never an Element.
             const NodeKind targetKind = track.target == kSelfNode ? NodeKind::Element : NodeKind::Group;
             if (!propertyAcceptsValue(targetKind, track.prop, type, LengthUnit::Px)) {
-                return Status::kInvalidIr;
+                return trackReject("value type " + valueTypeText(track.type) +
+                                   " is not one the property takes");
             }
             // T-257b (review of the fuzz_ir fixes): the track's property applies to its target's
             // kind (propertyApplies(), what Animator::evaluate writes through). kSelfNode is the
@@ -1743,17 +1830,17 @@ Status IrView::validate(const IrView& view) {
             // nodes is skipped at run time (Animator::evaluate's localCount check).
             if (track.target == kSelfNode) {
                 if (!propertyApplies(NodeKind::Element, track.prop)) {
-                    return Status::kInvalidIr;
+                    return trackReject("the property does not apply to an element");
                 }
             } else if (tlScene != nullptr && track.target < tlScene->nodes().size() &&
                        !propertyApplies(static_cast<NodeKind>(tlScene->nodes()[track.target].kind),
                                         track.prop)) {
-                return Status::kInvalidIr;
+                return trackReject("the property does not apply to the target node's kind");
             }
             for (size_t k = 0; k < kfs.size(); ++k) {
                 // T-255: a non-finite time would make the keyframe search read past the track.
                 if (!std::isfinite(kfs[k].time) || (k > 0 && !(kfs[k].time > kfs[k - 1].time))) {
-                    return Status::kInvalidIr;
+                    return trackReject("keyframe times are not finite and increasing");
                 }
                 // T-255: a Length keyframe's unit (a neutral marker, slot 0 all ones, has none).
                 // T-257b: and one the property takes (an element translate: px or % only).
@@ -1761,7 +1848,9 @@ Status IrView::validate(const IrView& view) {
                     (!validLengthUnit(kfs[k].value[4]) ||
                      !propertyAcceptsValue(targetKind, track.prop, type,
                                            static_cast<LengthUnit>(kfs[k].value[4])))) {
-                    return Status::kInvalidIr;
+                    return trackReject("keyframe " + std::to_string(k) + " has length unit " +
+                                       std::to_string(kfs[k].value[4]) +
+                                       ", which the property does not take");
                 }
                 if (type == ValueType::Path || type == ValueType::FloatArray) {
                     uint32_t off = irValueU32(kfs[k].value, 0);
@@ -1790,6 +1879,7 @@ Status IrView::validate(const IrView& view) {
     }
 
     // -- DOCT --
+    noteSection(note, "DOCT");
     const DocChunk& doc = view.m_doc;
     for (uint32_t classId : doc.classPool()) {
         if (!validStringId(classId, stringCount)) {
@@ -1884,6 +1974,7 @@ Status IrView::validate(const IrView& view) {
     }
 
     // -- SRCM --
+    noteSection(note, "SRCM");
     if (view.m_sourceMap.present()) {
         for (uint32_t fileName : view.m_sourceMap.fileNames()) {
             if (!validStringId(fileName, stringCount)) {
@@ -1903,6 +1994,7 @@ Status IrView::validate(const IrView& view) {
     }
 
     // -- SYMB --
+    noteSection(note, "SYMB");
     for (const IrSymbolInstance& inst : view.m_symbols.instances()) {
         if (inst.symbol >= stringCount || inst.instanceElement >= elements.size()) {
             return Status::kInvalidIr;
@@ -1915,6 +2007,7 @@ Status IrView::validate(const IrView& view) {
     }
 
     // -- META --
+    noteSection(note, "META");
     if (view.m_meta.present()) {
         const IrMeta& meta = *view.m_meta.meta();
         if (!validStringId(meta.sourceFile, stringCount) ||
@@ -1924,6 +2017,7 @@ Status IrView::validate(const IrView& view) {
     }
 
     // -- STAT (T-174) --
+    noteSection(note, "STAT");
     const CustomStateChunk& states = view.m_customStates;
     if (states.names().size() > kMaxCustomStates) {
         return Status::kInvalidIr;
@@ -1942,6 +2036,7 @@ Status IrView::validate(const IrView& view) {
     }
 
     // -- PORT (T-175) --
+    noteSection(note, "PORT");
     const PortChunk& portChunk = view.m_ports;
     const uint64_t portCount = portChunk.ports().size();
     for (const IrPort& port : portChunk.ports()) {
@@ -2091,6 +2186,7 @@ Status IrView::validate(const IrView& view) {
     };
 
     // -- TRIG (T-174) --
+    noteSection(note, "TRIG");
     const TriggerChunk& trig = view.m_triggers;
     if (!validSteps(trig.conditions(), 0)) {
         return Status::kInvalidIr;
@@ -2209,6 +2305,7 @@ Status IrView::validate(const IrView& view) {
     }
 
     // -- STRS (T-179) --
+    noteSection(note, "STRS");
     const LocalizationChunk& l10n = view.m_localization;
     if (l10n.present()) {
         for (uint32_t key : l10n.keys()) {
@@ -2245,6 +2342,7 @@ Status IrView::validate(const IrView& view) {
     }
 
     // -- BIND (T-175) --
+    noteSection(note, "BIND");
     const BindingChunk& binds = view.m_bindings;
     for (const IrBinding& b : binds.bindings()) {
         const BindTarget target = static_cast<BindTarget>(b.target);
@@ -2283,6 +2381,7 @@ Status IrView::validate(const IrView& view) {
     }
 
     // -- RPT (T-177) --
+    noteSection(note, "RPT");
     const RepeatChunk& rpt = view.m_repeats;
     // T-391: the row whose template contains row `i`'s `<repeat>` element (the innermost), or -1.
     auto enclosingRow = [&](size_t i) -> int64_t {
@@ -2368,6 +2467,7 @@ Status IrView::validate(const IrView& view) {
     }
 
     // -- SHDR (T-203) --
+    noteSection(note, "SHDR");
     const ShaderChunk& shdr = view.m_shaders;
     if (shdr.present()) {
         const size_t textSize = shdr.text().size();
@@ -2396,6 +2496,7 @@ Status IrView::validate(const IrView& view) {
     }
 
     // -- TGRP (T-172) --
+    noteSection(note, "TGRP");
     const TimelineGroupChunk& groups = view.m_timelineGroups;
     if (groups.present()) {
         for (const IrTimelineGroup& g : groups.groups()) {

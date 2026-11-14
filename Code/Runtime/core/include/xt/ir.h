@@ -659,6 +659,12 @@ public:
     /// at all or its major is the supported one (open() may still reject it for another reason).
     static std::string versionError(IrBlob blob);
 
+    /// T-702: why open(`blob`, `options`) rejects it, for a tool's load-failure message: an empty
+    /// string when open() accepts the blob; versionError() when that names the reason; otherwise
+    /// the chunk or section that fails and, where the validator names it, the check (e.g. "TLIN:
+    /// timeline 0 ("k") track 0 (TranslateZ): value type Length is not one the property takes").
+    static std::string openError(IrBlob blob, IrReadOptions options = {});
+
     /// Returns the original blob this view was opened from.
     IrBlob blob() const { return m_blob; }
 
@@ -763,6 +769,10 @@ public:
     static Status validate(const IrView& view);
 
 private:
+    /// T-702: what open() / validate() rejected, for openError(); defined in ir_view.cpp.
+    struct RejectNote;
+    static Result<IrView> openNoted(IrBlob blob, IrReadOptions options, RejectNote* note);
+    static Status validateNoted(const IrView& view, RejectNote* note);
     // Per-chunk payload parsers (structural bounds checks only, see Docs/tasks/T-03.md rules
     // 1-4). Declared as private members (rather than free functions) so they can write directly
     // into the chunk views' private fields; defined in Code/Runtime/core/src/ir_view.cpp.

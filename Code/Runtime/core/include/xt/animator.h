@@ -228,6 +228,12 @@ public:
     /// destroyed by an earlier callback is dropped; one raised inside a callback (a nested
     /// evaluate()) is delivered by the next evaluate().
     void evaluate(float clock, NodeArena& arena);
+    /// T-702 (19 §19.3): sets is3D = 1 again on every Element the last evaluate() wrote a PropId
+    /// 16-22 to. A style resolve run after evaluate() in the same frame (Document::update's extra
+    /// pass, e.g. for a `forwards` animation that just finished and stays in the pool) re-derives
+    /// is3D from the cascade alone and would draw that frame flat. A transition's final write
+    /// is left to that resolve (the transition is over).
+    void reassertElement3D(NodeArena& arena);
 
     /// Called once when an instance finishes playing (all iterations complete).
     std::function<void(uint32_t id)> onFinished;
@@ -330,6 +336,9 @@ private:
         NodeId node;
         PropId prop;
         Value value;
+        /// T-702: the last write of a transition that ended this frame (reassertElement3D() leaves
+        /// its node to the style resolve, as 19.3 says).
+        bool ended = false;
     };
 
     // Result of evaluating an instance's local-time formula (Docs/design/04-timeline.md §4.5).

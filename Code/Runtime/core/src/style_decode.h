@@ -144,7 +144,11 @@ inline constexpr uint16_t HitSlopTop = 277;
 inline constexpr uint16_t HitSlopRight = 278;
 inline constexpr uint16_t HitSlopBottom = 279;
 inline constexpr uint16_t HitSlopLeft = 280;
-static_assert(HitSlopLeft == kStylePropLast, "update kStylePropLast (ir_pod.h) and 02 §2.12");
+/// 33 §33.2 (T-701, IR minor 1): `world-layer: off | on`: Enum 0 / 1. The element and its subtree
+/// are handed to the host as a layer of their own in world-layer output; ignored otherwise. Not
+/// inherited, not animatable.
+inline constexpr uint16_t WorldLayer = 281;
+static_assert(WorldLayer == kStylePropLast, "update kStylePropLast (ir_pod.h) and 02 §2.12");
 }  // namespace styleprop
 
 /// True if `prop` (a PropId 0-108, or a StyleProp 160-186/188) is an inherited CSS property per 05.4.

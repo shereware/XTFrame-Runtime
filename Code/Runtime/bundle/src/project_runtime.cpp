@@ -4,9 +4,11 @@
 #include <fstream>
 #include <iterator>
 #include <system_error>
+#include <vector>
 
 #include "xt/bundle/ui_project.h"
 #include "xt/compile/utf8_path.h"
+#include "xt/ir.h"
 
 /// The whole-project flow runtime (T-356). See xt/bundle/project_runtime.h.
 
@@ -39,6 +41,7 @@ Status loadUi(const RuntimeUiSource& ui, const ProjectRuntimeOptions& options, C
     const fs::path path = pathFromUtf8(ui.doc);
     const fs::path ext = path.extension();
     Result<DocumentHandle> result{Result<DocumentHandle>::error(Status::kInternal)};
+    std::vector<uint8_t> ir;  // T-702: kept for IrView::openError() when the load fails.
     if (ext == ".xt" || ext == ".json") {
         compile::CompileOptions compileOptions = options.compile;
         if (ext == ".xt") {
@@ -55,12 +58,23 @@ Status loadUi(const RuntimeUiSource& ui, const ProjectRuntimeOptions& options, C
             problems.push_back({ui.id, "failed to compile '" + ui.doc + "'"});
             return Status::kInvalidArgument;
         }
-        result = ctx.loadDocument(IrBlob{compiled.ir.data(), compiled.ir.size()}, /*takeOwnership=*/true);
+        ir = std::move(compiled.ir);
+        result = ctx.loadDocument(IrBlob{ir.data(), ir.size()}, /*takeOwnership=*/true);
     } else {
         result = ctx.loadDocumentFile(ui.doc);
     }
     if (!result.ok()) {
-        problems.push_back({ui.id, "failed to load '" + ui.doc + "' (" + statusName(result.status()) + ")"});
+        // T-702: the validator's reason after the status, as xtframe-view prints it.
+        std::string why;
+        if (result.status() == Status::kInvalidIr) {
+            std::string bytes;
+            if (ir.empty() && readText(ui.doc, bytes)) {
+                ir.assign(bytes.begin(), bytes.end());
+            }
+            why = IrView::openError(IrBlob{ir.data(), ir.size()});
+        }
+        problems.push_back({ui.id, "failed to load '" + ui.doc + "' (" + statusName(result.status()) +
+                                       (why.empty() ? "" : ": " + why) + ")"});
         return result.status();
     }
     handle = result.value();

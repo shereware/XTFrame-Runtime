@@ -81,6 +81,71 @@ Mat4 composeLocal3(const NodeCommon& c) {
     return m;
 }
 
+/// T-701 (Docs/design/33-world-layers.md §33.2 item 3): a node's full local transform as a 4x4 --
+/// §19.2's local3 for a 3D-transformed node, its 2D local embedded on z = 0 otherwise. Unlike
+/// NodeCommon::local it never holds the orthographic flattening world-layer output does away with.
+Mat4 fullLocal(const NodeCommon& c) {
+    if (c.is3D != 0) {
+        return composeLocal3(c);
+    }
+    return mat4FromMat2x3(composeTRSS(c.translate, c.rotation + c.orientPathDeg, c.skew, c.scale, c.anchor));
+}
+
+/// T-701: the transform from `n`'s parent's own coordinates to the document root's box, with every
+/// ancestor's 2D and 3D transform applied and no camera or `perspective` (33 §33.2 item 3). Walks
+/// up to the nearest ancestor that is a world layer itself (whose world3, written earlier in this
+/// same preorder pass, already is that product) or to the top.
+Mat4 worldLayerParentChain(const NodeArena& arena, NodeId n) {
+    Mat4 chain = mat4Identity();
+    for (NodeId a = arena.parent(n); a != kInvalidNode; a = arena.parent(a)) {
+        if (arena.kind(a) == NodeKind::Camera) {
+            continue;
+        }
+        const NodeCommon& ac = arena.common(a);
+        if (ac.worldLayerActive != 0) {
+            return mat4Mul(ac.world3, chain);
+        }
+        chain = mat4Mul(fullLocal(ac), chain);
+    }
+    return chain;
+}
+
+/// T-701 (33 §33.2, sheet item 2): whether the world layer `layer` holds a 3D-transformed node
+/// whose space root lies outside the layer (or does not exist). Such nodes are flattened
+/// orthographically inside the layer: the layer then acts as a camera-less space root. Subtrees of
+/// nested space roots and of nested world layers are not looked into (they bring their own plane).
+bool worldLayerHolds3D(const NodeArena& arena, NodeId layer) {
+    static thread_local std::vector<NodeId> stack;  // no allocation in steady state
+    stack.clear();
+    for (NodeId c = arena.firstChild(layer); c != kInvalidNode; c = arena.nextSibling(c)) {
+        stack.push_back(c);
+    }
+    while (!stack.empty()) {
+        const NodeId n = stack.back();
+        stack.pop_back();
+        const NodeKind kind = arena.kind(n);
+        if (kind == NodeKind::Camera) {
+            continue;
+        }
+        const NodeCommon& c = arena.common(n);
+        if (kind == NodeKind::Element && c.worldLayer != 0) {
+            continue;  // a layer of its own
+        }
+        if (findCameraChild(arena, n) != kInvalidNode ||
+            (kind == NodeKind::Element && arena.element(n).perspectivePx > 0.0f) ||
+            isSceneRootGroup(arena, n)) {
+            continue;  // a space root of its own (or a scene without 3D)
+        }
+        if (c.is3D != 0) {
+            return true;
+        }
+        for (NodeId ch = arena.firstChild(n); ch != kInvalidNode; ch = arena.nextSibling(ch)) {
+            stack.push_back(ch);
+        }
+    }
+    return false;
+}
+
 }  // namespace
 
 /// Recomputes local/world/world3/worldOpacity for `root`'s subtree (root included), and the
@@ -125,6 +190,15 @@ void updateWorldTransforms(NodeArena& arena, NodeId root, bool force) {
     outParentP.assign(cap, mat4Identity());
     outPlaneW3.assign(cap, mat4Identity());
     outInSpace.assign(cap, 0);
+    // T-701 (Docs/design/33-world-layers.md): world-layer output. Off (the default) leaves every
+    // branch below as it was.
+    const bool layerOutput = arena.worldLayerState().output;
+    if (arena.worldLayerState().pendingTransforms) {
+        arena.worldLayerState().pendingTransforms = false;
+        force = true;  // the output was switched: every plane and every space-root flag anew
+    }
+    uint32_t layerCount = 1;  // the base layer
+    bool overLimit = false;
 
     arena.traversePreorder(root, [&](NodeId n) {
         NodeId p = arena.parent(n);
@@ -155,6 +229,37 @@ void updateWorldTransforms(NodeArena& arena, NodeId root, bool force) {
         if (recomputeRootFlag) {
             c.isSpaceRoot = computeIsSpaceRoot(arena, n) ? 1 : 0;
         }
+        // T-701 (33 §33.2): in world-layer output an element with `world-layer: on` is a layer:
+        // its own box becomes a plane origin (`world` identity, children relative to it, like a
+        // space root's) and `world3` maps that plane to the document root's box.
+        bool asWorldLayer = false;
+        if (layerOutput) {
+            if (c.worldLayer != 0 && arena.kind(n) == NodeKind::Element) {
+                if (layerCount < kMaxWorldLayers) {
+                    asWorldLayer = true;
+                    ++layerCount;
+                } else {
+                    overLimit = true;  // 33 §33.2 item 6: treated as off.
+                }
+            }
+            const uint8_t active = asWorldLayer ? 1 : 0;
+            if (c.worldLayerActive != active) {
+                c.worldLayerActive = active;
+                doRecompute = true;
+                recompute[n] = 1;
+            }
+            if (asWorldLayer) {
+                // A 3D node below whose root is outside the layer is flattened inside the layer:
+                // the layer is then a (camera-less) space root. Checked every pass, since an
+                // animation can turn a descendant 3D without touching this node.
+                const uint8_t rootNow = (computeIsSpaceRoot(arena, n) || worldLayerHolds3D(arena, n)) ? 1 : 0;
+                if (c.isSpaceRoot != rootNow) {
+                    c.isSpaceRoot = rootNow;
+                    doRecompute = true;
+                    recompute[n] = 1;
+                }
+            }
+        }
         bool asRoot = c.isSpaceRoot != 0;
         // §19.4: only a node inside a space root's subtree is a 3D layer. A 3D-transformed node with
         // no root above it (an element using rotateX/rotateY/translateZ where no ancestor sets
@@ -162,13 +267,16 @@ void updateWorldTransforms(NodeArena& arena, NodeId root, bool force) {
         // `perspective: none`: its local3 is flattened onto the z = 0 plane and it stays in the
         // ordinary 2D chain, so it keeps its layout position.
         bool parentInSpace = p != kInvalidNode && outInSpace[p] != 0;
-        outInSpace[n] = (asRoot || parentInSpace) ? 1 : 0;
-        bool as3DLayer = !asRoot && c.is3D != 0 && parentInSpace;
-        bool asFlattened3D = !asRoot && c.is3D != 0 && !parentInSpace;
+        outInSpace[n] = (asRoot || (parentInSpace && !asWorldLayer)) ? 1 : 0;
+        bool as3DLayer = !asRoot && !asWorldLayer && c.is3D != 0 && parentInSpace;
+        bool asFlattened3D = !asRoot && !asWorldLayer && c.is3D != 0 && !parentInSpace;
 
         if (doRecompute) {
             c.local = composeTRSS(c.translate, c.rotation + c.orientPathDeg, c.skew, c.scale, c.anchor);
-            if (as3DLayer) {
+            if (asWorldLayer) {
+                c.world3 = mat4Mul(worldLayerParentChain(arena, n), fullLocal(c));
+                c.world = Mat2x3{};  // Identity: the layer's own box is its plane's origin.
+            } else if (as3DLayer) {
                 Mat4 local3 = composeLocal3(c);
                 Mat4 parentP = (p == kInvalidNode) ? mat4Identity() : outParentP[p];
                 c.world3 = mat4Mul(parentP, local3);
@@ -197,7 +305,7 @@ void updateWorldTransforms(NodeArena& arena, NodeId root, bool force) {
         // possibly cached-from-before) state -- children need this whether or not n itself was
         // recomputed this call.
         Mat4 planeIn = (p == kInvalidNode) ? mat4Identity() : outPlaneW3[p];
-        if (asRoot) {
+        if (asRoot || asWorldLayer) {
             outParent2D[n] = Mat2x3{};
             outParentP[n] = mat4Identity();
             outPlaneW3[n] = mat4Identity();
@@ -213,6 +321,9 @@ void updateWorldTransforms(NodeArena& arena, NodeId root, bool force) {
 
         return true;  // always descend: dirty bits may exist deeper even if this node has none
     });
+    if (layerOutput) {
+        arena.worldLayerState().overLimit = overLimit;
+    }
 }
 
 }  // namespace xt

@@ -1,0 +1,221 @@
+/* World layers demo, 1280x720. Five elements carry `world-layer: on` (stage.xts): #Grid, #Rings,
+   #Panel, #Tags and #Fore, each at its own depth (translateZ); #Panel is tilted. In an ordinary
+   (flat) view the same transforms are projected by #Stage's `perspective`; in world-layer output
+   (xtframe-view --layers / --layers-view, a host's UI volume) the perspective is not used and each
+   layer goes out as its own texture with its plane's transform. */
+body {
+  width: 100vw;
+  height: 100vh;
+}
+#Stage {
+  position: relative;
+  width: 1280px;
+  height: 720px;
+  perspective: 2000px;
+}
+#Wall {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 1280px;
+  height: 720px;
+}
+#Caption {
+  position: absolute;
+  left: 48px;
+  top: 660px;
+  width: 480px;
+  height: 28px;
+}
+
+/* Layer 1: the grid. */
+#Grid {
+  position: absolute;
+  left: 96px;
+  top: 72px;
+  width: 1088px;
+  height: 544px;
+  transform: translateZ(30px);
+}
+.gv {
+  position: absolute;
+  top: 0px;
+  width: 1px;
+  height: 544px;
+}
+.gh {
+  position: absolute;
+  left: 0px;
+  width: 1088px;
+  height: 1px;
+}
+#gv1 { left: 0px; }
+#gv2 { left: 181px; }
+#gv3 { left: 362px; }
+#gv4 { left: 543px; }
+#gv5 { left: 724px; }
+#gv6 { left: 905px; }
+#gv7 { left: 1087px; }
+#gh1 { top: 0px; }
+#gh2 { top: 181px; }
+#gh3 { top: 362px; }
+#gh4 { top: 543px; }
+
+/* Layer 2: the rings, centred on (420, 330). */
+#Rings {
+  position: absolute;
+  left: 200px;
+  top: 110px;
+  width: 440px;
+  height: 440px;
+  transform: translateZ(90px);
+}
+.ring {
+  position: absolute;
+}
+#RingOuter {
+  left: 0px;
+  top: 0px;
+  width: 440px;
+  height: 440px;
+}
+#RingDash {
+  left: 50px;
+  top: 50px;
+  width: 340px;
+  height: 340px;
+}
+#RingInner {
+  left: 120px;
+  top: 120px;
+  width: 200px;
+  height: 200px;
+}
+#RingCore {
+  position: absolute;
+  left: 196px;
+  top: 196px;
+  width: 48px;
+  height: 48px;
+}
+
+/* Layer 3: the panel, turned about its own centre and pushed forward. */
+#Panel {
+  position: absolute;
+  left: 660px;
+  top: 150px;
+  width: 440px;
+  height: 380px;
+  transform: translateZ(160px) rotateY(-22deg);
+}
+#PanelTitle {
+  position: absolute;
+  left: 32px;
+  top: 28px;
+  width: 376px;
+  height: 32px;
+}
+.row {
+  position: absolute;
+  left: 32px;
+  width: 376px;
+  height: 36px;
+}
+#Row1 { top: 92px; }
+#Row2 { top: 148px; }
+#Row3 { top: 204px; }
+.label {
+  position: absolute;
+  left: 0px;
+  top: 6px;
+  width: 90px;
+  height: 24px;
+}
+.track {
+  position: absolute;
+  left: 100px;
+  top: 12px;
+  width: 220px;
+  height: 12px;
+}
+.fill {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  height: 12px;
+}
+#Fill1 { width: 189px; }
+#Fill2 { width: 119px; }
+#Fill3 { width: 68px; }
+.num {
+  position: absolute;
+  left: 336px;
+  top: 6px;
+  width: 40px;
+  height: 24px;
+}
+#Engage {
+  position: absolute;
+  left: 32px;
+  top: 292px;
+  width: 376px;
+  height: 56px;
+}
+
+/* Layer 4: the labels. The float animation (stage.xts) moves and turns the whole layer. */
+#Tags {
+  position: absolute;
+  left: 120px;
+  top: 96px;
+  width: 1040px;
+  height: 520px;
+  transform: translateZ(230px);
+}
+.tag {
+  position: absolute;
+  width: 200px;
+  height: 36px;
+}
+#TagA { left: 0px; top: 40px; }
+#TagB { left: 420px; top: 0px; }
+#TagC { left: 300px; top: 470px; }
+.pin {
+  position: absolute;
+  left: 0px;
+  top: 12px;
+  width: 12px;
+  height: 12px;
+}
+.tagText {
+  position: absolute;
+  left: 24px;
+  top: 6px;
+  width: 170px;
+  height: 24px;
+}
+
+/* Layer 5: the foreground marks. */
+#Fore {
+  position: absolute;
+  left: 64px;
+  top: 48px;
+  width: 1152px;
+  height: 624px;
+  transform: translateZ(300px);
+}
+.corner {
+  position: absolute;
+  width: 72px;
+  height: 72px;
+}
+#CornerTL { left: 0px; top: 0px; }
+#CornerTR { left: 1080px; top: 0px; }
+#CornerBL { left: 0px; top: 552px; }
+#CornerBR { left: 1080px; top: 552px; }
+#Beacon {
+  position: absolute;
+  left: 1016px;
+  top: 500px;
+  width: 20px;
+  height: 20px;
+}

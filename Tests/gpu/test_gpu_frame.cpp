@@ -39,6 +39,7 @@
 #include "xt/node_arena.h"
 #include "xt/painter.h"
 #include "xt/perf.h"
+#include "xt/project3d.h"
 #include "xt/scene_instance.h"
 #include "xt/sw/sw_png.h"
 #include "xt/sw/sw_renderer.h"
@@ -3004,6 +3005,84 @@ TEST_CASE("gpu: T-155 a projected but untilted PushClipRect stays a scissor leve
     CHECK(b.frame.cmds[0].clipW == 48);
 }
 
+// T-700 (Docs/design/10-backends.md §10.15): the content of an affine plane takes the 2D paths.
+namespace {
+
+/// A concave fill, a rotated clip over a fill and a convex fill, every transform premultiplied by `m`.
+void addT700Content(CommandList& cl, const Mat2x3& m) {
+    addFillConcave(cl, 6, 6, 30, 24, Color{0.2f, 0.6f, 1, 1}, m);
+    addPushClipRect(cl, Rect{-14, -8, 28, 16}, mul(m, mul(translation(Vec2{44, 44}), rotationDeg(12.0f))));
+    addFillRect(cl, 24, 30, 40, 30, Color{1, 0.5f, 0.2f, 1}, m);
+    addPopClip(cl);
+    addFillRect(cl, 8.25f, 40.5f, 20, 14, Color{0.9f, 0.9f, 0.2f, 1}, m);
+}
+
+}  // namespace
+
+TEST_CASE("gpu: T-700 a perspective root's own plane builds the same frame as 2D content") {
+    CommandList flat = makeList();
+    addT700Content(flat, Mat2x3{});
+    CommandList space = makeList();
+    addPushProjection(space, cssPerspectiveViewProj(1000.0f, Vec2{32, 32}).viewProj);
+    addT700Content(space, Mat2x3{});
+    space.commands.push_back(Command{CmdKind::PopProjection, {}, 0});
+    Built a, b;
+    buildInto(a, flat, 64, 64);
+    buildInto(b, space, 64, 64);
+    std::string dumpFlat, dumpSpace;
+    dumpGpuFrame(a.frame, dumpFlat);
+    dumpGpuFrame(b.frame, dumpSpace);
+    CHECK(coverageCmdCount(b.frame) > 0);              // the concave fill from the coverage atlas
+    CHECK(b.builder.lastClipStats().maskLayers == 1);  // the rotated clip as a 1x mask layer
+    CHECK(dumpFlat == dumpSpace);
+}
+
+TEST_CASE(
+    "gpu: T-700 a translateZ / rotateZ layer folds into the 2D transform, a rotateY layer stays projected") {
+    const Mat4 viewProj = cssPerspectiveViewProj(1000.0f, Vec2{32, 32}).viewProj;
+    auto build = [&](const Mat4& world3, Built& b) {
+        CommandList cl = makeList();
+        addPushProjection(cl, viewProj);
+        addPushTransform3D(cl, world3);
+        addT700Content(cl, Mat2x3{});
+        cl.commands.push_back(Command{CmdKind::PopTransform3D, {}, 0});
+        cl.commands.push_back(Command{CmdKind::PopProjection, {}, 0});
+        buildInto(b, cl, 64, 64);
+    };
+    SUBCASE("translateZ(60px) + rotateZ(10deg): the same frame as the folded 2D transform") {
+        const Mat4 world3 = mat4Mul(mat4Translate(Vec3{0, 0, 60}), mat4RotateZ(10.0f));
+        Built b;
+        build(world3, b);
+        CHECK(coverageCmdCount(b.frame) > 0);
+        CHECK(b.builder.lastClipStats().maskLayers == 1);
+        // The fold the builder takes: planeHomography / affinePlane of the same stack.
+        project3d::Mapping level;
+        level.hasProjection = true;
+        level.viewProj = viewProj;
+        level.planeWorld3 = world3;
+        Mat3 h;
+        REQUIRE(project3d::planeHomography(std::span<const project3d::Mapping>(&level, 1), h));
+        Mat2x3 fold;
+        REQUIRE(project3d::affinePlane(h, Rect{0, 0, 64, 64}, project3d::kAffinePlaneTolerancePx, fold));
+        CHECK(fold.a == doctest::Approx(std::cos(10.0f * 3.14159265f / 180.0f) * 1000.0f / 940.0f));
+        CommandList flat = makeList();
+        addT700Content(flat, fold);
+        Built a;
+        buildInto(a, flat, 64, 64);
+        std::string dumpFlat, dumpSpace;
+        dumpGpuFrame(a.frame, dumpFlat);
+        dumpGpuFrame(b.frame, dumpSpace);
+        CHECK(dumpFlat == dumpSpace);
+    }
+    SUBCASE("rotateY(20deg): the projected paths, frame unchanged by T-700") {
+        Built b;
+        build(mat4RotateY(20.0f), b);
+        CHECK(coverageCmdCount(b.frame) == 0);
+        CHECK(b.builder.lastClipStats().maskLayers == 0);
+        checkSnapshot("t700_rotate_y_plane", b.frame);
+    }
+}
+
 // =================================================================================================
 // PerfTracker and reuse.
 // =================================================================================================
@@ -5805,6 +5884,22 @@ TEST_CASE("gpu: T-663 mask-layer clips nest with each other, with masks and with
         CHECK(b.frame.passes.back().target == 0);
     }
     SUBCASE("under a projection the clip keeps its stencil level") {
+        // T-700: a projected plane (rotateY under a perspective); an affine one is 2D content.
+        CommandList cl = makeList(128, 128);
+        addPushProjection(cl, cssPerspectiveViewProj(400.0f, Vec2{64, 64}).viewProj);
+        cl.projections.back().boundsHint = Rect{0, 0, 128, 128};
+        addPushTransform3D(cl, mat4RotateY(10.0f));
+        addPushClipRect(cl, Rect{-40, -20, 80, 40}, mul(translation(Vec2{64, 64}), rotationDeg(12.0f)));
+        addFillRect(cl, 0, 0, 128, 128, Color{0, 0, 1, 1});
+        addPopClip(cl);
+        cl.commands.push_back(Command{CmdKind::PopTransform3D, {}, 0});
+        cl.commands.push_back(Command{CmdKind::PopProjection, {}, 0});
+        Built b;
+        buildInto(b, cl, 128, 128);
+        CHECK(stencilClipOps(b.frame) > 0);
+        CHECK(maskApplies(b.frame) == 0);
+    }
+    SUBCASE("T-700: on an affine plane (viewProj = I) the clip is a mask layer as in 2D") {
         CommandList cl = makeList(128, 128);
         addPushProjection(cl, mat4Identity());
         cl.projections.back().boundsHint = Rect{0, 0, 128, 128};
@@ -5814,8 +5909,8 @@ TEST_CASE("gpu: T-663 mask-layer clips nest with each other, with masks and with
         cl.commands.push_back(Command{CmdKind::PopProjection, {}, 0});
         Built b;
         buildInto(b, cl, 128, 128);
-        CHECK(stencilClipOps(b.frame) > 0);
-        CHECK(maskApplies(b.frame) == 0);
+        CHECK(stencilClipOps(b.frame) == 0);
+        CHECK(maskApplies(b.frame) == 1);
     }
 }
 

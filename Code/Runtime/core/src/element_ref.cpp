@@ -765,6 +765,8 @@ Value ElementRef::computedStyleValue(uint16_t propOrStyleProp) const {
         case sp::UiScale:  // T-345 (05 §5.9.9): (mode, min, max, effective factor).
             return Value::ofColor(Color{static_cast<float>(style.uiScaleMode), style.uiScaleMin,
                                         style.uiScaleMax, style.uiScaleEff});
+        case sp::WorldLayer:  // T-701 (33 §33.2): 0 off, 1 on.
+            return Value::ofEnum(style.worldLayer);
         case sp::MediaOverride:  // T-345: kMediaOverride*.
             return Value::ofEnum(style.mediaOverride);
         case sp::AppRegion:  // T-376 (05 §5.9.10): 0 none, 1 drag, 2 no-drag.

@@ -652,10 +652,57 @@ void emitMotionTranslateTrack(const KeyframesDef& kdef,
         propOrder.end());
 }
 
+namespace {
+
+/// T-705 (05 §5.4, 02 TLIN): the CSS name of a keyframe / `@timeline` declaration whose property
+/// is not animatable -- a track of it is one no property takes, so the IR would not load -- or an
+/// empty string when it animates. `visibility` animates through the Visible flag (T-229); `effect`
+/// and `order` are handled before this is asked.
+std::string nonAnimatableKeyframeProp(uint16_t prop) {
+    if (prop == styleprop::Visibility) {
+        return {};
+    }
+    if (const PropInfo* info = findPropById(prop)) {
+        return info->animatable ? std::string() : std::string(info->cssName);
+    }
+    if (const PropInfo* svg = findSvgNodePropById(prop)) {
+        return svg->animatable ? std::string() : std::string(svg->cssName);
+    }
+    if (xt::propertyDefined(prop)) {
+        return {};  // A PropId only a shorthand writes (transform components, effect params, ...).
+    }
+    // StyleProps written by a shorthand-parsed property (no longhand table entry).
+    if (prop >= styleprop::HitSlopTop && prop <= styleprop::HitSlopLeft) {
+        return "hit-slop";
+    }
+    if (prop == styleprop::BorderImageSlice) {
+        return "border-image-slice";
+    }
+    if (prop == styleprop::UiScale) {
+        return "ui-scale";
+    }
+    return "property " + std::to_string(prop);
+}
+
+}  // namespace
+
 void emitKeyframesTimelines(const RuleSet& ruleSet, IrWriter& writer, StyleBuilder& style,
                             std::string_view fileName, DiagnosticSink& sink,
-                            std::unordered_map<std::string, TimelineId>& outKeyframesByName) {
+                            std::unordered_map<std::string, TimelineId>& outKeyframesByName,
+                            std::string_view timelineName) {
     for (const KeyframesDef& kdef : ruleSet.keyframes) {
+        // T-705: how a diagnostic names this block -- the `@timeline` and element a synthesized
+        // block (`<timeline>__<path>`) comes from, else the `@keyframes` name.
+        std::string where = "@keyframes \"" + kdef.name + "\"";
+        bool inTimeline = false;
+        if (!timelineName.empty() && kdef.name.size() > timelineName.size() + 2 &&
+            kdef.name.compare(0, timelineName.size(), timelineName) == 0 &&
+            kdef.name.compare(timelineName.size(), 2, "__") == 0) {
+            where = "@timeline \"" + std::string(timelineName) + "\": #" +
+                    kdef.name.substr(timelineName.size() + 2);
+            inTimeline = true;
+        }
+        std::vector<std::string> reportedNonAnimatable;
         TimelineBuilder tb;
         tb.name = writer.intern(kdef.name);
         tb.duration = 1.0f;
@@ -706,6 +753,21 @@ void emitKeyframesTimelines(const RuleSet& ruleSet, IrWriter& writer, StyleBuild
                 sink.warn(std::string(fileName),
                           "@keyframes \"" + kdef.name + "\": \"order\" is not animatable; ignored",
                           stops.begin()->second->line);
+                continue;
+            }
+            // T-705: a non-animatable property is left out with a warning, like `transition`'s
+            // "unknown or non-animatable" one (one warning per property, e.g. `hit-slop`'s four
+            // sides are one).
+            if (const std::string name = nonAnimatableKeyframeProp(propId); !name.empty()) {
+                if (std::find(reportedNonAnimatable.begin(), reportedNonAnimatable.end(), name) ==
+                    reportedNonAnimatable.end()) {
+                    reportedNonAnimatable.push_back(name);
+                    sink.warn(std::string(fileName),
+                              where + ": \"" + name +
+                                  "\" is not animatable; ignored (set it in a style rule, " +
+                                  (inTimeline ? "not in a timeline key)" : "not in a keyframe)"),
+                              stops.begin()->second->line);
+                }
                 continue;
             }
 
@@ -764,6 +826,19 @@ void emitKeyframesTimelines(const RuleSet& ruleSet, IrWriter& writer, StyleBuild
                     // value defensively rather than corrupt the track (a diagnostic was already
                     // reported by encodeDeclValue).
                     continue;
+                }
+                if (propId == xt::prop::TranslateZ && vt == ValueType::Length) {
+                    // T-702: translateZ()/translate3d()'s z and `translate`'s third value reach here
+                    // as a Length (05.5's fixed-order path keeps the unit), but TranslateZ is a
+                    // Float property (19 §19.3): a px stop carries its px float, as a 2D translate
+                    // track does. em / rem cannot be resolved at compile time; `%` never parses.
+                    if (static_cast<xt::LengthUnit>(bytes[4]) != xt::LengthUnit::Px) {
+                        sink.warn(std::string(fileName),
+                                  "@keyframes transform translateZ must use px; stop skipped", declPtr->line);
+                        continue;
+                    }
+                    vt = ValueType::Float;
+                    bytes[4] = 0;
                 }
                 if (isTranslate && vt == ValueType::Length) {
                     // Transform components are Float scene properties (03); a px-only keyframe track
@@ -2277,7 +2352,7 @@ void emitTimelineGroups(const RuleSet& ruleSet, const DomTree& dom, IrWriter& wr
             continue;
         }
 
-        emitKeyframesTimelines(synth, writer, style, fileName, sink, keyframesByName);
+        emitKeyframesTimelines(synth, writer, style, fileName, sink, keyframesByName, def.name);
 
         IrTimelineGroup group{};
         group.name = writer.intern(def.name);

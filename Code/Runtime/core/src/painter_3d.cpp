@@ -75,6 +75,9 @@ Rect Painter::projectionBoundsHint(const NodeArena& arena, NodeId root, Rect vie
             if (c.visible == 0 || c.worldOpacity <= 0.0f || arena.kind(n) == NodeKind::Camera) {
                 continue;  // Not painted; same skip as subtreeBounds().
             }
+            if (c.worldLayerActive != 0) {
+                continue;  // T-701 (33 §33.2): a world layer is drawn in a range of its own.
+            }
             if (c.isSpaceRoot != 0) {
                 // A nested space root paints under its own viewProj, which this mapping stack
                 // does not yet carry; bounding it would mean running its camera setup here. Give
@@ -223,10 +226,12 @@ void Painter::emitRoot(const NodeArena& arena, NodeId root, float inheritedAlpha
     // wraps the whole PushProjection..PopProjection run in a PushLayer/PopLayer pair -- like
     // enterNode()'s needsLayer branch -- so the root's alpha is composited once instead of being
     // folded into every descendant's own paint alpha (09.3's existing rule).
-    bool needsLayer = c.blend != static_cast<uint8_t>(BlendMode::Normal) || c.opacity < 1.0f;
+    // T-701: a world layer's own opacity is the host's to apply (ownOpacity()).
+    const float opacity = ownOpacity(root, c);
+    bool needsLayer = c.blend != static_cast<uint8_t>(BlendMode::Normal) || opacity < 1.0f;
     if (needsLayer) {
         uint32_t layerIdx = static_cast<uint32_t>(out.layers.size());
-        out.layers.push_back(LayerCmd{c.opacity, static_cast<BlendMode>(c.blend), out.viewport});
+        out.layers.push_back(LayerCmd{opacity, static_cast<BlendMode>(c.blend), out.viewport});
         out.commands.push_back(Command{CmdKind::PushLayer, {}, layerIdx});
     }
 
@@ -253,7 +258,7 @@ void Painter::emitRoot(const NodeArena& arena, NodeId root, float inheritedAlpha
     // When needsLayer, the root's own opacity is folded into the PushLayer above instead of into
     // `alpha` (matching enterNode()'s needsLayer branch); otherwise it is folded into `alpha` as
     // before (pushPlan()'s non-layer path).
-    float alpha = needsLayer ? inheritedAlpha : inheritedAlpha * c.opacity;
+    float alpha = needsLayer ? inheritedAlpha : inheritedAlpha * opacity;
 
     NodeKind kind = arena.kind(root);
     bool clip = false;

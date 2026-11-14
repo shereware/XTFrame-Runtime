@@ -204,8 +204,12 @@ struct FrameBuilder::Impl {
 #ifndef XT_GPU_NO_TEXT
     xt::text::GlyphAtlas* glyphAtlas = nullptr;
     /// Device pages of the atlas (R8), created lazily per atlas texture index.
-    TextureHandle atlasTextures[4] = {0, 0, 0, 0};
-    int atlasTextureSize = 0;
+    /// The device textures of the glyph atlas pages: this builder's own, or (T-701) the set several
+    /// builders over one atlas share (FrameBuilder::setGlyphAtlas), which its owner destroys.
+    GlyphAtlasTextures ownAtlasPages;
+    GlyphAtlasTextures* atlasPages = &ownAtlasPages;
+    /// T-701: a build since the last FrameBuilder::takeGlyphAtlasReset() saw the atlas reset or grow.
+    bool atlasResetNoted = false;
     /// Set when the atlas reset during the current build attempt (see build()).
     bool atlasResetSeen = false;
     bool atlasAllowed = true;
@@ -350,6 +354,12 @@ struct FrameBuilder::Impl {
     /// Per-command hashes of the current list, computed on the first cacheable segment.
     std::vector<uint64_t> cmdHashes;
     bool cmdHashesValid = false;
+    /// T-701 (FrameBuilder::buildRange): the commands the build walks -- [rangeFirst, rangeEnd) of
+    /// the list -- and, when positive, the pixel ratio it draws them at instead of the list's.
+    /// The defaults are the whole list at its own ratio.
+    size_t rangeFirst = 0;
+    size_t rangeEnd = static_cast<size_t>(-1);
+    float rangeDpr = 0.0f;
     /// The first `acquireCachedTarget` ever returned 0: the device does not cache (the default
     /// implementation), so segments are neither hashed nor counted as pending.
     bool cacheUnsupported = false;
@@ -440,6 +450,18 @@ struct FrameBuilder::Impl {
     /// (reset by buildOnce; scanClip and clipLocalContent meet the same runs).
     mutable GlyphInkMemo clipInkMemo;  // mutable: clipLocalContent() is const
     std::vector<project3d::Mapping> mappings;
+    /// T-700 (Docs/design/10-backends.md §10.15): per level of `mappings`, whether its current plane
+    /// is affine (project3d::affinePlane) and, if so, the folded 2D transform from plane coordinates
+    /// to logical screen px. The top level's state is mirrored in `foldActive` / `planeFold`.
+    struct PlaneState {
+        bool affine = false;
+        Mat2x3 fold{};
+    };
+    std::vector<PlaneState> planeStates;
+    /// True when the current plane is affine and its fold is not the identity: the commands drawn
+    /// now are drawn as 2D commands whose transforms are premultiplied by `planeFold`.
+    bool foldActive = false;
+    Mat2x3 planeFold{};
 
     /// One clip level. Rect clips that stay axis-aligned become a scissor (no stencil); every
     /// other clip is a stencil level whose geometry is kept so it can be replayed into a newly
@@ -640,11 +662,13 @@ struct FrameBuilder::Impl {
                 releaseImage(entry, true);  // T-648: shared images outlive a detach / trim
             }
 #ifndef XT_GPU_NO_TEXT
-            for (TextureHandle& t : atlasTextures) {
-                device->destroyTexture(t);
-                t = 0;
+            if (atlasPages == &ownAtlasPages) {  // T-701: shared pages are their owner's
+                for (TextureHandle& t : ownAtlasPages.textures) {
+                    device->destroyTexture(t);
+                    t = 0;
+                }
+                ownAtlasPages.size = 0;
             }
-            atlasTextureSize = 0;
 #endif
             releaseCoverageAtlas();
             luts.shutdown();
@@ -795,7 +819,64 @@ struct FrameBuilder::Impl {
     // §19.7 mapping-stack helpers (mirroring xt::sw / xt_gl).
     // ---------------------------------------------------------------------------------------
 
-    bool projecting() const { return !mappings.empty(); }
+    /// T-700 (§10.15 item 2): only a plane whose mapping is not affine is "in a projection"; the
+    /// content of an affine plane takes every 2D path with its transform folded (`planeFold`).
+    bool projecting() const { return !mappings.empty() && !planeStates.back().affine; }
+
+    /// T-700: mirrors the top level's plane state into `foldActive` / `planeFold`.
+    void syncPlaneFold() {
+        foldActive = false;
+        planeFold = Mat2x3{};
+        if (!planeStates.empty() && planeStates.back().affine) {
+            const Mat2x3& f = planeStates.back().fold;
+            foldActive =
+                !(f.a == 1.0f && f.b == 0.0f && f.c == 0.0f && f.d == 1.0f && f.e == 0.0f && f.f == 0.0f);
+            planeFold = foldActive ? f : Mat2x3{};
+        }
+    }
+
+    /// T-700: the affine test of the top mapping level's current plane (computed once per
+    /// PushProjection / PushTransform3D / PopTransform3D, never per command). A level under a
+    /// non-affine one is never affine. Does not allocate (planeStates grows with `mappings`).
+    void updatePlaneState() {
+        if (!mappings.empty() && planeStates.size() == mappings.size()) {
+            PlaneState& state = planeStates.back();
+            state = PlaneState{};
+            const bool outerAffine = planeStates.size() < 2 || planeStates[planeStates.size() - 2].affine;
+            const float dpr = currentDpr > 0.0f ? currentDpr : 1.0f;
+            Mat3 h;
+            if (outerAffine && project3d::planeHomography(mappings, h)) {
+                // The pass's viewport: the list's (logical px), else the surface's.
+                Rect viewport{0.0f, 0.0f, static_cast<float>(targetWidth) / dpr,
+                              static_cast<float>(targetHeight) / dpr};
+                if (list != nullptr && list->viewport.w > 0.0f && list->viewport.h > 0.0f) {
+                    viewport = list->viewport;
+                }
+                state.affine =
+                    project3d::affinePlane(h, viewport, project3d::kAffinePlaneTolerancePx / dpr, state.fold);
+            }
+        }
+        syncPlaneFold();
+    }
+
+    /// T-700: `cmd` as the 2D command an affine plane draws (its transform premultiplied by the
+    /// fold, in `tmp`); `cmd` itself when no fold is active (outside any projection, in a projected
+    /// plane, or on an affine plane whose fold is the identity).
+    template <class Cmd>
+    const Cmd& planeCommand(const Cmd& cmd, Cmd& tmp) const {
+        if (!foldActive) {
+            return cmd;
+        }
+        tmp = cmd;
+        tmp.xf = mul(planeFold, cmd.xf);
+        return tmp;
+    }
+
+    /// T-700: dpr scaling after the fold of an affine plane (DrawImageQuad / DrawImageMesh points).
+    Mat2x3 planeDeviceScale(float dpr) const {
+        const Mat2x3 s = scaling(Vec2{dpr, dpr});
+        return foldActive ? mul(s, planeFold) : s;
+    }
 
     Vec2 projectDevicePoint(Vec2 devicePoint, bool& ok) const {
         const float dpr = currentDpr > 0.0f ? currentDpr : 1.0f;
@@ -2886,7 +2967,7 @@ struct FrameBuilder::Impl {
         if (tex == 0) {
             return;
         }
-        Mat2x3 dprXf = scaling(Vec2{dpr, dpr});
+        Mat2x3 dprXf = planeDeviceScale(dpr);          // T-700: after an affine plane's fold
         const Rect srcUv = textureUv(tex, cmd.srcUv);  // T-686
         Vec2 uv[4] = {
             Vec2{srcUv.x, srcUv.y},
@@ -2943,7 +3024,7 @@ struct FrameBuilder::Impl {
             return;
         }
         const Rect texUv = textureUv(tex, Rect{0, 0, 1, 1});  // T-686: the vertices' uv onto the texture
-        const Mat2x3 dprXf = scaling(Vec2{dpr, dpr});
+        const Mat2x3 dprXf = planeDeviceScale(dpr);           // T-700: after an affine plane's fold
         const uint32_t rgba = packPremultiplied(Color{1, 1, 1, cmd.opacity});
         meshVertexScratch.resize(cmd.vertexCount);
         for (uint32_t i = 0; i < cmd.vertexCount; ++i) {
@@ -3240,7 +3321,7 @@ struct FrameBuilder::Impl {
 
 #ifndef XT_GPU_NO_TEXT
     TextureHandle ensureAtlasTexture(uint16_t index) {
-        TextureHandle& tex = atlasTextures[index];
+        TextureHandle& tex = atlasPages->textures[index];
         if (tex != 0) {
             return tex;
         }
@@ -3248,19 +3329,19 @@ struct FrameBuilder::Impl {
         tex = device->createTexture("xt glyph atlas", static_cast<uint16_t>(std::clamp(size, 0, 65535)),
                                     static_cast<uint16_t>(std::clamp(size, 0, 65535)), TextureFormat::R8,
                                     nullptr);
-        atlasTextureSize = size;
+        atlasPages->size = size;
         return tex;
     }
 
     void uploadPendingAtlas() {
         // T-648: a growing atlas (GlyphAtlas initialSize) changed its page size: the device pages
         // are made again at the new size (the grown pages are wholly pending upload).
-        if (atlasTextureSize != 0 && atlasTextureSize != glyphAtlas->textureSize()) {
-            for (TextureHandle& t : atlasTextures) {
+        if (atlasPages->size != 0 && atlasPages->size != glyphAtlas->textureSize()) {
+            for (TextureHandle& t : atlasPages->textures) {
                 device->destroyTexture(t);
                 t = 0;
             }
-            atlasTextureSize = 0;
+            atlasPages->size = 0;
         }
         glyphAtlas->flushUploads(
             [this](uint16_t texIndex, int x, int y, int w, int h, const uint8_t* pixels, int stride) {
@@ -3372,7 +3453,7 @@ struct FrameBuilder::Impl {
             const bool found =
                 glyphAtlas->lookup(cmd.font, glyphId, sizeDevice, static_cast<float>(phase) * 0.25f, entry);
             if (glyphAtlas->wasReset()) {
-                atlasResetSeen = true;
+                atlasResetSeen = atlasResetNoted = true;
             }
             if (!found || entry.w == 0 || entry.h == 0 || entry.texture >= 4) {
                 continue;
@@ -3511,7 +3592,7 @@ struct FrameBuilder::Impl {
         // Unlike xt_gl (which draws the batch before the repacked atlas is uploaded), a
         // deferred frame cannot draw now: build() restarts the whole frame instead.
         if (glyphAtlas->wasReset()) {
-            atlasResetSeen = true;
+            atlasResetSeen = atlasResetNoted = true;
         }
         if (!found) {
             doOutlineGlyph(cmd.font, glyphId, list->glyphPos[cmd.glyphOffset + i], cmd.size, cmd.xf, dpr,
@@ -4095,6 +4176,10 @@ struct FrameBuilder::Impl {
         clipScanStack.clear();
         clipScanStack.emplace_back(start, ClipScan{});
         int projectionDepth = 0;
+        // T-700: a 3D layer met by the walk (PushTransform3D .. PopTransform3D of this projection) has
+        // a plane of its own: no open range gets a box, and its clips are scanned in their own plane.
+        bool inLayer = false;
+        int layerProjectionDepth = 0;
         for (size_t i = start + 1; i < cl.commands.size(); ++i) {
             const Command& cmd = cl.commands[i];
             if (projectionDepth > 0) {
@@ -4105,7 +4190,26 @@ struct FrameBuilder::Impl {
                 }
                 continue;
             }
+            if (inLayer) {
+                if (cmd.kind == CmdKind::PushProjection) {
+                    ++layerProjectionDepth;
+                } else if (cmd.kind == CmdKind::PopProjection) {
+                    --layerProjectionDepth;
+                } else if (cmd.kind == CmdKind::PopTransform3D && layerProjectionDepth == 0) {
+                    inLayer = false;
+                }
+                continue;
+            }
             ClipScan& top = clipScanStack.back().second;
+            if (cmd.kind == CmdKind::PushTransform3D) {
+                for (auto& range : clipScanStack) {
+                    range.second.reliable = false;
+                }
+                ++top.others;
+                inLayer = true;
+                layerProjectionDepth = 0;
+                continue;
+            }
             if (cmd.kind == CmdKind::PushClipRect || cmd.kind == CmdKind::PushClipPath) {
                 ++top.others;
                 if (clipScanSlot[i] != 0) {
@@ -4133,8 +4237,7 @@ struct FrameBuilder::Impl {
                 continue;
             }
             Rect r;
-            const ClipContentBounds kind =
-                clipContentBounds(cl, cmd, currentDpr, r, clipShaper, &clipInkMemo);
+            const ClipContentBounds kind = planeContentBounds(cl, cmd, r);  // T-700
             if (kind == ClipContentBounds::Unknown) {
                 top.reliable = false;
             } else if (kind == ClipContentBounds::Box) {
@@ -4157,6 +4260,32 @@ struct FrameBuilder::Impl {
             remember(range.first, range.second);
         }
         return outer;
+    }
+
+    /// T-700 (§10.15): clipContentBounds for a command of the current plane. On an affine plane with
+    /// a fold, a draw command's box goes through the fold (clipContentBoundsInFrame) and a group's
+    /// window (already on the screen) has no usable box; a PushTransform3D (a 3D layer's plane,
+    /// which may be projected) never has one.
+    ClipContentBounds planeContentBounds(const CommandList& cl, const Command& cmd, Rect& r) {
+        r = Rect{};
+        if (cmd.kind == CmdKind::PushTransform3D) {
+            return ClipContentBounds::Unknown;
+        }
+        if (!foldActive) {
+            return clipContentBounds(cl, cmd, currentDpr, r, clipShaper, &clipInkMemo);
+        }
+        if (isPlaneGroupWindow(cmd.kind)) {
+            return ClipContentBounds::Unknown;
+        }
+        const float m = kClipContentMarginPx;
+        return clipContentBoundsInFrame(cl, cmd, mul(scaling(Vec2{currentDpr, currentDpr}), planeFold),
+                                        Vec2{m, m}, r, clipShaper, currentDpr, &clipInkMemo);
+    }
+
+    /// T-700: the commands whose box is a group window in screen coordinates.
+    static bool isPlaneGroupWindow(CmdKind kind) {
+        return kind == CmdKind::PushLayer || kind == CmdKind::PushMask || kind == CmdKind::PushEffect ||
+               kind == CmdKind::PushProjection;
     }
 
     /// The local frame of a convex clip shape: its bounding box `box` in the clip's own (local)
@@ -4235,7 +4364,8 @@ struct FrameBuilder::Impl {
     /// caller then maps scanClip's device box back as before.
     bool clipLocalContent(const CommandList& cl, size_t start, size_t pop, const Mat2x3& localFromDevice,
                           float dpr, Rect& out) const {
-        const Mat2x3 frame = mul(localFromDevice, scaling(Vec2{dpr, dpr}));
+        // T-700: on an affine plane the commands' boxes go through the fold first.
+        const Mat2x3 frame = mul(localFromDevice, planeDeviceScale(dpr));
         // A device square of half side m maps to a parallelogram with these half extents.
         const float m = kClipContentMarginPx;
         const Vec2 margin{m * (std::fabs(localFromDevice.a) + std::fabs(localFromDevice.c)),
@@ -4251,6 +4381,9 @@ struct FrameBuilder::Impl {
                     --projectionDepth;
                 }
                 continue;
+            }
+            if (cmd.kind == CmdKind::PushTransform3D || (foldActive && isPlaneGroupWindow(cmd.kind))) {
+                return false;  // T-700: as planeContentBounds
             }
             Rect r;
             const ClipContentBounds kind =
@@ -4305,8 +4438,9 @@ struct FrameBuilder::Impl {
         float variantScale = 1.0f;
         AssetId asset = kInvalidAsset;
         uint16_t source = 0;
+        ImageCmd planeImage;  // T-700: the image as its affine plane draws it
         if (cmd.kind == CmdKind::DrawImage) {
-            const ImageCmd& c = cl.images[cmd.index];
+            const ImageCmd& c = planeCommand(cl.images[cmd.index], planeImage);
             if (c.smooth == 0) {
                 return false;
             }
@@ -4325,7 +4459,7 @@ struct FrameBuilder::Impl {
             if (c.smooth == 0) {
                 return false;
             }
-            const Mat2x3 xf = scaling(Vec2{dpr, dpr});
+            const Mat2x3 xf = planeDeviceScale(dpr);  // T-700
             for (int i = 0; i < 4; ++i) {
                 q[i] = apply(xf, c.p[i]);
             }
@@ -4401,7 +4535,7 @@ struct FrameBuilder::Impl {
         if (!projecting() && cachedTextureSize(tex, texW, texH)) {
             float lod = 0.0f;
             if (cmd.kind == CmdKind::DrawImage) {
-                const ImageCmd& ic = cl.images[cmd.index];
+                const ImageCmd& ic = planeCommand(cl.images[cmd.index], planeImage);  // T-700
                 lod = imageDrawLod(deviceTransform(ic.xf, dpr), ic.dst, srcUv, texW, texH);
             } else if (!imageQuadLod(q, srcUv, texW, texH, lod)) {
                 lod = 0.0f;
@@ -5183,6 +5317,8 @@ struct FrameBuilder::Impl {
         clipDepth = 0;
         frameStack.clear();
         mappings.clear();
+        planeStates.clear();  // T-700
+        syncPlaneFold();
         pendingClears.clear();
         glyphParamCount = 0;
         haveLastGradient = false;
@@ -5198,7 +5334,8 @@ struct FrameBuilder::Impl {
         clipScanEnd = cl.commands.size();
         clipShaper = shaper;  // T-664: glyph run boxes from the font's metrics
         clipInkMemo.reset();  // T-684: nothing is kept from the previous build attempt
-        currentDpr = cl.devicePixelRatio;
+        // T-701: a range build (buildRange) draws its commands at its own pixel ratio.
+        currentDpr = rangeDpr > 0.0f ? rangeDpr : cl.devicePixelRatio;
         const float dpr = currentDpr;
         lastExternals.clear();
         beginCacheBuild();
@@ -5213,7 +5350,9 @@ struct FrameBuilder::Impl {
         if (directMode) {
             buildDirect(cl, shaper, assets, ir, dpr);
         } else {
-            for (size_t ci = 0; ci < cl.commands.size(); ++ci) {
+            // T-701: the whole list, or the commands of one world layer (buildRange).
+            const size_t end = std::min(rangeEnd, cl.commands.size());
+            for (size_t ci = std::min(rangeFirst, end); ci < end; ++ci) {
                 ci = processCommand(cl, ci, shaper, assets, ir, dpr);
             }
         }
@@ -5229,28 +5368,39 @@ struct FrameBuilder::Impl {
         {
             const Command& cmd = cl.commands[ci];
             switch (cmd.kind) {
-                case CmdKind::FillPath:
-                    doFill(cl.fills[cmd.index], dpr);
+                // T-700: on an affine plane the commands with a transform are drawn as 2D commands
+                // with the fold premultiplied (planeCommand).
+                case CmdKind::FillPath: {
+                    FillCmd tmp;
+                    doFill(planeCommand(cl.fills[cmd.index], tmp), dpr);
                     break;
-                case CmdKind::StrokePath:
-                    doStroke(cl.strokes[cmd.index], dpr);
+                }
+                case CmdKind::StrokePath: {
+                    StrokeCmd tmp;
+                    doStroke(planeCommand(cl.strokes[cmd.index], tmp), dpr);
                     break;
+                }
                 case CmdKind::DrawImage: {
                     // T-263d: the ids of an asset command are its own source's (enterSource()).
-                    const ImageCmd& c = cl.images[cmd.index];
+                    ImageCmd tmp;
+                    const ImageCmd& c = planeCommand(cl.images[cmd.index], tmp);
                     doImage(c, dpr, assets, enterSource(cl, c.source, assets, ir));
                     break;
                 }
-                case CmdKind::DrawGlyphs:
-                    doGlyphs(cl.glyphRuns[cmd.index], dpr, shaper);
+                case CmdKind::DrawGlyphs: {
+                    GlyphsCmd tmp;
+                    doGlyphs(planeCommand(cl.glyphRuns[cmd.index], tmp), dpr, shaper);
                     break;
+                }
                 case CmdKind::PushClipRect: {
                     const ClipSite site{&cl, ci, assets, ir};
-                    return doPushClipRect(cl.clipRects[cmd.index], dpr, &site);
+                    ClipRectCmd tmp;
+                    return doPushClipRect(planeCommand(cl.clipRects[cmd.index], tmp), dpr, &site);
                 }
                 case CmdKind::PushClipPath: {
                     const ClipSite site{&cl, ci, assets, ir};
-                    return doPushClipPath(cl.clipPaths[cmd.index], dpr, &site);
+                    ClipPathCmd tmp;
+                    return doPushClipPath(planeCommand(cl.clipPaths[cmd.index], tmp), dpr, &site);
                 }
                 case CmdKind::PopClip:
                     doPopClip();
@@ -5278,24 +5428,30 @@ struct FrameBuilder::Impl {
                     mapping.rootXf = c.rootXf;
                     mapping.planeWorld3 = mat4Identity();
                     mappings.push_back(mapping);
+                    planeStates.emplace_back();
+                    updatePlaneState();  // T-700
                     break;
                 }
                 case CmdKind::PopProjection:
                     XT_ASSERT(!mappings.empty());
                     if (!mappings.empty()) {
                         mappings.pop_back();
+                        planeStates.pop_back();
+                        syncPlaneFold();  // T-700: the outer level's state as it was computed
                     }
                     break;
                 case CmdKind::PushTransform3D:
                     XT_ASSERT(!mappings.empty());
                     if (!mappings.empty()) {
                         mappings.back().planeWorld3 = cl.transforms3[cmd.index].world3;
+                        updatePlaneState();  // T-700
                     }
                     break;
                 case CmdKind::PopTransform3D:
                     XT_ASSERT(!mappings.empty());
                     if (!mappings.empty()) {
                         mappings.back().planeWorld3 = mat4Identity();
+                        updatePlaneState();  // T-700
                     }
                     break;
                 case CmdKind::DrawImageQuad: {
@@ -5324,16 +5480,19 @@ struct FrameBuilder::Impl {
                     doPopEffect();
                     break;
                 case CmdKind::DrawParticles: {
-                    const ParticlesCmd& c = cl.particles[cmd.index];
+                    ParticlesCmd tmp;
+                    const ParticlesCmd& c = planeCommand(cl.particles[cmd.index], tmp);
                     doParticles(cl, c, dpr, assets, enterSource(cl, c.source, assets, ir));
                 } break;
                 case CmdKind::DrawImageMesh: {
                     const ImageMeshCmd& c = cl.imageMeshes[cmd.index];
                     doImageMesh(cl, c, dpr, assets, enterSource(cl, c.source, assets, ir));
                 } break;
-                case CmdKind::DrawBoxShadow:
-                    doBoxShadow(cl.boxShadows[cmd.index], dpr);  // T-668
+                case CmdKind::DrawBoxShadow: {
+                    BoxShadowCmd tmp;
+                    doBoxShadow(planeCommand(cl.boxShadows[cmd.index], tmp), dpr);  // T-668
                     break;
+                }
             }
         }
         return ci;
@@ -5485,10 +5644,16 @@ struct FrameBuilder::Impl {
                     --depth;
                     break;
                 case CmdKind::PushClipRect:
-                    if (depth == 0) doPushClipRect(cl.clipRects[cmd.index], dpr);
+                    if (depth == 0) {
+                        ClipRectCmd tmp;  // T-700
+                        doPushClipRect(planeCommand(cl.clipRects[cmd.index], tmp), dpr);
+                    }
                     break;
                 case CmdKind::PushClipPath:
-                    if (depth == 0) doPushClipPath(cl.clipPaths[cmd.index], dpr);
+                    if (depth == 0) {
+                        ClipPathCmd tmp;  // T-700
+                        doPushClipPath(planeCommand(cl.clipPaths[cmd.index], tmp), dpr);
+                    }
                     break;
                 case CmdKind::PopClip:
                     if (depth == 0) doPopClip();
@@ -5788,6 +5953,9 @@ struct FrameBuilder::Impl {
         damage = damageList;
         sceneStaticBuild = cl.sceneStatic;
         directMode = cl.hostTargetMode == HostTargetMode::Direct;
+        if (rangeDpr > 0.0f) {
+            directMode = false;  // T-701: a world layer's range is drawn into a target of its own
+        }
         if (directMode && !device->supportsDirectTarget()) {
             directMode = false;
             if (!directWarned) {
@@ -6051,18 +6219,38 @@ void FrameBuilder::resize(int targetWidth, int targetHeight) {
 }
 
 #ifndef XT_GPU_NO_TEXT
-void FrameBuilder::setGlyphAtlas(xt::text::GlyphAtlas* atlas) {
-    if (atlas != m_impl->glyphAtlas) {
+void FrameBuilder::setGlyphAtlas(xt::text::GlyphAtlas* atlas, GlyphAtlasTextures* sharedPages) {
+    GlyphAtlasTextures* pages = sharedPages != nullptr ? sharedPages : &m_impl->ownAtlasPages;
+    if (atlas != m_impl->glyphAtlas || pages != m_impl->atlasPages) {
         m_impl->lastBuildValid = false;
         m_impl->prevBandsValid = false;  // T-343: a band may hold glyphs of the old atlas
     }
     m_impl->glyphAtlas = atlas;
+    m_impl->atlasPages = pages;
+}
+
+bool FrameBuilder::takeGlyphAtlasReset() {
+    const bool noted = m_impl->atlasResetNoted;
+    m_impl->atlasResetNoted = false;
+    return noted;
 }
 #endif
 
 void FrameBuilder::build(const CommandList& list, TextShaper* shaper, AssetResolver* assets, const IrView* ir,
                          GpuFrame& out, PerfTracker* perf, const DamageList* damage) {
     m_impl->build(list, shaper, assets, ir, out, perf, damage);
+}
+
+void FrameBuilder::buildRange(const CommandList& list, uint32_t firstCommand, uint32_t commandCount,
+                              float pixelRatio, TextShaper* shaper, AssetResolver* assets, const IrView* ir,
+                              GpuFrame& out, PerfTracker* perf) {
+    m_impl->rangeFirst = firstCommand;
+    m_impl->rangeEnd = static_cast<size_t>(firstCommand) + commandCount;
+    m_impl->rangeDpr = pixelRatio > 0.0f ? pixelRatio : list.devicePixelRatio;
+    m_impl->build(list, shaper, assets, ir, out, perf, nullptr);
+    m_impl->rangeFirst = 0;
+    m_impl->rangeEnd = static_cast<size_t>(-1);
+    m_impl->rangeDpr = 0.0f;
 }
 
 void FrameBuilder::invalidateAsset(AssetId asset, const IrView* source) {

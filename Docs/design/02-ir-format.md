@@ -17,7 +17,7 @@
 |---|---|---|
 | 0 | char[4] | `"XTIR"` |
 | 4 | uint16 | major = **3**（T-534，2026-10-30：`IrEffect` 80 → 144 bytes、效果參數 PropId 重編（18 §18.2）；2.x 檔拒收）；歷史：2（T-42c）|
-| 6 | uint16 | minor = **0**（3.0，T-534；2.x 的 minor 歷史保留如下供考古）。2.x：minor = **9**（T-411：`SetSource` 追加 Port 9、Item 10，Number／String 的 set() 值可帶轉換器步驟（§2.v.1）；版面不變）；歷史：0 無 gradientPool → 1 gradientPool（T-115）→ 2 STYL `floatPool[]`（T-218）→ 3 SCEN `modifiers[]`／`shapes[]`（T-225）→ 4 筆畫漸細欄位（T-233）→ 5 綁定與變形尾段（T-243）→ 6 STYL `easingPoints[]` + `LengthUnit::Rem = 14`（T-335）→ 7 PORT `defaults[]`（T-358）→ 8 T-380～T-399 的欄位與列舉正式化（版面不變）、`hit-slop` 改寫為 StyleProp 277～280 的 Length 宣告（§2.6.2）、`META` 選用的 `behavior` 尾段（§2.10）（T-405，43 §43.5）→ 9。讀取端對較舊 minor 以「缺少的尾段視為空」處理（`IrView::formatMinor()` 供需要依 minor 分支的讀取點，目前只有 §2.6.2 的 `hit-slop`）；較新 minor 依 §2.1 規則忽略未知區塊與尾段，但含 `Rem` 的宣告會被 minor ≤ 5 的驗證器拒收，含 `SetSource` 9／10 的 Set 動作會被 minor ≤ 8 的驗證器拒收 |
+| 6 | uint16 | minor = **1**（3.1，T-701：StyleProp 281 `world-layer`；3.0 為 T-534。2.x 的 minor 歷史保留如下供考古）。2.x：minor = **9**（T-411：`SetSource` 追加 Port 9、Item 10，Number／String 的 set() 值可帶轉換器步驟（§2.v.1）；版面不變）；歷史：0 無 gradientPool → 1 gradientPool（T-115）→ 2 STYL `floatPool[]`（T-218）→ 3 SCEN `modifiers[]`／`shapes[]`（T-225）→ 4 筆畫漸細欄位（T-233）→ 5 綁定與變形尾段（T-243）→ 6 STYL `easingPoints[]` + `LengthUnit::Rem = 14`（T-335）→ 7 PORT `defaults[]`（T-358）→ 8 T-380～T-399 的欄位與列舉正式化（版面不變）、`hit-slop` 改寫為 StyleProp 277～280 的 Length 宣告（§2.6.2）、`META` 選用的 `behavior` 尾段（§2.10）（T-405，43 §43.5）→ 9。讀取端對較舊 minor 以「缺少的尾段視為空」處理（`IrView::formatMinor()` 供需要依 minor 分支的讀取點，目前只有 §2.6.2 的 `hit-slop`）；較新 minor 依 §2.1 規則忽略未知區塊與尾段，但含 `Rem` 的宣告會被 minor ≤ 5 的驗證器拒收，含 `SetSource` 9／10 的 Set 動作會被 minor ≤ 8 的驗證器拒收 |
 | 8 | uint32 | 區塊數 |
 | 12 | uint32 | 檔案總長度（含標頭） |
 
@@ -182,6 +182,7 @@ StyleProp 與可動畫 PropId 共用 `Decl.prop` 的編號空間：第一段 160
 | 275 | `app-region`（T-376） | Enum：0 none、1 drag、2 no-drag；繼承 |
 | 276 | `hit-slop`（T-386） | **只出現在 minor ≤ 7 的檔**：Color 槽四個 f32（上、右、下、左），每格 ≥ 0 為 px，(−65536, 0) 為百分比 −f（f = 百分比／100），≤ −65536 為 `em` 編成 −(65536 + em)（`kHitSlopEmBias`）。minor ≥ 8 的檔不寫；讀到即忽略。276 仍是 `computedStyleValue` 的計算值 id |
 | 277～280 | `hit-slop` 上／右／下／左（T-405） | Length：f32 值 + u8 單位，單位只能是 Px 0、Percent 1、Em 2，值 ≥ 0（驗證器拒收其他單位）；`var()` 參照照常。非來源屬性名，只由 `hit-slop` 簡寫產生；不繼承、不可動畫 |
+| 281 | `world-layer`（T-701，33 章） | Enum：0 = off（預設）、1 = on；不繼承、不可動畫。只在宿主開啟分層輸出時有作用（33 §33.2） |
 
 讀取：`IrView::formatMinor() < 8` 時 276 依上列偏移解碼；否則只認 277～280。執行期 `setStyle("hit-slop: ...")` 一樣寫 277～280。
 
@@ -593,11 +594,11 @@ uint32 textLength;  uint8 text[]            // UTF-8；source 與 glsl 都是它
 | limit | `kBindTargetLast` | 14 |
 | limit | `kConverterOpLast` | 43 |
 | limit | `kIfTermLast` | 6 |
-| limit | `kIrFormatMinor` | 0 |
+| limit | `kIrFormatMinor` | 1 |
 | limit | `kIrSelCondLast` | 17 |
 | limit | `kPortTypeLast` | 12 |
 | limit | `kSetSourceLast` | 10 |
-| limit | `kStylePropLast` | 280 |
+| limit | `kStylePropLast` | 281 |
 | limit | `kTriggerActionLast` | 20 |
 | limit | `kTriggerEventLast` | 41 |
 | struct | `EasingPoint` | 8 |
