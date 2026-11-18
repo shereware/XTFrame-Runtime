@@ -231,6 +231,12 @@ public:
     ///   kDirtyTransform -> self | all descendants (preorder)
     ///   kDirtyPaint, kDirtyTree -> self only
     void markDirty(NodeId id, uint8_t bits);
+    /// T-723 (Docs/design/10-backends.md §10.16 W5): sets kDirtyStyle on id alone, without the
+    /// upward propagation of markDirty() -- a changed style binding declaration re-resolves the
+    /// element, never its ancestors. StyleEngine::resolve() walks every tree whole, so it needs no
+    /// ancestor bit to reach id. A later markDirty(kDirtyStyle) below id stops at id (§1.4's early
+    /// exit) and leaves id's ancestors unmarked; no selector depends on a descendant's style.
+    void markStyleDirtySelf(NodeId id);
     /// Calls markDirty(n, bits) for id and each ancestor on the path from id up to and including
     /// stopAt; if stopAt is not found on that path (e.g. kInvalidNode), walks all the way to the
     /// document root. See Docs/design/19-3d-space.md §19.3, Docs/tasks/T-43c.md "T-43b 遺留修正"

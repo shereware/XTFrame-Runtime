@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "composition.h"
+#include "style_state_deps.h"
 #include "text_edit.h"
 #include "xt/ir.h"
 #include "xt/property.h"
@@ -56,8 +57,11 @@ void markStyleDirtySubtree(NodeArena& arena, NodeId node) {
 /// Sets or clears one ElementState bit directly (unlike ElementRef::setState, every bit is allowed
 /// here -- hover/active are pointer-driven, see Docs/tasks/T-32.md "kStateHover 的設定/清除走
 /// ElementRef::setState 的內部版本"). No-op if `node` isn't alive or isn't an Element, or the bit
-/// is already at the requested value.
-void setElementStateBit(NodeArena& arena, NodeId node, uint16_t bit, bool on) {
+/// is already at the requested value. T-723 (10 §10.16 W5, T-723 B.2): only what the state
+/// dependency table says can change re-resolves -- nothing, the element, or its subtree -- and no
+/// ancestor; `legacy` (the equivalence check only) keeps the old full range.
+void setElementStateBit(const StateDependencyTable& deps, bool legacy, NodeArena& arena, NodeId node,
+                        uint16_t bit, bool on) {
     if (!arena.alive(node) || arena.kind(node) != NodeKind::Element) {
         return;
     }
@@ -68,7 +72,24 @@ void setElementStateBit(NodeArena& arena, NodeId node, uint16_t bit, bool on) {
     }
     data.stateBits =
         on ? static_cast<uint16_t>(data.stateBits | bit) : static_cast<uint16_t>(data.stateBits & ~bit);
-    markStyleDirtySubtree(arena, node);
+    if (legacy) {
+        markStyleDirtySubtree(arena, node);
+        return;
+    }
+    switch (stateChangeRestyle(deps, arena, node, bit)) {
+        case StateRestyle::None:
+            break;
+        case StateRestyle::Self:
+            arena.markStyleDirtySelf(node);
+            break;
+        case StateRestyle::Subtree:
+            arena.markStyleDirtySelf(node);
+            arena.traversePreorder(node, [&arena](NodeId n) {
+                arena.markStyleDirtySelf(n);
+                return true;
+            });
+            break;
+    }
 }
 
 /// T-390 (27.3.2, XF-068): kStateDisabled is subtree-wide for pointer and keyboard dispatch --
@@ -144,6 +165,10 @@ void EventDispatcher::init(const IrView* ir, std::vector<EditState>* editStates,
     m_ir = ir;
     m_editStates = editStates;
     m_composition = composition;
+    m_stateDeps = StateDependencyTable{};
+    if (ir != nullptr) {
+        buildStateDependencies(*ir, m_stateDeps);  // T-723 (B.1).
+    }
 }
 
 uint32_t EventDispatcher::addListener(NodeArena& arena, NodeId target, EventType type, EventListener fn) {
@@ -264,7 +289,8 @@ void EventDispatcher::clearForSubtreeRemoval(NodeArena& arena, NodeId root) {
             if (!inSubtree(n)) {
                 break;  // The hover path continues above the removed subtree; those stay hovered.
             }
-            setElementStateBit(arena, n, static_cast<uint16_t>(kStateHover), false);
+            setElementStateBit(m_stateDeps, m_legacyStyleInvalidation, arena, n,
+                               static_cast<uint16_t>(kStateHover), false);
             Event ev;
             ev.type = EventType::PointerLeave;
             ev.target = n;
@@ -277,7 +303,8 @@ void EventDispatcher::clearForSubtreeRemoval(NodeArena& arena, NodeId root) {
     }
     for (NodeId n : m_activeChain) {
         if (inSubtree(n)) {
-            setElementStateBit(arena, n, static_cast<uint16_t>(kStateActive), false);
+            setElementStateBit(m_stateDeps, m_legacyStyleInvalidation, arena, n,
+                               static_cast<uint16_t>(kStateActive), false);
         }
     }
     if (inSubtree(m_activeNode)) {
@@ -456,7 +483,8 @@ void EventDispatcher::updateHover(NodeArena& arena, NodeId root, Vec2 pos) {
             if (!stillThere(arena, entry)) {
                 continue;
             }
-            setElementStateBit(arena, entry.node, static_cast<uint16_t>(kStateHover), false);
+            setElementStateBit(m_stateDeps, m_legacyStyleInvalidation, arena, entry.node,
+                               static_cast<uint16_t>(kStateHover), false);
             Event ev;
             ev.type = EventType::PointerLeave;
             ev.target = entry.node;
@@ -472,7 +500,8 @@ void EventDispatcher::updateHover(NodeArena& arena, NodeId root, Vec2 pos) {
             if (!stillThere(arena, entry)) {
                 continue;
             }
-            setElementStateBit(arena, entry.node, static_cast<uint16_t>(kStateHover), true);
+            setElementStateBit(m_stateDeps, m_legacyStyleInvalidation, arena, entry.node,
+                               static_cast<uint16_t>(kStateHover), true);
             Event ev;
             ev.type = EventType::PointerEnter;
             ev.target = entry.node;
@@ -572,7 +601,8 @@ void EventDispatcher::setPointerLeaveWindow(NodeArena& arena) {
         if (!stillThere(arena, entry)) {
             continue;
         }
-        setElementStateBit(arena, entry.node, static_cast<uint16_t>(kStateHover), false);
+        setElementStateBit(m_stateDeps, m_legacyStyleInvalidation, arena, entry.node,
+                           static_cast<uint16_t>(kStateHover), false);
         Event ev;
         ev.type = EventType::PointerLeave;
         ev.target = entry.node;
@@ -619,7 +649,8 @@ void EventDispatcher::handlePointerDown(NodeArena& arena, NodeId root, const Inp
     if (!isDisabled(arena, h)) {
         collectAncestorChain(arena, h, m_activeChain);
         for (NodeId n : m_activeChain) {
-            setElementStateBit(arena, n, static_cast<uint16_t>(kStateActive), true);
+            setElementStateBit(m_stateDeps, m_legacyStyleInvalidation, arena, n,
+                               static_cast<uint16_t>(kStateActive), true);
         }
     } else {
         m_activeChain.clear();
@@ -741,7 +772,8 @@ void EventDispatcher::handlePointerUp(NodeArena& arena, NodeId root, const Input
     }
     if (active != kInvalidNode && dragged) {
         for (NodeId n : m_activeChain) {
-            setElementStateBit(arena, n, static_cast<uint16_t>(kStateActive), false);
+            setElementStateBit(m_stateDeps, m_legacyStyleInvalidation, arena, n,
+                               static_cast<uint16_t>(kStateActive), false);
         }
     } else if (active != kInvalidNode) {
         NodeId upHit = upHitResult.node;
@@ -761,7 +793,8 @@ void EventDispatcher::handlePointerUp(NodeArena& arena, NodeId root, const Input
             detectDoubleClick(arena, active, generation, input, upHitResult.localPos, clicks);  // T-379.
         }
         for (NodeId n : m_activeChain) {
-            setElementStateBit(arena, n, static_cast<uint16_t>(kStateActive), false);
+            setElementStateBit(m_stateDeps, m_legacyStyleInvalidation, arena, n,
+                               static_cast<uint16_t>(kStateActive), false);
         }
     }
     m_activeNode = kInvalidNode;
@@ -794,11 +827,13 @@ void EventDispatcher::restorePointerState(NodeArena& arena, const PointerState& 
         collectAncestorChain(arena, hover, newChain);
         for (const NodeId n : oldChain) {
             if (std::find(newChain.begin(), newChain.end(), n) == newChain.end()) {
-                setElementStateBit(arena, n, static_cast<uint16_t>(kStateHover), false);
+                setElementStateBit(m_stateDeps, m_legacyStyleInvalidation, arena, n,
+                                   static_cast<uint16_t>(kStateHover), false);
             }
         }
         for (const NodeId n : newChain) {
-            setElementStateBit(arena, n, static_cast<uint16_t>(kStateHover), true);
+            setElementStateBit(m_stateDeps, m_legacyStyleInvalidation, arena, n,
+                               static_cast<uint16_t>(kStateHover), true);
         }
         m_hoverNode = hover;
     }
@@ -807,7 +842,8 @@ void EventDispatcher::restorePointerState(NodeArena& arena, const PointerState& 
     // already started is left alone: ending it would dispatch).
     for (const NodeId n : m_activeChain) {
         if (arena.alive(n)) {
-            setElementStateBit(arena, n, static_cast<uint16_t>(kStateActive), false);
+            setElementStateBit(m_stateDeps, m_legacyStyleInvalidation, arena, n,
+                               static_cast<uint16_t>(kStateActive), false);
         }
     }
     m_activeChain.clear();
@@ -825,7 +861,8 @@ void EventDispatcher::restorePointerState(NodeArena& arena, const PointerState& 
         if (!isDisabled(arena, m_activeNode)) {
             collectAncestorChain(arena, m_activeNode, m_activeChain);
             for (const NodeId n : m_activeChain) {
-                setElementStateBit(arena, n, static_cast<uint16_t>(kStateActive), true);
+                setElementStateBit(m_stateDeps, m_legacyStyleInvalidation, arena, n,
+                                   static_cast<uint16_t>(kStateActive), true);
             }
         }
         m_pressButton = PointerButton::Left;  // The lowest held button.
@@ -874,7 +911,8 @@ void EventDispatcher::handlePointerCancel(NodeArena& arena) {
     m_dragEdit = kInvalidNode;
     for (NodeId n : chain) {
         if (arena.alive(n)) {
-            setElementStateBit(arena, n, static_cast<uint16_t>(kStateActive), false);
+            setElementStateBit(m_stateDeps, m_legacyStyleInvalidation, arena, n,
+                               static_cast<uint16_t>(kStateActive), false);
         }
     }
     if (!arena.alive(active)) {
@@ -952,7 +990,8 @@ void EventDispatcher::setFocus(NodeArena& arena, NodeId node, uint8_t player) {
         ElementData& data = arena.element(previous);
         data.focusPlayers = static_cast<uint8_t>(data.focusPlayers & ~bit);
         // T-194: `:focus` stays while another player still focuses the element.
-        setElementStateBit(arena, previous, static_cast<uint16_t>(kStateFocus), data.focusPlayers != 0);
+        setElementStateBit(m_stateDeps, m_legacyStyleInvalidation, arena, previous,
+                           static_cast<uint16_t>(kStateFocus), data.focusPlayers != 0);
         markStyleDirtySubtree(arena, previous);  // `:focus-player(n)`.
         Event ev;
         ev.type = EventType::Blur;
@@ -972,7 +1011,8 @@ void EventDispatcher::setFocus(NodeArena& arena, NodeId node, uint8_t player) {
     if (target != kInvalidNode && arena.alive(target)) {
         ElementData& data = arena.element(target);
         data.focusPlayers = static_cast<uint8_t>(data.focusPlayers | bit);
-        setElementStateBit(arena, target, static_cast<uint16_t>(kStateFocus), true);
+        setElementStateBit(m_stateDeps, m_legacyStyleInvalidation, arena, target,
+                           static_cast<uint16_t>(kStateFocus), true);
         markStyleDirtySubtree(arena, target);
         Event ev;
         ev.type = EventType::Focus;
@@ -1090,7 +1130,8 @@ void EventDispatcher::activate(NodeArena& arena, NodeId node, Vec2 pos, Vec2 loc
         return;
     }
     bool checked = (arena.element(node).stateBits & static_cast<uint16_t>(kStateChecked)) != 0;
-    setElementStateBit(arena, node, static_cast<uint16_t>(kStateChecked), !checked);
+    setElementStateBit(m_stateDeps, m_legacyStyleInvalidation, arena, node,
+                       static_cast<uint16_t>(kStateChecked), !checked);
     if (m_triggerSink != nullptr) {
         m_triggerSink->onCheckedChanged(node, !checked);  // T-174: check / uncheck triggers.
     }

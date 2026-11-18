@@ -1,0 +1,131 @@
+<xt version="2">
+
+  <!-- T-727 (19 §19.x ruling 1): flat content of a sorted 3D segment takes part in the depth sort.
+       Each stage is a perspective root holding A (a rotateX 3D layer whose anchor lies at depth 0)
+       and B (a flat container) with b1 (flat), b2 (a 3D layer) and b3 (flat):
+         #s1: b2 rotateY(10deg) about its own centre, depth 0 (a tie): A, b1, b2, b3;
+         #s2: b2 translateZ(0.01px), depth 0.01: A, b1, b3, b2;
+         #s3: b2 translateZ(-50px), depth -50: b2, A, b1, b3. -->
+  <body>
+    <div id="s1" class="stage">
+      <div id="a1" class="a"></div>
+      <div id="box1" class="box">
+        <div id="b1-1" class="b first"></div>
+        <div id="b1-2" class="b second"></div>
+        <div id="b1-3" class="b third"></div>
+      </div>
+    </div>
+    <div id="s2" class="stage">
+      <div id="a2" class="a"></div>
+      <div id="box2" class="box">
+        <div id="b2-1" class="b first"></div>
+        <div id="b2-2" class="b second"></div>
+        <div id="b2-3" class="b third"></div>
+      </div>
+    </div>
+    <div id="s3" class="stage">
+      <div id="a3" class="a"></div>
+      <div id="box3" class="box">
+        <div id="b3-1" class="b first"></div>
+        <div id="b3-2" class="b second"></div>
+        <div id="b3-3" class="b third"></div>
+      </div>
+    </div>
+  </body>
+
+  <layout>
+    .stage {
+      position: absolute;
+      top: 0px;
+      width: 120px;
+      height: 120px;
+      perspective: 400px;
+    }
+    #s1 {
+      left: 0px;
+    }
+    #s2 {
+      left: 130px;
+    }
+    #s3 {
+      left: 260px;
+    }
+    .a {
+      position: absolute;
+      left: 0px;
+      top: 0px;
+      width: 120px;
+      height: 120px;
+      transform: rotateX(20deg);
+    }
+    .box {
+      position: absolute;
+      left: 0px;
+      top: 0px;
+      width: 120px;
+      height: 120px;
+    }
+    .b {
+      position: absolute;
+      top: 40px;
+      width: 30px;
+      height: 40px;
+    }
+    .first {
+      left: 5px;
+    }
+    .second {
+      left: 45px;
+    }
+    .third {
+      left: 85px;
+    }
+    #b1-2 {
+      transform: rotateY(10deg);
+    }
+    #b2-2 {
+      transform: translateZ(0.01px);
+    }
+    #b3-2 {
+      transform: translateZ(-50px);
+    }
+  </layout>
+  <style>
+    #a1 {
+      background-color: #ff0000;
+    }
+    #b1-1 {
+      background-color: #00ff00;
+    }
+    #b1-2 {
+      background-color: #0000ff;
+    }
+    #b1-3 {
+      background-color: #ffff00;
+    }
+    #a2 {
+      background-color: #800000;
+    }
+    #b2-1 {
+      background-color: #008000;
+    }
+    #b2-2 {
+      background-color: #000080;
+    }
+    #b2-3 {
+      background-color: #808000;
+    }
+    #a3 {
+      background-color: #400000;
+    }
+    #b3-1 {
+      background-color: #004000;
+    }
+    #b3-2 {
+      background-color: #000040;
+    }
+    #b3-3 {
+      background-color: #404000;
+    }
+  </style>
+</xt>

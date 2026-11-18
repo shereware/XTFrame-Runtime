@@ -1,6 +1,7 @@
 #include "rounded_rect.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace xt {
 
@@ -153,6 +154,122 @@ void appendRoundedRectPathReversed(Rect box, float rTL, float rTR, float rBR, fl
     }
     line(x + rTL, y);
     verbs.push_back(PathVerb::Close);
+}
+
+bool matchRoundedRectPath(std::span<const PathVerb> verbs, std::span<const float> points, Rect& rect,
+                          float radii[4]) {
+    // Move + 4 x (Line [+ Cubic]) + Close: 6..10 verbs, 5..17 points.
+    constexpr size_t kMaxPoints = 17;
+    if (verbs.size() < 6 || verbs.size() > 10 || points.size() % 2 != 0 || points.size() / 2 > kMaxPoints) {
+        return false;
+    }
+    if (verbs.front() != PathVerb::Move || verbs.back() != PathVerb::Close) {
+        return false;
+    }
+    const size_t pointCount = points.size() / 2;
+    auto pt = [&points](size_t i) { return Vec2{points[2 * i], points[2 * i + 1]}; };
+    // Per corner in the generator's order (TR, BR, BL, TL): the point its Line ends at, whether a
+    // Cubic follows, and the Cubic's end point.
+    Vec2 before[4];
+    Vec2 after[4];
+    bool rounded[4] = {false, false, false, false};
+    size_t v = 1;
+    size_t p = 1;
+    for (int corner = 0; corner < 4; ++corner) {
+        if (v >= verbs.size() || verbs[v] != PathVerb::Line || p >= pointCount) {
+            return false;
+        }
+        before[corner] = pt(p);
+        after[corner] = before[corner];
+        ++v;
+        ++p;
+        if (v < verbs.size() && verbs[v] == PathVerb::Cubic) {
+            if (p + 3 > pointCount) {
+                return false;
+            }
+            rounded[corner] = true;
+            after[corner] = pt(p + 2);
+            ++v;
+            p += 3;
+        }
+    }
+    if (v + 1 != verbs.size() || p != pointCount) {
+        return false;
+    }
+    for (const float value : points) {
+        if (!std::isfinite(value)) {
+            return false;
+        }
+    }
+    // The box and the radii as the generator placed these points.
+    const Vec2 start = pt(0);
+    const float top = start.y;
+    const float right = after[0].x;
+    const float bottom = after[1].y;
+    const float left = after[2].x;
+    const float w = right - left;
+    const float h = bottom - top;
+    if (!(w > 0.0f) || !(h > 0.0f)) {
+        return false;
+    }
+    const float rTR = rounded[0] ? right - before[0].x : 0.0f;
+    const float rBR = rounded[1] ? bottom - before[1].y : 0.0f;
+    const float rBL = rounded[2] ? before[2].x - left : 0.0f;
+    const float rTL = rounded[3] ? start.x - left : 0.0f;
+    const float tol = 1e-4f * std::max({1.0f, w, h, std::fabs(left), std::fabs(top)});
+    const float cornerRadius[4] = {rTR, rBR, rBL, rTL};
+    for (int corner = 0; corner < 4; ++corner) {
+        if (rounded[corner] && !(cornerRadius[corner] > 0.0f)) {
+            return false;
+        }
+    }
+    if (rTL + rTR > w + tol || rBL + rBR > w + tol || rTR + rBR > h + tol || rTL + rBL > h + tol) {
+        return false;
+    }
+    // The generator's output for that box, point by point (appendRoundedRectPath's order).
+    const float k = kRoundedRectKappa;
+    Vec2 expected[kMaxPoints];
+    size_t n = 0;
+    expected[n++] = Vec2{left + rTL, top};
+    expected[n++] = Vec2{right - rTR, top};
+    if (rounded[0]) {
+        expected[n++] = Vec2{right - rTR + rTR * k, top};
+        expected[n++] = Vec2{right, top + rTR - rTR * k};
+        expected[n++] = Vec2{right, top + rTR};
+    }
+    expected[n++] = Vec2{right, bottom - rBR};
+    if (rounded[1]) {
+        expected[n++] = Vec2{right, bottom - rBR + rBR * k};
+        expected[n++] = Vec2{right - rBR + rBR * k, bottom};
+        expected[n++] = Vec2{right - rBR, bottom};
+    }
+    expected[n++] = Vec2{left + rBL, bottom};
+    if (rounded[2]) {
+        expected[n++] = Vec2{left + rBL - rBL * k, bottom};
+        expected[n++] = Vec2{left, bottom - rBL + rBL * k};
+        expected[n++] = Vec2{left, bottom - rBL};
+    }
+    expected[n++] = Vec2{left, top + rTL};
+    if (rounded[3]) {
+        expected[n++] = Vec2{left, top + rTL - rTL * k};
+        expected[n++] = Vec2{left + rTL - rTL * k, top};
+        expected[n++] = Vec2{left + rTL, top};
+    }
+    if (n != pointCount) {
+        return false;
+    }
+    for (size_t i = 0; i < n; ++i) {
+        const Vec2 q = pt(i);
+        if (std::fabs(q.x - expected[i].x) > tol || std::fabs(q.y - expected[i].y) > tol) {
+            return false;
+        }
+    }
+    rect = Rect{left, top, w, h};
+    radii[0] = rTL;
+    radii[1] = rTR;
+    radii[2] = rBR;
+    radii[3] = rBL;
+    return true;
 }
 
 }  // namespace xt

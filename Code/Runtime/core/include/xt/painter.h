@@ -28,6 +28,7 @@ struct CompositionState;  // Code/Runtime/core/src/composition.h (private); like
 // same forward-declaration trick as the nested `Action` type just below.
 namespace layer_collect {
 struct LayerEntry;
+struct PieceRange;
 struct Section;
 }  // namespace layer_collect
 
@@ -225,6 +226,33 @@ private:
     /// candidate (pushed on m_boxShadowStack).
     bool beginBoxShadowCandidate(const NodeArena& arena, NodeId n, float alpha, size_t pushPos,
                                  const CommandList& out);
+    /// T-716 (10 §10.16 W3): whether the plane the node being entered lies on is affine as the list's
+    /// consumers judge it (10 §10.15 item 1): with every level of m_mappingStack on the plane of its
+    /// current layer (m_levelLayers), the plane of each level, outermost first, passes
+    /// project3d::stackPlaneAffine under the test of `out`'s viewport and pixel ratio -- a level under
+    /// a projected one is never affine. True outside every 3D space (a world layer's own wrapper is
+    /// none). The answer is kept per plane (m_planeMemo), not computed per node.
+    bool planeIsAffine(const NodeArena& arena, const CommandList& out);
+    /// T-716: per m_mappingStack entry, the 3D layer whose plane the content emitted under that entry
+    /// lies on now (the layer of the last EnterNodeLayer action run with that entry on top;
+    /// kInvalidNode: the root's own plane). Unlike m_currentLayer, an outer entry keeps its layer while
+    /// a space nested in it is painted and after that space ends.
+    std::vector<NodeId> m_levelLayers;
+    /// planeIsAffine()'s scratch: the entries' planeWorld3 while the layers' are swapped in.
+    std::vector<Mat4> m_planeSaveScratch;
+    /// planeIsAffine()'s last answer and the plane it is for: the m_mappingStack push it was computed
+    /// under (m_spaceSerial), the stack's depth and the top entry's layer (the entries below cannot
+    /// change while the top one is there).
+    struct PlaneMemo {
+        bool valid = false;
+        bool affine = false;
+        uint32_t serial = 0;
+        size_t depth = 0;
+        NodeId layer = kInvalidNode;
+    };
+    PlaneMemo m_planeMemo;
+    /// Counts the 3D spaces and world layer wrappers pushed on m_mappingStack by this painter.
+    uint32_t m_spaceSerial = 0;
     /// T-668: the decision at the node's PopEffect; true when the PushEffect was replaced by
     /// DrawBoxShadow commands (no PopEffect is to be emitted).
     bool finishBoxShadowCandidate(CommandList& out);
@@ -322,6 +350,17 @@ private:
     // kInvalidNode outside of one (including for EnterNode2D actions -- see enterNode()'s new
     // is3D-skip branch, which only lets `n == m_currentLayer` through).
     NodeId m_currentLayer = kInvalidNode;
+    // T-727 (19 §19.x ruling 1): the flat piece being drawn by the current EnterNode2D action
+    // (0xFFFFFFFF = all of the node's content); enterNode() skips a node whose m_pieceRanges entry
+    // does not admit it and draws an Element's own visuals only in its first piece. Saved by
+    // emitRoot() and restored by its PopProjection, since a nested root's sections set their own.
+    uint32_t m_piece = 0xFFFFFFFFu;
+    std::vector<uint32_t> m_pieceSave;
+    // Per-node pieces of the sorted segments' flat content (flushSection()), indexed by NodeId;
+    // only the entries of the nodes walked by the segment being drawn are read.
+    std::vector<layer_collect::PieceRange> m_pieceRanges;
+    // Scratch: a sorted segment's children whose flat content is drawn whole (flushSection()).
+    std::vector<NodeId> m_wholeScratch;
     // T-194 (08.9 `layer: overlay`): overlay subtree roots met during the main traversal, with
     // the alpha they inherit (their parent's world opacity), painted after the root in this order;
     // m_overlayEntering is the overlay root being entered by that pass (let through enterNode()).
@@ -368,7 +407,9 @@ private:
     void emitImage(const NodeArena& arena, NodeId n, float alpha, CommandList& out);
     // T-245 (32 32.2.4): one DrawImageMesh of a Mesh node (positions x world, uvs, indices).
     void emitMesh(const NodeArena& arena, NodeId n, float alpha, CommandList& out);
-    void paintElement(const NodeArena& arena, NodeId n, float alpha, CommandList& out);
+    // `ownContent` false (T-727): a later flat piece of the element -- only its clips and children.
+    void paintElement(const NodeArena& arena, NodeId n, float alpha, CommandList& out,
+                      bool ownContent = true);
     void paintText(const NodeArena& arena, NodeId n, float alpha, CommandList& out);
 
     // T-44b: defined in painter_3d.cpp. See Docs/design/19-3d-space.md §19.5-19.6.
@@ -379,10 +420,11 @@ private:
     // into plain-2D and sorted-3D runs (layer_collect::collectSections) -- and a trailing
     // PopProjection to m_planScratch, finally pushing it (reversed) onto m_stack like pushPlan().
     void emitRoot(const NodeArena& arena, NodeId root, float inheritedAlpha, CommandList& out);
-    // Appends one sorted segment's quanta (§19.6 step 3) to m_planScratch, in draw order: the
-    // segment's own-plane 2D content first (EnterNode2D, one quantum per non-3D-layer child),
-    // then its collected/sorted/backface-culled 3D layers (EnterNodeLayer, one quantum per
-    // surviving layer, each wrapped in its own PushTransform3D{world3}/PopTransform3D pair).
+    // Appends one sorted segment's quanta (§19.6 step 3, as amended by 19 §19.x ruling 1, T-727)
+    // to m_planScratch, in draw order: its 3D layers (EnterNodeLayer, each wrapped in its own
+    // PushTransform3D{world3}/PopTransform3D pair, backface-culled) and its flat-content pieces
+    // (EnterNode2D with a piece, wrapped in PushTransform3D{I}) depth-sorted together, ties in
+    // document order; a child whose flat content cannot be split is drawn whole before them.
     // `view` is the root's CameraSetup::view (19.4 step 2), for §19.6's depth formula.
     void flushSection(const NodeArena& arena, std::span<const NodeId> orderedChildren,
                       const layer_collect::Section& section, const Mat4& view, float alpha);

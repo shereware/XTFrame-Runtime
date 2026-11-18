@@ -77,4 +77,30 @@ bool planeHomography(std::span<const Mapping> stack, Mat3& out);
 /// transform). Does not allocate.
 bool affinePlane(const Mat3& h, Rect viewport, float tolerance, Mat2x3& out);
 
+/// T-716 (§10.16 W3): the inputs of §10.15's affine test for the planes of one CommandList. The Painter
+/// (which decides whether a box shadow on the plane becomes a DrawBoxShadow) and the consumers of the
+/// list (xt_gpu's frame builder, xt::sw, the simplifier: they fold an affine plane and project the
+/// others) all take them from planeTest(), so they take the same decision for the same plane.
+struct PlaneTest {
+    /// The screen rectangle the plane must be affine over (logical px).
+    Rect viewport{};
+    /// The largest deviation allowed inside `viewport` (logical px).
+    float tolerance = kAffinePlaneTolerancePx;
+};
+
+/// T-716: the viewport of a caller that knows neither the list's viewport nor a target size. Over it
+/// only a plane whose w is constant (the root plane, translateZ / scale / rotateZ layers) is affine,
+/// and such a plane is affine over every other viewport and at every tolerance too.
+inline constexpr Rect kUnboundedPlaneViewport{-1e6f, -1e6f, 2e6f, 2e6f};
+
+/// T-716: the test of a list whose CommandList::viewport is `listViewport` and whose pixel ratio is
+/// `dpr` (<= 0 counts as 1): `listViewport` when it is not empty, else `fallback` (the target's
+/// rectangle in logical px, or kUnboundedPlaneViewport); tolerance kAffinePlaneTolerancePx / dpr.
+PlaneTest planeTest(Rect listViewport, Rect fallback, float dpr);
+
+/// T-716: planeHomography() and affinePlane() in one call: true when the current plane of `stack` is
+/// affine under `test`, with `fold` the folded 2D transform (plane -> logical screen px). `fold` is
+/// unspecified on false. Does not allocate.
+bool stackPlaneAffine(std::span<const Mapping> stack, const PlaneTest& test, Mat2x3& fold);
+
 }  // namespace xt::project3d

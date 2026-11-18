@@ -92,16 +92,89 @@ uint32_t liveGeneration(const NodeArena& arena, NodeId node) {
     return arena.alive(node) ? arena.generation(node) : 0u;
 }
 
+/// The PropIds 16-22 (TranslateZ..Orientation) whose write makes an Element a 3D layer (19 §19.3).
+bool isProp3D(PropId p) { return p >= prop::TranslateZ && p <= prop::Orientation; }
+
+/// T-725: whether `v`, written to `p` (PropId 16-22), holds a 3D component other than zero: TranslateZ,
+/// AnchorZ, RotationX/Y; the z of Translate3/Anchor3 (their x/y are the 2D translate and anchor);
+/// any component of Orientation. A neutral value writes nothing; a type this does not know counts as 3D.
+bool value3DNonZero(PropId p, const Value& v) {
+    if (v.isNeutral()) {
+        return false;
+    }
+    if (p == prop::Translate3 || p == prop::Anchor3) {
+        return v.type != ValueType::Vec3 || v.v3.z != 0.0f;
+    }
+    if (p == prop::Orientation) {
+        return v.type != ValueType::Vec3 || v.v3.x != 0.0f || v.v3.y != 0.0f || v.v3.z != 0.0f;
+    }
+    if (v.type == ValueType::Float) {
+        return v.f != 0.0f;
+    }
+    if (v.type == ValueType::Length) {
+        return v.len.value != 0.0f;
+    }
+    return true;
+}
+
+/// T-725: whether a PropId 16-22 track can write a 3D component other than zero at any time. A track
+/// whose every keyframe is zero (or neutral: the element's own base value, which the style resolve
+/// already judges) interpolates to zero under any easing -- e.g. the TranslateZ / RotationX / RotationY
+/// tracks of `transform: translateX(..) translateY(..)` keyframes, which 05.5's compose path writes as
+/// all ten components. A spatial segment can leave the zero plane through its tangents, so a Vec3
+/// track's tangents count too.
+bool trackMayWrite3D(const Timeline& tl, const Track& track) {
+    if (track.kfOffset > tl.keyframes.size() || track.kfCount > tl.keyframes.size() - track.kfOffset) {
+        return true;
+    }
+    for (uint32_t i = 0; i < track.kfCount; ++i) {
+        const Keyframe& kf = tl.keyframes[track.kfOffset + i];
+        if (value3DNonZero(track.prop, kf.value)) {
+            return true;
+        }
+        if (track.type == ValueType::Vec3 && kf.hasSpatial != 0) {
+            const bool all = track.prop == prop::Orientation;
+            if (kf.tanOut.z != 0.0f || kf.tanIn.z != 0.0f ||
+                (all &&
+                 (kf.tanOut.x != 0.0f || kf.tanOut.y != 0.0f || kf.tanIn.x != 0.0f || kf.tanIn.y != 0.0f))) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 }  // namespace
 
 TimelineId Animator::registerTimeline(const Timeline* timelinePtr) {
+    size_t id = m_timelines.size();
     for (size_t i = 0; i < m_timelines.size(); ++i) {
         if (m_timelines[i] == timelinePtr) {
-            return static_cast<TimelineId>(i);
+            id = i;
+            break;
         }
     }
-    m_timelines.push_back(timelinePtr);
-    return static_cast<TimelineId>(m_timelines.size() - 1);
+    if (id == m_timelines.size()) {
+        m_timelines.push_back(timelinePtr);
+        m_trackForces3D.emplace_back();
+    }
+    // T-725: decided once per track (again when a timeline is registered again, e.g. after its
+    // owner rebuilt it in place).
+    std::vector<uint8_t>& forces = m_trackForces3D[id];
+    forces.assign(timelinePtr != nullptr ? timelinePtr->tracks.size() : 0, 0);
+    for (size_t k = 0; k < forces.size(); ++k) {
+        const Track& track = timelinePtr->tracks[k];
+        forces[k] = (isProp3D(track.prop) && trackMayWrite3D(*timelinePtr, track)) ? 1 : 0;
+    }
+    return static_cast<TimelineId>(id);
+}
+
+bool Animator::trackForces3D(TimelineId id, const Timeline& tl, const Track& track) const {
+    const size_t k = static_cast<size_t>(&track - tl.tracks.data());
+    if (id >= m_trackForces3D.size() || k >= m_trackForces3D[id].size()) {
+        return trackMayWrite3D(tl, track);  // not decided at registration: judge it here
+    }
+    return m_trackForces3D[id][k] != 0;
 }
 
 const Timeline* Animator::timeline(TimelineId id) const {
@@ -244,6 +317,7 @@ void Animator::pause(uint32_t id, float clock) {
     float elapsed = (clock - inst->startClock - inst->delay) * inst->speed;
     inst->pausedAt = elapsed;
     inst->paused = 1;
+    inst->held = 0;  // T-717
 }
 
 void Animator::resume(uint32_t id, float clock) {
@@ -255,6 +329,7 @@ void Animator::resume(uint32_t id, float clock) {
         inst->startClock = clock - inst->delay - inst->pausedAt / inst->speed;
     }
     inst->paused = 0;
+    inst->held = 0;  // T-717
 }
 
 void Animator::seek(uint32_t id, float localT, float clock) {
@@ -279,6 +354,7 @@ void Animator::seek(uint32_t id, float localT, float clock) {
     inst->prevIter = 0;
     inst->finished = 0;
     inst->finishedNotified = 0;
+    inst->held = 0;  // T-717: applied once more even when seeked onto the same stop.
     // Avoid a spurious marker crossing across the jump on the next evaluate().
     inst->prevLocalT = localT;
 }
@@ -293,6 +369,7 @@ void Animator::setSpeed(uint32_t id, float speed, float clock) {
     }
     float elapsedOld = inst->paused ? inst->pausedAt : (clock - inst->startClock - inst->delay) * inst->speed;
     inst->speed = speed;
+    inst->held = 0;  // T-717
     if (inst->paused) {
         inst->pausedAt = elapsedOld;
     } else if (speed != 0.0f) {
@@ -324,6 +401,7 @@ void Animator::setActiveElapsed(Instance& inst, float seconds, float clock) {
 }
 
 void Animator::resyncAfterJump(Instance& inst, float clock, bool quietFinish) {
+    inst.held = 0;  // T-717: updateParams() / setElapsedSeconds() changed the instance.
     const LocalState st = computeLocalState(inst, clock);
     if (st.finished) {
         if (quietFinish) {
@@ -375,6 +453,7 @@ bool Animator::retarget(uint32_t id, TimelineId timelineId) {
         inst->segEnd = next->duration;
     }
     inst->timeline = timelineId;
+    inst->held = 0;  // T-717
     growScratchForTimeline(*next);
     growPendingCapacity(next->tracks.size());
     return true;
@@ -827,7 +906,8 @@ bool Animator::noteStillValid(const Note& note, const NodeArena& arena) const {
 
 namespace {
 
-/// §19.3: an Element a PropId 16-22 is written to is a 3D layer while the write lasts.
+/// §19.3: an Element a PropId 16-22 is written to is a 3D layer while the write lasts (T-725: a write
+/// whose source can only ever write zero to the 3D components leaves it on its plane; Pending::may3D).
 void forceElement3D(NodeArena& arena, NodeId node) {
     NodeCommon& common = arena.common(node);
     if (common.is3D == 0) {
@@ -868,11 +948,86 @@ void Animator::noteMotion(NodeArena& arena, NodeId node, PropId p) {
 
 void Animator::reassertElement3D(NodeArena& arena) {
     for (const Pending& p : m_pending) {
-        if (!p.ended && p.prop >= prop::TranslateZ && p.prop <= prop::Orientation && arena.alive(p.node) &&
+        if (!p.ended && p.may3D && isProp3D(p.prop) && arena.alive(p.node) &&
             arena.kind(p.node) == NodeKind::Element) {
             forceElement3D(arena, p.node);
         }
     }
+    // T-717: a held member the last evaluate() left alone wrote nothing this frame, but its 3D
+    // values are still on its targets.
+    for (const Instance& inst : m_instances) {
+        const Timeline* tl = inst.heldSkipped != 0 ? timeline(inst.timeline) : nullptr;
+        if (tl == nullptr) {
+            continue;
+        }
+        for (const Track& track : tl->tracks) {
+            const NodeId node = trackNode(inst, track);
+            if (isProp3D(track.prop) && node != kInvalidNode && arena.alive(node) &&
+                arena.kind(node) == NodeKind::Element && trackForces3D(inst.timeline, *tl, track)) {
+                forceElement3D(arena, node);
+            }
+        }
+    }
+}
+
+NodeId Animator::trackNode(const Instance& inst, const Track& track) {
+    if (track.target == kSelfNode) {
+        return inst.selfNode;
+    }
+    return track.target < inst.localCount ? inst.localToArena[track.target] : kInvalidNode;
+}
+
+namespace {
+
+/// T-717: the general transform components a PropId writes (one bit per component PropId), so
+/// that Translate overlaps TranslateX and Translate3 overlaps TranslateZ; 0 outside 1-22.
+uint32_t transformComponents(PropId p) {
+    switch (p) {
+        case prop::Anchor:
+            return (1u << prop::AnchorX) | (1u << prop::AnchorY);
+        case prop::Anchor3:
+            return (1u << prop::AnchorX) | (1u << prop::AnchorY) | (1u << prop::AnchorZ);
+        case prop::Translate:
+            return (1u << prop::TranslateX) | (1u << prop::TranslateY);
+        case prop::Translate3:
+            return (1u << prop::TranslateX) | (1u << prop::TranslateY) | (1u << prop::TranslateZ);
+        case prop::Scale:
+            return (1u << prop::ScaleX) | (1u << prop::ScaleY);
+        default:
+            return p >= prop::AnchorX && p <= prop::Orientation ? 1u << p : 0u;
+    }
+}
+
+/// T-717: whether writing `a` can change what writing `b` set.
+bool propsOverlap(PropId a, PropId b) {
+    return a == b || (transformComponents(a) & transformComponents(b)) != 0;
+}
+
+}  // namespace
+
+bool Animator::heldTargetsTouched(const Instance& inst, const Timeline& tl, const NodeArena& arena) const {
+    for (const Track& track : tl.tracks) {
+        const NodeId node = trackNode(inst, track);
+        if (node == kInvalidNode) {
+            continue;
+        }
+        if (!arena.alive(node)) {
+            return true;
+        }
+        const uint32_t flags = arena.common(node).flags2;
+        if ((flags & kAnimValueStale) != 0) {
+            return true;
+        }
+        if ((flags & kAnimWriteQueued) != 0) {
+            // A write queued before this member's would have been replaced by it.
+            for (const Pending& p : m_pending) {
+                if (p.node == node && propsOverlap(p.prop, track.prop)) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
 }
 
 void Animator::evaluate(float clock, NodeArena& arena) {
@@ -919,8 +1074,11 @@ void Animator::evaluate(float clock, NodeArena& arena) {
                 stopCursor += value.stopCount;
             }
         }
-        m_pending.push_back(Pending{node, prop, value, done});
-        noteMotion(arena, node, prop);  // T-345
+        // T-725: a transition between two values without a 3D component never makes its node 3D.
+        const bool may3D = !isProp3D(prop) || value3DNonZero(prop, tr.from) || value3DNonZero(prop, tr.to);
+        m_pending.push_back(Pending{node, prop, value, done, may3D});
+        arena.common(node).flags2 |= kAnimWriteQueued;  // T-717: a later held member writes over it.
+        noteMotion(arena, node, prop);                  // T-345
         if (done) {
             if (onTransitionEnd) {
                 // The owning element (T-218). T-260a: called after step 6 (dispatchNotes).
@@ -963,6 +1121,8 @@ void Animator::evaluate(float clock, NodeArena& arena) {
 
     m_toRemove.clear();
     m_toNotify.clear();
+    m_heldTargets.clear();
+    m_evaluatedInstances = 0;
     for (uint32_t idx : m_order) {
         Instance& inst = m_instances[idx];
         LocalState st = computeLocalState(inst, clock);
@@ -972,6 +1132,21 @@ void Animator::evaluate(float clock, NodeArena& arena) {
         inst.finished = st.finished ? 1 : 0;
         bool forwardsFill = fillHas(inst.fill, FillMode::Forwards);
         bool doTrackEval = !(st.finished && !forwardsFill);
+        // T-717 (10 §10.16 W4): a `@timeline` member paused at its end stop -- the segment end (a
+        // forward play's end) or start (a reverse play's end) -- whose fill keeps that value is a
+        // static hold: its values are applied on the frame it gets there and then only again when a
+        // target node was written or restyled since (kAnimValueStale), never "in motion".
+        const bool atStop = inst.group != 0 && inst.paused != 0 &&
+                            ((st.localT == inst.segEnd && forwardsFill) ||
+                             (st.localT == inst.segStart && fillHas(inst.fill, FillMode::Backwards)));
+        const bool wasHeld = atStop && inst.held != 0;
+        inst.held = atStop ? 1 : 0;
+        inst.heldSkipped = 0;
+        const Timeline* heldTl = wasHeld && doTrackEval ? timeline(inst.timeline) : nullptr;
+        if (heldTl != nullptr && !heldTargetsTouched(inst, *heldTl, arena)) {
+            doTrackEval = false;
+            inst.heldSkipped = 1;
+        }
 
         if (st.iter > inst.iterCount) {
             // T-255b: a 64-bit counter, so an iteration index saturated at UINT32_MAX (a clock past
@@ -1014,17 +1189,14 @@ void Animator::evaluate(float clock, NodeArena& arena) {
         if (doTrackEval) {
             const Timeline* tl = timeline(inst.timeline);
             if (tl != nullptr) {
+                ++m_evaluatedInstances;
                 for (const Track& track : tl->tracks) {
-                    NodeId node;
-                    if (track.target == kSelfNode) {
-                        node = inst.selfNode;
-                    } else if (track.target < inst.localCount) {
-                        node = inst.localToArena[track.target];
-                    } else {
-                        node = kInvalidNode;
-                    }
+                    const NodeId node = trackNode(inst, track);
                     if (node == kInvalidNode) {
                         continue;
+                    }
+                    if (atStop) {
+                        m_heldTargets.push_back(node);  // T-717: its stale bit is cleared after step 5.
                     }
                     Value v = evalTrackAdvancing(*tl, track, st.localT, &inst.overrideEasing, floatCursor,
                                                  stopCursor);
@@ -1032,9 +1204,13 @@ void Animator::evaluate(float clock, NodeArena& arena) {
                         continue;
                     }
                     scaleElementPx(arena, node, track.prop, v);  // T-345
-                    m_pending.push_back(Pending{node, track.prop, v});
-                    if (!st.finished) {
-                        noteMotion(arena, node, track.prop);  // T-345: a held final frame is static.
+                    const bool may3D =
+                        !isProp3D(track.prop) || trackForces3D(inst.timeline, *tl, track);  // T-725
+                    m_pending.push_back(Pending{node, track.prop, v, false, may3D});
+                    arena.common(node).flags2 |= kAnimWriteQueued;  // T-717, as in step 2.
+                    // T-345: a held final frame is static; T-717: so is a held member re-applying.
+                    if (!st.finished && !wasHeld) {
+                        noteMotion(arena, node, track.prop);
                     }
                     if ((track.prop == prop::Translate || track.prop == prop::TranslateX ||
                          track.prop == prop::TranslateY) &&
@@ -1098,8 +1274,11 @@ void Animator::evaluate(float clock, NodeArena& arena) {
         }
         ov.shown = value;
         ov.shownValid = true;
-        scaleElementPx(arena, ov.node, ov.prop, value);  // T-345
-        m_pending.push_back(Pending{ov.node, ov.prop, value});
+        scaleElementPx(arena, ov.node, ov.prop, value);                             // T-345
+        const bool may3D = !isProp3D(ov.prop) || value3DNonZero(ov.prop, value) ||  // T-725
+                           value3DNonZero(ov.prop, ov.value) ||
+                           (ov.fromKnown && value3DNonZero(ov.prop, ov.from));
+        m_pending.push_back(Pending{ov.node, ov.prop, value, false, may3D});
         noteMotion(arena, ov.node, ov.prop);
     }
     for (NodeId n : wasMoving) {
@@ -1119,10 +1298,22 @@ void Animator::evaluate(float clock, NodeArena& arena) {
         }
         // §19.3: a live Track/transition/override on an Element's PropId 16-22 forces is3D = 1
         // (Docs/tasks/T-43c.md). Not cleared here; the next style resolve restores it (19.3).
-        if (kind == NodeKind::Element && p.prop >= prop::TranslateZ && p.prop <= prop::Orientation) {
+        // T-725: unless its source can only write zero to the 3D components (Pending::may3D).
+        if (kind == NodeKind::Element && p.may3D && isProp3D(p.prop)) {
             forceElement3D(arena, p.node);
         }
         setProperty(arena, p.node, p.prop, p.value);
+    }
+    // T-717: what was written here is what the Animator applied; a held member re-applies only
+    // after a later write or restyle marks its target again.
+    constexpr uint32_t kAnimBits = kAnimValueStale | kAnimWriteQueued;
+    for (const Pending& p : m_pending) {
+        arena.common(p.node).flags2 &= ~kAnimBits;
+    }
+    for (NodeId n : m_heldTargets) {
+        if (arena.alive(n)) {
+            arena.common(n).flags2 &= ~kAnimBits;
+        }
     }
 
     // Step 6: Remove finished (non-Forwards-fill) instances, then fire onFinished once for every

@@ -41,7 +41,11 @@ add_executable(xt_golden
     # T-245: needs an AssetResolver (embedded image), which only xt_golden's renderFixture passes;
     # kept out of xt_golden_fixtures so the GL/GPU fixture loops never see it.
     fixtures/scene_image_mesh.cpp
+    # T-723: the style invalidation equivalence check; needs Code/Runtime/core/src's
+    # style_invalidation.h (the test-only switch) and reads Examples UIs.
+    golden_style_invalidation.cpp
 )
+target_include_directories(xt_golden PRIVATE ${PROJECT_SOURCE_DIR}/Code/Runtime/core/src)
 target_link_libraries(xt_golden PRIVATE xt_golden_fixtures xt_core xt_compile xt_sw)
 # xt_golden_fixtures' fixture .cpp files register themselves via static-init side effects only
 # (XT_GOLDEN_FIXTURE); nothing else references their symbols, so a plain static-library link would
@@ -54,6 +58,7 @@ else()
     target_link_options(xt_golden PRIVATE -Wl,--whole-archive $<TARGET_FILE:xt_golden_fixtures> -Wl,--no-whole-archive)
 endif()
 target_compile_definitions(xt_golden PRIVATE
+    XT_GOLDEN_EXAMPLES_DIR="${PROJECT_SOURCE_DIR}/Examples"
     XT_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/expected"
     XT_GOLDEN_LOTTIE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/lottie"
     XT_GOLDEN_UI_DIR="${CMAKE_CURRENT_SOURCE_DIR}/ui"

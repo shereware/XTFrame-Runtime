@@ -1,6 +1,7 @@
 #include "frame_emit.h"
 
 #include <algorithm>
+#include <cmath>
 
 #include "xt/assert.h"
 
@@ -31,7 +32,28 @@ bool sameState(const DrawCmd& a, const DrawCmd& b) {
            a.paramIndex == b.paramIndex && a.shading == b.shading && a.blend == b.blend &&
            a.stencilOp == b.stencilOp && a.stencilRef == b.stencilRef && a.sampler == b.sampler &&
            a.program == b.program && a.clipX == b.clipX && a.clipY == b.clipY && a.clipW == b.clipW &&
-           a.clipH == b.clipH && a.mipLod == b.mipLod && a.boxShadowMulti == b.boxShadowMulti;
+           a.clipH == b.clipH && a.mipLod == b.mipLod && a.boxShadowMulti == b.boxShadowMulti &&
+           a.clipParamIndex == b.clipParamIndex;
+}
+
+/// T-718 (Docs/design/10-backends.md §10.16 W1 item 2): the leaf shadings an analytic clip covers.
+bool takesAnalyticClip(Shading s) {
+    switch (s) {
+        case Shading::Solid:
+        case Shading::Gradient:
+        case Shading::Texture:
+        case Shading::TextureStraight:
+        case Shading::Glyph:
+        case Shading::BoxShadow:
+        case Shading::ParticleTexture:
+        case Shading::ParticleSolid:
+            return true;
+        case Shading::StencilOnly:
+        case Shading::Composite:
+        case Shading::Effect:
+            return false;
+    }
+    return false;
 }
 
 }  // namespace
@@ -57,6 +79,7 @@ void FrameEmitter::begin(GpuFrame& frame, int width, int height) {
     m_currentTarget = kSurfaceTarget;
     m_passOpen = false;
     m_scissor = fullScissor();
+    m_analyticClip = 0;
     m_slots.clear();
     m_windowQuads.clear();
     beginPass(kSurfaceTarget, false);
@@ -103,6 +126,13 @@ void FrameEmitter::beginPass(TargetHandle target, bool clear, bool copy, TargetH
     m_frame->passes.push_back(p);
     m_currentTarget = target;
     m_passOpen = true;
+    if (target != kSurfaceTarget && target <= m_slots.size()) {
+        Slot& s = m_slots[target - 1];
+        if (s.firstPass < 0) {  // T-728: the slot's first pass since its acquire
+            s.firstPass = static_cast<int>(m_frame->passes.size()) - 1;
+            s.freshClear = clear && !copy;
+        }
+    }
 }
 
 Scissor FrameEmitter::windowOf(TargetHandle target) const {
@@ -151,12 +181,84 @@ TargetHandle FrameEmitter::acquireTransient(TextureFormat fmt, bool needStencil,
             s.desc.width == desc.width && s.desc.height == desc.height) {
             s.inUse = true;
             s.window = window;
+            s.firstPass = -1;
+            s.freshClear = false;
             return static_cast<TargetHandle>(i + 1);
         }
     }
     m_slots.push_back(Slot{desc, window, true});
     m_frame->transients.push_back(desc);
     return static_cast<TargetHandle>(m_slots.size());
+}
+
+bool FrameEmitter::untouchedSinceClear(TargetHandle target, const Scissor& region) const {
+    if (target == kSurfaceTarget || target > m_slots.size() || region.empty()) {
+        return false;
+    }
+    const Slot& slot = m_slots[target - 1];
+    if (!slot.inUse || !slot.freshClear || slot.firstPass < 0 ||
+        static_cast<size_t>(slot.firstPass) >= m_frame->passes.size() ||
+        !(intersect(region, slot.window) == region)) {
+        return false;
+    }
+    const std::vector<Pass>& passes = m_frame->passes;
+    for (size_t i = static_cast<size_t>(slot.firstPass); i < passes.size(); ++i) {
+        const Pass& pass = passes[i];
+        if (pass.target != target) {
+            continue;
+        }
+        if (pass.copy != 0) {
+            return false;  // a copy into it: counted as covering the whole window
+        }
+        // The open pass's count is not written yet (closePass).
+        const bool open = m_passOpen && i + 1 == passes.size();
+        const size_t end = open ? m_frame->cmds.size() : size_t(pass.firstCmd) + pass.cmdCount;
+        for (size_t c = pass.firstCmd; c < end && c < m_frame->cmds.size(); ++c) {
+            const DrawCmd& cmd = m_frame->cmds[c];
+            if (cmd.shading == Shading::StencilOnly) {
+                continue;  // no color written
+            }
+            const Scissor clip = intersect(Scissor{cmd.clipX, cmd.clipY, cmd.clipW, cmd.clipH}, slot.window);
+            Scissor box = clip;
+            if (cmd.kind == DrawKind::Triangles) {
+                float x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+                bool any = false, unbounded = false;
+                const size_t vEnd =
+                    std::min(m_frame->vertices.size(), size_t(cmd.baseVertex) + cmd.vertexCount);
+                for (size_t v = cmd.baseVertex; v < vEnd; ++v) {
+                    const Vertex& p = m_frame->vertices[v];
+                    if (!(p.w > 0.0f) || !std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(p.w)) {
+                        unbounded = true;
+                        break;
+                    }
+                    const float x = p.x / p.w, y = p.y / p.w;
+                    x0 = any ? std::min(x0, x) : x;
+                    y0 = any ? std::min(y0, y) : y;
+                    x1 = any ? std::max(x1, x) : x;
+                    y1 = any ? std::max(y1, y) : y;
+                    any = true;
+                }
+                if (!any && cmd.indexCount > 0) {
+                    unbounded = true;  // indices without a vertex range: no box to trust
+                }
+                if (!unbounded) {
+                    if (!any) {
+                        continue;  // no vertex, no index: draws nothing
+                    }
+                    const float lo = -65536.0f, hi = 65536.0f;
+                    const int ix0 = static_cast<int>(std::floor(std::clamp(x0, lo, hi))) - 1;
+                    const int iy0 = static_cast<int>(std::floor(std::clamp(y0, lo, hi))) - 1;
+                    const int ix1 = static_cast<int>(std::ceil(std::clamp(x1, lo, hi))) + 1;
+                    const int iy1 = static_cast<int>(std::ceil(std::clamp(y1, lo, hi))) + 1;
+                    box = intersect(clip, Scissor{ix0, iy0, ix1 - ix0, iy1 - iy0});
+                }
+            }
+            if (!intersect(box, region).empty()) {
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 void FrameEmitter::sizeOf(TargetHandle target, int& w, int& h) const {
@@ -239,6 +341,7 @@ DrawCmd& FrameEmitter::pushCmd(DrawCmd cmd, const Geometry& g) {
     cmd.clipY = clampI16(m_scissor.y);
     cmd.clipW = clampI16(m_scissor.w);
     cmd.clipH = clampI16(m_scissor.h);
+    cmd.clipParamIndex = takesAnalyticClip(cmd.shading) ? m_analyticClip : 0;
     const Pass& pass = m_frame->passes.back();
     if (m_frame->cmds.size() > pass.firstCmd && g.indexCount > 0 && batchable(cmd)) {
         DrawCmd& prev = m_frame->cmds.back();

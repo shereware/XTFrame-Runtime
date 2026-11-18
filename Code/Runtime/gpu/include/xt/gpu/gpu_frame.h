@@ -234,6 +234,11 @@ enum class EffectProgram : uint8_t {
     /// T-343: bilinear upsample of `src` (and `aux`, mixed by `LevelMixParams::t`) through a
     /// uv mapping; `LevelMixParams`. kFxLevelMixFrag.
     LevelMix = 16,
+    /// T-729 (Docs/design/10-backends.md §10.18 B): BackdropBlur's composite with a third input;
+    /// `BackdropParams`; `src` = R' (the content with its shadow-type effects), `aux` = the blurred
+    /// backdrop, `BackdropParams::mask` = the content alone. kFxBackdropMaskedFrag. Only sent to a
+    /// device whose `GpuDevice::supportsBackdropMask()` is true.
+    BackdropMasked = 17,
 };
 
 /// One draw. Vertices `[baseVertex, baseVertex + vertexCount)` and indices
@@ -291,6 +296,13 @@ struct DrawCmd {
     /// position the gradient is evaluated at is `CoverageGradientParams::uvToLocal` applied to the
     /// vertex `u,v` (not `u,v` themselves); output = the Gradient output * coverage.
     TextureHandle coverage = 0;
+    /// T-718 (Docs/design/10-backends.md §10.16 W1): 0 = none. Nonzero: the start of an
+    /// `AnalyticClipParams` block in `GpuFrame::params` (never index 0) -- the fragment's output is
+    /// multiplied by the product of the block's coverages at the fragment's surface pixel. Only on
+    /// leaf draws (Solid, Gradient, Texture, TextureStraight, Glyph, BoxShadow, ParticleTexture,
+    /// ParticleSolid, with or without `coverage` / `mipLod`), never on StencilOnly, Composite or
+    /// Effect commands, and only when `GpuDevice::supportsAnalyticClip()` is true.
+    uint32_t clipParamIndex = 0;
 };
 
 /// A contiguous run of commands drawn into one target. Passes are executed in order.
@@ -437,6 +449,12 @@ struct CompositeParams {
 /// `GaussScalar`/`GaussColor`: merged-tap separable Gaussian. Index 0 of `weights` is the center
 /// sample; entries 1..tapCount are mirrored pairs at +-`offsets[i]` texels along `dir`.
 /// `constEdge != 0`: taps outside [0,1]^2 read `outside` instead of clamping (GaussScalar only).
+/// T-728 (Docs/design/10-backends.md §10.18 A item 1): `channel` (GaussScalar only) is what a tap
+/// reads from `src`: 0 = `src.r` (the scalar field, as before), 1 = `src.a`, 2 = `1 - src.a` (the
+/// first step of a shadow / glow chain reading a color source directly, in the place of an
+/// AlphaExtract pass); taps outside [0,1]^2 still read `outside` unchanged. Only a device whose
+/// `GpuDevice::supportsAlphaChannelReads()` is true receives the field: for any other device the
+/// builder pushes the block without it (the frames of before) and never needs a channel.
 struct GaussParams {
     float texelW, texelH;
     float dirX, dirY;
@@ -445,6 +463,7 @@ struct GaussParams {
     float outside;
     float weights[33];
     float offsets[33];
+    float channel = 0;
 };
 
 /// `Dilate`: max over `[-radius, radius]` texels along `dir`; `readAlpha != 0` reads `src.a`
@@ -569,9 +588,13 @@ struct TextureLodParams {
 /// `floor(uv * dst size)`; an OpenGL device flips its fragment row to top-down first), output =
 /// the mean of the four `src` texels `(2x, 2y)`, `(2x + 1, 2y)`, `(2x, 2y + 1)`, `(2x + 1,
 /// 2y + 1)`, each clamped to `src`'s last column / row. Exact texel fetches, no filtering.
+/// T-728 (10 §10.18 A item 1): `channel` turns each fetched texel `t` into `t` (0, as before),
+/// `vec4(t.a)` (1) or `vec4(1 - t.a)` (2) before the mean; sent only to a device whose
+/// `supportsAlphaChannelReads()` is true, like GaussParams::channel.
 struct DownsampleParams {
     float srcW, srcH;
     float dstW, dstH;
+    float channel = 0;
 };
 
 /// `Kawase` (T-343): one Kawase blur pass over `src` into a target of the same size.
@@ -595,6 +618,52 @@ struct LevelMixParams {
     float t;
 };
 
+/// `BackdropMasked` (T-729, Docs/design/10-backends.md §10.18 B): `mask` is the TargetHandle of the
+/// third input (exact as a float; 0 = none), which shares `src`'s window like `aux`. Output =
+/// `src + aux * sample(mask).a * (1 - src.a)`: the blurred backdrop (`aux`), masked by the content's
+/// own alpha (`mask`), under R' (`src`). With `mask` = `src` it is `Backdrop`'s output.
+struct BackdropParams {
+    float mask;
+};
+
+/// The third input target of a `BackdropMasked` command (`BackdropParams::mask`), or 0 when the
+/// command has none or names no transient of `frame`.
+inline TargetHandle backdropMaskTarget(const GpuFrame& frame, const DrawCmd& cmd) {
+    if (cmd.shading != Shading::Effect || cmd.program != EffectProgram::BackdropMasked ||
+        cmd.paramIndex >= frame.params.size()) {
+        return 0;
+    }
+    const float m = frame.params[cmd.paramIndex];
+    if (!(m >= 1.0f) || m > static_cast<float>(frame.transients.size())) {
+        return 0;
+    }
+    return static_cast<TargetHandle>(m);
+}
+
+/// T-718 (Docs/design/10-backends.md §10.16 W1): the active analytic rounded-rect clips of a draw
+/// (`DrawCmd::clipParamIndex`), laid out so a device can upload the block as it is (13 vec4: the
+/// count, then four per slot). `clips[0, count)` are used, `count` <= `kMaxSlots`. Per slot:
+/// `localFromDevice` (a, b, c, d, e, f: `local = (a x + c y + e, b x + d y + f)`) maps a surface
+/// pixel position to the clip's own space, where the shape is `rect` (x, y, w, h) with circular
+/// corner radii `radii` (top-left, top-right, bottom-right, bottom-left). A slot's coverage at a
+/// fragment is `clamp(0.5 - d, 0, 1)`, `d` being the signed distance (negative inside) from the
+/// fragment's centre to the shape's boundary in device pixels: with `s` the rounded rectangle's
+/// signed distance in local units and `g` its unit gradient there, `d = s / |M^T g|`, `M` the 2x2
+/// of `localFromDevice`. The draw's output is multiplied by the product of the slots' coverages.
+struct AnalyticClipParams {
+    static constexpr uint32_t kMaxSlots = 3;
+    struct Slot {
+        float localFromDevice[6];
+        float _pad[2];
+        float rect[4];
+        float radii[4];
+    };
+    uint32_t count = 0;
+    uint32_t _pad[3] = {};
+    Slot clips[kMaxSlots] = {};  // not `slots`: a Qt keyword macro in the editor's translation units
+};
+static_assert(sizeof(AnalyticClipParams) == 13 * 4 * sizeof(float), "13 vec4, uploaded as it is");
+
 static_assert(sizeof(GradientParams) % sizeof(float) == 0);
 static_assert(sizeof(ParticleParams) % sizeof(float) == 0);
 static_assert(sizeof(GlyphParams) % sizeof(float) == 0);
@@ -613,6 +682,7 @@ static_assert(sizeof(CustomEffectParams) % sizeof(float) == 0);
 static_assert(sizeof(DownsampleParams) % sizeof(float) == 0);
 static_assert(sizeof(KawaseParams) % sizeof(float) == 0);
 static_assert(sizeof(LevelMixParams) % sizeof(float) == 0);
+static_assert(sizeof(BackdropParams) % sizeof(float) == 0);
 
 /// Debug/test serialization of a frame's structure (passes, commands, transients; no vertex
 /// data), one line per pass/command. Stable across runs; used by Tests/gpu's golden snapshots.

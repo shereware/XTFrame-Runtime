@@ -1878,6 +1878,7 @@ void Document::update(float clock) {
         stats.laidOutElements += layoutThisFrame ? m_layoutEngine.lastLaidOutElements() : 0u;
         stats.activeAnimations += m_animator.activeInstanceCount();
         stats.activeTransitions += m_animator.transitionCount();
+        stats.animEvaluated += m_animator.evaluatedInstanceCount();  // T-717
         stats.arenaNodes += m_arena.aliveCount();
         stats.rigBones += m_rigBones;            // T-244
         stats.skinnedPoints += m_skinnedPoints;  // T-244

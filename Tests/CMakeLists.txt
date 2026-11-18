@@ -33,7 +33,9 @@ add_executable(xt_tests
     unit/test_painter.cpp
     unit/test_shape_modifiers.cpp
     unit/test_painter_3d.cpp
+    unit/test_painter_3d_flat.cpp  # T-727
     unit/test_painter_element.cpp
+    unit/test_rounded_rect_match.cpp  # T-718
     unit/test_lottie_parser.cpp
     unit/test_parse_svg.cpp
     unit/test_sw_raster.cpp
@@ -41,6 +43,7 @@ add_executable(xt_tests
     unit/test_sw_renderer.cpp
     unit/test_context.cpp
     unit/test_damage.cpp
+    unit/test_command_hash_relative.cpp  # T-721
     unit/test_context_reload.cpp
     unit/test_tokens.cpp
     unit/test_selectors_ext.cpp
@@ -103,6 +106,8 @@ add_executable(xt_tests
     unit/test_query.cpp
     unit/test_dynamic_tree.cpp
     unit/test_style_animation_integration.cpp
+    unit/test_transition_target.cpp  # T-723
+    unit/test_style_invalidation.cpp  # T-723
     unit/test_animation_identity.cpp
     unit/test_state_snapshot_v3.cpp
     unit/test_state_snapshot_v4.cpp
@@ -111,16 +116,19 @@ add_executable(xt_tests
     unit/test_command_list_validate.cpp
     unit/test_painter_effects.cpp
     unit/test_box_shadow.cpp  # T-668
+    unit/test_plane_2d.cpp  # T-725
     unit/test_baked.cpp
     unit/test_event_integration.cpp
     unit/test_sw_effect_math.cpp
     unit/test_sw_effects.cpp
+    unit/test_sw_backdrop_shadows.cpp  # T-729
     unit/test_perf.cpp
     unit/test_public_headers.cpp
     unit/test_simd.cpp
     unit/test_sw_layer_simd.cpp  # T-643
     unit/test_field_fixes.cpp
     unit/test_timeline_group.cpp
+    unit/test_timeline_hold.cpp  # T-717
     unit/test_external_media.cpp
     unit/test_timeline_clips.cpp
     unit/test_svg_style_rules.cpp
@@ -515,5 +523,19 @@ if(TARGET xtframe-view AND TARGET xtframe-pack)
                          --work "${CMAKE_CURRENT_BINARY_DIR}/corpus_work"
                  CONFIGURATIONS Release RelWithDebInfo)
         set_tests_properties(corpus_check PROPERTIES TIMEOUT 1800)
+    endif()
+endif()
+
+# T-713: the War Table benchmark runner's self-test -- its parsers on built-in text, then a shortened matrix
+# on a copy of Examples/demos/world-layers with this build's tools (optimised configurations only, like
+# corpus_check: a Debug software render is far slower).
+if(TARGET xtframe-view AND TARGET xtframe-pack AND TARGET xtframe-gpu-probe)
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME bench_war_table_self_test
+                 COMMAND Python3::Interpreter "${PROJECT_SOURCE_DIR}/Tools/Scripts/bench_war_table.py" --self-test
+                         --bin $<TARGET_FILE_DIR:xtframe-view> --out "${CMAKE_CURRENT_BINARY_DIR}/bench_war_table"
+                 CONFIGURATIONS Release RelWithDebInfo)
+        set_tests_properties(bench_war_table_self_test PROPERTIES TIMEOUT 900)
     endif()
 endif()

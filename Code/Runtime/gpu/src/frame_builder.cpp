@@ -12,6 +12,7 @@
 
 #include "damage_internal.h"  // Code/Runtime/core/src: hashCommandList (T-162 effect cache keys)
 #include "effect_math.h"      // Code/Runtime/core/src: geometry and effect math shared with xt::sw (T-414)
+#include "frame_cache_pair.h"
 #include "frame_emit.h"
 #include "gpu_effects.h"
 #include "gradient_lut.h"
@@ -56,7 +57,7 @@ constexpr size_t kMaxConvexVertices = 512;
 Mat2x3 deviceTransform(const Mat2x3& xf, float dpr) { return mul(scaling(Vec2{dpr, dpr}), xf); }
 
 /// FNV-1a 64 over `count` bytes, continuing from `hash` (T-162 effect cache keys; the same
-/// function Code/Runtime/core/src/damage.cpp uses per command).
+/// function Code/Runtime/core/src/command_hash.cpp uses per command).
 uint64_t fnv1a(uint64_t hash, const void* data, size_t count) {
     const uint8_t* bytes = static_cast<const uint8_t*>(data);
     for (size_t i = 0; i < count; ++i) {
@@ -191,11 +192,14 @@ struct FrameBuilder::Impl {
     /// T-691 (10 §10.14): the device's capabilities, asked once per build.
     bool deviceCoverage = true;
     bool deviceBoxShadow = true;
+    /// T-718 (10 §10.16 W1 item 7): GpuDevice::supportsAnalyticClip, asked once per build.
+    bool deviceAnalyticClip = false;
     /// T-691: whether a skipped DrawBoxShadow was already reported in `lastError` (once per builder).
     bool boxShadowWarned = false;
     /// T-691: this build's FrameBuilder::BuildStats counts (per attempt, like the coverage ones).
     uint32_t statCapCoverageFallbacks = 0;
     uint32_t statBoxShadowSkipped = 0;
+    uint32_t statAnalyticClips = 0, statAnalyticClipFallbacks = 0;  // T-718
     FrameBuilder::BuildStats lastBuildStats;
 
     FrameEmitter emit;
@@ -340,17 +344,49 @@ struct FrameBuilder::Impl {
 
     // --- T-162 effect result cache ---------------------------------------------------------
     struct CacheEntry {
+        /// The entry's key: the segment's position-independent key (T-721, 10 §10.16 W2) when
+        /// `relocatable`, else its absolute key (`absHash`). One live entry per key.
         uint64_t hash = 0;
+        /// The absolute key (segmentHash) of the segment the result was drawn for, and one more
+        /// (`hasAlias`) of a segment a whole number of pixels away that was verified to be the same
+        /// relative to its anchor: both are served without a relative hash.
+        uint64_t absHash = 0;
+        uint64_t aliasHash = 0;
+        /// T-721: the exact (unrounded) relative hash of the segment the result was drawn for.
+        uint64_t exactHash = 0;
         TextureHandle texture = 0;
         uint16_t width = 0, height = 0;
+        /// T-721: where the result was drawn -- its window and the segment's anchor (device px).
+        Scissor window;
+        Vec2 anchor{};
+        bool relocatable = false;  ///< T-721: keyed position-independently
+        bool bordered = false;     ///< T-721: drawn in a window grown by 1 px (a moving segment's)
+        bool hasAlias = false;
+        /// T-730 (10 §10.18 B second step): a backdrop pair -- `texture` is the shadow result R',
+        /// `maskTexture` the source layer S, both over `window`. Counts as two entries (`cacheSlots`)
+        /// and twice the bytes.
+        bool pair = false;
+        TextureHandle maskTexture = 0;
         bool touched = false;  ///< hit or stored during the current build
+        bool retired = false;  ///< T-721: superseded during the current build (released at its end)
     };
     std::vector<CacheEntry> cacheEntries;
     size_t cacheBytes = 0;
-    /// Hashes of the previous build's cacheable segments (a segment is stored on its second
-    /// consecutive appearance, so an animating one never pays for a copy) and this build's.
-    std::vector<uint64_t> prevSegmentHashes;
-    std::vector<uint64_t> curSegmentHashes;
+    /// T-730: the entries counted against kEffectCacheMaxEntries (a pair counts two).
+    size_t cacheSlots = 0;
+    /// T-730: computes the PushEffect part of a backdrop pair's key.
+    detail::BackdropPairHead pairHead;
+    /// One cacheable segment of a build: its key (CacheEntry::hash) and, when the key is position
+    /// independent, its anchor.
+    struct SegmentRecord {
+        uint64_t key = 0;
+        Vec2 anchor{};
+    };
+    /// The previous build's cacheable segments (a segment is stored on the second consecutive
+    /// appearance of its key, so one whose content animates never pays for a copy; T-721: the same
+    /// anchor twice in a row means the segment stands still) and this build's.
+    std::vector<SegmentRecord> prevSegments;
+    std::vector<SegmentRecord> curSegments;
     /// Per-command hashes of the current list, computed on the first cacheable segment.
     std::vector<uint64_t> cmdHashes;
     bool cmdHashesValid = false;
@@ -398,7 +434,7 @@ struct FrameBuilder::Impl {
         TextureHandle texture = 0;
         Scissor window;
         uint32_t cmdCount = 0;
-        std::vector<uint64_t> segmentHashes;
+        std::vector<SegmentRecord> segments;
     };
     std::vector<Band> prevBands;  ///< the last build's bands (texture ownership)
     std::vector<Band> curBands;   ///< the build in progress
@@ -411,9 +447,8 @@ struct FrameBuilder::Impl {
     /// Bands stored this build: the next build pastes them, so the frame is not the cheapest
     /// one yet (lastFrameReusable says no once).
     int bandPending = 0;
-    /// The segment-hash list of the band being drawn (PushEffect records into it); null outside
-    /// a band.
-    std::vector<uint64_t>* currentBandHashes = nullptr;
+    /// The segment list of the band being drawn (PushEffect records into it); null outside a band.
+    std::vector<SegmentRecord>* currentBandSegments = nullptr;
     std::vector<SceneRun> runs;
     std::vector<Scissor> bandWindows;  ///< per run (empty for scene runs and empty bands)
     /// A merged backdrop region (§23.aa.3): every top-level backdrop-blur run whose read
@@ -438,6 +473,14 @@ struct FrameBuilder::Impl {
     /// counts: an atlas restart builds again).
     uint32_t statCacheHits = 0;
     uint32_t statCacheMisses = 0;
+    /// T-721 (10 §10.16 W2 item 7): hits pasted a fraction of a pixel away from where the result was
+    /// drawn, and segments drawn again because they came to rest (the same "last attempt" rule).
+    uint32_t statCachePhaseHits = 0;
+    uint32_t statCacheSettles = 0;
+    /// T-730 (10 §10.18 B second step): backdrop pairs drawn from the cache, drawn in full, stored.
+    uint32_t statPairHits = 0;
+    uint32_t statPairMisses = 0;
+    uint32_t statPairStores = 0;
     FrameBuilder::EffectCacheStats lastCacheStats;
 
     // --- Per-build state -------------------------------------------------------------------
@@ -474,9 +517,25 @@ struct FrameBuilder::Impl {
         FillRule rule = FillRule::NonZero;
         /// T-663: a clip drawn as a mask layer (a Mask frame on frameStack); its PopClip pops it.
         bool maskLayer = false;
+        /// T-718 (10 §10.16 W1): an analytic clip level -- no stencil, no offscreen: the last used
+        /// slot of `analyticParams`; `prevAnalyticClip` is the block the leaf draws carried before.
+        bool analytic = false;
+        uint32_t prevAnalyticClip = 0;
+        /// T-720: `analyticBounds` before this analytic level (restored by its PopClip).
+        Scissor prevAnalyticBounds;
     };
     std::vector<ClipLevel> clipStack;
     int clipDepth = 0;  ///< number of *stencil* levels currently active (0..15)
+    /// T-718: the analytic clip levels on `clipStack` (0..AnalyticClipParams::kMaxSlots) and their
+    /// slots; each push appends a copy of the block to the frame's params (emit.analyticClip()).
+    /// They stay in force inside nested layer / mask / effect targets, on the leaf draws only.
+    uint32_t analyticDepth = 0;
+    AnalyticClipParams analyticParams;
+    /// T-720 (10 §10.16 W1 item 1 as revised): the intersection of the active analytic clips' boxes
+    /// (device px), meaningful while analyticDepth > 0. The levels leave the scissor alone; this is
+    /// only the range of a group target opened without a boundsHint (hintWindow), whose leaves the
+    /// clips confine to it -- a hinted group's window and every composite are not cut by it.
+    Scissor analyticBounds;
 
     enum class FrameKind { Layer, Mask, Effect };
     struct TargetFrame {
@@ -491,6 +550,8 @@ struct FrameBuilder::Impl {
         const detail::BackdropPyramid* sharedPyramid = nullptr;
         bool hasOwnPyramid = false;
         detail::BackdropPyramid ownPyramid;
+        /// T-729 (10 §10.18 B): the stack is BackdropBlur followed only by shadow-type effects.
+        bool shadowsUnderBackdrop = false;
         float opacity = 1;
         BlendMode blend = BlendMode::Normal;
         MaskMode mode = MaskMode::Alpha;
@@ -500,9 +561,18 @@ struct FrameBuilder::Impl {
         float time = 0;
         Mat2x3 invScreenXf;
         Rect contentBoundsPx;
-        // T-162: the segment's cache key, when it is cacheable at all.
+        // T-162: the segment's cache key, when it is cacheable at all. T-721: what its result is
+        // stored as (CacheEntry's fields of the same names) and what planSegment decided.
         bool cacheable = false;
         uint64_t cacheHash = 0;
+        uint64_t cacheAbsHash = 0;
+        uint64_t cacheExactHash = 0;
+        Vec2 cacheAnchor{};
+        bool cacheRelocatable = false;
+        bool cacheBordered = false;
+        bool cacheStore = false;    ///< the key was seen in the previous build: keep the result
+        bool cacheReplace = false;  ///< this result supersedes the key's live entry
+        bool cachePair = false;     ///< T-730: keep S and R' (a backdrop pair), not the result
     };
     std::vector<TargetFrame> frameStack;
 
@@ -844,16 +914,14 @@ struct FrameBuilder::Impl {
             state = PlaneState{};
             const bool outerAffine = planeStates.size() < 2 || planeStates[planeStates.size() - 2].affine;
             const float dpr = currentDpr > 0.0f ? currentDpr : 1.0f;
-            Mat3 h;
-            if (outerAffine && project3d::planeHomography(mappings, h)) {
-                // The pass's viewport: the list's (logical px), else the surface's.
-                Rect viewport{0.0f, 0.0f, static_cast<float>(targetWidth) / dpr,
-                              static_cast<float>(targetHeight) / dpr};
-                if (list != nullptr && list->viewport.w > 0.0f && list->viewport.h > 0.0f) {
-                    viewport = list->viewport;
-                }
-                state.affine =
-                    project3d::affinePlane(h, viewport, project3d::kAffinePlaneTolerancePx / dpr, state.fold);
+            if (outerAffine) {
+                // The pass's viewport: the list's (logical px), else the surface's. T-716: through
+                // project3d::planeTest, which the Painter's box shadow decision uses too.
+                const Rect surface{0.0f, 0.0f, static_cast<float>(targetWidth) / dpr,
+                                   static_cast<float>(targetHeight) / dpr};
+                const project3d::PlaneTest test =
+                    project3d::planeTest(list != nullptr ? list->viewport : Rect{}, surface, dpr);
+                state.affine = project3d::stackPlaneAffine(mappings, test, state.fold);
             }
         }
         syncPlaneFold();
@@ -1166,7 +1234,7 @@ struct FrameBuilder::Impl {
     void fillShapeAndCover(std::span<const Vec2> pts, std::span<const uint32_t> starts,
                            const Mat2x3& deviceXf, FillRule rule, const PaintRef& paint,
                            bool antialias = true, const CoverageSource* coverage = nullptr) {
-        if (paint.kind == PaintKind::None || pts.empty() || emit.scissor().empty()) {
+        if (paint.kind == PaintKind::None || pts.empty() || leafCulled()) {
             return;
         }
         // T-691 (10 §10.14 item 2): a device without coverage draws gets the paths of before T-660b
@@ -2279,7 +2347,7 @@ struct FrameBuilder::Impl {
     /// `Shading::BoxShadow` fragment program evaluates xt/box_shadow.h's formula. Nothing under a 3D
     /// projection (the Painter never emits one there; xt::sw skips it too).
     void doBoxShadow(const BoxShadowCmd& cmd, float dpr) {
-        if (projecting() || emit.scissor().empty()) {
+        if (projecting() || leafCulled()) {
             return;
         }
         const Mat2x3 deviceXf = deviceTransform(cmd.xf, dpr);
@@ -2717,7 +2785,7 @@ struct FrameBuilder::Impl {
 
     void drawHomogeneousQuad(const Vertex v[4], TextureHandle tex, bool smooth,
                              Shading shading = Shading::Texture) {
-        if (emit.scissor().empty()) {
+        if (leafCulled()) {
             return;
         }
         DrawCmd c;
@@ -2793,7 +2861,7 @@ struct FrameBuilder::Impl {
                 return false;
             }
         }
-        if (emit.scissor().empty()) {
+        if (leafCulled()) {
             return true;
         }
         computeMiters(contour);
@@ -2897,7 +2965,7 @@ struct FrameBuilder::Impl {
     /// premultiplied). Nothing is drawn under a 3D projection or when the texture is not ready.
     void doParticles(const CommandList& cl, const ParticlesCmd& cmd, float dpr, AssetResolver* assets,
                      const IrView* ir) {
-        if (projecting() || cmd.count == 0 || emit.scissor().empty() ||
+        if (projecting() || cmd.count == 0 || leafCulled() ||
             static_cast<size_t>(cmd.instanceOffset) + cmd.count > cl.particleInstances.size()) {
             return;
         }
@@ -3007,7 +3075,7 @@ struct FrameBuilder::Impl {
     void doImageMesh(const CommandList& cl, const ImageMeshCmd& cmd, float dpr, AssetResolver* assets,
                      const IrView* ir) {
         if (assets == nullptr || ir == nullptr || cmd.indexCount < 3 || cmd.vertexCount == 0 ||
-            emit.scissor().empty() ||
+            leafCulled() ||
             static_cast<size_t>(cmd.vertexOffset) + cmd.vertexCount > cl.meshVertices.size() ||
             static_cast<size_t>(cmd.indexOffset) + cmd.indexCount > cl.meshIndices.size()) {
             return;
@@ -3272,7 +3340,7 @@ struct FrameBuilder::Impl {
             return;
         }
         if (edgeFringe && deviceCoverage && !projecting()) {  // T-691: else the outline path below
-            if (emit.scissor().empty()) {
+            if (leafCulled()) {
                 return;  // fillShapeAndCover draws nothing then
             }
             Mat2x3 deviceXf;
@@ -3424,7 +3492,7 @@ struct FrameBuilder::Impl {
     /// rectangle), so these quads never batch. Glyphs missing from the atlas are skipped (an
     /// outline has no coverage to dilate or blur).
     void doEffectGlyphs(const GlyphsCmd& cmd, const Mat2x3& deviceXf, float dpr) {
-        if (emit.scissor().empty() || cmd.color.a <= 0.0f) {
+        if (leafCulled() || cmd.color.a <= 0.0f) {
             return;
         }
         const float sizeDevice = glyphRunBitmapSize(cmd, deviceXf);
@@ -3676,7 +3744,7 @@ struct FrameBuilder::Impl {
     /// T-676: with `only`, just the glyphs whose entry in it is non-zero (doTransformedRun's refusals).
     void doTransformedAtlasGlyphs(const GlyphsCmd& cmd, const Mat2x3& deviceXf, float dpr, TextShaper* shaper,
                                   const std::vector<uint8_t>* only = nullptr) {
-        if (emit.scissor().empty()) {
+        if (leafCulled()) {
             return;
         }
         const float size = std::floor(cmd.size * transformedBitmapScale(deviceXf) * 4.0f + 0.5f) / 4.0f;
@@ -3720,7 +3788,7 @@ struct FrameBuilder::Impl {
     /// full) is drawn by the T-653 atlas path rather than stencil-then-cover; a budget refusal
     /// asks for another frame (T-662's rule, through fillCoverage's count).
     void doTransformedRun(const GlyphsCmd& cmd, const Mat2x3& deviceXf, float dpr, TextShaper* shaper) {
-        if (emit.scissor().empty()) {
+        if (leafCulled()) {
             return;
         }
         transformedRunFallback.assign(cmd.glyphCount, 0);
@@ -3815,7 +3883,7 @@ struct FrameBuilder::Impl {
             return;
         }
 #ifndef XT_GPU_NO_TEXT
-        if (emit.scissor().empty()) {
+        if (leafCulled()) {
             return;
         }
         // T-681 (Docs/design/10-backends.md §10.11, ruling 1 of the T-676 record): single-sampled and
@@ -4084,6 +4152,18 @@ struct FrameBuilder::Impl {
         }
         ClipLevel level = clipStack.back();
         clipStack.pop_back();
+        if (level.analytic) {
+            // T-718: the outer levels' block (or none). T-720: the scissor was never changed.
+            XT_ASSERT(analyticDepth > 0);
+            if (analyticDepth > 0) {
+                --analyticDepth;
+                analyticParams.clips[analyticDepth] = AnalyticClipParams::Slot{};
+                analyticParams.count = analyticDepth;
+            }
+            emit.setAnalyticClip(level.prevAnalyticClip);
+            analyticBounds = level.prevAnalyticBounds;
+            return;
+        }
         if (level.maskLayer) {
             // T-663: the content and the shape's coverage go through the mask frame it opened.
             emit.setScissor(level.prevScissor);
@@ -4487,7 +4567,7 @@ struct FrameBuilder::Impl {
         }
         ++statClipImageDirect;
         const IrView* ir = enterSource(cl, source, site.assets, site.ir);
-        if (site.assets == nullptr || ir == nullptr || emit.scissor().empty()) {
+        if (site.assets == nullptr || ir == nullptr || leafCulled()) {
             return true;  // nothing to draw, as with the clip
         }
         Shading shading = Shading::Texture;
@@ -4637,6 +4717,10 @@ struct FrameBuilder::Impl {
         PaintRef white{};
         white.kind = PaintKind::Solid;
         white.color = Color{1, 1, 1, 1};
+        // T-718: the shape itself is not a leaf of the outer analytic clips (the content it masks
+        // carries them already; twice would square their edge coverage).
+        const uint32_t outerAnalyticClip = emit.analyticClip();
+        emit.setAnalyticClip(0);
         if (pathCmd != nullptr) {
             FillCmd fill{};
             fill.xf = pathCmd->xf;
@@ -4649,6 +4733,7 @@ struct FrameBuilder::Impl {
             fillConvex(*rectShape, deviceXf, white, true);
         }
         flushPendingClears();
+        emit.setAnalyticClip(outerAnalyticClip);
         f.b = emit.acquireTransient(TextureFormat::Rgba8, true, window);
         emit.beginPass(f.b, true);
         replayClips();
@@ -4658,6 +4743,77 @@ struct FrameBuilder::Impl {
         level.maskLayer = true;
         level.prevScissor = emit.scissor();
         clipStack.push_back(level);
+    }
+
+    /// T-718 (Docs/design/10-backends.md §10.16 W1 items 1, 2, 6): makes the clip of `pathCmd` an
+    /// analytic clip level when its path is a rectangle with circular corners (at least one of them
+    /// rounded: a plain rotated rectangle keeps its mask layer), its device transform is invertible
+    /// and fewer than three analytic clips are active. No target is opened: the leaf draws up to the
+    /// PopClip carry the shape (emit.setAnalyticClip). T-720 (W1 item 1 as revised): the scissor is
+    /// left alone -- the coverage is 0 outside the shape, and a group's composite inside the clip
+    /// (a shadow running out of the corners) is not cut at the shape's box; the box (`shapeBounds`,
+    /// device px, rounded outwards: an edge pixel whose centre lies outside still has coverage) only
+    /// narrows `analyticBounds`. False when the clip does not qualify; nothing was changed then.
+    bool pushAnalyticClip(const ClipPathCmd& pathCmd, const Mat2x3& deviceXf, const Rect& shapeBounds) {
+        if (analyticDepth >= AnalyticClipParams::kMaxSlots) {
+            return false;
+        }
+        const PathRef& path = pathCmd.path;
+        if (size_t(path.verbOffset) + path.verbCount > list->verbs.size() ||
+            size_t(path.pointOffset) + path.pointCount > list->points.size()) {
+            return false;
+        }
+        Rect rect;
+        float radii[4] = {0, 0, 0, 0};
+        if (!matchRoundedRectPath(
+                std::span<const PathVerb>(list->verbs.data() + path.verbOffset, path.verbCount),
+                std::span<const float>(list->points.data() + path.pointOffset, path.pointCount), rect,
+                radii)) {
+            return false;
+        }
+        if (!(radii[0] > 0.0f || radii[1] > 0.0f || radii[2] > 0.0f || radii[3] > 0.0f)) {
+            return false;
+        }
+        Mat2x3 inv;
+        if (!invert(deviceXf, inv)) {
+            return false;
+        }
+        const float m[6] = {inv.a, inv.b, inv.c, inv.d, inv.e, inv.f};
+        for (const float v : m) {
+            if (!std::isfinite(v)) {
+                return false;
+            }
+        }
+        AnalyticClipParams::Slot& slot = analyticParams.clips[analyticDepth];
+        slot = AnalyticClipParams::Slot{};
+        std::memcpy(slot.localFromDevice, m, sizeof(m));
+        slot.rect[0] = rect.x;
+        slot.rect[1] = rect.y;
+        slot.rect[2] = rect.w;
+        slot.rect[3] = rect.h;
+        std::memcpy(slot.radii, radii, sizeof(radii));
+        const float lo = -65536.0f, hi = 65536.0f;
+        const int x0 = static_cast<int>(std::floor(std::clamp(shapeBounds.x, lo, hi)));
+        const int y0 = static_cast<int>(std::floor(std::clamp(shapeBounds.y, lo, hi)));
+        const int x1 = static_cast<int>(std::ceil(std::clamp(shapeBounds.x + shapeBounds.w, lo, hi)));
+        const int y1 = static_cast<int>(std::ceil(std::clamp(shapeBounds.y + shapeBounds.h, lo, hi)));
+        const Scissor box{x0, y0, x1 - x0, y1 - y0};
+        ClipLevel level;
+        level.analytic = true;
+        level.prevScissor = emit.scissor();
+        level.prevAnalyticClip = emit.analyticClip();
+        level.prevAnalyticBounds = analyticBounds;
+        analyticBounds = analyticDepth == 0 ? box : detail::intersect(analyticBounds, box);
+        ++analyticDepth;
+        analyticParams.count = analyticDepth;
+        GpuFrame& frame = emit.frame();
+        if (frame.params.empty()) {
+            frame.params.push_back(0.0f);  // DrawCmd::clipParamIndex 0 means "none"
+        }
+        clipStack.push_back(level);
+        emit.setAnalyticClip(emit.pushParams(analyticParams));
+        ++statAnalyticClips;
+        return true;
     }
 
     /// The T-663 decision for a clip that would take a stencil level (`pts` / `starts`: its
@@ -4734,6 +4890,12 @@ struct FrameBuilder::Impl {
                 return true;
             }
         }
+        // T-718 (10 §10.16 W1 item 1): after the single image, before the mask layer -- a
+        // circular-cornered rectangle on a device that draws analytic clips.
+        if (deviceAnalyticClip && pathCmd != nullptr && pushAnalyticClip(*pathCmd, deviceXf, boundsOf(pts))) {
+            consumed = site.index;
+            return true;
+        }
         // Point 4: a mask layer (the rect's shape is the cleaned corner contour in contourA).
         Contour* rectShape = nullptr;
         if (pathCmd == nullptr) {
@@ -4747,9 +4909,24 @@ struct FrameBuilder::Impl {
             ++statCapCoverageFallbacks;
             return false;
         }
+        if (deviceAnalyticClip) {
+            ++statAnalyticClipFallbacks;  // T-718: another shape, or a fourth nested level
+        }
         pushClipMaskLayer(scan, boundsOf(pts), pathCmd, rectShape, deviceXf, dpr);
         consumed = site.index;
         return true;
+    }
+
+    /// True when nothing a leaf draw appended now can show: the scissor is empty or, while the
+    /// leaves carry analytic clips, it misses their box (`analyticBounds`, where their coverage is
+    /// not 0). T-720: the box no longer narrows the scissor, so the leaves skipped through an empty
+    /// scissor under T-718 are skipped here; a leaf drawn without the clips (a mask layer's shape,
+    /// emit.analyticClip() == 0) only by the scissor.
+    bool leafCulled() const {
+        if (emit.scissor().empty()) {
+            return true;
+        }
+        return emit.analyticClip() != 0 && detail::intersect(emit.scissor(), analyticBounds).empty();
     }
 
     /// T-343 (23 §23.aa.3): in Direct mode the scene target has no stencil (a host LDR target);
@@ -4787,9 +4964,13 @@ struct FrameBuilder::Impl {
     /// outside it can be drawn or composited) and normalised by the emitter (Docs/tasks/
     /// T-151.md point 2). An empty hint is the lazy "whole viewport" default: full surface.
     /// `outsetPx` grows the hint first (a leading BackdropBlur's read range).
+    /// T-720 (10 §10.16 W1): analytic clip levels do not narrow the scissor, so a hinted window is
+    /// not cut at their box (the group's composite may overflow the shape, as in SW); an unhinted
+    /// one under such clips takes their box (`analyticBounds`) instead of the whole surface.
     Scissor hintWindow(const Rect& hint, float dpr, float outsetPx = 0.0f) {
         if (hint.w <= 0.0f || hint.h <= 0.0f) {
-            return emit.targetWindow(emit.scissor());
+            return emit.targetWindow(analyticDepth > 0 ? detail::intersect(emit.scissor(), analyticBounds)
+                                                       : emit.scissor());
         }
         const float x0 = hint.x * dpr - outsetPx;
         const float y0 = hint.y * dpr - outsetPx;
@@ -4917,8 +5098,33 @@ struct FrameBuilder::Impl {
     struct Segment {
         size_t end = 0;  ///< index of the matching PopEffect (commands.size() when unbalanced)
         bool cacheable = false;
-        uint64_t hash = 0;
+        uint64_t hash = 0;  ///< the absolute key (segmentHash)
+        /// T-721: nothing in the segment ties it to a place -- no 3D space command (its mapping is
+        /// built on the outer one) and no custom shader on the effect itself (never cached).
+        bool movable = false;
+        // T-721: filled by planSegment (TargetFrame's cache* fields of the same names).
+        uint64_t key = 0;
+        uint64_t exactHash = 0;
+        Vec2 anchor{};
+        bool relocatable = false;
+        bool bordered = false;
+        bool store = false;
+        bool replace = false;
+        Vec2 offset{};  ///< a hit: where the result goes, relative to where it was drawn
+        /// T-730 (10 §10.18 B second step): a BackdropBlur followed only by shadow-type effects on a
+        /// device that runs BackdropMasked -- what is cached is the pair S / R', keyed without the
+        /// BackdropBlur's parameters (detail::BackdropPairHead).
+        bool pair = false;
     };
+
+    /// T-721 (10 §10.16 W2): positions in the position-independent key are rounded to 1/16 device
+    /// px (a position computed at another place differs in its last bits; an exact hash would
+    /// never match while a segment moves), the linear part of an effect's own transform to 1/256
+    /// (see hashCommandRelative) and that of an affine plane's fold to 2^-14. The exact form of the
+    /// hash (relativeSegmentHash with `exact`) decides whether a result is the still segment's own.
+    static constexpr float kRelativeSteps = 16.0f;
+    static constexpr float kRelativeLinearSteps = 256.0f;
+    static constexpr float kRelativeFoldSteps = 16384.0f;
 
     /// Classifies the `PushEffect` at `start`: finds its PopEffect, decides whether its result
     /// is a pure function of the segment (no backdrop read, no external texture, a caching
@@ -4926,6 +5132,7 @@ struct FrameBuilder::Impl {
     Segment classifySegment(const CommandList& cl, size_t start, const EffectCmd& c, const IrView* ir) {
         Segment seg;
         bool external = false;
+        bool space3d = false;  // T-721
         int depth = 0;
         seg.end = cl.commands.size();
         // T-263d: each asset command's id is its own source's.
@@ -4954,6 +5161,8 @@ struct FrameBuilder::Impl {
             } else if (cmd.kind == CmdKind::DrawImageMesh) {
                 const ImageMeshCmd& mesh = cl.imageMeshes[cmd.index];  // T-245
                 external = external || isExternal(mesh.asset, mesh.source);
+            } else if (cmd.kind == CmdKind::PushProjection || cmd.kind == CmdKind::PushTransform3D) {
+                space3d = true;  // T-721: a mapping built on the outer one
             }
         }
         if (cacheUnsupported || external || seg.end >= cl.commands.size() || c.effectCount == 0 ||
@@ -4966,19 +5175,34 @@ struct FrameBuilder::Impl {
             // 23 §23.aa.4) a top-level glass panel over a scene the host declared static: the
             // scene is then a constant and the panel's output may be kept until a build without
             // the promise releases it (its hash is not computed then, so the entry goes idle).
+            // T-730 (10 §10.18 B second step): and the source layer and the shadow result of a
+            // BackdropBlur followed only by shadow-type effects, which read no surface (T-729).
             if (!(directMode && sceneStaticBuild && frameStack.empty())) {
-                return seg;
+                seg.pair = emit.backdropMask() && effect_math::backdropThenShadowsOnly(cl, c);
+                if (!seg.pair) {
+                    return seg;
+                }
             }
         }
         seg.cacheable = true;
-        seg.hash = segmentHash(cl, start, seg.end);
+        seg.hash = segmentHash(cl, start, seg.end, seg.pair);
+        seg.key = seg.hash;
+        // T-721 (10 §10.16 W2 item 2): a backdrop reader's result depends on what lies below it
+        // (T-730: the pair does not read it).
+        seg.movable = !space3d && (seg.pair || first.kind != EffectKind::BackdropBlur);
+        for (uint32_t i = 0;
+             seg.movable && i < c.effectCount && size_t(c.effectOffset) + i < cl.effects.size(); ++i) {
+            seg.movable = cl.effects[c.effectOffset + i].kind != EffectKind::Custom;
+        }
         return seg;
     }
 
     /// The cache key of commands `[start, end]`: everything the segment's pixels depend on
     /// besides the commands themselves (dpr, surface size, fringe, the parent window, the
     /// scissor and stencil clip levels, the projection stack), then core's per-command hashes.
-    uint64_t segmentHash(const CommandList& cl, size_t start, size_t end) {
+    /// T-730: `pair` is a backdrop pair's key -- tagged, the PushEffect's hash without the
+    /// BackdropBlur's parameters (detail::BackdropPairHead).
+    uint64_t segmentHash(const CommandList& cl, size_t start, size_t end, bool pair = false) {
         if (!cmdHashesValid) {
             hashCommandList(cl, cmdHashes);
             cmdHashesValid = true;
@@ -4999,6 +5223,9 @@ struct FrameBuilder::Impl {
                          parent,        scissor,     clipDepth,    static_cast<uint32_t>(mappings.size()),
                          listSourcesKey};
         uint64_t h = fnv1a(kFnvBasis, &hdr, sizeof(hdr));
+        if (pair) {
+            h = fnv1a(h, &detail::kBackdropPairTag, sizeof(detail::kBackdropPairTag));
+        }
         for (const project3d::Mapping& m : mappings) {
             const uint8_t has = m.hasProjection ? 1 : 0;
             h = fnv1a(h, &has, 1);
@@ -5018,54 +5245,411 @@ struct FrameBuilder::Impl {
             h = fnv1a(h, f.vertices.data() + level.quad.baseVertex,
                       size_t(level.quad.vertexCount) * sizeof(Vertex));
         }
+        if (analyticDepth > 0) {
+            // T-718 (10 §10.16 W1 item 5): the segment's leaf draws carry the active analytic clips.
+            h = fnv1a(h, &analyticParams, sizeof(analyticParams));
+        }
         for (size_t i = start; i <= end && i < cmdHashes.size(); ++i) {
-            h = fnv1a(h, &cmdHashes[i], sizeof(uint64_t));
+            const uint64_t hc =
+                pair && i == start ? pairHead.hash(cl, start, CommandHashOrigin{}) : cmdHashes[i];
+            h = fnv1a(h, &hc, sizeof(uint64_t));
         }
         return h;
     }
 
+    /// T-721 (Docs/design/10-backends.md §10.16 W2 item 1): the position-independent key of commands
+    /// `[start, end]`, the segment of effect `c` whose bounds start at `anchor` (device px):
+    /// segmentHash's content with every position taken relative to the anchor -- the commands
+    /// (core's hashCommandRelative), the stencil clip levels' vertices, the analytic clips'
+    /// device -> local translations. The parent window and the scissor are left out: the key is only
+    /// used where they do not cut the segment's window (relocatableHere). On an affine plane the
+    /// commands' origin is the anchor taken back into the plane and the fold's linear part stands
+    /// for the mapping stack. `exact` hashes the relative floats as they are; otherwise they are
+    /// rounded (kRelativeSteps and friends), which is the key. T-730: `pair` as in segmentHash.
+    uint64_t relativeSegmentHash(const CommandList& cl, size_t start, size_t end, const EffectCmd& c,
+                                 Vec2 anchor, bool exact, bool pair) {
+        const float dpr = currentDpr;
+        CommandHashOrigin origin;
+        origin.screen = Vec2{c.boundsHint.x, c.boundsHint.y};
+        origin.plane = origin.screen;
+        float fold[4] = {1.0f, 0.0f, 0.0f, 1.0f};
+        float planeScale = 1.0f;
+        if (foldActive) {
+            Mat2x3 inv;
+            if (invert(planeFold, inv)) {
+                origin.plane = apply(inv, origin.screen);
+            }
+            fold[0] = planeFold.a;
+            fold[1] = planeFold.b;
+            fold[2] = planeFold.c;
+            fold[3] = planeFold.d;
+            planeScale = std::sqrt(std::fabs(planeFold.a * planeFold.d - planeFold.b * planeFold.c));
+        }
+        if (!exact) {
+            origin.screenSteps = kRelativeSteps * dpr;
+            origin.planeSteps = kRelativeSteps * dpr * planeScale;
+            origin.linearSteps = kRelativeLinearSteps;
+            for (float& v : fold) {
+                v = std::nearbyint(v * kRelativeFoldSteps) + 0.0f;
+            }
+        }
+        auto relative = [exact](float v, float o) {
+            v -= o;
+            return exact ? v : std::nearbyint(v * kRelativeSteps) + 0.0f;
+        };
+        struct Header {
+            uint32_t tag;  ///< never an absolute key's first bytes (a dpr)
+            float dpr;
+            int32_t width, height, fringe, clipDepth;
+            uint32_t analyticDepth;
+            uint32_t assetSource;
+            float fold[4];
+        };
+        const Header hdr{0x54373231u,  // "T721"
+                         dpr,         targetWidth,   targetHeight,   edgeFringe ? 1 : 0,
+                         clipDepth,   analyticDepth, listSourcesKey, {fold[0], fold[1], fold[2], fold[3]}};
+        uint64_t h = fnv1a(kFnvBasis, &hdr, sizeof(hdr));
+        if (pair) {
+            h = fnv1a(h, &detail::kBackdropPairTag, sizeof(detail::kBackdropPairTag));
+        }
+        const GpuFrame& f = emit.frame();
+        for (const ClipLevel& level : clipStack) {
+            if (!level.stencil) {
+                continue;
+            }
+            const uint8_t rule = static_cast<uint8_t>(level.rule);
+            h = fnv1a(h, &rule, 1);
+            for (const Geometry* g : {&level.winding, &level.quad}) {
+                h = fnv1a(h, &g->vertexCount, sizeof(g->vertexCount));
+                for (uint32_t i = 0; i < g->vertexCount; ++i) {
+                    const Vertex& v = f.vertices[g->baseVertex + i];
+                    const float p[3] = {relative(v.x, anchor.x), relative(v.y, anchor.y), v.w};
+                    h = fnv1a(h, p, sizeof(p));
+                }
+            }
+        }
+        for (uint32_t i = 0; i < analyticDepth; ++i) {
+            // local = M (anchor + r) + t for a device position r past the anchor.
+            const AnalyticClipParams::Slot& s = analyticParams.clips[i];
+            const float* m = s.localFromDevice;
+            const float slot[14] = {m[0],
+                                    m[1],
+                                    m[2],
+                                    m[3],
+                                    relative(m[4] + m[0] * anchor.x + m[2] * anchor.y, 0.0f),
+                                    relative(m[5] + m[1] * anchor.x + m[3] * anchor.y, 0.0f),
+                                    s.rect[0],
+                                    s.rect[1],
+                                    s.rect[2],
+                                    s.rect[3],
+                                    s.radii[0],
+                                    s.radii[1],
+                                    s.radii[2],
+                                    s.radii[3]};
+            h = fnv1a(h, slot, sizeof(slot));
+        }
+        for (size_t i = start; i <= end && i < cl.commands.size(); ++i) {
+            const uint64_t hc = pair && i == start
+                                    ? pairHead.hash(cl, start, origin)
+                                    : hashCommandRelative(cl, static_cast<uint32_t>(i), origin);
+            h = fnv1a(h, &hc, sizeof(hc));
+        }
+        return h;
+    }
+
+    /// T-721 (10 §10.16 W2 item 2): whether the segment of effect `c` may be keyed
+    /// position-independently where it is now: not in a true perspective projection, and neither its
+    /// window nor the window grown by the 1 px border of a moving segment (item 3) is cut or moved by
+    /// the scissor, the parent window or the surface -- which also keeps out bounds the Painter
+    /// clamped to the viewport. (The segment's own content is checked by classifySegment: movable.)
+    bool relocatableHere(const EffectCmd& c) {
+        const Rect& hint = c.boundsHint;
+        const float dpr = currentDpr;
+        if (projecting() || !(hint.w > 0.0f) || !(hint.h > 0.0f)) {
+            return false;
+        }
+        const float x0 = hint.x * dpr, y0 = hint.y * dpr;
+        const float x1 = (hint.x + hint.w) * dpr, y1 = (hint.y + hint.h) * dpr;
+        const float limit = 32768.0f;
+        if (!(std::fabs(x0) < limit && std::fabs(y0) < limit && std::fabs(x1) < limit &&
+              std::fabs(y1) < limit)) {
+            return false;  // also a NaN
+        }
+        if (foldActive) {
+            Mat2x3 inv;
+            if (!invert(planeFold, inv)) {
+                return false;
+            }
+        }
+        const Scissor limits = detail::intersect(emit.scissor(), emit.currentWindow());
+        const int ix0 = static_cast<int>(std::floor(x0)), iy0 = static_cast<int>(std::floor(y0));
+        const int ix1 = static_cast<int>(std::ceil(x1)), iy1 = static_cast<int>(std::ceil(y1));
+        for (int border = 0; border <= 1; ++border) {
+            const Scissor px{ix0 - border, iy0 - border, ix1 - ix0 + 2 * border, iy1 - iy0 + 2 * border};
+            const Scissor w = hintWindow(hint, dpr, static_cast<float>(border));
+            if (w.x != px.x || w.y != px.y || w.w < px.w || w.h < px.h) {
+                return false;
+            }
+            if (w.x < limits.x || w.y < limits.y || w.x + w.w > limits.x + limits.w ||
+                w.y + w.h > limits.y + limits.h) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// The live entry drawn for (or verified against) the absolute key `hash`.
     CacheEntry* findCacheEntry(uint64_t hash) {
         for (CacheEntry& e : cacheEntries) {
-            if (e.hash == hash) {
+            if (!e.retired && (e.absHash == hash || (e.hasAlias && e.aliasHash == hash))) {
                 return &e;
             }
         }
         return nullptr;
     }
 
-    bool seenLastBuild(uint64_t hash) const {
-        for (uint64_t h : prevSegmentHashes) {
-            if (h == hash) {
-                return true;
+    /// The live entry of key `key` (CacheEntry::hash).
+    CacheEntry* findCacheEntryByKey(uint64_t key) {
+        for (CacheEntry& e : cacheEntries) {
+            if (!e.retired && e.hash == key) {
+                return &e;
             }
         }
-        return false;
+        return nullptr;
     }
 
-    bool cacheHasRoom(size_t bytes) const {
-        return !cacheUnsupported && cacheEntries.size() < FrameBuilder::kEffectCacheMaxEntries &&
-               cacheBytes + bytes <= FrameBuilder::kEffectCacheBudgetBytes;
-    }
+    static bool wholePixels(Vec2 d) { return d.x == std::floor(d.x) && d.y == std::floor(d.y); }
 
-    /// Draws the cached result of a segment: one textured quad over its window, under the
-    /// current scissor, where the segment's composite would have gone (opacity 1, Normal).
-    /// Returns false when the window does not match the entry (the segment is then drawn).
-    bool emitCachedEffect(const EffectCmd& c, CacheEntry& entry) {
-        const Scissor window = hintWindow(c.boundsHint, currentDpr);
-        if (window.w != entry.width || window.h != entry.height) {
-            XT_ASSERT(false && "effect cache entry does not match its window");
-            return false;
+    /// What the previous build drew under key `key`: nothing (`seen` false), a segment at exactly
+    /// `anchor` (`still`: it has not moved) and / or one a whole number of pixels away.
+    struct PrevSegment {
+        bool seen = false;
+        bool still = false;
+        bool wholePixels = false;
+    };
+    PrevSegment previousSegment(uint64_t key, Vec2 anchor) const {
+        PrevSegment r;
+        for (const SegmentRecord& s : prevSegments) {
+            if (s.key != key) {
+                continue;
+            }
+            r.seen = true;
+            r.still = r.still || (s.anchor.x == anchor.x && s.anchor.y == anchor.y);
+            r.wholePixels = r.wholePixels || wholePixels(Vec2{anchor.x - s.anchor.x, anchor.y - s.anchor.y});
         }
+        return r;
+    }
+
+    void recordSegment(uint64_t key, Vec2 anchor) {
+        curSegments.push_back(SegmentRecord{key, anchor});
+        if (currentBandSegments != nullptr) {
+            currentBandSegments->push_back(SegmentRecord{key, anchor});  // T-343: kept while the band is
+        }
+    }
+
+    /// T-721 (10 §10.16 W2 items 3 to 6): decides how the cacheable segment `seg` of effect `c` is
+    /// drawn and records it for the next build. Returns the entry to paste (`seg.offset` away from
+    /// where it was drawn), or null when the segment is drawn in full; `seg` then carries the key,
+    /// the window choice (`bordered`) and whether the result is kept (`store`, `replace`).
+    ///  - The absolute key first: the segment where a result was drawn or verified costs no
+    ///    relative hash and is pasted as before T-721.
+    ///  - Otherwise, where the segment may be keyed position-independently, the entry of that key is
+    ///    pasted at the segment's place: a whole number of pixels away it is a texel copy, a fraction
+    ///    away a bilinear one (a "phase hit"). A moving segment's result is drawn with a 1 px border
+    ///    (so its edge texels interpolate against what really lies outside) and one kept without is
+    ///    drawn once more with it.
+    ///  - A segment that stands still (same key and anchor as in the previous build) only keeps a
+    ///    result that is exactly its own: a whole number of pixels away, without the border, with
+    ///    the same exact relative hash (it then becomes the entry's alias). Any other is drawn again
+    ///    in place and replaces the entry (a "settle") -- unless another segment already used the
+    ///    entry in this build (item 6 of the task sheet: the first one visited keeps its phase).
+    CacheEntry* planSegment(const CommandList& cl, size_t start, const EffectCmd& c, Segment& seg) {
+        const Vec2 anchor{c.boundsHint.x * currentDpr, c.boundsHint.y * currentDpr};
+        auto exactHash = [&]() { return relativeSegmentHash(cl, start, seg.end, c, anchor, true, seg.pair); };
+        auto drawAgain = [&](uint64_t key, bool bordered) -> CacheEntry* {
+            seg.key = key;
+            seg.relocatable = true;
+            seg.anchor = anchor;
+            seg.store = true;
+            seg.replace = true;
+            seg.bordered = bordered;
+            seg.exactHash = exactHash();
+            return nullptr;
+        };
+        CacheEntry* entry = findCacheEntry(seg.hash);
+        if (entry != nullptr && !entry->relocatable) {
+            recordSegment(entry->hash, Vec2{});
+            return entry;
+        }
+        if (entry != nullptr) {
+            const PrevSegment prev = previousSegment(entry->hash, anchor);
+            recordSegment(entry->hash, anchor);
+            if (entry->bordered && prev.still && !entry->touched) {
+                ++statCacheSettles;  // it stopped where the bordered result was drawn
+                return drawAgain(entry->hash, false);
+            }
+            if (entry->bordered && !prev.still) {
+                ++cachePending;  // a build of the same list would find it at rest
+            }
+            seg.offset = Vec2{anchor.x - entry->anchor.x, anchor.y - entry->anchor.y};
+            return entry;
+        }
+        if (!seg.movable || !relocatableHere(c)) {
+            seg.store = previousSegment(seg.hash, Vec2{}).seen;
+            recordSegment(seg.hash, Vec2{});
+            return nullptr;
+        }
+        seg.relocatable = true;
+        seg.anchor = anchor;
+        seg.key = relativeSegmentHash(cl, start, seg.end, c, anchor, false, seg.pair);
+        const PrevSegment prev = previousSegment(seg.key, anchor);
+        recordSegment(seg.key, anchor);
+        entry = findCacheEntryByKey(seg.key);
+        if (entry == nullptr) {
+            seg.store = prev.seen;
+            seg.bordered = prev.seen && !prev.wholePixels;  // moving by a fraction of a pixel
+            if (seg.store) {
+                seg.exactHash = exactHash();
+            }
+            return nullptr;
+        }
+        seg.offset = Vec2{anchor.x - entry->anchor.x, anchor.y - entry->anchor.y};
+        const bool whole = wholePixels(seg.offset);
+        if (prev.still) {
+            if (whole && !entry->bordered && exactHash() == entry->exactHash) {
+                entry->aliasHash = seg.hash;
+                entry->hasAlias = true;
+                return entry;
+            }
+            if (entry->touched) {
+                statCachePhaseHits += whole ? 0u : 1u;
+                return entry;
+            }
+            ++statCacheSettles;
+            return drawAgain(seg.key, false);
+        }
+        if (whole || entry->bordered || entry->touched || !prev.seen) {
+            statCachePhaseHits += whole ? 0u : 1u;
+            ++cachePending;  // a build of the same list would find it at rest
+            return entry;
+        }
+        return drawAgain(seg.key, true);
+    }
+
+    /// Draws the cached result of a segment: one textured quad the size of the window it was drawn
+    /// in, `offset` away from it (T-721; zero: the window's own quad, as before), under the current
+    /// scissor, where the segment's composite would have gone (opacity 1, Normal).
+    void emitCachedEffect(CacheEntry& entry, Vec2 offset) {
         flushPendingClears();
         entry.touched = true;
+        const DrawCmd d = cachedDraw(entry.texture, offset);
+        const Geometry g = cachedQuad(entry, offset);
+        // T-718 (10 §10.16 W1 item 3): a group's result, not a leaf -- no analytic clip, like the
+        // composite it stands for.
+        const uint32_t analyticClip = emit.analyticClip();
+        emit.setAnalyticClip(0);
+        emit.pushCmd(d, g);
+        emit.setAnalyticClip(analyticClip);
+    }
+
+    /// The draw of a cached texture `offset` away from where it was drawn: SrcOver, sampled bilinearly
+    /// a fraction of a pixel away (T-721). T-735: at the same phase (a whole-pixel offset, zero too)
+    /// with the nearest texel -- every fragment lands on a texel centre, so nearest returns that texel
+    /// exactly on every implementation, where bilinear weights at the centre may round differently.
+    static DrawCmd cachedDraw(TextureHandle texture, Vec2 offset) {
         DrawCmd d;
         d.shading = Shading::Texture;
-        d.texture = entry.texture;
-        d.sampler = Sampler::LinearClamp;
+        d.texture = texture;
+        d.sampler = wholePixels(offset) ? Sampler::PointClamp : Sampler::LinearClamp;
         d.blend = Blend::SrcOver;
         d.stencilOp = StencilOp::None;
-        emit.pushCmd(d, emit.windowQuad(window));
-        return true;
+        return d;
+    }
+
+    /// The quad of a cached result: the window it was drawn in, `offset` away.
+    Geometry cachedQuad(const CacheEntry& entry, Vec2 offset) {
+        Geometry g;
+        if (offset.x == 0.0f && offset.y == 0.0f) {
+            g = emit.windowQuad(entry.window);
+        } else {
+            const float x0 = static_cast<float>(entry.window.x) + offset.x;
+            const float y0 = static_cast<float>(entry.window.y) + offset.y;
+            const float x1 = x0 + static_cast<float>(entry.window.w);
+            const float y1 = y0 + static_cast<float>(entry.window.h);
+            const uint32_t white = 0xFFFFFFFFu;
+            const Vertex v[4] = {
+                Vertex{x0, y0, 1.0f, 0.0f, 0.0f, white},
+                Vertex{x1, y0, 1.0f, 1.0f, 0.0f, white},
+                Vertex{x1, y1, 1.0f, 1.0f, 1.0f, white},
+                Vertex{x0, y1, 1.0f, 0.0f, 1.0f, white},
+            };
+            g = emit.quad(v);
+        }
+        return g;
+    }
+
+    /// T-730 (10 §10.18 B second step): one texture of a cached pair pasted into a new transient over
+    /// `window` (cleared; the quad under the window's own scissor, as an effect pass writes), so that
+    /// BackdropMasked can read it.
+    TargetHandle pasteCached(TextureHandle texture, const CacheEntry& entry, Vec2 offset,
+                             const Scissor& window) {
+        const TargetHandle t = emit.acquireTransient(TextureFormat::Rgba8, false, window);
+        emit.beginPass(t, true);
+        const Scissor saved = emit.scissor();
+        const uint32_t analyticClip = emit.analyticClip();
+        emit.setScissor(emit.windowOf(t));
+        emit.setAnalyticClip(0);
+        emit.pushCmd(cachedDraw(texture, offset), cachedQuad(entry, offset));
+        emit.setAnalyticClip(analyticClip);
+        emit.setScissor(saved);
+        return t;
+    }
+
+    /// T-730 (10 §10.18 B second step): a backdrop pair served from the cache in place of the segment of
+    /// effect `c`. The backdrop is read as the segment would read it (the copy, the pyramid, the level
+    /// mix and its colour adjustment), R' and S are pasted into transients (`offset` away from where they
+    /// were drawn; a fraction of a pixel away: bilinearly) and one BackdropMasked pass composes them;
+    /// the result is composited onto the parent as PopEffect does. When the backdrop is not read at all
+    /// (T-728's shortcut: nothing drawn below yet) the segment's result is R' itself: one quad of it.
+    void emitCachedPair(const EffectCmd& c, float dpr, CacheEntry& entry, Vec2 offset) {
+        flushPendingClears();
+        entry.touched = true;
+        const Mat2x3 screenXf = mul(scaling(Vec2{dpr, dpr}), c.xf);
+        const EffectInstance screenFirst = effectToScreen(list->effects[c.effectOffset], screenXf);
+        TargetFrame f;
+        f.parent = emit.currentTarget();
+        openBackdrop(c, screenFirst, dpr, f);
+        const detail::BackdropPyramid* pyramid =
+            f.sharedPyramid != nullptr ? f.sharedPyramid : (f.hasOwnPyramid ? &f.ownPyramid : nullptr);
+        if (pyramid == nullptr || pyramid->level[0] == 0 || pyramid->window.empty()) {
+            detail::releaseBackdropPyramid(emit, f.ownPyramid);
+            if (emit.currentTarget() != f.parent) {
+                emit.beginPass(f.parent, false);
+            }
+            emitCachedEffect(entry, offset);
+            return;
+        }
+        const Scissor window = hintWindow(c.boundsHint, dpr, entry.bordered ? 1.0f : 0.0f);
+        const TargetHandle top = pasteCached(entry.texture, entry, offset, window);
+        const TargetHandle mask = pasteCached(entry.maskTexture, entry, offset, window);
+        detail::EffectStackInput in;
+        in.screenParams = std::span<const EffectInstance>(&screenFirst, 1);
+        in.stops = list->stops;
+        in.src = mask;
+        in.pyramid = pyramid;
+        in.time = list->time;
+        const TargetHandle result = detail::applyBackdropUnder(emit, luts, in, top);
+        detail::releaseBackdropPyramid(emit, f.ownPyramid);
+        compositeOnto(f.parent, result, BlendMode::Normal, 1.0f);
+        emit.releaseTransient(result);
+        emit.releaseTransient(top);
+        emit.releaseTransient(mask);
+    }
+
+    /// T-730: `slots` entries of `bytes` in all (a backdrop pair is two).
+    bool cacheHasRoom(size_t bytes, size_t slots = 1) const {
+        return !cacheUnsupported && cacheSlots + slots <= FrameBuilder::kEffectCacheMaxEntries &&
+               cacheBytes + bytes <= FrameBuilder::kEffectCacheBudgetBytes;
     }
 
     /// Asks the device for a cached target, accounting for the budget. 0 when refused.
@@ -5090,8 +5674,12 @@ struct FrameBuilder::Impl {
         CacheEntry& e = cacheEntries[index];
         if (device != nullptr) {
             device->releaseCachedTarget(e.texture);
+            if (e.pair) {
+                device->releaseCachedTarget(e.maskTexture);  // T-730
+            }
         }
-        cacheBytes -= size_t(e.width) * size_t(e.height) * 4u;
+        cacheBytes -= size_t(e.width) * size_t(e.height) * 4u * (e.pair ? 2u : 1u);
+        cacheSlots -= e.pair ? 2u : 1u;
         cacheEntries.erase(cacheEntries.begin() + static_cast<std::ptrdiff_t>(index));
     }
 
@@ -5100,8 +5688,9 @@ struct FrameBuilder::Impl {
             releaseCacheEntry(cacheEntries.size() - 1);
         }
         cacheBytes = 0;
-        prevSegmentHashes.clear();
-        curSegmentHashes.clear();
+        cacheSlots = 0;
+        prevSegments.clear();
+        curSegments.clear();
         cachePending = 0;
     }
 
@@ -5113,20 +5702,22 @@ struct FrameBuilder::Impl {
         }
         for (CacheEntry& e : cacheEntries) {
             e.touched = false;
+            e.retired = false;  // T-721: superseded by an entry of the attempt that was dropped
         }
-        curSegmentHashes.clear();
+        curSegments.clear();
         cachePending = 0;
     }
 
-    /// End of build(): entries no segment used this build are released (one frame idle).
+    /// End of build(): entries no segment used this build are released (one frame idle), and those
+    /// a new result superseded (T-721).
     void endCacheBuild() {
         for (size_t i = cacheEntries.size(); i-- > 0;) {
-            if (!cacheEntries[i].touched) {
+            if (!cacheEntries[i].touched || cacheEntries[i].retired) {
                 releaseCacheEntry(i);
             }
         }
-        prevSegmentHashes.swap(curSegmentHashes);
-        curSegmentHashes.clear();
+        prevSegments.swap(curSegments);
+        curSegments.clear();
         cmdHashesValid = false;
     }
 
@@ -5174,6 +5765,46 @@ struct FrameBuilder::Impl {
         return true;
     }
 
+    /// A leading BackdropBlur reads what lies below the node (Docs/design/18-effects.md §18.6): the
+    /// parent `f.parent` is copied before the node's own layer is opened. T-343 (18 §18.15, 23 §23.aa.3):
+    /// the copy is the base of a blur pyramid over the hint outset by the blur's read range (3 sigma, like
+    /// xt::sw's capture) plus the pyramid's own margin; a top-level panel of a Direct frame shares the
+    /// pyramid of its merged region instead. Sets `f`'s pyramid fields. `screenFirst` is the BackdropBlur,
+    /// screen-converted. T-730: also what a backdrop pair served from the cache reads.
+    void openBackdrop(const EffectCmd& c, const EffectInstance& screenFirst, float dpr, TargetFrame& f) {
+        const float sigma = backdropSigma(screenFirst);
+        if (directMode && frameStack.empty() && currentCluster >= 0 &&
+            currentCluster < static_cast<int>(clusters.size())) {
+            PyramidCluster& cluster = clusters[static_cast<size_t>(currentCluster)];
+            if (!cluster.built) {
+                detail::buildBackdropPyramid(emit, kSurfaceTarget, cluster.window, cluster.maxSigma,
+                                             cluster.pyramid);
+                cluster.built = true;
+                statBackdropCopyPx += cluster.pyramid.copiedPx;
+                statPyramidLevels += static_cast<uint32_t>(cluster.pyramid.levels);
+            }
+            f.sharedPyramid = &cluster.pyramid;
+        } else {
+            const Scissor region =
+                hintWindow(c.boundsHint, dpr, effectReadExpand(screenFirst) + pyramidMargin(sigma));
+            // T-728 (10 §10.18 A item 3): when the region read lies in a layer target cleared
+            // this frame and nothing has been drawn into it there yet, every pyramid level would
+            // be transparent black, and fx_backdrop over a zero backdrop returns its source
+            // unchanged (src.rgb + 0, src.a + 0). No copy, no pyramid: the BackdropBlur then
+            // passes its source through (applyBackdropBlur without a pyramid) -- the same
+            // bytes, without the copy, the pyramid, the LevelMix and the Backdrop pass.
+            // Not in Direct mode (its bands and shared pyramids stay as they are).
+            if (directMode || !emit.untouchedSinceClear(f.parent, region)) {
+                detail::buildBackdropPyramid(emit, f.parent, region, sigma, f.ownPyramid);
+                if (directMode && f.parent == kSurfaceTarget) {
+                    statBackdropCopyPx += f.ownPyramid.copiedPx;
+                    statPyramidLevels += static_cast<uint32_t>(f.ownPyramid.levels);
+                }
+                f.hasOwnPyramid = true;
+            }
+        }
+    }
+
     void doPushEffect(const EffectCmd& c, float dpr, const Segment& seg) {
         flushPendingClears();
         Mat2x3 screenXf = mul(scaling(Vec2{dpr, dpr}), c.xf);
@@ -5184,11 +5815,7 @@ struct FrameBuilder::Impl {
         TargetFrame f;
         f.kind = FrameKind::Effect;
         f.parent = emit.currentTarget();
-        // A leading BackdropBlur reads what lies below the node (Docs/design/18-effects.md
-        // §18.6): the parent is copied before the node's own layer is opened. T-343 (18 §18.15,
-        // 23 §23.aa.3): the copy is the base of a blur pyramid over the hint outset by the
-        // blur's read range (3 sigma, like xt::sw's capture) plus the pyramid's own margin; a
-        // top-level panel of a Direct frame shares the pyramid of its merged region instead.
+        // A leading BackdropBlur reads what lies below the node (openBackdrop).
         const EffectInstance* backdropFirst = nullptr;
         if (c.effectCount > 0 && c.effectOffset < list->effects.size()) {
             const EffectInstance& first = list->effects[c.effectOffset];
@@ -5196,33 +5823,13 @@ struct FrameBuilder::Impl {
                 backdropFirst = &first;
             }
         }
-        const Scissor window = hintWindow(c.boundsHint, dpr);
+        // T-721 (10 §10.16 W2 item 3): a moving segment's result is drawn with a 1 px border.
+        const Scissor window = hintWindow(c.boundsHint, dpr, seg.bordered ? 1.0f : 0.0f);
         if (backdropFirst != nullptr) {
-            const EffectInstance screenFirst = effectToScreen(*backdropFirst, screenXf);
-            const float sigma = backdropSigma(screenFirst);
-            if (directMode && frameStack.empty() && currentCluster >= 0 &&
-                currentCluster < static_cast<int>(clusters.size())) {
-                PyramidCluster& cluster = clusters[static_cast<size_t>(currentCluster)];
-                if (!cluster.built) {
-                    detail::buildBackdropPyramid(emit, kSurfaceTarget, cluster.window, cluster.maxSigma,
-                                                 cluster.pyramid);
-                    cluster.built = true;
-                    statBackdropCopyPx += cluster.pyramid.copiedPx;
-                    statPyramidLevels += static_cast<uint32_t>(cluster.pyramid.levels);
-                }
-                f.sharedPyramid = &cluster.pyramid;
-            } else {
-                const Scissor region =
-                    hintWindow(c.boundsHint, dpr, effectReadExpand(screenFirst) + pyramidMargin(sigma));
-                detail::buildBackdropPyramid(emit, f.parent, region, sigma, f.ownPyramid);
-                if (directMode && f.parent == kSurfaceTarget) {
-                    statBackdropCopyPx += f.ownPyramid.copiedPx;
-                    statPyramidLevels += static_cast<uint32_t>(f.ownPyramid.levels);
-                }
-                f.hasOwnPyramid = true;
-            }
+            openBackdrop(c, effectToScreen(*backdropFirst, screenXf), dpr, f);
         }
         f.a = openLayerTarget(window);
+        f.shadowsUnderBackdrop = backdropFirst != nullptr && effect_math::backdropThenShadowsOnly(*list, c);
         f.invScreenXf = invScreenXf;
         f.contentBoundsPx = Rect{c.contentBounds.x * dpr, c.contentBounds.y * dpr, c.contentBounds.w * dpr,
                                  c.contentBounds.h * dpr};
@@ -5245,7 +5852,15 @@ struct FrameBuilder::Impl {
         f.time = list->time;
         // T-203: a custom shader may read xtTime, so its result is never cached.
         f.cacheable = seg.cacheable && !hasCustom;
-        f.cacheHash = seg.hash;
+        f.cacheHash = seg.key;
+        f.cacheAbsHash = seg.hash;
+        f.cacheExactHash = seg.exactHash;
+        f.cacheAnchor = seg.anchor;
+        f.cacheRelocatable = seg.relocatable;
+        f.cacheBordered = seg.bordered;
+        f.cacheStore = seg.store;
+        f.cacheReplace = seg.replace;
+        f.cachePair = seg.pair;
         frameStack.push_back(std::move(f));
     }
 
@@ -5267,16 +5882,34 @@ struct FrameBuilder::Impl {
         in.pyramid =
             f.sharedPyramid != nullptr ? f.sharedPyramid : (f.hasOwnPyramid ? &f.ownPyramid : nullptr);
         in.time = f.time;
+        in.shadowsUnderBackdrop = f.shadowsUnderBackdrop;  // T-729
+        // T-730: a backdrop pair being stored keeps R' (0 when the stack ran in order: the result is R').
+        TargetHandle shadows = 0;
+        if (f.cachePair && f.cacheStore) {
+            in.keepShadows = &shadows;
+        }
         TargetHandle result = detail::applyEffectStack(emit, luts, in);
         detail::releaseBackdropPyramid(emit, f.ownPyramid);
         // T-162: keep the result for later frames once the segment has repeated. An identity
         // stack (`result == f.a`) has nothing worth keeping.
-        if (f.cacheable && result != f.a && !cacheUnsupported) {
+        if (f.cachePair && result != f.a && !cacheUnsupported) {
+            storePair(f, result, shadows != 0 ? shadows : result);
+        } else if (f.cacheable && result != f.a && !cacheUnsupported) {
             const Scissor window = emit.windowOf(result);
             const size_t bytes = size_t(window.w) * size_t(window.h) * 4u;
-            if (seenLastBuild(f.cacheHash)) {
-                const TextureHandle tex =
-                    acquireCacheTarget(static_cast<uint16_t>(window.w), static_cast<uint16_t>(window.h));
+            if (f.cacheStore) {
+                // T-721: a settle or a result drawn again with its border takes the place of the
+                // key's entry, which no command of this build uses (planSegment) and which goes at
+                // the end of the build.
+                CacheEntry* live = findCacheEntryByKey(f.cacheHash);
+                if (live != nullptr && f.cacheReplace && !live->touched) {
+                    live->retired = true;
+                    live = nullptr;
+                }
+                const TextureHandle tex = live != nullptr
+                                              ? 0
+                                              : acquireCacheTarget(static_cast<uint16_t>(window.w),
+                                                                   static_cast<uint16_t>(window.h));
                 if (tex != 0) {
                     GpuFrame& frame = emit.frame();
                     CacheStore store;
@@ -5286,11 +5919,18 @@ struct FrameBuilder::Impl {
                     frame.cacheStores.push_back(store);
                     CacheEntry e;
                     e.hash = f.cacheHash;
+                    e.absHash = f.cacheAbsHash;
+                    e.exactHash = f.cacheExactHash;
+                    e.window = window;
+                    e.anchor = f.cacheAnchor;
+                    e.relocatable = f.cacheRelocatable;
+                    e.bordered = f.cacheBordered;
                     e.texture = tex;
                     e.width = static_cast<uint16_t>(window.w);
                     e.height = static_cast<uint16_t>(window.h);
                     e.touched = true;
                     cacheEntries.push_back(e);
+                    ++cacheSlots;    // T-730
                     ++cachePending;  // the next build serves it from the cache
                 }
             } else if (cacheHasRoom(bytes)) {
@@ -5302,7 +5942,70 @@ struct FrameBuilder::Impl {
         if (result != f.a) {
             emit.releaseTransient(result);
         }
+        if (shadows != 0 && shadows != f.a) {
+            emit.releaseTransient(shadows);
+        }
         emit.releaseTransient(f.a);
+    }
+
+    /// T-730 (10 §10.18 B second step): PopEffect's store of a backdrop pair -- the source layer `f.a`
+    /// and the shadow result `shadows` (both over `result`'s window), as one entry of two textures, under
+    /// the rules of a single result (stored on the second consecutive appearance; T-721's settle and
+    /// border replacement). Both or neither: the budget must hold both.
+    void storePair(TargetFrame& f, TargetHandle result, TargetHandle shadows) {
+        const Scissor window = emit.windowOf(result);
+        const size_t bytes = size_t(window.w) * size_t(window.h) * 4u;
+        if (!f.cacheStore) {
+            if (cacheHasRoom(2u * bytes, 2u)) {
+                ++cachePending;  // first appearance: stored on the next build
+            }
+            return;
+        }
+        CacheEntry* live = findCacheEntryByKey(f.cacheHash);
+        if (live != nullptr && f.cacheReplace && !live->touched) {
+            live->retired = true;
+            live = nullptr;
+        }
+        if (live != nullptr || !cacheHasRoom(2u * bytes, 2u)) {
+            return;
+        }
+        const uint16_t w = static_cast<uint16_t>(window.w), h = static_cast<uint16_t>(window.h);
+        const TextureHandle top = acquireCacheTarget(w, h);
+        const TextureHandle mask = top != 0 ? acquireCacheTarget(w, h) : 0;
+        if (mask == 0) {
+            if (top != 0) {
+                device->releaseCachedTarget(top);
+                cacheBytes -= bytes;
+            }
+            return;
+        }
+        GpuFrame& frame = emit.frame();
+        CacheStore store;
+        store.pass = static_cast<uint32_t>(frame.passes.size()) - 1;
+        store.src = shadows;
+        store.texture = top;
+        frame.cacheStores.push_back(store);
+        store.src = f.a;
+        store.texture = mask;
+        frame.cacheStores.push_back(store);
+        CacheEntry e;
+        e.hash = f.cacheHash;
+        e.absHash = f.cacheAbsHash;
+        e.exactHash = f.cacheExactHash;
+        e.window = window;
+        e.anchor = f.cacheAnchor;
+        e.relocatable = f.cacheRelocatable;
+        e.bordered = f.cacheBordered;
+        e.texture = top;
+        e.maskTexture = mask;
+        e.pair = true;
+        e.width = w;
+        e.height = h;
+        e.touched = true;
+        cacheEntries.push_back(e);
+        cacheSlots += 2u;
+        ++statPairStores;
+        ++cachePending;  // the next build serves it from the cache
     }
 
     // ---------------------------------------------------------------------------------------
@@ -5315,6 +6018,9 @@ struct FrameBuilder::Impl {
         emit.begin(out, targetWidth, targetHeight);
         clipStack.clear();
         clipDepth = 0;
+        analyticDepth = 0;  // T-718
+        analyticParams = AnalyticClipParams{};
+        analyticBounds = Scissor{};  // T-720
         frameStack.clear();
         mappings.clear();
         planeStates.clear();  // T-700
@@ -5329,6 +6035,7 @@ struct FrameBuilder::Impl {
         statGlyphOutlines = 0;                                              // T-682: likewise
         statClipSkipped = statClipScissor = statClipImageDirect = statClipMaskLayers = 0;  // T-663
         statCapCoverageFallbacks = statBoxShadowSkipped = 0;                               // T-691
+        statAnalyticClips = statAnalyticClipFallbacks = 0;                                 // T-718
         clipScans.clear();
         clipScanSlot.clear();
         clipScanEnd = cl.commands.size();
@@ -5341,6 +6048,8 @@ struct FrameBuilder::Impl {
         beginCacheBuild();
         statBandRedraws = statBackdropCopyPx = statPyramidLevels = 0;  // T-343: per attempt
         statCacheHits = statCacheMisses = 0;                           // T-658: likewise
+        statCachePhaseHits = statCacheSettles = 0;                     // T-721: likewise
+        statPairHits = statPairMisses = statPairStores = 0;            // T-730: likewise
         bandPending = 0;
 #ifndef XT_GPU_NO_TEXT
         curRunSizes.clear();
@@ -5460,18 +6169,19 @@ struct FrameBuilder::Impl {
                 } break;
                 case CmdKind::PushEffect: {
                     const EffectCmd& c = cl.effectCmds[cmd.index];
-                    const Segment seg = classifySegment(cl, ci, c, ir);
+                    Segment seg = classifySegment(cl, ci, c, ir);
                     if (seg.cacheable) {
-                        curSegmentHashes.push_back(seg.hash);
-                        if (currentBandHashes != nullptr) {
-                            currentBandHashes->push_back(seg.hash);  // T-343: kept while the band is
-                        }
-                        CacheEntry* entry = findCacheEntry(seg.hash);
-                        if (entry != nullptr && emitCachedEffect(c, *entry)) {
-                            ++statCacheHits;
+                        if (CacheEntry* entry = planSegment(cl, ci, c, seg)) {  // T-721
+                            if (seg.pair) {
+                                emitCachedPair(c, dpr, *entry, seg.offset);  // T-730
+                                ++statPairHits;
+                            } else {
+                                emitCachedEffect(*entry, seg.offset);
+                                ++statCacheHits;
+                            }
                             return seg.end;  // the whole segment came from the cache
                         }
-                        ++statCacheMisses;
+                        ++(seg.pair ? statPairMisses : statCacheMisses);
                     }
                     doPushEffect(c, dpr, seg);
                     break;
@@ -5570,7 +6280,7 @@ struct FrameBuilder::Impl {
         clusters.clear();
         runCluster.clear();
         currentCluster = -1;
-        currentBandHashes = nullptr;
+        currentBandSegments = nullptr;
     }
 
     /// The device-pixel bounds of run `run`'s commands (xt::commandBounds, the rectangles the
@@ -5691,7 +6401,10 @@ struct FrameBuilder::Impl {
             c.shading = Shading::Texture;
             c.texture = texture;
         }
+        const uint32_t analyticClip = emit.analyticClip();  // T-718: a band is a group's result
+        emit.setAnalyticClip(0);
         emit.pushCmd(c, emit.windowQuad(window));
+        emit.setAnalyticClip(analyticClip);
         emit.setScissor(saved);
     }
 
@@ -5715,10 +6428,10 @@ struct FrameBuilder::Impl {
             prev->cmdCount == band.cmdCount && !damageTouches(band.window)) {
             // Reused: the target as it is, and its effect segments stay alive in the cache.
             band.texture = prev->texture;
-            band.segmentHashes = prev->segmentHashes;
-            for (uint64_t h : band.segmentHashes) {
-                curSegmentHashes.push_back(h);
-                if (CacheEntry* e = findCacheEntry(h)) {
+            band.segments = prev->segments;
+            for (const SegmentRecord& r : band.segments) {
+                curSegments.push_back(r);
+                if (CacheEntry* e = findCacheEntryByKey(r.key)) {
                     e->touched = true;
                 }
             }
@@ -5732,12 +6445,12 @@ struct FrameBuilder::Impl {
         const TargetHandle t = emit.acquireTransient(TextureFormat::Rgba8, true, band.window);
         emit.beginPass(t, true);
         replayClips();
-        band.segmentHashes.clear();
-        currentBandHashes = &band.segmentHashes;
+        band.segments.clear();
+        currentBandSegments = &band.segments;
         for (size_t ci = run.first; ci < run.end && ci < cl.commands.size(); ++ci) {
             ci = processCommand(cl, ci, shaper, assets, ir, dpr);
         }
-        currentBandHashes = nullptr;
+        currentBandSegments = nullptr;
         flushPendingClears();
         XT_ASSERT(frameStack.empty() && emit.currentTarget() == t);
         if (!directFallback) {
@@ -5945,9 +6658,12 @@ struct FrameBuilder::Impl {
         // list's sources when it names them, else the call's `ir`.
         ++buildCount;
         selectListSources(cl, assets, ir);
-        maxTexture = device->maxTextureSize();                 // T-263d: once per build, not per texture
-        deviceCoverage = device->supportsCoverageDraws();      // T-691 (10 §10.14 item 1)
-        deviceBoxShadow = device->supportsBoxShadowShading();  // T-691
+        maxTexture = device->maxTextureSize();                      // T-263d: once per build, not per texture
+        deviceCoverage = device->supportsCoverageDraws();           // T-691 (10 §10.14 item 1)
+        deviceBoxShadow = device->supportsBoxShadowShading();       // T-691
+        deviceAnalyticClip = device->supportsAnalyticClip();        // T-718 (10 §10.16 W1 item 7)
+        emit.setChannelReads(device->supportsAlphaChannelReads());  // T-728 (10 §10.18 A item 1)
+        emit.setBackdropMask(device->supportsBackdropMask());       // T-729 (10 §10.18 B)
         cacheEntriesAtBuildStart = cacheEntries.size();
         // T-343: the host's target mode. A device that cannot read target 0 draws in Layer mode.
         damage = damageList;
@@ -6021,8 +6737,14 @@ struct FrameBuilder::Impl {
         lastCoverageStats.rasterizedPixels = coverageAtlas.stats().frameRasterizedPixels;  // every attempt
         lastCoverageStats.atlasBytes = coverageAtlas.bytes();
         lastClipStats = FrameBuilder::ClipStats{statClipSkipped, statClipScissor, statClipImageDirect,
-                                                statClipMaskLayers};                                // T-663
-        lastBuildStats = FrameBuilder::BuildStats{statCapCoverageFallbacks, statBoxShadowSkipped};  // T-691
+                                                statClipMaskLayers};  // T-663
+        lastBuildStats =
+            FrameBuilder::BuildStats{statCapCoverageFallbacks, statBoxShadowSkipped,       // T-691
+                                     statAnalyticClips,        statAnalyticClipFallbacks,  // T-718
+                                     statCachePhaseHits,       statCacheSettles};          // T-721
+        lastBuildStats.backdropPairHits = statPairHits;                                    // T-730
+        lastBuildStats.backdropPairMisses = statPairMisses;
+        lastBuildStats.backdropPairStores = statPairStores;
         if (statBoxShadowSkipped > 0 && !boxShadowWarned && lastError.empty()) {
             boxShadowWarned = true;  // reported once; a build with another message reports it later
             lastError =
@@ -6034,6 +6756,8 @@ struct FrameBuilder::Impl {
         lastCacheStats.misses = statCacheMisses;
         lastCacheStats.stores = static_cast<uint32_t>(out.cacheStores.size());
         endCacheBuild();
+        lastBuildStats.effectCacheBytes = cacheBytes;  // T-730: what the cache holds after this build
+        lastBuildStats.effectCacheEntries = static_cast<uint32_t>(cacheSlots);
         if (directMode) {
             endDirectBuild();
         }

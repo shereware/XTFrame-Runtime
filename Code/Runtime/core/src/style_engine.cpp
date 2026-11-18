@@ -615,19 +615,19 @@ bool transitionCovers(const IrTransitionSpec& spec, PropId prop) {
 /// did) because it's out of range for an effect-parameter PropId (18-effects.md §18.4/T-51b):
 /// `next.base` is sized for the general/Element PropIds (0-108) only, and effect parameter values
 /// live in NodeArena::effects(), not ComputedStyle.
-void maybeRegisterTransition(Animator& animator, const IrView& ir, const ComputedStyle& next, NodeId node,
+bool maybeRegisterTransition(Animator& animator, const IrView& ir, const ComputedStyle& next, NodeId node,
                              PropId prop, const Value& fromFinal, const Value& toFinal, float clock,
                              bool firstResolve, NodeId target = kInvalidNode) {
     if (firstResolve || next.transitionCount == 0) {
-        return;
+        return false;
     }
     ValueType vt = propertyType(prop);
     if (vt == ValueType::Enum || vt == ValueType::StringRef || vt == ValueType::ListRef) {
-        return;  // Discrete types never transition (03.10).
+        return false;  // Discrete types never transition (03.10).
     }
     std::span<const IrTransitionSpec> all = ir.style().transitions();
     if (uint64_t{next.transitionOffset} + next.transitionCount > all.size()) {
-        return;  // Defensive; IrView::open already validated this range.
+        return false;  // Defensive; IrView::open already validated this range.
     }
     std::span<const IrTransitionSpec> specs = all.subspan(next.transitionOffset, next.transitionCount);
     for (const IrTransitionSpec& spec : specs) {
@@ -643,9 +643,80 @@ void maybeRegisterTransition(Animator& animator, const IrView& ir, const Compute
             tr.easing = toEasing(spec.easing);
             tr.target = target != kInvalidNode ? target : node;  // T-218: a scene node, or the element.
             animator.addTransition(tr);
-            return;  // First matching entry wins (conservative choice; see T-24 report).
+            return true;  // First matching entry wins (conservative choice; see T-24 report).
         }
     }
+    return false;
+}
+
+/// 10 §10.16 W5 (T-723): a field resolve() copies from the parent's style differs between `a` and
+/// `b` -- the inherited properties (05.4), font-size, `lang`, the responsive inherited pair
+/// (T-345) with the effective scale, and the text-decoration set, color and thickness a decorating
+/// ancestor passes down (T-324). Floats compared bit for bit.
+constexpr PropId kInheritedBaseProps[] = {
+    prop::FontSize, prop::LineHeight,          prop::LetterSpacing,
+    prop::Color,    prop::TextDecorationColor, prop::TextDecorationThickness};
+
+/// `aBase` holds `a`'s kInheritedBaseProps values from before step 5 wrote the new ones into it.
+bool inheritedPartChanged(const ComputedStyle& a, const Value (&aBase)[6], const ComputedStyle& b) {
+    auto bits = [](float f) {
+        uint32_t u = 0;
+        std::memcpy(&u, &f, sizeof(u));
+        return u;
+    };
+    if (a.visibility != b.visibility || a.pointerEvents != b.pointerEvents ||
+        a.pointerWatch != b.pointerWatch || a.focusNav != b.focusNav ||
+        a.fontFamilyOffset != b.fontFamilyOffset || a.fontFamilyCount != b.fontFamilyCount ||
+        a.fontWeight != b.fontWeight || a.fontStyle != b.fontStyle || a.textAlign != b.textAlign ||
+        a.whiteSpace != b.whiteSpace || a.textTransform != b.textTransform ||
+        a.imageRendering != b.imageRendering || a.fontVariantNumeric != b.fontVariantNumeric ||
+        a.cursor != b.cursor || a.direction != b.direction || a.writingMode != b.writingMode ||
+        a.textOrientation != b.textOrientation || a.appRegion != b.appRegion ||
+        a.textEffectOffset != b.textEffectOffset || a.textEffectCount != b.textEffectCount ||
+        a.lang != b.lang || a.uiScaleMode != b.uiScaleMode || bits(a.uiScaleMin) != bits(b.uiScaleMin) ||
+        bits(a.uiScaleMax) != bits(b.uiScaleMax) || a.mediaOverride != b.mediaOverride ||
+        bits(a.uiScaleEff) != bits(b.uiScaleEff) || a.textDecorations != b.textDecorations ||
+        a.textDecorationLine != b.textDecorationLine ||
+        std::memcmp(&a.inheritedDecorationColor, &b.inheritedDecorationColor, sizeof(Color)) != 0 ||
+        bits(a.inheritedDecorationThickness) != bits(b.inheritedDecorationThickness)) {
+        return true;
+    }
+    for (size_t i = 0; i < 6; ++i) {
+        if (!valueEquals(aBase[i], b.base[kInheritedBaseProps[i]])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/// 05 §5.6a (T-723): two transition end values of `prop` are the same. A translate end is a px
+/// Float, a (px, %) Vec2 (translateTransitionEnds) or the cascade's Length: compared as (px, %).
+bool sameTransitionValue(PropId prop, const Value& a, const Value& b) {
+    if (prop != prop::TranslateX && prop != prop::TranslateY) {
+        return valueEquals(a, b);
+    }
+    auto parts = [](const Value& v, float& px, float& pct) {
+        px = 0;
+        pct = 0;
+        if (v.type == ValueType::Float) {
+            px = v.f;
+        } else if (v.type == ValueType::Vec2) {
+            px = v.v2.x;
+            pct = v.v2.y;
+        } else if (v.type == ValueType::Length && v.len.unit == LengthUnit::Px) {
+            px = v.len.value;
+        } else if (v.type == ValueType::Length && v.len.unit == LengthUnit::Percent) {
+            pct = v.len.value;
+        } else {
+            return false;
+        }
+        return true;
+    };
+    float apx = 0, apct = 0, bpx = 0, bpct = 0;
+    if (!parts(a, apx, apct) || !parts(b, bpx, bpct)) {
+        return valueEquals(a, b);
+    }
+    return apx == bpx && apct == bpct;
 }
 
 /// T-211 (05 tail ruling): a translate transition that involves a percent -- the current value has
@@ -1760,6 +1831,15 @@ bool StyleEngine::setScaleInputs(float uiScale, float dpr) {
     return changed;
 }
 
+void StyleEngine::collectNodeTransitions(const Animator& animator, NodeId node) {
+    m_nodeTransitions.clear();
+    for (const Transition& t : animator.transitions()) {
+        if (t.node == node && t.written() == node) {
+            m_nodeTransitions.push_back(&t);
+        }
+    }
+}
+
 void StyleEngine::updateFocusWithin(NodeArena& arena) {
     // T-173 (`:focus-within`): recompute "the element or a descendant has kStateFocus" for every
     // node and mark the elements whose answer changed kDirtyStyle (ancestors follow automatically)
@@ -2306,33 +2386,61 @@ uint32_t StyleEngine::resolve(NodeArena& arena, float clock) {
             }
 
             // 5. Write base values, registering transitions for changed, interpolable props.
+            // T-723: setProperty() below writes data.style.base; keep what the children inherited.
+            Value inheritedBefore[6];
+            for (size_t i = 0; i < 6; ++i) {
+                inheritedBefore[i] = data.style.base[kInheritedBaseProps[i]];
+            }
             bool firstResolve = data.styleResolvedOnce == 0;
             // T-345: a new `ui-scale` factor (a resized output, a new `ui-scale`) rescales every
             // length at once; nothing transitions to the rescaled values.
             const bool noTransition = firstResolve || data.style.uiScaleEff != pxScale;
-            for (PropId p : kGeneralAnimatableProps) {
-                if (!valueEquals(next.base[p], data.style.base[p])) {
-                    Value fromFinal = getProperty(arena, node, p);
-                    Value toFinal = next.base[p];
-                    if (p == prop::TranslateX || p == prop::TranslateY) {
-                        translateTransitionEnds(data, p, fromFinal, toFinal);
+            // 05 §5.6a (T-723): "changed" means the cascade result differs from the property's
+            // target value -- the running transition's end (rule 1), else the element's value
+            // (rule 4) -- never from the value a transition is animating through.
+            collectNodeTransitions(animator, node);
+            auto commitBase = [&](PropId p) {
+                const Transition* running = nullptr;
+                for (const Transition* t : m_nodeTransitions) {
+                    if (t->prop == p) {
+                        running = t;
+                        break;
                     }
-                    setProperty(arena, node, p, next.base[p]);
+                }
+                Value fromFinal = getProperty(arena, node, p);
+                Value toFinal = next.base[p];
+                if (p == prop::TranslateX || p == prop::TranslateY) {
+                    translateTransitionEnds(data, p, fromFinal, toFinal);
+                }
+                if (running != nullptr ? sameTransitionValue(p, toFinal, running->to)
+                                       : valueEquals(next.base[p], data.style.base[p])) {
+                    return;  // Rule 2: the target is unchanged; a running transition goes on.
+                }
+                setProperty(arena, node, p, next.base[p]);
+                if (running == nullptr) {
                     maybeRegisterTransition(animator, ir, next, node, p, fromFinal, toFinal, clock,
                                             noTransition);
+                    return;
                 }
+                // Rule 3: retarget from the current animated value with the full duration and
+                // delay (addTransition replaces the running one); a new target equal to that value,
+                // or a property no longer transitioned, ends the transition there (rules 3, 4).
+                if (sameTransitionValue(p, fromFinal, toFinal) ||
+                    !maybeRegisterTransition(animator, ir, next, node, p, fromFinal, toFinal, clock,
+                                             noTransition)) {
+                    animator.cancelTransitionsForNodeRange(node, p, p);
+                }
+                collectNodeTransitions(animator, node);  // The pointers above may be stale now.
+            };
+            for (PropId p : kGeneralAnimatableProps) {
+                commitBase(p);
             }
             // T-228: auto-orient is a discrete Enum -- never transitioned.
             if (!valueEquals(next.base[prop::AutoOrient], data.style.base[prop::AutoOrient])) {
                 setProperty(arena, node, prop::AutoOrient, next.base[prop::AutoOrient]);
             }
             for (PropId p = prop::Width; p <= prop::LetterSpacing; ++p) {
-                if (!valueEquals(next.base[p], data.style.base[p])) {
-                    Value fromFinal = getProperty(arena, node, p);
-                    setProperty(arena, node, p, next.base[p]);
-                    maybeRegisterTransition(animator, ir, next, node, p, fromFinal, next.base[p], clock,
-                                            noTransition);
-                }
+                commitBase(p);
             }
             // ScrollX/ScrollY are runtime state written by the wheel handler (T-32), never by the
             // cascade: they are carried over untouched so an unrelated re-resolve (e.g. a hover
@@ -2340,41 +2448,21 @@ uint32_t StyleEngine::resolve(NodeArena& arena, float clock) {
             next.base[prop::ScrollX] = data.style.base[prop::ScrollX];
             next.base[prop::ScrollY] = data.style.base[prop::ScrollY];
             for (PropId p = prop::BackgroundColor; p < prop::ScrollX; ++p) {
-                if (!valueEquals(next.base[p], data.style.base[p])) {
-                    Value fromFinal = getProperty(arena, node, p);
-                    setProperty(arena, node, p, next.base[p]);
-                    maybeRegisterTransition(animator, ir, next, node, p, fromFinal, next.base[p], clock,
-                                            noTransition);
-                }
+                commitBase(p);
             }
             // §19.4/19.10 (T-47a): perspective/perspective-origin, resolved to px by layout below.
             for (PropId p = prop::Perspective; p <= prop::PerspectiveOriginY; ++p) {
-                if (!valueEquals(next.base[p], data.style.base[p])) {
-                    Value fromFinal = getProperty(arena, node, p);
-                    setProperty(arena, node, p, next.base[p]);
-                    maybeRegisterTransition(animator, ir, next, node, p, fromFinal, next.base[p], clock,
-                                            noTransition);
-                }
+                commitBase(p);
             }
             // T-178 (07 §7.8): `text-reveal`, paint-only.
-            if (!valueEquals(next.base[prop::TextReveal], data.style.base[prop::TextReveal])) {
-                Value fromFinal = getProperty(arena, node, prop::TextReveal);
-                setProperty(arena, node, prop::TextReveal, next.base[prop::TextReveal]);
-                maybeRegisterTransition(animator, ir, next, node, prop::TextReveal, fromFinal,
-                                        next.base[prop::TextReveal], clock, noTransition);
-            }
+            commitBase(prop::TextReveal);
             // T-202 (03 §3.12.5): the particle fields, paint-only like text-reveal; T-325 (05
             // §5.9.8): the outline width / color / offset right after them, paint-only too; T-324:
             // then the text-decoration color / thickness; T-327: then background size / position;
             // T-328: `aspect-ratio` (layout, through setProperty's kDirtyLayout); T-333: the
             // per-side border colors (paint-only).
             for (PropId p = prop::ParticleRate; p <= prop::BorderLeftColor; ++p) {
-                if (!valueEquals(next.base[p], data.style.base[p])) {
-                    Value fromFinal = getProperty(arena, node, p);
-                    setProperty(arena, node, p, next.base[p]);
-                    maybeRegisterTransition(animator, ir, next, node, p, fromFinal, next.base[p], clock,
-                                            noTransition);
-                }
+                commitBase(p);
             }
             // T-336 (05 §5.9.8): `order` is not animatable -- committed without a transition (layout
             // through setProperty's kDirtyLayout).
@@ -2474,7 +2562,17 @@ uint32_t StyleEngine::resolve(NodeArena& arena, float clock) {
             // `auto` from the resolver's manifest slice), so the Painter needs no resolver.
             resolveImageMeta(ir, next, data);
 
-            // 7. Commit.
+            // 7. Commit. 10 §10.16 W5 (T-723): what the children take from this element changed --
+            // an inherited property, font-size, the text-decoration set, color or thickness --
+            // so they re-resolve in this same walk (they are visited after their parent) and pass
+            // it on by the same rule.
+            if (data.styleResolvedOnce != 0 && inheritedPartChanged(data.style, inheritedBefore, next)) {
+                for (NodeId c = arena.firstChild(node); c != kInvalidNode; c = arena.nextSibling(c)) {
+                    if (arena.kind(c) == NodeKind::Element) {
+                        arena.markStyleDirtySelf(c);
+                    }
+                }
+            }
             data.style = next;
             data.styleResolvedOnce = 1;
             arena.clearDirtyBits(node, static_cast<uint8_t>(kDirtyStyle));
@@ -2501,6 +2599,9 @@ uint32_t StyleEngine::resolve(NodeArena& arena, float clock) {
                 common.flags2 = next.layerOverlay != 0  // T-194 (08.9).
                                     ? (common.flags2 | kLayerOverlay)
                                     : (common.flags2 & ~static_cast<uint32_t>(kLayerOverlay));
+                // T-717: is3D was re-derived above (and base values may have been written); a
+                // `@timeline` member held on this node applies its values again.
+                common.flags2 |= kAnimValueStale;
                 // T-326 (18 §18.12): `mix-blend-mode` lands in the same NodeCommon::blend a scene
                 // node carries, so Painter::enterNode's PushLayer(opacity, blend) rule applies.
                 common.blend = next.mixBlendMode;

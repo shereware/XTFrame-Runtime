@@ -269,6 +269,8 @@ private:
     // Scratch for the FontRequest family list (string_views into the IR string table), refilled
     // once per element; resolve() is single-threaded, so reuse across elements is safe.
     std::vector<std::string_view> m_familyScratch;
+    // T-723 (05 §5.6a): the running element transitions of the element resolve() is writing.
+    std::vector<const Transition*> m_nodeTransitions;
     // T-51b: Document's runtime effect declaration pool, bound by setRuntimeEffects(); see there.
     const std::vector<EffectInstance>* m_runtimeEffects = nullptr;
     const std::vector<GradientStop>* m_runtimeEffectStops = nullptr;
@@ -300,6 +302,8 @@ private:
     std::vector<uint8_t> m_focusWithin;
     std::vector<uint8_t> m_focusWithinNext;
 
+    /// T-723: fills m_nodeTransitions with `node`'s own running transitions (not scene-target ones).
+    void collectNodeTransitions(const Animator& animator, NodeId node);
     void updateFocusWithin(NodeArena& arena);
 
     // T-176: per-rule `@media` state (empty = every rule active), the per-NodeId "used a device

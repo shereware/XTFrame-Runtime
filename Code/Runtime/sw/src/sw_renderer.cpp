@@ -14,6 +14,7 @@
 #include "sw_mip_cache.h"
 #include "sw_paint.h"
 #include "sw_raster.h"
+#include "sw_shadow_cache.h"
 #include "sw_simd.h"
 #include "xt/assert.h"
 #include "xt/box_shadow.h"
@@ -133,6 +134,9 @@ struct EffectFrame {
     bool hasBackdrop = false;
     BackdropPyramid pyramid;
     int cluster = -1;
+    /// T-729 (Docs/design/10-backends.md §10.18 B): the stack is BackdropBlur followed only by
+    /// shadow-type effects (effect_math::backdropThenShadowsOnly over the command list's entries).
+    bool shadowsUnderBackdrop = false;
 };
 
 }  // namespace
@@ -166,6 +170,8 @@ struct SwRenderer::Impl {
     /// T-668: the path of a sharp DrawBoxShadow (capacity retained across frames).
     std::vector<PathVerb> shadowVerbs;
     std::vector<float> shadowPoints;
+    BoxShadowColumns shadowColumns;  // T-724: a blurred DrawBoxShadow's per-column erf values
+    SwShadowCache shadowCache;       // T-724: static blurred DrawBoxShadows' coverage
     std::vector<Vec2> strokeOutPoints;
     std::vector<uint32_t> strokeOutStarts;
     std::vector<Vec2> glyphPoints;
@@ -208,6 +214,7 @@ struct SwRenderer::Impl {
         ef.pyramid.levels = 0;
         ef.pyramid.copiedPx = 0;
         ef.cluster = -1;
+        ef.shadowsUnderBackdrop = false;
         return ef;
     }
     Surface fxScratchA;
@@ -590,6 +597,7 @@ struct SwRenderer::Impl {
                 }
 
                 ef.invScreenXf = invScreenXf;
+                ef.shadowsUnderBackdrop = effect_math::backdropThenShadowsOnly(list, c);
                 ef.contentBoundsPx = toTargetPx(c.contentBounds, dpr);
                 ef.screenParams.reserve(std::min<size_t>(c.effectCount, list.effects.size()));
                 for (uint32_t i = 0; i < c.effectCount; ++i) {
@@ -643,18 +651,32 @@ struct SwRenderer::Impl {
                 // itself: it needs the snapshot taken at PushEffect time as a second input.
                 const Surface* content = &raw;
                 std::span<const EffectInstance> rest = ef.screenParams;
+                bool composed = false;
                 if (ef.hasBackdrop && !rest.empty()) {
                     const BackdropPyramid& pyr =
                         (ef.cluster >= 0 && ef.cluster < static_cast<int>(clusters.size()))
                             ? clusters[static_cast<size_t>(ef.cluster)].pyramid
                             : ef.pyramid;
-                    applyBackdropBlur(rest.front(), pyr, ef.bufferOriginPx, raw, fxBackdropResult, fxScratch,
-                                      effectTimers());
-                    content = &fxBackdropResult;
-                    rest = rest.subspan(1);
+                    if (ef.shadowsUnderBackdrop) {
+                        // T-729 (10 §10.18 B): the shadow-type effects run on the content alone (R'),
+                        // then R' goes over the blurred backdrop masked by the content's alpha.
+                        applyEffectStack(rest.subspan(1), list.stops, ef.invScreenXf, ef.bufferOriginPx,
+                                         ef.contentBoundsPx, raw, fxScratchA, fxScratchB, fxBackdropResult,
+                                         fxScratch, effectTimers());
+                        applyBackdropBlurUnder(rest.front(), pyr, ef.bufferOriginPx, fxBackdropResult, raw,
+                                               fxResult, fxScratch, effectTimers());
+                        composed = true;
+                    } else {
+                        applyBackdropBlur(rest.front(), pyr, ef.bufferOriginPx, raw, fxBackdropResult,
+                                          fxScratch, effectTimers());
+                        content = &fxBackdropResult;
+                        rest = rest.subspan(1);
+                    }
                 }
-                applyEffectStack(rest, list.stops, ef.invScreenXf, ef.bufferOriginPx, ef.contentBoundsPx,
-                                 *content, fxScratchA, fxScratchB, fxResult, fxScratch, effectTimers());
+                if (!composed) {
+                    applyEffectStack(rest, list.stops, ef.invScreenXf, ef.bufferOriginPx, ef.contentBoundsPx,
+                                     *content, fxScratchA, fxScratchB, fxResult, fxScratch, effectTimers());
+                }
                 {
                     PerfFieldScope layerScope(timer(&FrameStats::swLayerMs));
                     layers.popEffectLayer(rootTarget(), fxResult);
@@ -1158,16 +1180,13 @@ struct SwRenderer::Impl {
             state = PlaneState{};
             const bool outerAffine = planeStates.size() < 2 || planeStates[planeStates.size() - 2].affine;
             const float dpr = currentDpr > 0.0f ? currentDpr : 1.0f;
-            Mat3 h;
-            if (outerAffine && project3d::planeHomography(mappings, h)) {
-                // The pass's viewport: the list's (logical px), else the target's.
-                Rect viewport = planeViewport;
-                if (!(viewport.w > 0.0f && viewport.h > 0.0f)) {
-                    viewport = Rect{0.0f, 0.0f, static_cast<float>(target.width) / dpr,
-                                    static_cast<float>(target.height) / dpr};
-                }
-                state.affine =
-                    project3d::affinePlane(h, viewport, project3d::kAffinePlaneTolerancePx / dpr, state.fold);
+            if (outerAffine) {
+                // The pass's viewport: the list's (logical px), else the target's. T-716: through
+                // project3d::planeTest, which the Painter's box shadow decision uses too.
+                const Rect whole{0.0f, 0.0f, static_cast<float>(target.width) / dpr,
+                                 static_cast<float>(target.height) / dpr};
+                const project3d::PlaneTest test = project3d::planeTest(planeViewport, whole, dpr);
+                state.affine = project3d::stackPlaneAffine(mappings, test, state.fold);
             }
         }
         syncPlaneFold();
@@ -1991,7 +2010,19 @@ struct SwRenderer::Impl {
             flatPoints.push_back(apply(deviceXf, q));
         }
         flatClosed.push_back(1);
-        const PaintEval eval = PaintEval::makeBoxShadow(d, d.sigmaLocal, color, deviceXf);
+        // T-724: the target pixels the quad can touch key the coverage cache (approach (c)) and
+        // bound the column cache; a shadow without a key is evaluated uncached.
+        ShadowCacheKey key;
+        ShadowCoverage cached;
+        if (makeShadowCacheKey(d, deviceXf, flatPoints.data(), dst.originX, dst.originY, dst.originX + dst.w,
+                               dst.originY + dst.h, key)) {
+            shadowColumns.begin(key.x0, key.x1);
+            cached = shadowCache.acquire(key);
+        } else {
+            shadowColumns.begin(0, 0);
+        }
+        PaintEval eval = PaintEval::makeBoxShadow(d, d.sigmaLocal, color, deviceXf, &shadowColumns);
+        eval.setShadowCoverage(cached);
         paintContours(flatPoints, flatStarts, FillRule::NonZero, eval, dst);
     }
 
@@ -2422,8 +2453,9 @@ void SwRenderer::render(const CommandList& list, TextShaper* shaper, AssetResolv
     }
     m_impl->directDamage = nullptr;
     m_impl->endDamage();
-    m_impl->layers.endFrame();     // T-641: the layer pool's ageing (50 §50.aa item 3).
-    m_impl->mipCache.endRender();  // T-665
+    m_impl->layers.endFrame();       // T-641: the layer pool's ageing (50 §50.aa item 3).
+    m_impl->mipCache.endRender();    // T-665
+    m_impl->shadowCache.endFrame();  // T-724
 }
 
 void SwRenderer::invalidateAsset(AssetId asset, const IrView* source) {
@@ -2434,11 +2466,16 @@ void SwRenderer::invalidateAllAssets() { m_impl->mipCache.invalidateAll(); }
 
 size_t SwRenderer::mipCacheBytes() const { return m_impl->mipCache.bytes(); }
 
+void SwRenderer::setBoxShadowCacheBudget(size_t bytes) { m_impl->shadowCache.setBudget(bytes); }
+
+size_t SwRenderer::boxShadowCacheBytes() const { return m_impl->shadowCache.bytes(); }
+
 void SwRenderer::releaseScratch() {
     Impl& m = *m_impl;
     m.resetStacks();
     m.layers.releasePool();
-    m.mipCache.clear();  // T-665
+    m.mipCache.clear();     // T-665
+    m.shadowCache.clear();  // T-724
     m.fxScratchA = Surface{};
     m.fxScratchB = Surface{};
     m.fxResult = Surface{};

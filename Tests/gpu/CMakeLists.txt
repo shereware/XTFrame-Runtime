@@ -13,6 +13,12 @@ add_executable(xt_gpu_tests
     test_gpu_capabilities.cpp  # T-691
     test_gradient_lut.cpp  # T-695
     test_gpu_world_layers.cpp  # T-703
+    test_analytic_clip.cpp  # T-718
+    test_effect_cache_relocate.cpp  # T-721
+    test_effect_channel_fold.cpp  # T-728
+    test_backdrop_shortcut.cpp  # T-728
+    test_backdrop_mask.cpp  # T-729
+    test_backdrop_cache.cpp  # T-730
 )
 target_include_directories(xt_gpu_tests SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/Code/SDKs/doctest)
 target_compile_definitions(xt_gpu_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)

@@ -1,0 +1,128 @@
+<xt version="2">
+
+  <!-- T-725 (Docs/tasks/T-725.md; 19 section 19.3, 10 section 10.15): a `perspective` root holding elements with
+       only 2D transforms -- a drifting dot animated by `transform: translateX() translateY()` keyframes (the
+       compose path writes all ten components, the 3D ones as zero), a spinning tile, a scaled and a skewed
+       card -- and one plane really tilted by rotateX. The 2D elements stay on the root plane, so the image
+       equals ui_plane_2d_wrapped (the `perspective` only on a container around the tilted plane) pixel for
+       pixel (manifest: same-as). Sampled at 0.5 s, the animations half way. -->
+  <body>
+    <div id="stage">
+      <div id="dot"></div>
+      <div id="tile"></div>
+      <div id="scaled"></div>
+      <div id="skewed"></div>
+      <div id="tilt"><div id="tilt-mark"></div></div>
+    </div>
+  </body>
+
+  <layout>
+    body {
+      width: 256px;
+      height: 256px;
+    }
+    #stage {
+      position: absolute;
+      left: 0px;
+      top: 0px;
+      width: 256px;
+      height: 256px;
+      perspective: 400px;
+      perspective-origin: 50% 40%;
+    }
+    #dot {
+      position: absolute;
+      left: 24px;
+      top: 200px;
+      width: 14px;
+      height: 14px;
+    }
+    #tile {
+      position: absolute;
+      left: 30px;
+      top: 30px;
+      width: 50px;
+      height: 50px;
+    }
+    #scaled {
+      position: absolute;
+      left: 170px;
+      top: 26px;
+      width: 60px;
+      height: 40px;
+      transform: scale(1.25, 0.8);
+    }
+    #skewed {
+      position: absolute;
+      left: 172px;
+      top: 92px;
+      width: 56px;
+      height: 36px;
+      transform: translateX(3px) translateY(-2px) skewX(-12deg);
+    }
+    #tilt {
+      position: absolute;
+      left: 70px;
+      top: 120px;
+      width: 116px;
+      height: 96px;
+      transform: rotateX(40deg);
+    }
+    #tilt-mark {
+      position: absolute;
+      left: 14px;
+      top: 14px;
+      width: 30px;
+      height: 30px;
+    }
+  </layout>
+  <style>
+    body {
+      background-color: #0b0e12;
+    }
+    #dot {
+      border-radius: 7px;
+      background-color: #ffd77a;
+      animation: drift 1s linear 0s infinite;
+    }
+    #tile {
+      border: 1px #c8d8e8;
+      background-color: #3060c0;
+      animation: spin 2s linear 0s infinite;
+    }
+    #scaled {
+      border-radius: 6px;
+      border: 2px #f0f0f0;
+      background-color: #20a060;
+    }
+    #skewed {
+      background-color: #e04040;
+      border: 1px #ffffff;
+    }
+    #tilt {
+      border: 2px #8aa0b8;
+      background-color: #2a3442;
+    }
+    #tilt-mark {
+      background-color: #ff7a5c;
+    }
+    @keyframes drift {
+      0% {
+        opacity: 0.2;
+        transform: translateX(0px) translateY(0px);
+      }
+      100% {
+        opacity: 1;
+        transform: translateX(60px) translateY(-120px);
+      }
+    }
+    @keyframes spin {
+      from {
+        transform: rotate(0deg);
+      }
+      to {
+        transform: rotate(90deg);
+      }
+    }
+  </style>
+</xt>

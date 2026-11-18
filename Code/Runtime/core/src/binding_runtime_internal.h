@@ -49,6 +49,12 @@ using BVal = BindingRuntime::BVal;
 using Kind = BindingRuntime::BVal::Kind;
 
 void markStyleDirtySubtree(NodeArena& arena, NodeId node);
+/// T-723 (10 §10.16 W5): what a changed style binding declaration of `propId` re-resolves -- the
+/// element alone, plus its subtree when `propId` reaches the descendants' computed style (an
+/// inherited property, or the text-decoration color / thickness a decorating ancestor passes
+/// down); ancestors never (NodeArena::markStyleDirtySelf). `legacy`: the old full range
+/// (markStyleDirtySubtree), for the equivalence check only.
+void markStyleDirtyForDecl(NodeArena& arena, NodeId node, uint16_t propId, bool legacy);
 BVal num(double v, bool isBool = false);
 BVal str(std::string s);
 BVal ofValue(Kind kind, const Value& v);

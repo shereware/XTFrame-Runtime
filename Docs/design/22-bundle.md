@@ -332,3 +332,40 @@ T-527 實作後的補充（2026-10-29）：
 **T-627 實作記錄（#599，2026-11-06）**：`xtframe-view`：`--event "<frame> #<id>.Click button=left|right|middle"`（PointerDown／Up 帶該鍵，預設 left；非 Click 帶 `button=` 或值錯 → exit 2）；新原始形式 `--event "[<frame>] pointer <move|down|up> <x> <y> [button=…]"`（button 只允許 down／up）；`--pointer` 同樣加 button 欄。`--port <name>=<value>` 與新的雙引數 `--port <name> <value>`（名無 `=` 且下一引數不以 `--` 開頭）都剝一層成對外引號，`''`／`""` 存空字串，省略則用宣告預設；`--event "<frame> port <name> ''"` 同。右鍵到文件走 08 §8.13 的 `click(right)`／`press(right)`／`pointerdown(middle)`／`if button(right)`（本倉無 `on:contextmenu`／`pointer.button`）；目標被遮或無面積時 view 退回直接 `fireTrigger`，該路徑不帶鍵（08 §8.13 規定）。fixture `Tests/bundle/fixtures/view_input`，八個 CTest；bundle 257、core 2003。
 
 **T-630 實作記錄（#600，2026-11-06）**：`LanguageBar::reload()`（`setSession()` 與每次 `bundleChanged`）載表、裝 provider 後，若本語言列尚無明選（`m_languageChosen`）且專案開著 → `xt::bundle::defaultLanguage(*project)`，只在 `spec.languages` 列出時套用，否則「(keys)」；`setLanguage()` 成功即記為明選（含下拉與程式呼叫），之後 `reload()` 不再套預設、只在所選語言不再列出時退回「(keys)」；旗標隨 LanguageBar 物件存活，換專案不重置。測試 `test_project_library.cpp` 三案；editor 403、editor_qt 897／0 失敗／20 略過。
+
+## 22.17 發佈設定的入口與預設（2026-11-14 定案；T-714）
+
+使用者 2026-11-14：「我以為 BC7 在打包流程裡？」「我從來沒有在 publish 流程裡看到任何一個關於品質或優化的選項，只有選擇目錄的選項而已」。查證屬實：`.xtui` 的 `publish` 有 `images.compress`、`atlas.*`、`fonts`、`embedImages`、`embedFonts`，但編輯器的 Publish 對話框只有目錄；Project 分頁只顯示發佈記錄；Editor Service 沒有任何 op 能改它們。能動這些設定的只有手改 `.xtui` 或 `xtframe-pack` 的旗標，而且 `images.compress` 的預設是 `none`——也就是說，從編輯器發佈出去的 bundle 一律是未壓縮、無圖集的。
+
+### 22.17.1 預設值：發佈時影像壓縮為 `auto`
+
+1. **`.xtui` 沒有寫 `publish.images.compress` 時，「發佈」採 `auto`**（10 §10.13 第 5 點：兩邊皆 ≥ 256 px 的影像用 BC7，其餘不壓縮）。「發佈」指：編輯器的 Publish、Editor Service 的 `project.publish`、`xtframe-pack` 命令列。明寫 `none` 的專案照 `none`。
+2. **開發期的自動打包不變**：`xtframe-view` 開 UI Project 時打到 `%TEMP%` 的那一份、編輯器的預覽與展示空間，維持不壓縮（要快、要無損）。
+3. **函式庫的預設不變**：`xt::bundle::pack()` 的 `PackOptions::compress` 為空字串時仍照專案內容（沒寫＝`none`）。新的預設由三個發佈入口在呼叫前解析（一個共用函式 `effectivePublishCompress(project)`：專案有寫就用專案的，沒寫回 `auto`），所以直接呼叫函式庫的測試與宿主不受影響。宿主自己的發佈入口（例如宿主編輯器窗格的 Publish）要跟進時呼叫同一個函式；23 章升級須知第 7 點。
+4. 沒有 BC 的平台（iOS、Android／GLES）會把 BC7 解回 RGBA8（有損、不省記憶體，10 §10.13 第 8 點）——對這些平台發佈的專案應明寫 `none`；對話框的說明文字要講到這一點。
+5. 第一次發佈要編碼（多執行緒；結果有快取，之後只重編改過的影像）。對話框在發佈期間顯示進行中的狀態與「首次壓縮較久、之後有快取」的說明。
+
+### 22.17.2 Publish 對話框的「Bundle options」
+
+目錄欄位之下新增一組設定，內容直接對應 `.xtui` 的 `publish.*`，按下 Publish 時連同發佈記錄一起寫回 `.xtui`（與 `publish.targets` 相同的寫入時機，不進 undo）：
+
+| 欄位 | 控制項 | 對應 | 預設 |
+|---|---|---|---|
+| Image compression | 下拉：Auto（建議）／BC7 for all images／None | `publish.images.compress` | Auto |
+| Texture atlas | 核取「Pack small images into atlases」；開啟時可設 Max page size（1024／2048／4096）、Scope（Per UI／Whole bundle）、Mipmaps | `publish.atlas.enabled／maxSize／scope／mipmaps` | 關；4096、Per UI、關 |
+| Fonts | 核取「Bundle the fonts (same text on every machine)」 | `publish.fonts` = `bundled`／`system` | 關（system） |
+| Advanced（預設收合） | 核取「Embed images in each UI file」「Embed fonts in each UI file」 | `publish.embedImages／embedFonts` | 關 |
+
+- 每個欄位有一行說明（給美術看的話，不是旗標名）：壓縮＝「顯示記憶體約為四分之一；小於 256 px 的圖不壓；手機平台請選 None」；圖集＝「把小圖併成大張，減少繪製切換」；字型＝「把用到的字型放進 bundle，文字在每台機器上都一樣」。
+- `atlas.padding`、`thumbnail`、`languages` 不在對話框（維持專案檔的值）。
+- **發佈結果**：發佈完成的訊息（Messages 與 Project 分頁的發佈摘要）列出：bundle 的磁碟大小、影像張數（壓縮／未壓縮／併入圖集）、**估計的顯示記憶體**（各影像第 0 層加 mip 的位元組總和）與「若不壓縮」的對照值。`PackReport` 為此新增欄位。
+- Project 分頁的發佈區塊多一行目前的設定摘要（例如「Images: Auto (BC7) · Atlas: off · Fonts: system」），旁邊的 Publish 鈕照舊開對話框。
+
+### 22.17.3 Editor Service
+
+- `project.get` 的 `publish` 物件增加 `images`（`compress` 的寫入值與 `effectiveCompress`）、`atlas`、`fonts`、`embedImages`、`embedFonts`。
+- 新 op `project.setPublishSettings`：參數為上述欄位的部分物件，寫回 `.xtui`；未知鍵或不合法的值回 `kInvalidArgument`。`project.publish` 的回報增加 22.17.2 的發佈結果欄位。
+
+### 22.17.4 不做
+
+逐影像的壓縮覆寫入口維持在資產匯入對話框（既有）；ASTC／ETC2；圖集的逐資產排除；容器層壓縮。

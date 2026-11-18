@@ -658,10 +658,13 @@ void kawasePass(const Surface& src, Surface& dst) {
 }
 
 /// BackdropBlur (Docs/design/18-effects.md §18.3 kind 8, §18.6; T-343 §18.15). See sw_effects.h.
+/// `top` goes over the blurred backdrop masked by `mask`'s alpha (both the content buffer's size):
+/// `src` twice for a plain BackdropBlur; T-729: R' and S under §10.18 B.
 void applyBackdropBlurImpl(const EffectInstance& p, const BackdropPyramid& pyr, Vec2 bufferOriginPx,
-                           const Surface& src, Surface& dst, EffectScratch& scratch,
+                           const Surface& top, const Surface& mask, Surface& dst, EffectScratch& scratch,
                            const EffectTimers& timers) {
-    resizeLike(dst, src);
+    const Surface& src = mask;
+    resizeLike(dst, top);
     const Surface& base = pyr.level[0];
     {
         PerfFieldScope blurScope(timers.blur);
@@ -716,21 +719,22 @@ void applyBackdropBlurImpl(const EffectInstance& p, const BackdropPyramid& pyr, 
 
     const Surface& blurred = scratch.backdrop;
     for (int y = 0; y < src.h; ++y) {
-        const float* srcRow = src.row(y);
+        const float* topRow = top.row(y);
+        const float* maskRow = mask.row(y);
         float* dstRow = dst.row(y);
         const float* bdRow = blurred.row(y);
         for (int x = 0; x < src.w; ++x) {
-            const float* sp = srcRow + static_cast<size_t>(x) * 4;
-            float srcA = sp[3];
+            const float* tp = topRow + static_cast<size_t>(x) * 4;
+            const float maskA = maskRow[static_cast<size_t>(x) * 4 + 3];
             // The blurred backdrop, masked by the content's own alpha, lies *under* the content.
             const float* bp = bdRow + static_cast<size_t>(x) * 4;
-            Color bottom{bp[0] * srcA, bp[1] * srcA, bp[2] * srcA, bp[3] * srcA};
-            float inv = 1.0f - srcA;
+            Color bottom{bp[0] * maskA, bp[1] * maskA, bp[2] * maskA, bp[3] * maskA};
+            float inv = 1.0f - tp[3];
             float* dp = dstRow + static_cast<size_t>(x) * 4;
-            dp[0] = sp[0] + bottom.r * inv;
-            dp[1] = sp[1] + bottom.g * inv;
-            dp[2] = sp[2] + bottom.b * inv;
-            dp[3] = srcA + bottom.a * inv;
+            dp[0] = tp[0] + bottom.r * inv;
+            dp[1] = tp[1] + bottom.g * inv;
+            dp[2] = tp[2] + bottom.b * inv;
+            dp[3] = tp[3] + bottom.a * inv;
         }
     }
 }
@@ -845,7 +849,18 @@ void applyBackdropBlur(const EffectInstance& screenParams, const BackdropPyramid
         dst = src;
         return;
     }
-    applyBackdropBlurImpl(screenParams, pyramid, bufferOriginPx, src, dst, scratch, timers);
+    applyBackdropBlurImpl(screenParams, pyramid, bufferOriginPx, src, src, dst, scratch, timers);
+}
+
+void applyBackdropBlurUnder(const EffectInstance& screenParams, const BackdropPyramid& pyramid,
+                            Vec2 bufferOriginPx, const Surface& top, const Surface& mask, Surface& dst,
+                            EffectScratch& scratch, const EffectTimers& timers) {
+    if (mask.w <= 0 || mask.h <= 0 || top.w != mask.w || top.h != mask.h || pyramid.level[0].w <= 0 ||
+        pyramid.level[0].h <= 0 || screenParams.enabled == 0) {
+        dst = top;
+        return;
+    }
+    applyBackdropBlurImpl(screenParams, pyramid, bufferOriginPx, top, mask, dst, scratch, timers);
 }
 
 void applyEffect(const EffectInstance& screenParams, std::span<const GradientStop> stops,

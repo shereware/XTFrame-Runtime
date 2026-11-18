@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "style_state_deps.h"
 #include "xt/event.h"
 #include "xt/input.h"
 #include "xt/node_arena.h"
@@ -196,6 +197,10 @@ public:
     /// PointerEnter, the Hover state bit), without a PointerMove event. No-op unless marked stale and the
     /// pointer is over the document.
     void markHoverStale() { m_hoverStale = true; }
+    /// T-723 (10 §10.16 W5, tests only): state changes use the old full-range style invalidation.
+    void setLegacyStyleInvalidation(bool on) { m_legacyStyleInvalidation = on; }
+    /// T-723: the state dependency table built by init() (B.1).
+    const StateDependencyTable& stateDependencies() const { return m_stateDeps; }
     void refreshHover(NodeArena& arena, NodeId root);
 
     /// See Listener's docs; target must be alive and NodeKind::Element. Returns the new listener's
@@ -567,6 +572,8 @@ private:
     };
     std::vector<PathEntry> m_pathStack;
     bool m_listenersMuted = false;  // T-260a: muteListeners().
+    bool m_legacyStyleInvalidation = false;  // T-723: setLegacyStyleInvalidation() (tests only).
+    StateDependencyTable m_stateDeps;        // T-723: built by init() from the IR's STYL rules.
     // T-387 (08.12): the elements watchOutsidePress() registered (with their generation, so a
     // destroyed node or a reused slot is recognized and dropped).
     std::vector<PathEntry> m_outsidePress;

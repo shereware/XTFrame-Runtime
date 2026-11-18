@@ -37,6 +37,23 @@
 ///    frame carries no extra copy. Targets untouched for a whole build are released at the end
 ///    of that build; the cache also stops storing at `kEffectCacheBudgetBytes` /
 ///    `kEffectCacheMaxEntries` and is emptied by `resize`, `invalidateAsset` and `shutdown`.
+///    T-721 (Docs/design/10-backends.md §10.16 W2): where a segment is not in a perspective
+///    projection, reads no backdrop and its window is not cut by the scissor, the parent window or
+///    the surface, the key is **independent of its position** (every position relative to the
+///    top-left corner of the effect's bounds, rounded to 1/16 px), so a segment that only moves
+///    keeps its result: a whole number of pixels away the quad is a texel copy, a fraction away a
+///    bilinear one (`BuildStats::effectCachePhaseHits`; such a result is drawn with a 1 px border).
+///    Once the segment stands still for a build it is drawn again in place unless the result is
+///    exactly its own (`BuildStats::effectCacheSettles`), so a frame at rest is the one an empty
+///    cache would draw -- except that segments with the same key at rest at different sub-pixel
+///    phases share the result of the first one drawn. "Seen in the previous build" is judged on
+///    that key; `lastFrameReusable` says no while a moving segment's result is in use.
+///    T-730 (Docs/design/10-backends.md §10.18 "B 定案" second step): a segment whose stack is a
+///    BackdropBlur followed only by shadow-type effects keeps, on a device with
+///    `supportsBackdropMask()`, its source layer and its shadow result as one pair (keyed as above
+///    without the BackdropBlur's parameters; not reading the backdrop, it may be keyed independently of
+///    its position); a hit reads the backdrop as the segment would, pastes the two into transients and
+///    composes them with one BackdropMasked pass (BuildStats::backdropPair*).
 ///
 /// T-343 (Docs/design/23-host-integration.md §23.aa, Docs/tasks/T-343.md) adds the host's
 /// **Direct target mode** (`CommandList::hostTargetMode == HostTargetMode::Direct`, from
@@ -302,7 +319,8 @@ public:
 
     /// T-691 (Docs/design/10-backends.md §10.14 item 5): what the last `build` drew differently or
     /// left out because the device said it cannot draw it (`GpuDevice::supportsCoverageDraws` /
-    /// `supportsBoxShadowShading`); all zero for a device that supports both.
+    /// `supportsBoxShadowShading`); those two are zero for a device that supports both. T-718 adds
+    /// the analytic clip counts.
     struct BuildStats {
         /// Shapes that would have been drawn as coverage quads and took their earlier path instead
         /// (stencil-then-cover, the glyph atlas, a stencil clip level). A thin or uneven ring that
@@ -311,6 +329,38 @@ public:
         /// Blurred DrawBoxShadow commands not drawn (the device has no `Shading::BoxShadow`; the
         /// host should call `Context::setBoxShadowCommands(false)`, which `lastError` says once).
         uint32_t boxShadowSkipped = 0;
+        /// T-718 (Docs/design/10-backends.md §10.16 W1 item 8): clips of the last build drawn as an
+        /// analytic clip level (no mask layer; `GpuDevice::supportsAnalyticClip`) ...
+        uint32_t analyticClips = 0;
+        /// ... and clips that became a mask layer on such a device although the single-sampled
+        /// rounded-clip decision reached them: the shape is not a circular-cornered rectangle (or
+        /// its transform is singular), or three analytic clips were already active. 0 on a device
+        /// without analytic clips.
+        uint32_t analyticClipFallbacks = 0;
+        /// T-721 (Docs/design/10-backends.md §10.16 W2 item 7): effect segments of the last build
+        /// drawn from a cached result a fraction of a pixel away from where that result was drawn
+        /// (one bilinear quad; counted in `EffectCacheStats::hits` too) ...
+        uint32_t effectCachePhaseHits = 0;
+        /// ... and segments drawn again because they came to rest on a result that is not exactly
+        /// theirs (drawn at another sub-pixel phase, or with a moving segment's border); the new
+        /// result replaces the entry (counted in `EffectCacheStats::misses` and `stores` too).
+        /// T-730: both also count backdrop pairs.
+        uint32_t effectCacheSettles = 0;
+        /// T-730 (Docs/design/10-backends.md §10.18 "B 定案" second step): segments whose stack is a
+        /// BackdropBlur followed only by shadow-type effects, on a device that caches and runs
+        /// BackdropMasked (`GpuDevice::supportsBackdropMask`), keep their source layer S and shadow result
+        /// R' as one pair (two cached targets, two entries of the budget). Such segments drawn from
+        /// the pair (the backdrop read as ever, R' and S pasted, one BackdropMasked pass) ...
+        uint32_t backdropPairHits = 0;
+        /// ... drawn in full ...
+        uint32_t backdropPairMisses = 0;
+        /// ... and pairs the frame stores (two `GpuFrame::cacheStores` each, which
+        /// `EffectCacheStats::stores` counts; pairs are not in its hits and misses).
+        uint32_t backdropPairStores = 0;
+        /// T-730: what the effect result cache holds after the build -- its targets' bytes and its
+        /// entries as counted against kEffectCacheBudgetBytes / kEffectCacheMaxEntries (a pair is two).
+        uint64_t effectCacheBytes = 0;
+        uint32_t effectCacheEntries = 0;
     };
     BuildStats lastBuildStats() const;
 

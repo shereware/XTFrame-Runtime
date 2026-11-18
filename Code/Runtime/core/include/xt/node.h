@@ -369,6 +369,14 @@ enum NodeFlags2 : uint32_t {
     /// override wrote this update; cleared (and the node marked kDirtyTransform) on the first
     /// update that writes none. The Painter skips pixel alignment under such a node.
     kInMotion = 1u << 8,
+    /// T-717 (internal, 10 §10.16 W4): a value of this node may differ from what the Animator last
+    /// applied -- set by setProperty() (any writer) and by the style resolve committing the node;
+    /// the Animator clears it on the nodes it applies to. A `@timeline` member held at its end stop
+    /// applies its values again when a target carries it.
+    kAnimValueStale = 1u << 9,
+    /// T-717 (internal): the Animator queued a write to this node earlier in the running evaluate()
+    /// (a held member then compares properties); cleared with kAnimValueStale.
+    kAnimWriteQueued = 1u << 10,
 };
 
 /// High bit tag for ComputedStyle::effectOffset (Docs/design/18-effects.md §18.4, Docs/tasks/

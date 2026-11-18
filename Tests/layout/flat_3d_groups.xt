@@ -1,0 +1,131 @@
+<xt version="2">
+
+  <!-- T-727: group boundaries when a flat container's content is split around a 3D layer.
+       #g1: the container clips (overflow: hidden): its flat content is split, the clip is pushed
+            again around each piece: A, c1, c2, c3.
+       #g2: the container has opacity 0.5 (a Layer group): splitting would composite each piece on
+            its own, which the ruling leaves open, so the pre-T-727 order stays: d1 and d3 inside one
+            Layer before A, then d2.
+       #g3: the container has opacity 0.5 but its layer comes last, so its flat content is one
+            piece: A, then the Layer with e1, then e2. -->
+  <body>
+    <div id="g1" class="stage">
+      <div id="ga1" class="a"></div>
+      <div id="gbox1" class="box clip">
+        <div id="c1" class="b first"></div>
+        <div id="c2" class="b second"></div>
+        <div id="c3" class="b third"></div>
+      </div>
+    </div>
+    <div id="g2" class="stage">
+      <div id="ga2" class="a"></div>
+      <div id="gbox2" class="box half">
+        <div id="d1" class="b first"></div>
+        <div id="d2" class="b second"></div>
+        <div id="d3" class="b third"></div>
+      </div>
+    </div>
+    <div id="g3" class="stage">
+      <div id="ga3" class="a"></div>
+      <div id="gbox3" class="box half">
+        <div id="e1" class="b first"></div>
+        <div id="e3" class="b third"></div>
+        <div id="e2" class="b second"></div>
+      </div>
+    </div>
+  </body>
+
+  <layout>
+    .stage {
+      position: absolute;
+      top: 0px;
+      width: 120px;
+      height: 120px;
+      perspective: 400px;
+    }
+    #g1 {
+      left: 0px;
+    }
+    #g2 {
+      left: 130px;
+    }
+    #g3 {
+      left: 260px;
+    }
+    .a {
+      position: absolute;
+      left: 0px;
+      top: 0px;
+      width: 120px;
+      height: 120px;
+      transform: rotateX(20deg);
+    }
+    .box {
+      position: absolute;
+      left: 0px;
+      top: 0px;
+      width: 120px;
+      height: 120px;
+    }
+    .clip {
+      overflow: hidden;
+    }
+    .b {
+      position: absolute;
+      top: 40px;
+      width: 30px;
+      height: 40px;
+    }
+    .first {
+      left: 5px;
+    }
+    .second {
+      left: 45px;
+      transform: rotateY(10deg);
+    }
+    .third {
+      left: 85px;
+    }
+  </layout>
+  <style>
+    .half {
+      opacity: 0.5;
+    }
+    #ga1 {
+      background-color: #ff0000;
+    }
+    #c1 {
+      background-color: #00ff00;
+    }
+    #c2 {
+      background-color: #0000ff;
+    }
+    #c3 {
+      background-color: #ffff00;
+    }
+    #ga2 {
+      background-color: #800000;
+    }
+    #d1 {
+      background-color: #008000;
+    }
+    #d2 {
+      background-color: #000080;
+    }
+    #d3 {
+      background-color: #808000;
+    }
+    #ga3 {
+      background-color: #400000;
+    }
+    #e1 {
+      background-color: #004000;
+    }
+    #e2 {
+      background-color: #000040;
+    }
+    #e3 {
+      background-color: #404000;
+    }
+  </style>
+</xt>

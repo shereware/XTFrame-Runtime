@@ -819,6 +819,24 @@ void BindingRuntime::apply(Binding& b, const BVal& r, bool initial) {
             if (b.transitionTween && !initial) {
                 b.tweened = true;
             }
+            // T-723 (10 §10.16 W5): the declaration the element already has is not written again
+            // -- no restyle, and no tween restarted towards the value it already moves to.
+            ElementData& data = doc.m_arena.element(b.node);
+            RuntimeStyleDecl* existing = nullptr;
+            for (RuntimeStyleDecl& d : data.runtimeDecls) {
+                if (d.prop == prop) {
+                    existing = &d;
+                    break;
+                }
+            }
+            const bool unchanged = existing != nullptr && existing->important == 0 &&
+                                   existing->varName == kInvalidString && valueEquals(existing->value, pv);
+            if (unchanged) {
+                if (m_legacyStyleInvalidation) {
+                    markStyleDirtySubtree(doc.m_arena, b.node);  // The old full range, test only.
+                }
+                return;
+            }
             if (b.transitionTween && !initial && !firstTweenWrite) {
                 // 04 §4.10.4: a tween on the property is a transition from its current final value.
                 Value from = ref.property(prop);
@@ -837,23 +855,16 @@ void BindingRuntime::apply(Binding& b, const BVal& r, bool initial) {
                     doc.m_animator.addTransition(tr);
                 }
             }
-            ElementData& data = doc.m_arena.element(b.node);
             data.setStyleHash = 0;  // T-389: runtimeDecls changed outside setStyle().
             RuntimeStyleDecl decl;
             decl.prop = prop;
             decl.value = pv;
-            bool replaced = false;
-            for (RuntimeStyleDecl& existing : data.runtimeDecls) {
-                if (existing.prop == decl.prop) {
-                    existing = decl;
-                    replaced = true;
-                    break;
-                }
-            }
-            if (!replaced) {
+            if (existing != nullptr) {
+                *existing = decl;
+            } else {
                 data.runtimeDecls.push_back(decl);
             }
-            markStyleDirtySubtree(doc.m_arena, b.node);
+            markStyleDirtyForDecl(doc.m_arena, b.node, prop, m_legacyStyleInvalidation);
             return;
         }
         case BindTarget::Text:
@@ -947,7 +958,8 @@ void BindingRuntime::apply(Binding& b, const BVal& r, bool initial) {
                 return d.prop == style_decode::styleprop::Display;
             });
             if (data.runtimeDecls.size() != before) {
-                markStyleDirtySubtree(doc.m_arena, b.node);
+                markStyleDirtyForDecl(doc.m_arena, b.node, style_decode::styleprop::Display,
+                                      m_legacyStyleInvalidation);  // T-723.
             }
             return;
         }
@@ -1038,7 +1050,7 @@ void BindingRuntime::applyWorldAnchor(NodeId node, const BVal& r) {
         moved = true;
     }
     if (moved) {
-        markStyleDirtySubtree(arena, node);
+        markStyleDirtyForDecl(arena, node, prop::TranslateX, m_legacyStyleInvalidation);  // T-723.
         m_anchorMoved = true;
     }
 }

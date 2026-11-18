@@ -10,12 +10,11 @@
 #include "xt/value.h"
 
 /// Effect-pass scheduler (Docs/design/18-effects.md §18.5, Docs/tasks/T-146.md): the CPU half of
-/// Code/Runtime/gl/src/gl_effects.cpp. Applies a node's already `xt::effectToScreen`-converted effect stack to
-/// a transient target by emitting one window-covering `Shading::Effect` pass per shader step,
-/// using scratch transients that share the content target's window (T-151; the window is the
-/// node's `EffectCmd::boundsHint`, see frame_builder.cpp). The pass sequence per effect kind is
-/// gl_effects.cpp's, one `EffectProgram` per GL program, minus the steps that would be the
-/// identity (spread 0, sigma 0).
+/// Code/Runtime/gl/src/gl_effects.cpp. Applies a node's already `xt::effectToScreen`-converted effect stack
+/// to a transient target by emitting one window-covering `Shading::Effect` pass per shader step, using
+/// scratch transients that share the content target's window (T-151; the window is the node's
+/// `EffectCmd::boundsHint`, see frame_builder.cpp). The pass sequence per effect kind is gl_effects.cpp's,
+/// one `EffectProgram` per GL program, minus the steps that would be the identity (spread 0, sigma 0).
 
 namespace xt::gpu::detail {
 
@@ -60,6 +59,16 @@ struct EffectStackInput {
     /// before the node's own layer opened; its window contains `src`'s); null when the stack has
     /// no such entry (a BackdropBlur then passes its input through).
     const BackdropPyramid* pyramid = nullptr;
+    /// T-729 (Docs/design/10-backends.md §10.18 B): the stack is an enabled BackdropBlur followed
+    /// only by shadow-type effects (effect_math::backdropThenShadowsOnly). With a pyramid, on a
+    /// device that runs BackdropMasked (FrameEmitter::backdropMask), the shadow-type effects then run
+    /// on `src` alone (R') and one BackdropMasked pass puts R' over the blurred backdrop masked by
+    /// `src`'s alpha; otherwise the stack runs in order as before.
+    bool shadowsUnderBackdrop = false;
+    /// T-730 (Docs/design/10-backends.md §10.18 B second step): when set and the stack takes the
+    /// BackdropMasked composition above, R' is not released but handed to the caller here (who releases
+    /// it, unless it is `src` itself); left alone otherwise (the stack ran in order).
+    TargetHandle* keepShadows = nullptr;
     /// T-203: `xtTime` of Custom entries. A Custom entry of `screenParams` carries the device's
     /// custom program id in its `shader` field (frame_builder.cpp resolved it; an effect the
     /// device cannot run was already replaced by its fallback there).
@@ -76,5 +85,14 @@ struct EffectStackInput {
 /// resolution (`xt::blurDownsampleShift`): `Downsample` passes into scaled transients, the
 /// Gaussian at that level with sigma / 2^shift, then one `LevelMix` upsample.
 TargetHandle applyEffectStack(FrameEmitter& emit, GradientLutCache& luts, const EffectStackInput& in);
+
+/// T-730 (Docs/design/10-backends.md §10.18 B second step): the last step of the BackdropMasked
+/// composition alone, for a backdrop pair served from the cache -- `in.screenParams[0]` is the
+/// BackdropBlur, `in.src` the source layer S (whose window every pass uses), `in.pyramid` the backdrop
+/// pyramid (non-empty); `top` is R'. Emits the blurred backdrop B (the pyramid sampled, its saturation /
+/// brightness) and one BackdropMasked pass; returns that pass's target (the caller owns it). The device
+/// must run BackdropMasked.
+TargetHandle applyBackdropUnder(FrameEmitter& emit, GradientLutCache& luts, const EffectStackInput& in,
+                                TargetHandle top);
 
 }  // namespace xt::gpu::detail

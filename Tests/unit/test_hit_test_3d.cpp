@@ -174,10 +174,12 @@ TEST_CASE(
     // property already exercised by "two translateZ layers" above -- they project to exactly their
     // own flat screen rects: cardA (20,20)-(100,100), cardB (100,20)-(180,100). #plainDiv is
     // ordinary 2D content (no 3D transform) in the same sorted section (its wrapper, #wrap, is
-    // #stage's only direct child and has3D because cardA/cardB are its descendants), painted below
-    // both cards, at flat screen rect (60,60)-(160,160).
+    // #stage's only direct child and has3D because cardA/cardB are its descendants), at flat screen
+    // rect (60,60)-(160,160). T-727 (19 §19.x ruling 1): it is a flat item at depth 0 after both
+    // cards (also at depth 0) in document order, so it is drawn -- and hit -- above them.
     CHECK(doc->hitTest(Vec2{140, 140}) == plainDiv.node);  // Outside both cards: the 2D content hits.
-    CHECK(doc->hitTest(Vec2{70, 70}) == cardA.node);  // Inside cardA's overlap with plainDiv: the layer wins.
+    CHECK(doc->hitTest(Vec2{70, 70}) == plainDiv.node);    // Overlap with cardA: the later flat item wins.
+    CHECK(doc->hitTest(Vec2{30, 30}) == cardA.node);       // cardA outside plainDiv.
 
     Vec2 btnLocalPos{};
     doc->addListener(btn, EventType::PointerDown, [&](Event& ev) { btnLocalPos = ev.localPos; });

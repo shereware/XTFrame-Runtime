@@ -110,4 +110,43 @@ XT_CAPI xt_status xt_gpu_target_preload_image(xt_gpu_target* /*t*/, xt_bundle* /
     });
 }
 
+// -- T-709 (50 §50.af): world layers need the GPU target. xt_world_layer_orbit_matrix and
+// xt_world_layer_unproject are pure math and live in capi_world_layers.cpp (every build). --
+
+XT_CAPI xt_status xt_surface_set_world_layers(xt_surface* /*s*/, int /*enabled*/) {
+    XT_CAPI_GUARD("xt_surface_set_world_layers", { return withoutWgpu("xt_surface_set_world_layers"); });
+}
+
+XT_CAPI xt_status xt_surface_set_world_layer_density(xt_surface* /*s*/, float /*density*/) {
+    XT_CAPI_GUARD("xt_surface_set_world_layer_density",
+                  { return withoutWgpu("xt_surface_set_world_layer_density"); });
+}
+
+XT_CAPI xt_status xt_surface_render_layers_gpu(xt_surface* /*s*/, xt_gpu_target* /*t*/) {
+    XT_CAPI_GUARD("xt_surface_render_layers_gpu", { return withoutWgpu("xt_surface_render_layers_gpu"); });
+}
+
+XT_CAPI uint32_t xt_surface_world_layer_count(const xt_surface* /*s*/) { return 0; }
+
+XT_CAPI xt_status xt_surface_world_layer_info(const xt_surface* /*s*/, uint32_t /*index*/,
+                                              xt_world_layer* /*out*/) {
+    XT_CAPI_GUARD("xt_surface_world_layer_info", { return withoutWgpu("xt_surface_world_layer_info"); });
+}
+
+XT_CAPI xt_status xt_surface_world_layer_readback(xt_surface* /*s*/, uint32_t /*index*/, void* /*rgba*/,
+                                                  int /*stride*/) {
+    XT_CAPI_GUARD("xt_surface_world_layer_readback",
+                  { return withoutWgpu("xt_surface_world_layer_readback"); });
+}
+
+XT_CAPI xt_status xt_surface_draw_layers_gpu(xt_surface* /*s*/, xt_gpu_target* /*t*/, const xt_rect* /*dest*/,
+                                             const float /*box_to_dest*/[16], float /*depth_scale*/) {
+    XT_CAPI_GUARD("xt_surface_draw_layers_gpu", { return withoutWgpu("xt_surface_draw_layers_gpu"); });
+}
+
+XT_CAPI xt_status xt_surface_push_input_ray(xt_surface* /*s*/, const xt_input_event* /*e*/,
+                                            const float /*origin*/[3], const float /*direction*/[3]) {
+    XT_CAPI_GUARD("xt_surface_push_input_ray", { return withoutWgpu("xt_surface_push_input_ray"); });
+}
+
 }  // extern "C"

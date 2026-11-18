@@ -1,5 +1,6 @@
 #pragma once
 
+#include <span>
 #include <vector>
 
 #include "xt/node.h"
@@ -39,5 +40,15 @@ void appendRoundedRectPath(Rect box, float rTL, float rTR, float rBR, float rBL,
 /// ring of an outer outline and this inner one fills with the nonzero rule (rounded_rect.cpp).
 void appendRoundedRectPathReversed(Rect box, float rTL, float rTR, float rBR, float rBL,
                                    std::vector<PathVerb>& verbs, std::vector<float>& points);
+
+/// T-718 (Docs/design/10-backends.md §10.16 W1): true when `verbs` / `points` (x, y pairs) are exactly
+/// one subpath as appendRoundedRectPath() writes it -- a rectangle with circular corners whose
+/// cubics carry the kappa control points -- within float noise. `rect` and `radii` (top-left,
+/// top-right, bottom-right, bottom-left; 0 for a corner that is a plain Line) receive the shape the
+/// generator was called with. Anything else is refused: elliptical corners, polygons, the reversed
+/// outline, a path with one control point moved, radii that overlap along a side, an empty or
+/// non-finite box. Allocates nothing.
+bool matchRoundedRectPath(std::span<const PathVerb> verbs, std::span<const float> points, Rect& rect,
+                          float radii[4]);
 
 }  // namespace xt

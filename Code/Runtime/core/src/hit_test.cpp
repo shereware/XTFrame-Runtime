@@ -115,10 +115,18 @@ bool tryEnter(const NodeArena& arena, NodeId node, Vec2 pos, HitMode mode, HitFr
     return true;
 }
 
+/// T-727 (19 §19.x ruling 1): hit testing one flat piece of a sorted segment child, as the Painter
+/// draws it (layer_collect::PieceRange).
+struct PieceFilter {
+    uint32_t piece;
+    const std::vector<layer_collect::PieceRange>* ranges;
+};
+
 /// T-255b: `depth` is `node`'s depth below the hit test's root; like layout, the descent stops
 /// at kMaxElementDepth (a backstop: IrView::validate and Document's insert API keep trees shallower).
+/// `pieces` (T-727): only the nodes with content in that piece, a node itself only in its first.
 HitResult hitNode(const NodeArena& arena, NodeId node, Vec2 pos, HitMode mode, bool in3D = false,
-                  uint32_t depth = 0);
+                  uint32_t depth = 0, const PieceFilter* pieces = nullptr);
 
 /// Docs/design/19-3d-space.md §19.9 / Docs/tasks/T-48.md's `hitNode` pseudocode's 3D branch: `s`
 /// is `frame`'s already-computed local position (the root's own box/plane coordinate). Returns
@@ -153,6 +161,8 @@ HitResult hit3DRoot(const NodeArena& arena, NodeId root, const HitFrame& frame, 
     layer_collect::collectSections(arena, orderedChildren, has3D, sections);
 
     std::vector<layer_collect::LayerEntry> layers;
+    std::vector<layer_collect::PieceRange> ranges;
+    std::vector<NodeId> whole;
     for (size_t i = sections.size(); i-- > 0;) {
         const layer_collect::Section& sec = sections[i];
         if (!sec.sorted) {
@@ -172,15 +182,31 @@ HitResult hit3DRoot(const NodeArena& arena, NodeId root, const HitFrame& frame, 
             }
             continue;
         }
+        // T-727 (19 §19.x ruling 1): the same items as Painter::flushSection() -- the layers and the
+        // flat-content pieces, depth-sorted together -- tested in reverse draw order.
         layers.clear();
+        whole.clear();
+        if (ranges.size() < arena.capacity()) {
+            ranges.resize(arena.capacity());
+        }
         uint32_t docOrder = 0;
         for (uint32_t k = 0; k < sec.childCount; ++k) {
             NodeId child = orderedChildren[sec.firstChild + k];
-            layer_collect::collectLayers(arena, child, setup.view, layers, docOrder);
+            if (!layer_collect::collectSegmentItems(arena, child, setup.view, layers, docOrder, ranges)) {
+                whole.push_back(child);
+            }
         }
         layer_collect::sortLayers(layers);          // Ascending depth: farthest first.
         for (size_t j = layers.size(); j-- > 0;) {  // Nearest first (§19.9: "近者優先").
             const layer_collect::LayerEntry& layer = layers[j];
+            if (layer.piece != layer_collect::kLayerItem) {
+                const PieceFilter filter{layer.piece, &ranges};
+                HitResult hit = hitNode(arena, layer.node, s, mode, /*in3D=*/true, depth + 1, &filter);
+                if (hit.node != kInvalidNode) {
+                    return hit;
+                }
+                continue;
+            }
             const NodeCommon& lc = arena.common(layer.node);
             if (lc.backfaceHidden != 0) {
                 project3d::Mapping mapping;
@@ -203,19 +229,12 @@ HitResult hit3DRoot(const NodeArena& arena, NodeId root, const HitFrame& frame, 
                 return hit;
             }
         }
-        // Docs/tasks/T-48b.md: the sorted segment's own root-plane 2D content (T-44b Painter's
-        // PushTransform3D{I} content) is drawn *below* every one of its 3D layers, so it is hit
-        // tested last, in the same same-layer-reverse order as an ordinary 2D segment, at `s`.
-        // A child that is itself a 3D layer (non-root) was already covered by the layers loop
-        // above -- entering it here with `s` (the section's root-plane coordinate, not that
-        // layer's own plane coordinate `q`) would be meaningless, so it is skipped.
-        for (size_t k = sec.childCount; k-- > 0;) {
-            NodeId child = orderedChildren[sec.firstChild + k];
-            const NodeCommon& cc = arena.common(child);
-            if ((cc.is3D != 0 && cc.isSpaceRoot == 0) || cc.worldLayerActive != 0) {
-                continue;
-            }
-            HitResult hit2d = hitNode(arena, child, s, mode, /*in3D=*/true, depth + 1);
+        // Docs/tasks/T-48b.md, kept by T-727 for a child whose flat content cannot be split
+        // (collectSegmentItems()): its root-plane 2D content is drawn *below* every item of the
+        // segment, so it is hit tested last, in the same same-layer-reverse order as an ordinary 2D
+        // segment, at `s`.
+        for (size_t k = whole.size(); k-- > 0;) {
+            HitResult hit2d = hitNode(arena, whole[k], s, mode, /*in3D=*/true, depth + 1);
             if (hit2d.node != kInvalidNode) {
                 return hit2d;
             }
@@ -228,15 +247,22 @@ HitResult hit3DRoot(const NodeArena& arena, NodeId root, const HitFrame& frame, 
 /// switch back to hit3DRoot() at any depth. `pos` is in `node`'s own coordinate space (see
 /// HitFrame's comment above: constant across an entire plane's descendants, changing only at a
 /// plane boundary -- entering a 3D root's own plane, or a 3D layer's plane).
-HitResult hitNode(const NodeArena& arena, NodeId node, Vec2 pos, HitMode mode, bool in3D, uint32_t depth) {
+HitResult hitNode(const NodeArena& arena, NodeId node, Vec2 pos, HitMode mode, bool in3D, uint32_t depth,
+                  const PieceFilter* pieces) {
     if (depth >= kMaxElementDepth || !arena.alive(node) || arena.kind(node) != NodeKind::Element) {
         return HitResult{};
+    }
+    if (pieces != nullptr && !layer_collect::pieceInRange((*pieces->ranges)[node], pieces->piece)) {
+        return HitResult{};  // T-727: nothing of this subtree is drawn in that piece.
     }
     HitFrame frame;
     if (!tryEnter(arena, node, pos, mode, frame)) {
         return HitResult{};
     }
-    if (arena.common(node).isSpaceRoot != 0) {
+    if (pieces != nullptr && (*pieces->ranges)[node].first != pieces->piece) {
+        frame.selfEligible = false;  // T-727: its own box belongs to its first piece.
+    }
+    if (arena.common(node).isSpaceRoot != 0) {  // its own sections: no piece filter inside
         HitResult hit = hit3DRoot(arena, node, frame, mode, depth);
         if (hit.node != kInvalidNode) {
             return hit;
@@ -274,7 +300,7 @@ HitResult hitNode(const NodeArena& arena, NodeId node, Vec2 pos, HitMode mode, b
         if (!in3D && (cc.flags2 & kLayerOverlay) != 0) {
             continue;  // T-194: a `layer: overlay` subtree was already tested, before the tree.
         }
-        HitResult hit = hitNode(arena, child, pos, mode, in3D, depth + 1);
+        HitResult hit = hitNode(arena, child, pos, mode, in3D, depth + 1, pieces);
         if (hit.node != kInvalidNode) {
             return hit;
         }

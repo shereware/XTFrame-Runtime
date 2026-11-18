@@ -1,5 +1,6 @@
 #pragma once
 
+#include "layer_collect.h"
 #include "xt/command_list.h"
 #include "xt/node_arena.h"
 #include "xt/painter.h"
@@ -55,6 +56,9 @@ struct Painter::Action {
     float alpha = 1.0f;
     MaskMode mode = MaskMode::Alpha;
     Mat4 xf3 = mat4Identity();  ///< PushTransform3D's payload (T-44b).
+    /// EnterNode2D only (T-727): the flat piece of the node's content to draw
+    /// (layer_collect::PieceRange), or layer_collect::kNoPiece for all of it.
+    uint32_t piece = layer_collect::kNoPiece;
 };
 
 }  // namespace xt

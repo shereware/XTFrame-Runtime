@@ -458,6 +458,111 @@ XT_CAPI xt_status xt_gpu_target_preload_ui(xt_gpu_target* t, xt_bundle* b, const
    bundle lists, or one that is not an image -> XT_STATUS_NOT_FOUND. */
 XT_CAPI xt_status xt_gpu_target_preload_image(xt_gpu_target* t, xt_bundle* b, const char* asset,
                                               uint32_t* out_loaded);
+
+/* ---- World layers (50 §50.af, Docs/design/33-world-layers.md; T-709; appended, ABI version unchanged) --
+   A surface in world-layer output is drawn as one texture per layer (every element with
+   `world-layer: on` and its subtree, plus the base layer) with where each layer's plane sits in the
+   surface's root box (logical px; x right, y down, +z toward the design-time viewer; the root box is
+   the surface's viewport). Two kinds of host: one with a 3D world of its own reads every layer's
+   pixels and transform and puts the layers into its scene (render_layers_gpu, world_layer_info,
+   world_layer_readback); one without lets the library draw the layers into a GPU target through a
+   camera (render_layers_gpu, draw_layers_gpu). No wgpu handle is handed out.
+   Order of calls, every frame:
+     xt_surface_update
+     xt_gpu_target_begin_frame
+       xt_surface_render_layers_gpu      (builds / updates the layer textures; draws nothing into t)
+       xt_surface_draw_layers_gpu        (optional; any number, composited in call order with the
+                                          other surfaces' xt_surface_render_gpu)
+     xt_gpu_target_end_frame
+     xt_surface_world_layer_count / _info (valid until the next render_layers_gpu)
+     xt_surface_world_layer_readback      (optional; only for layers with `changed`)
+   Attachment, detach, trim and hiding follow xt_surface_render_gpu: the first render_layers_gpu attaches
+   the surface to `t`; xt_surface_detach_gpu, xt_surface_trim, trim-on-hide and xt_surface_destroy
+   release the layer textures, which count in xt_gpu_memory_stats.surface_bytes (their own glyph atlas
+   in atlas_bytes). Threads: as every other surface call (one thread per bundle). save_state /
+   load_state do not include the world-layer switch or the density (host settings).
+   A build without wgpu: every function of this block returns XT_STATUS_UNSUPPORTED (count: 0), except
+   xt_world_layer_orbit_matrix and xt_world_layer_unproject (pure math, always available). */
+
+/* Turns world-layer output of the surface's document on (non-zero) or off (33 §33.12
+   setWorldLayerOutput); off by default; takes effect at the next update / render. While on,
+   xt_surface_render_gpu and xt_surface_render return XT_STATUS_INVALID_ARGUMENT (there is no single
+   picture; turn it off for a flat one). Turning it off releases the layer textures. */
+XT_CAPI xt_status xt_surface_set_world_layers(xt_surface* s, int enabled);
+/* Texels per logical px of the layer textures as a multiple of the surface's device pixel ratio
+   (> 0 and finite, else XT_STATUS_INVALID_ARGUMENT); the default 1 = the device pixel ratio. A change
+   redraws every layer at the next render_layers_gpu. A layer whose side would exceed the device's
+   texture limit is drawn at a lower density. */
+XT_CAPI xt_status xt_surface_set_world_layer_density(xt_surface* s, float density);
+/* Renders `s` (after xt_surface_update) in world-layer output: creates or updates the texture of every
+   layer on `t`'s device -- a layer whose content did not change is neither rebuilt nor drawn -- and
+   draws nothing into the target. Preconditions: world layers on (else INVALID_ARGUMENT); inside
+   begin_frame / end_frame of `t` (else INVALID_ARGUMENT: the layers' submits belong to that frame);
+   attachment as xt_surface_render_gpu (another target -> INVALID_ARGUMENT, a surface that used
+   xt_surface_render -> UNSUPPORTED). A hidden surface has no layers (count 0). */
+XT_CAPI xt_status xt_surface_render_layers_gpu(xt_surface* s, xt_gpu_target* t);
+
+typedef struct xt_world_layer {
+    uint32_t struct_size;      /* = sizeof(xt_world_layer), set by the caller; only the fields it covers are written */
+    uint32_t id;               /* the element (33 §33.2), stable across frames; 0 = the base layer */
+    uint32_t order;            /* paint order of the document */
+    uint32_t tex_width, tex_height;
+    float    world3[16];       /* row-major (m[row * 4 + col], column vectors): layer plane -> root box */
+    float    rect[4];          /* x, y, w, h: what the texture covers on the layer plane (logical px); its
+                                  (0, 0) texel is the rect's top-left; the quad = rect's corners (z = 0)
+                                  through world3 */
+    float    opacity;          /* not multiplied into the texture: the host applies it */
+    uint8_t  backface_hidden;  /* CSS backface-visibility: hidden */
+    uint8_t  changed;          /* the last render_layers_gpu drew this layer again */
+    uint8_t  _pad[2];
+} xt_world_layer;
+/* The layers of the last render_layers_gpu, in increasing `order` (a layer with nothing to draw is left
+   out). Valid until the next render_layers_gpu. NULL surface -> 0. */
+XT_CAPI uint32_t  xt_surface_world_layer_count(const xt_surface* s);
+/* NULL s or out -> INVALID_ARGUMENT; index >= count -> XT_STATUS_OUT_OF_RANGE. */
+XT_CAPI xt_status xt_surface_world_layer_info(const xt_surface* s, uint32_t index, xt_world_layer* out);
+/* Copies layer `index`'s texture into `rgba`: tex_width x tex_height RGBA8, premultiplied alpha, sRGB
+   bytes, row 0 = top, `stride` bytes per row (>= tex_width * 4). Only needed when the layer is
+   `changed`. Call it after the xt_gpu_target_end_frame of the frame whose render_layers_gpu built the
+   layers (inside that frame -> INVALID_ARGUMENT). Synchronous -- it waits for the GPU, at the cost of
+   xt_gpu_target_readback: the general but slow way. NULL s / rgba or a short stride ->
+   INVALID_ARGUMENT; index >= count -> XT_STATUS_OUT_OF_RANGE. */
+XT_CAPI xt_status xt_surface_world_layer_readback(xt_surface* s, uint32_t index, void* rgba, int stride);
+/* Draws the layers of the last render_layers_gpu as textured quads into `dest` of `t`'s frame (33
+   §33.12 buildWorldLayerQuads): from the farthest plane to the nearest, each with its opacity, a
+   backface_hidden layer left out when seen from behind; no depth buffer. `box_to_dest` (row-major 4x4)
+   maps a root-box point (x, y, z, 1) to homogeneous pixels (X, Y, _, W) inside `dest`, the pixel at
+   (X / W, Y / W) from dest's top-left -- the host's camera (xt_world_layer_orbit_matrix makes one);
+   `depth_scale` multiplies every layer's z first (0 = flat; >= 0 and finite). `dest` NULL = the whole
+   target; the quads are clipped to it. Preconditions: world layers on, inside begin_frame / end_frame
+   of `t`, after this frame's render_layers_gpu on the same target (else INVALID_ARGUMENT); NULL
+   box_to_dest -> INVALID_ARGUMENT. Composited in call order with other surfaces' xt_surface_render_gpu. */
+XT_CAPI xt_status xt_surface_draw_layers_gpu(xt_surface* s, xt_gpu_target* t, const xt_rect* dest,
+                                             const float box_to_dest[16], float depth_scale);
+/* The camera of `xtframe-view --layers-view` as a box_to_dest matrix (depth scale not included): a
+   perspective view orbiting the centre of a box_w x box_h root box from 1.8 x the longer side away,
+   turned yaw_deg around the box's vertical axis and lifted pitch_deg (positive: looking down on it),
+   for a dest_w x dest_h dest (the root box's x scaled by dest_w / box_w, y by dest_h / box_h).
+   fov_deg is the angle the box's LONGER side subtends: focal = (max(box_w, box_h) / 2) / tan(fov_deg / 2);
+   fov_deg <= 0 or not finite = the viewer's own camera (about 41.15 degrees, the unturned box filling
+   74 % of the frame). NULL out, or a size <= 0 / not finite -> XT_STATUS_INVALID_ARGUMENT.
+   Available without wgpu. */
+XT_CAPI xt_status xt_world_layer_orbit_matrix(float out[16], float box_w, float box_h, float dest_w, float dest_h,
+                                              float yaw_deg, float pitch_deg, float fov_deg);
+/* The ray (root-box coordinates) through pixel (dest_x, dest_y) of dest under `box_to_dest` and
+   `depth_scale` as draw_layers_gpu uses them -- for xt_surface_push_input_ray. A perspective matrix gives
+   the ray from the eye; an orthographic one (its W row has no x / y / z term) the ray along -z from
+   far in front. The direction is not normalized. NULL arguments, a matrix with no ray through that
+   pixel, or a negative / not finite depth_scale -> XT_STATUS_INVALID_ARGUMENT. Available without wgpu. */
+XT_CAPI xt_status xt_world_layer_unproject(const float box_to_dest[16], float depth_scale, float dest_x, float dest_y,
+                                           float origin_out[3], float direction_out[3]);
+/* A pointer event (kind POINTER_MOVE, POINTER_DOWN, POINTER_UP or WHEEL; otherwise INVALID_ARGUMENT) as
+   the ray origin + t direction (t >= 0) in root-box coordinates; e's x / y are ignored (Context::
+   pushPointerRay: the event's position becomes the ray's point on the root plane). World layers off ->
+   INVALID_ARGUMENT. While world layers are on, xt_surface_push_input's position is the ray straight down
+   -z through it (33 §33.12). */
+XT_CAPI xt_status xt_surface_push_input_ray(xt_surface* s, const xt_input_event* e, const float origin[3],
+                                            const float direction[3]);
 /* clang-format on */
 
 #ifdef __cplusplus

@@ -118,6 +118,16 @@ void applyBackdropBlur(const EffectInstance& screenParams, const BackdropPyramid
                        Vec2 bufferOriginPx, const Surface& src, Surface& dst, EffectScratch& scratch,
                        const EffectTimers& timers = EffectTimers{});
 
+/// T-729 (Docs/design/10-backends.md §10.18 B): the BackdropBlur composite of a stack that is
+/// BackdropBlur followed only by shadow-type effects (effect_math::backdropThenShadowsOnly). `top` is
+/// R' (those effects applied to the content alone), `mask` the content S; the blurred backdrop B
+/// (sampled and adjusted exactly as `applyBackdropBlur` does) goes under R' masked by S's alpha:
+/// `dst = R' + B * S.a * (1 - R'.a)`. With `top` = `mask` = `src` this is `applyBackdropBlur`, byte
+/// for byte. Without a pyramid (or a disabled effect) `dst` = `top`.
+void applyBackdropBlurUnder(const EffectInstance& screenParams, const BackdropPyramid& pyramid,
+                            Vec2 bufferOriginPx, const Surface& top, const Surface& mask, Surface& dst,
+                            EffectScratch& scratch, const EffectTimers& timers = EffectTimers{});
+
 /// The BackdropBlur stage (Docs/design/18-effects.md §18.3's kind 8, §18.6): blurs `backdrop`
 /// (sigma = radius/2, radius capped at 64 device px), applies `saturation`/`brightness` with
 /// ColorAdjust's own formulas, and composites the result *under* `src` masked by `src`'s own

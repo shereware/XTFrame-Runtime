@@ -1914,6 +1914,7 @@ void setProperty(NodeArena& arena, NodeId node, PropId prop, const Value& value)
             break;
     }
     arena.markDirty(node, propertyDirtyBits(prop));
+    arena.common(node).flags2 |= kAnimValueStale;  // T-717: a held `@timeline` member re-applies.
     // Docs/tasks/T-43b.md: a camera property change must also force its parent (the 3D space
     // root)'s subtree to recompute (kDirtyTransform only propagates to descendants, not ancestors,
     // so this needs an explicit extra markDirty on the parent).

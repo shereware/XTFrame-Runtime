@@ -1,0 +1,22 @@
+<xt version="2">
+
+  <!-- T-709: two coplanar world layers (no 3D transform) over a base layer, for the C ABI world-layer
+       cases: put back flat they are the ordinary picture; nothing moves, so a second frame redraws no
+       layer; the `dot` port toggles a mark inside #right only, so only that layer is redrawn. -->
+  <ports>
+    dot: bool in = true
+  </ports>
+
+  <body>
+    <div id="back"></div>
+    <div id="left" class="card">
+      <div id="bar"></div>
+    </div>
+    <div id="right" class="card">
+      <div id="dot" bind:visible="dot"></div>
+    </div>
+  </body>
+
+  <layout src="cards.layout.xts"/>
+  <style src="cards.xts"/>
+</xt>

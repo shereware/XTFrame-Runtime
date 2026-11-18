@@ -14,6 +14,22 @@ int main(void) {
     event.kind = XT_INPUT_POINTER_MOVE;
     (void)status;
     (void)damage;
+    {
+        /* T-709 (50 af): the world-layer struct and the camera helpers, which work in every build. */
+        xt_world_layer layer = {0};
+        float m[16];
+        float origin[3], direction[3];
+        layer.struct_size = (uint32_t)sizeof(layer);
+        (void)layer;
+        if (xt_world_layer_orbit_matrix(m, 1280.0f, 720.0f, 1280.0f, 720.0f, -30.0f, 14.0f, 0.0f) !=
+                XT_STATUS_OK ||
+            xt_world_layer_unproject(m, 1.0f, 640.0f, 360.0f, origin, direction) != XT_STATUS_OK ||
+            !(direction[2] < 0.0f)) {
+            fprintf(stderr, "xt_capi_c_compile: the world-layer camera helpers failed\n");
+            return 1;
+        }
+        (void)xt_surface_world_layer_count(NULL);
+    }
     if (abi != XT_CAPI_ABI_VERSION) {
         fprintf(stderr, "xt_capi_c_compile: ABI %u, header %u\n", (unsigned)abi,
                 (unsigned)XT_CAPI_ABI_VERSION);

@@ -346,3 +346,9 @@ XTFrame 內建的 `Code/SDKs/nlohmann/json.hpp`（3.11.3）以**自己的 ABI �
 5. 不需宿主配合即生效：字型後援快取（T-673）、隱藏時釋放解碼影像（T-657）。wgpu 後端內部的改動（池、在途幀、預編、區塊範圍）與自訂裝置無關。
 6. （2026-11-13，CE-79 的教訓）以 `FrameBuilder`＋自訂裝置畫進**自己的 render target** 的宿主，必須每幀自行清除 target 0——frame builder 不替宿主清。漏掉時半透明像素逐幀累積（靜態畫面的誤差在數百幀內由 5 升到 15／255 後飽和）。另：宿主為效果快取建立的 target 不得在內容存入之後才執行「建立時清除」。兩者都是以 SW 輸出為基準做同幀逐像素比對才發現的；自訂裝置的宿主應備有這樣的比對工具（CE 側為 `xtui_capture`）。
 
+7. （2026-11-14，22 §22.17；T-714 起）**發佈的預設影像壓縮改為 `auto`**：`xtframe-pack` 命令列與編輯器 Publish 在專案沒有寫 `publish.images.compress` 時，對兩邊皆 ≥ 256 px 的影像輸出 BC7 DDS。以子行程呼叫 `xtframe-pack` 的宿主會直接拿到壓縮後的 bundle（第一次打包較久，之後有快取）；要維持舊行為就在 `.xtui` 寫 `"publish": {"images": {"compress": "none"}}` 或傳 `--compress none`。直接呼叫 `xt::bundle::pack()` 的宿主不受影響，要跟進就先呼叫 `effectivePublishCompress(project)`。自訂 `GpuDevice` 的宿主須能建立 BC7 貼圖（`createTexture` 失敗時 frame builder 退回 RGBA8，畫面正確但不省記憶體）。
+
+8. （2026-11-14，10 §10.16 W1；T-718 起）**圓角裁切的解析式覆蓋率**：`GpuDevice::supportsAnalyticClip()` 預設 false——未覆寫的裝置照舊收到遮罩層（每個圓角裁切 3～4 個 pass），畫面不變。要省下這些離屏就實作：`DrawCmd::clipParamIndex` 非 0 時，片段乘上 `AnalyticClipParams` 各層的圓角矩形覆蓋率（算式見參考後端的 `prelude.wgsl`），並回 true。`DrawCmd` 尾端多了欄位，宿主須重新編譯。
+9. （2026-11-15，10 §10.18 A；T-728 起）`GpuDevice::supportsAlphaChannelReads()` 預設 false——未覆寫的裝置收到的 frame 不變。要省下每個陰影／光暈一個 pass 就實作：`GaussParams`／`DownsampleParams` 尾端的 `channel` 為 1 時取樣來源的 `.a`、為 2 時取 `1 − .a`（算式見參考後端的 `fx_gauss_scalar`／`fx_downsample`），並回 true。兩個參數結構尾端多了欄位，宿主須重新編譯。
+
+10. （2026-11-15，10 §10.18 B；T-729 起）**背景模糊不參與元素自己的陰影**：`GpuDevice::supportsBackdropMask()` 預設 false——未覆寫的裝置維持舊語意（陰影含背景的 alpha），**畫面會與 SW 及參考後端不同**（半透明面板的陰影較濃）。要一致就實作 `EffectProgram::BackdropMasked`：三個輸入（R′、模糊背景、`BackdropParams::mask` 指向的來源層），`out = R′ + B · mask.a · (1 − R′.a)`，並回 true。

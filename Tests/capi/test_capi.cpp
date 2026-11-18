@@ -2,6 +2,8 @@
 // only. XT_CAPI_TEST_BUNDLE is Examples/demos/game-ui and XT_CAPI_TEST_PORTS_BUNDLE
 // Examples/demos/hud-overlay, both packed by xtframe-pack at build time (Tests/capi/CMakeLists.txt).
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -726,4 +728,148 @@ TEST_CASE("capi 15 (T-605): a parked surface's request_show notifies in the firs
     xt_surface_destroy(parked);
     xt_surface_destroy(flow);
     CHECK(xt_bundle_close(b) == XT_STATUS_OK);
+}
+
+// T-709 (Docs/design/50-c-abi.md §50.af items 5-6): the world-layer camera helpers, in every build. The
+// reference is the camera of `xtframe-view --layers-view` (Code/Tools/view/view_layers.cpp LayerOrbit; the
+// tool is not linked here, so its formulas are transcribed below line by line).
+namespace {
+
+struct ViewOrbit {
+    float yaw, pitch, depth;
+    float eye[3], right[3], down[3], back[3], focal;
+    ViewOrbit(float yawDeg, float pitchDeg, float depthScale, float boxW, float boxH)
+        : yaw(yawDeg * 3.14159265358979f / 180.0f),
+          pitch(pitchDeg * 3.14159265358979f / 180.0f),
+          depth(depthScale) {
+        back[0] = std::sin(yaw) * std::cos(pitch);
+        back[1] = -std::sin(pitch);
+        back[2] = std::cos(yaw) * std::cos(pitch);
+        // right = normalize(cross((0, 1, 0), back)); down = cross(back, right)
+        float r[3] = {back[2], 0.0f, -back[0]};
+        const float len = std::sqrt(r[0] * r[0] + r[2] * r[2]);
+        for (float& v : r) v /= len;
+        std::memcpy(right, r, sizeof r);
+        down[0] = back[1] * right[2] - back[2] * right[1];
+        down[1] = back[2] * right[0] - back[0] * right[2];
+        down[2] = back[0] * right[1] - back[1] * right[0];
+        const float distance = 1.8f * std::max(boxW, boxH);
+        eye[0] = boxW * 0.5f + back[0] * distance;
+        eye[1] = boxH * 0.5f + back[1] * distance;
+        eye[2] = back[2] * distance;
+        focal = 0.74f * distance;
+    }
+    /// LayerOrbit::boxToSurface.
+    void matrix(float boxW, float boxH, float frameW, float frameH, float m[16]) const {
+        const float cx = boxW * 0.5f, cy = boxH * 0.5f, sx = frameW / boxW, sy = frameH / boxH;
+        float xr[3], yr[3], wr[3];
+        for (int i = 0; i < 3; ++i) {
+            xr[i] = focal * right[i] - cx * back[i];
+            yr[i] = focal * down[i] - cy * back[i];
+            wr[i] = -back[i];
+        }
+        auto dot = [](const float* a, const float* b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; };
+        std::memset(m, 0, 16 * sizeof(float));
+        m[0] = sx * xr[0];
+        m[1] = sx * xr[1];
+        m[2] = sx * xr[2] * depth;
+        m[3] = -sx * dot(xr, eye);
+        m[4] = sy * yr[0];
+        m[5] = sy * yr[1];
+        m[6] = sy * yr[2] * depth;
+        m[7] = -sy * dot(yr, eye);
+        m[10] = 1.0f;
+        m[12] = wr[0];
+        m[13] = wr[1];
+        m[14] = wr[2] * depth;
+        m[15] = -dot(wr, eye);
+    }
+    /// LayerOrbit::ray (a frame of the box's size).
+    void ray(float px, float py, float boxW, float boxH, float o[3], float d[3]) const {
+        const float dx = (px - boxW * 0.5f) / focal, dy = (py - boxH * 0.5f) / focal;
+        for (int i = 0; i < 3; ++i) {
+            o[i] = eye[i];
+            d[i] = right[i] * dx + down[i] * dy - back[i];
+        }
+        const float s = std::max(depth, 1.0e-3f);
+        o[2] /= s;
+        d[2] /= s;
+    }
+};
+
+float relDiff(float a, float b) {
+    return std::fabs(a - b) / std::max(1.0f, std::max(std::fabs(a), std::fabs(b)));
+}
+
+}  // namespace
+
+TEST_CASE(
+    "capi 16 (T-709): xt_world_layer_orbit_matrix / unproject reproduce the xtframe-view layers camera") {
+    const float boxW = 1280, boxH = 720;
+    const float yaws[] = {-30.0f, 0.0f, 25.0f}, pitches[] = {14.0f, 0.0f, -40.0f},
+                depths[] = {1.0f, 2.5f, 0.0f};
+    // fov_deg = the angle across the longer side of the view's own camera: 2 atan(1 / (2 x 0.74 x 1.8)).
+    const float fov = 2.0f * std::atan(1.0f / (2.0f * 0.74f * 1.8f)) * 180.0f / 3.14159265358979f;
+    CHECK(std::fabs(fov - 41.15f) < 0.01f);
+    for (int k = 0; k < 3; ++k) {
+        CAPTURE(k);
+        const ViewOrbit view(yaws[k], pitches[k], depths[k], boxW, boxH);
+        // The view's matrix carries the depth scale, the helper's does not (draw_layers_gpu applies it):
+        // compared with the view at depth 1, and with the depth folded into column 2 by hand.
+        const ViewOrbit view1(yaws[k], pitches[k], 1.0f, boxW, boxH);
+        float ref[16], ref1[16], got[16], explicitFov[16];
+        view.matrix(boxW, boxH, 960, 540, ref);
+        view1.matrix(boxW, boxH, 960, 540, ref1);
+        REQUIRE(xt_world_layer_orbit_matrix(got, boxW, boxH, 960, 540, yaws[k], pitches[k], 0.0f) ==
+                XT_STATUS_OK);
+        REQUIRE(xt_world_layer_orbit_matrix(explicitFov, boxW, boxH, 960, 540, yaws[k], pitches[k], fov) ==
+                XT_STATUS_OK);
+        for (int i = 0; i < 16; ++i) {
+            CAPTURE(i);
+            CHECK(relDiff(got[i], ref1[i]) < 1e-5f);
+            CHECK(relDiff(explicitFov[i], ref1[i]) < 1e-4f);
+            const float folded = (i == 2 || i == 6 || i == 14) ? got[i] * depths[k] : got[i];
+            CHECK(relDiff(folded, ref[i]) < 1e-5f);
+        }
+        // The ray through a few pixels of a box-sized frame equals the view's (direction scale included).
+        float m[16];
+        REQUIRE(xt_world_layer_orbit_matrix(m, boxW, boxH, boxW, boxH, yaws[k], pitches[k], 0.0f) ==
+                XT_STATUS_OK);
+        const float pts[][2] = {{640, 360}, {100, 50}, {1200, 700}, {880.5f, 470.25f}};
+        for (const auto& p : pts) {
+            float o[3], d[3], vo[3], vd[3];
+            REQUIRE(xt_world_layer_unproject(m, depths[k], p[0], p[1], o, d) == XT_STATUS_OK);
+            view.ray(p[0], p[1], boxW, boxH, vo, vd);
+            for (int i = 0; i < 3; ++i) {
+                CHECK(relDiff(o[i], vo[i]) < 2e-4f);
+                CHECK(std::fabs(d[i] - vd[i]) < 2e-4f * std::max(1.0f, std::fabs(vd[i])));
+            }
+        }
+    }
+    // A narrower field of view zooms in: the box's corner moves away from the centre.
+    float wide[16], narrow[16];
+    REQUIRE(xt_world_layer_orbit_matrix(wide, 100, 100, 100, 100, 0, 0, 60) == XT_STATUS_OK);
+    REQUIRE(xt_world_layer_orbit_matrix(narrow, 100, 100, 100, 100, 0, 0, 20) == XT_STATUS_OK);
+    auto projectX = [](const float* mm, float x, float y) {
+        return (mm[0] * x + mm[1] * y + mm[3]) / (mm[12] * x + mm[13] * y + mm[15]);
+    };
+    CHECK(std::fabs(projectX(narrow, 0, 0) - 50.0f) > std::fabs(projectX(wide, 0, 0) - 50.0f));
+    // An orthographic identity: the ray along -z through the pixel, from far in front.
+    const float identity[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+    float o[3], d[3];
+    REQUIRE(xt_world_layer_unproject(identity, 1.0f, 30.5f, 12.0f, o, d) == XT_STATUS_OK);
+    CHECK(o[0] == doctest::Approx(30.5f));
+    CHECK(o[1] == doctest::Approx(12.0f));
+    CHECK(o[2] > 1000.0f);
+    CHECK(d[0] == doctest::Approx(0.0f));
+    CHECK(d[1] == doctest::Approx(0.0f));
+    CHECK(d[2] < 0.0f);
+    // Bad arguments.
+    CHECK(xt_world_layer_orbit_matrix(nullptr, 1, 1, 1, 1, 0, 0, 0) == XT_STATUS_INVALID_ARGUMENT);
+    CHECK(xt_world_layer_orbit_matrix(wide, 0, 1, 1, 1, 0, 0, 0) == XT_STATUS_INVALID_ARGUMENT);
+    CHECK(xt_world_layer_orbit_matrix(wide, 1, 1, 1, -1, 0, 0, 0) == XT_STATUS_INVALID_ARGUMENT);
+    CHECK(xt_world_layer_unproject(nullptr, 1, 0, 0, o, d) == XT_STATUS_INVALID_ARGUMENT);
+    CHECK(xt_world_layer_unproject(identity, -1, 0, 0, o, d) == XT_STATUS_INVALID_ARGUMENT);
+    const float zero[16] = {};
+    CHECK(xt_world_layer_unproject(zero, 1, 0, 0, o, d) == XT_STATUS_INVALID_ARGUMENT);
 }

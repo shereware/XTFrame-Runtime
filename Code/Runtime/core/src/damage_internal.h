@@ -22,6 +22,33 @@ namespace xt {
 /// that are gone.
 void hashCommandList(const CommandList& list, std::vector<uint64_t>& out);
 
+/// T-721 (Docs/design/10-backends.md §10.16 W2 item 1): what hashCommandRelative() takes positions
+/// relative to. `plane` is in the coordinates of the commands' transforms (the plane the commands are
+/// drawn in), `screen` in those of the screen-space boxes (LayerCmd / MaskCmd / EffectCmd bounds,
+/// EffectCmd::xf's translation); outside a 3D space the two are one point. The `*Steps` are 0 for
+/// the exact form (the float `value - origin` is hashed) or the number of steps per unit a value is
+/// rounded to first, which absorbs the float noise of a position computed at another place:
+/// `planeSteps` / `screenSteps` for the relative positions (and the sizes of the screen boxes),
+/// `linearSteps` for the linear part of EffectCmd::xf.
+struct CommandHashOrigin {
+    Vec2 plane{};
+    Vec2 screen{};
+    float planeSteps = 0.0f;
+    float screenSteps = 0.0f;
+    float linearSteps = 0.0f;
+};
+
+/// T-721: the hash of command `index` of `list` as hashCommandList() computes it, except that its
+/// positions are taken relative to `origin`: the translation of the transform of FillPath,
+/// StrokePath, DrawImage, DrawGlyphs, PushClipRect, PushClipPath, DrawParticles and DrawBoxShadow,
+/// the points of DrawImageQuad and DrawImageMesh and PushProjection's rootXf (minus `origin.plane`);
+/// the bounds of PushLayer, PushMask, PushEffect and PushProjection and the translation of
+/// EffectCmd::xf (minus `origin.screen`; an empty box, the "whole viewport" default, stays as it is).
+/// Everything else -- the linear parts, the paints, the paths, the pools -- is hashed as it is. With
+/// a default-constructed `origin` the result equals hashCommandList()'s for that command. An `index`
+/// past the list gives the hash of nothing.
+uint64_t hashCommandRelative(const CommandList& list, uint32_t index, const CommandHashOrigin& origin);
+
 // commandBounds() now lives in the public xt/damage.h (Docs/tasks/T-99.md): the SW backend's
 // partial redraw needs it, and xt/damage.h is already part of the host contract (§23.6).
 

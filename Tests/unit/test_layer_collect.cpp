@@ -192,3 +192,56 @@ TEST_CASE("layer_collect: computeHas3D is all zero for a tree with no 3D nodes")
         CHECK(v == 0);
     }
 }
+
+TEST_CASE("layer_collect: collectSegmentItems splits a flat child's content at its 3D layers (T-727)") {
+    // child B (flat) = { b1 (flat), L (3D layer) = { inL (flat, inside the layer) }, b3 (flat) = { b3c } }
+    NodeArena arena;
+    NodeId b = arena.create(NodeKind::Group);
+    NodeId b1 = arena.create(NodeKind::Group);
+    NodeId layer = arena.create(NodeKind::Group);
+    NodeId inL = arena.create(NodeKind::Group);
+    NodeId b3 = arena.create(NodeKind::Group);
+    NodeId b3c = arena.create(NodeKind::Group);
+    arena.appendChild(b, b1);
+    arena.appendChild(b, layer);
+    arena.appendChild(layer, inL);
+    arena.appendChild(b, b3);
+    arena.appendChild(b3, b3c);
+    arena.common(layer).is3D = 1;
+    arena.common(layer).world3 = mat4Translate(Vec3{0, 0, 5});
+
+    std::vector<LayerEntry> items;
+    std::vector<PieceRange> ranges(arena.capacity());
+    uint32_t docOrder = 0;
+    CHECK(collectSegmentItems(arena, b, mat4Identity(), items, docOrder, ranges));
+
+    // Document order: piece 0 (B, b1), the layer, piece 1 (b3, b3c).
+    REQUIRE(items.size() == 3);
+    CHECK(items[0].node == b);
+    CHECK(items[0].piece == 0u);
+    CHECK(items[0].depth == doctest::Approx(0.0f));
+    CHECK(items[1].node == layer);
+    CHECK(items[1].piece == kLayerItem);
+    CHECK(items[1].depth == doctest::Approx(5.0f));
+    CHECK(items[2].node == b);
+    CHECK(items[2].piece == 1u);
+    CHECK(items[0].docOrder < items[1].docOrder);
+    CHECK(items[1].docOrder < items[2].docOrder);
+
+    CHECK(ranges[b].first == 0u);
+    CHECK(ranges[b].last == 1u);
+    CHECK(ranges[b1].first == 0u);
+    CHECK(ranges[b1].last == 0u);
+    CHECK(ranges[b3].first == 1u);
+    CHECK(ranges[b3c].first == 1u);
+    CHECK_FALSE(pieceInRange(ranges[layer], 0));
+    CHECK_FALSE(pieceInRange(ranges[layer], 1));
+
+    // B with opacity < 1 spans both pieces: not split, its flat items removed again.
+    arena.common(b).opacity = 0.5f;
+    items.clear();
+    docOrder = 0;
+    CHECK_FALSE(collectSegmentItems(arena, b, mat4Identity(), items, docOrder, ranges));
+    REQUIRE(items.size() == 1);
+    CHECK(items[0].node == layer);
+}

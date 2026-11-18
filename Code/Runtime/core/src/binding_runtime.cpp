@@ -12,6 +12,7 @@
 
 #include "binding_runtime_internal.h"
 #include "dispatch_guard.h"
+#include "event_dispatcher.h"  // T-723: setLegacyStyleInvalidation() reaches the state changes too.
 #include "mini_css.h"
 #include "mini_json.h"
 #include "repeat_controller.h"
@@ -99,6 +100,24 @@ void markStyleDirtySubtree(NodeArena& arena, NodeId node) {
     arena.markDirty(node, static_cast<uint8_t>(kDirtyStyle));
     arena.traversePreorder(node, [&arena](NodeId n) {
         arena.markDirty(n, static_cast<uint8_t>(kDirtyStyle));
+        return true;
+    });
+}
+
+void markStyleDirtyForDecl(NodeArena& arena, NodeId node, uint16_t propId, bool legacy) {
+    if (legacy) {
+        markStyleDirtySubtree(arena, node);
+        return;
+    }
+    arena.markStyleDirtySelf(node);
+    const bool reachesDescendants = style_decode::isInherited(propId) ||
+                                    propId == prop::TextDecorationColor ||
+                                    propId == prop::TextDecorationThickness;
+    if (!reachesDescendants) {
+        return;
+    }
+    arena.traversePreorder(node, [&arena](NodeId n) {
+        arena.markStyleDirtySelf(n);
         return true;
     });
 }
@@ -965,5 +984,15 @@ uint32_t Document::addPortListener(PortListener listener) {
     return m_bindings->addListener(std::move(listener));
 }
 void Document::removePortListener(uint32_t id) { m_bindings->removeListener(id); }
+
+// T-723 (10 §10.16 W5): the test-only invalidation switch (style_invalidation.h).
+void BindingRuntime::setLegacyStyleInvalidation(Document& doc, bool on) {
+    doc.m_bindings->m_legacyStyleInvalidation = on;
+    doc.m_events->setLegacyStyleInvalidation(on);  // State changes (T-723 B).
+}
+
+bool BindingRuntime::legacyStyleInvalidation(const Document& doc) {
+    return doc.m_bindings->m_legacyStyleInvalidation;
+}
 
 }  // namespace xt

@@ -380,6 +380,222 @@ TEST_CASE("BoxShadow: xt::sw's row-shared span equals the direct formula per pix
     }
 }
 
+TEST_CASE("BoxShadow T-724: the straight-edge erf values from BoxShadowEdges give the same bits") {
+    const float radii[4] = {6, 0, 11.5f, 2};
+    BoxShadowShape s;
+    REQUIRE(boxShadowShape(Rect{4.25f, 3.5f, 52, 37}, radii, 1.5f, Vec2{2, 3}, s));
+    for (const float sigma : {0.9f, 3.7f, 12.0f}) {
+        const float invErf = 1.0f / (sigma * 1.41421356237309505f);
+        for (float py = -40.0f; py < 90.0f; py += 0.73f) {
+            BoxShadowRow row;
+            boxShadowRow(s, py, sigma, row);
+            for (float px = -40.0f; px < 110.0f; px += 0.61f) {
+                BoxShadowEdges e;
+                e.x0 = s.x0;
+                e.x1 = s.x1;
+                e.erf0 = boxShadowEdgeErf(s.x0, px, invErf);
+                e.erf1 = boxShadowEdgeErf(s.x1, px, invErf);
+                const float a = boxShadowCoverageAt(row, px);
+                const float b = boxShadowCoverageAt(row, px, e);
+                REQUIRE(std::memcmp(&a, &b, sizeof a) == 0);
+            }
+        }
+    }
+}
+
+TEST_CASE("BoxShadow T-724: xt::sw's column cache leaves every span byte-identical") {
+    BoxShadowCmd cmd{};
+    cmd.rect = Rect{10.25f, 7.5f, 50, 34};
+    const float r[4] = {3, 9, 0, 14};
+    std::copy(r, r + 4, cmd.radii);
+    cmd.offset = Vec2{1.5f, -2};
+    cmd.blur = 7.4f;
+    cmd.spread = 2;
+    cmd.color = Color{0.2f, 0.4f, 0.6f, 0.8f};
+    BoxShadowCmd ring = cmd;  // T-680's three terms: O_out, -O_in, +R
+    ring.rect = Rect{4.25f, 1.5f, 62, 46};
+    ring.spread = 0.5f;  // small enough to leave a gap between -O_in and R
+    ring.extraCount = 2;
+    ring.extra[0].rect = Rect{7.25f, 4.5f, 56, 40};
+    ring.extra[0].sign = -1.0f;
+    ring.extra[1].rect = Rect{10.25f, 7.5f, 50, 34};
+    ring.extra[1].sign = 1.0f;
+    for (int k = 0; k < 2; ++k) {
+        std::copy(r, r + 4, ring.extra[k].radii);
+    }
+    std::copy(r, r + 4, ring.radii);
+    sw::BoxShadowColumns columns;
+    for (const BoxShadowCmd& c : {cmd, ring}) {
+        for (const Mat2x3& xf : {Mat2x3{}, scaling(Vec2{1.5f, 1.25f}), translation(Vec2{3.5f, -4.25f}),
+                                 mul(translation(Vec2{3, 4}), rotationDeg(7.0f))}) {
+            BoxShadowDraw d;
+            REQUIRE(resolveBoxShadow(c, xf, d));
+            REQUIRE_FALSE(d.sharp);
+            CHECK(d.extraCount == (c.extraCount == 2 ? 2u : 0u));
+            const Color color{0.2f, 0.4f, 0.6f, d.premul.a};
+            const sw::PaintEval plain = sw::PaintEval::makeBoxShadow(d, d.sigmaLocal, color, xf);
+            // Columns [5, 70) cached, the rest of the 110 px evaluated on the spot.
+            columns.begin(5, 70);
+            const sw::PaintEval cached = sw::PaintEval::makeBoxShadow(d, d.sigmaLocal, color, xf, &columns);
+            for (int y = -5; y < 90; ++y) {
+                for (const int begin : {0, 17}) {
+                    float a[110 * 4] = {};
+                    float b[110 * 4] = {};
+                    const sw::PaintEval::SpanInfo ia = plain.spanPremul(-10, y, begin, 110, 0.75f, a);
+                    const sw::PaintEval::SpanInfo ib = cached.spanPremul(-10, y, begin, 110, 0.75f, b);
+                    REQUIRE(ia.first == ib.first);
+                    REQUIRE(ia.last == ib.last);
+                    REQUIRE(ia.allOpaque == ib.allOpaque);
+                    REQUIRE(std::memcmp(a, b, sizeof a) == 0);
+                }
+            }
+        }
+    }
+}
+
+namespace {
+
+/// T-724: a rotated card's blurred shadow and a small axis-aligned one, moved by `dx` device px.
+std::vector<BoxShadowCmd> t724Shadows(float dx) {
+    BoxShadowCmd card{};
+    card.xf = mul(translation(Vec2{60.25f + dx, 40.5f}), rotationDeg(12.0f));
+    card.rect = Rect{0, 0, 70, 90};
+    std::fill(card.radii, card.radii + 4, 10.0f);
+    card.offset = Vec2{0, 6};
+    card.blur = 20;
+    card.color = Color{0.1f, 0.05f, 0.0f, 0.6f};
+    BoxShadowCmd chip{};
+    chip.xf = translation(Vec2{150.0f + dx, 20.0f});
+    chip.rect = Rect{0, 0, 40, 24};
+    std::fill(chip.radii, chip.radii + 4, 6.0f);
+    chip.offset = Vec2{2, 3};
+    chip.blur = 6;
+    chip.color = Color{0, 0, 0, 0.5f};
+    return {card, chip};
+}
+
+/// Renders `shadows` over an opaque background into a fresh 240 x 180 buffer with `renderer`.
+std::vector<uint8_t> t724Render(SwRenderer& renderer, const std::vector<BoxShadowCmd>& shadows) {
+    const int w = 240, h = 180;
+    std::vector<uint8_t> buf(static_cast<size_t>(w) * h * 4, 0);
+    renderer.setTarget(SwTarget{buf.data(), w, h, w * 4});
+    renderer.clear(Color{0.9f, 0.85f, 0.7f, 1});
+    CommandList cl;
+    cl.viewport = Rect{0, 0, static_cast<float>(w), static_cast<float>(h)};
+    cl.devicePixelRatio = 1;
+    for (const BoxShadowCmd& bs : shadows) {
+        cl.commands.push_back(
+            Command{CmdKind::DrawBoxShadow, {}, static_cast<uint32_t>(cl.boxShadows.size())});
+        cl.boxShadows.push_back(bs);
+    }
+    renderer.render(cl, nullptr, nullptr);
+    return buf;
+}
+
+std::vector<uint8_t> t724Uncached(const std::vector<BoxShadowCmd>& shadows) {
+    SwRenderer fresh;  // its first frame: nothing seen before, nothing cached
+    return t724Render(fresh, shadows);
+}
+
+sw::ShadowCacheKey t724Key(float tx) {
+    sw::ShadowCacheKey k;
+    k.shape = BoxShadowShape{0, 0, 10, 10, {1, 1, 1, 1}};
+    k.sigma = 2;
+    k.xf = translation(Vec2{tx, 0});
+    k.x0 = 0;
+    k.y0 = 0;
+    k.x1 = 32;
+    k.y1 = 32;  // 4 KiB
+    return k;
+}
+
+}  // namespace
+
+TEST_CASE("BoxShadow T-724 cache: stored on the second sight, hit on the third, moving keys never stored") {
+    sw::SwShadowCache cache;
+    CHECK(cache.acquire(t724Key(0)).cov == nullptr);  // first sight: evaluated uncached
+    cache.endFrame();
+    const sw::ShadowCoverage stored = cache.acquire(t724Key(0));
+    REQUIRE(stored.cov != nullptr);
+    CHECK(std::isnan(stored.cov[0]));
+    CHECK(stored.w == 32);
+    CHECK(cache.bytes() == 32u * 32u * 4u);
+    cache.endFrame();
+    CHECK(cache.acquire(t724Key(0)).cov == stored.cov);
+    CHECK(cache.hits() == 1);
+    cache.endFrame();
+    for (int f = 0; f < 10; ++f) {  // a key that changes every frame
+        CHECK(cache.acquire(t724Key(1.0f + 0.25f * static_cast<float>(f))).cov == nullptr);
+        cache.endFrame();
+    }
+    CHECK(cache.stores() == 1);
+    for (uint32_t f = 0; f < sw::SwShadowCache::kMaxIdleFrames; ++f) {
+        cache.endFrame();
+    }
+    CHECK(cache.entries() == 0);  // idle for 120 frames: dropped
+    CHECK(cache.bytes() == 0);
+}
+
+TEST_CASE("BoxShadow T-724 cache: least recently used entries go when a store would exceed the budget") {
+    sw::SwShadowCache cache;
+    cache.setBudget(2u * 32u * 32u * 4u);  // two entries
+    for (int f = 0; f < 4; ++f) {
+        for (float k : {0.0f, 1.0f, 2.0f}) {
+            if (f < 2 || k != 0.0f) {  // key 0 stops being drawn after frame 1
+                cache.acquire(t724Key(k));
+            }
+        }
+        cache.endFrame();
+        CHECK(cache.bytes() <= 2u * 32u * 32u * 4u);
+    }
+    CHECK(cache.entries() == 2);
+    cache.endFrame();
+    CHECK(cache.acquire(t724Key(1)).cov != nullptr);  // the two in use survived
+    CHECK(cache.acquire(t724Key(2)).cov != nullptr);
+    cache.setBudget(100);  // smaller than one entry: nothing new is stored
+    cache.endFrame();
+    cache.acquire(t724Key(5));
+    cache.endFrame();
+    CHECK(cache.acquire(t724Key(5)).cov == nullptr);
+}
+
+TEST_CASE("BoxShadow T-724 renderer: a static shadow over 3 frames is byte-identical to the uncached path") {
+    const std::vector<BoxShadowCmd> shadows = t724Shadows(0);
+    const std::vector<uint8_t> expected = t724Uncached(shadows);
+    SwRenderer renderer;
+    for (int frame = 0; frame < 3; ++frame) {
+        CHECK(t724Render(renderer, shadows) == expected);
+        CHECK((renderer.boxShadowCacheBytes() > 0) == (frame >= 1));  // stored on the second frame
+    }
+    renderer.releaseScratch();
+    CHECK(renderer.boxShadowCacheBytes() == 0);
+    CHECK(t724Render(renderer, shadows) == expected);
+}
+
+TEST_CASE("BoxShadow T-724 renderer: a shadow that moves every frame is never stored") {
+    SwRenderer renderer;
+    for (int frame = 0; frame < 4; ++frame) {
+        const std::vector<BoxShadowCmd> shadows = t724Shadows(0.37f * static_cast<float>(frame));
+        CHECK(t724Render(renderer, shadows) == t724Uncached(shadows));
+        CHECK(renderer.boxShadowCacheBytes() == 0);
+    }
+}
+
+TEST_CASE("BoxShadow T-724 renderer: under a budget for one shadow, eviction still renders correctly") {
+    const std::vector<BoxShadowCmd> shadows = t724Shadows(0);
+    const std::vector<uint8_t> expected = t724Uncached(shadows);
+    SwRenderer renderer;
+    renderer.setBoxShadowCacheBudget(64u * 1024u);  // smaller than the card, room for the chip
+    for (int frame = 0; frame < 5; ++frame) {
+        CHECK(t724Render(renderer, shadows) == expected);
+        CHECK(renderer.boxShadowCacheBytes() <= 64u * 1024u);
+    }
+    renderer.setBoxShadowCacheBudget(16u);  // nothing fits
+    for (int frame = 0; frame < 3; ++frame) {
+        CHECK(t724Render(renderer, shadows) == expected);
+    }
+}
+
 // -------------------------------------------------------------------------------------------------
 // The six conditions (pure function): each passes on the base input and fails just past it.
 // -------------------------------------------------------------------------------------------------
@@ -771,6 +987,142 @@ TEST_CASE("BoxShadow fixtures: ui_box_shadow converts all 12 shadows, ui_box_sha
     countFixtureCommands("ui_box_shadow_kept.xt", 0.0f, boxShadows, pushEffects);
     CHECK(boxShadows == 1);
     CHECK(pushEffects == 3);
+}
+
+// =================================================================================================
+// T-716 (Docs/design/10-backends.md §10.16 W3, §10.15): inside a 3D space the conversion follows the
+// plane -- affine planes (the root's own, a translateZ layer) convert, a projected plane (rotateX)
+// and an element that is a 3D layer itself do not.
+// =================================================================================================
+
+namespace {
+
+/// The DrawBoxShadow / PushEffect commands of a 256 x 256 document: #stage (`stageLayout` added to its
+/// layout rule) holding `body`, every `.card` an opaque rounded 72 x 52 box with one drop shadow.
+void countPlaneCase(const std::string& stageLayout, const std::string& body, const std::string& layout,
+                    size_t& boxShadows, size_t& pushEffects) {
+    const std::string text =
+        "<xt version=\"2\"><body><div id=\"stage\">" + body +
+        "</div></body><layout>#stage { position: absolute; left: 0px; top: 0px; width: 256px; "
+        "height: 256px; " +
+        stageLayout + " } .card { position: absolute; left: 20px; top: 20px; width: 72px; height: 52px; } " +
+        layout +
+        "</layout><style>.card { border-radius: 10px; background-color: #3060c0; "
+        "effect: shadow(3px 5px 10px #000000a0); }</style></xt>";
+    const compile::SourceFile file{"plane.xt", text};
+    compile::CompileOptions options;
+    options.strict = false;
+    compile::CompileResult result = compile::compileDocumentFromStrings({&file, 1}, "plane.xt", options);
+    REQUIRE(result.ok());
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc;
+    REQUIRE(Document::load(IrBlob{result.ir.data(), result.ir.size()}, true, &shaper, nullptr, doc) ==
+            Status::kOk);
+    doc->setViewport(Rect{0, 0, 256, 256});
+    doc->update(0.0f);
+    CommandList list;
+    doc->paint(list);
+    boxShadows = 0;
+    pushEffects = 0;
+    for (const Command& c : list.commands) {
+        boxShadows += c.kind == CmdKind::DrawBoxShadow ? 1 : 0;
+        pushEffects += c.kind == CmdKind::PushEffect ? 1 : 0;
+    }
+}
+
+const char* const kOneCard = "<div id=\"a\" class=\"card\"></div>";
+const char* const kCardInLayer = "<div id=\"layer\"><div id=\"a\" class=\"card\"></div></div>";
+const char* const kLayerBox =
+    "#layer { position: absolute; left: 60px; top: 60px; width: 120px; height: 100px; ";
+
+}  // namespace
+
+TEST_CASE("BoxShadow T-716: a shadow on a perspective root's own plane converts, as without the root") {
+    size_t boxShadows = 0, pushEffects = 0;
+    countPlaneCase("", kOneCard, "", boxShadows, pushEffects);
+    CHECK(boxShadows == 1);
+    CHECK(pushEffects == 0);
+    countPlaneCase("perspective: 600px;", kOneCard, "", boxShadows, pushEffects);
+    CHECK(boxShadows == 1);
+    CHECK(pushEffects == 0);
+}
+
+TEST_CASE("BoxShadow T-716: inside a translateZ layer (an affine plane) the shadow converts") {
+    size_t boxShadows = 0, pushEffects = 0;
+    countPlaneCase("perspective: 600px;", kCardInLayer,
+                   std::string(kLayerBox) + "transform: translateZ(60px); }", boxShadows, pushEffects);
+    CHECK(boxShadows == 1);
+    CHECK(pushEffects == 0);
+}
+
+TEST_CASE("BoxShadow T-716: inside a rotateX layer (a projected plane) the shadow stays an effect") {
+    size_t boxShadows = 0, pushEffects = 0;
+    countPlaneCase("perspective: 600px;", kCardInLayer,
+                   std::string(kLayerBox) + "transform: rotateX(40deg); }", boxShadows, pushEffects);
+    CHECK(boxShadows == 0);
+    CHECK(pushEffects == 1);
+}
+
+TEST_CASE("BoxShadow T-716: an element with its own translateZ stays an effect") {
+    size_t boxShadows = 0, pushEffects = 0;
+    countPlaneCase("perspective: 600px;", kOneCard, "#a { transform: translateZ(40px); }", boxShadows,
+                   pushEffects);
+    CHECK(boxShadows == 0);
+    CHECK(pushEffects == 1);
+}
+
+TEST_CASE("BoxShadow T-716: a 3D space nested on an affine plane converts, and so does what follows it") {
+    size_t boxShadows = 0, pushEffects = 0;
+    const char* const body =
+        "<div id=\"before\" class=\"card\"></div>"
+        "<div id=\"inner\"><div id=\"a\" class=\"card\"></div></div>"
+        "<div id=\"after\" class=\"card\"></div>";
+    const std::string inner =
+        "#inner { position: absolute; left: 100px; top: 20px; width: 120px; height: 100px; "
+        "perspective: 300px; } #after { top: 150px; } ";
+    countPlaneCase("perspective: 600px;", body, inner, boxShadows, pushEffects);
+    CHECK(boxShadows == 3);  // #before, #a on the nested root's own plane, #after behind the nested space
+    CHECK(pushEffects == 0);
+    // A projected layer inside the nested space: its content stays an effect, the rest converts.
+    countPlaneCase("perspective: 600px;",
+                   "<div id=\"inner\"><div id=\"layer\"><div id=\"a\" class=\"card\"></div></div>"
+                   "<div id=\"b\" class=\"card\"></div></div><div id=\"after\" class=\"card\"></div>",
+                   inner + kLayerBox + "left: 0px; top: 0px; transform: rotateY(30deg); } #b { top: 60px; }",
+                   boxShadows, pushEffects);
+    CHECK(boxShadows == 2);   // #b, #after
+    CHECK(pushEffects == 1);  // #a
+}
+
+TEST_CASE(
+    "BoxShadow T-716: a 3D space nested in a projected layer keeps the effect; what follows the layer "
+    "on the outer root's plane converts") {
+    // The nested root's own plane is affine by itself, but it sits on a rotateX layer of the outer
+    // space: a level under a projected one is never affine (10 §10.15, the consumers' rule).
+    size_t boxShadows = 0, pushEffects = 0;
+    countPlaneCase(
+        "perspective: 600px;",
+        "<div id=\"layer\"><div id=\"inner\"><div id=\"a\" class=\"card\"></div></div>"
+        "<div id=\"b\" class=\"card\"></div></div><div id=\"after\" class=\"card\"></div>",
+        std::string(kLayerBox) +
+            "transform: rotateX(40deg); } #inner { position: absolute; left: 0px; top: 0px; "
+            "width: 100px; height: 80px; perspective: 300px; } #b { top: 40px; } #after { top: 180px; }",
+        boxShadows, pushEffects);
+    CHECK(boxShadows == 1);  // #after
+    CHECK(pushEffects ==
+          2);  // #a (nested in the projected layer), #b (on the projected layer, after the nested space)
+}
+
+TEST_CASE("BoxShadow T-716 fixtures: ui_box_shadow_persp converts its 5 shadows, ui_box_shadow_planes 2") {
+    size_t boxShadows = 0, pushEffects = 0;
+    countFixtureCommands("ui_box_shadow_flat.xt", 0.0f, boxShadows, pushEffects);
+    CHECK(boxShadows == 5);
+    CHECK(pushEffects == 0);
+    countFixtureCommands("ui_box_shadow_persp.xt", 0.0f, boxShadows, pushEffects);
+    CHECK(boxShadows == 5);
+    CHECK(pushEffects == 0);
+    countFixtureCommands("ui_box_shadow_planes.xt", 0.0f, boxShadows, pushEffects);
+    CHECK(boxShadows == 2);   // #own, #lifted
+    CHECK(pushEffects == 2);  // #tilted, #self
 }
 
 // =================================================================================================

@@ -49,13 +49,18 @@ xt_capi_pack_bundle(XT_CAPI_EFFECTS effects "${CMAKE_CURRENT_SOURCE_DIR}/fixture
 # T-683: a card with a one-term and an outlined card with a three-term analytic drop shadow, and a
 # non-convex star (a coverage-atlas fill at one sample): the prewarm and coverage-release cases.
 xt_capi_pack_bundle(XT_CAPI_BOXSHADOW boxshadow "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/boxshadow")
+# T-709 (50 §50.af): two coplanar world layers over a base layer, with a port that changes one of them
+# (fixtures/layers), and the world-layers demo (test_capi_world_layers.cpp, compared with xtframe-view).
+xt_capi_pack_bundle(XT_CAPI_LAYERS layers "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/layers")
+xt_capi_pack_bundle(XT_CAPI_WORLD_LAYERS world-layers "${PROJECT_SOURCE_DIR}/Examples/demos/world-layers")
 add_custom_target(xt_capi_test_bundles
     DEPENDS "${XT_CAPI_GAME_UI}/manifest.json" "${XT_CAPI_HUD_OVERLAY}/manifest.json"
             "${XT_CAPI_DEVICE}/manifest.json" "${XT_CAPI_FLIP}/manifest.json"
             "${XT_CAPI_L10N}/manifest.json" "${XT_CAPI_STATE}/manifest.json"
             "${XT_CAPI_NPDO}/manifest.json" "${XT_CAPI_TEXT}/manifest.json"
             "${XT_CAPI_IMAGES}/manifest.json" "${XT_CAPI_EFFECTS}/manifest.json"
-            "${XT_CAPI_BOXSHADOW}/manifest.json")
+            "${XT_CAPI_BOXSHADOW}/manifest.json" "${XT_CAPI_LAYERS}/manifest.json"
+            "${XT_CAPI_WORLD_LAYERS}/manifest.json")
 
 add_executable(xt_capi_tests
     test_main.cpp
@@ -73,7 +78,8 @@ add_executable(xt_capi_tests
 if(TARGET xt_wgpu)
     target_sources(xt_capi_tests PRIVATE
         "${XT_BACKENDS_SOURCE_DIR}/Tests/capi/test_capi_gpu.cpp"
-        "${XT_BACKENDS_SOURCE_DIR}/Tests/capi/test_capi_gpu_text.cpp")
+        "${XT_BACKENDS_SOURCE_DIR}/Tests/capi/test_capi_gpu_text.cpp"
+        "${XT_BACKENDS_SOURCE_DIR}/Tests/capi/test_capi_world_layers.cpp")  # T-709
 else()
     target_sources(xt_capi_tests PRIVATE test_capi_gpu_stub.cpp)
 endif()
@@ -93,7 +99,9 @@ target_compile_definitions(xt_capi_tests PRIVATE
     XT_CAPI_TEST_TEXT_BUNDLE="${XT_CAPI_TEXT}"
     XT_CAPI_TEST_IMAGES_BUNDLE="${XT_CAPI_IMAGES}"
     XT_CAPI_TEST_EFFECTS_BUNDLE="${XT_CAPI_EFFECTS}"
-    XT_CAPI_TEST_BOXSHADOW_BUNDLE="${XT_CAPI_BOXSHADOW}")
+    XT_CAPI_TEST_BOXSHADOW_BUNDLE="${XT_CAPI_BOXSHADOW}"
+    XT_CAPI_TEST_LAYERS_BUNDLE="${XT_CAPI_LAYERS}"
+    XT_CAPI_TEST_WORLD_LAYERS_BUNDLE="${XT_CAPI_WORLD_LAYERS}")
 # Only the C header (and xt/version.h's macros, for case 1) -- the runtime is reached through the
 # shared library alone. nlohmann reads the packed manifest for case 2.
 target_include_directories(xt_capi_tests PRIVATE ${PROJECT_SOURCE_DIR}/Code/Runtime/core/include)
@@ -102,6 +110,13 @@ target_link_libraries(xt_capi_tests PRIVATE xt_capi xt_nlohmann)
 if(TARGET xt_wgpu)
     target_compile_definitions(xt_capi_tests PRIVATE XT_CAPI_TEST_HAS_WGPU)
     xt_copy_runtime_library(xt_capi_tests xt::wgpu_native)
+    # T-709: the world-layer cases compare with `xtframe-view --layers` (run by the test into its temp root)
+    # and read its PNGs with xt_sw's reader (the runtime itself is still reached through the library only).
+    target_link_libraries(xt_capi_tests PRIVATE xt_sw)
+    if(TARGET xtframe-view)
+        add_dependencies(xt_capi_tests xtframe-view)
+        target_compile_definitions(xt_capi_tests PRIVATE XT_CAPI_TEST_VIEW_EXE="$<TARGET_FILE:xtframe-view>")
+    endif()
 endif()
 xt_enable_exceptions(xt_capi_tests)
 xt_no_rtti(xt_capi_tests)
@@ -126,4 +141,14 @@ if(WIN32)
             COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:xt_capi>" "$<TARGET_FILE_DIR:${t}>"
             VERBATIM)
     endforeach()
+endif()
+
+# T-713: xtframe-bench -- --json strings escaped (a Windows path with backslashes is valid JSON),
+# --system-fonts (off by default: the default JSON object is unchanged), --event (the forms the C ABI can
+# drive; a click as pointer down + up through the flip fixture's flow; #<id>.Click refused with exit 2).
+if(TARGET xtframe-bench)
+    add_test(NAME xtframe-bench_smoke
+             COMMAND ${CMAKE_COMMAND} -DBENCH=$<TARGET_FILE:xtframe-bench> -DFLIP=${XT_CAPI_FLIP}
+                     -DHUD=${XT_CAPI_HUD_OVERLAY} -P "${CMAKE_CURRENT_SOURCE_DIR}/bench_smoke.cmake")
+    set_tests_properties(xtframe-bench_smoke PROPERTIES TIMEOUT 300)
 endif()

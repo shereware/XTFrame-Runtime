@@ -39,6 +39,9 @@ namespace xt::gpu::detail {
 namespace {
 
 constexpr float kMaxDevicePx = 64.0f;
+/// T-728: GaussParams::channel / DownsampleParams::channel value (gpu_frame.h). T-735: the
+/// frame builder only emits 1 (`.a`); the devices keep the 2 (`1 - .a`) branch, unused here.
+constexpr int kChannelAlpha = 1;
 
 float clampDevicePx64(float v) {
     if (v > kMaxDevicePx) {
@@ -123,7 +126,15 @@ public:
         m_texelH = 1.0f / static_cast<float>(std::max(1, m_window.h));
     }
 
+    /// T-730: applyBackdropUnder.
+    TargetHandle runMaskedOnly(TargetHandle top) { return maskedOver(top); }
+
     TargetHandle run() {
+        if (m_in.shadowsUnderBackdrop && m_emit.backdropMask() && hasPyramid() &&
+            !m_in.screenParams.empty() && m_in.screenParams[0].kind == EffectKind::BackdropBlur &&
+            m_in.screenParams[0].enabled != 0) {
+            return runShadowsUnderBackdrop();
+        }
         TargetHandle cur = m_in.src;
         for (const EffectInstance& p : m_in.screenParams) {
             TargetHandle out = applyOne(p, cur);
@@ -150,8 +161,9 @@ private:
     }
 
     /// T-343: `src` (the window's resolution) box-downsampled `shift` times; a new scratch the
-    /// caller owns (`src` itself at shift 0).
-    TargetHandle downsampleTo(TargetHandle src, int shift) {
+    /// caller owns (`src` itself at shift 0). T-728: the first level reads `src` through `channel`
+    /// (DownsampleParams::channel; 0 = as it is).
+    TargetHandle downsampleTo(TargetHandle src, int shift, int channel = 0) {
         TargetHandle cur = src;
         for (int l = 1; l <= shift; ++l) {
             TargetHandle dst = scaledScratch(l);
@@ -159,8 +171,8 @@ private:
             m_emit.sizeOf(cur, sw, sh);
             m_emit.sizeOf(dst, dw, dh);
             DownsampleParams p{static_cast<float>(sw), static_cast<float>(sh), static_cast<float>(dw),
-                               static_cast<float>(dh)};
-            pass(dst, EffectProgram::Downsample, p, cur);
+                               static_cast<float>(dh), l == 1 ? static_cast<float>(channel) : 0.0f};
+            channelPass(dst, EffectProgram::Downsample, p, cur);
             if (cur != src) {
                 m_emit.releaseTransient(cur);
             }
@@ -191,13 +203,20 @@ private:
         m_emit.pushEffect(program, m_emit.pushParams(params), src, aux, texture);
     }
 
+    /// `pass` for the DownsampleParams / GaussParams blocks (T-728: FrameEmitter::pushChannelParams).
+    template <class P>
+    void channelPass(TargetHandle dst, EffectProgram program, const P& params, TargetHandle src) {
+        m_emit.beginPass(dst, false);
+        m_emit.pushEffect(program, m_emit.pushChannelParams(params), src, 0, 0);
+    }
+
     void passNoParams(TargetHandle dst, EffectProgram program, TargetHandle src, TargetHandle aux) {
         m_emit.beginPass(dst, false);
         m_emit.pushEffect(program, 0, src, aux, 0);
     }
 
     void gaussPass(EffectProgram prog, TargetHandle src, TargetHandle dst, float sigma, bool horizontal,
-                   bool constEdge = false, float outside = 0.0f) {
+                   bool constEdge = false, float outside = 0.0f, int channel = 0) {
         GaussTaps taps = computeGaussianTaps(swEffectiveSigma(sigma));
         GaussParams p{};
         // T-343: the texel size of the target drawn (a scaled level is smaller than the window).
@@ -214,22 +233,25 @@ private:
             p.weights[i] = taps.weights[i];
             p.offsets[i] = taps.offsets[i];
         }
-        pass(dst, prog, p, src);
+        p.channel = static_cast<float>(channel);
+        channelPass(dst, prog, p, src);
     }
 
     /// Separable Gaussian of `sigma` over `src` into a new scratch target; returns `src` itself
     /// (no pass) when the blur is the identity. With `ownsSrc` the caller hands `src` over: it
     /// is released as soon as the first pass has read it, so the second pass's target reuses its
     /// slot (the frame needs one transient less). The caller releases the result if it is new.
+    /// T-728: the first pass reading `src` (a Downsample or the horizontal GaussScalar) reads it
+    /// through `channel` (GaussParams::channel); only GaussScalar on a channel-reading device asks.
     TargetHandle gauss(EffectProgram prog, TargetHandle src, float sigma, bool ownsSrc,
-                       bool constEdge = false, float outside = 0.0f) {
+                       bool constEdge = false, float outside = 0.0f, int channel = 0) {
         if (gaussIsIdentity(sigma)) {
             return src;
         }
         const int shift = blurDownsampleShift(sigma);
         if (shift == 0) {
             TargetHandle a = scratch();
-            gaussPass(prog, src, a, sigma, true, constEdge, outside);
+            gaussPass(prog, src, a, sigma, true, constEdge, outside, channel);
             if (ownsSrc) {
                 release(src);
             }
@@ -240,7 +262,7 @@ private:
         }
         // T-343 (18 §18.15): blur at 1 / 2^shift with sigma / 2^shift, then upsample.
         const float levelSigma = sigma / static_cast<float>(1 << shift);
-        TargetHandle level = downsampleTo(src, shift);
+        TargetHandle level = downsampleTo(src, shift, channel);
         if (ownsSrc) {
             release(src);
         }
@@ -315,14 +337,29 @@ private:
         pass(dst, EffectProgram::ShadowGlow, p, src, mask);
     }
 
+    /// T-728 (Docs/design/10-backends.md §10.18 A item 1): whether the AlphaExtract that starts an
+    /// outer shadow / glow chain folds into the blur of `sigma` after it -- the device reads
+    /// channels and that blur is not the identity, so its first pass (a Downsample or the
+    /// horizontal GaussScalar) can read `src.a` itself. It reads the same 8-bit alpha the
+    /// AlphaExtract target would hold, so the result is the same on every implementation; a chain
+    /// with a spread keeps its own first step (Dilate, which reads `src.a` itself). T-735: the
+    /// `1 - src.a` case (inset shadow, inner glow) is not folded -- computing it in the blur pass
+    /// is only byte-identical on some drivers, so those chains keep the AlphaExtract pass.
+    bool foldsAlphaExtract(float sigma) const { return m_emit.channelReads() && !gaussIsIdentity(sigma); }
+
     TargetHandle applyDropShadow(const EffectInstance& p, TargetHandle src) {
         float blur = clampDevicePx64(std::max(0.0f, p.params[2]));
         float spread = clampDevicePx64(std::max(0.0f, p.params[3]));
         int spreadR = static_cast<int>(std::lround(spread));
         float sigma = blur * 0.5f;
 
-        TargetHandle dilated = dilate(src, spreadR, true, false);  // always a new scalar field
-        TargetHandle mask = gauss(EffectProgram::GaussScalar, dilated, sigma, true);
+        TargetHandle mask = 0;
+        if (spreadR <= 0 && foldsAlphaExtract(sigma)) {
+            mask = gauss(EffectProgram::GaussScalar, src, sigma, false, false, 0.0f, kChannelAlpha);
+        } else {
+            TargetHandle dilated = dilate(src, spreadR, true, false);  // always a new scalar field
+            mask = gauss(EffectProgram::GaussScalar, dilated, sigma, true);
+        }
         TargetHandle dst = scratch();
         shadowGlow(src, mask, dst, p.params[0], p.params[1], p.params[4], p.colors[0], false, false, 0.0f);
         release(mask);
@@ -351,9 +388,14 @@ private:
         bool inner = p.params[2] != 0.0f;
         float sigma = radius * 0.5f;
 
-        TargetHandle field = scratch();
-        alphaExtract(src, field, inner);
-        TargetHandle mask = gauss(EffectProgram::GaussScalar, field, sigma, true);
+        TargetHandle mask = 0;
+        if (!inner && foldsAlphaExtract(sigma)) {
+            mask = gauss(EffectProgram::GaussScalar, src, sigma, false, false, 0.0f, kChannelAlpha);
+        } else {
+            TargetHandle field = scratch();
+            alphaExtract(src, field, inner);
+            mask = gauss(EffectProgram::GaussScalar, field, sigma, true);
+        }
         TargetHandle dst = scratch();
         shadowGlow(src, mask, dst, 0.0f, 0.0f, intensity, p.colors[0], inner, inner, 0.0f);
         release(mask);
@@ -598,11 +640,49 @@ private:
         return dst;
     }
 
-    TargetHandle applyBackdropBlur(const EffectInstance& p, TargetHandle src) {
+    bool hasPyramid() const {
         const BackdropPyramid* pyr = m_in.pyramid;
-        if (pyr == nullptr || pyr->level[0] == 0 || pyr->window.empty()) {
-            return src;
+        return pyr != nullptr && pyr->level[0] != 0 && !pyr->window.empty();
+    }
+
+    /// T-729 (Docs/design/10-backends.md §10.18 B): a BackdropBlur (`screenParams[0]`) followed only by
+    /// shadow-type effects. Those effects run on the content alone first -- R', nothing of it reads
+    /// the surface -- then the blurred backdrop B is sampled as a plain BackdropBlur samples it, and
+    /// one BackdropMasked pass writes R' + B * S.a * (1 - R'.a) with S = `m_in.src` (kept alive by the
+    /// caller until it has composited the result).
+    TargetHandle runShadowsUnderBackdrop() {
+        TargetHandle cur = m_in.src;
+        for (size_t i = 1; i < m_in.screenParams.size(); ++i) {
+            TargetHandle out = applyOne(m_in.screenParams[i], cur);
+            if (out != cur && cur != m_in.src) {
+                m_emit.releaseTransient(cur);
+            }
+            cur = out;
         }
+        const TargetHandle dst = maskedOver(cur);
+        if (m_in.keepShadows != nullptr) {
+            *m_in.keepShadows = cur;  // T-730: the caller stores R' and releases it
+        } else {
+            release(cur);
+        }
+        return dst;
+    }
+
+    /// The blurred backdrop sampled for `screenParams[0]` and one BackdropMasked pass with `top` as R'
+    /// and `m_in.src` as the mask S (T-729); returns the pass's new scratch. `hasPyramid()` must hold.
+    TargetHandle maskedOver(TargetHandle top) {
+        TargetHandle blurred = blurredBackdrop(m_in.screenParams[0]);
+        TargetHandle dst = scratch();
+        BackdropParams bp{static_cast<float>(m_in.src)};
+        pass(dst, EffectProgram::BackdropMasked, bp, top, blurred);
+        release(blurred);
+        return dst;
+    }
+
+    /// The blurred backdrop a BackdropBlur `p` puts under the content (a new scratch over the content
+    /// window): the pyramid sampled, then its saturation / brightness. `hasPyramid()` must hold.
+    TargetHandle blurredBackdrop(const EffectInstance& p) {
+        const BackdropPyramid* pyr = m_in.pyramid;
         float radius = clampDevicePx64(std::max(0.0f, p.params[0]));
         float sigma = radius * 0.5f;
         // T-343 (18 §18.15): the two pyramid levels bracketing this panel's sigma, mixed
@@ -631,6 +711,14 @@ private:
             adjusted = applyColorAdjust(adjust, blurred);
             release(blurred);
         }
+        return adjusted;
+    }
+
+    TargetHandle applyBackdropBlur(const EffectInstance& p, TargetHandle src) {
+        if (!hasPyramid()) {
+            return src;
+        }
+        TargetHandle adjusted = blurredBackdrop(p);
         TargetHandle dst = scratch();
         passNoParams(dst, EffectProgram::Backdrop, src, adjusted);
         release(adjusted);
@@ -680,6 +768,12 @@ TargetHandle applyEffectStack(FrameEmitter& emit, GradientLutCache& luts, const 
     return s.run();
 }
 
+TargetHandle applyBackdropUnder(FrameEmitter& emit, GradientLutCache& luts, const EffectStackInput& in,
+                                TargetHandle top) {
+    Scheduler s(emit, luts, in);
+    return s.runMaskedOnly(top);
+}
+
 void buildBackdropPyramid(FrameEmitter& emit, TargetHandle parent, const Scissor& window, float maxSigma,
                           BackdropPyramid& out) {
     releaseBackdropPyramid(emit, out);
@@ -702,7 +796,7 @@ void buildBackdropPyramid(FrameEmitter& emit, TargetHandle parent, const Scissor
         DownsampleParams dp{static_cast<float>(sw), static_cast<float>(sh), static_cast<float>(dw),
                             static_cast<float>(dh)};
         emit.beginPass(box, false);
-        emit.pushEffect(EffectProgram::Downsample, emit.pushParams(dp), out.level[l - 1]);
+        emit.pushEffect(EffectProgram::Downsample, emit.pushChannelParams(dp), out.level[l - 1]);
         out.level[l] = emit.acquireTransient(TextureFormat::Rgba8, false, window, l);
         KawaseParams kp{1.0f / static_cast<float>(std::max(1, dw)),
                         1.0f / static_cast<float>(std::max(1, dh)), 1.5f};

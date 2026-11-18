@@ -212,6 +212,11 @@ struct FrameStats {
     /// the executable replaces operator new with XT_PERF_ALLOC_COUNT (xt_perf_flow,
     /// xt_flow_alloc_tests).
     uint32_t flowAllocs = 0;
+
+    /// T-717 (10 §10.16 W4): Animator instances whose tracks were evaluated this frame. Smaller than
+    /// activeAnimations (the pool size) by the `@timeline` members held at their end stop, which
+    /// are written once and then left alone, and by the instances still in their delay.
+    uint32_t animEvaluated = 0;
 };
 
 // clang-format off
@@ -238,7 +243,7 @@ struct FrameStats {
                 X(arenaNodes) X(commandBytes) X(runtimeStrings) X(maxDistinctBindingStrings)              \
                     X(bands) X(bandRedraws) X(backdropCopyPx) X(pyramidLevels) X(directFallback) X(setStyleCalls) \
                         X(flowSignals) X(flowSignalsCoalesced) X(flowNodeEvals) X(flowSinkWrites) \
-                            X(flowFanOutEdges) X(flowSinkTyped) X(flowSinkText) X(flowAllocs)
+                            X(flowFanOutEdges) X(flowSinkTyped) X(flowSinkText) X(flowAllocs) X(animEvaluated)
 // clang-format on
 
 /// avg/max over a window of frames, plus that window's average frame rate (§21.2).

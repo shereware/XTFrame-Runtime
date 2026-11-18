@@ -1,0 +1,40 @@
+/* A backdrop and two cards side by side, each with one mark inside. */
+body {
+  width: 100vw;
+  height: 100vh;
+}
+#back {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100vw;
+  height: 100vh;
+}
+#left {
+  position: absolute;
+  left: 10px;
+  top: 16px;
+  width: 64px;
+  height: 64px;
+}
+#right {
+  position: absolute;
+  left: 86px;
+  top: 16px;
+  width: 64px;
+  height: 64px;
+}
+#bar {
+  position: absolute;
+  left: 8px;
+  top: 26px;
+  width: 48px;
+  height: 12px;
+}
+#dot {
+  position: absolute;
+  left: 20px;
+  top: 20px;
+  width: 24px;
+  height: 24px;
+}

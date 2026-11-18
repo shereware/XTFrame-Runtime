@@ -77,6 +77,133 @@ void collectLayers(const NodeArena& arena, NodeId child, const Mat4& view, std::
     }
 }
 
+namespace {
+
+/// T-727: would painting `n`'s flat content in more than one piece change what its group
+/// composites? True for every group the Painter can open around a node's content: a Layer (opacity
+/// < 1 or a blend mode), an effect chain (enabled effects) and a mask run (Mask children); also a
+/// Group with Modifier children, which draws its shape children together on entry. Clips are not
+/// listed: a clip pushed again around each piece clips the same pixels.
+bool formsGroup(const NodeArena& arena, NodeId n) {
+    const NodeCommon& c = arena.common(n);
+    if (c.opacity < 1.0f || c.blend != static_cast<uint8_t>(BlendMode::Normal)) {
+        return true;
+    }
+    const std::vector<EffectInstance>& pool = arena.effects();
+    for (uint32_t i = 0; i < c.effectCount; ++i) {
+        if (pool[c.effectOffset + i].enabled != 0) {
+            return true;
+        }
+    }
+    for (NodeId ch = arena.firstChild(n); ch != kInvalidNode; ch = arena.nextSibling(ch)) {
+        const NodeKind kind = arena.kind(ch);
+        if (kind == NodeKind::Mask || kind == NodeKind::Modifier) {
+            return true;
+        }
+    }
+    return false;
+}
+
+}  // namespace
+
+bool collectSegmentItems(const NodeArena& arena, NodeId child, const Mat4& view, std::vector<LayerEntry>& out,
+                         uint32_t& docOrderCounter, std::vector<PieceRange>& ranges) {
+    // The same explicit-stack preorder as collectLayers() (so the layers, their docOrder and their
+    // inheritedAlpha come out exactly as there), with an exit marker after every flat node that has
+    // children, where the node's PieceRange::last is known.
+    struct Frame {
+        NodeId node;
+        float alpha;  // Product of 2D ancestors' opacity from `child` down to (not including) node.
+        bool flat;    // Outside every 3D layer: flat content of the segment child.
+        bool exit;    // The exit marker of a flat node.
+    };
+    const size_t firstItem = out.size();
+    const NodeCommon& cc = arena.common(child);
+    // §19.6's depth rule for a point of the root plane: the child's anchor, untransformed (z = 0).
+    const float flatDepth =
+        mat4Transform(mat4Mul(view, mat4FromMat2x3(cc.world)), Vec3{cc.anchor.x, cc.anchor.y, 0.0f}).z;
+
+    std::vector<Frame> stack;
+    stack.push_back(Frame{child, 1.0f, true, false});
+    std::vector<NodeId> kidsScratch;
+    uint32_t cut = 0;             // 3D layers met so far: the piece of the next flat node
+    uint32_t lastFlat = 0;        // piece of the flat node met last
+    uint32_t created = kNoPiece;  // last piece given an item (pieces only grow)
+    uint32_t pieceCount = 0;
+    bool splittable = true;
+    auto flatNode = [&](NodeId n) {
+        ranges[n] = PieceRange{cut, cut};
+        lastFlat = cut;
+        if (created != cut) {
+            out.push_back(LayerEntry{child, flatDepth, docOrderCounter, 1.0f, cut});
+            ++docOrderCounter;
+            created = cut;
+            ++pieceCount;
+        }
+    };
+    while (!stack.empty()) {
+        Frame top = stack.back();
+        stack.pop_back();
+        NodeId n = top.node;
+        if (top.exit) {
+            ranges[n].last = lastFlat;
+            if (lastFlat > ranges[n].first && formsGroup(arena, n)) {
+                splittable = false;
+            }
+            continue;
+        }
+        if (top.flat) {
+            ranges[n] = PieceRange{};  // set below when the node is flat content
+        }
+        if (arena.kind(n) == NodeKind::Camera) {
+            continue;  // Not drawn/hit-tested (19.4); no layers of interest below it either.
+        }
+        const NodeCommon& c = arena.common(n);
+        if (c.worldLayerActive != 0) {
+            // T-701: painted and hit as a layer of its own; met (and queued) where it stands.
+            if (top.flat) {
+                flatNode(n);
+            }
+            continue;
+        }
+        float childAlpha = top.alpha;
+        bool childFlat = top.flat;
+        if (c.is3D != 0) {
+            Vec3 anchorPt{c.anchor.x, c.anchor.y, c.anchorZ};
+            Vec3 depthPoint = mat4Transform(mat4Mul(view, c.world3), anchorPt);
+            out.push_back(LayerEntry{n, depthPoint.z, docOrderCounter, top.alpha});
+            ++docOrderCounter;
+            ++cut;
+            childFlat = false;
+        } else {
+            childAlpha = top.alpha * c.opacity;
+            if (top.flat) {
+                flatNode(n);
+                if (c.isSpaceRoot == 0 && arena.firstChild(n) != kInvalidNode) {
+                    stack.push_back(Frame{n, 0.0f, true, true});
+                }
+            }
+        }
+        if (c.isSpaceRoot != 0) {
+            continue;  // Nested root's subtree is a separate projection (19.6).
+        }
+        kidsScratch.clear();
+        for (NodeId ch = arena.firstChild(n); ch != kInvalidNode; ch = arena.nextSibling(ch)) {
+            kidsScratch.push_back(ch);
+        }
+        for (auto it = kidsScratch.rbegin(); it != kidsScratch.rend(); ++it) {
+            stack.push_back(Frame{*it, childAlpha, childFlat, false});
+        }
+    }
+    if (splittable || pieceCount == 0) {
+        return true;
+    }
+    out.erase(std::remove_if(out.begin() + static_cast<std::ptrdiff_t>(firstItem), out.end(),
+                             [](const LayerEntry& e) { return e.piece != kLayerItem; }),
+              out.end());
+    return false;
+}
+
 void sortLayers(std::vector<LayerEntry>& entries) {
     std::sort(entries.begin(), entries.end(), [](const LayerEntry& a, const LayerEntry& b) {
         if (a.depth != b.depth) {

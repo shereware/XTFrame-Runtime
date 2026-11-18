@@ -13,9 +13,10 @@
 #include "xt/types.h"
 
 /// Backend-independent geometry and effect-parameter arithmetic shared by the GPU frame builder
-/// (Code/Runtime/gpu/src/frame_builder.cpp, gpu_effects.cpp) and the software renderer (Code/Runtime/sw/src/sw_renderer.cpp,
-/// sw_effects.cpp, sw_effect_math.cpp) -- T-414 C2c. Pure functions only; each one used to be a copy
-/// in both backends, with the same arithmetic, so the two stay within the golden tolerance.
+/// (Code/Runtime/gpu/src/frame_builder.cpp, gpu_effects.cpp) and the software renderer
+/// (Code/Runtime/sw/src/sw_renderer.cpp, sw_effects.cpp, sw_effect_math.cpp) -- T-414 C2c. Pure functions
+/// only; each one used to be a copy in both backends, with the same arithmetic, so the two stay within the
+/// golden tolerance.
 
 namespace xt::effect_math {
 
@@ -106,6 +107,43 @@ inline const EffectCmd* leadingBackdropBlur(const CommandList& list, const Scene
         return nullptr;
     }
     return &c;
+}
+
+/// T-729 (Docs/design/10-backends.md §10.18 B): true when `stack` (a PushEffect's effects as the
+/// command list holds them) starts with an enabled BackdropBlur followed only by shadow-type effects
+/// -- DropShadow (outer or inset) and Glow (outer or inner) -- at least one of them enabled; entries
+/// that are not applied (disabled, None) do not count. Both backends then run those effects on the
+/// element's own content S (R') and put R' over the blurred backdrop B masked by S's alpha:
+/// `out = R' + B * S.a * (1 - R'.a)`. Any other kind after the BackdropBlur -- a Custom effect
+/// included, whatever its fallback -- keeps the stack's sequential order.
+inline bool backdropThenShadowsOnly(std::span<const EffectInstance> stack) {
+    if (stack.empty() || stack[0].kind != EffectKind::BackdropBlur || stack[0].enabled == 0) {
+        return false;
+    }
+    bool shadow = false;
+    for (size_t i = 1; i < stack.size(); ++i) {
+        const EffectInstance& e = stack[i];
+        if (e.kind == EffectKind::Custom) {
+            return false;
+        }
+        if (e.enabled == 0 || e.kind == EffectKind::None) {
+            continue;
+        }
+        if (e.kind != EffectKind::DropShadow && e.kind != EffectKind::Glow) {
+            return false;
+        }
+        shadow = true;
+    }
+    return shadow;
+}
+
+/// `backdropThenShadowsOnly` over PushEffect `c`'s effects in `list` (false when they lie outside it).
+inline bool backdropThenShadowsOnly(const CommandList& list, const EffectCmd& c) {
+    if (static_cast<uint64_t>(c.effectOffset) + c.effectCount > list.effects.size()) {
+        return false;
+    }
+    return backdropThenShadowsOnly(
+        std::span<const EffectInstance>(list.effects).subspan(c.effectOffset, c.effectCount));
 }
 
 /// 18 §18.6: xt::sw's box width per pass for a Gaussian `sigma`, `w = floor(sqrt(12*sigma^2/3 + 1))`

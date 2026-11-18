@@ -421,12 +421,9 @@ SimplifyStats flatten3DPass(CommandList& out, const CommandList& list, TextShape
     };
     std::vector<PlaneState> planeStates;
     // The affine test's viewport: the list's; without one, a huge one, so that only a plane with an
-    // exactly constant w counts as affine.
-    Rect planeViewport = list.viewport;
-    if (!(planeViewport.w > 0.0f && planeViewport.h > 0.0f)) {
-        planeViewport = Rect{-1e6f, -1e6f, 2e6f, 2e6f};
-    }
-    const float planeDpr = list.devicePixelRatio > 0.0f ? list.devicePixelRatio : 1.0f;
+    // exactly constant w counts as affine. T-716: through project3d::planeTest, as the Painter.
+    const project3d::PlaneTest planeTest =
+        project3d::planeTest(list.viewport, project3d::kUnboundedPlaneViewport, list.devicePixelRatio);
     auto updatePlaneState = [&]() {
         if (mappings.empty() || planeStates.size() != mappings.size()) {
             return;
@@ -434,10 +431,8 @@ SimplifyStats flatten3DPass(CommandList& out, const CommandList& list, TextShape
         PlaneState& state = planeStates.back();
         state = PlaneState{};
         const bool outerAffine = planeStates.size() < 2 || planeStates[planeStates.size() - 2].affine;
-        Mat3 h;
-        if (outerAffine && project3d::planeHomography(mappings, h)) {
-            state.affine = project3d::affinePlane(h, planeViewport,
-                                                  project3d::kAffinePlaneTolerancePx / planeDpr, state.fold);
+        if (outerAffine) {
+            state.affine = project3d::stackPlaneAffine(mappings, planeTest, state.fold);
         }
     };
     auto affinePlane = [&]() { return !planeStates.empty() && planeStates.back().affine; };

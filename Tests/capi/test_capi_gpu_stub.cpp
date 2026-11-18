@@ -58,3 +58,27 @@ TEST_CASE("capi gpu 0 (T-636): a build without wgpu answers NULL / UNSUPPORTED")
     CHECK(loaded == 0);
     CHECK(xt_gpu_target_preload_image(nullptr, nullptr, "assets/a.png", nullptr) == XT_STATUS_UNSUPPORTED);
 }
+
+TEST_CASE("capi gpu 0b (T-709): world layers without wgpu answer UNSUPPORTED; the camera helpers work") {
+    CHECK(xt_surface_set_world_layers(nullptr, 1) == XT_STATUS_UNSUPPORTED);
+    CHECK(contains(xt_capi_last_error(), "built without wgpu"));
+    CHECK(xt_surface_set_world_layer_density(nullptr, 1.0f) == XT_STATUS_UNSUPPORTED);
+    CHECK(xt_surface_render_layers_gpu(nullptr, nullptr) == XT_STATUS_UNSUPPORTED);
+    CHECK(xt_surface_world_layer_count(nullptr) == 0u);
+    xt_world_layer layer{};
+    layer.struct_size = sizeof layer;
+    CHECK(xt_surface_world_layer_info(nullptr, 0, &layer) == XT_STATUS_UNSUPPORTED);
+    uint8_t px[4] = {};
+    CHECK(xt_surface_world_layer_readback(nullptr, 0, px, 4) == XT_STATUS_UNSUPPORTED);
+    float m[16] = {};
+    CHECK(xt_surface_draw_layers_gpu(nullptr, nullptr, nullptr, m, 1.0f) == XT_STATUS_UNSUPPORTED);
+    xt_input_event e{};
+    e.struct_size = sizeof e;
+    const float o[3] = {0, 0, 1}, d[3] = {0, 0, -1};
+    CHECK(xt_surface_push_input_ray(nullptr, &e, o, d) == XT_STATUS_UNSUPPORTED);
+    // 50 §50.af items 5-6: pure math, available in every build.
+    CHECK(xt_world_layer_orbit_matrix(m, 1280, 720, 1280, 720, -30, 14, 0) == XT_STATUS_OK);
+    float origin[3] = {}, direction[3] = {};
+    CHECK(xt_world_layer_unproject(m, 1.0f, 640, 360, origin, direction) == XT_STATUS_OK);
+    CHECK(direction[2] < 0.0f);
+}

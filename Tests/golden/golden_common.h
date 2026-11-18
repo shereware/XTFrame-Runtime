@@ -308,4 +308,17 @@ bool runEventScript(xt::Context& ctx, xt::Document& doc, const std::string& path
 /// --filter does. Adds to `ran`/`failed` and prints one [PASS]/[FAIL] line per case.
 void runPartialRedrawChecks(const std::string& uiDir, const std::string& filter, int& ran, int& failed);
 
+// ---------------------------------------------------------------------------------------------
+// Style invalidation equivalence check (Docs/design/10-backends.md §10.16 W5, Docs/tasks/T-723.md
+// part C). Implemented in golden_style_invalidation.cpp (xt_golden only).
+// ---------------------------------------------------------------------------------------------
+
+/// Opens every UI fixture of `uiDir`'s manifest and the Examples UIs other tests load (under
+/// `examplesDir`) twice -- narrow and old full-range style invalidation -- drives both through the
+/// same synthetic interaction and requires identical computed styles of every element after every
+/// step. `filter` matches the `style_equiv_*` case names. Adds to `ran`/`failed`, prints one
+/// [FAIL] line per failing case and a summary line.
+void runStyleInvalidationChecks(const std::string& uiDir, const std::string& examplesDir,
+                                const std::string& filter, int& ran, int& failed);
+
 }  // namespace xt::golden

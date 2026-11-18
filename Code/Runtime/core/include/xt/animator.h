@@ -251,6 +251,10 @@ public:
     uint32_t activeInstanceCount() const;
     /// Returns the number of currently active transitions.
     uint32_t transitionCount() const;
+    /// T-717 (10 §10.16 W4): the instances whose tracks the last evaluate() evaluated. A
+    /// `@timeline` member held at its end stop is evaluated on the frame it gets there and then only
+    /// when one of its target nodes was written or restyled since (see evaluate()).
+    uint32_t evaluatedInstanceCount() const { return m_evaluatedInstances; }
     /// T-654 (23 XF-097 version 4): the active transitions, in no particular order. Read-only;
     /// addTransition() restores one.
     std::span<const Transition> transitions() const { return m_transitions; }
@@ -307,6 +311,11 @@ private:
         uint8_t paused = 0;
         float pausedAt = 0;
         uint8_t finished = 0;
+        // T-717: 1 once a group member held at its end stop has applied its values there (cleared
+        // when it leaves the stop and by every call that moves or changes it); `heldSkipped` is 1
+        // when the last evaluate() left such a member alone (reassertElement3D() covers it).
+        uint8_t held = 0;
+        uint8_t heldSkipped = 0;
         Easing overrideEasing;
 
         // Marker/iteration-event bookkeeping.
@@ -339,6 +348,9 @@ private:
         /// T-702: the last write of a transition that ended this frame (reassertElement3D() leaves
         /// its node to the style resolve, as 19.3 says).
         bool ended = false;
+        /// T-725: a PropId 16-22 write whose source (track, transition or override) can write a 3D
+        /// component other than zero; only such a write makes its Element a 3D layer.
+        bool may3D = true;
     };
 
     // Result of evaluating an instance's local-time formula (Docs/design/04-timeline.md §4.5).
@@ -369,8 +381,20 @@ private:
     /// T-260a: calls the queued notifications (m_notes) after step 6.
     void dispatchNotes(const NodeArena& arena);
     void gatherOrient(const Timeline& tl, const Track& track, float t, NodeId node);
+    /// The arena node `track` of `inst` writes, or kInvalidNode.
+    static NodeId trackNode(const Instance& inst, const Track& track);
+    /// T-717: whether a held member must apply its values again this frame -- one of its target
+    /// nodes is gone, was written or restyled since the Animator last applied, or already has a
+    /// write queued earlier in this evaluate() that the member's would have replaced.
+    bool heldTargetsTouched(const Instance& inst, const Timeline& tl, const NodeArena& arena) const;
+    /// T-725: m_trackForces3D's entry for `track` (one of `tl`'s, registered as `id`).
+    bool trackForces3D(TimelineId id, const Timeline& tl, const Track& track) const;
 
     std::vector<const Timeline*> m_timelines;
+    /// T-725 (19 §19.x ruling 2): per registered timeline, per track, 1 when the track writes a 3D
+    /// component (PropId 16-22) with a keyframe other than that component's identity -- only such a
+    /// track makes its Element a 3D layer. Decided once in registerTimeline().
+    std::vector<std::vector<uint8_t>> m_trackForces3D;
     std::vector<EasingPoint> m_easingPoints;  // T-335: IR STYL pool, then interned runtime points.
     std::vector<Instance> m_instances;
     std::vector<Transition> m_transitions;
@@ -397,6 +421,10 @@ private:
     // for debug iterator tracking, so a local vector "allocates" on every evaluate() call purely
     // from being constructed. Members are constructed once (with the Animator) instead.
     std::vector<uint32_t> m_toRemove;
+    // T-717: the nodes a held member evaluated this update targets (their kAnimValueStale bit is
+    // cleared after step 5 with the written nodes'), and the count of evaluatedInstanceCount().
+    std::vector<NodeId> m_heldTargets;
+    uint32_t m_evaluatedInstances = 0;
     std::vector<uint32_t> m_toNotify;
     // T-260a: the transition-end / iteration / marker notifications of evaluate(), in the order
     // they occurred, called by dispatchNotes() from m_notesOut (swapped with m_notes, so one a

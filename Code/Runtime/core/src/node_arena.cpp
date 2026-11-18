@@ -781,6 +781,11 @@ void NodeArena::markDirty(NodeId id, uint8_t bits) {
     }
 }
 
+void NodeArena::markStyleDirtySelf(NodeId id) {
+    checkAlive(id);
+    m_dirty[id] |= static_cast<uint8_t>(kDirtyStyle);
+}
+
 void NodeArena::markDirtyAncestors(NodeId id, uint8_t bits, NodeId stopAt) {
     checkAlive(id);
     NodeId n = id;

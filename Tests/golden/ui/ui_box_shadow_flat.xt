@@ -1,0 +1,83 @@
+<xt version="2">
+
+  <!-- T-716 (10 section 10.16 W3): the reference of ui_box_shadow_persp -- the same five shadowed boxes
+       with no `perspective` on #stage and #inner. -->
+  <body>
+    <div id="stage">
+      <div id="square" class="card"></div>
+      <div id="round" class="card"></div>
+      <div id="turned" class="card"></div>
+      <div id="sharp" class="card"></div>
+      <div id="inner"><div id="nested" class="card"></div></div>
+    </div>
+  </body>
+
+  <layout>
+    #stage {
+      position: absolute;
+      left: 0px;
+      top: 0px;
+      width: 256px;
+      height: 340px;
+    }
+    .card {
+      position: absolute;
+      width: 72px;
+      height: 52px;
+    }
+    #square {
+      left: 28px;
+      top: 30px;
+    }
+    #round {
+      left: 148px;
+      top: 30px;
+    }
+    #turned {
+      left: 28px;
+      top: 150px;
+      transform: rotate(8deg);
+    }
+    #sharp {
+      left: 148px;
+      top: 150px;
+    }
+    #inner {
+      position: absolute;
+      left: 60px;
+      top: 244px;
+      width: 136px;
+      height: 84px;
+    }
+    #nested {
+      left: 32px;
+      top: 14px;
+    }
+  </layout>
+  <style>
+    #square {
+      background-color: #3060c0;
+      effect: shadow(4px 6px 8px #000000a0);
+    }
+    #round {
+      border-radius: 12px;
+      background-color: #e04040;
+      effect: shadow(0px 6px 12px #00000099);
+    }
+    #turned {
+      border-radius: 8px;
+      background-color: #20a060;
+      effect: shadow(-3px 5px 10px 3px #1a2a80b0);
+    }
+    #nested {
+      border-radius: 10px;
+      background-color: #8040c0;
+      effect: shadow(2px 4px 9px #000000a0);
+    }
+    #sharp {
+      border-radius: 6px;
+      background-color: #c08020;
+      effect: shadow(5px 5px 0px #00000088);
+    }
+  </style>
+</xt>

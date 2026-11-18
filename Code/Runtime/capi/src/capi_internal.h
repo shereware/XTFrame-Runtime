@@ -232,6 +232,12 @@ struct xt_surface : public xt::ContextListener {
     /// T-675 (50 §50.ac item 2): set by xt_surface_trim around its Context::releaseRenderScratch(), so
     /// onReleaseRenderScratch releases all of the GPU resources (trim-on-hide keeps the renderer).
     bool explicitTrim = false;
+    /// T-709 (50 §50.af): xt_surface_set_world_layers / xt_surface_set_world_layer_density (host
+    /// settings; not in save_state). The layer textures live in the GPU resources (`gpu`).
+    bool worldLayers = false;
+    float worldLayerDensity = 1.0f;
+    /// T-709: the xt_gpu_target frame (its frameSerial) of the last xt_surface_render_layers_gpu; 0 = none.
+    uint64_t layerFrame = 0;
 
     ~xt_surface() override;
     /// Takes everything down in the 50.3 order; safe to call twice.
@@ -301,6 +307,9 @@ void releaseGpuResources(xt_surface& surface, bool everything);
 /// last may be evicted by the target's pool budget again (xt::wgpu::WgpuDevice::releasePoolUse). Detach,
 /// destroy and xt_surface_trim do the same by shutting the device down. A no-op without GPU resources.
 void releaseGpuPoolUse(xt_surface& surface);
+/// T-709 (50 §50.af): xt_input_event -> xt::InputEvent for every kind but TEXT_INPUT (capi_surface.cpp).
+/// False (with the last error set, naming `function`) for a value outside xt::InputEvent's range.
+bool convertInput(const xt_input_event& e, InputEvent& out, const char* function = "xt_surface_push_input");
 /// T-636: the draw counters of the surface's last GPU render (false when it has none).
 bool gpuDrawCounts(const xt_surface& surface, uint32_t& executed, uint32_t& skipped);
 

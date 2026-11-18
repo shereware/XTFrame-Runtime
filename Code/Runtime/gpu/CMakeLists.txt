@@ -9,6 +9,7 @@ add_library(xt_gpu STATIC
     src/gradient_lut.cpp
     src/gpu_effects.cpp
     src/frame_builder.cpp
+    src/frame_cache_pair.cpp  # T-730: the backdrop pair's key (Docs/design/10-backends.md §10.18 B)
     src/image_texture.cpp  # T-688: image key + shared texture lookup / upload (Docs/design/50-c-abi.md §50.ae)
     src/coverage_atlas.cpp  # T-660a: R8 coverage atlas (Docs/design/10-backends.md §10.11 item 2)
     src/world_layers.cpp  # T-701: per-layer targets for world-layer output (Docs/design/33-world-layers.md)

@@ -3,6 +3,7 @@
 #include <span>
 #include <vector>
 
+#include "sw_shadow_cache.h"
 #include "xt/box_shadow.h"
 #include "xt/command_list.h"
 #include "xt/types.h"
@@ -57,6 +58,32 @@ private:
     size_t m_live = 0;
 };
 
+/// T-724: one DrawBoxShadow's straight-edge erf values per device pixel column, owned by the
+/// renderer and reused for every box shadow (storage kept across frames, so a warm frame allocates
+/// nothing). Under an axis-aligned transform a column's local `p.x` is the same on every row, and so
+/// are boxShadowEdgeErf() of the shape's x0 / x1 there: computed on the first row that needs them,
+/// read back on the others (xt::boxShadowCoverageAt with BoxShadowEdges gives the same bits).
+class BoxShadowColumns {
+public:
+    /// Up to three terms (the shape and T-680's two extra ones), each with its own edges.
+    static constexpr int kTerms = 3;
+    /// Starts a new shadow over device columns [x0, x1): every column is unknown again.
+    void begin(int x0, int x1);
+    /// The edges of term `t` (shape `s`) at device column `col` whose local x is `px`; `invErf` is
+    /// any non-empty row's (they are all 1 / (sigma sqrt 2)). A column outside the begin() range is
+    /// computed on the spot.
+    BoxShadowEdges edges(int t, const BoxShadowShape& s, int col, float px, float invErf);
+
+private:
+    int m_x0 = 0;
+    int m_count = 0;
+    uint32_t m_gen = 0;
+    std::vector<uint32_t> m_stamp[kTerms];  ///< == m_gen: the column's values are known
+    std::vector<float> m_px[kTerms];        ///< the local x they were computed for
+    std::vector<float> m_erf0[kTerms];
+    std::vector<float> m_erf1[kTerms];
+};
+
 /// Evaluates a PaintRef at any device pixel. Built once per FillPath/StrokePath command.
 class PaintEval {
 public:
@@ -83,8 +110,13 @@ public:
     /// T-680 ("補充 2" B.1): the same with `d`'s extra signed terms -- the coverage is
     /// boxShadowCoverageSum() (each term's row shared like the single shape's). With no extra term
     /// it is makeBoxShadow(d.shape, ...).
+    /// T-724: `columns` (may be null), already begin()-ed for this shadow, lets the rows of an
+    /// axis-aligned transform share the straight-edge erf values per column; same pixels.
     static PaintEval makeBoxShadow(const BoxShadowDraw& d, float sigma, const Color& color,
-                                   const Mat2x3& xfDevice);
+                                   const Mat2x3& xfDevice, BoxShadowColumns* columns = nullptr);
+    /// T-724 (approach (c)): reads and fills `coverage` (SwShadowCache::acquire) for the pixels of
+    /// its rectangle that spanPremul() writes; an empty one (cov null) evaluates every pixel.
+    void setShadowCoverage(const ShadowCoverage& coverage) { m_shadowCoverage = coverage; }
 
     /// Returns the non-premultiplied color at device pixel center (px + 0.5, py + 0.5). Only the
     /// partially-clipped pixels at a span's edge still go through it; whole runs take `spanPremul`.
@@ -173,6 +205,10 @@ private:
     uint32_t m_shadowExtraCount = 0;
     BoxShadowShape m_shadowExtra[2]{};
     float m_shadowExtraSign[2] = {0, 0};
+    /// T-724: the renderer's column cache (null: every pixel evaluates its own erf values).
+    BoxShadowColumns* m_shadowColumns = nullptr;
+    /// T-724: the cached coverage of this shadow (cov null: none).
+    ShadowCoverage m_shadowCoverage{};
 };
 
 }  // namespace xt::sw

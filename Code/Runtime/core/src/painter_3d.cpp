@@ -13,7 +13,8 @@
 #include "xt/property.h"
 
 /// Painter::emitRoot / Painter::flushSection: entering a 3D space root (Docs/design/19-3d-space.md
-/// §19.5 "Painter" and §19.6 "深度排序與背面"). See Docs/tasks/T-44b.md.
+/// §19.5 "Painter" and §19.6 "深度排序與背面", step 3 as amended by §19.x ruling 1). See
+/// Docs/tasks/T-44b.md and Docs/tasks/T-727.md.
 ///
 /// Both functions run entirely synchronously when the root's/segment's EnterNode action is
 /// dequeued -- they compute the camera setup, section the root's children, and collect/sort/
@@ -161,18 +162,80 @@ Rect Painter::projectionBoundsHint(const NodeArena& arena, NodeId root, Rect vie
     return bounds;
 }
 
+bool Painter::planeIsAffine(const NodeArena& arena, const CommandList& out) {
+    const size_t depth = m_mappingStack.size();
+    if (depth <= m_layerWrapDepth) {
+        return true;  // no 3D space (T-701: a world layer's wrapper is a translation)
+    }
+    if (m_levelLayers.size() != depth) {
+        return false;  // an entry pushed by something else than emitRoot(): its plane is not known
+    }
+    PlaneMemo& memo = m_planeMemo;
+    if (memo.valid && memo.serial == m_spaceSerial && memo.depth == depth &&
+        memo.layer == m_levelLayers.back()) {
+        return memo.affine;
+    }
+    // The viewport and tolerance of the list's consumers (project3d::planeTest). In world-layer output
+    // every range is built at a pixel ratio of its own and a layer's range is painted with its
+    // rectangle as the list's viewport, so only a plane with a constant w is taken there.
+    const bool known = !arena.worldLayerState().output;
+    const project3d::PlaneTest test =
+        project3d::planeTest(known ? out.viewport : Rect{}, project3d::kUnboundedPlaneViewport,
+                             known ? out.devicePixelRatio : 1.0f);
+    // The entries hold their roots' own planes; each one's current layer's world3 is swapped in around
+    // the queries (as pushEffectCmd() does for the top one). The consumers judge a level when its plane
+    // is set and never take a level under a projected one, hence every prefix of the stack.
+    m_planeSaveScratch.clear();
+    for (size_t i = 0; i < depth; ++i) {
+        m_planeSaveScratch.push_back(m_mappingStack[i].planeWorld3);
+        if (m_levelLayers[i] != kInvalidNode) {
+            m_mappingStack[i].planeWorld3 = arena.common(m_levelLayers[i]).world3;
+        }
+    }
+    bool affine = true;
+    Mat2x3 fold;
+    for (size_t d = 1; affine && d <= depth; ++d) {
+        affine = project3d::stackPlaneAffine(std::span<const project3d::Mapping>(m_mappingStack.data(), d),
+                                             test, fold);
+    }
+    for (size_t i = 0; i < depth; ++i) {
+        m_mappingStack[i].planeWorld3 = m_planeSaveScratch[i];
+    }
+    memo.valid = true;
+    memo.affine = affine;
+    memo.serial = m_spaceSerial;
+    memo.depth = depth;
+    memo.layer = m_levelLayers.back();
+    return affine;
+}
+
 void Painter::flushSection(const NodeArena& arena, std::span<const NodeId> orderedChildren,
                            const layer_collect::Section& section, const Mat4& view, float alpha) {
-    // §19.6 step 3: the segment's own-plane 2D content is output before its layers. A child is
-    // "own-plane content" here iff it is not itself a 3D layer; a non-is3D child may still have
-    // is3D descendants deeper down (that's why this section is "sorted" at all) -- enterNode()'s
-    // is3D-skip branch (via the EnterNode2D action, m_currentLayer == kInvalidNode) leaves those
-    // to the layer list below instead of painting them here.
+    // T-727 (19 §19.x ruling 1, amending §19.6 step 3): collect every 3D layer across the segment's
+    // sibling subtrees together with the segment's flat content -- one item per run of a child's
+    // flat content between two of its layers, on the root plane -- (docOrder is shared across the
+    // whole segment, so ties break by segment-wide document order, not per-child), then depth-sort
+    // (farthest first) and backface-cull the layers. A flat item is drawn by EnterNode2D with its
+    // piece: enterNode() skips what belongs to other pieces and, via the is3D-skip branch
+    // (m_currentLayer == kInvalidNode), the layers, which are items of their own.
+    m_layerScratch.clear();
+    m_wholeScratch.clear();
+    if (m_pieceRanges.size() < arena.capacity()) {
+        m_pieceRanges.resize(arena.capacity());
+    }
+    uint32_t docOrder = 0;
     for (uint32_t i = 0; i < section.childCount; ++i) {
         NodeId child = orderedChildren[section.firstChild + i];
-        if (arena.common(child).is3D != 0) {
-            continue;
+        if (!layer_collect::collectSegmentItems(arena, child, view, m_layerScratch, docOrder,
+                                                m_pieceRanges)) {
+            m_wholeScratch.push_back(child);
         }
+    }
+    layer_collect::sortLayers(m_layerScratch);
+
+    // A child whose flat content cannot be split without cutting a group (collectSegmentItems(); the
+    // ruling leaves the case open) keeps the pre-T-727 order: all of it before the segment's items.
+    for (NodeId child : m_wholeScratch) {
         m_planScratch.push_back(
             Action{Action::Kind::PushTransform3D, kInvalidNode, 0.0f, MaskMode::Alpha, mat4Identity()});
         m_planScratch.push_back(
@@ -181,18 +244,16 @@ void Painter::flushSection(const NodeArena& arena, std::span<const NodeId> order
             Action{Action::Kind::PopTransform3D, kInvalidNode, 0.0f, MaskMode::Alpha, mat4Identity()});
     }
 
-    // Collect every 3D layer across the segment's sibling subtrees (docOrder is shared across the
-    // whole segment, per collectLayers()'s contract, so ties break by segment-wide document order,
-    // not per-child), then depth-sort (farthest first) and backface-cull.
-    m_layerScratch.clear();
-    uint32_t docOrder = 0;
-    for (uint32_t i = 0; i < section.childCount; ++i) {
-        NodeId child = orderedChildren[section.firstChild + i];
-        layer_collect::collectLayers(arena, child, view, m_layerScratch, docOrder);
-    }
-    layer_collect::sortLayers(m_layerScratch);
-
     for (const layer_collect::LayerEntry& layer : m_layerScratch) {
+        if (layer.piece != layer_collect::kLayerItem) {
+            m_planScratch.push_back(
+                Action{Action::Kind::PushTransform3D, kInvalidNode, 0.0f, MaskMode::Alpha, mat4Identity()});
+            m_planScratch.push_back(Action{Action::Kind::EnterNode2D, layer.node, alpha, MaskMode::Alpha,
+                                           mat4Identity(), layer.piece});
+            m_planScratch.push_back(
+                Action{Action::Kind::PopTransform3D, kInvalidNode, 0.0f, MaskMode::Alpha, mat4Identity()});
+            continue;
+        }
         const NodeCommon& lc = arena.common(layer.node);
         if (lc.backfaceHidden != 0) {
             // §19.6's backface test needs the full (outer-roots-included) mapping stack, with the
@@ -249,7 +310,13 @@ void Painter::emitRoot(const NodeArena& arena, NodeId root, float inheritedAlpha
     mapping.viewProj = setup.viewProj;
     mapping.rootXf = c.world;
     mapping.planeWorld3 = mat4Identity();
+    ++m_spaceSerial;  // T-716: planeIsAffine()'s memo is per push
+    m_levelLayers.resize(m_mappingStack.size(), kInvalidNode);
+    m_levelLayers.push_back(kInvalidNode);
     m_mappingStack.push_back(mapping);
+    // T-727: this root may sit in a flat piece of an outer root; its PopProjection restores it.
+    m_pieceSave.push_back(m_piece);
+    m_piece = layer_collect::kNoPiece;
 
     // §19.6 step 1 (T-105): the hint needs this root's mapping-stack entry, so it is computed
     // after the push and written back into the command emitted above.

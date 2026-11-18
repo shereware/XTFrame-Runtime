@@ -145,6 +145,11 @@ public:
         }
         return n;
     }
+    /// T-723 (10 §10.16 W5, tests only): `doc`'s style binding writes use the old full-range
+    /// style invalidation (`on`) or the narrow one (the default); see style_invalidation.h.
+    static void setLegacyStyleInvalidation(Document& doc, bool on);
+    /// T-723: true while `doc` uses the old full-range style invalidation.
+    static bool legacyStyleInvalidation(const Document& doc);
     /// Evaluates one binding now.
     void evaluateBinding(uint32_t binding, bool initial) { evaluate(binding, initial); }
     /// Registers `node`'s `port(<name>)` triggers (its NodeCommon::triggerTable). T-380: a port in
@@ -467,6 +472,7 @@ private:
     Value m_capture{};
     int m_depth = 0;                    // Re-entrancy guard for binding evaluation.
     bool m_anchorMoved = false;         // T-200: afterLayout() moved a world anchor.
+    bool m_legacyStyleInvalidation = false;  // T-723: setLegacyStyleInvalidation() (tests only).
     std::string m_styleScratch;         // T-270c: apply()'s "<prop>: <value>" for setStyle (capacity kept).
     StringGuard m_conditionStrings;     // T-270c: host converters inside an `if` condition (no binding).
     uint32_t m_maxDistinctStrings = 0;  // T-270d: the largest StringGuard::distinct so far.

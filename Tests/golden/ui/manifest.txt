@@ -113,6 +113,9 @@ ui_3d_sort_two_layers ui_3d_sort_two_layers.xt 256 256 0 ffffff
 ui_3d_backface_hidden ui_3d_backface_hidden.xt 256 256 0 ffffff
 ui_3d_camera_tag ui_3d_camera_tag.xt 256 256 0 ffffff
 ui_3d_image_quad ui_3d_image_quad.xt 256 256 0 ffffff
+# T-727 (19 section 19.x ruling 1): a tilted board and, after it, a flat container of figures, one of
+# them a 3D layer through a running animation; the flat figures and the prop are drawn above the board.
+ui_3d_flat_interleave ui_3d_flat_interleave.xt 256 256 0 1a1410
 # T-701 (33 section 33.2 item 7): four elements with `world-layer: on` at their own depths (one
 # tilted) under a `perspective` root. A flat renderer ignores the switch: the 19-chapter projection.
 ui_world_layers_flat ui_world_layers_flat.xt 320 200 0 ffffff
@@ -263,3 +266,14 @@ ui_box_shadow_kept ui_box_shadow_kept.xt 256 256 0 ffffff
 # T-680 (10 section 10.12 item 2, "補充 2" B): outlines (gap / touching / overlapping), text cards at the
 # edges of the font-metric box, near-opaque panels and the controls that stay a PushEffect (needs xt_text).
 ui_box_shadow_relaxed ui_box_shadow_relaxed.xt 480 400 0 ffffff
+# T-716 (10 section 10.16 W3): shadowed boxes on the own plane of a `perspective` root, one of them on the
+# plane of a root nested in it, draw as without the roots (DrawBoxShadow; pixel for pixel), and on the planes of a 3D space: own plane and translateZ
+# layer (affine: DrawBoxShadow), rotateX layer and an element with its own translateZ (PushEffect).
+ui_box_shadow_flat ui_box_shadow_flat.xt 256 340 0 ffffff
+ui_box_shadow_persp ui_box_shadow_persp.xt 256 340 0 ffffff same-as=ui_box_shadow_flat
+ui_box_shadow_planes ui_box_shadow_planes.xt 256 256 0 ffffff
+# T-725 (19 section 19.3, 10 section 10.15): elements with only 2D transforms (one animated by translateX() translateY()
+# keyframes, sampled half way) inside a `perspective` root, beside a rotateX plane, draw as with the perspective on a
+# container around the tilted plane only (pixel for pixel).
+ui_plane_2d_wrapped ui_plane_2d_wrapped.xt 256 256 0.5 0b0e12
+ui_plane_2d_persp ui_plane_2d_persp.xt 256 256 0.5 0b0e12 same-as=ui_plane_2d_wrapped

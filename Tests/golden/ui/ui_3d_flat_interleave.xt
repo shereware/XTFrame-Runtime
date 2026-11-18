@@ -1,0 +1,118 @@
+<xt version="2">
+
+  <!-- T-727 (19 §19.x ruling 1): the War Table shape in miniature. A perspective stage holds a
+       board tilted by rotateX (a 3D layer whose anchor lies at depth 0) and, after it, a flat
+       container of figures and a prop. One figure is a 3D layer because of a running animation
+       (translateZ(0.01px)); that used to merge the board and the container into one sorted
+       segment whose flat content was drawn first, so the board covered every other figure and
+       the prop. All four figures and the prop are drawn above the board. -->
+  <body>
+    <div id="stage">
+      <div id="board"></div>
+      <div id="figures">
+        <div id="prop"></div>
+        <div id="fig-1" class="fig"></div>
+        <div id="fig-2" class="fig"></div>
+        <div id="fig-3" class="fig"></div>
+        <div id="fig-4" class="fig"></div>
+      </div>
+    </div>
+  </body>
+
+  <layout>
+    body {
+      width: 256px;
+      height: 256px;
+    }
+    #stage {
+      position: absolute;
+      left: 0px;
+      top: 0px;
+      width: 256px;
+      height: 256px;
+      perspective: 600px;
+      perspective-origin: 50% 20%;
+    }
+    #board {
+      position: absolute;
+      left: 16px;
+      top: 48px;
+      width: 224px;
+      height: 176px;
+      transform: rotateX(42deg);
+    }
+    #figures {
+      position: absolute;
+      left: 0px;
+      top: 0px;
+      width: 256px;
+      height: 256px;
+    }
+    .fig {
+      position: absolute;
+      top: 110px;
+      width: 28px;
+      height: 40px;
+    }
+    #fig-1 {
+      left: 40px;
+    }
+    #fig-2 {
+      left: 90px;
+    }
+    #fig-3 {
+      left: 140px;
+    }
+    #fig-4 {
+      left: 190px;
+    }
+    #prop {
+      position: absolute;
+      left: 108px;
+      top: 168px;
+      width: 40px;
+      height: 24px;
+    }
+  </layout>
+  <style>
+    body {
+      background-color: #1a1410;
+    }
+    #board {
+      background-color: #6b4a2b;
+      border-width: 4px;
+      border-style: solid;
+      border-color: #c8a060;
+    }
+    .fig {
+      border-width: 2px;
+      border-style: solid;
+      border-color: #101010;
+    }
+    #fig-1 {
+      background-color: #e0c060;
+    }
+    #fig-2 {
+      background-color: #60a0e0;
+      animation: lift 1s linear 0s infinite normal both;
+    }
+    #fig-3 {
+      background-color: #e06060;
+    }
+    #fig-4 {
+      background-color: #60e060;
+    }
+    #prop {
+      background-color: #a0a0a0;
+      border-radius: 12px;
+    }
+    @keyframes lift {
+      from {
+        transform: translateZ(0.01px);
+      }
+      to {
+        transform: translateZ(0.01px);
+      }
+    }
+  </style>
+</xt>

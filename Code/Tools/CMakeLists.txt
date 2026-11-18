@@ -157,6 +157,9 @@ if(XT_BUILD_GPU AND XT_BUILD_TEXT AND EXISTS "${xt_tools_backends_dir}/gpu-probe
     if(TARGET xt_wgpu)
         target_compile_definitions(xtframe-gpu-probe PRIVATE XT_PROBE_WGPU)
         target_link_libraries(xtframe-gpu-probe PRIVATE xt_wgpu)
+        if(WIN32)
+            target_link_libraries(xtframe-gpu-probe PRIVATE psapi)  # T-713: --wgpu prints the process memory too
+        endif()
         xt_copy_runtime_library(xtframe-gpu-probe xt::wgpu_native)
     endif()
     xt_enable_exceptions(xtframe-gpu-probe)

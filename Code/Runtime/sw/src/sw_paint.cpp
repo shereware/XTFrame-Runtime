@@ -181,9 +181,59 @@ PaintEval PaintEval::makeBoxShadow(const BoxShadowShape& shape, float sigma, con
     return e;
 }
 
+void BoxShadowColumns::begin(int x0, int x1) {
+    m_x0 = x0;
+    m_count = x1 > x0 ? x1 - x0 : 0;
+    if (++m_gen == 0) {
+        // The stamp wrapped: no stale column may look current.
+        for (std::vector<uint32_t>& s : m_stamp) {
+            std::fill(s.begin(), s.end(), 0u);
+        }
+        m_gen = 1;
+    }
+    const size_t n = static_cast<size_t>(m_count);
+    for (int t = 0; t < kTerms; ++t) {
+        if (m_stamp[t].size() < n) {
+            m_stamp[t].resize(n, 0u);
+            m_px[t].resize(n);
+            m_erf0[t].resize(n);
+            m_erf1[t].resize(n);
+        }
+    }
+}
+
+BoxShadowEdges BoxShadowColumns::edges(int t, const BoxShadowShape& s, int col, float px, float invErf) {
+    BoxShadowEdges e;
+    e.x0 = s.x0;
+    e.x1 = s.x1;
+    const int i = col - m_x0;
+    if (i < 0 || i >= m_count) {
+        e.erf0 = boxShadowEdgeErf(s.x0, px, invErf);
+        e.erf1 = boxShadowEdgeErf(s.x1, px, invErf);
+        return e;
+    }
+    const size_t k = static_cast<size_t>(i);
+    if (m_stamp[t][k] != m_gen) {
+        m_stamp[t][k] = m_gen;
+        m_px[t][k] = px;
+        m_erf0[t][k] = boxShadowEdgeErf(s.x0, px, invErf);
+        m_erf1[t][k] = boxShadowEdgeErf(s.x1, px, invErf);
+    } else if (m_px[t][k] != px) {
+        // Not the column's x after all (cannot happen under an axis-aligned transform; kept so a
+        // reused value is always the one the formula would compute).
+        e.erf0 = boxShadowEdgeErf(s.x0, px, invErf);
+        e.erf1 = boxShadowEdgeErf(s.x1, px, invErf);
+        return e;
+    }
+    e.erf0 = m_erf0[t][k];
+    e.erf1 = m_erf1[t][k];
+    return e;
+}
+
 PaintEval PaintEval::makeBoxShadow(const BoxShadowDraw& d, float sigma, const Color& color,
-                                   const Mat2x3& xfDevice) {
+                                   const Mat2x3& xfDevice, BoxShadowColumns* columns) {
     PaintEval e = makeBoxShadow(d.shape, sigma, color, xfDevice);
+    e.m_shadowColumns = columns;
     e.m_shadowExtraCount = d.extraCount < 2 ? d.extraCount : 2;
     for (uint32_t k = 0; k < e.m_shadowExtraCount; ++k) {
         e.m_shadowExtra[k] = d.extra[k];
@@ -291,28 +341,70 @@ PaintEval::SpanInfo PaintEval::spanPremul(int x, int y, int begin, int end, floa
         BoxShadowRow row;
         BoxShadowRow extraRows[2];  // T-680: one row per extra term
         const float cy = static_cast<float>(y) + 0.5f;
-        if (rowShared) {
+        bool rowReady = false;  // T-724: the shared row is set up on the first pixel that needs it
+        auto setupSharedRow = [&]() {
             const Vec2 p = apply(m_inverse, Vec2{static_cast<float>(x + begin) + 0.5f, cy});
             boxShadowRow(m_shadowShape, p.y, m_shadowSigma, row);
             for (uint32_t k = 0; k < m_shadowExtraCount; ++k) {
                 boxShadowRow(m_shadowExtra[k], p.y, m_shadowSigma, extraRows[k]);
             }
-        }
+            rowReady = true;
+        };
         const Color& c = m_shadowColor;
-        for (int i = begin; i < n; ++i) {
+        // T-724: the straight-edge erf values once per pixel (not once per abscissa); under a shared
+        // row they come from the column cache.
+        BoxShadowColumns* const cols = rowShared ? m_shadowColumns : nullptr;
+        auto termAt = [&](int t, const BoxShadowShape& s, const BoxShadowRow& r, int col, float px) {
+            if (r.empty) {
+                return boxShadowCoverageAt(r, px);
+            }
+            if (cols == nullptr) {
+                BoxShadowEdges e;
+                e.x0 = s.x0;
+                e.x1 = s.x1;
+                e.erf0 = boxShadowEdgeErf(s.x0, px, r.invErf);
+                e.erf1 = boxShadowEdgeErf(s.x1, px, r.invErf);
+                return boxShadowCoverageAt(r, px, e);
+            }
+            return boxShadowCoverageAt(r, px, cols->edges(t, s, col, px, r.invErf));
+        };
+        auto coverageAt = [&](int i) {
             const Vec2 p = apply(m_inverse, Vec2{static_cast<float>(x + i) + 0.5f, cy});
             if (!rowShared) {
                 boxShadowRow(m_shadowShape, p.y, m_shadowSigma, row);
                 for (uint32_t k = 0; k < m_shadowExtraCount; ++k) {
                     boxShadowRow(m_shadowExtra[k], p.y, m_shadowSigma, extraRows[k]);
                 }
+            } else if (!rowReady) {
+                setupSharedRow();
             }
-            float coverage = boxShadowCoverageAt(row, p.x);
+            float coverage = termAt(0, m_shadowShape, row, x + i, p.x);
             if (m_shadowExtraCount > 0) {
                 for (uint32_t k = 0; k < m_shadowExtraCount; ++k) {
-                    coverage += m_shadowExtraSign[k] * boxShadowCoverageAt(extraRows[k], p.x);
+                    coverage += m_shadowExtraSign[k] *
+                                termAt(static_cast<int>(k) + 1, m_shadowExtra[k], extraRows[k], x + i, p.x);
                 }
                 coverage = std::clamp(coverage, 0.0f, 1.0f);
+            }
+            return coverage;
+        };
+        // T-724: a cached shadow's row of coverage (NaN: not evaluated yet, filled now).
+        const ShadowCoverage& sc = m_shadowCoverage;
+        float* covRow = nullptr;
+        if (sc.cov != nullptr && y >= sc.y0 && y < sc.y0 + sc.h) {
+            covRow = sc.cov + static_cast<size_t>(y - sc.y0) * static_cast<size_t>(sc.w);
+        }
+        for (int i = begin; i < n; ++i) {
+            float coverage;
+            const int col = x + i - sc.x0;
+            if (covRow != nullptr && col >= 0 && col < sc.w) {
+                float& slot = covRow[col];
+                if (std::isnan(slot)) {
+                    slot = coverageAt(i);
+                }
+                coverage = slot;
+            } else {
+                coverage = coverageAt(i);
             }
             const float a = c.a * coverage;
             const float rgba[4] = {c.r * a, c.g * a, c.b * a, a};

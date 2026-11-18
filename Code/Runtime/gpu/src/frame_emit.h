@@ -1,9 +1,11 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <vector>
 
+#include "xt/assert.h"
 #include "xt/gpu/gpu_frame.h"
 
 /// FrameEmitter: the low-level writer behind FrameBuilder (frame_builder.cpp) and the effect
@@ -86,11 +88,45 @@ public:
     /// Marks `target`'s content dead so a later acquire may reuse the slot.
     void releaseTransient(TargetHandle target);
 
+    /// T-728 (Docs/design/10-backends.md §10.18 A item 3): true only when `target` is a transient
+    /// whose first pass since it was acquired cleared it (and copied nothing into it), `region`
+    /// lies inside its window, and nothing written to it since -- a copy into it, or any color
+    /// command of its passes (a command's vertex box intersected with its scissor; particles, and
+    /// projected vertices with w <= 0, count as the whole window) -- touches `region`: the region
+    /// then still holds the clear's transparent black. Stencil-only commands write no color and
+    /// are not counted. Conservative: any doubt answers false.
+    bool untouchedSinceClear(TargetHandle target, const Scissor& region) const;
+
     // -- Scissor ---------------------------------------------------------------------------
 
     void setScissor(const Scissor& s) { m_scissor = s; }
     const Scissor& scissor() const { return m_scissor; }
     Scissor fullScissor() const { return Scissor{0, 0, m_width, m_height}; }
+
+    // -- Analytic clip (T-718, Docs/design/10-backends.md §10.16 W1) ---------------------------
+
+    /// The `AnalyticClipParams` block (its index in the frame's params, 0 = none) every leaf draw
+    /// appended from now on carries in `DrawCmd::clipParamIndex`, whatever the pass: Solid,
+    /// Gradient, Texture, TextureStraight, Glyph, BoxShadow and the particle shadings. StencilOnly,
+    /// Composite and Effect commands never carry one. A group's result drawn as a textured quad
+    /// (a cached effect, a band) is not a leaf: its caller sets 0 around it.
+    void setAnalyticClip(uint32_t paramIndex) { m_analyticClip = paramIndex; }
+    uint32_t analyticClip() const { return m_analyticClip; }
+
+    // -- Channel reads (T-728, Docs/design/10-backends.md §10.18 A item 1) ---------------------
+
+    /// Whether the device reads the trailing `channel` field of DownsampleParams / GaussParams
+    /// (GpuDevice::supportsAlphaChannelReads, set by the builder once per build; kept across
+    /// `begin`). Off: `pushChannelParams` leaves the field out, so the frame is the one of before.
+    void setChannelReads(bool on) { m_channelReads = on; }
+    bool channelReads() const { return m_channelReads; }
+
+    // -- Backdrop mask (T-729, Docs/design/10-backends.md §10.18 B) ----------------------------
+
+    /// Whether the device runs EffectProgram::BackdropMasked (GpuDevice::supportsBackdropMask, set
+    /// by the builder once per build; kept across `begin`).
+    void setBackdropMask(bool on) { m_backdropMask = on; }
+    bool backdropMask() const { return m_backdropMask; }
 
     // -- Geometry --------------------------------------------------------------------------
 
@@ -116,6 +152,22 @@ public:
         return index;
     }
 
+    /// T-728: a DownsampleParams / GaussParams block -- whole when `channelReads()`, else without its
+    /// trailing `channel` float (which must then be 0: no step asks for a channel on such a device).
+    template <class T>
+    uint32_t pushChannelParams(const T& p) {
+        static_assert(offsetof(T, channel) + sizeof(float) == sizeof(T), "channel must be the last float");
+        if (m_channelReads) {
+            return pushParams(p);
+        }
+        XT_ASSERT(p.channel == 0.0f);
+        const uint32_t index = static_cast<uint32_t>(m_frame->params.size());
+        constexpr size_t floats = offsetof(T, channel) / sizeof(float);
+        m_frame->params.resize(m_frame->params.size() + floats);
+        std::memcpy(m_frame->params.data() + index, &p, floats * sizeof(float));
+        return index;
+    }
+
     // -- Commands --------------------------------------------------------------------------
 
     /// Appends `cmd` to the open pass with the geometry and the current scissor filled in.
@@ -125,10 +177,9 @@ public:
     /// writes the stencil nor cares about draw boundaries (Solid/Gradient/Texture/
     /// TextureStraight/Glyph with stencil None or TestEqualRef) or a ClearRect, the previous
     /// command of the open pass has identical state (shading, blend, stencil op/ref, texture,
-    /// coverage (T-660b), sampler, program, paramIndex, src/aux, scissor) and its geometry ends
-    /// exactly where `g`
-    /// begins, `g` is folded into that command (its indices rebased onto the earlier baseVertex)
-    /// and the earlier command is returned instead of a new one.
+    /// coverage (T-660b), sampler, program, paramIndex, src/aux, scissor, analytic clip (T-718)) and its
+    /// geometry ends exactly where `g` begins, `g` is folded into that command (its indices rebased onto the
+    /// earlier baseVertex) and the earlier command is returned instead of a new one.
     DrawCmd& pushCmd(DrawCmd cmd, const Geometry& g);
 
     /// Appends a `Shading::Effect` command covering the current target's window (its quad and
@@ -141,6 +192,10 @@ private:
         TransientTargetDesc desc;
         Scissor window;
         bool inUse = false;
+        /// T-728: the index of the first pass on this slot since it was acquired (-1: none yet) and
+        /// whether that pass cleared it without a copy (untouchedSinceClear).
+        int firstPass = -1;
+        bool freshClear = false;
     };
     struct WindowQuad {
         Scissor window;
@@ -152,6 +207,9 @@ private:
     TargetHandle m_currentTarget = kSurfaceTarget;
     bool m_passOpen = false;
     Scissor m_scissor;
+    uint32_t m_analyticClip = 0;  ///< T-718: setAnalyticClip
+    bool m_channelReads = false;  ///< T-728: setChannelReads
+    bool m_backdropMask = false;  ///< T-729: setBackdropMask
     std::vector<Slot> m_slots;
     std::vector<WindowQuad> m_windowQuads;
 

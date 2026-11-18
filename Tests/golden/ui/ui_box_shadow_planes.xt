@@ -1,0 +1,82 @@
+<xt version="2">
+
+  <!-- T-716 (10 section 10.16 W3): shadowed boxes on the planes of a `perspective` root. #own (the
+       root's own plane) and #lifted (inside a translateZ layer: the whole plane is equally far from the
+       camera) are on affine planes and become DrawBoxShadow; #tilted (inside a rotateX layer: a real
+       projection) and #self (its own translateZ makes it a 3D layer) stay a PushEffect. -->
+  <body>
+    <div id="stage">
+      <div id="own" class="card"></div>
+      <div id="lift"><div id="lifted" class="card"></div></div>
+      <div id="tilt"><div id="tilted" class="card"></div></div>
+      <div id="self" class="card"></div>
+    </div>
+  </body>
+
+  <layout>
+    #stage {
+      position: absolute;
+      left: 0px;
+      top: 0px;
+      width: 256px;
+      height: 256px;
+      perspective: 600px;
+    }
+    .card {
+      position: absolute;
+      width: 72px;
+      height: 52px;
+    }
+    #own {
+      left: 28px;
+      top: 30px;
+    }
+    #lift {
+      position: absolute;
+      left: 138px;
+      top: 20px;
+      width: 100px;
+      height: 80px;
+      transform: translateZ(60px);
+    }
+    #lifted {
+      left: 14px;
+      top: 12px;
+    }
+    #tilt {
+      position: absolute;
+      left: 18px;
+      top: 140px;
+      width: 100px;
+      height: 80px;
+      transform: rotateX(40deg);
+    }
+    #tilted {
+      left: 14px;
+      top: 14px;
+    }
+    #self {
+      left: 152px;
+      top: 154px;
+      transform: translateZ(-80px);
+    }
+  </layout>
+  <style>
+    .card {
+      border-radius: 10px;
+      effect: shadow(3px 5px 10px #000000a0);
+    }
+    #own {
+      background-color: #3060c0;
+    }
+    #lifted {
+      background-color: #e04040;
+    }
+    #tilted {
+      background-color: #20a060;
+    }
+    #self {
+      background-color: #c08020;
+    }
+  </style>
+</xt>

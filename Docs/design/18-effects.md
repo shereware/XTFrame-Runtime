@@ -336,3 +336,10 @@ T-544 把 `bind:effect.<效果>.<參數>` 做在第 0 層（`setProperty` 直寫
 - **內建範例** `Assets/Fx/`：`ripple.xtfx`（18.7 範例）、`swirl.xtfx`（T-203 fixture 的 vec2＋for）、`starter.xtfx`（最小：一個 `strength` float，`return xtSample(i.uv)` 乘 tint）。目錄「效果」分類列為 `shader:<檔名主幹>`，名稱取 header `name:`，一句話取 header 新增的可選行 `blurb: <文字>`（18.7 header 多一個可選宣告；缺則顯示檔名）。套用 = 複製到 `<assetRoot>/fx/`（T-273 既有規則）+ 加進鏈尾。隨編輯器安裝（`xt_copy_standard_*` 同款，`<exe dir>/fx`）。
 - 拖 `.xtfx` 到效果段（既有 T-203）保留。
 - **開啟 shader 原始碼**（使用者 2026-10-30：「先用外部」）：自訂單位的「在原始碼面板開啟」改為 `QDesktopServices::openUrl`（系統預設程式），存檔回來按「重新載入」。編輯器內的 shader 原始碼分頁列入之後的 shader UX 單；屆時先檢查其他分支既有的文字編輯器／Markdown 閱讀器能否重用（使用者提示）。
+
+## 18.x 修訂（2026-11-15；10 §10.18 B 定案，T-729 #686）：BackdropBlur 之後只接陰影類效果時的例外
+
+§18.1「第 k 個效果的輸入是第 k−1 個的輸出」與 §18.5「依序執行效果」有一個例外：效果堆疊的第一個是啟用的 BackdropBlur、其後只有啟用的 DropShadow（外／內）或 Glow（外／內）（至少一個；出現任何 Custom 即不適用）時——
+- 陰影類效果的輸入是節點內容 S（不是 BackdropBlur 的輸出）：依序在 S 上套用得到 R′。§18.3 各陰影條目的 `alpha(src)` 在此情形指 S 的 alpha。
+- §18.3 BackdropBlur 的合成改為 `out = R′ + B · S.a · (1 − R′.a)`（預乘；B＝模糊並調整後的背景）；沒有陰影時 R′＝S，即原式。
+- 其餘堆疊（BackdropBlur 後接其他種類、BackdropBlur 不在第一個）不變。

@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -1447,13 +1448,15 @@ TEST_CASE("gpu: Blur effect is two GaussColor passes then a Normal composite (gl
     CHECK(fx[0]->aux == 0);
     CHECK(fx[1]->src != fx[0]->src);
     GaussParams gp{};
-    std::memcpy(&gp, f.params.data() + fx[0]->paramIndex, sizeof(gp));
+    std::memcpy(static_cast<void*>(&gp), f.params.data() + fx[0]->paramIndex,
+                offsetof(GaussParams, channel));  // T-728: no channel for this device
     CHECK(gp.dirX == 1.0f);
     CHECK(gp.dirY == 0.0f);
     CHECK(gp.texelW == doctest::Approx(1.0f / 64.0f));
     CHECK(gp.tapCount >= 1.0f);
     CHECK(gp.weights[0] > 0.0f);
-    std::memcpy(&gp, f.params.data() + fx[1]->paramIndex, sizeof(gp));
+    std::memcpy(static_cast<void*>(&gp), f.params.data() + fx[1]->paramIndex,
+                offsetof(GaussParams, channel));  // T-728: no channel for this device
     CHECK(gp.dirY == 1.0f);
     auto comps = cmdsWith(f, Shading::Composite);
     REQUIRE(comps.size() == 1);
@@ -1501,7 +1504,8 @@ TEST_CASE("gpu: DropShadow / inset / Glow / Outline / ColorAdjust / GradientMask
                                                         P::GaussScalar, P::ShadowGlow});
         auto fx = cmdsWith(b.frame, Shading::Effect);
         GaussParams gp{};
-        std::memcpy(&gp, b.frame.params.data() + fx[3]->paramIndex, sizeof(gp));
+        std::memcpy(static_cast<void*>(&gp), b.frame.params.data() + fx[3]->paramIndex,
+                    offsetof(GaussParams, channel));  // T-728: no channel for this device
         CHECK(gp.constEdge == 1.0f);
         CHECK(gp.outside == 1.0f);
         ShadowGlowParams sp{};
@@ -5392,7 +5396,8 @@ TEST_CASE("gpu: T-343 a blur above sigma 4 runs downsampled (Downsample, Gauss a
         CHECK(half);
         auto fx = cmdsWith(b.frame, Shading::Effect);
         GaussParams gp{};
-        std::memcpy(&gp, b.frame.params.data() + fx[1]->paramIndex, sizeof(gp));
+        std::memcpy(static_cast<void*>(&gp), b.frame.params.data() + fx[1]->paramIndex,
+                    offsetof(GaussParams, channel));  // T-728: no channel for this device
         CHECK(gp.texelW == doctest::Approx(1.0f / 64.0f));
         checkSnapshot("effect_blur_downsampled", b.frame);
     }

@@ -147,13 +147,13 @@ xt_surface* fromStatus(xt_status status, std::string message) {
     return nullptr;
 }
 
-/// xt_input_event -> xt::InputEvent for every kind but TEXT_INPUT. False (with the last error set)
-/// for a value outside xt::InputEvent's range.
-bool convertInput(const xt_input_event& e, InputEvent& out) {
+}  // namespace
+
+bool convertInput(const xt_input_event& e, InputEvent& out, const char* function) {
     if (e.button < 0 || e.button > 2 || e.gamepad_button > 14 || e.gamepad_axis > 5 || e.gesture > 4 ||
         e.direction > 3 || e.player >= kMaxPlayers) {
         fail(XT_STATUS_INVALID_ARGUMENT,
-             "xt_surface_push_input: a field is outside the xt::InputEvent range");
+             std::string(function) + ": a field is outside the xt::InputEvent range");
         return false;
     }
     out.kind = static_cast<InputEvent::Kind>(e.kind);
@@ -179,8 +179,6 @@ bool convertInput(const xt_input_event& e, InputEvent& out) {
     }
     return true;
 }
-
-}  // namespace
 
 }  // namespace xt::capi
 
@@ -480,6 +478,11 @@ XT_CAPI xt_status xt_surface_render(xt_surface* s, void* rgba, int stride_bytes,
             rowBytes > static_cast<size_t>(INT32_MAX) || static_cast<size_t>(stride_bytes) < rowBytes) {
             return fail(XT_STATUS_INVALID_ARGUMENT,
                         "xt_surface_render: rgba is NULL or stride_bytes < width * 4");
+        }
+        if (s->worldLayers) {  // T-709 (50 §50.af item 1): no single picture in world-layer output
+            return fail(XT_STATUS_INVALID_ARGUMENT,
+                        "xt_surface_render: the surface is in world-layer output; call "
+                        "xt_surface_set_world_layers(s, 0) for a flat picture");
         }
         if (s->renderPath == xt::capi::RenderPath::Gpu) {  // T-636 (50 §50.z): never mixed
             return fail(

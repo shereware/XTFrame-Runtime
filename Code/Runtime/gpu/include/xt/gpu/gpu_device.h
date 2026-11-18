@@ -248,6 +248,30 @@ public:
         (void)target;
         (void)frame;
     }
+
+    /// T-718 (Docs/design/10-backends.md §10.16 W1 item 7): true when the device multiplies every
+    /// leaf draw whose `DrawCmd::clipParamIndex` is nonzero by the coverage of its
+    /// `AnalyticClipParams` block (gpu_frame.h). False (the default): the builder never sets
+    /// `clipParamIndex` and a rounded clip on a single-sampled target stays a mask layer -- the
+    /// frames and pixels of before. Asked once per build.
+    virtual bool supportsAnalyticClip() const { return false; }
+
+    /// T-728 (Docs/design/10-backends.md §10.18 A item 1): true when the device reads the trailing
+    /// `channel` field of `GaussParams` (GaussScalar) and `DownsampleParams` (gpu_frame.h): 1 = read
+    /// `src.a`, 2 = `1 - src.a`, 0 = as before. The builder then folds the AlphaExtract step that
+    /// starts a shadow or glow chain into the Downsample / GaussScalar pass after it (one pass less
+    /// per such effect, the same pixels). False (the default): the AlphaExtract pass stays and the
+    /// two blocks are pushed without the field -- the frames of before. Asked once per build.
+    virtual bool supportsAlphaChannelReads() const { return false; }
+
+    /// T-729 (Docs/design/10-backends.md §10.18 B): true when the device runs
+    /// `EffectProgram::BackdropMasked` (gpu_frame.h `BackdropParams`: a third input, the content whose
+    /// alpha masks the blurred backdrop). The builder then gives a stack of BackdropBlur followed only
+    /// by shadow-type effects the semantics of §10.18 B: the shadows are computed from the element's
+    /// own content, not from its composite over the backdrop. False (the default): such a stack keeps
+    /// the sequential order -- the frames and pixels of before, which differ from the reference
+    /// backends' (a translucent glass panel's shadows come out stronger). Asked once per build.
+    virtual bool supportsBackdropMask() const { return false; }
 };
 
 }  // namespace xt::gpu

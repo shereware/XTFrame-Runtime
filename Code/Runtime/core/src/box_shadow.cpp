@@ -143,6 +143,28 @@ float boxShadowCoverageAt(const BoxShadowRow& row, float px) {
     return std::clamp(coverage, 0.0f, 1.0f);
 }
 
+float boxShadowEdgeErf(float edge, float px, float invErf) { return boxShadowErf((edge - px) * invErf); }
+
+float boxShadowCoverageAt(const BoxShadowRow& row, float px, const BoxShadowEdges& edges) {
+    if (row.empty) {
+        return 0.0f;
+    }
+    // T-724: the same sum in the same order as boxShadowCoverageAt(row, px); only the erf values
+    // of the straight edges come from `edges` (equal inputs, so equal values).
+    float sum = 0.0f;
+    for (int k = 0; k < 2 * kBoxShadowQuadratureHalf; ++k) {
+        if (row.wg[k] == 0.0f) {
+            continue;
+        }
+        const float a = row.x1[k] == edges.x1 ? edges.erf1 : boxShadowEdgeErf(row.x1[k], px, row.invErf);
+        const float b = row.x0[k] == edges.x0 ? edges.erf0 : boxShadowEdgeErf(row.x0[k], px, row.invErf);
+        const float e = 0.5f * (a - b);
+        sum += row.wg[k] * e;
+    }
+    const float coverage = sum * row.half * kInvSqrt2Pi / row.sigma;
+    return std::clamp(coverage, 0.0f, 1.0f);
+}
+
 float boxShadowCoverage(const BoxShadowShape& s, float px, float py, float sigma) {
     BoxShadowRow row;
     boxShadowRow(s, py, sigma, row);

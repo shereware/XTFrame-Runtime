@@ -202,17 +202,21 @@ bool Painter::paintWorldLayer(const NodeArena& arena, size_t index, uint32_t ord
     mapping.viewProj = proj.viewProj;
     mapping.rootXf = proj.rootXf;
     mapping.planeWorld3 = mat4Identity();
+    ++m_spaceSerial;  // T-716: planeIsAffine()'s memo is per push
+    m_levelLayers.assign(m_mappingStack.size() + 1, kInvalidNode);
     m_mappingStack.push_back(mapping);
     m_layerWrapDepth = 1;
 
     m_layerEntering = node;
     m_currentLayer = kInvalidNode;
-    m_layerInsertPos = index + 1;  // layers met inside this one come right after it
+    m_piece = layer_collect::kNoPiece;  // T-727
+    m_layerInsertPos = index + 1;       // layers met inside this one come right after it
     m_stack.push_back(Action{Action::Kind::EnterNode, node, 1.0f, MaskMode::Alpha});
     runStack(arena, out);
     m_layerEntering = kInvalidNode;
 
     m_mappingStack.pop_back();
+    m_levelLayers.clear();  // T-716
     m_layerWrapDepth = 0;
     out.commands.push_back(Command{CmdKind::PopProjection, {}, 0});
     out.viewport = viewport;

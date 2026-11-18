@@ -76,6 +76,7 @@ add_library(xt_core STATIC
     src/selector_query.cpp
     src/document_load.cpp
     src/context.cpp
+    src/command_hash.cpp
     src/damage.cpp
     src/file_asset_resolver.cpp
     src/file_open_utf8.cpp
@@ -85,6 +86,7 @@ add_library(xt_core STATIC
     src/style_decode.cpp
     src/selector_match.cpp
     src/style_engine.cpp
+    src/style_state_deps.cpp
     src/layout_engine.cpp
     src/layout_block.cpp
     src/layout_text.cpp

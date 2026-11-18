@@ -1,0 +1,17 @@
+/* T-709: #left and #right are world layers (only in world-layer output; a flat view ignores the switch). */
+#back {
+  background-color: #20303c;
+}
+.card {
+  world-layer: on;
+  background-color: #e8ecf0;
+  border-radius: 8px;
+}
+#bar {
+  background-color: #3060c0;
+  border-radius: 4px;
+}
+#dot {
+  background-color: #e04040;
+  border-radius: 12px;
+}

@@ -418,6 +418,8 @@ eport.json`）**——對 SW 的「> 16 像素數／最大通道差／平均絕�
 8. **平台**：D3D12、Vulkan 桌面、macOS 的 Metal、GL 4.2 有 BC7；iOS、Android／GLES 沒有——退回由 BC7 解出的 RGBA8（有損且不省記憶體），ASTC／ETC2 不在本節。宿主自建的 wgpu 裝置須要求 `TextureCompressionBC`（C ABI 目標自己的裝置已要求）。
 9. **不做**：容器層壓縮（`.xtb` 的 zip 仍為 store 模式；另案）；BC1／BC3 的新設定入口（既有的覆寫仍可用）。
 
+**2026-11-14 修訂（22 §22.17，T-714）**：第 5 點的「預設 `none`」只剩函式庫與開發期自動打包適用；三個發佈入口（編輯器 Publish、`project.publish`、`xtframe-pack`）在專案沒有寫 `publish.images.compress` 時採 `auto`。編輯器的 Publish 對話框提供這項設定與圖集、字型的設定。
+
 **T-684 實作記錄（#645，2026-11-12）**：編輯器 `GlPreviewWidget`（單取樣 FBO，`GlRenderer::resize()` 讀到 `GL_SAMPLES` = 0 而開啟 fringe；無解析 FBO、`glReadPixels` 直接讀渲染目標）與 `WgpuPreviewWidget`（直接畫進預覽紋理）改為 1x；`--software-preview` 不變。逐字形輪廓盒快取：每執行緒的排序向量，鍵（shaper 世代、FontId、glyph id），存未變換的 em 單位控制點盒或「無輪廓」，上限 4096、滿即清；`xt::GlyphInkMemo`：一次 build／paint 內按 run 記憶（另比對變換、字型、字級、`text-rendering`、字形範圍、effectRadius、dpr、世代），`FrameBuilder::buildOnce` 與 `Painter::paint` 開頭以 epoch 重設。Sherefox notes 1440p 每次 build 的 shaper 輪廓呼叫 74 → 0；15 張截圖逐位元組不變。`xt::shell::WindowConfig::msaa` 預設 4 → 0（`Examples/desktop_app`、`lottie_player` 因此取得非多重取樣視窗）。editor_qt 只跑了預覽相關的六個檔（39＋18 案例）。未編譯：Clang／GCC；未跑：editor_qt 全套。
 
 **T-686 實作記錄（#647，2026-11-12）**：`FileAssetResolver::decodeInto` 對 BC1／BC3／BC7 的 DDS 只保留區塊（含存放的各層）；`pixelsOf()` 在第一次需要時才解第 0 層（包成單層 DDS 交給既有的解碼函式，`xt_core` 仍無第三方）、裁成邏輯尺寸。會觸發 RGBA 解碼的只剩：`imageView()`／`decodeImage()` 的呼叫者（SW；frame builder 在 `createTexture` 失敗時的退回——裝置無 BC，或 wgpu 拒絕非 4 倍數的尺寸）與 `external_media.cpp:355` 的序列預載（未改，文件未涵蓋）。邏輯尺寸：`parseDdsHeader` 讀 `dwReserved1[0..2]`，有效條件 0 < 邏輯 ≤ 存放且差 < 4；用於 `imageSizeFromHeader`、`CompressedImage`、內容鍵、SW 的裁切、frame builder 的 `uvScale`。GL：`requestMipChain` 逐層 `glCompressedTexImage2D`。SW：帶鏈的 DDS 逐層解碼存放的層、以 straight 取樣後預乘（與 GPU 的 straight BC 路徑同算術），不自建鏈。golden `ui_image_bc7`：wgpu 與 GL 對 SW 皆 0 px 超差、最大差 2。Sherefox（以現有打包器 `--compress bc7`＋`publish.atlas.mipmaps`；宿主流程、1080p、1x）：首顯首幀 vn 97.2 → 18.3 ms（RTX）／98.9 → 19.8（UHD）、debate 81.2 → 33.3／101.2 → 49.9、title 30.2 → 11.0；`image_bytes`（第 3 輪末）61.8 → 19.5 MiB；private RTX 603 → 537、UHD 606 → 462 MB；DXGI local 279 → 212／389 → 252 MB；resolver 的資料量（由檔案計算）225 → 75 MiB。44 張 BC7 影像有 12 張尺寸非 4 的倍數，T-687 補邊前 wgpu 仍對它們退回 RGBA。SW 每幀時間 vn 99.6 → 103.9 ms（第 0 幀 163.5 → 93.3）。附記：capi 測試套件在 Debug 需約 8 分鐘，超過 `dev_check` 的 600 s 上限而被標為 TIMEOUT（單獨跑 73／73 通過）——版號單前調整上限或拆套件。未編譯：Linux／macOS；未測：Vulkan、Metal、GLES。
@@ -460,4 +462,172 @@ eport.json`）**——對 SW 的「> 16 像素數／最大通道差／平均絕�
 6. 不在本節：真正透視平面在 1x 下的抗鋸齒（投影後輪廓進覆蓋率 atlas）——另案，待 UI Volume 的設計定了再排。
 
 **T-700 實作記錄（#659，2026-11-13）**：`planeHomography`／`affinePlane`（`project3d.h`；w 對 x、y 無係數時直接判為仿射，否則以視窗四角回推平面上的 W、要求螢幕誤差上界 < 1/64 device px）。frame builder、SW、simplifier 三處都採用（SW 與 simplifier 原本在投影下也有較低品質的路徑）。仿射平面上的命令以 `fold · xf` 繪製，fold 為恆等時用原命令（根平面逐位元組相同）。既有 golden 無一變動；語料庫只有 challenge-menu 的 `#profile-block`（translateZ 圖層）改變：文字改走字形路徑、縮小的影像經 mip 取樣、環與弧走覆蓋率——1x 下 `#holo-arc` 由斷續變為連續。**與第 4 點預期不同**：4x 下變動不只文字，影像 mip 與展平容差也跟著 2D 路徑改變（符合「與 2D 相同」的驗收條件）。**未涵蓋**：painter 在任何 3D 空間內都不做方塊陰影轉換（`box_shadow.cpp` 的 `in3D`），所以仿射平面上的陰影仍走離屏效果——是否放寬另案（PENDING）。GL 後端未動。
+
+## 10.16 削減 runtime 每幀交出去的工作量（2026-11-14 草案；War Table 基準與 `Docs/reviews/2026-11-14-war-table-runtime-facts.md`）
+
+**事實**：重建命令清單只要約 1 ms；每幀的成本是把同樣的東西再交給 GPU 一次——828 個 pass，其中陰影鏈 45%、圓角裁切的遮罩層 26%。38 個每幀未命中的效果裡，22 個只是整個元素在移動或旋轉。181 個動畫有 177 個只動 transform／opacity。跨元素共用效果結果在實際內容中幾乎不存在。
+
+以下依「確定性高、範圍小」排序；每項獨立成單、前後量測。**合成層（原計畫 P2-1）延後**：W1～W3 做完預期 pass 由 828 降到 300 上下，屆時重新量測，再決定合成層要解決的剩餘部分是什麼。
+
+### W1 圓角裁切在 1x 以解析式覆蓋率處理（2026-11-14 定稿；可行性調查見 BACKLOG T-718；T-718 builder＋wgpu、T-719 GL）
+
+**事實（調查）**：1x 下非軸對齊矩形的裁切最後落到遮罩層（白色形狀一張、內容一張、MaskApply 一張、再合成回去，每個約 3.7 個 pass）；4x 下是 stencil、0 個遮罩層。War Table 靜止時的 68 個遮罩層**全部**是四角圓角矩形的 `PushClipPath`（overflow＋border-radius 與圓角背景），全在仿射平面上；巢狀深度 1／2／3 各 37／19／12 個。真正透視的平面今天不走遮罩層而是硬邊 stencil（不在本項）。另一個事實：遮罩層把巢狀群組（圖層、效果）的**合成結果**也裁掉，而 SW 與 4x 只裁葉節點的繪製、不裁群組的合成——1x 今天與 SW／4x 並不一致。
+
+**裁決**：
+1. frame builder 在 1x 的裁切判定（`clipAtOneX`）中、「單一影像直接畫」之後、開遮罩層之前：路徑能辨識為**圓形圓角的矩形**（`appendRoundedRectPath` 產生的形狀；四角半徑可各自不同、可為 0）、變換可逆、不在投影中、裝置回報支援、目前作用中的解析式裁切少於 **3** 層時，改為**解析式裁切層**：不開離屏，scissor 仍收窄到其外接框。
+2. 作用中的解析式裁切（最多 3 層）蓋在其內每一個**葉節點繪製**上（solid、gradient、texture 三種、glyph、coverage 兩種、box shadow 兩種、particle 兩種）：片段著色乘上各層覆蓋率的乘積。覆蓋率＝clamp(0.5 − d, 0, 1)，d 為片段到圓角矩形邊界的有號距離（device px；以局部座標的圓角矩形 SDF 經變換的 2×2 換算）。
+3. **巢狀群組**（圖層、效果、遮罩）在裁切內時：裁切帶進它們的離屏目標、套在裡面的葉節點繪製上（頂點本來就是 surface px，同一組參數直接可用）；群組的合成、效果、StencilOnly 繪製**不套**。這與 SW、4x 的語意相同（陰影可以溢出圓角裁切），**1x 的畫面因此在「效果溢出圓角裁切」之處改變**——向 SW 與 4x 看齊。
+4. **圓角的邊緣**用真正的圓弧距離，不重現遮罩層所用的「攤平成折線的 kappa 曲線」。直線邊與遮罩層相同（≤ 1／255）；圓角處與折線版相差至多約 0.2 px（比現況更圓）。驗收以 SW 為基準、沿用既有 golden 的容許值；受影響的 1x golden 逐一檢視後更新。
+5. 效果快取：作用中的解析式裁切參數計入 segment 的雜湊（比照 stencil 層）。
+6. 維持現行路徑的情形：4x（stencil）；裝置不支援（遮罩層，像素不變）；橢圓半徑的 `inset(... round a / b)`、`circle`／`ellipse`、多邊形、凹形；第 4 層巢狀圓角裁切；透視平面；旋轉的純矩形（之後可用半徑 0 併入，本項不做）。
+7. 裝置介面：`GpuDevice::supportsAnalyticClip()`（尾端新增，預設 false）；`DrawCmd` 尾端新增 `clipParamIndex`（0＝無）；參數區塊 `AnalyticClipParams`（層數；每層：device→局部的 2×3、矩形、四個半徑）。自訂裝置的宿主不實作就維持遮罩層；23 章升級須知第 8 點。
+8. 統計：`BuildStats` 新增解析式裁切層數與因超過 3 層／形狀不符而退回的次數。
+
+**T-718 實作記錄（#673，2026-11-14）**：照八點實作（frame builder＋wgpu）。War Table 1080p rest（wgpu 獨顯、釘效能核、量測時另有建置在跑）：遮罩層 62.8 → 0、pass 806 → 575、draw 1359 → 1187、CPU render 中位數 14.7 → 10.3 ms、行程記憶體峰值 1471 → 1237 MB；storm 845 → 607 pass、focus 821 → 595。出入：參數區塊的陣列成員名為 `clips`（`slots` 是 Qt 的巨集）；`matchRoundedRectPath` 收 `span<const float>`；四角半徑全 0 的路徑留在遮罩層；wgpu 多一個綁定。期望圖檔無變動；`xt_golden --backend wgpu` 186／186，其中 4 張的圓角弧線改變（解析式對 16×16 超取樣的真圓角最大差 11／255，遮罩層為 59／255；與 SW 的差距因此變大——SW 畫的也是折線）。`PushMask` 的遮罩內容視為葉節點、同樣套裁切。未做：GL（T-719）、`xtframe-gpu-probe` 的假裝置仍回 false。
+
+**第 1 點修訂（2026-11-14，T-720）**：原文「scissor 仍收窄到其外接框」是錯的——它讓群組的合成結果（溢出圓角的陰影、光暈）被外接框切成硬邊的矩形（War Table 手牌區旋轉的卡牌），與第 3 點「群組的合成不套」矛盾，也與 SW 不同。改為：**解析式裁切層不收窄 scissor**；葉節點由覆蓋率負責（框外覆蓋率為 0），群組的合成完全不受該層影響。4x 的 stencil 層也有同樣的外接框硬切（既有行為，另案，PENDING）。
+
+**T-720 實作記錄（#675，2026-11-14）**：解析式層推入／彈出都不動 scissor。新增 `analyticBounds`（作用中各解析式裁切外接框的交集）：沒有 boundsHint 的群組離屏目標以它為範圍（不會變成整個 surface）；有 hint 的群組與所有合成不被它切。葉節點完全落在外接框外時直接跳過（`leafCulled()`——覆蓋率必為 0，結果不變；主模型接受）。已知限制：無 hint 的群組裡再有會溢出的巢狀效果，仍被外接框切。War Table rest：pass 574.8、draw 1187 不變；離屏面積 14.55 → 14.77 Mpx／幀；手牌區對 SW 差 > 16 的像素 8.44% → 0.32%。`xtframe-gpu-probe` 統計用假裝置回 true。待查：storm 的 wgpu 效果編碼時間 0.30 → 0.96 ms（原因未追）。
+
+**T-719 實作記錄（#676，2026-11-14）**：GL 裝置實作同一能力（`XT_GL_ANALYTIC_CLIP_COMMON`，算式與 `prelude.wgsl` 逐項相同；GL 只有一份 `#version 330 core` 的著色器）。War Table 1080p rest（GL、釘效能核）：pass 828 → 586、draw 1401 → 1222、每幀新建 transient 35.9 → 23.2、含等 GPU 平均／p99 15.1／53.7 → 10.7／30.4 ms、view render 中位／p95 5.4／44.7 → 4.7／31.2 ms；storm render 中位 13.9 → 10.0 ms。GL 對 wgpu 的截圖回到最大差 1。119 個靜態 fixture：4x 全部逐位元組不變，1x 只有含圓角裁切的 4 個改變。期望圖無變動。未測：GLES／WebGL、Intel 內顯的 GL；GL 沒有「裝置不支援時走遮罩層」的對照測試。
+
+**已知後果**：效果快取在 rest 每幀命中 69.0 → 65.7（第 5 點：外層圓角裁切的參數含絕對位置，裁切在動時裡面的效果要重畫）——併入 W2 一起解（鍵改用局部座標時，解析式裁切參數也換成效果局部座標）。
+
+### W2 效果快取與位置無關（2026-11-14 定案；使用者：「按你說的做吧」——接受移動中元素的次像素取樣差異；T-721 平移、旋轉與縮放另單）
+
+**事實**：`segmentHash` 把絕對位置算進鍵（各命令的絕對變換與範圍、效果的 bounds、父視窗、scissor、stencil 裁切的頂點、解析式裁切的參數）。War Table 靜止時 38 個未命中裡 22 個只是元素自己在移動（20 個平移、2 個旋轉）；T-718 之後又多 3.3 個（外層解析式裁切的絕對位置）。存入條件是「同一個鍵連續兩次建置出現」，所以會動的效果永遠存不進去。
+
+**裁決（第一階段：平移；T-721）**：
+1. 每個可快取的效果 segment 有一個**錨點**：效果 bounds 的左上角（device px，浮點）。**位置無關鍵**＝現行鍵的所有內容，但其中的位置量全部改為相對於錨點：各命令變換的平移分量、命令範圍、bounds、stencil 裁切頂點、解析式裁切的 device→局部變換。dpr、目標的取樣數與 fringe、變換的線性部分（縮放／旋轉／斜切）、效果參數、內容照舊計入。另存**相位**＝錨點的小數部分。
+2. 位置無關只在這些條件都成立時使用，否則退回現行的絕對鍵（行為與今天相同）：segment 不在真正透視的投影中；效果的視窗沒有被 scissor、父視窗或目標邊界切到（存入與重用時皆然）；沒有 backdrop 類的輸入（結果取決於底下的內容）。
+3. **命中**：位置無關鍵相同。
+   - 相位相同（位移是整數像素）：把快取的結果貼到新的位置，與重新算一次逐像素相同。
+   - 相位不同：同一筆結果以**雙線性取樣**貼到新的浮點位置。這是有意的取捨（移動中的內容本來就關閉像素對齊）。為此，快取的貼圖四周要有至少 1 px 的透明邊。
+4. **停下來就校正**：某個位置無關鍵連續兩次建置的錨點相同（元素不動了）而快取那一筆的相位與現在不同時，該幀以現在的相位重算一次並取代那一筆。所以靜止的畫面永遠與「不用快取重新算」逐像素相同。
+5. **存入條件**改以位置無關鍵判定「連續兩次建置出現」。預算與筆數上限不變。
+6. 巢狀的效果各自以自己的錨點計算；外層命中時內層照舊不走訪。
+7. 統計：`BuildStats` 新增「以不同相位重用的次數」與「停下來校正的次數」；`--perf` 一併輸出。
+8. 裝置介面不變（快取的結果本來就是以貼圖 quad 畫回去；小數位置需要線性過濾——裝置若只支援 nearest 的快取貼圖，條件 3 的第二種情形不啟用，報告說明）。
+
+**T-721 實作記錄（#677，2026-11-15）**：每命令雜湊搬到 `core/src/command_hash.cpp`，新增 `hashCommandRelative(list, index, CommandHashOrigin)`（預設 origin 的值與原本相同，damage 不變）；frame builder 先查絕對鍵（靜止的 segment 不算相對雜湊，建出的 frame 與修改前相同），不中才算位置無關鍵。相對雜湊的成本：War Table rest 每幀 25.8 次、共 0.008 ms。實作時補上的規則（主模型接受）：
+- **捨入**：鍵中的相對位置捨入到 1／16 device px、效果變換的線性部分 1／256、仿射平面摺入的線性部分 2^-14——精確浮點在移動時不會相等（3D 空間內的線性部分是有限差分，有約 1e-4 的抖動）。靜止時的精確性由每筆另存的「精確相對雜湊」把關：靜止的 segment 只沿用整數位移且精確雜湊相同的結果，否則校正。
+- 父視窗與 scissor 不轉成相對量，而是從相對鍵中拿掉（第 2 點已保證它們切不到視窗）。
+- 1 px 透明邊只給以小數位移移動中的 segment；靜止存入的結果維持原視窗，開始小數漂移時重畫一次帶邊的版本，停下時校正。
+- 條件比第 2 點略嚴：補齊 32 px 粒度後的視窗須整個落在 scissor ∩ 父視窗 ∩ surface 內；segment 內含 `PushProjection`／`PushTransform3D`、或帶 custom shader 的不重用。
+- 用了移動中結果的那一幀 `lastFrameReusable` 為否（宿主跳幀後仍會校正）。
+War Table 1080p（wgpu 獨顯、釘效能核、安靜時量）：rest 命中 65.7 → 88.8、未命中 42.0 → 18.8、pass 575 → 436、draw 1187 → 1071、CPU render 中位 10.05 → 8.17 ms（p95 12.6 → 10.5）；storm 607 → 467 pass、12.1 → 10.4 ms；focus 595 → 457 pass、11.4 → 9.0 ms；wgpu 內顯 rest 15.0 → 12.1 ms、GL rest 5.1 → 4.5 ms。畫面（rest，修改前後）：平均差 0.17、差 > 16 的像素 0.085%，集中在浮動的單位圖；小數位移的測試案例最大差 58／255、只在邊緣，停下後逐位元組相同。未做：`xtframe-view --perf` 尚未印出 `effectCachePhaseHits`／`effectCacheSettles`（要動 `Code/Runtime/wgpu` 的統計轉拷；併入下一張動 wgpu 的單）；未測 Direct 模式、dpr ≠ 1、GL 的小數貼回像素。已知：捨入邊界上的鍵偶爾翻轉，移動中的元素會多重畫幾幀。
+
+**第二階段（另單，待第一階段量測後）**：旋轉與縮放在變的元素——鍵再去掉線性部分，重用時以新的變換貼上；縮放比存入時放大超過 1.125 倍或縮小到 0.5 倍以下時重算；停下來校正的規則相同。
+
+預期（War Table rest，待量測）：未命中 38＋3.3 → 約 18（剩 12 個內含動畫子元素、4 個陰影參數在動、2 個旋轉）；每個命中省約 6～9 個 pass。
+
+不在本項：效果內含動畫子元素（內容真的在變）、陰影參數在動。
+
+### W3 perspective 根的平面上也做方塊陰影轉換
+10.15 已裁定仿射平面的內容「視為不在投影中」，但 painter 判斷方塊陰影轉換時仍以「mapping stack 非空」拒絕。改為：元素所在的平面為仿射（10.15 第 1 點的判定，同一個函式）且元素自己沒有 3D 變換時，`in3D` 為否。SW 在投影內收到 `DrawBoxShadow` 的行為要一併確認。
+
+**T-716 實作記錄（#679，2026-11-15）**：`project3d.h` 新增 `PlaneTest`／`planeTest()`／`stackPlaneAffine()`，frame builder、SW、simplifier、painter 共用同一份判定。painter 另記每層 mapping stack 所在的 3D 圖層並要求 stack 的每個前綴都仿射（巢狀的第二個 perspective 根；只看最外層會與 frame builder 判定不一致，而後端在投影平面上收到 `DrawBoxShadow` 是直接不畫）。world-layer 輸出時 painter 只接受 w 為常數的平面。War Table rest：`DrawBoxShadow` 0 → 13、效果層 123 → 110、pass 435.7 → 370.2、draw 1071 → 1047、綁定 863 → 842、上傳 614 → 610 KB、未命中 18.8 → 11.4；CPU render 中位：wgpu 獨顯 8.7 → 6.9 ms、內顯 12.7 → 10.6 ms、GL 3.4 → 2.8 ms（p95 27.3 → 5.0）；內顯含等 GPU 約 45 → 40 ms；GL 每幀新建 transient 18.9 → 1.5、含等 GPU p99 約 30 → 7 ms（量測期間另有 benchmark 在跑）。既有期望圖無變動；perspective 根下與無 perspective 的畫面逐位元組相同（SW、wgpu、GL）。畫面：解析式對離屏高斯的差最大 27（wgpu，大模糊半徑的光暈）／38（SW），屬 10.12 的既有取捨。**只轉換 13 個的原因**：123 個效果中 65 個不過 10.12 條件 3（背景不是整個邊框盒上的不透明背景）、23 個效果鏈不是純外陰影、20 個在真透視的傾斜地圖上、5 個 opacity < 1。發現未改：`Painter::m_currentLayer` 在巢狀 3D 空間結束後不還原（PENDING）。
+
+**T-724（#681，2026-11-15）：SW 的解析式方塊陰影**。T-716 之後 SW 每幀逐像素重算轉換出來的陰影（War Table 約 100 ms／幀），比原本的離屏模糊貴（SW 沒有效果快取——快取只在 GPU 的 frame builder）。修正：(1) 每像素的兩個直邊 erf 值只算一次、軸對齊者按欄重用（逐位元相同）；(2) `sw::SwShadowCache`：存浮點覆蓋率（與不用快取的值完全相同），鍵＝形狀與附加項、sigma、完整的 device 變換、涵蓋的 device 矩形（顏色在覆蓋率之後套用，不入鍵）；同鍵連續兩幀出現才存；預算 16 MiB、LRU、120 幀未用即丟；`releaseScratch()` 與解構時全部釋放；命中不配置。公開 `SwRenderer::setBoxShadowCacheBudget`／`boxShadowCacheBytes`。War Table sw rest 331 → 237 ms（p95 242）、storm 334 → 246、focus 183 → 144、首幀 172 → 131 ms；12 筆、1.46 MiB；與修改前的 SW 輸出逐位元組相同。未加 perf CSV 計數。
+
+### W4 已到終點且 hold 的時間軸成員算結束
+暫停在終點的成員：不再每幀求值與寫值、不再標為「正在動」（其子樹恢復像素對齊）；被 seek、重播、反向或釋放時恢復。輸出值不變。**畫面會變**：被 hold 的容器底下的內容恢復像素對齊（這是修正）。
+
+**T-717 實作記錄（#674，2026-11-14）**：只限時間軸群組的成員（暫停在終點的一般 CSS 動畫不變）。成員暫停且位於終點（fill 含 Forwards 的結尾，或 fill 含 Backwards 的開頭）時，進入的那一幀照常寫入，之後跳過求值、寫入與 `noteMotion`；seek／pause／resume／setSpeed／updateParams／retarget 清除該狀態。fill 值在 restyle 後的保持：節點新增兩個內部位元——`kAnimValueStale`（任何 `setProperty` 或樣式 commit 設定 → held 成員當幀或下一幀重寫，時序與修改前相同）與 `kAnimWriteQueued`（同一次求值內較早的寫入；held 成員只在**同屬性**被別的動畫寫入時才醒來，依 transform 分量比對）。新計數 `FrameStats::animEvaluated`（`--perf` 與 CSV 最後一欄）。War Table（釘效能核、有背景負載）：`#bench-all` 後每幀求值 441 → 181、動畫步驟 0.163 → 0.077 ms；靜止時每幀少 16 個（180 → 164；靜止的 197 裡還有在 animation-delay 中的 CSS 動畫，所以不是原先預期的 181）。期望圖變動一張：`sym_BottomSheet_expanded.png`（展開後被 hold 的 sheet 恢復像素對齊，標題字形 205 px 改變）。未編譯：GCC／Clang。
+
+### W5 互動只影響該影響的
+1. hover／active／focus 狀態改變時，只有「存在可能命中該狀態的選擇器」的元素才標樣式髒；子樹只在有後代選擇器依賴該狀態時才標。
+2. 樣式綁定寫入時不標祖先；值沒變時不寫、不重啟 tween。
+
+**W5 補充裁決（2026-11-15；T-723 中途回報之後）**：
+- 第 2 點查證：祖先確實被重新解析（`kDirtyStyle` 只有一個位元，`markDirty` 沿祖先設定，`resolve` 對帶該位元的節點全部重新解析）。修正＝只標元素自己（`markStyleDirtySelf`）；War Table 的 port 更新重算 96 → 30 個、style 1.48 → 0.48 ms。
+- 新舊兩種失效模式的等價測試在 3 個 UI 上不相等，根因是 05 §5.6a 所述的既有缺陷（多餘的重新解析會重啟 transition、真正的改變可能被吞掉）。裁決：先修 5.6a（它本身是使用者看得到的缺陷），等價測試在修正後必須相等。
+- 第 1 點「只有自己重新解析」需要的下傳規則（引擎原本沒有）：元素重新解析後，若其計算樣式在**可繼承的屬性、自訂屬性、font-size**上有改變，就把直接子節點標為樣式髒（走訪是由上而下，子節點在同一輪被重新解析，再依同一規則往下）；另外，樣式表中只要有任何規則對非繼承屬性使用 `inherit` 關鍵字（編譯時記一個旗標），就退回「標整個子樹」。text-decoration 的顏色與粗細比照可繼承屬性。
+
+**T-723 實作記錄（#680，2026-11-15）**：(D) 05 §5.6a——`StyleEngine::resolve` 以目標值（進行中 transition 的終值，否則元素的值）比較；範圍是元素的 base 屬性，scene-target 與效果參數的 transition 路徑仍用舊比較（未見失敗，待補）。(A) 綁定寫入：值沒變不寫、不標、不重啟 tween；值變只標元素自己（`NodeArena::markStyleDirtySelf`），可繼承屬性與 text-decoration 顏色／粗細才標子樹。(F) 下傳：元素重新解析後，可繼承屬性、font-size、`lang`、ui-scale／media-override 與有效縮放、text-decoration 有變時標直接子節點。`inherit` 關鍵字的退回規則與自訂屬性沒有對象（編譯器與 IR 不編 `inherit`；自訂屬性是文件層的 token，已有 `markTokenUsersDirty`）。狀態相依表 `core/src/style_state_deps.{h,cpp}`：每個測試 ElementState 位元的 compound 一筆（測試的位元、是否主體、只留 tag／id／class 的 compound——其餘條件視為恆真，只會多標不會漏標）；`setElementStateBit` 依它標「不標／只標自己／標子樹」，不再標祖先；選擇器引擎沒有 `+`／`~`。War Table：1,197 條規則 → 23 筆（20 個 `:hover`、3 個 `:active`；21 主體、2 祖先）。等價測試（`Tests/golden/golden_style_invalidation.cpp`）：160 個 UI、29,609 步，新舊模式全部元素的計算樣式逐位元相同。War Table（釘效能核）：指標掃過每幀重算 平均 35.9／最大 523 → 1.1／19，update p95 4.93 → 0.55 ms、最大 8.7 → 0.9 ms；port 更新重算 96 → 30、style 1.48 → 0.50 ms、update 2.09 → 1.09 ms。10 張截圖前後相同。期望圖變動 3 張（皆因 5.6a）：`sym_Slider_drag`、`sym_SliderTouch_drag`（把手現在是 focus／按下的顏色——舊圖是被不斷重啟的 transition 卡住的舊色）、`sym_Button_focus`（恢復像素對齊）。未涵蓋：`ElementRef::setState`、`bind:state`／`bind:checked`／`bind:disabled`、自訂狀態、`:focus-player` 仍標全範圍。未跑 editor／flow／bundle／capi 套件；未編譯 GCC／Clang。
+
+### W6 damage 的兩個修正
+1. 規則 B6（效果內有變動就整個效果範圍算髒）維持——效果的輸出確實可能整塊改變——但合併後才判「整幀」的門檻改以聯集面積計，而不是面積總和。
+2. 投影內 3D 圖層移動時，以該圖層投影後的範圍產生 damage（現況是空的，潛在殘影）。
+
+### 不做／延後
+跨元素共用效果結果（事實不支持）；背景模糊的快取（其下的內容每幀在變）；合成層（見上）。
+
+## 10.17 wgpu 裝置的提交成本（2026-11-15；`Docs/reviews/2026-11-15-wgpu-vs-gl-cpu.md`）
+
+**事實**：GL 的驅動自己有一條工作執行緒（每幀 3.3～3.5 ms，render 計時看不到）；wgpu 的工作全在呼叫端執行緒，且由 pass 數決定（每個 pass 6～8.5 µs，wgpu-core 每 pass 開兩份 D3D12 command list）。draw 與重複的狀態呼叫幾乎不花時間。
+
+**T-726 實作記錄（#684，2026-11-15）**，修訂 §10.10.2 的對應敘述：
+- **標籤**：自建 instance 時加 `WGPUInstanceFlag_DiscardHalLabels`、render pass 不帶 label；`XT_WGPU_LABELS=1` 恢復（供 PIX／RenderDoc）。宿主自建的 instance 不碰。
+- **bind group 快取**：每個可被引用的 view 帶一個行程內唯一、永不重用的 id；快取以 id 為鍵並維護 id → 鍵的索引，銷毀一個 view 只移除引用它的 bind group（原本是整批清空）。跨裝置共用的快取以最近 4096 筆的銷毀日誌同步。transient 池的預算與淘汰規則不變。
+- **上傳**：頂點與索引緩衝由三組輪替改為**單一組、與前一幀比對**（§10.10.2 表中「三組緩衝輪替」與 T-438 記錄就此作廢；uniform 本來就是單一組）。依據：`wgpuQueueWriteBuffer` 的資料先進 staging，複製指令插在下一次 submit 的最前面，不會改到在途幀讀的內容；被換掉的舊 buffer 活到在途幀做完。合併間隙 `XT_WGPU_UPLOAD_MERGE_GAP`（預設 1 KB；64 B 時寫入更少但 CPU 加倍）。
+- War Table 原版、wgpu 獨顯（四個建置交錯輪跑的中位數，釘效能核）：view CPU render 平均 7.07 → 6.24 ms、p95 9.01 → 7.04 ms；probe 含等 GPU 平均／p99 9.90／12.25 → 8.15／10.15 ms；內顯 view 平均 10.53 → 9.63 ms。每幀建立的 bind group 103.8 → 13.1（優化版 32.5 → 11.4）；每幀上傳 610 → 376 KB（優化版 493 → 310 KB）。上傳項只省位元組，CPU 持平。截圖逐位元組相同。未測：Vulkan／Metal、宿主自建裝置。
+
+**待設計（未動工）**：(1) 減少 pass——小的效果目標併進共用圖集、互不相依的階段合併（估 wgpu −1.3～1.8 ms，並降記憶體）；(2) `Finish`／`Submit` 移到工作執行緒（render 執行緒最多 −4.5 ms；要改 50 §50.1「庫內不開執行緒」）；(3) 葉節點共用一支著色器；(4) Windows 上 Vulkan 後端的評估。
+
+## 10.18 減少 pass（2026-11-15 草案；可行性調查 `E:\coding3\xt-bench\investigation-20261115-pass-merging\`）
+
+**事實（War Table，單幀實測）**：pass 數 rest 359（原版）／267（優化版）、storm 421／276、focus 379／275。
+- **玻璃面板佔了大半**：10 個背景模糊面板，每個的效果堆疊是「BackdropBlur → 外陰影 → 內陰影」，各花一次 surface 複製加 20 個串行的 pass（金字塔 4、取樣 1、Backdrop 1、兩個陰影各 7）——共 200 個，佔優化版的 75%。`fx_backdrop` 之後的每一步都依賴 surface；面板排成左右兩欄，下面的面板讀到上面面板的合成結果，所以鏈是真的串行（6 個世代）。
+- frame builder 是單次向前走訪、沒有規劃階段；每個效果步驟立刻輸出自己的 pass，合成回父目標時重開父 pass——surface 因此被切成 17～21 個 pass。
+- 同一條效果鏈上的步驟不可能併（WebGPU 不允許在同一個 pass 取樣自己的 attachment）；能併的只有「不同效果、同一深度」的步驟。
+- 靜止時效果快取 83 命中／12 未命中，命中不花 pass。
+- focus 狀態有 97／83 個 transient pass 大於 1024²（例：頂部分頁的陰影鏈在 focus 時跑在 1920×1080 的視窗、靜止時是 160×64），原因未查明。
+
+**依序進行（每步獨立量測；畫面要求寫在各步）**：
+
+### A. 三個逐位元相同的局部修正（T-728）
+1. **AlphaExtract 併進下一步**：陰影鏈的第一步「取 alpha」併進緊接的 Downsample／GaussScalar（讀 `.a` 或 `1 − .a`；Dilate 已有同樣的讀法）。alpha 本來就是 8 位元，結果逐位元相同。每個陰影少 1 個 pass（rest −30／−22）。參數結構尾端加一個通道欄位；自訂裝置以能力查詢把關（預設維持現行）。
+2. **transient 之間的複製之後不開空的 render pass**（wgpu 裝置）：focus −8。
+3. **空的背景模糊捷徑**：BackdropBlur 要讀的區域在父目標清除之後還沒有任何繪製時，金字塔全為零、`fx_backdrop` 的結果恰等於來源——略過複製、金字塔、取樣與 Backdrop：focus −21 個 pass（都是全螢幕的）。
+
+### B. 玻璃面板的陰影與背景脫鉤（T-729；先驗證前提）
+前提（要先以程式與像素驗證）：`fx_backdrop` 輸出的 alpha 等於來源的 alpha（背景只填在來源形狀之內）。若成立，接在 BackdropBlur 之後的外陰影／內陰影只取決於**來源的 alpha**，與 surface 的內容無關。
+- 作法：效果堆疊為「BackdropBlur 之後接只讀 alpha 的陰影類效果」時，陰影鏈的輸入改取來源層（BackdropBlur 之前）的 alpha；陰影的結果因此不依賴 surface，可以**獨立進效果快取**（鍵＝來源內容與陰影參數，沿用 W2 的位置無關鍵）。面板靜止時，每個面板 14 個陰影 pass 變成 0。
+- 合成順序與最終像素必須與現行相同（陰影在 Backdrop 結果之下／之上的順序不變）；前提不成立或只在部分情形成立時，只對成立的情形啟用，其餘維持現行。
+- 預期（待量測）：rest 最多 −140 個 pass（兩個場景皆然），並直接減少內顯每幀的模糊工作量。
+
+### C. 排程與圖集（A、B 量測之後再決定是否進行）
+- C1 frame 排程（只重排）：建完 frame 後計算真正的相依關係，把不依賴 surface 的離屏工作提前、相鄰的 surface pass 合併（surface 17～21 → 約 7 個 pass）；重排後畫面逐位元相同；要有峰值 transient 面積的上限。
+- C2 pass 群組＋裝置圖集：同一（世代、深度）且互不讀寫的離屏步驟畫進同一張頁面的不同格（每格自己的 viewport／NDC／scissor；每支取樣上一步的效果著色器加輸入矩形與取樣範圍夾限；快取存入與複製改為子矩形）。模擬：rest 359 → 約 149、267 → 約 133；畫面最大差 1。自訂 `.xtfx` 效果與 Direct 模式不參與。
+- C 的收益會被 B 吃掉一部分（B 之後剩下的串行鏈更短），所以先做 B 再重新模擬。
+
+### D. 需要裁決、暫不進行
+- 玻璃鏈上的近似合併（金字塔降階＋Kawase 等；8 位元中間值會差約 ±1，SW 也要跟著改）。
+- Layer 模式的背景模糊改成像 Direct 模式那樣共用一份金字塔（會改變像素）。
+
+**T-728 實作記錄（#685，2026-11-15；§10.18 A）**：(1) `GaussParams`／`DownsampleParams` 尾端新增 `channel`（0 現行、1 讀 `.a`、2 讀 `1 − .a`）；`GpuDevice::supportsAlphaChannelReads()`（預設 false；wgpu、GL 回 true）；spread 為 0 的外陰影／內陰影與 glow／inner glow 的 AlphaExtract 併入下一步（有 spread 的鏈不變）。`.a` 在結構上逐位元相同；`1 − .a` 只在本機 NVIDIA 的 D3D12 與 GL 上驗證逐位元相同（浮點與雙線性過濾在別的硬體上理論上可能在進位平手處差 1）。(2) wgpu 在 transient 複製之後不開空的 render pass。(3) `FrameEmitter::untouchedSinceClear(parent, region)`：父目標是本幀清除過的 transient、區域完全在其視窗內、區域內沒有任何複製或著色命令時，BackdropBlur 不建金字塔、直接透傳來源（非 Direct 模式）。War Table（每幀平均、wgpu、釘效能核、前後交錯三輪中位）：原版 pass rest 370 → 337、storm 409 → 376、focus 389 → 346；優化版 272 → 245、285 → 258、296 → 258。wgpu 獨顯 CPU render 中位：原版 rest 6.57 → 5.99 ms、優化版 4.90 → 4.61 ms；行程記憶體峰值（原版 rest）1036 → 950 MB。截圖 rest／focus 逐位元組相同。focus 的降幅小於調查的單幀預期（−43／−38 對 −56／−51）。
+
+**§10.18 B 的前提不成立（T-728 查證）**：`fx_backdrop` 的輸出 alpha＝`a + b·a·(1 − a)`（a＝來源 alpha、b＝模糊後背景的 alpha）。a 為 0 或 1、或背景為空時等於 a；玻璃面板的半透明填色與抗鋸齒邊緣處則大於 a 且依賴背景。所以接在 BackdropBlur 之後的陰影現在確實依賴 surface。要脫鉤只能改語意——**陰影類效果接在 BackdropBlur 之後時，改取來源（BackdropBlur 之前）的 alpha**。這與 CSS 一致（`backdrop-filter` 不影響元素自己的 `filter: drop-shadow`／`box-shadow`），但畫面會變：半透明面板的陰影變淡（例：填色 alpha 0.5 且背景不透明時，陰影依據的 alpha 由 0.75 變為 0.5）。**待使用者裁決**；裁決前 B、C 不動。
+
+### §10.18 B 定案（2026-11-15；使用者：「改改改，這都小事不用問」）：背景模糊不參與元素自己的陰影
+
+**新語意**（SW 與 GPU 相同；與 CSS 一致——`backdrop-filter` 不影響元素自己的陰影）：效果堆疊以 BackdropBlur 開頭、其後**只有**陰影類效果（外陰影、內陰影、Glow、InnerGlow）時：
+
+1. 設 S＝來源層（元素自己的內容）。先在 S 上依序套用那些陰影類效果，得到 R′——與「同一個元素沒有 BackdropBlur」時的結果完全相同，與 surface 無關。
+2. 設 B＝現行的模糊後背景（金字塔取樣、套飽和度／亮度後的那一層）。最終結果＝**R′ 疊在「以 S 的 alpha 為遮罩的 B」之上**：`out.rgb = R′.rgb + B.rgb · S.a · (1 − R′.a)`、`out.a = R′.a + B.a · S.a · (1 − R′.a)`（預乘）。背景只出現在元素自己的形狀內；陰影不再含有背景的 alpha。
+3. 堆疊中 BackdropBlur 之後有其他種類的效果（ColorAdjust、遮罩、自訂效果等）、或 BackdropBlur 不在第一個：維持現行的逐步套用，不變。
+4. 沒有陰影類效果的純 BackdropBlur：R′＝S，公式退化為現行算式，逐位元不變。
+
+**畫面變化**：半透明填色的玻璃面板，其陰影依據的 alpha 由 `a + b·a·(1 − a)` 變為 `a`——陰影變淡（a＝0.5、背景不透明時 0.75 → 0.5）；抗鋸齒邊緣處的陰影略細。受影響的期望圖逐一更新並列出。
+
+**分兩張單**：
+- **T-729**：語意改動（SW、frame builder、wgpu、GL）。pass 數大致不變，但陰影鏈從此不依賴 surface。裝置需要「帶遮罩的 Backdrop 合成」：`GpuDevice::supportsBackdropMask()`（預設 false——未實作的自訂裝置維持舊語意，23 章升級須知註明畫面會與參考後端不同）。
+- **T-730**（T-729 之後）：把 S 與 R′ 納入效果快取（沿用 W2 的位置無關鍵與「連續兩次建置才存」的規則；一個元素兩筆：來源層、陰影結果）。靜止的面板每幀只剩背景的複製、金字塔、取樣與最後的合成。預期每個面板 20 → 約 6～7 個 pass。
+
+**T-729 實作記錄（#686，2026-11-15；§10.18 B 第一步）**：判定函式 `backdropThenShadowsOnly`（`core/src/effect_math.h`；SW 與 GPU 共用）。SW：`applyBackdropBlurUnder(top = R′, mask = S)`，原本的 BackdropBlur 以 top = mask = src 走同一段運算（浮點相同）。frame builder：`runShadowsUnderBackdrop()`——先在來源層上跑陰影鏈（不讀 surface），再取模糊背景，最後一個 `EffectProgram::BackdropMasked` pass（`BackdropParams{mask}` 指向來源層）；pass 數不變。裝置：`GpuDevice::supportsBackdropMask()`（預設 false＝舊語意）；wgpu `fx_backdrop_masked.wgsl`、GL `kFxBackdropMaskedFrag`；原本的 Backdrop 程式未動。Direct 模式的共用金字塔照新語意。期望圖無變動（既有 golden 的 backdrop 都沒有接陰影）。War Table：計數前後完全相同（原版 rest 337 pass、優化版 245）；截圖 rest 平均差 0.17、最大 18，都在玻璃面板的陰影與邊緣；GL 對 wgpu 最大差仍為 1。18 章的對應修訂見該章末尾。本節上方 B 草案中「合成順序與最終像素必須與現行相同」「前提若成立」兩句已由「B 定案」取代。
+
+**T-730 實作記錄（#687，2026-11-15；§10.18 B 第二步）**：符合 `backdropThenShadowsOnly` 的 segment 在支援快取且 `supportsBackdropMask()` 的裝置上快取一對結果（一個 `CacheEntry`，`texture`＝R′、`maskTexture`＝S；算 2 筆、兩倍位元組，放不下就都不存）。鍵沿用絕對鍵／W2 的位置無關鍵（「沒有 backdrop 輸入」的條件對這一對不適用），加 pair 標記，且 PushEffect 的雜湊把 BackdropBlur 的參數歸零（`frame_cache_pair.{h,cpp}`）。命中時不走訪 segment；背景的複製、金字塔、取樣照常，R′ 與 S 各貼進一張暫存目標（`BackdropMasked` 的輸入是 target，快取結果是 texture——每個元素因此比預期多 2 個 pass），再做 `BackdropMasked` 與合成：每個面板約 20 → 7～9 個 pass。新統計 `backdropPairHits／Misses／Stores`、`effectCacheBytes／Entries`，並把 T-721 的 `effectCachePhaseHits／Settles` 接到 `--perf`。War Table rest（釘效能核、前後交錯三輪中位）：pass 原版 337 → 266、優化版 245 → 140；draw 1014 → 720、934 → 544；上傳 373 → 294 KB、307 → 232 KB；wgpu 獨顯 CPU render 中位 6.89 → 5.10、5.29 → 3.05 ms；內顯含等 GPU 平均／p99 35.2／38.4 → 29.7／35.6、28.9／32.8 → 16.9／18.9 ms；GL 含等 GPU 4.82 → 3.96、3.55 → 2.39 ms。快取佔用 13.5 MB／84 筆（原版）、21.7 MB／75 筆（優化版）。rest／focus 截圖逐位元組相同。原版 10 個面板中 4 個每幀未命中（面板內含動畫子元素，bounds 每幀在變）；優化版約 9 個命中。未測：Vulkan／Metal、Direct 模式的宿主場景、dpr ≠ 1。可再省的：讓 `BackdropMasked` 直接吃快取貼圖（每個面板再 −2 pass，需裝置端配合）。
+
+## 10.19 量測用的 GPU 計時與等待分離（2026-11-17；使用者：「確保量的是確實量到 CPU、GPU 執行時間，等待時間要分開來」；T-734）
+
+**問題**：到目前為止「GPU 時間」都是 CPU 送出後等佇列做完的牆鐘時間（`xtframe-gpu-probe` 的 render + queue wait），混了同步開銷、GPU 降頻與排程；CPU 的各階段也只量牆鐘，阻塞在驅動或在途幀上限裡的時間算進了「CPU」。
+
+**定案**：
+1. **GPU 執行時間以 GPU 時間戳量**（WebGPU `timestamp-query`）。`xt_wgpu` 提供**預設關閉**的診斷開關：headless 初始化可要求該功能（adapter 不支援就不要求、照實寫進 notes）；renderer 開啟計時後，每幀在第一個 command encoder 開頭與最後一個結尾寫時間戳（裝置支援 `TimestampQueryInsideEncoders` 時；否則退回每個 pass 的 `timestampWrites`），另記每個 pass 的起訖。結果以非阻塞的 readback 環在幀完成後取回，對外是「第 N 幀：GPU 跨度（第一個時間戳到最後一個）、pass 合計、pass 數、用了哪一種寫法」。關閉時不要求功能、不多任何指令，畫面與成本與今天相同。
+2. **CPU 執行時間以執行緒 CPU 時間量**（Windows `QueryThreadCycleTime` 以啟動時校準的係數換成毫秒；其他平台 `CLOCK_THREAD_CPUTIME_ID`），每個階段同時記牆鐘；**等待＝牆鐘 − 執行緒 CPU**。另以行程 CPU 時間（所有執行緒）對照主執行緒，看出驅動或 runtime 的其他執行緒做了多少。
+3. **CPU 等 GPU 單獨列**：在途幀上限的等待（`beginFrame`）與送出後等佇列（只在逐幀同步的量法）各成一列，不併入 render。
+4. 這是量測工具的能力，不是出貨行為；GL 後端不在本次範圍（GL 驅動另有工作執行緒，見 §10.17，行程 CPU 時間可以涵蓋它，但 GPU 時間戳要另做）。
+
+**解讀限制**（報告必須照寫）：逐幀同步時 GPU 在幀與幀之間閒置，獨顯可能降頻，時間戳量到的是「該頻率下的執行時間」；不同步（`--no-finish`）的跑法較接近遊戲實際情況，兩種都要量。時間戳只涵蓋該幀 command buffer 內的工作，`wgpuQueueWriteBuffer` 的上傳複製插在下一次 submit 最前面（§10.17），以 encoder 層級時間戳時算在下一幀。
 

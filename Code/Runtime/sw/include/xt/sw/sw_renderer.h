@@ -116,6 +116,11 @@ public:
     void invalidateAllAssets();
     /// T-665: bytes of the mip chains the renderer holds now (tests and tools).
     size_t mipCacheBytes() const;
+    /// T-724 (Docs/tasks/T-724.md approach (c)): the byte budget of the cache of static blurred
+    /// DrawBoxShadow coverage (default 16 MiB; least recently used entries go first), and the bytes it
+    /// holds now (tests and tools). releaseScratch() empties it.
+    void setBoxShadowCacheBudget(size_t bytes);
+    size_t boxShadowCacheBytes() const;
 
     /// Draw commands (FillPath/StrokePath/DrawImage/DrawGlyphs/DrawImageQuad) the last render()
     /// call actually executed, and how many it skipped as outside the damage rectangles. Both are

@@ -98,6 +98,21 @@ struct BoxShadowRow {
 void boxShadowRow(const BoxShadowShape& s, float py, float sigma, BoxShadowRow& row);
 float boxShadowCoverageAt(const BoxShadowRow& row, float px);
 
+/// T-724: the erf values of a shape's two straight edges at one `p.x`: `erf0` must be
+/// boxShadowEdgeErf(x0, px, row.invErf) and `erf1` boxShadowEdgeErf(x1, px, row.invErf), with x0 / x1
+/// the shape's own x0 / x1 (every abscissa outside the corners has exactly that span). They depend
+/// on `p.x` only, so a caller can compute them once per pixel column and reuse them on every row.
+struct BoxShadowEdges {
+    float x0 = 0.0f, x1 = 0.0f;
+    float erf0 = 0.0f, erf1 = 0.0f;
+};
+/// erf((edge - px) * invErf), the term boxShadowCoverageAt() evaluates per abscissa.
+float boxShadowEdgeErf(float edge, float px, float invErf);
+/// boxShadowCoverageAt(row, px) with the erf of every abscissa whose span end equals `edges.x0` /
+/// `edges.x1` taken from `edges` instead of evaluated again: bit for bit the same value, without the
+/// up to 32 erf calls of a row whose window lies on the straight sides.
+float boxShadowCoverageAt(const BoxShadowRow& row, float px, const BoxShadowEdges& edges);
+
 /// True when a Gaussian of `sigmaDevice` (device px) is what the effect path treats as no blur at
 /// all: xt::sw's three-box width `effect_math::boxBlurWidth(sigma)` is at most 1 (Docs/design/
 /// 18-effects.md §18.6; the GPU path's gaussIsIdentity agrees). Such a shadow is the analytic

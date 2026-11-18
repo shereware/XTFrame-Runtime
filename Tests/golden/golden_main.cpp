@@ -453,6 +453,8 @@ static int runGolden(int argc, char** argv) {
     // in --update mode, which regenerates expected images and has nothing to compare against.
     if (!update && !gpu) {
         runPartialRedrawChecks(uiDir.string(), filter, ran, failed);
+        // T-723: narrow and full-range style invalidation give the same computed styles.
+        runStyleInvalidationChecks(uiDir.string(), XT_GOLDEN_EXAMPLES_DIR, filter, ran, failed);
     }
 #ifdef XT_GOLDEN_WGPU
     releaseWgpuBackend();

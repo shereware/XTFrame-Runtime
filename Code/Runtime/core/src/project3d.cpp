@@ -274,4 +274,16 @@ bool affinePlane(const Mat3& h, Rect viewport, float tolerance, Mat2x3& out) {
            std::isfinite(out.e) && std::isfinite(out.f);
 }
 
+PlaneTest planeTest(Rect listViewport, Rect fallback, float dpr) {
+    PlaneTest test;
+    test.viewport = listViewport.w > 0.0f && listViewport.h > 0.0f ? listViewport : fallback;
+    test.tolerance = kAffinePlaneTolerancePx / (dpr > 0.0f ? dpr : 1.0f);
+    return test;
+}
+
+bool stackPlaneAffine(std::span<const Mapping> stack, const PlaneTest& test, Mat2x3& fold) {
+    Mat3 h;
+    return planeHomography(stack, h) && affinePlane(h, test.viewport, test.tolerance, fold);
+}
+
 }  // namespace xt::project3d

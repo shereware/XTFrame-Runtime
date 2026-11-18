@@ -585,7 +585,11 @@ void Painter::paint(const NodeArena& arena, NodeId root, CommandList& out) {
     m_has3D.assign(arena.capacity(), 0);
     computeDrawableCount(arena, root);
     m_mappingStack.clear();
+    m_levelLayers.clear();
+    m_planeMemo = PlaneMemo{};  // T-716: the list's viewport or pixel ratio may have changed
     m_currentLayer = kInvalidNode;
+    m_piece = layer_collect::kNoPiece;  // T-727
+    m_pieceSave.clear();
     m_overlayQueue.clear();
     m_overlayEntering = kInvalidNode;
     m_paintRoot = root;
@@ -659,10 +663,18 @@ void Painter::runStack(const NodeArena& arena, CommandList& out) {
             // T-44b: see the Action comment above and painter_3d.cpp.
             case Action::Kind::EnterNode2D:
                 m_currentLayer = kInvalidNode;
+                m_piece = action.piece;  // T-727
+                if (!m_levelLayers.empty()) {
+                    m_levelLayers.back() = kInvalidNode;  // T-716: the root's own plane
+                }
                 enterNode(arena, action.node, action.alpha, out);
                 break;
             case Action::Kind::EnterNodeLayer:
                 m_currentLayer = action.node;
+                m_piece = layer_collect::kNoPiece;  // T-727: a layer's content is never split
+                if (!m_levelLayers.empty()) {
+                    m_levelLayers.back() = action.node;  // T-716
+                }
                 enterNode(arena, action.node, action.alpha, out);
                 break;
             case Action::Kind::PushTransform3D: {
@@ -676,6 +688,13 @@ void Painter::runStack(const NodeArena& arena, CommandList& out) {
                 break;
             case Action::Kind::PopProjection:
                 m_mappingStack.pop_back();
+                if (!m_levelLayers.empty()) {
+                    m_levelLayers.pop_back();  // T-716
+                }
+                if (!m_pieceSave.empty()) {  // T-727: back to the outer root's piece
+                    m_piece = m_pieceSave.back();
+                    m_pieceSave.pop_back();
+                }
                 out.commands.push_back(Command{CmdKind::PopProjection, {}, 0});
                 break;
             case Action::Kind::PopEffect:
@@ -697,6 +716,7 @@ void Painter::paintOverlays(const NodeArena& arena, CommandList& out) {
         }
         m_overlayEntering = node;
         m_currentLayer = kInvalidNode;
+        m_piece = layer_collect::kNoPiece;  // T-727
         m_stack.push_back(Action{Action::Kind::EnterNode, node, alpha, MaskMode::Alpha});
         runStack(arena, out);
     }
@@ -725,6 +745,7 @@ void Painter::paintGhost(const NodeArena& arena, CommandList& out) {
     const float alpha = parent != kInvalidNode ? arena.common(parent).worldOpacity : 1.0f;
     m_overlayEntering = source;
     m_currentLayer = kInvalidNode;
+    m_piece = layer_collect::kNoPiece;  // T-727
     m_stack.push_back(Action{Action::Kind::EnterNode, source, alpha, MaskMode::Alpha});
     runStack(arena, out);
     m_overlayEntering = kInvalidNode;
@@ -891,6 +912,16 @@ void Painter::enterNode(const NodeArena& arena, NodeId n, float inheritedAlpha, 
     if (c.visible == 0 || c.worldOpacity <= 0.0f) {
         return;
     }
+    // T-727 (19 §19.x ruling 1): drawing one flat piece of a sorted segment child -- only the nodes
+    // with content in it, and a node's own visuals only in its first piece.
+    bool ownContent = true;
+    if (m_piece != layer_collect::kNoPiece) {
+        const layer_collect::PieceRange& range = m_pieceRanges[n];
+        if (!layer_collect::pieceInRange(range, m_piece)) {
+            return;
+        }
+        ownContent = range.first == m_piece;
+    }
     // T-701 (33 §33.2): a world layer met by the traversal is not painted here; its range comes
     // after the one being emitted (unless it is the layer that range belongs to).
     if (c.worldLayerActive != 0 && n != m_layerEntering) {
@@ -1026,7 +1057,7 @@ void Painter::enterNode(const NodeArena& arena, NodeId n, float inheritedAlpha, 
             pushPlan(arena, n, alpha);
             break;
         case NodeKind::Element:
-            paintElement(arena, n, alpha, out);
+            paintElement(arena, n, alpha, out, ownContent);
             break;
         case NodeKind::Text:
             paintText(arena, n, alpha, out);
@@ -1046,7 +1077,7 @@ void Painter::enterNode(const NodeArena& arena, NodeId n, float inheritedAlpha, 
     }
 }
 
-void Painter::paintElement(const NodeArena& arena, NodeId n, float alpha, CommandList& out) {
+void Painter::paintElement(const NodeArena& arena, NodeId n, float alpha, CommandList& out, bool ownContent) {
     const ElementData& data = arena.element(n);
     const NodeCommon& c = arena.common(n);
 
@@ -1061,7 +1092,7 @@ void Painter::paintElement(const NodeArena& arena, NodeId n, float alpha, Comman
     if (pushElementClipShape(data, c.world, out, m_elemVerbsScratch, m_elemPointsScratch)) {
         m_stack.push_back(Action{Action::Kind::PopClip, kInvalidNode, 0.0f, MaskMode::Alpha});
     }
-    if (!hidden) {
+    if (!hidden && ownContent) {  // T-727: a later flat piece repeats the clips, not the visuals.
         if (emitElementBackground(data, c.world, alpha, out, m_elemVerbsScratch, m_elemPointsScratch)) {
             m_backgroundTilesCapped = true;  // T-327: Document warns once.
         }
@@ -1884,7 +1915,9 @@ bool Painter::beginBoxShadowCandidate(const NodeArena& arena, NodeId n, float al
     in.blend = c.blend;
     // T-701: a world layer is drawn unprojected in its own target; its wrapper projection (a
     // translation) and the 3D transform that only places its plane are no "3D space" here.
-    in.in3D = m_mappingStack.size() > m_layerWrapDepth || (c.is3D != 0 && n != m_layerEntering);
+    // T-716 (10 §10.16 W3): inside a 3D space only a node that is a 3D layer itself or lies on a plane
+    // that is not affine (10 §10.15) is "in 3D"; the consumers draw an affine plane's content as 2D.
+    in.in3D = (c.is3D != 0 && n != m_layerEntering) || !planeIsAffine(arena, out);
     in.paintAlpha = alpha;
     if (arena.kind(n) == NodeKind::Element) {
         const ElementData& data = arena.element(n);

@@ -472,3 +472,16 @@ T-489 實測：`@font-face { src: "fonts/x.ttf" }` 寫在 `<link href>` 進來�
 **實作記錄 T-497（2026-10-27）**：`symbol_expand.cpp` `rewriteRules()` 的每實例規則副本帶 `sheetDir`，`symbol(...)` 內的 `background-image`／`border-image-source` 以符號庫檔目錄解析；`@font-face` 不經符號展開，無需改。夾具 `Tests/xt/symbol-texture/`。`mobile/`、`list/` 子目錄的庫檔直接被文件連結且無 `searchDirs` 時仍找不到 `textures/`（token 值相對庫根）——專案走 `shared.assetRoot`，符號測試 harness 以 `searchDirs = {XT_SYMBOLS_DIR}` 補。
 
 **來源格式 v2（2026-11-04 定案，54 章；M43 → v0.15.0）**：§5.1 的文件形態改為單檔多區段（`ports`／`body`／`layout`／`style`／`timelines`）；`.xts` 的 `on-<event>`、`state-enter`／`state-exit`、`state-transition`（未實作）在 v2 刪除，`@timeline` 搬到 `<timelines>`；幾何屬性只能在 `<layout>`。本章各節在 T-587～T-592 的實作記錄中逐段改寫。
+
+## 5.6a transition 的啟動以「目標值」判定（2026-11-15 定案；T-723 發現的缺陷）
+
+**缺陷**：樣式重新解析時，新的層疊結果是拿去和元素目前的值比較，而 transition 進行中該值是**動畫中的值**，不是上一次的目標值。後果：(1) 任何多餘的重新解析都會把進行中的 transition 以完整時長重啟；(2) 真正的改變可能被吞掉——hover 剛進入（t=0）就離開時，新的目標值恰好等於目前的動畫值，被判成「沒變」，transition 繼續往 hover 的顏色走，直到別的原因再觸發一次重新解析才修正。
+
+**規則**（與 CSS Transitions 的 before-change／after-change 樣式一致）：
+1. 每個元素對每個可過渡的屬性記住**目標值**（最近一次層疊算出的、不含 transition 效果的值）。比較「有沒有變」一律是新的層疊結果對目標值，不是對動畫中的值。
+2. 目標值沒變：不做任何事；進行中的 transition 繼續，不重啟。
+3. 目標值變了：
+   - 沒有進行中的 transition：從目前的值到新目標啟動（現行行為）。
+   - 有進行中的 transition：改向——以**目前的動畫值**為起點、新目標為終點、完整的 duration 與 delay 重新啟動（不做 CSS 的「反向縮短」）。新目標恰好等於目前動畫值時，transition 直接結束在該值。
+4. transition 結束、被取消、或該屬性不再可過渡時，目標值就是元素的值。
+5. 由綁定、腳本直接寫入的宣告同樣經層疊得到目標值，規則相同。

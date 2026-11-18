@@ -1,6 +1,7 @@
 #include "xt/gpu/gpu_frame.h"
 
 #include <cstdio>
+#include <cstring>
 
 namespace xt::gpu {
 
@@ -115,6 +116,8 @@ const char* programName(EffectProgram p) {
             return "Kawase";
         case EffectProgram::LevelMix:
             return "LevelMix";
+        case EffectProgram::BackdropMasked:  // T-729
+            return "BackdropMasked";
     }
     return "?";
 }
@@ -176,6 +179,10 @@ void dumpGpuFrame(const GpuFrame& frame, std::string& out) {
             if (cmd.shading == Shading::Effect) {
                 std::snprintf(buf, sizeof(buf), " program=%s", programName(cmd.program));
                 out += buf;
+                if (cmd.program == EffectProgram::BackdropMasked) {  // T-729: only on that program
+                    std::snprintf(buf, sizeof(buf), " mask=%u", backdropMaskTarget(frame, cmd));
+                    out += buf;
+                }
             }
             if (cmd.kind == DrawKind::Particles) {  // T-202
                 std::snprintf(buf, sizeof(buf), " particles=%u+%u", cmd.firstInstance, cmd.instanceCount);
@@ -189,6 +196,15 @@ void dumpGpuFrame(const GpuFrame& frame, std::string& out) {
             }
             if (cmd.boxShadowMulti != 0) {  // T-683: frames without outlined box shadows dump as before
                 out += " multi=yes";
+            }
+            if (cmd.clipParamIndex != 0) {  // T-718: frames without analytic clips dump as before
+                uint32_t count = 0;
+                if (size_t(cmd.clipParamIndex) + sizeof(AnalyticClipParams) / sizeof(float) <=
+                    frame.params.size()) {
+                    std::memcpy(&count, frame.params.data() + cmd.clipParamIndex, sizeof(count));
+                }
+                std::snprintf(buf, sizeof(buf), " aclip=%u", count);
+                out += buf;
             }
             std::snprintf(buf, sizeof(buf), " tex=%s src=%u aux=%u %s idx=%u verts=%u clip=(%d,%d,%d,%d)\n",
                           cmd.texture != 0 ? "yes" : "no", cmd.src, cmd.aux, samplerName(cmd.sampler),
