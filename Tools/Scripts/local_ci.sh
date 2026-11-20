@@ -232,13 +232,70 @@ clang_stages() {
   fi
 }
 
+# The Linux leg (2026-11-20: a function so it can run alone, XT_CI_STAGE=wsl-gcc - the version gate
+# of v0.19.0 could not hold every tree on the RAM disk at once, and the portability leg
+# (Tools/Scripts/portability_leg.sh) runs this stage between version gates): WSL GCC Debug build of
+# build/wsl-gcc with the editor CLI and the C ABI on, its ctest, then wgpu on lavapipe.
+wsl_gcc_stage() {
+  if command -v wsl >/dev/null 2>&1 && wsl -d Ubuntu-24.04 -- bash -lc "command -v cmake >/dev/null && command -v ninja >/dev/null" 2>/dev/null; then
+    step "WSL GCC Debug"
+    WROOT="$(wsl -d Ubuntu-24.04 -- wslpath -a "$ROOT" 2>/dev/null | tr -d '\r')"
+    # §17.9 second matrix leg: if WSL has a Qt6 CMake config, build the editor there too (offscreen
+    # ctest, same as Windows: the ENVIRONMENT QT_QPA_PLATFORM=offscreen on xt_editor_qt_tests
+    # applies on every platform).
+    # OFF is passed explicitly so an earlier run's cached ON does not outlive a skip.
+    WSL_EDITOR_DEF="-DXT_BUILD_EDITOR=OFF"
+    if [ -n "$NO_EDITOR" ]; then
+      echo "SKIP editor (WSL): --no-editor"
+    else
+      # The directory holding Qt6Config.cmake: $Qt6_DIR, qmake6's library dir, or the usual CMake
+      # prefixes. The probe goes in on stdin so neither Windows nor WSL's login shell rewrites its
+      # quotes and `$`s.
+      WSL_QT6_DIR="$(wsl -d Ubuntu-24.04 -- bash -ls 2>/dev/null <<'EOF' | tr -d '\r'
+for dir in "${Qt6_DIR:-}" "$(qmake6 -query QT_INSTALL_LIBS 2>/dev/null)/cmake/Qt6" /usr/lib/cmake/Qt6 \
+           "/usr/lib/$(gcc -dumpmachine 2>/dev/null)/cmake/Qt6" /usr/local/lib/cmake/Qt6; do
+  if [ -f "$dir/Qt6Config.cmake" ]; then echo "$dir"; exit 0; fi
+done
+EOF
+  )"
+      if [ -n "$WSL_QT6_DIR" ]; then
+        echo "(WSL Qt6: $WSL_QT6_DIR)"
+        WSL_EDITOR_DEF="-DXT_BUILD_EDITOR=ON -DQt6_DIR=$WSL_QT6_DIR"
+      else
+        echo "SKIP editor (WSL): Qt6 not found (no Qt6Config.cmake via \$Qt6_DIR, qmake6, /usr/lib or /usr/local/lib)"
+      fi
+    fi
+    # T-552 (2026-10-31 spec review 7.5): XT_BUILD_EDITOR_CLI and XT_BUILD_CAPI default to OFF; this Linux leg stands
+    # for the ninja CI presets (CLI) and ninja-ci-release (capi, the only build where its position-independent
+    # static libraries matter), so both are on here.
+    wsl -d Ubuntu-24.04 -- bash -lc "cd '$WROOT' && cmake -S . -B build/wsl-gcc -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=g++ -DXT_BUILD_EDITOR_CLI=ON -DXT_BUILD_CAPI=ON $WSL_EDITOR_DEF >/dev/null && cmake --build build/wsl-gcc 2>&1 | grep -E 'error:|FAILED:' | head -5; cd build/wsl-gcc && ctest --output-on-failure 2>&1 | grep -E 'tests passed|Failed|\*\*\*'" | tee >(cat >&2) | grep -q "100% tests passed" || fail=1
+    # A compile or link error inside the WSL build must fail the run even if stale test binaries still pass.
+    wsl -d Ubuntu-24.04 -- bash -lc "cd '$WROOT' && cmake --build build/wsl-gcc 2>&1 | grep -qE 'error:|FAILED:'" && { echo "WSL build reported errors"; fail=1; }
+
+    # T-441: Vulkan on lavapipe (the linux CI leg's adapter), forced through the ICD file so a
+    # D3D12-backed WSL GPU driver is not picked instead.
+    step "WSL GCC wgpu: Vulkan on lavapipe (build/wsl-gcc, XT_WGPU_FALLBACK=1)"
+    LVP_ICD="$(wsl -d Ubuntu-24.04 -- bash -lc "ls /usr/share/vulkan/icd.d/lvp_icd*.json 2>/dev/null | head -n 1" | tr -d '\r')"
+    if ! wsl -d Ubuntu-24.04 -- bash -lc "cd '$WROOT/build/wsl-gcc' && ctest -N -R '^xt_wgpu_tests\$' | grep -q 'Total Tests: 1'" 2>/dev/null; then
+      echo "SKIP WSL wgpu: build/wsl-gcc has no xt_wgpu_tests (configured without xt_wgpu: see its 'xt_wgpu:' configure line)"
+    elif [ -z "$LVP_ICD" ]; then
+      echo "SKIP WSL wgpu: lavapipe not installed in WSL (sudo apt install -y mesa-vulkan-drivers)"
+    else
+      wsl -d Ubuntu-24.04 -- bash -lc "cd '$WROOT' && XT_WGPU_BACKEND=vulkan XT_WGPU_FALLBACK=1 VK_DRIVER_FILES='$LVP_ICD' VK_ICD_FILENAMES='$LVP_ICD' bash Tools/Scripts/wgpu_tests.sh --test-dir build/wsl-gcc" || fail=1
+    fi
+  else
+    echo; echo "(WSL cmake/ninja not found: GCC step skipped. Install with: sudo apt install -y cmake ninja-build clang libx11-dev libxext-dev libgl1-mesa-dev xvfb)"
+  fi
+}
+
 case "${XT_CI_STAGE:-}" in
   "") ;;
   fuzz-smoke) fuzz_smoke_stage ;;
   sw-shell) sw_shell_stage ;;
   clang) clang_stages ;;
   agent) agent_stage ;;
-  *) echo "unknown XT_CI_STAGE '${XT_CI_STAGE}' (fuzz-smoke | sw-shell | clang | agent)"; exit 2 ;;
+  wsl-gcc) wsl_gcc_stage ;;
+  *) echo "unknown XT_CI_STAGE '${XT_CI_STAGE}' (fuzz-smoke | sw-shell | clang | agent | wsl-gcc)"; exit 2 ;;
 esac
 if [ -n "${XT_CI_STAGE:-}" ]; then
   echo; if [ "$fail" -eq 0 ]; then echo "LOCAL CI ($XT_CI_STAGE): PASS"; else echo "LOCAL CI ($XT_CI_STAGE): FAIL"; fi
@@ -384,55 +441,7 @@ if [ -z "$QUICK" ]; then
 
   clang_stages
 
-  if command -v wsl >/dev/null 2>&1 && wsl -d Ubuntu-24.04 -- bash -lc "command -v cmake >/dev/null && command -v ninja >/dev/null" 2>/dev/null; then
-    step "WSL GCC Debug"
-    WROOT="$(wsl -d Ubuntu-24.04 -- wslpath -a "$ROOT" 2>/dev/null | tr -d '\r')"
-    # §17.9 second matrix leg: if WSL has a Qt6 CMake config, build the editor there too (offscreen
-    # ctest, same as Windows: the ENVIRONMENT QT_QPA_PLATFORM=offscreen on xt_editor_qt_tests
-    # applies on every platform).
-    # OFF is passed explicitly so an earlier run's cached ON does not outlive a skip.
-    WSL_EDITOR_DEF="-DXT_BUILD_EDITOR=OFF"
-    if [ -n "$NO_EDITOR" ]; then
-      echo "SKIP editor (WSL): --no-editor"
-    else
-      # The directory holding Qt6Config.cmake: $Qt6_DIR, qmake6's library dir, or the usual CMake
-      # prefixes. The probe goes in on stdin so neither Windows nor WSL's login shell rewrites its
-      # quotes and `$`s.
-      WSL_QT6_DIR="$(wsl -d Ubuntu-24.04 -- bash -ls 2>/dev/null <<'EOF' | tr -d '\r'
-for dir in "${Qt6_DIR:-}" "$(qmake6 -query QT_INSTALL_LIBS 2>/dev/null)/cmake/Qt6" /usr/lib/cmake/Qt6 \
-           "/usr/lib/$(gcc -dumpmachine 2>/dev/null)/cmake/Qt6" /usr/local/lib/cmake/Qt6; do
-  if [ -f "$dir/Qt6Config.cmake" ]; then echo "$dir"; exit 0; fi
-done
-EOF
-)"
-      if [ -n "$WSL_QT6_DIR" ]; then
-        echo "(WSL Qt6: $WSL_QT6_DIR)"
-        WSL_EDITOR_DEF="-DXT_BUILD_EDITOR=ON -DQt6_DIR=$WSL_QT6_DIR"
-      else
-        echo "SKIP editor (WSL): Qt6 not found (no Qt6Config.cmake via \$Qt6_DIR, qmake6, /usr/lib or /usr/local/lib)"
-      fi
-    fi
-    # T-552 (2026-10-31 spec review 7.5): XT_BUILD_EDITOR_CLI and XT_BUILD_CAPI default to OFF; this Linux leg stands
-    # for the ninja CI presets (CLI) and ninja-ci-release (capi, the only build where its position-independent
-    # static libraries matter), so both are on here.
-    wsl -d Ubuntu-24.04 -- bash -lc "cd '$WROOT' && cmake -S . -B build/wsl-gcc -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=g++ -DXT_BUILD_EDITOR_CLI=ON -DXT_BUILD_CAPI=ON $WSL_EDITOR_DEF >/dev/null && cmake --build build/wsl-gcc 2>&1 | grep -E 'error:|FAILED:' | head -5; cd build/wsl-gcc && ctest --output-on-failure 2>&1 | grep -E 'tests passed|Failed|\*\*\*'" | tee >(cat >&2) | grep -q "100% tests passed" || fail=1
-    # A compile or link error inside the WSL build must fail the run even if stale test binaries still pass.
-    wsl -d Ubuntu-24.04 -- bash -lc "cd '$WROOT' && cmake --build build/wsl-gcc 2>&1 | grep -qE 'error:|FAILED:'" && { echo "WSL build reported errors"; fail=1; }
-
-    # T-441: Vulkan on lavapipe (the linux CI leg's adapter), forced through the ICD file so a
-    # D3D12-backed WSL GPU driver is not picked instead.
-    step "WSL GCC wgpu: Vulkan on lavapipe (build/wsl-gcc, XT_WGPU_FALLBACK=1)"
-    LVP_ICD="$(wsl -d Ubuntu-24.04 -- bash -lc "ls /usr/share/vulkan/icd.d/lvp_icd*.json 2>/dev/null | head -n 1" | tr -d '\r')"
-    if ! wsl -d Ubuntu-24.04 -- bash -lc "cd '$WROOT/build/wsl-gcc' && ctest -N -R '^xt_wgpu_tests\$' | grep -q 'Total Tests: 1'" 2>/dev/null; then
-      echo "SKIP WSL wgpu: build/wsl-gcc has no xt_wgpu_tests (configured without xt_wgpu: see its 'xt_wgpu:' configure line)"
-    elif [ -z "$LVP_ICD" ]; then
-      echo "SKIP WSL wgpu: lavapipe not installed in WSL (sudo apt install -y mesa-vulkan-drivers)"
-    else
-      wsl -d Ubuntu-24.04 -- bash -lc "cd '$WROOT' && XT_WGPU_BACKEND=vulkan XT_WGPU_FALLBACK=1 VK_DRIVER_FILES='$LVP_ICD' VK_ICD_FILENAMES='$LVP_ICD' bash Tools/Scripts/wgpu_tests.sh --test-dir build/wsl-gcc" || fail=1
-    fi
-  else
-    echo; echo "(WSL cmake/ninja not found: GCC step skipped. Install with: sudo apt install -y cmake ninja-build clang libx11-dev libxext-dev libgl1-mesa-dev xvfb)"
-  fi
+  wsl_gcc_stage
 
   fuzz_smoke_stage
   sw_shell_stage
