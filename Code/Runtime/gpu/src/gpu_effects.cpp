@@ -655,6 +655,24 @@ private:
             cp.colors[c * 4 + 2] = p.colors[c].b;
             cp.colors[c * 4 + 3] = p.colors[c].a;
         }
+        // T-818 (18 §18.7.x): XtInput.local. As applyGradientMask, the window origin is folded into
+        // the inverse (window px -> node plane), then the border box maps onto 0..1.
+        const Rect& box = m_in.localBox;
+        if (box.w > 0.0f && box.h > 0.0f) {
+            const Mat2x3 toLocal = mul(
+                scaling(Vec2{1.0f / box.w, 1.0f / box.h}),
+                mul(translation(Vec2{-box.x, -box.y}),
+                    mul(m_in.invScreenXf,
+                        translation(Vec2{static_cast<float>(m_window.x), static_cast<float>(m_window.y)}))));
+            cp.localXf[0] = toLocal.a;
+            cp.localXf[1] = toLocal.b;
+            cp.localXf[2] = toLocal.c;
+            cp.localXf[3] = toLocal.d;
+            cp.localXf[4] = toLocal.e;
+            cp.localXf[5] = toLocal.f;
+            cp.boxW = box.w;
+            cp.boxH = box.h;
+        }
         TargetHandle dst = scratch();
         pass(dst, EffectProgram::Custom, cp, src);
         return dst;

@@ -700,13 +700,31 @@ TEST_CASE("values: effect -- shine() position sixth argument") {
     CHECK_FALSE(sink.hasErrors());
 }
 
+// T-818 (18 §18.7.x): position accepts -1..2 (the band sweeps in from outside the box and out again).
+TEST_CASE("values: effect -- shine() position -0.5 and 1.5 are accepted without a warning") {
+    const std::pair<const char*, float> cases[] = {{"effect: shine(20deg 30px #fff 1 0.5 1.5);", 1.5f},
+                                                   {"effect: shine(20deg 30px #fff 1 0.5 -0.5);", -0.5f}};
+    for (const auto& [src, expected] : cases) {
+        INFO(src);
+        DiagnosticSink sink;
+        bool ok;
+        auto decls = parseOneRule(src, sink, ok);
+        CHECK(ok);
+        const EffectDeclEntry& e = findDecl(decls, styleprop::Effect)->value.effects[0];
+        CHECK(e.params[0] == doctest::Approx(expected));
+        for (const Diagnostic& diag : sink.all()) {
+            CHECK(diag.message.find("position out of range") == std::string::npos);
+        }
+    }
+}
+
 TEST_CASE("values: effect -- shine() position out of range is clamped and warns") {
     DiagnosticSink sink;
     bool ok;
-    auto decls = parseOneRule("effect: shine(20deg 30px #fff 1 0.5 1.5);", sink, ok);
+    auto decls = parseOneRule("effect: shine(20deg 30px #fff 1 0.5 2.5);", sink, ok);
     CHECK(ok);
     const EffectDeclEntry& e = findDecl(decls, styleprop::Effect)->value.effects[0];
-    CHECK(e.params[0] == doctest::Approx(1));  // clamped to 1
+    CHECK(e.params[0] == doctest::Approx(2));  // clamped to 2
     bool found = false;
     for (const Diagnostic& diag : sink.all()) {
         if (diag.message.find("position out of range") != std::string::npos) {
@@ -717,10 +735,10 @@ TEST_CASE("values: effect -- shine() position out of range is clamped and warns"
 
     DiagnosticSink sink2;
     bool ok2;
-    auto decls2 = parseOneRule("effect: shine(20deg 30px #fff 1 0.5 -0.5);", sink2, ok2);
+    auto decls2 = parseOneRule("effect: shine(20deg 30px #fff 1 0.5 -1.5);", sink2, ok2);
     CHECK(ok2);
     const EffectDeclEntry& e2 = findDecl(decls2, styleprop::Effect)->value.effects[0];
-    CHECK(e2.params[0] == doctest::Approx(0));  // clamped to 0
+    CHECK(e2.params[0] == doctest::Approx(-1));  // clamped to -1
     bool found2 = false;
     for (const Diagnostic& diag : sink2.all()) {
         if (diag.message.find("position out of range") != std::string::npos) {

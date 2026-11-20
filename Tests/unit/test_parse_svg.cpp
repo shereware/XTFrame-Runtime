@@ -1200,3 +1200,185 @@ TEST_CASE("svg: T-258b D10 <xt-mesh width=\"inf\"> is not a positive width: no m
     CHECK(p.scene.meshes.empty());
     CHECK(erred(p, "positive width and height"));
 }
+
+// ---------------------------------------------------------------------------------------------
+// T-822: a gradient's base colour (PaintRef.color, an alpha multiplier for gradient paints,
+// 09-command-list.md) has alpha 1; the first stop's alpha stays on that stop only. Gradient
+// features the compiler ignores warn once per gradient and kind.
+// ---------------------------------------------------------------------------------------------
+
+namespace {
+
+size_t warnCount(const ParsedSvg& p, std::string_view needle) {
+    size_t count = 0;
+    for (const Diagnostic& d : p.sink.all()) {
+        count +=
+            d.level == Diagnostic::Level::Warning && d.message.find(needle) != std::string::npos ? 1u : 0u;
+    }
+    return count;
+}
+
+}  // namespace
+
+TEST_CASE("svg: T-822 a transparent / half-transparent first stop does not scale the whole gradient") {
+    ParsedSvg p = parseBody(
+        "<defs>"
+        "<linearGradient id=\"l0\"><stop offset=\"0\" stop-color=\"#ff0000\" stop-opacity=\"0\"/>"
+        "<stop offset=\"1\" stop-color=\"#0000ff\"/></linearGradient>"
+        "<linearGradient id=\"l5\"><stop offset=\"0\" stop-color=\"#ff0000\" stop-opacity=\"0.5\"/>"
+        "<stop offset=\"1\" stop-color=\"#0000ff\" stop-opacity=\"0.25\"/></linearGradient>"
+        "<radialGradient id=\"r0\"><stop offset=\"0\" stop-color=\"#00ff00\" stop-opacity=\"0\"/>"
+        "<stop offset=\"1\" stop-color=\"#000000\"/></radialGradient>"
+        "<radialGradient id=\"r5\"><stop offset=\"0\" stop-color=\"#00ff00\" stop-opacity=\"0.5\"/>"
+        "<stop offset=\"1\" stop-color=\"#000000\"/></radialGradient>"
+        "</defs>"
+        "<rect width=\"100\" height=\"100\" fill=\"url(#l0)\" stroke=\"url(#r0)\"/>"
+        "<rect width=\"100\" height=\"100\" fill=\"url(#l5)\" stroke=\"url(#r5)\"/>"
+        "<rect width=\"100\" height=\"100\" fill=\"url(#r0)\" stroke=\"url(#l0)\"/>"
+        "<rect width=\"100\" height=\"100\" fill=\"url(#r5)\" fill-opacity=\"0.5\" stroke=\"url(#l5)\"/>");
+    REQUIRE(p.status == Status::kOk);
+    CHECK(p.sink.all().empty());
+    REQUIRE(p.pathCount() == 4);
+    for (size_t i = 0; i < 4; ++i) {
+        const IrPathData& d = p.path(i);
+        CHECK(d.fillColor.a == doctest::Approx(1.0f));
+        CHECK(d.strokeColor.a == doctest::Approx(1.0f));
+    }
+    // The base colour's RGB is still the first stop's (only its alpha changed).
+    CHECK(p.path(0).fillColor == Color{1, 0, 0, 1});
+    CHECK(p.path(0).strokeColor == Color{0, 1, 0, 1});
+    // The stops keep their own alpha.
+    const IrPathData& a = p.path(0);
+    REQUIRE(a.fillStopCount == 2);
+    CHECK(p.scene.stopPool[a.fillStopOffset].color.a == doctest::Approx(0.0f));
+    CHECK(p.scene.stopPool[a.fillStopOffset + 1].color.a == doctest::Approx(1.0f));
+    const IrPathData& b = p.path(1);
+    REQUIRE(b.fillStopCount == 2);
+    CHECK(p.scene.stopPool[b.fillStopOffset].color.a == doctest::Approx(0.5f));
+    CHECK(p.scene.stopPool[b.fillStopOffset + 1].color.a == doctest::Approx(0.25f));
+    REQUIRE(b.strokeStopCount == 2);
+    CHECK(p.scene.stopPool[b.strokeStopOffset].color.a == doctest::Approx(0.5f));
+    // fill-opacity still multiplies into the stops (unchanged).
+    const IrPathData& c = p.path(3);
+    REQUIRE(c.fillStopCount == 2);
+    CHECK(c.fillKind == static_cast<uint8_t>(PaintKind::Radial));
+    CHECK(p.scene.stopPool[c.fillStopOffset].color.a == doctest::Approx(0.25f));
+    CHECK(p.scene.stopPool[c.fillStopOffset + 1].color.a == doctest::Approx(0.5f));
+}
+
+TEST_CASE("svg: T-822 fx/fy away from the centre warns once per gradient; fx = cx does not") {
+    ParsedSvg p = parseBody(
+        "<defs>"
+        "<radialGradient id=\"f\" cx=\"0.5\" cy=\"0.5\" r=\"0.5\" fx=\"0.3\" fy=\"0.3\">"
+        "<stop offset=\"0\" stop-color=\"white\"/><stop offset=\"1\" stop-color=\"black\"/></radialGradient>"
+        "<radialGradient id=\"c\" cx=\"0.5\" cy=\"0.5\" r=\"0.5\" fx=\"0.5\" fy=\"50%\">"
+        "<stop offset=\"0\" stop-color=\"white\"/><stop offset=\"1\" stop-color=\"black\"/></radialGradient>"
+        "</defs>"
+        "<rect width=\"100\" height=\"100\" fill=\"url(#f)\" stroke=\"url(#f)\"/>"
+        "<rect width=\"100\" height=\"100\" fill=\"url(#f)\"/>"
+        "<rect width=\"100\" height=\"100\" fill=\"url(#c)\"/>");
+    REQUIRE(p.status == Status::kOk);
+    CHECK(warnCount(p, "radialGradient \"#f\": fx/fy (focal point) is not supported; the centre is used") ==
+          1);
+    CHECK(warnCount(p, "\"#c\"") == 0);
+    CHECK(p.sink.warningCount() == 1);
+}
+
+TEST_CASE("svg: T-822 spreadMethod reflect / repeat warns; pad does not") {
+    ParsedSvg p = parseBody(
+        "<defs>"
+        "<linearGradient id=\"lr\" spreadMethod=\"reflect\">"
+        "<stop offset=\"0\" stop-color=\"white\"/><stop offset=\"1\" stop-color=\"black\"/></linearGradient>"
+        "<radialGradient id=\"rr\" spreadMethod=\"repeat\">"
+        "<stop offset=\"0\" stop-color=\"white\"/><stop offset=\"1\" stop-color=\"black\"/></radialGradient>"
+        "<linearGradient id=\"lp\" spreadMethod=\"pad\">"
+        "<stop offset=\"0\" stop-color=\"white\"/><stop offset=\"1\" stop-color=\"black\"/></linearGradient>"
+        "</defs>"
+        "<rect width=\"100\" height=\"100\" fill=\"url(#lr)\" stroke=\"url(#lr)\"/>"
+        "<rect width=\"100\" height=\"100\" fill=\"url(#rr)\"/>"
+        "<rect width=\"100\" height=\"100\" fill=\"url(#lp)\"/>");
+    REQUIRE(p.status == Status::kOk);
+    CHECK(warnCount(p, "linearGradient \"#lr\": spreadMethod \"reflect\" is not supported; pad is used") ==
+          1);
+    CHECK(warnCount(p, "radialGradient \"#rr\": spreadMethod \"repeat\" is not supported; pad is used") == 1);
+    CHECK(warnCount(p, "\"#lp\"") == 0);
+    CHECK(p.sink.warningCount() == 2);
+}
+
+TEST_CASE("svg: T-822 a radial gradientTransform with non-uniform scale or skew warns; uniform does not") {
+    ParsedSvg p = parseBody(
+        "<defs>"
+        "<radialGradient id=\"ns\" gradientUnits=\"userSpaceOnUse\" cx=\"50\" cy=\"50\" r=\"20\""
+        " gradientTransform=\"scale(2,1)\">"
+        "<stop offset=\"0\" stop-color=\"white\"/><stop offset=\"1\" stop-color=\"black\"/></radialGradient>"
+        "<radialGradient id=\"sk\" gradientUnits=\"userSpaceOnUse\" cx=\"50\" cy=\"50\" r=\"20\""
+        " gradientTransform=\"skewX(20)\">"
+        "<stop offset=\"0\" stop-color=\"white\"/><stop offset=\"1\" stop-color=\"black\"/></radialGradient>"
+        "<radialGradient id=\"un\" gradientUnits=\"userSpaceOnUse\" cx=\"50\" cy=\"50\" r=\"20\""
+        " gradientTransform=\"translate(5,5) rotate(30) scale(1.5)\">"
+        "<stop offset=\"0\" stop-color=\"white\"/><stop offset=\"1\" stop-color=\"black\"/></radialGradient>"
+        "<radialGradient id=\"mi\" gradientUnits=\"userSpaceOnUse\" cx=\"50\" cy=\"50\" r=\"20\""
+        " gradientTransform=\"scale(-1,1)\">"
+        "<stop offset=\"0\" stop-color=\"white\"/><stop offset=\"1\" stop-color=\"black\"/></radialGradient>"
+        "</defs>"
+        "<rect width=\"100\" height=\"100\" fill=\"url(#ns)\" stroke=\"url(#ns)\"/>"
+        "<rect width=\"100\" height=\"100\" fill=\"url(#sk)\"/>"
+        "<rect width=\"100\" height=\"100\" fill=\"url(#un)\"/>"
+        "<rect width=\"100\" height=\"100\" fill=\"url(#mi)\"/>");
+    REQUIRE(p.status == Status::kOk);
+    const std::string text =
+        "gradientTransform with non-uniform scale or skew is not supported for radial gradients; a circle is "
+        "used";
+    CHECK(warnCount(p, "radialGradient \"#ns\": " + text) == 1);
+    CHECK(warnCount(p, "radialGradient \"#sk\": " + text) == 1);
+    CHECK(warnCount(p, "\"#un\"") == 0);
+    CHECK(warnCount(p, "\"#mi\"") == 0);
+    CHECK(p.sink.warningCount() == 2);
+    // The uniform one: radius 20 * 1.5.
+    const IrPathData& d = p.path(2);
+    CHECK(std::hypot(d.fillP1.x - d.fillP0.x, d.fillP1.y - d.fillP0.y) == doctest::Approx(30.0f));
+}
+
+TEST_CASE("svg: T-822 a linear gradientTransform with an axis-aligned non-uniform scale does not warn") {
+    ParsedSvg p = parseBody(
+        "<linearGradient id=\"ln\" gradientTransform=\"scale(2,1)\">"
+        "<stop offset=\"0\" stop-color=\"white\"/><stop offset=\"1\" stop-color=\"black\"/></linearGradient>"
+        "<rect width=\"100\" height=\"50\" fill=\"url(#ln)\"/>");
+    REQUIRE(p.status == Status::kOk);
+    CHECK(p.sink.warningCount() == 0);
+}
+
+TEST_CASE("svg: T-822 radial objectBoundingBox on a non-square box warns once; a square box does not") {
+    ParsedSvg p = parseBody(
+        "<defs>"
+        "<radialGradient id=\"ob\">"
+        "<stop offset=\"0\" stop-color=\"white\"/><stop offset=\"1\" stop-color=\"black\"/></radialGradient>"
+        "<radialGradient id=\"sq\">"
+        "<stop offset=\"0\" stop-color=\"white\"/><stop offset=\"1\" stop-color=\"black\"/></radialGradient>"
+        "</defs>"
+        "<rect width=\"80\" height=\"40\" fill=\"url(#ob)\" stroke=\"url(#ob)\"/>"
+        "<ellipse cx=\"50\" cy=\"50\" rx=\"30\" ry=\"10\" fill=\"url(#ob)\"/>"
+        "<rect width=\"100\" height=\"100.5\" fill=\"url(#sq)\"/>"
+        "<circle cx=\"50\" cy=\"50\" r=\"20\" fill=\"url(#sq)\"/>");
+    REQUIRE(p.status == Status::kOk);
+    CHECK(warnCount(p,
+                    "radialGradient \"#ob\": objectBoundingBox on a non-square shape is drawn as a circle") ==
+          1);
+    CHECK(warnCount(p, "\"#sq\"") == 0);
+    CHECK(p.sink.warningCount() == 1);
+}
+
+TEST_CASE("svg: T-822 url(#id) of a <pattern> says so; a missing id points at the same <svg> rule") {
+    ParsedSvg p = parseBody(
+        "<defs><pattern id=\"pt\" width=\"4\" height=\"4\"><rect width=\"2\" height=\"2\"/></pattern></defs>"
+        "<rect width=\"100\" height=\"100\" fill=\"url(#pt)\"/>"
+        "<rect width=\"100\" height=\"100\" fill=\"url(#gone)\"/>");
+    REQUIRE(p.status == Status::kOk);
+    CHECK(warned(p, "\"#pt\""));
+    CHECK(warned(p, "pattern fills are not supported; painted black"));
+    CHECK_FALSE(warned(p, "gradient \"#pt\" not found"));
+    CHECK(warned(
+        p, "gradient \"#gone\" not found, painted black (a gradient must be defined inside the same <svg>)"));
+    CHECK(p.path(0).fillColor == Color{0, 0, 0, 1});
+    CHECK(p.path(0).fillKind == static_cast<uint8_t>(PaintKind::Solid));
+}

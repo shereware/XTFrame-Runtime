@@ -1233,7 +1233,7 @@ inline constexpr uint8_t kBorderStyleDotted = 3;
 /// 05 §5.9.9 (T-345): `ui-scale` modes (ComputedStyle::uiScaleMode and the first f32 of StyleProp
 /// 273's payload).
 inline constexpr uint8_t kUiScaleAuto = 0;   ///< The Document's uiscale (the project policy).
-inline constexpr uint8_t kUiScaleNone = 1;   ///< 1 x DeviceInfo::dpr (device pixels).
+inline constexpr uint8_t kUiScaleNone = 1;   ///< Factor 1 (T-820: not x DeviceInfo::dpr).
 inline constexpr uint8_t kUiScaleClamp = 2;  ///< The uiscale clamped to [uiScaleMin, uiScaleMax].
 /// 33 §33.2 item 6 (T-701): the most layers one Document hands out in world-layer output, the
 /// base layer (id 0) included; `world-layer: on` elements beyond it are painted where they are.
@@ -1354,10 +1354,11 @@ struct ComputedStyle {
     float uiScaleMin = 0;
     float uiScaleMax = 0;
     /// The factor this element's px lengths were resolved with (StyleEngine::resolve): `auto` =
-    /// the Document's uiscale, `none` = DeviceInfo::dpr, `clamp` = the uiscale clamped. Every
-    /// px / em / rem length of base[] (and font-size, translate, transform-origin, effect radii,
-    /// `calc()` terms) is already multiplied by it; `%`, `vw`/`vh`, `safe-*` and `uiscale` units
-    /// are not. Keyframe and script values are multiplied by it when the Animator applies them.
+    /// the Document's uiscale, `none` = 1 (T-820: not DeviceInfo::dpr), `clamp` = the uiscale
+    /// clamped. Every px / em / rem length of base[] (and font-size, translate, transform-origin,
+    /// effect radii, `calc()` terms) is already multiplied by it; `%`, `vw`/`vh`, `safe-*` and
+    /// `uiscale` units are not. Keyframe and script values are multiplied by it when the Animator
+    /// applies them.
     float uiScaleEff = 1;
     /// CSS `cursor`.
     Cursor cursor = Cursor::Default;

@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include "../compiled_assets.h"  // warnUndecodableImage() (T-821).
 #include "../file_bytes.h"
 #include "base64.h"
 #include "lottie_model.h"
@@ -85,6 +86,7 @@ AssetId resolveImageAsset(BuildCtx& ctx, const std::string& assetId, const Lotti
             bytes.clear();
         }
         ab.embedded = std::move(bytes);
+        warnUndecodableImage(ctx.sink, ctx.file, asset.id, ab.embedded, 0, 0);  // T-821
     } else if (std::string name = asset.u + asset.p; !staysBelowRoot(ctx.options.rootDir, name)) {
         // Never read or named: the entry carries only the asset id, as a malformed data URI's does,
         // so the IR stays valid and nothing outside the root is referenced.
@@ -103,6 +105,7 @@ AssetId resolveImageAsset(BuildCtx& ctx, const std::string& assetId, const Lotti
             if (readFileBytes(fullPath, bytes)) {
                 ab.embedded = std::move(bytes);
                 embedded = true;
+                warnUndecodableImage(ctx.sink, ctx.file, name, ab.embedded, 0, 0);  // T-821
             } else {
                 ctx.sink.warn(ctx.file, lottieLayerDesc(layer) + ": failed to embed image asset \"" + name +
                                             "\"; kept external");
@@ -110,8 +113,11 @@ AssetId resolveImageAsset(BuildCtx& ctx, const std::string& assetId, const Lotti
         }
         if (!embedded && !ctx.options.rootDir.empty()) {
             std::filesystem::path fullPath = pathFromUtf8(ctx.options.rootDir) / pathFromUtf8(name);
+            std::vector<uint8_t> head;
             if (!std::filesystem::exists(fullPath)) {
                 ctx.sink.warn(ctx.file, "image asset \"" + name + "\" not found");
+            } else if (detail::readFileHead(fullPath, kImageFormatHeadBytes, head)) {
+                warnUndecodableImage(ctx.sink, ctx.file, name, head, 0, 0);  // T-821
             }
         }
     }

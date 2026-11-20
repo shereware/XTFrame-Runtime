@@ -364,6 +364,53 @@ std::string kebabAssetId(std::string_view stem) {
     return out;
 }
 
+namespace {
+
+bool assetIdByte(unsigned char byte) {
+    return byte >= 0x80 || (byte >= 'a' && byte <= 'z') || (byte >= '0' && byte <= '9') || byte == '-' ||
+           byte == '_' || byte == '.';
+}
+
+}  // namespace
+
+bool isValidAssetId(std::string_view id) {
+    if (id.empty() || id.front() == '.' || id.back() == '.' || id.find("..") != std::string_view::npos) {
+        return false;
+    }
+    return std::all_of(id.begin(), id.end(),
+                       [](char c) { return assetIdByte(static_cast<unsigned char>(c)); });
+}
+
+std::string normalizeAssetId(std::string_view stem) {
+    if (isValidAssetId(stem)) {
+        return std::string(stem);
+    }
+    std::string out;
+    bool replaced = false;  // The last character written stands for a disallowed run.
+    for (char c : stem) {
+        const unsigned char byte = static_cast<unsigned char>(c);
+        if (byte >= 'A' && byte <= 'Z') {
+            out += static_cast<char>(byte - 'A' + 'a');
+            replaced = false;
+        } else if (assetIdByte(byte)) {
+            if (byte == '.' && !out.empty() && out.back() == '.') {
+                continue;  // ".." -> "."
+            }
+            out += c;
+            replaced = false;
+        } else if (!replaced) {
+            out += '-';
+            replaced = true;
+        }
+    }
+    const size_t begin = out.find_first_not_of(".-");
+    if (begin == std::string::npos) {
+        return std::string();
+    }
+    out = out.substr(begin, out.find_last_not_of(".-") - begin + 1);
+    return out;
+}
+
 std::string collectionOf(const UiProject& project, std::string_view relFile) {
     const std::vector<std::string> root = segments(detail::assetRootOf(project));
     const std::vector<std::string> parts = segments(relFile);
@@ -388,7 +435,9 @@ std::string importPathFor(const UiProject& project, std::string_view type, std::
     if (is2x) {
         stem.resize(stem.size() - 3);
     }
-    std::string name = kebabAssetId(stem);
+    // T-815 (29 §29.20.1 item 8): the asset id rule -- a valid stem is kept as it is, as asset.import
+    // and a copy into the project (projectAssetReference()) name it.
+    std::string name = normalizeAssetId(stem);
     if (name.empty()) {
         name = "asset";
     }

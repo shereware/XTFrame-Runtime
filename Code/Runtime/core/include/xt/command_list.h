@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "xt/node.h"
@@ -390,6 +391,13 @@ struct EffectCmd {
     /// hint is never empty.
     uint8_t boundsKnown = 0;
     uint8_t _pad = 0;  ///< Padding, unused (0).
+    /// T-818 (Docs/design/18-effects.md §18.7.x): the node's own border box in its plane (the space
+    /// `xf` maps from), CSS px -- an Element's (0, 0, width, height), without its children's
+    /// overflow. Custom effects derive `XtInput.local` (0..1 across this box) and `XtInput.boxSize`
+    /// from it. Zero for a scene node (it has no border box) and in a baked or hand-made list
+    /// that does not set it: `local` and `boxSize` are then 0. Kept last (appended after the
+    /// fields above).
+    Rect localBox{};
 };
 
 /// One particle of a DrawParticles command (Docs/design/18-effects.md §18.12, T-202): a `w` x `h`
@@ -555,6 +563,15 @@ inline bool customParamSlots(const uint8_t* types, size_t count, uint8_t* outSlo
         }
     }
     return true;
+}
+
+/// T-818 (Docs/design/18-effects.md §18.7.x): whether a translated `.xtfx` GLSL module (ShaderRef's
+/// glsl text) declares `XtInput.local` / `boxSize`. Modules translated before T-818 do not, and a
+/// back end's wrapper then must not assign them.
+inline bool customModuleHasLocal(std::string_view glsl) {
+    return glsl.find(
+               "struct XtInput { vec2 uv; vec2 texelSize; vec2 layerSize; vec2 local; vec2 boxSize; };") !=
+           std::string_view::npos;
 }
 
 /// One entry of CommandList::sources (Docs/tasks/T-263d.md): the IR whose `AssetId`s the commands

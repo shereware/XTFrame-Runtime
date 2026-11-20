@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- T-822: gradients whose first stop is fully transparent. Before T-822 the first stop's alpha
+       scaled the whole gradient, so none of these four shapes drew. Top: linear; bottom: radial;
+       left: fill; right: stroke. -->
+  <defs>
+    <linearGradient id="lin" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ff3b30" stop-opacity="0"/>
+      <stop offset="1" stop-color="#1144ee"/>
+    </linearGradient>
+    <radialGradient id="rad" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffcc00" stop-opacity="0"/>
+      <stop offset="1" stop-color="#22aa44"/>
+    </radialGradient>
+  </defs>
+  <rect x="12" y="12" width="104" height="104" fill="url(#lin)"/>
+  <rect x="148" y="20" width="88" height="88" fill="none" stroke="url(#lin)" stroke-width="16"/>
+  <circle cx="64" cy="192" r="52" fill="url(#rad)"/>
+  <circle cx="192" cy="192" r="44" fill="none" stroke="url(#rad)" stroke-width="16"/>
+</svg>

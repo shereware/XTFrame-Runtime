@@ -180,7 +180,7 @@ Status assetHygiene(const UiProject& project, const design::Graph* graph, AssetH
         if (detail::has2xSuffix(stem)) {
             stem.resize(stem.size() - 3);
         }
-        if (stem != kebabAssetId(stem)) {
+        if (!isValidAssetId(stem)) {  // T-814: 29 §29.20.1 item 8
             ++out.badName;
         }
         if (info.meta.status == "placeholder") {

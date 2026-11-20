@@ -73,6 +73,9 @@ struct EffectStackInput {
     /// custom program id in its `shader` field (frame_builder.cpp resolved it; an effect the
     /// device cannot run was already replaced by its fallback there).
     float time = 0;
+    /// T-818: EffectCmd::localBox (the node's border box in its plane, CSS px; empty for a node
+    /// without one) -- `XtInput.local` / `boxSize` of Custom entries.
+    Rect localBox{};
 };
 
 /// Emits the passes for `in.screenParams` (non-empty) and returns the transient holding the

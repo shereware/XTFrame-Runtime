@@ -309,6 +309,8 @@ Claude Design canvas ──Artifact read──▶ <dump>/canvas.json + *.dc.html
 
 `effect.baseAdded`（T-567）：info，匯入器為時間軸／`@keyframes` 補上基底效果，detail `animation`／`effect`；`effect.dropped`：warning，時間軸鍵無法成為效果軌（text-shadow、非 px／deg／數字／顏色值）；`effect.degraded`：warning，上限夾限（8 px 文字效果、64 device px 模糊）與 `transition: text-shadow`——夾限時節點標 Low fidelity，`--strict` 因此 exit 1（`<helmet>` class 規則內的夾限無節點，不影響 `--strict`）。
 
+`asset.undecodable`（T-821，2026-11-21）：warning，板子引用的影像是執行期解不開的格式（以檔頭判斷；WebP、AVIF、HEIF、JPEG XL、TIFF、QOI），訊息列出支援的格式（PNG、JPEG、GIF、BMP、TGA、PSD、HDR、PIC、PNM、DDS）；檔案照舊複製、不轉檔。編譯器對同一情況另發 warning（`--strict` 為錯誤），編輯器 lint 規則同名。
+
 ~~`bind.formatChain`~~（T-585 移除：參數鏈已實作）、`bind.calcNotEvaluated`（T-586 起只對含 port 的 `calc()`）、`bind.enumPortName`（warning）、`bind.outPortSource`（T-568 為 error，裁決改 warning）、`tag.boundDisplayInlineNone`、`tag.showNotSurface`（warning，board hint）——T-568。
 `tag.repeatBinding`（warning，board hint）、`tag.stateGeometry`（warning，board hint）、`tag.symbolRootAppearance`（info）、`import.reimportMatch`（error；stop-loss 時 warning）、`layout.flexShrinkText`（warning，style hint）——T-566b。
 

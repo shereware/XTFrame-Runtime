@@ -600,7 +600,17 @@ struct GradientDef {
     /// stops are inherited (the geometry attributes are not), resolved once the whole document
     /// has been collected so the target may appear anywhere.
     std::string hrefStops;
+    /// T-822: features the renderer cannot draw, warned about once per gradient and kind by
+    /// resolvePaint() (`warned` holds the kGradientWarn* bits already reported).
+    bool focal = false;  ///< Radial `fx`/`fy` present and away from `cx`/`cy`.
+    std::string spread;  ///< `spreadMethod` when "reflect" or "repeat"; empty for pad / absent.
+    uint8_t warned = 0;
 };
+
+constexpr uint8_t kGradientWarnFocal = 1;
+constexpr uint8_t kGradientWarnSpread = 2;
+constexpr uint8_t kGradientWarnTransform = 4;
+constexpr uint8_t kGradientWarnBox = 8;
 
 struct BuildCtxParseSvg {
     SceneBuilder& scene;
@@ -896,9 +906,19 @@ void collectGradient(BuildCtxParseSvg& ctx, const XmlNode& node, bool radial) {
         }
         return fallback;
     };
+    if (propertyOf(node, "spreadMethod", v)) {
+        const std::string spread = toLower(trimParseSvg(v));
+        if (spread == "reflect" || spread == "repeat") {
+            def.spread = spread;
+        }
+    }
     if (radial) {
         def.p0 = Vec2{coord("cx", 0.5f), coord("cy", 0.5f)};
         def.p1 = Vec2{coord("r", 0.5f), 0};
+        // T-822: `fx`/`fy` default to `cx`/`cy`; a focal point elsewhere is drawn at the centre.
+        const float fx = coord("fx", def.p0.x);
+        const float fy = coord("fy", def.p0.y);
+        def.focal = std::fabs(fx - def.p0.x) > 1e-6f || std::fabs(fy - def.p0.y) > 1e-6f;
     } else {
         def.p0 = Vec2{coord("x1", 0.0f), coord("y1", 0.0f)};
         def.p1 = Vec2{coord("x2", 1.0f), coord("y2", 0.0f)};
@@ -1002,6 +1022,16 @@ Bounds boundsOf(const SvgPath& path) {
     return b;
 }
 
+/// T-822: whether the 2x2 part of `m` is a rotation (or reflection) times a uniform scale, so a
+/// circle stays a circle; tolerance 1e-4 relative to the largest term.
+bool isSimilarityTransform(const Mat2x3& m) {
+    const float s = std::max({std::fabs(m.a), std::fabs(m.b), std::fabs(m.c), std::fabs(m.d)});
+    const float tol = 1e-4f * s;
+    const bool rotation = std::fabs(m.a - m.d) <= tol && std::fabs(m.b + m.c) <= tol;
+    const bool reflection = std::fabs(m.a + m.d) <= tol && std::fabs(m.b - m.c) <= tol;
+    return rotation || reflection;
+}
+
 /// Resolves a paint onto `IrPathData`. `alpha` is the fill/stroke-opacity multiplier, `bounds` the
 /// shape's bounding box for `objectBoundingBox` gradient units.
 void resolvePaint(BuildCtxParseSvg& ctx, const SvgPaintSpec& spec, float alpha, const Bounds& bounds,
@@ -1025,12 +1055,52 @@ void resolvePaint(BuildCtxParseSvg& ctx, const SvgPaintSpec& spec, float alpha, 
     }
     auto it = ctx.gradients.find(spec.gradientId);
     if (it == ctx.gradients.end() || it->second.stops.empty()) {
-        ctx.sink.warn(ctx.file, "gradient \"#" + spec.gradientId + "\" not found, painted black", line, 0);
+        auto target = ctx.byId.find(spec.gradientId);
+        if (it == ctx.gradients.end() && target != ctx.byId.end() &&
+            ctx.nodes[target->second].tag == "pattern") {
+            // T-822: say what it is instead of "gradient not found".
+            ctx.sink.warn(
+                ctx.file,
+                "\"#" + spec.gradientId + "\" is a <pattern>: pattern fills are not supported; painted black",
+                line, 0);
+        } else if (it == ctx.gradients.end()) {
+            ctx.sink.warn(
+                ctx.file,
+                "gradient \"#" + spec.gradientId +
+                    "\" not found, painted black (a gradient must be defined inside the same <svg>)",
+                line, 0);
+        } else {
+            ctx.sink.warn(ctx.file, "gradient \"#" + spec.gradientId + "\" not found, painted black", line,
+                          0);
+        }
         outKind = static_cast<uint8_t>(PaintKind::Solid);
         outColor = Color{0, 0, 0, alpha};
         return;
     }
-    const GradientDef& def = it->second;
+    GradientDef& def = it->second;
+
+    // T-822: what the renderer cannot draw warns once per gradient and kind.
+    auto warnOnce = [&](uint8_t bit, const std::string& what) {
+        if ((def.warned & bit) != 0) {
+            return;
+        }
+        def.warned |= bit;
+        ctx.sink.warn(ctx.file,
+                      std::string(def.radial ? "radialGradient" : "linearGradient") + " \"#" +
+                          spec.gradientId + "\": " + what,
+                      line, 0);
+    };
+    if (def.focal) {
+        warnOnce(kGradientWarnFocal, "fx/fy (focal point) is not supported; the centre is used");
+    }
+    if (!def.spread.empty()) {
+        warnOnce(kGradientWarnSpread, "spreadMethod \"" + def.spread + "\" is not supported; pad is used");
+    }
+    if (def.radial && def.hasTransform && !isSimilarityTransform(def.transform)) {
+        warnOnce(kGradientWarnTransform,
+                 "gradientTransform with non-uniform scale or skew is not supported for radial gradients; a "
+                 "circle is used");
+    }
 
     Vec2 p0 = def.p0;
     Vec2 p1 = def.p1;
@@ -1043,6 +1113,12 @@ void resolvePaint(BuildCtxParseSvg& ctx, const SvgPaintSpec& spec, float alpha, 
             // objectBoundingBox radii are relative to the box's diagonal-normalized size; the
             // renderer's radial paint only takes one radius, so use the box's mean extent.
             r *= (w + h) * 0.5f;
+            if (w > 0 && h > 0 && std::max(w, h) / std::min(w, h) > 1.01f) {
+                warnOnce(
+                    kGradientWarnBox,
+                    "objectBoundingBox on a non-square shape is drawn as a circle (radius from the mean of "
+                    "width and height), not an ellipse");
+            }
         }
         p1 = Vec2{p0.x + r, p0.y};
     } else if (!def.userSpace) {
@@ -1057,7 +1133,10 @@ void resolvePaint(BuildCtxParseSvg& ctx, const SvgPaintSpec& spec, float alpha, 
     }
 
     outKind = static_cast<uint8_t>(def.radial ? PaintKind::Radial : PaintKind::Linear);
+    // T-822: a gradient's base colour is PaintRef.color, an alpha multiplier for the whole gradient
+    // (09 §9.2); the first stop's alpha stays on that stop only. The RGB is not drawn.
     outColor = def.stops.front().color;
+    outColor.a = 1;
     outP0 = p0;
     outP1 = p1;
     outStopOffset = static_cast<uint32_t>(ctx.scene.stopPool.size());

@@ -85,6 +85,14 @@ std::string typeDirectory(std::string_view type);
 /// The R-layer copy of the editor's kebabAssetId(): ASCII letters lowercased, ASCII digits kept,
 /// UTF-8 bytes (>= 0x80) kept, every other ASCII run one '-' (none at either end).
 std::string kebabAssetId(std::string_view stem);
+/// T-814 (Docs/design/29-ai-endpoint.md §29.20.1 item 8, 26 §26.3.3): true for an asset id made of ASCII
+/// lowercase letters, ASCII digits, '-', '_', '.' and UTF-8 bytes (>= 0x80), not empty, not starting or
+/// ending with '.', without "..". Kebab-case ids are a subset.
+bool isValidAssetId(std::string_view id);
+/// T-814: `stem` itself when isValidAssetId(); else ASCII letters lowercased, every run of other
+/// disallowed ASCII one '-', ".." folded to '.', and '.' / '-' trimmed at both ends ("" when nothing is
+/// left). The packer does not check ids; this only makes the default name.
+std::string normalizeAssetId(std::string_view stem);
 
 /// The collection of the asset `relFile`: the directories between its type directory and the file
 /// (`shared/img/icons/a.png` -> `icons`); "" directly in the type directory or outside
@@ -92,7 +100,8 @@ std::string kebabAssetId(std::string_view stem);
 std::string collectionOf(const UiProject& project, std::string_view relFile);
 /// Where an import of `fileName` into `collection` lands: `<assetRoot>/<typeDirectory(type)>/
 /// <collection>/<name>` (no collection segment for ""), `<name>` being the stem made
-/// kebabAssetId() ("asset" when nothing is left; a trailing `@2x` kept) and the extension
+/// normalizeAssetId() (T-815: a valid stem kept as it is; "asset" when nothing is left; a trailing
+/// `@2x` kept) and the extension
 /// lowercased. "" when `collection` is not a plain relative path (an empty, `.` or `..` segment, a
 /// '\\' or ':', a leading '/').
 std::string importPathFor(const UiProject& project, std::string_view type, std::string_view collection,

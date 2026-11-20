@@ -78,6 +78,7 @@ add_executable(xt_tests
     unit/test_parser_depth.cpp
     unit/test_input_queue.cpp
     unit/test_compile_document.cpp
+    unit/test_image_format.cpp  # T-821
     unit/test_symbols.cpp
     unit/test_compile_bundle_hooks.cpp
     unit/test_compile_editor_only.cpp
@@ -574,6 +575,15 @@ if(TARGET xtframe-view)
                      "-DOUT=${CMAKE_CURRENT_BINARY_DIR}/view_idle_skip"
                      -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/view_idle_skip.cmake")
     set_tests_properties(xtframe-view_idle_skip PROPERTIES TIMEOUT 300)
+    # T-817: --advance paints the picture of a frame-by-frame run at the same time (on:show and
+    # lifecycle.shown timelines, CSS animation, particles, scripted input); --seek (T-172).
+    add_test(NAME xtframe-view_advance
+             COMMAND ${CMAKE_COMMAND} "-DVIEW=$<TARGET_FILE:xtframe-view>"
+                     "-DDOC=${CMAKE_CURRENT_SOURCE_DIR}/xt/view_advance.xt"
+                     "-DPROJECT=${CMAKE_CURRENT_SOURCE_DIR}/capi/fixtures/flip/Flip fixture.xtui"
+                     "-DOUT=${CMAKE_CURRENT_BINARY_DIR}/view_advance"
+                     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/view_advance.cmake")
+    set_tests_properties(xtframe-view_advance PROPERTIES TIMEOUT 300)
 endif()
 
 # T-713: the War Table benchmark runner's self-test -- its parsers on built-in text, then a shortened matrix

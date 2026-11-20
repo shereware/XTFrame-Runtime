@@ -246,11 +246,12 @@ public:
     /// that does not hold).
     bool ruleActive(uint32_t rule) const { return rule >= m_ruleActive.size() || m_ruleActive[rule] != 0; }
 
-    /// T-345 (05 §5.9.9): the Document's uiscale and DeviceInfo::dpr, from which resolve() derives
-    /// each element's ComputedStyle::uiScaleEff (`auto` = uiScale, `none` = dpr, `clamp` = uiScale
-    /// clamped). Returns true when either changed; the caller then marks every element
-    /// kDirtyStyle (every px length is rescaled).
-    bool setScaleInputs(float uiScale, float dpr);
+    /// T-345 (05 §5.9.9): the Document's uiscale, from which resolve() derives each element's
+    /// ComputedStyle::uiScaleEff (`auto` = uiScale, `none` = 1, `clamp` = uiScale clamped). T-820
+    /// (25 §25.4.2.x): the factor maps design px to logical px; DeviceInfo::dpr is not part of it
+    /// (the render dpr is applied once when drawing). Returns true when it changed; the caller then
+    /// marks every element kDirtyStyle (every px length is rescaled).
+    bool setScaleInputs(float uiScale);
 
     /// T-176: marks kDirtyStyle every element whose last resolve() turned a viewport/safe-area/
     /// uiscale unit or `calc()` into px at style time (`font-size`, translate), plus its subtree.
@@ -361,11 +362,10 @@ private:
     std::vector<uint8_t> m_ruleActive;
     bool m_mediaEvaluated = false;
     // T-345: per STYL rule, 1 = inside an `@media` block (what `media-override` skips); the
-    // setScaleInputs() values; and resolve()'s current element's factor for instantiateCalc()
+    // setScaleInputs() value; and resolve()'s current element's factor for instantiateCalc()
     // (`m_calcAuto`: the factor is the plain uiscale, `ui-scale: auto`).
     std::vector<uint8_t> m_ruleIsMedia;
     float m_uiScale = 1.0f;
-    float m_dpr = 1.0f;
     float m_calcScale = 1.0f;
     bool m_calcAuto = true;
     std::vector<uint8_t> m_deviceUsers;

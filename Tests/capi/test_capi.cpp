@@ -449,6 +449,49 @@ TEST_CASE("capi 10 (T-552, review K1): reducedMotion survives resize, set_safe_a
     CHECK(xt_bundle_close(b) == XT_STATUS_OK);
 }
 
+namespace {
+
+/// T-820: one SW frame of `ui` (fixtures/uiscale) on a `size` x `size` surface at `dpr`.
+std::vector<uint8_t> renderUiScale(xt_bundle* b, const char* ui, int size, float dpr) {
+    xt_surface_desc desc = makeDesc(size, size);
+    desc.device_pixel_ratio = dpr;
+    xt_surface* s = xt_surface_create(b, ui, &desc);
+    REQUIRE_MESSAGE(s != nullptr, xt_capi_last_error());
+    Pixels pixels(size, size);
+    xt_damage damage{};
+    REQUIRE(xt_surface_update(s, 0.0f) == XT_STATUS_OK);
+    REQUIRE(pixels.render(s, damage) == XT_STATUS_OK);
+    xt_surface_destroy(s);
+    return pixels.rgba;
+}
+
+}  // namespace
+
+TEST_CASE("capi T-820 (25 §25.4.2.x): ui-scale none is factor 1, the dpr is applied once when drawing") {
+    xt_bundle* b = xt_bundle_open(XT_CAPI_TEST_UISCALE_BUNDLE);
+    REQUIRE_MESSAGE(b != nullptr, xt_capi_last_error());
+    // A 32 x 32 target at dpr 0.5 is the 64 x 64 design size in logical px (uiscale 1): the 64 px box
+    // covers every pixel (it covered the top-left quarter while `none` resolved px with the dpr).
+    const std::vector<uint8_t> none = renderUiScale(b, "none", 32, 0.5f);
+    size_t covered = 0;
+    for (size_t i = 0; i < none.size(); i += 4) {
+        covered += none[i + 3] == 255 ? 1u : 0u;
+    }
+    CHECK(covered == 32u * 32u);
+    // The blue mark: logical (16, 16)-(32, 32) = pixels (8, 8)-(16, 16).
+    auto blueAt = [&none](int x, int y) {
+        const size_t p = (static_cast<size_t>(y) * 32u + static_cast<size_t>(x)) * 4u;
+        return none[p + 2] > 200 && none[p] < 50;
+    };
+    CHECK(blueAt(12, 12));
+    CHECK_FALSE(blueAt(4, 4));
+    CHECK_FALSE(blueAt(20, 20));
+    // `none` draws exactly like `clamp(1, 1)` (the plain factor 1) at dpr 1 and at dpr 0.5.
+    CHECK(none == renderUiScale(b, "clamp", 32, 0.5f));
+    CHECK(renderUiScale(b, "none", 64, 1.0f) == renderUiScale(b, "clamp", 64, 1.0f));
+    CHECK(xt_bundle_close(b) == XT_STATUS_OK);
+}
+
 TEST_CASE("capi 11 (T-552, review K4): the stride check is done in size_t; a row past an int is refused") {
     xt_bundle* b = xt_bundle_open(XT_CAPI_TEST_DEVICE_BUNDLE);
     REQUIRE_MESSAGE(b != nullptr, xt_capi_last_error());

@@ -4,6 +4,28 @@ An excerpt of the XTFrame changelog: for each release, the behaviour changes and
 integration notes. Version numbers are those of the XTFrame release the snapshot was
 exported from.
 
+## [0.19.1] - 2026-11-21
+
+### Behaviour changes
+- Responsive: with a `DeviceInfo.dpr` other than 1 (C ABI hosts, Android), `ui-scale: none` is factor 1 (it was the dpr) and `spec.uiscaleDpiFloor` is no longer multiplied by the dpr; nothing changes at dpr 1 (the editor, `xtframe-view`, goldens) (#756).
+- Assets: `layer.create` / `layer.setAttrs` refuse a `src` / `href` / `texture` that names no file in the project (`kNotFound`, with the resolved path); the lint reports a missing image or font as `asset.missing` instead of `compile.other` (#755).
+- Asset ids: lowercase ASCII letters, digits, `-`, `_` and `.` (not first or last) and non-ASCII characters; `asset.import` without an `id` keeps a file stem that already follows the rule (`bg_01_room` is no longer renamed `bg-01-room`), and a refused `id` comes back with a suggestion; asset hygiene's `badName` and the asset workbench use the same rule (#755, #757).
+- Keyframe, marker and cue times are written on the millisecond grid (every write rounds to 0.001 s, as the `.xt` stores them); two keys of a track that fall on the same millisecond: the later write wins (#757).
+- `timeline.stagger` replies `layers[].delayMs` in milliseconds instead of `layers[].delay` in seconds (#759).
+- `style.setRule` on a source format 2 document writes geometry declarations to `<layout>` and the others to `<style>` in one undo step (it wrote one rule and failed to compile); `renameRule` / `deleteRule` act on both sections (#757).
+- Scenario contracts: `catalog.add` / `catalog.list` join `create`, `effects`, `restyle`, `single-element`; `effects` allows `layer.setAttrs`; `repair-import` allows `repair.dedup` / `repair.effectBase` / `repair.passthrough` and `diagnostics.fix` / `diagnostics.accept`; `create` allows `diagnostics.*`, `timeline.removeTrack` and `shader.*`; `shader` allows `catalog.add` and `shader.*` (#757, #759).
+- Scenario scope: a scope taken from the selection is always stated in the reply's `notes`, `root: "*"` asks for the whole document, and under a subtree scope an op the contract lists is allowed -- Global ones (#757) and, since T-819, writes that belong to no document (`shader.create`, `shader.setSource`) (T-819).
+- Error replies carry the document's `revision`, and some carry structured fields (`errors`, `references`) (#759).
+- `shine()` `position` takes -1..2 (it was 0..1); outside that range it is clamped with a warning (#754).
+- The built-in `starter.xtfx` shader tints with the layer-local coordinate (#754).
+- Images in a format the runtime cannot decode (WebP, AVIF, HEIF/HEIC, JPEG XL, TIFF, QOI; told by the file's leading bytes) are reported: the import copies the file and adds `asset.undecodable` (a warning in `import-report.json` and the diagnostics), `xtframe-compile` warns `image asset "<path>": format <fmt> cannot be decoded (supported: ...)` and fails under `--strict`, the editor's lint reports `asset.undecodable`, and `asset.import` adds the message to `notes`; the supported formats are PNG, JPEG, GIF, BMP, TGA, PSD, HDR, PIC, PNM and DDS (#760).
+- The import's `brightness()` finding (`effect.degraded`, still a warning) states the additive value, the consequence and the remedy (`brightness(0.4) is multiplicative in CSS but additive here (becomes -0.60): ...`); the conversion is unchanged (#760).
+- SVG gradient features the renderer ignores now warn (a failure under `--strict`): `fx` / `fy`, `spreadMethod` `reflect` / `repeat`, a radial `gradientTransform` with non-uniform scale or skew, `objectBoundingBox` on a non-square shape, and a `<pattern>` fill (painted black); a missing gradient id says it must be defined inside the same `<svg>` (#761).
+
+### Host integration
+- Custom `GpuDevice` backends: `CustomEffectParams` gains trailing fields (`localXf[6]`, `boxW`, `boxH`) for `XtInput.local` / `boxSize`; a backend that reads only the old fields keeps working (its shaders read 0); host HLSL wrappers fill them when they support the new inputs (#754).
+- C ABI and other hosts passing a dpr other than 1: see the `ui-scale: none` / DPI floor change above (#756).
+
 ## [0.19.0] - 2026-11-20
 
 ### Behaviour changes

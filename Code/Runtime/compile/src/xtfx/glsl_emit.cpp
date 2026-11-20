@@ -36,7 +36,9 @@ public:
             m_out += prm.name;
             m_out += ";\n";
         }
-        m_out += "struct XtInput { vec2 uv; vec2 texelSize; vec2 layerSize; };\n";
+        // T-818 (18 §18.7.x): local and boxSize appended; a wrapper fills them only when the module
+        // declares them (modules translated before T-818 lack them).
+        m_out += "struct XtInput { vec2 uv; vec2 texelSize; vec2 layerSize; vec2 local; vec2 boxSize; };\n";
         m_out +=
             "vec4 xtSample(vec2 uv) {\n"
             "    if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return vec4(0.0);\n"

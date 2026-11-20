@@ -56,7 +56,8 @@ struct DeviceInfo {
     /// Safe-area insets as fractions of the viewport (see Insets).
     Insets safeArea{};
     /// Device pixel ratio as reported by the host; `@media (resolution)` (T-330) reads it. The
-    /// render DPR still comes from Context::setViewport().
+    /// render DPR still comes from Context::setViewport(). T-820 (25 §25.4.2.x): not part of the
+    /// uiscale factor (neither `ui-scale: none` nor the DPI floor).
     float dpr = 1;
     /// `@media (platform: ...)`.
     DeviceKind platform = DeviceKind::Desktop;

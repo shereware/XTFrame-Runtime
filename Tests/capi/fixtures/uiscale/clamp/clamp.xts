@@ -1,0 +1,6 @@
+#box {
+  background-color: #ff0000;
+}
+#mark {
+  background-color: #0000ff;
+}

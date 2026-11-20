@@ -44,4 +44,21 @@ inline bool readFileBytes(const std::filesystem::path& path, std::vector<uint8_t
     return static_cast<bool>(in) || in.eof();
 }
 
+/// T-821: the first `max` bytes of `path` (fewer for a shorter file) into `out`. False when it is
+/// not a regular file or cannot be opened.
+inline bool readFileHead(const std::filesystem::path& path, size_t max, std::vector<uint8_t>& out) {
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(path, ec)) {
+        return false;
+    }
+    std::ifstream in(path, std::ios::binary);
+    if (!in.good()) {
+        return false;
+    }
+    out.resize(max);
+    in.read(reinterpret_cast<char*>(out.data()), static_cast<std::streamsize>(max));
+    out.resize(static_cast<size_t>(in.gcount()));
+    return true;
+}
+
 }  // namespace xt::compile::detail

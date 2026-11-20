@@ -2235,8 +2235,8 @@ void Document::refreshLengthEnv(bool force) {
                          env.safePx.left != m_lengthEnv.safePx.left || env.uiScale != m_lengthEnv.uiScale;
     m_lengthEnv = env;
     // T-345 (05 §5.9.9): every px length is resolved with the element's `ui-scale` factor, which
-    // follows uiscale and the DPR: a change restyles every element.
-    const bool rescaled = m_styleEngine.setScaleInputs(m_uiScale, m_device.dpr);
+    // follows uiscale (T-820: not the DPR, 25 §25.4.2.x): a change restyles every element.
+    const bool rescaled = m_styleEngine.setScaleInputs(m_uiScale);
     if (m_root == kInvalidNode) {
         return;
     }

@@ -2146,6 +2146,12 @@ void Painter::pushEffectCmd(const NodeArena& arena, NodeId n, CommandList& out, 
     Rect content = pre != nullptr ? pre->content : contentScreenBounds(arena, n, xf, out.viewport);
     ec.xf = xf;
     ec.contentBounds = content;
+    // T-818 (18 §18.7.x): the node's own border box in its plane, for custom effects' XtInput.local /
+    // boxSize; a scene node has no border box (left empty: both read 0).
+    if (arena.kind(n) == NodeKind::Element) {
+        const ElementData& el = arena.element(n);
+        ec.localBox = Rect{0, 0, el.box.width, el.box.height};
+    }
 
     // The enabled effects in pool order -- the ones just copied into out.effects.
     const float expand = pre != nullptr ? pre->expand : effectStackExpand(arena, c, xf);

@@ -305,7 +305,7 @@ T-544 把 `bind:effect.<效果>.<參數>` 做在第 0 層（`setProperty` 直寫
 - SW 的 `box-shadow: inset` 必須與 GL 相同：畫環，不塗滿盒子；加 SW／GL 共用黃金圖。
 - 父層 `border-radius` 加 `overflow: hidden` 時，圓角裁切套用到子元素（SW 與 GL）；dialect.md 的承諾維持。
 - 3D 翻轉：`backface-visibility: hidden` 以**合成後**的變換判定背面（父層 `rotateY(180deg)` 時正面剔除、背面顯示）。
-- `brightness()`／`hue-rotate()` 維持 §18.3 的定義（不改成 CSS 矩陣）；匯入器對 CSS 寫法發 `degraded: brightness is additive in XTFrame (18 §18.3)`。
+- `brightness()`／`hue-rotate()` 維持 §18.3 的定義（不改成 CSS 矩陣）；匯入器對 CSS 寫法發 `effect.degraded`，訊息說明後果與替代做法（T-821，2026-11-21：`filter: brightness(<x>) is multiplicative in CSS but additive here (becomes <x−1>): …`——CSS 的 `brightness(0.4)` 在這裡是減去 0.6，暗的畫面會變黑；要壓暗就疊一層黑、要提亮就用小的值）。乘法的亮度（gain）是待設計的項目（PENDING）。
 
 **T-572 實作記錄（#544，2026-11-04；偏差主模型核准）**：F24 根因＝SW inset 陰影寫非預乘像素到預乘 src-over（既有黃金圖全黑看不出），改走 `writeTinted()`；F25 圓角 overflow 用既有 `PushClipPath`（09 章 `ClipRectCmd` 無半徑欄位，命令格式不動），方角仍 `PushClipRect`；F32 根因＝`rotateY(0deg)` 的正面不是 3D 圖層、2D 節點從不做背面判定，修法在 `Painter::enterNode` 對空間根子樹內 `backfaceHidden` 的 2D 節點以合成矩陣判定。新黃金圖 5 張（`ui_3d_flip_90` 取 0.48 s 因恰好 90° 全黑），既有零張改變；SW／GL 對照全過。未做（候選）：命中測試仍用方形 padding box、翻到背面的 2D 正面仍可點、無空間根的 flattened 3D 不判背面。
 
@@ -343,3 +343,18 @@ T-544 把 `bind:effect.<效果>.<參數>` 做在第 0 層（`setProperty` 直寫
 - 陰影類效果的輸入是節點內容 S（不是 BackdropBlur 的輸出）：依序在 S 上套用得到 R′。§18.3 各陰影條目的 `alpha(src)` 在此情形指 S 的 alpha。
 - §18.3 BackdropBlur 的合成改為 `out = R′ + B · S.a · (1 − R′.a)`（預乘；B＝模糊並調整後的背景）；沒有陰影時 R′＝S，即原式。
 - 其餘堆疊（BackdropBlur 後接其他種類、BackdropBlur 不在第一個）不變。
+
+### 18.7.x 0.19.1 修訂：`XtInput` 的座標（2026-11-20 定案，T-818）
+
+`XtInput.uv` 的定義補明（行為不變）：0..1 橫跨**效果離屏視窗**——內容在螢幕上的軸對齊外框加 `expand`、裁到視口與目前的 scissor，由上往下。它是畫面空間：節點或祖先的 transform 不會轉動或帶動 `uv`，全螢幕的節點平移時視窗不變。適合全畫面後製（暗角、顆粒、色散）。
+
+新增（同一個結構，欄位加在尾端，既有 shader 不受影響）：
+
+| 欄位 | 型別 | 意義 |
+|---|---|---|
+| `local` | `float2` | 節點自己的 border box 內的座標，0..1（左上 0,0）；經節點與祖先 transform 的反矩陣求得，所以**跟著圖層移動、縮放、旋轉**。盒外的像素（`expand` 的外擴區）會小於 0 或大於 1 |
+| `boxSize` | `float2` | 節點 border box 的尺寸，CSS px（不含 dpr） |
+
+黏在內容上的效果（光束、光暈、掃描線對位）用 `local`；`vec2` 參數是原始數值，shader 作者自行決定拿它和 `uv` 還是 `local` 比較——**之後的畫布控制點（座標參數可拖曳）以 `local` 為準**，header 的參數宣告屆時加 `space: local` 註記（本單不做 UI）。實作：`gpu_effects.cpp` 的 `applyCustom` 比照 `applyGradientMask` 以 `invScreenXf · translate(window.origin)` 得到節點本地座標，另傳節點的 border box；GL、wgpu 兩個包裝同步；SW 仍只套 `fallback`。宿主的 HLSL 包裝（23 章升級須知）要補這兩個欄位，未補的宿主兩欄為 0。內建範例 `starter.xtfx` 改用 `local` 示範。
+
+`shine` 的 `position`：解析與面板的範圍由 0..1 放寬為 −1..2（光條可從盒外掃入、掃出）；執行期本來就不夾。

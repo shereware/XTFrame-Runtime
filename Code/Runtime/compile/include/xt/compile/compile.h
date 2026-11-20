@@ -146,6 +146,11 @@ struct CompileOptions {
     /// `<anim src>` (Lottie) and an `<img src="*.svg">` name; false = cannot be read (reported as
     /// before). Unset (the default): the file is read from disk.
     std::function<bool(std::string_view path, std::vector<uint8_t>& out)> readAssetFile;
+    /// T-821: when set, reads the leading bytes (up to xt::kImageFormatHeadBytes, xt/image_format.h)
+    /// of the image file at a UTF-8 path instead of the disk, for the "format cannot be decoded"
+    /// check of image assets; false = cannot be read (nothing reported). The editor answers it from
+    /// the same table as `fileExists`. Unset (the default): the bytes are read from disk.
+    std::function<bool(std::string_view path, std::vector<uint8_t>& out)> readAssetHead;
 };
 
 /// T-273d: the tail of the warning a published build (CompileOptions::publishAssetNames) gives for

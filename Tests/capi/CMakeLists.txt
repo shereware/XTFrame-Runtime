@@ -24,6 +24,8 @@ xt_capi_pack_bundle(XT_CAPI_GAME_UI game-ui "${PROJECT_SOURCE_DIR}/Examples/demo
 xt_capi_pack_bundle(XT_CAPI_HUD_OVERLAY hud-overlay "${PROJECT_SOURCE_DIR}/Examples/demos/hud-overlay")
 # T-552 (capi review K1 / K4): a one-box UI whose color follows `@media (prefers-reduced-motion)`.
 xt_capi_pack_bundle(XT_CAPI_DEVICE device "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/device")
+# T-820: two 64 x 64 UIs, a 64 px box under `ui-scale: none` and under `ui-scale: clamp(1, 1)`.
+xt_capi_pack_bundle(XT_CAPI_UISCALE uiscale "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/uiscale")
 # T-561: a one-card UI whose flow toggles `flipped` on #card.Click, with an opacity transition; T-603:
 # a second UI, `intro`, whose flow plays its intro from lifecycle.shown; T-651: a third, `lit`, whose
 # click toggles `lit` on #card, starting three CSS animations (state snapshot version 3); T-658: a
@@ -57,7 +59,8 @@ xt_capi_pack_bundle(XT_CAPI_LAYERS layers "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/
 xt_capi_pack_bundle(XT_CAPI_WORLD_LAYERS world-layers "${PROJECT_SOURCE_DIR}/Examples/demos/world-layers")
 add_custom_target(xt_capi_test_bundles
     DEPENDS "${XT_CAPI_GAME_UI}/manifest.json" "${XT_CAPI_HUD_OVERLAY}/manifest.json"
-            "${XT_CAPI_DEVICE}/manifest.json" "${XT_CAPI_FLIP}/manifest.json"
+            "${XT_CAPI_DEVICE}/manifest.json" "${XT_CAPI_UISCALE}/manifest.json"
+            "${XT_CAPI_FLIP}/manifest.json"
             "${XT_CAPI_L10N}/manifest.json" "${XT_CAPI_STATE}/manifest.json"
             "${XT_CAPI_NPDO}/manifest.json" "${XT_CAPI_TEXT}/manifest.json"
             "${XT_CAPI_IMAGES}/manifest.json" "${XT_CAPI_EFFECTS}/manifest.json"
@@ -95,6 +98,7 @@ target_compile_definitions(xt_capi_tests PRIVATE
     XT_CAPI_TEST_BUNDLE="${XT_CAPI_GAME_UI}"
     XT_CAPI_TEST_PORTS_BUNDLE="${XT_CAPI_HUD_OVERLAY}"
     XT_CAPI_TEST_DEVICE_BUNDLE="${XT_CAPI_DEVICE}"
+    XT_CAPI_TEST_UISCALE_BUNDLE="${XT_CAPI_UISCALE}"
     XT_CAPI_TEST_FLIP_BUNDLE="${XT_CAPI_FLIP}"
     XT_CAPI_TEST_L10N_BUNDLE="${XT_CAPI_L10N}"
     XT_CAPI_TEST_STATE_BUNDLE="${XT_CAPI_STATE}"

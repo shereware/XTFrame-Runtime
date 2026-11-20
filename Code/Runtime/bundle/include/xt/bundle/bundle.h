@@ -193,7 +193,8 @@ struct UiScaleLimits {
     float clampMin = 0.0f;
     /// The clamp's upper bound (>= clampMin); infinity = none (`null` in the JSON).
     float clampMax = std::numeric_limits<float>::infinity();
-    /// `spec.uiscaleDpiFloor` (>= 0; 0 = none, not written back): uiscale >= dpiFloor x dpr.
+    /// `spec.uiscaleDpiFloor` (>= 0; 0 = none, not written back): uiscale >= dpiFloor (T-820: not
+    /// x dpr, 25 §25.4.2.x).
     float dpiFloor = 0.0f;
 };
 

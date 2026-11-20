@@ -92,6 +92,7 @@ add_library(xt_core STATIC
     src/file_asset_resolver.cpp
     src/file_open_utf8.cpp
     src/dds.cpp
+    src/image_format.cpp  # T-821
     src/text_layout.cpp
     src/null_text_shaper.cpp
     src/style_decode.cpp

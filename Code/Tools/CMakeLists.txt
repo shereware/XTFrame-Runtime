@@ -571,6 +571,17 @@ if(XT_BUILD_TESTS)
                     --headless --frames 2 --width 320 --height 200 --screenshot rel.png)
 
         xt_add_expect_exit_test(xtframe-view_help CODE 0 OUTPUT "usage: xtframe-view" COMMAND ${XT_VIEW} --help)
+        # T-817: --advance takes seconds >= 0; --seek still needs --play (T-172).
+        xt_add_expect_exit_test(xtframe-view_advance_negative CODE 2
+            OUTPUT "--advance: expected seconds >= 0, got '-1'"
+            COMMAND ${XT_VIEW} "${PROJECT_SOURCE_DIR}/Tests/xt/view_advance.xt" --headless --advance -1)
+        xt_add_expect_exit_test(xtframe-view_advance_not_number CODE 2
+            OUTPUT "--advance: expected seconds >= 0, got 'soon'"
+            COMMAND ${XT_VIEW} "${PROJECT_SOURCE_DIR}/Tests/xt/view_advance.xt" --headless --advance soon)
+        xt_add_expect_exit_test(xtframe-view_advance_help CODE 0 OUTPUT "--advance <seconds>"
+            COMMAND ${XT_VIEW} --help)
+        xt_add_expect_exit_test(xtframe-view_seek_needs_play CODE 2 OUTPUT "--seek needs --play <timeline>"
+            COMMAND ${XT_VIEW} "${PROJECT_SOURCE_DIR}/Tests/xt/view_advance.xt" --headless --seek 0.5)
         # T-420: --version prints three lines to stdout and exits 0, whatever else is given.
         xt_add_expect_exit_test(xtframe-view_version CODE 0
             OUTPUT "^xtframe-view [0-9]+\\.[0-9]+\\.[0-9]+[^a-z]+ir-format 3\\.[0-9]+[^a-z]+behavior [0-9]+"

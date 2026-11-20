@@ -1,0 +1,11 @@
+<xt version="2">
+
+  <body>
+    <div id="box">
+      <div id="mark"></div>
+    </div>
+  </body>
+
+  <layout src="none.layout.xts"/>
+  <style src="none.xts"/>
+</xt>

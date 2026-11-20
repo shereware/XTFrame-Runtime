@@ -147,6 +147,9 @@ ui_fx_3d ui_fx_3d.xt 256 256 0 ffffff
 # T-110 SVG static vector import (docs/tasks/T-110.md "黃金圖").
 ui_svg_basic ui_svg_basic.xt 256 256 0 ffffff
 ui_svg_unsupported ui_svg_unsupported.xt 256 256 0 ffffff
+# T-822: SVG gradients with a transparent first stop (linear / radial, fill / stroke) draw; the
+# first stop's alpha no longer scales the whole gradient.
+ui_svg_gradient_alpha ui_svg_gradient_alpha.xt 256 256 0 ffffff
 # T-218: vector properties in the cascade -- token fill, :hover recolour of an inline <svg> icon.
 ui_svg_hover ui_svg_hover.xt 256 256 0 ffffff ui_svg_hover.events
 # T-225b (31 §31.6.1, §31.5.3): runtime shape modifiers in an inline <svg> (the timeline animates

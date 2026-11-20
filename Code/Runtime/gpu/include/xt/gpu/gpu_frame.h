@@ -569,12 +569,24 @@ struct MaskApplyParams {
 /// (`XtInput.layerSize`, `texelSize` = its reciprocal); `params`/`colors` = the effect's
 /// EffectInstance `params[16]` and `colors[4]` (RGBA; T-534), from which the device fills the
 /// parameter uniforms per xt::customParamSlots().
+///
+/// T-818 (Docs/design/18-effects.md §18.7.x) appended `localXf` and `boxW/H` after `colors`; the
+/// fields before them keep their offsets, so a custom GpuDevice that reads only those still works
+/// (its shaders then see `XtInput.local` / `boxSize` as 0 -- no capability query is involved).
+/// `localXf` = (a, b, c, d, e, f) maps a pixel position inside the pass window, top-down and
+/// relative to the window's top-left corner (`XtInput.uv * layerSize`), to the node's local
+/// coordinates normalised to its border box: local.x = a x + c y + e, local.y = b x + d y + f
+/// (0..1 inside the box, below 0 / above 1 in the `expand` margin). `boxW/H` = the border box size
+/// in CSS px, without dpr (`XtInput.boxSize`). All eight are 0 for a node without a border box
+/// (EffectCmd::localBox empty).
 struct CustomEffectParams {
     float program;
     float time;
     float layerW, layerH;
     float params[16];
     float colors[16];
+    float localXf[6];
+    float boxW, boxH;
 };
 
 /// T-202 `DrawKind::Particles`: `xf` = (a, b, c, d, e, f) maps particle space to surface pixels

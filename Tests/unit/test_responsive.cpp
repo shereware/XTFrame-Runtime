@@ -138,7 +138,7 @@ public:
 // The project factor: fit (bundle::uiScaleFor, Tests/bundle), clamp and the DPI floor.
 // -------------------------------------------------------------------------------------------
 
-TEST_CASE("T-345: Context::setUiScaleLimits clamps the factor, then raises it to dpiFloor x dpr") {
+TEST_CASE("T-345: Context::setUiScaleLimits clamps the factor, then raises it to dpiFloor") {
     NullTextShaper shaper;
     Context ctx(ContextConfig{&shaper, nullptr});
     REQUIRE(ctx.setUiScale(2.0f) == Status::kOk);
@@ -151,13 +151,17 @@ TEST_CASE("T-345: Context::setUiScaleLimits clamps the factor, then raises it to
     REQUIRE(ctx.setUiScale(1.0f) == Status::kOk);
     CHECK(ctx.uiScale() == doctest::Approx(1.0f));
 
-    // The DPI floor follows setDevice()'s dpr.
+    // T-820 (25 §25.4.2.x item 2): the DPI floor is not multiplied by setDevice()'s dpr (logical px
+    // already grow with the dpr).
     REQUIRE(ctx.setUiScaleLimits(0.0f, std::numeric_limits<float>::infinity(), 0.6f) == Status::kOk);
-    CHECK(ctx.uiScale() == doctest::Approx(1.0f));  // 1 >= 0.6 x 1.
+    CHECK(ctx.uiScale() == doctest::Approx(1.0f));  // 1 >= 0.6.
     DeviceInfo device;
     device.dpr = 2.0f;
     REQUIRE(ctx.setDevice(device) == Status::kOk);
-    CHECK(ctx.uiScale() == doctest::Approx(1.2f));  // max(1, 0.6 x 2).
+    CHECK(ctx.uiScale() == doctest::Approx(1.0f));  // max(1, 0.6); was max(1, 0.6 x 2) = 1.2.
+    REQUIRE(ctx.setUiScale(0.5f) == Status::kOk);
+    CHECK(ctx.uiScale() == doctest::Approx(0.6f));  // The floor is 0.6 at dpr 2.
+    REQUIRE(ctx.setUiScale(1.0f) == Status::kOk);
     device.dpr = 1.0f;
     REQUIRE(ctx.setDevice(device) == Status::kOk);
     CHECK(ctx.uiScale() == doctest::Approx(1.0f));
@@ -197,7 +201,7 @@ TEST_CASE("T-345: ui-scale auto / none / clamp() resolve px, em, font-size and b
     CHECK(l.style("n").uiScaleEff == doctest::Approx(1.0f));
     CHECK(l.style("c").uiScaleEff == doctest::Approx(1.5f));
     CHECK(l.width("a") == doctest::Approx(20));
-    CHECK(l.width("n") == doctest::Approx(10));  // Device px x dpr 1.
+    CHECK(l.width("n") == doctest::Approx(10));  // Factor 1.
     CHECK(l.width("c") == doctest::Approx(15));
     CHECK(l.style("a").base[prop::BorderLeftWidth].len.value == doctest::Approx(2));
     CHECK(l.style("n").base[prop::BorderLeftWidth].len.value == doctest::Approx(1));
@@ -209,10 +213,11 @@ TEST_CASE("T-345: ui-scale auto / none / clamp() resolve px, em, font-size and b
     CHECK(l.height("n") == doctest::Approx(20));
     CHECK(l.height("c") == doctest::Approx(30));
 
-    // none = 1 x dpr.
+    // T-820 (25 §25.4.2.x item 1): none = factor 1 whatever DeviceInfo::dpr is (the render dpr is
+    // applied once when drawing); it was 1 x dpr.
     l.dpr(2.0f);
-    CHECK(l.style("n").uiScaleEff == doctest::Approx(2.0f));
-    CHECK(l.width("n") == doctest::Approx(20));
+    CHECK(l.style("n").uiScaleEff == doctest::Approx(1.0f));
+    CHECK(l.width("n") == doctest::Approx(10));
 }
 
 TEST_CASE("T-345: % / vw / vh / uiscale units and calc() keep their meaning; calc's px terms scale") {

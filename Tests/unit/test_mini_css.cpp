@@ -287,16 +287,27 @@ TEST_CASE("mini_css: shine() position sixth argument") {
     REQUIRE(decls[0].effects.size() == 1);
     CHECK(decls[0].effects[0].params[0] == doctest::Approx(0));
 
-    // Out of range -> clamped (this runtime parser has no DiagnosticSink to warn through).
+    // T-818 (18 §18.7.x): -1..2 is accepted (the band sweeps in from outside the box and out again).
     decls = parse("effect: shine(20deg 30px #fff 1 0.5 1.5)", Status::kOk);
     REQUIRE(decls.size() == 1);
     REQUIRE(decls[0].effects.size() == 1);
-    CHECK(decls[0].effects[0].params[0] == doctest::Approx(1));
+    CHECK(decls[0].effects[0].params[0] == doctest::Approx(1.5f));
 
     decls = parse("effect: shine(20deg 30px #fff 1 0.5 -0.5)", Status::kOk);
     REQUIRE(decls.size() == 1);
     REQUIRE(decls[0].effects.size() == 1);
-    CHECK(decls[0].effects[0].params[0] == doctest::Approx(0));
+    CHECK(decls[0].effects[0].params[0] == doctest::Approx(-0.5f));
+
+    // Out of range -> clamped to -1..2 (this runtime parser has no DiagnosticSink to warn through).
+    decls = parse("effect: shine(20deg 30px #fff 1 0.5 2.5)", Status::kOk);
+    REQUIRE(decls.size() == 1);
+    REQUIRE(decls[0].effects.size() == 1);
+    CHECK(decls[0].effects[0].params[0] == doctest::Approx(2));
+
+    decls = parse("effect: shine(20deg 30px #fff 1 0.5 -1.5)", Status::kOk);
+    REQUIRE(decls.size() == 1);
+    REQUIRE(decls[0].effects.size() == 1);
+    CHECK(decls[0].effects[0].params[0] == doctest::Approx(-1));
 }
 
 TEST_CASE("parseValue: 13.4's single-value entry point") {

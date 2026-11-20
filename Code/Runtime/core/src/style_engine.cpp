@@ -51,11 +51,13 @@ struct Entry {
     bool fromMedia = false;
 };
 
-/// T-345 (05 §5.9.9): the factor an element's px lengths resolve with, from its `ui-scale`.
-float effectiveUiScale(uint8_t mode, float lo, float hi, float uiScale, float dpr) {
+/// T-345 (05 §5.9.9): the factor an element's px lengths resolve with, from its `ui-scale`. T-820
+/// (25 §25.4.2.x): the factor maps design px to logical px; the render dpr is applied once when
+/// drawing, so `none` is 1 (not DeviceInfo::dpr).
+float effectiveUiScale(uint8_t mode, float lo, float hi, float uiScale) {
     switch (mode) {
         case kUiScaleNone:
-            return dpr > 0.0f ? dpr : 1.0f;
+            return 1.0f;
         case kUiScaleClamp:
             return std::min(std::max(uiScale, lo), hi);
         default:
@@ -2126,12 +2128,10 @@ void StyleEngine::init(const IrView& ir, Animator& animator, TextShaper* shaper)
     m_mediaEvaluated = false;
 }
 
-bool StyleEngine::setScaleInputs(float uiScale, float dpr) {
+bool StyleEngine::setScaleInputs(float uiScale) {
     const float u = uiScale > 0.0f && std::isfinite(uiScale) ? uiScale : 1.0f;
-    const float d = dpr > 0.0f && std::isfinite(dpr) ? dpr : 1.0f;
-    const bool changed = u != m_uiScale || d != m_dpr;
+    const bool changed = u != m_uiScale;
     m_uiScale = u;
-    m_dpr = d;
     return changed;
 }
 
@@ -2495,7 +2495,7 @@ uint32_t StyleEngine::resolve(NodeArena& arena, float clock) {
                 }
             }
             const float pxScale =
-                effectiveUiScale(next.uiScaleMode, next.uiScaleMin, next.uiScaleMax, m_uiScale, m_dpr);
+                effectiveUiScale(next.uiScaleMode, next.uiScaleMin, next.uiScaleMax, m_uiScale);
             next.uiScaleEff = pxScale;
             m_calcScale = pxScale;
             m_calcAuto = next.uiScaleMode == kUiScaleAuto;

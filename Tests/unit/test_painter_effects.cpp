@@ -467,3 +467,51 @@ TEST_CASE("Painter effects 11: Layer around an Effect covers the effect's outset
     CHECK(layer.x + layer.w >= effect.x + effect.w);
     CHECK(layer.y + layer.h >= effect.y + effect.h);
 }
+
+// T-818 (Docs/design/18-effects.md §18.7.x): EffectCmd::localBox carries the node's own border box in
+// its plane -- not its children's overflow -- for XtInput.local / boxSize; zero for a scene node.
+TEST_CASE("Painter effects 12: localBox is the element's border box, zero for a scene node") {
+    NodeArena arena;
+    NodeId root = makeElement(arena, kInvalidNode);
+    ElementData& data = arena.element(root);
+    data.box.width = 100;
+    data.box.height = 50;
+    data.style.base[prop::BackgroundColor] = Value::ofColor(Color{1, 1, 1, 0.5f});
+    arena.common(root).translate = Vec2{20, 20};
+    arena.common(root).scale = Vec2{2, 2};
+    NodeId child = makeElement(arena, root);
+    arena.element(child).box.width = 300;
+    arena.element(child).box.height = 10;
+    arena.element(child).style.base[prop::BackgroundColor] = Value::ofColor(Color{1, 0, 0, 1});
+
+    EffectInstance blur = makeBlur(4);
+    REQUIRE(arena.assignEffects(root, std::span<const EffectInstance>(&blur, 1), {}) == Status::kOk);
+
+    CommandList cmds;
+    paintDump(arena, root, cmds);
+    REQUIRE(cmds.effectCmds.size() == 1);
+    const EffectCmd& ec = cmds.effectCmds[0];
+    CHECK(ec.contentBounds.w > 400.0f);  // the child's overflow is content, not the box
+    CHECK(ec.localBox.x == doctest::Approx(0.0f));
+    CHECK(ec.localBox.y == doctest::Approx(0.0f));
+    CHECK(ec.localBox.w == doctest::Approx(100.0f));
+    CHECK(ec.localBox.h == doctest::Approx(50.0f));
+
+    NodeArena scene;
+    NodeId group = makeElement(scene, kInvalidNode);
+    scene.element(group).box.width = 64;
+    scene.element(group).box.height = 64;
+    NodeId path = scene.create(NodeKind::Path);
+    scene.appendChild(group, path);
+    PathNodeData& p = scene.path(path);
+    p.verbs = {PathVerb::Move, PathVerb::Line, PathVerb::Line, PathVerb::Close};
+    p.points = {0, 0, 10, 0, 10, 10};
+    p.fill.kind = PaintKind::Solid;
+    p.fill.color = Color{1, 1, 1, 1};
+    REQUIRE(scene.assignEffects(path, std::span<const EffectInstance>(&blur, 1), {}) == Status::kOk);
+    CommandList sceneCmds;
+    paintDump(scene, group, sceneCmds);
+    REQUIRE(sceneCmds.effectCmds.size() == 1);
+    CHECK(sceneCmds.effectCmds[0].localBox.w == 0.0f);
+    CHECK(sceneCmds.effectCmds[0].localBox.h == 0.0f);
+}

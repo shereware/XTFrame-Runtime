@@ -327,6 +327,16 @@ if [ "$BUILD" = 1 ]; then
   # T-486: only when the editor is rebuilt here; otherwise a check of other targets would leave
   # the build tree without an editor.
   case " ${targets[*]} " in *" xtframe-editor "*) rm -f "$BIN/xtframe-editor.exe";; esac
+  # 2026-11-21 (T-817): the ctest suite also runs entries whose executables are not in its fixed
+  # list (the backend tests and smokes, the intro hosts, the bench and probe tools). They used to
+  # pass only when an earlier build had left them in the tree, and xt_backends_tests never could
+  # (deleted two lines up). They are added when the configured tree has them (some are optional).
+  case " ${suites[*]} " in *" ctest "*)
+    for t in xt_backends_tests minimal_sdl2_wgpu xtframe-design xtframe-symbols xtframe-bench xt_gpu_mem_probe              intro_headless_test intro_cpp_host intro_capi_host; do
+      [ -n "$(find "$B" -name "$t.vcxproj" -print -quit 2>/dev/null)" ] && targets+=("$t")
+    done
+    while IFS= read -r v; do targets+=("$(basename "$v" .vcxproj)"); done       < <(find "$B" -name 'xt_backend_smoke_*.vcxproj' 2>/dev/null);;
+  esac
   args=(); for t in "${targets[@]}"; do args+=(--target "$t"); done
   # XT_BUILD_JOBS=<n> caps the number of projects built at once (two task trees share this machine);
   # unset = the generator's default. The compiler's own /MP is capped separately with _CL_=-MP<n>.

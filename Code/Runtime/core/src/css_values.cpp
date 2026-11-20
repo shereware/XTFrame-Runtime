@@ -2063,7 +2063,7 @@ bool parseGradientMaskFn(const std::vector<Tok>& inner, Dialect d, Diag* diag, b
 }
 
 // shine( <angle> <len> <color> [<number> [<number> [<number>]]] ) -> Shine; the sixth argument is
-// `position` (0..1, clamped with a warning).
+// `position` (-1..2, clamped with a warning; T-818).
 bool parseShineFn(const std::vector<Tok>& inner, Dialect d, Diag* diag, bool& percentError,
                   EffectInstance& out) {
     out.kind = EffectKind::Shine;
@@ -2090,9 +2090,10 @@ bool parseShineFn(const std::vector<Tok>& inner, Dialect d, Diag* diag, bool& pe
             softness = cur.advance().num;
             if (atNumber(cur)) {
                 position = cur.advance().num;
-                if (position < 0.0f || position > 1.0f) {
-                    warn(diag, "shine() position out of range [0, 1], clamped");
-                    position = std::clamp(position, 0.0f, 1.0f);
+                // T-818 (18 §18.7.x): -1..2, so the band can sweep in from outside the box and out.
+                if (position < -1.0f || position > 2.0f) {
+                    warn(diag, "shine() position out of range [-1, 2], clamped");
+                    position = std::clamp(position, -1.0f, 2.0f);
                 }
             }
         }

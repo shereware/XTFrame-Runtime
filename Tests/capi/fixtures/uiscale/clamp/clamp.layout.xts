@@ -1,0 +1,21 @@
+/* T-820 (25 §25.4.2.x): a 64 px box filling the 64 x 64 design size, with a 16 px mark,
+   the whole document under `ui-scale: clamp(1, 1)`. */
+body {
+  width: 100vw;
+  height: 100vh;
+  ui-scale: clamp(1, 1);
+}
+#box {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 64px;
+  height: 64px;
+}
+#mark {
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  width: 16px;
+  height: 16px;
+}

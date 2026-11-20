@@ -9,8 +9,10 @@
 #include "file_bytes.h"
 #include "xt/asset_resolver.h"
 #include "xt/compile/compile.h"
+#include "xt/compile/diagnostics.h"
 #include "xt/compile/ir_writer.h"
 #include "xt/compile/utf8_path.h"
+#include "xt/image_format.h"
 
 /// `IrWriter`'s ASST entries -> `CompileResult::assets` (Docs/design/22-bundle.md §22.3,
 /// Docs/tasks/T-91.md). Shared by compile_document.cpp and compile_lottie.cpp so both report the
@@ -36,6 +38,26 @@ inline bool readAssetFileBytes(const CompileOptions& options, const std::filesys
         return options.readAssetFile(pathToUtf8(path), out);
     }
     return detail::readFileBytes(path, out);
+}
+
+/// T-821: the leading bytes (at most xt::kImageFormatHeadBytes) of the image file at `path` --
+/// through `options.readAssetHead` when the host set one, else from disk.
+inline bool readAssetHeadBytes(const CompileOptions& options, const std::filesystem::path& path,
+                               std::vector<uint8_t>& out) {
+    if (options.readAssetHead) {
+        return options.readAssetHead(pathToUtf8(path), out);
+    }
+    return detail::readFileHead(path, kImageFormatHeadBytes, out);
+}
+
+/// T-821: the warning for an image asset whose bytes (`head`: the leading ones, or all of them) are
+/// a format the runtime cannot decode; nothing for a decodable or unrecognised one.
+inline void warnUndecodableImage(DiagnosticSink& sink, std::string_view fileName, std::string_view src,
+                                 const std::vector<uint8_t>& head, int line, int col) {
+    const ImageFormat format = imageFormatOf(head.data(), head.size());
+    if (isUndecodableImageFormat(format)) {
+        sink.warn(std::string(fileName), undecodableImageMessage(src, format), line, col);
+    }
 }
 
 /// Resolves an external asset reference (`<img src>`, `<anim src>`, `@font-face src`,

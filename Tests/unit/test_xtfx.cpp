@@ -1,6 +1,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <vector>
@@ -274,6 +275,29 @@ TEST_CASE("xtfx subset: builtin functions") {
     CHECK(rejects("float4 s = xtSample(1);"));        // xtSample needs a float2
 }
 
+// T-818 (18 §18.7.x): XtInput.local and XtInput.boxSize are float2 members; the wrappers' new
+// uniforms are reserved names.
+TEST_CASE("xtfx subset: XtInput local and boxSize") {
+    CHECK(accepts("float2 a = i.local * i.boxSize + i.uv;"));
+    CHECK(rejects("float a = i.local;"));  // float2, not float
+    XtfxResult r = run(mainWith("float2 a = i.corner;"));
+    CHECK_FALSE(r.ok);
+    CHECK(contains(r.error.message, "local"));
+    CHECK(contains(r.error.message, "boxSize"));
+    CHECK(rejects("float xtLocalRowX = 1;"));
+    CHECK(rejects("float xtLocalRowY = 1;"));
+}
+
+// T-818 item 3: the shipped starter shader draws with XtInput.local and compiles.
+TEST_CASE("xtfx: the starter example compiles and uses local") {
+    std::ifstream in(std::string(XT_EXAMPLES_DIR) + "/../Assets/Fx/starter.xtfx", std::ios::binary);
+    REQUIRE(in.good());
+    const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    XtfxResult r = run(text);
+    REQUIRE_MESSAGE(r.ok, r.error.message);
+    CHECK(contains(r.glsl, "i.local"));
+}
+
 TEST_CASE("xtfx subset: if/else and constant-bounded for") {
     CHECK(accepts("float a = 0; if (a > 1) { a = 2; } else if (a < 0) a = 3; else { a = 4; }"));
     CHECK(accepts("float s = 0; for (int n = 0; n < 64; n++) { s += n; }"));
@@ -381,7 +405,9 @@ TEST_CASE("xtfx translation: every row of the 18.7 table") {
     CHECK(contains(g, "uniform float k;"));
     CHECK(contains(g, "uniform vec2 c;"));
     CHECK(contains(g, "uniform vec4 t;"));
-    CHECK(contains(g, "struct XtInput { vec2 uv; vec2 texelSize; vec2 layerSize; };"));
+    // T-818: local and boxSize at the end (18 §18.7.x); the wrappers fill them only when present.
+    CHECK(contains(g,
+                   "struct XtInput { vec2 uv; vec2 texelSize; vec2 layerSize; vec2 local; vec2 boxSize; };"));
     CHECK(contains(g, "vec4 xtMain(XtInput i)"));
     CHECK_FALSE(contains(g, "float2"));
     CHECK_FALSE(contains(g, "#version"));

@@ -1604,6 +1604,12 @@ AssetId ensureImageAsset(IrWriter& writer, const std::string& src, std::string_v
     if (!embedded && !onDisk) {
         sink.warn(std::string(fileName), "image asset \"" + src + "\" not found", line, col);
     }
+    // T-821: a file the runtime cannot decode would draw as nothing; told by its leading bytes.
+    if (embedded) {
+        warnUndecodableImage(sink, fileName, src, ab.embedded, line, col);
+    } else if (std::vector<uint8_t> head; onDisk && readAssetHeadBytes(options, full, head)) {
+        warnUndecodableImage(sink, fileName, src, head, line, col);
+    }
     ab.sourceName = src;
     ab.resolvedPath = onDisk ? pathToUtf8(full) : std::string();
     // An embedded asset carries its bytes, so its name stays as written (T-91).

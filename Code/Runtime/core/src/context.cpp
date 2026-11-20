@@ -435,7 +435,6 @@ Status Context::setDevice(const DeviceInfo& device) {
         doc->setViewport(m_viewport);
         doc->setDevice(m_device);
     });
-    applyUiScale();  // T-345: the DPI floor follows the DPR.
     return Status::kOk;
 }
 
@@ -495,9 +494,10 @@ Status Context::setUiScaleLimits(float clampMin, float clampMax, float dpiFloor)
 }
 
 void Context::applyUiScale() {
-    // T-345 (25 §25.4.2 item 1): the rule's factor, clamped, then at least dpiFloor x dpr.
+    // T-345 (25 §25.4.2 item 1): the rule's factor, clamped, then at least dpiFloor. T-820 (25
+    // §25.4.2.x item 2): the floor is not multiplied by the dpr -- logical px already grow with it.
     float scale = std::min(std::max(m_uiScaleBase, m_uiScaleMin), m_uiScaleMax);
-    scale = std::max(scale, m_uiScaleDpiFloor * m_device.dpr);
+    scale = std::max(scale, m_uiScaleDpiFloor);
     if (!(scale > 0.0f) || !std::isfinite(scale)) {
         scale = m_uiScaleBase;  // A clamp to [0, 0]: keep the unlimited factor.
     }

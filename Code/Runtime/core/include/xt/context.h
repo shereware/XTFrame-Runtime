@@ -497,11 +497,11 @@ public:
     /// (default 1). kInvalidArgument for a non-positive or non-finite scale. T-345 (25 §25.4.2
     /// item 1): `scale` is the project rule's factor (bundle::uiScaleFor()); the factor the
     /// Documents get -- uiScale() -- is it clamped to setUiScaleLimits()' range, then raised to at
-    /// least `dpiFloor` x DeviceInfo::dpr. A px length of an element whose `ui-scale` is `auto`
-    /// resolves to px x this factor (05 §5.9.9).
+    /// least `dpiFloor`. A px length of an element whose `ui-scale` is `auto` resolves to px x this
+    /// factor (05 §5.9.9). T-820 (25 §25.4.2.x): the factor maps design px to logical px; the render
+    /// dpr (setViewport()) is applied once when drawing, and DeviceInfo::dpr is not part of it.
     Status setUiScale(float scale);
-    /// The final factor: setUiScale()'s value after setUiScaleLimits() (re-derived on a
-    /// setDevice() that changes the DPR).
+    /// The final factor: setUiScale()'s value after setUiScaleLimits().
     float uiScale() const { return m_uiScale; }
     /// T-345: the factor last given to setUiScale(), before the limits.
     float uiScaleBase() const { return m_uiScaleBase; }

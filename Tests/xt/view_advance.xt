@@ -1,0 +1,98 @@
+<xt version="2">
+
+  <body on:show="play(intro)">
+    <!-- T-817: xtframe-view --advance. Everything here keeps changing over the first seconds: a 4 s
+         timeline started by on:show (#box), a looping CSS animation (#slider), a particle emitter
+         (#sparks, the runtime's fixed seed) and a root timeline `slide` for --play / --seek (#fade). -->
+    <div id="box"></div>
+    <div id="slider"></div>
+    <div id="fade"></div>
+    <particles id="sparks" shape="point" rate="40" burst="6" lifetime="1.5" speed="20 50" direction="0"
+               spread="360" size="4 4" color="#ffd27a #ff5a0000" autoplay></particles>
+  </body>
+
+  <layout>
+    body {
+      width: 160px;
+      height: 64px;
+    }
+    #box {
+      position: absolute;
+      left: 4px;
+      top: 4px;
+      width: 16px;
+      height: 16px;
+    }
+    #slider {
+      position: absolute;
+      left: 4px;
+      top: 26px;
+      width: 12px;
+      height: 12px;
+    }
+    #fade {
+      position: absolute;
+      left: 4px;
+      top: 44px;
+      width: 16px;
+      height: 16px;
+    }
+    #sparks {
+      position: absolute;
+      left: 110px;
+      top: 32px;
+      width: 0px;
+      height: 0px;
+    }
+  </layout>
+  <style>
+    body {
+      background-color: #101820;
+    }
+    #box {
+      background-color: #ff3030;
+    }
+    @keyframes slide-left {
+      from {
+        left: 4px;
+      }
+      to {
+        left: 84px;
+      }
+    }
+    #slider {
+      background-color: #30c0ff;
+      animation: slide-left 3s linear infinite;
+    }
+    #fade {
+      background-color: #40ff60;
+      opacity: 0.2;
+    }
+  </style>
+  <timelines>
+    @timeline intro {
+      duration: 4s;
+      #box {
+        0s {
+          transform: translateX(0px);
+        }
+        4s {
+          transform: translateX(120px);
+        }
+      }
+    }
+    @timeline slide {
+      duration: 1s;
+      #fade {
+        0s {
+          opacity: 0;
+          transform: translateX(0px);
+        }
+        1s {
+          opacity: 1;
+          transform: translateX(60px);
+        }
+      }
+    }
+  </timelines>
+</xt>

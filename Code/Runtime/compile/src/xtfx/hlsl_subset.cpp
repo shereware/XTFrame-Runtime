@@ -515,6 +515,9 @@ bool isGlslReserved(std::string_view n) {
         "xtIn",
         "XtInput",
         "xtTime",
+        // T-818: the wrappers' uniforms behind XtInput.local / boxSize (gl_effects.cpp, wgpu_custom.cpp).
+        "xtLocalRowX",
+        "xtLocalRowY",
     };
     if (n.rfind("gl_", 0) == 0 || n.rfind("__", 0) == 0) {
         return true;
@@ -1341,10 +1344,14 @@ private:
         e->line = line;
         e->col = col;
         if (out->type == Ty::XtInput) {
-            if (member == "uv" || member == "texelSize" || member == "layerSize") {
+            // T-818 (18 §18.7.x): local and boxSize.
+            if (member == "uv" || member == "texelSize" || member == "layerSize" || member == "local" ||
+                member == "boxSize") {
                 e->type = Ty::Float2;
             } else {
-                return fail("XtInput has no member '" + member + "' (uv, texelSize, layerSize)", line, col);
+                return fail(
+                    "XtInput has no member '" + member + "' (uv, texelSize, layerSize, local, boxSize)", line,
+                    col);
             }
         } else if (isFloatType(out->type)) {
             int n = componentCount(out->type);

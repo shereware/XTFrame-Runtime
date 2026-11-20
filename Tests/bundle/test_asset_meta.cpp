@@ -523,6 +523,22 @@ TEST_CASE("T-312a (g): regenerateAssetsManifest on game-ui (timing)") {
     std::printf("%s\n", line);
 }
 
+TEST_CASE("T-814 the R-layer asset id rule and assetHygiene's badName follow it") {
+    CHECK(isValidAssetId("bg_01_room"));
+    CHECK(isValidAssetId("room.v2"));
+    CHECK_FALSE(isValidAssetId("Bad Name"));
+    CHECK_FALSE(isValidAssetId("a:b"));
+    CHECK(normalizeAssetId("bg_01_room") == "bg_01_room");
+    CHECK(normalizeAssetId("Bad Name") == "bad-name");
+    UiProject project = makeProject("hygiene_t814");
+    writePng(abs(project, "shared/img/bg_01_room.png"), 8, 8, 0x111111);
+    writePng(abs(project, "shared/img/room.v2.png"), 8, 8, 0x222222);
+    writePng(abs(project, "shared/img/Bad Name.png"), 8, 8, 0x333333);
+    AssetHygiene h;
+    REQUIRE(assetHygiene(project, nullptr, h) == Status::kOk);
+    CHECK(h.badName == 1);
+}
+
 TEST_CASE("T-312a (h): assetHygiene numbers") {
     UiProject project = makeProject("hygiene");
     project.spec.budgetAssetBytes = 4000;
@@ -677,4 +693,13 @@ TEST_CASE("T-312a (i): promoteReference whole and cropped; pack refuses placehol
     }
     CHECK(allowed.ok);
     CHECK(hasDiagnostic(allowed, "asset.placeholderShipped", compile::Diagnostic::Level::Warning));
+}
+
+TEST_CASE("T-815 importPathFor names the file by normalizeAssetId(): a valid stem is kept as it is") {
+    UiProject project = makeProject("t815_import_path");
+    CHECK(importPathFor(project, "image", "", "bg_01_room.png") == "shared/img/bg_01_room.png");
+    CHECK(importPathFor(project, "image", "", "room.v2.png") == "shared/img/room.v2.png");
+    CHECK(importPathFor(project, "image", "", "bg_01_room@2x.png") == "shared/img/bg_01_room@2x.png");
+    CHECK(importPathFor(project, "image", "", "Bad Name.png") == "shared/img/bad-name.png");
+    CHECK(importPathFor(project, "image", "", "!!.png") == "shared/img/asset.png");
 }

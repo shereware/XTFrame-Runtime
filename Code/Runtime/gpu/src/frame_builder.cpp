@@ -615,6 +615,8 @@ struct FrameBuilder::Impl {
         float time = 0;
         Mat2x3 invScreenXf;
         Rect contentBoundsPx;
+        /// T-818: EffectCmd::localBox (custom effects' XtInput.local / boxSize).
+        Rect localBox{};
         // T-162: the segment's cache key, when it is cacheable at all. T-721: what its result is
         // stored as (CacheEntry's fields of the same names) and what planSegment decided.
         bool cacheable = false;
@@ -6042,6 +6044,7 @@ struct FrameBuilder::Impl {
         f.a = openLayerTarget(window);
         f.shadowsUnderBackdrop = backdropFirst != nullptr && effect_math::backdropThenShadowsOnly(*list, c);
         f.invScreenXf = invScreenXf;
+        f.localBox = c.localBox;
         f.contentBoundsPx = Rect{c.contentBounds.x * dpr, c.contentBounds.y * dpr, c.contentBounds.w * dpr,
                                  c.contentBounds.h * dpr};
         f.screenParams.reserve(std::min<size_t>(c.effectCount, list->effects.size()));
@@ -6089,6 +6092,7 @@ struct FrameBuilder::Impl {
         in.stops = list->stops;
         in.invScreenXf = f.invScreenXf;
         in.contentBoundsPx = f.contentBoundsPx;
+        in.localBox = f.localBox;
         in.src = f.a;
         in.pyramid =
             f.sharedPyramid != nullptr ? f.sharedPyramid : (f.hasOwnPyramid ? &f.ownPyramid : nullptr);
