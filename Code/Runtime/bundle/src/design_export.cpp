@@ -19,6 +19,7 @@
 #include "symbol_contracts.h"
 #include "xt/bundle/design_color.h"
 #include "xt/bundle/design_doc.h"
+#include "xt/bundle/project_style.h"
 #include "xt/compile/diagnostics.h"
 #include "xt/compile/parse_xts.h"
 #include "xt/compile/style_model.h"
@@ -639,6 +640,13 @@ ordered_json buildTokens(const UiProject& project, const DesignSystem& ds,
     };
     root["board"] = ordered_json{{"width", numberJson(dimension(board.x, 1280.0))},
                                  {"height", numberJson(dimension(board.y, 720.0))}};
+    // T-743 (47 "共同詞彙清單"): every base token with whether it is core, as `xtframe-symbols tokens-json`.
+    ordered_json tokenList = ordered_json::array();
+    for (const auto& [name, value] : base) {
+        tokenList.push_back(ordered_json{
+            {"name", "--" + name}, {"value", value}, {"core", findCoreToken("--" + name) != nullptr}});
+    }
+    root["tokens"] = std::move(tokenList);
     report.inheritedTokens = static_cast<int>(inheritedJson.size());
     if (!inheritedJson.empty()) {
         root["inherited"] = std::move(inheritedJson);

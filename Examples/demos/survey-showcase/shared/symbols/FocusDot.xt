@@ -1,0 +1,77 @@
+<xt version="2">
+
+  <symbol name="FocusDot" state-groups="Aim: Idle|Target" requires="states: Idle, Target">
+    <ports>
+      target: bool in
+    </ports>
+    <div id="Box" bind:state.Idle="target | not" bind:state.Target="target"
+         on:port(target)="if eq(1) play(lock)">
+      <div id="Ring"></div>
+      <div id="Dot"></div>
+    </div>
+  </symbol>
+
+  <layout>
+    symbol(FocusDot) {
+      #Box {
+        position: relative;
+        width: 24px;
+        height: 24px;
+      }
+      #Ring {
+        position: absolute;
+        left: 4px;
+        top: 4px;
+        width: 16px;
+        height: 16px;
+      }
+      #Dot {
+        position: absolute;
+        left: 10px;
+        top: 10px;
+        width: 4px;
+        height: 4px;
+      }
+    }
+  </layout>
+  <style>
+    symbol(FocusDot) {
+      #Ring {
+        border-width: var(--rule-thin);
+        border-color: var(--color-text-label);
+        border-radius: var(--radius-full);
+        opacity: 0;
+        transition: opacity var(--motion-fast) ease-out;
+      }
+      #Dot {
+        border-radius: var(--radius-full);
+        background-color: var(--color-text-strong);
+        opacity: 0.85;
+      }
+      #Box:state(Idle) #Dot {
+        background-color: var(--color-text-strong);
+      }
+      #Box:state(Target) #Ring {
+        opacity: 1;
+      }
+      #Box:state(Target) #Dot {
+        background-color: var(--color-accent);
+        opacity: 1;
+      }
+    }
+  </style>
+  <timelines>
+    symbol(FocusDot) {
+      @timeline lock {
+        #Ring {
+          0s {
+            transform: scale(1.4);
+          }
+          0.16s ease-out {
+            transform: scale(1);
+          }
+        }
+      }
+    }
+  </timelines>
+</xt>

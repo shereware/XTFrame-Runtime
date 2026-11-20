@@ -131,7 +131,11 @@ constexpr size_t kMaxExpansionPathEntries = 1000000;
 
 /// One `<symbol>` definition.
 struct SymbolDef {
+    /// T-740 (56 §56.3): the qualified name -- `<symbol name>`, or `<ns>/<symbol name>` for a
+    /// definition from a namespaced library file.
     std::string name;
+    /// T-740: the namespace of the file the definition is in (SymbolLibraryFile::ns), or empty.
+    std::string ns;
     const DomTree* tree = nullptr;
     uint32_t node = 0;
     std::string file;
@@ -139,7 +143,7 @@ struct SymbolDef {
     std::vector<std::string> requiredStates;
     std::vector<std::string> requiredSlots;
     std::vector<std::string> slots;  // Slot names the definition declares.
-    std::vector<std::string> uses;   // Symbol names its body instantiates (for cycle detection).
+    std::vector<std::string> uses;   // Symbol names its body instantiates, as written (cycles).
     std::string origin;
     bool hasOrigin = false;
     /// T-174: the definition's `state-groups` attribute (empty when absent).
@@ -162,6 +166,7 @@ struct Ctx {
     const DomTree* tree = nullptr;
     std::string file;
     std::string prefix;  // "" at document level, "<instance path>/" inside an instance.
+    std::string ns;      // T-740: the namespace a bare `<use symbol>` name resolves in first.
     const std::map<std::string, SlotFill>* fills = nullptr;
     const Ctx* outer = nullptr;  // The context the `<use>` appeared in (slot fills copy from there).
     bool inSymbol = false;
@@ -182,13 +187,14 @@ public:
           m_instances(instances) {}
 
     bool run() {
-        collectDefs(m_dom, m_file);
+        collectDefs(m_dom, m_file, std::string());
         for (const SymbolLibraryFile& lib : m_libraries) {
-            collectDefs(lib.tree, lib.name);
+            collectDefs(lib.tree, lib.name, lib.ns);
         }
         if (!m_ok) {
             return false;
         }
+        qualifyScopedBlocks();
         checkCycles();
         checkContracts();
         lintAncestorClassRules();
@@ -287,7 +293,7 @@ private:
         }
     }
 
-    void collectDefs(const DomTree& tree, const std::string& file) {
+    void collectDefs(const DomTree& tree, const std::string& file, const std::string& ns) {
         for (uint32_t idx : tree.symbolDefs) {
             if (idx >= tree.nodes.size()) {
                 continue;  // T-257: never index past the tree.
@@ -298,12 +304,20 @@ private:
                 error(file, "<symbol> requires a name", n.line, n.col);
                 continue;
             }
-            if (m_defIndex.count(name->value) != 0) {
-                error(file, "duplicate symbol \"" + name->value + "\"", n.line, n.col);
+            // T-740 (56 §56.3): the identity is the qualified name; the same name in two
+            // namespaces is two symbols.
+            const std::string qualified = ns.empty() ? name->value : ns + "/" + name->value;
+            if (auto seen = m_defIndex.find(qualified); seen != m_defIndex.end()) {
+                const std::string& other = m_defs[seen->second].file;
+                error(file,
+                      "duplicate symbol \"" + qualified + "\"" +
+                          (other == file ? std::string() : " (also defined in \"" + other + "\")"),
+                      n.line, n.col);
                 continue;
             }
             SymbolDef def;
-            def.name = name->value;
+            def.name = qualified;
+            def.ns = ns;
             def.tree = &tree;
             def.node = idx;
             def.file = file;
@@ -359,6 +373,62 @@ private:
         return it == m_defIndex.end() ? nullptr : &m_defs[it->second];
     }
 
+    /// T-740 (56 §56.3): the definition a symbol reference `ref` (a `<use symbol>`, `symbol()`
+    /// block or `@timeline` scope) names when written in a file of namespace `ns`: a name with a
+    /// `/` is qualified and looked up as it is; a bare name inside a namespaced file is
+    /// `<ns>/<ref>` first, then the flat `<ref>`; anywhere else a bare name is only the flat one.
+    const SymbolDef* resolveDef(const std::string& ref, const std::string& ns) const {
+        if (!ns.empty() && ref.find('/') == std::string::npos) {
+            if (const SymbolDef* def = findDef(ns + "/" + ref)) {
+                return def;
+            }
+        }
+        return findDef(ref);
+    }
+
+    /// T-740: what an "unknown symbol" diagnostic adds after the reference: the two names tried
+    /// inside a namespaced file, and the qualified symbols a bare name could have meant.
+    std::string unknownDetail(const std::string& ref, const std::string& ns) const {
+        std::string out;
+        if (ref.find('/') != std::string::npos) {
+            return out;
+        }
+        if (!ns.empty()) {
+            out = " (tried \"" + ns + "/" + ref + "\" and \"" + ref + "\")";
+        }
+        std::string candidates;
+        for (const SymbolDef& def : m_defs) {
+            const size_t slash = def.name.rfind('/');
+            if (slash != std::string::npos && def.name.compare(slash + 1, std::string::npos, ref) == 0) {
+                candidates += (candidates.empty() ? "\"" : ", \"") + def.name + "\"";
+            }
+        }
+        if (!candidates.empty()) {
+            out += "; a bare name only names a flat symbol here, not " + candidates;
+        }
+        return out;
+    }
+
+    /// T-740: every `symbol(Name)` rule and symbol-scoped `@timeline` gets the qualified name of
+    /// the definition it names (resolveDef() against the namespace of the file it was read from);
+    /// an unknown one keeps its name and is reported where it is dropped.
+    void qualifyScopedBlocks() {
+        for (StyleRule& rule : m_rules.rules) {
+            const SymbolDef* def =
+                rule.symbol.empty() ? nullptr : resolveDef(rule.symbol, rule.symbolNamespace);
+            if (def != nullptr) {
+                rule.symbol = def->name;
+            }
+        }
+        for (TimelineDef& timeline : m_rules.timelines) {
+            const SymbolDef* def =
+                timeline.symbol.empty() ? nullptr : resolveDef(timeline.symbol, timeline.symbolNamespace);
+            if (def != nullptr) {
+                timeline.symbol = def->name;
+            }
+        }
+    }
+
     void checkCycles() {
         // 0 = unvisited, 1 = on the current path, 2 = done.
         std::vector<int> color(m_defs.size(), 0);
@@ -374,15 +444,16 @@ private:
         color[i] = 1;
         path.push_back(m_defs[i].name);
         for (const std::string& used : m_defs[i].uses) {
-            auto it = m_defIndex.find(used);
-            if (it == m_defIndex.end()) {
+            const SymbolDef* target = resolveDef(used, m_defs[i].ns);  // T-740
+            if (target == nullptr) {
                 const DomNode& n = m_defs[i].tree->nodes[m_defs[i].node];
                 error(m_defs[i].file,
-                      "symbol \"" + m_defs[i].name + "\" uses unknown symbol \"" + used + "\"", n.line,
-                      n.col);
+                      "symbol \"" + m_defs[i].name + "\" uses unknown symbol \"" + used + "\"" +
+                          unknownDetail(used, m_defs[i].ns),
+                      n.line, n.col);
                 continue;
             }
-            size_t j = it->second;
+            const size_t j = static_cast<size_t>(target - m_defs.data());
             if (color[j] == 1) {
                 std::string chain;
                 auto start = std::find(path.begin(), path.end(), m_defs[j].name);
@@ -462,10 +533,10 @@ private:
 
     /// True when `cls` is a class some element of `tree`'s subtree at `node` may carry: in its
     /// `class` attribute, a `bind:class.<cls>` binding, or anywhere in an attribute value (a
-    /// trigger's `class(<cls>, on)`). With `uses` not empty only the `<use symbol="<uses>">`
-    /// elements of the subtree count.
-    static bool classMentioned(const DomTree& tree, uint32_t node, const std::string& cls,
-                               std::string_view uses) {
+    /// trigger's `class(<cls>, on)`). With `uses` set only the `<use>` elements of the subtree
+    /// that name it (T-740: resolved as written in a file of namespace `ns`) count.
+    bool classMentioned(const DomTree& tree, uint32_t node, const std::string& cls, const SymbolDef* uses,
+                        const std::string& ns) const {
         std::vector<uint32_t> stack{node};
         while (!stack.empty()) {
             const uint32_t idx = stack.back();
@@ -475,7 +546,8 @@ private:
             }
             const DomNode& n = tree.nodes[idx];
             const DomAttr* use = n.attr("symbol");
-            const bool match = uses.empty() || (n.tag == "use" && use != nullptr && use->value == uses);
+            const bool match =
+                uses == nullptr || (n.tag == "use" && use != nullptr && resolveDef(use->value, ns) == uses);
             if (match) {
                 for (const DomAttr& a : n.attrs) {
                     if (a.name == "bind:class." + cls) {
@@ -545,20 +617,20 @@ private:
                             variant = variant || cls == "v-" + prop + "-" + value;
                         }
                     }
-                    if (variant || classMentioned(*def->tree, def->node, cls, {})) {
+                    if (variant || classMentioned(*def->tree, def->node, cls, nullptr, def->ns)) {
                         continue;
                     }
                     // The body and every definition (a `<head>` one is in no `children`).
-                    auto onUse = [&](const DomTree& tree) {
-                        bool found = classMentioned(tree, 0, cls, def->name);
+                    auto onUse = [&](const DomTree& tree, const std::string& ns) {
+                        bool found = classMentioned(tree, 0, cls, def, ns);
                         for (uint32_t d : tree.symbolDefs) {
-                            found = found || classMentioned(tree, d, cls, def->name);
+                            found = found || classMentioned(tree, d, cls, def, ns);
                         }
                         return found;
                     };
-                    bool onInstance = onUse(m_dom);
+                    bool onInstance = onUse(m_dom, std::string());
                     for (const SymbolLibraryFile& lib : m_libraries) {
-                        onInstance = onInstance || onUse(lib.tree);
+                        onInstance = onInstance || onUse(lib.tree, lib.ns);
                     }
                     if (onInstance) {
                         continue;
@@ -791,9 +863,11 @@ private:
             error(ctx.file, "<use symbol=\"" + symAttr->value + "\"> requires an id", n.line, n.col);
             return;
         }
-        const SymbolDef* def = findDef(symAttr->value);
+        const SymbolDef* def = resolveDef(symAttr->value, ctx.ns);  // T-740
         if (def == nullptr) {
-            error(ctx.file, "unknown symbol \"" + symAttr->value + "\"", n.line, n.col);
+            error(ctx.file,
+                  "unknown symbol \"" + symAttr->value + "\"" + unknownDetail(symAttr->value, ctx.ns), n.line,
+                  n.col);
             return;
         }
         const std::string fullId = ctx.prefix + idAttr->value;
@@ -915,7 +989,8 @@ private:
                 root.attrs.push_back(DomAttr{"data-xt-state", seeded, stateAttr->line, stateAttr->col});
             }
         }
-        if (!def->stateGroups.empty() && root.attr("state-groups") == nullptr) {
+        const bool groupsFromUse = root.attr("state-groups") != nullptr;  // T-738
+        if (!def->stateGroups.empty() && !groupsFromUse) {
             root.attrs.push_back(
                 DomAttr{"state-groups", def->stateGroups, def->stateGroupsLine, def->stateGroupsCol});
         }
@@ -924,7 +999,8 @@ private:
         uint32_t rootIdx = push(std::move(root), outParent);
 
         size_t instanceSlot = m_instances.size();
-        m_instances.push_back(ExpandedSymbolInstance{def->name, rootIdx, {}, std::move(useAttrs)});
+        m_instances.push_back(
+            ExpandedSymbolInstance{def->name, rootIdx, {}, std::move(useAttrs), groupsFromUse});
         m_instanceIds[def->name].push_back(fullId);
         m_instanceSites[fullId] = ctx.file + ":" + std::to_string(ctx.remapLines ? ctx.siteLine : n.line) +
                                   " <use id=\"" + idAttr->value + "\">";  // T-235
@@ -933,6 +1009,7 @@ private:
         inner.tree = def->tree;
         inner.file = def->file;
         inner.prefix = fullId + "/";
+        inner.ns = def->ns;
         inner.fills = &fills;
         inner.outer = &ctx;
         inner.inSymbol = true;
@@ -1078,7 +1155,8 @@ private:
             }
             if (findDef(def.symbol) == nullptr) {
                 m_sink.warn(m_file,
-                            "symbol(" + def.symbol + ") @timeline refers to an unknown symbol, ignored",
+                            "symbol(" + def.symbol + ") @timeline refers to an unknown symbol, ignored" +
+                                unknownDetail(def.symbol, def.symbolNamespace),
                             def.line);
                 continue;
             }
@@ -1111,7 +1189,9 @@ private:
                 continue;
             }
             if (findDef(rule.symbol) == nullptr) {
-                m_sink.warn(m_file, "symbol(" + rule.symbol + ") block refers to an unknown symbol, ignored",
+                m_sink.warn(m_file,
+                            "symbol(" + rule.symbol + ") block refers to an unknown symbol, ignored" +
+                                unknownDetail(rule.symbol, rule.symbolNamespace),
                             rule.line);
                 continue;
             }
@@ -1128,6 +1208,7 @@ private:
                 // `background-image` / `border-image-source` inside `symbol(...)` still resolves against it.
                 copy.sheetDir = rule.sheetDir;
                 copy.instanceSite = m_instanceSites[instanceId];
+                copy.instanceSymbol = rule.symbol;  // T-738
                 for (const Selector& sel : rule.selectors) {
                     rewriteSelector(sel, instanceId, copy.selectors);
                 }

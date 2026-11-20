@@ -352,3 +352,164 @@ XTFrame 內建的 `Code/SDKs/nlohmann/json.hpp`（3.11.3）以**自己的 ABI �
 9. （2026-11-15，10 §10.18 A；T-728 起）`GpuDevice::supportsAlphaChannelReads()` 預設 false——未覆寫的裝置收到的 frame 不變。要省下每個陰影／光暈一個 pass 就實作：`GaussParams`／`DownsampleParams` 尾端的 `channel` 為 1 時取樣來源的 `.a`、為 2 時取 `1 − .a`（算式見參考後端的 `fx_gauss_scalar`／`fx_downsample`），並回 true。兩個參數結構尾端多了欄位，宿主須重新編譯。
 
 10. （2026-11-15，10 §10.18 B；T-729 起）**背景模糊不參與元素自己的陰影**：`GpuDevice::supportsBackdropMask()` 預設 false——未覆寫的裝置維持舊語意（陰影含背景的 alpha），**畫面會與 SW 及參考後端不同**（半透明面板的陰影較濃）。要一致就實作 `EffectProgram::BackdropMasked`：三個輸入（R′、模糊背景、`BackdropParams::mask` 指向的來源層），`out = R′ + B · mask.a · (1 − R′.a)`，並回 true。
+
+**宿主升級須知第 11 點（2026-11-18，T-738 #694）**：跨符號互相衝突的狀態互斥群組不再是編譯錯誤，改寫進 IR 的可選區塊 `STGS`（56 §56.4）。v0.18.0 及更早的執行期會略過這個區塊——那些群組在舊執行期上不互斥（兩個互斥狀態可能同時成立），不崩潰。只有「以新編譯器編出、以前編不過的文件」會帶這個區塊；bundle 與執行期同版發佈即無此問題。
+
+## 23.ag 靜止幀不 paint（2026-11-18 定案；使用者：靜止的場景卻仍然每幀 paint，「無論如何非修不可」；修訂 §23.2 與 §23.9）
+
+**量測**（2026-11-18，v0.18.0，釘效能核）：Sherefox 的 `board` 從執行期看完全靜止（styled／laidOut／animEvaluated 皆 0、damage 為空、GPU 重送上一幀），但 `Context::render` 每幀仍花約 0.5 ms（paint 0.385、命令比對 0.108）；在 CRYENGINE 的關卡內是 1.5～1.7 ms，使整幀從 142 降到 120 fps。原因：今天沒有任何機制能在 paint **之前**知道「沒有東西變」——髒旗標在 `Document::update` 結尾就清掉，「沒變」要等畫完、比對兩份命令清單才知道，而且這個結果只用來讓 GPU 重送。
+
+**對 §23.2／§23.9 的修訂**。原裁決是「以命令清單比對求 damage，不靠節點髒旗標」，理由是沒重算的元素可能因祖先移動而變。這個理由針對的是「逐節點」的判斷，仍然成立，命令比對也照舊是 damage 的來源。本節新增的是**整份文件一個計數**的判斷，不受那個理由影響：任何一個會影響繪製的寫入發生過，就整幀照常 paint 與比對；一個都沒有，才跳過。
+
+1. **視覺世代**（與 57 §57.3 的原因記帳是同一個機制）：`Document` 持有 `visualGeneration`。凡是可能改變繪製結果的寫入，在**寫入當下**把它加一（不是在 update 結尾——flow 與宿主會在 update 與 render 之間寫入）。寫入點必須全部經過帶原因碼的標髒函式；不經 arena 的寫入點逐一列管：排版方框、文字與編輯狀態、repeat 增刪、外部媒體的綁定與內容通知、粒子、骨架、拖曳代理與指標位置、token／主題、可見性、viewport／dpr／目標模式／世界圖層／陰影快取等繪製選項、文件載入與卸載。
+2. **依時鐘改變的內容**算作「每幀都變」：可見的 caret、隨時間的修改器（wiggle 等）、自訂著色器的時間、進行中的粒子、沒有宣告內容版本的外部貼圖（`engine://`；宿主宣告了版本的照版本判斷——見 CE 倉 docs/09 的 R1，該項落地前一律視為每幀都變）。painter 在產生清單時記錄「這份清單含有依時鐘的內容」，供下一幀判斷。
+3. **跳過的條件**（`Context::render`，逐文件判斷，全部成立才跳過該文件的 paint）：`visualGeneration` 與上次 paint 時相同；上一份清單不含依時鐘的內容；繪製選項與 viewport 未變；宿主交回的是上一份清單且未動過（既有的 `frameSerial`／`structureChecked`）。跳過時：沿用上一份清單、該文件的 damage 為空，`FrameStats` 記 `paintSkipped`。全部文件都跳過時，連命令比對也不做。
+4. **防呆（必做，不可省）**：漏掉任何一個寫入點的後果是無聲地顯示舊畫面。因此——
+   - 驗證模式 `Context::setVerifyStaticSkip(true)`：符合跳過條件時**照樣 paint**，並以命令雜湊與上一份比對；不同即為漏網的寫入點，記錄診斷（第一個不同的命令與其節點 id）並以該次 paint 的結果為準。
+   - 所有測試執行檔、golden、corpus、`xtframe-bench`、編輯器的預覽在 Debug 與測試時預設開啟驗證模式；任何一次不一致都是測試失敗。出貨的宿主預設關閉。
+   - 總開關：`Context::setStaticSkipEnabled(bool)`（預設開）與環境變數 `XT_STATIC_SKIP=0`，宿主遇到問題可以關掉回到今天的行為。
+5. **§1.5「render 不改狀態、可重複呼叫並得到相同輸出」不變**：跳過時回傳的就是相同的輸出。
+6. **宿主層的查詢**（第二步）：`Context::needsFrame()`——視覺世代、進行中的動畫／transition／時間軸、flow 的計時、輸入重複等任何「下一幀需要 update」的來源皆無時回 false，宿主可以整個不呼叫 update／render。C ABI 同步提供。這一步讓靜止畫面的成本趨近零；第一步先讓它趨近「update 的固定成本」。
+7. **不做**：逐子樹保留顯示清單／合成層（10 §10.16「不做／延後」不變）。
+
+分期：(a) 視覺世代與原因記帳（57.10 a；core 的所有寫入點）；(b) `Context::render` 的跳過、驗證模式、測試全面開啟驗證；(c) `needsFrame()` 與 C ABI、宿主採用。T-737（虛線邊框幾何快取、比對不重算上一幀雜湊）是這條線的第零步，對「不能跳過的幀」仍然有效。
+
+## 23.ah 外部貼圖的內容版本與使用情形（2026-11-18 定案；宿主的影片／動態貼圖來源；配合 §23.ag）
+
+今天的 `engine://` 外部貼圖（§23.8b，`AssetResolver::setExternalTexture`）沒有「內容變了／沒變」的通知，執行期一律當作每幀可能改變：含它的世界圖層每次重畫、含它的效果段不進快取、§23.ag 也因此無法跳過 paint。宿主其實知道貼圖何時被更新（影片有新畫面、攝影機視圖有重畫）。
+
+1. **內容版本**：`AssetResolver::setExternalTextureVersion(name, uint64_t version)`。版本是宿主給的單調遞增值；同一個名字的版本沒變＝像素沒變。
+   - 從未設定版本的名字：行為與今天完全相同（每幀視為可能改變）。
+   - 設定過版本的名字：版本改變的那一次 update，執行期把使用該貼圖的節點記為 damage（原因碼 `External`，57 §57.3），並使 `visualGeneration` 前進；版本沒變時，該貼圖視為靜止——§23.ag 可以跳過 paint、世界圖層可沿用、含它的效果段可依一般規則進快取（快取鍵含版本）。
+   - `setExternalTexture` 換了 handle／尺寸／alpha 旗標仍照今天處理（且尺寸改變時重新排版——今天不會，本節一併修正）。
+2. **使用情形查詢**：`AssetResolver::externalTextureUse(name) → { bool drawn; int maxPixelWidth; int maxPixelHeight; }`——上一次 render 中，這個名字有沒有被畫到（在目標範圍內、未被完全裁掉、不透明度 > 0），以及被取樣的最大裝置像素尺寸。由 painter／frame builder 產生清單時順手統計；沒被畫到時尺寸為 0。宿主用它決定來源要不要繼續更新、該用多大的解析度。
+3. C ABI：外部貼圖本身尚未進 C ABI（50 章）；本節的兩個函式隨外部貼圖一起進（另案）。
+4. 不出現任何宿主或影片專屬名詞；多平面（YUV）來源另案（需先量測）。
+
+**§23.ag 的補充記錄（T-783 #723，2026-11-19）**：靜止幀跳過原本對「暫停在中途的時間軸」不成立——停在兩個關鍵幀之間的群組每幀仍求值並寫入（T-717 只涵蓋停在終點）。現在停住的實例（群組成員、暫停的 `<anim sync>` 片段、暫停的 CSS 動畫）在其目標沒被碰過時不求值、不寫入、不推進世代；重算一次的事件：`pause`／`resume`／`setSpeed`／改變位置的 seek／目標被 `setProperty` 寫入或樣式 commit／同一次求值裡較早的動畫或 transition 寫了重疊的屬性／熱重載。至此「畫面沒變就不畫」涵蓋：無動畫的文件、播完並停住的動畫（T-748）、停在終點的時間軸（T-717）、暫停在任何位置的時間軸（T-783）。宿主的含意：把過場或選單暫停在某一格不再有每幀成本。
+
+**§23.ah 的補充：影片播放的歸屬（2026-11-19 裁決；使用者：「你來裁決UI的影片撥放是否全部交給撥放來源」）**：是，全部交給宿主的播放來源。runtime 不解碼、不擁有媒體時鐘、不出聲：`<video>`／`<external>` 與 `engine://` 都只是外部貼圖槽加上播放意圖（13 章 `IExternalTexture`：核心送 `play／pause／seek／loop／rate` 請求、宿主以 `setPlayback(state, time)` 回報、`ended` 事件）。時間軸上的影片片段（28 章）送的是意圖，不逐幀推進媒體；要與媒體對齊的內容以宿主回報的時間驅動。宿主一側如何挑選與開啟來源是宿主倉的事，本倉不出現來源或格式的名詞；本倉為此需要的只有 §23.ah 既有的兩項（T-746）。
+
+## 23.ai 執行緒：不並行、可交接（2026-11-19 定案；依據 T-796 的唯讀調查）
+
+本倉沒有任何狀態綁定建立它的執行緒（沒有執行緒 id 的檢查或快取；`thread_local` 只用於一次呼叫內的暫存與內容定址的純快取；行程全域只有 atomic 序號、`call_once`、啟動後唯讀的常數與上鎖的日誌回呼）。所以宿主可以把一個 `Context` 整個交給另一條執行緒使用再收回——例如載入畫面期間交給渲染執行緒。規則：
+
+1. 一個 `Context` 同一時間只能有一條執行緒呼叫它與它的所有 `Document`、`ElementRef`、`PerfTracker`、它產生的 `CommandList`／`DamageList`。在呼叫之間可以交給另一條執行緒，次數不限。
+2. 每次交接都必須建立先後關係（mutex、事件、join）。交接期間原執行緒對該 `Context` 的任何呼叫都禁止——包括唯讀的查詢（`perf()`、`isVisible()`、hit test）、`pushInput`、`setPort`、`setExternalTexture`、hot reload。原執行緒要傳資料給它，由宿主自己做信箱，由持有者的執行緒套用。
+3. 下列物件必須跟著 `Context` 一起交接，或保證是執行緒安全的實作：`AssetResolver`（`FileAssetResolver` 不是執行緒安全，也不得被留在另一條執行緒的 `Context` 共用）、`ILocalizationProvider`、`IGlyphProvider`、注入的 `GlyphAtlas`／`GlyphAtlasTextures`、`FrameBuilder` 與它的 `GpuDevice`、任何共用影像或池的裝置擁有者（例如 `WgpuSharedCache`）。
+4. `TextShaper` 可以由兩條執行緒上的 `Context` 共用，前提是實作執行緒安全（`xt::text::FtTextShaper` 是：所有公開方法持同一把鎖）。交接期間不對共用的 shaper 增加字型。
+5. 宿主登記的所有回呼（`ContextListener`、port、timeline、動畫結束、flow 的 emit／input listener、資產與字形的 provider）都在驅動那個 `Context` 的執行緒上同步執行；交接期間它們在新的執行緒上執行，宿主負責讓它們只碰該執行緒可碰的資料，或改寫進信箱。本倉沒有「關閉回呼」的開關。`Context::render` 不呼叫 listener，但會呼叫 `TextShaper`；後端建幀會呼叫 `AssetResolver`、`GpuDevice`、`PerfTracker`。
+6. 行程全域的設定只在啟動時、沒有任何 `Context` 運作時設定：`xt::bundle::setBundleFileReader`、`xt::gl::loadGl`、`XT_*` 環境變數（`Context` 建構時讀取）。C ABI 的 `xt_capi_set_log` 回呼必須可重入、執行緒安全。
+7. （已刪除，T-798 #737，2026-11-19）binding 的數字解析改經 `xt::fromChars`，不再依賴執行緒的 `LC_NUMERIC`；宿主不必為此設定 locale。**行為變更：十六進位文字（`0x1A` 等）不再是 binding 的數字**——port 文字解析為「不是數字」，字串值轉數字時只讀到前導的 `0`。逗號小數點語系（`de-DE`）下的測試在 Windows 實際執行通過；POSIX 分支未編譯。
+8. C ABI：交接的單位是一個 bundle 連同它的全部 surface 與它們用的 `xt_gpu_target`；同一個 bundle 的 surface 不能分給兩條執行緒（resolver、shaper 與派送深度是每 bundle 共用）。
+9. GL 後端：GL context 綁執行緒，交接前後由宿主 make-current。
+10. 量測：跨越交接的那一幀，執行緒 CPU 的數字不可信；第一次開執行緒 CPU 計時會在呼叫的那條執行緒上做約 200 ms 的校準。換執行緒後每執行緒的純快取要重新暖身（只影響第一幀的時間）。
+
+測試（T-797 #736，2026-11-19）：`Tests/unit/test_context_handover.cpp`（一個含文字、圖片、循環動畫、循環時間軸、port 綁定、輸入的 `Context` 依 A → B → A 換執行緒，同時另一個只共用 `FtTextShaper` 的 `Context` 在第三條執行緒並行；每幀 SW 像素雜湊與單執行緒依序執行相同，驗證模式零不一致）與 `Tests/capi/test_capi_threads.cpp` 的案例 4、5（兩個 bundle）。Debug 與 MSVC AddressSanitizer 各重複 50 次：0 失敗、0 筆回報——調查沒有漏掉共用狀態。**未涵蓋：GPU 路徑（`FrameBuilder`／`GlyphAtlas`／wgpu）的交接**（測試用 SW 像素）。規則 7 仍有效：把 binding 的 `strtod` 換成 `xt::fromChars` 時行為對照表（79 列）有 8 列不同，全是十六進位（`0x1A` 等，`strtod` 接受、`fromChars` 拒絕），已還原；**裁決：十六進位不是 binding 的合法數字，之後換過去並把這 8 列改為「拒絕」**（PENDING）。
+
+**§23.ag (c) 的實作記錄：`Context::needsFrame()`（T-749 #734，2026-11-19）**
+- `bool Context::needsFrame() const`。回 false 的意思：之後以任何 dt 呼叫 `update` 都不寫入、不推進世代、不回呼，而且 `render` 的每份文件都滿足 `canSkipPaint`——宿主可以整幀不呼叫 `update`／`render`。跳過的宿主與不跳過的宿主每幀的命令清單相同（測試鎖住）；跳過後下一次 `update` 的 dt 由宿主給實際經過的時間。
+- 回 true 的條件（任一）：有排隊的輸入／pointer ray／surface request／文件操作；hover 要重判；任一 live 文件尚未第一次 update、有 dirty、有排隊或 continuous 的 trigger、binding 的 tween／delay 在跑、輸入重複或拖曳 auto-scroll、動畫或 transition 在播（`Animator::needsEvaluate`；靜止且輸入沒變者不算，§23.ag 的 T-748／T-783 補充）、時間軸群組在播、repeat／spawn 的實例在動、媒體 sequence 在播、**placeholder 模式的 video／external（保守：宿主經 `AssetResolver` 綁貼圖時沒有通知）**、粒子存活、rig 上次 update 有動；全部隱藏而 renderer 的暫存還沒釋放；某個 listener 說需要；宿主還沒 render 過目前的狀態，或畫面含依時鐘的內容（caret、wiggle、粒子、自訂 shader、外部貼圖）。
+- **flow**：`xt_core` 不依賴 flow，所以「flow 的佇列訊號、clock 節點、計時器、throttle、延後的 load」經由新增的 `ContextListener::needsFrame(const Context&)`（附加在最後、預設 false）回報，`flow::BundleContext` 實作它（`FlowRuntime::needsTick()`、`HostPorts::needsTick()`）。追認。
+- **宿主自己的 `onBeforeDocumentUpdate`／update hook 若每幀寫入，`needsFrame()` 無從得知——這類宿主必須繼續每幀呼叫 `update`**（標頭已註明）。
+- C ABI（只加）：`xt_status xt_surface_needs_frame(const xt_surface*, int* out_needs_frame)`（Context ‖ host ports ‖ 上一個 GPU 幀有工作留到下一幀）、`xt_status xt_surface_set_perf_detail(xt_surface*, int level)`（0～2）。工具：`xtframe-view --idle-skip`（只作用於 `--headless` 與 `--renderer` 路徑；`--perf` 多印 `idle-skipped frames: N of M`）、`xtframe-bench --perf-detail N`、`corpus_check.py --idle-skip`。
+- **行為變更（缺陷修正）**：已回報結束、以 `forwards` 保持的動畫實例，以前仍隨時間每經過一個週期長度就送一次 `AnimationIteration`；現在結束後不再送。
+- 視窗表面（10 §10.10.2 的 T-758 補充的裁決）：`WgpuWindowSurface::create(..., SurfaceReads reads = Sampled)`；`xt_gpu_target_create` 用 `SurfaceReads::None`，在不可取樣的表面上不再經過中介貼圖（以代用表面測試：不建中介貼圖、輸出逐位元組相同）。
+- 已知：跳過期間不跑 `update`，`save_state` 快照裡的 `clock.frame` 會比不跳過時少（不影響畫面）。corpus 的四個專案都有無限動畫，`--idle-skip` 實際跳過 0 幀——跳過的證據來自 `test_needs_frame.cpp` 與 flip fixture 的回放（第 40／75／100／200 幀截圖逐位元組相同，各跳過 29～136 幀）。未測：`HostPorts::needsTick` 的直接測試、Metal／Vulkan／Linux 的視窗目標、實體的不可取樣表面。Debug 的 capi 套件整套超過 `dev_check` 的 600 秒上限（單獨跑 89/89 過）。
+
+**§23.ah 的實作記錄：外部貼圖的內容版本與使用情形（T-746 #735，2026-11-19；只有 C++ API，C ABI 未加）**
+- `AssetResolver::setExternalTextureVersion(name, uint64 version)`；`ExternalTexture` 多 `hasVersion`／`version`。名字尚未綁定時建立只有尺寸、texture 為 0 的綁定；之後的 `setExternalTexture`／`setExternalPixels` 保留版本，`clearExternalTexture` 連版本一起移除。
+- **沒設過版本的名字行為不變**（每幀視為可能改變）。設了版本的名字：不再算作依時鐘變動的內容，§23.ag 的靜止幀跳過與 `needsFrame()` 對它成立；含它的效果段可進快取、含它的世界圖層不再每次重畫。
+- **綁定本身改變（handle、尺寸、straight alpha、像素指標）一律重畫，不論版本**：`canSkipPaint`／idle 判斷比對文件的綁定簽章（各 `engine://` 資產的 `externalTextureStamp` 的雜湊）。版本或綁定改變時 `visualGeneration` 前進，原因碼 `External`。檢查在 `update`（`stepExternalMedia` 之後）與 `render` 開始時各做一次——宿主在兩者之間調升版本也接得住。尺寸改變時（不論有無版本）用到它的元素重新排版。
+- damage：render 時走輸出清單，版本化貼圖的 stamp 與上次畫它時不同者，報它畫到的範圍（最外層效果的 `boundsHint` 與裁切的交集；沒有效果時是該次繪製的裝置矩形與裁切的交集）——從命令清單算而不是節點框，因為節點框蓋不到效果的外擴。
+- 使用情形：`AssetResolver::externalTextureUse(name) → {drawn, maxPixelWidth, maxPixelHeight}`。每次有實際 paint 的 render 先歸零再統計（整幀跳過 paint 時沿用上一次）；`drawn`＝在目標範圍內、裁切後有面積、不透明度（含圖層乘積）> 0；尺寸＝目的地的裝置像素邊長除以取樣的 uv 比例（「整張貼圖照這個比例畫出來多大」，被裁掉一部分不會變小）；3D 投影下以四角投影計。多個 `Context` 共用同一個 resolver 時以最後一個 render 的為準。世界圖層輸出只看清單自己的裁切（層由宿主擺放）。
+- 讀數（版本不變時）：含外部貼圖的效果段 `repainted_unchanged_not_cacheable` 每幀 1 → 0；含它的世界圖層 `changed` 每次 1 → 0；文件 `paintSkipped` 0 → 1。wgpu 與 GL 的像素測試：命中快取的輸出與無快取的渲染逐位元組相同。golden、corpus 不變。
+- 工具：`xtframe-view --texture-version-every N`。
+- 未做／未測：C ABI 的對應函式；以 `xtframe-view` 實際量測；Direct 模式的 band 快取對版本化貼圖沒有專門的測試（沒版本的外部貼圖在 band 裡本來就會過期，既有問題）；`needsFrame()` 對 placeholder 模式的 video／external 仍保守回 true（PENDING）。
+
+## 23.aj 平面外部貼圖：宿主給亮度／色度平面，著色時轉成 RGB（2026-11-20 定案；§23.ah 第 4 點的「另案」）
+
+**為什麼**：宿主的動態影像來源（影片解碼器最典型）手上的資料是 Y′CbCr 4:2:0 的平面。今天它得在 CPU 轉成 RGBA8 再上傳——宿主量到 3840×2160、30 fps 時色彩轉換每幀 17～22 ms（工作執行緒）、上傳呼叫佔主執行緒每幀 8 ms（每幀 33 MB）。改成上傳平面（每幀 12.4 MB，少 62%）、由 UI 的著色器在取樣時轉換，這兩項都拿掉。使用者 2026-11-19 的決定：「GPU 轉色是 XTFrame 的能力」。
+
+**形式（v1）**：**一張單通道（R8）貼圖**，裡面排著同一張畫面的各個平面：Y 全解析度、U 與 V 各為寬高一半、可選的 A（全解析度）。各平面在貼圖裡的位置由描述給定，本章不規定排法。雙貼圖（亮度一張、交錯色度一張）不在 v1。
+
+### API（`AssetResolver`，與 `setExternalTexture` 同層；只有 C++——外部貼圖整體尚未進 C ABI）
+
+```cpp
+enum class ExternalLayout : uint8_t { Rgba = 0, PackedYuv420 = 1, PackedYuva420 = 2 };
+enum class ExternalMatrix : uint8_t { Bt601 = 0, Bt709 = 1 };
+enum class ExternalRange  : uint8_t { Limited = 0, Full = 1 };          // 16–235／16–240 或 0–255
+enum class ChromaSiting   : uint8_t { Left = 0, Center = 1, TopLeft = 2 };
+
+struct ExternalPlaneRect { int x = 0, y = 0, w = 0, h = 0; };          // 貼圖內的 texel 矩形
+
+struct ExternalPlanes {
+    ExternalLayout layout = ExternalLayout::Rgba;      // Rgba＝沒有平面描述（今天的行為）
+    ExternalMatrix matrix = ExternalMatrix::Bt709;
+    ExternalRange  range  = ExternalRange::Limited;
+    ChromaSiting   siting = ChromaSiting::Left;
+    bool premultipliedPlanes = false;                  // 色彩平面是否已乘 alpha（只對 PackedYuva420 有意義）
+    int textureWidth = 0, textureHeight = 0;           // 那張 R8 貼圖的 texel 尺寸
+    ExternalPlaneRect y, u, v, a;                      // a 只在 PackedYuva420 使用
+};
+
+void setExternalTexturePlanes(std::string_view name, const ExternalPlanes& planes);
+```
+
+規則：
+1. **畫面尺寸仍由 `setExternalTexture(name, texture, width, height, …)` 的 `width`／`height` 給**（排版用的固有尺寸、`externalTextureUse` 的基準）——是畫面的像素尺寸，**不是**那張 R8 貼圖的尺寸。`y.w × y.h` 應等於畫面尺寸；`u`、`v` 為其一半（奇數時進位）。
+2. 平面描述附著在名字上，與內容版本一樣：之後的 `setExternalTexture` 保留它，`clearExternalTexture` 一併移除。回到 RGBA：`setExternalTexturePlanes(name, {})`。名字尚未綁定時先記住描述（與 `setExternalTextureVersion` 相同的做法）。
+3. 有平面描述時，`straightAlpha` 旗標不使用（alpha 的處理由 `premultipliedPlanes` 決定）；`setExternalPixels` 與平面描述互斥——SW 後端只畫 `pixels`（RGBA8），平面綁定在 SW 下是透明的。
+4. **描述是綁定的一部分**：它進入 `externalTextureStamp`、`lastFrameReusable` 的比對、效果段與世界圖層的快取鍵。描述改變＝綁定改變，一律重畫（不論內容版本）。內容版本（§23.ah）照常運作：版本不變＝靜止。
+5. 不合法的描述（矩形超出貼圖、寬高為 0、`layout` 是平面但 `textureWidth` 為 0）：該名字不畫（與 texture 0 相同），`Context` 的診斷記一次。
+
+### 裝置能力
+
+`GpuDevice::supportsPlanarExternal()`，預設 false。**宿主負責只在裝置回 true 時才設定平面描述**（宿主擁有裝置，也只有宿主能向來源改要 RGBA8）。裝置回 false 而名字帶著平面描述時：該影像不畫，並且——這是保證——沒有任何平面綁定時，命令清單與今天逐位元組相同。wgpu 與 GL 回 true；SW 無（見規則 3）。
+
+### 繪製
+
+外部影像只在「葉節點的影像繪製」被取樣（`resolveImageTexture` 是唯一的入口：一般影像、3D 投影的影像四邊形、影像網格、圓角裁切下的直接影像；遮罩來源、效果鏈、快取層、band、世界圖層、backdrop 取樣的都是已經畫好的目標）。所以轉換只放在葉節點：
+
+- 新的 `Shading::TexturePlanar`（附加在列舉尾端）。貼圖槽 t0＝那張 R8 貼圖；取樣器照舊由 `smooth` 決定（`image-rendering: pixelated` → 最近點）。
+- 參數區塊 `PlanarParams`（放在既有的 `paramIndex`；外部貼圖從不使用 mip，`mipLod` 與 `TextureLodParams` 對它恆不成立——**兩者互斥，不合併結構**）。**每個綁定每幀只推一份**並重用其索引，九宮格與平鋪的多個四邊形仍能合批。內容（全為 float）：
+  - 每個平面一組「畫面 uv → 貼圖 uv」的縮放與位移（4 × 4）；
+  - 每個平面一個取樣的箝制矩形＝平面矩形**內縮半個 texel**（4 × 4）——U 與 V 並排、九宮格與平鋪以子矩形取樣、雙線性在邊緣會讀到鄰居，所以箝制必須在著色器裡逐平面做，不能依賴取樣器的 clamp（它只在貼圖邊緣有效；GL 也從不設定宿主貼圖的 wrap）；
+  - 色彩轉換的 3×4 矩陣（含偏移；由 `matrix`×`range` 在 CPU 算好，著色器不分支）；
+  - 旗標：有無 alpha 平面、色彩平面是否已乘 alpha。
+- **色度位置**折進 U／V 的 uv 位移，著色器不知道 siting。以亮度的連續座標 X（像素 k 的中心在 k＋0.5）對應色度的連續座標：`Center`：Xc＝X／2、Yc＝Y／2；`Left`：Xc＝X／2＋0.25、Yc＝Y／2；`TopLeft`：Xc＝X／2＋0.25、Yc＝Y／2＋0.25。
+- 轉換（8 位元、SDR；輸出與 RGBA8 影像相同——sRGB 編碼值、**不套傳遞函數**）：`Limited`：Y′＝(y − 16/255)·255/219、C＝(c − 128/255)·255/224；`Full`：Y′＝y、C＝c − 128/255。R＝Y′＋2(1−Kr)·Cr、B＝Y′＋2(1−Kb)·Cb、G＝(Y′ − Kr·R − Kb·B)/(1−Kr−Kb)；BT.601：Kr 0.299、Kb 0.114；BT.709：Kr 0.2126、Kb 0.0722。結果箝制到 [0,1]。
+- alpha：沒有 A 平面 → 1。有 → `premultipliedPlanes` 為真時輸出 `(rgb, a)`，否則 `(rgb·a, a)`。之後與 `Texture` 相同：乘頂點色、乘裁切覆蓋率（解析式裁切的 `clipParamIndex` 可並存）。
+- **粒子不支援平面綁定**（`ParticleTexture` 的 `paramIndex` 已被粒子參數使用）：粒子的貼圖是平面綁定時不畫，診斷記一次。
+- 使用情形統計（`externalTextureUse`）語意不變（以畫面像素計）。
+
+### 不做（v1）
+
+10 位元、HDR、寬色域；雙貼圖排列；4:2:2／4:4:4；平面貼圖的 mip（縮小顯示的品質由宿主依 `externalTextureUse` 的尺寸選較小的來源）；SW 後端；C ABI（與外部貼圖一起另案）。
+
+### 宿主須知
+
+- 自訂 `GpuDevice` 的宿主不必改：能力預設 false，行為與今天相同。要支援就實作 `Shading::TexturePlanar`（一個片段著色器：三或四次取樣、一次矩陣乘法）並回報能力。以鏡射列舉值的方式接 `DrawCmd` 的宿主（例如把 `Shading` 的數值直接交給自己的渲染器）要同步新增的列舉值——未知的值必須不畫，不可當成別的 shading。
+- 宿主在裝置回 false、或來源不提供平面時，照舊綁 RGBA8。兩種綁定可以在執行中切換（描述改變即重畫）。
+
+**「宿主自訂 `GpuDevice` 後端的升級須知」補充（2026-11-20；接在該清單之後）**
+- （T-764，v0.19.0）`supportsBackdropMaskTextures()`，預設 false＝不變。回 true 的裝置要讀 `BackdropParams` 的尾端欄位（10 §10.18 B 的後續）。
+- （T-806，v0.19.0）`supportsPlanarExternal()` 與 `Shading::TexturePlanar`（§23.aj），預設 false＝不變。`Shading` 列舉尾端多一個值。
+
+**§23.aj 的實作記錄（T-806 #747，2026-11-20；wgpu 與 GL；只有 C++ API）**
+- `Shading::TexturePlanar = 11`（列舉尾端）。`GpuDevice::supportsPlanarExternal()`（介面尾端，預設 false；wgpu、GL 為 true）。能力為 false 時帶平面描述的影像不畫，次數記在 `BuildStats::planarSkipped`。
+- 四個列舉與 `ExternalPlanes`／`ExternalPlaneRect` 巢狀在 `AssetResolver` 裡（`AssetResolver::ExternalPlanes` 等）。
+- `PlanarParams`（`gpu_frame.h`）：48 個 float（12 個 vec4），平面順序 Y、U、V、A——`uv[4][4]`（scaleU、scaleV、offU、offV；色度位置已折進 U／V 的位移）、`clampRect[4][4]`（平面矩形內縮半個 texel）、`matrix[3][4]`（R、G、B 三列的 cY、cU、cV、offset）、`hasAlpha`、`premultiplied`、2 個 pad。裝置以 `readPlanarParams()` 讀取。矩陣與位移由純函式算出（`gpu/src/planar_params.{h,cpp}`：`planarConversion`、`chromaSitingOffset`、`planarParams`）。
+- 每個綁定每幀一份參數：同一綁定的九宮格 9 個四邊形、平鋪 12 塊各合成 1 個命令。
+- **追認的出入**：(1) 規則 5 的「診斷」——`Context` 沒有診斷通道，改為 `FrameBuilder::lastError`（每個裝置一次）加 `BuildStats::planarSkipped`；粒子遇到平面綁定同樣處理。(2) 規則 3 的互斥以**後設者為準**：`setExternalTexturePlanes`（平面排列）清除 CPU 像素，`setExternalPixels` 清除平面描述。(3) GL 的平面貼圖保留宿主的 wrap（預設 `GL_REPEAT`）——著色器的箝制負責。
+- 像素測試（與同一張圖以 RGBA8 `TextureStraight` 繪製比較；wgpu 與 GL 數字相同）：平滑測試圖各情況（一般、cover、九宮格、平鋪、3D 投影、圓角裁切、pixelated、四種矩陣×範圍、三種 siting、alpha 兩種）最大差 2～3、平均 0.03～0.20；色塊圖平均 1.0（最大差落在銳利色邊，是 4:2:0 本身的限制）。**平面邊界不滲色**：四個場景逐像素最大差 1；拿掉著色器的箝制時同一測試報出 74～148（測試有效）。
+- **沒有平面綁定時逐位元組相同**：7 個場景在能力 true／false 下 frame 的傾印、參數、頂點、索引皆相同；既有 golden（360）與 snapshot 不變。
+- 工具：`xtframe-view --bind-planar name=<png>[,yuv420|yuva420][,601|709][,limited|full][,left|center|topleft][,premul]`；CPU 參考打包器 `Code/Tools/Common/planar_pack.h`（工具與測試共用）。**行為變更**：`--headless --renderer gl|wgpu` 下的 `--bind-texture` 現在會上傳成裝置貼圖（以前只綁 CPU 像素，GPU 渲染器畫不出來）。
+- 實圖對照（1920×1080，`E:/coding3/xt-bench/t806/`）：平面路徑對 RGBA 路徑 R／G／B 平均差 0.50／0.17／0.71，0.89% 的像素差超過 3、集中在銳利色邊。
+- 未測：Vulkan、Metal、CPU 版 adapter、dpr ≠ 1；GL 的效果快取（只在 wgpu 測）。未編譯 GCC／Clang。
+
+**§23.8b 補充：外部貼圖當背景或邊框時的固有尺寸；`bindTexture` 與 alpha 旗標（2026-11-20）**
+- （T-808 #749）`AssetResolver::imageSize` 對外部資產回綁定的寬高（平面綁定也是畫面尺寸；未綁定 0×0）；尺寸改變時，以該資產當 `background-image` 或 `border-image-source` 的元素在同一幀重新求值樣式（T-746 原本只處理 `<img>`）。
+- **裁決（T-809 實作）**：`Document::bindTexture`（`IExternalTexture` 路徑）目前呼叫 `setExternalTexture` 時不帶 alpha 旗標，會把該名字先前設的 `straightAlpha` 重設為 false——這是 T-191 加入這條路徑時沒有帶上 T-150 的旗標，不是設計。改為：**`bindTexture` 沿用該名字既有的 `straightAlpha`**（與重綁時保留像素、內容版本、平面描述的做法一致；介面不變）。編輯器的媒體預覽上傳的是未預乘的 RGBA8888，卻以預乘綁定（半透明的影片畫格在 GL 預覽邊緣偏亮）——改為以 `straightAlpha = true` 綁定。
+- （T-809 #751，2026-11-20，上面裁決的實作）`Document::bindTexture` 以該名字目前的 `straightAlpha` 呼叫 `setExternalTexture`（沒有既有綁定時為 false）；介面與 C ABI 不變。編輯器的 `MediaPreviewProvider::bind` 在有 GL 貼圖時先以 `straightAlpha = true` 設定再 `bindTexture`。查證：預覽的每條上傳路徑（Qt 5 的 `FrameSurface`、Qt 6 的 `QVideoFrame::toImage()`、`injectFrame`）都經 `convertToFormat(Format_RGBA8888)`，一律是未預乘。像素測試：直通的 (200,100,0,128) 疊在白底上，修正前得到 (255,227,127)（邊緣偏亮），修正後約 (227,177,127)。golden 與 snapshot 不變。未編譯 GCC／Clang、Qt 6。
+

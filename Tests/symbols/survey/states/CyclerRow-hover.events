@@ -1,0 +1,5 @@
+# T-793: CyclerRow-hover.
+port Diff.value Standard
+port Lang.value English
+update 0.6
+pointermove 360 35

@@ -1,0 +1,138 @@
+<xt version="2">
+
+  <symbol name="CyclerRow" requires="states: Hover, Focus, Disabled; slots: label">
+    <ports>
+      value: string in
+      prev: event out
+      next: event out
+    </ports>
+    <div id="Box" tabindex="0"
+         on:key(Left)="sound(ui_tick); emit(prev)" on:key(Right)="sound(ui_tick); emit(next)">
+      <span id="Label"><slot name="label">Difficulty</slot></span>
+      <div id="Field">
+        <button id="Prev" on:press="sound(ui_tick)" on:click="emit(prev)"><div id="PrevArrow"></div></button>
+        <span id="Current" bind:text="value"></span>
+        <button id="Next" on:press="sound(ui_tick)" on:click="emit(next)"><div id="NextArrow"></div></button>
+      </div>
+    </div>
+  </symbol>
+
+  <layout>
+    symbol(CyclerRow) {
+      #Box {
+        display: flex;
+        align-items: center;
+        width: 380px;
+        height: var(--size-row);
+        padding: 0px var(--space-2);
+        column-gap: var(--space-3);
+      }
+      #Label {
+        flex-grow: 1;
+      }
+      #Field {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: var(--size-box-w);
+        height: var(--size-box);
+        padding: 0px var(--space-2);
+      }
+      #Prev,
+      #Next {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 18px;
+        height: 18px;
+      }
+      #Current {
+        flex-grow: 1;
+      }
+      #PrevArrow,
+      #NextArrow {
+        width: 6px;
+        height: 6px;
+      }
+      #PrevArrow {
+        transform: rotate(45deg);
+      }
+      #NextArrow {
+        transform: rotate(-135deg);
+      }
+    }
+  </layout>
+  <style>
+    symbol(CyclerRow) {
+      #Box {
+        border-width: 0px 0px var(--rule-thin) 0px;
+        border-color: var(--color-line-hairline);
+        transition: background-color var(--motion-fast) ease-out;
+      }
+      #Label {
+        font-family: var(--font-body);
+        font-size: var(--font-size-m);
+        letter-spacing: 1px;
+        color: var(--color-text-label);
+        white-space: nowrap;
+      }
+      #Box:hover {
+        background-color: var(--color-surface-raised);
+      }
+      #Box:focus {
+        background-color: var(--color-surface-raised);
+      }
+      #Box:focus #Label {
+        color: var(--color-text-strong);
+      }
+      #Field {
+        background-color: var(--color-surface-sunken);
+        border-width: var(--rule-thin);
+        border-color: var(--color-border-strong);
+        transition: border-color var(--motion-fast) ease-out;
+      }
+      #Box:hover #Field {
+        border-color: var(--color-accent);
+      }
+      #Box:focus #Field {
+        border-color: var(--color-accent);
+      }
+      #Prev,
+      #Next {
+        background-color: transparent;
+        border-width: 0px;
+      }
+      #Current {
+        font-family: var(--font-body);
+        font-size: var(--font-size-s);
+        color: var(--color-text);
+        white-space: nowrap;
+        text-align: center;
+      }
+      #PrevArrow,
+      #NextArrow {
+        border-width: 0px 0px 1px 1px;
+        border-color: var(--color-text);
+      }
+      #Prev:hover #PrevArrow {
+        border-color: var(--color-text-strong);
+      }
+      #Next:hover #NextArrow {
+        border-color: var(--color-text-strong);
+      }
+      :disabled {
+        background-color: transparent !important;
+      }
+      :disabled #Label {
+        color: var(--color-disabled-text) !important;
+      }
+      :disabled #Current {
+        color: var(--color-disabled-text) !important;
+      }
+      :disabled #PrevArrow,
+      :disabled #NextArrow {
+        border-color: var(--color-disabled-text) !important;
+      }
+    }
+  </style>
+</xt>

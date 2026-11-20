@@ -42,6 +42,9 @@ struct AnimationDecl {
     /// T-335: the points of a `linear()` timing function; `spec.easing` (LinearPoints) indexes
     /// this vector, and the caller re-points it into the Animator's easing point pool.
     std::vector<EasingPoint> easingPoints;
+    /// T-756: an `animation-iteration-count` item of 0 (CSS: the animation does not play; the IR's
+    /// 0 means infinite), so the combined item is left out.
+    bool noPlay = false;
 };
 
 /// One parsed declaration. `prop` is either an animatable PropId (0-108, xt/property.h) or a
@@ -76,6 +79,14 @@ struct Decl {
     /// caller (ElementRef::setStyle) still has to resolve each item's `name` to a TimelineId and
     /// append the result to Document's runtime animation pool, like `effects` above.
     std::vector<AnimationDecl> animations;
+    /// T-756 (05.6): non-zero on an `animation` Decl that carries `animation-*` longhands without
+    /// all of them (no `animation` shorthand in the same call): bit i = longhand i
+    /// (css_values::AnimationLonghand order) is given, `animationFields[i]` its items (only that
+    /// field meaningful; an empty `name` is `none`), and `animations` is empty. The caller
+    /// (ElementRef::setStyle) takes the missing longhands from the element's current `animation`.
+    /// A call that sets every longhand, or has the shorthand, gets an ordinary `animations` list.
+    uint8_t animationMask = 0;
+    std::vector<std::vector<AnimationDecl>> animationFields;
     /// T-170 (Docs/design/05-style-and-css.md §5.9.2): true for a `prop: var(--name[, fallback])`
     /// declaration. `text` then holds `--name` (for the caller to intern), `value` is unused, and
     /// `varFallback` holds the parsed fallback when `hasVarFallback` is true. Only a
@@ -97,6 +108,13 @@ struct Decl {
 /// applied" from "something did not".)
 Status parseDeclarations(std::string_view css, std::vector<Decl>& out);
 
+/// T-756 (05.6, CSS Animations 1): combines longhand item lists (`fields`, 8 of them, the ones
+/// whose bit is in `mask`) with `base` (the element's current items, names resolved: an item plays
+/// when it has a name or a timeline). One item per `animation-name` item (`base`'s count when the
+/// name is not in `mask`); every other field from its list, or from `base` repeated, or its initial
+/// value. `none` items and iteration-count-0 items are left out.
+std::vector<AnimationDecl> completeAnimationLonghands(const std::vector<std::vector<AnimationDecl>>& fields,
+                                                      uint8_t mask, const std::vector<AnimationDecl>& base);
 /// T-389 (tests): how often parseDeclarations() ran on this thread.
 uint64_t parseDeclarationsCount();
 

@@ -127,6 +127,10 @@ public:
     /// by the builder once per build; kept across `begin`).
     void setBackdropMask(bool on) { m_backdropMask = on; }
     bool backdropMask() const { return m_backdropMask; }
+    /// T-764: whether the device reads BackdropParams' texture inputs (backdropMask() and
+    /// GpuDevice::supportsBackdropMaskTextures, set by the builder once per build; kept across `begin`).
+    void setBackdropMaskTextures(bool on) { m_backdropMaskTextures = on; }
+    bool backdropMaskTextures() const { return m_backdropMaskTextures; }
 
     // -- Geometry --------------------------------------------------------------------------
 
@@ -168,6 +172,19 @@ public:
         return index;
     }
 
+    /// T-764: a BackdropParams block -- whole when it names texture inputs (`mask` ==
+    /// kBackdropMaskTextured, only on a device with backdropMaskTextures()), else its one float `mask`,
+    /// the block of before.
+    uint32_t pushBackdropParams(const BackdropParams& p) {
+        if (p.mask == kBackdropMaskTextured) {
+            XT_ASSERT(m_backdropMaskTextures);
+            return pushParams(p);
+        }
+        const uint32_t index = static_cast<uint32_t>(m_frame->params.size());
+        m_frame->params.push_back(p.mask);
+        return index;
+    }
+
     // -- Commands --------------------------------------------------------------------------
 
     /// Appends `cmd` to the open pass with the geometry and the current scissor filled in.
@@ -175,7 +192,7 @@ public:
     ///
     /// State batching (Docs/tasks/T-155.md point 2): when `cmd` is a color draw that neither
     /// writes the stencil nor cares about draw boundaries (Solid/Gradient/Texture/
-    /// TextureStraight/Glyph with stencil None or TestEqualRef) or a ClearRect, the previous
+    /// TextureStraight/Glyph/TexturePlanar with stencil None or TestEqualRef) or a ClearRect, the previous
     /// command of the open pass has identical state (shading, blend, stencil op/ref, texture,
     /// coverage (T-660b), sampler, program, paramIndex, src/aux, scissor, analytic clip (T-718)) and its
     /// geometry ends exactly where `g` begins, `g` is folded into that command (its indices rebased onto the
@@ -207,9 +224,10 @@ private:
     TargetHandle m_currentTarget = kSurfaceTarget;
     bool m_passOpen = false;
     Scissor m_scissor;
-    uint32_t m_analyticClip = 0;  ///< T-718: setAnalyticClip
-    bool m_channelReads = false;  ///< T-728: setChannelReads
-    bool m_backdropMask = false;  ///< T-729: setBackdropMask
+    uint32_t m_analyticClip = 0;          ///< T-718: setAnalyticClip
+    bool m_channelReads = false;          ///< T-728: setChannelReads
+    bool m_backdropMask = false;          ///< T-729: setBackdropMask
+    bool m_backdropMaskTextures = false;  ///< T-764: setBackdropMaskTextures
     std::vector<Slot> m_slots;
     std::vector<WindowQuad> m_windowQuads;
 

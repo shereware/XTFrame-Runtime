@@ -202,7 +202,7 @@ TEST_CASE("Animator: delay") {
     SUBCASE("no backward fill: not written before delay elapses") {
         Animator anim;
         TimelineId tid = anim.registerTimeline(&tl);
-        setProperty(fx.arena, fx.n1, prop::Opacity, Value::ofFloat(0.25f));
+        setProperty(fx.arena, fx.n1, prop::Opacity, Value::ofFloat(0.25f), DirtyCause::HostApi);
 
         PlayParams p = basicParams(tid, fx);
         p.delay = 1.0f;
@@ -214,7 +214,7 @@ TEST_CASE("Animator: delay") {
     SUBCASE("Backwards fill writes the start value before delay elapses") {
         Animator anim;
         TimelineId tid = anim.registerTimeline(&tl);
-        setProperty(fx.arena, fx.n1, prop::Opacity, Value::ofFloat(0.25f));
+        setProperty(fx.arena, fx.n1, prop::Opacity, Value::ofFloat(0.25f), DirtyCause::HostApi);
 
         PlayParams p = basicParams(tid, fx);
         p.delay = 1.0f;
@@ -474,7 +474,7 @@ TEST_CASE("Animator: Neutral keyframe keeps the base value until a real keyframe
     Animator anim;
     TimelineId tid = anim.registerTimeline(&tl);
 
-    setProperty(fx.arena, fx.n1, prop::Opacity, Value::ofFloat(0.42f));
+    setProperty(fx.arena, fx.n1, prop::Opacity, Value::ofFloat(0.42f), DirtyCause::HostApi);
 
     PlayParams p = basicParams(tid, fx);
     anim.play(p, 0.0f);
@@ -814,7 +814,7 @@ TEST_CASE(
     "Animator: T-545 an override can tween, restart from the tweened value, and clears with its tween") {
     Fixture fx;
     Animator anim;
-    setProperty(fx.arena, fx.n1, prop::Opacity, Value::ofFloat(0.0f));
+    setProperty(fx.arena, fx.n1, prop::Opacity, Value::ofFloat(0.0f), DirtyCause::HostApi);
 
     anim.setOverride(fx.n1, prop::Opacity, Value::ofFloat(1.0f), 0.5f, Easing::linear());
     CHECK(anim.hasOverride(fx.n1, prop::Opacity));
@@ -847,7 +847,8 @@ TEST_CASE(
     anim.setOverride(fx.n1, prop::Opacity, Value::ofFloat(0.9f), 1.0f, Easing::linear());
     anim.clearOverride(fx.n1, prop::Opacity);
     CHECK(!anim.hasOverride(fx.n1, prop::Opacity));
-    setProperty(fx.arena, fx.n1, prop::Opacity, Value::ofFloat(0.7f));  // What the restyle restores.
+    setProperty(fx.arena, fx.n1, prop::Opacity, Value::ofFloat(0.7f),
+                DirtyCause::HostApi);  // What the restyle restores.
     anim.evaluate(9.5f, fx.arena);
     CHECK(getProperty(fx.arena, fx.n1, prop::Opacity).f == doctest::Approx(0.7f));
 }

@@ -1,0 +1,78 @@
+<xt version="2">
+
+  <symbol name="ObjectiveBanner" requires="slots: label">
+    <ports>
+      objective: string in
+    </ports>
+    <div id="Box" on:port(objective)="play(update)">
+      <div id="Rule"></div>
+      <div id="Col">
+        <span id="Label"><slot name="label">Objective:</slot></span>
+        <div id="Line"></div>
+        <span id="Text" bind:text="objective"></span>
+      </div>
+    </div>
+  </symbol>
+
+  <layout>
+    symbol(ObjectiveBanner) {
+      #Box {
+        display: flex;
+        column-gap: var(--space-3);
+      }
+      #Rule {
+        width: 1px;
+        align-self: stretch;
+      }
+      #Col {
+        display: flex;
+        flex-direction: column;
+        row-gap: 3px;
+      }
+      #Line {
+        align-self: stretch;
+        height: 1px;
+      }
+    }
+  </layout>
+  <style>
+    symbol(ObjectiveBanner) {
+      #Rule {
+        background-color: var(--color-accent);
+      }
+      #Label {
+        font-family: var(--font-body);
+        font-size: var(--font-size-text);
+        letter-spacing: 2px;
+        color: var(--color-text-label);
+        white-space: nowrap;
+      }
+      #Line {
+        background-color: var(--color-line);
+      }
+      #Text {
+        font-family: var(--font-display);
+        font-size: var(--font-size-l);
+        letter-spacing: 1.5px;
+        color: var(--color-text-strong);
+        white-space: nowrap;
+      }
+    }
+  </style>
+  <timelines>
+    symbol(ObjectiveBanner) {
+      @timeline update {
+        #Text {
+          0s {
+            opacity: 0;
+            transform: translateX(-6px);
+          }
+          0.4s ease-out {
+            opacity: 1;
+            transform: translateX(0px);
+          }
+        }
+      }
+    }
+  </timelines>
+</xt>

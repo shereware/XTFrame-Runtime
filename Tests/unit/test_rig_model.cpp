@@ -692,25 +692,26 @@ TEST_CASE("rig: PropId 246-255 apply to Bone / Constraint; get/setProperty") {
 
     NodeArena arena;
     const NodeId bone = arena.create(NodeKind::Bone);
-    setProperty(arena, bone, prop::BoneLength, Value::ofFloat(12.0f));
+    setProperty(arena, bone, prop::BoneLength, Value::ofFloat(12.0f), DirtyCause::HostApi);
     CHECK(arena.bone(bone).length == doctest::Approx(12.0f));
     CHECK(getProperty(arena, bone, prop::BoneLength).f == doctest::Approx(12.0f));
 
     const NodeId ik = arena.create(NodeKind::Constraint);
-    setProperty(arena, ik, prop::IkStrength, Value::ofFloat(0.75f));
+    setProperty(arena, ik, prop::IkStrength, Value::ofFloat(0.75f), DirtyCause::HostApi);
     CHECK(arena.constraint(ik).params[0] == doctest::Approx(0.75f));
     CHECK(getProperty(arena, ik, prop::ConstraintParam0).f == doctest::Approx(0.75f));
-    setProperty(arena, ik, prop::ConstraintMix, Value::ofFloat(0.5f));
-    setProperty(arena, ik, prop::ConstraintEnabled, Value::ofFloat(0.0f));
+    setProperty(arena, ik, prop::ConstraintMix, Value::ofFloat(0.5f), DirtyCause::HostApi);
+    setProperty(arena, ik, prop::ConstraintEnabled, Value::ofFloat(0.0f), DirtyCause::HostApi);
     CHECK(arena.constraint(ik).mix == doctest::Approx(0.5f));
     CHECK(arena.constraint(ik).enabled == 0);
 
     const NodeId spring = arena.create(NodeKind::Constraint);
     arena.constraint(spring).kind = ConstraintKind::Spring;
-    setProperty(arena, spring, prop::IkStrength, Value::ofFloat(9.0f));  // Ik only: ignored.
+    setProperty(arena, spring, prop::IkStrength, Value::ofFloat(9.0f),
+                DirtyCause::HostApi);  // Ik only: ignored.
     CHECK(arena.constraint(spring).params[0] == 0.0f);
     CHECK(getProperty(arena, spring, prop::IkStrength).f == 0.0f);
-    setProperty(arena, spring, prop::ConstraintParam3, Value::ofFloat(98.0f));
+    setProperty(arena, spring, prop::ConstraintParam3, Value::ofFloat(98.0f), DirtyCause::HostApi);
     CHECK(arena.constraint(spring).params[3] == doctest::Approx(98.0f));
 
     const NodeId mesh = arena.create(NodeKind::Mesh);

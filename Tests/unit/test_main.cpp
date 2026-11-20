@@ -4,6 +4,7 @@
 // Relative, not <test_temp.h>: Code/Editor/DevTools/agent's xt_agent_tests compiles this file too and does
 // not have Tests/common on its include path.
 #include "../common/test_temp.h"
+#include "../common/test_visual_check.h"
 #include "../common/test_watchdog.h"
 
 #ifdef _MSC_VER
@@ -24,5 +25,8 @@ int main(int argc, char** argv) {
     _CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
 #endif
     xt::test::startWatchdog();
+    // T-747: every Context runs the visual-generation check; T-748: in every executable built on
+    // this entry point, as the static skip's verify mode (a mismatch fails the run).
+    xt::test::enableVisualCheck();
     return xt::test::finishTempDir(doctest::Context(argc, argv).run());
 }

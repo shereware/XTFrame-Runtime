@@ -452,3 +452,21 @@ TEST_CASE("T-233: xt-taper / xt-width-profile reach the node; stroke-taper-* in 
     d.update(0.0f);
     CHECK(d.arena().path(p).strokeStyle.taperStart == doctest::Approx(0.2f));
 }
+
+TEST_CASE("scene-target rule (05 5.6a rule 3, T-763): a new target equal to the animated value ends it") {
+    Loaded l = load(std::string(R"(<xt><head><style>
+      #Btn { position: absolute; left: 0px; top: 0px; width: 100px; height: 50px; }
+      #Icon { transition: fill 100ms linear; }
+      #Icon/R { fill: #000000; }
+      #Btn:hover #Icon/R { fill: #ff0000; }
+    </style></head><body><div id="Btn">)") +
+                    kIcon + "</div></body></xt>");
+    Document& d = *l.doc;
+    pointerTo(d, 60, 25, 1.0f);  // Black -> red starts; at t = 0 the fill is still black.
+    CHECK(fillOf(d, "Icon", "R").r == doctest::Approx(0.0f));
+    CHECK(d.animator().transitionCount() == 1);
+    pointerTo(d, 150, 90, 1.0f);  // Left again at t = 0: the target (black) is the current value.
+    CHECK(d.animator().transitionCount() == 0);
+    d.update(1.05f);
+    CHECK(fillOf(d, "Icon", "R").r == doctest::Approx(0.0f));
+}

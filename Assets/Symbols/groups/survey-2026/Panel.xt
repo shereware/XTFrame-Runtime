@@ -1,0 +1,80 @@
+<xt version="2">
+
+  <symbol name="Panel" requires="slots: heading, description, body">
+    <div id="Box" on:show="play(intro)">
+      <div id="Head">
+        <span id="Heading"><slot name="heading">Gameplay</slot></span>
+        <span id="Description"><slot name="description">A one-line description of this category.</slot></span>
+      </div>
+      <div id="Divider"></div>
+      <div id="Body"><slot name="body"></slot></div>
+    </div>
+  </symbol>
+
+  <layout>
+    symbol(Panel) {
+      #Box {
+        display: flex;
+        flex-direction: column;
+        width: 420px;
+        padding: var(--space-5) var(--space-6);
+      }
+      #Head {
+        display: flex;
+        flex-direction: column;
+        row-gap: var(--space-1);
+      }
+      #Divider {
+        height: 1px;
+        margin: var(--space-3) 0px var(--space-1) 0px;
+      }
+      #Body {
+        display: flex;
+        flex-direction: column;
+      }
+    }
+  </layout>
+  <style>
+    symbol(Panel) {
+      #Box {
+        background-color: var(--color-surface);
+        background-image: var(--tex-scratch);
+        background-repeat: repeat;
+        background-size: 256px 256px;
+        border-width: var(--rule-thin);
+        border-color: var(--color-border);
+      }
+      #Heading {
+        font-family: var(--font-display);
+        font-size: var(--font-size-xl);
+        letter-spacing: var(--letter-display);
+        color: var(--color-text-strong);
+      }
+      #Description {
+        font-family: var(--font-body);
+        font-size: var(--font-size-s);
+        letter-spacing: 0.5px;
+        color: var(--color-text-dim);
+      }
+      #Divider {
+        background-color: var(--color-line);
+      }
+    }
+  </style>
+  <timelines>
+    symbol(Panel) {
+      @timeline intro {
+        #Box {
+          0s {
+            opacity: 0;
+            transform: translateY(6px);
+          }
+          0.4s ease-out {
+            opacity: 1;
+            transform: translateY(0px);
+          }
+        }
+      }
+    }
+  </timelines>
+</xt>

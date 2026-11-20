@@ -330,6 +330,8 @@ Claude Design canvas ──Artifact read──▶ <dump>/canvas.json + *.dc.html
 
 **代碼表追加（2026-11-04，53 §53.102；T-601）**：`flow.introByTimer`（warning；autostart 單發計時器驅動 `timeline.play`／`seek`／`state.set`；fix：`lifecycle.shown` 或 `on:show`）。
 
+**代碼表追加（2026-11-19，T-757 #712）**：`timeline.fromAnimations`（info；一個範圍的摘要，detail 含 timeline、collected、kept、duration）、`timeline.animationKept`（warning；每個沒收進時間軸的 `animation` 一則，detail 含 timeline、animation、reason——`parse`／`paused`／`duration`／`delay`／`length`／`iterations`／`notDivisible`／`direction`／`fill`／`keyframes`／`property`／`var`／`tooManyStops`／`easing`／`overlap`／`shared`／`conditional`；行號指向該元素）。規則見 27 §27.5。
+
 **代碼表追加（2026-11-05；T-604）**：`flow.rootPortAlias`（info；`#<root>.<port>` 解析為文件 port；fix：改寫 `#document.<port>`）。
 
 **代碼表追加（2026-11-05；T-594 #572）`web.*`（全部 warning、帶 fix、只在 `--web-compat`／`lint.run {webCompat}` 開啟時發、不影響 `--strict`）**：`web.inlineBlock`（`display` 的 inline 類值）、`web.floatOrTable`（`float`／`clear`、`display: table*`、表格標記）、`web.positionFixed`（`fixed`／`sticky`）、`web.boxSizing`（非 `border-box`）、`web.vwVhVsUiscale`（`vw`／`vh` 未配 `uiscale`）、`web.textWithChildren`（帶 `id`／`bind:`／`on:` 的 span 被折進富文本）、`web.layerAttribute`（`layer` 寫成屬性）、`web.zIndexAcrossLayers`（非零 `z-index` 無 `layer: overlay`）、`web.pointerEventsInherit`（互動元素在 `pointer-events: none` 祖先下無自身值）、`web.flexTextNoMinWidth`（與 `layout.flexShrinkText` 去重）、`web.percentHeightOnAuto`、`web.translateZSort`（2D 子項夾在 3D 兄弟之間）。實作 `web_compat_lint.{h,cpp}`，`DiagnosticSink::web()`，四個掛點（xts 宣告迴圈、inline `style=`、富文本前、`compile_document` 的 DOM 與計算樣式檢查）。flow lint 接 Document：CLI `siblingFlowLint(xtPath, ir)` 與匯入器 `lintFlowText(..., ir)` 以 `Document::load(ir, NullTextShaper)` 建文件後呼叫 `lintFlowGraph(graph, doc, out)`，`flow.rootPortAlias` 現在到 CLI stderr／`--diagnostics` 與匯入器 `--lint`；匯入器改在每個 UI 的 verify 編譯後 lint 板子的 `.xtflow`（`ImportUi::boardFlows`）。T-597 可補 `not-like-web.md` 缺的三條（textWithChildren、percentHeightOnAuto、vwVhVsUiscale）。
@@ -355,3 +357,64 @@ Claude Design canvas ──Artifact read──▶ <dump>/canvas.json + *.dc.html
 **T-628 實作記錄（#597，2026-11-06；一項偏差核准）**：`style_dedup.cpp` 的 `varRefs()`（含 fallback 內的引用）＋ `TokenTable`（各 UI `ImportUi::tokens` 名→值集合）：`agrees()` 判定宣告可共用（引用的每個 token 在宣告它的 UI 間至多一個值，含經由另一 token 值間接引用；未宣告的 UI 視為同意），`shareableOf()` 為外觀去掉不同意的宣告，去重鍵由它建；`ClassTable::apply()` 對每條 class 規則收集 token，`promoteTokens()` 寫進 `sharedRules` 最前的 `:root` 規則（已存在則重用、同名不重複），由既有 `renderSharedStyles()` 落到 `shared/base.xts`；不同意的宣告留在節點。**偏差（核准）**：token 檢查在每一遍去重都跑，包含再匯入時新 UI 的自身去重（它也會在 `shared/base.xts` 建 `s-*` class，所以同樣需要提升）。測試 `test_t628_dedup_tokens.cpp` 三案（含對寫出的 `.xt` 跑 `compileDocument` 確認無 `is undefined`）；import 318、golden 173。dupcheck 比基準 +39（T-626 +29 ＋測試助手複製）。`dialect.md` 一句見報告（技能線）。
 
 **T-629 實作記錄（#598，2026-11-06）**：基底值來自 `css_inline.cpp` 的 `effectTimelineTracks`（時間軸）與 `effectBaseForKeyframes`（`@keyframes`），非 `dc_import.cpp`；新 `identityEffect()`：blur → `blur(0px)`、backdrop-blur → `backdrop-blur(0px)`（仍放最前）、color-adjust → `color-adjust()`（全預設，執行期接受空引數）、shadow → `shadow(0px 0px 0px 0px #00000000)`（鍵為 `inset` 時基底加 `1 inset`，inset 不可動畫）、glow → `glow(0px #00000000 0)`（`inner` 同理；透明色為代理選定、與 shadow 一致）；無可動畫參數的種類（outline、shine、gradient-mask）不變（時間軸路徑本來就丟鍵，`@keyframes` 仍取第一停點）。與基底相同的參數不寫；第 0 鍵與恆等不同即寫。三個 T-567 測試期望調整，新板 `t629-effect-base-identity` 兩案；import 313、golden 173 未變。
+
+**24.10 修訂：重新匯入的三條不變式與停損的例外（2026-11-20 裁決；T-802、T-803）**
+
+起因（外部專案回報，主線以 v0.18.0 的工具重現）：板子刪掉 40% 的元素後重新匯入，停損擋下、`--prune` 也過不去，只能 `--force`（丟掉所有手改）或刪掉 UI 重匯；板子沒改的 UI 每次都被重寫，手改過的文件還會被重排、`<body>` 的註解被刪；v2 的 `<symbol>` 一律以本地為準，板子新增的 symbol 被丟掉而產生編譯錯誤。
+
+不變式（寫入即為規格）：
+- **I1 不動沒改的東西**：某個 UI 的板子在這次匯入的「全新轉換結果」與上次記錄的相同時，該 UI 的所有檔案不寫入（不合併、不重新輸出）。任何檔案在內容位元組相同時不寫入（mtime 不變）。
+- **I2 沒有手改時，重新匯入加 `--prune` 的結果等於全新匯入**（板子擁有的內容：元素、屬性、綁定、觸發、port、時間軸、規則、symbol、tokens）。
+- **I3 手改的內容保留**（24.10／T-618／T-620 既有清單不變），而且**合併後的重新輸出不得丟掉 `<body>` 的註解，也不重排沒有變更的部分**。
+
+規則的修訂：
+1. **停損**（超過 20% 的舊節點「新消失＋低信心」就不合併）：指定 `--prune` 時，**消失的節點不計入**（作者已明說「不見的就刪」），只計低信心的配對。未指定 `--prune` 時不變；exit 3 的訊息加一句「若這些節點是刻意從板子移除的，加 `--prune`」。
+2. **v2 `<symbol>` 定義改為逐定義的三方合併**（取代 T-206 的「本地一律為準」）：報告記錄每個 symbol 定義上次轉換結果的雜湊。本地＝基準 → 採用板子的版本；板子刪除且本地＝基準 → 刪除；板子新增 → 加入；本地改過 → 保留本地並記一筆衝突。
+3. **保留的消失節點**（未指定 `--prune`）：其 `bind:`／`on:`／`port:` 若指向這次被板子移除的 port，**移除該屬性**並在報告記一筆（節點本身與其他屬性照舊保留）——重新匯入不得寫出不能編譯的文件。
+4. **`.xtflow`**：報告記錄上次由匯入產生的流圖雜湊。板子這次沒有流圖、而本地的 `.xtflow` 仍等於該雜湊（沒有手改）→ 刪除；手改過 → 保留（`--force` 也保留——流圖不屬於「文件」）。
+5. 板子已不在畫布上的 UI：不刪（刪 UI 是作者的動作）；報告列出。
+6. `import-report.json` 在同一輸入下必須是固定點：對沒有變更的板子執行第二次匯入，報告的位元組與第一次之後相同（`reimport[]` 區塊不因「又跑了一次」而增長）；`diagnostics.json` 的 `source` 記正規化後的路徑。
+
+**24.10 修訂的實作記錄（一）：I1、I3、規則 6（T-802 #743，2026-11-20）**
+- 位元組相同不寫入：`Staging::commit` 在暫存檔與目標檔相同時跳過（不搬移、不改 mtime），含 `--force`；涵蓋文件、`.xtui`、`import-report.json`、資產、符號庫；`--report` 的副本與 `diagnostics.json` 同樣內容相同就不寫。
+- 板子沒改的 UI 整個略過：報告的 `uis[].freshHash`（FNV-1a 64，16 位 hex）記錄合併前「全新轉換結果」的雜湊（`.xt`＋`.xts`、`--symbols-dir` 下的符號庫、板子的流圖；**不含資產位元組**——資產由上一條保護）。只有乾淨寫出（沒有衝突、沒有停損）的 UI 才記。沒有 `--force` 而雜湊相同時：不合併、不寫任何檔；baseline、雜湊、`reimport[]` 列沿用上次的；磁碟上的文件仍照常編譯檢查。CLI 印 `<ui>: board unchanged since the last import; its files were left alone`。舊報告沒有欄位時照舊合併一次並補上。
+- 註解：原因是 `reimport.cpp` 的 `parseDocument()` 跳過所有 `<!` 開頭的標籤。註解改存成虛擬子節點（不算進雜湊），`Merger::weaveComments()` 放回原本緊接的本地兄弟節點之前。
+- 排版：合併輸出後，內容相同的部分換回本地的原始位元組（`keepLocalFormatting`／`keepLocalSheetFormatting`；單位是 `<xt>` 的直接子節點，行內 `<layout>`／`<style>`／`<timelines>` 與 `.xts` 逐條規則）。
+- `diagnostics.json` 的 `source` 記相對於專案目錄的 dump 路徑（不同磁碟機時退回正規化的絕對路徑）。
+- **行為變更**：`WriteResult::uisWritten` 與編輯器服務 `import.reimport` 的 `written` 只算真正寫出的 UI；`reimports`／服務回傳的 `uis` 不含被略過的 UI。
+- 已知的不穩定：(a) `diagnostics.json`（不是報告）在「上次 keepGoing 修掉的錯誤被沿用」時，項目缺 `code`／`repaired`，第一、二次可能不同；(b) 被略過的 UI 的流圖檔若被人刪掉，報告的 `uis[].flow` 變空字串而檔案不重寫（I1）。(c) `Code/Editor/Service/src/ops_import.cpp` 寫的 `source` 仍是原字串（T-803 一併改）。
+- 未編譯 GCC／Clang。
+
+**24.10 修訂的實作記錄（二）：I2、規則 1～5（T-803 #744，2026-11-20）**
+- 規則 1：`MatchResult::failureRatio(countMissing)`；`--prune` 時只算低信心配對。未加 `--prune` 的停損訊息結尾加一句提示（`kPruneHint`）。**另修一個缺陷**：停損時報告把消失節點的列丟掉，導致照提示重跑 `--prune` 時這些節點被當成編輯器自加的而保留——現在被擋下的 UI 保留上次報告中那些節點的列。
+- 規則 2：`reimportv2::mergeSymbols()` 逐定義三方合併；報告 `uis[].symbols` 記每個定義的雜湊；衝突以 `prop:"symbol"`、`outId`＝symbol 名稱記錄。舊報告沒有雜湊：本地與板子相同 → 記錄；不同 → 保留本地、記衝突；**只有板子有、本地沒有的定義 → 加入**（body 的 `<use>` 需要它；追認）。
+- 規則 3：`<body>` 合併後算出被移除的 port，消失節點上指向它們的 `bind:`／`on:`／`port:` 屬性移除；報告 `reimport[].removedBindings`、每筆一個 `import.notice`。
+- 規則 4：報告 `uis[].flowHash`。未手改 → 跟著板子（改了就覆寫、沒有了就刪除並清掉 `.xtui` 的 flow）；手改過 → 保留。**板子有流圖時 `--force` 仍照舊覆寫**（規格未寫，維持原行為；追認）。舊報告沒有 `flowHash`：不刪不覆寫，檔案剛好等於板子的版本時記錄雜湊。
+- 規則 5：報告頂層 `uisNotOnCanvas`、`import.notice`；不刪檔。
+- T-802 的三點：`compileErrors` 列存 `code`／`repaired`／`declaration`；`stableSource()` 搬到 `xt/import/diagnostics.h`，CLI 與編輯器服務共用（**服務的 `diagnostics.json` 的 `source` 改為相對路徑——行為變更**）；被略過的 UI 的流圖檔被刪時 `uis[].flow` 沿用上次的值並加 notice。
+- 只用既有的診斷代碼（`import.notice`、`import.reimportConflict`、`import.oneWay`）。
+
+**I2 的範圍（依測試矩陣修訂；4 塊板子 × 6 種變形，15／24 逐位元組相同）**——「等於全新匯入」排除以下三種**設計上的差異**（語意相同，位元組不同）：
+1. T-626：重新匯入保留既有的 `s-*` 共用 class，全新匯入把它內聯。
+2. T-197：沒有名字的節點以板子路徑生成 id；路徑改變後配對器配回舊節點，合併保留舊 id。
+3. `.meta` 的 `id:`（隨機 UUID）。
+
+**仍是缺口（T-804）**：(a) v2 降階把同一選擇器的兩條規則合成一條——宣告相同但位元組不同（也是 I3 的缺口：任何會合併的重新匯入都會改寫這類規則）；(b) 沒有 manifest 的專案裡，不再被引用的資產與其 `.meta` 留著；(c) 未加 `--prune` 時板子刪掉一個 symbol，保留的消失 `<use>` 仍指向已刪的定義，文件編不過（規則 3 只處理了 port）；(d) `--symbols-dir` 模式下板子新增的 symbol 連結不見（`raise()` 的 `symbolsSrc` 一律取本地），符號庫檔未納入三方合併。另：移除綁定的 notice 只在執行合併的那一次出現，所以那一次的 `diagnostics.json` 不是固定點（接受——報告是固定點即可）。
+
+**24.10 修訂的實作記錄（三）：四個缺口（T-804 #745，2026-11-20）**
+- (a) 同一選擇器的多條規則：`raise()`（改收 `RaiseOptions`）以板子的全新文件為參照，把 `lower()` 合成一條的規則照全新文件的寫法拆回去（宣告依屬性名歸回原規則；全新文件沒有的屬性留在第一條），再由 `keepLocalSheetFormatting` 換回本地的位元組。另修 `mergeUiLowered()`：節點已不在的「有 import 標記」本地規則不再擋掉板子同一選擇器的無標記規則。**取捨（追認）**：本地手動把兩條規則合成一條、而板子仍寫兩條時，會依板子拆回兩條（沒有基準可分辨「手動合併」與「板子新增規則」，以 I2 為優先）。
+- (b) 孤兒資產（只在沒有 manifest 時）：報告 `assetHashes`（路徑 → 匯入寫出的 sha256）與 `unreferencedAssets`。有雜湊記錄、這次沒寫出、沒有任何文件引用、位元組與雜湊相同者：未加 `--prune` 列出並加 `import.notice`；`--prune` 連同 `.meta` 刪除。手改過的、舊報告沒有雜湊的不刪。
+- (c) `reimportv2::keepUsedDefinitions()`：板子刪掉但合併後文件仍 `<use>` 的 symbol 定義保留本地版；報告 `reimport[].keptSymbols`；`--prune` 時節點與定義一起刪。
+- (d) `--symbols-dir`：`<symbols src>` 連結＝板子的連結＋本地仍保留的連結；符號庫檔逐定義三方合併（`keepLocalLibrary()`）；板子刪掉且未手改 → 移除連結，沒有其他文件連結該檔時刪檔。**行為變更：不再「已存在就保留」**（T-206 的規則只在本地確實改過時成立）。
+- `--help` 的 exit 3 說明加上 `--prune`。
+- I2 矩陣：4 板 × 6 變形 **21／24 逐位元組相同**，其餘 3 案屬設計上的差異（T-626 兩案、T-197 一案）；`--symbols-dir` 模式另 6／6。import 361／361、editor_service 277／277。這次先在舊碼上確認新測試失敗（6 案中 5 案失敗，另 1 案是保護性測試）。
+- (c) 在 `--symbols-dir` 模式的對應情況已實作但沒有專門測試。未編譯 GCC／Clang。
+
+**裁決（2026-11-20）：I1 的略過不得擋住 `--prune`。** 未加 `--prune` 的乾淨合併會記下 `freshHash`；之後以同一塊板子加 `--prune` 重跑時，UI 被當成「板子沒改」整個略過，消失的節點、保留的 symbol 定義都不會刪——而 notice 的文字正是叫使用者這樣做。規則改為：**指定 `--prune` 且該 UI 有待清除的東西（文件裡有 `data-xt-missing` 的節點，或報告上次記錄了 `keptSymbols`／`removedBindings` 以外仍保留的消失節點列）時，不走 I1 的略過，照常合併**；沒有待清除的東西時照舊略過（不寫檔）。T-805 一併實作。
+
+**24.10 修訂的實作記錄（四）：`--prune` 不被 I1 的略過擋住；暫存目錄（T-805 #746，2026-11-20）**
+- `prunePending()`（`xt_writer.cpp`）：磁碟上的文件有 `data-xt-missing` 的節點、或上次報告該 UI 的 `reimport[]` 有非空的 `keptSymbols`、或那些列的 `missing` 裡有仍在文件中的 id → 有待清除。指定 `--prune` 且有待清除時不走 I1 的略過；否則照舊略過、不寫任何檔。
+- 順帶修正（追認）：`--symbols-dir` 下文件保留了已刪符號庫的連結時，驗證編譯只拿到板子現有的符號庫而報讀檔錯誤——改用專案裡的檔案驗證；輸出不變。
+- 暫存目錄：板子圖片的暫存改由 `ScratchDirectory`（`Code/Editor/Import/src/scratch_directory.{h,cpp}`）擁有，名字每次執行唯一（`xt-import-dc-<pid>-<16 hex>`），隨 `ImportResult::scratch`（公開結構新增的成員）解構而移除。**`xtframe-pack` 本身不會產生這些目錄**（它不呼叫匯入）；來源是 `xtframe-import dc`（含 `--lint`）與編輯器／服務的匯入。其餘暫存目錄的清查表在 PR #746 的報告；`symbol_set`、服務的 `ops_symbols`、`xtframe-view` 改為 RAII 並在父目錄空了時刪除；`unpackXtb` 的 `xtframe-bundle/<內容雜湊>/` 是跨執行的解壓快取，刻意保留（解壓失敗時留下的半個目錄已改為移除）。
+- import 365／365、bundle 291／291、editor_service 277／277。未編譯 GCC／Clang；POSIX 的 `TMPDIR` 路徑未測。
+

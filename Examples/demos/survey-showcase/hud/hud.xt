@@ -1,0 +1,85 @@
+<xt version="2">
+  <head>
+    <title>HUD</title>
+    <symbols src="../shared/symbols/ScreenShade.xt"/>
+    <symbols src="../shared/symbols/BloodEdge.xt"/>
+    <symbols src="../shared/symbols/FocusDot.xt"/>
+    <symbols src="../shared/symbols/ObjectiveBanner.xt"/>
+    <symbols src="../shared/symbols/LocationClock.xt"/>
+    <symbols src="../shared/symbols/VitalBar.xt"/>
+    <symbols src="../shared/symbols/NoiseMeter.xt"/>
+    <symbols src="../shared/symbols/InventorySlot.xt"/>
+    <symbols src="../shared/symbols/InteractPrompt.xt"/>
+    <symbols src="../shared/symbols/PickupNotice.xt"/>
+    <symbols src="../shared/symbols/SubtitleLine.xt"/>
+  </head>
+
+  <ports>
+    objective: string in = "Find the way out"
+    location: string in = "Location Name"
+    clock: string in = "21:40"
+    hp: number in = 64
+    stamina: number in = 82
+    noise_level: number in = 1
+    noise_text: string in = "Alert"
+    interact_label: string in = "Open Door"
+    interact_visible: bool in = true
+    slot: number in = 0
+    subtitle_speaker: string in = "Speaker"
+    subtitle_line: string in = "Stay close to the wall and keep the light low."
+    pause: event out
+    active: bool in = true
+  </ports>
+
+  <body>
+    <div id="Screen" tabindex="0" autofocus on:port(active)="if eq(1) show() else hide()" on:key(Escape)="emit(pause)">
+      <img id="Backdrop" src="../shared/img/backdrop-hud.png"/>
+      <use symbol="ScreenShade" id="Shade" variant:Kind="Vignette"/>
+      <use symbol="BloodEdge" id="Hurt" bind:level="hp | range(30, 0, 0, 1) | clamp(0, 1)"/>
+      <use symbol="ObjectiveBanner" id="Objective" bind:objective="objective"/>
+      <use symbol="LocationClock" id="Where" bind:location="location" bind:clock="clock"/>
+      <div id="Vitals">
+        <use symbol="VitalBar" id="Health" variant:Icon="Pulse" slot:label="Health" bind:value="hp"/>
+        <use symbol="VitalBar" id="Stamina" variant:Icon="Runner" slot:label="Stamina" bind:value="stamina"/>
+        <use symbol="NoiseMeter" id="Noise" bind:level="noise_level" bind:text="noise_text"/>
+      </div>
+      <div id="Inventory">
+        <use symbol="InventorySlot" id="Slot1" slot:badge="1" slot:caption="Flashlight" bind:selected="slot | eq(0)"/>
+        <use symbol="InventorySlot" id="Slot2" variant:Icon="Crowbar" slot:badge="2" slot:caption="Crowbar" bind:selected="slot | eq(1)"/>
+        <use symbol="InventorySlot" id="Slot3" variant:Icon="Clipboard" slot:badge="3" slot:caption="Clipboard" bind:selected="slot | eq(2)"/>
+        <use symbol="InventorySlot" id="Slot4" variant:Icon="Key" slot:badge="4" slot:caption="Key" bind:selected="slot | eq(3)"/>
+      </div>
+      <use symbol="FocusDot" id="Dot"/>
+      <use symbol="InteractPrompt" id="Prompt" slot:key="E" bind:label="interact_label" bind:visible="interact_visible"/>
+      <use symbol="PickupNotice" id="Pickup"/>
+      <div id="Subtitle">
+        <use symbol="SubtitleLine" id="Line">
+          <slot name="speaker"><span id="LineSpeaker" bind:text="subtitle_speaker"></span></slot>
+          <slot name="line"><span id="LineText" bind:text="subtitle_line"></span></slot>
+        </use>
+      </div>
+    </div>
+  </body>
+
+  <layout>
+    body { width: 1280px; height: 720px; position: relative; }
+    #Screen { position: absolute; left: 0px; top: 0px; width: 1280px; height: 720px; overflow: hidden; }
+    #Backdrop { position: absolute; left: 0px; top: 0px; width: 1280px; height: 720px; }
+    #Shade { position: absolute; left: 0px; top: 0px; }
+    #Shade/Box { width: 1280px; height: 720px; }
+    #Hurt { position: absolute; left: 0px; top: 0px; }
+    #Hurt/Box { width: 1280px; height: 720px; }
+    #Dot { position: absolute; left: 628px; top: 348px; }
+    #Objective { position: absolute; left: 40px; top: 36px; }
+    #Where { position: absolute; right: 40px; top: 36px; }
+    #Vitals { position: absolute; left: 40px; bottom: 36px; display: flex; flex-direction: column; row-gap: 10px; }
+    #Inventory { position: absolute; right: 40px; bottom: 36px; display: flex; flex-direction: row; column-gap: 8px; }
+    #Prompt { position: absolute; left: 700px; top: 340px; }
+    #Pickup { position: absolute; right: 40px; top: 300px; }
+    #Subtitle { position: absolute; left: 0px; top: 612px; width: 1280px; display: flex; justify-content: center; }
+  </layout>
+  <style>
+    #Screen { background-color: var(--color-bg); }
+    #Backdrop { object-fit: cover; }
+  </style>
+</xt>

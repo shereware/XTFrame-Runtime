@@ -218,14 +218,6 @@ std::string_view keyframesName(const IrView& ir, TimelineId timeline) {
     return {};
 }
 
-void markStyleDirtySubtree(NodeArena& arena, NodeId node) {
-    arena.markDirty(node, static_cast<uint8_t>(kDirtyStyle));
-    arena.traversePreorder(node, [&arena](NodeId n) {
-        arena.markDirty(n, static_cast<uint8_t>(kDirtyStyle));
-        return true;
-    });
-}
-
 std::vector<std::string> stringItems(const Json* arr) {
     std::vector<std::string> out;
     if (arr != nullptr && arr->kind == Json::Kind::Arr) {
@@ -612,13 +604,12 @@ void appendVersion4(std::string& out, const DocumentState& state) {
 
 /// The `transition` entry of `style` that covers `prop` (the first one, as StyleEngine picks), or
 /// null.
-const IrTransitionSpec* transitionSpecFor(const IrView& ir, const ComputedStyle& style, PropId prop) {
-    const std::span<const IrTransitionSpec> all = ir.style().transitions();
-    if (uint64_t{style.transitionOffset} + style.transitionCount > all.size()) {
-        return nullptr;
-    }
-    for (const IrTransitionSpec& spec : all.subspan(style.transitionOffset, style.transitionCount)) {
-        if (spec.prop == prop || spec.prop == 0xFFFFu) {
+const IrTransitionSpec* transitionSpecFor(const StyleEngine& styles, const ComputedStyle& style,
+                                          PropId prop) {
+    // T-778: the IR's list or a combined one.
+    for (const IrTransitionSpec& spec :
+         styles.transitionSpecs(style.transitionOffset, style.transitionCount)) {
+        if ((spec.flags & kIrTransitionNoProp) == 0 && (spec.prop == prop || spec.prop == 0xFFFFu)) {
             return &spec;
         }
     }
@@ -665,8 +656,9 @@ bool fitsProperty(PropId prop, const Value& v) {
 /// T-654: rebuilds the snapshot's transitions on the restored clock, after the style pass: each one
 /// gets the delay (and, when the snapshot has none, the easing) of the element's own `transition`
 /// for the property, and the start that puts it `elapsed` seconds past that delay at `clock`.
-void applyTransitions(const Document& doc, const NodeArena& arena, const IrView& ir, Animator& animator,
-                      float clock, const std::vector<DocumentState::Transition>& transitions) {
+void applyTransitions(const Document& doc, const NodeArena& arena, const StyleEngine& styles,
+                      Animator& animator, float clock,
+                      const std::vector<DocumentState::Transition>& transitions) {
     for (const DocumentState::Transition& snap : transitions) {
         const NodeId node = doc.byId(snap.id).node;
         const PropId prop = propertyByName(snap.property);
@@ -682,7 +674,7 @@ void applyTransitions(const Document& doc, const NodeArena& arena, const IrView&
             tr.from.type != tr.to.type || !fitsProperty(prop, tr.from)) {
             continue;
         }
-        const IrTransitionSpec* spec = transitionSpecFor(ir, arena.element(node).style, prop);
+        const IrTransitionSpec* spec = transitionSpecFor(styles, arena.element(node).style, prop);
         tr.delay = spec != nullptr ? spec->delay : 0.0f;
         tr.duration = snap.duration;
         if (!parseEasingText(snap.easing, tr.easing)) {
@@ -1081,8 +1073,9 @@ void Document::applyClasses(const DocumentState& state) {
         std::sort(want.begin(), want.end());
         want.erase(std::unique(want.begin(), want.end()), want.end());
         if (m_arena.element(n).classes != want) {
+            // T-763 (items 3-4): each node by the class dependency table.
+            m_events->restyleClasses(m_arena, n, m_arena.element(n).classes, want, DirtyCause::Load);
             m_arena.element(n).classes = std::move(want);
-            markStyleDirtySubtree(m_arena, n);
         }
     }
 }
@@ -1168,8 +1161,10 @@ void Document::applyState(const DocumentState& state, bool exact) {
     }
     for (const auto& [node, bits] : wanted) {
         if (m_arena.alive(node) && m_arena.common(node).customStates != bits) {
+            // T-763 (item 4): each node by the state dependency table (item 2).
+            const uint32_t changed = m_arena.common(node).customStates ^ bits;
             m_arena.common(node).customStates = bits;
-            markStyleDirtySubtree(m_arena, node);
+            m_events->restyleState(m_arena, node, StateChange{0, changed, 0}, DirtyCause::Load);
         }
     }
     // 2b. T-650: runtime classes (restoreState() only; a hot reload keeps the new IR's).
@@ -1187,7 +1182,7 @@ void Document::applyState(const DocumentState& state, bool exact) {
         const uint32_t size = static_cast<uint32_t>(edit->value.size());
         edit->cursor = input.cursor < size ? input.cursor : size;
         edit->anchor = input.anchor < size ? input.anchor : size;
-        m_arena.markDirty(node, static_cast<uint8_t>(kDirtyPaint));
+        m_arena.markDirty(node, static_cast<uint8_t>(kDirtyPaint), DirtyCause::Load);
     }
     // 4. Focus.
     for (uint8_t p = 0; p < kMaxPlayers; ++p) {
@@ -1250,7 +1245,7 @@ void Document::applyState(const DocumentState& state, bool exact) {
         layoutIfDirty();
     }
     if (transitions) {
-        applyTransitions(*this, m_arena, m_ir, m_animator, m_clock, state.transitions);
+        applyTransitions(*this, m_arena, m_styleEngine, m_animator, m_clock, state.transitions);
     }
     for (const DocumentState::Animation& snap : state.animations) {
         const NodeId node = byId(snap.id).node;

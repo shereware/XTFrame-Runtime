@@ -1,0 +1,12 @@
+{
+  "width": 300,
+  "height": 110,
+  "frames": 0,
+  "ports": {
+    "Health.value": 64,
+    "Stamina.value": 22
+  },
+  "events": [
+    "update 0.6"
+  ]
+}

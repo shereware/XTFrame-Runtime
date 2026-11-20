@@ -132,6 +132,12 @@ public:
     /// seconds, then propagates the resulting value/pulse changes (Docs/tasks/T-56.md "執行規
     /// 則"). No-op if load() has not last succeeded.
     void tick(float dt);
+    /// T-749 (Docs/design/23-host-integration.md §23.ag item 6): whether tick() may do anything at the
+    /// next call with nothing new from the Documents: value signals wait for delivery, a `clock` node
+    /// exists, a `timer` node runs (with an interval that fires), a `throttle` holds a trailing value,
+    /// a node waits to be evaluated, a load / unload / late binding is deferred, or a polled
+    /// `#document.clock` output is connected. False when not loaded or disabled.
+    bool needsTick() const;
 
     /// Current node output-port values, in node declaration order x each node type's own output-
     /// port order (Docs/tasks/T-56.md's table order), for panel display. Empty if load() has not

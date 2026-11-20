@@ -1,0 +1,31 @@
+<xt version="2">
+
+  <symbol name="ScreenShade" variants="Kind=Vignette|Left|Bottom">
+    <div id="Box"></div>
+  </symbol>
+
+  <layout>
+    symbol(ScreenShade) {
+      #Box {
+        position: relative;
+        width: 640px;
+        height: 360px;
+        overflow: hidden;
+      }
+    }
+  </layout>
+  <style>
+    symbol(ScreenShade) {
+      #Box {
+        pointer-events: none;
+        background-gradient: radial-gradient(70.7107% 70.7107% at 50% 50%, var(--color-shade-clear) 55%, var(--color-shade-edge) 100%);
+      }
+      .v-Kind-Left #Box {
+        background-gradient: linear-gradient(90deg, var(--color-scrim-strong) 0%, var(--color-scrim) 45%, var(--color-scrim-soft) 100%);
+      }
+      .v-Kind-Bottom #Box {
+        background-gradient: linear-gradient(0deg, var(--color-scrim) 0%, var(--color-shade-clear) 60%);
+      }
+    }
+  </style>
+</xt>

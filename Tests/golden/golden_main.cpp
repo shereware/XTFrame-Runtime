@@ -8,6 +8,7 @@
 #include "golden_wgpu.h"
 #endif
 #include "test_temp.h"
+#include "test_visual_check.h"
 #include "xt/asset_resolver.h"
 #include "xt/compile/ir_writer.h"
 #include "xt/ir.h"
@@ -483,4 +484,7 @@ static int runGolden(int argc, char** argv) {
 }
 
 // T-632: every test main returns through finishTempDir (Tests/common/test_temp.h).
-int main(int argc, char** argv) { return xt::test::finishTempDir(runGolden(argc, argv)); }
+int main(int argc, char** argv) {
+    xt::test::enableVisualCheck();  // T-747: every Context of the run checks its visual generation.
+    return xt::test::finishTempDir(runGolden(argc, argv));
+}

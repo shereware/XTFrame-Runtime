@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "id": "survey-2026",
+  "name": "Survey 2026",
+  "description": "A dark game-UI symbol set: warm monochrome chrome over scene art, grime highlight bands, ruled form rows and one red that only ever means something; scene, menu, settings, HUD and overlay symbols with their tokens, fonts, textures and thumbnails. Style derived from the NPDO demo (Examples/demos/npdo).",
+  "source": {
+    "kind": "preset",
+    "set": "xtframe/survey-2026",
+    "setVersion": "1.0.0"
+  },
+  "tokens": "tokens.xts",
+  "themes": [
+    "tokens-defiance.xts"
+  ],
+  "thumbnail": "thumbnails/group.png"
+}

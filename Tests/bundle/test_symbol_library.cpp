@@ -90,7 +90,7 @@ TEST_CASE(
     CHECK(library.name == "XTFrame presets");
     CHECK(library.readOnly);
     CHECK(library.defaultGroup == kPresetGroup);
-    REQUIRE(library.groups.size() == 1);
+    REQUIRE(library.groups.size() == 2);  // broadsheet-2026 first, then survey-2026 (55)
     const SymbolGroup& group = library.groups.front();
     CHECK(group.id == kPresetGroup);
     CHECK(group.name == "Broadsheet 2026");
@@ -520,8 +520,18 @@ TEST_CASE(
     const UseReport kept = useSymbols(mounts, project, slider);
     CHECK(kept.status == Status::kOk);
     CHECK(readTextT498(root / "shared" / "symbols" / "Slider.xt") == "<xt>mine</xt>");
-    CHECK(listsT498b(kept.skipped, "shared/symbols/Slider.xt"));
-    CHECK(isCopyStale(mounts, project, "Slider"));  // Differs from the library.
+    // T-739: a hand-made Slider has no recorded source: not stale, whatever the library holds.
+    CHECK_FALSE(isCopyStale(mounts, project, "Slider"));
+    CHECK(copyStatus(mounts, project, "Slider").state == CopyState::NoSource);
+    // T-741 (56.3 item 1): the library's Slider goes into its group's namespace, reported as placed
+    // next to the project's own symbol of that name.
+    CHECK(listsT498b(kept.written, std::string("shared/symbols/") + kPresetGroup + "/Slider.xt"));
+    REQUIRE(kept.clashes.size() == 1);
+    CHECK(kept.clashes[0].reason == UseClash::Placed);
+    CHECK(kept.clashes[0].placed == std::string(kPresetGroup) + "/Slider");
+    CHECK(kept.clashes[0].existingLibrary.empty());
+    CHECK(readTextT498(root / "shared" / "symbols" / kPresetGroup / "Slider.xt") ==
+          readTextT498(kPresetDir / "groups" / kPresetGroup / "Slider.xt"));
 }
 
 TEST_CASE("T-498b useSymbols: a font of the same name with other content is copied under a hashed name") {
@@ -557,6 +567,8 @@ TEST_CASE("T-498b useSymbols: a font of the same name with other content is copi
     CHECK(tokens.find("--tex-hatch: url(\"" + renamedTexture.substr(std::string("shared/").size()) +
                       "\");") != std::string::npos);
     CHECK(tokens.find("src: \"fonts/NotoSerifDisplay-ExtraCondensedBlack.ttf\"") == std::string::npos);
+    // T-739: renamed fonts and textures leave the copy up to date, not stale.
+    CHECK(copyStatus(mounts, project, "Button").state == CopyState::UpToDate);
     // Idempotent: the hashed copies are found again and skipped.
     const UseReport again = useSymbols(mounts, project, names);
     CHECK(again.written.empty());
@@ -586,7 +598,9 @@ TEST_CASE("T-498b useSymbols: a name that is a path is refused as a whole; the g
     CHECK_FALSE(isCopyStale(mounts, project, "Button"));
     writeTextT498(root / "shared" / "symbols" / "Button.xt",
                   readTextT498(root / "shared" / "symbols" / "Button.xt") + "\n");
-    CHECK(isCopyStale(mounts, project, "Button"));
+    // T-739: the project edited its copy, the library did not change: modified, not stale.
+    CHECK_FALSE(isCopyStale(mounts, project, "Button"));
+    CHECK(copyStatus(mounts, project, "Button").state == CopyState::LocallyModified);
     CHECK_FALSE(isCopyStale(mounts, project, "Toggle"));        // No copy.
     CHECK_FALSE(isCopyStale(mounts, project, "NoSuchSymbol"));  // No library has it.
     CHECK_FALSE(isCopyStale(mounts, project, "../Button"));
@@ -822,7 +836,10 @@ TEST_CASE("T-501 updateCopy: an edited project copy is overwritten, the tokens s
     // The project edits its copy; the token file gains a line of its own.
     writeTextT498(root / "shared" / "symbols" / "Button.xt", original + "<!-- mine -->\n");
     writeTextT498(root / "shared" / "tokens.xts", tokens + ":root { --color-accent: #ff0000; }\n");
-    CHECK(isCopyStale(mounts, project, "Button"));
+    // T-739: an edited copy of an unchanged library file is LocallyModified (not stale); updating it
+    // would lose the edit, so it needs overwriteLocal.
+    CHECK_FALSE(isCopyStale(mounts, project, "Button"));
+    CHECK(copyStatus(mounts, project, "Button").state == CopyState::LocallyModified);
 
     const std::vector<ProjectFileState> snapshot = snapshotForUse(project, names);
     bool sawCopy = false;
@@ -838,7 +855,12 @@ TEST_CASE("T-501 updateCopy: an edited project copy is overwritten, the tokens s
     CHECK(sawCopy);
     CHECK(sawIndex);
 
-    const UseReport report = updateCopy(mounts, project, "Button");
+    const UseReport refused = updateCopy(mounts, project, "Button");
+    CHECK(refused.status == Status::kUnsupported);
+    CHECK(refused.copyState == CopyState::LocallyModified);
+    CHECK(refused.written.empty());
+    CHECK(readTextT498(root / "shared" / "symbols" / "Button.xt") == original + "<!-- mine -->\n");
+    const UseReport report = updateCopy(mounts, project, "Button", true);
     REQUIRE(report.status == Status::kOk);
     CHECK(report.notFound.empty());
     CHECK(report.tokensAdded.empty());
@@ -1030,4 +1052,310 @@ TEST_CASE(
     CHECK(againEntry->content == first->content);
     CHECK(library.groups.back().id == "again");
     CHECK(library.groups.back().lint.errors == 0);
+}
+
+// --- T-739 (Docs/design/56-symbol-identity-style-scope.md 56.1 item 4): the recorded source --------
+
+namespace {
+
+/// A writable one-group library `id` at `dir` whose group `g` has `Button` (file text `button`,
+/// reading the texture `textures/t.png` so the project copy's references are rewritten) and `Tag`.
+fs::path buttonLibraryT739(const fs::path& dir, const char* id, const std::string& button) {
+    writeTextT498(dir / "library.json", std::string(R"({ "version": 1, "id": ")") + id +
+                                            R"(", "name": "Lib )" + id +
+                                            R"(", "readOnly": false, "groups": ["g"] })");
+    writeTextT498(dir / "groups" / "g" / "group.json",
+                  R"({ "version": 1, "id": "g", "name": "Group G", "tokens": "tokens.xts",
+                       "source": { "kind": "manual", "set": "me/g", "setVersion": "1.0.0" } })");
+    writeTextT498(dir / "groups" / "g" / "index.json",
+                  R"({ "version": 1, "tokens": "tokens.xts", "symbols": [
+                       { "name": "Button", "file": "Button.xt", "tokens": [], "fonts": [], "textures": ["textures/t.png"] },
+                       { "name": "Tag", "file": "Tag.xt", "tokens": [], "fonts": [], "textures": [] } ] })");
+    writeTextT498(dir / "groups" / "g" / "tokens.xts", ":root { --x: 1px; }\n");
+    writeTextT498(dir / "groups" / "g" / "textures" / "t.png", std::string("png of ") + id);
+    writeTextT498(dir / "groups" / "g" / "Button.xt", button);
+    writeTextT498(dir / "groups" / "g" / "Tag.xt", "<xt><symbol name=\"Tag\"><div/></symbol></xt>\n");
+    return dir;
+}
+
+std::string buttonTextT739(const char* mark) {
+    return std::string(
+               "<xt><symbol name=\"Button\"><div style=\"background-image: url('textures/t.png')\"/>"
+               "</symbol><!-- ") +
+           mark + " --></xt>\n";
+}
+
+/// Two mounted libraries `lib-a` and `lib-b` (in that order), each with its own Button.
+struct TwoLibrariesT739 {
+    fs::path a;
+    fs::path b;
+    LibraryMounts mounts;
+    explicit TwoLibrariesT739(const std::string& name) {
+        a = buttonLibraryT739(freshDir((name + "_a").c_str()), "lib-a", buttonTextT739("a1"));
+        b = buttonLibraryT739(freshDir((name + "_b").c_str()), "lib-b", buttonTextT739("b1"));
+        REQUIRE(mount(mounts, a) == Status::kOk);
+        REQUIRE(mount(mounts, b) == Status::kOk);
+    }
+    /// One library alone (to copy from `lib-b` although `lib-a` comes first).
+    LibraryMounts only(size_t index) const {
+        LibraryMounts out;
+        out.libraries.push_back(mounts.libraries[index]);
+        return out;
+    }
+};
+
+}  // namespace
+
+TEST_CASE("T-739 copyStatus / updateCopy look only at the recorded source library and group") {
+    TwoLibrariesT739 libs("xt_t739_recorded");
+    const UiProject project = blankProjectT498b("xt_t739_recorded_project");
+    const fs::path root = compile::pathFromUtf8(project.rootDir);
+    const std::string_view names[] = {"Button"};
+    REQUIRE(useSymbols(libs.only(1), project, names, "g").status == Status::kOk);
+    CopySource source;
+    REQUIRE(readCopySource(project, "Button", source));
+    CHECK(source.library == "lib-b");
+    CHECK(source.group == "g");
+    CHECK(source.setVersion == "1.0.0");
+    CHECK(source.sha256.rfind("sha256:", 0) == 0);
+    CHECK_FALSE(source.librarySha256.empty());  // The copy's url() was rewritten: two hashes.
+    CHECK(source.librarySha256 != source.sha256);
+
+    // Both libraries mounted, lib-a first: the copy is lib-b's and up to date.
+    const CopyStatus status = copyStatus(libs.mounts, project, "Button");
+    CHECK(status.state == CopyState::UpToDate);
+    REQUIRE(status.library != nullptr);
+    CHECK(status.library->id == "lib-b");
+    CHECK_FALSE(isCopyStale(libs.mounts, project, "Button"));
+    // lib-a's Button changing does not matter.
+    writeTextT498(libs.a / "groups" / "g" / "Button.xt", buttonTextT739("a2"));
+    CHECK(copyStatus(libs.mounts, project, "Button").state == CopyState::UpToDate);
+    // lib-b's does: stale, and the update takes lib-b's file.
+    writeTextT498(libs.b / "groups" / "g" / "Button.xt", buttonTextT739("b2"));
+    CHECK(copyStatus(libs.mounts, project, "Button").state == CopyState::Stale);
+    CHECK(isCopyStale(libs.mounts, project, "Button"));
+    const UseReport updated = updateCopy(libs.mounts, project, "Button");
+    REQUIRE(updated.status == Status::kOk);
+    CHECK(updated.copyState == CopyState::Stale);
+    CHECK(readTextT498(root / "shared" / "symbols" / "Button.xt").find("b2") != std::string::npos);
+    CHECK(readTextT498(root / "shared" / "symbols" / "Button.xt").find("a2") == std::string::npos);
+    CopySource after;
+    REQUIRE(readCopySource(project, "Button", after));
+    CHECK(after.library == "lib-b");
+    CHECK(after.sha256 != source.sha256);
+    CHECK(copyStatus(libs.mounts, project, "Button").state == CopyState::UpToDate);
+
+    // The recorded library unmounted: sourceMissing (lib-a's Button is never taken instead).
+    LibraryMounts withoutB = libs.mounts;
+    REQUIRE(unmount(withoutB, "lib-b"));
+    CHECK(copyStatus(withoutB, project, "Button").state == CopyState::SourceMissing);
+    CHECK_FALSE(isCopyStale(withoutB, project, "Button"));
+    const std::string before = readTextT498(root / "shared" / "symbols" / "Button.xt");
+    const UseReport missing = updateCopy(withoutB, project, "Button");
+    CHECK(missing.status == Status::kNotFound);
+    CHECK(missing.copyState == CopyState::SourceMissing);
+    CHECK(missing.notFound == std::vector<std::string>{"Button"});
+    CHECK(missing.written.empty());
+    CHECK(readTextT498(root / "shared" / "symbols" / "Button.xt") == before);
+    // The recorded group gone from a mounted lib-b: sourceMissing as well.
+    LibraryMounts groupGone = libs.mounts;
+    groupGone.libraries[1].groups.clear();
+    CHECK(copyStatus(groupGone, project, "Button").state == CopyState::SourceMissing);
+    // findSymbolIn: that library's group only.
+    const SymbolLibrary* where = nullptr;
+    REQUIRE(findSymbolIn(libs.mounts, "lib-b", "g", "Button", &where) != nullptr);
+    CHECK(where->id == "lib-b");
+    CHECK(findSymbolIn(libs.mounts, "lib-c", "g", "Button") == nullptr);
+    CHECK(findSymbolIn(libs.mounts, "lib-b", "h", "Button") == nullptr);
+    CHECK(findSymbolIn(libs.mounts, "", "g", "Button") == nullptr);
+}
+
+TEST_CASE("T-739 no recorded source: noSource, never stale, never updated") {
+    TwoLibrariesT739 libs("xt_t739_nosource");
+    const UiProject project = blankProjectT498b("xt_t739_nosource_project");
+    const fs::path root = compile::pathFromUtf8(project.rootDir);
+    const std::string mine = "<xt><symbol name=\"Button\"><span/></symbol></xt>\n";
+    writeTextT498(root / "shared" / "symbols" / "Button.xt", mine);
+    CopySource source;
+    CHECK_FALSE(readCopySource(project, "Button", source));
+    CHECK(copyStatus(libs.mounts, project, "Button").state == CopyState::NoSource);
+    CHECK_FALSE(isCopyStale(libs.mounts, project, "Button"));
+    const UseReport report = updateCopy(libs.mounts, project, "Button", true);
+    CHECK(report.status == Status::kUnsupported);
+    CHECK(report.copyState == CopyState::NoSource);
+    CHECK(report.written.empty());
+    CHECK(readTextT498(root / "shared" / "symbols" / "Button.xt") == mine);
+    // An index entry with notes only (the Symbols tab's writeDescription()) is no source either.
+    writeTextT498(root / "shared" / "symbols" / "index.json",
+                  R"({ "version": 1, "symbols": [ { "name": "Button", "description": "mine" } ] })");
+    CHECK(copyStatus(libs.mounts, project, "Button").state == CopyState::NoSource);
+    // A source with a group but no library: not a recorded source either.
+    writeTextT498(root / "shared" / "symbols" / "index.json",
+                  R"({ "version": 1, "symbols": [ { "name": "Button", "source": { "group": "g" } } ] })");
+    CHECK(copyStatus(libs.mounts, project, "Button").state == CopyState::NoSource);
+    // No copy at all.
+    CHECK(copyStatus(libs.mounts, project, "Tag").state == CopyState::NoCopy);
+    CHECK(updateCopy(libs.mounts, project, "Tag").notFound == std::vector<std::string>{"Tag"});
+    CHECK(copyStateName(CopyState::StaleAndModified) == std::string("staleAndModified"));
+    CHECK(copyStateName(CopyState::NoSource) == std::string("noSource"));
+}
+
+TEST_CASE("T-739 the four sha256 combinations; staleAndModified needs overwriteLocal") {
+    struct Case {
+        bool editLibrary;
+        bool editProject;
+        CopyState expected;
+    };
+    const Case cases[] = {{false, false, CopyState::UpToDate},
+                          {false, true, CopyState::LocallyModified},
+                          {true, false, CopyState::Stale},
+                          {true, true, CopyState::StaleAndModified}};
+    int n = 0;
+    for (const Case& c : cases) {
+        CAPTURE(n);
+        const std::string tag = "xt_t739_combo" + std::to_string(n++);
+        TwoLibrariesT739 libs(tag);
+        const UiProject project = blankProjectT498b((tag + "_project").c_str());
+        const fs::path copy = compile::pathFromUtf8(project.rootDir) / "shared" / "symbols" / "Button.xt";
+        const std::string_view names[] = {"Button"};
+        REQUIRE(useSymbols(libs.only(1), project, names).status == Status::kOk);
+        if (c.editLibrary) {
+            writeTextT498(libs.b / "groups" / "g" / "Button.xt", buttonTextT739("b-new"));
+        }
+        if (c.editProject) {
+            writeTextT498(copy, readTextT498(copy) + "<!-- edited -->\n");
+        }
+        CHECK(copyStatus(libs.mounts, project, "Button").state == c.expected);
+        CHECK(isCopyStale(libs.mounts, project, "Button") == c.editLibrary);
+    }
+
+    // staleAndModified: refused without overwriteLocal (nothing written), done with it.
+    TwoLibrariesT739 libs("xt_t739_overwrite");
+    const UiProject project = blankProjectT498b("xt_t739_overwrite_project");
+    const fs::path root = compile::pathFromUtf8(project.rootDir);
+    const fs::path copy = root / "shared" / "symbols" / "Button.xt";
+    const std::string_view names[] = {"Button"};
+    REQUIRE(useSymbols(libs.only(1), project, names).status == Status::kOk);
+    // Notes the user wrote survive the update.
+    std::string index = readTextT498(root / "shared" / "symbols" / "index.json");
+    const size_t at = index.find("\"name\": \"Button\"");
+    REQUIRE(at != std::string::npos);
+    index.insert(at, "\"description\": \"my notes\", ");
+    writeTextT498(root / "shared" / "symbols" / "index.json", index);
+    writeTextT498(libs.b / "groups" / "g" / "Button.xt", buttonTextT739("b-new"));
+    const std::string edited = readTextT498(copy) + "<!-- edited -->\n";
+    writeTextT498(copy, edited);
+    REQUIRE(copyStatus(libs.mounts, project, "Button").state == CopyState::StaleAndModified);
+    const UseReport refused = updateCopy(libs.mounts, project, "Button");
+    CHECK(refused.status == Status::kUnsupported);
+    CHECK(refused.copyState == CopyState::StaleAndModified);
+    CHECK(refused.written.empty());
+    CHECK(readTextT498(copy) == edited);
+    const UseReport done = updateCopy(libs.mounts, project, "Button", true);
+    REQUIRE(done.status == Status::kOk);
+    CHECK(done.copyState == CopyState::StaleAndModified);
+    CHECK(readTextT498(copy).find("b-new") != std::string::npos);
+    CHECK(readTextT498(copy).find("edited") == std::string::npos);
+    CHECK(copyStatus(libs.mounts, project, "Button").state == CopyState::UpToDate);
+    const std::string rewritten = readTextT498(root / "shared" / "symbols" / "index.json");
+    CHECK(rewritten.find("\"description\": \"my notes\"") != std::string::npos);
+    CHECK(rewritten.find("\"setVersion\": \"1.0.0\"") != std::string::npos);
+}
+
+TEST_CASE("T-739 a record without sha256 (older projects): compared as before, the hash written on update") {
+    TwoLibrariesT739 libs("xt_t739_legacy");
+    const UiProject project = blankProjectT498b("xt_t739_legacy_project");
+    const fs::path root = compile::pathFromUtf8(project.rootDir);
+    const fs::path copy = root / "shared" / "symbols" / "Tag.xt";
+    writeTextT498(copy, readTextT498(libs.b / "groups" / "g" / "Tag.xt"));
+    writeTextT498(root / "shared" / "symbols" / "index.json",
+                  R"({ "version": 1, "symbols": [ { "name": "Tag", "file": "shared/symbols/Tag.xt",
+                       "source": { "library": "lib-b", "group": "g", "set": "me/g", "setVersion": "0.9.0" } } ] })");
+    CHECK(copyStatus(libs.mounts, project, "Tag").state == CopyState::UpToDate);
+    writeTextT498(libs.b / "groups" / "g" / "Tag.xt", "<xt><symbol name=\"Tag\"><p/></symbol></xt>\n");
+    CHECK(copyStatus(libs.mounts, project, "Tag").state == CopyState::Stale);  // Never staleAndModified.
+    const UseReport updated = updateCopy(libs.mounts, project, "Tag");
+    REQUIRE(updated.status == Status::kOk);
+    CHECK(readTextT498(copy) == "<xt><symbol name=\"Tag\"><p/></symbol></xt>\n");
+    CopySource source;
+    REQUIRE(readCopySource(project, "Tag", source));
+    CHECK(source.sha256.rfind("sha256:", 0) == 0);
+    CHECK(source.setVersion == "1.0.0");
+    CHECK(copyStatus(libs.mounts, project, "Tag").state == CopyState::UpToDate);
+}
+
+TEST_CASE("T-739 useSymbols / planUse: a name the project has is the same symbol or another one") {
+    TwoLibrariesT739 libs("xt_t739_clash");
+    const UiProject project = blankProjectT498b("xt_t739_clash_project");
+    const fs::path root = compile::pathFromUtf8(project.rootDir);
+    const std::string_view names[] = {"Button"};
+    bool found = false;
+    UseTarget plan = planUse(libs.only(1), project, "Button", "g", &found);
+    CHECK(found);
+    CHECK(plan.clash == UseClash::None);
+    CHECK(plan.path == "shared/symbols/Button.xt");
+    REQUIRE(useSymbols(libs.only(1), project, names).status == Status::kOk);
+    const std::string copied = readTextT498(root / "shared" / "symbols" / "Button.xt");
+
+    // Again from lib-b: the same symbol, used silently.
+    plan = planUse(libs.only(1), project, "Button", "g");
+    CHECK(plan.clash == UseClash::Same);
+    CHECK(existingSourceText(plan) == "lib-b/g");
+    const UseReport same = useSymbols(libs.only(1), project, names);
+    REQUIRE(same.clashes.size() == 1);
+    CHECK(same.clashes[0].reason == UseClash::Same);
+    CHECK(same.clashes[0].name == "Button");
+    CHECK(same.clashes[0].path == "shared/symbols/Button.xt");
+    CHECK(listsT498b(same.skipped, "shared/symbols/Button.xt"));
+
+    // From lib-a: another Button has the name. T-741: lib-a's goes into the namespace `g/` (both
+    // libraries' groups are `g`), reported with the flat name's owner; the flat copy is untouched.
+    plan = planUse(libs.mounts, project, "Button", "g");  // lib-a comes first
+    CHECK(plan.clash == UseClash::Placed);
+    CHECK(plan.qualified == "g/Button");
+    CHECK(plan.path == "shared/symbols/g/Button.xt");
+    CHECK(plan.existingLibrary == "lib-b");
+    CHECK(plan.existingGroup == "g");
+    const UseReport placed = useSymbols(libs.only(0), project, names);
+    CHECK(placed.status == Status::kOk);
+    REQUIRE(placed.clashes.size() == 1);
+    CHECK(placed.clashes[0].reason == UseClash::Placed);
+    CHECK(placed.clashes[0].existingLibrary == "lib-b");
+    CHECK(placed.clashes[0].placed == "g/Button");
+    CHECK(readTextT498(root / "shared" / "symbols" / "Button.xt") == copied);
+    CHECK(readTextT498(root / "shared" / "symbols" / "g" / "Button.xt").find("a1") != std::string::npos);
+    CopySource source;
+    REQUIRE(readCopySource(project, "Button", source));
+    CHECK(source.library == "lib-b");  // The flat record is not taken over.
+    REQUIRE(readCopySource(project, "g/Button", source));
+    CHECK(source.library == "lib-a");
+    // Each one again: the same symbol, wherever it is.
+    CHECK(planUse(libs.only(0), project, "Button", "g").qualified == "g/Button");
+    CHECK(planUse(libs.only(0), project, "Button", "g").clash == UseClash::Same);
+    CHECK(planUse(libs.only(1), project, "Button", "g").qualified == "Button");
+
+    // A hand-made symbol of that name: placed beside the project's own.
+    writeTextT498(root / "shared" / "symbols" / "Tag.xt", "<xt><symbol name=\"Tag\"><b/></symbol></xt>\n");
+    plan = planUse(libs.mounts, project, "Tag");
+    CHECK(plan.clash == UseClash::Placed);
+    CHECK(existingSourceText(plan) == "project");
+    // Both places taken by other symbols: nameTaken, nothing copied (one namespace level only).
+    writeTextT498(root / "shared" / "symbols" / "g" / "Tag.xt",
+                  "<xt><symbol name=\"Tag\"><i/></symbol></xt>\n");
+    plan = planUse(libs.mounts, project, "Tag");
+    CHECK(plan.clash == UseClash::NameTaken);
+    CHECK(plan.qualified.empty());
+    CHECK(existingSourceText(plan) == "project");
+    const std::string_view tag[] = {"Tag"};
+    const UseReport taken = useSymbols(libs.only(0), project, tag);
+    REQUIRE(taken.clashes.size() == 1);
+    CHECK(taken.clashes[0].reason == UseClash::NameTaken);
+    CHECK(listsT498b(taken.skipped, "shared/symbols/g/Tag.xt"));
+    CHECK(readTextT498(root / "shared" / "symbols" / "g" / "Tag.xt") ==
+          "<xt><symbol name=\"Tag\"><i/></symbol></xt>\n");
+    CHECK(useClashName(UseClash::NameTaken) == std::string("nameTaken"));
+    CHECK(useClashName(UseClash::Same) == std::string("same"));
+    CHECK(useClashName(UseClash::Placed) == std::string("placed"));
+    planUse(libs.mounts, project, "Nope", {}, &found);
+    CHECK_FALSE(found);
 }

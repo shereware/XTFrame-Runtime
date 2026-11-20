@@ -19,6 +19,7 @@ bool batchable(const DrawCmd& c) {
         case Shading::Texture:
         case Shading::TextureStraight:
         case Shading::Glyph:
+        case Shading::TexturePlanar:  // T-806: one PlanarParams block per binding and frame
             return c.stencilOp == StencilOp::None || c.stencilOp == StencilOp::TestEqualRef;
         case Shading::StencilOnly:
             return c.stencilOp == StencilOp::ClearRect;
@@ -47,6 +48,7 @@ bool takesAnalyticClip(Shading s) {
         case Shading::BoxShadow:
         case Shading::ParticleTexture:
         case Shading::ParticleSolid:
+        case Shading::TexturePlanar:  // T-806
             return true;
         case Shading::StencilOnly:
         case Shading::Composite:

@@ -3143,10 +3143,22 @@ bool isKnownStyleProperty(std::string_view name) {
         return true;
     }
     // Declarations the .xts parser accepts outside the property table (xts_parser.cpp parseDecls):
-    // the transition longhands (T-322), triggers (`on-<event>`, `state-enter` / `state-exit`, T-174).
-    static constexpr std::string_view kExtra[] = {
-        "transition-property", "transition-duration", "transition-timing-function",
-        "transition-delay",    "state-enter",         "state-exit"};
+    // the transition longhands (T-322), the animation longhands (T-756), triggers (`on-<event>`,
+    // `state-enter` / `state-exit`, T-174).
+    static constexpr std::string_view kExtra[] = {"transition-property",
+                                                  "transition-duration",
+                                                  "transition-timing-function",
+                                                  "transition-delay",
+                                                  "animation-name",
+                                                  "animation-duration",
+                                                  "animation-timing-function",
+                                                  "animation-delay",
+                                                  "animation-iteration-count",
+                                                  "animation-direction",
+                                                  "animation-fill-mode",
+                                                  "animation-play-state",
+                                                  "state-enter",
+                                                  "state-exit"};
     for (std::string_view extra : kExtra) {
         if (name == extra) {
             return true;

@@ -711,6 +711,7 @@ Result<UiProject> UiProject::load(std::string_view input, std::string* error) {
                     "'" + path + "': publish.images.compress must be \"none\", \"bc7\" or \"auto\"");
             }
             project.publish.images.compress = value;
+            project.publish.images.compressSet = true;  // T-810
         }
         project.publish.images.extraJson = extraKeys(*images, {"compress"});
     }
@@ -896,9 +897,11 @@ Status UiProject::save(std::string* error) const {
     atlasObj["mipmaps"] = publish.atlas.mipmaps;
     atlasObj["scope"] = publish.atlas.scope;
     publishObj["atlas"] = std::move(atlasObj);
-    if (publish.images.present || publish.images.compress != "none") {
-        ordered_json imagesObj;
-        imagesObj["compress"] = publish.images.compress;  // T-687
+    if (publish.images.present || publish.images.compressWritten()) {
+        ordered_json imagesObj = ordered_json::object();
+        if (publish.images.compressWritten()) {  // T-810: a `compress` the file did not have stays out
+            imagesObj["compress"] = publish.images.compress;  // T-687
+        }
         appendExtra(imagesObj, publish.images.extraJson);
         publishObj["images"] = std::move(imagesObj);
     }
@@ -1430,6 +1433,16 @@ void recordPublish(UiProject& project, std::string_view kind, std::string_view p
     if (kind == kPublishKindDir) {
         project.publish.outDir = stored;
     }
+}
+
+std::string effectivePublishCompress(const UiProject& project) {
+    // T-810 (22 §22.17.1 point 3): `compress` written -> that value; otherwise auto, whether or not
+    // the `.xtui` has a `publish.images` object.
+    const ImagesOptions& images = project.publish.images;
+    if (images.compressWritten()) {
+        return images.compress.empty() ? std::string("none") : images.compress;
+    }
+    return "auto";
 }
 
 std::string resolveProjectPath(const UiProject& project, std::string_view path) {

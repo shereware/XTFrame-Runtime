@@ -62,7 +62,7 @@ TEST_CASE("updateWorldTransforms: partial dirty subtree recompute, ancestor unto
     Mat2x3 rootWorldBefore = c.arena.common(c.root).world;
 
     c.arena.common(c.a).translate = Vec2{0, 5};
-    c.arena.markDirty(c.a, kDirtyTransform);
+    c.arena.markDirty(c.a, kDirtyTransform, DirtyCause::HostApi);
     updateWorldTransforms(c.arena, c.root, false);
 
     // root did not carry kDirtyTransform/kDirtyTree, so it must be untouched.

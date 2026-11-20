@@ -50,6 +50,20 @@ inline bool enclosingUiProject(const std::filesystem::path& document, xt::bundle
     return false;
 }
 
+/// T-743 (T-741's open item): `CompileOptions::symbolsDir` for `document` -- its UI Project's
+/// `<root>/<shared.symbols>` ("shared/symbols" when unset), absolute and '/' separated; empty
+/// outside a UI Project (or a legacy one).
+inline std::string projectSymbolsDirOf(const std::filesystem::path& document) {
+    xt::bundle::UiProject project;
+    if (!enclosingUiProject(document, project) || project.legacy) {
+        return std::string();
+    }
+    const std::string symbols =
+        project.shared.symbols.empty() ? std::string("shared/symbols") : project.shared.symbols;
+    return xt::compile::genericPathToUtf8(xt::compile::pathFromUtf8(project.rootDir) /
+                                          xt::compile::pathFromUtf8(symbols));
+}
+
 /// One document of `project` whose compile produced diagnostics: the directory its relative file
 /// names are taken from, and the text its diagnostics' `file` starts with (empty for a plain
 /// compile; "<ui id>: " for the diagnostics of bundle::pack()).

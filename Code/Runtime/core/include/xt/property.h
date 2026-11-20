@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string_view>
 
+#include "xt/dirty_cause.h"
 #include "xt/types.h"
 #include "xt/value.h"
 
@@ -353,7 +354,7 @@ Value getProperty(const NodeArena& arena, NodeId node, PropId prop);
 /// XT_ASSERT(propertyApplies(arena.kind(node), prop)) and XT_ASSERT(value.type == propertyType(prop))
 /// internally. T-211 exception: an Element's TranslateX/TranslateY also accepts a Length (px or %
 /// of its own border box) and a Vec2 (px, %) -- the mixed form translate transitions interpolate
-/// in; a Float writes px and clears the % part.
-void setProperty(NodeArena& arena, NodeId node, PropId prop, const Value& value);
+/// in; a Float writes px and clears the % part. T-747: `cause` is the write's DirtyCause (no default).
+void setProperty(NodeArena& arena, NodeId node, PropId prop, const Value& value, DirtyCause cause);
 
 }  // namespace xt

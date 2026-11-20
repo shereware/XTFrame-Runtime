@@ -4,6 +4,7 @@
 #include <utility>
 
 #include "xt/assert.h"
+#include "xt/perf.h"
 #include "xt/property.h"
 
 /// NodeArena implementation. See Docs/design/01-architecture.md §1.3-1.4, Docs/tasks/T-04.md
@@ -16,7 +17,19 @@ void NodeArena::checkAlive(NodeId id) const {
     XT_ASSERT(m_kind[id] != NodeKind::Free);
 }
 
-bool NodeArena::stopsLayoutPropagation(NodeId /*id*/) const { return false; }
+bool NodeArena::stopsLayoutPropagation(NodeId id) const {
+    // T-755 (06 §6.x item 2): a layout boundary, as the last layout pass judged it (its style and
+    // box then). An Element only; the document root needs no flag (propagation ends there anyway).
+    return m_kind[id] == NodeKind::Element &&
+           (m_elements[m_kindIndex[id]].layoutFlags & static_cast<uint8_t>(kLayoutBoundary)) != 0;
+}
+
+void NodeArena::markLayoutRoot(NodeId id) {
+    if ((m_dirty[id] & static_cast<uint8_t>(kLayoutRoot)) == 0) {
+        m_dirty[id] |= static_cast<uint8_t>(kLayoutRoot);
+        m_layoutRoots.push_back(id);
+    }
+}
 
 uint32_t NodeArena::allocateData(NodeKind kind) {
     switch (kind) {
@@ -263,7 +276,7 @@ void NodeArena::destroy(NodeId id) {
         if (m_lastChild[p] == id) {
             m_lastChild[p] = prev;
         }
-        markDirty(p, static_cast<uint8_t>(kDirtyTree | kDirtyLayout));
+        markDirty(p, static_cast<uint8_t>(kDirtyTree | kDirtyLayout), DirtyCause::Load);
     }
     collectSubtreePostorder(id, m_destroyBuf);
     for (NodeId n : m_destroyBuf) {
@@ -295,7 +308,7 @@ void NodeArena::appendChild(NodeId parent, NodeId child) {
         m_nextSibling[m_lastChild[parent]] = child;
     }
     m_lastChild[parent] = child;
-    markDirty(parent, static_cast<uint8_t>(kDirtyTree | kDirtyLayout));
+    markDirty(parent, static_cast<uint8_t>(kDirtyTree | kDirtyLayout), DirtyCause::Load);
 }
 
 void NodeArena::insertBefore(NodeId parent, NodeId child, NodeId before) {
@@ -317,7 +330,7 @@ void NodeArena::insertBefore(NodeId parent, NodeId child, NodeId before) {
         m_nextSibling[prev] = child;
         m_nextSibling[child] = before;
     }
-    markDirty(parent, static_cast<uint8_t>(kDirtyTree | kDirtyLayout));
+    markDirty(parent, static_cast<uint8_t>(kDirtyTree | kDirtyLayout), DirtyCause::Load);
 }
 
 void NodeArena::detach(NodeId child) {
@@ -336,7 +349,7 @@ void NodeArena::detach(NodeId child) {
     }
     m_parent[child] = kInvalidNode;
     m_nextSibling[child] = kInvalidNode;
-    markDirty(p, static_cast<uint8_t>(kDirtyTree | kDirtyLayout));
+    markDirty(p, static_cast<uint8_t>(kDirtyTree | kDirtyLayout), DirtyCause::Load);
 }
 
 NodeId NodeArena::parent(NodeId id) const {
@@ -740,8 +753,46 @@ uint8_t NodeArena::dirty(NodeId id) const {
     return m_dirty[id];
 }
 
-void NodeArena::markDirty(NodeId id, uint8_t bits) {
+void NodeArena::countCause(DirtyCause cause, uint8_t bits, NodeId node) {
+    ++m_visualGeneration;
+    m_lastCause = cause;
+    if (m_perf == nullptr || !m_perf->enabled() || cause >= DirtyCause::Count) {
+        return;
+    }
+    // 57 §57.3 item 2: one count per kind; a structural change alone counts as paint.
+    FrameStats& f = m_perf->current();
+    const uint32_t c = static_cast<uint32_t>(cause);
+    f.causes[c][kDirtyKindStyle] += (bits & kDirtyStyle) != 0 ? 1u : 0u;
+    f.causes[c][kDirtyKindLayout] += (bits & kDirtyLayout) != 0 ? 1u : 0u;
+    f.causes[c][kDirtyKindTransform] += (bits & kDirtyTransform) != 0 ? 1u : 0u;
+    f.causes[c][kDirtyKindPaint] +=
+        (bits & kDirtyPaint) != 0 ||
+                (bits & (kDirtyStyle | kDirtyLayout | kDirtyTransform | kDirtyPaint)) == 0
+            ? 1u
+            : 0u;
+    if (m_perf->detail() < 1 || node == kInvalidNode) {
+        return;
+    }
+    // The last kDirtyCauseNodeSlots distinct nodes, most recent first.
+    uint32_t* slots = f.causeNodes[c];
+    uint32_t at = kDirtyCauseNodeSlots - 1;
+    for (uint32_t i = 0; i < kDirtyCauseNodeSlots; ++i) {
+        if (slots[i] == node) {
+            at = i;
+            break;
+        }
+    }
+    for (uint32_t i = at; i > 0; --i) {
+        slots[i] = slots[i - 1];
+    }
+    slots[0] = node;
+}
+
+void NodeArena::noteVisualChange(DirtyCause cause, NodeId node) { countCause(cause, 0, node); }
+
+void NodeArena::markDirty(NodeId id, uint8_t bits, DirtyCause cause) {
     checkAlive(id);
+    countCause(cause, bits, id);
     if (bits & static_cast<uint8_t>(kDirtyPaint)) {
         m_dirty[id] |= static_cast<uint8_t>(kDirtyPaint);
     }
@@ -758,13 +809,28 @@ void NodeArena::markDirty(NodeId id, uint8_t bits) {
         }
     }
     if (bits & static_cast<uint8_t>(kDirtyLayout)) {
+        // T-755 (06 §6.x item 2): up to the nearest layout boundary *above* `id` (`id` itself does
+        // not count: this write may change its own box), which becomes a layout root; a node with
+        // no parent (the document root, the top of a detached subtree) is one itself. An ancestor
+        // that already carries kDirtyLayout lies on a path marked earlier this frame, which ended
+        // at a layout root kept until clearAllDirty(), so the walk stops there (§1.4's early exit).
         NodeId n = id;
         m_dirty[n] |= static_cast<uint8_t>(kDirtyLayout);
-        while (!stopsLayoutPropagation(n) && m_parent[n] != kInvalidNode) {
-            n = m_parent[n];
-            if (m_dirty[n] & static_cast<uint8_t>(kDirtyLayout))
-                break;  // same early-exit rule as kDirtyStyle
-            m_dirty[n] |= static_cast<uint8_t>(kDirtyLayout);
+        for (;;) {
+            const NodeId p = m_parent[n];
+            if (p == kInvalidNode) {
+                markLayoutRoot(n);
+                break;
+            }
+            if (m_dirty[p] & static_cast<uint8_t>(kDirtyLayout)) {
+                break;
+            }
+            m_dirty[p] |= static_cast<uint8_t>(kDirtyLayout);
+            if (stopsLayoutPropagation(p)) {
+                markLayoutRoot(p);
+                break;
+            }
+            n = p;
         }
     }
     if (bits & static_cast<uint8_t>(kDirtyTransform)) {
@@ -781,16 +847,17 @@ void NodeArena::markDirty(NodeId id, uint8_t bits) {
     }
 }
 
-void NodeArena::markStyleDirtySelf(NodeId id) {
+void NodeArena::markStyleDirtySelf(NodeId id, DirtyCause cause) {
     checkAlive(id);
+    countCause(cause, static_cast<uint8_t>(kDirtyStyle), id);
     m_dirty[id] |= static_cast<uint8_t>(kDirtyStyle);
 }
 
-void NodeArena::markDirtyAncestors(NodeId id, uint8_t bits, NodeId stopAt) {
+void NodeArena::markDirtyAncestors(NodeId id, uint8_t bits, NodeId stopAt, DirtyCause cause) {
     checkAlive(id);
     NodeId n = id;
     for (;;) {
-        markDirty(n, bits);
+        markDirty(n, bits, cause);
         if (n == stopAt) {
             break;
         }
@@ -821,7 +888,10 @@ bool NodeArena::anyDirty(uint8_t bits) const {
     return false;
 }
 
-void NodeArena::clearAllDirty() { std::fill(m_dirty.begin(), m_dirty.end(), uint8_t{0}); }
+void NodeArena::clearAllDirty() {
+    std::fill(m_dirty.begin(), m_dirty.end(), uint8_t{0});
+    m_layoutRoots.clear();
+}
 
 uint32_t NodeArena::capacity() const { return static_cast<uint32_t>(m_kind.size()); }
 

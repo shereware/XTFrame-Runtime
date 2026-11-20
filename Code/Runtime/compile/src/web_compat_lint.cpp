@@ -137,13 +137,19 @@ public:
     DocumentLint(std::vector<Element> elements, const std::string& file, DiagnosticSink& sink)
         : m_el(std::move(elements)), m_file(file), m_sink(sink) {}
 
-    void run() {
+    /// `web`: the `web.*` checks; `spaces` (T-762): the 3D-space note.
+    void run(bool web, bool spaces) {
         for (uint32_t e = 0; e < m_el.size(); ++e) {
-            zIndex(e);
-            pointerEvents(e);
-            flexText(e);
-            percentHeight(e);
-            sortGroups(e);
+            if (web) {
+                zIndex(e);
+                pointerEvents(e);
+                flexText(e);
+                percentHeight(e);
+                sortGroups(e);
+            }
+            if (spaces) {
+                groupFlattens3D(e);
+            }
         }
     }
 
@@ -307,6 +313,85 @@ private:
         }
     }
 
+    /// T-762: a perspective root (a 3D space of its own; `<camera>` roots are not followed).
+    bool spaceRoot(uint32_t e) const {
+        const std::string p = prop(e, "perspective");
+        return !p.empty() && std::strtof(p.c_str(), nullptr) > 0.0f;
+    }
+
+    /// T-762 (19 §19.y.2): the grouping property of `e` -- opacity < 1, a blend mode, an effect, an
+    /// overflow clip or a clip-path -- as text, "" when it has none.
+    std::string groupingProperty(uint32_t e) const {
+        const std::string opacity = prop(e, "opacity");
+        if (!opacity.empty() && std::strtof(opacity.c_str(), nullptr) < 1.0f) {
+            return "opacity: " + opacity;
+        }
+        const std::string blend = prop(e, "mix-blend-mode");
+        if (!blend.empty() && blend != "normal") {
+            return "mix-blend-mode: " + blend;
+        }
+        const std::string effect = prop(e, "effect");
+        if (!effect.empty() && effect != "none") {
+            return "an effect";
+        }
+        for (const char* clip : {"overflow", "overflow-x", "overflow-y"}) {
+            const std::string v = prop(e, clip);
+            if (v == "hidden" || v == "clip" || v == "scroll" || v == "auto") {
+                return std::string(clip) + ": " + v;
+            }
+        }
+        const std::string clipPath = prop(e, "clip-path");
+        if (!clipPath.empty() && clipPath != "none") {
+            return "a clip-path";
+        }
+        return std::string();
+    }
+
+    /// T-762 (19 §19.y.2): a flat element on a 3D space's root plane whose grouping property keeps its
+    /// 3D descendants out of the space's depth sort (reported on the outermost such group).
+    void groupFlattens3D(uint32_t e) {
+        if (is3d(e) || spaceRoot(e)) {
+            return;
+        }
+        const std::string why = groupingProperty(e);
+        if (why.empty()) {
+            return;
+        }
+        bool inSpace = false;
+        for (uint32_t a = m_el[e].parent; valid(a) && !inSpace; a = m_el[a].parent) {
+            if (spaceRoot(a)) {
+                inSpace = true;
+            } else if (is3d(a) || !groupingProperty(a).empty()) {
+                return;  // inside a 3D layer, or already held by an outer group
+            }
+        }
+        if (!inSpace) {
+            return;
+        }
+        uint32_t found = 0xFFFFFFFFu;
+        std::vector<uint32_t> stack(m_el[e].children.rbegin(), m_el[e].children.rend());
+        while (!stack.empty() && !valid(found)) {
+            const uint32_t d = stack.back();
+            stack.pop_back();
+            if (spaceRoot(d)) {
+                continue;  // a nested space sorts on its own
+            }
+            if (is3d(d)) {
+                found = d;
+                continue;
+            }
+            stack.insert(stack.end(), m_el[d].children.rbegin(), m_el[d].children.rend());
+        }
+        if (!valid(found)) {
+            return;
+        }
+        m_sink.note(m_file,
+                    name(e) + " groups its subtree (" + why + "), so its 3D descendants (" + name(found) +
+                        ") do not take part in the depth sort outside it: they keep their transforms but "
+                        "are drawn inside it, in document order",
+                    m_el[e].line, m_el[e].col);
+    }
+
     std::vector<Element> m_el;
     const std::string& m_file;
     DiagnosticSink& m_sink;
@@ -433,16 +518,22 @@ void lintWebDom(const DomTree& dom, const std::string& file, DiagnosticSink& sin
 }
 
 void lintWebDocument(std::span<const uint8_t> ir, const std::string& file, DiagnosticSink& sink) {
-    if (!sink.webCompat()) {
-        return;
-    }
-    std::string text;
-    std::string error;
     Result<IrView> opened = IrView::open(IrBlob{ir.data(), ir.size()});
-    if (!opened.ok() || !dumpComputedStyle(ir, text, error)) {
+    if (!opened.ok()) {
         return;
     }
     const IrView& view = opened.value();
+    // T-762: the 3D-space note runs whatever webCompat says, but only for a document that declares a
+    // perspective somewhere (the cascade dump is not paid for by the others).
+    const bool web = sink.webCompat();
+    const auto decls = view.style().decls();
+    const bool spaces =
+        std::any_of(decls.begin(), decls.end(), [](const IrDecl& d) { return d.prop == prop::Perspective; });
+    std::string text;
+    std::string error;
+    if ((!web && !spaces) || !dumpComputedStyle(ir, text, error)) {
+        return;
+    }
     const Json dump = Json::parse(text, nullptr, false);
     if (dump.is_discarded() || !dump.contains("elements") || !dump["elements"].is_array()) {
         return;
@@ -500,7 +591,7 @@ void lintWebDocument(std::span<const uint8_t> ir, const std::string& file, Diagn
             }
         }
     }
-    DocumentLint(std::move(elements), file, sink).run();
+    DocumentLint(std::move(elements), file, sink).run(web, spaces);
 }
 
 }  // namespace xt::compile

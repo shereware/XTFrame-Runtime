@@ -12,6 +12,7 @@
 #include <utility>
 #include <vector>
 
+#include "style_internal.h"
 #include "symbol_internal.h"
 #include "xt/bundle/symbol_library.h"
 #include "xt/charconv.h"
@@ -655,6 +656,14 @@ void lintGroupImpl(Lint& lint) {
                 lint.error(pathToUtf8(pathFromUtf8(file).stem()), "index.unlisted",
                            relative + " is not listed in index.json");
             }
+        }
+    }
+
+    // T-743 (47 rules 1-3): the core vocabulary and the roles of extension tokens.
+    if (!lint.options.indexOnly && !sheets.empty()) {
+        const std::vector<TokenSheet> themes(sheets.begin() + 1, sheets.end());
+        for (LintIssue& issue : tokenVocabularyIssues(sheets.front(), themes, lint.options.presetGroupDir)) {
+            lint.report.issues.push_back(std::move(issue));
         }
     }
 }

@@ -17,6 +17,7 @@
 #include "bind_emit.h"
 #include "compiled_assets.h"
 #include "doc_emit.h"
+#include "expressions_section.h"  // T-767.
 #include "file_bytes.h"
 #include "json_bounded.h"
 #include "repeat_emit.h"
@@ -317,6 +318,49 @@ void warnEditorOnlyReferences(const DomTree& tree, const std::string& file,
     }
 }
 
+/// T-740 (56 §56.3 item 0): a symbol namespace -- a directory name under `shared/symbols` -- has
+/// the characters of a symbol group id (the bundle's `isGroupId()`): `[a-z0-9-.@]`, at most 128,
+/// not starting with `.` or `-`.
+bool isSymbolNamespace(std::string_view id) {
+    if (id.empty() || id.size() > 128 || id.front() == '.' || id.front() == '-') {
+        return false;
+    }
+    return std::all_of(id.begin(), id.end(), [](char c) {
+        return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '.' || c == '@';
+    });
+}
+
+/// T-740 (56 §56.3 item 0): the name of the directory a symbol library file `href` is in when that
+/// directory sits directly in the project's symbol directory, else empty (a flat file). With
+/// `options.symbolsDir` the file's resolved path (against `xtDir`) is compared with it (resolved
+/// against `rootDir`); without it, the href's third path segment from the end must be `symbols`
+/// (`.../symbols/<dir>/<file>.xt`).
+std::string symbolLibraryDirName(const std::string& href, const std::string& xtDir,
+                                 const CompileOptions& options) {
+    auto trimmed = [](std::string s) {
+        while (s.size() > 1 && s.back() == '/') {
+            s.pop_back();
+        }
+        return s;
+    };
+    const fs::path file = resolveCompileDocument(xtDir, href).lexically_normal();
+    const std::string dir = pathToUtf8(file.parent_path().filename());
+    if (!options.symbolsDir.empty()) {
+        const std::string symbols = trimmed(genericPathToUtf8(
+            resolveCompileDocument(options.rootDir, options.symbolsDir).lexically_normal()));
+        return genericPathToUtf8(file.parent_path().parent_path()) == symbols ? dir : std::string();
+    }
+    const std::string text = genericPathToUtf8(pathFromUtf8(href).lexically_normal());
+    std::vector<std::string_view> parts;
+    for (size_t start = 0; start <= text.size();) {
+        const size_t end = std::min(text.find('/', start), text.size());
+        parts.push_back(std::string_view(text).substr(start, end - start));
+        start = end + 1;
+    }
+    return parts.size() >= 3 && parts[parts.size() - 3] == "symbols" ? std::string(parts[parts.size() - 2])
+                                                                     : std::string();
+}
+
 bool isPlainStem(std::string_view stem) {
     return !stem.empty() && stem.find_first_of("/\\.:") == std::string_view::npos;
 }
@@ -439,6 +483,7 @@ bool mergeXtanimTimeline(std::span<const SourceFile> files, const std::string& x
     merged.fileName = def.fileName;
     merged.line = def.line;
     merged.symbol = def.symbol;  // T-190: a symbol-scoped timeline stays one after the merge.
+    merged.symbolNamespace = def.symbolNamespace;  // T-740
     merged.scopePath = def.scopePath;
     merged.duration = def.duration;
     if (merged.duration < 0 && tl.contains("duration") && tl["duration"].is_number()) {
@@ -715,10 +760,24 @@ CompileResult compileDocumentImpl(std::string_view mainText, std::string_view ma
         if (!parseXtSymbolLibrary(libText, href, sink, lib.tree)) {
             continue;
         }
+        if (!isStandardSymbolHref(href)) {
+            // T-740 (56 §56.3): a file in a directory of the project's symbol directory is in that
+            // namespace (its symbols are `<dir>/<name>`).
+            const std::string dir = symbolLibraryDirName(href, xtDir, options);
+            if (isSymbolNamespace(dir)) {
+                lib.ns = dir;
+            } else if (!dir.empty()) {
+                sink.warn(href, "symbol library folder \"" + dir +
+                                    "\" is not a valid namespace (lowercase letters, digits, '-', '.', '@'); "
+                                    "its symbols keep their bare names");
+            }
+        }
         if (options.stripEditorOnly) {
             std::vector<std::string> libIds;  // T-342: a library's ids are not the document's.
             stripEditorOnlyNodes(lib.tree, libIds, strippedSymbols);
         }
+        const size_t libRulesBegin = ruleSet.rules.size();          // T-740
+        const size_t libTimelinesBegin = ruleSet.timelines.size();  // T-740
         for (const auto& [styleText, startLine] : lib.tree.inlineStyles) {
             parseXts(styleText, href, startLine, sink, ruleSet, libDir);  // T-490
         }
@@ -729,6 +788,15 @@ CompileResult compileDocumentImpl(std::string_view mainText, std::string_view ma
             lowerPathTriggers(lib.tree, href, sink, ruleSet);
             for (const std::string& nestedHref : lib.tree.symbolHrefs) {
                 libraryHrefs.emplace_back(nestedHref, libBase);
+            }
+        }
+        if (!lib.ns.empty()) {
+            // T-740: the library's `symbol()` blocks and `@timeline` scopes resolve in its namespace.
+            for (size_t i = libRulesBegin; i < ruleSet.rules.size(); ++i) {
+                ruleSet.rules[i].symbolNamespace = lib.ns;
+            }
+            for (size_t i = libTimelinesBegin; i < ruleSet.timelines.size(); ++i) {
+                ruleSet.timelines[i].symbolNamespace = lib.ns;
             }
         }
         symbolLibraries.push_back(std::move(lib));
@@ -805,6 +873,8 @@ CompileResult compileDocumentImpl(std::string_view mainText, std::string_view ma
             lowerSpawnPools(lib.tree, spawnCounter);
         }
     }
+    // T-767: the expansion rebuilds the tree without its sections; step 2c reads them from here.
+    const std::vector<XtExpressionsSection> expressionSections = dom.expressionSections;
     if (!expandSymbols(dom, symbolLibraries, ruleSet, path, sink, symbolInstances)) {
         result.diagnostics = sink.all();
         return result;
@@ -833,6 +903,30 @@ CompileResult compileDocumentImpl(std::string_view mainText, std::string_view ma
     // T-203 (18.7): `custom("<asset>")` effects load their `.xtfx` (ASST kind 2 + SHDR) and get
     // their parameter values before anything is encoded.
     resolveCustomEffects(ruleSet, writer, xtDir, path, options, sink);
+    // Step 2c (T-767, 58 §58.4): the `<expressions>` entries replace their rows' keys in the
+    // `@timeline` tracks (per symbol instance), before anything reads the tracks. T-777: an entry
+    // with run-time inputs becomes a program (`runtimeExpressions`, written as TEXP in step 5a).
+    std::vector<RuntimeExpression> runtimeExpressions;
+    {
+        std::vector<ExpressionSource> expressionSources;
+        for (const SymbolLibraryFile& lib : symbolLibraries) {
+            for (const XtExpressionsSection& s : lib.tree.expressionSections) {
+                if (!s.symbol.empty()) {
+                    expressionSources.push_back(ExpressionSource{
+                        s.text, s.lineOffset, s.colOffset,
+                        lib.ns.empty() ? s.symbol : lib.ns + "/" + s.symbol, lib.name});  // T-740
+                }
+            }
+        }
+        for (const XtExpressionsSection& s : expressionSections) {
+            expressionSources.push_back(ExpressionSource{s.text, s.lineOffset, s.colOffset, s.symbol, path});
+        }
+        ExpressionOptions expressionOptions;
+        expressionOptions.allAtRunTime = options.expressionsAtRunTime;
+        expressionOptions.inputs = options.expressionInputs;  // T-780
+        applyExpressions(expressionSources, ruleSet, dom, symbolInstances, sink, &result.expressions,
+                         &runtimeExpressions, expressionOptions);
+    }
 
     // Step 3: <anim src> -> parseLottie, deduplicated by src.
     std::map<std::string, SceneId> sceneBySrc;
@@ -948,7 +1042,8 @@ CompileResult compileDocumentImpl(std::string_view mainText, std::string_view ma
     // Step 4a (T-172, 12.7): every `@timeline` -> per-track keyframes + a TGRP group (the
     // `.xtanim.json` references were merged in step 1b).
     TimelineGroupBuilder timelineGroups;
-    emitTimelineGroups(ruleSet, dom, writer, style, keyframesByName, sink, timelineGroups);
+    std::vector<uint32_t> groupOfTimeline;  // T-777: for the TEXP rows.
+    emitTimelineGroups(ruleSet, dom, writer, style, keyframesByName, sink, timelineGroups, &groupOfTimeline);
 
     // Step 5: RuleSet -> StyleBuilder (rules/decls/@font-face).
     emitStyle(ruleSet, writer, style, keyframesByName, xtDir, path, options, sink);
@@ -960,13 +1055,17 @@ CompileResult compileDocumentImpl(std::string_view mainText, std::string_view ma
         PortScopes portScopes;
         normalizeBindAliases(dom, path, sink);  // T-385: `bind:state.Disabled` -> `bind:disabled`.
         emitPorts(dom, symbolInstances, writer, path, sink, ports, portScopes, &svgRig.boneIds);
+        // T-777 (58 §58.5): the timeline expression programs, now that their ports have indices.
+        emitTimelineExprs(runtimeExpressions, ruleSet, dom, groupOfTimeline, timelineGroups, portScopes,
+                          writer, sink, &result.expressions);
         applyUseLiterals(dom, symbolInstances, portScopes, writer, path, sink, ports,
                          options.strict);  // T-385
         resolveRepeatPorts(repeatDecls, portScopes, ports, writer, path, sink, repeatScopes);
         CustomStateBuilder customStates;
         TriggerBuilder triggerTables;
         emitTriggers(dom, ruleSet, portScopes, writer, path, sink, customStates, triggerTables,
-                     &repeatScopes);  // T-411: item() / repeat.* set() values.
+                     &repeatScopes,      // T-411: item() / repeat.* set() values.
+                     &symbolInstances);  // T-738: state group origins.
         BindingBuilder bindings;
         emitBindings(dom, symbolInstances, portScopes, customStates, writer, path, sink, bindings,
                      &repeatScopes, &svgRig.binds, &ruleSet);
@@ -1124,8 +1223,9 @@ CompileResult compileDocumentImpl(std::string_view mainText, std::string_view ma
 
     // T-408: a deprecated alias is reported under strict but does not fail it.
     // T-594: neither do the `web.*` warnings.
-    bool failed = sink.hasErrors() ||
-                  (options.strict && sink.warningCount() > sink.deprecatedCount() + sink.webCount());
+    bool failed =
+        sink.hasErrors() ||
+        (options.strict && sink.warningCount() > sink.deprecatedCount() + sink.webCount() + sink.noteCount());
     if (!failed) {
         result.ir = writer.finish();
         lintWebDocument(result.ir, path, sink);  // T-594: the checks that need the cascade.

@@ -74,6 +74,9 @@
 ///     Context::setGlyphProvider(), and runs one update(0).
 ///   - T-175: `port <name> <value>` sets a declared port from text (Document::lookupPort +
 ///     setPortText; the value is the rest of the line), then runs one update(0).
+///   - T-801: `porttext <name> <value>` is `port` with escapes in the value (`\n`, `\r`, `\t`,
+///     `\\`, `\uXXXX`), so a script line can set a string port with hard breaks and TABs; the
+///     value starts after exactly one space following the name.
 ///   - T-177: `port <list> [{...}, ...]` sets a list port from a JSON array (setPortText);
 ///     `listinsert <list> <index> {"field": value, ...}` inserts one entry (a flat JSON object:
 ///     strings, numbers, true/false; a color field takes "#rrggbb") and `listremove <list> <index>`
@@ -343,6 +346,63 @@ bool flatJsonEntry(xt::Document& doc, xt::PortId port, const std::string& text,
         }
         return i < text.size() && text[i] == '}';
     }
+}
+
+/// T-801: decodes `porttext`'s escapes -- `\n`, `\r`, `\t`, `\\` and `\uXXXX` (four hex digits,
+/// emitted as UTF-8). Returns false on any other escape or a malformed `\u`.
+bool decodePortTextEscapes(const std::string& in, std::string& out) {
+    out.clear();
+    for (size_t i = 0; i < in.size(); ++i) {
+        if (in[i] != '\\') {
+            out += in[i];
+            continue;
+        }
+        if (++i >= in.size()) {
+            return false;
+        }
+        const char e = in[i];
+        if (e == 'n') {
+            out += '\n';
+        } else if (e == 'r') {
+            out += '\r';
+        } else if (e == 't') {
+            out += '\t';
+        } else if (e == '\\') {
+            out += '\\';
+        } else if (e == 'u') {
+            if (i + 4 >= in.size()) {
+                return false;
+            }
+            uint32_t cp = 0;
+            for (size_t k = 1; k <= 4; ++k) {
+                const char h = in[i + k];
+                cp <<= 4;
+                if (h >= '0' && h <= '9') {
+                    cp |= static_cast<uint32_t>(h - '0');
+                } else if (h >= 'a' && h <= 'f') {
+                    cp |= static_cast<uint32_t>(h - 'a' + 10);
+                } else if (h >= 'A' && h <= 'F') {
+                    cp |= static_cast<uint32_t>(h - 'A' + 10);
+                } else {
+                    return false;
+                }
+            }
+            i += 4;
+            if (cp < 0x80u) {
+                out += static_cast<char>(cp);
+            } else if (cp < 0x800u) {
+                out += static_cast<char>(0xC0u | (cp >> 6));
+                out += static_cast<char>(0x80u | (cp & 0x3Fu));
+            } else {
+                out += static_cast<char>(0xE0u | (cp >> 12));
+                out += static_cast<char>(0x80u | ((cp >> 6) & 0x3Fu));
+                out += static_cast<char>(0x80u | (cp & 0x3Fu));
+            }
+        } else {
+            return false;
+        }
+    }
+    return true;
 }
 
 bool runScriptLine(xt::Context& ctx, xt::Document& doc, const ScriptLine& line, const fs::path& scriptDir,
@@ -705,6 +765,25 @@ bool runScriptLine(xt::Context& ctx, xt::Document& doc, const ScriptLine& line, 
         ctx.update(0.0f);
         return true;
     }
+    if (cmd == "porttext") {
+        // T-801 (see the file comment): the value is the rest of the line after the name and one
+        // space, with escapes decoded.
+        if (args.size() < 2 || line.rest.size() <= args[0].size() + 1) {
+            return wrongArity();
+        }
+        std::string value;
+        if (!decodePortTextEscapes(line.rest.substr(args[0].size() + 1), value)) {
+            err = "'porttext': bad escape in '" + line.rest + "'";
+            return false;
+        }
+        xt::PortId port = doc.lookupPort(args[0]);
+        if (port == xt::kInvalidPort || doc.setPortText(port, value) != xt::Status::kOk) {
+            err = "'porttext': cannot set '" + args[0] + "'";
+            return false;
+        }
+        ctx.update(0.0f);
+        return true;
+    }
     if (cmd == "listinsert" || cmd == "listremove") {
         // T-177 (see the file comment).
         if (args.size() < (cmd == "listinsert" ? 3u : 2u)) {
@@ -766,6 +845,14 @@ bool runEventScript(xt::Context& ctx, xt::Document& doc, const std::string& path
     }
     std::string raw;
     int number = 0;
+    // T-748 (23 §23.ag item 4): after every step that ends with an update of its own, two more
+    // update(0) + render() rounds drawn nowhere, so the static skip's verify mode
+    // (test_visual_check.h) compares the static frame after every kind of write the scripts make. A
+    // zero-length update after one writes nothing new, so the expected images do not change. The
+    // steps without an update (`play`, `placeholders`, `string`: the next step or the fixture's
+    // `time` applies them) get none -- an update there would apply them early.
+    xt::CommandList settleList;
+    xt::DamageList settleDamage;
     while (std::getline(in, raw)) {
         ++number;
         ScriptLine line;
@@ -776,6 +863,12 @@ bool runEventScript(xt::Context& ctx, xt::Document& doc, const std::string& path
         if (!runScriptLine(ctx, doc, line, fs::path(path).parent_path(), message)) {
             err = path + ":" + std::to_string(number) + ": " + message;
             return false;
+        }
+        const bool updated =
+            line.command != "play" && line.command != "placeholders" && line.command != "string";
+        for (int settle = 0; updated && settle < 2; ++settle) {
+            ctx.update(0.0f);
+            ctx.render(settleList, &settleDamage);
         }
     }
     return true;
@@ -914,6 +1007,14 @@ std::vector<uint8_t> renderUiFixture(const UiFixture& fx, const std::string& uiD
 
     xt::CommandList cmds;
     ctx.render(cmds);
+    // T-747 (57 §57.3, 23 §23.ag item 4): two more update(0) + render() rounds, drawn nowhere, so
+    // the visual-generation check (test_visual_check.h) has frames to compare: whatever the extra
+    // updates leave unwritten must paint the same commands as before.
+    for (int settle = 0; settle < 2; ++settle) {
+        ctx.update(0.0f);
+        xt::CommandList again;
+        ctx.render(again);
+    }
     return backend(fx, cmds, &shaper, &resolver, &doc->ir());
 }
 

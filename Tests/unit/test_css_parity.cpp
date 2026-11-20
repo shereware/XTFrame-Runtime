@@ -503,10 +503,14 @@ TEST_CASE("css parity: animation") {
           "animation: spin 500ms steps(4, start) 3", "animation: spin 1s step-end",
           "animation: a 1s linear(0, 0.5 50%, 1)",
           "animation: a 1s, b 2s cubic-bezier(0.1, 0.2, 0.3, 0.4) reverse both",
-          "animation: a 1s ease-out 2.7", "animation: a 1s steps(0)", "animation: a 1s steps(70000)",
-          "animation: a 1s 0, b 2s"}) {
+          "animation: a 1s ease-out 2.7", "animation: a 1s steps(0)", "animation: a 1s steps(70000)"}) {
         sameAccepted(css);
     }
+    // T-778: a count-0 item plays in neither, but the compiler keeps it (flagged kIrAnimationNoPlay)
+    // so it holds its place should another rule's `animation-*` longhand win one of the lists;
+    // setStyle's shorthand, which no rule's longhand outranks short of `!important`, drops it.
+    CHECK(runtime("animation: a 1s 0, b 2s") == runtime("animation: b 2s"));
+    CHECK(compiler("animation: a 1s 0, b 2s") != compiler("animation: b 2s"));
     for (const char* css :
          {"animation: 2s spin", "animation: spin", "animation: spin 2s 3 4", "animation: spin 2s wobble"}) {
         bothReject(css);
@@ -674,10 +678,13 @@ TEST_CASE("css parity: a malformed transition item drops the declaration (05 §5
     }
     // A well-formed item naming an unknown or non-animatable property is skipped with its own
     // warning; the rest of the list stays.
+    // T-778: it keeps its place in the list (another rule's `transition-*` longhand is indexed by
+    // item) as an entry that transitions nothing.
     r = compileTransition("transition: opacity 1s, nosuch 1s");
     CHECK(r.kept);
-    REQUIRE(r.list.size() == 1);
+    REQUIRE(r.list.size() == 2);
     CHECK(r.list[0].prop == prop::Opacity);
+    CHECK(r.list[1].flags == kIrTransitionNoProp);
     REQUIRE(r.warnings.size() == 1);
     CHECK(r.warnings[0].find("unknown or non-animatable transition property") != std::string::npos);
 }

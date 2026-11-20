@@ -4,6 +4,7 @@
 #include <span>
 #include <vector>
 
+#include "timeline_expr.h"
 #include "xt/ir_pod.h"
 #include "xt/timeline.h"
 #include "xt/types.h"
@@ -85,6 +86,9 @@ struct TimelinePendingEvent {
     uint32_t group = 0;
     TimelineEventKind kind = TimelineEventKind::End;
     StringId marker = kInvalidString;
+    /// T-774: the step already performed this occurrence's self-control actions
+    /// (TriggerRuntime::applySelfControl()).
+    bool selfApplied = false;
 };
 
 /// Every group of one Document.
@@ -92,6 +96,9 @@ struct TimelineGroupSet {
     std::vector<TimelineGroupRuntime> groups;
     std::vector<TimelinePendingEvent> pending;
     TimelineListener listener;
+    /// T-776 (58 §58.5): the IR's TEXP programs of the groups' rows and the inputs they read; the
+    /// Animator runs them on the member instances.
+    TimelineExprSet exprs;
 };
 
 }  // namespace xt

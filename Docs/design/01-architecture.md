@@ -105,11 +105,11 @@ enum DirtyBits : uint8_t {
 
 6. `out.clear()`；每份 Document 依載入順序，Painter 深度優先遍歷場景圖，依 09 產生命令。
 
-`update` 與 `render` 必須在同一執行緒依序呼叫。`render` 不改變任何狀態，可連續呼叫多次得到相同輸出（黃金圖測試依賴此性質）。
+`update` 與 `render` 必須依序呼叫、不得並行（同一時間只有一條執行緒使用這個 `Context`；可以在呼叫之間交給另一條執行緒，23 §23.ai）。`render` 不改變任何狀態，可連續呼叫多次得到相同輸出（黃金圖測試依賴此性質）。
 
 ## 1.6 執行緒模型
 
-- `Context` 及其所有物件**單執行緒**。宿主要在其他執行緒做事（例如 GL 後端在渲染執行緒消費 CommandList），由宿主自行複製 CommandList 或做同步。
+- `Context` 及其所有物件**同一時間只屬於一條執行緒**（不並行；可在呼叫之間整個交接，規則見 23 §23.ai）。宿主要在其他執行緒做事（例如 GL 後端在渲染執行緒消費 CommandList），由宿主自行複製 CommandList 或做同步。
 - `CommandList` 是 POD 資料加幾個 `std::vector`，可被 `std::move` 到別的執行緒。
 - `FontProvider` 可能被 `LayoutEngine` 在 `update` 中呼叫，也可能被後端在渲染時呼叫；其實作必須執行緒安全（`xt_text` 用 mutex）。
 

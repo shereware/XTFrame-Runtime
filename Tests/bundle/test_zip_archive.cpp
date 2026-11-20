@@ -20,6 +20,7 @@
 #include "xt/bundle/zip_archive.h"
 #include "xt/compile/utf8_path.h"
 #include "xt/util/sha256.h"
+#include "xtb_temp_env.h"
 
 /// T-500 (Docs/design/49-symbol-sets.md 49.4, 22 §22.5, 14 §14.9): xt/bundle/zip_archive.h --
 /// zipDirectory() / unzipToDirectory() / listZip() round trips, the entry checks against hand-made
@@ -56,7 +57,8 @@ fs::path freshDir(const std::string& name) {
 std::map<std::string, std::string> fileHashes(const fs::path& dir) {
     std::map<std::string, std::string> out;
     for (const fs::directory_entry& e : fs::recursive_directory_iterator(dir)) {
-        if (e.is_regular_file()) {
+        // T-807: the unpack cache's completion marker is not part of the bundle.
+        if (e.is_regular_file() && e.path().filename() != ".xtframe-unpacked") {
             out[compile::genericPathToUtf8(e.path().lexically_relative(dir))] =
                 util::sha256Hex(readBytes(e.path()));
         }
@@ -465,6 +467,7 @@ TEST_CASE("T-500 exportSet then importSet equals the directory form; a tampered 
 
 TEST_CASE("T-500 .xtb: a packed bundle zipped and opened through Bundle::open reads the same manifest") {
     const fs::path root = freshDir("xtb");
+    const xt::test::ScopedTempEnv tempEnv(root / "tmp");  // T-807: the unpack cache stays in here
     const fs::path source = root / "src";
     std::error_code ec;
     fs::copy(std::string(XT_TEST_BUNDLE_DIR) + "/fixtures/sample", source, fs::copy_options::recursive, ec);
@@ -510,7 +513,8 @@ TEST_CASE("T-500 .xtb: a packed bundle zipped and opened through Bundle::open re
         bundle::Bundle::open(compile::genericPathToUtf8(archive), nullptr, &error);
     REQUIRE(again.ok());
     CHECK(again.value()->dir() == b.dir());
-    fs::remove_all(unpacked, ec);  // the unpacked copy lives under the system temp directory
+    CHECK(fs::equivalent(unpacked.parent_path().parent_path(), root / "tmp", ec));
+    fs::remove_all(unpacked, ec);
 
     // Not an archive: the usual manifest error, not a crash; a wrong extension is a directory read.
     writeBytes(root / "junk.xtb", "not a zip");

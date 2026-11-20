@@ -230,19 +230,19 @@ TEST_CASE("3D props: set/get round trip, Translate3/Anchor3 stay in sync with co
     NodeId n = arena.create(NodeKind::Group);
     arena.clearAllDirty();
 
-    setProperty(arena, n, prop::RotationX, Value::ofFloat(30));
+    setProperty(arena, n, prop::RotationX, Value::ofFloat(30), DirtyCause::HostApi);
     CHECK(getProperty(arena, n, prop::RotationX).f == doctest::Approx(30));
     CHECK(arena.common(n).rotationX == doctest::Approx(30));
     CHECK((arena.dirty(n) & kDirtyTransform) != 0);
 
-    setProperty(arena, n, prop::Orientation, Value::ofVec3(Vec3{1, 2, 3}));
+    setProperty(arena, n, prop::Orientation, Value::ofVec3(Vec3{1, 2, 3}), DirtyCause::HostApi);
     Value orient = getProperty(arena, n, prop::Orientation);
     CHECK(orient.v3.x == doctest::Approx(1));
     CHECK(orient.v3.y == doctest::Approx(2));
     CHECK(orient.v3.z == doctest::Approx(3));
 
     // Setting Translate3 must keep TranslateX/TranslateY/TranslateZ (PropId 3/4/16) in sync.
-    setProperty(arena, n, prop::Translate3, Value::ofVec3(Vec3{5, 6, 7}));
+    setProperty(arena, n, prop::Translate3, Value::ofVec3(Vec3{5, 6, 7}), DirtyCause::HostApi);
     CHECK(getProperty(arena, n, prop::TranslateX).f == doctest::Approx(5));
     CHECK(getProperty(arena, n, prop::TranslateY).f == doctest::Approx(6));
     CHECK(getProperty(arena, n, prop::TranslateZ).f == doctest::Approx(7));
@@ -252,13 +252,13 @@ TEST_CASE("3D props: set/get round trip, Translate3/Anchor3 stay in sync with co
     CHECK(t3.v3.z == doctest::Approx(7));
 
     // Setting the scalar component keeps the composed Vec3 in sync too.
-    setProperty(arena, n, prop::TranslateZ, Value::ofFloat(9));
+    setProperty(arena, n, prop::TranslateZ, Value::ofFloat(9), DirtyCause::HostApi);
     Value t3b = getProperty(arena, n, prop::Translate3);
     CHECK(t3b.v3.x == doctest::Approx(5));
     CHECK(t3b.v3.y == doctest::Approx(6));
     CHECK(t3b.v3.z == doctest::Approx(9));
 
-    setProperty(arena, n, prop::Anchor3, Value::ofVec3(Vec3{11, 12, 13}));
+    setProperty(arena, n, prop::Anchor3, Value::ofVec3(Vec3{11, 12, 13}), DirtyCause::HostApi);
     CHECK(getProperty(arena, n, prop::AnchorX).f == doctest::Approx(11));
     CHECK(getProperty(arena, n, prop::AnchorY).f == doctest::Approx(12));
     CHECK(getProperty(arena, n, prop::AnchorZ).f == doctest::Approx(13));
@@ -273,18 +273,18 @@ TEST_CASE("Camera node: CameraZoom/Target/Near/Far set/get") {
     NodeId cam = arena.create(NodeKind::Camera);
     arena.clearAllDirty();
 
-    setProperty(arena, cam, prop::CameraZoom, Value::ofFloat(500));
+    setProperty(arena, cam, prop::CameraZoom, Value::ofFloat(500), DirtyCause::HostApi);
     CHECK(getProperty(arena, cam, prop::CameraZoom).f == doctest::Approx(500));
     CHECK(arena.camera(cam).zoom == doctest::Approx(500));
 
-    setProperty(arena, cam, prop::CameraTarget, Value::ofVec3(Vec3{10, 20, 30}));
+    setProperty(arena, cam, prop::CameraTarget, Value::ofVec3(Vec3{10, 20, 30}), DirtyCause::HostApi);
     Value target = getProperty(arena, cam, prop::CameraTarget);
     CHECK(target.v3.x == doctest::Approx(10));
     CHECK(target.v3.y == doctest::Approx(20));
     CHECK(target.v3.z == doctest::Approx(30));
 
-    setProperty(arena, cam, prop::CameraNear, Value::ofFloat(2));
-    setProperty(arena, cam, prop::CameraFar, Value::ofFloat(5000));
+    setProperty(arena, cam, prop::CameraNear, Value::ofFloat(2), DirtyCause::HostApi);
+    setProperty(arena, cam, prop::CameraFar, Value::ofFloat(5000), DirtyCause::HostApi);
     CHECK(getProperty(arena, cam, prop::CameraNear).f == doctest::Approx(2));
     CHECK(getProperty(arena, cam, prop::CameraFar).f == doctest::Approx(5000));
     CHECK((arena.dirty(cam) & kDirtyTransform) != 0);
@@ -295,26 +295,26 @@ TEST_CASE("Group node: Opacity, Translate/TranslateX interplay, Visible, dirty b
     NodeId n = arena.create(NodeKind::Group);
     arena.clearAllDirty();
 
-    setProperty(arena, n, prop::Opacity, Value::ofFloat(0.5f));
+    setProperty(arena, n, prop::Opacity, Value::ofFloat(0.5f), DirtyCause::HostApi);
     CHECK(getProperty(arena, n, prop::Opacity).f == doctest::Approx(0.5f));
     CHECK((arena.dirty(n) & kDirtyPaint) != 0);
 
-    setProperty(arena, n, prop::Translate, Value::ofVec2(Vec2{3, 4}));
+    setProperty(arena, n, prop::Translate, Value::ofVec2(Vec2{3, 4}), DirtyCause::HostApi);
     CHECK(getProperty(arena, n, prop::TranslateX).f == doctest::Approx(3));
     CHECK(getProperty(arena, n, prop::TranslateY).f == doctest::Approx(4));
     CHECK((arena.dirty(n) & kDirtyTransform) != 0);
     arena.clearAllDirty();
 
-    setProperty(arena, n, prop::TranslateX, Value::ofFloat(5));
+    setProperty(arena, n, prop::TranslateX, Value::ofFloat(5), DirtyCause::HostApi);
     Value t = getProperty(arena, n, prop::Translate);
     CHECK(t.v2.x == doctest::Approx(5));
     CHECK(t.v2.y == doctest::Approx(4));
     CHECK((arena.dirty(n) & kDirtyTransform) != 0);
 
-    setProperty(arena, n, prop::Visible, Value::ofEnum(0));
+    setProperty(arena, n, prop::Visible, Value::ofEnum(0), DirtyCause::HostApi);
     CHECK(getProperty(arena, n, prop::Visible).e == 0u);
     CHECK(arena.common(n).visible == 0);
-    setProperty(arena, n, prop::Visible, Value::ofEnum(1));
+    setProperty(arena, n, prop::Visible, Value::ofEnum(1), DirtyCause::HostApi);
     CHECK(getProperty(arena, n, prop::Visible).e == 1u);
 }
 
@@ -323,21 +323,21 @@ TEST_CASE("Element node: TranslateX/Y take px, % and the mixed (px, %) form (T-2
     NodeId e = arena.create(NodeKind::Element);
     arena.clearAllDirty();
 
-    setProperty(arena, e, prop::TranslateX, Value::ofLength(-50, LengthUnit::Percent));
+    setProperty(arena, e, prop::TranslateX, Value::ofLength(-50, LengthUnit::Percent), DirtyCause::HostApi);
     CHECK(arena.element(e).cssTranslate.x == doctest::Approx(0));
     CHECK(arena.element(e).cssTranslatePct.x == doctest::Approx(-50));
     CHECK((arena.dirty(e) & kDirtyTransform) != 0);
     CHECK(getProperty(arena, e, prop::TranslateX).f == doctest::Approx(0));  // px part only
 
-    setProperty(arena, e, prop::TranslateY, Value::ofVec2(Vec2{4, 25}));
+    setProperty(arena, e, prop::TranslateY, Value::ofVec2(Vec2{4, 25}), DirtyCause::HostApi);
     CHECK(arena.element(e).cssTranslate.y == doctest::Approx(4));
     CHECK(arena.element(e).cssTranslatePct.y == doctest::Approx(25));
 
     // A Float (px) write replaces the whole component, % included.
-    setProperty(arena, e, prop::TranslateX, Value::ofFloat(12));
+    setProperty(arena, e, prop::TranslateX, Value::ofFloat(12), DirtyCause::HostApi);
     CHECK(arena.element(e).cssTranslate.x == doctest::Approx(12));
     CHECK(arena.element(e).cssTranslatePct.x == doctest::Approx(0));
-    setProperty(arena, e, prop::Translate, Value::ofVec2(Vec2{1, 2}));
+    setProperty(arena, e, prop::Translate, Value::ofVec2(Vec2{1, 2}), DirtyCause::HostApi);
     CHECK(arena.element(e).cssTranslatePct == Vec2{0, 0});
 }
 
@@ -347,7 +347,8 @@ TEST_CASE("Element node: an effect parameter write without that effect is a latc
     arena.clearAllDirty();
     REQUIRE(arena.common(e).effectCount == 0);
     CHECK_FALSE(arena.effectMissingWritten());
-    setProperty(arena, e, effectParam(1, 1), Value::ofFloat(4));  // No assert, Debug or Release.
+    setProperty(arena, e, effectParam(1, 1), Value::ofFloat(4),
+                DirtyCause::HostApi);  // No assert, Debug or Release.
     CHECK(arena.effectMissingWritten());
     CHECK(arena.common(e).effectCount == 0);
     CHECK(getProperty(arena, e, effectParam(1, 1)).f == doctest::Approx(0));
@@ -360,13 +361,13 @@ TEST_CASE("Element node: Translate writes cssTranslate, Width, defaults") {
     NodeId e = arena.create(NodeKind::Element);
     arena.clearAllDirty();
 
-    setProperty(arena, e, prop::Translate, Value::ofVec2(Vec2{7, 8}));
+    setProperty(arena, e, prop::Translate, Value::ofVec2(Vec2{7, 8}), DirtyCause::HostApi);
     CHECK(arena.element(e).cssTranslate == Vec2{7, 8});
     CHECK(arena.common(e).translate == Vec2{0, 0});
     Value t = getProperty(arena, e, prop::Translate);
     CHECK(t.v2 == Vec2{7, 8});
 
-    setProperty(arena, e, prop::Width, Value::ofLength(10, LengthUnit::Px));
+    setProperty(arena, e, prop::Width, Value::ofLength(10, LengthUnit::Px), DirtyCause::HostApi);
     Value w = getProperty(arena, e, prop::Width);
     CHECK(w.type == ValueType::Length);
     CHECK(w.len.value == doctest::Approx(10));
@@ -402,21 +403,21 @@ TEST_CASE("Path node: PathData/DashArray/FillGradientStops/FillOpacity") {
     arena.clearAllDirty();
 
     float newPts[4] = {2, 2, 3, 3};
-    setProperty(arena, p, prop::PathData, Value::ofPath(newPts, 4));
+    setProperty(arena, p, prop::PathData, Value::ofPath(newPts, 4), DirtyCause::HostApi);
     CHECK(path.points[0] == doctest::Approx(2));
     CHECK(path.points[3] == doctest::Approx(3));
 
-    setProperty(arena, p, prop::DashArray, Value::ofFloatArray(nullptr, 0));
+    setProperty(arena, p, prop::DashArray, Value::ofFloatArray(nullptr, 0), DirtyCause::HostApi);
     CHECK(path.dashes.empty());
     float dashes[3] = {1, 2, 3};
-    setProperty(arena, p, prop::DashArray, Value::ofFloatArray(dashes, 3));
+    setProperty(arena, p, prop::DashArray, Value::ofFloatArray(dashes, 3), DirtyCause::HostApi);
     CHECK(path.dashes.size() == 3u);
     CHECK(path.strokeStyle.dashCount == 3u);
     Value dashOut = getProperty(arena, p, prop::DashArray);
     CHECK(dashOut.floatCount == 3u);
 
     GradientStop newStrokeStops[2] = {{0.25f, Color{1, 1, 1, 1}}, {0.75f, Color{0, 0, 0, 1}}};
-    setProperty(arena, p, prop::StrokeGradientStops, Value::ofStops(newStrokeStops, 2));
+    setProperty(arena, p, prop::StrokeGradientStops, Value::ofStops(newStrokeStops, 2), DirtyCause::HostApi);
     CHECK(path.stops[2].offset == doctest::Approx(0.25f));
     CHECK(path.stops[3].offset == doctest::Approx(0.75f));
     // Writing stroke stops must not touch the fill segment.
@@ -427,7 +428,7 @@ TEST_CASE("Path node: PathData/DashArray/FillGradientStops/FillOpacity") {
     CHECK(fillStopsOut.stopCount == 2u);
     CHECK(fillStopsOut.stops[0].offset == doctest::Approx(0));
 
-    setProperty(arena, p, prop::FillOpacity, Value::ofFloat(0.3f));
+    setProperty(arena, p, prop::FillOpacity, Value::ofFloat(0.3f), DirtyCause::HostApi);
     CHECK(getProperty(arena, p, prop::FillOpacity).f == doctest::Approx(0.3f));
     CHECK(path.fillOpacity == doctest::Approx(0.3f));
 }
@@ -504,19 +505,19 @@ TEST_CASE("Effect params: get/set round trip on a Group with 2 effects, out-of-r
     arena.clearAllDirty();
 
     // paramIndex 0: enabled.
-    setProperty(arena, g, effectParam(0, prop::kEffectParamEnabled), Value::ofFloat(0));
+    setProperty(arena, g, effectParam(0, prop::kEffectParamEnabled), Value::ofFloat(0), DirtyCause::HostApi);
     CHECK(getProperty(arena, g, effectParam(0, prop::kEffectParamEnabled)).f == doctest::Approx(0));
     CHECK(arena.effects()[base].enabled == 0);
     CHECK((arena.dirty(g) & kDirtyPaint) != 0);
 
     // paramIndex 4 -> params[3].
-    setProperty(arena, g, effectParam(0, 4), Value::ofFloat(2.5f));
+    setProperty(arena, g, effectParam(0, 4), Value::ofFloat(2.5f), DirtyCause::HostApi);
     CHECK(getProperty(arena, g, effectParam(0, 4)).f == doctest::Approx(2.5f));
     CHECK(arena.effects()[base].params[3] == doctest::Approx(2.5f));
 
     // colors[1] on effect index 1.
     setProperty(arena, g, effectParam(1, prop::kEffectParamColorBase + 1),
-                Value::ofColor(Color{0.1f, 0.2f, 0.3f, 0.4f}));
+                Value::ofColor(Color{0.1f, 0.2f, 0.3f, 0.4f}), DirtyCause::HostApi);
     Value c1 = getProperty(arena, g, effectParam(1, prop::kEffectParamColorBase + 1));
     CHECK(c1.c.r == doctest::Approx(0.1f));
     CHECK(c1.c.g == doctest::Approx(0.2f));
@@ -524,14 +525,16 @@ TEST_CASE("Effect params: get/set round trip on a Group with 2 effects, out-of-r
 
     // T-534: colors[3] and params[15] (custom-shader slots).
     setProperty(arena, g, effectParam(1, prop::kEffectParamColorBase + 3),
-                Value::ofColor(Color{0.5f, 0.6f, 0.7f, 0.8f}));
+                Value::ofColor(Color{0.5f, 0.6f, 0.7f, 0.8f}), DirtyCause::HostApi);
     CHECK(arena.effects()[base + 1].colors[3].a == doctest::Approx(0.8f));
-    setProperty(arena, g, effectParam(1, prop::kEffectParamFloatBase + 15), Value::ofFloat(9.5f));
+    setProperty(arena, g, effectParam(1, prop::kEffectParamFloatBase + 15), Value::ofFloat(9.5f),
+                DirtyCause::HostApi);
     CHECK(arena.effects()[base + 1].params[15] == doctest::Approx(9.5f));
     CHECK(getProperty(arena, g, effectParam(1, 16)).f == doctest::Approx(9.5f));
 
     // Composite Vec2 offset (params[0..1]) on effect index 0.
-    setProperty(arena, g, effectParam(0, prop::kEffectParamVec2Base), Value::ofVec2(Vec2{3, 4}));
+    setProperty(arena, g, effectParam(0, prop::kEffectParamVec2Base), Value::ofVec2(Vec2{3, 4}),
+                DirtyCause::HostApi);
     Value offset = getProperty(arena, g, effectParam(0, prop::kEffectParamVec2Base));
     CHECK(offset.v2.x == doctest::Approx(3));
     CHECK(offset.v2.y == doctest::Approx(4));
@@ -539,10 +542,12 @@ TEST_CASE("Effect params: get/set round trip on a Group with 2 effects, out-of-r
     CHECK(arena.effects()[base].params[1] == doctest::Approx(4));
 
     // T-534: the Vec2 from slot 14 is (params[14], params[15]); slot 6 is (params[6], params[7]).
-    setProperty(arena, g, effectParam(0, prop::kEffectParamVec2Base + 14), Value::ofVec2(Vec2{7, 8}));
+    setProperty(arena, g, effectParam(0, prop::kEffectParamVec2Base + 14), Value::ofVec2(Vec2{7, 8}),
+                DirtyCause::HostApi);
     CHECK(arena.effects()[base].params[14] == doctest::Approx(7));
     CHECK(arena.effects()[base].params[15] == doctest::Approx(8));
-    setProperty(arena, g, effectParam(0, prop::kEffectParamVec2Base + 6), Value::ofVec2(Vec2{-1, -2}));
+    setProperty(arena, g, effectParam(0, prop::kEffectParamVec2Base + 6), Value::ofVec2(Vec2{-1, -2}),
+                DirtyCause::HostApi);
     Value v6 = getProperty(arena, g, effectParam(0, prop::kEffectParamVec2Base + 6));
     CHECK(v6.v2.x == doctest::Approx(-1));
     CHECK(v6.v2.y == doctest::Approx(-2));

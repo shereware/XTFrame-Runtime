@@ -2,6 +2,7 @@
    C99, linked against the shared library xtframe and run once. Exit 0 when the library's ABI
    version is the header's. */
 #include <stdio.h>
+#include <string.h>
 
 #include "xt/capi/xtframe.h"
 
@@ -29,6 +30,35 @@ int main(void) {
             return 1;
         }
         (void)xt_surface_world_layer_count(NULL);
+    }
+    {
+        /* T-750: the frame record struct and its CSV header, from C. */
+        xt_frame_record rec = {0};
+        char head[32];
+        rec.struct_size = (uint32_t)sizeof(rec);
+        if (xt_frame_record_csv_header(head, sizeof(head)) < 100 || strncmp(head, "version,", 8) != 0 ||
+            xt_surface_frame_record(NULL, &rec) != XT_STATUS_INVALID_ARGUMENT) {
+            fprintf(stderr, "xt_capi_c_compile: the frame record functions failed\n");
+            return 1;
+        }
+        /* T-753: the frame marks, the thread CPU switch and the record's appended fields. */
+        rec.redundant_styled = 0;
+        rec.repainted_unchanged_first_sight = 0;
+        if (xt_surface_mark_frame_start(NULL) != XT_STATUS_INVALID_ARGUMENT ||
+            xt_surface_mark_frame_end(NULL) != XT_STATUS_INVALID_ARGUMENT ||
+            xt_surface_set_thread_cpu_timing(NULL, 1) != XT_STATUS_INVALID_ARGUMENT) {
+            fprintf(stderr, "xt_capi_c_compile: the frame mark functions failed\n");
+            return 1;
+        }
+    }
+    {
+        /* T-749: the perf detail level and the needs-frame query. */
+        int needs = -1;
+        if (xt_surface_set_perf_detail(NULL, 1) != XT_STATUS_INVALID_ARGUMENT ||
+            xt_surface_needs_frame(NULL, &needs) != XT_STATUS_INVALID_ARGUMENT || needs != -1) {
+            fprintf(stderr, "xt_capi_c_compile: the needs-frame / perf detail functions failed\n");
+            return 1;
+        }
     }
     if (abi != XT_CAPI_ABI_VERSION) {
         fprintf(stderr, "xt_capi_c_compile: ABI %u, header %u\n", (unsigned)abi,

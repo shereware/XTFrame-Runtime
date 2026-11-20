@@ -382,11 +382,13 @@ TEST_CASE("Document 3D: nodeToScreen projects a 3D layer consistently with its o
     REQUIRE(perspHost.valid());
     doc->arena().element(perspHost.node).perspectivePx = 500.0f;
     doc->arena().element(perspHost.node).perspectiveOriginPx = Vec2{200, 150};
-    doc->arena().markDirty(perspHost.node, static_cast<uint8_t>(kDirtyTree | kDirtyTransform));
+    doc->arena().markDirty(perspHost.node, static_cast<uint8_t>(kDirtyTree | kDirtyTransform),
+                           DirtyCause::HostApi);
     // isSpaceRoot is a cache recomputed only when kDirtyTree is set on that exact node (§19.5), so
     // sceneRoot's own cache (stale from the first update(), before `layer` had is3D) also needs an
     // explicit kDirtyTree to pick up its new 3D descendant and become a nested root.
-    doc->arena().markDirty(sceneRoot, static_cast<uint8_t>(kDirtyTree | kDirtyTransform));
+    doc->arena().markDirty(sceneRoot, static_cast<uint8_t>(kDirtyTree | kDirtyTransform),
+                           DirtyCause::HostApi);
     ctx.update(0.0f);
 
     CHECK(doc->arena().common(perspHost.node).isSpaceRoot == 1);

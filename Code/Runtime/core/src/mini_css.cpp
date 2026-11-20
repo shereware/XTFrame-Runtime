@@ -181,6 +181,7 @@ enum class Kind : uint8_t {
     Effect,              ///< `effect` (18-effects.md §18.4, T-51b).
     Gradient,            ///< `background-gradient` (05.5c, T-115).
     Animation,           ///< `animation` (05.6/17.6, T-123).
+    AnimationLonghand,   ///< `animation-*` (05.6, T-756): combined in parseDeclarations().
     Outline,             ///< `outline` shorthand (05 §5.9.8, T-325).
     TextDecoration,      ///< `text-decoration` shorthand (05 §5.9.8, T-324).
     BackgroundSize,      ///< `background-size` (05 §5.9.8, T-327).
@@ -330,6 +331,15 @@ constexpr NameEntry kNames[] = {
     {"transition-timing-function", sp::Transition, Kind::Unsupported},
     {"transition-delay", sp::Transition, Kind::Unsupported},
     {"animation", sp::Animation, Kind::Animation},
+    // T-756: after `animation`, so findEntryByProp(Animation) still finds the shorthand.
+    {"animation-name", sp::Animation, Kind::AnimationLonghand},
+    {"animation-duration", sp::Animation, Kind::AnimationLonghand},
+    {"animation-timing-function", sp::Animation, Kind::AnimationLonghand},
+    {"animation-delay", sp::Animation, Kind::AnimationLonghand},
+    {"animation-iteration-count", sp::Animation, Kind::AnimationLonghand},
+    {"animation-direction", sp::Animation, Kind::AnimationLonghand},
+    {"animation-fill-mode", sp::Animation, Kind::AnimationLonghand},
+    {"animation-play-state", sp::Animation, Kind::AnimationLonghand},
     {"background-image", sp::BackgroundImage, Kind::String},
     {"background-gradient", sp::BackgroundGradient, Kind::Gradient},
     {"clip-path", sp::ClipPath, Kind::ClipPath},  // T-332 (05 §5.9.8).
@@ -929,6 +939,146 @@ Status parseVarDecl(const NameEntry& entry, const Tok* toks, size_t count, std::
     return Status::kOk;
 }
 
+/// T-756: one `animation` (longhand < 0) or `animation-*` declaration of a parseDeclarations() call.
+struct AnimationPart {
+    int longhand = -1;
+    size_t begin = 0;  ///< The value's first token.
+    size_t count = 0;
+    uint8_t important = 0;
+    bool parsed = false;  ///< Shorthand only: its Decl was appended.
+};
+
+/// The longhand index of a Kind::AnimationLonghand entry.
+int animationLonghandOf(const NameEntry& entry) { return css_values::animationLonghandIndex(entry.name); }
+
+/// An item with every longhand at its initial value (the shorthand's defaults) and no name.
+AnimationDecl initialAnimationItem() {
+    AnimationDecl item;
+    item.spec = IrAnimationSpec{};
+    item.spec.timeline = kInvalidTimeline;
+    item.spec.easing = css_values::toIrEasing(Easing::linear());
+    item.spec.iterations = 1;
+    return item;
+}
+
+/// Copies longhand `field`'s part of `from` into `to`; the name's part is the resolved timeline too.
+void copyAnimationField(int field, const AnimationDecl& from, AnimationDecl& to) {
+    switch (field) {
+        case 0:
+            to.name = from.name;
+            to.spec.timeline = from.spec.timeline;
+            break;
+        case 1:
+            to.spec.duration = from.spec.duration;
+            break;
+        case 2:
+            to.spec.easing = from.spec.easing;
+            to.easingPoints = from.easingPoints;
+            break;
+        case 3:
+            to.spec.delay = from.spec.delay;
+            break;
+        case 4:
+            to.spec.iterations = from.spec.iterations;
+            to.noPlay = from.noPlay;
+            break;
+        case 5:
+            to.spec.direction = from.spec.direction;
+            break;
+        case 6:
+            to.spec.fill = from.spec.fill;
+            break;
+        default:
+            to.spec.playState = from.spec.playState;
+            break;
+    }
+}
+
+/// One longhand's comma-separated items; false when one is malformed.
+bool parseAnimationLonghandList(int longhand, const Tok* toks, size_t count,
+                                std::vector<AnimationDecl>& out) {
+    out.clear();
+    if (count == 0) {
+        return false;
+    }
+    for (const std::vector<Tok>& itemToks : css_values::splitByCommaTopLevel(toks, count)) {
+        css_values::AnimationItem parsed;
+        AnimationDecl item = initialAnimationItem();
+        if (!css_values::parseAnimationLonghandItem(longhand, itemToks.data(), itemToks.size(), kRuntime,
+                                                    nullptr, parsed, &item.easingPoints)) {
+            return false;
+        }
+        item.name.assign(parsed.name);
+        item.spec.duration = parsed.duration;
+        item.spec.delay = parsed.delay;
+        item.spec.easing = css_values::toIrEasing(parsed.easing);
+        item.spec.iterations = parsed.infinite ? 0 : parsed.iterations;  // IrAnimationSpec: 0 = infinite.
+        item.noPlay = !parsed.infinite && parsed.iterations == 0;        // T-272.
+        item.spec.direction = parsed.direction;
+        item.spec.fill = parsed.fill;
+        item.spec.playState = parsed.playState;
+        out.push_back(std::move(item));
+    }
+    return true;
+}
+
+/// T-756: the call's `animation` / `animation-*` declarations (already-parsed shorthands in `out`)
+/// into one `animation` Decl, in source order, a later one winning.
+Status mergeAnimationParts(const std::vector<AnimationPart>& parts, const std::vector<Tok>& toks,
+                           std::vector<Decl>& out) {
+    Status status = Status::kOk;
+    std::vector<std::vector<AnimationDecl>> fields(css_values::kAnimationLonghandCount);
+    uint8_t mask = 0;
+    std::vector<size_t> at;
+    for (size_t k = 0; k < out.size(); ++k) {
+        if (out[k].prop == sp::Animation) {
+            at.push_back(k);
+        }
+    }
+    size_t nextShorthand = 0;
+    for (const AnimationPart& part : parts) {
+        if (part.longhand < 0) {
+            if (!part.parsed || nextShorthand >= at.size()) {
+                continue;  // Invalid: already counted, and CSS ignores it.
+            }
+            std::vector<AnimationDecl> items = out[at[nextShorthand++]].animations;
+            if (items.empty()) {
+                items.push_back(initialAnimationItem());  // `animation: none`.
+            }
+            for (std::vector<AnimationDecl>& field : fields) {
+                field = items;
+            }
+            mask = css_values::kAllAnimationLonghands;
+            continue;
+        }
+        std::vector<AnimationDecl> items;
+        if (!parseAnimationLonghandList(part.longhand, toks.data() + part.begin, part.count, items)) {
+            status = Status::kInvalidArgument;
+            continue;
+        }
+        fields[static_cast<size_t>(part.longhand)] = std::move(items);
+        mask = static_cast<uint8_t>(mask | (1u << part.longhand));
+    }
+    for (size_t k = at.size(); k-- > 0;) {
+        out.erase(out.begin() + static_cast<std::ptrdiff_t>(at[k]));
+    }
+    if (mask == 0) {
+        return status;
+    }
+    Decl merged;
+    merged.prop = sp::Animation;
+    merged.important = parts.back().important;
+    merged.value.type = ValueType::ListRef;
+    if (mask == css_values::kAllAnimationLonghands) {
+        merged.animations = completeAnimationLonghands(fields, mask, {});
+    } else {
+        merged.animationMask = mask;
+        merged.animationFields = std::move(fields);
+    }
+    out.push_back(std::move(merged));
+    return status;
+}
+
 /// kInvalidArgument wins over kUnsupported (see parseDeclarations' contract).
 Status worse(Status current, Status next) {
     if (current == Status::kInvalidArgument || next == Status::kInvalidArgument) {
@@ -941,6 +1091,26 @@ Status worse(Status current, Status next) {
 }
 
 }  // namespace
+
+std::vector<AnimationDecl> completeAnimationLonghands(const std::vector<std::vector<AnimationDecl>>& fields,
+                                                      uint8_t mask, const std::vector<AnimationDecl>& base) {
+    std::vector<AnimationDecl> out;
+    const size_t count = (mask & 1u) != 0 && !fields.empty() ? fields[0].size() : base.size();
+    for (size_t i = 0; i < count; ++i) {
+        AnimationDecl item = base.empty() ? initialAnimationItem() : base[i % base.size()];
+        for (size_t f = 0; f < fields.size() && f < static_cast<size_t>(css_values::kAnimationLonghandCount);
+             ++f) {
+            if ((mask & (1u << f)) != 0 && !fields[f].empty()) {
+                copyAnimationField(static_cast<int>(f), fields[f][i % fields[f].size()], item);
+            }
+        }
+        if ((item.name.empty() && item.spec.timeline == kInvalidTimeline) || item.noPlay) {
+            continue;  // `none`, or an iteration count of 0: neither plays.
+        }
+        out.push_back(std::move(item));
+    }
+    return out;
+}
 
 uint16_t findProp(std::string_view cssName) {
     const NameEntry* entry = findEntry(cssName);
@@ -969,7 +1139,9 @@ Status parseDeclarations(std::string_view css, std::vector<Decl>& out) {
         uint8_t important = 0;
         size_t order = 0;
     };
-    TransformPart parts[4];  // transform, translate, rotate, scale.
+    TransformPart parts[4];                     // transform, translate, rotate, scale.
+    std::vector<AnimationPart> animationParts;  // T-756.
+    bool anyAnimationLonghand = false;
     size_t declOrder = 0;
     size_t i = 0;
     while (i < toks.size()) {
@@ -1005,8 +1177,22 @@ Status parseDeclarations(std::string_view css, std::vector<Decl>& out) {
         const size_t valueCount = end - i - 2;
         const bool isVar = valueCount >= 2 && valueToks[0].kind == TokKind::Ident &&
                            iequals(valueToks[0].text, "var") && valueToks[1].kind == TokKind::LParen;
+        if (entry->kind == Kind::AnimationLonghand) {
+            // T-756: combined with the call's other `animation` declarations after the loop.
+            animationParts.push_back(AnimationPart{animationLonghandOf(*entry), i + 2, valueCount,
+                                                   static_cast<uint8_t>(important ? 1 : 0), false});
+            anyAnimationLonghand = true;
+            ++declOrder;
+            i = next;
+            continue;
+        }
         Status one = isVar ? parseVarDecl(*entry, valueToks, valueCount, out)
                            : parseValueTokens(*entry, valueToks, valueCount, out);
+        if (entry->kind == Kind::Animation) {
+            animationParts.push_back(AnimationPart{-1, i + 2, valueCount,
+                                                   static_cast<uint8_t>(important ? 1 : 0),
+                                                   one == Status::kOk && !isVar && out.size() > before});
+        }
         if (one == Status::kOk && important) {
             for (size_t k = before; k < out.size(); ++k) {
                 out[k].important = 1;
@@ -1024,6 +1210,9 @@ Status parseDeclarations(std::string_view css, std::vector<Decl>& out) {
         ++declOrder;
         status = worse(status, one);
         i = next;
+    }
+    if (anyAnimationLonghand) {
+        status = worse(status, mergeAnimationParts(animationParts, toks, out));
     }
     // T-329: with `transform` and an independent property in the same call, the result is
     // translate * rotate * scale * transform (CSS Transforms 2 §6), parsed as one `transform`

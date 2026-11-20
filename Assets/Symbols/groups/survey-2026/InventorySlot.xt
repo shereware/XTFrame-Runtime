@@ -1,0 +1,295 @@
+<xt version="2">
+
+  <symbol name="InventorySlot" variants="Icon=Flashlight|Crowbar|Clipboard|Key|Empty" requires="states: Selected; slots: badge, caption">
+    <ports>
+      selected: bool in
+    </ports>
+    <div id="Box" bind:state.Selected="selected">
+      <div id="Cell">
+        <span id="Badge"><slot name="badge">1</slot></span>
+        <div id="Art">
+          <div id="Flashlight">
+            <div id="FlBody"></div>
+            <div id="FlHead"></div>
+            <div id="FlSwitch"></div>
+          </div>
+          <div id="Crowbar">
+            <div id="CbShaft"></div>
+            <div id="CbHook"></div>
+          </div>
+          <div id="Clipboard">
+            <div id="ClBoard"></div>
+            <div id="ClClip"></div>
+            <div id="ClLine1"></div>
+            <div id="ClLine2"></div>
+            <div id="ClLine3"></div>
+          </div>
+          <div id="Key">
+            <div id="KyRing"></div>
+            <div id="KyShaft"></div>
+            <div id="KyTooth1"></div>
+            <div id="KyTooth2"></div>
+          </div>
+        </div>
+      </div>
+      <span id="Caption"><slot name="caption">Flashlight</slot></span>
+    </div>
+  </symbol>
+
+  <layout>
+    symbol(InventorySlot) {
+      #Box {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        row-gap: var(--space-1);
+        width: 84px;
+      }
+      #Cell {
+        position: relative;
+        width: 56px;
+        height: 56px;
+      }
+      #Badge {
+        position: absolute;
+        left: 3px;
+        top: 3px;
+        width: 14px;
+        height: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #Art {
+        position: absolute;
+        left: 10px;
+        top: 10px;
+        width: 36px;
+        height: 36px;
+      }
+      #Flashlight,
+      #Crowbar,
+      #Clipboard,
+      #Key {
+        position: absolute;
+        left: 0px;
+        top: 0px;
+        width: 36px;
+        height: 36px;
+      }
+      #FlBody,
+      #FlHead,
+      #FlSwitch,
+      #CbShaft,
+      #CbHook,
+      #ClBoard,
+      #ClClip,
+      #ClLine1,
+      #ClLine2,
+      #ClLine3,
+      #KyRing,
+      #KyShaft,
+      #KyTooth1,
+      #KyTooth2 {
+        position: absolute;
+      }
+      #Crowbar,
+      #Clipboard,
+      #Key {
+        display: none;
+      }
+      .v-Icon-Crowbar #Flashlight,
+      .v-Icon-Clipboard #Flashlight,
+      .v-Icon-Key #Flashlight,
+      .v-Icon-Empty #Flashlight {
+        display: none;
+      }
+      .v-Icon-Crowbar #Crowbar {
+        display: block;
+      }
+      .v-Icon-Clipboard #Clipboard {
+        display: block;
+      }
+      .v-Icon-Key #Key {
+        display: block;
+      }
+      #FlBody {
+        left: 7.5px;
+        top: 18.45px;
+        width: 17px;
+        height: 8.5px;
+        transform-origin: 50% 50%;
+        transform: rotate(-45deg);
+      }
+      #FlHead {
+        left: 21.1px;
+        top: 9.1px;
+        width: 6px;
+        height: 11px;
+        transform-origin: 50% 50%;
+        transform: rotate(-45deg);
+      }
+      #FlSwitch {
+        left: 14.8px;
+        top: 19.5px;
+        width: 2.5px;
+        height: 2.5px;
+        transform-origin: 50% 50%;
+        transform: rotate(-45deg);
+      }
+      #CbShaft {
+        left: 10px;
+        top: 28.8px;
+        width: 24.6px;
+        height: 2.4px;
+        transform-origin: 0% 50%;
+        transform: rotate(-57.3deg);
+      }
+      #CbHook {
+        left: 22.5px;
+        top: 6px;
+        width: 6px;
+        height: 6px;
+      }
+      #ClBoard {
+        left: 10px;
+        top: 7.3px;
+        width: 16px;
+        height: 22.7px;
+      }
+      #ClClip {
+        left: 14px;
+        top: 5px;
+        width: 8px;
+        height: 4px;
+      }
+      #ClLine1 {
+        left: 13px;
+        top: 13.3px;
+        width: 10px;
+        height: 1.3px;
+      }
+      #ClLine2 {
+        left: 13px;
+        top: 17.3px;
+        width: 10px;
+        height: 1.3px;
+      }
+      #ClLine3 {
+        left: 13px;
+        top: 21.3px;
+        width: 6.7px;
+        height: 1.3px;
+      }
+      #KyRing {
+        left: 7px;
+        top: 9px;
+        width: 10px;
+        height: 10px;
+      }
+      #KyShaft {
+        left: 15.7px;
+        top: 16.7px;
+        width: 17.39px;
+        height: 2px;
+        transform-origin: 0% 50%;
+        transform: rotate(45deg);
+      }
+      #KyTooth1 {
+        left: 23.7px;
+        top: 24.7px;
+        width: 3.75px;
+        height: 2px;
+        transform-origin: 0% 50%;
+        transform: rotate(-46.1deg);
+      }
+      #KyTooth2 {
+        left: 26.3px;
+        top: 27.3px;
+        width: 3.75px;
+        height: 2px;
+        transform-origin: 0% 50%;
+        transform: rotate(-43.9deg);
+      }
+    }
+  </layout>
+  <style>
+    symbol(InventorySlot) {
+      #Cell {
+        background-color: var(--color-scrim-soft);
+        border-width: var(--rule-thin);
+        border-color: var(--color-border-strong);
+      }
+      #Badge {
+        border-width: var(--rule-thin);
+        border-color: var(--color-text-quiet);
+        font-family: var(--font-body);
+        font-size: var(--font-size-badge);
+        color: var(--color-text);
+        text-align: center;
+      }
+      #Caption {
+        font-family: var(--font-body);
+        font-size: var(--font-size-xs);
+        letter-spacing: 0.5px;
+        color: var(--color-text-label);
+        white-space: nowrap;
+      }
+      #FlBody {
+        background-color: var(--color-text-quiet);
+        border-width: 1px;
+        border-color: var(--color-text);
+      }
+      #FlHead {
+        background-color: var(--color-text);
+      }
+      #FlSwitch {
+        background-color: var(--color-text-dim);
+      }
+      #CbShaft {
+        background-color: var(--color-text-label);
+        border-radius: var(--radius-full);
+      }
+      #CbHook {
+        background-color: transparent;
+        border-width: 2.4px 2.4px 0px 0px;
+        border-color: var(--color-text-label);
+        border-radius: 0px 6px 0px 0px;
+      }
+      #ClBoard {
+        background-color: var(--color-text-dim);
+        border-radius: var(--radius-s);
+      }
+      #ClClip {
+        background-color: var(--color-text);
+      }
+      #ClLine1,
+      #ClLine2,
+      #ClLine3 {
+        background-color: var(--color-text);
+      }
+      #KyRing {
+        background-color: transparent;
+        border-width: 2px;
+        border-color: var(--color-text);
+        border-radius: var(--radius-full);
+      }
+      #KyShaft,
+      #KyTooth1,
+      #KyTooth2 {
+        background-color: var(--color-text);
+        border-radius: var(--radius-full);
+      }
+      #Box:state(Selected) #Cell {
+        border-width: var(--rule-thick);
+        border-color: var(--color-accent);
+        background-color: var(--color-track);
+      }
+      #Box:state(Selected) #Badge {
+        background-color: var(--color-accent);
+        color: var(--color-text-on-accent);
+        border-color: var(--color-accent);
+      }
+    }
+  </style>
+</xt>

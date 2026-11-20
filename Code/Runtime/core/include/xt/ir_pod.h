@@ -577,13 +577,20 @@ enum class MediaFeature : uint8_t {
 /// §27.2.3) and converter steps on Number / String set() values. 3.0 (T-534, 18 §18.2): IrEffect
 /// grows to 16 float + 4 color slots and the effect-parameter PropIds are re-encoded; the minor
 /// restarts at 0 and 2.x files are rejected. 3.1 (T-701, 33 §33.2): StyleProp 281 `world-layer`
-/// (no layout change; a 3.0 runtime ignores the declaration).
-inline constexpr uint16_t kIrFormatMinor = 1;
+/// (no layout change; a 3.0 runtime ignores the declaration). 3.2 (T-776, 58 §58.5): the optional
+/// `TEXP` chunk (timeline expression programs; an older runtime skips it and plays the keys) and
+/// T-738's optional `STGS` chunk, which was added without a bump. 3.3 (T-778, 05 §5.6 2026-11-18
+/// revision): the `animation-*` / `transition-*` longhands are StyleProps 282-293 (ListRefs into
+/// `animations[]` / `transitions[]`, cascaded one by one and combined at run time); the compiler no
+/// longer writes StyleProp 180 / 181 (still read: a declaration of every longhand at once); the
+/// IrAnimationSpec / IrTransitionSpec `flags` bytes (formerly padding). A 3.2 runtime ignores the new
+/// declarations, so it plays no CSS animation or transition of a 3.3 file.
+inline constexpr uint16_t kIrFormatMinor = 3;
 
 /// T-405 (02 §2.6): the highest StyleProp number an IR of this minor may carry (Code/Runtime/core/src/
 /// style_decode.h and Code/Runtime/compile/src/xts/xts_props.h static_assert their last StyleProp against
 /// it). A larger number is not an error: the declaration is ignored.
-inline constexpr uint16_t kStylePropLast = 281;
+inline constexpr uint16_t kStylePropLast = 293;
 
 /// `.xtir` file header (§2.2, 16 bytes).
 struct IrHeader {
@@ -864,7 +871,8 @@ inline IrEasing irLinearPointsEasing(uint16_t offset, uint16_t count) {
 struct IrTransitionSpec {
     /// PropId this transition applies to; 0xFFFF means "all".
     uint16_t prop;
-    uint16_t _pad;  ///< Padding, unused.
+    /// T-778 (IR 3.3): kIrTransition* bits (0 before; formerly padding).
+    uint16_t flags;
     /// Transition duration, in seconds.
     float duration;
     /// Transition start delay, in seconds.
@@ -873,6 +881,14 @@ struct IrTransitionSpec {
     IrEasing easing;
 };
 static_assert(sizeof(IrTransitionSpec) == 32);
+
+/// T-778: IrTransitionSpec::flags -- this entry belongs to the same `transition-property` item as
+/// the one before it (one CSS property name can stand for several PropIds, e.g. `transform`); the
+/// other longhands' lists are indexed by item, not by entry.
+inline constexpr uint16_t kIrTransitionSameItem = 1;
+/// T-778: IrTransitionSpec::flags -- a `transition-property` item that names no property this
+/// runtime transitions: it keeps its place in the lists and transitions nothing.
+inline constexpr uint16_t kIrTransitionNoProp = 2;
 
 /// `STYL` chunk compiled `animation` spec (§2.6, 48 bytes).
 struct IrAnimationSpec {
@@ -892,10 +908,19 @@ struct IrAnimationSpec {
     uint8_t fill;
     /// 0 = running, 1 = paused.
     uint8_t playState;
-    uint8_t _pad[3];    ///< Padding, unused.
+    /// T-778 (IR 3.3): kIrAnimation* bits (0 before; formerly padding).
+    uint8_t flags;
+    uint8_t _pad[2];    ///< Padding, unused.
     uint32_t _pad2[2];  ///< Padding, unused.
 };
 static_assert(sizeof(IrAnimationSpec) == 48);
+
+/// T-778: IrAnimationSpec::flags -- an `animation-name` item `none`: it keeps its place in the
+/// lists and plays nothing (`timeline` is any valid id).
+inline constexpr uint8_t kIrAnimationNoName = 1;
+/// T-778: IrAnimationSpec::flags -- an `animation-iteration-count` item of 0 (the IR's 0 is
+/// `infinite`): the combined item plays nothing.
+inline constexpr uint8_t kIrAnimationNoPlay = 2;
 
 /// `STYL` chunk `@keyframes` name-to-timeline mapping, referenced by IrAnimationSpec via name
 /// lookup (§2.6, 8 bytes).
@@ -1568,8 +1593,9 @@ static_assert(sizeof(IrMediaRule) == 8);
 //   uint32 groupCount; IrStateGroup groups[]
 // -------------------------------------------------------------------------------------------
 
-/// One mutually exclusive state group, `state-groups="<name>: a|b|c"` (8 bytes). Groups are
-/// document-wide; a state belongs to at most one group.
+/// One mutually exclusive state group, `state-groups="<name>: a|b|c"` (8 bytes). STAT holds the
+/// global groups (a state belongs to at most one of them); T-738 (56 §56.4): a symbol's groups
+/// that conflict with another origin's are symbol-scoped and live in STGS instead.
 struct IrStateGroup {
     /// StringId of the group name.
     uint32_t name;
@@ -1577,6 +1603,39 @@ struct IrStateGroup {
     uint32_t mask;
 };
 static_assert(sizeof(IrStateGroup) == 8);
+
+// -------------------------------------------------------------------------------------------
+// STGS (T-738, Docs/design/56-symbol-identity-style-scope.md §56.4). Optional, after DOCT; at most
+// once; written only when some symbol has scoped state groups. Payload:
+//   uint32 scopeCount; IrStateScope scopes[]
+//   uint32 groupCount; IrStateGroup groups[]      (each scope is a range of groups[])
+//   uint32 rootCount;  IrStateScopeRoot roots[]   (ascending element, no duplicates)
+// Setting a custom state on element E: the roots that are E or its ancestors, innermost first; the
+// first whose scope has a group holding the state clears that group's other members on E; none ->
+// the STAT groups. A reader that does not know the chunk skips it (§2.1): no scoped exclusivity.
+// -------------------------------------------------------------------------------------------
+
+/// `STGS` chunk type (T-738).
+inline constexpr uint32_t kChunkSTGS = fourcc('S', 'T', 'G', 'S');
+
+/// One symbol's scoped state groups (12 bytes).
+struct IrStateScope {
+    /// StringId of the symbol name (as in SYMB).
+    uint32_t symbolName;
+    /// The scope's groups: groups[groupOffset, groupOffset + groupCount).
+    uint32_t groupOffset;
+    uint32_t groupCount;
+};
+static_assert(sizeof(IrStateScope) == 12);
+
+/// One instance root of a symbol with scoped groups (8 bytes).
+struct IrStateScopeRoot {
+    /// DOCT element index of the instance root.
+    uint32_t element;
+    /// Index into scopes[].
+    uint32_t scope;
+};
+static_assert(sizeof(IrStateScopeRoot) == 8);
 
 // -------------------------------------------------------------------------------------------
 // TRIG (Docs/design/03-scene-and-properties.md §3.12.3, 27 §27.2, 12 §12.7, T-174). Payload:
@@ -1979,6 +2038,183 @@ struct IrRepeat {
     uint32_t viewportElement;
 };
 static_assert(sizeof(IrRepeat) == 28);
+
+// -------------------------------------------------------------------------------------------
+// TEXP (T-776, Docs/design/58-value-functions-and-drivers.md §58.5). Optional, after DOCT; at most
+// once; written last, only when a timeline row's expression reads a run-time input. Payload:
+//   uint32 exprCount;  IrTimelineExpr exprs[]
+//   uint32 opCount;    IrExprOp ops[]          (each expression's program is a range of ops[])
+//   uint32 curveCount; IrExprCurve curves[]    (each expression's hidden curves are a range)
+//   uint32 keyCount;   IrExprKey keys[]        (each curve's keys are a range, times ascending)
+// A program is a stack program over f32: every op pops its operands (the last pushed is the last
+// argument) and pushes one result; the program ends with exactly one value, which replaces the
+// row's interpolated component. A reader that does not know the chunk skips it (§2.1) and plays
+// the keys alone. Not shared with CALC or the binding converters (58 §58.5).
+// -------------------------------------------------------------------------------------------
+
+/// `TEXP` chunk type (T-776).
+inline constexpr uint32_t kChunkTEXP = fourcc('T', 'E', 'X', 'P');
+
+/// IrExprOp::op. "pops n" counts the operands taken from the stack; every op pushes one value.
+/// Operands in push order: `Linear` pops (t, tMin, tMax, v1, v2) with v2 on top.
+enum class ExprOp : uint8_t {
+    PushConst = 0,   ///< pops 0: `imm` (finite).
+    PushValue = 1,   ///< pops 0: the row's interpolated value now (this component).
+    PushCurve = 2,   ///< pops 0: hidden curve `ref` (index within the expression's curves) at group time.
+    PushPort = 3,    ///< pops 0: PORT `ref`'s number now (Number / Bool / Enum / Entity; else 0).
+    PushProp = 4,    ///< pops 0: DOCT element `ref`'s property now; `imm` = prop x 4 + component.
+    PushLayout = 5,  ///< pops 0: DOCT element `ref`'s last layout; `imm` 0 left, 1 top, 2 width, 3 height.
+    PushPlayRandom = 6,  ///< pops 0: a number in [0, 1) drawn once per play; `ref` = call number.
+    PushTime = 7,        ///< pops 0: the group time, seconds.
+    PushDuration = 8,    ///< pops 0: the group duration, seconds.
+    PushIndex = 9,       ///< pops 0: IrTimelineExpr::index.
+    Add = 10,            ///< pops 2: a + b.
+    Sub = 11,            ///< pops 2: a - b.
+    Mul = 12,            ///< pops 2: a x b.
+    Div = 13,            ///< pops 2: a / b (b == 0: not finite, so the row's value is used).
+    Mod = 14,            ///< pops 2: fmod(a, b) (b == 0: not finite).
+    Neg = 15,            ///< pops 1: -a.
+    Min = 16,            ///< pops 2.
+    Max = 17,            ///< pops 2.
+    Abs = 18,            ///< pops 1.
+    Round = 19,          ///< pops 1: floor(a + 0.5) (JS Math.round).
+    Floor = 20,          ///< pops 1.
+    Ceil = 21,           ///< pops 1.
+    Sqrt = 22,           ///< pops 1.
+    Pow = 23,            ///< pops 2: a^b.
+    Exp = 24,            ///< pops 1.
+    Log = 25,            ///< pops 1: natural log.
+    Sin = 26,            ///< pops 1, radians.
+    Cos = 27,            ///< pops 1.
+    Tan = 28,            ///< pops 1.
+    Asin = 29,           ///< pops 1.
+    Acos = 30,           ///< pops 1.
+    Atan = 31,           ///< pops 1.
+    Atan2 = 32,          ///< pops 2: atan2(y, x).
+    Clamp = 33,          ///< pops 3: (v, a, b) -> v clamped to [min(a, b), max(a, b)].
+    Lerp = 34,           ///< pops 3: (a, b, t) -> a + (b - a) x t.
+    Linear = 35,   ///< pops 5: AE linear(t, tMin, tMax, v1, v2), clamped; tMin / tMax swapped when reversed.
+    Ease = 36,     ///< pops 5: AE ease(...) (kExprEase).
+    EaseIn = 37,   ///< pops 5: AE easeIn(...) (kExprEaseIn).
+    EaseOut = 38,  ///< pops 5: AE easeOut(...) (kExprEaseOut).
+    Lt = 39,       ///< pops 2: 1 when a < b, else 0.
+    Le = 40,       ///< pops 2.
+    Gt = 41,       ///< pops 2.
+    Ge = 42,       ///< pops 2.
+    Eq = 43,       ///< pops 2.
+    Ne = 44,       ///< pops 2.
+    And = 45,      ///< pops 2: 1 when both are non-zero.
+    Or = 46,       ///< pops 2: 1 when either is non-zero.
+    Not = 47,      ///< pops 1: 1 when a == 0.
+    Select = 48,   ///< pops 3: (c, a, b) -> c != 0 ? a : b.
+    Noise = 49,    ///< pops 1: exprNoise(x, exprMixSeed(seed, ref)).
+    Wiggle = 50,   ///< pops argc 2..5: (freq, amp[, octaves[, ampMult[, t]]]); `ref` = seed site.
+    Random = 51,   ///< pops argc 2..3: (min, max[, t]); `ref` = call number, `imm` 0 per frame / 1 timeless.
+    ValueAt = 52,  ///< pops 1: this row's keys at group time t.
+    RefValueAt = 53,  ///< pops 1: another row at group time t (`ref`: kExprRefRow form or an expression).
+    PushPortDelayed = 54,  ///< pops 1: PORT `ref`'s number `a` seconds ago (port history).
+    /// T-777: pops 1: hidden curve `ref` (index within the expression's curves) at group time t
+    /// (posterizeTime(): the curve read at the quantized time).
+    CurveAt = 55,
+    /// T-777: pops argc 3..4: (seed, min, max[, t]) -- random(min, max) after seedRandom(seed); `imm`
+    /// 0 per frame / 1 timeless, `ref` = call number (as Random, from exprMixSeed(seed of the
+    /// expression, exprSeedFromNumber(seed)) instead of the default random seed).
+    RandomSeeded = 56,
+    /// T-781: pops 1: DOCT element `ref`'s property `a` seconds ago (property history, as the port
+    /// history); `imm` = prop x 4 + component, as PushProp.
+    PushPropDelayed = 57
+};
+/// T-776: the highest ExprOp; a larger op byte is rejected by IrView::validate. T-777: 56. T-781: 57.
+inline constexpr uint8_t kExprOpLast = 57;
+
+/// IrTimelineExpr::inputMask bits: the run-time inputs a program reads. The runtime also derives
+/// them from the ops (and from the programs RefValueAt runs), so they are a hint.
+inline constexpr uint16_t kExprInputPort = 1u;          ///< PushPort.
+inline constexpr uint16_t kExprInputProp = 2u;          ///< PushProp.
+inline constexpr uint16_t kExprInputLayout = 4u;        ///< PushLayout.
+inline constexpr uint16_t kExprInputPlayRandom = 8u;    ///< PushPlayRandom.
+inline constexpr uint16_t kExprInputPortHistory = 16u;  ///< PushPortDelayed.
+inline constexpr uint16_t kExprInputPropHistory = 32u;  ///< PushPropDelayed (T-781).
+
+/// RefValueAt `ref` with this bit set names a row of the same group directly: bits 16-30 the member
+/// index within the group, bits 4-15 the track index in the member's timeline, bits 0-3 the
+/// component; its keys are read and a program on that row is not run. Without the bit `ref` is the
+/// index of another TEXP expression of the same group, whose program is run at time t (at most
+/// kExprMaxRefDepth nested; deeper, its keys are read).
+inline constexpr uint32_t kExprRefRow = 0x80000000u;
+
+/// The most ops one program has (58 §58.5).
+inline constexpr uint32_t kExprMaxOps = 256;
+/// The deepest stack one program uses (58 §58.5).
+inline constexpr uint32_t kExprMaxStack = 32;
+/// The most nested RefValueAt program runs.
+inline constexpr uint32_t kExprMaxRefDepth = 4;
+/// The longest port (T-781: or property) delay kept, seconds (58 §58.5a).
+inline constexpr float kExprMaxPortHistorySeconds = 4.0f;
+
+/// One timeline row's program (40 bytes).
+struct IrTimelineExpr {
+    /// TGRP group index.
+    uint32_t group;
+    /// Member index within the group (0-based, into the group's members range).
+    uint32_t member;
+    /// Track index in the member's TLIN timeline (a Float, Length, Vec2, Vec3 or Color track).
+    uint16_t track;
+    /// The component of the track's value the program replaces (0 for Float / Length).
+    uint8_t component;
+    /// Reserved, written 0 (ignored).
+    uint8_t flags;
+    /// The program: ops[opOffset, opOffset + opCount), 1..kExprMaxOps ops.
+    uint32_t opOffset;
+    uint16_t opCount;
+    /// The deepest stack the program reaches (equal to a simulation; <= kExprMaxStack).
+    uint16_t maxStack;
+    /// The expression's hidden curves: curves[curveOffset, curveOffset + curveCount).
+    uint32_t curveOffset;
+    uint16_t curveCount;
+    /// kExprInput* bits.
+    uint16_t inputMask;
+    /// The longest PushPortDelayed (T-781: or PushPropDelayed) delay the program reads, seconds (0 =
+    /// none; the runtime keeps at most kExprMaxPortHistorySeconds).
+    float portHistorySeconds;
+    /// The wiggle / noise / random seed (the compiler's ExprContext::seed for this row).
+    uint32_t seed;
+    /// AE `index` (1-based sibling index).
+    float index;
+};
+static_assert(sizeof(IrTimelineExpr) == 40);
+
+/// One op of a program (12 bytes).
+struct IrExprOp {
+    /// ExprOp.
+    uint8_t op;
+    /// The operand count: Wiggle 2..5, Random 2..3, RandomSeeded 3..4, every other op its fixed count.
+    uint8_t argc;
+    uint16_t _pad;  ///< Padding, written 0.
+    /// The op's immediate (see ExprOp).
+    float imm;
+    /// The op's reference (see ExprOp).
+    uint32_t ref;
+};
+static_assert(sizeof(IrExprOp) == 12);
+
+/// One hidden curve: a range of keys (8 bytes).
+struct IrExprCurve {
+    uint32_t keyOffset, keyCount;
+};
+static_assert(sizeof(IrExprCurve) == 8);
+
+/// One key of a hidden curve (12 bytes). Before the first key the curve is the first key's value,
+/// after the last the last's.
+struct IrExprKey {
+    /// Group time, seconds (non-decreasing within a curve).
+    float time;
+    float value;
+    /// The segment to the next key: 0 linear, 1 hold.
+    uint8_t interp;
+    uint8_t _pad[3];  ///< Padding, written 0.
+};
+static_assert(sizeof(IrExprKey) == 12);
 
 #pragma pack(pop)
 

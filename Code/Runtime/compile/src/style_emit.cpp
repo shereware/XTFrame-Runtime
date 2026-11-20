@@ -22,10 +22,11 @@
 #include "xt/compile/svg_path.h"  // T-218: scene-target `d`.
 #include "xt/compile/utf8_path.h"
 #include "xt/compile/xtfx.h"
-#include "xt/effect_utils.h"  // T-547: effectKindByName() / effectParamIndexByName().
-#include "xt/node.h"          // EffectKind (18-effects.md §18.2).
-#include "xt/property.h"      // effectParam()/prop::kEffectParam* (18-effects.md §18.2).
-#include "xts/xts_props.h"    // styleprop::Effect (T-51a).
+#include "xt/effect_utils.h"         // T-547: effectKindByName() / effectParamIndexByName().
+#include "xt/node.h"                 // EffectKind (18-effects.md §18.2).
+#include "xt/property.h"             // effectParam()/prop::kEffectParam* (18-effects.md §18.2).
+#include "xts/xts_anim_longhands.h"  // longhandInitialDecl() (T-778).
+#include "xts/xts_props.h"           // styleprop::Effect (T-51a).
 
 /// See Docs/design/02-ir-format.md §2.6, §2.9, Docs/design/12-compiler.md §12.3, Docs/tasks/T-23.md,
 /// Docs/design/18-effects.md §18.4 (T-51a, `effect`'s STYL encoding and its `@keyframes` expansion).
@@ -480,7 +481,9 @@ void resolveVarDecls(std::vector<StyleDecl>& decls, const TokenScope& tokens, bo
                 if (longhand) {
                     StyleDecl initial;
                     initial.prop = decl.prop;
-                    initial.value = initialValue(decl.prop);
+                    if (!longhandInitialDecl(decl.prop, initial)) {  // T-778: an animation-* / transition-*.
+                        initial.value = initialValue(decl.prop);
+                    }
                     initial.important = decl.important;
                     initial.line = decl.line;
                     out.push_back(std::move(initial));
@@ -1105,6 +1108,12 @@ bool encodeDeclValue(IrWriter& writer, StyleBuilder& style,
         case StyleValueKind::Shorthand:
             sink.error(std::string(fileName), "internal error: unexpanded shorthand value", line);
             return false;
+        case StyleValueKind::AnimLonghands:
+        case StyleValueKind::TransLonghands:
+            // T-778: only encodeDeclList() writes the longhands.
+            sink.error(std::string(fileName),
+                       "internal error: animation / transition longhands outside a rule", line);
+            return false;
         case StyleValueKind::VarRef:
         case StyleValueKind::VarSubst:
             // T-170: a VarRef is only encodable as a whole declaration (encodeDecl), and a
@@ -1118,6 +1127,158 @@ bool encodeDeclValue(IrWriter& writer, StyleBuilder& style,
             return false;
     }
     return false;
+}
+
+namespace {
+
+/// T-778: a longhand item's IrAnimationSpec -- every field (`field` < 0, a shorthand's item) or only
+/// longhand `field`'s; a `none` name is kIrAnimationNoName, an iteration count of 0
+/// kIrAnimationNoPlay. `placeholder` stands in for a timeline nobody reads.
+bool toIrAnimationItem(const AnimationSpec& a, int field, TimelineId placeholder,
+                       const std::unordered_map<std::string, TimelineId>& keyframesByName,
+                       std::string_view fileName, int line, DiagnosticSink& sink, IrAnimationSpec& spec) {
+    spec = IrAnimationSpec{};
+    spec.timeline = placeholder;
+    spec.iterations = 1;
+    auto has = [field](int f) { return field < 0 || field == f; };
+    if (has(0)) {
+        if (a.name.empty() || a.name == "none") {
+            spec.flags = kIrAnimationNoName;
+        } else {
+            auto it = keyframesByName.find(a.name);
+            if (it == keyframesByName.end()) {
+                sink.error(std::string(fileName), "unknown @keyframes \"" + a.name + "\"", line);
+                return false;
+            }
+            spec.timeline = it->second;
+        }
+    }
+    if (has(1)) {
+        spec.duration = a.duration;
+    }
+    if (has(2)) {
+        spec.easing = toIrEasing(a.easing);
+    }
+    if (has(3)) {
+        spec.delay = a.delay;
+    }
+    if (has(4)) {
+        // 02 §2.10: the IR's 0 is `infinite` (the style model's 0xFFFF); a count of 0 plays nothing.
+        spec.iterations = a.iterations == 0xFFFFu ? 0 : a.iterations;
+        if (a.iterations == 0) {
+            spec.iterations = 1;
+            spec.flags = static_cast<uint8_t>(spec.flags | kIrAnimationNoPlay);
+        }
+    }
+    if (has(5)) {
+        spec.direction = a.direction;
+    }
+    if (has(6)) {
+        spec.fill = a.fill;
+    }
+    if (has(7)) {
+        spec.playState = a.playState;
+    }
+    return true;
+}
+
+/// T-778: a longhand item's IrTransitionSpec (`field` < 0: a shorthand's entry).
+IrTransitionSpec toIrTransitionItem(const TransitionSpec& t, int field) {
+    IrTransitionSpec spec{};
+    spec.prop = 0xFFFFu;
+    if (field < 0 || field == 0) {
+        spec.prop = t.prop;
+        spec.flags = t.flags;
+    }
+    if (field < 0 || field == 1) {
+        spec.duration = t.duration;
+    }
+    if (field < 0 || field == 2) {
+        spec.easing = toIrEasing(t.easing);
+    }
+    if (field < 0 || field == 3) {
+        spec.delay = t.delay;
+    }
+    return spec;
+}
+
+IrDecl listRefDecl(uint16_t prop, bool important, uint32_t offset, uint32_t count) {
+    IrDecl d{};
+    d.prop = prop;
+    d.valueType = static_cast<uint8_t>(ValueType::ListRef);
+    d.important = important ? 1 : 0;
+    irSetValueU32(d.value, 0, offset);
+    irSetValueU32(d.value, 1, count);
+    return d;
+}
+
+}  // namespace
+
+bool encodeDeclList(IrWriter& writer, StyleBuilder& style,
+                    const std::unordered_map<std::string, TimelineId>& keyframesByName, const StyleDecl& decl,
+                    std::string_view fileName, DiagnosticSink& sink, std::vector<IrDecl>& out) {
+    const StyleValueKind kind = decl.value.kind;
+    if (kind == StyleValueKind::AnimationList || kind == StyleValueKind::AnimLonghands) {
+        TimelineId placeholder = kInvalidTimeline;
+        for (const auto& [name, id] : keyframesByName) {
+            placeholder = std::min(placeholder, id);
+        }
+        const bool full = kind == StyleValueKind::AnimationList;
+        for (int f = full ? -1 : 0; f < (full ? 0 : 8); ++f) {
+            if (!full && (decl.value.animationMask & (1u << f)) == 0) {
+                continue;
+            }
+            const std::vector<AnimationSpec>& items =
+                full ? decl.value.animations : decl.value.animationFields[static_cast<size_t>(f)];
+            const uint32_t offset = static_cast<uint32_t>(style.animations.size());
+            for (const AnimationSpec& a : items) {
+                IrAnimationSpec spec;
+                if (!toIrAnimationItem(a, f, placeholder == kInvalidTimeline ? 0 : placeholder,
+                                       keyframesByName, fileName, decl.line, sink, spec)) {
+                    style.animations.resize(offset);
+                    return false;
+                }
+                style.animations.push_back(spec);
+            }
+            if (placeholder == kInvalidTimeline) {
+                // No `@keyframes` at all: every name is `none`, so no longhand can matter.
+                style.animations.resize(offset);
+                continue;
+            }
+            const uint32_t count = static_cast<uint32_t>(items.size());
+            for (int i = full ? 0 : f; i < (full ? 8 : f + 1); ++i) {
+                out.push_back(listRefDecl(static_cast<uint16_t>(styleprop::AnimationName + i), decl.important,
+                                          offset, count));
+            }
+        }
+        return true;
+    }
+    if (kind == StyleValueKind::TransitionList || kind == StyleValueKind::TransLonghands) {
+        const bool full = kind == StyleValueKind::TransitionList;
+        for (int f = full ? -1 : 0; f < (full ? 0 : 4); ++f) {
+            if (!full && (decl.value.transitionMask & (1u << f)) == 0) {
+                continue;
+            }
+            const std::vector<TransitionSpec>& items =
+                full ? decl.value.transitions : decl.value.transitionFields[static_cast<size_t>(f)];
+            const uint32_t offset = static_cast<uint32_t>(style.transitions.size());
+            for (const TransitionSpec& t : items) {
+                style.transitions.push_back(toIrTransitionItem(t, f));
+            }
+            const uint32_t count = static_cast<uint32_t>(items.size());
+            for (int i = full ? 0 : f; i < (full ? 4 : f + 1); ++i) {
+                out.push_back(listRefDecl(static_cast<uint16_t>(styleprop::TransitionProperty + i),
+                                          decl.important, offset, count));
+            }
+        }
+        return true;
+    }
+    IrDecl one{};
+    if (!encodeDecl(writer, style, keyframesByName, decl, fileName, sink, one)) {
+        return false;
+    }
+    out.push_back(one);
+    return true;
 }
 
 bool encodeDecl(IrWriter& writer, StyleBuilder& style,
@@ -1750,12 +1911,13 @@ bool emitStyle(const RuleSet& ruleSet, IrWriter& writer, StyleBuilder& style,
                     ++declCount;
                     continue;
                 }
-                if (!encodeDecl(writer, style, keyframesByName, d, fileName, sink, decl)) {
+                std::vector<IrDecl> encoded;  // T-778: a shorthand writes its longhands.
+                if (!encodeDeclList(writer, style, keyframesByName, d, fileName, sink, encoded)) {
                     ok = false;
                     continue;
                 }
-                style.decls.push_back(decl);
-                ++declCount;
+                style.decls.insert(style.decls.end(), encoded.begin(), encoded.end());
+                declCount += static_cast<uint32_t>(encoded.size());
             }
 
             IrRule irRule{};
@@ -2103,9 +2265,12 @@ bool sameTime(float a, float b) { return std::fabs(a - b) < 1e-5f; }
 
 void emitTimelineGroups(const RuleSet& ruleSet, const DomTree& dom, IrWriter& writer, StyleBuilder& style,
                         std::unordered_map<std::string, TimelineId>& keyframesByName, DiagnosticSink& sink,
-                        TimelineGroupBuilder& out) {
+                        TimelineGroupBuilder& out, std::vector<uint32_t>* groupOfTimeline) {
     std::vector<std::string> seenNames;
     std::vector<StyleDecl> inlineScratch;
+    if (groupOfTimeline != nullptr) {
+        groupOfTimeline->assign(ruleSet.timelines.size(), 0xFFFFFFFFu);
+    }
     for (const TimelineDef& def : ruleSet.timelines) {
         const std::string& fileName = def.fileName;
         // T-190: names are unique per scope (a symbol-scoped timeline repeats per instance).
@@ -2392,6 +2557,10 @@ void emitTimelineGroups(const RuleSet& ruleSet, const DomTree& dom, IrWriter& wr
             out.members.push_back(IrTimelineGroupMember{svgElement, sceneTimeline, 0.0f, group.duration});
         }
         group.memberCount = static_cast<uint32_t>(out.members.size()) - group.memberOffset;
+        if (groupOfTimeline != nullptr) {  // T-777
+            (*groupOfTimeline)[static_cast<size_t>(&def - ruleSet.timelines.data())] =
+                static_cast<uint32_t>(out.groups.size());
+        }
         out.groups.push_back(group);
     }
 }

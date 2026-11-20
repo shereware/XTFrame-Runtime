@@ -1,0 +1,11 @@
+{
+  "width": 220,
+  "height": 220,
+  "frames": 0,
+  "ports": {
+    "Gameplay.selected": true
+  },
+  "events": [
+    "update 0.6"
+  ]
+}

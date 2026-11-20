@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -14,6 +16,7 @@
 #include "xt/document.h"
 #include "xt/event.h"
 #include "xt/ir.h"
+#include "xt/perf.h"
 #include "xt/property.h"
 #include "xt/text_shaper.h"
 #include "xt/types.h"
@@ -541,4 +544,309 @@ TEST_CASE("TimelineGroup: T-262c an .xtanim.json nesting 1100 levels is an error
         CHECK(d.level != Diagnostic::Level::Error);
     }
     CHECK(bounded.ok());
+}
+
+// -- T-774 (58 §58.6 item 2): a timeline's own marker / end pausing, seeking or replaying it ---------
+
+namespace {
+
+/// `#A` opacity runs 0 -> 1 linearly over the timeline `x` (2 s by default: opacity = t / 2).
+std::string selfDoc(std::string_view markers, std::string_view triggers, std::string_view duration = "2s") {
+    return doc(
+        "#A, #B { position: absolute; left: 0px; top: 0px; width: 20px; height: 20px; }"
+        "@timeline x { duration: " +
+            std::string(duration) + "; marker: " + std::string(markers) + "; #A { 0s { opacity: 0 } " +
+            std::string(duration) + " { opacity: 1 } } }",
+        "<div id=\"A\" " + std::string(triggers) + "></div><div id=\"B\"></div>");
+}
+
+}  // namespace
+
+TEST_CASE("T-774: pause() from the timeline's own marker stops at the marker time, not past it") {
+    Loaded l = load(selfDoc("m 1s", "on:timeline(x).marker(m)=\"pause(x)\""));
+    Document& d = *l.doc;
+    SUBCASE("one step of 0.1 s from 0.95 s") {
+        REQUIRE(d.playTimeline("", "x") == Status::kOk);
+        REQUIRE(d.seekTimeline("", "x", 0.95f) == Status::kOk);
+        d.update(0.1f);
+        MESSAGE("t=" << d.timelineTime("", "x") << " opacity=" << opacityOf(d, "A"));
+        CHECK_FALSE(d.isTimelinePlaying("", "x"));
+        CHECK(d.timelineTime("", "x") == 1.0f);
+        CHECK(opacityOf(d, "A") == doctest::Approx(0.5f));
+        d.update(0.3f);
+        d.update(0.7f);
+        CHECK(d.timelineTime("", "x") == 1.0f);
+        CHECK(opacityOf(d, "A") == doctest::Approx(0.5f));
+    }
+    SUBCASE("uneven frame steps") {
+        REQUIRE(d.playTimeline("", "x") == Status::kOk);
+        for (float clock : {0.31f, 0.68f, 0.97f, 1.13f}) {
+            d.update(clock);
+        }
+        MESSAGE("t=" << d.timelineTime("", "x") << " opacity=" << opacityOf(d, "A"));
+        CHECK_FALSE(d.isTimelinePlaying("", "x"));
+        CHECK(d.timelineTime("", "x") == 1.0f);
+        CHECK(opacityOf(d, "A") == doctest::Approx(0.5f));
+    }
+}
+
+TEST_CASE("T-774: seek() / play(from) from the own marker continue with the rest of the step") {
+    SUBCASE("play(x, from=back)") {
+        Loaded l = load(selfDoc("m 1s, back 0.25s", "on:timeline(x).marker(m)=\"play(x, from=back)\""));
+        Document& d = *l.doc;
+        REQUIRE(d.playTimeline("", "x") == Status::kOk);
+        REQUIRE(d.seekTimeline("", "x", 0.95f) == Status::kOk);
+        d.update(0.1f);
+        CHECK(d.isTimelinePlaying("", "x"));
+        CHECK(d.timelineTime("", "x") == doctest::Approx(0.30f).epsilon(1e-5));
+        CHECK(opacityOf(d, "A") == doctest::Approx(0.15f).epsilon(1e-4));
+        d.update(0.2f);  // Continuous: 0.1 s later.
+        CHECK(d.timelineTime("", "x") == doctest::Approx(0.40f).epsilon(1e-5));
+    }
+    SUBCASE("seek(x, back)") {
+        Loaded l = load(selfDoc("m 1s, back 0.25s", "on:timeline(x).marker(m)=\"seek(x, back)\""));
+        Document& d = *l.doc;
+        REQUIRE(d.playTimeline("", "x") == Status::kOk);
+        REQUIRE(d.seekTimeline("", "x", 0.95f) == Status::kOk);
+        d.update(0.1f);
+        CHECK(d.isTimelinePlaying("", "x"));
+        CHECK(d.timelineTime("", "x") == doctest::Approx(0.30f).epsilon(1e-5));
+        CHECK(opacityOf(d, "A") == doctest::Approx(0.15f).epsilon(1e-4));
+    }
+    SUBCASE("rate 2: the rest of the step is clock time, replayed at the new play's rate 1") {
+        Loaded l = load(selfDoc("m 0.5s, back 0.1s", "on:timeline(x).marker(m)=\"play(x, from=back)\""));
+        Document& d = *l.doc;
+        PlayOptions options;
+        options.rate = 2.0f;
+        REQUIRE(d.playTimeline("", "x", options) == Status::kOk);
+        d.update(0.3f);  // 0.25 s of clock reach the marker; 0.05 s are left.
+        CHECK(d.timelineTime("", "x") == doctest::Approx(0.15f).epsilon(1e-5));
+    }
+}
+
+TEST_CASE("T-774: the end replaying the own loop marker loops seamlessly") {
+    const std::string xt = selfDoc("loop 0.5s", "on:timeline(x).end=\"play(x, from=loop)\"", "1s");
+    SUBCASE("1/60 s frames: the time never drifts from the clock") {
+        Loaded l = load(xt);
+        Document& d = *l.doc;
+        REQUIRE(d.playTimeline("", "x") == Status::kOk);
+        for (int frame = 1; frame <= 240; ++frame) {
+            d.update(static_cast<float>(frame) / 60.0f);
+            const double elapsed = frame / 60.0;
+            const double expected = elapsed <= 1.0 ? elapsed : 0.5 + std::fmod(elapsed - 1.0, 0.5);
+            const double diff = std::fmod(std::fabs(d.timelineTime("", "x") - expected), 0.5);
+            CAPTURE(frame);
+            CHECK(std::min(diff, 0.5 - diff) < 1e-3);
+            CHECK(d.isTimelinePlaying("", "x"));
+        }
+    }
+    SUBCASE("uneven frames: the rest of the end step continues from the loop marker") {
+        Loaded l = load(xt);
+        Document& d = *l.doc;
+        REQUIRE(d.playTimeline("", "x") == Status::kOk);
+        d.update(0.9f);
+        d.update(1.2f);  // 0.2 s past the end -> 0.7.
+        CHECK(d.timelineTime("", "x") == doctest::Approx(0.7f).epsilon(1e-5));
+        CHECK(opacityOf(d, "A") == doctest::Approx(0.7f).epsilon(1e-4));
+        d.update(1.5f);  // Exactly the end -> the loop marker.
+        CHECK(d.timelineTime("", "x") == doctest::Approx(0.5f).epsilon(1e-5));
+    }
+    SUBCASE("three rounds show the same values") {
+        Loaded l = load(xt);
+        Document& d = *l.doc;
+        REQUIRE(d.playTimeline("", "x") == Status::kOk);
+        std::vector<float> values;
+        for (int frame = 1; frame <= 8 + 12; ++frame) {
+            d.update(static_cast<float>(frame) * 0.125f);
+            if (frame > 8) {
+                values.push_back(opacityOf(d, "A"));
+            }
+        }
+        for (size_t i = 0; i < 4; ++i) {
+            CAPTURE(i);
+            CHECK(values[i] == doctest::Approx(values[i + 4]));
+            CHECK(values[i] == doctest::Approx(values[i + 8]));
+        }
+    }
+}
+
+TEST_CASE("T-774: several marks in one step are handled in time order") {
+    SUBCASE("a jump lands before a pause further on") {
+        // Declared out of time order on purpose.
+        Loaded l = load(selfDoc("r 0.75s, q 0.7s, p 0.4s",
+                                "on:timeline(x).marker(p)=\"play(x, from=q)\" "
+                                "on:timeline(x).marker(r)=\"pause(x)\""));
+        Document& d = *l.doc;
+        REQUIRE(d.playTimeline("", "x") == Status::kOk);
+        d.update(0.5f);  // 0.4 -> 0.7, then 0.1 more crosses r at 0.75.
+        CHECK_FALSE(d.isTimelinePlaying("", "x"));
+        CHECK(d.timelineTime("", "x") == 0.75f);
+        CHECK(opacityOf(d, "A") == doctest::Approx(0.375f).epsilon(1e-4));
+    }
+    SUBCASE("markers past a pause do not fire; ones before it do") {
+        Loaded l = load(selfDoc("b 0.8s, m 0.5s, a 0.3s",
+                                "on:timeline(x).marker(a)=\"class(a)\" on:timeline(x).marker(m)=\"pause(x)\" "
+                                "on:timeline(x).marker(b)=\"class(b)\""));
+        Document& d = *l.doc;
+        std::vector<std::string> events;
+        d.setTimelineListener([&](const TimelineEvent& e) { events.emplace_back(e.marker); });
+        REQUIRE(d.playTimeline("", "x") == Status::kOk);
+        d.update(1.0f);
+        CHECK(d.timelineTime("", "x") == 0.5f);
+        CHECK(d.byId("A").hasClass("a"));
+        CHECK_FALSE(d.byId("A").hasClass("b"));
+        // Both fire (in the IR's marker order, as before); `b` lies past the pause.
+        REQUIRE(events.size() == 2);
+        CHECK(std::find(events.begin(), events.end(), "a") != events.end());
+        CHECK(std::find(events.begin(), events.end(), "m") != events.end());
+    }
+    SUBCASE("looping playback pauses at a marker after the wrap") {
+        Loaded l = load(selfDoc("m 0.25s", "on:timeline(x).marker(m)=\"pause(x)\"", "1s"));
+        Document& d = *l.doc;
+        PlayOptions options;
+        options.loop = true;
+        REQUIRE(d.playTimeline("", "x", options) == Status::kOk);
+        REQUIRE(d.seekTimeline("", "x", 0.9f) == Status::kOk);
+        d.update(0.5f);
+        CHECK_FALSE(d.isTimelinePlaying("", "x"));
+        CHECK(d.timelineTime("", "x") == 0.25f);
+    }
+    SUBCASE("reverse playback pauses at the marker") {
+        Loaded l = load(selfDoc("m 0.5s", "on:timeline(x).marker(m)=\"pause(x)\"", "1s"));
+        Document& d = *l.doc;
+        PlayOptions options;
+        options.reverse = true;
+        REQUIRE(d.playTimeline("", "x", options) == Status::kOk);
+        d.update(0.6f);
+        CHECK_FALSE(d.isTimelinePlaying("", "x"));
+        CHECK(d.timelineTime("", "x") == 0.5f);
+        CHECK(opacityOf(d, "A") == doctest::Approx(0.5f));
+    }
+    SUBCASE("stop() at the own marker: nothing after it fires, no end") {
+        Loaded l = load(selfDoc("m 0.5s, b 0.8s", "on:timeline(x).marker(m)=\"stop(x)\"", "1s"));
+        Document& d = *l.doc;
+        std::vector<std::string> events;
+        d.setTimelineListener([&](const TimelineEvent& e) {
+            events.emplace_back(e.kind == TimelineEventKind::End ? "end" : std::string(e.marker));
+        });
+        REQUIRE(d.playTimeline("", "x") == Status::kOk);
+        d.update(1.5f);
+        CHECK_FALSE(d.isTimelinePlaying("", "x"));
+        REQUIRE(events.size() == 1);
+        CHECK(events[0] == "m");
+        CHECK(opacityOf(d, "A") == doctest::Approx(1.0f));  // Released: the styled value.
+    }
+}
+
+TEST_CASE("T-774: the trigger's other actions still run after the frame's evaluation, in order") {
+    Loaded l = load(selfDoc("m 1s",
+                            "on:timeline(x).marker(m)=\"class(k); pause(x) then class(after)\" "
+                            "on:timeline(x).end=\"class(ended)\""));
+    Document& d = *l.doc;
+    std::vector<std::string> order;
+    d.setTimelineListener([&](const TimelineEvent& e) {
+        order.push_back(std::string(e.marker) + (d.byId("A").hasClass("k") ? "+k" : "-k"));
+    });
+    REQUIRE(d.playTimeline("", "x") == Status::kOk);
+    d.update(1.3f);
+    CHECK(d.timelineTime("", "x") == 1.0f);
+    CHECK(opacityOf(d, "A") == doctest::Approx(0.5f));
+    CHECK(d.byId("A").hasClass("k"));
+    CHECK(d.byId("A").hasClass("after"));
+    CHECK_FALSE(d.byId("A").hasClass("ended"));
+    REQUIRE(order.size() == 1);
+    CHECK(order[0] == "m+k");  // The trigger ran before the listener, as before.
+    d.update(1.6f);
+    CHECK(d.timelineTime("", "x") == 1.0f);
+}
+
+// A member paused between two keys is still evaluated every frame (T-717's static hold covers a
+// member paused at its end stop only), the same as a group paused by seekTimeline(); not T-774's.
+TEST_CASE("T-774: paused at its own marker under the static-skip verify mode: it stays at the marker") {
+    const std::string xt = selfDoc("m 0.1s", "on:timeline(x).marker(m)=\"pause(x)\"");
+    CompileResult compiled = compileStrings({{"main.xt", xt}});
+    REQUIRE(compiled.ok());
+    ContextConfig config;
+    Context ctx(config);  // xt_tests: the static-skip verify mode is on.
+    ctx.perf().setEnabled(true);
+    ctx.setViewport(Rect{0, 0, 200, 100}, 1.0f);
+    Result<DocumentHandle> handle = ctx.loadDocument(IrBlob{compiled.ir.data(), compiled.ir.size()}, false);
+    REQUIRE(handle.ok());
+    Document& d = *ctx.document(handle.value());
+    CommandList list;
+    REQUIRE(d.playTimeline("", "x") == Status::kOk);
+    for (int frame = 0; frame < 6; ++frame) {  // 0.15 s at 1/40 s: the marker is passed at 0.1.
+        ctx.update(1.0f / 40.0f);
+        ctx.render(list, nullptr);
+    }
+    CHECK_FALSE(d.isTimelinePlaying("", "x"));
+    CHECK(d.timelineTime("", "x") == 0.1f);
+    CHECK(opacityOf(d, "A") == doctest::Approx(0.05f));
+    for (int frame = 0; frame < 4; ++frame) {
+        ctx.update(1.0f / 40.0f);
+        ctx.render(list, nullptr);
+        CAPTURE(frame);
+        CHECK(ctx.perf().current().staticSkipMismatch == 0);
+        CHECK(d.timelineTime("", "x") == 0.1f);
+        CHECK(opacityOf(d, "A") == doctest::Approx(0.05f));
+    }
+}
+
+// -- T-783: the self-control cases T-774 left on the old timing ------------------------------------
+
+TEST_CASE("T-783: an if-guarded pause / seek at the own marker is decided at the marker's time") {
+    const std::string triggers =
+        "port:halt=\"number\" on:timeline(x).marker(m)=\"if port(halt) eq 1 pause(x) else seek(x, back)\"";
+    Loaded l = load(selfDoc("m 1s, back 0.25s", triggers));
+    Document& d = *l.doc;
+    const PortId halt = d.lookupPort("halt");
+    REQUIRE(halt != 0);
+    SUBCASE("the condition holds: paused at the marker") {
+        REQUIRE(d.setPort(halt, Value::ofFloat(1.0f)) == Status::kOk);
+        REQUIRE(d.playTimeline("", "x") == Status::kOk);
+        REQUIRE(d.seekTimeline("", "x", 0.95f) == Status::kOk);
+        d.update(0.1f);
+        CHECK_FALSE(d.isTimelinePlaying("", "x"));
+        CHECK(d.timelineTime("", "x") == 1.0f);
+        CHECK(opacityOf(d, "A") == doctest::Approx(0.5f));
+        d.update(0.3f);
+        CHECK(d.timelineTime("", "x") == 1.0f);
+    }
+    SUBCASE("it does not: the else branch's seek continues with the rest of the step") {
+        REQUIRE(d.setPort(halt, Value::ofFloat(0.0f)) == Status::kOk);
+        REQUIRE(d.playTimeline("", "x") == Status::kOk);
+        REQUIRE(d.seekTimeline("", "x", 0.95f) == Status::kOk);
+        d.update(0.1f);
+        CHECK(d.isTimelinePlaying("", "x"));
+        CHECK(d.timelineTime("", "x") == doctest::Approx(0.30f).epsilon(1e-5));
+        CHECK(opacityOf(d, "A") == doctest::Approx(0.15f).epsilon(1e-4));
+    }
+}
+
+TEST_CASE("T-783: an if-guarded pause whose condition fails plays on through the marker") {
+    Loaded l = load(
+        selfDoc("m 1s", "port:halt=\"number\" on:timeline(x).marker(m)=\"if port(halt) eq 1 pause(x)\""));
+    Document& d = *l.doc;
+    REQUIRE(d.playTimeline("", "x") == Status::kOk);
+    REQUIRE(d.seekTimeline("", "x", 0.95f) == Status::kOk);
+    d.update(0.1f);
+    CHECK(d.isTimelinePlaying("", "x"));
+    CHECK(d.timelineTime("", "x") == doctest::Approx(1.05f).epsilon(1e-5));
+}
+
+TEST_CASE("T-783: a seek from the own marker over another self-control marker applies it where it lands") {
+    Loaded l = load(selfDoc("m 0.5s, p 1s, z 1.5s",
+                            "on:timeline(x).marker(m)=\"seek(x, z)\" on:timeline(x).marker(p)=\"pause(x)\""));
+    Document& d = *l.doc;
+    std::vector<std::string> events;
+    d.setTimelineListener([&](const TimelineEvent& e) { events.emplace_back(e.marker); });
+    REQUIRE(d.playTimeline("", "x") == Status::kOk);
+    d.update(0.6f);  // m at 0.5 jumps to z (1.5) over p: paused there, not 0.1 s further.
+    CHECK_FALSE(d.isTimelinePlaying("", "x"));
+    CHECK(d.timelineTime("", "x") == 1.5f);
+    CHECK(opacityOf(d, "A") == doctest::Approx(0.75f));
+    CHECK(std::count(events.begin(), events.end(), "m") == 1);
+    CHECK(std::count(events.begin(), events.end(), "p") == 1);
+    d.update(0.9f);
+    CHECK(d.timelineTime("", "x") == 1.5f);
 }

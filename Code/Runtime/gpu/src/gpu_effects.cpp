@@ -121,13 +121,26 @@ bool gaussIsIdentity(float sigma) {
 class Scheduler {
 public:
     Scheduler(FrameEmitter& emit, GradientLutCache& luts, const EffectStackInput& in)
-        : m_emit(emit), m_luts(luts), m_in(in), m_window(emit.windowOf(in.src)) {
+        : Scheduler(emit, luts, in, emit.windowOf(in.src)) {}
+    /// T-764: every pass over `window` (no content target to take it from).
+    Scheduler(FrameEmitter& emit, GradientLutCache& luts, const EffectStackInput& in, const Scissor& window)
+        : m_emit(emit), m_luts(luts), m_in(in), m_window(window) {
         m_texelW = 1.0f / static_cast<float>(std::max(1, m_window.w));
         m_texelH = 1.0f / static_cast<float>(std::max(1, m_window.h));
     }
 
     /// T-730: applyBackdropUnder.
     TargetHandle runMaskedOnly(TargetHandle top) { return maskedOver(top); }
+
+    /// T-764: applyBackdropUnderTextures -- the blurred backdrop and one BackdropMasked pass whose R' and
+    /// S are the textures `bp` names.
+    TargetHandle runMaskedTextures(const BackdropParams& bp) {
+        TargetHandle blurred = blurredBackdrop(m_in.screenParams[0]);
+        TargetHandle dst = scratch();
+        backdropPass(dst, bp, 0, blurred);
+        release(blurred);
+        return dst;
+    }
 
     TargetHandle run() {
         if (m_in.shadowsUnderBackdrop && m_emit.backdropMask() && hasPyramid() &&
@@ -208,6 +221,13 @@ private:
     void channelPass(TargetHandle dst, EffectProgram program, const P& params, TargetHandle src) {
         m_emit.beginPass(dst, false);
         m_emit.pushEffect(program, m_emit.pushChannelParams(params), src, 0, 0);
+    }
+
+    /// A BackdropMasked pass (T-764: FrameEmitter::pushBackdropParams, the block of before unless it
+    /// names texture inputs).
+    void backdropPass(TargetHandle dst, const BackdropParams& bp, TargetHandle src, TargetHandle aux) {
+        m_emit.beginPass(dst, false);
+        m_emit.pushEffect(EffectProgram::BackdropMasked, m_emit.pushBackdropParams(bp), src, aux, 0);
     }
 
     void passNoParams(TargetHandle dst, EffectProgram program, TargetHandle src, TargetHandle aux) {
@@ -673,8 +693,9 @@ private:
     TargetHandle maskedOver(TargetHandle top) {
         TargetHandle blurred = blurredBackdrop(m_in.screenParams[0]);
         TargetHandle dst = scratch();
-        BackdropParams bp{static_cast<float>(m_in.src)};
-        pass(dst, EffectProgram::BackdropMasked, bp, top, blurred);
+        BackdropParams bp{};  // every T-764 trailing field 0, as the one-element list gave them
+        bp.mask = static_cast<float>(m_in.src);
+        backdropPass(dst, bp, top, blurred);
         release(blurred);
         return dst;
     }
@@ -772,6 +793,13 @@ TargetHandle applyBackdropUnder(FrameEmitter& emit, GradientLutCache& luts, cons
                                 TargetHandle top) {
     Scheduler s(emit, luts, in);
     return s.runMaskedOnly(top);
+}
+
+TargetHandle applyBackdropUnderTextures(FrameEmitter& emit, GradientLutCache& luts,
+                                        const EffectStackInput& in, const Scissor& window,
+                                        const BackdropParams& bp) {
+    Scheduler s(emit, luts, in, window);
+    return s.runMaskedTextures(bp);
 }
 
 void buildBackdropPyramid(FrameEmitter& emit, TargetHandle parent, const Scissor& window, float maxSigma,

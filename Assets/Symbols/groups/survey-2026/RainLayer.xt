@@ -1,0 +1,56 @@
+<xt version="2">
+
+  <symbol name="RainLayer" variants="Density=Light|Heavy">
+    <div id="Box" on:show="play(fall, loop)">
+      <div id="Sheet"></div>
+    </div>
+  </symbol>
+
+  <layout>
+    symbol(RainLayer) {
+      #Box {
+        position: relative;
+        width: 640px;
+        height: 360px;
+        overflow: hidden;
+      }
+      #Sheet {
+        position: absolute;
+        left: 0px;
+        right: 0px;
+        top: -256px;
+        bottom: 0px;
+      }
+    }
+  </layout>
+  <style>
+    symbol(RainLayer) {
+      #Box {
+        pointer-events: none;
+      }
+      #Sheet {
+        background-image: var(--tex-rain);
+        background-repeat: repeat;
+        background-size: 256px 256px;
+        opacity: 0.5;
+      }
+      .v-Density-Heavy #Sheet {
+        opacity: 0.9;
+      }
+    }
+  </style>
+  <timelines>
+    symbol(RainLayer) {
+      @timeline fall {
+        #Sheet {
+          0s {
+            transform: translateY(0px);
+          }
+          0.5s linear {
+            transform: translateY(256px);
+          }
+        }
+      }
+    }
+  </timelines>
+</xt>

@@ -1131,3 +1131,78 @@ TEST_CASE("global flow: T-583 only the new instance gets the resend; a source wi
     uis.frame();
     CHECK(uis.opened() == doctest::Approx(openedBefore));  // No pulse replayed to the new one.
 }
+
+TEST_CASE("T-749: Context::needsFrame follows the flows' timers, clocks and enable switch") {
+    TwoUis uis;
+    CommandList list;
+    DamageList damage;
+    // One host frame: Context::update, the flows' tick (after it, as hosts call it), render.
+    auto frame = [&](float dt) {
+        uis.ctx.update(dt);
+        uis.bundle->tick(dt);
+        uis.ctx.render(list, &damage);
+    };
+    auto settle = [&]() {
+        for (int i = 0; i <= 8; ++i) {
+            if (!uis.ctx.needsFrame()) {
+                return i;
+            }
+            frame(0.05f);
+        }
+        return -1;
+    };
+    REQUIRE(settle() >= 0);  // No flow loaded: idle.
+
+    // A one-shot timer: the Context needs frames while it runs, none once it fired.
+    const char* oneShot = R"({"version":1,"nodes":[
+        {"id":"t","type":"timer","params":{"interval":0.2,"autostart":true,"repeat":false}},
+        {"id":"ticks","type":"counter"}],
+      "edges":[{"from":"t.tick","to":"ticks.increment"}]})";
+    std::vector<std::string> errors;
+    REQUIRE_MESSAGE(uis.bundle->loadGlobalFlow(oneShot, errors) == Status::kOk, joined(errors));
+    FlowRuntime& global = uis.bundle->flowRuntime();
+    CHECK(global.needsTick());
+    CHECK(uis.ctx.needsFrame());
+    for (int i = 0; i < 3; ++i) {  // 0.15 s of the 0.2 s
+        frame(0.05f);
+        CHECK(uis.ctx.needsFrame());
+        CHECK(valueOf(global, "ticks.value").n == doctest::Approx(0));
+    }
+    CHECK(settle() > 0);
+    CHECK(valueOf(global, "ticks.value").n == doctest::Approx(1));
+    CHECK_FALSE(global.needsTick());
+
+    // A repeating timer never lets it settle -- until the flows are switched off.
+    const char* repeating = R"({"version":1,"nodes":[
+        {"id":"t","type":"timer","params":{"interval":0.1,"autostart":true}},{"id":"ticks","type":"counter"}],
+      "edges":[{"from":"t.tick","to":"ticks.increment"}]})";
+    REQUIRE_MESSAGE(uis.bundle->loadGlobalFlow(repeating, errors) == Status::kOk, joined(errors));
+    for (int i = 0; i < 10; ++i) {
+        frame(0.05f);
+        CHECK(uis.ctx.needsFrame());
+    }
+    uis.bundle->enableFlow(false);
+    CHECK_FALSE(global.needsTick());
+    CHECK(settle() >= 0);
+    uis.bundle->enableFlow(true);
+    CHECK(uis.ctx.needsFrame());
+
+    // A clock node moves with time alone.
+    const char* clock = R"({"version":1,"nodes":[{"id":"c","type":"clock"}],"edges":[]})";
+    REQUIRE_MESSAGE(uis.bundle->loadGlobalFlow(clock, errors) == Status::kOk, joined(errors));
+    for (int i = 0; i < 4; ++i) {
+        frame(0.05f);
+        CHECK(uis.ctx.needsFrame());
+    }
+
+    // A flow that only reacts to input: idle until a click, whose output lands with the next frames.
+    const char* reactive = R"({"version":1,"nodes":[{"id":"c","type":"counter"},{"id":"s","type":"toString"}],
+      "edges":[{"from":"ui#menu.Play.Click","to":"c.increment"},{"from":"c.value","to":"s.in"},
+               {"from":"s.out","to":"ui#hud.Count.setText"}]})";
+    REQUIRE_MESSAGE(uis.bundle->loadGlobalFlow(reactive, errors) == Status::kOk, joined(errors));
+    CHECK(settle() >= 0);
+    click(uis.menuDoc(), "Play");
+    CHECK(uis.ctx.needsFrame());
+    CHECK(settle() > 0);
+    CHECK(uis.hudDoc().byId("Count").text() == "1");
+}

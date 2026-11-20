@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cmath>
 #include <span>
 #include <utility>
 
@@ -30,9 +31,10 @@ namespace xt {
 /// stretched instead (Painter::backgroundTilesCapped()).
 bool emitElementBackground(const ElementData& data, const Mat2x3& world, float alpha, CommandList& out,
                            std::vector<PathVerb>& scratchVerbs, std::vector<float>& scratchPoints);
+/// T-737: `dashCache` (the Painter's; nullptr computes every side) serves the dashed / dotted sides.
 void emitElementBorder(const ElementData& data, const Mat2x3& world, float alpha, CommandList& out,
                        std::vector<PathVerb>& scratchVerbs, std::vector<float>& scratchPoints,
-                       bool allowSnap = true);
+                       bool allowSnap = true, BorderDashCache* dashCache = nullptr);
 void emitElementImage(const ElementData& data, const Mat2x3& world, float alpha, CommandList& out);
 /// T-199 (26 §26.3.4): the `border-image` nine-slice, drawn instead of emitElementBorder when
 /// `style.borderImage` is set (painter_element.cpp).
@@ -53,7 +55,35 @@ void sortedElementChildren(const NodeArena& arena, NodeId node, std::vector<Node
 // false for a node kind that has none (Group/Mask/Camera, or a Path with no points).
 Rect nodeOwnBounds(const NodeArena& arena, NodeId n, bool& hasShape);
 
-Rect Painter::projectionBoundsHint(const NodeArena& arena, NodeId root, Rect viewport) {
+Rect Painter::projectionBoundsHint(const NodeArena& arena, NodeId root, Rect viewport, bool* bounded) {
+    if (bounded != nullptr) {
+        *bounded = false;
+    }
+    Rect bounds{};
+    if (!projectedSubtreeBounds(arena, root, bounds)) {
+        return viewport;
+    }
+    if (viewport.w > 0.0f && viewport.h > 0.0f) {
+        float x0 = std::max(bounds.x, viewport.x);
+        float y0 = std::max(bounds.y, viewport.y);
+        float x1 = std::min(bounds.x + bounds.w, viewport.x + viewport.w);
+        float y1 = std::min(bounds.y + bounds.h, viewport.y + viewport.h);
+        bounds = Rect{x0, y0, std::max(0.0f, x1 - x0), std::max(0.0f, y1 - y0)};
+        if (bounded != nullptr) {
+            // T-795: a degenerate projection (no finite extent) is not a bound (as nestedSpaceReach()).
+            *bounded = std::isfinite(bounds.x) && std::isfinite(bounds.y) && std::isfinite(bounds.w) &&
+                       std::isfinite(bounds.h);
+        }
+    }
+    return bounds;
+}
+
+bool Painter::projectedSubtreeBounds(const NodeArena& arena, NodeId root, Rect& bounds) {
+    return projectedBoundsFrom(arena, root, mat4Identity(), /*startIsRoot=*/true, bounds);
+}
+
+bool Painter::projectedBoundsFrom(const NodeArena& arena, NodeId root, const Mat4& startPlane,
+                                  bool startIsRoot, Rect& bounds) {
     // The walk mirrors updateWorldTransforms()'s plane context (world_transform.cpp): a node's
     // `world` is relative to its nearest enclosing 3D layer's plane (identity on the root's own
     // plane), which is exactly the mapping stack's planeWorld3 the emitted commands are drawn
@@ -66,7 +96,7 @@ Rect Painter::projectionBoundsHint(const NodeArena& arena, NodeId root, Rect vie
     Mat4 savedPlane = m_mappingStack.back().planeWorld3;
 
     m_boundsStack.clear();
-    m_boundsStack.push_back({root, mat4Identity()});
+    m_boundsStack.push_back({root, startPlane});
     while (ok && !m_boundsStack.empty()) {
         NodeId n = m_boundsStack.back().first;
         Mat4 plane = m_boundsStack.back().second;
@@ -92,6 +122,10 @@ Rect Painter::projectionBoundsHint(const NodeArena& arena, NodeId root, Rect vie
         }
         m_mappingStack.back().planeWorld3 = plane;
 
+        // T-760: the root's own box lies on its own plane at the origin (emitRoot() draws it with the
+        // identity inside its projection, whose rootXf is the root's `world`).
+        // T-762: any other start node lies on `startPlane` through its own `world`.
+        const Mat2x3 world = n == root && startIsRoot ? Mat2x3{} : c.world;
         bool hasShape = false;
         Rect local = nodeOwnBounds(arena, n, hasShape);
         if (hasShape) {
@@ -103,7 +137,7 @@ Rect Painter::projectionBoundsHint(const NodeArena& arena, NodeId root, Rect vie
             };
             for (Vec2 corner : corners) {
                 bool cornerOk = false;
-                Vec2 sp = project3d::projectPoint(m_mappingStack, c.world, corner, cornerOk);
+                Vec2 sp = project3d::projectPoint(m_mappingStack, world, corner, cornerOk);
                 if (!cornerOk) {
                     ok = false;  // §19.6 step 1: any corner behind the camera -> whole viewport.
                     break;
@@ -124,10 +158,10 @@ Rect Painter::projectionBoundsHint(const NodeArena& arena, NodeId root, Rect vie
             break;
         }
 
-        if (c.effectCount > 0) {
+        if (c.effectCount > 0 && (n != root || startIsRoot)) {  // T-762: a group's own reach is its caller's
             // Per-node expansion in screen pixels, exactly as pushEffectCmd() computes it; the
             // hint is outset by the largest one in the subtree (§19.6 step 1).
-            Mat2x3 xf = project3d::jacobianAt(m_mappingStack, c.world, c.anchor);
+            Mat2x3 xf = project3d::jacobianAt(m_mappingStack, world, c.anchor);
             const std::vector<EffectInstance>& pool = arena.effects();
             float sum = 0.0f;
             for (uint32_t i = 0; i < c.effectCount; ++i) {
@@ -148,18 +182,89 @@ Rect Painter::projectionBoundsHint(const NodeArena& arena, NodeId root, Rect vie
 
     m_mappingStack.back().planeWorld3 = savedPlane;
     if (!ok || !any) {
-        return viewport;
+        return false;
     }
+    bounds = Rect{minX - expand, minY - expand, maxX - minX + 2 * expand, maxY - minY + 2 * expand};
+    return true;
+}
 
-    Rect bounds{minX - expand, minY - expand, maxX - minX + 2 * expand, maxY - minY + 2 * expand};
-    if (viewport.w > 0.0f && viewport.h > 0.0f) {
-        float x0 = std::max(bounds.x, viewport.x);
-        float y0 = std::max(bounds.y, viewport.y);
-        float x1 = std::min(bounds.x + bounds.w, viewport.x + viewport.w);
-        float y1 = std::min(bounds.y + bounds.h, viewport.y + viewport.h);
-        bounds = Rect{x0, y0, std::max(0.0f, x1 - x0), std::max(0.0f, y1 - y0)};
+bool Painter::nestedSpaceReach(const NodeArena& arena, NodeId root, Rect& bounds) {
+    // T-779: the screen extent emitRoot() will report for `root` (projectedSubtreeBounds(), its effects'
+    // reach included), computed before the root is reached. The levels already open are taken on the
+    // plane of their current layer, as the list's consumers have them when the root's PushProjection
+    // runs (planeIsAffine()'s swap); a level without a known layer is not judged.
+    if (!m_mappingStack.empty() && m_levelLayers.size() != m_mappingStack.size()) {
+        return false;
     }
-    return bounds;
+    const NodeCommon& c = arena.common(root);
+    const CameraSetup setup = rootCameraSetup(arena, root);
+    project3d::Mapping mapping;
+    mapping.hasProjection = true;
+    mapping.viewProj = setup.viewProj;
+    mapping.rootXf = c.world;
+    mapping.planeWorld3 = mat4Identity();
+    swapInLevelPlanes(arena);
+    m_mappingStack.push_back(mapping);
+    bool ok = projectedSubtreeBounds(arena, root, bounds);
+    m_mappingStack.pop_back();
+    restoreLevelPlanes();
+    // A degenerate projection (a camera setup or plane that yields no finite extent) is not a bound.
+    ok = ok && std::isfinite(bounds.x) && std::isfinite(bounds.y) && std::isfinite(bounds.w) &&
+         std::isfinite(bounds.h);
+    return ok;
+}
+
+bool Painter::unionNestedSpaceReach(const NodeArena& arena, NodeId n, Rect& acc, bool& any) {
+    bool ok = true;
+    arena.forEachChild(n, [&](NodeId ch) {
+        const NodeCommon& cc = arena.common(ch);
+        if (!ok || (cc.isSpaceRoot == 0 && (m_deferredBelow[ch] & kBelowSpace) == 0)) {
+            return;  // no space root in this child's subtree
+        }
+        if (cc.visible == 0 || cc.worldOpacity <= 0.0f || arena.kind(ch) == NodeKind::Camera) {
+            return;  // not painted (enterNode()'s first test), nor anything below it
+        }
+        if (cc.isSpaceRoot != 0) {
+            Rect bounds{};
+            ok = nestedSpaceReach(arena, ch, bounds);
+            if (ok) {
+                // Same union as unionRect(): the first adopts.
+                if (!any) {
+                    acc = bounds;
+                    any = true;
+                } else {
+                    const float x0 = std::min(acc.x, bounds.x);
+                    const float y0 = std::min(acc.y, bounds.y);
+                    const float x1 = std::max(acc.x + acc.w, bounds.x + bounds.w);
+                    const float y1 = std::max(acc.y + acc.h, bounds.y + bounds.h);
+                    acc = Rect{x0, y0, x1 - x0, y1 - y0};
+                }
+            }
+            return;
+        }
+        if (cc.is3D != 0 && !m_mappingStack.empty()) {
+            ok = false;  // a 3D layer of the space being painted: its own plane (not met when alone)
+            return;
+        }
+        ok = unionNestedSpaceReach(arena, ch, acc, any);
+    });
+    return ok;
+}
+
+void Painter::swapInLevelPlanes(const NodeArena& arena) {
+    m_planeSaveScratch.clear();
+    for (size_t i = 0; i < m_mappingStack.size(); ++i) {
+        m_planeSaveScratch.push_back(m_mappingStack[i].planeWorld3);
+        if (m_levelLayers[i] != kInvalidNode) {
+            m_mappingStack[i].planeWorld3 = arena.common(m_levelLayers[i]).world3;
+        }
+    }
+}
+
+void Painter::restoreLevelPlanes() {
+    for (size_t i = 0; i < m_planeSaveScratch.size(); ++i) {
+        m_mappingStack[i].planeWorld3 = m_planeSaveScratch[i];
+    }
 }
 
 bool Painter::planeIsAffine(const NodeArena& arena, const CommandList& out) {
@@ -185,28 +290,81 @@ bool Painter::planeIsAffine(const NodeArena& arena, const CommandList& out) {
     // The entries hold their roots' own planes; each one's current layer's world3 is swapped in around
     // the queries (as pushEffectCmd() does for the top one). The consumers judge a level when its plane
     // is set and never take a level under a projected one, hence every prefix of the stack.
-    m_planeSaveScratch.clear();
-    for (size_t i = 0; i < depth; ++i) {
-        m_planeSaveScratch.push_back(m_mappingStack[i].planeWorld3);
-        if (m_levelLayers[i] != kInvalidNode) {
-            m_mappingStack[i].planeWorld3 = arena.common(m_levelLayers[i]).world3;
-        }
-    }
+    swapInLevelPlanes(arena);
     bool affine = true;
     Mat2x3 fold;
     for (size_t d = 1; affine && d <= depth; ++d) {
         affine = project3d::stackPlaneAffine(std::span<const project3d::Mapping>(m_mappingStack.data(), d),
                                              test, fold);
     }
-    for (size_t i = 0; i < depth; ++i) {
-        m_mappingStack[i].planeWorld3 = m_planeSaveScratch[i];
-    }
+    restoreLevelPlanes();
     memo.valid = true;
     memo.affine = affine;
     memo.serial = m_spaceSerial;
     memo.depth = depth;
     memo.layer = m_levelLayers.back();
     return affine;
+}
+
+bool Painter::enterEmbeddedLayer(const NodeArena& arena, NodeId n, CommandList& out) {
+    // T-762 (19 §19.y.2): a 3D layer met while drawing a flat group's piece keeps its transform and
+    // perspective but is drawn here, in document order: its own plane for its subtree, then back to
+    // the plane it was met on. §19.6's backface test as flushSection() makes it for a sorted layer.
+    const NodeCommon& c = arena.common(n);
+    if (c.backfaceHidden != 0) {
+        const Mat4 savedPlane = m_mappingStack.back().planeWorld3;
+        m_mappingStack.back().planeWorld3 = c.world3;
+        const bool backface = project3d::isBackface(m_mappingStack, Mat2x3{}, Vec2{c.anchor.x, c.anchor.y});
+        m_mappingStack.back().planeWorld3 = savedPlane;
+        if (backface) {
+            return false;
+        }
+    }
+    const NodeId outer = m_currentLayer;
+    const Mat4 outerPlane = outer != kInvalidNode ? arena.common(outer).world3 : mat4Identity();
+    m_stack.push_back(Action{Action::Kind::LeaveEmbeddedLayer, outer, 0.0f, MaskMode::Alpha, outerPlane});
+    out.commands.push_back(Command{CmdKind::PopTransform3D, {}, 0});
+    const uint32_t idx = static_cast<uint32_t>(out.transforms3.size());
+    out.transforms3.push_back(Transform3DCmd{c.world3});
+    out.commands.push_back(Command{CmdKind::PushTransform3D, {}, idx});
+    m_currentLayer = n;
+    if (!m_levelLayers.empty()) {
+        m_levelLayers.back() = n;  // T-716: the plane the subtree is judged on
+    }
+    return true;
+}
+
+bool Painter::holdsEmbeddedLayers(const NodeArena& arena, NodeId n) const {
+    // Only a piece of a sorted segment can hold them (collectSegmentItems()); a node there that gets a
+    // Layer or an effect is a group (layer_collect::flattens3D()), so any 3D layer below it is embedded.
+    if (m_piece == layer_collect::kNoPiece || m_mappingStack.empty()) {
+        return false;
+    }
+    bool any = false;
+    arena.forEachChild(n, [&](NodeId ch) {
+        const NodeCommon& cc = arena.common(ch);
+        any = any || (cc.isSpaceRoot == 0 && cc.worldLayerActive == 0 && m_has3D[ch] != 0);
+    });
+    return any;
+}
+
+Rect Painter::embeddedSubtreeBounds(const NodeArena& arena, NodeId n, Rect viewport) {
+    // T-762: projectedSubtreeBounds()'s walk from `n` on the plane it is drawn on (each embedded layer
+    // switching to its own), the outer levels on their current layers' planes; the viewport when the
+    // extent is not known (a nested space root, a corner behind the eye, no finite result).
+    const Mat4 plane = m_currentLayer != kInvalidNode ? arena.common(m_currentLayer).world3 : mat4Identity();
+    const bool swap = m_levelLayers.size() == m_mappingStack.size();
+    if (swap) {
+        swapInLevelPlanes(arena);
+    }
+    Rect bounds{};
+    bool ok = projectedBoundsFrom(arena, n, plane, /*startIsRoot=*/false, bounds);
+    if (swap) {
+        restoreLevelPlanes();
+    }
+    ok = ok && std::isfinite(bounds.x) && std::isfinite(bounds.y) && std::isfinite(bounds.w) &&
+         std::isfinite(bounds.h);
+    return ok ? bounds : viewport;
 }
 
 void Painter::flushSection(const NodeArena& arena, std::span<const NodeId> orderedChildren,
@@ -218,31 +376,18 @@ void Painter::flushSection(const NodeArena& arena, std::span<const NodeId> order
     // (farthest first) and backface-cull the layers. A flat item is drawn by EnterNode2D with its
     // piece: enterNode() skips what belongs to other pieces and, via the is3D-skip branch
     // (m_currentLayer == kInvalidNode), the layers, which are items of their own.
+    // T-762 (19 §19.y.2): a flat group holds its 3D descendants; they are no items of their own and
+    // are drawn in place while its piece is drawn (enterEmbeddedLayer()).
     m_layerScratch.clear();
-    m_wholeScratch.clear();
     if (m_pieceRanges.size() < arena.capacity()) {
         m_pieceRanges.resize(arena.capacity());
     }
     uint32_t docOrder = 0;
     for (uint32_t i = 0; i < section.childCount; ++i) {
         NodeId child = orderedChildren[section.firstChild + i];
-        if (!layer_collect::collectSegmentItems(arena, child, view, m_layerScratch, docOrder,
-                                                m_pieceRanges)) {
-            m_wholeScratch.push_back(child);
-        }
+        layer_collect::collectSegmentItems(arena, child, view, m_layerScratch, docOrder, m_pieceRanges);
     }
     layer_collect::sortLayers(m_layerScratch);
-
-    // A child whose flat content cannot be split without cutting a group (collectSegmentItems(); the
-    // ruling leaves the case open) keeps the pre-T-727 order: all of it before the segment's items.
-    for (NodeId child : m_wholeScratch) {
-        m_planScratch.push_back(
-            Action{Action::Kind::PushTransform3D, kInvalidNode, 0.0f, MaskMode::Alpha, mat4Identity()});
-        m_planScratch.push_back(
-            Action{Action::Kind::EnterNode2D, child, alpha, MaskMode::Alpha, mat4Identity()});
-        m_planScratch.push_back(
-            Action{Action::Kind::PopTransform3D, kInvalidNode, 0.0f, MaskMode::Alpha, mat4Identity()});
-    }
 
     for (const layer_collect::LayerEntry& layer : m_layerScratch) {
         if (layer.piece != layer_collect::kLayerItem) {
@@ -290,8 +435,8 @@ void Painter::emitRoot(const NodeArena& arena, NodeId root, float inheritedAlpha
     // T-701: a world layer's own opacity is the host's to apply (ownOpacity()).
     const float opacity = ownOpacity(root, c);
     bool needsLayer = c.blend != static_cast<uint8_t>(BlendMode::Normal) || opacity < 1.0f;
+    const uint32_t layerIdx = static_cast<uint32_t>(out.layers.size());  // (T-795: bounded below)
     if (needsLayer) {
-        uint32_t layerIdx = static_cast<uint32_t>(out.layers.size());
         out.layers.push_back(LayerCmd{opacity, static_cast<BlendMode>(c.blend), out.viewport});
         out.commands.push_back(Command{CmdKind::PushLayer, {}, layerIdx});
     }
@@ -320,7 +465,15 @@ void Painter::emitRoot(const NodeArena& arena, NodeId root, float inheritedAlpha
 
     // §19.6 step 1 (T-105): the hint needs this root's mapping-stack entry, so it is computed
     // after the push and written back into the command emitted above.
-    out.projections[projIdx].boundsHint = projectionBoundsHint(arena, root, out.viewport);
+    // T-795 (10 §10.20, T-779 supplement): the root's own layer above holds only this projection, so
+    // its window is the same extent when that is known (every corner in front of the eye, finite) --
+    // not in the drag ghost, whose commands move afterwards; otherwise the whole viewport, unknown.
+    bool bounded = false;
+    out.projections[projIdx].boundsHint = projectionBoundsHint(arena, root, out.viewport, &bounded);
+    if (needsLayer && bounded && !m_ghostPainting) {
+        out.layers[layerIdx].boundsHint = out.projections[projIdx].boundsHint;
+        out.layers[layerIdx].boundsKnown = 1;
+    }
 
     // When needsLayer, the root's own opacity is folded into the PushLayer above instead of into
     // `alpha` (matching enterNode()'s needsLayer branch); otherwise it is folded into `alpha` as
@@ -332,28 +485,34 @@ void Painter::emitRoot(const NodeArena& arena, NodeId root, float inheritedAlpha
     bool shapeClip = false;
     if (kind == NodeKind::Element) {
         const ElementData& data = arena.element(root);
+        // T-760 (19 §19.5 Painter step 4): the root's own box is root-plane content, drawn inside its
+        // projection whose rootXf is already c.world -- so its transform to that plane is the
+        // identity (the plane's origin is the root's box), like its children's. Drawing it with
+        // c.world here put it at twice the root's offset.
+        const Mat2x3 own{};
         // T-332: the root's `clip-path`, before its background (as paintElement()).
-        shapeClip = pushElementClipShape(data, c.world, out, m_elemVerbsScratch, m_elemPointsScratch);
+        shapeClip = pushElementClipShape(data, own, out, m_elemVerbsScratch, m_elemPointsScratch);
         // Root's own background/border/image (T-27 rule 1), output directly -- its children are
         // handled by the sectioned loop below instead of pushPlan().
         if (data.style.visibility != Visibility::Hidden) {
-            if (emitElementBackground(data, c.world, alpha, out, m_elemVerbsScratch, m_elemPointsScratch)) {
+            if (emitElementBackground(data, own, alpha, out, m_elemVerbsScratch, m_elemPointsScratch)) {
                 m_backgroundTilesCapped = true;  // T-327: Document warns once.
             }
             if (data.style.borderImage != kInvalidAsset) {
-                emitElementBorderImage(data, c.world, alpha, out);  // T-199: replaces the plain border.
+                emitElementBorderImage(data, own, alpha, out);  // T-199: replaces the plain border.
             } else {
-                emitElementBorder(data, c.world, alpha, out, m_elemVerbsScratch, m_elemPointsScratch);
+                emitElementBorder(data, own, alpha, out, m_elemVerbsScratch, m_elemPointsScratch, true,
+                                  m_borderDashCache.get());
             }
             if (data.externalNode == kInvalidNode ||
-                !emitExternalPlaceholder(arena.external(data.externalNode), data, c.world, alpha, out,
+                !emitExternalPlaceholder(arena.external(data.externalNode), data, own, alpha, out,
                                          m_elemVerbsScratch, m_elemPointsScratch)) {
-                emitElementImage(data, c.world, alpha, out);  // T-191: or its placeholder.
+                emitElementImage(data, own, alpha, out);  // T-191: or its placeholder.
             }
         }
         clip = clipsOverflow(data);  // T-336.
         if (clip) {
-            pushOverflowClip(data, c.world, out, m_elemVerbsScratch, m_elemPointsScratch);  // T-572.
+            pushOverflowClip(data, own, out, m_elemVerbsScratch, m_elemPointsScratch);  // T-572.
         }
     }
 

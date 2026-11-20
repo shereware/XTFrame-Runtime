@@ -8,9 +8,10 @@
 
 /// IrDecl -> Value/enum-field decoding, the 05.4 initial-value table and the inherited-property
 /// table. A private (Code/Runtime/core/src) header; the `styleprop` numbers below are the only copy -- the
-/// compiler's xt::compile::styleprop (Code/Runtime/compile/src/xts/xts_props.h) names them through this header
-/// (T-413). The initial values and the inherited column are still a separate hand-written copy of
-/// Code/Runtime/compile/src/xts/xts_props.cpp's (see Docs/design/05-style-and-css.md §5.4, Docs/tasks/T-24.md).
+/// compiler's xt::compile::styleprop (Code/Runtime/compile/src/xts/xts_props.h) names them through this
+/// header (T-413). The initial values and the inherited column are still a separate hand-written copy of
+/// Code/Runtime/compile/src/xts/xts_props.cpp's (see Docs/design/05-style-and-css.md §5.4,
+/// Docs/tasks/T-24.md).
 
 namespace xt::style_decode {
 
@@ -148,7 +149,29 @@ inline constexpr uint16_t HitSlopLeft = 280;
 /// are handed to the host as a layer of their own in world-layer output; ignored otherwise. Not
 /// inherited, not animatable.
 inline constexpr uint16_t WorldLayer = 281;
-static_assert(WorldLayer == kStylePropLast, "update kStylePropLast (ir_pod.h) and 02 §2.12");
+/// 05 §5.6 (T-778, IR 3.3): the eight `animation-*` longhands, in css_values::AnimationLonghand
+/// order (AnimationName + the longhand index): name, duration, timing-function, delay,
+/// iteration-count, direction, fill-mode, play-state. Each is a ListRef into STYL `animations[]`
+/// (or, tagged with kRuntimeEffectOffsetBit, Document's runtime animation pool) whose items carry
+/// that longhand's field (a name item: `timeline`, or kIrAnimationNoName); count 0 = the initial
+/// value. Cascaded one by one; StyleEngine combines them into the element's animation list. Not
+/// inherited.
+inline constexpr uint16_t AnimationName = 282;
+inline constexpr uint16_t AnimationPlayState = 289;
+/// 05 §5.6 (T-778, IR 3.3): the four `transition-*` longhands -- property, duration,
+/// timing-function, delay -- ListRefs into STYL `transitions[]` (a property item may span several
+/// entries, kIrTransitionSameItem); count 0 = the initial value. Combined like the animation ones.
+inline constexpr uint16_t TransitionProperty = 290;
+inline constexpr uint16_t TransitionDelay = 293;
+/// True for StyleProp 282-289.
+constexpr bool isAnimationLonghand(uint16_t prop) {
+    return prop >= AnimationName && prop <= AnimationPlayState;
+}
+/// True for StyleProp 290-293.
+constexpr bool isTransitionLonghand(uint16_t prop) {
+    return prop >= TransitionProperty && prop <= TransitionDelay;
+}
+static_assert(TransitionDelay == kStylePropLast, "update kStylePropLast (ir_pod.h) and 02 §2.12");
 }  // namespace styleprop
 
 /// True if `prop` (a PropId 0-108, or a StyleProp 160-186/188) is an inherited CSS property per 05.4.

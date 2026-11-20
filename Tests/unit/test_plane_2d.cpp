@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 
+#include "compile_check.h"
 #include "doctest.h"
 #include "xt/asset_resolver.h"
 #include "xt/command_list.h"
@@ -49,11 +50,7 @@ void load(Loaded& l, const std::string& text) {
     compile::CompileOptions options;
     options.strict = false;
     compile::CompileResult result = compile::compileDocumentFromStrings({&file, 1}, "plane.xt", options);
-    for (const compile::Diagnostic& d : result.diagnostics) {
-        CAPTURE(d.message);
-        CHECK(d.level != compile::Diagnostic::Level::Error);
-    }
-    REQUIRE(result.ok());
+    test::requireCompiled(result);
     REQUIRE(Document::load(IrBlob{result.ir.data(), result.ir.size()}, true, &l.shaper, nullptr, l.doc) ==
             Status::kOk);
     l.doc->setViewport(Rect{0, 0, kView, kView});

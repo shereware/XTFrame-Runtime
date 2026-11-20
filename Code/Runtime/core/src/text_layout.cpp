@@ -7,11 +7,10 @@
 /// Docs/design/07-text.md §7.2/§7.5, Docs/tasks/T-28.md.
 ///
 /// Known simplifications (uncovered by the design docs, chosen conservatively; see report):
-/// - "Trailing space at line end" is detected as a glyph whose glyphId == 0x20 (U+0020). This is
-///   exact for FakeTextShaper (glyphId == codepoint) but is a shaper-specific assumption for a
-///   real HarfBuzz-backed shaper, where glyph ids are font-specific. Revisit when ShapeResult
-///   gains an explicit "is collapsible space" bit, or when this core layer is given the source
-///   text.
+/// - "Trailing space at line end" is a glyph with ShapedGlyph::isSpace set (T-801, 07 §7.2
+///   supplement item 4), never a glyph id test: glyph ids are font-specific. Hard line-break
+///   characters and TAB come out of the shaper as white space too, so a line ending in a forced
+///   break leaves the break out of its length.
 /// - text-overflow: ellipsis removes one *glyph* at a time from the line's visual end, standing
 ///   in for "one grapheme cluster at a time" (06.8/07.5). This is exact when a grapheme is always
 ///   one glyph (FakeTextShaper, and most non-ligature text); a multi-glyph ligature grapheme
@@ -158,7 +157,7 @@ struct VisEntry {
     uint32_t byteStart = 0;
     uint32_t byteEnd = 0;
     bool isEllipsis = false;
-    bool space = false;        // T-331: collapsible white space (ShapedGlyph::isSpace or U+0020).
+    bool space = false;        // T-331: collapsible white space (ShapedGlyph::isSpace).
     uint32_t tag = kNoRunTag;  // T-178: TextRunInfo::tag of the source run.
     float fontSize = 0;        // T-178: TextRunInfo::fontSize of the source run.
 };
@@ -358,7 +357,7 @@ void layoutText(const ShapeResult& shaped, const TextLayoutParams& params, TextL
             uint32_t k = lineEnd;
             while (k > lineStart) {
                 const ShapedGlyph& g = shaped.glyphs[flat[k - 1].arrIndex];
-                if (g.glyphId != 0x20u) {
+                if (g.isSpace == 0) {
                     break;
                 }
                 trailingSpaceAdvance += flat[k - 1].advance;
@@ -393,7 +392,7 @@ void layoutText(const ShapeResult& shaped, const TextLayoutParams& params, TextL
                 e.rotated = run.rotated;
                 e.byteStart = g.cluster;
                 e.byteEnd = byteEndOfGlyph(run, arrIndex, shaped);
-                e.space = g.isSpace != 0 || g.glyphId == 0x20u;
+                e.space = g.isSpace != 0;
                 if (rich) {
                     e.tag = params.runInfo[chunk.runIndex].tag;
                     e.fontSize = params.runInfo[chunk.runIndex].fontSize;
@@ -406,13 +405,9 @@ void layoutText(const ShapeResult& shaped, const TextLayoutParams& params, TextL
         const bool clamped = lineIdx == clampedLine;
         if (clamped && params.ellipsisAdvance > 0) {
             // The white space at the clamped line's visual end goes first, so the ellipsis
-            // follows the last visible glyph (a U+0020 there is already outside lineMain).
+            // follows the last visible glyph (that white space is already outside lineMain).
             const bool ltr = params.direction == TextDirection::Ltr;
             while (!vis.empty() && (ltr ? vis.back() : vis.front()).space) {
-                const VisEntry& end = ltr ? vis.back() : vis.front();
-                if (end.glyphId != 0x20u) {
-                    lineMain -= end.advance;
-                }
                 if (ltr) {
                     vis.pop_back();
                 } else {

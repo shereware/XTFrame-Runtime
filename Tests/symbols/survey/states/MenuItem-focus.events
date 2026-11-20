@@ -1,0 +1,4 @@
+# T-793: MenuItem-focus.
+port Continue.selected true
+update 0.6
+key Tab

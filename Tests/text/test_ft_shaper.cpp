@@ -314,3 +314,121 @@ TEST_CASE("FtTextShaper::shape with the tnum feature (T-331, font-variant-numeri
         CHECK(tabular.glyphs[i].xAdvance == doctest::Approx(20 * 0.572f).epsilon(0.01));
     }
 }
+
+// T-801 (07 §7.2 supplement): hard line-break characters and TAB draw no glyph. The Noto Sans
+// subset has none of these codepoints, so before T-801 each one came out as glyph 0 (.notdef).
+namespace {
+
+/// Glyph produced for the byte at `cluster`, or nullptr.
+const xt::ShapedGlyph* glyphAt(const xt::ShapeResult& out, uint32_t cluster) {
+    for (const xt::ShapedGlyph& g : out.glyphs) {
+        if (g.cluster == cluster) return &g;
+    }
+    return nullptr;
+}
+
+/// Number of forced breaks (breakAfter == 2) before the last byte (libunibreak marks the end of
+/// the text as a mandatory break, too).
+int forcedBreaksInside(const xt::ShapeResult& out) {
+    int n = 0;
+    for (size_t i = 0; i + 1 < out.breakAfter.size(); ++i) {
+        if (out.breakAfter[i] == 2) ++n;
+    }
+    return n;
+}
+
+}  // namespace
+
+TEST_CASE("FtTextShaper::shape T-801 hard breaks and TAB give the space glyph, not .notdef") {
+    ThreeFonts f;
+    const std::vector<std::string_view> noto = {"Noto Sans"};
+    xt::ShapeParams params;
+    params.font = req(noto);
+    params.size = 20;
+
+    xt::ShapeResult ref;
+    f.shaper.shape("a b", params, ref);
+    REQUIRE(ref.glyphs.size() == 3);
+    const uint32_t spaceGlyph = ref.glyphs[1].glyphId;
+    const float spaceAdvance = ref.glyphs[1].xAdvance;
+    REQUIRE(spaceGlyph != 0);
+    REQUIRE(spaceAdvance > 0);
+
+    struct Case {
+        std::string text;
+        std::vector<uint32_t> breakClusters;  // bytes of the hard-break codepoints
+        uint32_t bByte;                       // byte of the trailing 'b'
+    };
+    const std::vector<Case> cases = {
+        {"a\nb", {1}, 2},
+        {"a\r\nb", {1, 2}, 3},
+        {std::string("a\xE2\x80\xA8") + "b", {1}, 4},  // U+2028
+        {std::string("a\xC2\x85") + "b", {1}, 3},      // U+0085
+        {std::string("a\x0B") + "b", {1}, 2},          // U+000B
+        {std::string("a\x0C") + "b", {1}, 2},          // U+000C
+        {std::string("a\xE2\x80\xA9") + "b", {1}, 4},  // U+2029
+    };
+    for (const Case& c : cases) {
+        CAPTURE(c.text);
+        xt::ShapeResult out;
+        f.shaper.shape(c.text, params, out);
+        // The break codepoints take no part in font fallback: one run, in the 'a'/'b' font.
+        CHECK(out.runs.size() == 1);
+        for (uint32_t cluster : c.breakClusters) {
+            CAPTURE(cluster);
+            const xt::ShapedGlyph* g = glyphAt(out, cluster);
+            REQUIRE(g != nullptr);
+            CHECK(g->glyphId != 0);
+            CHECK(g->glyphId == spaceGlyph);
+            CHECK(g->xAdvance == 0.0f);
+            CHECK(g->isSpace == 1);
+        }
+        const xt::ShapedGlyph* b = glyphAt(out, c.bByte);
+        REQUIRE(b != nullptr);
+        CHECK(b->glyphId != 0);
+        // Clusters keep their byte offsets: 'a' at 0, every codepoint its own cluster.
+        CHECK(glyphAt(out, 0) != nullptr);
+        CHECK(out.glyphs.size() == 2 + c.breakClusters.size());
+        CHECK(forcedBreaksInside(out) == 1);  // CR LF is one forced break
+    }
+
+    xt::ShapeResult tab;
+    f.shaper.shape("a\tb", params, tab);
+    CHECK(tab.runs.size() == 1);
+    const xt::ShapedGlyph* t = glyphAt(tab, 1);
+    REQUIRE(t != nullptr);
+    CHECK(t->glyphId == spaceGlyph);
+    CHECK(t->xAdvance == doctest::Approx(spaceAdvance));
+    CHECK(t->isSpace == 1);
+    CHECK(forcedBreaksInside(tab) == 0);
+}
+
+TEST_CASE("FtTextShaper::shape T-801 a text of only hard breaks still shapes") {
+    ThreeFonts f;
+    const std::vector<std::string_view> noto = {"Noto Sans"};
+    xt::ShapeParams params;
+    params.font = req(noto);
+    params.size = 20;
+    xt::ShapeResult out;
+    f.shaper.shape("\n\n", params, out);
+    REQUIRE(out.glyphs.size() == 2);
+    for (const xt::ShapedGlyph& g : out.glyphs) {
+        CHECK(g.glyphId != 0);
+        CHECK(g.xAdvance == 0.0f);
+        CHECK(g.isSpace == 1);
+    }
+}
+
+TEST_CASE("FtTextShaper::shape T-801 letter-spacing does not widen a hard break") {
+    ThreeFonts f;
+    const std::vector<std::string_view> noto = {"Noto Sans"};
+    xt::ShapeParams params;
+    params.font = req(noto);
+    params.size = 20;
+    params.letterSpacing = 3;
+    xt::ShapeResult out;
+    f.shaper.shape("a\nb", params, out);
+    const xt::ShapedGlyph* g = glyphAt(out, 1);
+    REQUIRE(g != nullptr);
+    CHECK(g->xAdvance == 0.0f);
+}

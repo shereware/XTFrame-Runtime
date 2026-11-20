@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "symbol_internal.h"
+#include "xt/bundle/project_style.h"
 #include "xt/bundle/symbol_library.h"
 #include "xt/bundle/zip_archive.h"
 #include "xt/charconv.h"
@@ -855,7 +856,16 @@ Status tokensJsonImpl(const fs::path& groupDir, std::string& out, std::string& e
             ", \"panel\": " + numberText(values, "--radius-l", "0") +
             ", \"tile\": " + numberText(values, "--radius-m", "0") + " },\n";
     text += "  \"shadow\": { \"panel\": \"0 0 0 0 #00000000\" },\n";
-    text += "  \"board\": { \"width\": 1280, \"height\": 720 }\n}\n";
+    text += "  \"board\": { \"width\": 1280, \"height\": 720 },\n";
+    // T-743 (47 "共同詞彙清單"): every token of the base file, with whether it is a core token.
+    text += "  \"tokens\": [";
+    size_t n = 0;
+    for (const auto& [token, value] : values) {
+        text += std::string(n++ == 0 ? "\n" : ",\n") + "    { \"name\": " + jsonString(token) +
+                ", \"value\": " + jsonString(value) +
+                ", \"core\": " + (findCoreToken(token) != nullptr ? "true" : "false") + " }";
+    }
+    text += "\n  ]\n}\n";
     out = std::move(text);
     return Status::kOk;
 }
@@ -876,6 +886,7 @@ fs::path makeStaging(const std::string& tempDir, const char* kind) {
     const std::string stamp = std::string(kind) + "-" + nowSeconds();
     for (int n = 1; n < 1000; ++n) {
         const fs::path dir = base / pathFromUtf8(n == 1 ? stamp : stamp + "-" + std::to_string(n));
+        fs::create_directories(base, ec);  // T-805: another run may have just removed it (empty).
         if (fs::create_directory(dir, ec)) {
             return dir;
         }
@@ -885,6 +896,28 @@ fs::path makeStaging(const std::string& tempDir, const char* kind) {
     }
     return fs::path();
 }
+
+/// T-805: removes a makeStaging() directory on every way out of its scope, and the
+/// `xtframe-symbols` directory above it once that is empty (another run may still be using it).
+/// Never throws.
+class StagingCleanup {
+public:
+    explicit StagingCleanup(fs::path dir) : m_dir(std::move(dir)) {}
+    ~StagingCleanup() {
+        try {
+            std::error_code ec;
+            fs::remove_all(m_dir, ec);
+            fs::remove(m_dir.parent_path(), ec);  // Only succeeds while it is empty.
+        } catch (...) {
+            // Left as it is.
+        }
+    }
+    StagingCleanup(const StagingCleanup&) = delete;
+    StagingCleanup& operator=(const StagingCleanup&) = delete;
+
+private:
+    fs::path m_dir;
+};
 
 /// The set limits as zip limits (the set's own checks, walkChecked, apply to the unpacked tree too).
 ZipReadOptions setReadLimits() {
@@ -902,6 +935,7 @@ ExportReport exportSetImpl(const fs::path& groupDir, const fs::path& file, const
         report.error = "cannot create a temporary directory";
         return report;
     }
+    const StagingCleanup cleanup(staging);  // T-805
     std::error_code ec;
     const fs::path setDir = staging / "set";
     report = exportImpl(groupDir, setDir, options);
@@ -921,7 +955,6 @@ ExportReport exportSetImpl(const fs::path& groupDir, const fs::path& file, const
             report.error = "cannot write " + genericPathToUtf8(file) + ": " + error;
         }
     }
-    fs::remove_all(staging, ec);
     return report;
 }
 
@@ -933,7 +966,7 @@ ImportReport importSetImpl(const fs::path& file, const fs::path& libraryDir, con
         report.error = "cannot create a temporary directory";
         return report;
     }
-    std::error_code ec;
+    const StagingCleanup cleanup(staging);  // T-805
     const fs::path setDir = staging / "set";
     std::string error;
     const Status unzipped = unzipToDirectory(file, setDir, setReadLimits(), &error);
@@ -943,7 +976,6 @@ ImportReport importSetImpl(const fs::path& file, const fs::path& libraryDir, con
     } else {
         report = importImpl(setDir, libraryDir, options);
     }
-    fs::remove_all(staging, ec);
     return report;
 }
 

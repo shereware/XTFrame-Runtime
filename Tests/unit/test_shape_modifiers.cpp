@@ -480,7 +480,7 @@ TEST_CASE("Shape node: painted from its parameters; setProperty(ShapeW / ShapeR)
     REQUIRE(p1.size() == 4);
     CHECK(approxPt(p1[1], Vec2{10, 0}));
 
-    setProperty(arena, rect, prop::ShapeW, Value::ofFloat(30));
+    setProperty(arena, rect, prop::ShapeW, Value::ofFloat(30), DirtyCause::HostApi);
     CHECK(getProperty(arena, rect, prop::ShapeW).f == doctest::Approx(30));
     CommandList c2 = paintTree(arena, group);
     auto p2 = pathPoints(c2, c2.fills[0].path);
@@ -494,14 +494,14 @@ TEST_CASE("Shape node: painted from its parameters; setProperty(ShapeW / ShapeR)
     st.params[3] = 10;
     st.params[4] = 4;
     st.fill.kind = PaintKind::Solid;
-    setProperty(arena, star, prop::ShapeR, Value::ofFloat(20));
+    setProperty(arena, star, prop::ShapeR, Value::ofFloat(20), DirtyCause::HostApi);
     CommandList c3 = paintTree(arena, group);
     REQUIRE(c3.fills.size() == 2);
     auto sp = pathPoints(c3, c3.fills[1].path);
     REQUIRE(sp.size() == 10);
     CHECK(approxPt(sp[0], Vec2{0, -20}));  // First outer point up, at the new radius.
     // A prop the kind does not use reads 0 and ignores writes.
-    setProperty(arena, rect, prop::ShapeR, Value::ofFloat(3));
+    setProperty(arena, rect, prop::ShapeR, Value::ofFloat(3), DirtyCause::HostApi);
     CHECK(getProperty(arena, rect, prop::ShapeR).f == doctest::Approx(0));
 }
 
@@ -529,17 +529,18 @@ TEST_CASE("Modifier / Shape properties: applicability, types, params mapping") {
     NodeArena arena;
     NodeId m = arena.create(NodeKind::Modifier);
     arena.modifier(m).kind = ModifierKind::Repeat;
-    setProperty(arena, m, prop::ModAnchor, Value::ofVec2(Vec2{3, 4}));
-    setProperty(arena, m, prop::ModCopies, Value::ofFloat(6));
-    setProperty(arena, m, prop::ModEndOpacity, Value::ofFloat(0.25f));
-    setProperty(arena, m, prop::ModRadius, Value::ofFloat(9));  // Not a repeat parameter.
+    setProperty(arena, m, prop::ModAnchor, Value::ofVec2(Vec2{3, 4}), DirtyCause::HostApi);
+    setProperty(arena, m, prop::ModCopies, Value::ofFloat(6), DirtyCause::HostApi);
+    setProperty(arena, m, prop::ModEndOpacity, Value::ofFloat(0.25f), DirtyCause::HostApi);
+    setProperty(arena, m, prop::ModRadius, Value::ofFloat(9),
+                DirtyCause::HostApi);  // Not a repeat parameter.
     CHECK(arena.modifier(m).params[0] == doctest::Approx(6));
     CHECK(arena.modifier(m).params[2] == doctest::Approx(3));
     CHECK(arena.modifier(m).params[3] == doctest::Approx(4));
     CHECK(arena.modifier(m).opacityB == doctest::Approx(0.25f));
     CHECK(getProperty(arena, m, prop::ModAnchor).v2.y == doctest::Approx(4));
     CHECK(getProperty(arena, m, prop::ModRadius).f == doctest::Approx(0));
-    setProperty(arena, m, prop::ModEnabled, Value::ofFloat(0));
+    setProperty(arena, m, prop::ModEnabled, Value::ofFloat(0), DirtyCause::HostApi);
     CHECK(arena.modifier(m).enabled == 0);
 }
 

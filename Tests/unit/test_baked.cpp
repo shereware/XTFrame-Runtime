@@ -974,6 +974,14 @@ TEST_CASE(
     CHECK(player.frame(0).sources.empty());  // T-263d: a played frame names no source
     CommandList offNoSource = off;
     offNoSource.sources.clear();
+    // T-754: the baked format does not store boundsKnown; a played frame's bounds are unknown (the
+    // Painter never writes a known, empty hint, so an unknown one draws the same).
+    for (LayerCmd& l : offNoSource.layers) {
+        l.boundsKnown = 0;
+    }
+    for (EffectCmd& e : offNoSource.effectCmds) {
+        e.boundsKnown = 0;
+    }
     std::string expected;
     dumpCommandList(offNoSource, expected);
     std::string played;

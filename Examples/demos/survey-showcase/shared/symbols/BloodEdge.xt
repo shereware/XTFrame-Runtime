@@ -1,0 +1,73 @@
+<xt version="2">
+
+  <symbol name="BloodEdge" state-groups="Blood: Calm|Critical" requires="states: Calm, Critical">
+    <ports>
+      level: number in
+    </ports>
+    <div id="Box" bind:opacity="level | clamp(0, 1)"
+         bind:state.Calm="level | lt(0.6)" bind:state.Critical="level | ge(0.6)"
+         on:port(level)="if ge(0.6) play(pulse, loop) else stop(pulse)">
+      <div id="Edge">
+        <div id="Glow"></div>
+      </div>
+    </div>
+  </symbol>
+
+  <layout>
+    symbol(BloodEdge) {
+      #Box {
+        position: relative;
+        width: 640px;
+        height: 360px;
+        overflow: hidden;
+      }
+      #Edge {
+        position: absolute;
+        left: 0px;
+        top: 0px;
+        width: 100%;
+        height: 100%;
+      }
+      #Glow {
+        position: absolute;
+        left: 0px;
+        top: 0px;
+        width: 100%;
+        height: 100%;
+      }
+    }
+  </layout>
+  <style>
+    symbol(BloodEdge) {
+      #Box {
+        pointer-events: none;
+      }
+      #Glow {
+        background-gradient: radial-gradient(70.7107% 70.7107% at 50% 50%, var(--color-shade-clear) 45%, var(--color-blood) 100%);
+      }
+      #Box:state(Calm) #Edge {
+        opacity: 0.85;
+      }
+      #Box:state(Critical) #Edge {
+        opacity: 1;
+      }
+    }
+  </style>
+  <timelines>
+    symbol(BloodEdge) {
+      @timeline pulse {
+        #Glow {
+          0s {
+            opacity: 1;
+          }
+          0.25s ease-in-out {
+            opacity: 0.55;
+          }
+          0.5s ease-in-out {
+            opacity: 1;
+          }
+        }
+      }
+    }
+  </timelines>
+</xt>

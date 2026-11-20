@@ -1,0 +1,125 @@
+<xt version="2">
+  <head>
+    <title>Options</title>
+    <symbols src="../shared/symbols/ScreenShade.xt"/>
+    <symbols src="../shared/symbols/TitleLockup.xt"/>
+    <symbols src="../shared/symbols/SiteCard.xt"/>
+    <symbols src="../shared/symbols/SettingsTab.xt"/>
+    <symbols src="../shared/symbols/Panel.xt"/>
+    <symbols src="../shared/symbols/CyclerRow.xt"/>
+    <symbols src="../shared/symbols/SliderRow.xt"/>
+    <symbols src="../shared/symbols/ToggleRow.xt"/>
+    <symbols src="../shared/symbols/ActionRow.xt"/>
+    <symbols src="../shared/symbols/KeyBindRow.xt"/>
+    <symbols src="../shared/symbols/VersionTag.xt"/>
+    <symbols src="../shared/symbols/KeyHint.xt"/>
+  </head>
+
+  <ports>
+    tab: number in = 0
+    difficulty: string in = "Standard"
+    camera_shake: number in = 60
+    shake_min: number in = 0
+    shake_max: number in = 100
+    auto_save: bool in = true
+    tutorial_hints: bool in = true
+    language: string in = "English"
+    brightness: number in = 50
+    vsync: bool in = true
+    film_grain: bool in = false
+    quality: string in = "High"
+    window_mode: string in = "Fullscreen"
+    master_volume: number in = 80
+    music_volume: number in = 60
+    sfx_volume: number in = 75
+    subtitles: bool in = true
+    key_forward: string in = "W"
+    key_interact: string in = "E"
+    key_flashlight: string in = "F"
+    listening: bool in = false
+    play_test_sound: event out
+    apply: event out
+    reset_defaults: event out
+    back: event out
+    active: bool in = true
+  </ports>
+
+  <body>
+    <div id="Screen" on:port(active)="if eq(1) show() else hide()">
+      <img id="Backdrop" src="../shared/img/backdrop.png"/>
+      <use symbol="ScreenShade" id="Shade" variant:Kind="Left"/>
+      <use symbol="TitleLockup" id="Lockup"/>
+      <use symbol="SiteCard" id="Site"/>
+      <div id="Tabs">
+        <use symbol="SettingsTab" id="TabGameplay" slot:label="Gameplay" bind:selected="tab | eq(0)" on:click="set(tab, 0)"/>
+        <use symbol="SettingsTab" id="TabGraphics" slot:label="Graphics" bind:selected="tab | eq(1)" on:click="set(tab, 1)"/>
+        <use symbol="SettingsTab" id="TabAudio" slot:label="Audio" bind:selected="tab | eq(2)" on:click="set(tab, 2)"/>
+        <use symbol="SettingsTab" id="TabControls" slot:label="Controls" bind:selected="tab | eq(3)" on:click="set(tab, 3)"/>
+      </div>
+      <div id="Pages">
+      <use symbol="Panel" id="PageGameplay" slot:heading="Gameplay" slot:description="Difficulty, camera and assists." bind:display="tab | eq(0)">
+        <slot name="body">
+          <use symbol="CyclerRow" id="Difficulty" slot:label="Difficulty" bind:value="difficulty"/>
+          <use symbol="SliderRow" id="CameraShake" slot:label="Camera Shake" bind:value="camera_shake" bind:min="shake_min" bind:max="shake_max"/>
+          <use symbol="ToggleRow" id="AutoSave" slot:label="Auto-Save" bind:on="auto_save"/>
+          <use symbol="ToggleRow" id="TutorialHints" slot:label="Tutorial Hints" bind:on="tutorial_hints"/>
+          <use symbol="CyclerRow" id="Language" slot:label="Language" bind:value="language"/>
+        </slot>
+      </use>
+      <use symbol="Panel" id="PageGraphics" slot:heading="Graphics" slot:description="Display and image quality." bind:display="tab | eq(1)">
+        <slot name="body">
+          <use symbol="SliderRow" id="Brightness" slot:label="Brightness" bind:value="brightness" bind:min="shake_min" bind:max="shake_max"/>
+          <use symbol="ToggleRow" id="VSync" slot:label="V-Sync" bind:on="vsync"/>
+          <use symbol="ToggleRow" id="FilmGrainOpt" slot:label="Film Grain" bind:on="film_grain"/>
+          <use symbol="CyclerRow" id="Quality" slot:label="Quality" bind:value="quality"/>
+          <use symbol="CyclerRow" id="Window" slot:label="Window Mode" bind:value="window_mode"/>
+        </slot>
+      </use>
+      <use symbol="Panel" id="PageAudio" slot:heading="Audio" slot:description="Volume levels and output." bind:display="tab | eq(2)">
+        <slot name="body">
+          <use symbol="SliderRow" id="Master" slot:label="Master Volume" bind:value="master_volume" bind:min="shake_min" bind:max="shake_max"/>
+          <use symbol="SliderRow" id="Music" slot:label="Music" bind:value="music_volume" bind:min="shake_min" bind:max="shake_max"/>
+          <use symbol="SliderRow" id="Effects" slot:label="Sound Effects" bind:value="sfx_volume" bind:min="shake_min" bind:max="shake_max"/>
+          <use symbol="ToggleRow" id="Subtitles" slot:label="Subtitles" bind:on="subtitles"/>
+          <use symbol="ActionRow" id="TestAudio" slot:label="Test Audio" slot:action="Play Test Sound" on:click="emit(play_test_sound)"/>
+        </slot>
+      </use>
+      <use symbol="Panel" id="PageControls" slot:heading="Controls" slot:description="Key bindings." bind:display="tab | eq(3)">
+        <slot name="body">
+          <use symbol="KeyBindRow" id="MoveForward" slot:label="Move Forward" bind:key="key_forward" bind:listening="listening"/>
+          <use symbol="KeyBindRow" id="Interact" slot:label="Interact" bind:key="key_interact"/>
+          <use symbol="KeyBindRow" id="Flashlight" slot:label="Flashlight" bind:key="key_flashlight"/>
+        </slot>
+      </use>
+      </div>
+      <use symbol="VersionTag" id="Version" slot:text="v1.0.0"/>
+      <div id="Hints">
+        <use symbol="KeyHint" id="HintApply" slot:key="A" slot:label="Apply" on:click="emit(apply)"/>
+        <use symbol="KeyHint" id="HintReset" variant:Sep="Before" slot:key="R" slot:label="Reset to Defaults" on:click="emit(reset_defaults)"/>
+        <use symbol="KeyHint" id="HintBack" variant:Sep="Before" slot:key="B" slot:label="Back" on:click="emit(back)"/>
+      </div>
+    </div>
+  </body>
+
+  <layout>
+    body { width: 1280px; height: 720px; position: relative; }
+    #Screen { position: absolute; left: 0px; top: 0px; width: 1280px; height: 720px; overflow: hidden; }
+    #Backdrop { position: absolute; left: 0px; top: 0px; width: 1280px; height: 720px; }
+    #Shade { position: absolute; left: 0px; top: 0px; }
+    #Shade/Box { width: 1280px; height: 720px; }
+    #Lockup { position: absolute; left: 56px; top: 36px; transform-origin: left top; transform: scale(0.6); }
+    #Site { position: absolute; right: 48px; top: 40px; }
+    #Tabs { position: absolute; left: 40px; top: 210px; display: flex; flex-direction: column; }
+    #Pages { position: absolute; left: 290px; top: 170px; width: 428px; }
+    #PageGameplay/Box { width: 428px; }
+    #PageGraphics/Box { width: 428px; }
+    #PageAudio/Box { width: 428px; }
+    #PageControls/Box { width: 428px; }
+    #Version { position: absolute; left: 56px; top: 676px; }
+    #Hints { position: absolute; right: 48px; bottom: 28px; display: flex; flex-direction: row; column-gap: 8px; }
+  </layout>
+  <style>
+    #Screen { background-color: var(--color-bg); }
+    #Backdrop { object-fit: cover; }
+  </style>
+</xt>

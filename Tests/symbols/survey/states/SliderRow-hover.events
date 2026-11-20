@@ -1,0 +1,9 @@
+# T-793: SliderRow-hover.
+port Shake.min 0
+port Shake.max 100
+port Shake.value 60
+port Bright.min 0
+port Bright.max 100
+port Bright.value 50
+update 0.6
+pointermove 200 35

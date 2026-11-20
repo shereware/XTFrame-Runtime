@@ -271,7 +271,7 @@ const StyleDecl& onlyTransition(const RuleSet& rs) {
 
 }  // namespace
 
-TEST_CASE("T-322 parseXts: transition longhands alone, zipped like CSS lists") {
+TEST_CASE("T-322 parseXts: transition longhands alone stay longhands (T-778: combined at run time)") {
     DiagnosticSink sink;
     RuleSet rs;
     CHECK(
@@ -280,29 +280,30 @@ TEST_CASE("T-322 parseXts: transition longhands alone, zipped like CSS lists") {
                  "t.xts", 1, sink, rs));
     CHECK(sink.all().empty());
     const StyleDecl& d = onlyTransition(rs);
-    REQUIRE(d.value.transitions.size() == 2);
-    CHECK(d.value.transitions[0].prop == prop::Opacity);
-    CHECK(d.value.transitions[0].duration == doctest::Approx(0.2f));  // One duration repeats.
-    CHECK(d.value.transitions[0].easing.kind == EasingKind::Steps);
-    CHECK(d.value.transitions[0].delay == doctest::Approx(1));
-    CHECK(d.value.transitions[1].prop == prop::Width);
-    CHECK(d.value.transitions[1].duration == doctest::Approx(0.2f));
-    CHECK(d.value.transitions[1].easing.kind == EasingKind::CubicBezier);
-    // The merged declaration sits where the last transition declaration was.
-    const std::vector<StyleDecl>& decls = rs.rules[0].decls;
-    REQUIRE(decls.size() == 3);
-    CHECK(decls[0].prop == prop::Width);
-    CHECK(decls[1].prop == styleprop::Transition);
-    CHECK(decls[2].prop == prop::Height);
+    REQUIRE(d.value.kind == StyleValueKind::TransLonghands);
+    CHECK(d.value.transitionMask == 0xF);
+    const std::vector<std::vector<TransitionSpec>>& f = d.value.transitionFields;
+    REQUIRE(f.size() == 4);
+    REQUIRE(f[0].size() == 2);
+    CHECK(f[0][0].prop == prop::Opacity);
+    CHECK(f[0][1].prop == prop::Width);
+    REQUIRE(f[1].size() == 1);
+    CHECK(f[1][0].duration == doctest::Approx(0.2f));
+    REQUIRE(f[2].size() == 2);
+    CHECK(f[2][0].easing.kind == EasingKind::Steps);
+    CHECK(f[2][1].easing.kind == EasingKind::CubicBezier);
+    REQUIRE(f[3].size() == 1);
+    CHECK(f[3][0].delay == doctest::Approx(1));
 
     // Only a duration: the property defaults to `all`.
     DiagnosticSink sink2;
     RuleSet rs2;
     CHECK(parseXts("a { transition-duration: 1s }", "t.xts", 1, sink2, rs2));
     const StyleDecl& d2 = onlyTransition(rs2);
-    REQUIRE(d2.value.transitions.size() == 1);
-    CHECK(d2.value.transitions[0].prop == 0xFFFF);
-    CHECK(d2.value.transitions[0].duration == doctest::Approx(1));
+    REQUIRE(d2.value.kind == StyleValueKind::TransLonghands);  // The property list is the cascade's.
+    CHECK(d2.value.transitionMask == 0x2);
+    REQUIRE(d2.value.transitionFields[1].size() == 1);
+    CHECK(d2.value.transitionFields[1][0].duration == doctest::Approx(1));
 
     // `transition-property: none` is no transition at all.
     DiagnosticSink sink3;

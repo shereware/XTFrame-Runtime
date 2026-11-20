@@ -33,6 +33,17 @@ struct Mapping {
 /// unspecified.
 Vec2 projectPoint(std::span<const Mapping> stack, const Mat2x3& xf, Vec2 p, bool& ok);
 
+/// T-761 (Docs/design/19-3d-space.md §19.y.1): `p` (current plane coordinates, logical px) through
+/// every level of `stack` as one homogeneous point (x, y, w), screen = (x / w, y / w), with no
+/// divide between the levels: the result is H * (p, 1) for the whole chain's homography H (the
+/// planeHomography() product), so a GPU interpolating vertex attributes over it is perspective
+/// correct whichever levels carry the perspective. Computed level by level in double (no composed
+/// float matrix, so large translations do not cancel). `ok` is false under projectPoint()'s rule
+/// (some level's own homogeneous term -- its w relative to the w it was given -- is not above
+/// 1e-6) or when a value is not finite. x / w, y / w equals projectPoint(stack, identity, p) up to
+/// rounding. Does not allocate.
+Vec3 projectPointHomogeneous(std::span<const Mapping> stack, Vec2 p, bool& ok);
+
 /// Projects an already-flattened path (verbs must be only Move/Line/Close) point by point.
 /// Returns false (leaving outVerbs/outPoints empty) if any point's projection fails (w <= 1e-6);
 /// the caller then discards the whole path, per 19.7's SW rule.

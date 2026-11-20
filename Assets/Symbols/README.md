@@ -29,7 +29,7 @@ groups/<group-id>/
 
 ```json
 { "version": 1, "id": "preset", "name": "XTFrame presets", "readOnly": true,
-  "default": "broadsheet-2026", "groups": ["broadsheet-2026"] }
+  "default": "broadsheet-2026", "groups": ["broadsheet-2026", "survey-2026"] }
 ```
 
 - `readOnly`: the presets are never edited in place. The first editor start copies the default
@@ -50,6 +50,16 @@ symbol needs (found from the `--font-*` and `--tex-*` tokens it reads: the `@fon
 ## Groups
 
 - `groups/broadsheet-2026/`: Broadsheet 2026, the newsprint set of chapter 47 (see its README).
+- `groups/survey-2026/`: Survey 2026, the dark survey-form set of chapter 55 (see its README).
+
+The two preset groups can be mixed in one project and in one document (since T-738: a state group that
+clashes with another symbol's group stays inside its symbol, Docs/design/56-symbol-identity-style-scope.md
+56.4). When two symbols share a bare name, the second one copied into the project is placed in a namespace
+(`shared/symbols/<group id>/<Name>.xt`, used as `<group id>/<Name>`; 56.3). Tokens are shared by name: a
+project has one style (56 56.2), so a token both groups declare takes the project's value -- the style last
+applied, or the project's own edit -- for the symbols of either group. Every library declares the core
+vocabulary of chapter 47; a library's own extension tokens are best prefixed or named for their role so they
+do not take over another library's meaning.
 
 ## Licence
 

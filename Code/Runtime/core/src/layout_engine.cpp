@@ -7,6 +7,7 @@
 #include "xt/asset_resolver.h"
 #include "xt/layout.h"
 #include "xt/node.h"
+#include "xt/perf.h"
 
 /// LayoutEngine entry point (layout()), display dispatch (layoutChild; layoutFlex itself lives in
 /// layout_flex.cpp), img/anim intrinsic size lookup, and the post-layout transform integration
@@ -102,9 +103,11 @@ ScopedLengthEnv::ScopedLengthEnv(const LengthEnv* env) : m_previous(t_lengthEnv)
 
 ScopedLengthEnv::~ScopedLengthEnv() { t_lengthEnv = m_previous; }
 
-bool evalCalc(const LengthEnv& env, uint32_t index, float percentRef, float emPx, float& outPx) {
-    const IrCalcOp* ops = nullptr;
-    uint32_t count = 0;
+namespace {
+
+/// `calc()` program `index` (IR index, or kRuntimeCalcBase + runtime index) of `env`; false when it
+/// does not exist or its ops lie outside the op pool.
+bool calcProgram(const LengthEnv& env, uint32_t index, const IrCalcOp*& ops, uint32_t& count) {
     if (index >= kRuntimeCalcBase) {
         const uint32_t i = index - kRuntimeCalcBase;
         if (env.runtimeCalcs == nullptr || env.runtimeCalcOps == nullptr || i >= env.runtimeCalcs->size()) {
@@ -116,16 +119,48 @@ bool evalCalc(const LengthEnv& env, uint32_t index, float percentRef, float emPx
         }
         ops = env.runtimeCalcOps->data() + calc.opOffset;
         count = calc.opCount;
-    } else {
-        if (index >= env.calcs.size()) {
-            return false;
+        return true;
+    }
+    if (index >= env.calcs.size()) {
+        return false;
+    }
+    const IrCalc& calc = env.calcs[index];
+    if (static_cast<uint64_t>(calc.opOffset) + calc.opCount > env.calcOps.size()) {
+        return false;
+    }
+    ops = env.calcOps.data() + calc.opOffset;
+    count = calc.opCount;
+    return true;
+}
+
+}  // namespace
+
+bool lengthUsesPercent(Length len) {
+    if (len.unit == LengthUnit::Percent) {
+        return true;
+    }
+    if (len.unit != LengthUnit::Calc) {
+        return false;
+    }
+    const IrCalcOp* ops = nullptr;
+    uint32_t count = 0;
+    if (!calcProgram(currentLengthEnv(), calcProgramIndex(len.value), ops, count)) {
+        return true;  // Unreadable: cannot be shown not to need a reference.
+    }
+    for (uint32_t i = 0; i < count; ++i) {
+        if (static_cast<CalcOpKind>(ops[i].op) == CalcOpKind::PushLength &&
+            static_cast<LengthUnit>(ops[i].unit) == LengthUnit::Percent) {
+            return true;
         }
-        const IrCalc& calc = env.calcs[index];
-        if (static_cast<uint64_t>(calc.opOffset) + calc.opCount > env.calcOps.size()) {
-            return false;
-        }
-        ops = env.calcOps.data() + calc.opOffset;
-        count = calc.opCount;
+    }
+    return false;
+}
+
+bool evalCalc(const LengthEnv& env, uint32_t index, float percentRef, float emPx, float& outPx) {
+    const IrCalcOp* ops = nullptr;
+    uint32_t count = 0;
+    if (!calcProgram(env, index, ops, count)) {
+        return false;
     }
     // A typed RPN stack: a length (already in px) or a plain number.
     struct Slot {
@@ -323,28 +358,18 @@ void LayoutEngine::init(const IrView& ir, AssetResolver* assets, TextShaper* sha
     m_shaper = shaper;
 }
 
-void LayoutEngine::layout(NodeArena& arena, NodeId root, Rect viewport) {
-    XT_ASSERT(m_ir != nullptr);
-    // Docs/design/21-perf-tracing.md §21.1's laidOutElements; stays 0 on either early return below.
-    m_laidOutElements = 0;
-    if (root == kInvalidNode || !arena.alive(root) || arena.kind(root) != NodeKind::Element) {
-        return;
-    }
-    // First version (§6.3): relayout the whole tree whenever any element is dirty. kDirtyLayout
-    // always propagates up to root (NodeArena::markDirty), so checking root's bit detects "any
-    // element dirty" without a full-tree scan.
-    if ((arena.dirty(root) & static_cast<uint8_t>(kDirtyLayout)) == 0) {
-        refreshDirtyTransforms(arena, root);
-        return;
-    }
-
+void LayoutEngine::layoutFull(NodeArena& arena, NodeId root, Rect viewport, bool markTransforms) {
     // The `xt` root element's own box = viewport, no margin/padding/border (Docs/tasks/T-25.md
     // "根（body 的父 xt 元素...）").
     ElementData& rootData = arena.element(root);
     ++m_laidOutElements;  // The root itself; every other element is counted by layoutChild().
+    noteLaidOut(root);    // T-753
     rootData.box = LayoutBox{};
     rootData.box.width = viewport.w;
     rootData.box.height = viewport.h;
+    // T-755 (06 §6.x item 1): the document root is always a layout boundary, its size the viewport.
+    rootData.layoutFlags = static_cast<uint8_t>(kLayoutDefiniteW) | static_cast<uint8_t>(kLayoutDefiniteH) |
+                           static_cast<uint8_t>(kLayoutBoundary);
     arena.common(root).visible = 1;
 
     // `body`'s width auto -> viewport.w (passed as availW); height auto -> content height (§6.3: an
@@ -355,13 +380,25 @@ void LayoutEngine::layout(NodeArena& arena, NodeId root, Rect viewport) {
     rootData.box.scrollHeight = cursorY > viewport.h ? cursorY : viewport.h;
 
     layoutAbsolutePass(arena, root);
-    applyTransforms(arena, root);
+    applyTransforms(arena, root, markTransforms);
 }
 
 void LayoutEngine::layoutChild(NodeArena& arena, NodeId node, float availW, float availH, float imposedH,
                                int depth) {
     ++m_laidOutElements;  // 21.1's laidOutElements.
+    noteLaidOut(node);    // T-753: one test unless the redundant-box count runs
     ElementData& data = arena.element(node);
+    if (data.style.position != Position::Absolute) {
+        // T-755 (06 §6.x item 3): what a partial pass rooted here replays (the last call is the
+        // final one: a measurement always precedes it), and item 1's flags. The absolute pass keeps
+        // its own (layoutAbsoluteChild()); a shrink-to-fit flex box it measures through here is
+        // left alone.
+        data.layoutAvailW = availW;
+        data.layoutAvailH = availH;
+        data.layoutImposedH = imposedH;
+        data.layoutDepth = depth;
+        updateInFlowLayoutFlags(arena, node);
+    }
     // Docs/design/19-3d-space.md §19.4: a <camera> element is treated as display:none. T-177: so is
     // a `<repeat>` template element (defensive: the runtime keeps templates out of the tree).
     if (data.cameraNode != kInvalidNode || (arena.common(node).flags2 & kTemplate) != 0) {
@@ -374,12 +411,16 @@ void LayoutEngine::layoutChild(NodeArena& arena, NodeId node, float availW, floa
             data.box = LayoutBox{};
             arena.common(node).visible = 0;
             return;
-        case Display::Flex:
+        case Display::Flex: {
+            XT_PERF_ZONE(m_perf, UpdateLayoutFlex);  // T-753 (57 §57.2 item 3)
             layoutFlex(arena, node, availW, availH, imposedH, depth);
             return;
-        case Display::Grid:  // 06 §6.15 (T-338).
+        }
+        case Display::Grid: {                        // 06 §6.15 (T-338).
+            XT_PERF_ZONE(m_perf, UpdateLayoutGrid);  // T-753
             layoutGrid(arena, node, availW, availH, imposedH, depth);
             return;
+        }
         case Display::Block:
         default:
             layoutBlock(arena, node, availW, availH, imposedH, depth);
@@ -496,7 +537,7 @@ void computeObjectFit(ObjectFit fit, Rect content, float designW, float designH,
 
 }  // namespace
 
-void LayoutEngine::applyTransforms(NodeArena& arena, NodeId root) {
+void LayoutEngine::applyTransforms(NodeArena& arena, NodeId root, bool mark) {
     // NOTE: this traversal only writes NodeCommon fields; it must not call arena.markDirty(...,
     // kDirtyTransform) here (that call reuses the same NodeArena scratch stack traversePreorder
     // drives its own iteration from -- see StyleEngine::resolve's identical caveat). Every touched
@@ -526,7 +567,9 @@ void LayoutEngine::applyTransforms(NodeArena& arena, NodeId root) {
     // One flood-fill markDirty covers root and every descendant (Elements, scene roots and their
     // subtrees, Text nodes), which is exactly the set of NodeCommon fields this pass may have
     // touched.
-    arena.markDirty(root, static_cast<uint8_t>(kDirtyTransform));
+    if (mark) {
+        arena.markDirty(root, static_cast<uint8_t>(kDirtyTransform), arena.lastCause());
+    }
 }
 
 void LayoutEngine::foldElementTranslate(NodeArena& arena, NodeId node) {

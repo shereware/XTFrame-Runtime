@@ -68,6 +68,10 @@ public:
     void step(float clock);
     /// Sends the instance timelines' End events to the trigger runtime.
     void flushEvents();
+    /// T-749 (23 §23.ag item 6): step() / flushEvents() have work at a later update(): an instance
+    /// timeline plays, an end event or a self-controlled end waits, or spawned instances live (each
+    /// expires at its own clock).
+    bool needsStep() const;
     /// Virtualization against the fresh layout; true when instances or spacers changed (the
     /// Document then resolves and lays out once more).
     bool afterLayout();
@@ -95,6 +99,9 @@ public:
     /// `lifetime` seconds later. False when `node` has no such pool.
     bool spawn(NodeId node, uint32_t pool, Vec2 at, float lifetime, StringId timeline);
 
+    /// T-738: the DOCT index of the template element the live or exiting instance element `node`
+    /// was copied from, or kNoItem (not in such an instance).
+    uint32_t templateElementOf(NodeId node);
     /// An instance element with path id `id`, or an invalid ref.
     ElementRef byId(std::string_view id) const;
     /// Document::repeatInstances().
@@ -257,6 +264,8 @@ private:
     NodeId viewportOf(const Repeat& r) const;
     void stopPlaybacks(NodeId scope);
     void releasePlayback(Playback& pb);
+    /// One step of m_playbacks[i] (step()); false when it was released and erased.
+    bool stepPlayback(size_t i, float clock);
     void applyPlayback(Playback& pb);
     uint32_t count(const Repeat& r) const;
 
@@ -276,7 +285,23 @@ private:
     std::vector<uint32_t> m_templateOf;  // Per DOCT element: repeat index or kNoItem.
     std::vector<uint32_t> m_tplPos;      // Per DOCT element: position in its repeat's `tpl`.
     std::vector<Playback> m_playbacks;
-    std::vector<std::pair<NodeId, StringId>> m_pendingEnds;
+    /// T-783: an instance copy's end event; `selfApplied` = its triggers' self-control actions
+    /// were already applied at the end's time (TriggerRuntime::applyInstanceSelfControl()).
+    struct PendingEnd {
+        NodeId scope = kInvalidNode;
+        StringId name = kInvalidString;
+        bool selfApplied = false;
+    };
+    std::vector<PendingEnd> m_pendingEnds;
+    /// T-783: copies that ended this step at a self-controlled end, with the clock seconds left.
+    struct SelfEnd {
+        NodeId scope = kInvalidNode;
+        StringId name = kInvalidString;
+        float leftover = 0;
+    };
+    std::vector<SelfEnd> m_selfEnds;
+    /// T-783: at most this many rounds of self-controlled ends per step (as T-774's cut limit).
+    static constexpr int kMaxSelfEndPasses = 64;
     // T-260b: evaluateInstance()'s binding ids. A stack: a nested evaluation appends its own ids
     // and shrinks back to where it started, so the outer one reads its part by index.
     std::vector<uint32_t> m_evalScratch;

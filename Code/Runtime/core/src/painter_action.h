@@ -36,6 +36,12 @@ namespace xt {
 /// dispatch (paintElement/pushPlan/emitPath/emitImage) pushes on top of it -- so it pops (i.e.
 /// executes) after all of that content, and before a wrapping PopLayer (if any), matching 18.1's
 /// "PushEffect ... 內容 ... PopEffect / 若有 Layer：PopLayer" order.
+///
+/// T-762 (Docs/design/19-3d-space.md §19.y.2) adds LeaveEmbeddedLayer: pushed by enterNode() when it
+/// draws a 3D layer in place inside a flattening group (enterEmbeddedLayer()), below the layer's own
+/// actions. It closes the layer's plane (PopTransform3D), reopens the plane the layer was met on
+/// (PushTransform3D `xf3`) and makes `node` (kInvalidNode = the root's own plane) the current layer
+/// again.
 struct Painter::Action {
     enum class Kind : uint8_t {
         EnterNode,
@@ -50,6 +56,7 @@ struct Painter::Action {
         PopTransform3D,
         PopProjection,
         PopEffect,
+        LeaveEmbeddedLayer,
     };
     Kind kind = Kind::EnterNode;
     NodeId node = kInvalidNode;

@@ -1,0 +1,335 @@
+{
+  "version": 1,
+  "symbols": [
+    {
+      "name": "ActionRow",
+      "file": "shared/symbols/ActionRow.xt",
+      "source": {
+        "library": "preset",
+        "group": "survey-2026",
+        "set": "xtframe/survey-2026",
+        "setVersion": "1.0.0",
+        "sha256": "sha256:3848ff6eebdc74d65af098bab128b503feecb8469fed85d31cec4ac60e52b904"
+      }
+    },
+    {
+      "name": "BloodEdge",
+      "file": "shared/symbols/BloodEdge.xt",
+      "source": {
+        "library": "preset",
+        "group": "survey-2026",
+        "set": "xtframe/survey-2026",
+        "setVersion": "1.0.0",
+        "sha256": "sha256:f29006714d7eaed86d9066b3f3de4501f905814a580ecdebc177155d358d3ec5"
+      }
+    },
+    {
+      "name": "ChapterCard",
+      "file": "shared/symbols/ChapterCard.xt",
+      "source": {
+        "library": "preset",
+        "group": "survey-2026",
+        "set": "xtframe/survey-2026",
+        "setVersion": "1.0.0",
+        "sha256": "sha256:13b4c9f2be2f8502d1b08cded74b55140bc1a52fd91ca4fa538a781423f8a872"
+      }
+    },
+    {
+      "name": "ConfirmDialog",
+      "file": "shared/symbols/ConfirmDialog.xt",
+      "source": {
+        "library": "preset",
+        "group": "survey-2026",
+        "set": "xtframe/survey-2026",
+        "setVersion": "1.0.0",
+        "sha256": "sha256:8e135c5e0a10aa32f35c6ef143df109a7146b2ae732e57b9a249387ba30f82a3"
+      }
+    },
+    {
+      "name": "CyclerRow",
+      "file": "shared/symbols/CyclerRow.xt",
+      "source": {
+        "library": "preset",
+        "group": "survey-2026",
+        "set": "xtframe/survey-2026",
+        "setVersion": "1.0.0",
+        "sha256": "sha256:22c3047f4f5d2b7cf5cb6acb65b1e7e807cca4b13b186a5d2b04c7d428f7216b"
+      }
+    },
+    {
+      "name": "FilmGrain",
+      "file": "shared/symbols/FilmGrain.xt",
+      "source": {
+        "library": "preset",
+        "group": "survey-2026",
+        "set": "xtframe/survey-2026",
+        "setVersion": "1.0.0",
+        "sha256": "sha256:bdb14966204e5260dcc054e8ce4fc132cffd0204d4ec6e2c6c0c0f02ef11e240"
+      }
+    },
+    {
+      "name": "FocusDot",
+      "file": "shared/symbols/FocusDot.xt",
+      "source": {
+        "library": "preset",
+        "group": "survey-2026",
+        "set": "xtframe/survey-2026",
+        "setVersion": "1.0.0",
+        "sha256": "sha256:7558c00252919884e699269a6db5a62371eca4351b5a9bc94b775a762fcf07bc"
+      }
+    },
+    {
+      "name": "FogBank",
+      "file": "shared/symbols/FogBank.xt",
+      "source": {
+        "library": "preset",
+        "group": "survey-2026",
+        "set": "xtframe/survey-2026",
+        "setVersion": "1.0.0",
+        "sha256": "sha256:39b914c3a2f9f7627d25847cf12add62e016e9ac60e175046581c2e1de6fe26a"
+      }
+    },
+    {
+      "name": "InteractPrompt",
+      "file": "shared/symbols/InteractPrompt.xt",
+      "source": {
+        "library": "preset",
+        "group": "survey-2026",
+        "set": "xtframe/survey-2026",
+        "setVersion": "1.0.0",
+        "sha256": "sha256:6f7a87a757eb406fdf08ba0d2c3951b1873f6164165ae8a32523fa65f9bbe9c4"
+      }
+    },
+    {
+      "name": "InventorySlot",
+      "file": "shared/symbols/InventorySlot.xt",
+      "source": {
+        "library": "preset",
+        "group": "survey-2026",
+        "set": "xtframe/survey-2026",
+        "setVersion": "1.0.0",
+        "sha256": "sha256:48bed1d25a3af1a9191ecccd1c063d899218972115eae3729c456a1b9af2b5ff"
+      }
+    },
+    {
+      "name": "KeyBindRow",
+      "file": "shared/symbols/KeyBindRow.xt",
+      "source": {
+        "library": "preset",
+        "group": "survey-2026",
+        "set": "xtframe/survey-2026",
+        "setVersion": "1.0.0",
+        "sha256": "sha256:92645297785c56ea8adc063ffffd73d74b9d8c4035e440f64d934e52f33cb747"
+      }
+    },
+    {
+      "name": "KeyHint",
+      "file": "shared/symbols/KeyHint.xt",
+      "source": {
+        "library": "preset",
+        "group": "survey-2026",
+        "set": "xtframe/survey-2026",
+        "setVersion": "1.0.0",
+        "sha256": "sha256:fb5c81d7afb669e57573043a62bf29a64e9c641f8d88f8d93f8b3c17bbd444da"
+      }
+    },
+    {
+      "name": "LoadingIndicator",
+      "file": "shared/symbols/LoadingIndicator.xt",
+      "source": {
+        "library": "preset",
+        "group": "survey-2026",
+        "set": "xtframe/survey-2026",
+        "setVersion": "1.0.0",
+        "sha256": "sha256:f354d34cb18b767c1887305309b673761c4d9b73a84f112376bca44b055acae7"
+      }
+    },
+    {
+      "name": "LocationClock",
+      "file": "shared/symbols/LocationClock.xt",
+      "source": {
+        "library": "preset",
+        "group": "survey-2026",
+        "set": "xtframe/survey-2026",
+        "setVersion": "1.0.0",
+        "sha256": "sha256:4a934255dd7c9c98bf3dda2aa8f1eadaefbf96e3577da68867649fad07438291"
+      }
+    },
+    {
+      "name": "MenuItem",
+      "file": "shared/symbols/MenuItem.xt",
+      "source": {
+        "library": "preset",
+        "group": "survey-2026",
+        "set": "xtframe/survey-2026",
+        "setVersion": "1.0.0",
+        "sha256": "sha256:d1156a1ce7ffedc35df62114daacf1c6b9b56134bd95a7646fa79bdeb424bb96"
+      }
+    },
+    {
+      "name": "NoiseMeter",
+      "file": "shared/symbols/NoiseMeter.xt",
+      "source": {
+        "library": "preset",
+        "group": "survey-2026",
+        "set": "xtframe/survey-2026",
+        "setVersion": "1.0.0",
+        "sha256": "sha256:602fe20347af84fa874a61f1b91f8c6d36d7198b4779fd970373697f56c7c5ce"
+      }
+    },
+    {
+      "name": "ObjectiveBanner",
+      "file": "shared/symbols/ObjectiveBanner.xt",
+      "source": {
+        "library": "preset",
+        "group": "survey-2026",
+        "set": "xtframe/survey-2026",
+        "setVersion": "1.0.0",
+        "sha256": "sha256:123be49407f9bb83fbfe87faf77963556d5319f2baf2c5661c2554a868457953"
+      }
+    },
+    {
+      "name": "Panel",
+      "file": "shared/symbols/Panel.xt",
+      "source": {
+        "library": "preset",
+        "group": "survey-2026",
+        "set": "xtframe/survey-2026",
+        "setVersion": "1.0.0",
+        "sha256": "sha256:3631398a730448fc36876ff834f317d7250209452bd9916d61c68c7e7dd40e05"
+      }
+    },
+    {
+      "name": "PickupNotice",
+      "file": "shared/symbols/PickupNotice.xt",
+      "source": {
+        "library": "preset",
+        "group": "survey-2026",
+        "set": "xtframe/survey-2026",
+        "setVersion": "1.0.0",
+        "sha256": "sha256:6f91b67ce9dbc22f060a333b331714c637aac1b0dabb31df600b6ee78e501cec"
+      }
+    },
+    {
+      "name": "RainLayer",
+      "file": "shared/symbols/RainLayer.xt",
+      "source": {
+        "library": "preset",
+        "group": "survey-2026",
+        "set": "xtframe/survey-2026",
+        "setVersion": "1.0.0",
+        "sha256": "sha256:2333bc9729520bebca6064ca801678eddc4fe9706ac9c193a5f34e24f779e7e6"
+      }
+    },
+    {
+      "name": "SaveSlot",
+      "file": "shared/symbols/SaveSlot.xt",
+      "source": {
+        "library": "preset",
+        "group": "survey-2026",
+        "set": "xtframe/survey-2026",
+        "setVersion": "1.0.0",
+        "sha256": "sha256:0e98748cc3dd81bb9ad9227f7b9c1e3dd6f20ec35474f5b6af5eca570747db26"
+      }
+    },
+    {
+      "name": "ScreenShade",
+      "file": "shared/symbols/ScreenShade.xt",
+      "source": {
+        "library": "preset",
+        "group": "survey-2026",
+        "set": "xtframe/survey-2026",
+        "setVersion": "1.0.0",
+        "sha256": "sha256:329142866bec133ead64baa4ae67ee5795ff7c04df3a452d2fade06b6bf98e6d"
+      }
+    },
+    {
+      "name": "SettingsTab",
+      "file": "shared/symbols/SettingsTab.xt",
+      "source": {
+        "library": "preset",
+        "group": "survey-2026",
+        "set": "xtframe/survey-2026",
+        "setVersion": "1.0.0",
+        "sha256": "sha256:c83ffcdac96be1de5b4837a6b93b33efa27cf4fb57e8f7d0e115bb1167e8b3e6"
+      }
+    },
+    {
+      "name": "SiteCard",
+      "file": "shared/symbols/SiteCard.xt",
+      "source": {
+        "library": "preset",
+        "group": "survey-2026",
+        "set": "xtframe/survey-2026",
+        "setVersion": "1.0.0",
+        "sha256": "sha256:72bff564e52b9be7e6bdb428d4369897bd2ce54f91c12a3c138356ca9a56a8ee"
+      }
+    },
+    {
+      "name": "SliderRow",
+      "file": "shared/symbols/SliderRow.xt",
+      "source": {
+        "library": "preset",
+        "group": "survey-2026",
+        "set": "xtframe/survey-2026",
+        "setVersion": "1.0.0",
+        "sha256": "sha256:5628e97d38143428d2714250af936d4fa41a6223f3009a8abc1de78505c83760"
+      }
+    },
+    {
+      "name": "SubtitleLine",
+      "file": "shared/symbols/SubtitleLine.xt",
+      "source": {
+        "library": "preset",
+        "group": "survey-2026",
+        "set": "xtframe/survey-2026",
+        "setVersion": "1.0.0",
+        "sha256": "sha256:300a1891566522530915df1710a2f657993e6ac175a2095cfdb7c394ac924db7"
+      }
+    },
+    {
+      "name": "TitleLockup",
+      "file": "shared/symbols/TitleLockup.xt",
+      "source": {
+        "library": "preset",
+        "group": "survey-2026",
+        "set": "xtframe/survey-2026",
+        "setVersion": "1.0.0",
+        "sha256": "sha256:719cde5c543d1b764c334630233422c7b4a8d724f91e3862f5ff3278509c60f7"
+      }
+    },
+    {
+      "name": "ToggleRow",
+      "file": "shared/symbols/ToggleRow.xt",
+      "source": {
+        "library": "preset",
+        "group": "survey-2026",
+        "set": "xtframe/survey-2026",
+        "setVersion": "1.0.0",
+        "sha256": "sha256:fb8dd7cc5b4b3e9a6729579fb033cd35612f322b5284eb3ed17273bc1d844d4b"
+      }
+    },
+    {
+      "name": "VersionTag",
+      "file": "shared/symbols/VersionTag.xt",
+      "source": {
+        "library": "preset",
+        "group": "survey-2026",
+        "set": "xtframe/survey-2026",
+        "setVersion": "1.0.0",
+        "sha256": "sha256:c2af3536621a3196e7d1440dade6c800a88c679ee2d0d7b57817084ce3cecd70"
+      }
+    },
+    {
+      "name": "VitalBar",
+      "file": "shared/symbols/VitalBar.xt",
+      "source": {
+        "library": "preset",
+        "group": "survey-2026",
+        "set": "xtframe/survey-2026",
+        "setVersion": "1.0.0",
+        "sha256": "sha256:56e131620b86c6dc11d91a3234ff854df9dcc92830cf244ecac7c368c38a9b44"
+      }
+    }
+  ]
+}

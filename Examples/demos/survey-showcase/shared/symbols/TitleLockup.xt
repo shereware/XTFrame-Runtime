@@ -1,0 +1,89 @@
+<xt version="2">
+
+  <symbol name="TitleLockup" requires="slots: title, subtitle">
+    <div id="Box" on:show="play(intro)">
+      <div id="Mark">
+        <span id="Title"><slot name="title">GAME TITLE</slot></span>
+        <div id="Slash"></div>
+      </div>
+      <span id="Subtitle"><slot name="subtitle">Subtitle or Tagline</slot></span>
+    </div>
+  </symbol>
+
+  <layout>
+    symbol(TitleLockup) {
+      #Box {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        padding: var(--space-2) 0px;
+      }
+      #Mark {
+        position: relative;
+        display: flex;
+        align-self: flex-start;
+      }
+      #Slash {
+        position: absolute;
+        left: 38%;
+        top: 50%;
+        width: 66%;
+        height: 2px;
+        margin-top: -1px;
+        transform: rotate(-4deg);
+      }
+      #Subtitle {
+        margin-top: var(--space-1);
+      }
+    }
+  </layout>
+  <style>
+    symbol(TitleLockup) {
+      #Title {
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: var(--font-size-title);
+        line-height: 76px;
+        letter-spacing: 6px;
+        color: var(--color-text-strong);
+      }
+      #Slash {
+        background-color: var(--color-danger);
+      }
+      #Subtitle {
+        font-family: var(--font-body);
+        font-size: var(--font-size-s);
+        letter-spacing: 3px;
+        color: var(--color-text-label);
+      }
+    }
+  </style>
+  <timelines>
+    symbol(TitleLockup) {
+      @timeline intro {
+        #Box {
+          0s {
+            opacity: 0;
+            transform: translateY(6px);
+          }
+          0.5s ease-out {
+            opacity: 1;
+            transform: translateY(0px);
+          }
+        }
+        #Slash {
+          0s {
+            opacity: 0;
+          }
+          0.3s {
+            opacity: 0;
+          }
+          0.5s ease-out {
+            opacity: 1;
+          }
+        }
+      }
+    }
+  </timelines>
+</xt>

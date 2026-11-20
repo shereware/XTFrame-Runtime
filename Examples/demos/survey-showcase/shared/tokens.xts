@@ -1,0 +1,121 @@
+/* Copied from survey-2026 1.0.0 (Assets/Symbols/groups/survey-2026/tokens.xts); the project had no tokens of its own. */
+/* XTFrame preset symbol group Survey 2026: design tokens, theme "dusk" (Docs/design/55-survey-symbol-group.md).
+   Dusk (default): near-black ground, cream text ladder, one muted red for blood and danger.
+   Every Survey symbol draws only through these names, so a UI Project re-skins the whole group
+   by redefining them in its own shared/tokens.xts or in a theme (themes/*.xts).
+   Link exactly one of tokens.xts and tokens-defiance.xts: a token declared twice is a compiler
+   warning. A project that defines its own tokens must not also link either file. */
+@font-face {
+  font-family: "Noto Serif";
+  src: "fonts/NotoSerif-Regular.ttf";
+  font-weight: 400;
+}
+@font-face {
+  font-family: "Noto Serif";
+  src: "fonts/NotoSerif-Bold.ttf";
+  font-weight: 700;
+}
+@font-face {
+  font-family: "Noto Serif";
+  src: "fonts/NotoSerif-Italic.ttf";
+  font-weight: 400;
+  font-style: italic;
+}
+:root {
+  /* Surfaces and text. */
+  --color-bg: #050505;
+  --color-surface: #0a0a0ae0;
+  --color-surface-raised: #ffffff0a;
+  --color-surface-sunken: #00000066;
+  --color-border: #ffffff26;
+  --color-border-strong: #ffffff40;
+  --color-text: #e8e2d4;
+  --color-text-dim: #a39e93;
+  --color-text-on-accent: #0a0a0a;
+  /* Accent and states. */
+  --color-accent: #efe8d8;
+  --color-accent-hover: #f6f1e6;
+  --color-accent-pressed: #bdb6a8;
+  --color-focus: #efe8d8;
+  --color-disabled-bg: #ffffff0a;
+  --color-disabled-text: #5e5a52;
+  /* Semantic. */
+  --color-danger: #a3241c;
+  --color-warning: #c9a24a;
+  --color-success: #8fbf8a;
+  --color-info: #bdb6a8;
+  /* Overlays and tracks. */
+  --color-scrim: #000000b3;
+  --color-track: #ffffff1a;
+  --color-shadow: #00000000;
+  /* Survey additions: text ladder, rules, band, scrims, shades. */
+  --color-text-strong: #f6f1e6;
+  --color-text-label: #d6d0c2;
+  --color-text-quiet: #bdb6a8;
+  --color-line-hairline: #ffffff14;
+  --color-line: #ffffff33;
+  --color-band-edge: #5c2320;
+  --color-scrim-soft: #00000073;
+  --color-scrim-strong: #000000eb;
+  --color-shade-edge: #00000099;
+  --color-shade-clear: #00000000;
+  --color-blood: #a3241ca6;
+  /* Type. */
+  --font-display: "Noto Serif", "Georgia", "Times New Roman";
+  --font-body: "Noto Serif", "Georgia", "Times New Roman";
+  --font-family: var(--font-body);
+  --font-size-xs: 11px;
+  --font-size-s: 13px;
+  --font-size-m: 15px;
+  --font-size-l: 19px;
+  --font-size-xl: 24px;
+  /* Survey type steps outside the core scale (55 55.3.2). */
+  --font-size-badge: 10px;
+  --font-size-caption: 12px;
+  --font-size-text: 14px;
+  --font-size-subtitle: 17px;
+  --font-size-chapter: 40px;
+  --font-size-title: 72px;
+  --letter-display: 2px;
+  --letter-label: 2px;
+  /* Space, rules and radii. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --border-w: 1px;
+  --focus-w: 1px;
+  --rule-thin: 1px;
+  --rule-thick: 2px;
+  --radius-s: 3px;
+  --radius-m: 3px;
+  --radius-l: 3px;
+  --radius-full: 999px;
+  /* Motion. */
+  --motion-instant: 0ms;
+  --motion-fast: 140ms;
+  --motion-normal: 160ms;
+  --motion-slow: 400ms;
+  /* Sizes. */
+  --size-row: 40px;
+  --size-box: 26px;
+  --size-box-w: 176px;
+  --size-band: 42px;
+  /* Core control sizes (47 core vocabulary): small = the field box, medium = the settings row, large = the menu band. */
+  --control-s: 26px;
+  --control-m: 40px;
+  --control-l: 42px;
+  --touch-min: 44px;
+  --touch-lg: 88px;
+  /* Textures (textures/, made by Tools/Scripts/gen_survey_textures.py). */
+  --tex-band: url("textures/band-dusk.png");
+  --tex-band-short: url("textures/band-short-dusk.png");
+  --tex-rain: url("textures/rain.png");
+  --tex-film-grain: url("textures/grain.png");
+  --tex-fog: url("textures/fog.png");
+  --tex-scratch: url("textures/scratch.png");
+}

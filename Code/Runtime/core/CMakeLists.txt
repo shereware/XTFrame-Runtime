@@ -3,6 +3,8 @@ add_library(xt_core STATIC
     src/charconv.cpp
     src/assert.cpp
     src/perf.cpp
+    src/perf_record.cpp  # T-750
+    src/thread_clock.cpp  # T-750
     src/mat2x3.cpp
     src/mat4.cpp
     src/transform_compose.cpp
@@ -12,6 +14,7 @@ add_library(xt_core STATIC
     src/crc32.cpp
     src/sha256.cpp
     src/ir_view.cpp
+    src/ir_view_texp.cpp  # T-776
     src/geom_flatten.cpp
     src/coverage_raster.cpp  # T-660a: moved from xt_sw
     src/coverage_bitmap.cpp  # T-660a
@@ -29,9 +32,12 @@ add_library(xt_core STATIC
     src/track_eval.cpp
     src/scene_instance.cpp
     src/animator.cpp
+    src/animator_expr.cpp  # T-776
     src/timeline_group.cpp
+    src/timeline_expr.cpp  # T-776
     src/external_media.cpp
     src/trigger_runtime.cpp
+    src/trigger_self_control.cpp  # T-774
     src/repeat_controller.cpp
     src/repeat_template_content.cpp
     src/binding_runtime.cpp
@@ -41,6 +47,7 @@ add_library(xt_core STATIC
     src/hot_reload.cpp
     src/document_state.cpp
     src/command_list.cpp
+    src/command_list_append.cpp
     src/effect_utils.cpp
     src/box_shadow.cpp  # T-668
     src/shader_table.cpp
@@ -57,6 +64,7 @@ add_library(xt_core STATIC
     src/painter_world_layers.cpp
     src/world_layer_output.cpp
     src/painter_element.cpp
+    src/border_dash_cache.cpp  # T-737
     src/hit_test.cpp
     src/event_dispatcher.cpp
     src/focus.cpp
@@ -76,6 +84,9 @@ add_library(xt_core STATIC
     src/selector_query.cpp
     src/document_load.cpp
     src/context.cpp
+    src/context_visual.cpp
+    src/needs_frame.cpp  # T-749
+    src/external_texture_use.cpp  # T-746
     src/command_hash.cpp
     src/damage.cpp
     src/file_asset_resolver.cpp
@@ -85,6 +96,7 @@ add_library(xt_core STATIC
     src/null_text_shaper.cpp
     src/style_decode.cpp
     src/selector_match.cpp
+    src/style_compare.cpp  # T-753
     src/style_engine.cpp
     src/style_state_deps.cpp
     src/layout_engine.cpp
@@ -95,6 +107,7 @@ add_library(xt_core STATIC
     src/layout_absolute.cpp
     src/layout_flex.cpp
     src/layout_grid.cpp
+    src/layout_partial.cpp
     src/layout_snapshot.cpp
 )
 target_include_directories(xt_core PUBLIC include PRIVATE src)

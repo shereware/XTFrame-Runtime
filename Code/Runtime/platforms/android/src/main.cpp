@@ -185,19 +185,7 @@ int main(int argc, char* argv[]) {
 
     // Assets through SDL_RWops, with the manifest's atlas cells / nine-slices / @2x variants.
     app.setAssetRoot(options.bundle);
-    for (const xt::bundle::AssetInfo& info : bundle.assetTable()) {
-        if (const xt::AssetResolver::ImageMeta* meta = bundle.assets().imageMeta(info.file)) {
-            app.assetResolver().setImageMeta(info.file, *meta);
-        }
-    }
-    for (const xt::bundle::AtlasInfo& atlas : bundle.atlases()) {
-        for (const xt::bundle::AtlasEntryInfo& entry : atlas.entries) {
-            const std::string name = std::string(xt::kAtlasAssetScheme) + atlas.name + "#" + entry.asset;
-            if (const xt::AssetResolver::ImageMeta* meta = bundle.assets().imageMeta(name)) {
-                app.assetResolver().setImageMeta(name, *meta);
-            }
-        }
-    }
+    bundle.registerImageMeta(app.assetResolver());  // T-759
     addAndroidFonts(app);
 
     xt::Context& ctx = app.context();

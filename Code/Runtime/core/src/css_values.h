@@ -210,6 +210,33 @@ enum class AnimationItemResult : uint8_t { Ok, BadName, BadValue };
 AnimationItemResult parseAnimationItem(const Tok* toks, size_t count, Dialect d, Diag* diag,
                                        AnimationItem& out, std::vector<EasingPoint>* points);
 
+/// T-756 (05.6, CSS Animations 1): the eight `animation-*` longhands, in this order (the index is
+/// the bit of a longhand mask).
+enum class AnimationLonghand : uint8_t {
+    Name = 0,
+    Duration = 1,
+    TimingFunction = 2,
+    Delay = 3,
+    IterationCount = 4,
+    Direction = 5,
+    FillMode = 6,
+    PlayState = 7,
+};
+constexpr int kAnimationLonghandCount = 8;
+/// Every longhand's bit set.
+constexpr uint8_t kAllAnimationLonghands = 0xFF;
+/// The longhand's property name (`animation-delay`, ...).
+const char* animationLonghandName(int longhand);
+/// The index of the longhand named `property` (exact lower-case name, like every property name),
+/// or -1.
+int animationLonghandIndex(std::string_view property);
+/// One comma-separated item of longhand `longhand` into its field of `out`; the other fields are
+/// left alone. `animation-name` takes an identifier, `none` leaving `out.name` empty (an item that
+/// does not play). Same value grammar, clamps and diagnostics as the shorthand's part. False when
+/// the item is malformed.
+bool parseAnimationLonghandItem(int longhand, const Tok* toks, size_t count, Dialect d, Diag* diag,
+                                AnimationItem& out, std::vector<EasingPoint>* points);
+
 // ---------------------------------------------------------------------------------------------
 // transform (05.5, 19.10, T-120, T-322, T-329).
 // ---------------------------------------------------------------------------------------------

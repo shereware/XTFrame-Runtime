@@ -12,6 +12,7 @@
 #include "json.hpp"
 #include "preview_render.h"
 #include "test_temp.h"
+#include "xt/bundle/project_style.h"
 #include "xt/bundle/symbol_library.h"
 #include "xt/bundle/symbol_lint.h"
 #include "xt/bundle/symbol_set.h"
@@ -149,10 +150,19 @@ TEST_CASE("symbols cli: the preset library lints without a finding") {
         bundle::LintOptions options;
         options.indexOnly = indexOnly;
         const std::vector<bundle::LintReport> reports = bundle::lintLibrary(XT_SYMBOLS_LIBRARY_DIR, options);
-        REQUIRE(reports.size() == 1);
-        CHECK(reports[0].groupId == "broadsheet-2026");
-        CHECK(reports[0].symbols == 39);
-        CHECK_MESSAGE(reports[0].issues.empty(), issuesText(reports[0]));
+        REQUIRE(reports.size() == 2);
+        const bundle::LintReport* broadsheet = nullptr;
+        const bundle::LintReport* survey = nullptr;
+        for (const bundle::LintReport& report : reports) {
+            if (report.groupId == "broadsheet-2026") broadsheet = &report;
+            if (report.groupId == "survey-2026") survey = &report;
+        }
+        REQUIRE(broadsheet != nullptr);
+        REQUIRE(survey != nullptr);
+        CHECK(broadsheet->symbols == 39);
+        CHECK_MESSAGE(broadsheet->issues.empty(), issuesText(*broadsheet));
+        CHECK(survey->symbols == 30);
+        CHECK_MESSAGE(survey->issues.empty(), issuesText(*survey));
     }
     // A group directory is linted as one group.
     const std::vector<bundle::LintReport> group = bundle::lintLibrary(XT_SYMBOLS_DIR);
@@ -343,6 +353,17 @@ TEST_CASE("symbols cli: tokens-json is the skill's tokens.json") {
     if (fs::exists(XT_SKILL_TOKENS_JSON)) {
         CHECK(text == readText(XT_SKILL_TOKENS_JSON));
     }
+    // T-743: every token with whether it is core -- the 52 core ones and the preset's 5 textures.
+    REQUIRE(parsed["tokens"].is_array());
+    size_t core = 0;
+    for (const json& token : parsed["tokens"]) {
+        const std::string name = token["name"].get<std::string>();
+        CHECK(token["core"].get<bool>() == (bundle::findCoreToken(name) != nullptr));
+        core += token["core"].get<bool>() ? size_t{1} : size_t{0};
+        CHECK((token["core"].get<bool>() || name.rfind("--tex-", 0) == 0));
+    }
+    CHECK(core == 52);
+    CHECK(parsed["tokens"].size() == 57);
     // No token file: not found. No colours: invalid.
     CHECK(bundle::tokensJson(freshDir("tokens_none") / "none", text, error) == Status::kNotFound);
     const fs::path group = copiedGroup("tokens_nocolor");
@@ -680,4 +701,45 @@ TEST_CASE("symbols cli: import into a read-only library is refused; lint errors 
     REQUIRE(report.groups.size() == 1);
     CHECK(hasIssue(report.groups[0].lint, "Button", "thumbnail.missing"));
     CHECK(groupCount(target) == 1);
+}
+
+TEST_CASE("T-743 core vocabulary: core-tokens.json == chapter 47 == coreTokens(); the preset declares all") {
+    const fs::path repo = fs::path(XT_SYMBOLS_LIBRARY_DIR) / ".." / "..";
+    const json data = json::parse(readText(fs::path(XT_SYMBOLS_LIBRARY_DIR) / "core-tokens.json"));
+    std::vector<std::pair<std::string, std::string>> fromData;
+    for (const json& token : data["tokens"]) {
+        fromData.emplace_back(token["name"].get<std::string>(), token["type"].get<std::string>());
+    }
+    std::vector<std::pair<std::string, std::string>> fromCode;
+    for (const bundle::CoreToken& token : bundle::coreTokens()) {
+        fromCode.emplace_back(token.name, bundle::coreTokenTypeName(token.type));
+    }
+    CHECK(fromData == fromCode);
+    // Chapter 47's list: the backticked names between its two bold headings, in order.
+    const std::string doc = readText(repo / "Docs" / "design" / "47-symbol-visual-style.md");
+    const size_t start = doc.find("**共同詞彙（52 個）**");
+    const size_t end = doc.find("**不屬於共同詞彙", start);
+    REQUIRE(start != std::string::npos);
+    REQUIRE(end != std::string::npos);
+    std::vector<std::string> fromDoc;
+    for (size_t at = doc.find("`--", start); at < end; at = doc.find("`--", at + 1)) {
+        const size_t close = doc.find('`', at + 1);
+        fromDoc.push_back(doc.substr(at + 1, close - at - 1));
+        at = close;
+    }
+    std::vector<std::string> names;
+    for (const auto& [name, type] : fromData) {
+        names.push_back(name);
+    }
+    CHECK(fromDoc == names);
+    // The preset group declares every core token with a value of its type (lint token.core), and
+    // the extension rules have nothing to say about it.
+    bundle::LintOptions options;
+    options.presetGroupDir = XT_SYMBOLS_DIR;
+    const bundle::LintReport report = bundle::lintGroup(XT_SYMBOLS_DIR, options);
+    for (const bundle::LintIssue& issue : report.issues) {
+        CAPTURE(issue.message);
+        CHECK(issue.code != "token.core");
+        CHECK(issue.code != "token.role");
+    }
 }

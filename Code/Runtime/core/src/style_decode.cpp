@@ -81,6 +81,14 @@ void initNonAnimatableDefaults(ComputedStyle& style) {
     style.transitionCount = 0;
     style.animationOffset = 0;
     style.animationCount = 0;
+    for (int i = 0; i < 8; ++i) {  // T-778: every longhand at its initial value.
+        style.animationLonghandOffset[i] = 0;
+        style.animationLonghandCount[i] = 0;
+    }
+    for (int i = 0; i < 4; ++i) {
+        style.transitionLonghandOffset[i] = 0;
+        style.transitionLonghandCount[i] = 0;
+    }
     style.effectOffset = 0;  // `effect: none` (18-effects.md §18.4, T-51b's initial value).
     style.effectCount = 0;
     style.backgroundImage = kInvalidAsset;

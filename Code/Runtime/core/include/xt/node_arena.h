@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "xt/assert.h"
+#include "xt/dirty_cause.h"
 #include "xt/node.h"
 #include "xt/types.h"
 
@@ -14,6 +15,8 @@
 /// See Docs/design/01-architecture.md §1.3-1.4, Docs/tasks/T-04.md
 
 namespace xt {
+
+class PerfTracker;
 
 /// T-244 (Docs/design/32-rigging-and-deformation.md §32.3): the skinned geometry of one skinned
 /// Path (`points`, laid out as PathNodeData::points) or Mesh (`positions`), in the skeleton group's
@@ -226,22 +229,47 @@ public:
     uint8_t dirty(NodeId id) const;
     /// Sets bits on id and propagates per Docs/design/01-architecture.md §1.4:
     ///   kDirtyStyle     -> self | all ancestors (to root)
-    ///   kDirtyLayout    -> self | ancestors up to and including the first node where
-    ///                      stopsLayoutPropagation() is true (currently always false, so to root)
+    ///   kDirtyLayout    -> self | ancestors up to and including the nearest layout boundary
+    ///                      above id (T-755, 06 §6.x: an Element whose LayoutFlags carry
+    ///                      kLayoutBoundary; id itself does not count), which also gets kLayoutRoot
+    ///                      and joins layoutRoots(); a node without a parent is that root when the
+    ///                      walk reaches it
     ///   kDirtyTransform -> self | all descendants (preorder)
     ///   kDirtyPaint, kDirtyTree -> self only
-    void markDirty(NodeId id, uint8_t bits);
+    /// T-747 (Docs/design/57-measurement.md §57.3): `cause` says why (no default: every caller
+    /// decides). Each call moves visualGeneration() and counts once per kind in the frame's cause
+    /// table (FrameStats::causes), however far the bits propagate.
+    void markDirty(NodeId id, uint8_t bits, DirtyCause cause);
     /// T-723 (Docs/design/10-backends.md §10.16 W5): sets kDirtyStyle on id alone, without the
     /// upward propagation of markDirty() -- a changed style binding declaration re-resolves the
     /// element, never its ancestors. StyleEngine::resolve() walks every tree whole, so it needs no
     /// ancestor bit to reach id. A later markDirty(kDirtyStyle) below id stops at id (§1.4's early
     /// exit) and leaves id's ancestors unmarked; no selector depends on a descendant's style.
-    void markStyleDirtySelf(NodeId id);
+    void markStyleDirtySelf(NodeId id, DirtyCause cause);
     /// Calls markDirty(n, bits) for id and each ancestor on the path from id up to and including
     /// stopAt; if stopAt is not found on that path (e.g. kInvalidNode), walks all the way to the
     /// document root. See Docs/design/19-3d-space.md §19.3, Docs/tasks/T-43c.md "T-43b 遺留修正"
     /// 2 (isSpaceRoot cache invalidation when a descendant's is3D changes).
-    void markDirtyAncestors(NodeId id, uint8_t bits, NodeId stopAt);
+    void markDirtyAncestors(NodeId id, uint8_t bits, NodeId stopAt, DirtyCause cause);
+    // T-747 (57 §57.3 items 1-3, 23 §23.ag item 1): the visual generation and the cause table.
+
+    /// A write that changes what is painted without a dirty bit (a caret, an external texture, a
+    /// paint option...): moves visualGeneration() and counts as a paint write of `cause` (for `node`
+    /// at detail level >= 1 when it is not kInvalidNode).
+    void noteVisualChange(DirtyCause cause, NodeId node);
+    /// Moves on every markDirty*() / noteVisualChange() call, at the write; never goes back. Two
+    /// equal values mean nothing that may change the paint was written in between.
+    uint64_t visualGeneration() const { return m_visualGeneration; }
+    /// The cause of the last write. Work derived from earlier writes (a style resolve marking
+    /// layout, layout marking transforms) is attributed to it.
+    DirtyCause lastCause() const { return m_lastCause; }
+    /// The cause the entry point now running gave (DirtyCauseScope): what a write that serves
+    /// several callers (ElementRef::setText, a trigger's action) uses. HostApi outside any scope.
+    DirtyCause ambientCause() const { return m_ambientCause; }
+    void setAmbientCause(DirtyCause cause) { m_ambientCause = cause; }
+    /// The tracker whose current frame the cause table is counted into (not owned; null = none).
+    void setPerfTracker(PerfTracker* tracker) { m_perf = tracker; }
+
     /// Clears every dirty bit on id, without propagation.
     void clearDirty(NodeId id);
     /// Clears exactly `bits` on id, leaving any other set dirty bits untouched (no propagation --
@@ -249,8 +277,13 @@ public:
     /// clears only kDirtyStyle per element after recomputing it, keeping kDirtyLayout/kDirtyPaint
     /// set by that same resolve).
     void clearDirtyBits(NodeId id, uint8_t bits);
-    /// Clears every node's dirty bits (e.g. after a frame's dirty processing is fully flushed).
+    /// Clears every node's dirty bits (e.g. after a frame's dirty processing is fully flushed), and
+    /// layoutRoots().
     void clearAllDirty();
+    /// T-755 (06 §6.x item 2): the nodes markDirty() gave kLayoutRoot since the last
+    /// clearAllDirty(), in that order. May hold nodes destroyed since, reused slots and duplicates:
+    /// a reader keeps the alive ones that still carry kLayoutRoot.
+    const std::vector<NodeId>& layoutRoots() const { return m_layoutRoots; }
     /// True if any alive node carries any of `bits` (O(n) scan; used once per frame).
     bool anyDirty(uint8_t bits) const;
 
@@ -346,9 +379,11 @@ public:
 
 private:
     void checkAlive(NodeId id) const;
-    /// Extension point for kDirtyLayout propagation (e.g. stopping at position:absolute elements).
-    /// ComputedStyle is empty in this task, so this always returns false.
+    /// T-755 (06 §6.x item 2): kDirtyLayout propagation stops at `id` -- an Element the last layout
+    /// pass judged a layout boundary (ElementData::layoutFlags & kLayoutBoundary).
     bool stopsLayoutPropagation(NodeId id) const;
+    /// T-755: gives `id` kLayoutRoot and appends it to m_layoutRoots (once while the bit is set).
+    void markLayoutRoot(NodeId id);
     uint32_t allocateData(NodeKind kind);
     void freeNodeData(NodeId id);
     void pushChildrenReversed(NodeId id) const;
@@ -375,8 +410,15 @@ private:
     std::vector<ConstraintNodeData> m_constraints;  // T-243
     std::vector<MeshNodeData> m_meshes;             // T-243
     std::vector<uint8_t> m_dirty;
+    std::vector<NodeId> m_layoutRoots;  // T-755: see layoutRoots().
     std::vector<StringId> m_name;
     WorldLayerState m_worldLayerState;  // T-701
+    // T-747: see visualGeneration(), lastCause(), ambientCause(), setPerfTracker().
+    uint64_t m_visualGeneration = 0;
+    DirtyCause m_lastCause = DirtyCause::Load;
+    DirtyCause m_ambientCause = DirtyCause::HostApi;
+    PerfTracker* m_perf = nullptr;
+    void countCause(DirtyCause cause, uint8_t bits, NodeId node);
 
     std::vector<uint32_t> m_generation;
     std::vector<NodeId> m_freeList;
@@ -417,6 +459,23 @@ private:
     mutable std::vector<NodeId> m_childScratch;
     mutable std::vector<NodeId> m_postBuf;
     std::vector<NodeId> m_destroyBuf;
+};
+
+/// T-747: sets `arena`'s ambient cause (NodeArena::ambientCause) for the scope's lifetime and
+/// restores the previous one after: an entry point (input dispatch, a binding, a flow sink) says
+/// why the writes it makes through shared paths happen.
+class DirtyCauseScope {
+public:
+    DirtyCauseScope(NodeArena& arena, DirtyCause cause) : m_arena(arena), m_previous(arena.ambientCause()) {
+        arena.setAmbientCause(cause);
+    }
+    ~DirtyCauseScope() { m_arena.setAmbientCause(m_previous); }
+    DirtyCauseScope(const DirtyCauseScope&) = delete;
+    DirtyCauseScope& operator=(const DirtyCauseScope&) = delete;
+
+private:
+    NodeArena& m_arena;
+    DirtyCause m_previous;
 };
 
 /// T-345 (25 §25.4.2 item 4): true when `node` or one of its ancestors carries kInMotion (a

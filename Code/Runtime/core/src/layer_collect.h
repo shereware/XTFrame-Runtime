@@ -90,14 +90,19 @@ void collectLayers(const NodeArena& arena, NodeId child, const Mat4& view, std::
 /// (`(view * mat4FromMat2x3(child.world) * (anchor, 0, 1)).z`, 0 under a CSS root). Writes the
 /// PieceRange of every node of the child's subtree into `ranges` (sized arena.capacity()).
 ///
-/// Returns false -- after removing the child's flat items again -- when the child's flat content
-/// cannot be split: a flat node with 3D layers inside forms a group (opacity < 1, a blend mode,
-/// enabled effects, Mask or Modifier children) whose flat content spans more than one piece. The
-/// ruling leaves that combination undecided; the caller then keeps the pre-T-727 order for this
-/// child (its whole flat content before every item of the segment). A child that is itself a 3D
-/// layer has no flat content and returns true.
-bool collectSegmentItems(const NodeArena& arena, NodeId child, const Mat4& view, std::vector<LayerEntry>& out,
+/// T-762 (19 §19.y.2): a flat node for which flattens3D() holds keeps its whole subtree: no 3D layer
+/// below it is an entry of its own, and every node below it -- those layers included -- gets the
+/// node's piece as its PieceRange (first == last). The Painter and the hit test then meet those
+/// layers in document order while walking the piece and draw / test them in place, each on its own
+/// plane ("embedded" layers: a node with is3D != 0 whose range admits the piece being drawn).
+void collectSegmentItems(const NodeArena& arena, NodeId child, const Mat4& view, std::vector<LayerEntry>& out,
                          uint32_t& docOrderCounter, std::vector<PieceRange>& ranges);
+
+/// T-762 (19 §19.y.2): does the flat node `n` group its subtree -- opacity < 1, a non-Normal blend,
+/// enabled effects, Mask or Modifier children, or (an Element) an overflow clip or a `clip-path`?
+/// Such a node inside a 3D space keeps its 3D descendants out of the space's depth sort
+/// (collectSegmentItems()).
+bool flattens3D(const NodeArena& arena, NodeId n);
 
 /// Sorts `entries` by (depth ascending, docOrder ascending) -- farthest from the camera first,
 /// per §19.6's "由遠到近（depth 小者先）畫". Uses std::sort (not stable_sort, per 01.7's no-per-

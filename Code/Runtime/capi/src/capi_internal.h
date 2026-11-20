@@ -312,5 +312,8 @@ void releaseGpuPoolUse(xt_surface& surface);
 bool convertInput(const xt_input_event& e, InputEvent& out, const char* function = "xt_surface_push_input");
 /// T-636: the draw counters of the surface's last GPU render (false when it has none).
 bool gpuDrawCounts(const xt_surface& surface, uint32_t& executed, uint32_t& skipped);
+/// T-749 (xt_surface_needs_frame): the surface's last GPU build held a coverage shape back for the frame
+/// budget (SurfaceGpu::repaint), so its next xt_surface_render_gpu builds again. False without GPU resources.
+bool gpuWantsAnotherFrame(const xt_surface& surface);
 
 }  // namespace xt::capi

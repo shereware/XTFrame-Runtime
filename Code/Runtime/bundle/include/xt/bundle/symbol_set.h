@@ -160,7 +160,9 @@ ImportReport importSet(const std::filesystem::path& file, const std::filesystem:
 /// The xtui skill's `references/tokens.json` for the group `groupDir`: `themes.base` from its token
 /// file and one theme per theme file (`tokens-night.xts` -> `dark`), the font families, sizes,
 /// spacing scale, radii, the shadow and the board size, in the layout of the hand-written file
-/// `Skills/skills/xtui/references/tokens.json` had (Docs/design/49-symbol-sets.md 49.7). kNotFound
+/// `Skills/skills/xtui/references/tokens.json` had (Docs/design/49-symbol-sets.md 49.7), and (T-743)
+/// `tokens`: every token of the base file, sorted by name, as `{name, value, core}` -- `core` true
+/// for a name of the core vocabulary (coreTokens(), 47 "共同詞彙清單"). kNotFound
 /// when the group has no readable token file; kInvalidArgument (with `error`) when the token file
 /// lacks the colour tokens the skill's themes need.
 Status tokensJson(const std::filesystem::path& groupDir, std::string& out, std::string& error);

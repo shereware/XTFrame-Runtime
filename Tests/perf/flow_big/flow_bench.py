@@ -105,8 +105,27 @@ def run(args, fixture, tmp):
         if "warning" in line or "error" in line:
             sys.stderr.write(line + chr(10))
     with open(out, newline="") as f:
-        rows = [{k: float(v) for k, v in r.items()} for r in csv.DictReader(f)]
-    return rows
+        rows = [{k: float(v) for k, v in r.items() if v != ""} for r in csv.DictReader(f)]
+    return [from_frame_record(r) for r in rows] if rows and "frame_wall_ms" in rows[0] else rows
+
+
+# T-750: xtframe-view --perf-csv writes FrameRecord v1 (Docs/design/57-measurement.md 57.5) plus its host.*
+# columns; xt_perf_flow --csv keeps the FrameStats names. The names this script reads, from a record row.
+RECORD_NAMES = {"flowMs": "flow_ms", "inputMs": "input_ms", "styleMs": "update_style_ms",
+                "layoutMs": "update_layout_ms", "animateMs": "update_animate_ms",
+                "transformMs": "update_transform_ms", "setStyleCalls": "set_style_calls",
+                "flowSignals": "flow_signals", "flowNodeEvals": "flow_node_evals",
+                "flowSinkWrites": "flow_sink_writes", "flowDeliverMs": "host.flow_deliver_ms",
+                "flowEvalMs": "host.flow_eval_ms", "flowSinkMs": "host.flow_sink_ms", "flowPollMs": "host.flow_poll_ms",
+                "flowSignalsCoalesced": "host.flow_signals_coalesced", "flowFanOutEdges": "host.flow_fan_out_edges",
+                "flowSinkTyped": "host.flow_sink_typed", "flowSinkText": "host.flow_sink_text",
+                "flowAllocs": "host.flow_allocs"}
+
+
+def from_frame_record(r):
+    out = {old: r.get(new, 0.0) for old, new in RECORD_NAMES.items()}
+    out["updateMs"] = r.get("input_ms", 0.0) + r.get("update_ms", 0.0)  # the record's update is exclusive
+    return out
 
 
 def measure(rows, keep):

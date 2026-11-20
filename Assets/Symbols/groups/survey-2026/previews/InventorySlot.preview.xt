@@ -1,0 +1,50 @@
+<xt version="2">
+  <head>
+    <symbols src="../InventorySlot.xt"/>
+  </head>
+  <body>
+    <div id="Ground"/>
+    <div id="Stage">
+      <div id="Row">
+        <use symbol="InventorySlot" id="S1" slot:badge="1" slot:caption="Flashlight"/>
+        <use symbol="InventorySlot" id="S2" variant:Icon="Crowbar" slot:badge="2" slot:caption="Crowbar"/>
+        <use symbol="InventorySlot" id="S3" variant:Icon="Clipboard" slot:badge="3" slot:caption="Clipboard"/>
+        <use symbol="InventorySlot" id="S4" variant:Icon="Key" slot:badge="4" slot:caption="Key"/>
+      </div>
+    </div>
+  </body>
+  <layout>
+    body {
+      position: relative;
+      width: 400px;
+      height: 110px;
+    }
+    #Ground {
+      position: absolute;
+      left: 0px;
+      top: 0px;
+      width: 100%;
+      height: 100%;
+    }
+    #Stage {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      padding: 16px;
+    }
+    #Row {
+      display: flex;
+      column-gap: 4px;
+    }
+  </layout>
+  <style src="../tokens.xts"/>
+  <style>
+    body {
+      background-color: var(--color-text-dim);
+    }
+    #Ground {
+      background-color: var(--color-bg);
+      opacity: 0.85;
+    }
+  </style>
+</xt>

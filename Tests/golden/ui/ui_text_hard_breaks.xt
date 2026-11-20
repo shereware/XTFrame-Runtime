@@ -1,0 +1,45 @@
+<xt version="2">
+
+  <ports>
+    m1: string in
+    m2: string in
+    m3: string in
+    m4: string in
+  </ports>
+
+  <body>
+    <div id="wrap" bind:text="m1"></div>
+    <div id="nowrap" bind:text="m2"></div>
+    <div id="center" bind:text="m3"></div>
+    <div id="right" bind:text="m4"></div>
+  </body>
+
+  <layout>
+    div {
+      margin: 4px 8px;
+      width: 240px;
+    }
+  </layout>
+  <style>
+    /* T-801 (07 7.2 supplement): port values with LF, CR LF, TAB and U+2028; only Tests/fonts. */
+    @font-face {
+      font-family: "Noto Sans";
+      src: "../../fonts/NotoSans-Regular.subset.ttf";
+    }
+    div {
+      font-family: "Noto Sans";
+      font-size: 16px;
+      color: #202020;
+      background-color: #e0e8ff;
+    }
+    #nowrap {
+      white-space: nowrap;
+    }
+    #center {
+      text-align: center;
+    }
+    #right {
+      text-align: right;
+    }
+  </style>
+</xt>

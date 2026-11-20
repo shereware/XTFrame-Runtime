@@ -59,16 +59,46 @@ public:
     /// fires the `timeline(<name>).end` / `.marker(<m>)` triggers. T-201: `scope` is the group's
     /// scope element (the root, or a symbol instance root); only chains and triggers that resolve
     /// `timeline` to that scope react.
-    void onTimelineEvent(StringId timeline, TimelineEventKind kind, StringId marker, NodeId scope);
+    /// T-774: `selfApplied` = applySelfControl() already performed this occurrence's self-control
+    /// actions; the trigger runs skip them (taking the outcome recorded then).
+    void onTimelineEvent(StringId timeline, TimelineEventKind kind, StringId marker, NodeId scope,
+                         bool selfApplied = false);
+    /// T-774 (58 §58.6 item 2; trigger_self_control.cpp): a self-control action is a `pause` /
+    /// `stop` / `seek` / `play(from=<marker>)` (not `hold`, not media) of a `timeline(<x>).marker`
+    /// or `.end` trigger acting on that same timeline `<x>`, run when the trigger fires (on a
+    /// statement head's chain before any `play` or `remove`; T-783: also behind an `if` reached
+    /// through self-control actions only, decided at the marker's time). The timeline step performs
+    /// them at the marker's (end's) time, before the frame is evaluated.
+    bool hasSelfControl() const { return !m_selfActions.empty(); }
+    /// True when some trigger reacting to this event of the group (`scope`) has a self-control action.
+    /// T-783: one behind an `if` (reached through self-control actions only) counts when the
+    /// condition, evaluated now, leads to it.
+    bool selfControls(StringId timeline, TimelineEventKind kind, StringId marker, NodeId scope);
+    /// Performs those actions now, in trigger order, and records each one's outcome for the run of
+    /// that trigger (onTimelineEvent() with `selfApplied`).
+    void applySelfControl(StringId timeline, TimelineEventKind kind, StringId marker, NodeId scope);
+    /// Forgets the recorded outcomes no trigger run took (Document::flushTimelineEvents()); T-783:
+    /// those of `<repeat>` instance copies go at RepeatController::flushEvents() (dropInstance...).
+    void dropSelfApplied() { dropSelfAppliedOf(false); }
+    void dropInstanceSelfApplied() { dropSelfAppliedOf(true); }
     /// T-177: a timeline played for one `<repeat>` instance (root `scope`) ended: resumes the
     /// chains waiting on it and fires the `timeline(<name>).end` triggers inside that instance.
-    void onInstanceTimelineEnd(NodeId scope, StringId timeline);
+    /// T-783: `selfApplied` as onTimelineEvent().
+    void onInstanceTimelineEnd(NodeId scope, StringId timeline, bool selfApplied = false);
+    /// T-783: selfControls() / applySelfControl() for the end of the copy of `timeline` played for
+    /// the `<repeat>` instance `scope` (the `.end` triggers inside that instance).
+    bool instanceSelfControls(NodeId scope, StringId timeline);
+    void applyInstanceSelfControl(NodeId scope, StringId timeline);
     /// T-191: the `<video>`/`<sequence>` with id `id` played to its end: resumes the chains
     /// waiting on `play(<id>)` and fires `media(<id>).end`.
     void onMediaEnd(StringId id);
     /// T-177: registers a copied `<repeat>` instance element's timeline triggers (its
     /// NodeCommon::triggerTable is already set).
     void bindNode(NodeId node);
+    /// T-738 (56 §56.4): the custom-state bits to clear on `node` when the state bit(s) `mask` are
+    /// set: the group holding them in the first symbol scope (STGS) found from `node` outwards,
+    /// else every STAT group holding them (0 when none does).
+    uint32_t exclusiveMask(NodeId node, uint32_t mask);
 
     /// Input dispatch brackets: triggers fired in between run at endDefer().
     void beginDefer() { ++m_defer; }
@@ -80,6 +110,10 @@ public:
     /// `drag.over`) held back since the last call -- each (element, trigger) once, with the last
     /// event's values. Called at the start of Document::update().
     void flushContinuous();
+    /// T-749 (23 §23.ag item 6): chains queued (run()) or continuous-event triggers held back
+    /// (flushContinuous()) that the next update() runs. Chains waiting on a timeline are not counted:
+    /// the timeline they wait on keeps the Document updating while it plays.
+    bool hasQueued() const { return !m_queue.empty() || !m_continuous.empty(); }
 
     /// True when `node` has a chain started by one of its `event` triggers still waiting on a
     /// timeline.
@@ -112,6 +146,7 @@ private:
         uint8_t player = 0;           // T-194: the player whose input fired the trigger.
         Vec2 pointer{};               // T-386: the firing pointer event's `pos` (root coordinates).
         uint8_t button = 0;           // T-390: the firing pointer event's PointerButton + 1, 0 = none.
+        bool selfApplied = false;     // T-774: its self-control actions already ran.
     };
     struct Waiter {
         NodeId node = kInvalidNode;
@@ -130,7 +165,24 @@ private:
     enum class Outcome : uint8_t { Done, Wait, Stop };
 
     void runJob(const Job& job);
-    void runChain(NodeId node, uint32_t trigger, uint16_t index, float value, uint32_t port, uint8_t player);
+    void runChain(NodeId node, uint32_t trigger, uint16_t index, float value, uint32_t port, uint8_t player,
+                  bool selfApplied = false);
+    /// T-774: whether `node`'s trigger `index` reacts to this timeline event (onTimelineEvent()).
+    bool matchesTimelineEvent(NodeId node, uint32_t index, StringId timeline, TimelineEventKind kind,
+                              StringId marker, NodeId scope) const;
+    /// T-774: fills m_selfActions from the TRIG chunk (load()).
+    void indexSelfActions();
+    /// T-783: follows trigger `index` of `node` as runChain() would, deciding each `if` it may
+    /// (see indexSelfActions()) now; `apply`: performs the self-control actions reached and records
+    /// their outcomes and the `if` results for the trigger run. True when one was reached.
+    bool selfChain(NodeId node, uint32_t index, bool apply, bool instance = false);
+    /// T-783: whether trigger `index` of `node` is a `timeline(<timeline>).end` trigger inside the
+    /// instance `scope` with a self-control action (onInstanceTimelineEnd()'s match).
+    bool instanceEndTrigger(NodeId node, uint32_t index, NodeId scope, StringId timeline) const;
+    void dropSelfAppliedOf(bool instance);
+    /// T-774: takes (removes) the outcome applySelfControl() recorded for this action, if any.
+    bool takeSelfApplied(NodeId node, uint32_t trigger, uint16_t action, Outcome& outcome, StringId& waitFor,
+                         NodeId& waitScope, NodeId& waitGroup);
     Outcome perform(NodeId node, const IrTriggerAction& action, StringId& waitTimeline, NodeId& waitScope,
                     NodeId& waitGroup, float value, uint32_t port, uint8_t player);
 
@@ -145,13 +197,43 @@ private:
     /// The scopePath of Document::playTimeline() etc. for a scope element ("" for the root).
     std::string_view scopePath(NodeId scope) const;
 
+    /// T-738: the STGS scope of `node` when it is a listed instance root (or a `<repeat>` copy of
+    /// one), else kNoScope.
+    uint32_t scopeOf(NodeId node);
+    static constexpr uint32_t kNoScope = 0xFFFFFFFFu;
+    /// T-738: the STGS roots that are document elements (not template elements), by node.
+    struct ScopeRoot {
+        NodeId node = kInvalidNode;
+        uint32_t generation = 0;
+        uint32_t scope = 0;
+    };
+
     Document& m_doc;
+    std::vector<ScopeRoot> m_scopeRoots;  // T-738: ascending node.
+    bool m_scopeRootInTemplate = false;   // T-738: some STGS root is a template element.
     std::vector<Job> m_queue;
     /// T-389: the held-back continuous-event jobs, one per (element, generation, trigger).
     std::vector<Job> m_continuous;
     std::vector<Waiter> m_waiters;
     // (element, trigger index) of every TimelineEnd / TimelineMarker trigger.
     std::vector<std::pair<NodeId, uint32_t>> m_timelineTriggers;
+    /// T-774: (trigger index, 1-based action index) of every self-control action, ascending.
+    std::vector<std::pair<uint32_t, uint16_t>> m_selfActions;
+    /// T-783: the triggers (ascending) with a self-control action behind an `if`.
+    std::vector<uint32_t> m_guardedSelf;
+    /// T-774: what applySelfControl() performed and the trigger runs have not taken yet.
+    struct SelfApplied {
+        NodeId node = kInvalidNode;
+        uint32_t generation = 0;
+        uint32_t trigger = 0;
+        uint16_t action = 0;
+        Outcome outcome = Outcome::Done;
+        StringId waitFor = kInvalidString;
+        NodeId waitScope = kInvalidNode;
+        NodeId waitGroup = kInvalidNode;
+        bool instance = false;  // T-783: recorded for a `<repeat>` instance copy's end.
+    };
+    std::vector<SelfApplied> m_selfApplied;
     int m_defer = 0;
     bool m_running = false;
     uint32_t m_currentTrigger = 0xFFFFFFFFu;  // T-374: the TRIG trigger runChain() is running.

@@ -239,8 +239,10 @@ TEST_CASE("Document: layout applies object-fit: contain to the anim scene root")
     // commits ComputedStyle wholesale, width/height default to auto). Get that out of the way first.
     ctx.update(0.0f);
 
-    setProperty(doc->arena(), anim.node, prop::Width, Value::ofLength(400, LengthUnit::Px));
-    setProperty(doc->arena(), anim.node, prop::Height, Value::ofLength(400, LengthUnit::Px));
+    setProperty(doc->arena(), anim.node, prop::Width, Value::ofLength(400, LengthUnit::Px),
+                DirtyCause::HostApi);
+    setProperty(doc->arena(), anim.node, prop::Height, Value::ofLength(400, LengthUnit::Px),
+                DirtyCause::HostApi);
     ctx.setViewport(Rect{0, 0, 400, 400}, 1.0f);
     ctx.update(0.0f);
     const NodeCommon& c1 = doc->arena().common(sceneRoot);
@@ -249,7 +251,8 @@ TEST_CASE("Document: layout applies object-fit: contain to the anim scene root")
     CHECK(c1.translate.x == doctest::Approx(0.0f));
     CHECK(c1.translate.y == doctest::Approx(0.0f));
 
-    setProperty(doc->arena(), anim.node, prop::Height, Value::ofLength(200, LengthUnit::Px));
+    setProperty(doc->arena(), anim.node, prop::Height, Value::ofLength(200, LengthUnit::Px),
+                DirtyCause::HostApi);
     ctx.update(0.0f);
     const NodeCommon& c2 = doc->arena().common(sceneRoot);
     CHECK(c2.scale.x == doctest::Approx(1.0f));

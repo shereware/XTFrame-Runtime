@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <vector>
@@ -7,6 +8,7 @@
 #include "xt/box_shadow.h"
 #include "xt/effect_utils.h"
 #include "xt/geom.h"
+#include "xt/project3d.h"
 #include "xt/text_shaper.h"
 
 /// Damage (dirty rectangle) computation from a command-list diff. See
@@ -150,6 +152,56 @@ Rect clipAndSnap(const Rect& rect, const Rect& viewport) {
     return Rect{x0, y0, x1 - x0, y1 - y0};
 }
 
+/// T-760 (10 §10.16 W6 item 1): the area of the union of `rects` (at most kMaxDamageRects of them;
+/// overlaps counted once). Coordinate compression on the stack: the rectangles' edges cut the plane
+/// into cells, and a cell counts when some rectangle covers it. No allocation.
+float unionArea(const std::vector<Rect>& rects) {
+    if (rects.size() > kMaxDamageRects) {
+        float total = 0;  // Unreachable (addRect() merges down to kMaxDamageRects): the sum bounds it.
+        for (const Rect& r : rects) {
+            total += areaOf(r);
+        }
+        return total;
+    }
+    std::array<float, 2 * kMaxDamageRects> xs{};
+    std::array<float, 2 * kMaxDamageRects> ys{};
+    size_t n = 0;
+    for (const Rect& r : rects) {
+        if (r.w <= 0 || r.h <= 0) {
+            continue;
+        }
+        xs[n] = r.x;
+        ys[n] = r.y;
+        xs[n + 1] = r.x + r.w;
+        ys[n + 1] = r.y + r.h;
+        n += 2;
+    }
+    std::sort(xs.begin(), xs.begin() + static_cast<std::ptrdiff_t>(n));
+    std::sort(ys.begin(), ys.begin() + static_cast<std::ptrdiff_t>(n));
+    double area = 0;
+    for (size_t i = 0; i + 1 < n; ++i) {
+        const float x0 = xs[i];
+        const float x1 = xs[i + 1];
+        if (!(x1 > x0)) {
+            continue;
+        }
+        for (size_t j = 0; j + 1 < n; ++j) {
+            const float y0 = ys[j];
+            const float y1 = ys[j + 1];
+            if (!(y1 > y0)) {
+                continue;
+            }
+            for (const Rect& r : rects) {
+                if (r.w > 0 && r.h > 0 && r.x <= x0 && x1 <= r.x + r.w && r.y <= y0 && y1 <= r.y + r.h) {
+                    area += static_cast<double>(x1 - x0) * static_cast<double>(y1 - y0);
+                    break;
+                }
+            }
+        }
+    }
+    return static_cast<float>(area);
+}
+
 /// True when `inner` lies entirely within `outer`.
 bool rectContains(const Rect& outer, const Rect& inner) {
     return inner.x >= outer.x && inner.y >= outer.y && inner.x + inner.w <= outer.x + outer.w &&
@@ -200,9 +252,10 @@ void addRect(std::vector<Rect>& rects, const Rect& rect) {
 
 /// T-644: a group opener whose commandBounds() also bound every pixel its content can reach (the
 /// clip shapes, and the boundsHint of a layer, mask, effect or projection, whose buffers are that
-/// big). PushTransform3D draws nothing by itself but only occurs inside a PushProjection, whose
-/// boundsHint covers its content (a changed transform alone added nothing before T-644 either).
-/// EndMaskContent has no payload: it is unmatched only when it moved, i.e. the mask's phases changed.
+/// big). PushTransform3D draws nothing by itself; T-760: the damage takes its bounds as the
+/// projected extent of its range (layerRangeBounds()), so a moved layer damages where its content
+/// was and is. EndMaskContent has no payload: it is unmatched only when it moved, i.e. the mask's
+/// phases changed.
 bool boundsItsContent(CmdKind kind) {
     switch (kind) {
         case CmdKind::PushClipRect:
@@ -909,30 +962,208 @@ bool commandBoundsInFrame(const CommandList& list, const Command& cmd, const Mat
     return std::isfinite(out.x) && std::isfinite(out.y) && std::isfinite(out.w) && std::isfinite(out.h);
 }
 
+void commandListStorage(const CommandList& list, std::vector<uintptr_t>& out) {
+    out.clear();
+    const auto add = [&out](const auto& v) {
+        out.push_back(reinterpret_cast<uintptr_t>(v.data()));
+        out.push_back(static_cast<uintptr_t>(v.size()));
+    };
+    add(list.commands);
+    add(list.fills);
+    add(list.strokes);
+    add(list.images);
+    add(list.glyphRuns);
+    add(list.clipRects);
+    add(list.clipPaths);
+    add(list.layers);
+    add(list.masks);
+    add(list.projections);
+    add(list.transforms3);
+    add(list.imageQuads);
+    add(list.effectCmds);
+    add(list.effects);
+    add(list.verbs);
+    add(list.points);
+    add(list.stops);
+    add(list.glyphs);
+    add(list.glyphPos);
+    add(list.dashes);
+    add(list.particles);
+    add(list.particleInstances);
+    add(list.imageMeshes);
+    add(list.meshVertices);
+    add(list.meshIndices);
+    add(list.boxShadows);
+}
+
+namespace {
+
+/// T-760 (10 §10.16 W6 item 2): the projections open at a command, kept as the backends keep them
+/// (19 §19.7's mapping stack), and each level's PushProjection boundsHint (screen px).
+struct ProjectionStack {
+    std::vector<project3d::Mapping> mappings;
+    std::vector<Rect> hints;
+    void clear() {
+        mappings.clear();
+        hints.clear();
+    }
+    /// Follows `cmd` (after its bounds were taken).
+    void track(const CommandList& list, const Command& cmd) {
+        switch (cmd.kind) {
+            case CmdKind::PushProjection: {
+                const ProjectionCmd& c = list.projections[cmd.index];
+                project3d::Mapping m;
+                m.hasProjection = true;
+                m.viewProj = c.viewProj;
+                m.rootXf = c.rootXf;
+                m.planeWorld3 = mat4Identity();
+                mappings.push_back(m);
+                hints.push_back(c.boundsHint);
+                break;
+            }
+            case CmdKind::PopProjection:
+                if (!mappings.empty()) {
+                    mappings.pop_back();
+                    hints.pop_back();
+                }
+                break;
+            case CmdKind::PushTransform3D:
+                if (!mappings.empty()) {
+                    mappings.back().planeWorld3 = list.transforms3[cmd.index].world3;
+                }
+                break;
+            case CmdKind::PopTransform3D:
+                if (!mappings.empty()) {
+                    mappings.back().planeWorld3 = mat4Identity();
+                }
+                break;
+            default:
+                break;
+        }
+    }
+};
+
+/// Commands whose commandBounds() is in the coordinates of the plane they are drawn on (their `xf`,
+/// or plane points): inside a projection those bounds are not screen bounds. The group openers'
+/// hints (layer, mask, effect, projection) are screen px already.
+bool boundsOnPlane(CmdKind kind) {
+    switch (kind) {
+        case CmdKind::FillPath:
+        case CmdKind::StrokePath:
+        case CmdKind::DrawImage:
+        case CmdKind::DrawGlyphs:
+        case CmdKind::PushClipRect:
+        case CmdKind::PushClipPath:
+        case CmdKind::DrawImageQuad:
+        case CmdKind::DrawParticles:
+        case CmdKind::DrawImageMesh:
+        case CmdKind::DrawBoxShadow:
+            return true;
+        default:
+            return false;
+    }
+}
+
+/// T-760: `cmd`'s commandBounds() on the screen. On a plane inside a projection the box's corners are
+/// projected (with every corner in front of the eye, a projective map takes the box into the hull of
+/// its corners); a corner behind the eye or a non-finite result falls back to the innermost open
+/// projection's boundsHint.
+Rect screenBounds(const CommandList& list, const Command& cmd, const ProjectionStack& open) {
+    const Rect r = commandBounds(list, cmd);
+    if (open.mappings.empty() || !boundsOnPlane(cmd.kind) || (r.w <= 0 && r.h <= 0)) {
+        return r;
+    }
+    const Vec2 corners[4] = {Vec2{r.x, r.y}, Vec2{r.x + r.w, r.y}, Vec2{r.x, r.y + r.h},
+                             Vec2{r.x + r.w, r.y + r.h}};
+    float minX = 0, minY = 0, maxX = 0, maxY = 0;
+    for (size_t i = 0; i < 4; ++i) {
+        bool ok = false;
+        const Vec2 p = project3d::projectPoint(open.mappings, Mat2x3{}, corners[i], ok);
+        if (!ok || !std::isfinite(p.x) || !std::isfinite(p.y)) {
+            return open.hints.back();
+        }
+        minX = i == 0 ? p.x : std::min(minX, p.x);
+        minY = i == 0 ? p.y : std::min(minY, p.y);
+        maxX = i == 0 ? p.x : std::max(maxX, p.x);
+        maxY = i == 0 ? p.y : std::max(maxY, p.y);
+    }
+    return Rect{minX, minY, maxX - minX, maxY - minY};
+}
+
+/// T-760: the screen extent of the 3D layer opened by the PushTransform3D at `index` -- the union of
+/// screenBounds() over its range up to the matching PopTransform3D (an effect's hint in it carries
+/// its reach; a nested projection, its own hint). `open` is the stack at `index`; `scratch` is
+/// overwritten.
+Rect layerRangeBounds(const CommandList& list, size_t index, const ProjectionStack& open,
+                      ProjectionStack& scratch) {
+    scratch.mappings.assign(open.mappings.begin(), open.mappings.end());
+    scratch.hints.assign(open.hints.begin(), open.hints.end());
+    scratch.track(list, list.commands[index]);
+    const size_t depth = scratch.mappings.size();
+    Rect acc{};
+    bool any = false;
+    for (size_t j = index + 1; j < list.commands.size(); ++j) {
+        const Command& cmd = list.commands[j];
+        if (cmd.kind == CmdKind::PopTransform3D && scratch.mappings.size() == depth) {
+            break;
+        }
+        const Rect r = screenBounds(list, cmd, scratch);
+        if (r.w > 0 && r.h > 0) {
+            acc = any ? unite(acc, r) : r;
+            any = true;
+        }
+        scratch.track(list, cmd);
+    }
+    return acc;
+}
+
+}  // namespace
+
 void computeDamage(const CommandList& prev, const CommandList& cur, Rect viewportDevice, DamageList& out) {
+    static thread_local std::vector<uint64_t> curHashes;
+    computeDamageWithHashes(prev, nullptr, cur, viewportDevice, out, curHashes);
+}
+
+void computeDamageWithHashes(const CommandList& prev, const std::vector<uint64_t>* knownPrevHashes,
+                             const CommandList& cur, Rect viewportDevice, DamageList& out,
+                             std::vector<uint64_t>& curHashes, uint32_t* matchedOut) {
     out.clear();
     out.viewport = viewportDevice;
 
     // §23.2 step 2 (T-644 revision): hash both lists and align them; the unmatched commands form
-    // any number of changed ranges, and the matched ones between them stay clean.
-    static thread_local std::vector<uint64_t> prevHashes;
-    static thread_local std::vector<uint64_t> curHashes;
+    // any number of changed ranges, and the matched ones between them stay clean. T-737: the
+    // previous list's hashes are the caller's when it kept them from the last frame.
+    static thread_local std::vector<uint64_t> prevHashScratch;
     static thread_local std::vector<uint32_t> prevToCur;
     static thread_local std::vector<uint32_t> curToPrev;
     static thread_local std::vector<uint8_t> prevDirty;
     static thread_local std::vector<uint8_t> curDirty;
     /// Indices of the PushEffect commands open at the current command (B6 below).
     static thread_local std::vector<size_t> openEffects;
-    hashCommandList(prev, prevHashes);
+    if (knownPrevHashes == nullptr) {
+        hashCommandList(prev, prevHashScratch);
+    }
+    const std::vector<uint64_t>& prevHashes = knownPrevHashes != nullptr ? *knownPrevHashes : prevHashScratch;
     hashCommandList(cur, curHashes);
 
     // T-203 (Docs/design/18-effects.md §18.7): a custom effect's shader may read `xtTime`, so
     // its node changes on screen whenever the clock moves even though no command did.
     const bool clockMoved = !cur.shaders.empty() && cur.time != prev.time;
     if (prevHashes == curHashes && !clockMoved) {
+        if (matchedOut != nullptr) {
+            *matchedOut = static_cast<uint32_t>(curHashes.size());  // T-753
+        }
         return;  // Identical lists: nothing changed on screen.
     }
     (void)matchCommandHashes(prevHashes, curHashes, prevToCur, curToPrev);
+    if (matchedOut != nullptr) {
+        // T-753 (57 §57.3 item 4): the commands present in both lists with the same hash.
+        uint32_t matched = 0;
+        for (uint32_t m : curToPrev) {
+            matched += m != kNoCommandMatch ? 1u : 0u;
+        }
+        *matchedOut = matched;
+    }
     markDirty(prev, cur, prevToCur, curToPrev, prevDirty, curDirty);
 
     // §23.2 step 3: the changed ranges' bounds, in device pixels, clipped to the viewport.
@@ -941,6 +1172,10 @@ void computeDamage(const CommandList& prev, const CommandList& cur, Rect viewpor
     /// already intersected with the ones outside it (a PushClipRect pushes its enclosing entry
     /// unchanged, so overflow clips keep their pre-T-332 behaviour).
     static thread_local std::vector<Rect> openClips;
+    // T-760: the projections open at the current command, and layerRangeBounds()'s copy of them
+    // (allocated only for a list that has a projection).
+    ProjectionStack projections;
+    ProjectionStack rangeScratch;
     auto collect = [&](const CommandList& list, const std::vector<uint8_t>& dirty, float listDpr) {
         auto add = [&](const Rect& box) {
             Rect device{box.x * listDpr, box.y * listDpr, box.w * listDpr, box.h * listDpr};
@@ -971,6 +1206,15 @@ void computeDamage(const CommandList& prev, const CommandList& cur, Rect viewpor
         auto clipped = [&](Rect bounds) {
             return openClips.empty() ? bounds : intersect(bounds, openClips.back());
         };
+        // T-760: inside a projection, bounds on the screen (screenBounds(), layerRangeBounds()).
+        projections.clear();
+        auto boundsAt = [&](size_t i) {
+            const Command& cmd = list.commands[i];
+            if (cmd.kind == CmdKind::PushTransform3D && !projections.mappings.empty()) {
+                return layerRangeBounds(list, i, projections, rangeScratch);
+            }
+            return screenBounds(list, cmd, projections);
+        };
         openEffects.clear();
         bool inRange = false;
         for (size_t i = 0; i < list.commands.size(); ++i) {
@@ -986,13 +1230,14 @@ void computeDamage(const CommandList& prev, const CommandList& cur, Rect viewpor
                         add(commandBounds(list, list.commands[e]));
                     }
                 }
-                const Rect bounds = clipped(commandBounds(list, cmd));
+                const Rect bounds = clipped(boundsAt(i));
                 add(bounds);
                 trackClip(cmd, bounds);
             } else if (cmd.kind == CmdKind::PushClipPath || cmd.kind == CmdKind::PushClipRect ||
                        cmd.kind == CmdKind::PopClip) {
-                trackClip(cmd, clipped(commandBounds(list, cmd)));
+                trackClip(cmd, clipped(boundsAt(i)));
             }
+            projections.track(list, cmd);
             inRange = dirty[i] != 0;
             if (cmd.kind == CmdKind::PushEffect) {
                 openEffects.push_back(i);
@@ -1112,11 +1357,9 @@ void computeDamage(const CommandList& prev, const CommandList& cur, Rect viewpor
         }
     }
 
-    // §23.2 step 4: too much area left after merging -> just repaint everything.
-    float total = 0;
-    for (const Rect& r : out.rects) {
-        total += areaOf(r);
-    }
+    // §23.2 step 4: too much area left after merging -> just repaint everything. T-760: the union
+    // area (rectangles may overlap; the sum counted the overlap twice).
+    const float total = unionArea(out.rects);
     float viewportArea = areaOf(viewportDevice);
     if (out.rects.empty()) {
         return;

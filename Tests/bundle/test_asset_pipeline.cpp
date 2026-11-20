@@ -134,10 +134,12 @@ std::unique_ptr<Bundle> openBundle(const std::string& dir) {
     return std::move(bundle.value());
 }
 
-/// Renders the bundle's `hud` at 200 x 150 (dpr 1) through the software backend.
-std::vector<uint8_t> renderHud(Bundle& bundle, float dpr = 1.0f) {
+/// Renders the bundle's `hud` at 200 x 150 (dpr 1) through the software backend; `resolver`
+/// (T-759) replaces bundle.assets() when given.
+std::vector<uint8_t> renderHud(Bundle& bundle, float dpr = 1.0f, AssetResolver* resolver = nullptr) {
+    AssetResolver& assets = resolver != nullptr ? *resolver : bundle.assets();
     NullTextShaper shaper;
-    Context ctx(ContextConfig{&shaper, &bundle.assets()});
+    Context ctx(ContextConfig{&shaper, &assets});
     Result<DocumentHandle> handle = loadUi(ctx, bundle, "hud");
     REQUIRE(handle.ok());
     const int w = static_cast<int>(200 * dpr);
@@ -151,7 +153,7 @@ std::vector<uint8_t> renderHud(Bundle& bundle, float dpr = 1.0f) {
     sw::SwRenderer renderer;
     renderer.setTarget(target);
     renderer.clear(Color{1, 1, 1, 1});
-    renderer.render(list, &shaper, &bundle.assets(), &ctx.document(handle.value())->ir(), nullptr);
+    renderer.render(list, &shaper, &assets, &ctx.document(handle.value())->ir(), nullptr);
     return pixels;
 }
 
@@ -426,6 +428,81 @@ TEST_CASE("T-262a: Bundle::reload() after a re-pack refreshes the asset table, a
         ++variants;
     }
     CHECK(variants == 1);
+}
+
+TEST_CASE("T-759: Bundle::registerImageMeta gives a resolver of the caller's own the bundle's image meta") {
+    const std::string source = makeProject("register_meta");
+    const std::string plainOut = outDir("register_meta_plain");
+    const std::string atlasOut = outDir("register_meta_atlas");
+    REQUIRE(packWith(source, plainOut, PackOptions{}).ok);
+    PackOptions options;
+    options.atlas = true;
+    options.atlasScope = "bundle";
+    REQUIRE(packWith(source, atlasOut, options).ok);
+    std::unique_ptr<Bundle> bundle = openBundle(atlasOut);
+    REQUIRE(bundle->atlases().size() == 1);
+    const AtlasInfo& page = bundle->atlases()[0];
+    REQUIRE(page.entries.size() == 2);
+    REQUIRE(page.width > 0);
+    REQUIRE(page.height > 0);
+
+    // A tool's resolver over the same directory (xtframe-view's): no meta until it is registered.
+    FileAssetResolver own(atlasOut, sw::decodeImageBytes);
+    for (const AtlasEntryInfo& entry : page.entries) {
+        CHECK(own.imageMeta(std::string(kAtlasAssetScheme) + page.name + "#" + entry.asset) == nullptr);
+    }
+    bundle->registerImageMeta(own);
+
+    // Every atlas cell: its page, its sub-rectangle and the asset's slice, as assets() has them.
+    for (const AtlasEntryInfo& entry : page.entries) {
+        const std::string name = std::string(kAtlasAssetScheme) + page.name + "#" + entry.asset;
+        CAPTURE(name);
+        const AssetResolver::ImageMeta* meta = own.imageMeta(name);
+        REQUIRE(meta != nullptr);
+        CHECK(meta->inAtlas);
+        CHECK(meta->atlasFile == page.file);
+        CHECK(meta->atlasFile2x == page.file2x);
+        CHECK(meta->x == entry.x);
+        CHECK(meta->y == entry.y);
+        CHECK(meta->w == entry.w);
+        CHECK(meta->h == entry.h);
+        CHECK(meta->atlasW == page.width);
+        CHECK(meta->atlasH == page.height);
+        CHECK(meta->subUv.x == doctest::Approx(static_cast<float>(entry.x) / static_cast<float>(page.width)));
+        CHECK(meta->subUv.y ==
+              doctest::Approx(static_cast<float>(entry.y) / static_cast<float>(page.height)));
+        CHECK(meta->subUv.w == doctest::Approx(static_cast<float>(entry.w) / static_cast<float>(page.width)));
+        CHECK(meta->subUv.h ==
+              doctest::Approx(static_cast<float>(entry.h) / static_cast<float>(page.height)));
+        const AssetResolver::ImageMeta* reference = bundle->assets().imageMeta(name);
+        REQUIRE(reference != nullptr);
+        CHECK(meta->hasSlice == reference->hasSlice);
+        for (int i = 0; i < 4; ++i) {
+            CHECK(meta->slice[i] == reference->slice[i]);
+        }
+    }
+    // The plain rows' slices and variants (nine.png's @2x variant).
+    int rows = 0;
+    for (const AssetInfo& info : bundle->assetTable()) {
+        const AssetResolver::ImageMeta* reference = bundle->assets().imageMeta(info.file);
+        const AssetResolver::ImageMeta* meta = own.imageMeta(info.file);
+        CAPTURE(info.file);
+        CHECK((meta != nullptr) == (reference != nullptr));
+        if (meta != nullptr && reference != nullptr) {
+            CHECK(meta->hasSlice == reference->hasSlice);
+            CHECK(meta->variant2x == reference->variant2x);
+            CHECK(meta->variant3x == reference->variant3x);
+            ++rows;
+        }
+    }
+    CHECK(rows >= 1);
+
+    // And the UI drawn through that resolver equals the un-atlased bundle (the bound of the test
+    // above), not each image box showing the whole page.
+    std::unique_ptr<Bundle> plain = openBundle(plainOut);
+    const std::vector<uint8_t> a = renderHud(*plain);
+    const std::vector<uint8_t> b = renderHud(*bundle, 1.0f, &own);
+    CHECK(maxChannelDifference(a, b, nullptr) <= 1);
 }
 
 TEST_CASE("T-262a: a failing font subset after the atlas pass deletes none of the files the .xtir names") {

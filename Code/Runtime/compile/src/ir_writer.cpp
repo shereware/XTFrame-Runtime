@@ -158,6 +158,8 @@ void IrWriter::setMedia(MediaBuilder media) { m_media = std::move(media); }
 
 void IrWriter::setTimelineGroups(TimelineGroupBuilder groups) { m_timelineGroups = std::move(groups); }
 
+void IrWriter::setTimelineExprs(TimelineExprBuilder exprs) { m_timelineExprs = std::move(exprs); }
+
 void IrWriter::setCustomStates(CustomStateBuilder states) { m_customStates = std::move(states); }
 
 void IrWriter::setTriggers(TriggerBuilder triggers) { m_triggers = std::move(triggers); }
@@ -575,6 +577,25 @@ std::vector<uint8_t> IrWriter::finish() const {
         appendArray(payload, m_gridAreas);
         appendChunk(body, kChunkGRID, std::move(payload));
     }
+    // T-738 (56 §56.4): the symbol-scoped state groups, last; only when some symbol has one.
+    const bool hasStateScopes = !m_customStates.scopes.empty();
+    if (hasStateScopes) {
+        std::vector<uint8_t> payload;
+        appendArray(payload, m_customStates.scopes);
+        appendArray(payload, m_customStates.scopeGroups);
+        appendArray(payload, m_customStates.scopeRoots);
+        appendChunk(body, kChunkSTGS, std::move(payload));
+    }
+    // T-777 (58 §58.5): the timeline expression programs, last; only when a row has one.
+    const bool hasTimelineExprs = !m_timelineExprs.exprs.empty();
+    if (hasTimelineExprs) {
+        std::vector<uint8_t> payload;
+        appendArray(payload, m_timelineExprs.exprs);
+        appendArray(payload, m_timelineExprs.ops);
+        appendArray(payload, m_timelineExprs.curves);
+        appendArray(payload, m_timelineExprs.keys);
+        appendChunk(body, kChunkTEXP, std::move(payload));
+    }
 
     uint32_t chunkCount =
         4u + static_cast<uint32_t>(m_scenes.size()) + static_cast<uint32_t>(m_timelines.size()) +
@@ -582,7 +603,8 @@ std::vector<uint8_t> IrWriter::finish() const {
         (hasTimelineGroups ? 1u : 0u) + (hasVars ? 1u : 0u) + (hasCalcs ? 1u : 0u) + (hasMedia ? 1u : 0u) +
         (hasStates ? 1u : 0u) + (hasTriggers ? 1u : 0u) + (hasLocalization ? 1u : 0u) + (hasPorts ? 1u : 0u) +
         (hasBindings ? 1u : 0u) + (hasSubChains ? 1u : 0u) + (hasRepeats ? 1u : 0u) + (hasShaders ? 1u : 0u) +
-        (hasClipShapes ? 1u : 0u) + (hasGrid ? 1u : 0u);
+        (hasClipShapes ? 1u : 0u) + (hasGrid ? 1u : 0u) + (hasStateScopes ? 1u : 0u) +
+        (hasTimelineExprs ? 1u : 0u);
 
     IrHeader header{};
     std::memcpy(header.magic, "XTIR", 4);
@@ -748,6 +770,9 @@ IrWriter IrWriter::fromView(const IrView& view) {
         CustomStateBuilder sb;
         sb.names = toVector(view.customStates().names());
         sb.groups = toVector(view.customStates().groups());
+        sb.scopes = toVector(view.stateScopes().scopes());
+        sb.scopeGroups = toVector(view.stateScopes().groups());
+        sb.scopeRoots = toVector(view.stateScopes().roots());
         writer.setCustomStates(std::move(sb));
     }
     if (view.triggers().present()) {
@@ -823,6 +848,13 @@ IrWriter IrWriter::fromView(const IrView& view) {
         writer.m_gridTracks = toVector(gc.tracks());
         writer.m_gridAreaLists = toVector(gc.areaLists());
         writer.m_gridAreas = toVector(gc.areas());
+    }
+    if (view.timelineExprs().present()) {  // T-777: the pools are copied verbatim.
+        const TimelineExprChunk& te = view.timelineExprs();
+        writer.m_timelineExprs.exprs = toVector(te.exprs());
+        writer.m_timelineExprs.ops = toVector(te.ops());
+        writer.m_timelineExprs.curves = toVector(te.curves());
+        writer.m_timelineExprs.keys = toVector(te.keys());
     }
 
     return writer;

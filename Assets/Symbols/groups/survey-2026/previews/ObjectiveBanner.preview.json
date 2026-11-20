@@ -1,0 +1,11 @@
+{
+  "width": 360,
+  "height": 100,
+  "frames": 0,
+  "ports": {
+    "Obj.objective": "Find the way out"
+  },
+  "events": [
+    "update 0.6"
+  ]
+}

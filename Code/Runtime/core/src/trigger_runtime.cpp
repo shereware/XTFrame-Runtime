@@ -77,14 +77,6 @@ bool anyKeyMatches(uint32_t arg0) {
            key != KeyCode::MetaLeft && key != KeyCode::MetaRight;
 }
 
-void markStyleDirtySubtree(NodeArena& arena, NodeId node) {
-    arena.markDirty(node, static_cast<uint8_t>(kDirtyStyle));
-    arena.traversePreorder(node, [&arena](NodeId n) {
-        arena.markDirty(n, static_cast<uint8_t>(kDirtyStyle));
-        return true;
-    });
-}
-
 bool eraseNode(std::vector<NodeId>& list, NodeId node) {
     auto it = std::find(list.begin(), list.end(), node);
     if (it == list.end()) {
@@ -112,6 +104,24 @@ void queueSurfaceNotify(uint8_t& queue, uint8_t entry) {
 // -- TriggerRuntime -----------------------------------------------------------------------------
 
 void TriggerRuntime::load() {
+    indexSelfActions();  // T-774.
+    // T-738: the symbol-scoped state groups' instance roots (those of a `<repeat>` template are
+    // looked up through their copies, see scopeOf()).
+    for (const IrStateScopeRoot& root : m_doc.m_ir.stateScopes().roots()) {
+        if (root.element >= m_doc.m_docElementNodes.size()) {
+            continue;
+        }
+        if (m_doc.m_repeats->isTemplateElement(root.element)) {
+            m_scopeRootInTemplate = true;
+            continue;
+        }
+        const NodeId node = m_doc.m_docElementNodes[root.element];
+        if (node != kInvalidNode && m_doc.m_arena.alive(node)) {
+            m_scopeRoots.push_back(ScopeRoot{node, m_doc.m_arena.generation(node), root.scope});
+        }
+    }
+    std::sort(m_scopeRoots.begin(), m_scopeRoots.end(),
+              [](const ScopeRoot& a, const ScopeRoot& b) { return a.node < b.node; });
     const TriggerChunk& tc = m_doc.m_ir.triggers();
     for (size_t i = 0; i < tc.tables().size(); ++i) {
         const IrTriggerTable& table = tc.tables()[i];
@@ -490,8 +500,8 @@ void TriggerRuntime::flushContinuous() {
     run();
 }
 
-void TriggerRuntime::onTimelineEvent(StringId timeline, TimelineEventKind kind, StringId marker,
-                                     NodeId scope) {
+void TriggerRuntime::onTimelineEvent(StringId timeline, TimelineEventKind kind, StringId marker, NodeId scope,
+                                     bool selfApplied) {
     if (kind == TimelineEventKind::End) {
         for (size_t i = 0; i < m_waiters.size();) {
             const Waiter& w = m_waiters[i];
@@ -505,19 +515,26 @@ void TriggerRuntime::onTimelineEvent(StringId timeline, TimelineEventKind kind, 
         }
     }
     for (const auto& [node, index] : m_timelineTriggers) {
-        const IrTrigger& trig = m_doc.m_ir.triggers().triggers()[index];
-        const bool match =
-            trig.arg0 == timeline &&
-            ((kind == TimelineEventKind::End &&
-              static_cast<TriggerEvent>(trig.event) == TriggerEvent::TimelineEnd) ||
-             (kind == TimelineEventKind::Marker &&
-              static_cast<TriggerEvent>(trig.event) == TriggerEvent::TimelineMarker && trig.arg1 == marker));
-        // T-201: a trigger reacts to the group its own `play()` would reach.
-        if (match && m_doc.m_arena.alive(node) && timelineScope(node, timeline) == scope) {
-            m_queue.push_back(Job{node, m_doc.m_arena.generation(node), index, 0, 0.0f, 0xFFFFFFFFu});
+        if (matchesTimelineEvent(node, index, timeline, kind, marker, scope)) {
+            Job job{node, m_doc.m_arena.generation(node), index, 0, 0.0f, 0xFFFFFFFFu};
+            job.selfApplied = selfApplied;  // T-774.
+            m_queue.push_back(job);
         }
     }
     run();
+}
+
+bool TriggerRuntime::matchesTimelineEvent(NodeId node, uint32_t index, StringId timeline,
+                                          TimelineEventKind kind, StringId marker, NodeId scope) const {
+    const IrTrigger& trig = m_doc.m_ir.triggers().triggers()[index];
+    const bool match =
+        trig.arg0 == timeline &&
+        ((kind == TimelineEventKind::End &&
+          static_cast<TriggerEvent>(trig.event) == TriggerEvent::TimelineEnd) ||
+         (kind == TimelineEventKind::Marker &&
+          static_cast<TriggerEvent>(trig.event) == TriggerEvent::TimelineMarker && trig.arg1 == marker));
+    // T-201: a trigger reacts to the group its own `play()` would reach.
+    return match && m_doc.m_arena.alive(node) && timelineScope(node, timeline) == scope;
 }
 
 NodeId TriggerRuntime::timelineScope(NodeId node, StringId name) const {
@@ -546,7 +563,7 @@ std::string_view TriggerRuntime::scopePath(NodeId scope) const {
     return id != kInvalidString ? m_doc.string(id) : std::string_view{};
 }
 
-void TriggerRuntime::onInstanceTimelineEnd(NodeId scope, StringId timeline) {
+void TriggerRuntime::onInstanceTimelineEnd(NodeId scope, StringId timeline, bool selfApplied) {
     for (size_t i = 0; i < m_waiters.size();) {
         const Waiter& w = m_waiters[i];
         if (w.timeline != timeline || w.scope != scope) {
@@ -565,7 +582,9 @@ void TriggerRuntime::onInstanceTimelineEnd(NodeId scope, StringId timeline) {
             (node != scope && !arena.isAncestorOf(scope, node))) {
             continue;
         }
-        m_queue.push_back(Job{node, arena.generation(node), index, 0, 0.0f, 0xFFFFFFFFu});
+        Job job{node, arena.generation(node), index, 0, 0.0f, 0xFFFFFFFFu};
+        job.selfApplied = selfApplied;  // T-783.
+        m_queue.push_back(job);
     }
     run();
 }
@@ -672,12 +691,12 @@ void TriggerRuntime::runJob(const Job& job) {
         return;
     }
     for (uint16_t head = 1; head <= trig.headCount; ++head) {
-        runChain(job.node, job.trigger, head, job.value, job.port, job.player);
+        runChain(job.node, job.trigger, head, job.value, job.port, job.player, job.selfApplied);
     }
 }
 
 void TriggerRuntime::runChain(NodeId node, uint32_t trigger, uint16_t index, float value, uint32_t port,
-                              uint8_t player) {
+                              uint8_t player, bool selfApplied) {
     const TriggerChunk& tc = m_doc.m_ir.triggers();
     const IrTrigger& trig = tc.triggers()[trigger];
     // T-374: the source a surface hide records (Document::lastHideSource()).
@@ -693,14 +712,24 @@ void TriggerRuntime::runChain(NodeId node, uint32_t trigger, uint16_t index, flo
             return;
         }
         const IrTriggerAction& action = tc.actions()[trig.actionOffset + index - 1];
-        if (static_cast<TriggerAction>(action.kind) == TriggerAction::If) {
-            index = condition(node, action, value, port) ? action.next : action.alt;
-            continue;
-        }
         StringId waitFor = kInvalidString;
         NodeId waitScope = kInvalidNode;
         NodeId waitGroup = kInvalidNode;
-        Outcome outcome = perform(node, action, waitFor, waitScope, waitGroup, value, port, player);
+        if (static_cast<TriggerAction>(action.kind) == TriggerAction::If) {
+            // T-783: an `if` the timeline step decided at the marker's time keeps that result.
+            Outcome decided = Outcome::Done;
+            const bool holds =
+                selfApplied && takeSelfApplied(node, trigger, index, decided, waitFor, waitScope, waitGroup)
+                    ? decided == Outcome::Done
+                    : condition(node, action, value, port);
+            index = holds ? action.next : action.alt;
+            continue;
+        }
+        // T-774: a self-control action the timeline step already performed is not performed again.
+        Outcome outcome = Outcome::Done;
+        if (!selfApplied || !takeSelfApplied(node, trigger, index, outcome, waitFor, waitScope, waitGroup)) {
+            outcome = perform(node, action, waitFor, waitScope, waitGroup, value, port, player);
+        }
         if (outcome == Outcome::Stop) {
             return;
         }
@@ -1331,11 +1360,8 @@ void Document::applyBuiltinState(NodeId node, uint16_t bit, uint8_t mode) {
     }
     data.stateBits =
         on ? static_cast<uint16_t>(data.stateBits | bit) : static_cast<uint16_t>(data.stateBits & ~bit);
-    m_arena.markDirty(node, static_cast<uint8_t>(kDirtyStyle));
-    m_arena.traversePreorder(node, [this](NodeId n) {
-        m_arena.markDirty(n, static_cast<uint8_t>(kDirtyStyle));
-        return true;
-    });
+    // T-763 (item 1): what the state dependency table says the bit reaches.
+    m_events->restyleState(m_arena, node, StateChange{bit, 0, 0}, m_arena.ambientCause());
 }
 
 Status Document::fireTrigger(ElementRef element, TriggerEvent event) {
@@ -1375,6 +1401,49 @@ bool Document::hasCustomState(ElementRef element, std::string_view name) const {
     return false;
 }
 
+uint32_t TriggerRuntime::scopeOf(NodeId node) {
+    auto it = std::lower_bound(m_scopeRoots.begin(), m_scopeRoots.end(), node,
+                               [](const ScopeRoot& r, NodeId n) { return r.node < n; });
+    if (it != m_scopeRoots.end() && it->node == node && it->generation == m_doc.m_arena.generation(node)) {
+        return it->scope;
+    }
+    if (!m_scopeRootInTemplate) {
+        return kNoScope;
+    }
+    // A `<repeat>` / spawn copy: the scope of the template element it was made from.
+    const uint32_t element = m_doc.m_repeats->templateElementOf(node);
+    std::span<const IrStateScopeRoot> roots = m_doc.m_ir.stateScopes().roots();
+    auto r = std::lower_bound(roots.begin(), roots.end(), element,
+                              [](const IrStateScopeRoot& root, uint32_t e) { return root.element < e; });
+    return r != roots.end() && r->element == element ? r->scope : kNoScope;
+}
+
+uint32_t TriggerRuntime::exclusiveMask(NodeId node, uint32_t mask) {
+    const StateScopeChunk& scoped = m_doc.m_ir.stateScopes();
+    if (!scoped.roots().empty()) {
+        // 56 §56.4 item 4: the instance roots around `node` (itself included), innermost first.
+        for (NodeId n = node; n != kInvalidNode; n = m_doc.m_arena.parent(n)) {
+            const uint32_t scope = scopeOf(n);
+            if (scope == kNoScope) {
+                continue;
+            }
+            const IrStateScope& s = scoped.scopes()[scope];
+            for (const IrStateGroup& group : scoped.groups().subspan(s.groupOffset, s.groupCount)) {
+                if ((group.mask & mask) != 0) {
+                    return group.mask;
+                }
+            }
+        }
+    }
+    uint32_t clear = 0;
+    for (const IrStateGroup& group : m_doc.m_ir.customStates().groups()) {
+        if ((group.mask & mask) != 0) {
+            clear |= group.mask;
+        }
+    }
+    return clear;
+}
+
 void Document::applyCustomState(NodeId node, uint32_t bit, uint8_t mode) {
     if (bit >= kMaxCustomStates || !m_arena.alive(node) || m_arena.kind(node) != NodeKind::Element) {
         return;
@@ -1395,19 +1464,17 @@ void Document::applyCustomState(NodeId node, uint32_t bit, uint8_t mode) {
     }
     uint32_t after = before & ~mask;
     if (on) {
-        // 27.1: setting one member of a state group clears the others.
-        for (const IrStateGroup& group : m_ir.customStates().groups()) {
-            if ((group.mask & mask) != 0) {
-                after &= ~group.mask;
-            }
-        }
+        // 27.1: setting one member of a state group clears the others (T-738: the group of the
+        // element's symbol scope, else the global ones).
+        after &= ~m_triggers->exclusiveMask(node, mask);
         after |= mask;
     }
     if (after == before) {
         return;
     }
     m_arena.common(node).customStates = after;
-    markStyleDirtySubtree(m_arena, node);
+    // T-763 (item 2): only what a `:state()` naming a changed state can reach.
+    m_events->restyleState(m_arena, node, StateChange{0, before ^ after, 0}, m_arena.ambientCause());
     const uint32_t exits = before & ~after;
     const uint32_t enters = after & ~before;
     for (uint32_t b = 0; b < kMaxCustomStates; ++b) {
@@ -1493,6 +1560,9 @@ Status Document::applyShow(bool later) {
     }
     const bool wasHidden = !m_surfaceVisible;
     m_surfaceHiding = false;
+    if (!m_surfaceVisible) {
+        m_arena.noteVisualChange(m_arena.ambientCause(), kInvalidNode);  // T-747: the surface shows
+    }
     m_surfaceVisible = true;
     m_shownOnce = true;
     m_initialShown = true;  // T-650: a parked surface's first show counts as its initial show.
@@ -1564,6 +1634,9 @@ void Document::notifyInitialShow(float clock) {
 
 void Document::setInitialVisibility(bool visible) {
     m_surfaceHiding = false;
+    if (m_surfaceVisible != visible) {
+        m_arena.noteVisualChange(m_arena.ambientCause(), kInvalidNode);  // T-747: shown / hidden
+    }
     m_surfaceVisible = visible;
     if (!visible) {
         m_lastHideSource = "host";  // T-374.
@@ -1638,6 +1711,9 @@ void Document::finishSurfaceHide() {
         return;
     }
     m_surfaceHiding = false;
+    if (m_surfaceVisible) {
+        m_arena.noteVisualChange(m_arena.ambientCause(), kInvalidNode);  // T-747: the surface hides
+    }
     m_surfaceVisible = false;
     if (m_hideNotifyLater) {
         queueSurfaceNotify(m_pendingSurfaceNotify, kSurfaceRequestHide);  // T-605.

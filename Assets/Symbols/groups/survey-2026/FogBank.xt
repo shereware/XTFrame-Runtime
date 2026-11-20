@@ -1,0 +1,31 @@
+<xt version="2">
+
+  <symbol name="FogBank" variants="Height=Low|High">
+    <div id="Box"></div>
+  </symbol>
+
+  <layout>
+    symbol(FogBank) {
+      #Box {
+        position: relative;
+        width: 640px;
+        height: 160px;
+        overflow: hidden;
+      }
+      .v-Height-High #Box {
+        height: 300px;
+      }
+    }
+  </layout>
+  <style>
+    symbol(FogBank) {
+      #Box {
+        pointer-events: none;
+        background-image: var(--tex-fog);
+        background-repeat: repeat-x;
+        background-size: 512px 100%;
+        opacity: 0.75;
+      }
+    }
+  </style>
+</xt>

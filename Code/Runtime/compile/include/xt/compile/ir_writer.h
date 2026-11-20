@@ -156,6 +156,16 @@ struct TimelineGroupBuilder {
     std::vector<IrTimelineGroupMember> members;
 };
 
+/// Accumulates the optional `TEXP` chunk (T-777, Docs/design/58-value-functions-and-drivers.md
+/// §58.5, 02 §2.v): the run-time programs of timeline expressions; each record references its own
+/// ranges of the op and curve pools, each curve a range of the key pool.
+struct TimelineExprBuilder {
+    std::vector<IrTimelineExpr> exprs;
+    std::vector<IrExprOp> ops;
+    std::vector<IrExprCurve> curves;
+    std::vector<IrExprKey> keys;
+};
+
 /// Accumulates the optional `MDIA` chunk (T-176): `@media` blocks, their queries and conditions,
 /// and the STYL rules each block gates (`rules` ascending by rule index).
 struct MediaBuilder {
@@ -173,8 +183,14 @@ struct MediaBuilder {
 struct CustomStateBuilder {
     /// State names (StringId); bit i = names[i].
     std::vector<uint32_t> names;
-    /// Mutually exclusive groups.
+    /// Mutually exclusive groups (the global ones).
     std::vector<IrStateGroup> groups;
+    /// T-738 (56 §56.4): the optional `STGS` chunk, written only when `scopes` is not empty: one
+    /// record per symbol with scoped groups (a range of `scopeGroups`), and every instance root of
+    /// those symbols (ascending element).
+    std::vector<IrStateScope> scopes;
+    std::vector<IrStateGroup> scopeGroups;
+    std::vector<IrStateScopeRoot> scopeRoots;
 };
 
 /// Accumulates the optional `TRIG` chunk (03 §3.12.3, T-174).
@@ -351,7 +367,14 @@ public:
 
     /// Sets the optional `TGRP` chunk (T-172); an empty `groups.groups` writes no chunk.
     void setTimelineGroups(TimelineGroupBuilder groups);
-    /// T-174: sets the optional `STAT` chunk; written only when it has a name.
+    /// T-777: sets the optional `TEXP` chunk (written last); an empty `exprs.exprs` writes no chunk.
+    void setTimelineExprs(TimelineExprBuilder exprs);
+    /// T-777: the timeline added as `id`, or nullptr.
+    const TimelineBuilder* timeline(TimelineId id) const {
+        return id < m_timelines.size() ? &m_timelines[id] : nullptr;
+    }
+    /// T-174: sets the optional `STAT` chunk; written only when it has a name. T-738: also the
+    /// optional `STGS` chunk (CustomStateBuilder::scopes).
     void setCustomStates(CustomStateBuilder states);
     /// T-174: sets the optional `TRIG` chunk; written only when it has a table.
     void setTriggers(TriggerBuilder triggers);
@@ -415,6 +438,7 @@ private:
     std::vector<IrSourceEntry> m_srcmEntries;
     std::vector<SymbolInstanceBuilder> m_symbols;
     TimelineGroupBuilder m_timelineGroups;
+    TimelineExprBuilder m_timelineExprs;  // T-777.
     CustomStateBuilder m_customStates;
     TriggerBuilder m_triggers;
     PortBuilder m_ports;

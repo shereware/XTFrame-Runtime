@@ -807,3 +807,21 @@ TEST_CASE("symbols: xtframe-pack and xt-standard: find the list/ subset (T-382)"
         compile::compileDocumentFromStrings(files, "doc.xt", compileOptions);
     CHECK_MESSAGE(compiled.ok(), diagnosticsText(compiled));
 }
+
+TEST_CASE("T-738: preset symbols mix with Survey-like symbols whose state groups conflict") {
+    // Crosshair (Aim: Idle|Target) and HealthBar (Level: Normal|Low) with two symbols declaring
+    // Aim: Free|Target and Vital: Normal|Low: a strict compile passes, all four groups scoped.
+    const compile::CompileResult result =
+        compileStrict(fs::path(XT_SYMBOLS_TEST_DIR) / "scoped-groups" / "survey-mix.xt");
+    REQUIRE_MESSAGE(result.ok(), diagnosticsText(result));
+    Result<IrView> opened = IrView::open(IrBlob{result.ir.data(), result.ir.size()});
+    REQUIRE(opened.ok());
+    const IrView& ir = opened.value();
+    std::set<std::string> scoped;
+    for (const IrStateScope& scope : ir.stateScopes().scopes()) {
+        scoped.insert(std::string(ir.string(scope.symbolName)));
+    }
+    CHECK(scoped == std::set<std::string>{"Crosshair", "HealthBar", "SurveyReticle", "SurveyVital"});
+    CHECK(ir.stateScopes().roots().size() == 4);
+    CHECK(ir.customStates().groups().empty());
+}

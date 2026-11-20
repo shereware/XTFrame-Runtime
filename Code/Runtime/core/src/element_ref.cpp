@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "binding_runtime.h"
+#include "css_values.h"  // T-778: the animation longhand order.
 #include "dispatch_guard.h"
 #include "event_dispatcher.h"
 #include "mini_css.h"
@@ -32,11 +33,19 @@ namespace {
 /// Marks `node` kDirtyStyle, its ancestors (automatic, NodeArena::markDirty) and every descendant
 /// (explicit, non-recursive traversal) -- 05.8's conservative rule for class/state/style changes.
 void markStyleDirtySubtree(NodeArena& arena, NodeId node) {
-    arena.markDirty(node, static_cast<uint8_t>(kDirtyStyle));
+    arena.markDirty(node, static_cast<uint8_t>(kDirtyStyle), arena.ambientCause());
     arena.traversePreorder(node, [&arena](NodeId n) {
-        arena.markDirty(n, static_cast<uint8_t>(kDirtyStyle));
+        arena.markDirty(n, static_cast<uint8_t>(kDirtyStyle), arena.ambientCause());
         return true;
     });
+}
+
+/// T-763: what a runtime declaration of `prop` on `node` re-resolves -- the shared rule of the
+/// style bindings (T-723), with the old full range in
+/// the equivalence check's legacy mode.
+void markStyleDirtyForRuntimeDecl(Document& doc, NodeId node, uint16_t prop) {
+    markRuntimeDeclRestyle(doc.arena(), node, prop, BindingRuntime::legacyStyleInvalidation(doc),
+                           doc.arena().ambientCause());
 }
 
 ElementRef makeRef(Document* doc, NodeId node) {
@@ -79,6 +88,32 @@ uint64_t styleTextHash(std::string_view text) {
         h *= 1099511628211ull;
     }
     return h == 0 ? 1 : h;
+}
+
+/// 05.6/17.6 (T-123): `item`'s `@keyframes` timeline -- the one part of an `animation`
+/// declaration mini_css cannot resolve without a Document -- or kInvalidTimeline (warned).
+TimelineId keyframesTimeline(Document& doc, const mini_css::AnimationDecl& item) {
+    for (const IrKeyframesRef& ref : doc.ir().style().keyframesRefs()) {
+        if (doc.string(ref.name) == item.name) {
+            return ref.timeline;
+        }
+    }
+    doc.addWarning("animation: no @keyframes named \"" + item.name + "\"");
+    return kInvalidTimeline;
+}
+
+/// T-335: a `linear()` timing function's points into the document's easing point pool.
+void internItemEasing(Document& doc, const mini_css::AnimationDecl& item, IrAnimationSpec& spec) {
+    if (spec.easing.kind != static_cast<uint8_t>(EasingKind::LinearPoints) || item.easingPoints.empty()) {
+        return;
+    }
+    uint16_t offset = 0;
+    if (!doc.animator().internEasingPoints(item.easingPoints, offset)) {
+        doc.addWarning("animation: too many linear() easing points; using linear");
+        spec.easing = IrEasing{};
+    } else {
+        spec.easing = irLinearPointsEasing(offset, spec.easing.stepCount);
+    }
 }
 
 /// T-389 (27 §27.4.1): mini_css::parseDeclarations() results by text, the 256 most recently used
@@ -221,7 +256,9 @@ bool ElementRef::addClass(std::string_view cls) {
     NodeArena& arena = doc->arena();
     ElementData& data = arena.element(node);
     data.classes.insert(std::upper_bound(data.classes.begin(), data.classes.end(), sid), sid);
-    markStyleDirtySubtree(arena, node);
+    // T-763 (item 3): only as far as a rule naming the class reaches.
+    doc->m_events->restyleClasses(arena, node, std::span<const StringId>{},
+                                  std::span<const StringId>(&sid, 1), arena.ambientCause());
     return true;
 }
 
@@ -233,8 +270,10 @@ bool ElementRef::removeClass(std::string_view cls) {
     ElementData& data = arena.element(node);
     for (auto it = data.classes.begin(); it != data.classes.end(); ++it) {
         if (doc->string(*it) == cls) {
+            const StringId sid = *it;
             data.classes.erase(it);
-            markStyleDirtySubtree(arena, node);
+            doc->m_events->restyleClasses(arena, node, std::span<const StringId>(&sid, 1),
+                                          std::span<const StringId>{}, arena.ambientCause());  // T-763.
             return true;
         }
     }
@@ -280,7 +319,9 @@ bool ElementRef::setState(ElementState state, bool on) {
     } else {
         data.stateBits = static_cast<uint16_t>(data.stateBits & ~static_cast<uint16_t>(state));
     }
-    markStyleDirtySubtree(arena, node);
+    // T-763 (item 1): what the state dependency table says the bit reaches.
+    doc->m_events->restyleState(arena, node, StateChange{static_cast<uint16_t>(state), 0, 0},
+                                arena.ambientCause());
     if (state == kStateChecked) {
         doc->checkedChanged(node, on);  // T-174: check / uncheck triggers.
     }
@@ -333,7 +374,7 @@ Status ElementRef::selectAll() {
         return Status::kUnsupported;
     }
     xt::selectAll(*state);
-    doc->m_arena.markDirty(node, static_cast<uint8_t>(kDirtyPaint));
+    doc->m_arena.markDirty(node, static_cast<uint8_t>(kDirtyPaint), doc->m_arena.ambientCause());
     return Status::kOk;
 }
 
@@ -349,7 +390,7 @@ Status ElementRef::setSelection(uint32_t start, uint32_t end) {
     const uint32_t b = std::min(clampToCharStart(state->value, start), e);
     state->anchor = b;
     state->cursor = e;
-    doc->m_arena.markDirty(node, static_cast<uint8_t>(kDirtyPaint));
+    doc->m_arena.markDirty(node, static_cast<uint8_t>(kDirtyPaint), doc->m_arena.ambientCause());
     return Status::kOk;
 }
 
@@ -423,8 +464,10 @@ Status ElementRef::setAttribute(std::string_view name, std::string_view text) {
         }
         std::sort(classes.begin(), classes.end());
         classes.erase(std::unique(classes.begin(), classes.end()), classes.end());
+        // T-763 (item 3): as far as a rule naming an added or removed class reaches.
+        doc->m_events->restyleClasses(arena, node, arena.element(node).classes, classes,
+                                      arena.ambientCause());
         arena.element(node).classes = std::move(classes);
-        markStyleDirtySubtree(arena, node);
         return Status::kOk;
     }
     StringId nameId = doc->intern(name);
@@ -443,7 +486,8 @@ Status ElementRef::setAttribute(std::string_view name, std::string_view text) {
     }
     markStyleDirtySubtree(arena, node);
     if (name == "placeholder") {
-        arena.markDirty(node, static_cast<uint8_t>(kDirtyLayout));  // T-395: the placeholder runs.
+        arena.markDirty(node, static_cast<uint8_t>(kDirtyLayout),
+                        arena.ambientCause());  // T-395: the placeholder runs.
     }
     return Status::kOk;
 }
@@ -487,8 +531,11 @@ void ElementRef::setText(std::string_view content) {
     TextNodeData& data = arena.text(textNode);
     data.text = sid;
     data.shapedValid = 0;
-    arena.markDirty(textNode, static_cast<uint8_t>(kDirtyLayout));
-    arena.markDirty(node, static_cast<uint8_t>(kDirtyLayout));
+    // T-755 (06 §6.x items 2 and 4): the Text node changed, not the element's own style: the write
+    // reaches the element through the Text node's propagation, which stops at the element itself
+    // when it is a layout boundary (a write on the element would pass it). A Text node created
+    // above was a structural change of the element (appendChild() marked it).
+    arena.markDirty(textNode, static_cast<uint8_t>(kDirtyLayout), arena.ambientCause());
 }
 
 Status ElementRef::setStyle(std::string_view cssDeclarations) {
@@ -531,39 +578,55 @@ Status ElementRef::setStyle(std::string_view cssDeclarations) {
             // Enum is its tagged offset (0 for `none`).
             out.value = doc->declareRuntimeClipShapeFor(node, decl.clipShape);
         } else if (decl.prop == style_decode::styleprop::Animation) {
-            // 05.6/17.6 (T-123): resolve each item's `@keyframes` name against the IR's table --
-            // the one part of the declaration mini_css cannot do without a Document -- then
-            // cascade the runtime pool's ListRef, like `effect` above. A name this document has
-            // no `@keyframes` for is dropped with a warning (it has no timeline to play).
-            std::vector<IrAnimationSpec> specs;
-            specs.reserve(decl.animations.size());
-            for (const mini_css::AnimationDecl& item : decl.animations) {
-                TimelineId timeline = kInvalidTimeline;
-                for (const IrKeyframesRef& ref : doc->ir().style().keyframesRefs()) {
-                    if (doc->string(ref.name) == item.name) {
-                        timeline = ref.timeline;
-                        break;
+            // T-778 (05 §5.6): the longhands are style properties of their own (StyleProp 282-289).
+            // The shorthand (or every longhand in one text) sets all eight to one list in the
+            // element's animation slot -- declared again, it restarts (17.6); a longhand alone sets
+            // its own, from its own slot, and StyleEngine combines the cascaded eight.
+            if (decl.animationMask == 0) {
+                std::vector<IrAnimationSpec> specs;
+                specs.reserve(decl.animations.size());
+                for (const mini_css::AnimationDecl& item : decl.animations) {
+                    IrAnimationSpec spec = item.spec;
+                    spec.timeline = keyframesTimeline(*doc, item);
+                    if (spec.timeline == kInvalidTimeline) {
+                        continue;  // No timeline to play.
                     }
+                    internItemEasing(*doc, item, spec);
+                    specs.push_back(spec);
                 }
-                if (timeline == kInvalidTimeline) {
-                    doc->addWarning("animation: no @keyframes named \"" + item.name + "\"");
+                out.value = doc->declareRuntimeAnimationsFor(node, specs);  // T-270c: likewise.
+                for (int i = 0; i < css_values::kAnimationLonghandCount; ++i) {
+                    out.prop = static_cast<uint16_t>(style_decode::styleprop::AnimationName + i);
+                    storeRuntimeDecl(arena.element(node), out);
+                }
+                continue;
+            }
+            for (int i = 0; i < css_values::kAnimationLonghandCount; ++i) {
+                if ((decl.animationMask & (1u << i)) == 0) {
                     continue;
                 }
-                IrAnimationSpec spec = item.spec;
-                spec.timeline = timeline;
-                if (spec.easing.kind == static_cast<uint8_t>(EasingKind::LinearPoints)) {
-                    // T-335: the `linear()` points move into the document's easing point pool.
-                    uint16_t offset = 0;
-                    if (!doc->animator().internEasingPoints(item.easingPoints, offset)) {
-                        doc->addWarning("animation: too many linear() easing points; using linear");
-                        spec.easing = IrEasing{};
-                    } else {
-                        spec.easing = irLinearPointsEasing(offset, spec.easing.stepCount);
+                std::vector<IrAnimationSpec> specs;
+                for (const mini_css::AnimationDecl& item : decl.animationFields[static_cast<size_t>(i)]) {
+                    IrAnimationSpec spec = item.spec;
+                    spec.timeline = 0;
+                    if (i == static_cast<int>(css_values::AnimationLonghand::Name)) {
+                        // `none`, or a name with no `@keyframes`: keeps its place, plays nothing.
+                        const TimelineId timeline =
+                            item.name.empty() ? kInvalidTimeline : keyframesTimeline(*doc, item);
+                        spec.timeline = timeline == kInvalidTimeline ? 0 : timeline;
+                        spec.flags = timeline == kInvalidTimeline ? kIrAnimationNoName : 0;
                     }
+                    if (item.noPlay) {
+                        spec.flags = static_cast<uint8_t>(spec.flags | kIrAnimationNoPlay);
+                    }
+                    internItemEasing(*doc, item, spec);
+                    specs.push_back(spec);
                 }
-                specs.push_back(spec);
+                out.prop = static_cast<uint16_t>(style_decode::styleprop::AnimationName + i);
+                out.value = doc->declareRuntimeAnimationLonghandFor(node, i, specs);
+                storeRuntimeDecl(arena.element(node), out);
             }
-            out.value = doc->declareRuntimeAnimationsFor(node, specs);  // T-270c: likewise.
+            continue;
         } else {
             out.value = decl.value;
             if (!decl.text.empty()) {
@@ -586,13 +649,18 @@ Status ElementRef::setStyle(std::string_view cssDeclarations) {
             }
         }
     }
-    markStyleDirtySubtree(arena, node);
+    // T-763: a runtime declaration changes no selector match -- the element itself, and its
+    // subtree only for a property its children inherit (as a style binding's write, T-723).
+    for (const mini_css::Decl& decl : parsed) {
+        markStyleDirtyForRuntimeDecl(*doc, node, decl.prop);
+    }
     // Taken again: the declarations above may have grown the arena's element storage.
     ElementData& written = arena.element(node);
     // An `animation` declared again restarts (17.6), so a text holding one is never a no-op.
+    // T-756 / T-778: longhands alone are style properties, so the same text again changes nothing.
     bool restarts = false;
     for (const mini_css::Decl& decl : parsed) {
-        restarts = restarts || decl.prop == style_decode::styleprop::Animation;
+        restarts = restarts || (decl.prop == style_decode::styleprop::Animation && decl.animationMask == 0);
     }
     written.setStyleHash = restarts ? 0 : hash;
     written.setStyleLength = static_cast<uint32_t>(cssDeclarations.size());
@@ -628,8 +696,8 @@ Status ElementRef::setStyleTemplate(const StyleTemplate& tmpl, std::string_view 
         out.important = tmpl.decls[i].important;
         fillStyleTemplateValue(tmpl, i, numbers, out.value);
         storeRuntimeDecl(data, out);
+        markStyleDirtyForRuntimeDecl(*doc, node, out.prop);  // T-763, as setStyle().
     }
-    markStyleDirtySubtree(arena, node);
     ElementData& written = arena.element(node);
     written.setStyleHash = hash;
     written.setStyleLength = static_cast<uint32_t>(cssDeclarations.size());
@@ -646,10 +714,10 @@ void ElementRef::setProperty(PropId prop, const Value& value, bool sticky) {
     }
     if (sticky) {
         doc->animator().setOverride(node, prop, value);
-        doc->arena().markDirty(node, propertyDirtyBits(prop));
+        doc->arena().markDirty(node, propertyDirtyBits(prop), doc->arena().ambientCause());
         return;
     }
-    xt::setProperty(doc->arena(), node, prop, value);
+    xt::setProperty(doc->arena(), node, prop, value, doc->arena().ambientCause());
 }
 
 void ElementRef::setPropertyTween(PropId prop, const Value& value, float duration, Easing easing) {
@@ -660,7 +728,7 @@ void ElementRef::setPropertyTween(PropId prop, const Value& value, float duratio
         return;
     }
     doc->animator().setOverride(node, prop, value, duration, easing);
-    doc->arena().markDirty(node, propertyDirtyBits(prop));
+    doc->arena().markDirty(node, propertyDirtyBits(prop), doc->arena().ambientCause());
 }
 
 void ElementRef::clearOverride(PropId prop) {
@@ -674,7 +742,7 @@ void ElementRef::clearOverride(PropId prop) {
     // makes the next update() re-resolve it, which restores the cascade's value (and, if the
     // element declares a `transition` for that property, transitions back to it).
     markStyleDirtySubtree(doc->arena(), node);
-    doc->arena().markDirty(node, propertyDirtyBits(prop));
+    doc->arena().markDirty(node, propertyDirtyBits(prop), doc->arena().ambientCause());
 }
 
 Value ElementRef::property(PropId prop) const {
@@ -832,7 +900,7 @@ void ElementRef::setEffectParam(uint32_t effectIndex, uint32_t paramIndex, const
     // `markDirty(kDirtyPaint)` -- setProperty()'s non-sticky path writes the pool slot directly
     // (xt::setProperty) without marking anything dirty itself, unlike its sticky/override path.
     setProperty(effectParam(effectIndex, paramIndex), value, /*sticky=*/false);
-    doc->arena().markDirty(node, static_cast<uint8_t>(kDirtyPaint));
+    doc->arena().markDirty(node, static_cast<uint8_t>(kDirtyPaint), doc->arena().ambientCause());
 }
 
 Status ElementRef::setEffects(std::span<const EffectInstance> effects, std::span<const GradientStop> stops) {
@@ -860,7 +928,7 @@ Status ElementRef::setEffects(std::span<const EffectInstance> effects, std::span
     if (!replaced) {
         data.runtimeDecls.push_back(out);
     }
-    markStyleDirtySubtree(arena, node);
+    markStyleDirtyForRuntimeDecl(*doc, node, out.prop);  // T-763, as setStyle().
     return Status::kOk;
 }
 

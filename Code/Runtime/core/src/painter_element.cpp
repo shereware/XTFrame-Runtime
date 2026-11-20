@@ -5,6 +5,7 @@
 #include <limits>
 #include <vector>
 
+#include "border_dash_cache.h"
 #include "clip_shape.h"
 #include "rounded_rect.h"
 #include "xt/command_list.h"
@@ -686,8 +687,11 @@ void clipToSplit(const std::vector<Vec2>& in, const SplitPlane& plane, std::vect
 /// side's centerline -- through the rounded corners' centerline arcs up to their midpoints --
 /// turned into fills by strokeToFill, and cut at the corner splits like the solid trapezoid.
 /// Appends Move/Line/Close contours to `verbs` / `points`.
+/// T-737: the working vectors come from `scratch` (cleared here, capacity kept); the result does not
+/// depend on what they held.
 void appendBorderDashes(const BorderCorners& k, int side, float width, bool dotted, float tolerance,
-                        float extension, std::vector<PathVerb>& verbs, std::vector<float>& points) {
+                        float extension, BorderDashScratch& scratch, std::vector<PathVerb>& verbs,
+                        std::vector<float>& points) {
     const int s = side;
     const int e = (side + 1) % 4;
     const float sMid = cornerStartAngle(s) + kHalfPi * 0.5f;
@@ -695,16 +699,21 @@ void appendBorderDashes(const BorderCorners& k, int side, float width, bool dott
     const float eStart = cornerStartAngle(e);
     const float eMid = eStart + kHalfPi * 0.5f;
 
-    std::vector<PathVerb> lineVerbs;
-    std::vector<float> linePoints;
+    std::vector<PathVerb>& lineVerbs = scratch.lineVerbs;
+    std::vector<float>& linePoints = scratch.linePoints;
+    lineVerbs.clear();
+    linePoints.clear();
     appendPoint(PathVerb::Move, arcPoint(k.midC[s], k.midR[s], sMid), lineVerbs, linePoints);
     appendArcCubic(k.midC[s], k.midR[s], sMid, sEnd, lineVerbs, linePoints);
     appendPoint(PathVerb::Line, arcPoint(k.midC[e], k.midR[e], eStart), lineVerbs, linePoints);
     appendArcCubic(k.midC[e], k.midR[e], eStart, eMid, lineVerbs, linePoints);
 
-    std::vector<Vec2> flat;
-    std::vector<uint32_t> flatStarts;
-    std::vector<uint8_t> flatClosed;
+    std::vector<Vec2>& flat = scratch.flat;
+    std::vector<uint32_t>& flatStarts = scratch.flatStarts;
+    std::vector<uint8_t>& flatClosed = scratch.flatClosed;
+    flat.clear();
+    flatStarts.clear();
+    flatClosed.clear();
     flattenPath(lineVerbs, linePoints, Mat2x3{}, tolerance, flat, flatStarts, flatClosed);
     if (flat.size() < 2) {
         return;
@@ -717,9 +726,12 @@ void appendBorderDashes(const BorderCorners& k, int side, float width, bool dott
     // Dots: zero-length dashes with round caps, so every dot is one width across and the visible
     // gap between two is one width (a period of two widths).
     const float pattern[2] = {dotted ? 0.0f : 3.0f * width, dotted ? 2.0f * width : 2.0f * width};
-    std::vector<Vec2> dashed;
-    std::vector<uint32_t> dashedStarts;
-    std::vector<uint8_t> dashedClosed;
+    std::vector<Vec2>& dashed = scratch.dashed;
+    std::vector<uint32_t>& dashedStarts = scratch.dashedStarts;
+    std::vector<uint8_t>& dashedClosed = scratch.dashedClosed;
+    dashed.clear();
+    dashedStarts.clear();
+    dashedClosed.clear();
     // applyDash starts a pattern whose first dash is empty in its gap, so the dot pattern is
     // shifted back by a hair: the first dot then sits on the corner split (half of it each side).
     const float phase = dotted ? -1e-3f * width : 0.0f;
@@ -729,7 +741,8 @@ void appendBorderDashes(const BorderCorners& k, int side, float width, bool dott
     // moved out along its own first / last segment, so it stays one segment), so that the corner
     // split -- not the cap -- ends it: a square corner's dash then fills its half of the corner as
     // the solid trapezoid does.
-    std::vector<uint8_t> dashOpen(dashedStarts.size(), 0);
+    std::vector<uint8_t>& dashOpen = scratch.dashOpen;
+    dashOpen.assign(dashedStarts.size(), 0);
     if (!dotted) {
         const auto samePoint = [](Vec2 p, Vec2 q) {
             return std::fabs(p.x - q.x) + std::fabs(p.y - q.y) < 1e-4f;
@@ -759,16 +772,18 @@ void appendBorderDashes(const BorderCorners& k, int side, float width, bool dott
         }
     }
 
-    std::vector<Vec2> fill;
-    std::vector<uint32_t> fillStarts;
+    std::vector<Vec2>& fill = scratch.fill;
+    std::vector<uint32_t>& fillStarts = scratch.fillStarts;
+    fill.clear();
+    fillStarts.clear();
     strokeToFill(dashed, dashedStarts, dashOpen, width, dotted ? LineCap::Round : LineCap::Butt,
                  LineJoin::Round, 4.0f, tolerance, fill, fillStarts);
 
     const SplitPlane startPlane = makeSplitPlane(k, s, inside);
     const SplitPlane endPlane = makeSplitPlane(k, e, inside);
-    std::vector<Vec2> poly;
-    std::vector<Vec2> half;
-    std::vector<Vec2> clipped;
+    std::vector<Vec2>& poly = scratch.poly;
+    std::vector<Vec2>& half = scratch.half;
+    std::vector<Vec2>& clipped = scratch.clipped;
     for (size_t ci = 0; ci < fillStarts.size(); ++ci) {
         const uint32_t a = fillStarts[ci];
         const uint32_t b =
@@ -801,9 +816,30 @@ void pushBorderFill(const Mat2x3& world, Color color, float alpha, const std::ve
     out.commands.push_back(Command{CmdKind::FillPath, {}, idx});
 }
 
-/// T-333: the per-side border: one FillPath per drawn side, top, right, bottom, left.
+/// T-737 (Docs/tasks/T-737.md A item 2): every input of appendBorderDashes(), bit for bit. The
+/// geometry is in the element's own frame (relative to its border box's origin), so neither the node
+/// nor its position is part of it.
+BorderDashCache::Key borderDashKey(const BorderCorners& k, int side, float width, bool dotted,
+                                   float tolerance, float extension) {
+    static_assert(sizeof(BorderCorners) == 36 * sizeof(float), "BorderCorners holds 36 floats, no padding");
+    static_assert(BorderDashCache::kKeyWords == 41,
+                  "36 corner floats + side, width, dotted, tolerance, extension");
+    BorderDashCache::Key key;
+    std::memcpy(key.words, &k, sizeof k);
+    key.words[36] = static_cast<uint32_t>(side);
+    std::memcpy(&key.words[37], &width, sizeof(float));
+    key.words[38] = dotted ? 1u : 0u;
+    std::memcpy(&key.words[39], &tolerance, sizeof(float));
+    std::memcpy(&key.words[40], &extension, sizeof(float));
+    return key;
+}
+
+/// T-333: the per-side border: one FillPath per drawn side, top, right, bottom, left. T-737: a
+/// `dashed` / `dotted` side's geometry comes from `dashCache` when it holds it (stored on a miss);
+/// nullptr or a disabled cache computes every side.
 void emitElementBorderSides(const ElementData& data, const Mat2x3& world, float alpha, CommandList& out,
-                            std::vector<PathVerb>& scratchVerbs, std::vector<float>& scratchPoints) {
+                            std::vector<PathVerb>& scratchVerbs, std::vector<float>& scratchPoints,
+                            BorderDashCache* dashCache) {
     const Edges& bd = data.box.border;
     BorderCorners k{};
     buildBorderCorners(data, k);
@@ -821,8 +857,21 @@ void emitElementBorderSides(const ElementData& data, const Mat2x3& world, float 
         if (style == kBorderStyleSolid) {
             appendBorderTrapezoid(k, side, scratchVerbs, scratchPoints);
         } else {
-            appendBorderDashes(k, side, borderSideWidth(bd, side), style == kBorderStyleDotted, tolerance,
-                               extension, scratchVerbs, scratchPoints);
+            const float width = borderSideWidth(bd, side);
+            const bool dotted = style == kBorderStyleDotted;
+            if (dashCache != nullptr && dashCache->enabled()) {
+                const BorderDashCache::Key key = borderDashKey(k, side, width, dotted, tolerance, extension);
+                if (!dashCache->lookup(key, scratchVerbs, scratchPoints)) {
+                    appendBorderDashes(k, side, width, dotted, tolerance, extension, dashCache->scratch(),
+                                       scratchVerbs, scratchPoints);
+                    dashCache->store(key, scratchVerbs, 0, scratchPoints, 0);
+                }
+            } else {
+                BorderDashScratch local;
+                appendBorderDashes(k, side, width, dotted, tolerance, extension,
+                                   dashCache != nullptr ? dashCache->scratch() : local, scratchVerbs,
+                                   scratchPoints);
+            }
         }
         if (scratchVerbs.empty()) {
             continue;
@@ -851,8 +900,8 @@ uint32_t elementBorderFillCount(const ElementData& data) {
 }
 
 void emitElementBorder(const ElementData& data, const Mat2x3& world, float alpha, CommandList& out,
-                       std::vector<PathVerb>& scratchVerbs, std::vector<float>& scratchPoints,
-                       bool allowSnap) {
+                       std::vector<PathVerb>& scratchVerbs, std::vector<float>& scratchPoints, bool allowSnap,
+                       BorderDashCache* dashCache) {
     const LayoutBox& box = data.box;
     const Edges& bd = box.border;
     bool anyWidth = bd.top > 0.0f || bd.right > 0.0f || bd.bottom > 0.0f || bd.left > 0.0f;
@@ -863,7 +912,7 @@ void emitElementBorder(const ElementData& data, const Mat2x3& world, float alpha
     // solid color stays the single T-201 ring below, unchanged.
     Color borderColor{};
     if (!borderIsUniform(data.style, bd, borderColor)) {
-        emitElementBorderSides(data, world, alpha, out, scratchVerbs, scratchPoints);
+        emitElementBorderSides(data, world, alpha, out, scratchVerbs, scratchPoints, dashCache);
         return;
     }
     if (borderColor.a <= 0.0f) {

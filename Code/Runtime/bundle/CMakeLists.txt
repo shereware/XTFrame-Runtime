@@ -4,6 +4,7 @@ add_library(xt_bundle STATIC
     src/bundle.cpp
     src/pack.cpp
     src/pack_flow.cpp
+    src/publish_result.cpp
     src/stale_files.cpp
     src/manifest_writer.cpp
     src/localization.cpp
@@ -36,6 +37,12 @@ add_library(xt_bundle STATIC
     src/symbol_lint.cpp
     src/symbol_set.cpp
     src/symbol_group_ops.cpp
+    src/symbol_copy_source.cpp
+    src/symbol_implied.cpp
+    src/project_style.cpp
+    src/style_apply.cpp
+    src/symbol_detach.cpp
+    src/symbol_lint_tokens.cpp
     src/symbol_json.cpp
     src/zip_archive.cpp
 )

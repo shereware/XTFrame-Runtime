@@ -5,6 +5,9 @@ add_library(xt_compile STATIC
     src/ir_writer.cpp
     src/parse_xt.cpp
     src/ports_section.cpp
+    src/expressions_section.cpp
+    src/expressions_lower.cpp
+    src/expressions_texp.cpp
     src/section_sources.cpp
     src/anchor_expand.cpp
     src/xt_canonical_writer.cpp
@@ -49,9 +52,21 @@ add_library(xt_compile STATIC
     src/xts/xts_values_shorthand.cpp
     src/xts/xts_values_grid.cpp
     src/xts/xts_values_calc.cpp
+    src/xts/xts_anim_longhands.cpp
     src/xtfx/xtfx_parse.cpp
     src/xtfx/hlsl_subset.cpp
     src/xtfx/glsl_emit.cpp
+    src/expr/expr_lexer.cpp
+    src/expr/expr_parser.cpp
+    src/expr/expr_resolve.cpp
+    src/expr/expr_builtins.cpp
+    src/expr/expr_eval.cpp
+    src/expr/expr_eval_calls.cpp
+    src/expr/expr_exact.cpp
+    src/expr/expr_lower.cpp
+    src/expr/expr_split.cpp
+    src/expr/expr_split_eval.cpp
+    src/expr/expr_runtime.cpp
 )
 target_link_libraries(xt_compile PUBLIC xt_core)
 target_include_directories(xt_compile PUBLIC include)
@@ -79,3 +94,13 @@ set_source_files_properties(src/migrate_v2.cpp src/migrate_sheet.cpp src/migrate
     src/computed_dump.cpp PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
 # T-594: the web-compat lint, likewise.
 set_source_files_properties(src/web_compat_lint.cpp PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
+# T-756: the animation longhands (xts_anim_longhands.cpp includes xts_values_internal.h), likewise.
+set_source_files_properties(src/xts/xts_anim_longhands.cpp PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
+# T-766: the timeline expression engine (src/expr), likewise (its files share anonymous-namespace helpers).
+set_source_files_properties(src/expr/expr_lexer.cpp src/expr/expr_parser.cpp src/expr/expr_resolve.cpp
+    src/expr/expr_builtins.cpp src/expr/expr_eval.cpp src/expr/expr_eval_calls.cpp src/expr/expr_exact.cpp
+    src/expr/expr_lower.cpp src/expr/expr_split.cpp src/expr/expr_split_eval.cpp src/expr/expr_runtime.cpp
+    PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
+# T-767: the `<expressions>` section, likewise.
+set_source_files_properties(src/expressions_section.cpp src/expressions_lower.cpp src/expressions_texp.cpp
+    PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)

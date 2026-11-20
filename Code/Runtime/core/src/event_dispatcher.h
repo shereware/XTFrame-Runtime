@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <span>
 #include <vector>
 
 #include "style_state_deps.h"
@@ -197,10 +198,27 @@ public:
     /// PointerEnter, the Hover state bit), without a PointerMove event. No-op unless marked stale and the
     /// pointer is over the document.
     void markHoverStale() { m_hoverStale = true; }
+    /// T-749 (Docs/design/23-host-integration.md §23.ag item 6): refreshHover() would re-judge hover.
+    bool hoverRefreshPending() const { return m_hoverStale && m_pointerIn; }
+    /// T-749: tick() or the focus check after layout may do something at a later update() with no new
+    /// input: a held d-pad / stick direction repeats, an A press may become a long-press drag, a pointer
+    /// drag may auto-scroll (and re-sends DragOver after a scroll), a focus() waits to be applied.
+    bool needsTick() const;
     /// T-723 (10 §10.16 W5, tests only): state changes use the old full-range style invalidation.
     void setLegacyStyleInvalidation(bool on) { m_legacyStyleInvalidation = on; }
     /// T-723: the state dependency table built by init() (B.1).
     const StateDependencyTable& stateDependencies() const { return m_stateDeps; }
+    /// T-763 (Docs/tasks/T-763.md items 1-2): marks what a state change already written on `node`
+    /// (ElementState bits, custom states, `:focus-player()` bits) re-resolves, by the state
+    /// dependency table -- nothing, the element or its subtree, never an ancestor; the old full
+    /// range in the legacy mode.
+    void restyleState(NodeArena& arena, NodeId node, const StateChange& change, DirtyCause cause) const;
+    /// T-763 (item 3): the same for a class list change from `before` to `after` (both sorted).
+    void restyleClasses(NodeArena& arena, NodeId node, std::span<const StringId> before,
+                        std::span<const StringId> after, DirtyCause cause) const;
+    /// Sets or clears one ElementState bit of `node` (no-op when it already has that value) and
+    /// marks what it re-resolves, like the dispatcher's own pointer and focus writes.
+    void setStateBit(NodeArena& arena, NodeId node, uint16_t bit, bool on);
     void refreshHover(NodeArena& arena, NodeId root);
 
     /// See Listener's docs; target must be alive and NodeKind::Element. Returns the new listener's
@@ -571,7 +589,7 @@ private:
         uint32_t generation = 0;
     };
     std::vector<PathEntry> m_pathStack;
-    bool m_listenersMuted = false;  // T-260a: muteListeners().
+    bool m_listenersMuted = false;           // T-260a: muteListeners().
     bool m_legacyStyleInvalidation = false;  // T-723: setLegacyStyleInvalidation() (tests only).
     StateDependencyTable m_stateDeps;        // T-723: built by init() from the IR's STYL rules.
     // T-387 (08.12): the elements watchOutsidePress() registered (with their generation, so a

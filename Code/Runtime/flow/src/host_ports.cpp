@@ -304,6 +304,8 @@ void HostPorts::removeOutputListener(uint32_t id) {
     }
 }
 
+bool HostPorts::needsTick() const { return m_impl->bound && documentOutputsMoveWithTime(m_impl->docs); }
+
 void HostPorts::tick(float dt) {
     Impl& m = *m_impl;
     if (!m.bound) {

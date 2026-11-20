@@ -187,6 +187,16 @@ bool parseSingleValue(const PropInfo& info, const std::vector<Tok>& toks, StyleV
                 out.str = std::move(s);
                 return true;
             }
+            if (info.prop == styleprop::BorderImageSource) {
+                // T-808: CSS's `url(x)` as in the `border-image` shorthand; the bare name / string
+                // below stays accepted as before.
+                std::string s;
+                if (parseBackgroundImage(toks, s)) {
+                    out.kind = StyleValueKind::String;
+                    out.str = std::move(s);
+                    return true;
+                }
+            }
             if (toks.size() == 1 && toks[0].kind == TokKind::String) {
                 out.kind = StyleValueKind::String;
                 out.str = toks[0].text;

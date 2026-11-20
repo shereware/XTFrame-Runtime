@@ -1,0 +1,129 @@
+<xt version="2">
+
+  <symbol name="MenuItem" requires="states: Hover, Pressed, Focus, Disabled, Selected; slots: label">
+    <ports>
+      selected: bool in
+      pressed: event out
+    </ports>
+    <button id="Box" bind:state.Selected="selected"
+            on:hover="sound(ui_hover); play(hover-in)" on:leave="play(hover-out)"
+            on:press="sound(ui_confirm); play(press)" on:click="emit(pressed)">
+      <div id="Band"></div>
+      <span id="Label"><slot name="label">New Game</slot></span>
+    </button>
+  </symbol>
+
+  <layout>
+    symbol(MenuItem) {
+      #Box {
+        position: relative;
+        display: flex;
+        align-items: center;
+        width: 220px;
+        height: var(--size-band);
+        padding: 0px var(--space-4);
+      }
+      #Band {
+        position: absolute;
+        left: 0px;
+        top: 0px;
+        width: 100%;
+        height: 100%;
+      }
+      #Label {
+        position: relative;
+        flex-shrink: 0;
+      }
+      #Box:hover #Label {
+        transform: translateX(4px);
+      }
+      :disabled #Label {
+        transform: none !important;
+      }
+    }
+  </layout>
+  <style>
+    symbol(MenuItem) {
+      #Box {
+        background-color: transparent;
+        border-width: 0px;
+      }
+      #Band {
+        background-image: var(--tex-band);
+        background-size: 100% 100%;
+        background-repeat: no-repeat;
+        border-width: 0px 0px 0px var(--rule-thick);
+        border-color: var(--color-band-edge);
+        opacity: 0;
+        transition: opacity var(--motion-normal) ease-out;
+      }
+      #Label {
+        font-family: var(--font-display);
+        font-size: var(--font-size-xl);
+        letter-spacing: var(--letter-display);
+        color: var(--color-text-label);
+        white-space: nowrap;
+        transition: color var(--motion-normal) ease-out, transform var(--motion-normal) ease-out;
+      }
+      #Box:hover #Band {
+        opacity: 1;
+      }
+      #Box:state(Selected) #Band {
+        opacity: 1;
+      }
+      #Box:hover #Label {
+        color: var(--color-text-strong);
+      }
+      #Box:state(Selected) #Label {
+        color: var(--color-text-strong);
+      }
+      #Box:active #Label {
+        color: var(--color-accent-pressed);
+      }
+      #Box:focus #Band {
+        opacity: 1;
+        border-color: var(--color-focus);
+      }
+      :disabled #Label {
+        color: var(--color-disabled-text) !important;
+      }
+      :disabled #Band {
+        opacity: 0 !important;
+      }
+    }
+  </style>
+  <timelines>
+    symbol(MenuItem) {
+      @timeline hover-in {
+        #Band {
+          0s {
+            transform: translateX(-12px);
+          }
+          0.16s ease-out {
+            transform: translateX(0px);
+          }
+        }
+      }
+      @timeline hover-out {
+        #Band {
+          0s {
+            transform: translateX(0px);
+          }
+          0.16s ease-in {
+            transform: translateX(-12px);
+          }
+        }
+      }
+      @timeline press {
+        #Box {
+          0s {
+            transform: translateX(2px);
+          }
+          0.14s ease-out {
+            transform: translateX(0px);
+          }
+        }
+      }
+    }
+  </timelines>
+</xt>

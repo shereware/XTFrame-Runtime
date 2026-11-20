@@ -619,6 +619,8 @@ War Table 1080p（wgpu 獨顯、釘效能核、安靜時量）：rest 命中 65.
 
 **T-730 實作記錄（#687，2026-11-15；§10.18 B 第二步）**：符合 `backdropThenShadowsOnly` 的 segment 在支援快取且 `supportsBackdropMask()` 的裝置上快取一對結果（一個 `CacheEntry`，`texture`＝R′、`maskTexture`＝S；算 2 筆、兩倍位元組，放不下就都不存）。鍵沿用絕對鍵／W2 的位置無關鍵（「沒有 backdrop 輸入」的條件對這一對不適用），加 pair 標記，且 PushEffect 的雜湊把 BackdropBlur 的參數歸零（`frame_cache_pair.{h,cpp}`）。命中時不走訪 segment；背景的複製、金字塔、取樣照常，R′ 與 S 各貼進一張暫存目標（`BackdropMasked` 的輸入是 target，快取結果是 texture——每個元素因此比預期多 2 個 pass），再做 `BackdropMasked` 與合成：每個面板約 20 → 7～9 個 pass。新統計 `backdropPairHits／Misses／Stores`、`effectCacheBytes／Entries`，並把 T-721 的 `effectCachePhaseHits／Settles` 接到 `--perf`。War Table rest（釘效能核、前後交錯三輪中位）：pass 原版 337 → 266、優化版 245 → 140；draw 1014 → 720、934 → 544；上傳 373 → 294 KB、307 → 232 KB；wgpu 獨顯 CPU render 中位 6.89 → 5.10、5.29 → 3.05 ms；內顯含等 GPU 平均／p99 35.2／38.4 → 29.7／35.6、28.9／32.8 → 16.9／18.9 ms；GL 含等 GPU 4.82 → 3.96、3.55 → 2.39 ms。快取佔用 13.5 MB／84 筆（原版）、21.7 MB／75 筆（優化版）。rest／focus 截圖逐位元組相同。原版 10 個面板中 4 個每幀未命中（面板內含動畫子元素，bounds 每幀在變）；優化版約 9 個命中。未測：Vulkan／Metal、Direct 模式的宿主場景、dpr ≠ 1。可再省的：讓 `BackdropMasked` 直接吃快取貼圖（每個面板再 −2 pass，需裝置端配合）。
 
+**T-735 實作記錄（#691，2026-11-17；修正 §10.18 A 與 T-730 的兩條「逐位元相同」路徑）**：(1) AlphaExtract 併入模糊鏈第一步（`channel` 欄位）**只在讀 `.a`（channel 1）時成立**——inset 陰影與 inner glow 讀的是反相／其他通道，在軟體 adapter（lavapipe、llvmpipe、WARP）上併入後與分開做不逐位元相同，故恢復獨立的 AlphaExtract pass；外陰影與外發光照舊少一個 pass。(2) 快取結果在整數像素位移（相位相同）重用時以 `Sampler::PointClamp` 繪製，硬體與軟體 adapter 上都與重新繪製一致；「快取重用對上在新位置重新繪製」的比較在軟體 wgpu adapter 上容許 1 LSB（T-733 的暫時容許收斂為只限這一類）。War Table rest 的 pass：Huge-opt 139.8 → 140.9、Huge 265.6 → 274.0。v0.18.0 以此為準。
+
 ## 10.19 量測用的 GPU 計時與等待分離（2026-11-17；使用者：「確保量的是確實量到 CPU、GPU 執行時間，等待時間要分開來」；T-734）
 
 **問題**：到目前為止「GPU 時間」都是 CPU 送出後等佇列做完的牆鐘時間（`xtframe-gpu-probe` 的 render + queue wait），混了同步開銷、GPU 降頻與排程；CPU 的各階段也只量牆鐘，阻塞在驅動或在途幀上限裡的時間算進了「CPU」。
@@ -630,4 +632,73 @@ War Table 1080p（wgpu 獨顯、釘效能核、安靜時量）：rest 命中 65.
 4. 這是量測工具的能力，不是出貨行為；GL 後端不在本次範圍（GL 驅動另有工作執行緒，見 §10.17，行程 CPU 時間可以涵蓋它，但 GPU 時間戳要另做）。
 
 **解讀限制**（報告必須照寫）：逐幀同步時 GPU 在幀與幀之間閒置，獨顯可能降頻，時間戳量到的是「該頻率下的執行時間」；不同步（`--no-finish`）的跑法較接近遊戲實際情況，兩種都要量。時間戳只涵蓋該幀 command buffer 內的工作，`wgpuQueueWriteBuffer` 的上傳複製插在下一次 submit 最前面（§10.17），以 encoder 層級時間戳時算在下一幀。
+
+## 10.20 視窗外的效果與圖層（2026-11-18 定案；War Table focus 狀態的調查）
+
+**量測**（v0.18.0，計數裝置，`Huge` 1920×1080）：靜止時 ≥ 1 Mpx 的離屏 pass 有 8 個（47 Mpx）；focus 狀態保持時 172 個（其中 164 個是 1920×1080，共 358 Mpx），效果快取從 12.7 MB 漲到 65 MB。`Huge-opt` 相同（146 個全螢幕 pass）。
+
+**原因**：focus 的動畫把頂部列與左右兩欄滑出畫面。painter 把效果與圖層的範圍裁到 viewport（`clampToViewport`），完全在畫面外者得到寬或高為 0；frame builder 的 `hintWindow` 把「尺寸為 0」解讀成「沒有提示」而退回整個 surface——於是「確定在畫面外」被當成「範圍未知」，整條效果鏈以全螢幕執行，結果還存進快取。哪些元素會中招取決於宿主有沒有套用安全區（套了，頂部列仍有一小條在畫面內）。
+
+**規則**：
+
+1. 「範圍未知」與「範圍為空」必須分開表示：`PushEffect`／`PushLayer` 的範圍另帶一個旗標 `boundsKnown`；未知才退回整個 surface。
+2. **效果**：範圍（已含效果自身的外擴——陰影位移＋模糊半徑、發光半徑、背景模糊的取樣外擴等）裁到 viewport 後為空 → 這個效果連同其內容**不畫**（frame builder 跳過整個 segment；SW 與 GL／wgpu 一致）。其輸出不可能落在 viewport 內，所以畫面不變。
+3. **圖層**（不透明度、混合、遮罩、裁切群組）：圖層的範圍改為「子孫的方框**與子孫效果的外擴**的聯集」（今天只有方框，子孫的陰影可能伸進畫面而圖層範圍已是空的）。聯集裁到 viewport 後為空 → 不畫。聯集非空 → 以聯集開視窗（不是整個 surface）。
+4. 3D 空間內：節點落在**仿射平面**上時（T-716 的 `planeIsAffine`）範圍可以可靠裁切，`boundsKnown` 為 true（2026-11-18 T-754 實作時裁定——War Table 的整個 HUD 在同一個 perspective 根之下，若 3D 空間內一律為 false，這條規則對它完全無效）；非仿射的平面維持今天的行為，`boundsKnown` 為 false。子樹內含另一個 3D 空間根、overlay 根或世界圖層者，第一版不略過（T-779 補）。
+5. 效果快取**不存**以整個 surface 為退路視窗的結果（它不是該效果真正的範圍，佔滿預算）。
+6. damage：被跳過的效果與圖層不產生 damage 矩形；它從畫面外移入的那一幀照一般規則。
+7. 工具：`xtframe-gpu-probe` 與 `xtframe-view` 對 manifest 的 `spec.safeArea` 採同一規則（都套用；各有 `--safe <ratio>` 覆寫）——今天只有 view 套用，兩者量到的 War Table 因此不同。War Table 的基準在這之後要重跑。
+
+相關而不做的：調查同時確認了原版 `Huge` 靜止時 4 個玻璃面板每幀未命中成對快取，是因為面板內有持續動畫的子元素（沙漏、符文光暈、小地圖掃描、任務封印）；`Huge-opt` 以製作方式解決（動畫子元素移到同位置的兄弟裁切層）。引擎側自動分層等於合成層（§10.16「不做／延後」不變），且自動把子元素移出會改變它與面板內陰影的上下關係——不做，指引已寫在技能的 performance 參考檔。
+
+**2026-11-18 調查的兩則補記**：(1) §10.10 T-439 記錄中「視窗表面每幀都清除，所以不需要 `TEXTURE_BINDING`」不成立——非 normal 混合的背景複製、背景模糊金字塔、Direct 模式讀場景、4x 且無清除色時載入宿主內容，都會取樣表面；視窗模式含這些內容時驗證失敗。修正見 T-758（表面支援就加上該用途；不支援時畫進中介貼圖再送出）。(2) §10.12 條件 3 在 War Table 的統計：110 個效果中 63 個是 `<img>` 精靈（陰影形狀由影像的 alpha 剪影決定，102 張圖全部含透明像素）——條件**不能**放寬；另有 23 個是效果鏈、21 個在真正傾斜的平面上。這 63 個只能靠製作（預先烘焙陰影）或合成層減少，不開引擎任務。
+
+**T-754 實作記錄（#697，2026-11-18）**：`LayerCmd::boundsKnown`（尾端新增，24 → 28 B）、`EffectCmd::boundsKnown`（佔原本的 pad）。被略過的效果／圖層不產生任何命令，只計入 `CommandList::culledOffscreen`（不進雜湊、不序列化）；`BuildStats`／`FrameStats` 的 `culledOffscreen`。frame builder 與 SW 對「已知且為空」跳過；只有「未知且為空」才退回整個 surface，且該結果不進效果快取。圖層的範圍在 3D 空間外改為子孫方框 ∪ 子孫效果外擴。各效果的外擴經核對已齊（DropShadow、Glow、Blur、Outline、BackdropBlur、Custom）。烘焙的 `.xtcl` 不存 `boundsKnown`（回放一律未知，畫面相同）。`xtframe-gpu-probe` 套用 manifest 的 `spec.safeArea`（與 view 共用 `Code/Tools/Common/spec_safe_area.h`），接受 `--safe`。
+
+量測（計數裝置，1920×1080，focus 保持，`--safe 0`）：`Huge` ≥ 1 Mpx 的離屏 pass 172 → 13、離屏面積 358 → 28 Mpx、總 pass 345 → 136、效果快取 46.8 → 6.0 MB；`Huge-opt` 146 → 19、310 → 46 Mpx、242 → 113、42.3 → 9.7 MB。wgpu 獨顯 focus 的 CPU render：`Huge` 5.08 → 2.73 ms、`Huge-opt` 3.67 → 2.38 ms。套用預設安全區時（頂部列仍有一條在畫面內）收益較小（`Huge` 總 pass 345 → 295）。rest 與 storm 持平。**代價**：paint 的 CPU 在 focus／storm 上升 2～9%（子孫外擴的走訪與平面判定）。未解：子樹內含 3D 空間根者仍走退路（`Huge-opt` focus 剩 19 個全螢幕 pass、`Huge` 剩 5 個）——T-779。
+
+**§10.20 的補充：巢狀空間根（T-779 #724，2026-11-19）**
+- 子樹裡有空間根（perspective／preserve-3d 根）不再一律「不略過」。節點自己的範圍不在畫面內、且下面只有空間根（沒有 overlay 根或世界圖層）時，把每個空間根的投影範圍（`projectedSubtreeBounds()`，未裁切、含效果外擴）併入子孫外擴的聯集：聯集完全在畫面外 → 略過（計入 `culledOffscreen`）；聯集伸進畫面 → 以聯集為已知視窗，取代整張 surface。
+- 仍然不略過（維持未知）：有角點在視點之後、巢狀空間裡還有巢狀空間、子樹沒有任何形狀、投影退化（非有限值）、有層級的圖層未被追蹤；overlay 根與世界圖層照舊。
+- **節點自己的範圍在畫面內時，視窗不變**（不以聯集放大）：投影範圍不考慮裁切，聯集會高估並改動既有視窗。代價是方框外的投影內容照舊被該視窗裁掉。
+- SW 後端：效果範圍為空且未知時以前什麼都不畫，現在用聯集視窗畫出，與 GPU 後端一致（行為變更）。
+- 成本：3D 內每個效果節點的 Jacobian 與外擴原本算兩次，現在 `enterNode()` 算一次交給 `pushEffectCmd()`（`EffectPre`）；不加快取。paint 與停用範圍判定的建置相比在 −1.8%～+1.7%（雜訊 ±1.5%）。
+- War Table focus 第 300 幀、`--safe 0`：Huge-opt 全螢幕 pass 19 → 3、離屏面積 46.4 → 13.2 Mpx。Huge 的 5 個（預設安全區 7 個）不是巢狀根造成，未變——來源是 perspective 根內仿射平面上的 opacity 群組，自己的方框在畫面外而子元素的陰影伸進來；第 3 條（子孫外擴併入圖層範圍）目前只在 3D 空間外適用。**裁決：在 3D 空間內的仿射平面上同樣適用**（外擴以該平面的 Jacobian 換算，與 T-754 對「仿射平面算已知」的裁決一致）；透視平面上不適用。T-795 實作，並處理 `emitRoot()` 為 opacity < 1 的空間根開的整張 viewport 圖層。
+
+**§10.20 的補充：3D 空間內仿射平面上的圖層與空間根自己的圖層（T-795 #725，2026-11-19）**
+- 3D 空間內、仿射平面上、自身沒有效果的圖層，自己的範圍在畫面外時把子孫外擴併入（`unionDescendantReach()`）：聯集在畫面外 → 略過；伸進畫面 → 聯集是已知視窗。畫面內已知的視窗、透視平面、有效果的節點照舊。
+- 空間根自己開的圖層（opacity < 1，**或混合模式非 Normal**——追認：第 3 條本來就把混合算作圖層）用投影範圍、`boundsKnown` 為 true；條件是投影可得、全部角點在視點前、結果有限、不在拖曳殘影中，否則整張 viewport、未知。空間根整個在畫面外時 painter 發出「已知且為空」的圖層，由 frame builder／SW 跳過整段（追認；先前「painter 不發出已知為空的圖層」的慣例對這一處不成立）。
+- War Table focus 第 300 幀：Huge 全螢幕 pass `--safe 0` 5 → 3、預設安全區 7 → 3，離屏面積 28.0 → 24.0／35.7 → 27.7 Mpx；Huge-opt 不變。paint 不變（±0.01 ms）。golden、corpus 不變。兩個專案各剩 3 個全螢幕 pass，來源未查。
+- 待查（T-760）：空間根不在原點時，它自己的背景在 SW 疑似被平移兩次（根在 (60,60)、背景畫在 (120,120)）。
+
+**§10.10.2 的補充：視窗表面不可取樣時（T-758 #728，2026-11-19）**
+- 修正前：視窗模式的 wgpu 表面只要文件在頂層讀 target 0（背景模糊、非 Normal 混合、4x 無清除色的 load），wgpu-native 在 submit 時 panic（"BindGroup … is invalid"）後卡住——D3D12 與 Vulkan 都重現；headless 正常。
+- `chooseSurfaceUsage(caps)`：表面提供 `TextureBinding` 就加上（可直接取樣）；不提供時 `WgpuWindowSurface` 每幀畫進同尺寸同格式的中介貼圖，present 時送上表面（表面可 `CopyDst` → `copyTextureToTexture`；否則一支全螢幕 `textureLoad` pass，逐位元組保留）。`frameTexture()`／`frameView()` 在這個模式回傳中介貼圖，讀回也走它。建立時往 stderr／記錄印一行表面用途。
+- 實測（RTX 4070 Ti）：D3D12 的表面是 `RenderAttachment|CopySrc`（走中介＋全螢幕 pass）；Vulkan 是 `RenderAttachment|CopySrc|TextureBinding`（直接畫）。兩者的截圖 0 px 差異，並與 headless 逐位元組相同（以代用表面的三種用途組合測）。
+- **裁決（T-749 實作）**：C ABI 的視窗目標（`xt_gpu_target`）的合成器從不讀 target 0，不需要中介貼圖——建立表面時要求「不需可讀」，在 D3D12 上省掉每幀一次全螢幕 pass 與一次 submit。`xtframe-view`／編輯器預覽維持現狀（文件可能在任何一幀開始讀背景）；「只在這一幀的計畫讀 target 0 時才用中介貼圖」列 PENDING。
+- 未測：Metal、X11／Wayland、wgpu 的 GL 後端、WARP；「有 CopyDst 沒有 TextureBinding」的實際表面。
+
+**§10.16 W6 的實作記錄（T-760 #731，2026-11-19）**——四項都先以失敗的測試重現：
+- **空間根自己的盒被平移兩次（缺陷，畫面會變）**：根不在原點時，它自己的背景／邊框／圖片／clip-path／overflow 裁切畫在兩倍偏移處（`emitRoot()` 在 `rootXf = c.world` 的投影內又以 `c.world` 畫）。修正：根自己的盒在投影內以單位矩陣畫（19 §19.5 Painter 第 4 步「根自身屬於根平面內容」）；`projectedSubtreeBounds()` 對根的角點與 Jacobian 同步改，§10.20 的範圍判定與畫面一致。SW 與 wgpu 0 px 差。既有 golden 沒有任何一張涵蓋「不在原點且有背景的空間根」，所以 golden 不變——**既有內容若有這種元素，畫面會從錯的位置回到對的位置**。
+- `PopProjection` 後還原 `m_currentLayer`：巢狀根之後的兄弟不再拿到錯的效果 `xf`／`contentBounds`，`backface-visibility: hidden` 的判定也正確。
+- 整幀門檻改用聯集面積（`unionArea()`，座標壓縮、不配置）：大幅重疊的髒矩形不再因為面積相加超過門檻而誤判成整幀。
+- 投影內的 damage：damage 收集時維護與後端相同的投影堆疊，平面上的命令以投影後的範圍計；`PushTransform3D` 取其範圍內各命令投影後的聯集；角點在視點後或非有限時退回最內層投影的 `boundsHint`。修正前有變化的像素落在 damage 外（圖層移動 2730 px、圖層內變色 1358 px、不在原點的根平面變色 1200 px）——對局部重繪的宿主是畫面殘留。公開的 `xt::commandBounds()` 不變（後端仍用它且在投影內本來就不略過）。
+- 未測：Vulkan／Metal 跑新測試；War Table 的 damage 與效能未重測（T-752 的量測涵蓋）。
+
+**§10.16 W5 的補記：其餘狀態寫入路徑的失效收窄（T-763 #732，2026-11-19；T-723 的未竟部分）**
+- 內建狀態位元（`setState`、`setAttribute(disabled|checked)`、`bind:checked／disabled／state.<內建>`、`:focus-player`、手把的 `:active`）、自訂狀態（依賴表新增 `customMask`／`focusPlayerMask`，只標前後改變的位元可能影響的範圍）、class（`addClass／removeClass／setAttribute class`：每個 class 記錄它出現在選擇器的主體或祖先位置，比對新舊 class 清單的差集）都改走依賴表；以前一律標「自己＋全部祖先＋子樹」。`id` 與其他屬性維持全範圍。選擇器沒有 `+`／`~`，所以只有主體與祖先兩種位置。
+- `setStyle／setStyleTemplate／setEffects` 只標自己（繼承屬性才標子樹）。
+- **新增規則**：Focus 位元改變時該元素另標 `kDirtyPaint`（painter 直接讀它畫輸入框的游標與選取）——拿掉全範圍標髒後由驗證模式抓到。
+- transition：效果參數改為與「進行中 transition 的目標值」比較（目標沒變就繼續、不重啟；目標改變則從目前的動畫值重新開始；新目標等於動畫值或不再可過渡就結束）；scene-target 補上 05 §5.6a 的規則 3 與「屬性不再可過渡時取消進行中的 transition」。修正前：效果參數的 transition 被多餘的重算重啟、t=0 離開 hover 被吞掉。
+- 等價測試 `golden_style_invalidation`：163 個 UI、35,382 步，窄模式與 legacy 模式逐節點相同。golden、corpus 不變。
+- 讀數（War Table Huge-opt、wgpu、每幀平均）：storm `styled` 0.056 → 0.033、`redundant_styled` 0.028 → 0.006；focus 0.040 → 0.008；`setStyle` 同值 4 → 1。`redundant_laid_out` 不變（storm 0.622——那是排版自己的多餘工作，另案）。時間未能下結論（量測時有其他建置）。
+- 已知：`restoreState` 的 exact 模式先清再設，即使什麼都沒變仍會標該元素的子樹一次（保留）。未測：capi 與 editor 套件。
+
+**§10.18 B 的後續：`BackdropMasked` 直接取用快取貼圖（T-764 #739，2026-11-19）**
+- 成對快取命中時不再做兩次 `pasteCached`：`BackdropMasked` 直接從快取貼圖讀 R′（t0／unit 0，命令的 `src`＝0）與 S（t2／unit 2，原本放 mask target 的槽）；模糊背景仍在 t1（`aux`）。`DrawCmd.texture`（LUT 的槽）不挪用。每個命中的面板 −2 pass、借還的 transient −2。
+- 能力旗標：`GpuDevice::supportsBackdropMaskTextures()`，預設 false＝原本的 paste 路徑（逐位元組不變，golden `backdrop_cache_paste.txt` 鎖住）；wgpu 與 GL 回 true。自訂 `GpuDevice` 的宿主不必改；要拿到這個節省就實作該旗標與 `BackdropParams` 的尾端欄位。
+- `BackdropParams`：**尾端欄位只在 `mask == kBackdropMaskTextured`（−1）時存在**，其餘情況參數區塊仍是原本的單一 float——有能力的裝置在未命中時命令清單也逐位元組不變（追認；單上寫的是無條件新增）。尾端含 top／mask 是否為貼圖、兩個 handle（以精確 float 存放，上限 2^24，超過退回 paste）、各自的 uv 縮放與位移、取樣方式。長度由 `backdropTexturedFloats`（`gpu_frame.h`）給。
+- 取樣：整數位移的 PointClamp 以 `textureLoad`／`texelFetch` 實作（範圍內與 PointClamp 相同，不需第二個 sampler）；分數位移用命令既有的 linear sampler。uv 落在 [0,1)² 外時該輸入為透明（對應 paste 的 quad 沒畫到的地方）。T-735 的取樣規則與 T-729 的語意不變。GL 在雙線性讀取時每次把快取貼圖設為 `GL_LINEAR`（free list 重用的 target 的濾波追蹤值不可靠）。
+- 讀數（wgpu，每幀平均 pass；「改前」是同一分支把旗標強制為 false）：Huge rest 275.2 → 264.5、storm 313.0 → 302.3、focus 272.1 → 263.5；Huge-opt rest 140.7 → 122.8、storm 154.4 → 136.4、focus 159.7 → 145.1。時間（機器有其他建置在跑，僅供參考）：Huge-opt rest 獨顯 CPU render 中位 5.04 → 4.22 ms，含等 GPU 6.37 → 4.95 ms（獨顯）、26.7 → 21.1 ms（內顯）。rest／focus 截圖在 sw／gl／wgpu 前後逐位元組相同。
+- 未測：Vulkan、Metal、CPU 版 adapter、Direct 模式的宿主場景、dpr ≠ 1；storm 截圖約 0.03% 像素不同，代理判斷是 storm 跨行程本來就不可重現，但沒有以同一個執行檔跑兩次確認（T-752 一併確認）。未編譯 GCC／Clang。
 

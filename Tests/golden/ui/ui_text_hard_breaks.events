@@ -1,0 +1,5 @@
+# T-801: LF, CR LF, TAB and U+2028 in bound text; each break draws nothing, each TAB is one space.
+porttext m1 One\nTwo\r\nThree\tFour\u2028Five
+porttext m2 Nowrap\nstill\tbreaks
+porttext m3 Center\nline\r\nAB\u2028C
+porttext m4 Right\nline\r\nAB\u2028C

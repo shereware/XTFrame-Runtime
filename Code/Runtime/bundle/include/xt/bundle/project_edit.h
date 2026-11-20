@@ -78,6 +78,36 @@ std::string validateProjectSettings(const ProjectSettings& settings);
 /// when the project file cannot be written (nothing changed).
 Status setProjectSettings(UiProject& project, const ProjectSettings& settings, std::string* error = nullptr);
 
+/// T-714 (22 §22.17.2, §22.17.3): the `.xtui` `publish` fields the Publish dialog and
+/// `project.setPublishSettings` edit. `atlas.padding`, `thumbnail`, `languages`, `outDir` and the
+/// targets are not among them: setPublishSettings() keeps the project's values.
+struct PublishSettings {
+    /// `publish.images` (`compress`, `present`; its unknown keys are kept as they are).
+    ImagesOptions images;
+    /// `publish.atlas`: enabled, maxSize, scope, mipmaps (padding is ignored).
+    AtlasOptions atlas;
+    FontsMode fonts = FontsMode::kSystem;
+    bool embedImages = false;
+    bool embedFonts = false;
+};
+
+/// The project's current publish settings.
+PublishSettings publishSettings(const UiProject& project);
+
+/// "" when `settings` can be written, else the first problem: `images.compress` none | bc7 | auto;
+/// `atlas.maxSize` 1024 | 2048 | 4096 (the dialog's choices) or the value the project already has;
+/// `atlas.scope` ui | bundle. `project` is the one the settings are for.
+std::string validatePublishSettings(const UiProject& project, const PublishSettings& settings);
+
+/// Puts `settings` into `project` without writing the project file (the editor's Publish writes it
+/// with the publish record, 22 §22.17.2). The caller validated them.
+void applyPublishSettings(UiProject& project, const PublishSettings& settings);
+
+/// Writes `settings` into the project and its project file (`project.setPublishSettings`).
+/// kInvalidArgument (with `*error`) for an unnamed or legacy project or invalid settings; kIoError
+/// when the project file cannot be written (nothing changed).
+Status setPublishSettings(UiProject& project, const PublishSettings& settings, std::string* error = nullptr);
+
 /// Replaces the linked source folders (`.xtui:assets.sourceFolders`). kInvalidArgument for an
 /// unnamed or legacy project or a folder whose collection is not a collection name; kIoError when
 /// the project file cannot be written.

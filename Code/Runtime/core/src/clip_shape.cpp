@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "point_bounds.h"
 #include "rounded_rect.h"  // kRoundedRectKappa.
 
 namespace xt::clip_shape {
@@ -264,14 +265,7 @@ Rect bounds(const ElementClipShape& shape, Rect box) {
             if (!resolvePolygon(shape, box, pts) || pts.size() < 3) {
                 return Rect{box.x, box.y, 0, 0};
             }
-            float x0 = pts[0].x, y0 = pts[0].y, x1 = x0, y1 = y0;
-            for (const Vec2& p : pts) {
-                x0 = std::min(x0, p.x);
-                y0 = std::min(y0, p.y);
-                x1 = std::max(x1, p.x);
-                y1 = std::max(y1, p.y);
-            }
-            return Rect{x0, y0, x1 - x0, y1 - y0};
+            return pointBounds(pts);
         }
         case ClipShapeKind::None:
         default:

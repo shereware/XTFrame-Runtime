@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <optional>
 #include <span>
 #include <string>
 #include <unordered_map>
@@ -16,6 +17,7 @@
 #include "frame_emit.h"
 #include "gpu_effects.h"
 #include "gradient_lut.h"
+#include "planar_params.h"
 #include "rounded_rect.h"  // Code/Runtime/core/src: R' of a sharp DrawBoxShadow (T-668)
 #include "xt/assert.h"
 #include "xt/asset_resolver.h"
@@ -104,8 +106,12 @@ struct HomoPoint {
     float x, y, w;
 };
 
-/// gl_renderer.cpp's projectHomogeneous: the outermost projection level's divide is left to the
-/// GPU (Docs/design/19-3d-space.md §19.7's GL bullet).
+/// A vertex position under the mapping stack with the projective divide left to the GPU
+/// (Docs/design/19-3d-space.md §19.7's GL bullet). T-761 (§19.y.1): under nested projections the
+/// whole chain goes out as one homogeneous point (project3d::projectPointHomogeneous, H * p), never
+/// divided between the levels -- dividing the inner levels on the CPU left the GPU only the outer
+/// level's w (1 on a flat outer plane) and sampled an inner tilt affinely per triangle. A single
+/// level keeps its own arithmetic below, byte for byte.
 HomoPoint projectHomogeneous(std::span<const project3d::Mapping> mappings, Vec2 p, float dpr, bool& ok) {
     ok = true;
     if (mappings.empty()) {
@@ -113,13 +119,14 @@ HomoPoint projectHomogeneous(std::span<const project3d::Mapping> mappings, Vec2 
     }
     const float scale = dpr > 0.0f ? dpr : 1.0f;
     p = Vec2{p.x / scale, p.y / scale};
-    Vec2 q = p;
     if (mappings.size() > 1) {
-        q = project3d::projectPoint(mappings.subspan(1), Mat2x3{}, p, ok);
+        const Vec3 h = project3d::projectPointHomogeneous(mappings, p, ok);
         if (!ok) {
             return HomoPoint{0, 0, 0};
         }
+        return HomoPoint{h.x * scale, h.y * scale, h.z};
     }
+    const Vec2 q = p;
     const project3d::Mapping& outer = mappings[0];
     Mat4 m = mat4Mul(outer.viewProj, outer.planeWorld3);
     float px = q.x, py = q.y;
@@ -200,6 +207,26 @@ struct FrameBuilder::Impl {
     uint32_t statCapCoverageFallbacks = 0;
     uint32_t statBoxShadowSkipped = 0;
     uint32_t statAnalyticClips = 0, statAnalyticClipFallbacks = 0;  // T-718
+    /// T-754: layer / effect segments with a known, empty boundsHint skipped by this build attempt.
+    uint32_t statCulledOffscreen = 0;
+    /// T-806 (23 §23.aj): GpuDevice::supportsPlanarExternal, asked once per build; the images of planar
+    /// bindings this build attempt left out (BuildStats::planarSkipped); whether an invalid description
+    /// or a planar particle texture was already reported in `lastError` (once per device each).
+    bool devicePlanar = false;
+    uint32_t statPlanarSkipped = 0;
+    bool planarInvalidWarned = false;
+    bool planarParticlesWarned = false;
+    /// T-806: one PlanarParams block per planar binding and frame -- (source, asset) -> its index in
+    /// the frame's params, so the quads of a nine-slice or a tiled background keep one state and batch.
+    struct PlanarBlock {
+        uint32_t source = 0;
+        AssetId asset = kInvalidAsset;
+        uint32_t paramIndex = 0;
+    };
+    std::vector<PlanarBlock> planarBlocks;
+    /// T-806: the block of the planar image draw in progress (set by resolveImageTexture when it
+    /// answers Shading::TexturePlanar, read by applyImageLod).
+    uint32_t planarParamIndex = 0;
     FrameBuilder::BuildStats lastBuildStats;
 
     FrameEmitter emit;
@@ -414,6 +441,13 @@ struct FrameBuilder::Impl {
         TextureHandle texture = 0;
         bool straightAlpha = false;
         uint32_t source = 0;  ///< T-263d: the SourceSlot::id whose IR numbers `asset`
+        /// T-746 (23 §23.ah): the binding had a content version, and its externalTextureStamp() -- a
+        /// cached effect result over it is only right while that holds.
+        bool versioned = false;
+        uint64_t stamp = 0;
+        /// T-806 (23 §23.aj rule 4): the binding's plane description (layout Rgba: none); a change
+        /// redraws whatever the version says.
+        AssetResolver::ExternalPlanes planes;
     };
     /// External (`engine://`) bindings the last frame sampled, re-checked by lastFrameReusable.
     std::vector<ExternalRef> lastExternals;
@@ -473,6 +507,26 @@ struct FrameBuilder::Impl {
     /// counts: an atlas restart builds again).
     uint32_t statCacheHits = 0;
     uint32_t statCacheMisses = 0;
+    /// T-753 (Docs/design/57-measurement.md §57.3 item 4, `repaintedUnchanged`): effect segments and
+    /// layers of the build attempt in progress drawn in full although the hash of their commands is one
+    /// of the previous build's (FrameStats::repaintedUnchanged*), by reason. Counted while
+    /// `countUnchanged` (the tracker's detail level >= 1): `rangeHashes` holds, at each PushLayer /
+    /// PushEffect, the hash of its commands up to the matching pop; `prevRangeSet` / `curRangeSet` the
+    /// sorted hashes of every such range of the previous build and of this one.
+    uint32_t statRuNotCacheable = 0;
+    uint32_t statRuKeyChanged = 0;
+    uint32_t statRuBudget = 0;
+    uint32_t statRuFirstSight = 0;
+    bool countUnchanged = false;
+    std::vector<uint64_t> rangeHashes;
+    std::vector<uint64_t> prevRangeSet;
+    std::vector<uint64_t> curRangeSet;
+    std::vector<size_t> rangeStack;
+    std::vector<uint64_t> rangePrefix1;
+    std::vector<uint64_t> rangePrefix2;
+    /// T-753 (57 §57.2 item 3): the tracker of the build in progress, for the build.* zones (null
+    /// outside build()).
+    PerfTracker* zonePerf = nullptr;
     /// T-721 (10 §10.16 W2 item 7): hits pasted a fraction of a pixel away from where the result was
     /// drawn, and segments drawn again because they came to rest (the same "last attempt" rule).
     uint32_t statCachePhaseHits = 0;
@@ -573,6 +627,9 @@ struct FrameBuilder::Impl {
         bool cacheStore = false;    ///< the key was seen in the previous build: keep the result
         bool cacheReplace = false;  ///< this result supersedes the key's live entry
         bool cachePair = false;     ///< T-730: keep S and R' (a backdrop pair), not the result
+        /// T-753: drawn in full with the previous build's command hash and meant to be stored; PopEffect
+        /// counts it as a first repeat (stored) or as the budget's (not stored).
+        bool unchangedPending = false;
     };
     std::vector<TargetFrame> frameStack;
 
@@ -713,7 +770,8 @@ struct FrameBuilder::Impl {
     void init(GpuDevice& dev) {
         shutdown();
         device = &dev;
-        boxShadowWarned = false;  // T-691: reported once per device
+        boxShadowWarned = false;                              // T-691: reported once per device
+        planarInvalidWarned = planarParticlesWarned = false;  // T-806: likewise
         luts.init(device);
         // T-162: learn once whether the device caches, so a non-caching device never sees a
         // segment counted as "pending" (which would cost it one extra build per static period).
@@ -2659,14 +2717,23 @@ struct FrameBuilder::Impl {
     /// the host's binding (`AssetResolver::setExternalTexture`); unbound, or bound with texture 0,
     /// it draws nothing (0 out, no error: "not bound yet" is a normal host state). Any other
     /// asset goes through the decode-and-upload cache.
+    ///
+    /// T-806 (23 §23.aj): a binding with a plane description answers Shading::TexturePlanar with
+    /// `planarParamIndex` set to its PlanarParams block (one per binding and frame) on a device that
+    /// supports it; it draws nothing on any other device, with an invalid description (reported once)
+    /// or where `planarAllowed` is false (particles, reported once).
     TextureHandle resolveImageTexture(AssetId asset, AssetResolver* assets, const IrView* ir,
-                                      Shading& shading, float variantScale = 1.0f) {
+                                      Shading& shading, float variantScale = 1.0f,
+                                      bool planarAllowed = true) {
         shading = Shading::Texture;
         if (isExternalAsset(asset, *ir)) {
             const AssetResolver::ExternalTexture* ext = assets->externalTexture(asset, *ir);
             rememberExternal(asset, ext);
             if (ext == nullptr || ext->texture == 0) {
                 return 0;
+            }
+            if (ext->planes.layout != AssetResolver::ExternalLayout::Rgba) {
+                return resolvePlanar(asset, *ext, shading, planarAllowed);
             }
             if (ext->straightAlpha) {
                 shading = Shading::TextureStraight;
@@ -2679,6 +2746,43 @@ struct FrameBuilder::Impl {
             shading = Shading::TextureStraight;  // T-199: compressed blocks keep straight alpha.
         }
         return tex;
+    }
+
+    /// T-806: resolveImageTexture's answer for the planar binding `ext` of `asset` (see there).
+    TextureHandle resolvePlanar(AssetId asset, const AssetResolver::ExternalTexture& ext, Shading& shading,
+                                bool planarAllowed) {
+        if (!devicePlanar) {
+            ++statPlanarSkipped;  // the host's part (23 §23.aj): describe planes only to a capable device
+            return 0;
+        }
+        if (!externalPlanesValid(ext.planes)) {
+            ++statPlanarSkipped;
+            if (!planarInvalidWarned) {
+                planarInvalidWarned = true;
+                lastError =
+                    "an external texture's plane description is not valid (a plane rectangle outside "
+                    "the texture or empty, or no texture size); the image is not drawn";
+            }
+            return 0;
+        }
+        if (!planarAllowed) {
+            ++statPlanarSkipped;
+            if (!planarParticlesWarned) {
+                planarParticlesWarned = true;
+                lastError = "particles cannot sample an external texture with a plane description; not drawn";
+            }
+            return 0;
+        }
+        shading = Shading::TexturePlanar;
+        for (const PlanarBlock& b : planarBlocks) {
+            if (b.source == currentSource && b.asset == asset) {
+                planarParamIndex = b.paramIndex;
+                return ext.texture;
+            }
+        }
+        planarParamIndex = emit.pushParams(detail::planarParams(ext.planes));
+        planarBlocks.push_back(PlanarBlock{currentSource, asset, planarParamIndex});
+        return ext.texture;
     }
 
     /// T-162: records what the frame saw of an external binding (a missing one as texture 0), so
@@ -2694,6 +2798,11 @@ struct FrameBuilder::Impl {
         r.source = currentSource;
         r.texture = ext != nullptr ? ext->texture : 0;
         r.straightAlpha = ext != nullptr && ext->straightAlpha;
+        r.versioned = ext != nullptr && ext->hasVersion;
+        r.stamp = externalTextureStamp(ext);
+        if (ext != nullptr) {
+            r.planes = ext->planes;  // T-806
+        }
         lastExternals.push_back(r);
     }
 
@@ -2770,8 +2879,14 @@ struct FrameBuilder::Impl {
         imageLod.straight = shading == Shading::TextureStraight ? 1.0f : 0.0f;
     }
 
-    /// T-665: marks image draw `c` trilinear at the armed lod (its own TextureLodParams).
+    /// T-665: marks image draw `c` trilinear at the armed lod (its own TextureLodParams). T-806: a
+    /// TexturePlanar draw (never armed: host textures have no mip chain) takes its binding's
+    /// PlanarParams block instead.
     void applyImageLod(DrawCmd& c) {
+        if (c.shading == Shading::TexturePlanar) {
+            c.paramIndex = planarParamIndex;
+            return;
+        }
         if (!imageLod.active) {
             return;
         }
@@ -2977,7 +3092,7 @@ struct FrameBuilder::Impl {
                 return;
             }
             Shading imageShading = Shading::Texture;
-            tex = resolveImageTexture(cmd.texture, assets, ir, imageShading);
+            tex = resolveImageTexture(cmd.texture, assets, ir, imageShading, 1.0f, /*planarAllowed=*/false);
             if (tex == 0) {
                 return;
             }
@@ -3120,6 +3235,9 @@ struct FrameBuilder::Impl {
         c.blend = Blend::SrcOver;
         c.stencilOp = StencilOp::TestEqualRef;
         c.stencilRef = static_cast<uint8_t>(clipDepth);
+        if (shading == Shading::TexturePlanar) {
+            c.paramIndex = planarParamIndex;  // T-806 (a mesh never arms a lod)
+        }
         emit.pushCmd(c, g);
     }
 
@@ -4967,6 +5085,27 @@ struct FrameBuilder::Impl {
     /// T-720 (10 §10.16 W1): analytic clip levels do not narrow the scissor, so a hinted window is
     /// not cut at their box (the group's composite may overflow the shape, as in SW); an unhinted
     /// one under such clips takes their box (`analyticBounds`) instead of the whole surface.
+    /// T-754 (10 §10.20 rules 1 and 4): only an *unknown* empty hint is hintWindow()'s whole-surface
+    /// fallback; a known one means the section's output lies wholly outside the viewport. The
+    /// Painter leaves such sections out, so a list carrying one comes from elsewhere: it is skipped.
+    static bool knownEmpty(uint8_t boundsKnown, const Rect& hint) {
+        return boundsKnown != 0 && (!(hint.w > 0.0f) || !(hint.h > 0.0f));
+    }
+
+    /// T-754: the index of the command closing the section `cl.commands[open]` opens (`push` ...
+    /// the matching `pop`); the last command when the list never closes it (malformed).
+    static size_t sectionEnd(const CommandList& cl, size_t open, CmdKind push, CmdKind pop) {
+        int depth = 0;
+        for (size_t i = open; i < cl.commands.size(); ++i) {
+            if (cl.commands[i].kind == push) {
+                ++depth;
+            } else if (cl.commands[i].kind == pop && --depth == 0) {
+                return i;
+            }
+        }
+        return cl.commands.empty() ? open : cl.commands.size() - 1;
+    }
+
     Scissor hintWindow(const Rect& hint, float dpr, float outsetPx = 0.0f) {
         if (hint.w <= 0.0f || hint.h <= 0.0f) {
             return emit.targetWindow(analyticDepth > 0 ? detail::intersect(emit.scissor(), analyticBounds)
@@ -5115,7 +5254,15 @@ struct FrameBuilder::Impl {
         /// device that runs BackdropMasked -- what is cached is the pair S / R', keyed without the
         /// BackdropBlur's parameters (detail::BackdropPairHead).
         bool pair = false;
+        /// T-746 (23 §23.ah): the stamps of the versioned external textures the segment samples, in
+        /// order (0: none); part of every key of the segment (withExternalKey).
+        uint64_t externalKey = 0;
     };
+
+    /// T-746: `hash` with the segment's external texture stamps folded in.
+    static uint64_t withExternalKey(uint64_t hash, const Segment& seg) {
+        return seg.externalKey == 0 ? hash : fnv1a(hash, &seg.externalKey, sizeof(seg.externalKey));
+    }
 
     /// T-721 (10 §10.16 W2): positions in the position-independent key are rounded to 1/16 device
     /// px (a position computed at another place differs in its last bits; an exact hash would
@@ -5129,16 +5276,34 @@ struct FrameBuilder::Impl {
     /// Classifies the `PushEffect` at `start`: finds its PopEffect, decides whether its result
     /// is a pure function of the segment (no backdrop read, no external texture, a caching
     /// device) and, if so, computes the cache key.
-    Segment classifySegment(const CommandList& cl, size_t start, const EffectCmd& c, const IrView* ir) {
+    Segment classifySegment(const CommandList& cl, size_t start, const EffectCmd& c, const IrView* ir,
+                            AssetResolver* assets) {
         Segment seg;
         bool external = false;
         bool space3d = false;  // T-721
         int depth = 0;
         seg.end = cl.commands.size();
-        // T-263d: each asset command's id is its own source's.
+        // T-263d: each asset command's id is its own source's. T-746 (23 §23.ah): an external texture
+        // with a content version is no obstacle -- its binding's stamp (the version among it) joins
+        // the key, and the frame remembers it for lastFrameReusable.
         auto isExternal = [&](AssetId asset, uint16_t source) {
             const IrView* src = sourceIr(cl, source, ir);
-            return src != nullptr && isExternalAsset(asset, *src);
+            if (src == nullptr || !isExternalAsset(asset, *src)) {
+                return false;
+            }
+            const AssetResolver::ExternalTexture* ext =
+                assets != nullptr ? assets->externalTexture(asset, *src) : nullptr;
+            if (ext == nullptr || !ext->hasVersion) {
+                return true;
+            }
+            const uint64_t stamp = externalTextureStamp(ext);
+            seg.externalKey =
+                fnv1a(seg.externalKey == 0 ? kFnvBasis : seg.externalKey, &stamp, sizeof(stamp));
+            const uint32_t saved = currentSource;
+            enterSource(cl, source, assets, ir);
+            rememberExternal(asset, ext);
+            currentSource = saved;
+            return false;
         };
         for (size_t i = start; i < cl.commands.size(); ++i) {
             const Command& cmd = cl.commands[i];
@@ -5185,7 +5350,7 @@ struct FrameBuilder::Impl {
             }
         }
         seg.cacheable = true;
-        seg.hash = segmentHash(cl, start, seg.end, seg.pair);
+        seg.hash = withExternalKey(segmentHash(cl, start, seg.end, seg.pair), seg);
         seg.key = seg.hash;
         // T-721 (10 §10.16 W2 item 2): a backdrop reader's result depends on what lies below it
         // (T-730: the pair does not read it).
@@ -5465,7 +5630,9 @@ struct FrameBuilder::Impl {
     ///    entry in this build (item 6 of the task sheet: the first one visited keeps its phase).
     CacheEntry* planSegment(const CommandList& cl, size_t start, const EffectCmd& c, Segment& seg) {
         const Vec2 anchor{c.boundsHint.x * currentDpr, c.boundsHint.y * currentDpr};
-        auto exactHash = [&]() { return relativeSegmentHash(cl, start, seg.end, c, anchor, true, seg.pair); };
+        auto exactHash = [&]() {
+            return withExternalKey(relativeSegmentHash(cl, start, seg.end, c, anchor, true, seg.pair), seg);
+        };
         auto drawAgain = [&](uint64_t key, bool bordered) -> CacheEntry* {
             seg.key = key;
             seg.relocatable = true;
@@ -5501,7 +5668,7 @@ struct FrameBuilder::Impl {
         }
         seg.relocatable = true;
         seg.anchor = anchor;
-        seg.key = relativeSegmentHash(cl, start, seg.end, c, anchor, false, seg.pair);
+        seg.key = withExternalKey(relativeSegmentHash(cl, start, seg.end, c, anchor, false, seg.pair), seg);
         const PrevSegment prev = previousSegment(seg.key, anchor);
         recordSegment(seg.key, anchor);
         entry = findCacheEntryByKey(seg.key);
@@ -5605,6 +5772,35 @@ struct FrameBuilder::Impl {
         return t;
     }
 
+    /// T-764 (10 §10.18 B, the follow-up of T-730): the BackdropMasked block that reads a cached pair
+    /// straight from its textures -- the mapping of the pair's quad (its window, `offset` away; the quad
+    /// pasteCached would draw) onto the effect window `window`, nearest texel at the same phase (T-735),
+    /// bilinear a fraction of a pixel away (cachedDraw's rule).
+    static BackdropParams cachedPairParams(const CacheEntry& entry, Vec2 offset, const Scissor& window) {
+        BackdropParams bp{};
+        bp.mask = kBackdropMaskTextured;
+        bp.topIsTexture = 1.0f;
+        bp.maskIsTexture = 1.0f;
+        bp.topTexture = static_cast<float>(entry.texture);
+        bp.maskTexture = static_cast<float>(entry.maskTexture);
+        const float ew = static_cast<float>(std::max(1, entry.window.w));
+        const float eh = static_cast<float>(std::max(1, entry.window.h));
+        const float x0 = static_cast<float>(entry.window.x) + offset.x;
+        const float y0 = static_cast<float>(entry.window.y) + offset.y;
+        const float uv[4] = {static_cast<float>(window.w) / ew, static_cast<float>(window.h) / eh,
+                             (static_cast<float>(window.x) - x0) / ew,
+                             (static_cast<float>(window.y) - y0) / eh};
+        const float sampler =
+            static_cast<float>(wholePixels(offset) ? Sampler::PointClamp : Sampler::LinearClamp);
+        for (int i = 0; i < 4; ++i) {
+            bp.topUv[i] = uv[i];
+            bp.maskUv[i] = uv[i];
+        }
+        bp.topSampler = sampler;
+        bp.maskSampler = sampler;
+        return bp;
+    }
+
     /// T-730 (10 §10.18 B second step): a backdrop pair served from the cache in place of the segment of
     /// effect `c`. The backdrop is read as the segment would read it (the copy, the pyramid, the level
     /// mix and its colour adjustment), R' and S are pasted into transients (`offset` away from where they
@@ -5630,6 +5826,21 @@ struct FrameBuilder::Impl {
             return;
         }
         const Scissor window = hintWindow(c.boundsHint, dpr, entry.bordered ? 1.0f : 0.0f);
+        if (emit.backdropMaskTextures() && entry.texture <= kBackdropHandleExactMax &&
+            entry.maskTexture <= kBackdropHandleExactMax) {
+            // T-764: R' and S sampled where they lie, no paste.
+            detail::EffectStackInput in;
+            in.screenParams = std::span<const EffectInstance>(&screenFirst, 1);
+            in.stops = list->stops;
+            in.pyramid = pyramid;
+            in.time = list->time;
+            const TargetHandle result = detail::applyBackdropUnderTextures(
+                emit, luts, in, window, cachedPairParams(entry, offset, window));
+            detail::releaseBackdropPyramid(emit, f.ownPyramid);
+            compositeOnto(f.parent, result, BlendMode::Normal, 1.0f);
+            emit.releaseTransient(result);
+            return;
+        }
         const TargetHandle top = pasteCached(entry.texture, entry, offset, window);
         const TargetHandle mask = pasteCached(entry.maskTexture, entry, offset, window);
         detail::EffectStackInput in;
@@ -5888,12 +6099,22 @@ struct FrameBuilder::Impl {
         if (f.cachePair && f.cacheStore) {
             in.keepShadows = &shadows;
         }
-        TargetHandle result = detail::applyEffectStack(emit, luts, in);
+        TargetHandle result = 0;
+        {
+            XT_PERF_ZONE(zonePerf, BuildEffects);  // T-753 (57 §57.2 item 3)
+            result = detail::applyEffectStack(emit, luts, in);
+        }
         detail::releaseBackdropPyramid(emit, f.ownPyramid);
+        const uint32_t pairStoresBefore = statPairStores;  // T-753
+        bool storedSingle = false;
+        bool liveSingle = false;
         // T-162: keep the result for later frames once the segment has repeated. An identity
         // stack (`result == f.a`) has nothing worth keeping.
+        // T-753 (57 §57.2 item 3): the store is timed in build.cache.
+        std::optional<PerfZoneScope> cacheZone(std::in_place, zonePerf, PerfZone::BuildCache);
         if (f.cachePair && result != f.a && !cacheUnsupported) {
             storePair(f, result, shadows != 0 ? shadows : result);
+            storedSingle = statPairStores != pairStoresBefore;
         } else if (f.cacheable && result != f.a && !cacheUnsupported) {
             const Scissor window = emit.windowOf(result);
             const size_t bytes = size_t(window.w) * size_t(window.h) * 4u;
@@ -5906,6 +6127,7 @@ struct FrameBuilder::Impl {
                     live->retired = true;
                     live = nullptr;
                 }
+                liveSingle = live != nullptr;  // T-753
                 const TextureHandle tex = live != nullptr
                                               ? 0
                                               : acquireCacheTarget(static_cast<uint16_t>(window.w),
@@ -5930,11 +6152,26 @@ struct FrameBuilder::Impl {
                     e.height = static_cast<uint16_t>(window.h);
                     e.touched = true;
                     cacheEntries.push_back(e);
-                    ++cacheSlots;    // T-730
-                    ++cachePending;  // the next build serves it from the cache
+                    ++cacheSlots;         // T-730
+                    ++cachePending;       // the next build serves it from the cache
+                    storedSingle = true;  // T-753
                 }
             } else if (cacheHasRoom(bytes)) {
                 ++cachePending;  // first appearance: stored on the next build
+            }
+        }
+        cacheZone.reset();
+        if (f.unchangedPending) {
+            // T-753: stored now (its first repeat), already held for another segment of this build, or
+            // left out (an identity stack keeps nothing; else the cache had no room).
+            if (storedSingle) {
+                ++statRuFirstSight;
+            } else if (result == f.a || cacheUnsupported) {
+                ++statRuNotCacheable;
+            } else if (liveSingle) {
+                ++statRuKeyChanged;
+            } else {
+                ++statRuBudget;
             }
         }
         // opacity 1, Normal per Docs/design/18-effects.md §18.5.
@@ -5946,6 +6183,77 @@ struct FrameBuilder::Impl {
             emit.releaseTransient(shadows);
         }
         emit.releaseTransient(f.a);
+    }
+
+    /// T-753 (57 §57.3 item 4): the hash of every PushLayer / PushEffect range of `cl` (its commands up to
+    /// the matching pop, each command by its hashCommandList() hash and its place in the range) into
+    /// `rangeHashes` (at the push; 0 elsewhere) and, sorted, `curRangeSet`. Prefix sums make it one pass.
+    void computeRangeHashes(const CommandList& cl) {
+        if (!cmdHashesValid) {
+            hashCommandList(cl, cmdHashes);
+            cmdHashesValid = true;
+        }
+        const size_t n = std::min(cl.commands.size(), cmdHashes.size());
+        rangeHashes.assign(n, 0);
+        rangePrefix1.assign(n + 1, 0);
+        rangePrefix2.assign(n + 1, 0);
+        for (size_t i = 0; i < n; ++i) {
+            rangePrefix1[i + 1] = rangePrefix1[i] + cmdHashes[i];
+            rangePrefix2[i + 1] = rangePrefix2[i] + uint64_t(i + 1) * cmdHashes[i];
+        }
+        curRangeSet.clear();
+        rangeStack.clear();
+        for (size_t i = 0; i < n; ++i) {
+            const CmdKind kind = cl.commands[i].kind;
+            if (kind == CmdKind::PushLayer || kind == CmdKind::PushEffect) {
+                rangeStack.push_back(i);
+            } else if ((kind == CmdKind::PopLayer || kind == CmdKind::PopEffect) && !rangeStack.empty()) {
+                const size_t s = rangeStack.back();
+                rangeStack.pop_back();
+                // sum over j in [s, i] of (j + 1 - s) * hash[j], then the length, mixed.
+                uint64_t h = (rangePrefix2[i + 1] - rangePrefix2[s]) -
+                             uint64_t(s) * (rangePrefix1[i + 1] - rangePrefix1[s]);
+                h ^= uint64_t(i - s + 1) * 0x9E3779B97F4A7C15ull;
+                h ^= h >> 30;
+                h *= 0xBF58476D1CE4E5B9ull;
+                h ^= h >> 27;
+                h *= 0x94D049BB133111EBull;
+                h ^= h >> 31;
+                h = h != 0 ? h : 1;
+                rangeHashes[s] = h;
+                curRangeSet.push_back(h);
+            }
+        }
+        std::sort(curRangeSet.begin(), curRangeSet.end());
+    }
+
+    /// T-753: the range starting at command `ci` hashed as one of the previous build's.
+    bool unchangedSince(size_t ci) const {
+        return countUnchanged && ci < rangeHashes.size() && rangeHashes[ci] != 0 &&
+               std::binary_search(prevRangeSet.begin(), prevRangeSet.end(), rangeHashes[ci]);
+    }
+
+    /// T-753: an effect segment about to be drawn in full -- counted as repaintedUnchanged when its
+    /// commands hashed as in the previous build: not cacheable, or its key changed (not seen in the
+    /// previous build, or a settle drawing it again in place). True when the decision waits for PopEffect
+    /// (the result is meant to be stored).
+    bool countRepaintedEffect(const CommandList& cl, size_t ci, const EffectCmd& c, const Segment& seg) {
+        if (!unchangedSince(ci)) {
+            return false;
+        }
+        bool custom = false;
+        for (uint32_t i = 0; i < c.effectCount && size_t(c.effectOffset) + i < cl.effects.size(); ++i) {
+            custom = custom || cl.effects[c.effectOffset + i].kind == EffectKind::Custom;
+        }
+        if (!seg.cacheable || custom) {
+            ++statRuNotCacheable;
+            return false;
+        }
+        if (seg.replace || !seg.store) {
+            ++statRuKeyChanged;
+            return false;
+        }
+        return true;
     }
 
     /// T-730 (10 §10.18 B second step): PopEffect's store of a backdrop pair -- the source layer `f.a`
@@ -6036,6 +6344,10 @@ struct FrameBuilder::Impl {
         statClipSkipped = statClipScissor = statClipImageDirect = statClipMaskLayers = 0;  // T-663
         statCapCoverageFallbacks = statBoxShadowSkipped = 0;                               // T-691
         statAnalyticClips = statAnalyticClipFallbacks = 0;                                 // T-718
+        statCulledOffscreen = 0;                                                           // T-754
+        statPlanarSkipped = 0;                                                             // T-806
+        planarBlocks.clear();  // T-806: the blocks live in the frame buildOnce starts
+        planarParamIndex = 0;
         clipScans.clear();
         clipScanSlot.clear();
         clipScanEnd = cl.commands.size();
@@ -6056,13 +6368,18 @@ struct FrameBuilder::Impl {
         scalingRuns = 0;
 #endif
 
-        if (directMode) {
-            buildDirect(cl, shaper, assets, ir, dpr);
-        } else {
-            // T-701: the whole list, or the commands of one world layer (buildRange).
-            const size_t end = std::min(rangeEnd, cl.commands.size());
-            for (size_t ci = std::min(rangeFirst, end); ci < end; ++ci) {
-                ci = processCommand(cl, ci, shaper, assets, ir, dpr);
+        statRuNotCacheable = statRuKeyChanged = statRuBudget = statRuFirstSight = 0;  // T-753: likewise
+
+        {
+            XT_PERF_ZONE(zonePerf, BuildWalk);  // T-753 (57 §57.2 item 3)
+            if (directMode) {
+                buildDirect(cl, shaper, assets, ir, dpr);
+            } else {
+                // T-701: the whole list, or the commands of one world layer (buildRange).
+                const size_t end = std::min(rangeEnd, cl.commands.size());
+                for (size_t ci = std::min(rangeFirst, end); ci < end; ++ci) {
+                    ci = processCommand(cl, ci, shaper, assets, ir, dpr);
+                }
             }
         }
         finishBuildOnce();
@@ -6114,9 +6431,18 @@ struct FrameBuilder::Impl {
                 case CmdKind::PopClip:
                     doPopClip();
                     break;
-                case CmdKind::PushLayer:
-                    doPushLayer(cl.layers[cmd.index]);
+                case CmdKind::PushLayer: {
+                    const LayerCmd& c = cl.layers[cmd.index];
+                    if (knownEmpty(c.boundsKnown, c.boundsHint)) {
+                        ++statCulledOffscreen;  // T-754: nothing of it can reach the viewport
+                        return sectionEnd(cl, ci, CmdKind::PushLayer, CmdKind::PopLayer);
+                    }
+                    if (unchangedSince(ci)) {
+                        ++statRuNotCacheable;  // T-753: layers are never cached
+                    }
+                    doPushLayer(c);
                     break;
+                }
                 case CmdKind::PopLayer:
                     doPopLayer();
                     break;
@@ -6169,21 +6495,40 @@ struct FrameBuilder::Impl {
                 } break;
                 case CmdKind::PushEffect: {
                     const EffectCmd& c = cl.effectCmds[cmd.index];
-                    Segment seg = classifySegment(cl, ci, c, ir);
-                    if (seg.cacheable) {
-                        if (CacheEntry* entry = planSegment(cl, ci, c, seg)) {  // T-721
-                            if (seg.pair) {
-                                emitCachedPair(c, dpr, *entry, seg.offset);  // T-730
-                                ++statPairHits;
-                            } else {
-                                emitCachedEffect(*entry, seg.offset);
-                                ++statCacheHits;
-                            }
-                            return seg.end;  // the whole segment came from the cache
-                        }
-                        ++(seg.pair ? statPairMisses : statCacheMisses);
+                    if (knownEmpty(c.boundsKnown, c.boundsHint)) {
+                        ++statCulledOffscreen;  // T-754 (10 §10.20 rule 2)
+                        return sectionEnd(cl, ci, CmdKind::PushEffect, CmdKind::PopEffect);
                     }
+                    Segment seg;
+                    {
+                        XT_PERF_ZONE(zonePerf, BuildCache);  // T-753 (57 §57.2 item 3)
+                        seg = classifySegment(cl, ci, c, ir, assets);
+                        // T-754 (10 §10.20 rule 5): a result drawn in the whole-surface fallback window
+                        // (an unknown, empty hint) is not the effect's real extent: never cached.
+                        if (!(c.boundsHint.w > 0.0f) || !(c.boundsHint.h > 0.0f)) {
+                            seg.cacheable = false;
+                            seg.pair = false;
+                        }
+                        if (seg.cacheable) {
+                            if (CacheEntry* entry = planSegment(cl, ci, c, seg)) {  // T-721
+                                if (seg.pair) {
+                                    emitCachedPair(c, dpr, *entry, seg.offset);  // T-730
+                                    ++statPairHits;
+                                } else {
+                                    emitCachedEffect(*entry, seg.offset);
+                                    ++statCacheHits;
+                                }
+                                return seg.end;  // the whole segment came from the cache
+                            }
+                            ++(seg.pair ? statPairMisses : statCacheMisses);
+                        }
+                    }
+                    const bool pending = countRepaintedEffect(cl, ci, c, seg);  // T-753
+                    const size_t depth = frameStack.size();
                     doPushEffect(c, dpr, seg);
+                    if (pending && frameStack.size() > depth) {
+                        frameStack.back().unchangedPending = true;
+                    }
                     break;
                 }
                 case CmdKind::PopEffect:
@@ -6627,7 +6972,7 @@ struct FrameBuilder::Impl {
     void build(const CommandList& cl, TextShaper* shaper, AssetResolver* assets, const IrView* ir,
                GpuFrame& out, PerfTracker* perf, const DamageList* damageList) {
         FrameStats* stats = (perf != nullptr && perf->enabled()) ? &perf->current() : nullptr;
-        PerfFieldScope scope(stats != nullptr ? &stats->gpuBuildMs : nullptr);
+        PerfPhaseScope scope(perf, &FrameStats::gpuBuildMs, &FrameStats::buildCpuMs);  // T-750
         // T-263f: one host frame, unless lastFrameReusable() already counted it.
         if (!frameCounted) {
             ++frameCount;
@@ -6664,6 +7009,8 @@ struct FrameBuilder::Impl {
         deviceAnalyticClip = device->supportsAnalyticClip();        // T-718 (10 §10.16 W1 item 7)
         emit.setChannelReads(device->supportsAlphaChannelReads());  // T-728 (10 §10.18 A item 1)
         emit.setBackdropMask(device->supportsBackdropMask());       // T-729 (10 §10.18 B)
+        emit.setBackdropMaskTextures(emit.backdropMask() && device->supportsBackdropMaskTextures());  // T-764
+        devicePlanar = device->supportsPlanarExternal();  // T-806 (23 §23.aj)
         cacheEntriesAtBuildStart = cacheEntries.size();
         // T-343: the host's target mode. A device that cannot read target 0 draws in Layer mode.
         damage = damageList;
@@ -6689,6 +7036,12 @@ struct FrameBuilder::Impl {
         coverageAtlas.beginFrame();
         coverageResizedSeen = false;
         pathHashMemo.clear();
+        // T-753 (57 §57.2 item 3, §57.3 item 4): the build.* zones and the repaintedUnchanged counts.
+        zonePerf = perf;
+        countUnchanged = perf != nullptr && perf->countsRedundantWork();
+        if (countUnchanged) {
+            computeRangeHashes(cl);
+        }
 #ifndef XT_GPU_NO_TEXT
         atlasAllowed = true;
         atlasResetSeen = false;
@@ -6745,6 +7098,8 @@ struct FrameBuilder::Impl {
         lastBuildStats.backdropPairHits = statPairHits;                                    // T-730
         lastBuildStats.backdropPairMisses = statPairMisses;
         lastBuildStats.backdropPairStores = statPairStores;
+        lastBuildStats.culledOffscreen = cl.culledOffscreen + statCulledOffscreen;  // T-754
+        lastBuildStats.planarSkipped = statPlanarSkipped;                           // T-806
         if (statBoxShadowSkipped > 0 && !boxShadowWarned && lastError.empty()) {
             boxShadowWarned = true;  // reported once; a build with another message reports it later
             lastError =
@@ -6761,7 +7116,18 @@ struct FrameBuilder::Impl {
         if (directMode) {
             endDirectBuild();
         }
+        // T-753: this build's ranges are what the next one compares with (none while not counting).
+        if (countUnchanged) {
+            prevRangeSet.swap(curRangeSet);
+        } else {
+            prevRangeSet.clear();
+        }
+        zonePerf = nullptr;
         if (stats != nullptr) {
+            stats->repaintedUnchangedNotCacheable += statRuNotCacheable;  // T-753 (detail level >= 1)
+            stats->repaintedUnchangedKeyChanged += statRuKeyChanged;
+            stats->repaintedUnchangedBudget += statRuBudget;
+            stats->repaintedUnchangedFirstSight += statRuFirstSight;
             stats->bands = statBands;
             stats->bandRedraws = statBandRedraws;
             stats->backdropCopyPx = statBackdropCopyPx;
@@ -6823,6 +7189,16 @@ struct FrameBuilder::Impl {
             const TextureHandle tex = ext != nullptr ? ext->texture : 0;
             const bool straight = ext != nullptr && ext->straightAlpha;
             if (tex != r.texture || straight != r.straightAlpha) {
+                return false;
+            }
+            // T-806 (23 §23.aj rule 4): the plane description is part of the binding.
+            if ((ext != nullptr ? ext->planes : AssetResolver::ExternalPlanes{}) != r.planes) {
+                return false;
+            }
+            // T-746: a versioned texture's new content (or its version gone) -- a pasted effect result
+            // may hold the old one.
+            if ((r.versioned || (ext != nullptr && ext->hasVersion)) &&
+                externalTextureStamp(ext) != r.stamp) {
                 return false;
             }
         }

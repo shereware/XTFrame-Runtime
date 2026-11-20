@@ -836,7 +836,8 @@ private:
     bool handleSectionV2(const std::string& lower, const std::vector<DomAttr>& attrs, bool selfClosed,
                          int line, int col, uint32_t owner) {
         const bool ports = lower == "ports";
-        if (!ports && lower != "layout" && lower != "style" && lower != "timelines") {
+        const bool expressions = lower == "expressions";  // T-767 (58 §58.4)
+        if (!ports && !expressions && lower != "layout" && lower != "style" && lower != "timelines") {
             return false;
         }
         const DomAttr* src = findAttrV2(attrs, "src");
@@ -845,6 +846,14 @@ private:
         const int contentLine = m_line;
         const int contentCol = m_col;
         std::string content = selfClosed ? std::string() : rawScanUntilClosingTag(lower, line, col);
+        if (expressions) {
+            if (src != nullptr) {
+                error("<expressions> cannot have a src attribute", src->line, src->col);
+            }
+            m_tree.expressionSections.push_back(
+                XtExpressionsSection{std::move(content), contentLine, contentCol, symbol});
+            return true;
+        }
         if (ports) {
             for (const auto& pending : m_pendingPorts) {
                 if (pending.second == owner) {
@@ -1396,6 +1405,17 @@ private:
                 if (m_version >= 2 && (isRoot || m_tree.nodes[nodeIndex].tag == "symbol") &&
                     handleSectionV2(lower, attrs, selfClosed, childLine, childCol, nodeIndex)) {
                     continue;  // T-587: a v2 section (54 §54.3), no element.
+                }
+                if (m_version < 2 && lower == "expressions" &&
+                    (isRoot || m_tree.nodes[nodeIndex].tag == "symbol")) {
+                    // T-767 (58 §58.4): a version 1 document has no `<expressions>` section.
+                    m_hadError = true;
+                    m_sink.error(m_file, "<expressions> needs a version 2 document", childLine, childCol,
+                                 "expr.v1", "run xtframe-compile --migrate, then add the section");
+                    if (!selfClosed) {
+                        rawScanUntilClosingTag(lower, childLine, childCol);
+                    }
+                    continue;
                 }
                 uint32_t childIndex = parseElement(name, std::move(attrs), selfClosed, childLine, childCol);
                 m_tree.nodes[nodeIndex].children.push_back(childIndex);

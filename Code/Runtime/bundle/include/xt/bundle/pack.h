@@ -63,6 +63,13 @@ struct PackOptions {
     /// token layer below) but copies no symbol file into the project (`xtframe-view`, which must
     /// not write into the project it opens, T-263f).
     bool copyStandardSymbols = true;
+    /// T-743 (47 "共同詞彙清單" rule 5, `bundle::projectImpliedGroup()`): further symbol library
+    /// directories (the editor's mounts, in order) where the group of the project's applied style --
+    /// or, for a project linking several groups, the first linked one -- is looked up for the implied
+    /// token layer, after the standard group's library and `<project>/shared/symbol-library`. Empty
+    /// (the default, `xtframe-pack`): only those two. A group that is found in none leaves the T-498b
+    /// rule in place.
+    std::vector<std::string> symbolLibraryDirs;
     /// T-199 (26 §26.3.4, 12.7 `--atlas`): pack the bundle's bitmap images into atlas pages
     /// (`atlas/<name>.png`, manifest `atlas[]`, `.xtir` names `atlas:<name>#<asset>`). Also on
     /// when the UI Project's `publish.atlas.enabled` is set. Needs a full run (no `--ui`).
@@ -163,7 +170,10 @@ struct PackReport {
     /// textures, the manifest's base `tokens` and its theme files (`tokens-night.xts` -> theme
     /// `night`, merged with a project theme of the same name, the project's values winning).
     /// This is that group's directory (UTF-8, '/'); empty when no UI links a standard symbol or
-    /// `standardSymbolDir` is empty. Nothing is written into the project for it.
+    /// `standardSymbolDir` is empty. Nothing is written into the project for it. T-743 (47 rule 5,
+    /// `projectImpliedGroup()`): the group of the project's applied style, or -- when the UIs link
+    /// symbols of two groups or more -- the first linked one, takes that place when it is found
+    /// (PackOptions::symbolLibraryDirs); this is then its directory.
     std::string impliedGroupDir;
     /// T-199: atlas pages written and entries placed; `atlasPixelsUsed` / `atlasPixelsTotal` =
     /// entry pixels over page pixels (the packing efficiency).
@@ -175,6 +185,22 @@ struct PackReport {
     uint32_t assetsCompressed = 0;
     /// T-687: the compression setting in effect ("none", "bc1", "bc3", "bc7" or "auto").
     std::string compress;
+    /// T-714 (22 §22.17.2, the publish result), over the bundle the manifest describes after the run
+    /// (an incremental run included); filled when the manifest was written. `bundleBytes`: every
+    /// regular file under the output directory (links are not followed). The image counts are the
+    /// manifest's bitmap assets (PNG, JPEG, ... and DDS; SVG is drawn from its vector source and not
+    /// counted), each once whatever its `@2x` / `@3x` variants: `imagesCompressed` are DDS files,
+    /// `imagesInAtlas` are drawn from atlas pages, `imagesUncompressed` the rest.
+    /// `gpuImageBytes` estimates the display memory of the 1x images: a DDS (asset or atlas page)
+    /// counts its stored levels (level 0 plus its mip chain), every other image and page
+    /// width x height x 4 (RGBA8, without the mips the run time may build). `gpuImageBytesUncompressed`
+    /// is the same with every image and page counted as RGBA8 at its logical size.
+    uint64_t bundleBytes = 0;
+    uint32_t imagesCompressed = 0;
+    uint32_t imagesUncompressed = 0;
+    uint32_t imagesInAtlas = 0;
+    uint64_t gpuImageBytes = 0;
+    uint64_t gpuImageBytesUncompressed = 0;
     /// T-687: DDS files encoded this run, and of those taken from the encode cache instead.
     uint32_t imagesEncoded = 0;
     uint32_t encodeCacheHits = 0;
@@ -232,6 +258,12 @@ PackReport pack(const ProjectFile& project, const PackOptions& options);
 /// `contracts/`, `shared.recipes` and no editor sidecar is ever copied. A `legacy` project (read
 /// from `bundle.xtproj`) packs exactly like pack(project.toBundleProject(), options).
 PackReport pack(const UiProject& project, const PackOptions& options);
+
+/// T-714 (22 §22.17.2): the publish result of `report` as one English line, the same for
+/// `xtframe-pack` and the editor: "bundle 12.3 MB on disk; images: 3 compressed, 2 uncompressed,
+/// 0 in atlases; estimated display memory 5.1 MB (21.0 MB uncompressed)". Sizes in MB (10^6 bytes)
+/// with one decimal, KB below 1 MB.
+std::string publishResultSummary(const PackReport& report);
 
 /// T-200: a packed `.xtir`'s `uis[].fileHash` -- FNV-1a 64 over `ir` with the `META` chunk's
 /// compile time taken as 0, so packing unchanged sources in different seconds gives the same

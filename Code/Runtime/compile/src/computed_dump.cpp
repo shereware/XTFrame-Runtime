@@ -475,14 +475,14 @@ private:
             for (uint32_t i = 0; i < count && offset + i < pool.size(); ++i) {
                 out += (i == 0 ? "\"" : ",\"") + std::string(str(pool[offset + i])) + "\"";
             }
-        } else if (prop == sp::Transition) {
+        } else if (prop == sp::Transition || sp::isTransitionLonghand(prop)) {  // T-778: + longhands.
             const auto pool = m_style.transitions();
             for (uint32_t i = 0; i < count && offset + i < pool.size(); ++i) {
                 const IrTransitionSpec& t = pool[offset + i];
                 out += (i == 0 ? "" : ",") + std::to_string(t.prop) + " " + num(t.duration) + " " +
                        num(t.delay) + " " + easingText(t.easing);
             }
-        } else if (prop == sp::Animation) {
+        } else if (prop == sp::Animation || sp::isAnimationLonghand(prop)) {
             const auto pool = m_style.animations();
             for (uint32_t i = 0; i < count && offset + i < pool.size(); ++i) {
                 const IrAnimationSpec& a = pool[offset + i];

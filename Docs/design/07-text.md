@@ -191,3 +191,23 @@ struct TextLine { Rect rect; float baseline; uint32_t firstRun, runCount; uint32
 - 禁則：行首不得出現 `。，、」』）！？：；`（UAX#14 CL／NS 類），行尾不得出現 `「『（`；加測試 `甲。乙` 窄寬換行。
 
 **T-569 實作記錄（#542，2026-11-04；主模型裁決）**：`.ttc`／`.otc` 逐 face index 列舉，`--list-fonts` 維持 `family<TAB>path` 並在集合檔後加 `#index`（corpus 雜湊前去掉）；名稱表完整解碼 UTF-16 並優先美國英文紀錄；字重以 OS/2 範圍＋CSS Fonts 4 排名；可變字型 `wght` 另開實例（不列入 `fonts()`）；合成粗體強度「每 300 重量差 em/36、上限 500」（FreeType 預設 em/24 比真 Bold 粗太多；調後墨量與 Noto CJK Bold 相當）——接受；CJK 標點回退優先 CJK 字型。**F51 根因不在 libunibreak**：`ft_breaks.cpp` 把斷行值放在多位元組字元的最後一個位元組，而 `text_shaper.h` 約定與 `breakLines()` 讀首位元組，所有 CJK 字後的斷行機會都看不到——已改到首位元組，並加 `breakAfter==3` 禁則值（緊急斷行先退避、退不了讓標點懸出）。`font.missing` 的 fix 內容待定（裁決：fix = board hint，attr `style`，value 為去掉缺家族後的堆疊，T-575 文件化）。Golden：`ui_i18n_cjk_mixed_wrap`（正確斷行）、fairy-forest `demo3-menu` 四張（Italic 700 改合成粗體）；game-ui corpus 仍為 T-562 遺留。
+
+**§7.2 補充：強制斷行字元與 TAB 不繪製（2026-11-20 裁決；T-801）**
+
+起因：宿主經 port 傳入含 U+000A 的文字（兩段），在只註冊自家字型（沒有系統字型）的宿主上，斷行處畫出缺字方框。斷行本身是對的（§7.3 步驟 7、06 §6.8）；規格沒說斷行字元自己怎麼畫——補上：
+
+1. **U+000A 一律斷行，不論 `white-space`**（06 §6.8 既有規則，維持）。這與 CSS 不同（CSS 的 `normal` 把換行摺成空白）——刻意保留：執行期文字（`setText`、`bind:text`、在地化字串）裡的換行就是作者要的換行，宿主不必為此設定樣式。`pre`／`pre-wrap`／`pre-line` 不新增。
+2. **強制斷行字元不產生可見字形、寬度為 0**：U+000A、U+000B、U+000C、U+000D、U+0085、U+2028、U+2029。CR LF 算一次斷行（既有）。shaper 對這些碼位輸出該 run 字型的空白字形、advance 0、`isSpace = 1`；不查字型的 cmap、不走缺字後備。
+3. **U+0009（TAB）當作一個空白**：輸出空白字形與空白的 advance、`isSpace = 1`。沒有定位點。
+4. **行尾空白的判斷一律用 `ShapedGlyph::isSpace`**，不用「字形編號等於 0x20」（`text_layout.cpp` 的既有簡化，會把編號剛好是 32 的一般字形誤當空白）。
+5. 來源檔（`.xt`）的文字仍在編譯期把 ASCII 空白摺成一個空白（`&#10;` 變空白）——不變。要在來源文字裡強制斷行，寫 `&#x2028;`（第 2 點之後不再畫出方框）。
+6. 行為變更：以強制斷行結尾的行，行寬不再含缺字字形的寬度（置中、靠右的文字會有微小位移）；第 4 點可能讓極少數字型的行尾量測改變。
+
+**§7.2 補充的實作記錄（T-801 #742，2026-11-20）**
+- `FtTextShaper::shape`：強制斷行字元輸出 run 字型的 U+0020 字形（`hb_font_get_nominal_glyph`）、advance 0、不加 letter-spacing、offset 0、`isSpace = 1`；TAB 輸出空白字形與空白的 advance（直排用 v advance）、照常加 letter-spacing。這些碼位不參與字型後備：沿用前一個（沒有就後一個）非此類碼位的字型，整段都是這類字元時才查 U+0020 的後備。只在 shaping 之後替換字形；cluster、位元組位移、`breakAfter` 不變。
+- `text_layout.cpp`：行尾空白修剪與 `VisEntry::space` 一律用 `isSpace`；line-clamp 修剪時不再重複扣行尾空白的 advance。
+- **追加的行為變更（實作時才發現）**：真實字型的空白字形編號不是 32，所以以前以 HarfBuzz shaper 排版時**行尾空白從未被修剪**；現在會修剪——以空白結尾而換行的行變窄（置中、靠右時位置改變）。既有 golden 與 corpus 沒有任何一張因此改變。
+- golden 腳本新增 `porttext` 指令（`port` 加上 `\n \r \t \\ \uXXXX` 跳脫）；新 golden `ui_text_hard_breaks`。
+- 未涵蓋（裁決：接受）：字型沒有 U+0020 字形時，替換後的字形編號仍是 0、仍會畫出 .notdef——沒有空白字形的字型不是支援的對象。
+- 未跑：capi、editor 各套件、gl。未編譯 GCC／Clang。合併時 rebase 後的組合未經 `merge_task.sh` 的建置檢查（代理第一次用了工作樹裡舊的腳本）——主模型另在 main 上重跑 core／text／golden 確認。
+

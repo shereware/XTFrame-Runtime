@@ -3274,6 +3274,51 @@ TEST_CASE("gpu: an engine:// img samples the host texture bound on the resolver,
     b.builder.shutdown();
 }
 
+TEST_CASE("gpu: a straight-alpha binding stays TextureStraight across bindTexture rebinds") {
+    // T-809 (23 "§23.8b 補充"): bindTexture has no alpha parameter and keeps the name's flag.
+    constexpr std::string_view kDoc = R"(<xt>
+  <body style="padding: 0">
+    <video id="V" src="clip.mp4"></video>
+  </body>
+</xt>)";
+
+    TestAssetResolver assets;
+    assets.setExternalTexture("video:V", 42, 64, 32, /*straightAlpha=*/true);
+    UiDoc ui;
+    REQUIRE(loadUiString(ui, assets, kDoc, 512, 512));
+    const NodeId video = ui.doc->byId("V").node;
+    REQUIRE(video != kInvalidNode);
+
+    Built b;
+    buildInto(b, ui.cmds, 512, 512, &ui.shaper, &assets, &ui.doc->ir());
+    auto straight = cmdsWith(b.frame, Shading::TextureStraight);
+    REQUIRE(straight.size() == 1);
+    CHECK(straight[0]->texture == 42);
+
+    // Another handle, same size.
+    REQUIRE(ui.doc->bindTexture(video, 43, 64, 32) == Status::kOk);
+    ui.ctx->update(0.1f);
+    ui.ctx->render(ui.cmds);
+    b.builder.build(ui.cmds, &ui.shaper, &assets, &ui.doc->ir(), b.frame);
+    CHECK(cmdsWith(b.frame, Shading::Texture).empty());
+    straight = cmdsWith(b.frame, Shading::TextureStraight);
+    REQUIRE(straight.size() == 1);
+    CHECK(straight[0]->texture == 43);
+
+    // Another handle and another size: relaid out, still straight.
+    REQUIRE(ui.doc->bindTexture(video, 44, 128, 48) == Status::kOk);
+    ui.ctx->update(0.2f);
+    ui.ctx->render(ui.cmds);
+    b.builder.build(ui.cmds, &ui.shaper, &assets, &ui.doc->ir(), b.frame);
+    CHECK(cmdsWith(b.frame, Shading::Texture).empty());
+    straight = cmdsWith(b.frame, Shading::TextureStraight);
+    REQUIRE(straight.size() == 1);
+    CHECK(straight[0]->texture == 44);
+    CHECK(quadSize(b.frame, *straight[0]).x == 128.0f);
+    CHECK(quadSize(b.frame, *straight[0]).y == 48.0f);
+    b.builder.shutdown();
+}
+
 TEST_CASE("gpu: an engine:// img measures 0 x 0 while unbound and never touches the resolver's files") {
     constexpr std::string_view kDoc = R"(<xt>
   <body style="padding: 0">

@@ -33,6 +33,10 @@ void lintWebDom(const DomTree& dom, const std::string& file, DiagnosticSink& sin
 /// The finished IR (its computed style, dumpComputedStyle()): `web.zIndexAcrossLayers`,
 /// `web.pointerEventsInherit`, `web.flexTextNoMinWidth`, `web.percentHeightOnAuto`,
 /// `web.translateZSort`. Reported at the element's SRCM line in `file` (the main `.xt`).
+/// T-762 (19 §19.y.2): also, whether or not webCompat is on, a note (DiagnosticSink::note(),
+/// `compile.note`) for a flat element on a perspective root's plane whose grouping property (opacity
+/// < 1, a blend mode, an effect, an overflow clip, a clip-path) keeps its 3D descendants out of the
+/// space's depth sort; run only when the document declares a `perspective`.
 void lintWebDocument(std::span<const uint8_t> ir, const std::string& file, DiagnosticSink& sink);
 
 }  // namespace xt::compile

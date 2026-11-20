@@ -703,10 +703,10 @@ void applyBoneAnchor(NodeArena& arena, NodeId bone, Vec2 point) {
         // A root bone: the point is its translate.
         const NodeCommon& c = arena.common(bone);
         if (c.translate.x != point.x) {
-            setProperty(arena, bone, prop::TranslateX, Value::ofFloat(point.x));
+            setProperty(arena, bone, prop::TranslateX, Value::ofFloat(point.x), arena.ambientCause());
         }
         if (c.translate.y != point.y) {
-            setProperty(arena, bone, prop::TranslateY, Value::ofFloat(point.y));
+            setProperty(arena, bone, prop::TranslateY, Value::ofFloat(point.y), arena.ambientCause());
         }
         return;
     }
@@ -736,7 +736,7 @@ void applyBoneAnchor(NodeArena& arena, NodeId bone, Vec2 point) {
     for (size_t i : {upper, lower}) {
         const float r = chain.pose[i].rotation;
         if (arena.common(chain.bones[i]).rotation != r) {
-            setProperty(arena, chain.bones[i], prop::Rotation, Value::ofFloat(r));
+            setProperty(arena, chain.bones[i], prop::Rotation, Value::ofFloat(r), arena.ambientCause());
         }
     }
 }

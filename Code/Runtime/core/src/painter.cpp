@@ -6,6 +6,7 @@
 #include <span>
 #include <utility>
 
+#include "border_dash_cache.h"
 #include "camera.h"
 #include "clip_shape.h"
 #include "composition.h"
@@ -14,10 +15,12 @@
 #include "shape_modifiers.h"
 #include "text_edit.h"
 #include "xt/assert.h"
+#include "xt/asset_resolver.h"
 #include "xt/effect_utils.h"
 #include "xt/geom.h"
 #include "xt/layout.h"
 #include "xt/num_guard.h"
+#include "xt/perf.h"
 #include "xt/project3d.h"
 #include "xt/property.h"
 
@@ -32,9 +35,10 @@ namespace xt {
 /// stretched instead (Painter::backgroundTilesCapped()).
 bool emitElementBackground(const ElementData& data, const Mat2x3& world, float alpha, CommandList& out,
                            std::vector<PathVerb>& scratchVerbs, std::vector<float>& scratchPoints);
+/// T-737: `dashCache` (the Painter's; nullptr computes every side) serves the dashed / dotted sides.
 void emitElementBorder(const ElementData& data, const Mat2x3& world, float alpha, CommandList& out,
                        std::vector<PathVerb>& scratchVerbs, std::vector<float>& scratchPoints,
-                       bool allowSnap = true);
+                       bool allowSnap = true, BorderDashCache* dashCache = nullptr);
 /// T-333 (05 §5.9.8): how many FillPaths emitElementBorder draws (0, 1 for the single-color ring, or
 /// one per drawn side).
 uint32_t elementBorderFillCount(const ElementData& data);
@@ -581,8 +585,12 @@ void Painter::paint(const NodeArena& arena, NodeId root, CommandList& out) {
     }
     m_modifierVertices = 0;
     m_backgroundTilesCapped = false;
+    m_clockDependent = false;         // T-747
+    m_borderDashCache->beginPaint();  // T-737
     m_drawableCount.assign(arena.capacity(), 0);
     m_has3D.assign(arena.capacity(), 0);
+    m_deferredBelow.assign(arena.capacity(), 0);  // T-754
+    m_ghostPainting = false;
     computeDrawableCount(arena, root);
     m_mappingStack.clear();
     m_levelLayers.clear();
@@ -599,6 +607,8 @@ void Painter::paint(const NodeArena& arena, NodeId root, CommandList& out) {
     const size_t firstParticles = out.particles.size();
     const size_t firstMesh = out.imageMeshes.size();
     const size_t firstEffect = out.effectCmds.size();
+    const size_t firstQuad = out.imageQuads.size();  // T-747
+    const size_t firstEffectEntry = out.effects.size();
 
     m_layerQueue.clear();
     m_layerInsertPos = 0;
@@ -632,6 +642,41 @@ void Painter::paint(const NodeArena& arena, NodeId root, CommandList& out) {
             out.effectCmds[i].source = m_source;
         }
     }
+    m_borderDashCache->endPaint();  // T-737: ages the entries this paint did not use.
+    noteClockDependence(out, firstImage, firstQuad, firstMesh, firstParticles, firstEffectEntry);
+}
+
+void Painter::noteClockDependence(CommandList& out, size_t firstImage, size_t firstQuad, size_t firstMesh,
+                                  size_t firstParticles, size_t firstEffectEntry) {
+    // T-747 (57 §57.3, 23 §23.ag item 2): what the commands appended by this paint show changes with
+    // time alone. Live particles move every step; a Custom effect may read `xtTime`; an external
+    // texture counts unless it has a content version (T-746, 23 §23.ah: then the Context compares
+    // the bindings' stamps). The caret and Wiggle modifiers set m_clockDependent where they are drawn.
+    bool clock = m_clockDependent || out.particles.size() > firstParticles;
+    for (size_t i = firstEffectEntry; i < out.effects.size() && !clock; ++i) {
+        clock = out.effects[i].kind == EffectKind::Custom;
+    }
+    if (m_ir != nullptr) {
+        const auto changing = [this](AssetId asset) {
+            if (!isExternalAsset(asset, *m_ir)) {
+                return false;
+            }
+            const AssetResolver::ExternalTexture* ext =
+                m_assets != nullptr ? m_assets->externalTexture(asset, *m_ir) : nullptr;
+            return ext == nullptr || !ext->hasVersion;
+        };
+        for (size_t i = firstImage; i < out.images.size() && !clock; ++i) {
+            clock = changing(out.images[i].asset);
+        }
+        for (size_t i = firstQuad; i < out.imageQuads.size() && !clock; ++i) {
+            clock = changing(out.imageQuads[i].asset);
+        }
+        for (size_t i = firstMesh; i < out.imageMeshes.size() && !clock; ++i) {
+            clock = changing(out.imageMeshes[i].asset);
+        }
+    }
+    m_clockDependent = clock;
+    out.clockDependent = out.clockDependent || clock;
 }
 
 void Painter::runStack(const NodeArena& arena, CommandList& out) {
@@ -691,6 +736,10 @@ void Painter::runStack(const NodeArena& arena, CommandList& out) {
                 if (!m_levelLayers.empty()) {
                     m_levelLayers.pop_back();  // T-716
                 }
+                // T-760: back to the layer the outer level was drawing (set by its EnterNodeLayer /
+                // EnterNode2D before the nested root was met); the nested space's last layer would
+                // otherwise be taken for the plane of the siblings that follow in this quantum.
+                m_currentLayer = m_levelLayers.empty() ? kInvalidNode : m_levelLayers.back();
                 if (!m_pieceSave.empty()) {  // T-727: back to the outer root's piece
                     m_piece = m_pieceSave.back();
                     m_pieceSave.pop_back();
@@ -698,11 +747,26 @@ void Painter::runStack(const NodeArena& arena, CommandList& out) {
                 out.commands.push_back(Command{CmdKind::PopProjection, {}, 0});
                 break;
             case Action::Kind::PopEffect:
-                if (action.node != kInvalidNode && finishBoxShadowCandidate(out)) {
-                    break;  // T-668: the PushEffect became DrawBoxShadow commands.
+                if (action.node != kInvalidNode) {
+                    XT_PERF_ZONE(m_perf, PaintEffects);  // T-753 (57 §57.2 item 3)
+                    if (finishBoxShadowCandidate(out)) {
+                        break;  // T-668: the PushEffect became DrawBoxShadow commands.
+                    }
                 }
                 out.commands.push_back(Command{CmdKind::PopEffect, {}, 0});
                 break;
+            case Action::Kind::LeaveEmbeddedLayer: {
+                // T-762 (19 §19.y.2): back to the plane the embedded layer was met on.
+                out.commands.push_back(Command{CmdKind::PopTransform3D, {}, 0});
+                const uint32_t idx = static_cast<uint32_t>(out.transforms3.size());
+                out.transforms3.push_back(Transform3DCmd{action.xf3});
+                out.commands.push_back(Command{CmdKind::PushTransform3D, {}, idx});
+                m_currentLayer = action.node;
+                if (!m_levelLayers.empty()) {
+                    m_levelLayers.back() = action.node;
+                }
+                break;
+            }
         }
     }
 }
@@ -747,7 +811,9 @@ void Painter::paintGhost(const NodeArena& arena, CommandList& out) {
     m_currentLayer = kInvalidNode;
     m_piece = layer_collect::kNoPiece;  // T-727
     m_stack.push_back(Action{Action::Kind::EnterNode, source, alpha, MaskMode::Alpha});
+    m_ghostPainting = true;  // T-754: the commands move afterwards; nothing is left out as offscreen
     runStack(arena, out);
+    m_ghostPainting = false;
     m_overlayEntering = kInvalidNode;
     m_overlayQueue.clear();  // Overlays inside the ghost are not repeated.
     const Mat2x3 shift = translation(m_ghostOffset);
@@ -816,9 +882,11 @@ void Painter::computeDrawableCount(const NodeArena& arena, NodeId root) {
         if (kind == NodeKind::Camera) {
             m_drawableCount[n] = 0;
             m_has3D[n] = 0;
+            m_deferredBelow[n] = 0;
             return;
         }
         uint32_t count = 0;
+        uint8_t deferredBelow = 0;  // T-754
         // has3D[n]: does n's subtree contain an is3D node -- same rule as layer_collect::
         // computeHas3D (T-44a): a nested 3D space root's own subtree is opaque to this
         // computation (its layers belong to its own, separate projection; see collectLayers()).
@@ -892,6 +960,15 @@ void Painter::computeDrawableCount(const NodeArena& arena, NodeId root) {
         }
         arena.forEachChild(n, [&](NodeId c) {
             const NodeCommon& cc = arena.common(c);
+            // T-754: drawn elsewhere (overlay, world layer) or projected (space root) below n.
+            // T-779: the two kinds apart -- a space root can be bounded by its projection.
+            if (cc.worldLayerActive != 0 || (cc.flags2 & kLayerOverlay) != 0) {
+                deferredBelow = static_cast<uint8_t>(deferredBelow | kBelowDeferred);
+            }
+            if (cc.isSpaceRoot != 0) {
+                deferredBelow = static_cast<uint8_t>(deferredBelow | kBelowSpace);
+            }
+            deferredBelow = static_cast<uint8_t>(deferredBelow | m_deferredBelow[c]);
             if (cc.worldLayerActive != 0) {
                 return;  // T-701: drawn in a range of its own, none of this node's content.
             }
@@ -904,10 +981,14 @@ void Painter::computeDrawableCount(const NodeArena& arena, NodeId root) {
         });
         m_drawableCount[n] = count;
         m_has3D[n] = has3D;
+        m_deferredBelow[n] = deferredBelow;
     });
 }
 
 void Painter::enterNode(const NodeArena& arena, NodeId n, float inheritedAlpha, CommandList& out) {
+    if (m_nodeMarks != nullptr) {
+        m_nodeMarks->emplace_back(static_cast<uint32_t>(out.commands.size()), n);  // T-747
+    }
     const NodeCommon& c = arena.common(n);
     if (c.visible == 0 || c.worldOpacity <= 0.0f) {
         return;
@@ -939,7 +1020,11 @@ void Painter::enterNode(const NodeArena& arena, NodeId n, float inheritedAlpha, 
         // Inside a 3D space root's subtree, an is3D node other than "the layer currently being
         // entered" (m_currentLayer, set by the EnterNodeLayer/EnterNode2D action that dispatched
         // here) is a separate layer in the sorted-segment layer list -- not painted from here.
-        return;
+        // T-762 (19 §19.y.2): unless it lies in a flat group that flattens the space -- reached while
+        // drawing a piece (a separate layer's PieceRange never admits one): drawn here, in place.
+        if (m_piece == layer_collect::kNoPiece || !enterEmbeddedLayer(arena, n, out)) {
+            return;
+        }
     }
     if (arena.kind(n) == NodeKind::Camera) {
         return;  // 19.4: never drawn/hit-tested.
@@ -990,15 +1075,122 @@ void Painter::enterNode(const NodeArena& arena, NodeId n, float inheritedAlpha, 
         hasFx ? (c.blend != static_cast<uint8_t>(BlendMode::Normal) || opacity < 1.0f)
               : (c.blend != static_cast<uint8_t>(BlendMode::Normal) || (opacity < 1.0f && drawable >= 2));
     float alpha = needsLayer ? 1.0f : inheritedAlpha * opacity;
+    // T-754 (Docs/design/10-backends.md §10.20): the bounds of this node's layer / effect are known
+    // outside 3D spaces and, inside one, on an affine plane (its projected rectangles are exact; the
+    // same test as T-668's), but not in the drag ghost, whose commands move afterwards. When they --
+    // the descendants' reach included -- lie wholly outside the viewport, nothing the node or its
+    // subtree draws can reach the viewport: the node is left out (no Push, no content, no Pop),
+    // unless a descendant is drawn elsewhere or projected (m_deferredBelow; inside a 3D space also
+    // a 3D layer below it, or a node drawn in pieces). A known bound is never empty: when the reach
+    // meets the viewport but the node's own clamped hint is empty, or the subtree has no bounded
+    // content, the hint stays unknown (the old whole-surface rule).
+    // T-779 (Docs/tasks/T-779.md item 1): a 3D space root below the node is bounded by its projected
+    // reach (nestedSpaceReach(): what its PushProjection's hint is computed from, its effects' reach
+    // included). When every one below is known, the node's reach is the union of its content, the
+    // descendants' effect reach and those projections (outset by the node's own reach for an effect)
+    // and the node is alone like any other: left out when that union lies wholly outside the
+    // viewport; when only the union meets it, the union is the known window (it was the whole-surface
+    // fallback). A node whose own hint meets the viewport keeps it. A space whose projection is not
+    // known keeps the T-754 rule (the subtree is never left out), as do overlay roots and world layers.
+    const bool flat = m_mappingStack.empty() && !m_ghostPainting;
+    EffectPre pre{};  // T-779: what pushEffectCmd() would compute again (pre.content: the content AABB)
+    bool haveContent = false;
+    bool layerKnown = false;
+    bool fxKnown = false;
+    Rect layerOwn{};         // a layer-only node with known bounds: what its hint covers (unclamped)
+    bool useWindow = false;  // T-779: the effect's hint is layerOwn (the union), not content + reach
+    // T-762 (19 §19.y.2 item 4): a group holding embedded 3D layers is taken as off an affine plane --
+    // its bounds unknown, never left out, no analytic shadow -- with the projected extent of its
+    // subtree (each embedded layer on its own plane) as the window.
+    const bool embeds = (needsLayer || hasFx) && holdsEmbeddedLayers(arena, n);
+    if (embeds) {
+        pre.content = embeddedSubtreeBounds(arena, n, out.viewport);
+        if (hasFx) {
+            pre.xf = effectXf(arena, n);
+            pre.expand = effectStackExpand(arena, c, pre.xf);
+        }
+        haveContent = true;
+        layerOwn = pre.content;
+    } else if ((needsLayer || hasFx) && !m_ghostPainting &&
+               (flat || ((c.is3D == 0 || n == m_layerEntering) && planeIsAffine(arena, out)))) {
+        pre.content = contentScreenBounds(arena, n, c.world, out.viewport);
+        const Rect& flatContent = pre.content;
+        haveContent = true;
+        const auto positive = [](const Rect& r) { return r.w > 0.0f && r.h > 0.0f; };
+        const auto outset = [](const Rect& r, float e) {
+            return Rect{r.x - e, r.y - e, r.w + 2 * e, r.h + 2 * e};
+        };
+        // `nested`: the projected reach of the space roots below (known) joins in.
+        Rect nestedReach{};
+        bool nestedAny = false;
+        const auto withReach = [&](bool nested) {
+            bool any = positive(flatContent);
+            Rect acc = flatContent;
+            unionDescendantReach(arena, n, out.viewport, acc, any);
+            if (nested && nestedAny) {
+                unionRect(acc, any, nestedReach);
+            }
+            return any ? acc : flatContent;
+        };
+        if (hasFx) {
+            pre.xf = effectXf(arena, n);
+            pre.expand = effectStackExpand(arena, c, pre.xf);
+        }
+        const float expand = hasFx ? pre.expand : 0.0f;
+        const uint8_t below = m_deferredBelow[n];
+        const bool plain = flat || (m_has3D[n] == 0 && m_piece == layer_collect::kNoPiece);
+        // What the node's hint covers: an effect's content outset by its reach; a layer's content and
+        // (outside 3D spaces, §10.20 rule 3) its descendants' reach.
+        Rect own = hasFx ? outset(flatContent, expand) : (flat ? withReach(false) : flatContent);
+        bool ownVisible = positive(clampToViewport(own, out.viewport));
+        Rect reach = own;
+        bool reachVisible = ownVisible;
+        bool nested = false;
+        if (!ownVisible) {
+            // A descendant's effect that reaches into the viewport keeps the node drawn (with an
+            // unknown hint) rather than lost.
+            nested = below == kBelowSpace && plain && unionNestedSpaceReach(arena, n, nestedReach, nestedAny);
+            if (nested || hasFx || !flat) {
+                reach = hasFx ? outset(withReach(nested), expand) : withReach(nested);
+            }  // (else `own` is that walk already: T-779 does not repeat it)
+            reachVisible = positive(clampToViewport(reach, out.viewport));
+        }
+        const bool viewportValid = out.viewport.w > 0.0f && out.viewport.h > 0.0f;
+        const bool alone = (below == 0 || nested) && plain;
+        if (!reachVisible && viewportValid && positive(reach) && alone) {
+            ++out.culledOffscreen;
+            return;
+        }
+        // T-795 (§10.20 rule 3, T-779 supplement): a layer on an affine plane inside a 3D space takes
+        // in its descendants' reach like one outside them -- but only where its own hint misses the
+        // viewport (a hint that meets it is kept, as for T-779's union); an effect keeps its rule.
+        const bool spaceLayer = !flat && !hasFx && alone;
+        if ((nested || spaceLayer) && reachVisible && viewportValid) {
+            own = reach;  // T-779: the union is the known window instead of the whole surface
+            ownVisible = true;
+            useWindow = hasFx;
+        }
+        fxKnown = hasFx && ownVisible;
+        layerKnown = needsLayer && ownVisible;
+        layerOwn = own;
+    }
     if (needsLayer) {
         uint32_t idx = static_cast<uint32_t>(out.layers.size());
         // T-133: the tight content AABB, clamped to the viewport, so the SW backend can allocate a
         // bounded offscreen buffer instead of a full-viewport one. `c.world` is only read on the
         // unprojected path, where it is exactly this node's screen transform; inside a 3D space
         // root contentScreenBounds ignores it and projects the subtree's corners instead.
+        // T-754 (§10.20 rule 3): outside 3D spaces the descendants' effect reach is part of it (T-795:
+        // inside one, on an affine plane, when the node's own content misses the viewport).
+        // (With an effect the layer takes the effect's hint below.)
         Rect layerBounds =
-            clampToViewport(contentScreenBounds(arena, n, c.world, out.viewport), out.viewport);
-        out.layers.push_back(LayerCmd{opacity, static_cast<BlendMode>(c.blend), layerBounds});
+            haveContent && !hasFx
+                ? clampToViewport(layerOwn, out.viewport)
+                : clampToViewport(
+                      haveContent ? pre.content : contentScreenBounds(arena, n, c.world, out.viewport),
+                      out.viewport);
+        out.layers.push_back(LayerCmd{opacity, static_cast<BlendMode>(c.blend), layerBounds,
+                                      static_cast<uint8_t>(layerKnown ? 1 : 0)});
         Command push{CmdKind::PushLayer, {}, idx};
         if (c.blend != static_cast<uint8_t>(BlendMode::Normal)) {
             // T-343 (23 §23.aa.2): a blend mode reads what lies below it (on the host scene in
@@ -1009,8 +1201,9 @@ void Painter::enterNode(const NodeArena& arena, NodeId n, float inheritedAlpha, 
         m_stack.push_back(Action{Action::Kind::PopLayer, kInvalidNode, 0.0f, MaskMode::Alpha});
     }
     if (hasFx) {
+        XT_PERF_ZONE(m_perf, PaintEffects);  // T-753 (57 §57.2 item 3)
         const size_t pushPos = out.commands.size();
-        pushEffectCmd(arena, n, out);
+        pushEffectCmd(arena, n, out, haveContent ? &pre : nullptr, fxKnown, useWindow ? &layerOwn : nullptr);
         Action pop{Action::Kind::PopEffect, kInvalidNode, 0.0f, MaskMode::Alpha};
         // T-668 (10 §10.12 item 2): a node that may turn its drop shadows into DrawBoxShadow
         // commands keeps its PushEffect for now; its PopEffect (node set) decides.
@@ -1026,27 +1219,37 @@ void Painter::enterNode(const NodeArena& arena, NodeId n, float inheritedAlpha, 
             // with `shadow(0 0 24px 4px ...)` and opacity < 1 lost its glow). The effect's
             // boundsHint is that content AABB outset by the stack's expansion, same viewport clamp.
             out.layers.back().boundsHint = out.effectCmds.back().boundsHint;
+            out.layers.back().boundsKnown = out.effectCmds.back().boundsKnown;  // T-754
         }
     }
     switch (kind) {
-        case NodeKind::Path:
+        case NodeKind::Path: {
+            XT_PERF_ZONE(m_perf, PaintPaths);  // T-753 (57 §57.2 item 3)
             emitPath(arena, n, alpha, out);
             break;
-        case NodeKind::Shape:
-            emitShape(arena, n, alpha, out);  // T-225
+        }
+        case NodeKind::Shape: {
+            XT_PERF_ZONE(m_perf, PaintPaths);  // T-753
+            emitShape(arena, n, alpha, out);   // T-225
             break;
-        case NodeKind::Image:
+        }
+        case NodeKind::Image: {
+            XT_PERF_ZONE(m_perf, PaintImages);  // T-753
             emitImage(arena, n, alpha, out);
             break;
-        case NodeKind::Mesh:
-            emitMesh(arena, n, alpha, out);  // T-245
+        }
+        case NodeKind::Mesh: {
+            XT_PERF_ZONE(m_perf, PaintImages);  // T-753
+            emitMesh(arena, n, alpha, out);     // T-245
             break;
+        }
         case NodeKind::Group: {
             // T-225 (31 §31.6.1): a group with Modifier children is collected, modified and drawn.
             bool modified = false;
             arena.forEachChild(
                 n, [&](NodeId ch) { modified = modified || arena.kind(ch) == NodeKind::Modifier; });
             if (modified) {
+                XT_PERF_ZONE(m_perf, PaintPaths);  // T-753
                 emitModifiedGroup(arena, n, alpha, out);
             } else {
                 pushPlan(arena, n, alpha);
@@ -1059,9 +1262,11 @@ void Painter::enterNode(const NodeArena& arena, NodeId n, float inheritedAlpha, 
         case NodeKind::Element:
             paintElement(arena, n, alpha, out, ownContent);
             break;
-        case NodeKind::Text:
+        case NodeKind::Text: {
+            XT_PERF_ZONE(m_perf, PaintText);  // T-753 (57 §57.2 item 3)
             paintText(arena, n, alpha, out);
             break;
+        }
         case NodeKind::Particles: {
             // T-202: in the element's child order; `visibility: hidden` on the element hides them.
             const ParticleNodeData& particles = arena.particles(n);
@@ -1096,22 +1301,32 @@ void Painter::paintElement(const NodeArena& arena, NodeId n, float alpha, Comman
         if (emitElementBackground(data, c.world, alpha, out, m_elemVerbsScratch, m_elemPointsScratch)) {
             m_backgroundTilesCapped = true;  // T-327: Document warns once.
         }
-        if (data.style.borderImage != kInvalidAsset) {
-            emitElementBorderImage(data, c.world, alpha, out);  // T-199: replaces the plain border.
-        } else {
-            emitElementBorder(data, c.world, alpha, out, m_elemVerbsScratch, m_elemPointsScratch,
-                              !inMotion(arena, n));  // T-345: no pixel alignment while moving.
+        {
+            XT_PERF_ZONE(m_perf, PaintBorders);  // T-753 (57 §57.2 item 3)
+            if (data.style.borderImage != kInvalidAsset) {
+                emitElementBorderImage(data, c.world, alpha, out);  // T-199: replaces the plain border.
+            } else {
+                emitElementBorder(data, c.world, alpha, out, m_elemVerbsScratch, m_elemPointsScratch,
+                                  !inMotion(arena, n),  // T-345: no pixel alignment while moving.
+                                  m_borderDashCache.get());
+            }
         }
-        // T-191: an unbound video / external texture may draw its placeholder instead.
-        if (data.externalNode == kInvalidNode ||
-            !emitExternalPlaceholder(arena.external(data.externalNode), data, c.world, alpha, out,
-                                     m_elemVerbsScratch, m_elemPointsScratch)) {
-            emitElementImage(data, c.world, alpha, out);
+        {
+            XT_PERF_ZONE(m_perf, PaintImages);  // T-753
+            // T-191: an unbound video / external texture may draw its placeholder instead.
+            if (data.externalNode == kInvalidNode ||
+                !emitExternalPlaceholder(arena.external(data.externalNode), data, c.world, alpha, out,
+                                         m_elemVerbsScratch, m_elemPointsScratch)) {
+                emitElementImage(data, c.world, alpha, out);
+            }
         }
         // T-325 (05 §5.9.8): the outline after the border and the element's own image, before the
         // overflow clip and the children; never through the effect chain.
         const size_t outlinePos = out.commands.size();
-        emitElementOutline(data, c.world, alpha, out, m_elemVerbsScratch, m_elemPointsScratch);
+        {
+            XT_PERF_ZONE(m_perf, PaintBorders);  // T-753
+            emitElementOutline(data, c.world, alpha, out, m_elemVerbsScratch, m_elemPointsScratch);
+        }
         // T-680 ("補充 2" B.1): a box shadow candidate's own ring is contour, not content.
         if (out.commands.size() > outlinePos && !m_boxShadowStack.empty() &&
             m_boxShadowStack.back().node == n) {
@@ -1187,6 +1402,7 @@ void Painter::paintText(const NodeArena& arena, NodeId n, float alpha, CommandLi
         emitPlaceholderGlyphs(text, parentData.style, color, glyphWorld, alpha, out);
     }
     if (state != nullptr) {
+        m_clockDependent = true;  // T-747: the caret blinks with the clock.
         uint32_t caretOffset = composing ? compositionCaret(*m_composition) : state->cursor;
         emitTextCaret(text, parentData.style, caretOffset, world, alpha, m_clock, out, m_elemVerbsScratch,
                       m_elemPointsScratch);
@@ -1332,8 +1548,25 @@ struct Painter::ModPath {
 };
 
 // Defined after ModPath: the member vectors of ModPath need the complete type here.
-Painter::Painter() = default;
+Painter::Painter() : m_borderDashCache(std::make_unique<BorderDashCache>()) {}
 Painter::~Painter() = default;
+
+Painter::BorderDashCacheStats Painter::borderDashCacheStats() const {
+    BorderDashCacheStats stats;
+    stats.hits = m_borderDashCache->hits();
+    stats.misses = m_borderDashCache->misses();
+    stats.entries = static_cast<uint32_t>(m_borderDashCache->entries());
+    stats.bytes = static_cast<uint32_t>(m_borderDashCache->bytes());
+    return stats;
+}
+
+void Painter::setBorderDashCacheEnabled(bool on) { m_borderDashCache->setEnabled(on); }
+
+bool Painter::borderDashCacheEnabled() const { return m_borderDashCache->enabled(); }
+
+void Painter::setBorderDashCacheLimits(size_t bytes, size_t entries) {
+    m_borderDashCache->setLimits(bytes, entries);
+}
 
 namespace {
 
@@ -1754,6 +1987,7 @@ void Painter::emitModifiedGroup(const NodeArena& arena, NodeId group, float alph
                 wp.spatialPhase = m.params[6];
                 wp.smooth = m.mode == 1;
                 wiggleOrdinal = 0;
+                m_clockDependent = true;  // T-747: the noise is sampled at the document time.
                 rewrite([&](size_t, std::span<const PathVerb> v, std::span<const float> p) {
                     modifiers::wiggle(v, p, wp, m_time, wiggleOrdinal, m_modVerbsNext, m_modPointsNext);
                 });
@@ -1815,9 +2049,63 @@ void Painter::emitModifiedGroup(const NodeArena& arena, NodeId group, float alph
     pushPlan(arena, group, alpha, false, /*skipShapes=*/true);
 }
 
-void Painter::pushEffectCmd(const NodeArena& arena, NodeId n, CommandList& out) {
+float Painter::effectStackExpand(const NodeArena& arena, const NodeCommon& c, const Mat2x3& xf) const {
+    const std::vector<EffectInstance>& pool = arena.effects();
+    float expand = 0.0f;
+    for (uint32_t i = 0; i < c.effectCount; ++i) {
+        const EffectInstance& e = pool[c.effectOffset + i];
+        if (e.enabled == 0) {
+            continue;
+        }
+        if (e.kind == EffectKind::Custom) {
+            expand += customEffectExpand(m_shaders != nullptr ? m_shaders->find(e.shader) : nullptr, xf);
+            continue;
+        }
+        expand += effectExpand(effectToScreen(e, xf));
+    }
+    return expand;
+}
+
+Mat2x3 Painter::effectXf(const NodeArena& arena, NodeId n) {
+    const NodeCommon& c = arena.common(n);
+    if (m_mappingStack.empty()) {
+        return c.world;
+    }
+    const Mat4 saved = m_mappingStack.back().planeWorld3;
+    const bool swapped = m_currentLayer != kInvalidNode;
+    if (swapped) {
+        m_mappingStack.back().planeWorld3 = arena.common(m_currentLayer).world3;
+    }
+    const Mat2x3 xf = project3d::jacobianAt(m_mappingStack, c.world, c.anchor);
+    if (swapped) {
+        m_mappingStack.back().planeWorld3 = saved;
+    }
+    return xf;
+}
+
+void Painter::unionDescendantReach(const NodeArena& arena, NodeId n, Rect viewport, Rect& acc, bool& any) {
+    arena.forEachChild(n, [&](NodeId ch) {
+        const NodeCommon& cc = arena.common(ch);
+        if (cc.visible == 0 || cc.worldOpacity <= 0.0f || arena.kind(ch) == NodeKind::Camera ||
+            cc.worldLayerActive != 0 || cc.isSpaceRoot != 0 || (cc.flags2 & kLayerOverlay) != 0 ||
+            (cc.is3D != 0 && !m_mappingStack.empty())) {
+            return;  // drawn elsewhere, projected, or (a 3D layer) on a plane of its own
+        }
+        if (m_drawableCount[ch] > 0 && hasEnabledEffects(arena, cc)) {
+            const Rect content = contentScreenBounds(arena, ch, cc.world, viewport);
+            const float e = effectStackExpand(arena, cc, effectXf(arena, ch));
+            unionRect(acc, any, Rect{content.x - e, content.y - e, content.w + 2 * e, content.h + 2 * e});
+            return;
+        }
+        unionDescendantReach(arena, ch, viewport, acc, any);
+    });
+}
+
+void Painter::pushEffectCmd(const NodeArena& arena, NodeId n, CommandList& out, const EffectPre* pre,
+                            bool boundsKnown, const Rect* window) {
     const NodeCommon& c = arena.common(n);
     EffectCmd ec{};
+    ec.boundsKnown = boundsKnown ? 1 : 0;  // T-754
 
     // Copy n's *enabled* effects (18.1's "複製 enabled 的效果到 CommandList::effects"); a
     // GradientMask's stops are copied into out.stops and its stopOffset rewritten.
@@ -1850,36 +2138,20 @@ void Painter::pushEffectCmd(const NodeArena& arena, NodeId n, CommandList& out) 
     // identity (root plane), so no swap is needed; for the 3D layer node itself or one of its 2D
     // descendants, swap in that layer's own world3 (matches flushSection()'s backface-test
     // pattern) around the query.
-    Mat2x3 xf;
-    if (m_mappingStack.empty()) {
-        xf = c.world;
-    } else {
-        Mat4 saved = m_mappingStack.back().planeWorld3;
-        bool swapped = m_currentLayer != kInvalidNode;
-        if (swapped) {
-            m_mappingStack.back().planeWorld3 = arena.common(m_currentLayer).world3;
-        }
-        xf = project3d::jacobianAt(m_mappingStack, c.world, c.anchor);
-        if (swapped) {
-            m_mappingStack.back().planeWorld3 = saved;
-        }
-    }
-    Rect content = contentScreenBounds(arena, n, xf, out.viewport);
+    // T-779: the caller's EffectPre holds this xf, the content AABB and the stack's reach, computed by
+    // the same calls with nothing changed in between.
+    const Mat2x3 xf = pre != nullptr ? pre->xf : effectXf(arena, n);
+    // T-754: contentScreenBounds reads xf only outside 3D spaces, where it is c.world: the caller's
+    // content AABB is this one.
+    Rect content = pre != nullptr ? pre->content : contentScreenBounds(arena, n, xf, out.viewport);
     ec.xf = xf;
     ec.contentBounds = content;
 
-    float expand = 0.0f;
-    for (uint32_t i = 0; i < ec.effectCount; ++i) {
-        const EffectInstance& e = out.effects[ec.effectOffset + i];
-        if (e.kind == EffectKind::Custom) {
-            expand += customEffectExpand(m_shaders != nullptr ? m_shaders->find(e.shader) : nullptr, xf);
-            continue;
-        }
-        EffectInstance screenParams = effectToScreen(e, xf);
-        expand += effectExpand(screenParams);
-    }
+    // The enabled effects in pool order -- the ones just copied into out.effects.
+    const float expand = pre != nullptr ? pre->expand : effectStackExpand(arena, c, xf);
     Rect bounds{content.x - expand, content.y - expand, content.w + 2 * expand, content.h + 2 * expand};
-    ec.boundsHint = clampToViewport(bounds, out.viewport);
+    // T-779: a window given by the caller (a subtree holding a nested 3D space, its reach) replaces it.
+    ec.boundsHint = clampToViewport(window != nullptr ? *window : bounds, out.viewport);
 
     uint32_t idx = static_cast<uint32_t>(out.effectCmds.size());
     out.effectCmds.push_back(ec);
@@ -1917,7 +2189,9 @@ bool Painter::beginBoxShadowCandidate(const NodeArena& arena, NodeId n, float al
     // translation) and the 3D transform that only places its plane are no "3D space" here.
     // T-716 (10 §10.16 W3): inside a 3D space only a node that is a 3D layer itself or lies on a plane
     // that is not affine (10 §10.15) is "in 3D"; the consumers draw an affine plane's content as 2D.
-    in.in3D = (c.is3D != 0 && n != m_layerEntering) || !planeIsAffine(arena, out);
+    // T-762 (19 §19.y.2 item 4): so is a group holding embedded 3D layers.
+    in.in3D =
+        (c.is3D != 0 && n != m_layerEntering) || !planeIsAffine(arena, out) || holdsEmbeddedLayers(arena, n);
     in.paintAlpha = alpha;
     if (arena.kind(n) == NodeKind::Element) {
         const ElementData& data = arena.element(n);

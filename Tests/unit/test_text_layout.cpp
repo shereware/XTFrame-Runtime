@@ -87,6 +87,82 @@ TEST_CASE("layoutText: forced break at \\n") {
     CHECK(out.lines[1].rect.w == doctest::Approx(12.0f));  // "cd"
 }
 
+namespace {
+
+/// One glyph of a hand-built single-run, one-byte-per-glyph ShapeResult (T-801).
+struct HandGlyph {
+    uint32_t glyphId;
+    float advance;
+    uint8_t isSpace;
+    uint8_t breakAfter;
+};
+
+ShapeResult handShaped(const std::vector<HandGlyph>& glyphs) {
+    ShapeResult sr;
+    ShapedRun run;
+    run.font = 1;
+    run.byteStart = 0;
+    run.byteEnd = static_cast<uint32_t>(glyphs.size());
+    run.glyphStart = 0;
+    run.glyphCount = static_cast<uint32_t>(glyphs.size());
+    sr.runs.push_back(run);
+    for (size_t i = 0; i < glyphs.size(); ++i) {
+        ShapedGlyph g;
+        g.glyphId = glyphs[i].glyphId;
+        g.xAdvance = glyphs[i].advance;
+        g.cluster = static_cast<uint32_t>(i);
+        g.isSpace = glyphs[i].isSpace;
+        sr.glyphs.push_back(g);
+        sr.breakAfter.push_back(glyphs[i].breakAfter);
+        sr.graphemeStart.push_back(1);
+    }
+    return sr;
+}
+
+}  // namespace
+
+TEST_CASE("layoutText: T-801 a hard break is not part of its line's length") {
+    // "a\nb" as a real shaper delivers it after T-801: the break glyph is a space glyph (id 3
+    // here) with isSpace set. Give it a width anyway, as a font's .notdef had before T-801: the
+    // line length still leaves it out.
+    const ShapeResult sr = handShaped({{68, 6.0f, 0, 0}, {3, 5.0f, 1, 2}, {69, 6.0f, 0, 2}});
+    TextLayoutResult out;
+    TextLayoutParams lp = makeLayoutParams(100.0f);
+    layoutText(sr, lp, out);
+    REQUIRE(out.lines.size() == 2);
+    CHECK(out.lines[0].rect.w == doctest::Approx(6.0f));
+    CHECK(out.lines[1].rect.w == doctest::Approx(6.0f));
+    // Right-aligned, the first line ends at the right edge (its width excludes the break).
+    lp.textAlign = TextAlign::Right;
+    layoutText(sr, lp, out);
+    REQUIRE(out.lines.size() == 2);
+    CHECK(out.lines[0].rect.x == doctest::Approx(94.0f));
+    // Byte ranges are untouched: line 1 covers "a\n", line 2 "b".
+    CHECK(out.lines[0].byteStart == 0);
+    CHECK(out.lines[0].byteEnd == 2);
+    CHECK(out.lines[1].byteStart == 2);
+
+    // From the FakeTextShaper, too.
+    FakeTextShaper shaper;
+    ShapeResult fake;
+    shaper.shape("a\nb", makeShapeParams(), fake);
+    layoutText(fake, makeLayoutParams(100.0f), out);
+    REQUIRE(out.lines.size() == 2);
+    CHECK(out.lines[0].rect.w == doctest::Approx(6.0f));
+}
+
+TEST_CASE("layoutText: T-801 trailing white space is found by isSpace, not by glyph id 32") {
+    TextLayoutResult out;
+    // Glyph 32 that is not white space (a font where id 32 is an ordinary letter): kept.
+    layoutText(handShaped({{68, 6.0f, 0, 0}, {32, 7.0f, 0, 0}}), makeLayoutParams(100.0f), out);
+    REQUIRE(out.lines.size() == 1);
+    CHECK(out.lines[0].rect.w == doctest::Approx(13.0f));
+    // White space whose glyph id is not 32: trimmed.
+    layoutText(handShaped({{68, 6.0f, 0, 0}, {3, 7.0f, 1, 1}}), makeLayoutParams(100.0f), out);
+    REQUIRE(out.lines.size() == 1);
+    CHECK(out.lines[0].rect.w == doctest::Approx(6.0f));
+}
+
 TEST_CASE("layoutText: CJK breaks after every character") {
     FakeTextShaper shaper;
     ShapeResult sr;

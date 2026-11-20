@@ -1,0 +1,109 @@
+<xt version="2">
+
+  <symbol name="ToggleRow" requires="states: Hover, Focus, Checked, Disabled; slots: label">
+    <ports>
+      on: bool in
+      toggled: event out
+    </ports>
+    <div id="Box" tabindex="0">
+      <span id="Label"><slot name="label">Auto-Save</slot></span>
+      <span id="State" bind:text="on | select(true: On, false: Off)"></span>
+      <input type="checkbox" id="Switch" bind:checked="on"
+             on:check="sound(ui_toggle); set(on, true); emit(toggled)"
+             on:uncheck="sound(ui_toggle); set(on, false); emit(toggled)">
+        <div id="Knob"></div>
+      </input>
+    </div>
+  </symbol>
+
+  <layout>
+    symbol(ToggleRow) {
+      #Box {
+        display: flex;
+        align-items: center;
+        width: 380px;
+        height: var(--size-row);
+        padding: 0px var(--space-2);
+        column-gap: var(--space-3);
+      }
+      #Label {
+        flex-grow: 1;
+      }
+      #State {
+        width: 28px;
+      }
+      #Switch {
+        position: relative;
+        width: 30px;
+        height: 16px;
+      }
+      #Knob {
+        position: absolute;
+        left: 2px;
+        top: 2px;
+        width: 12px;
+        height: 12px;
+      }
+      #Switch:checked #Knob {
+        left: 16px;
+      }
+    }
+  </layout>
+  <style>
+    symbol(ToggleRow) {
+      #Box {
+        border-width: 0px 0px var(--rule-thin) 0px;
+        border-color: var(--color-line-hairline);
+        transition: background-color var(--motion-fast) ease-out;
+      }
+      #Label {
+        font-family: var(--font-body);
+        font-size: var(--font-size-m);
+        letter-spacing: 1px;
+        color: var(--color-text-label);
+        white-space: nowrap;
+      }
+      #Box:hover {
+        background-color: var(--color-surface-raised);
+      }
+      #Box:focus {
+        background-color: var(--color-surface-raised);
+      }
+      #Box:focus #Label {
+        color: var(--color-text-strong);
+      }
+      #State {
+        font-family: var(--font-body);
+        font-size: var(--font-size-text);
+        color: var(--color-text);
+      }
+      #Switch {
+        border-radius: var(--radius-full);
+        background-color: var(--color-border-strong);
+      }
+      #Knob {
+        border-radius: var(--radius-full);
+        background-color: var(--color-text-dim);
+        transition: left var(--motion-fast) ease-out, background-color var(--motion-fast) ease-out;
+      }
+      #Switch:checked {
+        background-color: var(--color-text-quiet);
+      }
+      #Switch:checked #Knob {
+        background-color: var(--color-text-strong);
+      }
+      :disabled {
+        background-color: transparent !important;
+      }
+      :disabled #Label {
+        color: var(--color-disabled-text) !important;
+      }
+      :disabled #State {
+        color: var(--color-disabled-text) !important;
+      }
+      :disabled #Knob {
+        background-color: var(--color-disabled-text) !important;
+      }
+    }
+  </style>
+</xt>

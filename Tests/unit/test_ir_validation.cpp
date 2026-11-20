@@ -315,17 +315,20 @@ TEST_CASE("T-255 A3: setProperty ignores a Path value whose own verbs and points
 
     const float points[2] = {5, 5};
     const float verbs[3] = {0.0f, 2.0f, 2.0f};  // Move, Cubic, Cubic: 14 floats wanted.
-    setProperty(arena, node, prop::PathData, Value::ofPathWithVerbs(points, 2, verbs, 3));
+    setProperty(arena, node, prop::PathData, Value::ofPathWithVerbs(points, 2, verbs, 3),
+                DirtyCause::HostApi);
     CHECK(arena.path(node).verbs.size() == 2);
     CHECK(arena.path(node).points.size() == 4);
 
     const float line[4] = {1, 2, 3, 4};
     const float lineVerbs[2] = {0.0f, 1.0f};
     const float closeVerbs[3] = {0.0f, 1.0f, 3.0f};
-    setProperty(arena, node, prop::PathData, Value::ofPathWithVerbs(line, 4, closeVerbs, 3));
+    setProperty(arena, node, prop::PathData, Value::ofPathWithVerbs(line, 4, closeVerbs, 3),
+                DirtyCause::HostApi);
     CHECK(arena.path(node).verbs.size() == 3);
     CHECK(arena.path(node).points[0] == 1.0f);
-    setProperty(arena, node, prop::PathData, Value::ofPathWithVerbs(line, 4, lineVerbs, 2));
+    setProperty(arena, node, prop::PathData, Value::ofPathWithVerbs(line, 4, lineVerbs, 2),
+                DirtyCause::HostApi);
     CHECK(arena.path(node).verbs.size() == 2);
 }
 
@@ -1102,12 +1105,12 @@ TEST_CASE("T-257b: a track's property applies to its target node's kind") {
 TEST_CASE("T-257b: setProperty ignores a value its property does not take") {
     NodeArena arena;
     const NodeId el = arena.create(NodeKind::Element);
-    setProperty(arena, el, prop::TranslateX, Value::ofLength(3, LengthUnit::Px));
-    setProperty(arena, el, prop::TranslateX, Value::ofLength(2, LengthUnit::Em));
-    setProperty(arena, el, prop::TranslateX, Value::ofColor(Color{1, 0, 0, 1}));
+    setProperty(arena, el, prop::TranslateX, Value::ofLength(3, LengthUnit::Px), DirtyCause::HostApi);
+    setProperty(arena, el, prop::TranslateX, Value::ofLength(2, LengthUnit::Em), DirtyCause::HostApi);
+    setProperty(arena, el, prop::TranslateX, Value::ofColor(Color{1, 0, 0, 1}), DirtyCause::HostApi);
     CHECK(arena.element(el).cssTranslate.x == 3.0f);
-    setProperty(arena, el, prop::Opacity, Value::ofFloat(0.5f));
-    setProperty(arena, el, prop::Opacity, Value::ofColor(Color{1, 0, 0, 1}));
+    setProperty(arena, el, prop::Opacity, Value::ofFloat(0.5f), DirtyCause::HostApi);
+    setProperty(arena, el, prop::Opacity, Value::ofColor(Color{1, 0, 0, 1}), DirtyCause::HostApi);
     CHECK(arena.common(el).opacity == 0.5f);
 }
 

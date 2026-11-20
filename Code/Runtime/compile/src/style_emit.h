@@ -80,10 +80,11 @@ bool emitStyle(const RuleSet& ruleSet, IrWriter& writer, StyleBuilder& style,
 /// `(element, timeline, delay = first key, duration = last - first)`. `effect.<name|index>.<param>`
 /// declarations resolve against the element's state-less `effect` sequence (18.12). Errors
 /// (unknown id, duplicate element/property/time, duplicate timeline name, unresolvable effect
-/// address) are reported into `sink` and drop the whole timeline.
+/// address) are reported into `sink` and drop the whole timeline. T-777: `groupOfTimeline` (may be
+/// null) receives, per ruleSet.timelines entry, its TGRP group index (0xFFFFFFFF: dropped).
 void emitTimelineGroups(const RuleSet& ruleSet, const DomTree& dom, IrWriter& writer, StyleBuilder& style,
                         std::unordered_map<std::string, TimelineId>& keyframesByName, DiagnosticSink& sink,
-                        TimelineGroupBuilder& out);
+                        TimelineGroupBuilder& out, std::vector<uint32_t>* groupOfTimeline = nullptr);
 
 /// T-544 (18 §18.12): resolves the effect address `<effectName>.<param>` (`effectName` an effect
 /// name, a custom effect's header name, or a stack index written as digits) against the effect
@@ -134,6 +135,16 @@ bool encodeDeclValue(IrWriter& writer, StyleBuilder& style,
 bool encodeDecl(IrWriter& writer, StyleBuilder& style,
                 const std::unordered_map<std::string, TimelineId>& keyframesByName, const StyleDecl& decl,
                 std::string_view fileName, DiagnosticSink& sink, IrDecl& out);
+
+/// T-778 (05 §5.6): encodeDecl() for a declaration that may become several IrDecls, appended to
+/// `out`: an `animation` / `transition` value is written as its longhands (StyleProp 282-289 /
+/// 290-293) -- the shorthand's list once, every longhand naming it; an AnimLonghands /
+/// TransLonghands value as the given longhands (no items = the initial value). A document with no
+/// `@keyframes` writes no `animation-*` declaration (no item could name one). Every other
+/// declaration is one encodeDecl(). False on encodeDecl()'s failures and an unknown `@keyframes`.
+bool encodeDeclList(IrWriter& writer, StyleBuilder& style,
+                    const std::unordered_map<std::string, TimelineId>& keyframesByName, const StyleDecl& decl,
+                    std::string_view fileName, DiagnosticSink& sink, std::vector<IrDecl>& out);
 
 /// T-273c (`CompileOptions::publishAssetNames`): the text a published build writes for the
 /// reference `src` (written in a document in `xtDir`) of a file that is compiled in or packed

@@ -1,0 +1,15 @@
+<xt version="2">
+
+  <symbol name="SA" state-groups="Aim: Idle|Target">
+    <div id="In"></div>
+  </symbol>
+
+  <symbol name="SB" state-groups="Aim: Free|Target">
+    <div id="In"></div>
+  </symbol>
+
+  <body id="Root">
+    <use symbol="SA" id="A"/>
+    <use symbol="SB" id="B"/>
+  </body>
+</xt>

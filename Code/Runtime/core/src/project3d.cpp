@@ -42,6 +42,37 @@ Vec2 projectPoint(std::span<const Mapping> stack, const Mat2x3& xf, Vec2 p, bool
     return projectThrough(stack, q, ok);
 }
 
+Vec3 projectPointHomogeneous(std::span<const Mapping> stack, Vec2 p, bool& ok) {
+    ok = true;
+    double x = p.x, y = p.y, w = 1.0;
+    // Innermost level first; each level maps its plane's homogeneous point (z = 0) into the outer
+    // level's plane, and its own w is lw / w (w > 0 holds by induction).
+    for (size_t i = stack.size(); i-- > 0;) {
+        const Mapping& level = stack[i];
+        if (!level.hasProjection) {
+            continue;
+        }
+        const Mat4 m = mat4Mul(level.viewProj, level.planeWorld3);
+        const double lx = double(m.m[0]) * x + double(m.m[1]) * y + double(m.m[3]) * w;
+        const double ly = double(m.m[4]) * x + double(m.m[5]) * y + double(m.m[7]) * w;
+        const double lw = double(m.m[12]) * x + double(m.m[13]) * y + double(m.m[15]) * w;
+        if (!(lw > 1e-6 * w) || !std::isfinite(lx) || !std::isfinite(ly) || !std::isfinite(lw)) {
+            ok = false;
+            return Vec3{0, 0, 0};
+        }
+        const Mat2x3& r = level.rootXf;
+        x = double(r.a) * lx + double(r.c) * ly + double(r.e) * lw;
+        y = double(r.b) * lx + double(r.d) * ly + double(r.f) * lw;
+        w = lw;
+    }
+    const Vec3 out{static_cast<float>(x), static_cast<float>(y), static_cast<float>(w)};
+    if (!std::isfinite(out.x) || !std::isfinite(out.y) || !(out.z > 0.0f)) {
+        ok = false;
+        return Vec3{0, 0, 0};
+    }
+    return out;
+}
+
 bool projectPolyline(std::span<const Mapping> stack, const Mat2x3& xf, std::span<const PathVerb> verbs,
                      std::span<const float> points, std::vector<PathVerb>& outVerbs,
                      std::vector<float>& outPoints) {

@@ -24,6 +24,7 @@
 namespace xt {
 
 class AssetResolver;
+class PerfTracker;
 class TextShaper;
 struct ComputedStyle;
 struct EditState;         // Code/Runtime/core/src/text_edit.h (private); only ever used through a pointer here.
@@ -226,6 +227,12 @@ struct TextIntrinsic {
 /// Computes layout boxes for a NodeArena's Element/Text subtree. See Docs/design/06-layout.md.
 class LayoutEngine {
 public:
+    /// T-755: reads the environment switches -- XT_PARTIAL_LAYOUT `0` turns partial relayout off
+    /// (every layout() is a full one), XT_VERIFY_VISUAL_GENERATION `1` (the test suites' switch, see
+    /// Tests/common/test_visual_check.h) turns the partial-layout verify mode on with a mismatch
+    /// aborting the process.
+    LayoutEngine();
+
     /// Borrows `ir`/`assets`/`shaper`; the caller (Document) guarantees all three outlive the
     /// LayoutEngine. `assets` may be nullptr (img intrinsic size then resolves to 0x0); `shaper`
     /// may be nullptr or have no font (Text nodes are then laid out as 0x0, Docs/design/07-text.md
@@ -268,16 +275,79 @@ public:
     static bool isReplacedTag(std::string_view tag);
 
     /// Lays out `root`'s subtree (root's own box = `viewport`, border-box, no margin/padding/
-    /// border) into `viewport`'s coordinate system. No-op if `root` does not carry kDirtyLayout
-    /// (see Docs/design/06-layout.md §6.3: first version relayouts the whole tree whenever any
-    /// element is dirty, detected via kDirtyLayout's propagation up to `root`).
+    /// border) into `viewport`'s coordinate system.
+    ///
+    /// T-755 (Docs/design/06-layout.md §6.x "排版邊界與局部重排", revising §6.3): a kDirtyLayout
+    /// write stops at the nearest layout boundary above it, which NodeArena records as a layout
+    /// root (kLayoutRoot, NodeArena::layoutRoots()). When `root` itself is one -- a write reached
+    /// it: a structural change or a write with no boundary above it, the viewport / length
+    /// environment marking the whole tree -- this is the full pass. Otherwise only the subtrees of
+    /// the outermost layout roots inside `root`'s laid-out tree are laid out again, each against
+    /// the arguments it was last sized with, followed by the absolute pass of their descendants and
+    /// the §6.7 fold of their subtrees. A full pass also runs when partial relayout is off, before
+    /// the first full pass, when `root` or `viewport` differ from the previous full pass, and when
+    /// a layout root was never sized as a boundary. Nothing dirty: only refreshDirtyTransforms().
     void layout(NodeArena& arena, NodeId root, Rect viewport);
+    /// T-753 (Docs/design/57-measurement.md §57.2 item 3, §57.3 item 4): the tracker layout() reports
+    /// to -- the redundant-box count (detail level >= 1; PassCounts::redundantBoxes) and the
+    /// update.layout.flex / grid / textShape zones (detail level >= 2). Null (the default): neither.
+    void setPerfTracker(PerfTracker* tracker) { m_perf = tracker; }
 
     /// Docs/design/21-perf-tracing.md §21.1's `laidOutElements`: how many elements the most recent
     /// layout() call sized (the root plus every layoutChild() visit, so an element sized twice --
-    /// once in flow, once in the absolute pass -- counts twice). 0 when that call returned early
-    /// because nothing was dirty.
+    /// once in flow, once in the absolute pass -- counts twice; T-755: in a partial pass, the layout
+    /// roots' subtrees only, an absolutely positioned layout root counting once). 0 when that call
+    /// returned early because nothing was dirty. The verify mode's full pass is not counted.
     uint32_t lastLaidOutElements() const { return m_laidOutElements; }
+
+    /// T-755: the subtrees the most recent layout() call laid out again; 0 for a full pass or when
+    /// nothing was dirty (lastLayoutFull() tells the two apart).
+    uint32_t lastLayoutRoots() const { return m_lastLayoutRoots; }
+    /// T-755: true when the most recent layout() call was a full pass.
+    bool lastLayoutFull() const { return m_lastLayoutFull; }
+
+    /// T-755: partial relayout on (the default) or off (every layout() call that has anything dirty
+    /// is a full pass, as before T-755; the environment variable XT_PARTIAL_LAYOUT=0 does the same).
+    void setPartialLayout(bool on) { m_partialEnabled = on; }
+    bool partialLayout() const { return m_partialEnabled; }
+
+    /// T-755 (06 §6.x item 5): the verify mode. After every partial pass a full pass runs and every
+    /// Element's and Text node's box -- position, size, margins / padding / border, intrinsic and
+    /// scroll sizes, and the §6.7 results (translate, anchor, perspective, an `<anim>` scene's fit)
+    /// -- is compared with what the partial pass left; a difference is a wrong boundary judgement:
+    /// it is counted (partialCheck(), FrameStats::partialLayoutMismatch), the first one is described
+    /// (node, element id, field, both values), and the full pass's result stands. With
+    /// `abortOnMismatch` (the environment switch) a mismatch fails the process at once with that
+    /// description. Off by default; costs one full pass per partial one while on.
+    void setVerifyPartial(bool on, bool abortOnMismatch = false) {
+        m_verifyPartial = on;
+        m_verifyAbort = on && abortOnMismatch;
+    }
+    bool verifyPartial() const { return m_verifyPartial; }
+    /// T-755: what the verify mode found since this LayoutEngine was made.
+    struct PartialCheck {
+        uint32_t verified = 0;    ///< Partial passes compared with a full one.
+        uint32_t mismatches = 0;  ///< Of those, the ones that differed.
+        std::string first;        ///< The first difference, described; empty until one.
+        NodeId firstNode = kInvalidNode;
+    };
+    const PartialCheck& partialCheck() const { return m_check; }
+
+    /// T-755: counts since the last takePassCounts() call, for the frame statistics
+    /// (FrameStats::layoutFullPasses / layoutRoots / partialLayoutMismatch); reading resets them.
+    struct PassCounts {
+        uint32_t fullPasses = 0;   ///< Full passes (the verify mode's not counted).
+        uint32_t layoutRoots = 0;  ///< Subtrees laid out again by partial passes.
+        uint32_t mismatches = 0;   ///< Verify-mode mismatches.
+        /// T-753: elements of the laid-out subtrees (each once per pass) whose box -- x, y, width,
+        /// height -- is the one it had before the pass; counted at detail level >= 1 only.
+        uint32_t redundantBoxes = 0;
+    };
+    PassCounts takePassCounts() {
+        const PassCounts counts = m_counts;
+        m_counts = PassCounts{};
+        return counts;
+    }
 
     /// 06 §6.15 (T-338): true once any layout() placed a grid item past its grid's explicit tracks
     /// (clamped to the last track); Document reports kWarnGridPlacementClamped once.
@@ -366,6 +436,35 @@ private:
     void layoutAbsolutePass(NodeArena& arena, NodeId root);
     void layoutAbsoluteChildren(NodeArena& arena, NodeId node, NodeId cbNode, Rect cbPaddingAbs,
                                 float parentContentAbsX, float parentContentAbsY, int depth);
+    /// layoutAbsoluteChildren()'s body for one child `c` of an element whose own call received the
+    /// other arguments (`depth` included): an absolutely positioned `c` is sized and placed, then
+    /// `c`'s children are visited. T-755: a partial pass calls it for its layout root.
+    void layoutAbsoluteChild(NodeArena& arena, NodeId c, NodeId cbNode, Rect cbPaddingAbs,
+                             float parentContentAbsX, float parentContentAbsY, int depth);
+
+    // T-755 (06 §6.x, layout_partial.cpp).
+    /// The full pass: everything layout() did before T-755. `markTransforms` false leaves the
+    /// kDirtyTransform flood of applyTransforms() out (the verify mode's comparison pass).
+    void layoutFull(NodeArena& arena, NodeId root, Rect viewport, bool markTransforms);
+    /// Fills m_layoutRootScratch with the outermost layout roots inside `root`'s laid-out tree
+    /// (sorted, unique). Returns false when one cannot be laid out on its own (a full pass then).
+    bool collectLayoutRoots(NodeArena& arena, NodeId root);
+    /// Lays out the subtree of layout root `sub` again (see layout()).
+    void relayoutSubtree(NodeArena& arena, NodeId root, NodeId sub);
+    /// The verify mode's comparison (setVerifyPartial()).
+    void verifyAgainstFull(NodeArena& arena, NodeId root, Rect viewport);
+    /// 06 §6.x item 1: LayoutFlags of in-flow element `node`, from its style and its parent's flags
+    /// (both as this pass sees them), cached in ElementData::layoutFlags; called by layoutChild().
+    void updateInFlowLayoutFlags(NodeArena& arena, NodeId node);
+    /// The same for an absolutely positioned `node` (the absolute pass).
+    static void updateAbsoluteLayoutFlags(NodeArena& arena, NodeId node);
+    /// 06 §6.x item 1 for an element whose kLayoutDefiniteW / kLayoutDefiniteH are already in
+    /// `flags`: both axes definite and -- as a flex item -- `flex-grow` and `flex-shrink` 0 with a
+    /// `flex-basis` of `auto` or a length, or -- as a grid item -- every track of its area a length
+    /// or `fr` (kLayoutGridFixedTracks). T-782: `overflow` takes no part (a scroll extent comes from
+    /// the direct children's boxes only, storeScrollSize()). No element takes part in baseline
+    /// alignment in this engine (no inline-level elements, no `baseline` value).
+    static bool isLayoutBoundary(const ElementData& data, uint8_t flags, bool flexItem, bool gridItem);
     void resolveAbsoluteBox(NodeArena& arena, NodeId node, Rect cbPaddingAbs, int depth);
 
     /// §6.8 (layout_text.cpp): shapes `textNode`'s text (reusing TextNodeData's shaping cache
@@ -414,7 +513,8 @@ private:
     /// parent's padding offset and (overflow: scroll only) scroll) and §6.10's anim object-fit
     /// (sets the scene root Group's scale/translate from the now-final content box). Single preorder
     /// pass over `root`'s subtree, run last (after both the in-flow layout and the absolute pass).
-    void applyTransforms(NodeArena& arena, NodeId root);
+    /// T-755: `mark` false leaves out the closing kDirtyTransform flood.
+    void applyTransforms(NodeArena& arena, NodeId root, bool mark = true);
 
     /// applyTransforms()'s per-Element body: foldElementTranslate(), perspective px (§19.4) and
     /// the anim scene root's object-fit (§6.10), from the element's current box and css values.
@@ -454,12 +554,55 @@ private:
     std::string m_caseScratch;
     // 21.1's laidOutElements, reset by every layout() call; see lastLaidOutElements().
     uint32_t m_laidOutElements = 0;
+    // T-753: setPerfTracker(), and the redundant-box count of the pass in progress: the boxes before
+    // it, the elements it laid out (each once: m_laidOutEpoch[node] == m_passEpoch).
+    PerfTracker* m_perf = nullptr;
+    bool m_trackLaidOut = false;
+    uint32_t m_passEpoch = 0;
+    std::vector<uint32_t> m_laidOutEpoch;
+    struct BoxBefore {
+        float x, y, w, h;
+    };
+    std::vector<BoxBefore> m_boxBefore;
+    std::vector<NodeId> m_laidOutList;
+    void beginRedundantCount(const NodeArena& arena);
+    void endRedundantCount(const NodeArena& arena);
+    void noteLaidOut(NodeId node) {
+        if (m_trackLaidOut && node < m_laidOutEpoch.size() && m_laidOutEpoch[node] != m_passEpoch) {
+            m_laidOutEpoch[node] = m_passEpoch;
+            m_laidOutList.push_back(node);
+        }
+    }
     // §6.16 (T-328): the flex item currently being laid out stretched with an auto cross size, whose
     // own `aspect-ratio` layoutBlock / layoutFlex must ignore (stretch wins); kInvalidNode otherwise.
     // Set and restored around each such layoutChild call by layoutFlexChildren.
     NodeId m_aspectSuppressed = kInvalidNode;
     // T-338: see gridPlacementClamped().
     bool m_gridPlacementClamped = false;
+
+    // T-755: partial relayout and its verify mode (see layout(), setVerifyPartial()).
+    bool m_partialEnabled = true;
+    bool m_verifyPartial = false;
+    bool m_verifyAbort = false;
+    PartialCheck m_check;
+    PassCounts m_counts;
+    uint32_t m_lastLayoutRoots = 0;
+    bool m_lastLayoutFull = false;
+    // The previous full pass's root and viewport (a partial pass needs both unchanged).
+    bool m_haveFullPass = false;
+    NodeId m_fullRoot = kInvalidNode;
+    Rect m_fullViewport{};
+    std::vector<NodeId> m_layoutRootScratch;
+    std::vector<NodeId> m_chainScratch;
+    /// One node's values compared by the verify mode.
+    struct VerifyRecord {
+        NodeId node = kInvalidNode;
+        uint8_t kind = 0;  ///< 0 = Element, 1 = Text.
+        float v[34] = {};
+    };
+    std::vector<VerifyRecord> m_verifyPartialScratch;
+    std::vector<VerifyRecord> m_verifyFullScratch;
+    void snapshotForVerify(const NodeArena& arena, NodeId root, std::vector<VerifyRecord>& out) const;
 };
 
 }  // namespace xt

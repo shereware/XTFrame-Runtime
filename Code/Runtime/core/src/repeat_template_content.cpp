@@ -40,17 +40,19 @@ void RepeatController::resolveLocalizedSlot(Document& doc, Document::LocalizedSl
         TextNodeData& data = arena.text(slot.node);
         data.text = sid;
         data.shapedValid = 0;
-        arena.markDirty(slot.node, static_cast<uint8_t>(kDirtyLayout));
+        arena.markDirty(slot.node, static_cast<uint8_t>(kDirtyLayout), arena.ambientCause());
         const NodeId parent = arena.parent(slot.node);
         if (parent != kInvalidNode) {
-            arena.markDirty(parent, static_cast<uint8_t>(kDirtyLayout));
+            arena.markDirty(parent, static_cast<uint8_t>(kDirtyLayout), arena.ambientCause());
         }
     } else {
         ElementData& element = arena.element(slot.node);
         element.attributes[slot.attrIndex].second = sid;
-        arena.markDirty(slot.node, static_cast<uint8_t>(kDirtyStyle));  // `[attr]` selectors.
+        arena.markDirty(slot.node, static_cast<uint8_t>(kDirtyStyle),
+                        arena.ambientCause());  // `[attr]` selectors.
         if (doc.m_ir.string(element.attributes[slot.attrIndex].first) == "placeholder") {
-            arena.markDirty(slot.node, static_cast<uint8_t>(kDirtyLayout));  // T-395: relaid out.
+            arena.markDirty(slot.node, static_cast<uint8_t>(kDirtyLayout),
+                            arena.ambientCause());  // T-395: relaid out.
         }
     }
 }

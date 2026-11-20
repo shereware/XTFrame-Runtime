@@ -419,6 +419,66 @@ Status setProjectSettings(UiProject& project, const ProjectSettings& settings, s
     return status;
 }
 
+PublishSettings publishSettings(const UiProject& project) {
+    PublishSettings s;
+    s.images = project.publish.images;
+    s.atlas = project.publish.atlas;
+    s.fonts = project.publish.fonts;
+    s.embedImages = project.publish.embedImages;
+    s.embedFonts = project.publish.embedFonts;
+    return s;
+}
+
+std::string validatePublishSettings(const UiProject& project, const PublishSettings& settings) {
+    const std::string& compress = settings.images.compress;
+    if (compress != "none" && compress != "bc7" && compress != "auto") {
+        return "images.compress: none, bc7 or auto";
+    }
+    const int size = settings.atlas.maxSize;
+    if (size != 1024 && size != 2048 && size != 4096 && size != project.publish.atlas.maxSize) {
+        return "atlas.maxSize: 1024, 2048 or 4096";
+    }
+    if (settings.atlas.scope != "ui" && settings.atlas.scope != "bundle") {
+        return "atlas.scope: ui or bundle";
+    }
+    return std::string();
+}
+
+void applyPublishSettings(UiProject& project, const PublishSettings& settings) {
+    UiProjectPublish& publish = project.publish;
+    publish.images.compress = settings.images.compress;
+    publish.images.present = settings.images.present;          // T-714: unknown keys (extraJson) stay
+    publish.images.compressSet = settings.images.compressSet;  // T-810
+    publish.atlas.enabled = settings.atlas.enabled;
+    publish.atlas.maxSize = settings.atlas.maxSize;
+    publish.atlas.scope = settings.atlas.scope;
+    publish.atlas.mipmaps = settings.atlas.mipmaps;
+    publish.fonts = settings.fonts;
+    publish.embedImages = settings.embedImages;
+    publish.embedFonts = settings.embedFonts;
+}
+
+Status setPublishSettings(UiProject& project, const PublishSettings& settings, std::string* error) {
+    if (project.isUnnamed() || project.legacy) {
+        setErrorProjectEdit(error, project.isUnnamed()
+                                       ? "an unnamed UI Project has no publish settings"
+                                       : "a project read from an old project file is read-only; "
+                                         "save it as a UI Project first");
+        return Status::kInvalidArgument;
+    }
+    if (const std::string problem = validatePublishSettings(project, settings); !problem.empty()) {
+        setErrorProjectEdit(error, problem);
+        return Status::kInvalidArgument;
+    }
+    const PublishSettings previous = publishSettings(project);
+    applyPublishSettings(project, settings);
+    const Status status = saveProject(project, error);
+    if (status != Status::kOk) {
+        applyPublishSettings(project, previous);
+    }
+    return status;
+}
+
 Status setAssetSourceFolders(UiProject& project, std::vector<AssetSourceFolder> folders, std::string* error) {
     if (project.isUnnamed() || project.legacy) {
         setErrorProjectEdit(error, "source folders need a UI Project (.xtui)");

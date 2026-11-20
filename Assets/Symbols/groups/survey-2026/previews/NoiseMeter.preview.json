@@ -1,0 +1,16 @@
+{
+  "width": 320,
+  "height": 120,
+  "frames": 0,
+  "ports": {
+    "Calm.level": 0,
+    "Calm.text": "Low",
+    "Alert.level": 1,
+    "Alert.text": "Alert",
+    "Loud.level": 2,
+    "Loud.text": "Loud"
+  },
+  "events": [
+    "update 0.25"
+  ]
+}

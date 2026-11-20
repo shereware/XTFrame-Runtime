@@ -372,6 +372,15 @@ bool IrView::parseCustomStates(const uint8_t* payload, size_t payloadSize, Custo
     return true;
 }
 
+bool IrView::parseStateScopes(const uint8_t* payload, size_t payloadSize, StateScopeChunk& out) {
+    ByteCursor cur(payload, payloadSize);
+    if (!cur.readCounted(out.m_scopes) || !cur.readCounted(out.m_groups) || !cur.readCounted(out.m_roots)) {
+        return false;
+    }
+    out.m_present = true;
+    return true;
+}
+
 bool IrView::parseMedia(const uint8_t* payload, size_t payloadSize, MediaChunk& out) {
     ByteCursor cur(payload, payloadSize);
     if (!cur.readCounted(out.m_media) || !cur.readCounted(out.m_queries) || !cur.readCounted(out.m_conds) ||
@@ -613,7 +622,8 @@ namespace sp = style_decode::styleprop;
 /// whatever the declaration's valueType says.
 bool isPoolListProp(uint16_t prop) {
     return prop == sp::Transition || prop == sp::Animation || prop == sp::FontFamily || prop == sp::Effect ||
-           prop == sp::BackgroundGradient || prop == sp::TextEffect;
+           prop == sp::BackgroundGradient || prop == sp::TextEffect || sp::isAnimationLonghand(prop) ||
+           sp::isTransitionLonghand(prop);
 }
 
 /// T-255: a plain Length value's unit byte names a LengthUnit up to UiScale (Calc only comes from
@@ -663,6 +673,12 @@ bool validateDeclListRef(const IrDecl& decl, const StyleChunk& style) {
     if (decl.prop == prop::DashArray) {
         // T-236: a scene-target `stroke-dasharray`, in STYL's floatPool[] (count 0 = none).
         return inPool(offset, count, style.floatPool().size());
+    }
+    if (sp::isAnimationLonghand(decl.prop)) {  // T-778.
+        return inPool(offset, count, style.animations().size());
+    }
+    if (sp::isTransitionLonghand(decl.prop)) {
+        return inPool(offset, count, style.transitions().size());
     }
     switch (decl.prop) {
         case sp::Transition:
@@ -1286,6 +1302,14 @@ Result<IrView> IrView::openNoted(IrBlob blob, IrReadOptions options, RejectNote*
                     return Result<IrView>::error(Status::kInvalidIr);
                 }
                 break;
+            case kChunkTEXP:
+                // T-776: optional, after DOCT; at most once (like TGRP, leaves `stage` alone).
+                if ((stage != S_DOCT_DONE && stage != S_SRCM_DONE && stage != S_META_DONE) ||
+                    view.m_timelineExprs.present() ||
+                    !parseTimelineExprs(payload, payloadLen, view.m_timelineExprs)) {
+                    return Result<IrView>::error(Status::kInvalidIr);
+                }
+                break;
             case kChunkTGRP:
                 // T-172: the `@timeline` group chunk comes after every other known chunk.
                 // Like SYMB: leaves `stage` alone and may appear at most once.
@@ -1300,6 +1324,14 @@ Result<IrView> IrView::openNoted(IrBlob blob, IrReadOptions options, RejectNote*
                 if ((stage != S_DOCT_DONE && stage != S_SRCM_DONE && stage != S_META_DONE) ||
                     view.m_customStates.present() ||
                     !parseCustomStates(payload, payloadLen, view.m_customStates)) {
+                    return Result<IrView>::error(Status::kInvalidIr);
+                }
+                break;
+            case kChunkSTGS:
+                // T-738: optional, after DOCT; at most once.
+                if ((stage != S_DOCT_DONE && stage != S_SRCM_DONE && stage != S_META_DONE) ||
+                    view.m_stateScopes.present() ||
+                    !parseStateScopes(payload, payloadLen, view.m_stateScopes)) {
                     return Result<IrView>::error(Status::kInvalidIr);
                 }
                 break;
@@ -2035,6 +2067,35 @@ Status IrView::validateNoted(const IrView& view, RejectNote* note) {
         }
     }
 
+    // -- STGS (T-738) --
+    noteSection(note, "STGS");
+    const StateScopeChunk& scoped = view.m_stateScopes;
+    for (const IrStateGroup& g : scoped.groups()) {
+        if (g.name >= stringCount || (g.mask & ~stateMaskAll) != 0) {
+            return Status::kInvalidIr;
+        }
+    }
+    for (const IrStateScope& scope : scoped.scopes()) {
+        if (scope.symbolName >= stringCount ||
+            !inPool(scope.groupOffset, scope.groupCount, scoped.groups().size())) {
+            return Status::kInvalidIr;
+        }
+        uint32_t seen = 0;  // The groups of one scope are pairwise disjoint.
+        for (const IrStateGroup& g : scoped.groups().subspan(scope.groupOffset, scope.groupCount)) {
+            if ((seen & g.mask) != 0) {
+                return Status::kInvalidIr;
+            }
+            seen |= g.mask;
+        }
+    }
+    for (size_t i = 0; i < scoped.roots().size(); ++i) {
+        const IrStateScopeRoot& root = scoped.roots()[i];
+        if (root.element >= elements.size() || root.scope >= scoped.scopes().size() ||
+            (i > 0 && root.element <= scoped.roots()[i - 1].element)) {
+            return Status::kInvalidIr;
+        }
+    }
+
     // -- PORT (T-175) --
     noteSection(note, "PORT");
     const PortChunk& portChunk = view.m_ports;
@@ -2525,7 +2586,9 @@ Status IrView::validateNoted(const IrView& view, RejectNote* note) {
         }
     }
 
-    return Status::kOk;
+    // -- TEXP (T-776; after TGRP, whose ranges it relies on) --
+    noteSection(note, "TEXP");
+    return validateTimelineExprs(view, note != nullptr ? &note->detail : nullptr);
 }
 
 }  // namespace xt

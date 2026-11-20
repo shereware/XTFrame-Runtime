@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Project-level golden corpus check (T-401, Docs/design/43-compatibility-and-versions.md 43.4).
 #   Tools/Scripts/corpus_check.sh [--update] [--project <name>]... [--view EXE] [--pack EXE] [--work DIR]
-# Packs every Tests/corpus/<project> source with `xtframe-pack --strict`, renders each UI headless
+# Packs every Tests/corpus/<project> source with `xtframe-pack --strict --compress none` (T-810), renders each UI headless
 # at the listed frames, runs the behaviour scripts and compares screenshots (Tests/golden tolerance:
 # XT_GOLDEN_CHANNEL / XT_GOLDEN_RATIO), the normalized manifest.json, ports.json and the script logs
 # with expected/. --update or XT_CORPUS_UPDATE=1 rewrites expected/ instead; a PR that changes

@@ -146,6 +146,20 @@ Status Document::loadInternal(IrBlob blob, bool takeOwnership, TextShaper* shape
     }
     m_ir = opened.value();
     m_shaderTable.build(m_ir);  // T-203 (18.7).
+    // T-746 (23 §23.ah): the `engine://` assets, with their bindings as they are now (a binding made
+    // before the load is no change).
+    m_externalTextures.clear();
+    for (size_t i = 0; i < m_ir.assets().assets().size(); ++i) {
+        const AssetId asset = static_cast<AssetId>(i);
+        if (m_ir.assets().assets()[i].embedded != 0 || !isExternalAsset(asset, m_ir)) {
+            continue;
+        }
+        const AssetResolver::ExternalTexture* ext =
+            m_assets != nullptr ? m_assets->externalTexture(asset, m_ir) : nullptr;
+        m_externalTextures.push_back(
+            ExternalTextureSeen{asset, ext != nullptr ? ext->width : 0, ext != nullptr ? ext->height : 0,
+                                ext != nullptr && ext->hasVersion, externalTextureStamp(ext)});
+    }
 
     // Docs/design/18-effects.md §18.2: size the effect/effect-stop pools up front (2x the
     // compiled total) so ordinary effect reassignment (StyleEngine re-resolve, setEffects()) does
@@ -570,8 +584,8 @@ Status Document::loadInternal(IrBlob blob, bool takeOwnership, TextShaper* shape
     refreshUnresolvedPlaceholders();  // T-397: no provider yet, so every `@key` one is unresolved.
     m_layoutEngine.setUnresolvedPlaceholders(&m_unresolvedPlaceholders);
     for (NodeId node : m_docElementNodes) {
-        m_arena.markDirty(node, static_cast<uint8_t>(kDirtyStyle));
-        m_arena.markDirty(node, static_cast<uint8_t>(kDirtyLayout));
+        m_arena.markDirty(node, static_cast<uint8_t>(kDirtyStyle), DirtyCause::Load);
+        m_arena.markDirty(node, static_cast<uint8_t>(kDirtyLayout), DirtyCause::Load);
     }
     // T-176: bind the `calc()` programs and record the initial `@media` state.
     refreshLengthEnv(/*force=*/true);

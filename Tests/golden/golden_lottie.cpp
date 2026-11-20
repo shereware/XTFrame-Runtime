@@ -137,6 +137,14 @@ std::vector<uint8_t> renderLottieFixture(const LottieFixture& fx, const std::str
 
     xt::CommandList cmds;
     ctx.render(cmds);
+    // T-747 (57 §57.3, 23 §23.ag item 4): two more update(0) + render() rounds, drawn nowhere, so
+    // the visual-generation check (test_visual_check.h) has frames to compare: whatever the extra
+    // updates leave unwritten must paint the same commands as before.
+    for (int settle = 0; settle < 2; ++settle) {
+        ctx.update(0.0f);
+        xt::CommandList again;
+        ctx.render(again);
+    }
     return backend(fx.width, fx.height, fx.clearColor, cmds, nullptr, &resolver, &doc->ir());
 }
 

@@ -54,6 +54,12 @@
 ///   timeline.duration       a timeline longer than 500 ms (the host-driven `cooldown` is exempt)
 ///   timeline.property       a timeline animating more than transform, opacity and text-reveal
 ///   timeline.name           W: a timeline name that is not lower-case kebab-case (28 §28.1.3)
+///   token.core              T-743 (47 "共同詞彙清單" rule 1): a core token (coreTokens()) the token file
+///                           does not declare, or declares with a value of the wrong type
+///   token.role              W, T-743 (47 rules 2, 3): an extension colour token neither written with
+///                           core tokens nor set in every theme file; an extension `--tex-*` / `--font-*`
+///                           token the preset group (LintOptions::presetGroupDir) declares with another
+///                           file / family
 /// A symbol without `previews/<Name>.preview.xt` is compiled through a synthetic minimal preview
 /// (one `<use>` of it under the group's token file).
 
@@ -75,6 +81,9 @@ struct LintOptions {
     /// Only what `index.json` says about the files (no compile, no previews, no style or timeline
     /// scan): what `Tools/Scripts/check_symbols_index.sh` runs.
     bool indexOnly = false;
+    /// T-743: the preset group (`defaultGroupDir()` of the preset library) the `token.role` rule 3
+    /// compares extension `--tex-*` / `--font-*` tokens with; empty: that comparison is skipped.
+    std::string presetGroupDir;
 };
 
 struct LintReport {

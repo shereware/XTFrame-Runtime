@@ -1,0 +1,50 @@
+<xt version="2">
+
+  <symbol name="SubtitleLine" variants="Speaker=Named|Narrator" requires="slots: speaker, line">
+    <div id="Box">
+      <span id="Speaker"><slot name="speaker">Speaker</slot></span>
+      <span id="Line"><slot name="line">Subtitle text appears here, centred under the action.</slot></span>
+    </div>
+  </symbol>
+
+  <layout>
+    symbol(SubtitleLine) {
+      #Box {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        row-gap: 2px;
+        max-width: 680px;
+        padding: var(--space-1) var(--space-4);
+      }
+      .v-Speaker-Narrator #Speaker {
+        display: none;
+      }
+    }
+  </layout>
+  <style>
+    symbol(SubtitleLine) {
+      #Box {
+        background-color: var(--color-scrim-soft);
+      }
+      #Speaker {
+        font-family: var(--font-body);
+        font-size: var(--font-size-xs);
+        text-transform: uppercase;
+        letter-spacing: var(--letter-label);
+        color: var(--color-text-quiet);
+      }
+      #Line {
+        font-family: var(--font-body);
+        font-size: var(--font-size-subtitle);
+        line-height: 25px;
+        color: var(--color-text-strong);
+        text-align: center;
+      }
+      .v-Speaker-Narrator #Line {
+        font-style: italic;
+        color: var(--color-text);
+      }
+    }
+  </style>
+</xt>

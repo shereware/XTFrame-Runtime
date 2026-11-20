@@ -12,6 +12,10 @@
 
 namespace xt {
 
+/// T-755 (06 §6.x item 1): `len` needs a percentage reference -- a Percent, or a `calc()` whose
+/// program pushes one (an unreadable program counts as one). Reads the current LengthEnv.
+bool lengthUsesPercent(Length len);
+
 inline Edges resolveEdgesPx(const Length& t, const Length& r, const Length& b, const Length& l, float refW) {
     return Edges{resolveLength(t, refW, 0), resolveLength(r, refW, 0), resolveLength(b, refW, 0),
                  resolveLength(l, refW, 0)};

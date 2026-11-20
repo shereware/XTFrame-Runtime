@@ -1,0 +1,184 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "screen",
+      "type": "radio",
+      "params": {
+        "count": 5.0,
+        "initial": 0.0
+      },
+      "pos": [
+        -34,
+        0
+      ]
+    },
+    {
+      "id": "show-title",
+      "type": "lookup",
+      "params": {
+        "values": [
+          true,
+          false,
+          false,
+          false,
+          false
+        ]
+      },
+      "pos": [
+        330,
+        -200
+      ]
+    },
+    {
+      "id": "show-options",
+      "type": "lookup",
+      "params": {
+        "values": [
+          false,
+          true,
+          false,
+          false,
+          false
+        ]
+      },
+      "pos": [
+        330,
+        -110
+      ]
+    },
+    {
+      "id": "show-load",
+      "type": "lookup",
+      "params": {
+        "values": [
+          false,
+          false,
+          true,
+          false,
+          false
+        ]
+      },
+      "pos": [
+        330,
+        -20
+      ]
+    },
+    {
+      "id": "show-hud",
+      "type": "lookup",
+      "params": {
+        "values": [
+          false,
+          false,
+          false,
+          true,
+          true
+        ]
+      },
+      "pos": [
+        330,
+        70
+      ]
+    },
+    {
+      "id": "show-pause",
+      "type": "lookup",
+      "params": {
+        "values": [
+          false,
+          false,
+          false,
+          false,
+          true
+        ]
+      },
+      "pos": [
+        330,
+        160
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "ui#title.new_game",
+      "to": "screen.set3"
+    },
+    {
+      "from": "ui#title.continue_game",
+      "to": "screen.set3"
+    },
+    {
+      "from": "ui#title.load_game",
+      "to": "screen.set2"
+    },
+    {
+      "from": "ui#title.open_options",
+      "to": "screen.set1"
+    },
+    {
+      "from": "ui#options.back",
+      "to": "screen.set0"
+    },
+    {
+      "from": "ui#load.back",
+      "to": "screen.set0"
+    },
+    {
+      "from": "ui#load.load_save",
+      "to": "screen.set3"
+    },
+    {
+      "from": "ui#hud.pause",
+      "to": "screen.set4"
+    },
+    {
+      "from": "ui#pause.resume",
+      "to": "screen.set3"
+    },
+    {
+      "from": "ui#pause.leave",
+      "to": "screen.set0"
+    },
+    {
+      "from": "screen.index",
+      "to": "show-title.index"
+    },
+    {
+      "from": "show-title.out",
+      "to": "ui#title.active"
+    },
+    {
+      "from": "screen.index",
+      "to": "show-options.index"
+    },
+    {
+      "from": "show-options.out",
+      "to": "ui#options.active"
+    },
+    {
+      "from": "screen.index",
+      "to": "show-load.index"
+    },
+    {
+      "from": "show-load.out",
+      "to": "ui#load.active"
+    },
+    {
+      "from": "screen.index",
+      "to": "show-hud.index"
+    },
+    {
+      "from": "show-hud.out",
+      "to": "ui#hud.active"
+    },
+    {
+      "from": "screen.index",
+      "to": "show-pause.index"
+    },
+    {
+      "from": "show-pause.out",
+      "to": "ui#pause.active"
+    }
+  ]
+}

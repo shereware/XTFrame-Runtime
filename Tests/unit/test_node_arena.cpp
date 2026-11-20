@@ -138,25 +138,25 @@ TEST_CASE("NodeArena: dirty bit propagation") {
     arena.appendChild(mid, leaf);
     arena.clearAllDirty();
 
-    arena.markDirty(leaf, kDirtyStyle);
+    arena.markDirty(leaf, kDirtyStyle, DirtyCause::HostApi);
     CHECK((arena.dirty(leaf) & kDirtyStyle) != 0);
     CHECK((arena.dirty(mid) & kDirtyStyle) != 0);
     CHECK((arena.dirty(root) & kDirtyStyle) != 0);
     arena.clearAllDirty();
 
-    arena.markDirty(root, kDirtyTransform);
+    arena.markDirty(root, kDirtyTransform, DirtyCause::HostApi);
     CHECK((arena.dirty(root) & kDirtyTransform) != 0);
     CHECK((arena.dirty(mid) & kDirtyTransform) != 0);
     CHECK((arena.dirty(leaf) & kDirtyTransform) != 0);
     arena.clearAllDirty();
 
-    arena.markDirty(leaf, kDirtyPaint);
+    arena.markDirty(leaf, kDirtyPaint, DirtyCause::HostApi);
     CHECK((arena.dirty(leaf) & kDirtyPaint) != 0);
     CHECK(arena.dirty(mid) == 0);
     CHECK(arena.dirty(root) == 0);
     arena.clearAllDirty();
 
-    arena.markDirty(leaf, kDirtyLayout);
+    arena.markDirty(leaf, kDirtyLayout, DirtyCause::HostApi);
     CHECK((arena.dirty(leaf) & kDirtyLayout) != 0);
     CHECK((arena.dirty(mid) & kDirtyLayout) != 0);
     CHECK((arena.dirty(root) & kDirtyLayout) != 0);

@@ -17,7 +17,7 @@
 |---|---|---|
 | 0 | char[4] | `"XTIR"` |
 | 4 | uint16 | major = **3**（T-534，2026-10-30：`IrEffect` 80 → 144 bytes、效果參數 PropId 重編（18 §18.2）；2.x 檔拒收）；歷史：2（T-42c）|
-| 6 | uint16 | minor = **1**（3.1，T-701：StyleProp 281 `world-layer`；3.0 為 T-534。2.x 的 minor 歷史保留如下供考古）。2.x：minor = **9**（T-411：`SetSource` 追加 Port 9、Item 10，Number／String 的 set() 值可帶轉換器步驟（§2.v.1）；版面不變）；歷史：0 無 gradientPool → 1 gradientPool（T-115）→ 2 STYL `floatPool[]`（T-218）→ 3 SCEN `modifiers[]`／`shapes[]`（T-225）→ 4 筆畫漸細欄位（T-233）→ 5 綁定與變形尾段（T-243）→ 6 STYL `easingPoints[]` + `LengthUnit::Rem = 14`（T-335）→ 7 PORT `defaults[]`（T-358）→ 8 T-380～T-399 的欄位與列舉正式化（版面不變）、`hit-slop` 改寫為 StyleProp 277～280 的 Length 宣告（§2.6.2）、`META` 選用的 `behavior` 尾段（§2.10）（T-405，43 §43.5）→ 9。讀取端對較舊 minor 以「缺少的尾段視為空」處理（`IrView::formatMinor()` 供需要依 minor 分支的讀取點，目前只有 §2.6.2 的 `hit-slop`）；較新 minor 依 §2.1 規則忽略未知區塊與尾段，但含 `Rem` 的宣告會被 minor ≤ 5 的驗證器拒收，含 `SetSource` 9／10 的 Set 動作會被 minor ≤ 8 的驗證器拒收 |
+| 6 | uint16 | minor = **3**（3.3，T-778：StyleProp 282～293 `animation-*`／`transition-*` 長屬性與 `IrAnimationSpec.flags`／`IrTransitionSpec.flags`；3.2 為 T-776 的 TEXP；3.1，T-701：StyleProp 281 `world-layer`；3.0 為 T-534。2.x 的 minor 歷史保留如下供考古）。2.x：minor = **9**（T-411：`SetSource` 追加 Port 9、Item 10，Number／String 的 set() 值可帶轉換器步驟（§2.v.1）；版面不變）；歷史：0 無 gradientPool → 1 gradientPool（T-115）→ 2 STYL `floatPool[]`（T-218）→ 3 SCEN `modifiers[]`／`shapes[]`（T-225）→ 4 筆畫漸細欄位（T-233）→ 5 綁定與變形尾段（T-243）→ 6 STYL `easingPoints[]` + `LengthUnit::Rem = 14`（T-335）→ 7 PORT `defaults[]`（T-358）→ 8 T-380～T-399 的欄位與列舉正式化（版面不變）、`hit-slop` 改寫為 StyleProp 277～280 的 Length 宣告（§2.6.2）、`META` 選用的 `behavior` 尾段（§2.10）（T-405，43 §43.5）→ 9。讀取端對較舊 minor 以「缺少的尾段視為空」處理（`IrView::formatMinor()` 供需要依 minor 分支的讀取點，目前只有 §2.6.2 的 `hit-slop`）；較新 minor 依 §2.1 規則忽略未知區塊與尾段，但含 `Rem` 的宣告會被 minor ≤ 5 的驗證器拒收，含 `SetSource` 9／10 的 Set 動作會被 minor ≤ 8 的驗證器拒收 |
 | 8 | uint32 | 區塊數 |
 | 12 | uint32 | 檔案總長度（含標頭） |
 
@@ -183,6 +183,8 @@ StyleProp 與可動畫 PropId 共用 `Decl.prop` 的編號空間：第一段 160
 | 276 | `hit-slop`（T-386） | **只出現在 minor ≤ 7 的檔**：Color 槽四個 f32（上、右、下、左），每格 ≥ 0 為 px，(−65536, 0) 為百分比 −f（f = 百分比／100），≤ −65536 為 `em` 編成 −(65536 + em)（`kHitSlopEmBias`）。minor ≥ 8 的檔不寫；讀到即忽略。276 仍是 `computedStyleValue` 的計算值 id |
 | 277～280 | `hit-slop` 上／右／下／左（T-405） | Length：f32 值 + u8 單位，單位只能是 Px 0、Percent 1、Em 2，值 ≥ 0（驗證器拒收其他單位）；`var()` 參照照常。非來源屬性名，只由 `hit-slop` 簡寫產生；不繼承、不可動畫 |
 | 281 | `world-layer`（T-701，33 章） | Enum：0 = off（預設）、1 = on；不繼承、不可動畫。只在宿主開啟分層輸出時有作用（33 §33.2） |
+| 282～289 | `animation-name`、`animation-duration`、`animation-timing-function`、`animation-delay`、`animation-iteration-count`、`animation-direction`、`animation-fill-mode`、`animation-play-state`（T-778，IR 3.3） | ListRef 指向 STYL 的 `animations[]`；每一項只有該長屬性對應的欄位有意義；count 0 = 初始值。不繼承。各自參與串接（05 章） |
+| 290～293 | `transition-property`、`transition-duration`、`transition-timing-function`、`transition-delay`（T-778，IR 3.3） | ListRef 指向 STYL 的 `transitions[]`；同上 |
 
 讀取：`IrView::formatMinor() < 8` 時 276 依上列偏移解碼；否則只認 277～280。執行期 `setStyle("hit-slop: ...")` 一樣寫 277～280。
 
@@ -413,6 +415,8 @@ public:
 ## 2.v `STAT` 與 `TRIG` 區塊（T-174 #175，2026-09-27）
 
 - **STAT**：`u32 n, u32 names[n]`（自訂狀態名 StringId；bit i = names[i]，≤ 32），`u32 n, IrStateGroup{u32 name, u32 mask}[n]`。
+- **STGS**（T-738 #694，2026-11-18；56 §56.4；可選、至多一次、寫在所有區塊之後、須在 DOCT 之後；只在有「符號內群組」時寫）：`u32 scopeCount, IrStateScope{u32 symbolName, u32 groupOffset, u32 groupCount}[scopeCount]`（12 B）、`u32 groupCount, IrStateGroup[groupCount]`、`u32 rootCount, IrStateScopeRoot{u32 element, u32 scope}[rootCount]`（8 B，依 element 嚴格升冪）。STAT 只放全域群組；跨符號互相衝突的群組（同名而成員不同，或不同名而共用狀態）改放這裡，各自只在該符號的實例內互斥。設定狀態時由元素往上找第一個其 scope 內有群組含該位元的實例根，找不到用 STAT。驗證：字串 id、群組範圍、`mask` 只含 STAT 名稱位元、同一 scope 內群組兩兩不相交、root 的元素與 scope 在界內。**IR 版本不變**（比照 T-391：可被舊讀取器安全略過的可選尾端區塊不升 minor）；舊執行期略過本區塊時符號內群組不互斥、不崩潰。（2026-11-18 更正：依 §2.1 的規則，新增 POD 應升 minor；T-738 當時未升是疏漏，應補升 minor 與凍結檔，由 T-776（新增 `TEXP`）的升版一併處理——記在 PENDING。）沒有衝突的文件不寫本區塊，IR 與 T-738 之前逐位元組相同。
+- **TEXP**（T-776 #705，2026-11-18；58 §58.5；可選、至多一次、在 DOCT 之後）：時間軸表達式中需要執行期輸入的部分。payload 依序 `u32 n, IrTimelineExpr[n]`（40 B：`u32 group; u32 member; u16 track; u8 component; u8 flags; u32 opOffset; u16 opCount; u16 maxStack; u32 curveOffset; u16 curveCount; u16 inputMask; f32 portHistorySeconds; u32 seed; f32 index`）、`u32 n, IrExprOp[n]`（12 B：`u8 op; u8 argc; u16 pad; f32 imm; u32 ref`）、`u32 n, IrExprCurve[n]`（8 B：`keyOffset, keyCount`）、`u32 n, IrExprKey[n]`（12 B：`f32 time; f32 value; u8 interp（0 linear／1 hold）; pad[3]`；時間不遞減）。型別化堆疊程式：每條至多 256 個運算、堆疊 32、`RefValueAt` 巢狀 4 層。`inputMask` 位元：Port 1、Prop 2、Layout 4、PlayRandom 8、PortHistory 16、PropHistory 32（T-781）（提示用；執行期由運算碼推導）。運算碼 `ExprOp`（`kExprOpLast = 57`）：0 PushConst、1 PushValue、2 PushCurve、3 PushPort、4 PushProp（`imm = prop×4 + component`）、5 PushLayout（`imm` 0 left／1 top／2 width／3 height）、6 PushPlayRandom、7 PushTime、8 PushDuration、9 PushIndex、10 Add、11 Sub、12 Mul、13 Div、14 Mod、15 Neg、16 Min、17 Max、18 Abs、19 Round、20 Floor、21 Ceil、22 Sqrt、23 Pow、24 Exp、25 Log、26 Sin、27 Cos、28 Tan、29 Asin、30 Acos、31 Atan、32 Atan2（弧度）、33 Clamp、34 Lerp、35 Linear、36 Ease、37 EaseIn、38 EaseOut（t, tMin, tMax, v1, v2；同 AE）、39 Lt、40 Le、41 Gt、42 Ge、43 Eq、44 Ne、45 And、46 Or、47 Not、48 Select、49 Noise、50 Wiggle（freq, amp[, octaves[, ampMult[, t]]]）、51 Random（min, max[, t]；`imm` 0 每幀不同／1 與時間無關；`ref` 呼叫序號）、52 ValueAt、53 RefValueAt（`ref` 帶 `0x80000000` 時直接指某成員的軌道分量，否則是同群組另一條表達式的索引）、54 PushPortDelayed、55 CurveAt（引數 `(t)`；`ref`＝本條的第幾條曲線；T-777）、56 RandomSeeded（引數 `(seed, min, max[, t])`；`imm`／`ref` 同 Random；種子＝`exprMixSeed(條目種子, exprSeedFromNumber(seed))`；T-777）、57 PushPropDelayed（引數 `(seconds)`；`ref`＝DOCT 元素、`imm = prop×4 + component`，同 PushProp；T-781 #711）。`portHistorySeconds` 是這條表達式所需的歷史長度，port 與屬性歷史共用（上限 4 秒；環形緩衝在讀取它的群組 active 且 playing 時每個 update 記一筆）。雜訊、晃動、亂數與種子規則在 `xt/expr_noise.h`，與編譯器共用。驗證：索引與範圍、靜態模擬的堆疊深度等於 `maxStack` 且結束時為 1、未知運算碼拒絕、`PushConst` 有限、曲線的鍵時間不遞減。**`kIrFormatMinor` = 2**（凍結檔 `Tests/ir/fixtures/v3.2.xtir`；同一次升版補上 T-738 的 `STGS`）。v0.19.0 發佈前 TEXP 的運算碼表若再增補（T-777），仍屬 minor 2，凍結檔隨之更新。
 - **TRIG**：`u32 n, IrTriggerTable{element, triggerOffset, triggerCount}[n]`（12 B）；`u32 n, IrTrigger{u8 event, u8 button（T-390，§2.v.1）, pad2, u32 arg0, u32 arg1, u32 actionOffset, u16 actionCount, u16 headCount}[n]`（20 B）；`u32 n, IrTriggerAction{u8 kind, u8 flags, u16 next, u32 arg0, u32 arg1, f32 arg2, u16 alt, u16 pad}[n]`（20 B）；`u32 n, IrConverterStep{u8 op, pad3, f32 args[4]}[n]`（20 B）。前 `headCount` 個動作是 `;` 分隔的陳述；`next`（then）與 `alt`（else）為觸發內 1-based 索引，`If` 的 `next` 為真分支。
 - 事件碼：Hover 1、Leave 2、Press 3、Release 4、Click 5、Focus 6、Blur 7、Check 8、Uncheck 9、Show 10、Hide 11、Port 12、TimelineEnd 13、TimelineMarker 14、StateEnter 15、StateExit 16、Key 20；17–19、21、22 保留。動作碼：Play 1、Stop 2、Seek 3、State 4、Class 5、Show 6、Hide 7、Sound 8、Emit 10、If 11、Focus 12、Haptic 14；9 `set`、13 `spawn`、15 `layer` 保留。旗標：play `kPlayReverse/Loop/Once/Hold` = 1/2/4/8；state／class 用 `TriggerMode` On/Off/Toggle。轉換器 op（27.3.3 目錄序）：Lt 7、Le 8、Gt 9、Ge 10、Eq 11、Ne 12、Between 13——**T-175 必須沿用此編號**。
 - `:state(Name)` 是 T-173 條件部件的新碼 `IrSelCond::CustomState = 16`（`tag` 為狀態名 StringId），可用於 `:not()`。
@@ -593,12 +597,13 @@ uint32 textLength;  uint8 text[]            // UTF-8；source 與 glsl 都是它
 |---|---|---|
 | limit | `kBindTargetLast` | 14 |
 | limit | `kConverterOpLast` | 43 |
+| limit | `kExprOpLast` | 57 |
 | limit | `kIfTermLast` | 6 |
-| limit | `kIrFormatMinor` | 1 |
+| limit | `kIrFormatMinor` | 3 |
 | limit | `kIrSelCondLast` | 17 |
 | limit | `kPortTypeLast` | 12 |
 | limit | `kSetSourceLast` | 10 |
-| limit | `kStylePropLast` | 281 |
+| limit | `kStylePropLast` | 293 |
 | limit | `kTriggerActionLast` | 20 |
 | limit | `kTriggerEventLast` | 41 |
 | struct | `EasingPoint` | 8 |
@@ -620,6 +625,9 @@ uint32 textLength;  uint8 text[]            // UTF-8；source 與 glsl 都是它
 | struct | `IrDocText` | 8 |
 | struct | `IrEasing` | 20 |
 | struct | `IrEffect` | 144 |
+| struct | `IrExprCurve` | 8 |
+| struct | `IrExprKey` | 12 |
+| struct | `IrExprOp` | 12 |
 | struct | `IrFontFace` | 12 |
 | struct | `IrFontFallback` | 12 |
 | struct | `IrGradient` | 32 |
@@ -656,11 +664,14 @@ uint32 textLength;  uint8 text[]            // UTF-8；source 與 glsl 都是它
 | struct | `IrSkinData` | 20 |
 | struct | `IrSourceEntry` | 12 |
 | struct | `IrStateGroup` | 8 |
+| struct | `IrStateScope` | 12 |
+| struct | `IrStateScopeRoot` | 8 |
 | struct | `IrSymbolPath` | 8 |
 | struct | `IrTendon` | 28 |
 | struct | `IrTextInline` | 16 |
 | struct | `IrTextLink` | 4 |
 | struct | `IrTextRun` | 32 |
+| struct | `IrTimelineExpr` | 40 |
 | struct | `IrTimelineGroup` | 36 |
 | struct | `IrTimelineGroupMarker` | 8 |
 | struct | `IrTimelineGroupMember` | 16 |
@@ -674,3 +685,6 @@ uint32 textLength;  uint8 text[]            // UTF-8；source 與 glsl 都是它
 <!-- ir-layout:end -->
 
 **IR 3.0 落地記錄（#553，2026-11-04）**：`kIrFormatMajor = 3`、`kIrFormatMinor = 0`；`IrEffect` 144 B、`IrShaderRef` 176 B（`layout.txt`）；2.x 檔 `IrView::open` 回 `kInvalidIr`；bundle `manifest.json` 的 `irMajor` 由常數帶出（3）；語料庫 4 專案 `fileHash` 重產、截圖逐位元組相同。T-585（`BCHN` 子鏈池）與 T-586（綁定 Calc 池）在 3.0 內追加（03 §3.12.11）。CE 同步 CE-64。
+
+**IR 3.3 落地記錄（T-778 #730，2026-11-19）**：`kIrFormatMinor = 3`、`kStylePropLast = 293`。`animation-*` 八個與 `transition-*` 四個長屬性各是一個 StyleProp（282～293），值是既有的 ListRef（不新增種類）。原本的填充位元組改為旗標：`IrAnimationSpec.flags`——`kIrAnimationNoName`（名稱為 `none` 的項）、`kIrAnimationNoPlay`（iteration-count 0）；`IrTransitionSpec.flags`——`kIrTransitionSameItem`（同一個 CSS 項展開成多個 PropId，例如 `transform`）、`kIrTransitionNoProp`（這一項不過渡任何屬性）。編譯器把簡寫寫成 8 個（或 4 個）長屬性宣告、全部指向同一段清單；**180／181 不再輸出，但照讀**（視為一次設定全部長屬性）。為了跨規則時清單對齊，編譯器保留 iteration-count 0 的項與不認得的 transition 屬性項（帶旗標，執行期不播）。相容：3.2 的執行期讀 3.3 的檔會忽略新宣告——CSS 動畫與 transition 不播（照 §2.2 的規則不是錯誤；發佈端與執行期須同版）。凍結檔 `Tests/ir/fixtures/v3.3.xtir`。
+

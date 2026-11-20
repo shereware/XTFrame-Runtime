@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string_view>
+#include <vector>
 
 #include "bind_emit.h"
 #include "xt/compile/diagnostics.h"
@@ -24,8 +25,12 @@ namespace xt::compile {
 /// / percentage `if` arguments are resolved against `ports` in each element's scope; every
 /// `bind:state.<Name>` attribute also registers its state name. T-411: `repeats` (may be null)
 /// lets a `set()` value read `item(...)` / `repeat.index` / `repeat.count` inside a template.
+/// T-738 (56 §56.4): `instances` (may be null: every group is the document's) gives each
+/// `state-groups` declaration its origin; groups conflicting across origins are scoped to their
+/// symbol (CustomStateBuilder::scopes, the `STGS` chunk) instead of being errors.
 bool emitTriggers(const DomTree& dom, const RuleSet& ruleSet, const PortScopes& ports, IrWriter& writer,
                   std::string_view fileName, DiagnosticSink& sink, CustomStateBuilder& states,
-                  TriggerBuilder& triggers, const RepeatScopes* repeats = nullptr);
+                  TriggerBuilder& triggers, const RepeatScopes* repeats = nullptr,
+                  const std::vector<ExpandedSymbolInstance>* instances = nullptr);
 
 }  // namespace xt::compile

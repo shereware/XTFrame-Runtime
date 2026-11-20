@@ -23,39 +23,46 @@ namespace xt::compile {
 /// `font-family` values. `Shorthand` is not a value shape produced in a StyleDecl; it only appears
 /// as PropInfo::kind to mark a CSS name that expands into several StyleDecls (see xts_props.h).
 enum class StyleValueKind : uint8_t {
-    Float = 0,           ///< Plain float; value stored in `StyleValue::f`.
-    Length = 1,          ///< Length value; value stored in `StyleValue::len`.
-    Color = 2,           ///< Color value; value stored in `StyleValue::color`.
-    Enum = 3,            ///< Resolved enum value; value stored in `StyleValue::e`.
-    String = 4,          ///< String value; value stored in `StyleValue::str`.
-    TransitionList = 5,  ///< `transition` list; value stored in `StyleValue::transitions`.
-    AnimationList = 6,   ///< `animation` list; value stored in `StyleValue::animations`.
-    FontFamilyList = 7,  ///< `font-family` list; value stored in `StyleValue::families`.
-    Neutral = 8,         ///< No stored value (e.g. `initial`/`inherit`-style keywords).
-    Shorthand = 9,       ///< Marks a CSS name that expands into several StyleDecls; never
-                         ///< produced as an actual StyleValue's kind.
-    EffectList = 10,     ///< `effect` sequence (Docs/design/18-effects.md §18.4); value stored in
-                         ///< `StyleValue::effects`.
-    Gradient = 11,       ///< `background-gradient` (Docs/design/05-style-and-css.md §5.5c); value
-                         ///< stored in `StyleValue::gradient`.
-    VarRef = 12,         ///< T-170 (05.9.2): `var(--name[, fallback])` as a plain-valued longhand's
-                         ///< whole value, kept as a reference into the `VARS` table; name in
-                         ///< `StyleValue::varName`, optional fallback in `StyleValue::varFallback`.
-    VarSubst = 13,       ///< T-170: a declaration with `var()` nested in its value (or on a
-                         ///< list-valued or shorthand property); substituted at compile time once
-                         ///< every token is known. `StyleValue::str` holds the whole declaration
-                         ///< text, `name: value`, and `StyleDecl::prop` may be kShorthandProp.
-    Calc = 14,           ///< T-176 (05.9.2, 06.4): `calc(<expr>)` on a Length longhand; the RPN
-                         ///< program is in `StyleValue::calc`.
-    FloatArray = 15,     ///< T-236: `stroke-dasharray` (px or plain numbers; `none` = empty);
-                         ///< value stored in `StyleValue::floats`.
-    Vec2 = 16,           ///< T-236: an `<x> <y>` modifier parameter (`repeat-anchor`,
-                         ///< `repeat-translate`, `center`); value stored in `StyleValue::floats[0..1]`.
-    ClipShape = 17,      ///< T-332 (05 §5.9.8): `clip-path`; value stored in `StyleValue::clipShape`.
-    GridTracks = 18,     ///< T-338 (06 §6.15): `grid-template-columns` / `-rows`; value stored in
-                         ///< `StyleValue::gridTracks` (empty = `none`).
-    GridAreas = 19,      ///< T-338: `grid-template-areas`; value stored in `StyleValue::gridAreas`
-                         ///< and `gridAreaRows` / `gridAreaCols` (0 rows = `none`).
+    Float = 0,            ///< Plain float; value stored in `StyleValue::f`.
+    Length = 1,           ///< Length value; value stored in `StyleValue::len`.
+    Color = 2,            ///< Color value; value stored in `StyleValue::color`.
+    Enum = 3,             ///< Resolved enum value; value stored in `StyleValue::e`.
+    String = 4,           ///< String value; value stored in `StyleValue::str`.
+    TransitionList = 5,   ///< `transition` list; value stored in `StyleValue::transitions`.
+    AnimationList = 6,    ///< `animation` list; value stored in `StyleValue::animations`.
+    FontFamilyList = 7,   ///< `font-family` list; value stored in `StyleValue::families`.
+    Neutral = 8,          ///< No stored value (e.g. `initial`/`inherit`-style keywords).
+    Shorthand = 9,        ///< Marks a CSS name that expands into several StyleDecls; never
+                          ///< produced as an actual StyleValue's kind.
+    EffectList = 10,      ///< `effect` sequence (Docs/design/18-effects.md §18.4); value stored in
+                          ///< `StyleValue::effects`.
+    Gradient = 11,        ///< `background-gradient` (Docs/design/05-style-and-css.md §5.5c); value
+                          ///< stored in `StyleValue::gradient`.
+    VarRef = 12,          ///< T-170 (05.9.2): `var(--name[, fallback])` as a plain-valued longhand's
+                          ///< whole value, kept as a reference into the `VARS` table; name in
+                          ///< `StyleValue::varName`, optional fallback in `StyleValue::varFallback`.
+    VarSubst = 13,        ///< T-170: a declaration with `var()` nested in its value (or on a
+                          ///< list-valued or shorthand property); substituted at compile time once
+                          ///< every token is known. `StyleValue::str` holds the whole declaration
+                          ///< text, `name: value`, and `StyleDecl::prop` may be kShorthandProp.
+    Calc = 14,            ///< T-176 (05.9.2, 06.4): `calc(<expr>)` on a Length longhand; the RPN
+                          ///< program is in `StyleValue::calc`.
+    FloatArray = 15,      ///< T-236: `stroke-dasharray` (px or plain numbers; `none` = empty);
+                          ///< value stored in `StyleValue::floats`.
+    Vec2 = 16,            ///< T-236: an `<x> <y>` modifier parameter (`repeat-anchor`,
+                          ///< `repeat-translate`, `center`); value stored in `StyleValue::floats[0..1]`.
+    ClipShape = 17,       ///< T-332 (05 §5.9.8): `clip-path`; value stored in `StyleValue::clipShape`.
+    GridTracks = 18,      ///< T-338 (06 §6.15): `grid-template-columns` / `-rows`; value stored in
+                          ///< `StyleValue::gridTracks` (empty = `none`).
+    GridAreas = 19,       ///< T-338: `grid-template-areas`; value stored in `StyleValue::gridAreas`
+                          ///< and `gridAreaRows` / `gridAreaCols` (0 rows = `none`).
+    AnimLonghands = 20,   ///< T-756 (05.6): on prop `animation`, the `animation-*` longhands of one
+                          ///< declaration block that does not set them all: `StyleValue::animationMask`
+                          ///< / `animationFields`. T-778: encoded as one IrDecl per given longhand
+                          ///< (StyleProp 282-289); a given longhand with no items is its initial value.
+    TransLonghands = 21,  ///< T-778 (05.6): on prop `transition`, the `transition-*` longhands of
+                          ///< one block that does not set them all: `transitionMask` /
+                          ///< `transitionFields`, one IrDecl per given longhand (StyleProp 290-293).
 };
 
 /// One named area of a parsed `grid-template-areas` (T-338): 0-based lines, end exclusive.
@@ -162,6 +169,9 @@ struct TransitionSpec {
     float delay = 0;
     /// Timing function.
     Easing easing;
+    /// T-778: IrTransitionSpec::flags -- kIrTransitionSameItem (another PropId of the previous
+    /// entry's CSS item) / kIrTransitionNoProp (an item that transitions nothing).
+    uint16_t flags = 0;
 };
 
 /// One item of an `animation` list. `direction`/`fill`/`playState` are small enums encoded as in
@@ -203,6 +213,17 @@ struct StyleValue {
     std::vector<TransitionSpec> transitions;
     /// Valid when `kind == AnimationList`.
     std::vector<AnimationSpec> animations;
+    /// Valid when `kind == AnimLonghands` (T-756): bit i set = longhand i (css_values::AnimationLonghand
+    /// order: name, duration, timing-function, delay, iteration-count, direction, fill-mode,
+    /// play-state) is given, and `animationFields[i]` holds its comma-separated items (only that
+    /// field of each AnimationSpec is meaningful; an empty `name` is `none`). `animationFields` has 8
+    /// entries then, else none.
+    uint8_t animationMask = 0;
+    std::vector<std::vector<AnimationSpec>> animationFields;
+    /// Valid when `kind == TransLonghands` (T-778): bit i = longhand i (property, duration,
+    /// timing-function, delay) is given and `transitionFields[i]` holds its items (4 entries then).
+    uint8_t transitionMask = 0;
+    std::vector<std::vector<TransitionSpec>> transitionFields;
     /// Valid when `kind == FontFamilyList`.
     std::vector<std::string> families;
     /// Valid when `kind == EffectList`.
@@ -369,11 +390,18 @@ struct StyleRule {
     /// symbols-library.md §26.2.1), or empty for an ordinary document-wide rule. A scoped rule's
     /// selectors are relative to the symbol; symbol_expand.cpp rewrites them per instance.
     std::string symbol;
+    /// T-740 (56 §56.3): the namespace of the symbol library file the rule was read from (its
+    /// directory under `shared/symbols/`), or empty. symbol_expand.cpp resolves `symbol` against it
+    /// (`<namespace>/<symbol>` first, then `<symbol>`) and replaces `symbol` with the qualified name.
+    std::string symbolNamespace;
     /// T-176: index into RuleSet::media of the enclosing `@media`, or -1 (always applies).
     int media = -1;
     /// T-235: for a `symbol()` rule rewritten per instance, where that instance is
     /// (`<file>:<line> <use id="...">`), appended to the rule's diagnostics; empty otherwise.
     std::string instanceSite;
+    /// T-738: for such a copy, the symbol it was rewritten from (`symbol` is empty then); empty
+    /// otherwise.
+    std::string instanceSymbol;
 };
 
 /// One `from`/`to`/`N%` stop inside an `@keyframes` block.
@@ -507,6 +535,8 @@ struct TimelineDef {
     /// empty for a document-level timeline. symbol_expand.cpp rewrites a symbol timeline into one
     /// copy per instance (track paths prefixed, `scopePath` set) and drops the original.
     std::string symbol;
+    /// T-740 (56 §56.3): as StyleRule::symbolNamespace, for a symbol-scoped timeline.
+    std::string symbolNamespace;
     /// T-190: the instance path id this (rewritten) timeline is scoped to; empty = the root.
     std::string scopePath;
     /// T-190 (11 §11.9): inline `<svg>` scenes this timeline animates, filled by
@@ -516,6 +546,18 @@ struct TimelineDef {
     /// T-190: the latest key time among the tracks moved into `sceneMembers` (for the implicit
     /// duration), or 0.
     float sceneLastKey = 0;
+    /// T-781 (58 §58.5): where a row moved into a scene Timeline went -- the track path as written
+    /// (`<svg id>/<inner id>`), the row's property as written in the keys, the scene's TimelineId and
+    /// the track index in it -- so a run-time expression on that row finds its track. A row whose
+    /// values were converted on the way (trim-offset degrees to turns, a motion-path translate) or
+    /// that addresses several nodes (a tag name) has no entry.
+    struct SceneRow {
+        std::string path;
+        uint16_t prop = 0;
+        uint32_t timeline = 0;
+        uint32_t track = 0;
+    };
+    std::vector<SceneRow> sceneRows;
 };
 
 /// One `--name: value` design-token declaration (05.9.2, T-170). Tokens are document-wide: the

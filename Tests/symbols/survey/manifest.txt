@@ -1,0 +1,17 @@
+# T-793: survey-2026 SW state goldens (the normal and defiance states come from the group's previews).
+# Format: <name> <xt> <width> <height> <time> <clear hex> [events]; paths relative to this directory.
+survey_MenuItem_hover ../../../Assets/Symbols/groups/survey-2026/previews/MenuItem.preview.xt 280 220 0.3 050505 states/MenuItem-hover.events
+survey_MenuItem_pressed ../../../Assets/Symbols/groups/survey-2026/previews/MenuItem.preview.xt 280 220 0.3 050505 states/MenuItem-pressed.events
+survey_MenuItem_focus ../../../Assets/Symbols/groups/survey-2026/previews/MenuItem.preview.xt 280 220 0.3 050505 states/MenuItem-focus.events
+survey_SettingsTab_hover ../../../Assets/Symbols/groups/survey-2026/previews/SettingsTab.preview.xt 220 220 0.3 050505 states/SettingsTab-hover.events
+survey_SaveSlot_hover ../../../Assets/Symbols/groups/survey-2026/previews/SaveSlot.preview.xt 480 220 0.3 050505 states/SaveSlot-hover.events
+survey_KeyHint_hover ../../../Assets/Symbols/groups/survey-2026/previews/KeyHint.preview.xt 420 56 0.3 050505 states/KeyHint-hover.events
+survey_SliderRow_hover ../../../Assets/Symbols/groups/survey-2026/previews/SliderRow.preview.xt 420 110 0.3 050505 states/SliderRow-hover.events
+survey_ToggleRow_toggled ../../../Assets/Symbols/groups/survey-2026/previews/ToggleRow.preview.xt 420 110 0.3 050505 states/ToggleRow-toggled.events
+survey_CyclerRow_hover ../../../Assets/Symbols/groups/survey-2026/previews/CyclerRow.preview.xt 420 110 0.3 050505 states/CyclerRow-hover.events
+survey_ActionRow_hover ../../../Assets/Symbols/groups/survey-2026/previews/ActionRow.preview.xt 420 64 0.3 050505 states/ActionRow-hover.events
+survey_VitalBar_hit ../../../Assets/Symbols/groups/survey-2026/previews/VitalBar.preview.xt 300 110 0 050505 states/VitalBar-hit.events
+survey_InteractPrompt_hidden ../../../Assets/Symbols/groups/survey-2026/previews/InteractPrompt.preview.xt 240 70 0.3 050505 states/InteractPrompt-hidden.events
+# survey_BloodEdge_calm checks the Calm rule (level 0.4 < 0.6; T-744).
+survey_BloodEdge_calm ../../../Assets/Symbols/groups/survey-2026/previews/BloodEdge.preview.xt 320 180 0 050505 states/BloodEdge-calm.events
+survey_FocusDot_lock ../../../Assets/Symbols/groups/survey-2026/previews/FocusDot.preview.xt 120 60 0 050505 states/FocusDot-lock.events

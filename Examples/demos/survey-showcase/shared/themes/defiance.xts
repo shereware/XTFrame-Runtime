@@ -1,0 +1,105 @@
+/* Copied from survey-2026 1.0.0 (tokens-defiance.xts); theme "defiance". The @font-face blocks stay in shared/tokens.xts (a theme only sets tokens). */
+/* XTFrame preset symbol group Survey 2026: design tokens, theme "defiance" (Docs/design/55-survey-symbol-group.md).
+   Defiance: warmer, higher-contrast variant of Dusk with a red focus colour and quicker motion.
+   Every Survey symbol draws only through these names, so a UI Project re-skins the whole group
+   by redefining them in its own shared/tokens.xts or in a theme (themes/*.xts).
+   Link exactly one of tokens.xts and tokens-defiance.xts: a token declared twice is a compiler
+   warning. A project that defines its own tokens must not also link either file. */
+:root {
+  /* Surfaces and text. */
+  --color-bg: #0a0605;
+  --color-surface: #120a08e6;
+  --color-surface-raised: #ffd9b30f;
+  --color-surface-sunken: #00000080;
+  --color-border: #ffd9b333;
+  --color-border-strong: #ffd9b352;
+  --color-text: #efe3cc;
+  --color-text-dim: #b09a86;
+  --color-text-on-accent: #0a0605;
+  /* Accent and states. */
+  --color-accent: #f2dcc0;
+  --color-accent-hover: #fff1dc;
+  --color-accent-pressed: #c9a98c;
+  --color-focus: #e0573f;
+  --color-disabled-bg: #ffffff0a;
+  --color-disabled-text: #6b5a4e;
+  /* Semantic. */
+  --color-danger: #c8321f;
+  --color-warning: #e0a83e;
+  --color-success: #9fc98a;
+  --color-info: #d6c2a8;
+  /* Overlays and tracks. */
+  --color-scrim: #000000b3;
+  --color-track: #ffd9b31f;
+  --color-shadow: #00000000;
+  /* Survey additions: text ladder, rules, band, scrims, shades. */
+  --color-text-strong: #fff1dc;
+  --color-text-label: #e0ccb0;
+  --color-text-quiet: #c4a88e;
+  --color-line-hairline: #ffd9b31a;
+  --color-line: #ffd9b340;
+  --color-band-edge: #a3241c;
+  --color-scrim-soft: #00000073;
+  --color-scrim-strong: #000000eb;
+  --color-shade-edge: #1a0503b3;
+  --color-shade-clear: #00000000;
+  --color-blood: #c8321fbf;
+  /* Type. */
+  --font-display: "Noto Serif", "Georgia", "Times New Roman";
+  --font-body: "Noto Serif", "Georgia", "Times New Roman";
+  --font-family: var(--font-body);
+  --font-size-xs: 11px;
+  --font-size-s: 13px;
+  --font-size-m: 15px;
+  --font-size-l: 19px;
+  --font-size-xl: 24px;
+  /* Survey type steps outside the core scale (55 55.3.2). */
+  --font-size-badge: 10px;
+  --font-size-caption: 12px;
+  --font-size-text: 14px;
+  --font-size-subtitle: 17px;
+  --font-size-chapter: 40px;
+  --font-size-title: 72px;
+  --letter-display: 2px;
+  --letter-label: 2px;
+  /* Space, rules and radii. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --border-w: 1px;
+  --focus-w: 1px;
+  --rule-thin: 1px;
+  --rule-thick: 2px;
+  --radius-s: 3px;
+  --radius-m: 3px;
+  --radius-l: 3px;
+  --radius-full: 999px;
+  /* Motion. */
+  --motion-instant: 0ms;
+  --motion-fast: 120ms;
+  --motion-normal: 140ms;
+  --motion-slow: 300ms;
+  /* Sizes. */
+  --size-row: 40px;
+  --size-box: 26px;
+  --size-box-w: 176px;
+  --size-band: 42px;
+  /* Core control sizes (47 core vocabulary): small = the field box, medium = the settings row, large = the menu band. */
+  --control-s: 26px;
+  --control-m: 40px;
+  --control-l: 42px;
+  --touch-min: 44px;
+  --touch-lg: 88px;
+  /* Textures (textures/, made by Tools/Scripts/gen_survey_textures.py). */
+  --tex-band: url("textures/band-defiance.png");
+  --tex-band-short: url("textures/band-short-defiance.png");
+  --tex-rain: url("textures/rain.png");
+  --tex-film-grain: url("textures/grain.png");
+  --tex-fog: url("textures/fog.png");
+  --tex-scratch: url("textures/scratch.png");
+}

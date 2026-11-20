@@ -1719,7 +1719,7 @@ bool propertyAcceptsValue(NodeKind kind, PropId prop, ValueType type, LengthUnit
             (type == ValueType::Length && (unit == LengthUnit::Px || unit == LengthUnit::Percent)));
 }
 
-void setProperty(NodeArena& arena, NodeId node, PropId prop, const Value& value) {
+void setProperty(NodeArena& arena, NodeId node, PropId prop, const Value& value, DirtyCause cause) {
     NodeKind kind = arena.kind(node);
     XT_ASSERT(propertyApplies(kind, prop));
     if (!propertyAcceptsValue(kind, prop, value)) {
@@ -1741,7 +1741,7 @@ void setProperty(NodeArena& arena, NodeId node, PropId prop, const Value& value)
             e.cssTranslate.y = px;
             e.cssTranslatePct.y = pct;
         }
-        arena.markDirty(node, propertyDirtyBits(prop));
+        arena.markDirty(node, propertyDirtyBits(prop), cause);
         return;
     }
     switch (prop) {
@@ -1913,7 +1913,7 @@ void setProperty(NodeArena& arena, NodeId node, PropId prop, const Value& value)
             }
             break;
     }
-    arena.markDirty(node, propertyDirtyBits(prop));
+    arena.markDirty(node, propertyDirtyBits(prop), cause);
     arena.common(node).flags2 |= kAnimValueStale;  // T-717: a held `@timeline` member re-applies.
     // Docs/tasks/T-43b.md: a camera property change must also force its parent (the 3D space
     // root)'s subtree to recompute (kDirtyTransform only propagates to descendants, not ancestors,
@@ -1921,7 +1921,7 @@ void setProperty(NodeArena& arena, NodeId node, PropId prop, const Value& value)
     if (kind == NodeKind::Camera && prop >= prop::CameraZoom && prop <= prop::CameraFar) {
         NodeId parent = arena.parent(node);
         if (parent != kInvalidNode) {
-            arena.markDirty(parent, static_cast<uint8_t>(kDirtyTransform));
+            arena.markDirty(parent, static_cast<uint8_t>(kDirtyTransform), cause);
         }
     }
 }

@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "doctest.h"
+#include "xt/asset_resolver.h"
 #include "xt/command_list.h"
 #include "xt/compile/compile.h"
 #include "xt/context.h"
@@ -341,4 +342,69 @@ TEST_CASE("T-706: the world-layers demo -- #Rings's target is acquired twice in 
     CHECK(ringsAcquired() == 2u);
     CHECK(ringsRedraws == 600u);  // its content turns: drawn every frame, into the same target
     builder.shutdown();
+}
+
+namespace {
+
+/// T-746: resolves nothing but the external bindings of the base class.
+class ExternalOnlyResolver : public AssetResolver {
+public:
+    bool readBytes(std::string_view, std::vector<uint8_t>&) override { return false; }
+    bool decodeImage(AssetId, const IrView&, ImageData&) override { return false; }
+    Vec2 imageSize(AssetId, const IrView&) override { return Vec2{0, 0}; }
+};
+
+}  // namespace
+
+TEST_CASE("T-746: a layer drawing a host texture is kept while the texture's version holds") {
+    const std::string body =
+        "<div id=\"root\"><div id=\"panel\"><img id=\"tex\" src=\"engine://scene\"/></div></div>";
+    const std::string css = std::string(kCss) +
+                            "#tex { position: absolute; left: 8px; top: 8px; width: 64px; "
+                            "height: 32px; }";
+    for (const bool versioned : {false, true}) {
+        CAPTURE(versioned);
+        ExternalOnlyResolver assets;
+        assets.setExternalTexture("scene", 77, 64, 32);
+        if (versioned) {
+            assets.setExternalTextureVersion("scene", 1);
+        }
+        NullTextShaper shaper;
+        Context ctx{ContextConfig{&shaper, &assets}};
+        compile::CompileResult result = compileText(css, body);
+        REQUIRE(result.ok());
+        Result<DocumentHandle> handle = ctx.loadDocument(IrBlob{result.ir.data(), result.ir.size()}, false);
+        REQUIRE(handle.ok());
+        Document* doc = ctx.document(handle.value());
+        ctx.setViewport(Rect{0, 0, 320, 200}, 1.0f);
+        ctx.setWorldLayerOutput(true);
+        const uint32_t panelId = doc->byId("panel").node;
+        LayerDevice device(/*legacy=*/false);
+        WorldLayerBuilder builder;
+        builder.init(device);
+        const auto panelChanged = [&] {
+            ctx.update(1.0f / 60.0f);
+            CommandList list;
+            ctx.render(list);
+            REQUIRE(builder.build(list, &shaper, &assets, &doc->ir()));
+            builder.submit();
+            const WorldLayer* panel = layerOf(builder.layers(), panelId);
+            REQUIRE(panel != nullptr);
+            return panel->changed;
+        };
+        CHECK(panelChanged() == 1);  // the first build
+        for (int i = 0; i < 3; ++i) {
+            // Without a version the texture may change every frame: the layer is drawn every build.
+            CHECK(panelChanged() == (versioned ? 0 : 1));
+        }
+        if (versioned) {
+            assets.setExternalTextureVersion("scene", 2);
+            CHECK(panelChanged() == 1);
+            CHECK(panelChanged() == 0);
+            assets.setExternalTexture("scene", 78, 64, 32);  // another texture, same version
+            CHECK(panelChanged() == 1);
+            CHECK(panelChanged() == 0);
+        }
+        builder.shutdown();
+    }
 }

@@ -143,7 +143,7 @@ TEST_CASE("compileDocument: doc_basic.xt compiles, DOCT is correct") {
             CHECK(irValueF32(d.value, 0) == doctest::Approx(0.5f));
             CHECK(d.important == 1);
             sawImportantOpacity = true;
-        } else if (d.prop == styleprop::Transition) {
+        } else if (d.prop == styleprop::TransitionProperty) {  // T-778: the shorthand's longhands.
             CHECK(static_cast<ValueType>(d.valueType) == ValueType::ListRef);
             uint32_t off = irValueU32(d.value, 0);
             uint32_t cnt = irValueU32(d.value, 1);
@@ -151,7 +151,7 @@ TEST_CASE("compileDocument: doc_basic.xt compiles, DOCT is correct") {
             CHECK(style.transitions()[off].prop == prop::Opacity);
             CHECK(style.transitions()[off].duration == doctest::Approx(0.2f));
             sawTransition = true;
-        } else if (d.prop == styleprop::Animation) {
+        } else if (d.prop == styleprop::AnimationName) {  // T-778: the shorthand's longhands.
             CHECK(static_cast<ValueType>(d.valueType) == ValueType::ListRef);
             uint32_t off = irValueU32(d.value, 0);
             uint32_t cnt = irValueU32(d.value, 1);
@@ -360,7 +360,7 @@ TEST_CASE("compileDocument: doc_effect.xt -- effect STYL encoding, transition, @
             CHECK(static_cast<EffectKind>(blur.kind) == EffectKind::Blur);
             CHECK(blur.params[0] == doctest::Approx(3));
             sawEffect = true;
-        } else if (d.prop == styleprop::Transition) {
+        } else if (d.prop == styleprop::TransitionProperty) {  // T-778.
             uint32_t off = irValueU32(d.value, 0);
             uint32_t cnt = irValueU32(d.value, 1);
             REQUIRE(cnt == 1);

@@ -120,6 +120,11 @@ bool tryEnter(const NodeArena& arena, NodeId node, Vec2 pos, HitMode mode, HitFr
 struct PieceFilter {
     uint32_t piece;
     const std::vector<layer_collect::PieceRange>* ranges;
+    /// T-762 (19 §19.y.2): the pick ray (root-box coordinates) and the root's mapping, for the 3D
+    /// layers held by a flattening group in that piece (tested in place, on their own planes).
+    Vec3 p0{};
+    Vec3 p1{};
+    const project3d::Mapping* root = nullptr;
 };
 
 /// T-255b: `depth` is `node`'s depth below the hit test's root; like layout, the descent stops
@@ -162,7 +167,10 @@ HitResult hit3DRoot(const NodeArena& arena, NodeId root, const HitFrame& frame, 
 
     std::vector<layer_collect::LayerEntry> layers;
     std::vector<layer_collect::PieceRange> ranges;
-    std::vector<NodeId> whole;
+    project3d::Mapping rootMapping;
+    rootMapping.hasProjection = true;
+    rootMapping.viewProj = setup.viewProj;
+    rootMapping.rootXf = arena.common(root).world;
     for (size_t i = sections.size(); i-- > 0;) {
         const layer_collect::Section& sec = sections[i];
         if (!sec.sorted) {
@@ -185,22 +193,19 @@ HitResult hit3DRoot(const NodeArena& arena, NodeId root, const HitFrame& frame, 
         // T-727 (19 §19.x ruling 1): the same items as Painter::flushSection() -- the layers and the
         // flat-content pieces, depth-sorted together -- tested in reverse draw order.
         layers.clear();
-        whole.clear();
         if (ranges.size() < arena.capacity()) {
             ranges.resize(arena.capacity());
         }
         uint32_t docOrder = 0;
         for (uint32_t k = 0; k < sec.childCount; ++k) {
             NodeId child = orderedChildren[sec.firstChild + k];
-            if (!layer_collect::collectSegmentItems(arena, child, setup.view, layers, docOrder, ranges)) {
-                whole.push_back(child);
-            }
+            layer_collect::collectSegmentItems(arena, child, setup.view, layers, docOrder, ranges);
         }
         layer_collect::sortLayers(layers);          // Ascending depth: farthest first.
         for (size_t j = layers.size(); j-- > 0;) {  // Nearest first (§19.9: "近者優先").
             const layer_collect::LayerEntry& layer = layers[j];
             if (layer.piece != layer_collect::kLayerItem) {
-                const PieceFilter filter{layer.piece, &ranges};
+                const PieceFilter filter{layer.piece, &ranges, p0, p1, &rootMapping};
                 HitResult hit = hitNode(arena, layer.node, s, mode, /*in3D=*/true, depth + 1, &filter);
                 if (hit.node != kInvalidNode) {
                     return hit;
@@ -209,10 +214,7 @@ HitResult hit3DRoot(const NodeArena& arena, NodeId root, const HitFrame& frame, 
             }
             const NodeCommon& lc = arena.common(layer.node);
             if (lc.backfaceHidden != 0) {
-                project3d::Mapping mapping;
-                mapping.hasProjection = true;
-                mapping.viewProj = setup.viewProj;
-                mapping.rootXf = arena.common(root).world;
+                project3d::Mapping mapping = rootMapping;
                 mapping.planeWorld3 = lc.world3;
                 std::vector<project3d::Mapping> stack{mapping};
                 Vec2 anchor{lc.anchor.x, lc.anchor.y};
@@ -227,16 +229,6 @@ HitResult hit3DRoot(const NodeArena& arena, NodeId root, const HitFrame& frame, 
             HitResult hit = hitNode(arena, layer.node, q, mode, /*in3D=*/true, depth + 1);
             if (hit.node != kInvalidNode) {
                 return hit;
-            }
-        }
-        // Docs/tasks/T-48b.md, kept by T-727 for a child whose flat content cannot be split
-        // (collectSegmentItems()): its root-plane 2D content is drawn *below* every item of the
-        // segment, so it is hit tested last, in the same same-layer-reverse order as an ordinary 2D
-        // segment, at `s`.
-        for (size_t k = whole.size(); k-- > 0;) {
-            HitResult hit2d = hitNode(arena, whole[k], s, mode, /*in3D=*/true, depth + 1);
-            if (hit2d.node != kInvalidNode) {
-                return hit2d;
             }
         }
     }
@@ -295,6 +287,28 @@ HitResult hitNode(const NodeArena& arena, NodeId node, Vec2 pos, HitMode mode, b
             // 05.5's compose/decompose path (rotate() before translate()) carries identity
             // rotateX/rotateY/translateZ tracks, which force is3D = 1 (19.3) -- skipping such a
             // node here left it drawn but unhittable.
+            // T-762 (19 §19.y.2): unless a flattening group holds it -- its PieceRange admits the
+            // piece -- where it is drawn in place: tested here, in document order, on its own plane.
+            if (pieces == nullptr || pieces->root == nullptr ||
+                !layer_collect::pieceInRange((*pieces->ranges)[child], pieces->piece)) {
+                continue;
+            }
+            if (cc.backfaceHidden != 0) {
+                project3d::Mapping mapping = *pieces->root;
+                mapping.planeWorld3 = cc.world3;
+                std::vector<project3d::Mapping> stack{mapping};
+                if (project3d::isBackface(stack, Mat2x3{}, Vec2{cc.anchor.x, cc.anchor.y})) {
+                    continue;
+                }
+            }
+            Vec2 q{};
+            if (!rayPlanePoint(cc.world3, pieces->p0, pieces->p1, q)) {
+                continue;
+            }
+            HitResult hit = hitNode(arena, child, q, mode, in3D, depth + 1, pieces);
+            if (hit.node != kInvalidNode) {
+                return hit;
+            }
             continue;
         }
         if (!in3D && (cc.flags2 & kLayerOverlay) != 0) {

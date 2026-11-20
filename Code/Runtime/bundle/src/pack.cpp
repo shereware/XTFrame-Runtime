@@ -19,12 +19,14 @@
 #include "font_subset.h"
 #include "manifest_writer.h"
 #include "pack_flow.h"
+#include "publish_result.h"
 #include "stale_files.h"
 #include "symbol_contracts.h"
 #include "texture_compress.h"
 #include "xt/asset_resolver.h"
 #include "xt/bundle/gen_ports.h"
 #include "xt/bundle/migrations.h"
+#include "xt/bundle/project_style.h"
 #include "xt/bundle/symbol_library.h"
 #include "xt/bundle/ui_project.h"
 #include "xt/command_list.h"
@@ -576,6 +578,15 @@ private:
     /// T-498b: decides whether the group at `standardSymbolDir` is this pack's implied default
     /// layer (PackReport::impliedGroupDir): some UI links a standard symbol. Fills m_implied.
     void detectImpliedGroup();
+    /// T-741 (56 §56.3): CompileOptions::symbolsDir -- the UI Project's `shared.symbols`; empty for a
+    /// `bundle.xtproj` pack (the compiler then takes a directory named `symbols`).
+    std::string symbolsDirForCompile() const {
+        return m_ui != nullptr ? m_ui->shared.symbols : std::string();
+    }
+    /// T-741 (56 §56.2, §56.3 item 7): one warning per UI that links a namespaced symbol copy and
+    /// symbols of more than one group (linkedSymbolGroups()), naming the groups and where the tokens
+    /// shared.tokens does not declare come from.
+    void warnMixedSymbolGroups();
     /// T-498b: the implied layer's `impliedTokenFiles` and `searchDirs` entry on a compile.
     void applyImpliedLayer(compile::CompileOptions& options) const {
         if (!m_implied.active) {
@@ -1376,6 +1387,7 @@ void Packer::rewriteUis() {
         compileOptions.embedFonts = m_project.publish.embedFonts || m_options.embed;
         compileOptions.searchDirs = searchDirsFor(ui);                   // T-204
         compileOptions.standardSymbolDir = m_options.standardSymbolDir;  // T-235: `xt-standard:`
+        compileOptions.symbolsDir = symbolsDirForCompile();              // T-741 (56 §56.3)
         applyImpliedLayer(compileOptions);                               // T-498b
         compileOptions.publishAssetNames = true;                         // T-273b
         compileOptions.stripEditorOnly = true;                           // T-342 (22 §22.15)
@@ -1540,6 +1552,7 @@ bool Packer::packUi(const ProjectUi& ui, UiInfo& out) {
     compileOptions.embedFonts = m_project.publish.embedFonts || m_options.embed;
     compileOptions.searchDirs = searchDirsFor(ui);                   // T-204
     compileOptions.standardSymbolDir = m_options.standardSymbolDir;  // T-235: `xt-standard:`
+    compileOptions.symbolsDir = symbolsDirForCompile();              // T-741 (56 §56.3)
     applyImpliedLayer(compileOptions);                               // T-498b
     // T-273b: no machine path (or `..` out of the project) in the bundle's `.xtir`.
     compileOptions.publishAssetNames = true;
@@ -1738,16 +1751,73 @@ bool Packer::packUi(const ProjectUi& ui, UiInfo& out) {
 void Packer::detectImpliedGroup() {
     m_implied = ImpliedLayer();
     SymbolGroup group;
-    if (!bundle::detectImpliedGroup(m_project.rootDir, m_project.uis, m_options.standardSymbolDir, group)) {
+    std::string dir;
+    // T-743 (47 rule 5): the applied style's group, or the first of several linked groups, before the
+    // T-498b rule; a project that never applied a style and links one group gets what it got before.
+    if (!bundle::projectImpliedGroup(m_project.rootDir, m_project.uis, m_options.standardSymbolDir,
+                                     m_ui != nullptr ? m_ui->shared.symbols : std::string(),
+                                     m_options.symbolLibraryDirs, group, &dir)) {
         return;
     }
-    const fs::path groupDir = pathFromUtf8(m_options.standardSymbolDir);
+    const fs::path groupDir = pathFromUtf8(dir);
     m_implied.active = true;
     m_implied.group = std::move(group);
     if (!m_implied.group.tokensFile.empty()) {
         m_implied.tokensFile = genericPathToUtf8(groupDir / pathFromUtf8(m_implied.group.tokensFile));
     }
     m_report.impliedGroupDir = m_implied.group.dir;
+}
+
+void Packer::warnMixedSymbolGroups() {
+    const std::string symbolsRel = m_ui != nullptr ? m_ui->shared.symbols : std::string("shared/symbols");
+    std::error_code ec;
+    const fs::path symbolsAbs =
+        fs::absolute(pathFromUtf8(m_project.rootDir) / pathFromUtf8(symbolsRel), ec).lexically_normal();
+    for (const ProjectUi& ui : m_project.uis) {
+        // Only a UI linking a namespaced copy: a flat project packs exactly as before T-741.
+        const fs::path docFile = pathFromUtf8(m_project.rootDir) / pathFromUtf8(ui.doc);
+        std::string text;
+        if (!detail::readFile(genericPathToUtf8(docFile), text)) {
+            continue;
+        }
+        compile::DiagnosticSink sink;
+        compile::DomTree dom;
+        if (!compile::parseXt(text, ui.doc, sink, dom)) {
+            continue;
+        }
+        const bool namespaced =
+            std::any_of(dom.symbolHrefs.begin(), dom.symbolHrefs.end(), [&](const std::string& href) {
+                if (href.empty() || href.find(':') != std::string::npos) {
+                    return false;
+                }
+                std::error_code err;
+                const fs::path file =
+                    fs::absolute(docFile.parent_path() / pathFromUtf8(href), err).lexically_normal();
+                return file.parent_path().parent_path() == symbolsAbs;
+            });
+        if (!namespaced) {
+            continue;
+        }
+        const std::vector<std::string> groups =
+            linkedSymbolGroups(m_project.rootDir, ui.doc, m_options.standardSymbolDir, symbolsRel);
+        if (groups.size() < 2) {
+            continue;
+        }
+        std::string list;
+        for (const std::string& g : groups) {
+            list += (list.empty() ? "" : ", ") + g;
+        }
+        const std::string tokens = m_ui != nullptr && !m_ui->shared.tokens.empty()
+                                       ? m_ui->shared.tokens
+                                       : std::string("shared.tokens");
+        addWarning(
+            ui.doc,
+            "symbols from " + std::to_string(groups.size()) + " groups (" + list +
+                ", in link order); the project has one style: the values " + tokens + " declares are used, " +
+                (m_implied.active ? "a token it does not declare takes the implied default layer of " +
+                                        m_implied.group.id + " only"
+                                  : std::string("a token it does not declare has no implied default")));
+    }
 }
 
 /// T-527: `text` with ASCII letters lowercased (family names compare case-insensitively).
@@ -2867,8 +2937,9 @@ PackReport Packer::run() {
         }
     }
 
-    detectImpliedGroup();  // T-498b
-    loadStandardFonts();   // T-527b: before the UIs, whose text names standard families.
+    detectImpliedGroup();     // T-498b
+    warnMixedSymbolGroups();  // T-741
+    loadStandardFonts();      // T-527b: before the UIs, whose text names standard families.
     // T-204: before the assets.yaml lint, so glyph files count as referenced; T-571: before the
     // UIs, whose compile adds the glyph images to a UI with a `<glyph>`.
     packGlyphs();
@@ -2966,6 +3037,7 @@ PackReport Packer::run() {
     if (!m_options.keepStale && m_report.ok) {  // T-693 item 3: a failed run deletes nothing.
         removeStale(previous, hadManifest, manifestExisted);
     }
+    detail::measurePublishResult(m_outDir, m_manifest, m_report);  // T-714 (22 §22.17.2)
     return std::move(m_report);
 }
 

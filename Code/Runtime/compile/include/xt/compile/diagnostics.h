@@ -82,6 +82,19 @@ public:
     /// T-594: the warnings web() recorded.
     size_t webCount() const { return m_webCount; }
 
+    /// T-738 (56 §56.4 item 7): information the author should see that is not a problem, e.g. a
+    /// state group made symbol-scoped. Recorded as a warning with code `compile.note` and counted
+    /// by noteCount(), which a strict compile subtracts like deprecatedCount(). T-767: `code`
+    /// replaces `compile.note` for a note filed under its own code (the `expr.*` diagnostics of the
+    /// `<expressions>` section, which never fail a compile, 58 §58.4).
+    void note(std::string file, std::string message, int line = 0, int col = 0,
+              std::string code = "compile.note") {
+        warn(std::move(file), std::move(message), line, col, std::move(code));
+        ++m_noteCount;
+    }
+    /// T-738: the warnings note() recorded.
+    size_t noteCount() const { return m_noteCount; }
+
     /// Returns every diagnostic recorded so far, in the order they were raised.
     const std::vector<Diagnostic>& all() const { return m_diagnostics; }
 
@@ -112,6 +125,7 @@ private:
     size_t m_deprecatedCount = 0;
     bool m_webCompat = false;
     size_t m_webCount = 0;
+    size_t m_noteCount = 0;
 };
 
 }  // namespace xt::compile

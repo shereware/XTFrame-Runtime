@@ -22,6 +22,7 @@
 #include "xt/sw/sw_png.h"
 #include "xt/sw/sw_renderer.h"
 #include "xt/text_shaper.h"
+#include "xtb_temp_env.h"
 #ifdef XT_TEST_HAS_TEXT
 #include "xt/text/ft_text_shaper.h"
 #endif
@@ -222,6 +223,8 @@ TEST_CASE("addBundleFonts: loading and reloading again registers nothing twice (
 
 TEST_CASE("addBundleFonts: an .xtb container is read from its unpacked copy (T-555)") {
     const fs::path xtb = xt::test::tempDir() / "xt_t555_game_ui.xtb";
+    // T-807: the unpack cache (and its eviction) stays in the test's own directory.
+    const xt::test::ScopedTempEnv tempEnv(xt::test::tempDir() / "xt_t555_tmp");
     std::error_code ec;
     fs::remove(xtb, ec);
     std::string error;

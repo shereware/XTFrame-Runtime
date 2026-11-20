@@ -73,6 +73,8 @@ private:
     Token lexNumber();
     Token lexIdent();
     Token lexHash();
+    bool rawUrlFollows() const;
+    Token lexRawUrl();
     char peek(size_t ahead = 0) const;
     char advance();
     bool atEnd() const;
@@ -83,6 +85,10 @@ private:
     int m_line = 1;
     int m_col = 1;
     bool m_wsBefore = false;  // T-173: whether next() skipped anything before the current token.
+    /// T-808: an unquoted `url(...)` (CSS Syntax 3's url token) in progress -- 1: the `url` ident
+    /// was returned and its `(` comes next; 2: the `(` was returned and the raw contents come next,
+    /// as one String token (a `//` or `/*` inside them is part of the URL, not a comment).
+    int m_rawUrl = 0;
 };
 
 }  // namespace xt::compile

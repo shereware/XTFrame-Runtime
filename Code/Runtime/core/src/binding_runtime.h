@@ -49,6 +49,9 @@ public:
     /// T-399: true while port changes wait for the next flushDirty() (ElementRef::focus() then
     /// accepts a `display: none` element as a pending focus).
     bool hasDirty() const { return !m_dirty.empty(); }
+    /// T-749 (23 §23.ag item 6): tick() has work at the next update(): port changes wait for
+    /// flushDirty(), or a `tween` / `delay` step of a binding is still running.
+    bool needsTick() const;
     /// Evaluates the `#Other.<prop>` bindings against the fresh layout. True when one of them
     /// applied a change (Document::update then resolves and lays out once more).
     bool afterLayout();
@@ -189,6 +192,10 @@ public:
     /// T-270d: the largest number of distinct new runtime strings any one binding, port or
     /// condition has interned so far (what the kMaxDistinctStrings guard counts; FrameStats).
     uint32_t maxDistinctStrings() const { return m_maxDistinctStrings; }
+    /// T-776 (58 §58.5): port `index`'s number (Number, Bool, Enum, Entity; 0 otherwise), for the
+    /// timeline expressions, and the count that moves whenever such a port changes.
+    float portNumber(uint32_t index) const;
+    uint64_t numberGeneration() const { return m_numberGeneration; }
 
     /// A value flowing through a converter chain.
     struct BVal {
@@ -476,6 +483,7 @@ private:
     std::string m_styleScratch;         // T-270c: apply()'s "<prop>: <value>" for setStyle (capacity kept).
     StringGuard m_conditionStrings;     // T-270c: host converters inside an `if` condition (no binding).
     uint32_t m_maxDistinctStrings = 0;  // T-270d: the largest StringGuard::distinct so far.
+    uint64_t m_numberGeneration = 0;    // T-776: numberGeneration().
     // T-389: bindings a port change marked, in marking order, and their flags (by binding index).
     std::vector<uint32_t> m_dirty;
     /// T-478: flushDirty()'s batch buffer between calls, so m_dirty and the batch trade their

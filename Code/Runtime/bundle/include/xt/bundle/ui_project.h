@@ -152,10 +152,18 @@ struct ImagesOptions {
     /// bitmap and atlas page becomes a BC7 DDS) or "auto" (only those with both sides >= 256 px);
     /// `xtframe-pack --compress` overrides it. Any other value is a load error.
     std::string compress = "none";
-    /// The `.xtui` had a `publish.images` object: written back even when it says "none".
+    /// The `.xtui` had a `publish.images` object: written back (with only the keys it had, plus
+    /// `compress` when compressWritten()).
     bool present = false;
+    /// T-810: the `.xtui` had `publish.images.compress`, or a value was chosen for it (Publish dialog,
+    /// `project.setPublishSettings`): written back even when it says "none".
+    bool compressSet = false;
     /// Unknown keys of `publish.images`, kept for round trips.
     std::string extraJson;
+
+    /// T-810 (22 §22.17.1 point 3): `compress` is written -- compressSet, or a value other than the
+    /// default set in memory. Unwritten, a publish takes `auto` (effectivePublishCompress()).
+    bool compressWritten() const { return compressSet || compress != "none"; }
 };
 
 /// T-212 (Docs/design/22-bundle.md §22.11.2): one place a UI Project was published to,
@@ -185,7 +193,7 @@ struct UiProjectPublish {
     bool embedFonts = false;
     Vec2 thumbnail{320, 180};
     AtlasOptions atlas;
-    /// T-687: `publish.images` (written only when present or not "none").
+    /// T-687: `publish.images` (written only when present or its `compress` is written, T-810).
     ImagesOptions images;
     /// T-527 (22 §22.10.3): `publish.fonts` ("system" | "bundled"; absent = system; any other value
     /// is a load error). Written only when bundled.
@@ -452,6 +460,14 @@ void recordPublish(UiProject& project, std::string_view kind, std::string_view p
 /// manifest: "" when `<rootDir>/<shared.strings>` holds no `*.csv`, else `spec.defaultLanguage`,
 /// else the first table's language by file name.
 std::string defaultLanguage(const UiProject& project);
+
+/// T-714 (22 §22.17.1): the image compression a publish entry point (`xtframe-pack`, the editor's
+/// Publish, `project.publish`) passes as PackOptions::compress: the project's
+/// `publish.images.compress` when it is written (ImagesOptions::compressWritten(): the `.xtui` has
+/// the key, or a value was chosen or set in memory -- what save() writes back), else "auto"; T-810:
+/// a `publish.images` object without `compress` is "auto" too. pack() itself keeps "none" for
+/// an empty PackOptions::compress; previews and other automatic packs pass "none" explicitly.
+std::string effectivePublishCompress(const UiProject& project);
 
 /// A stored target path made absolute (a relative one resolves against `project.rootDir`), '/'
 /// separators.

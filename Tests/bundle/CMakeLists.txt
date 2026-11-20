@@ -21,11 +21,15 @@ add_executable(xt_bundle_tests
     test_source_v2_readers.cpp
     test_roundtrip.cpp
     test_symbol_library.cpp
+    test_symbol_namespaced.cpp
+    test_project_style.cpp
     test_symbol_json.cpp
     test_zip_archive.cpp
     test_bundle_fonts.cpp
     test_default_language.cpp
     test_pack_stale.cpp
+    test_xtb_cache.cpp
+    test_publish_settings.cpp
 )
 target_include_directories(xt_bundle_tests SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/Code/SDKs/doctest)
 # doctest needs the real standard headers, otherwise it conflicts with newer MSVC STL versions.
@@ -47,6 +51,16 @@ xt_no_rtti(xt_bundle_tests)
 xt_set_warnings(xt_bundle_tests)
 
 add_test(NAME xt_bundle_tests COMMAND xt_bundle_tests)
+
+# T-807: test_xtb_cache.cpp opens each `.xtb` in this helper's own process (its temp directory
+# pointed at the test's), so one process's copies never shield the others from eviction.
+add_executable(xt_xtb_cache_probe xtb_cache_probe.cpp)
+target_link_libraries(xt_xtb_cache_probe PRIVATE xt_core xt_bundle)
+xt_enable_exceptions(xt_xtb_cache_probe)
+xt_no_rtti(xt_xtb_cache_probe)
+xt_set_warnings(xt_xtb_cache_probe)
+add_dependencies(xt_bundle_tests xt_xtb_cache_probe)
+target_compile_definitions(xt_bundle_tests PRIVATE XT_TEST_XTB_PROBE="$<TARGET_FILE:xt_xtb_cache_probe>")
 
 # T-623 (Docs/design/22-bundle.md §22.16): without --lang, xtframe-view starts a project with strings
 # tables in its spec.defaultLanguage (a packed project, a lone .xt inside it) and says so; --lang

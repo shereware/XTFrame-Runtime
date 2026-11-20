@@ -114,10 +114,14 @@ xtframe/
 | 47-symbol-visual-style.md | 標準符號庫的視覺風格：報紙／偵探（Broadsheet；2026-10-27）、newsprint v2（§47.13）、字型與 token |
 | 48-editor-broadsheet-theme.md | 編輯器的 Broadsheet 主題（paper／night-desk、圖示調色；2026-10-27） |
 | 49-symbol-sets.md | 符號庫、組與集（Photoshop 筆刷模型）：預設庫、掛載、`.xtsymbols` 匯入匯出、`xtframe-symbols`、`symbols.*` ops（2026-10-27） |
+| 55-survey-symbol-group.md | 第二個預載組 Survey 2026（勘查）：自 NPDO demo 萃取的暗色符號組、30 個符號、Dusk／Defiance 兩主題、程序貼圖、示範專案 `survey-showcase`（草案 2026-11-17，雲端；收錄、字型、授權、金樣已由使用者裁決；貼圖來源 2026-11-19 經使用者確認） |
 | 50-c-abi.md | C ABI 宿主契約 `xt_capi`（共享庫 `xtframe`）與 Unity 插件 `com.xtframe.runtime`（2026-10-28） |
 | 52-web-wasm.md | Web／wasm（記錄＋部分現行，2026-11-02）：§52.2 建置形態與 T-531 SIMD128、`xt_capi` wasm 靜態庫為現行（T-578）；Node 版工具鏈為 Experimental（T-579）；`xtframe-web`／`xtframe-player` 未定案、碼在 `claude/web-wasm` |
 | 51-builtin-ai.md | 內建 AI 代理與網路層（定案 2026-10-27）：`xt_net`（作業系統原生 TLS、`SecretStore`）、`xt_ai`（Anthropic／OpenAI 相容供應商、`AgentRunner`、工具 = Editor Service op）、AI 面板 (c) 模式、無頭 `--agent`、契約 `model`／`budget.tokens` 欄位；M41 T-515～T-517 |
 | 54-source-format-v2.md | 來源格式 v2（定案 2026-11-04）：單檔多區段、`src` 外掛、`<ports>`、`<layout>` 幾何的唯一的家（選擇器不限主體）、錨點簡寫 `anchor/offset/size`、`on:…@path`、遷移器與判準、M43 T-587～T-597 → v0.15.0 |
+| 56-symbol-identity-style-scope.md | 混用符號庫（定案 2026-11-18）：專案只有一個樣式（套用樣式、複製並獨立）、同名元件在專案內以來源區分（`<組>/<名>`）、狀態互斥群組的作用域收進符號；章號 55 由 Survey 2026 分支使用 |
+| 57-measurement.md | 量測（定案 2026-11-18）：三個固定的問題——時間去哪了（封閉的帳）、為什麼做（原因記帳與浪費指標）、單價（階梯場景與成本模型）；執行期產生的統一記錄 `FrameRecord`、五種情境、Huge 系列 |
+| 58-value-functions-and-drivers.md | 時間軸表達式（定案 2026-11-18，第六版）：做動畫的人在時間軸屬性列上寫一行 AE 式的表達式（`wiggle`、`loopOut`、`valueAtTime`、`time`、`value`、`index`、`layer()`），存於 `.xt` 的 `<expressions>` 區段，**編譯時**轉譯成關鍵幀與既有的動畫行為——執行期與 IR 不變；轉不了的寫法（讀遊戲數值等）待討論；標記上的動作入口與停點精度；只在編輯器提供。T-766～T-775 |
 | 53-flow-language.md | Flow 語言規格（T-559 整理，2026-10-31）：`.xtflow` 格式與反推 JSON Schema、型別、23 種節點目錄、連接點反射、規則與錯誤字串、宿主介面與 C ABI 對應、conformance 測試集、文件與實作不一致表 |
 | 18-effects.md | 效果與 shader（0.2）：內建效果、模板、自訂 HLSL 片段、後端與引擎整合 |
 | 19-3d-space.md | 3D 空間（0.2）：AE 式 2.5D 圖層、攝影機、深度排序、投影繪製 |

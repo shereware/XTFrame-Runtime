@@ -1,0 +1,2600 @@
+{
+  "version": 1,
+  "description": "XTFrame preset symbol group Survey 2026 (Docs/design/55-survey-symbol-group.md). One symbol per <Name>.xt; every symbol draws only through the tokens of tokens.xts.",
+  "license": "CC0-1.0 (see LICENSE): free for any use, including commercial, no attribution required.",
+  "tokens": "tokens.xts",
+  "categories": {
+    "scene": "Scene layers",
+    "menu": "Menus and flow",
+    "form": "Settings",
+    "hud": "HUD",
+    "overlay": "Overlays"
+  },
+  "symbols": [
+    {
+      "name": "MenuItem",
+      "category": "menu",
+      "file": "MenuItem.xt",
+      "thumbnail": "thumbnails/MenuItem.png",
+      "description": "Main-menu entry: a grime band slides in behind the label on hover, focus and selection; emits `pressed`.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Pressed",
+          "Focus",
+          "Disabled",
+          "Selected"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "ports": [
+        {
+          "name": "selected",
+          "type": "bool",
+          "dir": "in"
+        },
+        {
+          "name": "pressed",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [
+        "hover-in",
+        "hover-out",
+        "press"
+      ],
+      "triggers": [
+        "hover: sound(ui_hover); play(hover-in)",
+        "leave: play(hover-out)",
+        "press: sound(ui_confirm); play(press)",
+        "click: emit(pressed)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent-pressed",
+          "default": "#bdb6a8"
+        },
+        {
+          "name": "--color-band-edge",
+          "default": "#5c2320"
+        },
+        {
+          "name": "--color-disabled-text",
+          "default": "#5e5a52"
+        },
+        {
+          "name": "--color-focus",
+          "default": "#efe8d8"
+        },
+        {
+          "name": "--color-text-label",
+          "default": "#d6d0c2"
+        },
+        {
+          "name": "--color-text-strong",
+          "default": "#f6f1e6"
+        },
+        {
+          "name": "--font-display",
+          "default": "\"Noto Serif\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-xl",
+          "default": "24px"
+        },
+        {
+          "name": "--letter-display",
+          "default": "2px"
+        },
+        {
+          "name": "--motion-normal",
+          "default": "160ms"
+        },
+        {
+          "name": "--rule-thick",
+          "default": "2px"
+        },
+        {
+          "name": "--size-band",
+          "default": "42px"
+        },
+        {
+          "name": "--space-4",
+          "default": "16px"
+        },
+        {
+          "name": "--tex-band",
+          "default": "url(\"textures/band-dusk.png\")"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [
+        "textures/band-dusk.png",
+        "textures/band-defiance.png"
+      ],
+      "content": "sha256:d1156a1ce7ffedc35df62114daacf1c6b9b56134bd95a7646fa79bdeb424bb96",
+      "previousContent": [
+        "sha256:eb058a1c4838a8b5546ec7861562dde188fe9fed9a77c364a0cab92dd269d7f7"
+      ]
+    },
+    {
+      "name": "Panel",
+      "category": "form",
+      "file": "Panel.xt",
+      "thumbnail": "thumbnails/Panel.png",
+      "description": "Translucent settings panel: heading, one-line description, a rule and a body slot for rows.",
+      "requires": {
+        "slots": [
+          "heading",
+          "description",
+          "body"
+        ]
+      },
+      "timelines": [
+        "intro"
+      ],
+      "triggers": [
+        "show: play(intro)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-border",
+          "default": "#ffffff26"
+        },
+        {
+          "name": "--color-line",
+          "default": "#ffffff33"
+        },
+        {
+          "name": "--color-surface",
+          "default": "#0a0a0ae0"
+        },
+        {
+          "name": "--color-text-dim",
+          "default": "#a39e93"
+        },
+        {
+          "name": "--color-text-strong",
+          "default": "#f6f1e6"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-display",
+          "default": "\"Noto Serif\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-s",
+          "default": "13px"
+        },
+        {
+          "name": "--font-size-xl",
+          "default": "24px"
+        },
+        {
+          "name": "--letter-display",
+          "default": "2px"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-1",
+          "default": "4px"
+        },
+        {
+          "name": "--space-3",
+          "default": "12px"
+        },
+        {
+          "name": "--space-5",
+          "default": "20px"
+        },
+        {
+          "name": "--space-6",
+          "default": "24px"
+        },
+        {
+          "name": "--tex-scratch",
+          "default": "url(\"textures/scratch.png\")"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [
+        "textures/scratch.png"
+      ],
+      "content": "sha256:3631398a730448fc36876ff834f317d7250209452bd9916d61c68c7e7dd40e05",
+      "previousContent": [
+        "sha256:c5699afb26e6b9ae8f768bf9ea429e2bd2c0397aaff4b2658098d7f0e4710527",
+        "sha256:486332c92c5d83dceefb39e7be9d7e79a96227c69696edbeba699caa45ec7e3a"
+      ]
+    },
+    {
+      "name": "SaveSlot",
+      "category": "menu",
+      "file": "SaveSlot.xt",
+      "thumbnail": "thumbnails/SaveSlot.png",
+      "description": "Load-game entry: chapter, location and timestamp with the grime band for hover and selection; Empty variant; emits `pressed`.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Pressed",
+          "Focus",
+          "Disabled",
+          "Selected"
+        ],
+        "slots": [
+          "chapter",
+          "location",
+          "stamp"
+        ]
+      },
+      "variants": {
+        "State": [
+          "Filled",
+          "Empty"
+        ]
+      },
+      "ports": [
+        {
+          "name": "selected",
+          "type": "bool",
+          "dir": "in"
+        },
+        {
+          "name": "pressed",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [
+        "hover-in",
+        "hover-out",
+        "press"
+      ],
+      "triggers": [
+        "hover: sound(ui_hover); play(hover-in)",
+        "leave: play(hover-out)",
+        "press: sound(ui_confirm); play(press)",
+        "click: emit(pressed)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent-pressed",
+          "default": "#bdb6a8"
+        },
+        {
+          "name": "--color-band-edge",
+          "default": "#5c2320"
+        },
+        {
+          "name": "--color-disabled-text",
+          "default": "#5e5a52"
+        },
+        {
+          "name": "--color-focus",
+          "default": "#efe8d8"
+        },
+        {
+          "name": "--color-line-hairline",
+          "default": "#ffffff14"
+        },
+        {
+          "name": "--color-text-dim",
+          "default": "#a39e93"
+        },
+        {
+          "name": "--color-text-label",
+          "default": "#d6d0c2"
+        },
+        {
+          "name": "--color-text-quiet",
+          "default": "#bdb6a8"
+        },
+        {
+          "name": "--color-text-strong",
+          "default": "#f6f1e6"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-display",
+          "default": "\"Noto Serif\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-caption",
+          "default": "12px"
+        },
+        {
+          "name": "--font-size-m",
+          "default": "15px"
+        },
+        {
+          "name": "--font-size-xs",
+          "default": "11px"
+        },
+        {
+          "name": "--letter-label",
+          "default": "2px"
+        },
+        {
+          "name": "--motion-normal",
+          "default": "160ms"
+        },
+        {
+          "name": "--rule-thick",
+          "default": "2px"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-3",
+          "default": "12px"
+        },
+        {
+          "name": "--space-4",
+          "default": "16px"
+        },
+        {
+          "name": "--tex-band",
+          "default": "url(\"textures/band-dusk.png\")"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [
+        "textures/band-dusk.png",
+        "textures/band-defiance.png"
+      ],
+      "content": "sha256:0e98748cc3dd81bb9ad9227f7b9c1e3dd6f20ec35474f5b6af5eca570747db26",
+      "previousContent": [
+        "sha256:751b3d2aac630d0f1685ce579297fde6c07c7d6bdb338514bdc5ed8bc1279e95",
+        "sha256:b7ab2cae35d3c44461f3ff6abdf3dca798b539e8591abd53162d83f46b094877",
+        "sha256:acaf5e90f2fdf891b94da1c3a6428474aaf239a7118b4365a49a5e2f80ef9691"
+      ]
+    },
+    {
+      "name": "ChapterCard",
+      "category": "menu",
+      "file": "ChapterCard.xt",
+      "thumbnail": "thumbnails/ChapterCard.png",
+      "description": "Centred chapter title card: chapter number, title, a red rule and a place/date line; fades in and out.",
+      "requires": {
+        "slots": [
+          "number",
+          "title",
+          "date"
+        ]
+      },
+      "timelines": [
+        "intro",
+        "outro"
+      ],
+      "triggers": [
+        "show: play(intro)",
+        "hide: play(outro) then hide"
+      ],
+      "tokens": [
+        {
+          "name": "--color-danger",
+          "default": "#a3241c"
+        },
+        {
+          "name": "--color-text-label",
+          "default": "#d6d0c2"
+        },
+        {
+          "name": "--color-text-quiet",
+          "default": "#bdb6a8"
+        },
+        {
+          "name": "--color-text-strong",
+          "default": "#f6f1e6"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-display",
+          "default": "\"Noto Serif\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-caption",
+          "default": "12px"
+        },
+        {
+          "name": "--font-size-chapter",
+          "default": "40px"
+        },
+        {
+          "name": "--font-size-s",
+          "default": "13px"
+        },
+        {
+          "name": "--space-1",
+          "default": "4px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        },
+        {
+          "name": "--space-6",
+          "default": "24px"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [],
+      "content": "sha256:13b4c9f2be2f8502d1b08cded74b55140bc1a52fd91ca4fa538a781423f8a872",
+      "previousContent": [
+        "sha256:d4884fed70ff35faa6d8c8245366fbabff5496f47ffc69624c9964426ced4518",
+        "sha256:d7665f36e3828f3dfedc31a77b80b0999563a2595829b640d29fbb67cd550287"
+      ]
+    },
+    {
+      "name": "LoadingIndicator",
+      "category": "menu",
+      "file": "LoadingIndicator.xt",
+      "thumbnail": "thumbnails/LoadingIndicator.png",
+      "description": "Loading block: a label that breathes, a hairline progress bar for `progress` 0-100 and a tip line.",
+      "requires": {
+        "slots": [
+          "label",
+          "tip"
+        ]
+      },
+      "ports": [
+        {
+          "name": "progress",
+          "type": "number",
+          "dir": "in"
+        }
+      ],
+      "timelines": [
+        "pulse"
+      ],
+      "triggers": [
+        "show: play(pulse, loop)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#efe8d8"
+        },
+        {
+          "name": "--color-line",
+          "default": "#ffffff33"
+        },
+        {
+          "name": "--color-text-dim",
+          "default": "#a39e93"
+        },
+        {
+          "name": "--color-text-label",
+          "default": "#d6d0c2"
+        },
+        {
+          "name": "--color-text-quiet",
+          "default": "#bdb6a8"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-caption",
+          "default": "12px"
+        },
+        {
+          "name": "--font-size-s",
+          "default": "13px"
+        },
+        {
+          "name": "--font-size-xs",
+          "default": "11px"
+        },
+        {
+          "name": "--letter-label",
+          "default": "2px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [],
+      "content": "sha256:f354d34cb18b767c1887305309b673761c4d9b73a84f112376bca44b055acae7",
+      "previousContent": [
+        "sha256:38ff753c611f4ae7786788e33de797d45c0cad0c3accff8ddb27e708c89ae06c",
+        "sha256:42be3ea33f516f764c38589a59c9f0af56e2a5d758a5efc0e2fcca7271151d23"
+      ]
+    },
+    {
+      "name": "PickupNotice",
+      "category": "overlay",
+      "file": "PickupNotice.xt",
+      "thumbnail": "thumbnails/PickupNotice.png",
+      "description": "Pickup/journal notice: a cream mark, a small-caps heading and the item name; slides in on show, out on hide.",
+      "requires": {
+        "slots": [
+          "title",
+          "detail"
+        ]
+      },
+      "timelines": [
+        "intro",
+        "outro"
+      ],
+      "triggers": [
+        "show: play(intro)",
+        "hide: play(outro) then hide"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#efe8d8"
+        },
+        {
+          "name": "--color-border",
+          "default": "#ffffff26"
+        },
+        {
+          "name": "--color-surface",
+          "default": "#0a0a0ae0"
+        },
+        {
+          "name": "--color-text-label",
+          "default": "#d6d0c2"
+        },
+        {
+          "name": "--color-text-strong",
+          "default": "#f6f1e6"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-display",
+          "default": "\"Noto Serif\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-m",
+          "default": "15px"
+        },
+        {
+          "name": "--font-size-xs",
+          "default": "11px"
+        },
+        {
+          "name": "--letter-label",
+          "default": "2px"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        },
+        {
+          "name": "--space-3",
+          "default": "12px"
+        },
+        {
+          "name": "--space-4",
+          "default": "16px"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [],
+      "content": "sha256:6f91b67ce9dbc22f060a333b331714c637aac1b0dabb31df600b6ee78e501cec",
+      "previousContent": [
+        "sha256:35bd88cbedcb068358c1aa0d6fb77dc1ec05f9aa87d94e5785b9204b081931b3"
+      ]
+    },
+    {
+      "name": "ConfirmDialog",
+      "category": "overlay",
+      "file": "ConfirmDialog.xt",
+      "thumbnail": "thumbnails/ConfirmDialog.png",
+      "description": "Modal confirm: strong scrim, scratched dark panel with title, rule, body and an actions slot for key hints; Escape emits `cancel`.",
+      "requires": {
+        "slots": [
+          "title",
+          "body",
+          "actions"
+        ]
+      },
+      "ports": [
+        {
+          "name": "cancel",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [
+        "intro",
+        "outro"
+      ],
+      "triggers": [
+        "show: play(intro)",
+        "hide: play(outro) then hide",
+        "key(Escape): sound(ui_back); emit(cancel)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-border-strong",
+          "default": "#ffffff40"
+        },
+        {
+          "name": "--color-line",
+          "default": "#ffffff33"
+        },
+        {
+          "name": "--color-scrim-strong",
+          "default": "#000000eb"
+        },
+        {
+          "name": "--color-surface",
+          "default": "#0a0a0ae0"
+        },
+        {
+          "name": "--color-text",
+          "default": "#e8e2d4"
+        },
+        {
+          "name": "--color-text-strong",
+          "default": "#f6f1e6"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-display",
+          "default": "\"Noto Serif\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-l",
+          "default": "19px"
+        },
+        {
+          "name": "--font-size-text",
+          "default": "14px"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        },
+        {
+          "name": "--space-3",
+          "default": "12px"
+        },
+        {
+          "name": "--space-5",
+          "default": "20px"
+        },
+        {
+          "name": "--space-6",
+          "default": "24px"
+        },
+        {
+          "name": "--tex-scratch",
+          "default": "url(\"textures/scratch.png\")"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [
+        "textures/scratch.png"
+      ],
+      "content": "sha256:8e135c5e0a10aa32f35c6ef143df109a7146b2ae732e57b9a249387ba30f82a3",
+      "previousContent": [
+        "sha256:b86f9b9aeba41eb6398a04dd73b56165d0c95f05163729f8be613f05abb36bf8",
+        "sha256:93c89607eab255cbc3712087a154b852ca509a2cf4a81332eeb88062986b1fca"
+      ]
+    },
+    {
+      "name": "SubtitleLine",
+      "category": "overlay",
+      "file": "SubtitleLine.xt",
+      "thumbnail": "thumbnails/SubtitleLine.png",
+      "description": "Subtitle line on a soft scrim: small-caps speaker over a centred line; Narrator variant drops the speaker and italicises.",
+      "requires": {
+        "slots": [
+          "speaker",
+          "line"
+        ]
+      },
+      "variants": {
+        "Speaker": [
+          "Named",
+          "Narrator"
+        ]
+      },
+      "tokens": [
+        {
+          "name": "--color-scrim-soft",
+          "default": "#00000073"
+        },
+        {
+          "name": "--color-text",
+          "default": "#e8e2d4"
+        },
+        {
+          "name": "--color-text-quiet",
+          "default": "#bdb6a8"
+        },
+        {
+          "name": "--color-text-strong",
+          "default": "#f6f1e6"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-subtitle",
+          "default": "17px"
+        },
+        {
+          "name": "--font-size-xs",
+          "default": "11px"
+        },
+        {
+          "name": "--letter-label",
+          "default": "2px"
+        },
+        {
+          "name": "--space-1",
+          "default": "4px"
+        },
+        {
+          "name": "--space-4",
+          "default": "16px"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [],
+      "content": "sha256:300a1891566522530915df1710a2f657993e6ac175a2095cfdb7c394ac924db7",
+      "previousContent": [
+        "sha256:515bb86779bdde32d5ef4457ac5f7a38cc217e869d6fa494bc95f4d71149cfe6",
+        "sha256:b1a4bd444669de35b42c9e77ae1cb03151af1ece87de6c596e1c7e00d048001f"
+      ]
+    },
+    {
+      "name": "SettingsTab",
+      "category": "form",
+      "file": "SettingsTab.xt",
+      "thumbnail": "thumbnails/SettingsTab.png",
+      "description": "Settings category tab with the grime band for hover and selection; emits `pressed`.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Pressed",
+          "Focus",
+          "Disabled",
+          "Selected"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "ports": [
+        {
+          "name": "selected",
+          "type": "bool",
+          "dir": "in"
+        },
+        {
+          "name": "pressed",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [
+        "hover-in",
+        "hover-out",
+        "press"
+      ],
+      "triggers": [
+        "hover: sound(ui_hover); play(hover-in)",
+        "leave: play(hover-out)",
+        "press: sound(ui_confirm); play(press)",
+        "click: emit(pressed)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent-pressed",
+          "default": "#bdb6a8"
+        },
+        {
+          "name": "--color-band-edge",
+          "default": "#5c2320"
+        },
+        {
+          "name": "--color-disabled-text",
+          "default": "#5e5a52"
+        },
+        {
+          "name": "--color-focus",
+          "default": "#efe8d8"
+        },
+        {
+          "name": "--color-text-quiet",
+          "default": "#bdb6a8"
+        },
+        {
+          "name": "--color-text-strong",
+          "default": "#f6f1e6"
+        },
+        {
+          "name": "--font-display",
+          "default": "\"Noto Serif\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-l",
+          "default": "19px"
+        },
+        {
+          "name": "--motion-normal",
+          "default": "160ms"
+        },
+        {
+          "name": "--rule-thick",
+          "default": "2px"
+        },
+        {
+          "name": "--space-4",
+          "default": "16px"
+        },
+        {
+          "name": "--tex-band-short",
+          "default": "url(\"textures/band-short-dusk.png\")"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [
+        "textures/band-short-dusk.png",
+        "textures/band-short-defiance.png"
+      ],
+      "content": "sha256:c83ffcdac96be1de5b4837a6b93b33efa27cf4fb57e8f7d0e115bb1167e8b3e6",
+      "previousContent": []
+    },
+    {
+      "name": "SliderRow",
+      "category": "form",
+      "file": "SliderRow.xt",
+      "thumbnail": "thumbnails/SliderRow.png",
+      "description": "Settings row with a hairline slider and its numeric value; drag or nav keys change `value`.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Focus",
+          "Disabled"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "ports": [
+        {
+          "name": "value",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "min",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "max",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "decrease",
+          "type": "event",
+          "dir": "out"
+        },
+        {
+          "name": "increase",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "triggers": [
+        "drag.value: set(value, event.value | range(0, 1, min, max) | round)",
+        "nav.value: sound(ui_tick); if lt(0) emit(decrease) else emit(increase)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent-hover",
+          "default": "#f6f1e6"
+        },
+        {
+          "name": "--color-border",
+          "default": "#ffffff26"
+        },
+        {
+          "name": "--color-disabled-text",
+          "default": "#5e5a52"
+        },
+        {
+          "name": "--color-line-hairline",
+          "default": "#ffffff14"
+        },
+        {
+          "name": "--color-surface-raised",
+          "default": "#ffffff0a"
+        },
+        {
+          "name": "--color-text",
+          "default": "#e8e2d4"
+        },
+        {
+          "name": "--color-text-label",
+          "default": "#d6d0c2"
+        },
+        {
+          "name": "--color-text-strong",
+          "default": "#f6f1e6"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-m",
+          "default": "15px"
+        },
+        {
+          "name": "--font-size-text",
+          "default": "14px"
+        },
+        {
+          "name": "--motion-fast",
+          "default": "140ms"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--size-row",
+          "default": "40px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        },
+        {
+          "name": "--space-3",
+          "default": "12px"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [],
+      "content": "sha256:5628e97d38143428d2714250af936d4fa41a6223f3009a8abc1de78505c83760",
+      "previousContent": [
+        "sha256:6ea2966ae05480f85e179c3caa12f73d8217df17b22f4d53cad8911c7d0892fd"
+      ]
+    },
+    {
+      "name": "ToggleRow",
+      "category": "form",
+      "file": "ToggleRow.xt",
+      "thumbnail": "thumbnails/ToggleRow.png",
+      "description": "Settings row with On/Off text and a pill switch bound to `on`; emits `toggled`.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Focus",
+          "Checked",
+          "Disabled"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "ports": [
+        {
+          "name": "on",
+          "type": "bool",
+          "dir": "in"
+        },
+        {
+          "name": "toggled",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "triggers": [
+        "check: sound(ui_toggle); set(on, true); emit(toggled)",
+        "uncheck: sound(ui_toggle); set(on, false); emit(toggled)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-border-strong",
+          "default": "#ffffff40"
+        },
+        {
+          "name": "--color-disabled-text",
+          "default": "#5e5a52"
+        },
+        {
+          "name": "--color-line-hairline",
+          "default": "#ffffff14"
+        },
+        {
+          "name": "--color-surface-raised",
+          "default": "#ffffff0a"
+        },
+        {
+          "name": "--color-text",
+          "default": "#e8e2d4"
+        },
+        {
+          "name": "--color-text-dim",
+          "default": "#a39e93"
+        },
+        {
+          "name": "--color-text-label",
+          "default": "#d6d0c2"
+        },
+        {
+          "name": "--color-text-quiet",
+          "default": "#bdb6a8"
+        },
+        {
+          "name": "--color-text-strong",
+          "default": "#f6f1e6"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-m",
+          "default": "15px"
+        },
+        {
+          "name": "--font-size-text",
+          "default": "14px"
+        },
+        {
+          "name": "--motion-fast",
+          "default": "140ms"
+        },
+        {
+          "name": "--radius-full",
+          "default": "999px"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--size-row",
+          "default": "40px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        },
+        {
+          "name": "--space-3",
+          "default": "12px"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [],
+      "content": "sha256:fb8dd7cc5b4b3e9a6729579fb033cd35612f322b5284eb3ed17273bc1d844d4b",
+      "previousContent": [
+        "sha256:f5fb4c2d8076042dd94d05cbaa2f3445c979456e9afd4436c794a17037b643f3"
+      ]
+    },
+    {
+      "name": "CyclerRow",
+      "category": "form",
+      "file": "CyclerRow.xt",
+      "thumbnail": "thumbnails/CyclerRow.png",
+      "description": "Settings row with a boxed `< value >` picker; arrows and Left/Right emit `prev`/`next`.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Focus",
+          "Disabled"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "ports": [
+        {
+          "name": "value",
+          "type": "string",
+          "dir": "in"
+        },
+        {
+          "name": "prev",
+          "type": "event",
+          "dir": "out"
+        },
+        {
+          "name": "next",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "triggers": [
+        "key(Left): sound(ui_tick); emit(prev)",
+        "key(Right): sound(ui_tick); emit(next)",
+        "press: sound(ui_tick)",
+        "click: emit(prev)",
+        "press: sound(ui_tick)",
+        "click: emit(next)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#efe8d8"
+        },
+        {
+          "name": "--color-border-strong",
+          "default": "#ffffff40"
+        },
+        {
+          "name": "--color-disabled-text",
+          "default": "#5e5a52"
+        },
+        {
+          "name": "--color-line-hairline",
+          "default": "#ffffff14"
+        },
+        {
+          "name": "--color-surface-raised",
+          "default": "#ffffff0a"
+        },
+        {
+          "name": "--color-surface-sunken",
+          "default": "#00000066"
+        },
+        {
+          "name": "--color-text",
+          "default": "#e8e2d4"
+        },
+        {
+          "name": "--color-text-label",
+          "default": "#d6d0c2"
+        },
+        {
+          "name": "--color-text-strong",
+          "default": "#f6f1e6"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-m",
+          "default": "15px"
+        },
+        {
+          "name": "--font-size-s",
+          "default": "13px"
+        },
+        {
+          "name": "--motion-fast",
+          "default": "140ms"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--size-box",
+          "default": "26px"
+        },
+        {
+          "name": "--size-box-w",
+          "default": "176px"
+        },
+        {
+          "name": "--size-row",
+          "default": "40px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        },
+        {
+          "name": "--space-3",
+          "default": "12px"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [],
+      "content": "sha256:22c3047f4f5d2b7cf5cb6acb65b1e7e807cca4b13b186a5d2b04c7d428f7216b",
+      "previousContent": [
+        "sha256:1f85e782bdc3107c9de8c034dae567909141e3bb2b433ce944589264e7350557"
+      ]
+    },
+    {
+      "name": "KeyBindRow",
+      "category": "form",
+      "file": "KeyBindRow.xt",
+      "thumbnail": "thumbnails/KeyBindRow.png",
+      "description": "Settings row showing a bound key; `listening` swaps it for a pulsing prompt; click or Enter emits `rebind`.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Focus",
+          "Disabled",
+          "Bound",
+          "Listening"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "ports": [
+        {
+          "name": "key",
+          "type": "string",
+          "dir": "in"
+        },
+        {
+          "name": "listening",
+          "type": "bool",
+          "dir": "in"
+        },
+        {
+          "name": "rebind",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [
+        "pulse"
+      ],
+      "triggers": [
+        "click: sound(ui_confirm); emit(rebind)",
+        "key(Enter): sound(ui_confirm); emit(rebind)",
+        "port(listening): if eq(1) play(pulse, loop) else stop(pulse)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#efe8d8"
+        },
+        {
+          "name": "--color-border-strong",
+          "default": "#ffffff40"
+        },
+        {
+          "name": "--color-disabled-text",
+          "default": "#5e5a52"
+        },
+        {
+          "name": "--color-line-hairline",
+          "default": "#ffffff14"
+        },
+        {
+          "name": "--color-surface-raised",
+          "default": "#ffffff0a"
+        },
+        {
+          "name": "--color-surface-sunken",
+          "default": "#00000066"
+        },
+        {
+          "name": "--color-text",
+          "default": "#e8e2d4"
+        },
+        {
+          "name": "--color-text-dim",
+          "default": "#a39e93"
+        },
+        {
+          "name": "--color-text-label",
+          "default": "#d6d0c2"
+        },
+        {
+          "name": "--color-text-strong",
+          "default": "#f6f1e6"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-m",
+          "default": "15px"
+        },
+        {
+          "name": "--font-size-s",
+          "default": "13px"
+        },
+        {
+          "name": "--motion-fast",
+          "default": "140ms"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--size-box",
+          "default": "26px"
+        },
+        {
+          "name": "--size-row",
+          "default": "40px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        },
+        {
+          "name": "--space-3",
+          "default": "12px"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [],
+      "content": "sha256:92645297785c56ea8adc063ffffd73d74b9d8c4035e440f64d934e52f33cb747",
+      "previousContent": [
+        "sha256:c6cbbedffc23c75d6afaabcd00c3acff446394c2b081eca3b33d194e1a6704e5",
+        "sha256:9d12fa6c489d5a2cef7cd1097a21bccd9256a67aa060bc3e13aff72934ef5d3c",
+        "sha256:6d1d1e193d97e8208947ca8fb6bd792e842839ee6c1a80fb72f9ced6541ecffc"
+      ]
+    },
+    {
+      "name": "ActionRow",
+      "category": "form",
+      "file": "ActionRow.xt",
+      "thumbnail": "thumbnails/ActionRow.png",
+      "description": "Settings row with a boxed action button (e.g. Play Test Sound); emits `pressed`.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Pressed",
+          "Focus",
+          "Disabled"
+        ],
+        "slots": [
+          "label",
+          "action"
+        ]
+      },
+      "ports": [
+        {
+          "name": "pressed",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [
+        "press"
+      ],
+      "triggers": [
+        "press: sound(ui_confirm); play(press)",
+        "click: emit(pressed)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#efe8d8"
+        },
+        {
+          "name": "--color-accent-pressed",
+          "default": "#bdb6a8"
+        },
+        {
+          "name": "--color-border-strong",
+          "default": "#ffffff40"
+        },
+        {
+          "name": "--color-disabled-text",
+          "default": "#5e5a52"
+        },
+        {
+          "name": "--color-line-hairline",
+          "default": "#ffffff14"
+        },
+        {
+          "name": "--color-surface-raised",
+          "default": "#ffffff0a"
+        },
+        {
+          "name": "--color-surface-sunken",
+          "default": "#00000066"
+        },
+        {
+          "name": "--color-text",
+          "default": "#e8e2d4"
+        },
+        {
+          "name": "--color-text-label",
+          "default": "#d6d0c2"
+        },
+        {
+          "name": "--color-text-strong",
+          "default": "#f6f1e6"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-m",
+          "default": "15px"
+        },
+        {
+          "name": "--font-size-s",
+          "default": "13px"
+        },
+        {
+          "name": "--motion-fast",
+          "default": "140ms"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--size-box",
+          "default": "26px"
+        },
+        {
+          "name": "--size-box-w",
+          "default": "176px"
+        },
+        {
+          "name": "--size-row",
+          "default": "40px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        },
+        {
+          "name": "--space-3",
+          "default": "12px"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [],
+      "content": "sha256:3848ff6eebdc74d65af098bab128b503feecb8469fed85d31cec4ac60e52b904",
+      "previousContent": [
+        "sha256:dedfa9feba2287d6ebd1bda6e10e6fe3878934e672dc163e2aeb5e64ebb961de"
+      ]
+    },
+    {
+      "name": "ScreenShade",
+      "category": "scene",
+      "file": "ScreenShade.xt",
+      "thumbnail": "thumbnails/ScreenShade.png",
+      "description": "Full-bleed darkening over scene art: a vignette, a left fade for menus or a bottom fade for subtitles.",
+      "variants": {
+        "Kind": [
+          "Vignette",
+          "Left",
+          "Bottom"
+        ]
+      },
+      "tokens": [
+        {
+          "name": "--color-scrim",
+          "default": "#000000b3"
+        },
+        {
+          "name": "--color-scrim-soft",
+          "default": "#00000073"
+        },
+        {
+          "name": "--color-scrim-strong",
+          "default": "#000000eb"
+        },
+        {
+          "name": "--color-shade-clear",
+          "default": "#00000000"
+        },
+        {
+          "name": "--color-shade-edge",
+          "default": "#00000099"
+        }
+      ],
+      "fonts": [],
+      "textures": [],
+      "content": "sha256:329142866bec133ead64baa4ae67ee5795ff7c04df3a452d2fade06b6bf98e6d",
+      "previousContent": []
+    },
+    {
+      "name": "RainLayer",
+      "category": "scene",
+      "file": "RainLayer.xt",
+      "thumbnail": "thumbnails/RainLayer.png",
+      "description": "Tiled rain streaks falling in a seamless 0.5 s loop; Light or Heavy.",
+      "variants": {
+        "Density": [
+          "Light",
+          "Heavy"
+        ]
+      },
+      "timelines": [
+        "fall"
+      ],
+      "triggers": [
+        "show: play(fall, loop)"
+      ],
+      "tokens": [
+        {
+          "name": "--tex-rain",
+          "default": "url(\"textures/rain.png\")"
+        }
+      ],
+      "fonts": [],
+      "textures": [
+        "textures/rain.png"
+      ],
+      "content": "sha256:2333bc9729520bebca6064ca801678eddc4fe9706ac9c193a5f34e24f779e7e6",
+      "previousContent": []
+    },
+    {
+      "name": "FilmGrain",
+      "category": "scene",
+      "file": "FilmGrain.xt",
+      "thumbnail": "thumbnails/FilmGrain.png",
+      "description": "Animated film grain overlay that jitters in a 0.5 s loop.",
+      "timelines": [
+        "jitter"
+      ],
+      "triggers": [
+        "show: play(jitter, loop)"
+      ],
+      "tokens": [
+        {
+          "name": "--tex-film-grain",
+          "default": "url(\"textures/grain.png\")"
+        }
+      ],
+      "fonts": [],
+      "textures": [
+        "textures/grain.png"
+      ],
+      "content": "sha256:bdb14966204e5260dcc054e8ce4fc132cffd0204d4ec6e2c6c0c0f02ef11e240",
+      "previousContent": [
+        "sha256:ac26b8ffd1b379215fc8c5221e27199d1f0b1bf6f6e4ee3a4e27d5a9bceb4084"
+      ]
+    },
+    {
+      "name": "FogBank",
+      "category": "scene",
+      "file": "FogBank.xt",
+      "thumbnail": "thumbnails/FogBank.png",
+      "description": "Low fog bank tiled across the bottom of a scene; Low or High.",
+      "variants": {
+        "Height": [
+          "Low",
+          "High"
+        ]
+      },
+      "tokens": [
+        {
+          "name": "--tex-fog",
+          "default": "url(\"textures/fog.png\")"
+        }
+      ],
+      "fonts": [],
+      "textures": [
+        "textures/fog.png"
+      ],
+      "content": "sha256:39b914c3a2f9f7627d25847cf12add62e016e9ac60e175046581c2e1de6fe26a",
+      "previousContent": []
+    },
+    {
+      "name": "BloodEdge",
+      "category": "scene",
+      "file": "BloodEdge.xt",
+      "thumbnail": "thumbnails/BloodEdge.png",
+      "description": "Red damage edge whose opacity follows `level` (0-1); pulses at 0.6 and above.",
+      "requires": {
+        "states": [
+          "Calm",
+          "Critical"
+        ]
+      },
+      "stateGroups": {
+        "Blood": [
+          "Calm",
+          "Critical"
+        ]
+      },
+      "ports": [
+        {
+          "name": "level",
+          "type": "number",
+          "dir": "in"
+        }
+      ],
+      "timelines": [
+        "pulse"
+      ],
+      "triggers": [
+        "port(level): if ge(0.6) play(pulse, loop)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-blood",
+          "default": "#a3241ca6"
+        },
+        {
+          "name": "--color-shade-clear",
+          "default": "#00000000"
+        }
+      ],
+      "fonts": [],
+      "textures": [],
+      "content": "sha256:f29006714d7eaed86d9066b3f3de4501f905814a580ecdebc177155d358d3ec5",
+      "previousContent": [
+        "sha256:85bd3b7328a2dd9119f85a2f75716eb6c0d38d15fb3f87ff6eb3ab441390ed91",
+        "sha256:7c1d4c5a48d4579641c0a9bb904be2f6396602430f895d8b76f60036497519c1"
+      ]
+    },
+    {
+      "name": "TitleLockup",
+      "category": "menu",
+      "file": "TitleLockup.xt",
+      "thumbnail": "thumbnails/TitleLockup.png",
+      "description": "Game title set in live type with a thin red slash and a tracked subtitle; fades in on show.",
+      "requires": {
+        "slots": [
+          "title",
+          "subtitle"
+        ]
+      },
+      "timelines": [
+        "intro"
+      ],
+      "triggers": [
+        "show: play(intro)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-danger",
+          "default": "#a3241c"
+        },
+        {
+          "name": "--color-text-label",
+          "default": "#d6d0c2"
+        },
+        {
+          "name": "--color-text-strong",
+          "default": "#f6f1e6"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-display",
+          "default": "\"Noto Serif\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-s",
+          "default": "13px"
+        },
+        {
+          "name": "--font-size-title",
+          "default": "72px"
+        },
+        {
+          "name": "--space-1",
+          "default": "4px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [],
+      "content": "sha256:719cde5c543d1b764c334630233422c7b4a8d724f91e3862f5ff3278509c60f7",
+      "previousContent": [
+        "sha256:d93e2dd5b93a0ac2e3a69b519b33517bead1a6c4329422f418064c0319e98b1d",
+        "sha256:a6fef5f72dec06191e5ab7cb77a44a87c97866a1bc9a321c40375c881bd759ca",
+        "sha256:88842e76beccf2da3b3584aae0d6f9ca6879d5a498333c2c535b9b6de461bec5"
+      ]
+    },
+    {
+      "name": "KeyHint",
+      "category": "menu",
+      "file": "KeyHint.xt",
+      "thumbnail": "thumbnails/KeyHint.png",
+      "description": "Footer key hint: one or two keycaps and a label, optional divider before it; clickable, emits `pressed`.",
+      "requires": {
+        "states": [
+          "Hover",
+          "Pressed"
+        ],
+        "slots": [
+          "key",
+          "key2",
+          "label"
+        ]
+      },
+      "variants": {
+        "Keys": [
+          "One",
+          "Two"
+        ],
+        "Sep": [
+          "None",
+          "Before"
+        ]
+      },
+      "ports": [
+        {
+          "name": "pressed",
+          "type": "event",
+          "dir": "out"
+        }
+      ],
+      "timelines": [
+        "press"
+      ],
+      "triggers": [
+        "hover: sound(ui_hover)",
+        "press: sound(ui_confirm); play(press)",
+        "click: emit(pressed)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent-pressed",
+          "default": "#bdb6a8"
+        },
+        {
+          "name": "--color-line",
+          "default": "#ffffff33"
+        },
+        {
+          "name": "--color-line-hairline",
+          "default": "#ffffff14"
+        },
+        {
+          "name": "--color-text",
+          "default": "#e8e2d4"
+        },
+        {
+          "name": "--color-text-label",
+          "default": "#d6d0c2"
+        },
+        {
+          "name": "--color-text-strong",
+          "default": "#f6f1e6"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-caption",
+          "default": "12px"
+        },
+        {
+          "name": "--font-size-m",
+          "default": "15px"
+        },
+        {
+          "name": "--motion-fast",
+          "default": "140ms"
+        },
+        {
+          "name": "--radius-s",
+          "default": "3px"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [],
+      "content": "sha256:fb5c81d7afb669e57573043a62bf29a64e9c641f8d88f8d93f8b3c17bbd444da",
+      "previousContent": [
+        "sha256:6d9823bef8b559a526d3b7da7e61d6dba0aa1223ca0524efe27b262d3023d0f6",
+        "sha256:8e513395431546ee99e253356ae3d090c4436693fa8cbb03816275f9e114aae4",
+        "sha256:d5c0ef70ffd8ce6aac6ee407abaeb4a66c75e0998af503ee0015835a723e625a",
+        "sha256:6b7862463dcff0f758887e41198651022c4595e561f7bc1a9c4e611914ed8353"
+      ]
+    },
+    {
+      "name": "VersionTag",
+      "category": "menu",
+      "file": "VersionTag.xt",
+      "thumbnail": "thumbnails/VersionTag.png",
+      "description": "Small build/version caption for a screen corner.",
+      "requires": {
+        "slots": [
+          "text"
+        ]
+      },
+      "tokens": [
+        {
+          "name": "--color-text-dim",
+          "default": "#a39e93"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-caption",
+          "default": "12px"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [],
+      "content": "sha256:c2af3536621a3196e7d1440dade6c800a88c679ee2d0d7b57817084ce3cecd70",
+      "previousContent": [
+        "sha256:d7754ef5cd80056bbaf3cd8c8b592e16261b544593146a503d37ea9008b90238"
+      ]
+    },
+    {
+      "name": "SiteCard",
+      "category": "menu",
+      "file": "SiteCard.xt",
+      "thumbnail": "thumbnails/SiteCard.png",
+      "description": "Right-aligned three-line site plaque (place, city, years) with a hairline rule.",
+      "requires": {
+        "slots": [
+          "line1",
+          "line2",
+          "line3"
+        ]
+      },
+      "tokens": [
+        {
+          "name": "--color-line",
+          "default": "#ffffff33"
+        },
+        {
+          "name": "--color-text-quiet",
+          "default": "#bdb6a8"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-xs",
+          "default": "11px"
+        },
+        {
+          "name": "--letter-label",
+          "default": "2px"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-3",
+          "default": "12px"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [],
+      "content": "sha256:72bff564e52b9be7e6bdb428d4369897bd2ce54f91c12a3c138356ca9a56a8ee",
+      "previousContent": [
+        "sha256:2cd97222569bdaa1b5ddb6d6fef01545f74e817afb5a605e297bbbcf70ec8bc2",
+        "sha256:ca5ce79044e68b83613eb88601fc866a5564a7f89e5dd637a7603a17b2a35885"
+      ]
+    },
+    {
+      "name": "ObjectiveBanner",
+      "category": "hud",
+      "file": "ObjectiveBanner.xt",
+      "thumbnail": "thumbnails/ObjectiveBanner.png",
+      "description": "Top-left objective block: a rule, the `Objective:` label and the current objective; replays a fade when it changes.",
+      "requires": {
+        "slots": [
+          "label"
+        ]
+      },
+      "ports": [
+        {
+          "name": "objective",
+          "type": "string",
+          "dir": "in"
+        }
+      ],
+      "timelines": [
+        "update"
+      ],
+      "triggers": [
+        "port(objective): play(update)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#efe8d8"
+        },
+        {
+          "name": "--color-line",
+          "default": "#ffffff33"
+        },
+        {
+          "name": "--color-text-label",
+          "default": "#d6d0c2"
+        },
+        {
+          "name": "--color-text-strong",
+          "default": "#f6f1e6"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-display",
+          "default": "\"Noto Serif\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-l",
+          "default": "19px"
+        },
+        {
+          "name": "--font-size-text",
+          "default": "14px"
+        },
+        {
+          "name": "--space-3",
+          "default": "12px"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [],
+      "content": "sha256:123be49407f9bb83fbfe87faf77963556d5319f2baf2c5661c2554a868457953",
+      "previousContent": [
+        "sha256:0d17c627c8af7980a4459503dac09e8c35516fbd07c323b946c977819b7f7cf6"
+      ]
+    },
+    {
+      "name": "LocationClock",
+      "category": "hud",
+      "file": "LocationClock.xt",
+      "thumbnail": "thumbnails/LocationClock.png",
+      "description": "Top-right location name over a rule and a 24-hour clock.",
+      "ports": [
+        {
+          "name": "location",
+          "type": "string",
+          "dir": "in"
+        },
+        {
+          "name": "clock",
+          "type": "string",
+          "dir": "in"
+        }
+      ],
+      "tokens": [
+        {
+          "name": "--color-line",
+          "default": "#ffffff33"
+        },
+        {
+          "name": "--color-text",
+          "default": "#e8e2d4"
+        },
+        {
+          "name": "--color-text-quiet",
+          "default": "#bdb6a8"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-s",
+          "default": "13px"
+        },
+        {
+          "name": "--font-size-text",
+          "default": "14px"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [],
+      "content": "sha256:4a934255dd7c9c98bf3dda2aa8f1eadaefbf96e3577da68867649fad07438291",
+      "previousContent": [
+        "sha256:1bfb6dad34edadfa012d49b34099688ec9c3c8b874d19ce9d4f20d10503e71bc"
+      ]
+    },
+    {
+      "name": "VitalBar",
+      "category": "hud",
+      "file": "VitalBar.xt",
+      "thumbnail": "thumbnails/VitalBar.png",
+      "description": "HUD vital: line icon, small-caps label and a thin bar for `value` 0-100; turns red below 30; `hit` flashes it.",
+      "requires": {
+        "states": [
+          "Normal",
+          "Low"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "variants": {
+        "Icon": [
+          "Pulse",
+          "Runner"
+        ]
+      },
+      "stateGroups": {
+        "Level": [
+          "Normal",
+          "Low"
+        ]
+      },
+      "ports": [
+        {
+          "name": "value",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "hit",
+          "type": "event",
+          "dir": "in"
+        }
+      ],
+      "timelines": [
+        "hit"
+      ],
+      "triggers": [
+        "port(hit): play(hit)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-border",
+          "default": "#ffffff26"
+        },
+        {
+          "name": "--color-danger",
+          "default": "#a3241c"
+        },
+        {
+          "name": "--color-text",
+          "default": "#e8e2d4"
+        },
+        {
+          "name": "--color-text-label",
+          "default": "#d6d0c2"
+        },
+        {
+          "name": "--color-track",
+          "default": "#ffffff1a"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-xs",
+          "default": "11px"
+        },
+        {
+          "name": "--letter-label",
+          "default": "2px"
+        },
+        {
+          "name": "--motion-normal",
+          "default": "160ms"
+        },
+        {
+          "name": "--radius-full",
+          "default": "999px"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [],
+      "content": "sha256:56e131620b86c6dc11d91a3234ff854df9dcc92830cf244ecac7c368c38a9b44",
+      "previousContent": [
+        "sha256:44318404b0d063b4e28c8772e49349f7409929c2a7c6440218a0aae22da3ffb6"
+      ]
+    },
+    {
+      "name": "NoiseMeter",
+      "category": "hud",
+      "file": "NoiseMeter.xt",
+      "thumbnail": "thumbnails/NoiseMeter.png",
+      "description": "HUD noise meter: mic icon, label, a bar waveform and a level word, sage/amber/red for `level` 0/1/2.",
+      "requires": {
+        "states": [
+          "Quiet",
+          "Alert",
+          "Loud"
+        ],
+        "slots": [
+          "label"
+        ]
+      },
+      "stateGroups": {
+        "Noise": [
+          "Quiet",
+          "Alert",
+          "Loud"
+        ]
+      },
+      "ports": [
+        {
+          "name": "level",
+          "type": "number",
+          "dir": "in"
+        },
+        {
+          "name": "text",
+          "type": "string",
+          "dir": "in"
+        }
+      ],
+      "timelines": [
+        "pulse"
+      ],
+      "triggers": [
+        "show: play(pulse, loop)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-border-strong",
+          "default": "#ffffff40"
+        },
+        {
+          "name": "--color-danger",
+          "default": "#a3241c"
+        },
+        {
+          "name": "--color-success",
+          "default": "#8fbf8a"
+        },
+        {
+          "name": "--color-text",
+          "default": "#e8e2d4"
+        },
+        {
+          "name": "--color-text-label",
+          "default": "#d6d0c2"
+        },
+        {
+          "name": "--color-warning",
+          "default": "#c9a24a"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-s",
+          "default": "13px"
+        },
+        {
+          "name": "--font-size-xs",
+          "default": "11px"
+        },
+        {
+          "name": "--letter-label",
+          "default": "2px"
+        },
+        {
+          "name": "--radius-full",
+          "default": "999px"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-2",
+          "default": "8px"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [],
+      "content": "sha256:602fe20347af84fa874a61f1b91f8c6d36d7198b4779fd970373697f56c7c5ce",
+      "previousContent": [
+        "sha256:686790ca1294953580f6d65be8571ec503857ddf340d8abb196ec89d6c3cb6b2"
+      ]
+    },
+    {
+      "name": "InteractPrompt",
+      "category": "hud",
+      "file": "InteractPrompt.xt",
+      "thumbnail": "thumbnails/InteractPrompt.png",
+      "description": "Interaction prompt: keycap and action label on a soft scrim, shown by `visible`.",
+      "requires": {
+        "states": [
+          "Shown",
+          "Hidden"
+        ],
+        "slots": [
+          "key"
+        ]
+      },
+      "stateGroups": {
+        "Show": [
+          "Shown",
+          "Hidden"
+        ]
+      },
+      "ports": [
+        {
+          "name": "label",
+          "type": "string",
+          "dir": "in"
+        },
+        {
+          "name": "visible",
+          "type": "bool",
+          "dir": "in"
+        }
+      ],
+      "timelines": [
+        "intro"
+      ],
+      "triggers": [
+        "port(visible): if eq(1) play(intro)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-scrim-soft",
+          "default": "#00000073"
+        },
+        {
+          "name": "--color-text",
+          "default": "#e8e2d4"
+        },
+        {
+          "name": "--color-text-strong",
+          "default": "#f6f1e6"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-m",
+          "default": "15px"
+        },
+        {
+          "name": "--font-size-s",
+          "default": "13px"
+        },
+        {
+          "name": "--radius-s",
+          "default": "3px"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-1",
+          "default": "4px"
+        },
+        {
+          "name": "--space-3",
+          "default": "12px"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [],
+      "content": "sha256:6f7a87a757eb406fdf08ba0d2c3951b1873f6164165ae8a32523fa65f9bbe9c4",
+      "previousContent": [
+        "sha256:aa0a105472e753803adc32d4eb0ce69bb8ff741da7202c8a716c5ee3a7ae2273",
+        "sha256:28a5b5b2aff07a829c66b3c619ed9123aec100bbaa67bfe4ae24180ca4c07998"
+      ]
+    },
+    {
+      "name": "InventorySlot",
+      "category": "hud",
+      "file": "InventorySlot.xt",
+      "thumbnail": "thumbnails/InventorySlot.png",
+      "description": "Quick-slot cell with a number badge, a line-art item icon (Flashlight, Crowbar, Clipboard, Key or Empty) and a caption; `selected` frames it.",
+      "requires": {
+        "states": [
+          "Selected"
+        ],
+        "slots": [
+          "badge",
+          "caption"
+        ]
+      },
+      "variants": {
+        "Icon": [
+          "Flashlight",
+          "Crowbar",
+          "Clipboard",
+          "Key",
+          "Empty"
+        ]
+      },
+      "ports": [
+        {
+          "name": "selected",
+          "type": "bool",
+          "dir": "in"
+        }
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#efe8d8"
+        },
+        {
+          "name": "--color-border-strong",
+          "default": "#ffffff40"
+        },
+        {
+          "name": "--color-scrim-soft",
+          "default": "#00000073"
+        },
+        {
+          "name": "--color-text",
+          "default": "#e8e2d4"
+        },
+        {
+          "name": "--color-text-dim",
+          "default": "#a39e93"
+        },
+        {
+          "name": "--color-text-label",
+          "default": "#d6d0c2"
+        },
+        {
+          "name": "--color-text-on-accent",
+          "default": "#0a0a0a"
+        },
+        {
+          "name": "--color-text-quiet",
+          "default": "#bdb6a8"
+        },
+        {
+          "name": "--color-track",
+          "default": "#ffffff1a"
+        },
+        {
+          "name": "--font-body",
+          "default": "\"Noto Serif\", \"Georgia\", \"Times New Roman\""
+        },
+        {
+          "name": "--font-size-badge",
+          "default": "10px"
+        },
+        {
+          "name": "--font-size-xs",
+          "default": "11px"
+        },
+        {
+          "name": "--radius-full",
+          "default": "999px"
+        },
+        {
+          "name": "--radius-s",
+          "default": "3px"
+        },
+        {
+          "name": "--rule-thick",
+          "default": "2px"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        },
+        {
+          "name": "--space-1",
+          "default": "4px"
+        }
+      ],
+      "fonts": [
+        "fonts/NotoSerif-Regular.ttf",
+        "fonts/NotoSerif-Bold.ttf",
+        "fonts/NotoSerif-Italic.ttf"
+      ],
+      "textures": [],
+      "content": "sha256:48bed1d25a3af1a9191ecccd1c063d899218972115eae3729c456a1b9af2b5ff",
+      "previousContent": [
+        "sha256:d145993a0f6be629f9429660ffed550ececeade1b3d71474606a47ee1806c440",
+        "sha256:7c380206885068f5db5491e3cce465efd40e9adf97190ffc6afa339a5d7bf9ae"
+      ]
+    },
+    {
+      "name": "FocusDot",
+      "category": "hud",
+      "file": "FocusDot.xt",
+      "thumbnail": "thumbnails/FocusDot.png",
+      "description": "Minimal centre aim dot; `target` adds a ring for something interactable.",
+      "requires": {
+        "states": [
+          "Idle",
+          "Target"
+        ]
+      },
+      "stateGroups": {
+        "Aim": [
+          "Idle",
+          "Target"
+        ]
+      },
+      "ports": [
+        {
+          "name": "target",
+          "type": "bool",
+          "dir": "in"
+        }
+      ],
+      "timelines": [
+        "lock"
+      ],
+      "triggers": [
+        "port(target): if eq(1) play(lock)"
+      ],
+      "tokens": [
+        {
+          "name": "--color-accent",
+          "default": "#efe8d8"
+        },
+        {
+          "name": "--color-text-label",
+          "default": "#d6d0c2"
+        },
+        {
+          "name": "--color-text-strong",
+          "default": "#f6f1e6"
+        },
+        {
+          "name": "--motion-fast",
+          "default": "140ms"
+        },
+        {
+          "name": "--radius-full",
+          "default": "999px"
+        },
+        {
+          "name": "--rule-thin",
+          "default": "1px"
+        }
+      ],
+      "fonts": [],
+      "textures": [],
+      "content": "sha256:7558c00252919884e699269a6db5a62371eca4351b5a9bc94b775a762fcf07bc",
+      "previousContent": [
+        "sha256:877d7e3bb72de7b63a4e15df29490f95d55310a661886810e1ff9c6598a82957"
+      ]
+    }
+  ]
+}

@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 
+#include "compile_check.h"
 #include "doctest.h"
 #include "xt/asset_resolver.h"
 #include "xt/command_list.h"
@@ -29,11 +30,7 @@ std::unique_ptr<Document> loadDoc(const std::string& name, TextShaper* shaper, A
                                   float time = 0.0f) {
     CompileOptions options;
     CompileResult result = compileDocument(layoutPath(name), options);
-    for (const Diagnostic& d : result.diagnostics) {
-        CAPTURE(d.message);
-        CHECK(d.level != Diagnostic::Level::Error);
-    }
-    REQUIRE(result.ok());
+    test::requireCompiled(result);
 
     std::unique_ptr<Document> doc;
     Status status = Document::load(IrBlob{result.ir.data(), result.ir.size()}, true, shaper, assets, doc);
@@ -142,14 +139,14 @@ TEST_CASE("Painter 3D flat (T-727): each flat piece is wrapped in the root plane
     CHECK(checked == 2);
 }
 
-TEST_CASE("Painter 3D flat (T-727): group boundaries -- a clip is split, a Layer group is not") {
+TEST_CASE("Painter 3D flat (T-727, T-762): group boundaries -- a grouping container is one item") {
     NullTextShaper shaper;
     FileAssetResolver assets(XT_TEST_LAYOUT_DIR, nullptr);
     std::unique_ptr<Document> doc = loadDoc("flat_3d_groups.xt", &shaper, &assets);
     CommandList cmds;
     doc->paint(cmds);
 
-    SUBCASE("overflow clip: split, the clip pushed again around each piece") {
+    SUBCASE("overflow clip: one item (T-762), its 3D child inside the clip, the clip pushed once") {
         const int a = fillIndex(cmds, 255, 0, 0);
         const int c1 = fillIndex(cmds, 0, 255, 0);
         const int c2 = fillIndex(cmds, 0, 0, 255);
@@ -164,18 +161,18 @@ TEST_CASE("Painter 3D flat (T-727): group boundaries -- a clip is split, a Layer
             clips += cmd.kind == CmdKind::PushClipRect ? 1 : 0;
             pops += cmd.kind == CmdKind::PopClip ? 1 : 0;
         }
-        CHECK(clips == 2);  // #gbox1's padding box, once per piece (c1, then c3)
+        CHECK(clips == 1);  // #gbox1's padding box, around c1, c2 and c3
         CHECK(pops == clips);
     }
-    SUBCASE("opacity group spanning two pieces: the pre-T-727 order (whole, before the items)") {
+    SUBCASE("opacity group whose content spans a 3D child: one item in document order (T-762)") {
         const int a = fillIndex(cmds, 128, 0, 0);
         const int d1 = fillIndex(cmds, 0, 128, 0);
         const int d2 = fillIndex(cmds, 0, 0, 128);
         const int d3 = fillIndex(cmds, 128, 128, 0);
         REQUIRE(std::min({a, d1, d2, d3}) >= 0);
-        CHECK(d1 < d3);
-        CHECK(d3 < a);
-        CHECK(a < d2);
+        CHECK(a < d1);
+        CHECK(d1 < d2);
+        CHECK(d2 < d3);
     }
     SUBCASE("opacity group whose flat content is one piece: sorted as one item") {
         const int a = fillIndex(cmds, 64, 0, 0);

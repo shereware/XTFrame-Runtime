@@ -250,6 +250,31 @@ if(XT_BUILD_TESTS)
         COMMAND $<TARGET_FILE:xtframe-pack> "${PROJECT_SOURCE_DIR}/Tests/bundle/fixtures/sample"
                 -o "${CMAKE_BINARY_DIR}/xtframe-pack-test-out/sample-ui" --ui nope --no-thumbs)
 
+    # T-805: xtframe-pack leaves nothing in the temp directory, packing or failing
+    # (Tests/cmake/tool_temp_clean.cmake; xtframe-pack never runs the board import itself).
+    add_test(NAME t805_pack_temp_clean_ok
+             COMMAND ${CMAKE_COMMAND} "-DROOT=${CMAKE_BINARY_DIR}/t805_temp/pack-ok-tmp" -DEXPECT_CODE=0
+                     "-DEXPECT_OUTPUT=wrote 2 UI" -P "${PROJECT_SOURCE_DIR}/Tests/cmake/tool_temp_clean.cmake" --
+                     $<TARGET_FILE:xtframe-pack> "${PROJECT_SOURCE_DIR}/Tests/bundle/fixtures/sample"
+                     -o "${CMAKE_BINARY_DIR}/t805_temp/pack-ok" --no-thumbs)
+    add_test(NAME t805_pack_temp_clean_failed
+             COMMAND ${CMAKE_COMMAND} "-DROOT=${CMAKE_BINARY_DIR}/t805_temp/pack-failed-tmp" -DEXPECT_CODE=1
+                     "-DEXPECT_OUTPUT=vector\\.unbakedModifier"
+                     -P "${PROJECT_SOURCE_DIR}/Tests/cmake/tool_temp_clean.cmake" --
+                     $<TARGET_FILE:xtframe-pack> "${PROJECT_SOURCE_DIR}/Tests/bundle/fixtures/unbaked_modifier/main.xt"
+                     -o "${CMAKE_BINARY_DIR}/t805_temp/pack-failed" --no-thumbs --strict)
+
+    # T-714 (22 §22.17.1): xtframe-pack, a publish entry point, compresses images by default (auto);
+    # --compress none and a .xtui saying none pack them as they are; xtframe-view's development pack
+    # encodes nothing even for a project saying bc7 (Tests/cmake/t714_publish_default.cmake).
+    set(T714_ARGS "-DPACK=$<TARGET_FILE:xtframe-pack>")
+    if(TARGET xtframe-view)
+        list(APPEND T714_ARGS "-DVIEW=$<TARGET_FILE:xtframe-view>")
+    endif()
+    add_test(NAME t714_publish_default
+             COMMAND ${CMAKE_COMMAND} ${T714_ARGS} "-DFIXTURE=${PROJECT_SOURCE_DIR}/Tests/bundle/fixtures/t714_publish"
+                     "-DROOT=${CMAKE_BINARY_DIR}/t714_publish" -P "${PROJECT_SOURCE_DIR}/Tests/cmake/t714_publish_default.cmake")
+
     # T-571 (22 §22.14, report F85): the unused strings-table keys are one summary line per table;
     # --verbose lists every key instead.
     set(T571_PROJECT "${PROJECT_SOURCE_DIR}/Tests/xt/t571_project")
@@ -405,6 +430,26 @@ if(XT_BUILD_TESTS)
         OUTPUT "import failed \\(kNotFound\\)" REJECT "imported [0-9]"
         COMMAND $<TARGET_FILE:xtframe-import> dc "${PROJECT_SOURCE_DIR}/Tests/import/fixtures/figma/wireframe"
                 -o "${CMAKE_BINARY_DIR}/xtframe-import-test-out/dc")
+
+    # T-805: nothing is left in the temp directory -- a board with `/_blob/` images stages them
+    # there -- after a successful import, after one whose write fails (`-o` names a file), and
+    # after a `--lint` dry run (exit 3: the board has two findings) (Tests/cmake/tool_temp_clean.cmake).
+    set(T805_CLEAN "${PROJECT_SOURCE_DIR}/Tests/cmake/tool_temp_clean.cmake")
+    set(T805_OUT "${CMAKE_BINARY_DIR}/t805_temp")
+    set(T805_BOARD "${PROJECT_SOURCE_DIR}/Tests/import/fixtures/dc/hud-basic")
+    add_test(NAME t805_import_dc_temp_clean_ok
+             COMMAND ${CMAKE_COMMAND} "-DROOT=${T805_OUT}/import-ok-tmp" -DEXPECT_CODE=0
+                     "-DEXPECT_OUTPUT=imported 1 UIs" -P "${T805_CLEAN}" --
+                     $<TARGET_FILE:xtframe-import> dc "${T805_BOARD}" -o "${T805_OUT}/import-ok" --force)
+    add_test(NAME t805_import_dc_temp_clean_failed
+             COMMAND ${CMAKE_COMMAND} "-DROOT=${T805_OUT}/import-failed-tmp" -DEXPECT_CODE=1
+                     "-DBLOCKER=${T805_OUT}/import-failed-blocker"
+                     -P "${T805_CLEAN}" --
+                     $<TARGET_FILE:xtframe-import> dc "${T805_BOARD}" -o "${T805_OUT}/import-failed-blocker/out")
+    add_test(NAME t805_import_dc_temp_clean_lint
+             COMMAND ${CMAKE_COMMAND} "-DROOT=${T805_OUT}/import-lint-tmp" -DEXPECT_CODE=3
+                     -P "${T805_CLEAN}" --
+                     $<TARGET_FILE:xtframe-import> dc "${T805_BOARD}" --lint)
     endif()
 
     # T-56: `xtframe-view --flow` against Examples/desktop_app's ui/app.xt + ui/app.xtflow, headless

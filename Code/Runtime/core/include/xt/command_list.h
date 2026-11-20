@@ -306,6 +306,15 @@ struct LayerCmd {
     /// Blend mode used when compositing the layer.
     BlendMode blend;
     Rect boundsHint;  ///< world-space AABB; may be the full viewport
+    /// T-754 (Docs/design/10-backends.md §10.20 rule 1): 1 when `boundsHint` is a reliable bound of
+    /// everything the layer composites (the Painter outside 3D spaces -- the descendants' boxes and
+    /// their effects' reach, clamped to the viewport -- and on an affine plane inside one); 0 when
+    /// it is not known (on a projected, non-affine plane, in the drag ghost, a hand-made or baked
+    /// list). Only an unknown, empty hint falls back to the whole surface; a
+    /// known hint is never empty (the Painter leaves such a layer out; a backend that meets one
+    /// draws nothing).
+    uint8_t boundsKnown = 0;
+    uint8_t _pad[3] = {};  ///< Padding, unused (0).
 };
 
 /// Payload for `CmdKind::PushMask`.
@@ -375,7 +384,12 @@ struct EffectCmd {
     /// T-263d: which entry of CommandList::sources the `shader` ids of this command's Custom
     /// EffectInstances belong to (see CommandSource); 0 in a list that names no source.
     uint16_t source = 0;
-    uint16_t _pad = 0;  ///< Padding, unused (0).
+    /// T-754 (Docs/design/10-backends.md §10.20 rule 1): as LayerCmd::boundsKnown -- 1 when
+    /// `boundsHint` (the content AABB outset by the stack's reach) bounds the effect's output, 0
+    /// on a projected, non-affine plane, in the drag ghost or in a hand-made / baked list. A known
+    /// hint is never empty.
+    uint8_t boundsKnown = 0;
+    uint8_t _pad = 0;  ///< Padding, unused (0).
 };
 
 /// One particle of a DrawParticles command (Docs/design/18-effects.md §18.12, T-202): a `w` x `h`
@@ -697,8 +711,19 @@ struct CommandList {
     /// WorldLayerRange); empty for every other list. Not serialized by the baked format; clear()
     /// empties it.
     std::vector<WorldLayerRange> worldLayers;
+    /// T-754 (Docs/design/10-backends.md §10.20): effects and layers the Painter left out because
+    /// their known bounds (reach included) lie wholly outside the viewport; FrameStats and the GPU
+    /// BuildStats report it as `culledOffscreen`. Diagnostic only: not hashed, not serialized;
+    /// clear() resets it.
+    uint32_t culledOffscreen = 0;
+    /// T-747 (Docs/design/57-measurement.md §57.3, 23 §23.ag item 2): the Painter drew something into
+    /// this list that changes with time alone (a focused input's caret, a Wiggle modifier, a Custom
+    /// effect, particles, an external texture), so the same writes can still give another frame.
+    /// Not hashed, not serialized; clear() resets it.
+    bool clockDependent = false;
 
-    /// Clears every vector (capacity retained), `structureChecked` and `frameSerial`; leaves
+    /// Clears every vector (capacity retained), `structureChecked`, `frameSerial`,
+    /// `culledOffscreen` and `clockDependent`; leaves
     /// viewport/devicePixelRatio, `hostTargetMode` and `sceneStatic` untouched.
     void clear();
 };

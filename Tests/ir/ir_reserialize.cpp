@@ -334,6 +334,17 @@ std::vector<uint8_t> reserialize(const IrView& view) {
         }
     }
 
+    // TEXP (T-777): the four pools as the reader exposes them.
+    if (view.timelineExprs().present()) {
+        const TimelineExprChunk& te = view.timelineExprs();
+        compile::TimelineExprBuilder tb;
+        tb.exprs.assign(te.exprs().begin(), te.exprs().end());
+        tb.ops.assign(te.ops().begin(), te.ops().end());
+        tb.curves.assign(te.curves().begin(), te.curves().end());
+        tb.keys.assign(te.keys().begin(), te.keys().end());
+        w.setTimelineExprs(std::move(tb));
+    }
+
     return w.finish();
 }
 

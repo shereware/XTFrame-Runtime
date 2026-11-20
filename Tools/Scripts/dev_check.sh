@@ -4,7 +4,7 @@
 # each test suite once with a timeout so a hung process never blocks the caller.
 #   Tools/Scripts/dev_check.sh [--release] [--no-build] [--agent] [--no-qt512] <target>... -- <suite>...
 #   suites: editor | editor_service | editor_qt | editor_qt_slow | editor_qt_gl | flow | bundle | capi | history | net | ai | core | golden |
-#           gpu | gl | wgpu | backends | text | agent | import | lottie | symbols | templates | headers | layering | testtemp | import-py | ctest | corpus | ir |
+#           gpu | gl | wgpu | backends | text | agent | import | lottie | symbols | templates | headers | layering | testtemp | import-py | scripts-py | ctest | corpus | ir |
 #           roundtrip | shape | skills | qt512 | qt512-all | wasm
 #          (ctest = ctest -E '^xt_.*_tests$', the command-line tests (T-267d); headers = Tools/Scripts/check_public_headers.sh, no build;
 #           layering = Tools/Scripts/check_layering.sh (T-274, R never includes / links E) and, since T-267d,
@@ -17,6 +17,7 @@
 #           editor_qt_gl runs only the `gl` suite, on the native platform (hidden windows, a real GL
 #           context) with XT_REQUIRE_GL=1;
 #           import-py = python -m unittest over Tests/import, no build;
+#           scripts-py = python -m unittest over Tests/scripts (T-751: perf_agg / perf_run / perf_report), no build;
 #           corpus = Tools/Scripts/corpus_check.sh with the Release xtframe-view / xtframe-pack of this tree, built
 #           first unless --no-build (T-401, 43 §43.4; a Debug SW render is ~50x slower, the 4 projects would
 #           take hours; strict: a project whose project.json `fonts` are not installed, or a different build, fails, T-426/T-429); the CTest
@@ -92,11 +93,11 @@ xt_qt_sdk_dir() {
 [ -z "${XT_QT_DIR:-}" ] && XT_QT_DIR="$(xt_qt_sdk_dir 5.15)"
 [ -z "${XT_QT_DIR:-}" ] && XT_QT_DIR="$(xt_qt_sdk_dir 5.12)"
 if [ -n "${XT_QT_DIR:-}" ]; then export XT_QT_DIR; else unset XT_QT_DIR; fi
-targets=(); suites=(); CHANGED=0; DRY_RUN=0; NO_QT512=0
+targets=(); suites=(); CHANGED=0; DRY_RUN=0; NO_QT512=0; NO_BUILD_ARG=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --release) CFG=Release;;
-    --no-build) BUILD=0;;
+    --no-build) BUILD=0; NO_BUILD_ARG=1;;
     --agent) PRESET=vs2022-agent;;
     --changed) CHANGED=1;;
     --dry-run) DRY_RUN=1;;
@@ -121,13 +122,29 @@ changed_selection() {
     any=1
     case "$f" in
       Code/Runtime/core/include/xt/ir_pod.h) targets+=(xt_tests); suites+=(core golden ir);;  # T-405
+      # 2026-11-20: text shaping and line layout move the symbol library's reference images too
+      # (T-801 changed one and never ran that suite). More specific than core/*, so it comes first.
+      Code/Runtime/text/*|Tests/text/*|Code/Runtime/core/src/text*|Code/Runtime/core/src/layout_text*)
+                                      targets+=(xt_tests); suites+=(core golden text symbols);;
       Code/Runtime/core/*)            targets+=(xt_tests); suites+=(core golden);;
+      Code/Runtime/sw/*)              targets+=(xt_tests); suites+=(core golden);;
+      Code/Runtime/gpu/*|Tests/gpu/*) suites+=(gpu gl wgpu golden);;
+      Code/Runtime/gl/*|Tests/gl/*)   suites+=(gl);;
+      Tests/common/*)                 suites+=(core gpu gl wgpu);;
       Code/Runtime/compile/*)         suites+=(core import editor_service);;
       Code/Editor/Import/*)  suites+=(import);;
-      Code/Runtime/bundle/*)          suites+=(bundle editor_service roundtrip);;
+      # capi: its tests pack bundles through xtframe-pack (the T-714 publish default broke one and
+      # only the WSL leg of the version gate saw it).
+      Code/Runtime/bundle/*)          suites+=(bundle editor_service roundtrip capi);;
+      Code/Tools/pack/*)              suites+=(bundle capi ctest);;
+      Code/Tools/import/*)            suites+=(import ctest);;
+      Code/Tools/symbols/*|Assets/Symbols/*|Tests/symbols/*) suites+=(symbols);;
       Code/Runtime/flow/*)            suites+=(flow editor_qt);;
       Code/Runtime/capi/*|Tests/capi/*) suites+=(capi);;  # T-504
-      Code/Editor/Service/*)  suites+=(editor_service editor_qt);;
+      # ai: the tool host counts the service's operations per scenario (three new timeline ops
+      # went uncounted until the version gate).
+      Code/Editor/Service/*)  suites+=(editor_service editor_qt ai);;
+      Code/Editor/Contracts/*|Assets/Schemas/*) suites+=(editor_service ai);;
       Code/Editor/Qt/*|Code/Editor/App/*) targets+=(xtframe-editor); suites+=(editor_qt);;
       Code/Editor/Core/*)     suites+=(editor editor_service editor_qt);;
       Code/Editor/History/*)  suites+=(history editor_qt);;
@@ -144,6 +161,7 @@ changed_selection() {
       Tests/editor_service/*) suites+=(editor_service);;
       Tests/editor/*)    suites+=(editor);;
       Tests/import/*)    suites+=(import);;
+      Tests/scripts/*|Tools/Scripts/perf_*.py|Tools/Scripts/bench_war_table*.py) suites+=(scripts-py);;  # T-751
       Tests/bundle/*)    suites+=(bundle);;
       Tests/flow/*)      suites+=(flow);;
       Tests/history/*)   suites+=(history);;
@@ -206,10 +224,10 @@ done
 if [ ${#suites[@]} -gt 0 ]; then mapfile -t suites < <(dedupe "${suites[@]}"); fi
 if [ ${#targets[@]} -gt 0 ]; then mapfile -t targets < <(dedupe "${targets[@]}"); fi
 if [ "$DRY_RUN" = 1 ]; then echo "targets: ${targets[*]}"; echo "suites: ${suites[*]}"; exit 0; fi
-# headers, layering, testtemp, import-py, ir, shape, skills, qt512, qt512-all and wasm (its own Emscripten tree) need no preset build; when they are all that was asked for, skip the build.
+# headers, layering, testtemp, import-py, scripts-py, ir, shape, skills, qt512, qt512-all and wasm (its own Emscripten tree) need no preset build; when they are all that was asked for, skip the build.
 needs_build=0
 for s in "${suites[@]}"; do
-  case "$s" in headers|layering|testtemp|import-py|ir|shape|skills|qt512|qt512-all|wasm) ;; *) needs_build=1;; esac
+  case "$s" in headers|layering|testtemp|import-py|scripts-py|ir|shape|skills|qt512|qt512-all|wasm) ;; *) needs_build=1;; esac
 done
 [ ${#targets[@]} -eq 0 ] && [ "$needs_build" = 0 ] && BUILD=0
 
@@ -246,8 +264,32 @@ trap 'rm -rf "$LOCK"' EXIT
 trap 'exit 130' INT TERM
 fail=0
 if [ "$BUILD" = 1 ]; then
-  [ -f "$B/CMakeCache.txt" ] || cmake --preset "$PRESET" >/dev/null || { echo "configure FAILED"; exit 2; }
+  if [ ! -f "$B/CMakeCache.txt" ]; then
+    # T-799: both presets this script uses (vs2022-editor, vs2022-agent) pass $env{XT_QT_DIR} to CMake;
+    # without it (and no Qt under Code/SDKs/Qt, above) the configure fails half way.
+    if [ -z "${XT_QT_DIR:-}" ]; then
+      echo "dev_check: XT_QT_DIR is not set and Code/SDKs/Qt has no Qt 5.15 / 5.12; export XT_QT_DIR (preset $PRESET needs it) and rerun"
+      exit 2
+    fi
+    # T-799: a failed configure leaves a partial CMakeCache.txt, and the next run would skip the
+    # configure and fail in MSBuild (MSB1009). Delete that one file only ($B or build/ may be a junction).
+    if ! cmake --preset "$PRESET" >/dev/null; then
+      rm -f "$B/CMakeCache.txt"
+      echo "configure FAILED (preset $PRESET; $B/CMakeCache.txt removed so the next run configures again)"
+      exit 2
+    fi
+  fi
   BIN="$(bin_dir "$CFG")"  # the cache may be new
+  # 2026-11-20: a suite that was asked for is built, not skipped. XT_BUILD_CAPI defaults to OFF in
+  # the presets, so the capi suite used to be skipped in every task tree and its tests were first
+  # run by the version gate's WSL leg. Turning the option on in this tree's cache is a reconfigure
+  # of one option; it stays on for later runs.
+  case " ${suites[*]} " in
+    *" capi "*) if ! sed -n 's/^XT_BUILD_CAPI:BOOL=//p' "$B/CMakeCache.txt" 2>/dev/null | tr -d '\r' | grep -qiE '^(ON|TRUE|1|YES)$'; then
+                  if cmake --preset "$PRESET" -DXT_BUILD_CAPI=ON >/dev/null; then echo "dev_check: XT_BUILD_CAPI turned ON in $B (the capi suite was asked for)"
+                  else echo "dev_check: could not turn XT_BUILD_CAPI on in $B; the capi suite will be skipped"; fi
+                fi;;
+  esac
 fi
 # T-552: options that default to OFF (XT_BUILD_CAPI, XT_BUILD_EDITOR_CLI; 2026-10-31 spec review 7.5) or that a
 # tree turns off (XT_EDITOR_AI): the suites and targets that need them are SKIPped, not failed.
@@ -286,7 +328,10 @@ if [ "$BUILD" = 1 ]; then
   # the build tree without an editor.
   case " ${targets[*]} " in *" xtframe-editor "*) rm -f "$BIN/xtframe-editor.exe";; esac
   args=(); for t in "${targets[@]}"; do args+=(--target "$t"); done
-  errs="$(cmake --build --preset "$PRESET-$(echo $CFG | tr A-Z a-z)" --parallel "${args[@]}" 2>&1 | grep -E " error |error LNK|warning C|CMake Error|MSB[0-9]+: " | grep -v _deps | head -20)"
+  # XT_BUILD_JOBS=<n> caps the number of projects built at once (two task trees share this machine);
+  # unset = the generator's default. The compiler's own /MP is capped separately with _CL_=-MP<n>.
+  PAR=(--parallel); [ -n "${XT_BUILD_JOBS:-}" ] && PAR=(--parallel "$XT_BUILD_JOBS")
+  errs="$(cmake --build --preset "$PRESET-$(echo $CFG | tr A-Z a-z)" "${PAR[@]}" "${args[@]}" 2>&1 | grep -E " error |error LNK|warning C|CMake Error|MSB[0-9]+: " | grep -v _deps | head -20)"
   [ -n "$errs" ] && { echo "$errs"; echo "build FAILED"; exit 2; }
   echo "build OK (${targets[*]})"
   # T-401: the corpus suite renders with the Release tools whatever $CFG is.
@@ -370,7 +415,9 @@ run_suite() {
   case "$s" in
     editor)    run editor 900 1 "$BIN/tests/xt_editor_tests.exe";;
     editor_service) run editor_service 1800 1 "$BIN/tests/xt_editor_service_tests.exe";;
-    editor_qt) run editor_qt 1500 1 "$BIN/tests/xt_editor_qt_tests.exe" --test-suite-exclude=gl,slow
+    # T-810: twice a standalone run of the whole suite (measured 2026-11-20: 1437 s for 961 cases, Debug,
+    # other builds on the machine); 1500 s was hit twice while other builds ran (T-714).
+    editor_qt) run editor_qt 2874 1 "$BIN/tests/xt_editor_qt_tests.exe" --test-suite-exclude=gl,slow
                # Translation check (Tools/Scripts/check_i18n.sh): a warning only, never fails the suite.
                if i18n="$(bash Tools/Scripts/check_i18n.sh 2>&1)"; then echo "$i18n" | tail -2
                else echo "$i18n"; echo "WARNING: untranslated editor strings (Tools/Scripts/check_i18n.sh)"; fi
@@ -383,7 +430,9 @@ run_suite() {
                run flow_alloc 300 1 "$BIN/tests/xt_flow_alloc_tests.exe";;  # T-476
     bundle)    run bundle 900 1 "$BIN/tests/xt_bundle_tests.exe";;
     # T-504: the C ABI (doctest), then the C99 compile check (no doctest summary: its exit code alone).
-    capi)      run capi 600 1 "$BIN/tests/xt_capi_tests.exe"
+    # T-799: 1500 s, not 600: the whole Debug suite runs past 600 s (measured 2026-11-19: ~683 s for 91 cases;
+    # one case, `capi state 8`, ~173 s alone).
+    capi)      run capi 1500 1 "$BIN/tests/xt_capi_tests.exe"
                if [ -f "$BIN/tests/xt_capi_c_compile.exe" ]; then
                  out="$(timeout 60 "$BIN/tests/xt_capi_c_compile.exe" 2>&1 </dev/null)"; rc=$?; echo "$out" | tail -2
                  [ $rc -ne 0 ] && { echo "capi_c_compile: exit code $rc"; fail=1; }
@@ -449,6 +498,7 @@ run_suite() {
                else out="$(printf '%s\n' "$q" | bash Tools/Scripts/qt512_syntax_check.sh --tree "$B" 2>&1)" || fail=1; echo "$out" | tail -40; fi;;
     qt512-all) out="$(bash Tools/Scripts/qt512_syntax_check.sh --tree "$B" --all 2>&1)" || fail=1; echo "$out" | tail -40;;
     import-py) out="$(NO_COLOR=1 python -m unittest discover -s Tests/import -p "test_*.py" 2>&1)"; echo "$out" | tail -4; { echo "$out" | grep -q "^Ran [0-9]* test" && ! echo "$out" | grep -q "FAILED"; } || fail=1;;
+    scripts-py) out="$(NO_COLOR=1 timeout 300 python -m unittest discover -s Tests/scripts -p "test_*.py" 2>&1)"; echo "$out" | grep -E "^(Ran|OK|FAILED)"; { echo "$out" | grep -q "^Ran [0-9]* test" && ! echo "$out" | grep -q "FAILED"; } || fail=1;;  # T-751
     # T-267d: the command-line tests only (the xt_add_expect_exit_test entries and the other CTest
     # entries that are not a whole doctest executable); the -E pattern leaves out the whole
     # executables (xt_editor_tests, xt_editor_service_tests, xt_editor_qt*_tests, xt_flow_tests,
@@ -480,7 +530,7 @@ run_suite() {
 }
 # T-361: the suites below run at the same time; the rest (GL contexts, perf / slow timing cases, the
 # agent endpoint and ctest, which runs executables of its own) afterwards, one after the other.
-PARALLEL_SUITES=" core import bundle capi flow editor editor_service editor_qt history net symbols templates lottie golden text gpu headers layering testtemp import-py ir roundtrip shape skills qt512 "
+PARALLEL_SUITES=" core import bundle capi flow editor editor_service editor_qt history net symbols templates lottie golden text gpu headers layering testtemp import-py scripts-py ir roundtrip shape skills qt512 "
 OUT="$B/.dev_check_out.$$"; mkdir -p "$OUT"
 trap 'rm -rf "$LOCK" "$OUT"; kill $(jobs -p) 2>/dev/null' EXIT
 i=0; pids=()
@@ -498,5 +548,16 @@ for s in "${suites[@]}"; do
   i=$((i + 1))
   [ -z "${pids[$i]:-}" ] && { ( fail=0; run_suite "$s"; exit $fail ) || fail=1; }
 done
+# 2026-11-20: what passed, on which sources (Tools/Scripts/check_stamp.py). merge_task.sh reads it
+# back: the merge is refused when the sources changed after the last passing run or when a suite the
+# changed files need never ran. Skipped suites were dropped from $suites above and are not recorded.
+if [ -f Tools/Scripts/check_stamp.py ]; then
+  if [ "$fail" = 0 ] && [ ${#suites[@]} -gt 0 ]; then
+    python Tools/Scripts/check_stamp.py write --suites "${suites[*]}" --config "$CFG$([ "$NO_BUILD_ARG" = 1 ] && echo ' (--no-build: binaries not rebuilt by this run)')" ||
+      echo "dev_check: could not write the check stamp"
+  elif [ "$fail" != 0 ]; then
+    python Tools/Scripts/check_stamp.py clear
+  fi
+fi
 echo; [ "$fail" = 0 ] && echo "DEV CHECK: PASS" || echo "DEV CHECK: FAIL"
 exit $fail

@@ -599,6 +599,21 @@ Vec2 LayoutEngine::layoutGridChildren(NodeArena& arena, NodeId node, float conte
             !(s.base[prop::AspectRatio].f > 0.0f)) {
             imposedH = std::max(0.0f, cellH - m.top - m.bottom);
         }
+        // T-755 (06 §6.x item 1): a grid item is a layout boundary only when every track of its
+        // area is a length or `fr` (layoutChild() reads the flag).
+        bool fixedTracks = true;
+        const GridItemPlacement& at = items[i];
+        for (int k = at.colStart; k < at.colStart + at.colSpan; ++k) {
+            const GridTrackKind kind = trackAt(grid.columns, k).kind;
+            fixedTracks = fixedTracks && (kind == GridTrackKind::Px || kind == GridTrackKind::Fr);
+        }
+        for (int k = at.rowStart; k < at.rowStart + at.rowSpan; ++k) {
+            const GridTrackKind kind = trackAt(grid.rows, k).kind;
+            fixedTracks = fixedTracks && (kind == GridTrackKind::Px || kind == GridTrackKind::Fr);
+        }
+        uint8_t& flags = arena.element(c).layoutFlags;
+        flags = fixedTracks ? static_cast<uint8_t>(flags | kLayoutGridFixedTracks)
+                            : static_cast<uint8_t>(flags & ~kLayoutGridFixedTracks);
         layoutChild(arena, c, availW, cellH, imposedH, depth + 1);
     };
 

@@ -1,0 +1,24 @@
+<xt version="2">
+
+  <ports>
+    k: number in
+  </ports>
+
+  <body id="Root">
+    <div id="R1"></div>
+    <div id="R2"></div>
+  </body>
+
+  <timelines>
+    @timeline intro {
+      duration: 2s;
+      #R1 { 0s { translate: 0px 0px } 2s { translate: 0px 20px } }
+      #R2 { 0s { translate: 0px 0px } }
+    }
+  </timelines>
+
+  <expressions>
+    intro #R1 translate.y = value + port("k")
+    intro #R2 translate.y = layer("R1").y + 1
+  </expressions>
+</xt>

@@ -201,7 +201,8 @@ TEST_CASE("Painter: Group opacity 0.5 with two Path children needs a layer") {
     std::string out = renderScene(writer, sceneId);
     std::string fillLine = std::string("FillPath ") + kIdentityXf +
                            " verbs=2 points=4 rule=NonZero paint=Solid(1.000,1.000,1.000,1.000)\n";
-    std::string expected = "PushLayer opacity=0.500 blend=Normal\n" + fillLine + fillLine + "PopLayer\n";
+    std::string expected =
+        "PushLayer opacity=0.500 blend=Normal known=0\n" + fillLine + fillLine + "PopLayer\n";
     CHECK(out == expected);
 }
 
@@ -220,7 +221,7 @@ TEST_CASE("Painter: blend=Multiply on a single Path forces a layer") {
 
     std::string out = renderScene(writer, sceneId);
     std::string expected =
-        "PushLayer opacity=1.000 blend=Multiply\n" + std::string("FillPath ") + kIdentityXf +
+        "PushLayer opacity=1.000 blend=Multiply known=0\n" + std::string("FillPath ") + kIdentityXf +
         " verbs=2 points=4 rule=NonZero paint=Solid(0.000,1.000,0.000,1.000)\n" + "PopLayer\n";
     CHECK(out == expected);
 }
@@ -623,7 +624,8 @@ TEST_CASE("Painter T-44b regression: no 3D content -> dump unchanged (3 UI + 3 L
         std::string out = renderScene(writer, sceneId);
         std::string fillLine = std::string("FillPath ") + kIdentityXf +
                                " verbs=2 points=4 rule=NonZero paint=Solid(1.000,1.000,1.000,1.000)\n";
-        std::string expected = "PushLayer opacity=0.500 blend=Normal\n" + fillLine + fillLine + "PopLayer\n";
+        std::string expected =
+            "PushLayer opacity=0.500 blend=Normal known=0\n" + fillLine + fillLine + "PopLayer\n";
         CHECK(out == expected);
     }
 
@@ -700,8 +702,8 @@ TEST_CASE("Painter T-233: a tapered stroke is one NonZero FillPath with the stro
     NodeArena arena;
     NodeId root = makeStrokedPath(arena, {0, 0, 100, 0}, false);
     NodeId path = arena.firstChild(root);
-    setProperty(arena, path, prop::StrokeTaperStart, Value::ofFloat(0.5f));
-    setProperty(arena, path, prop::StrokeTaperEnd, Value::ofFloat(0.5f));
+    setProperty(arena, path, prop::StrokeTaperStart, Value::ofFloat(0.5f), DirtyCause::HostApi);
+    setProperty(arena, path, prop::StrokeTaperEnd, Value::ofFloat(0.5f), DirtyCause::HostApi);
     CHECK(getProperty(arena, path, prop::StrokeTaperStart).f == doctest::Approx(0.5f));
     updateWorldTransforms(arena, root, true);
     Painter painter;

@@ -11,8 +11,9 @@
 #include "xt/property.h"
 #include "xts_props.h"  // styleprop::*, AnimDirection/AnimFillMode/AnimPlayState (internal).
 
-/// Tests for per-property value parsing and shorthand expansion (Code/Runtime/compile/src/xts/xts_values.cpp).
-/// See Docs/design/05-style-and-css.md §5.3-5.6, Docs/tasks/T-22.md.
+/// Tests for per-property value parsing and shorthand expansion
+/// (Code/Runtime/compile/src/xts/xts_values.cpp). See Docs/design/05-style-and-css.md §5.3-5.6,
+/// Docs/tasks/T-22.md.
 
 using namespace xt;
 using namespace xt::compile;
@@ -2188,7 +2189,10 @@ TEST_CASE("values: T-332 clip-path rejects path(), url(), em, two-vertex polygon
     bool ok;
     auto decls = parseOneRule("transition: clip-path 1s;", sink, ok);
     const StyleDecl* transition = findDecl(decls, styleprop::Transition);
-    CHECK((transition == nullptr || transition->value.transitions.empty()));
+    // T-778: the item keeps its place as an entry that transitions nothing.
+    REQUIRE(transition != nullptr);
+    REQUIRE(transition->value.transitions.size() == 1);
+    CHECK(transition->value.transitions[0].flags == kIrTransitionNoProp);
     REQUIRE_FALSE(sink.all().empty());
     CHECK(sink.all()[0].message.find("non-animatable") != std::string::npos);
 }

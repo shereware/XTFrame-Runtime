@@ -344,7 +344,9 @@ public:
     /// `<system temp>/xtframe-bundle/<content hash>/` (xt/bundle/zip_archive.h, with its entry
     /// checks and kMaxXtbBytes / kMaxXtbEntries) and read from there like a directory: not read
     /// in place, and not mapped (22 §22.2's mmap reading of a stored zip is not done yet). An
-    /// unpacked copy whose `manifest.json` exists is reused; dir() then names that directory, and
+    /// unpacked copy that was completed is reused (T-807: the cache keeps at most 8 copies / 256 MB,
+    /// least recently used out first; XTFRAME_BUNDLE_CACHE_MAX_ENTRIES / XTFRAME_BUNDLE_CACHE_MAX_MB,
+    /// 0 = no cap; 22, "`.xtb` unpack cache cap"); dir() then names that directory, and
     /// reload() re-reads the unpacked manifest, so a rewritten `.xtb` needs a new open(). A bad
     /// archive is kInvalidArgument with the entry or check in `error`.
     static Result<std::unique_ptr<Bundle>> open(std::string_view dir, ImageDecodeFn decode = nullptr,
@@ -401,6 +403,14 @@ public:
     /// T-199: open() registers every atlas cell and manifest nine-slice with it
     /// (AssetResolver::setImageMeta), so `atlas:<name>#<asset>` names resolve to their page.
     AssetResolver& assets();
+    /// T-759: registers this bundle's image meta with `into` (AssetResolver::setImageMeta): the
+    /// manifest nine-slices and `@2x` / `@3x` variants of plain assets, and every atlas cell under
+    /// its IR name `atlas:<page>#<asset>` (page file, sub-rectangle, the asset's slice). open() and
+    /// reload() register the same with assets(); a host or tool that reads the bundle through a
+    /// resolver of its own calls this once that resolver exists, before loading a UI, or atlased
+    /// images draw as their whole page. Entries already in `into` under the same names are
+    /// replaced; nothing else in `into` changes.
+    void registerImageMeta(AssetResolver& into) const;
     /// T-199 (§22.10): the manifest's `assets[]` rows.
     std::span<const AssetInfo> assetTable() const;
     /// T-199 (§22.10 `atlas[]`): the atlas pages, in manifest order; empty when none.

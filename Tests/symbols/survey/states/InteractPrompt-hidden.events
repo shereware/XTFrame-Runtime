@@ -1,0 +1,6 @@
+# T-794: InteractPrompt-hidden (shown first, then hidden: the intro animates the inner #Body, so Hidden on #Box still wins).
+port Door.label Open Door
+port Door.visible true
+update 0.6
+port Door.visible false
+update 0.3

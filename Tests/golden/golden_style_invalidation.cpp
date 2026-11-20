@@ -13,6 +13,7 @@
 #include "xt/compile/compile.h"
 #include "xt/context.h"
 #include "xt/document.h"
+#include "xt/element_ref.h"
 #include "xt/input.h"
 #include "xt/ir.h"
 #include "xt/node.h"
@@ -35,6 +36,8 @@
 /// every interactive element, Tab through every focusable element, and every scalar `in` port
 /// written to two different values, the second one again, then back. After every step the
 /// computed style of every element must be identical in both (floats compared bit for bit).
+/// T-763 adds the state writes outside the dispatcher (stateWrites(): ElementRef::setState,
+/// Document::setCustomState, removeClass / addClass, restoreState) before the ports.
 ///
 /// Not covered by the sheet (choices made here):
 ///   - "Interactive element": focusable (button, input, tabindex), carrying a listener, or with a
@@ -349,6 +352,34 @@ public:
 
     /// The same port text to both, update(kDt), compare. A text the port rejects in one copy only
     /// is a difference; rejected by both, the step is still compared.
+    /// T-763: the same write to `node` of both documents (the NodeIds are equal: compare() checks
+    /// it), update(kDt), compare.
+    template <class Fn>
+    bool write(NodeId node, Fn&& fn, const std::string& step) {
+        for (Instance* inst : {&m_narrow, &m_legacy}) {
+            Document& doc = *inst->doc;
+            if (doc.arena().alive(node) && doc.arena().kind(node) == NodeKind::Element) {
+                fn(doc, ElementRef{&doc, node, doc.arena().generation(node)});
+            }
+        }
+        return update(kDt, step);
+    }
+
+    /// T-763: Document::snapshotState() of both, for restore().
+    void snapshot() {
+        m_snapNarrow = m_narrow.doc->snapshotState();
+        m_snapLegacy = m_legacy.doc->snapshotState();
+    }
+    /// Document::restoreState() of each one's snapshot, update(kDt), compare.
+    bool restore(const std::string& step) {
+        const Status sa = m_narrow.doc->restoreState(m_snapNarrow);
+        const Status sb = m_legacy.doc->restoreState(m_snapLegacy);
+        if (sa != sb) {
+            return fail(step, "restoreState status differs");
+        }
+        return update(kDt, step);
+    }
+
     bool portText(PortId port, const std::string& text, const std::string& step) {
         const Status sa = m_narrow.doc->setPortText(port, text);
         const Status sb = m_legacy.doc->setPortText(port, text);
@@ -371,6 +402,8 @@ private:
     Instance& m_legacy;
     uint32_t m_steps = 0;
     std::string m_failure;
+    std::string m_snapNarrow;
+    std::string m_snapLegacy;
 };
 
 /// `node`'s layout-box center in viewport coordinates, from the layout alone.
@@ -415,6 +448,68 @@ std::vector<std::string> portValues(const PortRecord& rec) {
         default:
             return {};
     }
+}
+
+/// T-763: the state-write phase of interact(). Up to kMaxStateTargets elements spread evenly over
+/// the document order; on each, Disabled and Checked on and off, each of the first
+/// kMaxCustomStateNames custom states on and off, its first class removed and added back; then
+/// restoreState() to the snapshot taken before.
+constexpr size_t kMaxStateTargets = 16;
+constexpr size_t kMaxCustomStateNames = 3;
+
+bool stateWrites(Instance& narrow, Pair& pair) {
+    const NodeArena& arena = narrow.doc->arena();
+    std::vector<NodeId> elements;
+    for (NodeId n = 0; n < arena.capacity(); ++n) {
+        if (arena.alive(n) && arena.kind(n) == NodeKind::Element) {
+            elements.push_back(n);
+        }
+    }
+    std::vector<NodeId> targets;
+    const size_t stride = std::max<size_t>(1, elements.size() / kMaxStateTargets);
+    for (size_t i = 0; i < elements.size() && targets.size() < kMaxStateTargets; i += stride) {
+        targets.push_back(elements[i]);
+    }
+    std::vector<std::string> customNames;
+    for (uint32_t id : narrow.doc->ir().customStates().names()) {
+        if (customNames.size() < kMaxCustomStateNames) {
+            customNames.emplace_back(narrow.doc->ir().string(id));
+        }
+    }
+    pair.snapshot();
+    for (NodeId n : targets) {
+        const std::string tag = "state node " + std::to_string(n);
+        for (const ElementState state : {kStateDisabled, kStateChecked}) {
+            const std::string name = state == kStateDisabled ? " disabled" : " checked";
+            for (const bool on : {true, false}) {
+                if (!pair.write(
+                        n, [&](Document&, ElementRef el) { el.setState(state, on); },
+                        tag + name + (on ? " on" : " off"))) {
+                    return false;
+                }
+            }
+        }
+        for (const std::string& custom : customNames) {
+            for (const bool on : {true, false}) {
+                if (!pair.write(
+                        n, [&](Document& doc, ElementRef el) { doc.setCustomState(el, custom, on); },
+                        tag + " :state(" + custom + (on ? ") on" : ") off"))) {
+                    return false;
+                }
+            }
+        }
+        if (!narrow.doc->arena().alive(n) || narrow.doc->arena().kind(n) != NodeKind::Element ||
+            narrow.doc->arena().element(n).classes.empty()) {
+            continue;
+        }
+        const std::string cls(narrow.doc->string(narrow.doc->arena().element(n).classes.front()));
+        if (!pair.write(
+                n, [&](Document&, ElementRef el) { el.removeClass(cls); }, tag + " -." + cls) ||
+            !pair.write(n, [&](Document&, ElementRef el) { el.addClass(cls); }, tag + " +." + cls)) {
+            return false;
+        }
+    }
+    return pair.restore("restoreState");
 }
 
 /// The whole synthetic interaction. False on the first difference (Pair::failure()).
@@ -484,6 +579,12 @@ bool interact(const EquivCase& ec, Instance& narrow, Pair& pair) {
         if (!pair.key(KeyCode::Tab, "tab " + std::to_string(i))) {
             return false;
         }
+    }
+    // T-763: the state writes outside the dispatcher -- Disabled / Checked (ElementRef::setState),
+    // each custom state, a class removed and added back -- on a spread of elements, then
+    // restoreState() back to the snapshot taken before them.
+    if (!stateWrites(narrow, pair)) {
+        return false;
     }
     // Ports: two values, the second again, then back.
     for (const PortRecord& rec : narrow.doc->ports()) {

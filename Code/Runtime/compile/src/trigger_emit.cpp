@@ -21,10 +21,15 @@
 /// Docs/design/27-interaction.md §27.1-27.2, 03 §3.12.2-3.12.3, 12 §12.7, Docs/tasks/T-174.md.
 ///
 /// Not covered by the design/task sheet (conservative choices made here):
-///   - State names and state groups are document-wide: a state belongs to at most one group
-///     (declaring it in two groups is an error); a group declared twice must list the same
-///     members. Bits are assigned in order of first appearance: `state-groups` attributes
-///     (document order), then `:state()` selectors (rule order), then trigger events/actions.
+///   - State names are document-wide. Bits are assigned in order of first appearance:
+///     `state-groups` attributes (document order), then `:state()` selectors (rule order), then
+///     trigger events/actions. T-738 (56 §56.4): each `state-groups` declaration has an origin
+///     (the symbol definition it is written in -- the copy on an instance root included -- or the
+///     document). Within one origin a state belongs to at most one group and a group declared
+///     twice lists the same members (errors otherwise). Groups of different origins that conflict
+///     (same name and other members, or different names sharing a state) are no error: the
+///     symbol-origin ones become symbol-scoped (STGS, with a note each); every other group is
+///     global (STAT), as before.
 ///   - Top-level `,` separates actions like `;` (`.xts` declarations end at `;`, so a stylesheet
 ///     writes `on-press: sound(ui_click), state(Selected, toggle)`, or quotes the whole list).
 ///   - `if` must start a statement; its branches are `then`-sequences; `else` binds to the nearest
@@ -736,14 +741,17 @@ bool comparisonOp(std::string_view name, size_t& argc, ConverterOp* op = nullptr
 class Emitter {
 public:
     Emitter(const DomTree& dom, const RuleSet& rules, const PortScopes& ports, IrWriter& writer,
-            std::string_view fileName, DiagnosticSink& sink, const RepeatScopes* repeats = nullptr)
+            std::string_view fileName, DiagnosticSink& sink, const RepeatScopes* repeats = nullptr,
+            const std::vector<ExpandedSymbolInstance>* instances = nullptr)
         : m_dom(dom),
           m_rules(rules),
           m_ports(ports),
           m_repeats(repeats),
+          m_instances(instances),
           m_writer(writer),
           m_fileName(fileName),
           m_sink(sink) {
+        computeOwners();
         for (const TimelineDef& def : rules.timelines) {
             m_timelines.emplace(def.name, &def);
         }
@@ -771,15 +779,10 @@ public:
             states.names.push_back(m_writer.intern(name));
         }
         for (const std::string& group : m_groupOrder) {
-            uint32_t mask = 0;
-            for (const std::string& member : m_groups[group]) {
-                auto it = m_stateIndex.find(member);
-                if (it != m_stateIndex.end()) {
-                    mask |= 1u << it->second;
-                }
-            }
-            states.groups.push_back(IrStateGroup{m_writer.intern(group), mask});
+            states.groups.push_back(IrStateGroup{m_writer.intern(group), maskOf(m_groups[group])});
         }
+        emitScopes(states);
+        warnManyStates();
         return m_ok;
     }
 
@@ -788,6 +791,7 @@ private:
     const RuleSet& m_rules;
     const PortScopes& m_ports;
     const RepeatScopes* m_repeats = nullptr;  // T-411: `item()` / `repeat.*` set() values.
+    const std::vector<ExpandedSymbolInstance>* m_instances = nullptr;  // T-738: may be null.
     IrWriter& m_writer;
     std::string m_fileName;
     DiagnosticSink& m_sink;
@@ -795,9 +799,27 @@ private:
     bool m_reportedTooMany = false;
     std::vector<std::string> m_stateNames;
     std::map<std::string, uint32_t> m_stateIndex;
+    // The global (STAT) groups: names in first-appearance order, members by name.
     std::vector<std::string> m_groupOrder;
     std::map<std::string, std::vector<std::string>> m_groups;
-    std::map<std::string, std::string> m_groupOfState;
+    // T-738: one record per (origin, group name), in order of first appearance; `origin` is the
+    // symbol name, empty for the document.
+    struct GroupDecl {
+        std::string origin;
+        std::string name;
+        std::vector<std::string> members;
+        int line = 0;
+        int col = 0;
+        bool scoped = false;
+    };
+    std::vector<GroupDecl> m_decls;
+    // T-738: per DOM node, the innermost symbol instance holding it (an index into *m_instances;
+    // an instance root is its own instance), or -1.
+    std::vector<int> m_owner;
+    // T-738: the origin of the state names being registered (for the > 24 names warning), and
+    // the origin each name was first registered from (parallel to m_stateNames).
+    std::string m_curOrigin;
+    std::vector<std::string> m_stateOrigin;
     std::map<std::string, const TimelineDef*> m_timelines;
     std::set<std::string> m_ids;
     std::set<std::string> m_mediaIds;
@@ -894,18 +916,24 @@ private:
         }
         uint32_t bit = static_cast<uint32_t>(m_stateNames.size());
         m_stateNames.push_back(name);
+        m_stateOrigin.push_back(m_curOrigin);
         m_stateIndex.emplace(name, bit);
         return static_cast<int>(bit);
     }
 
     // `state-groups="A: x|y; B: p|q"` on any element (including instance roots, which carry their
-    // symbol's declaration).
+    // symbol's declaration). T-738: checked per origin (groupOrigin()); resolveScopes() then
+    // splits the groups into global and symbol-scoped ones.
     void collectGroups() {
-        for (const DomNode& n : m_dom.nodes) {
-            const DomAttr* attr = n.attr("state-groups");
+        std::map<std::string, std::map<std::string, size_t>> declOf;             // origin -> name -> m_decls
+        std::map<std::string, std::map<std::string, std::string>> groupOfState;  // origin -> state -> group
+        for (uint32_t ni = 0; ni < m_dom.nodes.size(); ++ni) {
+            const DomAttr* attr = m_dom.nodes[ni].attr("state-groups");
             if (attr == nullptr) {
                 continue;
             }
+            const std::string origin = groupOrigin(ni);
+            m_curOrigin = origin;
             std::string_view text(attr->value);
             size_t start = 0;
             while (start <= text.size()) {
@@ -952,22 +980,19 @@ private:
                 if (bad || members.empty()) {
                     continue;
                 }
-                auto existing = m_groups.find(group);
-                if (existing != m_groups.end()) {
-                    std::vector<std::string> a = existing->second;
-                    std::vector<std::string> b = members;
-                    std::sort(a.begin(), a.end());
-                    std::sort(b.begin(), b.end());
-                    if (a != b) {
+                auto existing = declOf[origin].find(group);
+                if (existing != declOf[origin].end()) {
+                    if (!sameMembers(m_decls[existing->second].members, members)) {
                         error(m_fileName, "state group \"" + group + "\" is declared with different members",
                               attr->line, attr->col);
                     }
                     continue;
                 }
+                std::map<std::string, std::string>& owners = groupOfState[origin];
                 bool conflict = false;
                 for (const std::string& member : members) {
-                    auto owner = m_groupOfState.find(member);
-                    if (owner != m_groupOfState.end()) {
+                    auto owner = owners.find(member);
+                    if (owner != owners.end()) {
                         error(m_fileName,
                               "state \"" + member + "\" is in two state groups (\"" + owner->second +
                                   "\" and \"" + group + "\")",
@@ -979,18 +1004,189 @@ private:
                     continue;
                 }
                 for (const std::string& member : members) {
-                    m_groupOfState.emplace(member, group);
+                    owners.emplace(member, group);
                     stateBit(member, m_fileName, attr->line, attr->col);
                 }
-                m_groupOrder.push_back(group);
-                m_groups.emplace(group, std::move(members));
+                declOf[origin].emplace(group, m_decls.size());
+                m_decls.push_back(GroupDecl{origin, group, std::move(members), attr->line, attr->col, false});
             }
         }
+        m_curOrigin.clear();
+        resolveScopes();
+    }
+
+    static bool sameMembers(std::vector<std::string> a, std::vector<std::string> b) {
+        std::sort(a.begin(), a.end());
+        std::sort(b.begin(), b.end());
+        return a == b;
+    }
+
+    /// T-738: whether two groups of different origins conflict: the same name with other members,
+    /// or different names sharing a state.
+    static bool conflicts(const GroupDecl& a, const GroupDecl& b) {
+        if (a.name == b.name) {
+            return !sameMembers(a.members, b.members);
+        }
+        for (const std::string& m : a.members) {
+            if (std::find(b.members.begin(), b.members.end(), m) != b.members.end()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static std::string originText(const std::string& origin) {
+        return origin.empty() ? std::string("the document") : "symbol \"" + origin + "\"";
+    }
+
+    /// T-738 (56 §56.4): a symbol-origin group in conflict with another origin's group is scoped
+    /// to its symbol (a note each); every other group is global, one per name, in first-appearance
+    /// order (exactly the STAT groups of before when nothing conflicts).
+    void resolveScopes() {
+        const size_t none = m_decls.size();
+        std::vector<size_t> partner(m_decls.size(), none);
+        for (size_t i = 0; i < m_decls.size(); ++i) {
+            for (size_t j = i + 1; j < m_decls.size(); ++j) {
+                if (m_decls[i].origin == m_decls[j].origin || !conflicts(m_decls[i], m_decls[j])) {
+                    continue;
+                }
+                if (!m_decls[i].origin.empty() && partner[i] == none) {
+                    m_decls[i].scoped = true;
+                    partner[i] = j;
+                }
+                if (!m_decls[j].origin.empty() && partner[j] == none) {
+                    m_decls[j].scoped = true;
+                    partner[j] = i;
+                }
+            }
+        }
+        for (size_t i = 0; i < m_decls.size(); ++i) {
+            const GroupDecl& d = m_decls[i];
+            if (d.scoped) {
+                const GroupDecl& other = m_decls[partner[i]];
+                m_sink.note(m_fileName,
+                            "state group \"" + d.name + "\" is scoped to symbol \"" + d.origin +
+                                "\": it conflicts with state group \"" + other.name + "\" of " +
+                                originText(other.origin) + " and applies only inside instances of \"" +
+                                d.origin + "\"",
+                            d.line, d.col);
+                continue;
+            }
+            if (m_groups.find(d.name) == m_groups.end()) {
+                m_groupOrder.push_back(d.name);
+                m_groups.emplace(d.name, d.members);
+            }
+        }
+    }
+
+    /// T-738: the origin of a `state-groups` attribute on DOM node `node`: the symbol of the
+    /// innermost instance holding it, except on an instance root whose attribute was written on
+    /// the `<use>` (then the enclosing one); empty for the document.
+    std::string groupOrigin(uint32_t node) const {
+        int k = node < m_owner.size() ? m_owner[node] : -1;
+        if (k >= 0 && (*m_instances)[static_cast<size_t>(k)].instanceNode == node &&
+            (*m_instances)[static_cast<size_t>(k)].rootStateGroupsFromUse) {
+            const uint32_t parent = m_dom.nodes[node].parent;
+            k = parent < m_owner.size() ? m_owner[parent] : -1;
+        }
+        return k < 0 ? std::string() : (*m_instances)[static_cast<size_t>(k)].symbol;
+    }
+
+    /// T-738: the symbol of the innermost instance holding DOM node `node`, or empty.
+    std::string ownerSymbol(uint32_t node) const {
+        const int k = node < m_owner.size() ? m_owner[node] : -1;
+        return k < 0 ? std::string() : (*m_instances)[static_cast<size_t>(k)].symbol;
+    }
+
+    void computeOwners() {
+        m_owner.assign(m_dom.nodes.size(), -1);
+        if (m_instances == nullptr) {
+            return;
+        }
+        for (size_t k = 0; k < m_instances->size(); ++k) {
+            const uint32_t root = (*m_instances)[k].instanceNode;
+            if (root < m_owner.size()) {
+                m_owner[root] = static_cast<int>(k);
+            }
+        }
+        // Preorder: a parent always comes before its children.
+        for (uint32_t i = 0; i < m_owner.size(); ++i) {
+            const uint32_t parent = m_dom.nodes[i].parent;
+            if (m_owner[i] < 0 && parent < i) {
+                m_owner[i] = m_owner[parent];
+            }
+        }
+    }
+
+    uint32_t maskOf(const std::vector<std::string>& members) const {
+        uint32_t mask = 0;
+        for (const std::string& member : members) {
+            auto it = m_stateIndex.find(member);
+            if (it != m_stateIndex.end()) {
+                mask |= 1u << it->second;
+            }
+        }
+        return mask;
+    }
+
+    /// T-738: the STGS records -- one scope per symbol with scoped groups (in first-appearance
+    /// order) and every instance root of those symbols, ascending.
+    void emitScopes(CustomStateBuilder& states) {
+        std::vector<std::string> symbols;
+        for (const GroupDecl& d : m_decls) {
+            if (d.scoped && std::find(symbols.begin(), symbols.end(), d.origin) == symbols.end()) {
+                symbols.push_back(d.origin);
+            }
+        }
+        if (symbols.empty() || m_instances == nullptr) {
+            return;
+        }
+        for (const std::string& symbol : symbols) {
+            IrStateScope scope{};
+            scope.symbolName = m_writer.intern(symbol);
+            scope.groupOffset = static_cast<uint32_t>(states.scopeGroups.size());
+            for (const GroupDecl& d : m_decls) {
+                if (d.scoped && d.origin == symbol) {
+                    states.scopeGroups.push_back(IrStateGroup{m_writer.intern(d.name), maskOf(d.members)});
+                }
+            }
+            scope.groupCount = static_cast<uint32_t>(states.scopeGroups.size()) - scope.groupOffset;
+            states.scopes.push_back(scope);
+        }
+        for (const ExpandedSymbolInstance& inst : *m_instances) {
+            auto it = std::find(symbols.begin(), symbols.end(), inst.symbol);
+            if (it != symbols.end()) {
+                states.scopeRoots.push_back(
+                    IrStateScopeRoot{inst.instanceNode, static_cast<uint32_t>(it - symbols.begin())});
+            }
+        }
+        std::sort(states.scopeRoots.begin(), states.scopeRoots.end(),
+                  [](const IrStateScopeRoot& a, const IrStateScopeRoot& b) { return a.element < b.element; });
+    }
+
+    /// T-738 (56 §56.4 item 8): more than 24 names -- a warning listing each with the symbol (or
+    /// the document) it was first declared or used in. Past kMaxCustomStates the error has been
+    /// reported instead.
+    void warnManyStates() {
+        constexpr size_t kCustomStateWarnCount = 24;
+        if (m_reportedTooMany || m_stateNames.size() <= kCustomStateWarnCount) {
+            return;
+        }
+        std::string list;
+        for (size_t i = 0; i < m_stateNames.size(); ++i) {
+            const std::string where =
+                m_stateOrigin[i].empty() ? std::string("document") : "symbol \"" + m_stateOrigin[i] + "\"";
+            list += (i == 0 ? "" : ", ") + m_stateNames[i] + " (" + where + ")";
+        }
+        m_sink.warn(m_fileName, std::to_string(m_stateNames.size()) + " custom state names (more than " +
+                                    std::to_string(kCustomStateWarnCount) + "; at most " +
+                                    std::to_string(kMaxCustomStates) + " are allowed): " + list);
     }
 
     // Registers the name of every `:state(<Name>)` selector condition (negated ones included).
     void collectSelectorStates() {
         for (const StyleRule& rule : m_rules.rules) {
+            m_curOrigin = rule.instanceSymbol;  // T-738
             for (const Selector& sel : rule.selectors) {
                 for (const SelectorPart& part : sel.parts) {
                     for (const SelectorCond& cond : part.conds) {
@@ -1005,8 +1201,9 @@ private:
 
     // T-175: `bind:state.<Name>` attributes (27.3.2) name custom states too.
     void collectBindStates() {
-        for (const DomNode& n : m_dom.nodes) {
-            for (const DomAttr& attr : n.attrs) {
+        for (uint32_t ni = 0; ni < m_dom.nodes.size(); ++ni) {
+            m_curOrigin = ownerSymbol(ni);  // T-738
+            for (const DomAttr& attr : m_dom.nodes[ni].attrs) {
                 if (attr.name.rfind("bind:state.", 0) != 0) {
                     continue;
                 }
@@ -2256,6 +2453,7 @@ private:
         m_ruleTriggers.resize(m_rules.rules.size());
         for (size_t r = 0; r < m_rules.rules.size(); ++r) {
             const StyleRule& rule = m_rules.rules[r];
+            m_curOrigin = rule.instanceSymbol;  // T-738
             for (const TriggerDecl& decl : rule.triggers) {
                 m_ruleTriggers[r].push_back(compile(
                     decl.event, decl.actions, rule.file.empty() ? m_fileName : rule.file, decl.line, 0));
@@ -2266,6 +2464,7 @@ private:
     void emitElements(TriggerBuilder& out) {
         for (uint32_t element = 0; element < m_dom.nodes.size(); ++element) {
             const DomNode& node = m_dom.nodes[element];
+            m_curOrigin = ownerSymbol(element);  // T-738
             // canonical event -> (priority, compiled trigger). `.xt` attributes rank above all.
             std::map<std::string, std::pair<uint64_t, CompiledTrigger>> chosen;
             std::vector<std::string> order;
@@ -2761,8 +2960,9 @@ private:
 
 bool emitTriggers(const DomTree& dom, const RuleSet& ruleSet, const PortScopes& ports, IrWriter& writer,
                   std::string_view fileName, DiagnosticSink& sink, CustomStateBuilder& states,
-                  TriggerBuilder& triggers, const RepeatScopes* repeats) {
-    Emitter emitter(dom, ruleSet, ports, writer, fileName, sink, repeats);
+                  TriggerBuilder& triggers, const RepeatScopes* repeats,
+                  const std::vector<ExpandedSymbolInstance>* instances) {
+    Emitter emitter(dom, ruleSet, ports, writer, fileName, sink, repeats, instances);
     return emitter.run(states, triggers);
 }
 

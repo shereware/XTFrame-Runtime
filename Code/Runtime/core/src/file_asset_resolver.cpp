@@ -223,11 +223,148 @@ void AssetResolver::setExternalTexture(std::string_view name, uint32_t texture, 
     entry.straightAlpha = straightAlpha;
     for (auto& [key, value] : m_external) {
         if (key == name) {
-            entry.pixels = value.pixels;  // T-191: kept across a texture rebind.
+            entry.pixels = value.pixels;          // T-191: kept across a texture rebind.
+            entry.hasVersion = value.hasVersion;  // T-746: so is the content version.
+            entry.version = value.version;
+            entry.planes = value.planes;  // T-806: and the plane description.
             value = entry;
             return;
         }
     }
+    m_external.emplace_back(std::string(name), entry);
+}
+
+void AssetResolver::setExternalTextureVersion(std::string_view name, uint64_t version) {
+    for (auto& [key, value] : m_external) {
+        if (key == name) {
+            value.hasVersion = true;
+            value.version = version;
+            return;
+        }
+    }
+    ExternalTexture entry;  // T-746: a size-only binding until the texture comes
+    entry.hasVersion = true;
+    entry.version = version;
+    m_external.emplace_back(std::string(name), entry);
+}
+
+AssetResolver::ExternalTextureUse AssetResolver::externalTextureUse(std::string_view name) const {
+    for (const auto& [key, value] : m_externalUse) {
+        if (key == name) {
+            return value;
+        }
+    }
+    return ExternalTextureUse{};
+}
+
+void AssetResolver::beginExternalTextureUse() {
+    for (auto& entry : m_externalUse) {
+        entry.second = ExternalTextureUse{};
+    }
+}
+
+void AssetResolver::noteExternalTextureUse(std::string_view name, int pixelWidth, int pixelHeight) {
+    ExternalTextureUse* use = nullptr;
+    for (auto& [key, value] : m_externalUse) {
+        if (key == name) {
+            use = &value;
+            break;
+        }
+    }
+    if (use == nullptr) {
+        use = &m_externalUse.emplace_back(std::string(name), ExternalTextureUse{}).second;
+    }
+    use->drawn = true;
+    use->maxPixelWidth = std::max(use->maxPixelWidth, pixelWidth);
+    use->maxPixelHeight = std::max(use->maxPixelHeight, pixelHeight);
+}
+
+uint64_t externalTextureStamp(const AssetResolver::ExternalTexture* ext) {
+    if (ext == nullptr) {
+        return 0x9E3779B97F4A7C15ull;  // unbound
+    }
+    struct Fields {
+        uint64_t version;
+        uint64_t pixels;
+        uint32_t texture;
+        int32_t width, height;
+        uint32_t flags;
+    };
+    const Fields f{ext->hasVersion ? ext->version : 0,
+                   reinterpret_cast<uintptr_t>(ext->pixels),
+                   ext->texture,
+                   ext->width,
+                   ext->height,
+                   (ext->straightAlpha ? 1u : 0u) | (ext->hasVersion ? 2u : 0u)};
+    const auto* bytes = reinterpret_cast<const uint8_t*>(&f);
+    uint64_t hash = 1469598103934665603ull;  // FNV-1a
+    for (size_t i = 0; i < sizeof(f); ++i) {
+        hash = (hash ^ bytes[i]) * 1099511628211ull;
+    }
+    // T-806 (§23.aj rule 4): a plane description is part of the binding. Folded in only when there
+    // is one, so a colour binding keeps the stamp it always had.
+    const AssetResolver::ExternalPlanes& p = ext->planes;
+    if (p.layout != AssetResolver::ExternalLayout::Rgba) {
+        const int32_t fields[] = {static_cast<int32_t>(p.layout),
+                                  static_cast<int32_t>(p.matrix),
+                                  static_cast<int32_t>(p.range),
+                                  static_cast<int32_t>(p.siting),
+                                  p.premultipliedPlanes ? 1 : 0,
+                                  p.textureWidth,
+                                  p.textureHeight,
+                                  p.y.x,
+                                  p.y.y,
+                                  p.y.w,
+                                  p.y.h,
+                                  p.u.x,
+                                  p.u.y,
+                                  p.u.w,
+                                  p.u.h,
+                                  p.v.x,
+                                  p.v.y,
+                                  p.v.w,
+                                  p.v.h,
+                                  p.a.x,
+                                  p.a.y,
+                                  p.a.w,
+                                  p.a.h};
+        const auto* pb = reinterpret_cast<const uint8_t*>(fields);
+        for (size_t i = 0; i < sizeof(fields); ++i) {
+            hash = (hash ^ pb[i]) * 1099511628211ull;
+        }
+    }
+    return hash;
+}
+
+bool externalPlanesValid(const AssetResolver::ExternalPlanes& planes) {
+    using Layout = AssetResolver::ExternalLayout;
+    if (planes.layout != Layout::PackedYuv420 && planes.layout != Layout::PackedYuva420) {
+        return false;
+    }
+    if (planes.textureWidth <= 0 || planes.textureHeight <= 0) {
+        return false;
+    }
+    auto inside = [&planes](const AssetResolver::ExternalPlaneRect& r) {
+        return r.w > 0 && r.h > 0 && r.x >= 0 && r.y >= 0 && r.w <= planes.textureWidth - r.x &&
+               r.h <= planes.textureHeight - r.y;
+    };
+    return inside(planes.y) && inside(planes.u) && inside(planes.v) &&
+           (planes.layout != Layout::PackedYuva420 || inside(planes.a));
+}
+
+void AssetResolver::setExternalTexturePlanes(std::string_view name, const ExternalPlanes& planes) {
+    const bool packed = planes.layout != ExternalLayout::Rgba;
+    for (auto& [key, value] : m_external) {
+        if (key == name) {
+            value.planes = planes;
+            if (packed) {
+                value.pixels = nullptr;  // §23.aj rule 3: CPU pixels and planes exclude each other
+            }
+            return;
+        }
+    }
+    ExternalTexture entry;  // a size-only binding until the texture comes (as the version)
+    entry.planes = planes;
     m_external.emplace_back(std::string(name), entry);
 }
 
@@ -238,6 +375,7 @@ void AssetResolver::setExternalPixels(std::string_view name, const ImageData* pi
             if (pixels != nullptr) {
                 value.width = pixels->width;
                 value.height = pixels->height;
+                value.planes = ExternalPlanes{};  // T-806 (§23.aj rule 3): CPU pixels end a plane description
             }
             return;
         }
@@ -1291,6 +1429,13 @@ const ImageMipChain* FileAssetResolver::imageMipChain(AssetId asset, const IrVie
 }
 
 Vec2 FileAssetResolver::imageSize(AssetId asset, const IrView& view) {
+    // T-808 (23 §23.8b, §23.aj rule 1): an `engine://` asset measures what the host bound -- the
+    // picture's size, also for a planar binding -- and 0 x 0 while unbound; never a file.
+    if (isExternalAsset(asset, view)) {
+        const ExternalTexture* ext = externalTexture(asset, view);
+        return ext != nullptr ? Vec2{static_cast<float>(ext->width), static_cast<float>(ext->height)}
+                              : Vec2{0, 0};
+    }
     // T-199: an atlas cell's size is the manifest's, whatever the page measures.
     const ImageMeta* meta = imageMeta(asset, view);
     if (meta != nullptr && meta->inAtlas) {

@@ -26,10 +26,85 @@ namespace {
 
 float clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
+/// Whether a marker at `t` is crossed going from `from` to `to` (either direction).
+bool markerHit(float t, float from, float to, bool inclusiveFrom) {
+    if (to >= from) {
+        return (t > from || (inclusiveFrom && t == from)) && t <= to;
+    }
+    return (t < from || (inclusiveFrom && t == from)) && t >= to;
+}
+
+/// T-774: at most this many self-control cuts per group and update (a jump back that is crossed
+/// again in the same step); the rest of the step then plays through as before.
+constexpr int kMaxSelfControlCuts = 64;
+
+NodeId groupScope(const std::vector<NodeId>& docNodes, const TimelineGroupRuntime& g) {
+    return g.scopeElement < docNodes.size() ? docNodes[g.scopeElement] : kInvalidNode;
+}
+
+/// T-774: the first marker (in the travel direction) crossed from `from` to `to` that a trigger
+/// controls the group from; false when none is.
+bool firstSelfMarker(TriggerRuntime& triggers, const TimelineGroupRuntime& g, NodeId scope, float from,
+                     float to, bool inclusiveFrom, float& at) {
+    bool found = false;
+    for (const IrTimelineGroupMarker& m : g.markers) {
+        if (!markerHit(m.time, from, to, inclusiveFrom) ||
+            (found && (to >= from ? m.time >= at : m.time <= at)) ||
+            !triggers.selfControls(g.name, TimelineEventKind::Marker, m.name, scope)) {
+            continue;
+        }
+        at = m.time;
+        found = true;
+    }
+    return found;
+}
+
+/// T-774: flags the last queued event of that marker (or end) of group `index` as self-applied.
+void markSelfApplied(std::vector<TimelinePendingEvent>& pending, size_t index, TimelineEventKind kind,
+                     StringId marker) {
+    for (size_t i = pending.size(); i-- > 0;) {
+        TimelinePendingEvent& ev = pending[i];
+        if (ev.group == index && ev.kind == kind && ev.marker == marker) {
+            ev.selfApplied = true;
+            return;
+        }
+    }
+}
+
+/// T-776 (58 §58.5): gives every member instance of `g` (group `index`) a new per-play seed.
+void reseedGroup(Animator& animator, TimelineExprSet& exprs, const TimelineGroupRuntime& g, size_t index) {
+    if (exprs.empty()) {
+        return;
+    }
+    const uint32_t seed = exprs.drawPlaySeed(static_cast<uint32_t>(index), g.name);
+    for (uint32_t id : g.memberInstances) {
+        if (id != 0) {
+            animator.setPlaySeed(id, seed);
+        }
+    }
+}
+
+/// T-776: attaches the TEXP programs of member `member` of group `index` to its instance `id`.
+void attachMemberExprs(Animator& animator, TimelineExprSet& exprs, size_t index, size_t member, uint32_t id,
+                       bool scene) {
+    if (exprs.empty()) {
+        return;
+    }
+    exprs.setMemberScene(static_cast<uint32_t>(index), static_cast<uint32_t>(member), scene);
+    for (uint32_t e : exprs.exprsOf(static_cast<uint32_t>(index), static_cast<uint32_t>(member))) {
+        animator.attachExpression(id, e);
+    }
+}
+
 }  // namespace
 
 void Document::loadTimelineGroups() {
     m_timelineGroups->groups.clear();
+    // T-776: the TEXP programs (none without TGRP) and what their inputs read.
+    TimelineExprSet& exprs = m_timelineGroups->exprs;
+    exprs.load(m_ir);
+    exprs.bind(&m_arena, &m_docElementNodes, m_bindings.get(), &m_animator);
+    m_animator.setExpressions(exprs.empty() ? nullptr : &exprs);
     const TimelineGroupChunk& chunk = m_ir.timelineGroups();
     if (!chunk.present()) {
         return;
@@ -103,6 +178,7 @@ void Document::activateTimelineGroup(size_t index) {
                 m_animator.pause(id, m_clock);
                 g.memberInstances[i] = id;
                 g.memberIsScene[i] = 1;
+                attachMemberExprs(m_animator, m_timelineGroups->exprs, index, i, id, true);  // T-776
                 continue;
             }
         }
@@ -117,7 +193,9 @@ void Document::activateTimelineGroup(size_t index) {
         uint32_t id = m_animator.play(params, m_clock);
         m_animator.pause(id, m_clock);
         g.memberInstances[i] = id;
+        attachMemberExprs(m_animator, m_timelineGroups->exprs, index, i, id, false);  // T-776
     }
+    reseedGroup(m_animator, m_timelineGroups->exprs, g, index);  // T-776: the activation's draw.
     g.restores.clear();
     g.restoresCaptured = false;
 
@@ -234,17 +312,17 @@ void Document::releaseTimelineGroup(size_t index) {
         if (const Timeline* tl = m_animator.timeline(m.timeline)) {
             for (const Track& track : tl->tracks) {
                 if (track.prop < prop::kElementPropCount && data.styleResolvedOnce != 0) {
-                    setProperty(m_arena, node, track.prop, data.style.base[track.prop]);
+                    setProperty(m_arena, node, track.prop, data.style.base[track.prop], DirtyCause::Timeline);
                 }
             }
         }
         // 19.3: a 3D PropId track may have forced is3D; a re-resolve restores it.
-        m_arena.markDirty(node, static_cast<uint8_t>(kDirtyStyle));
+        m_arena.markDirty(node, static_cast<uint8_t>(kDirtyStyle), DirtyCause::Timeline);
     }
     for (const TimelineRestore& r : g.restores) {
         uint32_t effectIndex = (static_cast<uint32_t>(r.prop) >> 8) & 0xFu;
         if (m_arena.alive(r.node) && effectIndex < m_arena.common(r.node).effectCount) {
-            setProperty(m_arena, r.node, r.prop, r.value);
+            setProperty(m_arena, r.node, r.prop, r.value, DirtyCause::Timeline);
         }
     }
     g.restores.clear();
@@ -291,6 +369,7 @@ void Document::applyTimelineGroupTime(size_t index) {
             const Timeline* tl = m_animator.timeline(m.timeline);
             float end = tl != nullptr ? tl->duration : 0.0f;
             m_animator.seek(id, clampf(g.t, 0.0f, end), m_clock);
+            m_animator.setGroupTime(id, g.t);  // T-776
             continue;
         }
         float u;
@@ -300,6 +379,7 @@ void Document::applyTimelineGroupTime(size_t index) {
             u = g.t >= m.delay ? 1.0f : 0.0f;
         }
         m_animator.seek(id, u, m_clock);
+        m_animator.setGroupTime(id, g.t);  // T-776: the expressions sample the group's time.
     }
     // 4.10.2: local clip time = (t - clipStart) * clipRate (T-190: `clip-start`/`clip-rate` on the
     // clip element, 04 §4.10.2 / 28 §28.2).
@@ -351,13 +431,7 @@ void Document::applyTimelineGroupTime(size_t index) {
 void Document::queueTimelineMarkers(size_t index, float from, float to, bool inclusiveFrom) {
     const TimelineGroupRuntime& g = m_timelineGroups->groups[index];
     for (const IrTimelineGroupMarker& m : g.markers) {
-        bool hit;
-        if (to >= from) {
-            hit = (m.time > from || (inclusiveFrom && m.time == from)) && m.time <= to;
-        } else {
-            hit = (m.time < from || (inclusiveFrom && m.time == from)) && m.time >= to;
-        }
-        if (hit) {
+        if (markerHit(m.time, from, to, inclusiveFrom)) {
             m_timelineGroups->pending.push_back(
                 TimelinePendingEvent{static_cast<uint32_t>(index), TimelineEventKind::Marker, m.name});
         }
@@ -390,8 +464,12 @@ Status Document::playTimeline(std::string_view scopePath, std::string_view name,
             return Status::kNotFound;
         }
     }
+    const bool wasActive = g.active;
     activateTimelineGroup(index);
     TimelineGroupRuntime& grp = m_timelineGroups->groups[index];
+    if (wasActive) {
+        reseedGroup(m_animator, m_timelineGroups->exprs, grp, index);  // T-776: a new play, a new draw.
+    }
     grp.reverse = options.reverse;
     grp.loop = options.loop && !options.once;
     grp.hold = options.hold;
@@ -509,6 +587,9 @@ void Document::captureTimelineRestores(size_t index) {
 
 void Document::stepTimelineGroups(float clock) {
     std::vector<TimelineGroupRuntime>& groups = m_timelineGroups->groups;
+    // T-776 (58 §58.5): one port-history record per update, while a timeline reading it plays.
+    m_timelineGroups->exprs.recordPortHistory(clock, groups);
+    const bool selfControl = m_triggers->hasSelfControl();  // T-774
     for (size_t index = 0; index < groups.size(); ++index) {
         TimelineGroupRuntime& g = groups[index];
         if (g.active && !g.restoresCaptured) {
@@ -524,57 +605,151 @@ void Document::stepTimelineGroups(float clock) {
         }
         bool inclusive = g.startInclusive;
         g.startInclusive = false;
-        bool ended = false;
-        float from = g.t;
-        if (!g.reverse) {
-            float to = from + dt;
-            if (g.loop && g.duration > 0) {
-                while (to > g.duration) {
-                    queueTimelineMarkers(index, from, g.duration, inclusive);
-                    to -= g.duration;
-                    from = 0;
-                    inclusive = true;
-                }
-                queueTimelineMarkers(index, from, to, inclusive);
-                g.t = to;
-            } else if (to >= g.duration) {
-                queueTimelineMarkers(index, from, g.duration, inclusive);
-                g.t = g.duration;
-                ended = true;
-            } else {
-                queueTimelineMarkers(index, from, to, inclusive);
-                g.t = to;
+        // T-774: a step cut at a self-controlled marker / end goes on from where its actions left
+        // the group, with the rest of the step, while the group still plays.
+        for (int pass = 0;
+             advanceTimelineGroup(index, dt, inclusive, selfControl && pass < kMaxSelfControlCuts); ++pass) {
+            TimelineGroupRuntime& cur = groups[index];
+            if (!cur.active || !cur.playing) {
+                break;
             }
-        } else {
-            float to = from - dt;
-            if (g.loop && g.duration > 0) {
-                while (to < 0) {
-                    queueTimelineMarkers(index, from, 0, inclusive);
-                    to += g.duration;
-                    from = g.duration;
-                    inclusive = true;
-                }
-                queueTimelineMarkers(index, from, to, inclusive);
-                g.t = to;
-            } else if (to <= 0) {
-                queueTimelineMarkers(index, from, 0, inclusive);
-                g.t = 0;
-                ended = true;
-            } else {
-                queueTimelineMarkers(index, from, to, inclusive);
-                g.t = to;
-            }
-        }
-        applyTimelineGroupTime(index);
-        if (ended) {
-            g.playing = false;
-            m_timelineGroups->pending.push_back(
-                TimelinePendingEvent{static_cast<uint32_t>(index), TimelineEventKind::End, kInvalidString});
-            if (!g.hold) {
-                releaseTimelineGroup(index);
-            }
+            inclusive = cur.startInclusive;
+            cur.startInclusive = false;
+            cur.lastClock = clock;
         }
     }
+}
+
+bool Document::advanceTimelineGroup(size_t index, float& dt, bool inclusive, bool cut) {
+    TimelineGroupRuntime& g = m_timelineGroups->groups[index];
+    const NodeId scope = groupScope(m_docElementNodes, g);
+    const float rate = g.rate;
+    float travelled = 0;  // Group seconds up to the cut.
+    float at = 0;         // The cut's time.
+    // Queues the markers crossed from `a` to `b`; true when a self-controlled one cuts the step at `at`.
+    const auto segment = [&](float a, float b, bool incl) {
+        if (cut && firstSelfMarker(*m_triggers, g, scope, a, b, incl, at)) {
+            queueTimelineMarkers(index, a, at, incl);
+            travelled += std::fabs(at - a);
+            return true;
+        }
+        queueTimelineMarkers(index, a, b, incl);
+        travelled += std::fabs(b - a);
+        return false;
+    };
+    // T-783: a self-control seek() jumping forward over other markers queued them; the ones that
+    // control the group are applied now, where the jump landed, in time order -- not after the frame.
+    const auto applyJumped = [&](size_t queuedFrom) {
+        std::vector<TimelinePendingEvent>& pending = m_timelineGroups->pending;
+        for (int n = 0; n < kMaxSelfControlCuts; ++n) {
+            const TimelineGroupRuntime& cur = m_timelineGroups->groups[index];
+            const NodeId curScope = groupScope(m_docElementNodes, cur);
+            size_t best = pending.size();
+            float bestAt = 0;
+            for (size_t i = queuedFrom; i < pending.size(); ++i) {
+                const TimelinePendingEvent& ev = pending[i];
+                if (ev.group != index || ev.kind != TimelineEventKind::Marker || ev.selfApplied) {
+                    continue;
+                }
+                for (const IrTimelineGroupMarker& m : cur.markers) {
+                    if (m.name == ev.marker &&
+                        (best == pending.size() || (cur.reverse ? m.time > bestAt : m.time < bestAt)) &&
+                        m_triggers->selfControls(cur.name, TimelineEventKind::Marker, m.name, curScope)) {
+                        best = i;
+                        bestAt = m.time;
+                        break;
+                    }
+                }
+            }
+            if (best == pending.size()) {
+                return;
+            }
+            pending[best].selfApplied = true;
+            const StringId marker = pending[best].marker;
+            m_triggers->applySelfControl(cur.name, TimelineEventKind::Marker, marker, curScope);
+        }
+    };
+    bool ended = false;
+    bool stopped = false;
+    float from = g.t;
+    if (!g.reverse) {
+        float to = from + dt;
+        if (g.loop && g.duration > 0) {
+            while (!stopped && to > g.duration) {
+                stopped = segment(from, g.duration, inclusive);
+                to -= g.duration;
+                from = 0;
+                inclusive = true;
+            }
+            stopped = stopped || segment(from, to, inclusive);
+            g.t = to;
+        } else if (to >= g.duration) {
+            stopped = segment(from, g.duration, inclusive);
+            g.t = g.duration;
+            ended = true;
+        } else {
+            stopped = segment(from, to, inclusive);
+            g.t = to;
+        }
+    } else {
+        float to = from - dt;
+        if (g.loop && g.duration > 0) {
+            while (!stopped && to < 0) {
+                stopped = segment(from, 0, inclusive);
+                to += g.duration;
+                from = g.duration;
+                inclusive = true;
+            }
+            stopped = stopped || segment(from, to, inclusive);
+            g.t = to;
+        } else if (to <= 0) {
+            stopped = segment(from, 0, inclusive);
+            g.t = 0;
+            ended = true;
+        } else {
+            stopped = segment(from, to, inclusive);
+            g.t = to;
+        }
+    }
+    if (stopped) {
+        // T-774: the group stands at the marker while its self-control actions run.
+        g.t = at;
+        const size_t queued = m_timelineGroups->pending.size();
+        for (const IrTimelineGroupMarker& m : g.markers) {
+            if (m.time == at && m_triggers->selfControls(g.name, TimelineEventKind::Marker, m.name, scope)) {
+                markSelfApplied(m_timelineGroups->pending, index, TimelineEventKind::Marker, m.name);
+                m_triggers->applySelfControl(g.name, TimelineEventKind::Marker, m.name, scope);
+            }
+        }
+        applyJumped(queued);
+    } else {
+        applyTimelineGroupTime(index);
+        if (!ended) {
+            return false;
+        }
+        g.playing = false;
+        TimelinePendingEvent end{static_cast<uint32_t>(index), TimelineEventKind::End, kInvalidString};
+        const bool self =
+            cut && m_triggers->selfControls(g.name, TimelineEventKind::End, kInvalidString, scope);
+        end.selfApplied = self;
+        m_timelineGroups->pending.push_back(end);
+        if (!g.hold) {
+            releaseTimelineGroup(index);
+        }
+        if (!self) {
+            return false;
+        }
+        const size_t queued = m_timelineGroups->pending.size();
+        m_triggers->applySelfControl(g.name, TimelineEventKind::End, kInvalidString, scope);
+        applyJumped(queued);
+    }
+    // The rest of the step, in clock time, at the rate the group plays at now.
+    TimelineGroupRuntime& now = m_timelineGroups->groups[index];
+    dt = std::max(dt - travelled, 0.0f);
+    if (now.rate != rate) {
+        dt = dt / rate * now.rate;
+    }
+    return true;
 }
 
 void Document::flushTimelineEvents() {
@@ -603,7 +778,7 @@ void Document::flushTimelineEvents() {
             m_events->dispatch(m_arena, event);
         }
         // T-174: resume `then` chains waiting on this timeline, fire timeline(<n>).end/.marker().
-        m_triggers->onTimelineEvent(name, ev.kind, ev.marker, scope);
+        m_triggers->onTimelineEvent(name, ev.kind, ev.marker, scope, ev.selfApplied);  // T-774
         if (m_timelineGroups->listener && !m_unloading) {  // T-260a: none from an unloading Document.
             TimelineEvent te;
             te.kind = ev.kind;
@@ -613,6 +788,7 @@ void Document::flushTimelineEvents() {
             m_timelineGroups->listener(te);
         }
     }
+    m_triggers->dropSelfApplied();  // T-774: outcomes of trigger runs that did not happen.
 }
 
 void Document::forgetTimelineNode(NodeId node) {

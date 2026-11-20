@@ -12,8 +12,8 @@
 /// Docs/tasks/T-28.md "FakeTextShaper (tests)".
 ///
 /// Simplifications (test-only, not part of the core contract):
-/// - glyphId == codepoint (this is what lets layoutText's trailing-space/ellipsis logic identify
-///   U+0020 via glyphId; see text_layout.cpp's top-of-file comment).
+/// - glyphId == codepoint; white space sets ShapedGlyph::isSpace, which is what layoutText's
+///   trailing-space/ellipsis logic reads (T-801).
 /// - '\n' (U+000A) is given 0 advance: it is a forced-break control character with no visual
 ///   width in this test shaper (breakAfter == 2 is what actually forces the line break; the core
 ///   layout algorithm does not special-case '\n').
@@ -163,6 +163,7 @@ public:
                 g.xOffset = 0;
                 g.yOffset = 0;
                 g.cluster = cps[k].byteOffset;
+                g.isSpace = isWhiteSpace(cps[k].codepoint) ? 1 : 0;  // T-801: layout trims by isSpace
                 out.glyphs.push_back(g);
             }
             out.runs.push_back(run);
@@ -178,6 +179,13 @@ public:
     }
 
 private:
+    /// The ASCII white space plus U+3000 -- what this test shaper's strings use. A subset of
+    /// ShapedGlyph::isSpace's definition (Unicode White_Space minus the no-break spaces).
+    static bool isWhiteSpace(uint32_t cp) {
+        return cp == 0x20u || (cp >= 0x09u && cp <= 0x0Du) || cp == 0x85u || cp == 0x2028u || cp == 0x2029u ||
+               cp == 0x3000u;
+    }
+
     std::vector<std::pair<uint32_t, uint32_t>> m_rtlRanges;
 };
 

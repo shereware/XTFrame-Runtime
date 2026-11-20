@@ -189,10 +189,39 @@ SymbolJson lintReportJson(const LintReport& report) {
 }
 
 SymbolJson useReportJson(const UseReport& report) {
-    return SymbolJson{
-        {"status", statusName(report.status)},           {"written", stringList(report.written)},
-        {"skipped", stringList(report.skipped)},         {"renamed", stringList(report.renamed)},
-        {"tokensAdded", stringList(report.tokensAdded)}, {"notFound", stringList(report.notFound)}};
+    // T-739: each skipped symbol file with why (same source / name taken) and whose it is.
+    SymbolJson clashes = SymbolJson::array();
+    for (const NameClash& clash : report.clashes) {
+        UseTarget target;
+        target.existingLibrary = clash.existingLibrary;
+        target.existingGroup = clash.existingGroup;
+        SymbolJson item{{"name", clash.name},
+                        {"path", clash.path},
+                        {"reason", useClashName(clash.reason)},
+                        {"existingSource", existingSourceText(target)},
+                        {"placed", clash.placed}};  // T-741: the qualified name in the project
+        if (!clash.because.empty()) {
+            item["because"] = clash.because;
+        }
+        clashes.push_back(std::move(item));
+    }
+    // T-741: every symbol handled with the qualified name `<use symbol>` writes.
+    SymbolJson symbols = SymbolJson::array();
+    for (const UsedSymbol& used : report.symbols) {
+        symbols.push_back(SymbolJson{{"name", used.name},
+                                     {"qualified", used.qualified},
+                                     {"path", used.path},
+                                     {"source", used.library + "/" + used.group},
+                                     {"dependency", used.dependency}});
+    }
+    return SymbolJson{{"status", statusName(report.status)},
+                      {"written", stringList(report.written)},
+                      {"skipped", stringList(report.skipped)},
+                      {"renamed", stringList(report.renamed)},
+                      {"tokensAdded", stringList(report.tokensAdded)},
+                      {"notFound", stringList(report.notFound)},
+                      {"clashes", std::move(clashes)},
+                      {"symbols", std::move(symbols)}};
 }
 
 SymbolJson setInfoJson(const SetInfo& set) {

@@ -54,7 +54,11 @@ SymbolJson libraryJson(const SymbolLibrary& library);
 SymbolJson lintReportJson(const LintReport& report);
 
 /// `symbols.use` / `useGroup` / `updateCopy`: `{status, written, skipped, renamed, tokensAdded,
-/// notFound}` (`status` is the status name, "kOk" when everything went).
+/// notFound, clashes, symbols}` (`status` is the status name, "kOk" when everything went; T-739
+/// `clashes`: `[{name, path, reason (same | nameTaken | placed), existingSource (<library>/<group> |
+/// project), placed (T-741: the qualified name in the project, empty for nameTaken), because
+/// (T-741, only when set)}]`; T-741 `symbols`: `[{name, qualified, path, source (<library>/<group>),
+/// dependency}]`, each symbol handled, the requested ones first).
 SymbolJson useReportJson(const UseReport& report);
 
 /// `set.json` as data: `{id, author, name, version, license, fontsLicense, description, homepage,

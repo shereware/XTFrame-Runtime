@@ -246,7 +246,7 @@ TEST_CASE("rich text: text-reveal shows the leading fraction of grapheme cluster
     CHECK(list.glyphs[1] == 'b');
 
     ElementRef a = doc->byId("a");
-    setProperty(doc->arena(), a.node, prop::TextReveal, Value::ofFloat(0.75f));
+    setProperty(doc->arena(), a.node, prop::TextReveal, Value::ofFloat(0.75f), DirtyCause::HostApi);
     doc->update(0.0f);
     list.clear();
     doc->paint(list);

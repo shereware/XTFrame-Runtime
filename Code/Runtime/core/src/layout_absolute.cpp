@@ -316,37 +316,42 @@ void LayoutEngine::layoutAbsoluteChildren(NodeArena& arena, NodeId node, NodeId 
                                           float parentContentAbsX, float parentContentAbsY, int depth) {
     XT_ASSERT(static_cast<uint32_t>(depth) < kMaxElementDepth);
     arena.forEachChild(node, [&](NodeId c) {
-        if (arena.kind(c) != NodeKind::Element) {
-            return;
-        }
-        ElementData& cd = arena.element(c);
-        if (cd.style.display == Display::None || cd.cameraNode != kInvalidNode) {
-            return;  // Already zeroed + visible = 0 by the in-flow pass (layout_block.cpp).
-        }
-
-        if (cd.style.position == Position::Absolute) {
-            // Sets cd.box fully, with box.x/y temporarily relative to the containing block's
-            // padding box (cbPaddingAbs); converted to "relative to c's DOM parent's content box"
-            // right below, matching every other LayoutBox's convention.
-            resolveAbsoluteBox(arena, c, cbPaddingAbs, depth + 1);
-            cd.box.x = cbPaddingAbs.x + cd.box.x - parentContentAbsX;
-            cd.box.y = cbPaddingAbs.y + cd.box.y - parentContentAbsY;
-        }
-
-        float cAbsX = parentContentAbsX + cd.box.x;
-        float cAbsY = parentContentAbsY + cd.box.y;
-        Rect cContent = cd.box.contentBox();
-
-        NodeId childCb = cbNode;
-        Rect childCbPad = cbPaddingAbs;
-        if (cd.style.position != Position::Static) {
-            Rect cPad = cd.box.paddingBox();
-            childCb = c;
-            childCbPad = Rect{cAbsX + cPad.x, cAbsY + cPad.y, cPad.w, cPad.h};
-        }
-        layoutAbsoluteChildren(arena, c, childCb, childCbPad, cAbsX + cContent.x, cAbsY + cContent.y,
-                               depth + 1);
+        layoutAbsoluteChild(arena, c, cbNode, cbPaddingAbs, parentContentAbsX, parentContentAbsY, depth);
     });
+}
+
+void LayoutEngine::layoutAbsoluteChild(NodeArena& arena, NodeId c, NodeId cbNode, Rect cbPaddingAbs,
+                                       float parentContentAbsX, float parentContentAbsY, int depth) {
+    if (arena.kind(c) != NodeKind::Element) {
+        return;
+    }
+    ElementData& cd = arena.element(c);
+    if (cd.style.display == Display::None || cd.cameraNode != kInvalidNode) {
+        return;  // Already zeroed + visible = 0 by the in-flow pass (layout_block.cpp).
+    }
+
+    if (cd.style.position == Position::Absolute) {
+        updateAbsoluteLayoutFlags(arena, c);  // T-755 (06 §6.x item 1).
+        // Sets cd.box fully, with box.x/y temporarily relative to the containing block's
+        // padding box (cbPaddingAbs); converted to "relative to c's DOM parent's content box"
+        // right below, matching every other LayoutBox's convention.
+        resolveAbsoluteBox(arena, c, cbPaddingAbs, depth + 1);
+        cd.box.x = cbPaddingAbs.x + cd.box.x - parentContentAbsX;
+        cd.box.y = cbPaddingAbs.y + cd.box.y - parentContentAbsY;
+    }
+
+    float cAbsX = parentContentAbsX + cd.box.x;
+    float cAbsY = parentContentAbsY + cd.box.y;
+    Rect cContent = cd.box.contentBox();
+
+    NodeId childCb = cbNode;
+    Rect childCbPad = cbPaddingAbs;
+    if (cd.style.position != Position::Static) {
+        Rect cPad = cd.box.paddingBox();
+        childCb = c;
+        childCbPad = Rect{cAbsX + cPad.x, cAbsY + cPad.y, cPad.w, cPad.h};
+    }
+    layoutAbsoluteChildren(arena, c, childCb, childCbPad, cAbsX + cContent.x, cAbsY + cContent.y, depth + 1);
 }
 
 void LayoutEngine::layoutAbsolutePass(NodeArena& arena, NodeId root) {

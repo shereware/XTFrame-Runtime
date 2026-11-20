@@ -180,7 +180,7 @@ void Document::setExternalPlaceholders(bool on) {
     // The intrinsic size of an unbound element changes (0 x 0 <-> the placeholder size).
     for (NodeId element : m_externalElements) {
         if (m_arena.alive(element)) {
-            m_arena.markDirty(element, static_cast<uint8_t>(kDirtyLayout));
+            m_arena.markDirty(element, static_cast<uint8_t>(kDirtyLayout), DirtyCause::Viewport);
         }
     }
 }
@@ -221,11 +221,14 @@ Status Document::bindTexture(NodeId node, uint32_t textureHandle, int width, int
     const std::string_view name = externalAssetName(m_ir.string(m_ir.assets().assets()[x.asset].name));
     const AssetResolver::ExternalTexture* prev = m_assets->externalTexture(name);
     const bool resized = prev == nullptr || prev->width != width || prev->height != height;
-    m_assets->setExternalTexture(name, textureHandle, width, height);
+    // T-809 (23 "§23.8b 補充"): no alpha parameter here -- keep the flag the binding already has.
+    const bool straightAlpha = prev != nullptr && prev->straightAlpha;
+    m_assets->setExternalTexture(name, textureHandle, width, height, straightAlpha);
     if (resized) {
-        m_arena.markDirty(x.element, static_cast<uint8_t>(kDirtyLayout));
+        m_arena.markDirty(x.element, static_cast<uint8_t>(kDirtyLayout), DirtyCause::External);
     }
     m_externalDamaged.push_back(x.element);
+    m_arena.noteVisualChange(DirtyCause::External, x.element);  // T-747: the content changed
     return Status::kOk;
 }
 
@@ -247,9 +250,10 @@ Status Document::bindImage(NodeId node, const ImageData* pixels) {
                          (prev == nullptr || prev->width != pixels->width || prev->height != pixels->height);
     m_assets->setExternalPixels(name, pixels);
     if (resized) {
-        m_arena.markDirty(x.element, static_cast<uint8_t>(kDirtyLayout));
+        m_arena.markDirty(x.element, static_cast<uint8_t>(kDirtyLayout), DirtyCause::External);
     }
     m_externalDamaged.push_back(x.element);
+    m_arena.noteVisualChange(DirtyCause::External, x.element);  // T-747: the content changed
     return Status::kOk;
 }
 
@@ -266,7 +270,7 @@ Status Document::unbindExternal(NodeId node) {
         return Status::kInvalidArgument;
     }
     m_assets->clearExternalTexture(externalAssetName(m_ir.string(m_ir.assets().assets()[x.asset].name)));
-    m_arena.markDirty(x.element, static_cast<uint8_t>(kDirtyLayout));
+    m_arena.markDirty(x.element, static_cast<uint8_t>(kDirtyLayout), DirtyCause::External);
     m_externalDamaged.push_back(x.element);
     return Status::kOk;
 }
@@ -316,6 +320,67 @@ void Document::takeExternalDamage(std::vector<Rect>& out) {
     m_externalDamaged.clear();
 }
 
+// --- T-746: content versions of the resolver's bindings (23 §23.ah) -------------------------------
+
+void Document::checkExternalTextures() {
+    if (m_assets == nullptr) {
+        return;
+    }
+    for (ExternalTextureSeen& seen : m_externalTextures) {
+        const AssetResolver::ExternalTexture* ext = m_assets->externalTexture(seen.asset, m_ir);
+        const uint64_t stamp = externalTextureStamp(ext);
+        if (stamp == seen.stamp) {
+            continue;
+        }
+        const int width = ext != nullptr ? ext->width : 0;
+        const int height = ext != nullptr ? ext->height : 0;
+        if (width != seen.width || height != seen.height) {
+            // §23.ah item 1: a new size is the users' intrinsic size -- the `<img>`s and media elements
+            // drawing the asset, the text runs holding it as an inline object -- laid out again.
+            const uint32_t capacity = m_arena.capacity();
+            for (NodeId n = 0; n < capacity; ++n) {
+                if (!m_arena.alive(n)) {
+                    continue;
+                }
+                bool uses = false;
+                if (m_arena.kind(n) == NodeKind::Element) {
+                    const ElementData& data = m_arena.element(n);
+                    uses = data.imageAsset == seen.asset;
+                    if (data.style.backgroundImage == seen.asset || data.style.borderImage == seen.asset) {
+                        // T-808: a background / border image keeps its source size in ElementData
+                        // (StyleEngine::resolveImageMeta): the element's style is resolved again.
+                        m_arena.markStyleDirtySelf(n, DirtyCause::External);
+                    }
+                } else if (m_arena.kind(n) == NodeKind::Text) {
+                    for (const TextInline& object : m_arena.text(n).inlines) {
+                        uses = uses || object.asset == seen.asset;
+                    }
+                }
+                if (uses) {
+                    m_arena.markDirty(n, static_cast<uint8_t>(kDirtyLayout), DirtyCause::External);
+                }
+            }
+        }
+        // A name the host versions (now or until now) changed what it shows; one it never versioned
+        // counts as changing every frame anyway (its paint is clock-dependent), as before.
+        if (seen.versioned || (ext != nullptr && ext->hasVersion)) {
+            m_arena.noteVisualChange(DirtyCause::External, kInvalidNode);
+        }
+        seen = ExternalTextureSeen{seen.asset, width, height, ext != nullptr && ext->hasVersion, stamp};
+    }
+}
+
+uint64_t Document::externalTextureSignature() const {
+    if (m_assets == nullptr || m_externalTextures.empty()) {
+        return 0;
+    }
+    uint64_t hash = 1469598103934665603ull;
+    for (const ExternalTextureSeen& seen : m_externalTextures) {
+        hash = (hash ^ externalTextureStamp(m_assets->externalTexture(seen.asset, m_ir))) * 1099511628211ull;
+    }
+    return hash;
+}
+
 // --- Media control -----------------------------------------------------------------------------
 
 void Document::endMedia(NodeId ext) {
@@ -341,6 +406,9 @@ void Document::setSequenceTime(NodeId ext, float time, bool preload) {
     x.frame = frame;
     ElementData& data = m_arena.element(x.element);
     if (!x.frames.empty()) {
+        if (data.imageAsset != x.frames[frame]) {
+            m_arena.noteVisualChange(DirtyCause::External, x.element);  // T-747: another frame shown
+        }
         data.imageAsset = x.frames[frame];
         if (preload && m_assets != nullptr && x.preloadedFrom != frame) {
             x.preloadedFrom = frame;
@@ -368,9 +436,13 @@ void Document::setSequenceTime(NodeId ext, float time, bool preload) {
     }
     const float col = static_cast<float>(frame % cols);
     const float row = static_cast<float>(frame / cols);
+    const Rect cell{col * x.frameSize.x / size.x, row * x.frameSize.y / size.y, x.frameSize.x / size.x,
+                    x.frameSize.y / size.y};
+    if (data.imageAsset != x.asset || data.imageSubUv != cell) {
+        m_arena.noteVisualChange(DirtyCause::External, x.element);  // T-747: another cell shown
+    }
     data.imageAsset = x.asset;
-    data.imageSubUv = Rect{col * x.frameSize.x / size.x, row * x.frameSize.y / size.y, x.frameSize.x / size.x,
-                           x.frameSize.y / size.y};
+    data.imageSubUv = cell;
 }
 
 // T-260a: every media call below that sends a video request (ContextListener::onExternalRequest)
@@ -554,7 +626,11 @@ void Document::refreshExternalPlaceholders() {
                                                             ? m_assets->externalTexture(x.asset, m_ir)
                                                             : nullptr;
         x.bound = binding != nullptr && (binding->texture != 0 || binding->pixels != nullptr) ? 1 : 0;
+        const uint8_t wasShown = x.showPlaceholder;
         x.showPlaceholder = m_externalPlaceholders && x.bound == 0 ? 1 : 0;
+        if (x.showPlaceholder != wasShown) {
+            m_arena.noteVisualChange(DirtyCause::External, element);  // T-747: placeholder on / off
+        }
         if (x.showPlaceholder == 0) {
             x.label.clear();
             x.labelText.clear();
@@ -583,6 +659,7 @@ void Document::refreshExternalPlaceholders() {
             origin.y == x.labelOrigin.y) {
             continue;
         }
+        m_arena.noteVisualChange(DirtyCause::External, element);  // T-747: a new placeholder label
         x.labelText = text;
         x.labelSize = size;
         x.labelOrigin = origin;

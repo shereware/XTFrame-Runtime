@@ -812,3 +812,29 @@ TEST_CASE("T-305 (i): CIEDE2000 known values and hex parsing") {
     CHECK_FALSE(xt::bundle::detail::parseHexColor("#ggg", rgba));
     CHECK_FALSE(xt::bundle::detail::hexDeltaE2000("red", "#fff", &dE));
 }
+
+TEST_CASE(
+    "T-742 the graph keeps two same-named symbols apart: symbol:<namespace>/<Name> for a namespaced copy") {
+    const UiProject project = starterCopy("namespaced_graph");
+    // A second Button in the namespace survey-2026 (56 §56.3 item 0), reading its own variable.
+    writeText(project.rootDir + "/shared/symbols/survey-2026/Button.xt",
+              "<xt><head><symbol name=\"Button\"><div id=\"Bg\"></div></symbol>"
+              "<style>symbol(Button) { #Bg { color: var(--survey-ink); } }</style></head></xt>\n");
+    DesignSystem ds;
+    std::string error;
+    REQUIRE_MESSAGE(load(project, ds, nullptr, &error) == Status::kOk, error);
+    Graph graph;
+    REQUIRE_MESSAGE(buildGraph(project, ds, graph, &error) == Status::kOk, error);
+    CHECK(graph.has("symbol:Button"));
+    CHECK(graph.has("symbol:survey-2026/Button"));
+    const Usage survey = usage(graph, "token:survey-ink");
+    CHECK(contains(survey.symbols, "symbol:survey-2026/Button"));
+    CHECK_FALSE(contains(survey.symbols, "symbol:Button"));
+    CHECK_FALSE(contains(usage(graph, "token:color-accent").symbols, "symbol:survey-2026/Button"));
+    // The reference form of the node parses with its `/` (an entry reference, 35 §35.5).
+    EntryKind kind = EntryKind::Ui;
+    std::string id;
+    REQUIRE(parseEntryRef("symbol:survey-2026/Button", &kind, &id));
+    CHECK(kind == EntryKind::Symbol);
+    CHECK(id == "survey-2026/Button");
+}

@@ -1,0 +1,81 @@
+<xt version="2">
+
+  <symbol name="InteractPrompt" state-groups="Show: Shown|Hidden" requires="states: Shown, Hidden; slots: key">
+    <ports>
+      label: string in
+      visible: bool in
+    </ports>
+    <div id="Box" bind:state.Shown="visible" bind:state.Hidden="visible | not"
+         on:port(visible)="if eq(1) play(intro)">
+      <div id="Body">
+        <span id="Key"><slot name="key">E</slot></span>
+        <span id="Label" bind:text="label"></span>
+      </div>
+    </div>
+  </symbol>
+
+  <layout>
+    symbol(InteractPrompt) {
+      #Box {
+        padding: var(--space-1) var(--space-3);
+      }
+      #Body {
+        display: flex;
+        align-items: center;
+        column-gap: var(--space-3);
+      }
+      #Key {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+      }
+    }
+  </layout>
+  <style>
+    symbol(InteractPrompt) {
+      #Box {
+        background-color: var(--color-scrim-soft);
+      }
+      #Box:state(Hidden) {
+        opacity: 0;
+      }
+      #Box:state(Shown) {
+        opacity: 1;
+      }
+      #Key {
+        border-width: var(--rule-thin);
+        border-color: var(--color-text);
+        border-radius: var(--radius-s);
+        font-family: var(--font-body);
+        font-size: var(--font-size-s);
+        color: var(--color-text-strong);
+        text-align: center;
+      }
+      #Label {
+        font-family: var(--font-body);
+        font-size: var(--font-size-m);
+        letter-spacing: 1.5px;
+        color: var(--color-text-strong);
+        white-space: nowrap;
+      }
+    }
+  </style>
+  <timelines>
+    symbol(InteractPrompt) {
+      @timeline intro {
+        #Body {
+          0s {
+            opacity: 0;
+            transform: translateX(-8px);
+          }
+          0.3s ease-out {
+            opacity: 1;
+            transform: translateX(0px);
+          }
+        }
+      }
+    }
+  </timelines>
+</xt>

@@ -47,7 +47,7 @@ TEST_CASE("T-502 librariesJson: one row per mounted library, then the unmounted 
     CHECK(rows[0]["readOnly"] == true);
     CHECK(rows[0]["enabled"] == true);
     CHECK(rows[0]["defaultGroup"] == kPresetGroup);
-    CHECK(rows[0]["groups"] == SymbolJson::array({kPresetGroup}));
+    CHECK(rows[0]["groups"] == SymbolJson::array({kPresetGroup, "survey-2026"}));
     CHECK(rows[0]["path"].get<std::string>() == mounts.libraries[0].dir);
     CHECK(rows[1]["scope"] == "user");
     CHECK(rows[1]["id"] == "mine");
@@ -65,7 +65,7 @@ TEST_CASE(
     CHECK(lib["id"] == mounts.libraries[0].id);
     CHECK(lib["scope"] == "preset");
     CHECK_FALSE(lib.contains("enabled"));
-    REQUIRE(lib["groups"].size() == 1);
+    REQUIRE(lib["groups"].size() == 2);  // broadsheet-2026, survey-2026 (55)
     const SymbolJson& group = lib["groups"][0];
     CHECK(group["id"] == kPresetGroup);
     CHECK(group["source"]["kind"] == "preset");

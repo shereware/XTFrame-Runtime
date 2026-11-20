@@ -58,10 +58,10 @@ Status Context::hotReload(const BundleDelta& delta, HotReloadReport* report) {
             NodeArena& arena = doc->m_arena;
             arena.traversePreorder(doc->m_root, [&arena](NodeId n) {
                 if (arena.kind(n) == NodeKind::Element) {
-                    arena.markDirty(n, static_cast<uint8_t>(kDirtyLayout));
+                    arena.markDirty(n, static_cast<uint8_t>(kDirtyLayout), DirtyCause::Load);
                 } else if (arena.kind(n) == NodeKind::Text) {
                     arena.text(n).shapedValid = 0;
-                    arena.markDirty(n, static_cast<uint8_t>(kDirtyLayout));
+                    arena.markDirty(n, static_cast<uint8_t>(kDirtyLayout), DirtyCause::Load);
                 }
                 return true;
             });

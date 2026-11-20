@@ -155,6 +155,26 @@ bool isCollapsibleSpace(uint32_t cp) {
     }
 }
 
+// T-801 (Docs/design/07-text.md §7.2 supplement): the hard line-break codepoints. They draw no
+// glyph (the run font's space glyph, advance 0) and take no part in font fallback.
+bool isHardBreak(uint32_t cp) {
+    switch (cp) {
+        case 0x000A:
+        case 0x000B:
+        case 0x000C:
+        case 0x000D:
+        case 0x0085:
+        case 0x2028:
+        case 0x2029:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// T-801: hard breaks and U+0009 (drawn as one space) are shaped as the run font's space glyph.
+bool drawsAsSpace(uint32_t cp) { return cp == 0x0009 || isHardBreak(cp); }
+
 struct GlyphCacheKey {
     FontId font;
     uint32_t glyphId;
@@ -560,8 +580,11 @@ void FtTextShaper::shape(std::string_view utf8, const ShapeParams& params, Shape
         a.script = s;
         prevScript = s;
 
-        // Step 3: font-fallback segmentation (T-673: through the shaper's fallback cache).
-        a.font = impl_->fallbackCache.lookup(impl_->fonts, params.font, fallbackChain, dc.codepoint);
+        // Step 3: font-fallback segmentation (T-673: through the shaper's fallback cache). T-801:
+        // hard breaks and TAB are left out of it; they take a neighbour's font below.
+        a.font = drawsAsSpace(dc.codepoint)
+                     ? kInvalidFont
+                     : impl_->fallbackCache.lookup(impl_->fonts, params.font, fallbackChain, dc.codepoint);
 
         // Step 5: vertical writing-mode orientation.
         a.vertical = 0;
@@ -581,6 +604,36 @@ void FtTextShaper::shape(std::string_view utf8, const ShapeParams& params, Shape
             }
         }
         attrs.push_back(a);
+    }
+
+    // T-801: a hard break or TAB takes the font of the nearest codepoint before it that is not
+    // one; failing that, the nearest after it; failing that (nothing else in the text), the font
+    // U+0020 falls back to. So these codepoints never switch a run's font.
+    {
+        bool have = false;
+        FontId carry = kInvalidFont;
+        std::vector<uint8_t> resolved(attrs.size(), 0);
+        for (size_t i = 0; i < attrs.size(); ++i) {
+            if (!drawsAsSpace(attrs[i].codepoint)) {
+                have = true;
+                carry = attrs[i].font;
+                resolved[i] = 1;
+            } else if (have) {
+                attrs[i].font = carry;
+                resolved[i] = 1;
+            }
+        }
+        have = false;
+        for (size_t i = attrs.size(); i-- > 0;) {
+            if (!drawsAsSpace(attrs[i].codepoint)) {
+                have = true;
+                carry = attrs[i].font;
+            } else if (resolved[i] == 0) {
+                attrs[i].font =
+                    have ? carry
+                         : impl_->fallbackCache.lookup(impl_->fonts, params.font, fallbackChain, 0x20u);
+            }
+        }
     }
 
     // Step 4: run splitting on (level, script, font, vertical, rotated).
@@ -606,6 +659,7 @@ void FtTextShaper::shape(std::string_view utf8, const ShapeParams& params, Shape
             ? hb_language_get_default()
             : hb_language_from_string(params.lang.data(), static_cast<int>(params.lang.size()));
 
+    bool lastIsHardBreak = false;  // T-801: whether the last glyph pushed is a hard break
     for (const RunSpan& span : spans) {
         const CpAttrs& first = attrs[span.firstCp];
         const CpAttrs& last = attrs[span.lastCp];
@@ -687,6 +741,29 @@ void FtTextShaper::shape(std::string_view utf8, const ShapeParams& params, Shape
                 }
             }
             g.isSpace = isCollapsibleSpace(cp) ? 1 : 0;
+            lastIsHardBreak = isHardBreak(cp);
+            if (drawsAsSpace(cp)) {
+                // T-801 (07 §7.2 supplement): the run font's space glyph instead of whatever the
+                // font maps the codepoint to (.notdef in most fonts). A hard break is 0 wide (no
+                // letter-spacing either); a TAB is one space wide.
+                hb_codepoint_t space = 0;
+                hb_font_get_nominal_glyph(hbFont, 0x20u, &space);
+                g.glyphId = space;
+                g.isSpace = 1;
+                g.xOffset = 0;
+                g.yOffset = 0;
+                g.xAdvance = 0;
+                g.yAdvance = 0;
+                if (lastIsHardBreak) {
+                    out.glyphs.push_back(g);
+                    continue;
+                }
+                if (run.vertical != 0) {
+                    g.yAdvance = -static_cast<float>(hb_font_get_glyph_v_advance(hbFont, space)) / 64.0f;
+                } else {
+                    g.xAdvance = static_cast<float>(hb_font_get_glyph_h_advance(hbFont, space)) / 64.0f;
+                }
+            }
             if (run.vertical != 0) {
                 g.yAdvance += params.letterSpacing;
             } else {
@@ -701,8 +778,8 @@ void FtTextShaper::shape(std::string_view utf8, const ShapeParams& params, Shape
     }
 
     // "letterSpacing added to every advance except the last glyph" -- undo the extra spacing
-    // just added to the very last glyph of the whole result.
-    if (params.letterSpacing != 0 && !out.glyphs.empty() && !out.runs.empty()) {
+    // just added to the very last glyph of the whole result (T-801: a hard break got none).
+    if (params.letterSpacing != 0 && !out.glyphs.empty() && !out.runs.empty() && !lastIsHardBreak) {
         ShapedGlyph& lastGlyph = out.glyphs.back();
         const ShapedRun& lastRun = out.runs.back();
         if (lastRun.vertical != 0) {

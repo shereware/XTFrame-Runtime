@@ -75,4 +75,15 @@
       background-color: #ffffff;
     }
   </style>
+  <timelines>
+    @timeline pulse {
+      duration: 1s;
+      #dot { 0s { opacity: 0.8 } 1s { opacity: 0.4 } }
+      #tab { 0s { opacity: 1 } }
+    }
+  </timelines>
+  <expressions>
+    pulse #dot opacity = posterizeTime(6); seedRandom(3); wiggle(1, 0.1) * port("hp") / 100 + random(0, port("hp")) * 0 + value
+    pulse #tab opacity = layer("bar").opacity.valueAtTime(time - 0.25)
+  </expressions>
 </xt>

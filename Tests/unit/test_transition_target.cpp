@@ -130,3 +130,74 @@ TEST_CASE("transition target (05 5.6a): a third target retargets from the curren
     doc->update(2.5f);
     CHECK(red(el) == doctest::Approx(0.8f).epsilon(0.001));
 }
+
+// T-763 (05 §5.6a for effect parameters, Docs/tasks/T-763.md item 5): the same three rules for the
+// parameters of an `effect` sequence of the same kinds, decided against the running transition's
+// target instead of the value the parameter is animating through.
+namespace {
+
+constexpr const char* kEffectCss =
+    "#fx { position: absolute; left: 0px; top: 0px; width: 100px; height: 100px;"
+    "      effect: blur(2px); transition: effect 1s linear; }"
+    "#fx:hover { effect: blur(10px); }";
+
+/// The blur radius (effect 0, the first float parameter).
+float radius(const ElementRef& el) { return el.property(effectParam(0, prop::kEffectParamFloatBase)).f; }
+
+}  // namespace
+
+TEST_CASE("transition target (05 5.6a, T-763): an effect parameter keeps its progress on a re-resolve") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc =
+        loadFromString("fx_unchanged", kEffectCss, "<div id=\"fx\"></div>", shaper);
+    ElementRef el = doc->byId("fx");
+    REQUIRE(el.valid());
+    CHECK(radius(el) == doctest::Approx(2.0f));
+    doc->dispatchInput(pointerAt(Vec2{50, 50}));
+    doc->update(1.0f);  // 2 -> 10 over 1 s from here.
+    doc->update(1.5f);
+    CHECK(radius(el) == doctest::Approx(6.0f).epsilon(0.001));
+    // A runtime declaration that changes nothing re-resolves the element; the target stays 10.
+    REQUIRE(el.setStyle("width: 100px") == Status::kOk);
+    doc->update(1.75f);
+    CHECK(radius(el) == doctest::Approx(8.0f).epsilon(0.001));  // Not a fresh 1 s one from 6 (6).
+    doc->update(2.0f);
+    CHECK(radius(el) == doctest::Approx(10.0f));
+    CHECK(doc->animator().transitionCount() == 0);
+}
+
+TEST_CASE("transition target (05 5.6a, T-763): an effect parameter's hover left at t = 0 is not swallowed") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc =
+        loadFromString("fx_hover_t0", kEffectCss, "<div id=\"fx\"></div>", shaper);
+    ElementRef el = doc->byId("fx");
+    REQUIRE(el.valid());
+    doc->dispatchInput(pointerAt(Vec2{50, 50}));
+    doc->update(1.0f);  // 2 -> 10 starts; at t = 0 the animated value is still 2.
+    CHECK(radius(el) == doctest::Approx(2.0f));
+    doc->dispatchInput(pointerAt(Vec2{300, 250}));
+    REQUIRE(!el.hasState(kStateHover));
+    doc->update(1.0f);  // The new target (2) equals the current animated value: the transition ends.
+    doc->update(1.5f);
+    CHECK(radius(el) == doctest::Approx(2.0f));
+    CHECK(doc->animator().transitionCount() == 0);
+}
+
+TEST_CASE("transition target (05 5.6a, T-763): an effect parameter retargets from its animated value") {
+    NullTextShaper shaper;
+    std::unique_ptr<Document> doc =
+        loadFromString("fx_retarget", std::string(kEffectCss) + "#fx.third { effect: blur(4px); }",
+                       "<div id=\"fx\"></div>", shaper);
+    ElementRef el = doc->byId("fx");
+    REQUIRE(el.valid());
+    el.addClass("third");
+    doc->update(1.0f);  // 2 -> 4 over 1 s.
+    doc->update(1.5f);
+    CHECK(radius(el) == doctest::Approx(3.0f).epsilon(0.001));
+    el.removeClass("third");  // Back to 2: from 3, the full 1 s.
+    doc->update(1.5f);
+    doc->update(2.0f);
+    CHECK(radius(el) == doctest::Approx(2.5f).epsilon(0.001));
+    doc->update(2.5f);
+    CHECK(radius(el) == doctest::Approx(2.0f));
+}

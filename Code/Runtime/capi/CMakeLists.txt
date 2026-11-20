@@ -11,6 +11,7 @@ set(xt_capi_sources
     src/capi_bundle.cpp
     src/capi_surface.cpp
     src/capi_ports.cpp
+    src/capi_perf.cpp  # T-750: xt_frame_record and its CSV form
     src/capi_world_layers.cpp  # T-709: the world-layer camera helpers (pure math, every build)
 )
 # T-636 (50 §50.z), T-689 (45 §45.8 item 2): the GPU target over xt_wgpu when this build has it (the top level

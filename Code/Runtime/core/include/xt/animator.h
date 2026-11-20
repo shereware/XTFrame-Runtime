@@ -6,6 +6,7 @@
 #include <span>
 #include <vector>
 
+#include "xt/dirty_cause.h"
 #include "xt/timeline.h"
 #include "xt/types.h"
 #include "xt/value.h"
@@ -17,6 +18,7 @@
 namespace xt {
 
 class NodeArena;
+class TimelineExprSet;  // T-776: Code/Runtime/core/src/timeline_expr.h (private to core).
 
 /// T-257b (fuzz_ir out-of-memory finding): at most this many per-iteration notes (onIteration
 /// calls) per instance per Animator::evaluate(). When one evaluate() crosses more iterations (a
@@ -72,6 +74,9 @@ struct PlayParams {
     /// 1 = a TimelineGroup member (04.10.1, T-172): evaluated after every other instance of the
     /// same layer, so the group wins over the element's own CSS animations on shared properties.
     uint8_t group = 0;
+    /// T-747: 1 = a CSS `animation` item; its writes count as DirtyCause::Animation, every other
+    /// instance's as DirtyCause::Timeline (57 §57.3).
+    uint8_t css = 0;
 };
 
 /// A dynamically created CSS-transition-style tween. See Docs/design/04-timeline.md §4.6.
@@ -253,8 +258,39 @@ public:
     uint32_t transitionCount() const;
     /// T-717 (10 §10.16 W4): the instances whose tracks the last evaluate() evaluated. A
     /// `@timeline` member held at its end stop is evaluated on the frame it gets there and then only
-    /// when one of its target nodes was written or restyled since (see evaluate()).
+    /// when one of its target nodes was written or restyled since (see evaluate()). T-783: so is a
+    /// paused instance wherever it stands (a group paused mid-way or held after a seek).
     uint32_t evaluatedInstanceCount() const { return m_evaluatedInstances; }
+    /// T-749 (Docs/design/23-host-integration.md §23.ag item 6): false when a later evaluate(), at
+    /// any clock, writes nothing, notifies nothing and leaves the "in motion" nodes as they are: the
+    /// last evaluate() left every instance and override alone (each was settled -- a paused instance,
+    /// a hold at an end stop, a finished `forwards` animation, an applied override without a tween --
+    /// and none of their targets was touched), evaluated no transition, removed and finished nothing,
+    /// queued no notification and kept the same nodes in motion; and since then nothing was played,
+    /// stopped, moved, changed or added (every mutating call), no target of a settled instance or
+    /// override was written or restyled, no expression program's input moved and no notification is
+    /// waiting. Anything else (an instance in its delay or playing, a transition, a tweening override)
+    /// is true.
+    bool needsEvaluate(const NodeArena& arena) const;
+
+    // T-776 (Docs/design/58-value-functions-and-drivers.md §58.5): timeline expression programs on
+    // `@timeline` members. A program replaces one component of a track's interpolated value; it runs
+    // when the member's group time moved, when an input it reads changed (a port, a watched layout
+    // box, the port history, every update for another element's property) or when it is attached
+    // or reseeded, and otherwise its last output is reused. A member held at its end stop with a
+    // program that must run again runs it and writes only when an output changed.
+    /// The Document's programs (Code/Runtime/core/src/timeline_expr.h); null = none.
+    void setExpressions(const TimelineExprSet* set) { m_exprSet = set; }
+    /// Runs program `expr` of the set on instance `id` from now on. False for an unknown id or
+    /// no set.
+    bool attachExpression(uint32_t id, uint32_t expr);
+    /// The group time of member instance `id` (seconds); a change makes its programs run again.
+    void setGroupTime(uint32_t id, float groupT);
+    /// The per-play random seed of instance `id` (drawn at play); its programs run again.
+    void setPlaySeed(uint32_t id, uint32_t seed);
+    /// The programs the last evaluate() ran (FrameStats::exprEvaluated).
+    uint32_t exprEvaluatedCount() const { return m_exprEvaluated; }
+
     /// T-654 (23 XF-097 version 4): the active transitions, in no particular order. Read-only;
     /// addTransition() restores one.
     std::span<const Transition> transitions() const { return m_transitions; }
@@ -290,6 +326,16 @@ public:
     std::vector<InstanceInfo> debugInstances(float clock) const;
 
 private:
+    /// T-776: one program on one track component of an instance, with its last run.
+    struct ExprSlot {
+        uint32_t expr = 0;  // Index in the TimelineExprSet.
+        uint16_t track = 0;
+        uint8_t component = 0;
+        uint8_t valid = 0;  // `out` holds the output for input `in`.
+        float in = 0;       // The track component the last run replaced.
+        float out = 0;      // Its output.
+    };
+
     // 04.5 TimelineInstance plus bookkeeping needed by the exact evaluate() procedure of
     // Docs/tasks/T-07.md ("evaluate 精確流程").
     struct Instance {
@@ -308,6 +354,7 @@ private:
         FillMode fill = FillMode::Forwards;
         uint8_t layer = 0;
         uint8_t group = 0;
+        uint8_t css = 0;  // T-747: PlayParams::css.
         uint8_t paused = 0;
         float pausedAt = 0;
         uint8_t finished = 0;
@@ -316,6 +363,12 @@ private:
         // when the last evaluate() left such a member alone (reassertElement3D() covers it).
         uint8_t held = 0;
         uint8_t heldSkipped = 0;
+        // T-783 (Docs/tasks/T-783.md): 1 once a paused instance (any group member, wherever it
+        // stands; a paused `<anim sync>` clip or CSS animation) or a T-717 / T-748 hold has applied
+        // its values at its current state; cleared by every call that moves or changes it -- but not
+        // by a seek() onto the position it already stands at (that seek still clears the T-717
+        // `held` above, which decides "in motion", so pixel snapping is as before).
+        uint8_t settled = 0;
         Easing overrideEasing;
 
         // Marker/iteration-event bookkeeping.
@@ -324,6 +377,16 @@ private:
         float prevLocalT = 0;
         uint32_t prevIter = 0;   // Raw floor(elapsed/segLen) from the previous evaluate() call.
         uint32_t iterCount = 0;  // Highest iteration index reported via onIteration so far.
+
+        // T-776: the expression programs on this member's tracks (sorted by track; allocated when
+        // attached, never in evaluate()), its group time, the per-play seed, the inputs the programs
+        // read (kExprInput* bits) and the input generations they last ran with.
+        std::vector<ExprSlot> exprs;
+        float groupT = 0;
+        uint32_t playSeed = 0;
+        uint16_t exprMask = 0;
+        uint8_t exprDirty = 0;  // The group time, the seed or the program list changed.
+        uint64_t exprPortGen = 0, exprLayoutGen = 0, exprHistoryGen = 0;
     };
 
     struct Override {
@@ -339,6 +402,11 @@ private:
         uint8_t tweenState = 0;  // 0 = none, 1 = starts at the next evaluate(), 2 = running.
         bool fromKnown = false;
         bool shownValid = false;
+        // T-748 (23 §23.ag): evaluate() applied `value` itself (no tween) and setOverride() has not
+        // changed it since; while its target is not written or restyled the override writes nothing
+        // (`skipped`: this evaluate() left it alone).
+        bool applied = false;
+        bool skipped = false;
     };
 
     struct Pending {
@@ -351,6 +419,8 @@ private:
         /// T-725: a PropId 16-22 write whose source (track, transition or override) can write a 3D
         /// component other than zero; only such a write makes its Element a 3D layer.
         bool may3D = true;
+        /// T-747: who wrote it (Transition, Animation, Timeline or the override's HostApi).
+        DirtyCause cause = DirtyCause::Animation;
     };
 
     // Result of evaluating an instance's local-time formula (Docs/design/04-timeline.md §4.5).
@@ -380,15 +450,31 @@ private:
     void checkMarkers(Instance& inst, const LocalState& st, const NodeArena& arena);
     /// T-260a: calls the queued notifications (m_notes) after step 6.
     void dispatchNotes(const NodeArena& arena);
-    void gatherOrient(const Timeline& tl, const Track& track, float t, NodeId node);
+    void gatherOrient(const Timeline& tl, const Track& track, float t, NodeId node, DirtyCause cause);
     /// The arena node `track` of `inst` writes, or kInvalidNode.
     static NodeId trackNode(const Instance& inst, const Track& track);
     /// T-717: whether a held member must apply its values again this frame -- one of its target
     /// nodes is gone, was written or restyled since the Animator last applied, or already has a
     /// write queued earlier in this evaluate() that the member's would have replaced.
     bool heldTargetsTouched(const Instance& inst, const Timeline& tl, const NodeArena& arena) const;
+    /// T-783: noteMotion() for what a held instance left alone this frame would have marked "in
+    /// motion" had it written (its motion tracks whose value at `localT` is not neutral).
+    void noteHeldMotion(const Instance& inst, const Timeline& tl, float localT, NodeArena& arena);
+    /// T-748: the same test for one target and property (a settled override).
+    bool targetTouched(NodeId node, PropId prop, const NodeArena& arena) const;
     /// T-725: m_trackForces3D's entry for `track` (one of `tl`'s, registered as `id`).
     bool trackForces3D(TimelineId id, const Timeline& tl, const Track& track) const;
+    /// T-776: whether `inst`'s programs must run this evaluate() (time, seed or an input moved).
+    bool exprsStale(const Instance& inst) const;
+    /// T-776: notes that `inst`'s programs ran with the current inputs.
+    void exprsRan(Instance& inst) const;
+    /// T-776: replaces the components of `v` (track `trackIndex` of `inst`) that have a program,
+    /// running each program when `stale` or its input component changed. Returns whether an
+    /// output differs from the one it replaced last time. `cursor` walks inst.exprs.
+    bool applyExprs(Instance& inst, size_t trackIndex, Value& v, bool stale, size_t& cursor);
+    /// T-776: a held member's programs run without writing (local time `localT`); whether an
+    /// output changed.
+    bool probeHeldExprs(Instance& inst, const Timeline& tl, float localT);
 
     std::vector<const Timeline*> m_timelines;
     /// T-725 (19 §19.x ruling 2): per registered timeline, per track, 1 when the track writes a 3D
@@ -405,7 +491,8 @@ private:
     struct OrientDir {
         NodeId node;
         Vec2 dir;
-        uint8_t has;  // Bit 0: x known, bit 1: y known.
+        uint8_t has;       // Bit 0: x known, bit 1: y known.
+        DirtyCause cause;  // T-747: the instance's (Animation or Timeline).
     };
     std::vector<OrientDir> m_orient;
     // T-345: the nodes evaluate() flagged kInMotion last time (cleared at the next evaluate()).
@@ -425,6 +512,8 @@ private:
     // cleared after step 5 with the written nodes'), and the count of evaluatedInstanceCount().
     std::vector<NodeId> m_heldTargets;
     uint32_t m_evaluatedInstances = 0;
+    const TimelineExprSet* m_exprSet = nullptr;  // T-776: setExpressions().
+    uint32_t m_exprEvaluated = 0;                // T-776: exprEvaluatedCount().
     std::vector<uint32_t> m_toNotify;
     // T-260a: the transition-end / iteration / marker notifications of evaluate(), in the order
     // they occurred, called by dispatchNotes() from m_notesOut (swapped with m_notes, so one a
@@ -456,6 +545,11 @@ private:
     std::vector<ClearedTransitions> m_clearedWhileDispatching;
     /// T-260a: whether `note` still describes something that exists (see dispatchNotes()).
     bool noteStillValid(const Note& note, const NodeArena& arena) const;
+
+    // T-749 (needsEvaluate()): a mutating call since the last evaluate() began (set again by one a
+    // callback of that evaluate() makes), and whether the last evaluate() left everything alone.
+    bool m_changedSinceEvaluate = true;
+    bool m_lastEvaluateIdle = false;
 
     uint32_t m_nextId = 1;
     size_t m_pendingCapacityNeeded = 0;

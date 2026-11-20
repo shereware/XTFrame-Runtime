@@ -16,6 +16,7 @@
 #include "xt/document.h"
 #include "xt/input.h"
 #include "xt/perf.h"
+#include "xt/project3d.h"
 #include "xt/timeline.h"
 #include "xt/types.h"
 
@@ -188,10 +189,22 @@ public:
     /// Context::releaseRenderScratch() calls it, and update() does once after every Document of
     /// the Context became hidden while trim-on-hide is on. The next render() reports `full`.
     virtual void onReleaseRenderScratch(Context& /*context*/) {}
+    /// T-749 (Docs/design/23-host-integration.md §23.ag item 6): asked by Context::needsFrame(); true
+    /// when this listener has work of its own that moves on with time alone and runs from the host's
+    /// frame -- xt::flow::BundleContext's flows (their clocks, running timers, queued signals). Must
+    /// not call back into the Context's mutating API.
+    virtual bool needsFrame(const Context& /*context*/) const { return false; }
 };
 
 /// Owns every loaded Document, the shared clock, and the per-frame update/render entry points
 /// (load/unload, viewport, update, render, input queueing). See Docs/design/13-api.md §13.1.
+///
+/// Threads (T-797): not concurrent, but transferable. Only one thread at a time may call a Context and
+/// everything it owns or produced (its Documents, ElementRefs, PerfTracker, CommandList / DamageList);
+/// between calls it may be handed to another thread, as often as needed, provided each hand-over
+/// establishes a happens-before edge (mutex, event, join) and its AssetResolver, glyph provider, glyph
+/// atlas and renderer travel with it. Only a thread-safe TextShaper (xt::text::FtTextShaper) may be shared
+/// with Contexts on other threads. See Docs/design/23-host-integration.md §23.ai.
 class Context {
 public:
     /// `config`'s pointers are borrowed and must outlive this Context.
@@ -296,6 +309,33 @@ public:
     /// (CommandListSimplifier: use the out-of-place form and draw its output), or alternating
     /// two lists. Reading it, drawing it and passing it to the backends changes nothing.
     void render(CommandList& out, DamageList* damage = nullptr);
+    /// T-749 (Docs/design/23-host-integration.md §23.ag item 6): whether the host has to call
+    /// update() and render() for the next frame. False means nothing would change: update() at any
+    /// later clock would write nothing, move no visual generation and call back nothing, and render()
+    /// would hand out the previous list again (with damage asked for and the previous list handed
+    /// back, every Document's paint is skipped -- the static skip's conditions hold), so the host may
+    /// skip both, still pumping its own events. Time keeps passing meanwhile: the dt of the next
+    /// update() is the host's to give, as without skipping. Any input (pushInput and the other input
+    /// calls), port or property write, host API call that changes the UI, or load makes it true again.
+    ///
+    /// True when any of these holds: input or pointer rays are queued, or surface requests / document
+    /// operations wait; the hovered surface must re-judge its hover; a live Document has unresolved
+    /// writes (dirty bits), held-back trigger chains or port changes, a running `tween` / `delay`
+    /// binding step, a gamepad repeat, long press, pointer-drag auto-scroll or pending focus, an
+    /// animation, transition or override the Animator will still apply (Animator::needsEvaluate: one
+    /// in its delay or playing, a transition, a tween; a settled one whose targets were touched), a
+    /// playing `@timeline` group or one whose restore values are not captured yet, queued timeline /
+    /// media events, a playing `<repeat>` instance timeline or live spawned instances, a playing or
+    /// autoplaying media sequence, its first update (`show`) or a show / hide notification still to
+    /// send; a visible one has a pending layout restore, particles alive or emitting, or a rig whose
+    /// pose moved last update (springs); everything is hidden and the renderer's scratch is still held
+    /// (trim-on-hide); a ContextListener::needsFrame() says so (a BundleContext's flow); or the host
+    /// has not rendered the current state -- no render() yet, the paint options changed, the visible
+    /// Documents changed or were restacked, or one's last paint is not of its current load serial and
+    /// visual generation or held clock-dependent content (a caret, a wiggle, live particles, a custom
+    /// shader, an external texture without a content version), or -- T-746 -- an external texture's
+    /// binding or content version moved since that paint.
+    bool needsFrame() const;
     /// Current shared clock value (seconds), as advanced by update().
     float clock() const { return m_clock; }
 
@@ -305,6 +345,57 @@ public:
     PerfTracker& perf() { return m_perf; }
     /// Read-only access to this Context's frame statistics recorder.
     const PerfTracker& perf() const { return m_perf; }
+
+    /// T-747 (Docs/design/57-measurement.md §57.3, 23 §23.ag item 4): what the visual-generation
+    /// check found. A frame is checked when every Document it paints was painted by the previous
+    /// render() too, in the same order, with the same load serial and visual generation
+    /// (Document::visualGeneration()) and a list that was not clock-dependent: its commands must then
+    /// hash exactly as the previous frame's. A frame where they do not is a write that moved no
+    /// generation -- a missed write site.
+    struct VisualCheck {
+        uint32_t frames = 0;      ///< render() calls the check ran on (both frames comparable).
+        uint32_t mismatches = 0;  ///< Of those, the frames whose commands changed anyway.
+        /// The first mismatch: the first differing command, its document handle and the node (and
+        /// element id) whose paint emitted it. Empty until a mismatch.
+        std::string first;
+        /// T-748: the first mismatch's parts -- the Document, the node whose paint emitted the first
+        /// differing command (kInvalidNode when unknown) and that command's CmdKind (-1 when the
+        /// fresh list ended first). 0 / kInvalidNode / -1 until a mismatch.
+        DocumentHandle firstDocument = 0;
+        NodeId firstNode = kInvalidNode;
+        int firstKind = -1;
+    };
+    /// T-747: turns the check on or off (off by default; on in a Context constructed while the
+    /// environment variable XT_VERIFY_VISUAL_GENERATION is `1`, which also makes a mismatch abort
+    /// the process with the diagnostic on stderr -- the test suites' switch; calling this turns that
+    /// abort off: mismatches are only counted in visualCheck()). Costs one hash of the list per
+    /// render() while on (none when the damage diff already hashed it).
+    ///
+    /// T-748 (Docs/design/23-host-integration.md §23.ag item 4): this is also the static skip's
+    /// verify mode -- setVerifyStaticSkip() is the same switch. While on, a Document that meets
+    /// every skip condition is painted anyway, and each Document whose generation did not move
+    /// (the skip's condition) is compared with its own commands of the previous frame; a difference
+    /// counts in visualCheck() and FrameStats::staticSkipMismatch, and the freshly painted list is
+    /// the output.
+    void setVerifyVisualGeneration(bool on) {
+        m_verifyVisual = on;
+        m_verifyAbort = false;
+    }
+    bool verifyVisualGeneration() const { return m_verifyVisual; }
+    const VisualCheck& visualCheck() const { return m_visualCheck; }
+    /// T-748 (23 §23.ag item 4): the name the design uses for setVerifyVisualGeneration().
+    void setVerifyStaticSkip(bool on) { setVerifyVisualGeneration(on); }
+    bool verifyStaticSkip() const { return m_verifyVisual; }
+    /// T-748 (23 §23.ag item 3): render() reuses a Document's previous commands instead of painting
+    /// it when its visual generation equals the one of its last paint, that paint held nothing
+    /// clock-dependent, the paint options (viewport, device pixel ratio, host target mode,
+    /// world-layer output, box-shadow commands) and its place in the paint order are unchanged, and
+    /// the host handed back the previous list untouched (`damage` asked for, see render()). Such a
+    /// Document's damage is empty; when every Document is skipped the damage diff does not run
+    /// either. On by default; off in a Context constructed while the environment variable
+    /// XT_STATIC_SKIP is `0` (every frame paints, as before T-748).
+    void setStaticSkipEnabled(bool on) { m_staticSkip = on; }
+    bool staticSkipEnabled() const { return m_staticSkip; }
 
     /// Queues `event` (copied) for later processing. A CompositionUpdate event's `composition`
     /// string_view is copied into an internal string pool immediately (the host is only required
@@ -512,13 +603,26 @@ public:
     /// decoder (xt_shell, the editor without Qt Multimedia); off by default.
     void setExternalPlaceholders(bool on);
     bool externalPlaceholders() const { return m_externalPlaceholders; }
+    /// T-755 (Docs/design/06-layout.md §6.x): every loaded Document (and every later one) lays out
+    /// only the subtrees of its dirty layout boundaries (on, the default) or always the whole tree
+    /// (off; also the environment variable XT_PARTIAL_LAYOUT=0) -- LayoutEngine::setPartialLayout().
+    void setPartialLayout(bool on);
+    /// T-755 (06 §6.x item 5): the partial-layout verify mode for every loaded Document and every
+    /// later one (LayoutEngine::setVerifyPartial: each partial pass is compared with a full one,
+    /// mismatches counted in FrameStats::partialLayoutMismatch and Document::layoutEngine()).
+    /// Calling this turns off the abort a Context-less switch -- the environment variable
+    /// XT_VERIFY_VISUAL_GENERATION=1, which every LayoutEngine reads when it is made -- sets up.
+    void setVerifyPartialLayout(bool on);
+    /// T-755: Document `handle`'s layout engine, read-only (its last pass, the verify mode's
+    /// findings); null for a handle that names no loaded Document.
+    const LayoutEngine* layoutEngine(DocumentHandle handle) const;
     /// T-680 (Docs/design/10-backends.md §10.12 item 2, "補充 2" A): every loaded Document (and
     /// every later one) may turn element drop shadows into `DrawBoxShadow` commands (on, the
     /// default) or keeps them as PushEffect groups (off: the CommandList is what it was before
     /// T-668). Turn it off when the lists go to a consumer that does not implement DrawBoxShadow:
     /// BakedWriter (`.xtcl` has no such command; `xtframe-bake` does this) or a custom backend /
     /// GpuDevice without it. Takes effect from the next render().
-    void setBoxShadowCommands(bool on) { m_boxShadowCommands = on; }
+    void setBoxShadowCommands(bool on);
     bool boxShadowCommands() const { return m_boxShadowCommands; }
     /// T-178 (13.8.3 `setInputDevice`): switches DeviceInfo::input -- setDevice() with only the
     /// input changed, so `@media (input: ...)` follows and every `<glyph>` is re-resolved.
@@ -588,6 +692,17 @@ private:
     /// walk of m_documents goes through it, so an unloading Document is treated exactly like an
     /// empty slot; only its memory goes later.
     Document* liveAt(size_t index) const;
+    /// T-800: calls `fn(doc)` for every live Document (liveAt()) among the slots m_documents has on
+    /// entry, by index (T-260a: a Document a callback loads is not visited, one it unloads is skipped).
+    template <class Fn>
+    void forEachLiveDocument(Fn&& fn) const {
+        const size_t count = m_documents.size();
+        for (size_t i = 0; i < count; ++i) {
+            if (Document* doc = liveAt(i)) {
+                fn(doc);
+            }
+        }
+    }
     /// T-200: hotReload() of one IrReload.
     HotReloadResult hotReloadDocument(const IrReload& reload);
     /// T-194: the visible surfaces, topmost first (z descending, then later loaded first).
@@ -600,6 +715,41 @@ private:
     DocumentHandle pressTarget(Vec2 pos) const;
     /// T-170: rebinds every loaded Document's token layers (active theme + overrides).
     void applyTokenLayers();
+    /// T-747: Document::noteVisualChange(cause) on every live Document (a paint option changed).
+    void noteVisualChangeAll(DirtyCause cause);
+    /// T-747 (context_visual.cpp): render()'s idle-paint accounting and visual-generation check.
+    /// beginVisualFrame() before the Documents paint, paintTracked() paints one (instead of
+    /// Document::paintAs), checkVisualFrame() after the list is complete, endVisualFrame() with the
+    /// damage time once the damage is done.
+    void initVisualCheck();
+    void beginVisualFrame();
+    void paintTracked(Document& doc, DocumentHandle handle, CommandList& out, uint16_t source);
+    void checkVisualFrame(const CommandList& out, const std::vector<uint64_t>* knownHashes);
+    void endVisualFrame(float damageMs);
+    /// T-748 (context_visual.cpp, 23 §23.ag item 3): whether `doc` (handle `handle`, painted as
+    /// source `source`) meets every static-skip condition this frame; `haveBase` says the host
+    /// handed back the previous list.
+    bool canSkipPaint(const Document& doc, DocumentHandle handle, uint16_t source, bool haveBase) const;
+    /// T-748: canSkipPaint() for every Document of m_orderScratch, painted in the same order as by
+    /// the previous render() (the previous list is then this frame's).
+    bool allPaintsSkip(bool haveBase);
+    /// T-748: appends `handle`'s commands of the previous list (m_prevList) to `out` instead of
+    /// painting it, and records them as its last paint.
+    void reusePaint(DocumentHandle handle, CommandList& out);
+    /// T-748: the paint options a skip requires unchanged, as of now.
+    struct PaintOptions {
+        Rect viewport{};
+        float devicePixelRatio = 1;
+        HostTargetMode hostTargetMode = HostTargetMode::Layer;
+        bool worldLayerOutput = false;
+        bool boxShadowCommands = true;
+        bool operator==(const PaintOptions&) const = default;
+    };
+    PaintOptions currentPaintOptions() const;
+    /// T-749 (needs_frame.cpp, 23 §23.ag item 6): whether `doc`'s update() at a later clock, with nothing
+    /// written and no input in between, may change anything -- write, move the visual generation, fire a
+    /// trigger, listener or event, or notify the host (needsFrame()'s per-Document part).
+    static bool documentNeedsUpdate(const Document& doc);
     /// T-170: the active theme's token map, or nullptr.
     const TokenMap* activeThemeTokens() const;
 
@@ -640,6 +790,16 @@ private:
     // T-263c: CommandList::frameSerial of the list the last render() produced (0 = none yet). The
     // list the host hands back is the damage base only when it still carries this serial.
     uint32_t m_lastFrameSerial = 0;
+    // T-737 (Docs/tasks/T-737.md B): hashCommandList() of the list the last damaged render()
+    // produced, reused as the next diff's previous hashes instead of hashing that list again -- only
+    // while the base is provably that list, unmodified: its frameSerial is m_hashesSerial (0 = none
+    // kept) and its storage (commandListStorage(): every hashed vector's data pointer and size) is
+    // still m_hashesStorage. Anything else hashes the base afresh.
+    std::vector<uint64_t> m_prevHashes;
+    std::vector<uint64_t> m_curHashes;
+    std::vector<uintptr_t> m_hashesStorage;
+    std::vector<uintptr_t> m_storageScratch;
+    uint32_t m_hashesSerial = 0;
     // std::deque so pushInput's stored string_view (repointed at the pooled string, see .cpp)
     // stays valid across further insertions -- unlike std::vector, a deque never relocates
     // existing elements when it grows.
@@ -697,6 +857,10 @@ private:
     IGlyphProvider* m_glyphProvider = nullptr;
     // T-191: setExternalPlaceholders(); render()'s external damage scratch.
     bool m_externalPlaceholders = false;
+    // T-755: setPartialLayout() / setVerifyPartialLayout(), applied to later Documents once called.
+    int8_t m_partialLayout = -1;  // -1 = never called (each LayoutEngine keeps its own default).
+    int8_t m_verifyPartialLayout = -1;
+    void applyPartialLayoutSettings(Document& doc) const;
     bool m_boxShadowCommands = true;  // T-680: setBoxShadowCommands().
     bool m_worldLayerOutput = false;  // T-701: setWorldLayerOutput().
     /// T-701: the rays of the queued pointer events pushed with pushPointerRay(): the event's
@@ -717,6 +881,69 @@ private:
         SurfaceInput input = SurfaceInput::Block;
     };
     std::vector<SurfaceState> m_surfaces;
+    // T-747: per surface (index = handle - 1), what its last paint saw -- the Document's load
+    // serial, its visual generation after the paint, whether what it painted was clock-dependent.
+    // T-748: also which render() painted it last (m_renderFrame; 0 = never), as which source, and
+    // where its commands, world layers and culled count went in that render()'s list -- what a
+    // skipped frame reuses and the verify mode compares against.
+    struct PaintState {
+        uint32_t loadSerial = 0;
+        uint64_t generation = 0;
+        bool clockDependent = true;
+        uint16_t source = 0;
+        uint32_t frame = 0;
+        uint32_t first = 0;
+        uint32_t end = 0;
+        uint32_t layerFirst = 0;
+        uint32_t layerEnd = 0;
+        uint32_t culled = 0;
+        uint64_t externalSig = 0;  // T-746: Document::externalTextureSignature() at that paint
+    };
+    std::vector<PaintState> m_paintStates;
+    // T-746 (23 §23.ah, external_texture_use.cpp): render()'s walk of its list for
+    // AssetResolver::externalTextureUse() and the damage of the versioned external textures whose
+    // stamp moved since they were last drawn (`stamp`; `next`: this render's); its scratch stacks.
+    void noteExternalTextures(const CommandList& out, DamageList* damage, bool allSkipped);
+    struct DrawnExternal {
+        std::string name;
+        uint64_t stamp = 0;
+        uint64_t next = 0;
+        bool versioned = false;
+        bool seen = false;
+    };
+    std::vector<DrawnExternal> m_drawnExternals;
+    std::vector<Rect> m_extClips;
+    std::vector<float> m_extOpacity;
+    std::vector<project3d::Mapping> m_extMappings;
+    // T-748: render() calls so far (wraps to 1, never 0); the paint options of the last render();
+    // setStaticSkipEnabled().
+    uint32_t m_renderFrame = 0;
+    PaintOptions m_lastPaintOptions{};
+    bool m_staticSkip = true;
+    // T-747: this render()'s idle paint time so far and whether every painted Document is idle;
+    // the previous render()'s paint order (handles).
+    float m_frameIdlePaintMs = 0;
+    bool m_frameAllIdle = false;
+    std::vector<DocumentHandle> m_prevPaintOrder;
+    // T-747: the visual-generation check (setVerifyVisualGeneration()).
+    bool m_verifyVisual = false;
+    bool m_verifyAbort = false;
+    bool m_verifyPrevValid = false;
+    VisualCheck m_visualCheck;
+    std::vector<uint64_t> m_verifyHashes;
+    std::vector<uint64_t> m_verifyPrevHashes;
+    std::vector<std::pair<uint32_t, NodeId>> m_verifyMarks;  // (first command, node) per entered node
+    // T-748: per Document painted this frame, its commands [first, end) and those of its previous
+    // paint [prevFirst, prevEnd) (indices of m_verifyPrevHashes), and whether to compare them.
+    struct VerifyDoc {
+        DocumentHandle handle = 0;
+        uint32_t first = 0;
+        uint32_t end = 0;
+        uint32_t prevFirst = 0;
+        uint32_t prevEnd = 0;
+        bool compare = false;
+    };
+    std::vector<VerifyDoc> m_verifyDocs;
     DocumentHandle m_pointerCapture = 0;
     DocumentHandle m_hoverSurface = 0;
     // T-393 (08.14): the surface an external (OS) drag is over (0 = none).

@@ -1,0 +1,66 @@
+<xt version="2">
+  <head>
+    <symbols src="../../Panel.xt"/>
+  </head>
+  <body>
+    <div id="Ground"/>
+    <div id="Stage">
+      <use symbol="Panel" id="Settings" slot:heading="Gameplay" slot:description="A one-line description of this category.">
+        <slot name="body">
+          <div id="RowA"><span id="NameA">Difficulty</span><span id="ValueA">Normal</span></div>
+          <div id="RowB"><span id="NameB">Auto-save</span><span id="ValueB">On</span></div>
+        </slot>
+      </use>
+    </div>
+  </body>
+  <layout>
+    body {
+      position: relative;
+      width: 460px;
+      height: 240px;
+    }
+    #Ground {
+      position: absolute;
+      left: 0px;
+      top: 0px;
+      width: 100%;
+      height: 100%;
+    }
+    #Stage {
+      position: relative;
+      padding: 16px;
+    }
+    #RowA,
+    #RowB {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      height: var(--size-row);
+    }
+  </layout>
+  <style src="../../tokens-defiance.xts"/>
+  <style>
+    body {
+      background-color: var(--color-text-dim);
+    }
+    #Ground {
+      background-color: var(--color-bg);
+      opacity: 0.85;
+    }
+    #RowA,
+    #RowB {
+      border-width: 0px 0px var(--rule-thin) 0px;
+      border-color: var(--color-line-hairline);
+      font-family: var(--font-body);
+      font-size: var(--font-size-m);
+    }
+    #NameA,
+    #NameB {
+      color: var(--color-text-label);
+    }
+    #ValueA,
+    #ValueB {
+      color: var(--color-text-strong);
+    }
+  </style>
+</xt>

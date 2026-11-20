@@ -102,7 +102,7 @@ TEST_CASE("auto-orient: PropId 14 metadata") {
     CHECK(propertyByName("AutoOrient") == prop::AutoOrient);
     NodeArena arena;
     NodeId n = arena.create(NodeKind::Group);
-    setProperty(arena, n, prop::AutoOrient, Value::ofEnum(1));
+    setProperty(arena, n, prop::AutoOrient, Value::ofEnum(1), DirtyCause::HostApi);
     CHECK(getProperty(arena, n, prop::AutoOrient).e == 1u);
 }
 
@@ -111,8 +111,8 @@ TEST_CASE("auto-orient: rotation follows the tangent of a circular spatial-bezie
     NodeArena arena;
     NodeId node = arena.create(NodeKind::Group);
     NodeId plain = arena.create(NodeKind::Group);
-    setProperty(arena, node, prop::Rotation, Value::ofFloat(10.0f));
-    setProperty(arena, node, prop::AutoOrient, Value::ofEnum(1));
+    setProperty(arena, node, prop::Rotation, Value::ofFloat(10.0f), DirtyCause::HostApi);
+    setProperty(arena, node, prop::AutoOrient, Value::ofEnum(1), DirtyCause::HostApi);
     NodeId map[1] = {node};
     NodeId mapPlain[1] = {plain};
 
@@ -150,7 +150,7 @@ TEST_CASE("auto-orient: rotation follows the tangent of a circular spatial-bezie
     CHECK(normDeg(composed) == doctest::Approx(normDeg(10.0f + atEnd)).epsilon(0.01));
 
     // Switching auto-orient off drops the added angle.
-    setProperty(arena, node, prop::AutoOrient, Value::ofEnum(0));
+    setProperty(arena, node, prop::AutoOrient, Value::ofEnum(0), DirtyCause::HostApi);
     CHECK(arena.common(node).orientPathDeg == 0.0f);
 }
 

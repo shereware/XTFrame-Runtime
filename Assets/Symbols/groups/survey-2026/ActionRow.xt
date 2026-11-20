@@ -1,0 +1,113 @@
+<xt version="2">
+
+  <symbol name="ActionRow" requires="states: Hover, Pressed, Focus, Disabled; slots: label, action">
+    <ports>
+      pressed: event out
+    </ports>
+    <div id="Box" tabindex="0">
+      <span id="Label"><slot name="label">Test Audio</slot></span>
+      <button id="Field" on:press="sound(ui_confirm); play(press)" on:click="emit(pressed)">
+        <span id="Action"><slot name="action">Play Test Sound</slot></span>
+      </button>
+    </div>
+  </symbol>
+
+  <layout>
+    symbol(ActionRow) {
+      #Box {
+        display: flex;
+        align-items: center;
+        width: 380px;
+        height: var(--size-row);
+        padding: 0px var(--space-2);
+        column-gap: var(--space-3);
+      }
+      #Label {
+        flex-grow: 1;
+      }
+      #Field {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: var(--size-box-w);
+        height: var(--size-box);
+      }
+    }
+  </layout>
+  <style>
+    symbol(ActionRow) {
+      #Box {
+        border-width: 0px 0px var(--rule-thin) 0px;
+        border-color: var(--color-line-hairline);
+        transition: background-color var(--motion-fast) ease-out;
+      }
+      #Label {
+        font-family: var(--font-body);
+        font-size: var(--font-size-m);
+        letter-spacing: 1px;
+        color: var(--color-text-label);
+        white-space: nowrap;
+      }
+      #Box:hover {
+        background-color: var(--color-surface-raised);
+      }
+      #Box:focus {
+        background-color: var(--color-surface-raised);
+      }
+      #Box:focus #Label {
+        color: var(--color-text-strong);
+      }
+      #Field {
+        background-color: var(--color-surface-sunken);
+        border-width: var(--rule-thin);
+        border-color: var(--color-border-strong);
+        transition: border-color var(--motion-fast) ease-out;
+      }
+      #Box:hover #Field {
+        border-color: var(--color-accent);
+      }
+      #Box:focus #Field {
+        border-color: var(--color-accent);
+      }
+      #Action {
+        font-family: var(--font-body);
+        font-size: var(--font-size-s);
+        color: var(--color-text);
+        white-space: nowrap;
+        transition: color var(--motion-fast) ease-out;
+      }
+      #Field:hover {
+        border-color: var(--color-accent);
+      }
+      #Field:hover #Action {
+        color: var(--color-text-strong);
+      }
+      #Field:active #Action {
+        color: var(--color-accent-pressed);
+      }
+      :disabled {
+        background-color: transparent !important;
+      }
+      :disabled #Label {
+        color: var(--color-disabled-text) !important;
+      }
+      :disabled #Action {
+        color: var(--color-disabled-text) !important;
+      }
+    }
+  </style>
+  <timelines>
+    symbol(ActionRow) {
+      @timeline press {
+        #Field {
+          0s {
+            transform: translateY(1px);
+          }
+          0.14s ease-out {
+            transform: translateY(0px);
+          }
+        }
+      }
+    }
+  </timelines>
+</xt>

@@ -5,6 +5,9 @@
 #include <span>
 #include <vector>
 
+#include "xt/dirty_cause.h"
+#include "xt/thread_clock.h"
+
 /// Built-in per-frame performance tracing. See Docs/design/21-perf-tracing.md §21.1-21.2.
 ///
 /// Tracing is OFF by default: with `enabled() == false` a `PerfScope` costs exactly one branch on
@@ -217,7 +220,154 @@ struct FrameStats {
     /// activeAnimations (the pool size) by the `@timeline` members held at their end stop, which
     /// are written once and then left alone, and by the instances still in their delay.
     uint32_t animEvaluated = 0;
+
+    /// T-737 (Docs/tasks/T-737.md A item 6): the Painters' dashed / dotted border geometry caches,
+    /// summed over the Documents painted this frame: sides drawn from the cache, sides computed (and
+    /// stored), and the entries and bytes of path data held at the end of the paint.
+    uint32_t borderDashHits = 0;
+    uint32_t borderDashMisses = 0;
+    uint32_t borderDashEntries = 0;
+    uint32_t borderDashBytes = 0;
+
+    /// T-754 (Docs/design/10-backends.md §10.20): effects and layers left out because their known
+    /// bounds lie wholly outside the viewport -- by the Painter (CommandList::culledOffscreen) and
+    /// by the SW backend (a known, empty hint in a list it was handed).
+    uint32_t culledOffscreen = 0;
+
+    /// T-747 (Docs/design/57-measurement.md §57.3 item 4): the paint + damage time of this frame's
+    /// Context::render() spent on Documents whose visual generation had not moved since their last
+    /// paint while that paint's list held nothing clock-dependent (CommandList::clockDependent): work
+    /// that changed nothing. Paint still runs (23 §23.ag skips it later); a static screen shows its
+    /// whole paint time here.
+    float idlePaintMs = 0;
+    /// T-747 (57 §57.3 item 2): this frame's invalidating writes, per DirtyCause (row) and kind
+    /// (column: kDirtyKindStyle / Layout / Transform / Paint). One count per write and kind, however
+    /// far the write propagates. Counted while the tracker is enabled; zeroed by beginFrame() (the top
+    /// of Context::update()), so writes made between render() and the next update() land in the frame
+    /// before.
+    uint32_t causes[kDirtyCauseCount][kDirtyKindCount] = {};
+    /// T-747: at detail level >= 1 (PerfTracker::setDetail), per cause, the last up to
+    /// kDirtyCauseNodeSlots distinct nodes written (most recent first); kInvalidNode = empty slot
+    /// (beginFrame() fills them so). Not written at detail level 0. Node ids of whichever Document
+    /// wrote them.
+    uint32_t causeNodes[kDirtyCauseCount][kDirtyCauseNodeSlots] = {};
+
+    /// T-748 (Docs/design/23-host-integration.md §23.ag item 3): the Documents of this frame's
+    /// Context::render() that met every static-skip condition (Context::setStaticSkipEnabled) --
+    /// their previous commands were reused instead of painted. In the verify mode
+    /// (Context::setVerifyStaticSkip) they are painted anyway and still counted here.
+    uint32_t paintSkipped = 0;
+    /// T-748 (23 §23.ag item 4): the Documents whose fresh paint differed from their previous one
+    /// although their visual generation had not moved (the verify mode's finding: a write site that
+    /// missed its DirtyCause hook). Always 0 outside the verify mode.
+    uint32_t staticSkipMismatch = 0;
+    /// T-776 (Docs/design/58-value-functions-and-drivers.md §58.5): timeline expression programs run
+    /// this frame. 0 while every timeline with programs is paused, held or released and nothing they
+    /// read changed.
+    uint32_t exprEvaluated = 0;
+    /// T-755 (Docs/design/06-layout.md §6.x item 3): the subtrees partial layout passes laid out
+    /// again this frame (each layout root once per pass; laidOutElements counts their elements).
+    uint32_t layoutRoots = 0;
+    /// T-755: the full layout passes of this frame (a write with no layout boundary above it, a
+    /// structural change above every boundary, a viewport or length-environment change...).
+    uint32_t layoutFullPasses = 0;
+    /// T-755 (06 §6.x item 5): partial layout passes whose result differed from the full pass the
+    /// verify mode (LayoutEngine::setVerifyPartial) ran after them. Always 0 outside the verify mode.
+    uint32_t partialLayoutMismatch = 0;
+
+    // --- T-750 (Docs/design/57-measurement.md §57.2, §57.5): what FrameRecord v1 (xt/perf_record.h)
+    // needs beyond the fields above. Not in the XT_FRAME_STATS_* lists (summary() does not average
+    // them; makeFrameRecord() reads them). ---
+    /// Thread CPU milliseconds of the top-level phases, taken over the same scopes as their wall
+    /// times (PerfPhaseScope) while PerfTracker::setThreadCpuTiming(true); 0 otherwise. Like the wall
+    /// times they nest as the scopes do: updateCpuMs includes inputCpuMs.
+    float inputCpuMs = 0;
+    float updateCpuMs = 0;
+    float flowCpuMs = 0;
+    float paintCpuMs = 0;
+    float damageCpuMs = 0;
+    /// gpuBuildMs's CPU time (the SW backend: its whole render() call).
+    float buildCpuMs = 0;
+    float submitCpuMs = 0;
+    float waitCpuMs = 0;
+    /// The backend's submission inside renderMs (xt_wgpu: WgpuDevice::submit; xt_gl: GlDevice::submit),
+    /// and its split as the backend reports it (xt_wgpu: plan / upload / encode / queue; xt_gl: target
+    /// acquisition / upload / draws + pool release, queue 0). 0 for the SW backend.
+    float submitMs = 0;
+    float submitPlanMs = 0;
+    float submitUploadMs = 0;
+    float submitEncodeMs = 0;
+    float submitQueueMs = 0;
+    /// Waits the host times around its own calls (the in-flight frame limit, a GPU / queue wait) with
+    /// PerfPhaseScope(&FrameStats::waitMs, &FrameStats::waitCpuMs).
+    float waitMs = 0;
+    /// PerfTracker::markFrameStart() .. markFrameEnd(): the whole frame as the host measured it, wall
+    /// and thread CPU (the CPU one only with setThreadCpuTiming); both 0 and frameMarked 0 when the
+    /// host did not mark the frame.
+    float frameWallMs = 0;
+    float frameCpuMs = 0;
+    uint32_t frameMarked = 0;
+    /// The backend that drew the frame (PerfBackend: 0 none, 1 sw, 2 gl, 3 wgpu).
+    uint32_t backend = 0;
+    /// Backend counters of the frame (0 for a backend without them): render passes, draw calls,
+    /// pipeline / program binds, geometry and uniform bytes uploaded (saturated at 2^32 - 1),
+    /// transient targets created, 1 when the previous frame was submitted again without a build.
+    uint32_t passes = 0;
+    uint32_t drawCalls = 0;
+    uint32_t pipelineBinds = 0;
+    /// Texture bind groups created (xt_wgpu; 0 elsewhere).
+    uint32_t bindGroups = 0;
+    uint32_t uploadBytes = 0;
+    uint32_t transientCreates = 0;
+    uint32_t frameReused = 0;
+    /// gpu::FrameBuilder's effect result cache and coverage atlas of the frame's build.
+    uint32_t effectCacheHits = 0;
+    uint32_t effectCacheMisses = 0;
+    uint32_t coverageHits = 0;
+    uint32_t coverageMisses = 0;
+    /// Memory after the frame: the effect result cache's target bytes, the backend's transient
+    /// target pool bytes (saturated at 2^32 - 1).
+    uint32_t effectCacheBytes = 0;
+    uint32_t transientPoolBytes = 0;
+
+    // --- T-753 (Docs/design/57-measurement.md §57.3 item 4): work done that changed nothing. Counted
+    // only at detail level >= 1 (PerfTracker::setDetail); 0 otherwise. ---
+    /// `redundantWork`: elements re-styled this frame whose computed style equals, field by field, the
+    /// one they had (a first resolve is not counted).
+    uint32_t redundantStyled = 0;
+    /// `redundantWork`: elements of the subtrees laid out this frame (each once, however many layout
+    /// calls measured it) whose box -- position and size -- is the one it had before the pass.
+    uint32_t redundantLaidOut = 0;
+    /// `redundantWork`: commands of a painted list that the damage diff matched with an identical
+    /// command of the previous list (Context::render with a DamageList; out of FrameStats::commands).
+    uint32_t redundantCommands = 0;
+    /// `repaintedUnchanged`: effect segments and layers gpu::FrameBuilder drew in full although the
+    /// hash of their commands is one of the previous build's, by why the result was not reused: not
+    /// cacheable (layers, backdrop readers, external textures, custom shaders, unknown bounds, a device
+    /// without the cache, an identity stack), the cache key changed (clip, window, position or phase),
+    /// the cache was full, or the key's first repeat (stored now; the cache keeps a result only on the
+    /// second consecutive sighting).
+    uint32_t repaintedUnchangedNotCacheable = 0;
+    uint32_t repaintedUnchangedKeyChanged = 0;
+    uint32_t repaintedUnchangedBudget = 0;
+    uint32_t repaintedUnchangedFirstSight = 0;
 };
+
+/// T-750: FrameStats::backend.
+enum class PerfBackend : uint32_t { None = 0, Sw = 1, Gl = 2, Wgpu = 3 };
+
+/// T-750: `v` saturated into a uint32_t counter.
+inline uint32_t saturateU32(uint64_t v) { return v > 0xFFFFFFFFull ? 0xFFFFFFFFu : static_cast<uint32_t>(v); }
+
+/// T-747: the total count of `cause` in `stats.causes` over the four kinds.
+inline uint32_t causeTotal(const FrameStats& stats, DirtyCause cause) {
+    const uint32_t c = static_cast<uint32_t>(cause);
+    uint32_t sum = 0;
+    for (uint32_t k = 0; k < kDirtyKindCount; ++k) {
+        sum += stats.causes[c][k];
+    }
+    return sum;
+}
 
 // clang-format off
 /// Every float field of FrameStats, in declaration order, as `X(name)`. Lets a host iterate the
@@ -230,7 +380,7 @@ struct FrameStats {
     X(layoutMs) X(animateMs) X(transformMs) X(paintMs) X(renderMs) X(effectsMs) X(textMs) X(damageMs)  \
         X(flowMs) X(flowDeliverMs) X(flowEvalMs) X(flowSinkMs) X(flowPollMs) X(swPathMs) X(swRasterMs) X(swSpanMs) X(swSpanSolidMs) X(swSpanGradientMs)           \
             X(swSpanImageMs) X(swSpanClippedMs) X(swClipMs) X(swLayerMs) X(swFxBlurMs) X(swFxDilateMs) \
-                X(swFxSdfMs) X(swFxPixMs) X(editorDocChangedMs) X(editorPanelsMs)
+                X(swFxSdfMs) X(swFxPixMs) X(editorDocChangedMs) X(editorPanelsMs) X(idlePaintMs)
 
 /// Every uint32_t workload/memory field of FrameStats (i.e. all but frameIndex), in declaration
 /// order, as `X(name)`. Companion to XT_FRAME_STATS_FLOAT_FIELDS.
@@ -243,8 +393,48 @@ struct FrameStats {
                 X(arenaNodes) X(commandBytes) X(runtimeStrings) X(maxDistinctBindingStrings)              \
                     X(bands) X(bandRedraws) X(backdropCopyPx) X(pyramidLevels) X(directFallback) X(setStyleCalls) \
                         X(flowSignals) X(flowSignalsCoalesced) X(flowNodeEvals) X(flowSinkWrites) \
-                            X(flowFanOutEdges) X(flowSinkTyped) X(flowSinkText) X(flowAllocs) X(animEvaluated)
+                            X(flowFanOutEdges) X(flowSinkTyped) X(flowSinkText) X(flowAllocs) X(animEvaluated) \
+                                X(borderDashHits) X(borderDashMisses) X(borderDashEntries) X(borderDashBytes) \
+                                    X(culledOffscreen) X(paintSkipped) X(staticSkipMismatch) X(exprEvaluated) \
+                                        X(layoutRoots) X(layoutFullPasses) X(partialLayoutMismatch) \
+                                            X(redundantStyled) X(redundantLaidOut) X(redundantCommands) \
+                                                X(repaintedUnchangedNotCacheable) X(repaintedUnchangedKeyChanged) \
+                                                    X(repaintedUnchangedBudget) X(repaintedUnchangedFirstSight)
 // clang-format on
+
+/// T-753 (Docs/design/57-measurement.md §57.2 item 3): the second-level zones -- a fixed list, each under
+/// one top-level phase. Timed by XT_PERF_ZONE while the tracker is enabled at detail level >= 2; their
+/// totals are PerfTracker::zones() (FrameRecord has no columns for them). Exclusive: a zone opened inside
+/// another pauses the outer one.
+enum class PerfZone : uint8_t {
+    PaintText,              ///< paint.text: a Text node's selection, glyphs, placeholder and caret
+    PaintPaths,             ///< paint.paths: Path / Shape nodes and modified groups
+    PaintBorders,           ///< paint.borders: an element's border, border image and outline
+    PaintEffects,           ///< paint.effects: an effect node's PushEffect and box shadow candidate
+    PaintImages,            ///< paint.images: an element's image, Image and Mesh nodes
+    UpdateStyleMatch,       ///< update.style.match: an element's matching declarations, collected and sorted
+    UpdateStyleCascade,     ///< update.style.cascade: the rest of its resolve, up to the commit
+    UpdateLayoutFlex,       ///< update.layout.flex: a flex container's own layout
+    UpdateLayoutGrid,       ///< update.layout.grid: a grid container's own layout
+    UpdateLayoutTextShape,  ///< update.layout.textShape: a text node shaped (its shaping cache missed)
+    BuildWalk,              ///< build.walk: gpu::FrameBuilder's walk over the commands
+    BuildEffects,           ///< build.effects: an effect stack run
+    BuildCache,             ///< build.cache: effect segments classified, keyed, pasted or stored
+    Count
+};
+inline constexpr uint32_t kPerfZoneCount = static_cast<uint32_t>(PerfZone::Count);
+/// "paint.text", "update.style.match", ...
+const char* perfZoneName(PerfZone zone);
+/// The same in snake case for CSV columns: "paint_text", "update_layout_text_shape", ...
+const char* perfZoneCsvName(PerfZone zone);
+/// The top-level phase the zone belongs to: "paint", "update" or "build".
+const char* perfZonePhase(PerfZone zone);
+
+/// T-753: wall milliseconds and calls of every zone, summed since the tracker's last reset().
+struct PerfZoneTotals {
+    double ms[kPerfZoneCount] = {};
+    uint64_t count[kPerfZoneCount] = {};
+};
 
 /// avg/max over a window of frames, plus that window's average frame rate (§21.2).
 struct PerfSummary {
@@ -267,9 +457,82 @@ public:
 
     /// Turns tracing on or off. Turning it on allocates the ring buffer on the next beginFrame();
     /// turning it off keeps the history collected so far (use reset() to drop it).
-    void setEnabled(bool on) { m_enabled = on; }
+    void setEnabled(bool on) {
+        m_enabled = on;
+        m_zoneTiming = m_enabled && m_detail >= 2;
+    }
     /// True while frames are being recorded.
     bool enabled() const { return m_enabled; }
+    /// T-747 (57 §57.3 item 2): how much detail the cause table records. 0 (the default): the
+    /// counts only; >= 1: also FrameStats::causeNodes and (T-753) the redundant-work counts
+    /// (FrameStats::redundant*, repaintedUnchanged*); >= 2: also the second-level zones (zones()).
+    /// Negative values read as 0.
+    void setDetail(int level) {
+        m_detail = level < 0 ? 0 : level;
+        m_zoneTiming = m_enabled && m_detail >= 2;
+    }
+    int detail() const { return m_detail; }
+    /// T-753: enabled() with detail() >= 1 -- the redundant-work counts are taken.
+    bool countsRedundantWork() const { return m_enabled && m_detail >= 1; }
+
+    /// T-753 (57 §57.2 item 3): enabled() with detail() >= 2 -- XT_PERF_ZONE times its zone.
+    bool zoneTiming() const { return m_zoneTiming; }
+    /// T-753: every zone's wall milliseconds and calls since the last reset() (or resetZones()).
+    const PerfZoneTotals& zones() const { return m_zones; }
+    /// T-753: zeroes zones() (the open zones keep running and are counted when they close).
+    void resetZones() { m_zones = PerfZoneTotals{}; }
+    /// T-753: PerfZoneScope's halves. enterZone() pauses the open zone (its time so far is added) and
+    /// opens `zone`; false (nothing opened) past kMaxZoneDepth nested zones. leaveZone() closes the
+    /// innermost zone and resumes the one it paused.
+    static constexpr uint32_t kMaxZoneDepth = 16;
+    bool enterZone(PerfZone zone) {
+        if (m_zoneDepth >= kMaxZoneDepth) {
+            return false;
+        }
+        const auto now = std::chrono::steady_clock::now();
+        if (m_zoneDepth > 0) {
+            const uint32_t outer = m_zoneDepth - 1;
+            m_zones.ms[static_cast<uint32_t>(m_zoneStack[outer])] +=
+                std::chrono::duration<double, std::milli>(now - m_zoneStart[outer]).count();
+        }
+        m_zoneStack[m_zoneDepth] = zone;
+        m_zoneStart[m_zoneDepth] = now;
+        ++m_zoneDepth;
+        return true;
+    }
+    void leaveZone() {
+        if (m_zoneDepth == 0) {
+            return;
+        }
+        const auto now = std::chrono::steady_clock::now();
+        --m_zoneDepth;
+        const uint32_t z = static_cast<uint32_t>(m_zoneStack[m_zoneDepth]);
+        m_zones.ms[z] += std::chrono::duration<double, std::milli>(now - m_zoneStart[m_zoneDepth]).count();
+        ++m_zones.count[z];
+        if (m_zoneDepth > 0) {
+            m_zoneStart[m_zoneDepth - 1] = now;
+        }
+    }
+    /// T-750 (57 §57.2 item 4): also record the thread CPU time of every top-level phase and of the
+    /// marked frame (FrameStats::*CpuMs, frameCpuMs). Off by default; the first time it is turned on
+    /// the tracker calibrates its ThreadClock (Windows: ~200 ms busy loop, once per tracker).
+    void setThreadCpuTiming(bool on) {
+        if (on && !m_clock.calibrated()) {
+            m_clock.calibrate();
+        }
+        m_threadCpu = on;
+    }
+    bool threadCpuTiming() const { return m_threadCpu; }
+    /// The tracker's thread clock (calibrated once setThreadCpuTiming(true) ran).
+    const ThreadClock& threadClock() const { return m_clock; }
+
+    /// T-750 (57 §57.2 item 2): the host marks its whole frame -- markFrameStart() before it starts
+    /// the frame's work (before Context::update()), markFrameEnd() after the last of it (after the
+    /// backend's submit and any wait). The start is held until the next beginFrame() opens the
+    /// frame's record; markFrameEnd() writes FrameStats::frameWallMs / frameCpuMs / frameMarked into
+    /// the current record. A frame without both marks keeps frameMarked 0. No-ops while disabled.
+    void markFrameStart();
+    void markFrameEnd();
 
     /// Opens a new frame (called at the top of Context::update()). No-op while disabled.
     void beginFrame(float timeSeconds);
@@ -298,6 +561,22 @@ public:
 
 private:
     bool m_enabled = false;
+    int m_detail = 0;  // T-747: setDetail().
+    // T-753: the zones -- the switch (enabled && detail >= 2), the totals and the open zones.
+    bool m_zoneTiming = false;
+    PerfZoneTotals m_zones;
+    uint32_t m_zoneDepth = 0;
+    PerfZone m_zoneStack[kMaxZoneDepth] = {};
+    std::chrono::steady_clock::time_point m_zoneStart[kMaxZoneDepth];
+    // T-750: setThreadCpuTiming() and the frame marks (a pending start, then the open frame's).
+    bool m_threadCpu = false;
+    ThreadClock m_clock;
+    bool m_pendingStart = false;
+    std::chrono::steady_clock::time_point m_pendingWall;
+    double m_pendingCpu = 0;
+    bool m_frameStarted = false;
+    std::chrono::steady_clock::time_point m_frameWall;
+    double m_frameCpu = 0;
     // Ring buffer. m_frames is empty until the first beginFrame() while enabled, then sized to
     // kHistoryCapacity; m_count is how many slots hold a recorded frame, m_newest the newest one.
     std::vector<FrameStats> m_frames;
@@ -349,6 +628,77 @@ public:
     PerfScope(PerfTracker& t, float FrameStats::* field)
         : PerfFieldScope(t.enabled() ? &(t.current().*field) : nullptr) {}
 };
+
+/// T-750 (57 §57.2): a top-level phase scope -- adds the elapsed wall milliseconds to
+/// `t->current().*wall` and, while `t->threadCpuTiming()`, the thread CPU milliseconds to
+/// `t->current().*cpu`. A null or disabled tracker costs one branch on construction and one on
+/// destruction; an enabled tracker without CPU timing one more branch than PerfScope.
+class PerfPhaseScope {
+public:
+    PerfPhaseScope(PerfTracker* t, float FrameStats::* wall, float FrameStats::* cpu) {
+        if (t == nullptr || !t->enabled()) {
+            return;
+        }
+        FrameStats& f = t->current();
+        m_wall = &(f.*wall);
+        if (t->threadCpuTiming()) {
+            m_cpu = &(f.*cpu);
+            m_clock = &t->threadClock();
+            m_cpu0 = m_clock->nowMs();
+        }
+        m_start = std::chrono::steady_clock::now();
+    }
+    PerfPhaseScope(PerfTracker& t, float FrameStats::* wall, float FrameStats::* cpu)
+        : PerfPhaseScope(&t, wall, cpu) {}
+    ~PerfPhaseScope() {
+        if (m_wall == nullptr) {
+            return;
+        }
+        std::chrono::duration<float, std::milli> elapsed = std::chrono::steady_clock::now() - m_start;
+        *m_wall += elapsed.count();
+        if (m_cpu != nullptr) {
+            *m_cpu += static_cast<float>(m_clock->nowMs() - m_cpu0);
+        }
+    }
+    PerfPhaseScope(const PerfPhaseScope&) = delete;
+    PerfPhaseScope& operator=(const PerfPhaseScope&) = delete;
+
+private:
+    float* m_wall = nullptr;
+    float* m_cpu = nullptr;
+    const ThreadClock* m_clock = nullptr;
+    double m_cpu0 = 0;
+    std::chrono::steady_clock::time_point m_start;
+};
+
+/// T-753 (57 §57.2 item 3): times one second-level zone (exclusively, see PerfZone) into
+/// `t->zones()`. A null tracker, or one below detail level 2 or disabled, costs one test on construction
+/// and one on destruction and never reads the clock. Use XT_PERF_ZONE.
+class PerfZoneScope {
+public:
+    PerfZoneScope(PerfTracker* t, PerfZone zone) {
+        if (t != nullptr && t->zoneTiming() && t->enterZone(zone)) {
+            m_tracker = t;
+        }
+    }
+    ~PerfZoneScope() {
+        if (m_tracker != nullptr) {
+            m_tracker->leaveZone();
+        }
+    }
+    PerfZoneScope(const PerfZoneScope&) = delete;
+    PerfZoneScope& operator=(const PerfZoneScope&) = delete;
+
+private:
+    PerfTracker* m_tracker = nullptr;
+};
+
+#define XT_PERF_ZONE_JOIN2(a, b) a##b
+#define XT_PERF_ZONE_JOIN(a, b) XT_PERF_ZONE_JOIN2(a, b)
+/// T-753: `XT_PERF_ZONE(tracker, PaintText);` -- a PerfZoneScope over the rest of the enclosing block.
+/// `tracker` is a PerfTracker* (may be null); the zone is a PerfZone enumerator name.
+#define XT_PERF_ZONE(tracker, zone) \
+    ::xt::PerfZoneScope XT_PERF_ZONE_JOIN(xtPerfZone_, __LINE__)((tracker), ::xt::PerfZone::zone)
 
 namespace perf {
 

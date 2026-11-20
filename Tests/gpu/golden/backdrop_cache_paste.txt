@@ -1,0 +1,846 @@
+-- build 0
+target 320x200 vertices=120 indices=432 cmds=21 passes=22 params=372
+transient 1: 256x200 rgba8 stencil=0
+transient 2: 128x100 rgba8 stencil=0
+transient 3: 128x100 rgba8 stencil=0
+transient 4: 64x50 rgba8 stencil=0
+transient 5: 64x50 rgba8 stencil=0
+transient 6: 32x25 rgba8 stencil=0
+transient 7: 32x25 rgba8 stencil=0
+transient 8: 224x160 rgba8 stencil=1
+transient 9: 112x80 rgba8 stencil=0
+transient 10: 112x80 rgba8 stencil=0
+transient 11: 224x160 rgba8 stencil=0
+transient 12: 224x160 rgba8 stencil=0
+transient 13: 224x160 rgba8 stencil=0
+pass 0: target=0 clear=0 copy=0 from=0 view=(0,0,320,200) cmds=1
+  0 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=360 verts=96 clip=(0,0,320,200)
+pass 1: target=1 clear=0 copy=1 from=0 view=(14,0,256,200) cmds=0
+pass 2: target=2 clear=0 copy=0 from=0 view=(14,0,256,200) cmds=1
+  1 Effect Replace None ref=0 program=Downsample tex=no src=1 aux=0 linear idx=6 verts=4 clip=(14,0,256,200)
+pass 3: target=3 clear=0 copy=0 from=0 view=(14,0,256,200) cmds=1
+  2 Effect Replace None ref=0 program=Kawase tex=no src=2 aux=0 linear idx=6 verts=4 clip=(14,0,256,200)
+pass 4: target=4 clear=0 copy=0 from=0 view=(14,0,256,200) cmds=1
+  3 Effect Replace None ref=0 program=Downsample tex=no src=3 aux=0 linear idx=6 verts=4 clip=(14,0,256,200)
+pass 5: target=5 clear=0 copy=0 from=0 view=(14,0,256,200) cmds=1
+  4 Effect Replace None ref=0 program=Kawase tex=no src=4 aux=0 linear idx=6 verts=4 clip=(14,0,256,200)
+pass 6: target=6 clear=0 copy=0 from=0 view=(14,0,256,200) cmds=1
+  5 Effect Replace None ref=0 program=Downsample tex=no src=5 aux=0 linear idx=6 verts=4 clip=(14,0,256,200)
+pass 7: target=7 clear=0 copy=0 from=0 view=(14,0,256,200) cmds=1
+  6 Effect Replace None ref=0 program=Kawase tex=no src=6 aux=0 linear idx=6 verts=4 clip=(14,0,256,200)
+pass 8: target=8 clear=1 copy=0 from=0 view=(40,30,224,160) cmds=1
+  7 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=60 verts=16 clip=(0,0,320,200)
+pass 9: target=9 clear=0 copy=0 from=0 view=(40,30,224,160) cmds=1
+  8 Effect Replace None ref=0 program=Downsample tex=no src=8 aux=0 linear idx=6 verts=4 clip=(40,30,224,160)
+pass 10: target=10 clear=0 copy=0 from=0 view=(40,30,224,160) cmds=1
+  9 Effect Replace None ref=0 program=GaussScalar tex=no src=9 aux=0 linear idx=6 verts=4 clip=(40,30,224,160)
+pass 11: target=9 clear=0 copy=0 from=0 view=(40,30,224,160) cmds=1
+  10 Effect Replace None ref=0 program=GaussScalar tex=no src=10 aux=0 linear idx=6 verts=4 clip=(40,30,224,160)
+pass 12: target=11 clear=0 copy=0 from=0 view=(40,30,224,160) cmds=1
+  11 Effect Replace None ref=0 program=LevelMix tex=no src=9 aux=0 linear idx=6 verts=4 clip=(40,30,224,160)
+pass 13: target=12 clear=0 copy=0 from=0 view=(40,30,224,160) cmds=1
+  12 Effect Replace None ref=0 program=ShadowGlow tex=no src=8 aux=11 linear idx=6 verts=4 clip=(40,30,224,160)
+pass 14: target=11 clear=0 copy=0 from=0 view=(40,30,224,160) cmds=1
+  13 Effect Replace None ref=0 program=AlphaExtract tex=no src=12 aux=0 linear idx=6 verts=4 clip=(40,30,224,160)
+pass 15: target=13 clear=0 copy=0 from=0 view=(40,30,224,160) cmds=1
+  14 Effect Replace None ref=0 program=GaussScalar tex=no src=11 aux=0 linear idx=6 verts=4 clip=(40,30,224,160)
+pass 16: target=11 clear=0 copy=0 from=0 view=(40,30,224,160) cmds=1
+  15 Effect Replace None ref=0 program=GaussScalar tex=no src=13 aux=0 linear idx=6 verts=4 clip=(40,30,224,160)
+pass 17: target=13 clear=0 copy=0 from=0 view=(40,30,224,160) cmds=1
+  16 Effect Replace None ref=0 program=ShadowGlow tex=no src=12 aux=11 linear idx=6 verts=4 clip=(40,30,224,160)
+pass 18: target=11 clear=0 copy=0 from=0 view=(40,30,224,160) cmds=1
+  17 Effect Replace None ref=0 program=LevelMix tex=no src=5 aux=7 linear idx=6 verts=4 clip=(40,30,224,160)
+pass 19: target=12 clear=0 copy=0 from=0 view=(40,30,224,160) cmds=1
+  18 Effect Replace None ref=0 program=ColorMatrix tex=no src=11 aux=0 linear idx=6 verts=4 clip=(40,30,224,160)
+pass 20: target=11 clear=0 copy=0 from=0 view=(40,30,224,160) cmds=1
+  19 Effect Replace None ref=0 program=BackdropMasked mask=8 tex=no src=13 aux=12 linear idx=6 verts=4 clip=(40,30,224,160)
+pass 21: target=0 clear=0 copy=0 from=0 view=(0,0,320,200) cmds=1
+  20 Composite SrcOver None ref=0 tex=no src=11 aux=0 linear idx=6 verts=4 clip=(0,0,320,200)
+
+params 43800000 43480000 43000000 42c80000 00000000 3c000000 3c23d70a 3fc00000
+params 43000000 42c80000 42800000 42480000 00000000 3c800000 3ca3d70a 3fc00000
+params 42800000 42480000 42000000 41c80000 00000000 3d000000 3d23d70a 3fc00000
+params 43600000 43200000 42e00000 42a00000 3f800000 3c124925 3c4ccccd 3f800000
+params 00000000 40800000 00000000 00000000 3e26db0d 3e888935 3df59975 3ce8aa67
+params 3b6781b0 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 3fb80a9a 4056ec31
+params 40a923f2 40e7205c 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 3c124925
+params 3c4ccccd 00000000 3f800000 40800000 00000000 00000000 3e26db0d 3e888935
+params 3df59975 3ce8aa67 3b6781b0 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 3fb80a9a 4056ec31 40a923f2 40e7205c 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 3f800000 3f800000 00000000 00000000 00000000 00000000 3d19999a
+params 3f800000 00000000 00000000 00000000 3f000000 00000000 00000000 00000000
+params 3f800000 3b924925 3bcccccd 3f800000 00000000 40c00000 3f800000 3f800000
+params 3dec0fb7 3e551fe7 3e0db860 3d87f871 3cbc2f1a 3bbbcc8b 3a4348bd 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 3fbc0154 405b5dba 40ac656d 40eb2818 4114fd2e 41300000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 3b924925 3bcccccd 00000000 3f800000 40c00000
+params 3f800000 3f800000 3dec0fb7 3e551fe7 3e0db860 3d87f871 3cbc2f1a 3bbbcc8b
+params 3a4348bd 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 3fbc0154 405b5dba 40ac656d 40eb2818
+params 4114fd2e 41300000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 3c4ccccd 3f800000
+params 00000000 00000000 00000000 3ecccccd 3f800000 3f800000 3f800000 3f600000
+params 3f4ccccd 3dd00000 3e19999a 3e26f0d5 3f9e343c be5b5894 bcb24a59 bd81a23d
+params 3f8aebd3 bcb46ba8 bd855446 be5d91b4 3fa4077a 3dcccccc 3dcccccd 3dcccccd
+params 3f800000 41000000 00000000 3f800000
+vertices 120 8e7b6c226765f29f
+indices 432 121f3c7c5fda1a03
+-- build 1
+target 320x200 vertices=120 indices=432 cmds=21 passes=22 params=372
+transient 1: 256x200 rgba8 stencil=0
+transient 2: 128x100 rgba8 stencil=0
+transient 3: 128x100 rgba8 stencil=0
+transient 4: 64x50 rgba8 stencil=0
+transient 5: 64x50 rgba8 stencil=0
+transient 6: 32x25 rgba8 stencil=0
+transient 7: 32x25 rgba8 stencil=0
+transient 8: 224x160 rgba8 stencil=1
+transient 9: 112x80 rgba8 stencil=0
+transient 10: 112x80 rgba8 stencil=0
+transient 11: 224x160 rgba8 stencil=0
+transient 12: 224x160 rgba8 stencil=0
+transient 13: 224x160 rgba8 stencil=0
+pass 0: target=0 clear=0 copy=0 from=0 view=(0,0,320,200) cmds=1
+  0 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=360 verts=96 clip=(0,0,320,200)
+pass 1: target=1 clear=0 copy=1 from=0 view=(14,0,256,200) cmds=0
+pass 2: target=2 clear=0 copy=0 from=0 view=(14,0,256,200) cmds=1
+  1 Effect Replace None ref=0 program=Downsample tex=no src=1 aux=0 linear idx=6 verts=4 clip=(14,0,256,200)
+pass 3: target=3 clear=0 copy=0 from=0 view=(14,0,256,200) cmds=1
+  2 Effect Replace None ref=0 program=Kawase tex=no src=2 aux=0 linear idx=6 verts=4 clip=(14,0,256,200)
+pass 4: target=4 clear=0 copy=0 from=0 view=(14,0,256,200) cmds=1
+  3 Effect Replace None ref=0 program=Downsample tex=no src=3 aux=0 linear idx=6 verts=4 clip=(14,0,256,200)
+pass 5: target=5 clear=0 copy=0 from=0 view=(14,0,256,200) cmds=1
+  4 Effect Replace None ref=0 program=Kawase tex=no src=4 aux=0 linear idx=6 verts=4 clip=(14,0,256,200)
+pass 6: target=6 clear=0 copy=0 from=0 view=(14,0,256,200) cmds=1
+  5 Effect Replace None ref=0 program=Downsample tex=no src=5 aux=0 linear idx=6 verts=4 clip=(14,0,256,200)
+pass 7: target=7 clear=0 copy=0 from=0 view=(14,0,256,200) cmds=1
+  6 Effect Replace None ref=0 program=Kawase tex=no src=6 aux=0 linear idx=6 verts=4 clip=(14,0,256,200)
+pass 8: target=8 clear=1 copy=0 from=0 view=(40,30,224,160) cmds=1
+  7 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=60 verts=16 clip=(0,0,320,200)
+pass 9: target=9 clear=0 copy=0 from=0 view=(40,30,224,160) cmds=1
+  8 Effect Replace None ref=0 program=Downsample tex=no src=8 aux=0 linear idx=6 verts=4 clip=(40,30,224,160)
+pass 10: target=10 clear=0 copy=0 from=0 view=(40,30,224,160) cmds=1
+  9 Effect Replace None ref=0 program=GaussScalar tex=no src=9 aux=0 linear idx=6 verts=4 clip=(40,30,224,160)
+pass 11: target=9 clear=0 copy=0 from=0 view=(40,30,224,160) cmds=1
+  10 Effect Replace None ref=0 program=GaussScalar tex=no src=10 aux=0 linear idx=6 verts=4 clip=(40,30,224,160)
+pass 12: target=11 clear=0 copy=0 from=0 view=(40,30,224,160) cmds=1
+  11 Effect Replace None ref=0 program=LevelMix tex=no src=9 aux=0 linear idx=6 verts=4 clip=(40,30,224,160)
+pass 13: target=12 clear=0 copy=0 from=0 view=(40,30,224,160) cmds=1
+  12 Effect Replace None ref=0 program=ShadowGlow tex=no src=8 aux=11 linear idx=6 verts=4 clip=(40,30,224,160)
+pass 14: target=11 clear=0 copy=0 from=0 view=(40,30,224,160) cmds=1
+  13 Effect Replace None ref=0 program=AlphaExtract tex=no src=12 aux=0 linear idx=6 verts=4 clip=(40,30,224,160)
+pass 15: target=13 clear=0 copy=0 from=0 view=(40,30,224,160) cmds=1
+  14 Effect Replace None ref=0 program=GaussScalar tex=no src=11 aux=0 linear idx=6 verts=4 clip=(40,30,224,160)
+pass 16: target=11 clear=0 copy=0 from=0 view=(40,30,224,160) cmds=1
+  15 Effect Replace None ref=0 program=GaussScalar tex=no src=13 aux=0 linear idx=6 verts=4 clip=(40,30,224,160)
+pass 17: target=13 clear=0 copy=0 from=0 view=(40,30,224,160) cmds=1
+  16 Effect Replace None ref=0 program=ShadowGlow tex=no src=12 aux=11 linear idx=6 verts=4 clip=(40,30,224,160)
+pass 18: target=11 clear=0 copy=0 from=0 view=(40,30,224,160) cmds=1
+  17 Effect Replace None ref=0 program=LevelMix tex=no src=5 aux=7 linear idx=6 verts=4 clip=(40,30,224,160)
+pass 19: target=12 clear=0 copy=0 from=0 view=(40,30,224,160) cmds=1
+  18 Effect Replace None ref=0 program=ColorMatrix tex=no src=11 aux=0 linear idx=6 verts=4 clip=(40,30,224,160)
+pass 20: target=11 clear=0 copy=0 from=0 view=(40,30,224,160) cmds=1
+  19 Effect Replace None ref=0 program=BackdropMasked mask=8 tex=no src=13 aux=12 linear idx=6 verts=4 clip=(40,30,224,160)
+pass 21: target=0 clear=0 copy=0 from=0 view=(0,0,320,200) cmds=1
+  20 Composite SrcOver None ref=0 tex=no src=11 aux=0 linear idx=6 verts=4 clip=(0,0,320,200)
+cache store 0: pass=20 src=13 tex=yes
+cache store 1: pass=20 src=8 tex=yes
+
+params 43800000 43480000 43000000 42c80000 00000000 3c000000 3c23d70a 3fc00000
+params 43000000 42c80000 42800000 42480000 00000000 3c800000 3ca3d70a 3fc00000
+params 42800000 42480000 42000000 41c80000 00000000 3d000000 3d23d70a 3fc00000
+params 43600000 43200000 42e00000 42a00000 3f800000 3c124925 3c4ccccd 3f800000
+params 00000000 40800000 00000000 00000000 3e26db0d 3e888935 3df59975 3ce8aa67
+params 3b6781b0 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 3fb80a9a 4056ec31
+params 40a923f2 40e7205c 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 3c124925
+params 3c4ccccd 00000000 3f800000 40800000 00000000 00000000 3e26db0d 3e888935
+params 3df59975 3ce8aa67 3b6781b0 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 3fb80a9a 4056ec31 40a923f2 40e7205c 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 3f800000 3f800000 00000000 00000000 00000000 00000000 3d19999a
+params 3f800000 00000000 00000000 00000000 3f000000 00000000 00000000 00000000
+params 3f800000 3b924925 3bcccccd 3f800000 00000000 40c00000 3f800000 3f800000
+params 3dec0fb7 3e551fe7 3e0db860 3d87f871 3cbc2f1a 3bbbcc8b 3a4348bd 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 3fbc0154 405b5dba 40ac656d 40eb2818 4114fd2e 41300000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 3b924925 3bcccccd 00000000 3f800000 40c00000
+params 3f800000 3f800000 3dec0fb7 3e551fe7 3e0db860 3d87f871 3cbc2f1a 3bbbcc8b
+params 3a4348bd 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 3fbc0154 405b5dba 40ac656d 40eb2818
+params 4114fd2e 41300000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 3c4ccccd 3f800000
+params 00000000 00000000 00000000 3ecccccd 3f800000 3f800000 3f800000 3f600000
+params 3f4ccccd 3dd00000 3e19999a 3e26f0d5 3f9e343c be5b5894 bcb24a59 bd81a23d
+params 3f8aebd3 bcb46ba8 bd855446 be5d91b4 3fa4077a 3dcccccc 3dcccccd 3dcccccd
+params 3f800000 41000000 00000000 3f800000
+vertices 120 8e7b6c226765f29f
+indices 432 121f3c7c5fda1a03
+store pass 20 src 13 texture 2
+store pass 20 src 8 texture 3
+-- build 2
+target 320x200 vertices=104 indices=372 cmds=13 passes=14 params=45
+transient 1: 256x200 rgba8 stencil=0
+transient 2: 128x100 rgba8 stencil=0
+transient 3: 128x100 rgba8 stencil=0
+transient 4: 64x50 rgba8 stencil=0
+transient 5: 64x50 rgba8 stencil=0
+transient 6: 32x25 rgba8 stencil=0
+transient 7: 32x25 rgba8 stencil=0
+transient 8: 224x160 rgba8 stencil=0
+transient 9: 224x160 rgba8 stencil=0
+transient 10: 224x160 rgba8 stencil=0
+transient 11: 224x160 rgba8 stencil=0
+pass 0: target=0 clear=0 copy=0 from=0 view=(0,0,320,200) cmds=1
+  0 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=360 verts=96 clip=(0,0,320,200)
+pass 1: target=1 clear=0 copy=1 from=0 view=(14,0,256,200) cmds=0
+pass 2: target=2 clear=0 copy=0 from=0 view=(14,0,256,200) cmds=1
+  1 Effect Replace None ref=0 program=Downsample tex=no src=1 aux=0 linear idx=6 verts=4 clip=(14,0,256,200)
+pass 3: target=3 clear=0 copy=0 from=0 view=(14,0,256,200) cmds=1
+  2 Effect Replace None ref=0 program=Kawase tex=no src=2 aux=0 linear idx=6 verts=4 clip=(14,0,256,200)
+pass 4: target=4 clear=0 copy=0 from=0 view=(14,0,256,200) cmds=1
+  3 Effect Replace None ref=0 program=Downsample tex=no src=3 aux=0 linear idx=6 verts=4 clip=(14,0,256,200)
+pass 5: target=5 clear=0 copy=0 from=0 view=(14,0,256,200) cmds=1
+  4 Effect Replace None ref=0 program=Kawase tex=no src=4 aux=0 linear idx=6 verts=4 clip=(14,0,256,200)
+pass 6: target=6 clear=0 copy=0 from=0 view=(14,0,256,200) cmds=1
+  5 Effect Replace None ref=0 program=Downsample tex=no src=5 aux=0 linear idx=6 verts=4 clip=(14,0,256,200)
+pass 7: target=7 clear=0 copy=0 from=0 view=(14,0,256,200) cmds=1
+  6 Effect Replace None ref=0 program=Kawase tex=no src=6 aux=0 linear idx=6 verts=4 clip=(14,0,256,200)
+pass 8: target=8 clear=1 copy=0 from=0 view=(40,30,224,160) cmds=1
+  7 Texture SrcOver None ref=0 tex=yes src=0 aux=0 point idx=6 verts=4 clip=(40,30,224,160)
+pass 9: target=9 clear=1 copy=0 from=0 view=(40,30,224,160) cmds=1
+  8 Texture SrcOver None ref=0 tex=yes src=0 aux=0 point idx=6 verts=4 clip=(40,30,224,160)
+pass 10: target=10 clear=0 copy=0 from=0 view=(40,30,224,160) cmds=1
+  9 Effect Replace None ref=0 program=LevelMix tex=no src=5 aux=7 linear idx=6 verts=4 clip=(40,30,224,160)
+pass 11: target=11 clear=0 copy=0 from=0 view=(40,30,224,160) cmds=1
+  10 Effect Replace None ref=0 program=ColorMatrix tex=no src=10 aux=0 linear idx=6 verts=4 clip=(40,30,224,160)
+pass 12: target=10 clear=0 copy=0 from=0 view=(40,30,224,160) cmds=1
+  11 Effect Replace None ref=0 program=BackdropMasked mask=9 tex=no src=8 aux=11 linear idx=6 verts=4 clip=(40,30,224,160)
+pass 13: target=0 clear=0 copy=0 from=0 view=(0,0,320,200) cmds=1
+  12 Composite SrcOver None ref=0 tex=no src=10 aux=0 linear idx=6 verts=4 clip=(0,0,320,200)
+
+params 43800000 43480000 43000000 42c80000 00000000 3c000000 3c23d70a 3fc00000
+params 43000000 42c80000 42800000 42480000 00000000 3c800000 3ca3d70a 3fc00000
+params 42800000 42480000 42000000 41c80000 00000000 3d000000 3d23d70a 3fc00000
+params 3f600000 3f4ccccd 3dd00000 3e19999a 3e26f0d5 3f9e343c be5b5894 bcb24a59
+params bd81a23d 3f8aebd3 bcb46ba8 bd855446 be5d91b4 3fa4077a 3dcccccc 3dcccccd
+params 3dcccccd 3f800000 41100000 00000000 3f800000
+vertices 104 cd5d86fd2730719b
+indices 372 1a3a822617e0b0c3
+-- build 3
+target 320x200 vertices=104 indices=372 cmds=13 passes=14 params=45
+transient 1: 256x200 rgba8 stencil=0
+transient 2: 128x100 rgba8 stencil=0
+transient 3: 128x100 rgba8 stencil=0
+transient 4: 64x50 rgba8 stencil=0
+transient 5: 64x50 rgba8 stencil=0
+transient 6: 32x25 rgba8 stencil=0
+transient 7: 32x25 rgba8 stencil=0
+transient 8: 224x160 rgba8 stencil=0
+transient 9: 224x160 rgba8 stencil=0
+transient 10: 224x160 rgba8 stencil=0
+transient 11: 224x160 rgba8 stencil=0
+pass 0: target=0 clear=0 copy=0 from=0 view=(0,0,320,200) cmds=1
+  0 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=360 verts=96 clip=(0,0,320,200)
+pass 1: target=1 clear=0 copy=1 from=0 view=(14,0,256,200) cmds=0
+pass 2: target=2 clear=0 copy=0 from=0 view=(14,0,256,200) cmds=1
+  1 Effect Replace None ref=0 program=Downsample tex=no src=1 aux=0 linear idx=6 verts=4 clip=(14,0,256,200)
+pass 3: target=3 clear=0 copy=0 from=0 view=(14,0,256,200) cmds=1
+  2 Effect Replace None ref=0 program=Kawase tex=no src=2 aux=0 linear idx=6 verts=4 clip=(14,0,256,200)
+pass 4: target=4 clear=0 copy=0 from=0 view=(14,0,256,200) cmds=1
+  3 Effect Replace None ref=0 program=Downsample tex=no src=3 aux=0 linear idx=6 verts=4 clip=(14,0,256,200)
+pass 5: target=5 clear=0 copy=0 from=0 view=(14,0,256,200) cmds=1
+  4 Effect Replace None ref=0 program=Kawase tex=no src=4 aux=0 linear idx=6 verts=4 clip=(14,0,256,200)
+pass 6: target=6 clear=0 copy=0 from=0 view=(14,0,256,200) cmds=1
+  5 Effect Replace None ref=0 program=Downsample tex=no src=5 aux=0 linear idx=6 verts=4 clip=(14,0,256,200)
+pass 7: target=7 clear=0 copy=0 from=0 view=(14,0,256,200) cmds=1
+  6 Effect Replace None ref=0 program=Kawase tex=no src=6 aux=0 linear idx=6 verts=4 clip=(14,0,256,200)
+pass 8: target=8 clear=1 copy=0 from=0 view=(40,30,224,160) cmds=1
+  7 Texture SrcOver None ref=0 tex=yes src=0 aux=0 point idx=6 verts=4 clip=(40,30,224,160)
+pass 9: target=9 clear=1 copy=0 from=0 view=(40,30,224,160) cmds=1
+  8 Texture SrcOver None ref=0 tex=yes src=0 aux=0 point idx=6 verts=4 clip=(40,30,224,160)
+pass 10: target=10 clear=0 copy=0 from=0 view=(40,30,224,160) cmds=1
+  9 Effect Replace None ref=0 program=LevelMix tex=no src=5 aux=7 linear idx=6 verts=4 clip=(40,30,224,160)
+pass 11: target=11 clear=0 copy=0 from=0 view=(40,30,224,160) cmds=1
+  10 Effect Replace None ref=0 program=ColorMatrix tex=no src=10 aux=0 linear idx=6 verts=4 clip=(40,30,224,160)
+pass 12: target=10 clear=0 copy=0 from=0 view=(40,30,224,160) cmds=1
+  11 Effect Replace None ref=0 program=BackdropMasked mask=9 tex=no src=8 aux=11 linear idx=6 verts=4 clip=(40,30,224,160)
+pass 13: target=0 clear=0 copy=0 from=0 view=(0,0,320,200) cmds=1
+  12 Composite SrcOver None ref=0 tex=no src=10 aux=0 linear idx=6 verts=4 clip=(0,0,320,200)
+
+params 43800000 43480000 43000000 42c80000 00000000 3c000000 3c23d70a 3fc00000
+params 43000000 42c80000 42800000 42480000 00000000 3c800000 3ca3d70a 3fc00000
+params 42800000 42480000 42000000 41c80000 00000000 3d000000 3d23d70a 3fc00000
+params 3f600000 3f4ccccd 3dd00000 3e19999a 3e26f0d5 3f9e343c be5b5894 bcb24a59
+params bd81a23d 3f8aebd3 bcb46ba8 bd855446 be5d91b4 3fa4077a 3dcccccc 3dcccccd
+params 3dcccccd 3f800000 41100000 00000000 3f800000
+vertices 104 55b64bc95a4c426b
+indices 372 1a3a822617e0b0c3
+-- build 4
+target 320x200 vertices=112 indices=384 cmds=13 passes=14 params=45
+transient 1: 256x200 rgba8 stencil=0
+transient 2: 128x100 rgba8 stencil=0
+transient 3: 128x100 rgba8 stencil=0
+transient 4: 64x50 rgba8 stencil=0
+transient 5: 64x50 rgba8 stencil=0
+transient 6: 32x25 rgba8 stencil=0
+transient 7: 32x25 rgba8 stencil=0
+transient 8: 224x160 rgba8 stencil=0
+transient 9: 224x160 rgba8 stencil=0
+transient 10: 224x160 rgba8 stencil=0
+transient 11: 224x160 rgba8 stencil=0
+pass 0: target=0 clear=0 copy=0 from=0 view=(0,0,320,200) cmds=1
+  0 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=360 verts=96 clip=(0,0,320,200)
+pass 1: target=1 clear=0 copy=1 from=0 view=(15,0,256,200) cmds=0
+pass 2: target=2 clear=0 copy=0 from=0 view=(15,0,256,200) cmds=1
+  1 Effect Replace None ref=0 program=Downsample tex=no src=1 aux=0 linear idx=6 verts=4 clip=(15,0,256,200)
+pass 3: target=3 clear=0 copy=0 from=0 view=(15,0,256,200) cmds=1
+  2 Effect Replace None ref=0 program=Kawase tex=no src=2 aux=0 linear idx=6 verts=4 clip=(15,0,256,200)
+pass 4: target=4 clear=0 copy=0 from=0 view=(15,0,256,200) cmds=1
+  3 Effect Replace None ref=0 program=Downsample tex=no src=3 aux=0 linear idx=6 verts=4 clip=(15,0,256,200)
+pass 5: target=5 clear=0 copy=0 from=0 view=(15,0,256,200) cmds=1
+  4 Effect Replace None ref=0 program=Kawase tex=no src=4 aux=0 linear idx=6 verts=4 clip=(15,0,256,200)
+pass 6: target=6 clear=0 copy=0 from=0 view=(15,0,256,200) cmds=1
+  5 Effect Replace None ref=0 program=Downsample tex=no src=5 aux=0 linear idx=6 verts=4 clip=(15,0,256,200)
+pass 7: target=7 clear=0 copy=0 from=0 view=(15,0,256,200) cmds=1
+  6 Effect Replace None ref=0 program=Kawase tex=no src=6 aux=0 linear idx=6 verts=4 clip=(15,0,256,200)
+pass 8: target=8 clear=1 copy=0 from=0 view=(41,30,224,160) cmds=1
+  7 Texture SrcOver None ref=0 tex=yes src=0 aux=0 point idx=6 verts=4 clip=(41,30,224,160)
+pass 9: target=9 clear=1 copy=0 from=0 view=(41,30,224,160) cmds=1
+  8 Texture SrcOver None ref=0 tex=yes src=0 aux=0 point idx=6 verts=4 clip=(41,30,224,160)
+pass 10: target=10 clear=0 copy=0 from=0 view=(41,30,224,160) cmds=1
+  9 Effect Replace None ref=0 program=LevelMix tex=no src=5 aux=7 linear idx=6 verts=4 clip=(41,30,224,160)
+pass 11: target=11 clear=0 copy=0 from=0 view=(41,30,224,160) cmds=1
+  10 Effect Replace None ref=0 program=ColorMatrix tex=no src=10 aux=0 linear idx=6 verts=4 clip=(41,30,224,160)
+pass 12: target=10 clear=0 copy=0 from=0 view=(41,30,224,160) cmds=1
+  11 Effect Replace None ref=0 program=BackdropMasked mask=9 tex=no src=8 aux=11 linear idx=6 verts=4 clip=(41,30,224,160)
+pass 13: target=0 clear=0 copy=0 from=0 view=(0,0,320,200) cmds=1
+  12 Composite SrcOver None ref=0 tex=no src=10 aux=0 linear idx=6 verts=4 clip=(0,0,320,200)
+
+params 43800000 43480000 43000000 42c80000 00000000 3c000000 3c23d70a 3fc00000
+params 43000000 42c80000 42800000 42480000 00000000 3c800000 3ca3d70a 3fc00000
+params 42800000 42480000 42000000 41c80000 00000000 3d000000 3d23d70a 3fc00000
+params 3f600000 3f4ccccd 3dd00000 3e19999a 3e26f0d5 3f9e343c be5b5894 bcb24a59
+params bd81a23d 3f8aebd3 bcb46ba8 bd855446 be5d91b4 3fa4077a 3dcccccc 3dcccccd
+params 3dcccccd 3f800000 41100000 00000000 3f800000
+vertices 112 f27a74b6020a1323
+indices 384 7355e2ee8e9381c3
+-- build 5
+target 320x200 vertices=112 indices=384 cmds=13 passes=14 params=45
+transient 1: 256x200 rgba8 stencil=0
+transient 2: 128x100 rgba8 stencil=0
+transient 3: 128x100 rgba8 stencil=0
+transient 4: 64x50 rgba8 stencil=0
+transient 5: 64x50 rgba8 stencil=0
+transient 6: 32x25 rgba8 stencil=0
+transient 7: 32x25 rgba8 stencil=0
+transient 8: 224x160 rgba8 stencil=0
+transient 9: 224x160 rgba8 stencil=0
+transient 10: 224x160 rgba8 stencil=0
+transient 11: 224x160 rgba8 stencil=0
+pass 0: target=0 clear=0 copy=0 from=0 view=(0,0,320,200) cmds=1
+  0 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=360 verts=96 clip=(0,0,320,200)
+pass 1: target=1 clear=0 copy=1 from=0 view=(17,0,256,200) cmds=0
+pass 2: target=2 clear=0 copy=0 from=0 view=(17,0,256,200) cmds=1
+  1 Effect Replace None ref=0 program=Downsample tex=no src=1 aux=0 linear idx=6 verts=4 clip=(17,0,256,200)
+pass 3: target=3 clear=0 copy=0 from=0 view=(17,0,256,200) cmds=1
+  2 Effect Replace None ref=0 program=Kawase tex=no src=2 aux=0 linear idx=6 verts=4 clip=(17,0,256,200)
+pass 4: target=4 clear=0 copy=0 from=0 view=(17,0,256,200) cmds=1
+  3 Effect Replace None ref=0 program=Downsample tex=no src=3 aux=0 linear idx=6 verts=4 clip=(17,0,256,200)
+pass 5: target=5 clear=0 copy=0 from=0 view=(17,0,256,200) cmds=1
+  4 Effect Replace None ref=0 program=Kawase tex=no src=4 aux=0 linear idx=6 verts=4 clip=(17,0,256,200)
+pass 6: target=6 clear=0 copy=0 from=0 view=(17,0,256,200) cmds=1
+  5 Effect Replace None ref=0 program=Downsample tex=no src=5 aux=0 linear idx=6 verts=4 clip=(17,0,256,200)
+pass 7: target=7 clear=0 copy=0 from=0 view=(17,0,256,200) cmds=1
+  6 Effect Replace None ref=0 program=Kawase tex=no src=6 aux=0 linear idx=6 verts=4 clip=(17,0,256,200)
+pass 8: target=8 clear=1 copy=0 from=0 view=(43,31,224,160) cmds=1
+  7 Texture SrcOver None ref=0 tex=yes src=0 aux=0 point idx=6 verts=4 clip=(43,31,224,160)
+pass 9: target=9 clear=1 copy=0 from=0 view=(43,31,224,160) cmds=1
+  8 Texture SrcOver None ref=0 tex=yes src=0 aux=0 point idx=6 verts=4 clip=(43,31,224,160)
+pass 10: target=10 clear=0 copy=0 from=0 view=(43,31,224,160) cmds=1
+  9 Effect Replace None ref=0 program=LevelMix tex=no src=5 aux=7 linear idx=6 verts=4 clip=(43,31,224,160)
+pass 11: target=11 clear=0 copy=0 from=0 view=(43,31,224,160) cmds=1
+  10 Effect Replace None ref=0 program=ColorMatrix tex=no src=10 aux=0 linear idx=6 verts=4 clip=(43,31,224,160)
+pass 12: target=10 clear=0 copy=0 from=0 view=(43,31,224,160) cmds=1
+  11 Effect Replace None ref=0 program=BackdropMasked mask=9 tex=no src=8 aux=11 linear idx=6 verts=4 clip=(43,31,224,160)
+pass 13: target=0 clear=0 copy=0 from=0 view=(0,0,320,200) cmds=1
+  12 Composite SrcOver None ref=0 tex=no src=10 aux=0 linear idx=6 verts=4 clip=(0,0,320,200)
+
+params 43800000 43480000 43000000 42c80000 00000000 3c000000 3c23d70a 3fc00000
+params 43000000 42c80000 42800000 42480000 00000000 3c800000 3ca3d70a 3fc00000
+params 42800000 42480000 42000000 41c80000 00000000 3d000000 3d23d70a 3fc00000
+params 3f600000 3f4ccccd 3dd00000 3e1eb852 3e26f0d5 3f9e343c be5b5894 bcb24a59
+params bd81a23d 3f8aebd3 bcb46ba8 bd855446 be5d91b4 3fa4077a 3dcccccc 3dcccccd
+params 3dcccccd 3f800000 41100000 00000000 3f800000
+vertices 112 33d6c23a7b40f5bf
+indices 384 7355e2ee8e9381c3
+-- build 6
+target 320x200 vertices=120 indices=432 cmds=21 passes=22 params=372
+transient 1: 256x200 rgba8 stencil=0
+transient 2: 128x100 rgba8 stencil=0
+transient 3: 128x100 rgba8 stencil=0
+transient 4: 64x50 rgba8 stencil=0
+transient 5: 64x50 rgba8 stencil=0
+transient 6: 32x25 rgba8 stencil=0
+transient 7: 32x25 rgba8 stencil=0
+transient 8: 224x160 rgba8 stencil=1
+transient 9: 112x80 rgba8 stencil=0
+transient 10: 112x80 rgba8 stencil=0
+transient 11: 224x160 rgba8 stencil=0
+transient 12: 224x160 rgba8 stencil=0
+transient 13: 224x160 rgba8 stencil=0
+pass 0: target=0 clear=0 copy=0 from=0 view=(0,0,320,200) cmds=1
+  0 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=360 verts=96 clip=(0,0,320,200)
+pass 1: target=1 clear=0 copy=1 from=0 view=(17,0,256,200) cmds=0
+pass 2: target=2 clear=0 copy=0 from=0 view=(17,0,256,200) cmds=1
+  1 Effect Replace None ref=0 program=Downsample tex=no src=1 aux=0 linear idx=6 verts=4 clip=(17,0,256,200)
+pass 3: target=3 clear=0 copy=0 from=0 view=(17,0,256,200) cmds=1
+  2 Effect Replace None ref=0 program=Kawase tex=no src=2 aux=0 linear idx=6 verts=4 clip=(17,0,256,200)
+pass 4: target=4 clear=0 copy=0 from=0 view=(17,0,256,200) cmds=1
+  3 Effect Replace None ref=0 program=Downsample tex=no src=3 aux=0 linear idx=6 verts=4 clip=(17,0,256,200)
+pass 5: target=5 clear=0 copy=0 from=0 view=(17,0,256,200) cmds=1
+  4 Effect Replace None ref=0 program=Kawase tex=no src=4 aux=0 linear idx=6 verts=4 clip=(17,0,256,200)
+pass 6: target=6 clear=0 copy=0 from=0 view=(17,0,256,200) cmds=1
+  5 Effect Replace None ref=0 program=Downsample tex=no src=5 aux=0 linear idx=6 verts=4 clip=(17,0,256,200)
+pass 7: target=7 clear=0 copy=0 from=0 view=(17,0,256,200) cmds=1
+  6 Effect Replace None ref=0 program=Kawase tex=no src=6 aux=0 linear idx=6 verts=4 clip=(17,0,256,200)
+pass 8: target=8 clear=1 copy=0 from=0 view=(42,30,224,160) cmds=1
+  7 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=60 verts=16 clip=(0,0,320,200)
+pass 9: target=9 clear=0 copy=0 from=0 view=(42,30,224,160) cmds=1
+  8 Effect Replace None ref=0 program=Downsample tex=no src=8 aux=0 linear idx=6 verts=4 clip=(42,30,224,160)
+pass 10: target=10 clear=0 copy=0 from=0 view=(42,30,224,160) cmds=1
+  9 Effect Replace None ref=0 program=GaussScalar tex=no src=9 aux=0 linear idx=6 verts=4 clip=(42,30,224,160)
+pass 11: target=9 clear=0 copy=0 from=0 view=(42,30,224,160) cmds=1
+  10 Effect Replace None ref=0 program=GaussScalar tex=no src=10 aux=0 linear idx=6 verts=4 clip=(42,30,224,160)
+pass 12: target=11 clear=0 copy=0 from=0 view=(42,30,224,160) cmds=1
+  11 Effect Replace None ref=0 program=LevelMix tex=no src=9 aux=0 linear idx=6 verts=4 clip=(42,30,224,160)
+pass 13: target=12 clear=0 copy=0 from=0 view=(42,30,224,160) cmds=1
+  12 Effect Replace None ref=0 program=ShadowGlow tex=no src=8 aux=11 linear idx=6 verts=4 clip=(42,30,224,160)
+pass 14: target=11 clear=0 copy=0 from=0 view=(42,30,224,160) cmds=1
+  13 Effect Replace None ref=0 program=AlphaExtract tex=no src=12 aux=0 linear idx=6 verts=4 clip=(42,30,224,160)
+pass 15: target=13 clear=0 copy=0 from=0 view=(42,30,224,160) cmds=1
+  14 Effect Replace None ref=0 program=GaussScalar tex=no src=11 aux=0 linear idx=6 verts=4 clip=(42,30,224,160)
+pass 16: target=11 clear=0 copy=0 from=0 view=(42,30,224,160) cmds=1
+  15 Effect Replace None ref=0 program=GaussScalar tex=no src=13 aux=0 linear idx=6 verts=4 clip=(42,30,224,160)
+pass 17: target=13 clear=0 copy=0 from=0 view=(42,30,224,160) cmds=1
+  16 Effect Replace None ref=0 program=ShadowGlow tex=no src=12 aux=11 linear idx=6 verts=4 clip=(42,30,224,160)
+pass 18: target=11 clear=0 copy=0 from=0 view=(42,30,224,160) cmds=1
+  17 Effect Replace None ref=0 program=LevelMix tex=no src=5 aux=7 linear idx=6 verts=4 clip=(42,30,224,160)
+pass 19: target=12 clear=0 copy=0 from=0 view=(42,30,224,160) cmds=1
+  18 Effect Replace None ref=0 program=ColorMatrix tex=no src=11 aux=0 linear idx=6 verts=4 clip=(42,30,224,160)
+pass 20: target=11 clear=0 copy=0 from=0 view=(42,30,224,160) cmds=1
+  19 Effect Replace None ref=0 program=BackdropMasked mask=8 tex=no src=13 aux=12 linear idx=6 verts=4 clip=(42,30,224,160)
+pass 21: target=0 clear=0 copy=0 from=0 view=(0,0,320,200) cmds=1
+  20 Composite SrcOver None ref=0 tex=no src=11 aux=0 linear idx=6 verts=4 clip=(0,0,320,200)
+cache store 0: pass=20 src=13 tex=yes
+cache store 1: pass=20 src=8 tex=yes
+
+params 43800000 43480000 43000000 42c80000 00000000 3c000000 3c23d70a 3fc00000
+params 43000000 42c80000 42800000 42480000 00000000 3c800000 3ca3d70a 3fc00000
+params 42800000 42480000 42000000 41c80000 00000000 3d000000 3d23d70a 3fc00000
+params 43600000 43200000 42e00000 42a00000 3f800000 3c124925 3c4ccccd 3f800000
+params 00000000 40800000 00000000 00000000 3e26db0d 3e888935 3df59975 3ce8aa67
+params 3b6781b0 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 3fb80a9a 4056ec31
+params 40a923f2 40e7205c 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 3c124925
+params 3c4ccccd 00000000 3f800000 40800000 00000000 00000000 3e26db0d 3e888935
+params 3df59975 3ce8aa67 3b6781b0 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 3fb80a9a 4056ec31 40a923f2 40e7205c 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 3f800000 3f800000 00000000 00000000 00000000 00000000 3d19999a
+params 3f800000 00000000 00000000 00000000 3f000000 00000000 00000000 00000000
+params 3f800000 3b924925 3bcccccd 3f800000 00000000 40c00000 3f800000 3f800000
+params 3dec0fb7 3e551fe7 3e0db860 3d87f871 3cbc2f1a 3bbbcc8b 3a4348bd 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 3fbc0154 405b5dba 40ac656d 40eb2818 4114fd2e 41300000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 3b924925 3bcccccd 00000000 3f800000 40c00000
+params 3f800000 3f800000 3dec0fb7 3e551fe7 3e0db860 3d87f871 3cbc2f1a 3bbbcc8b
+params 3a4348bd 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 3fbc0154 405b5dba 40ac656d 40eb2818
+params 4114fd2e 41300000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 3c4ccccd 3f800000
+params 00000000 00000000 00000000 3ecccccd 3f800000 3f800000 3f800000 3f600000
+params 3f4ccccd 3dc80000 3e19999a 3e26f0d5 3f9e343c be5b5894 bcb24a59 bd81a23d
+params 3f8aebd3 bcb46ba8 bd855446 be5d91b4 3fa4077a 3dcccccc 3dcccccd 3dcccccd
+params 3f800000 41000000 00000000 3f800000
+vertices 120 6917fa337683aef3
+indices 432 121f3c7c5fda1a03
+store pass 20 src 13 texture 4
+store pass 20 src 8 texture 5
+-- build 7
+target 320x200 vertices=112 indices=384 cmds=13 passes=14 params=45
+transient 1: 256x200 rgba8 stencil=0
+transient 2: 128x100 rgba8 stencil=0
+transient 3: 128x100 rgba8 stencil=0
+transient 4: 64x50 rgba8 stencil=0
+transient 5: 64x50 rgba8 stencil=0
+transient 6: 32x25 rgba8 stencil=0
+transient 7: 32x25 rgba8 stencil=0
+transient 8: 224x160 rgba8 stencil=0
+transient 9: 224x160 rgba8 stencil=0
+transient 10: 224x160 rgba8 stencil=0
+transient 11: 224x160 rgba8 stencil=0
+pass 0: target=0 clear=0 copy=0 from=0 view=(0,0,320,200) cmds=1
+  0 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=360 verts=96 clip=(0,0,320,200)
+pass 1: target=1 clear=0 copy=1 from=0 view=(17,0,256,200) cmds=0
+pass 2: target=2 clear=0 copy=0 from=0 view=(17,0,256,200) cmds=1
+  1 Effect Replace None ref=0 program=Downsample tex=no src=1 aux=0 linear idx=6 verts=4 clip=(17,0,256,200)
+pass 3: target=3 clear=0 copy=0 from=0 view=(17,0,256,200) cmds=1
+  2 Effect Replace None ref=0 program=Kawase tex=no src=2 aux=0 linear idx=6 verts=4 clip=(17,0,256,200)
+pass 4: target=4 clear=0 copy=0 from=0 view=(17,0,256,200) cmds=1
+  3 Effect Replace None ref=0 program=Downsample tex=no src=3 aux=0 linear idx=6 verts=4 clip=(17,0,256,200)
+pass 5: target=5 clear=0 copy=0 from=0 view=(17,0,256,200) cmds=1
+  4 Effect Replace None ref=0 program=Kawase tex=no src=4 aux=0 linear idx=6 verts=4 clip=(17,0,256,200)
+pass 6: target=6 clear=0 copy=0 from=0 view=(17,0,256,200) cmds=1
+  5 Effect Replace None ref=0 program=Downsample tex=no src=5 aux=0 linear idx=6 verts=4 clip=(17,0,256,200)
+pass 7: target=7 clear=0 copy=0 from=0 view=(17,0,256,200) cmds=1
+  6 Effect Replace None ref=0 program=Kawase tex=no src=6 aux=0 linear idx=6 verts=4 clip=(17,0,256,200)
+pass 8: target=8 clear=1 copy=0 from=0 view=(42,30,224,160) cmds=1
+  7 Texture SrcOver None ref=0 tex=yes src=0 aux=0 linear idx=6 verts=4 clip=(42,30,224,160)
+pass 9: target=9 clear=1 copy=0 from=0 view=(42,30,224,160) cmds=1
+  8 Texture SrcOver None ref=0 tex=yes src=0 aux=0 linear idx=6 verts=4 clip=(42,30,224,160)
+pass 10: target=10 clear=0 copy=0 from=0 view=(42,30,224,160) cmds=1
+  9 Effect Replace None ref=0 program=LevelMix tex=no src=5 aux=7 linear idx=6 verts=4 clip=(42,30,224,160)
+pass 11: target=11 clear=0 copy=0 from=0 view=(42,30,224,160) cmds=1
+  10 Effect Replace None ref=0 program=ColorMatrix tex=no src=10 aux=0 linear idx=6 verts=4 clip=(42,30,224,160)
+pass 12: target=10 clear=0 copy=0 from=0 view=(42,30,224,160) cmds=1
+  11 Effect Replace None ref=0 program=BackdropMasked mask=9 tex=no src=8 aux=11 linear idx=6 verts=4 clip=(42,30,224,160)
+pass 13: target=0 clear=0 copy=0 from=0 view=(0,0,320,200) cmds=1
+  12 Composite SrcOver None ref=0 tex=no src=10 aux=0 linear idx=6 verts=4 clip=(0,0,320,200)
+
+params 43800000 43480000 43000000 42c80000 00000000 3c000000 3c23d70a 3fc00000
+params 43000000 42c80000 42800000 42480000 00000000 3c800000 3ca3d70a 3fc00000
+params 42800000 42480000 42000000 41c80000 00000000 3d000000 3d23d70a 3fc00000
+params 3f600000 3f4ccccd 3dc80000 3e19999a 3e26f0d5 3f9e343c be5b5894 bcb24a59
+params bd81a23d 3f8aebd3 bcb46ba8 bd855446 be5d91b4 3fa4077a 3dcccccc 3dcccccd
+params 3dcccccd 3f800000 41100000 00000000 3f800000
+vertices 112 3bb0849a224a06a3
+indices 384 7355e2ee8e9381c3
+-- build 8
+target 320x200 vertices=120 indices=432 cmds=21 passes=22 params=372
+transient 1: 256x200 rgba8 stencil=0
+transient 2: 128x100 rgba8 stencil=0
+transient 3: 128x100 rgba8 stencil=0
+transient 4: 64x50 rgba8 stencil=0
+transient 5: 64x50 rgba8 stencil=0
+transient 6: 32x25 rgba8 stencil=0
+transient 7: 32x25 rgba8 stencil=0
+transient 8: 224x160 rgba8 stencil=1
+transient 9: 112x80 rgba8 stencil=0
+transient 10: 112x80 rgba8 stencil=0
+transient 11: 224x160 rgba8 stencil=0
+transient 12: 224x160 rgba8 stencil=0
+transient 13: 224x160 rgba8 stencil=0
+pass 0: target=0 clear=0 copy=0 from=0 view=(0,0,320,200) cmds=1
+  0 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=360 verts=96 clip=(0,0,320,200)
+pass 1: target=1 clear=0 copy=1 from=0 view=(17,0,256,200) cmds=0
+pass 2: target=2 clear=0 copy=0 from=0 view=(17,0,256,200) cmds=1
+  1 Effect Replace None ref=0 program=Downsample tex=no src=1 aux=0 linear idx=6 verts=4 clip=(17,0,256,200)
+pass 3: target=3 clear=0 copy=0 from=0 view=(17,0,256,200) cmds=1
+  2 Effect Replace None ref=0 program=Kawase tex=no src=2 aux=0 linear idx=6 verts=4 clip=(17,0,256,200)
+pass 4: target=4 clear=0 copy=0 from=0 view=(17,0,256,200) cmds=1
+  3 Effect Replace None ref=0 program=Downsample tex=no src=3 aux=0 linear idx=6 verts=4 clip=(17,0,256,200)
+pass 5: target=5 clear=0 copy=0 from=0 view=(17,0,256,200) cmds=1
+  4 Effect Replace None ref=0 program=Kawase tex=no src=4 aux=0 linear idx=6 verts=4 clip=(17,0,256,200)
+pass 6: target=6 clear=0 copy=0 from=0 view=(17,0,256,200) cmds=1
+  5 Effect Replace None ref=0 program=Downsample tex=no src=5 aux=0 linear idx=6 verts=4 clip=(17,0,256,200)
+pass 7: target=7 clear=0 copy=0 from=0 view=(17,0,256,200) cmds=1
+  6 Effect Replace None ref=0 program=Kawase tex=no src=6 aux=0 linear idx=6 verts=4 clip=(17,0,256,200)
+pass 8: target=8 clear=1 copy=0 from=0 view=(43,31,224,160) cmds=1
+  7 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=60 verts=16 clip=(0,0,320,200)
+pass 9: target=9 clear=0 copy=0 from=0 view=(43,31,224,160) cmds=1
+  8 Effect Replace None ref=0 program=Downsample tex=no src=8 aux=0 linear idx=6 verts=4 clip=(43,31,224,160)
+pass 10: target=10 clear=0 copy=0 from=0 view=(43,31,224,160) cmds=1
+  9 Effect Replace None ref=0 program=GaussScalar tex=no src=9 aux=0 linear idx=6 verts=4 clip=(43,31,224,160)
+pass 11: target=9 clear=0 copy=0 from=0 view=(43,31,224,160) cmds=1
+  10 Effect Replace None ref=0 program=GaussScalar tex=no src=10 aux=0 linear idx=6 verts=4 clip=(43,31,224,160)
+pass 12: target=11 clear=0 copy=0 from=0 view=(43,31,224,160) cmds=1
+  11 Effect Replace None ref=0 program=LevelMix tex=no src=9 aux=0 linear idx=6 verts=4 clip=(43,31,224,160)
+pass 13: target=12 clear=0 copy=0 from=0 view=(43,31,224,160) cmds=1
+  12 Effect Replace None ref=0 program=ShadowGlow tex=no src=8 aux=11 linear idx=6 verts=4 clip=(43,31,224,160)
+pass 14: target=11 clear=0 copy=0 from=0 view=(43,31,224,160) cmds=1
+  13 Effect Replace None ref=0 program=AlphaExtract tex=no src=12 aux=0 linear idx=6 verts=4 clip=(43,31,224,160)
+pass 15: target=13 clear=0 copy=0 from=0 view=(43,31,224,160) cmds=1
+  14 Effect Replace None ref=0 program=GaussScalar tex=no src=11 aux=0 linear idx=6 verts=4 clip=(43,31,224,160)
+pass 16: target=11 clear=0 copy=0 from=0 view=(43,31,224,160) cmds=1
+  15 Effect Replace None ref=0 program=GaussScalar tex=no src=13 aux=0 linear idx=6 verts=4 clip=(43,31,224,160)
+pass 17: target=13 clear=0 copy=0 from=0 view=(43,31,224,160) cmds=1
+  16 Effect Replace None ref=0 program=ShadowGlow tex=no src=12 aux=11 linear idx=6 verts=4 clip=(43,31,224,160)
+pass 18: target=11 clear=0 copy=0 from=0 view=(43,31,224,160) cmds=1
+  17 Effect Replace None ref=0 program=LevelMix tex=no src=5 aux=7 linear idx=6 verts=4 clip=(43,31,224,160)
+pass 19: target=12 clear=0 copy=0 from=0 view=(43,31,224,160) cmds=1
+  18 Effect Replace None ref=0 program=ColorMatrix tex=no src=11 aux=0 linear idx=6 verts=4 clip=(43,31,224,160)
+pass 20: target=11 clear=0 copy=0 from=0 view=(43,31,224,160) cmds=1
+  19 Effect Replace None ref=0 program=BackdropMasked mask=8 tex=no src=13 aux=12 linear idx=6 verts=4 clip=(43,31,224,160)
+pass 21: target=0 clear=0 copy=0 from=0 view=(0,0,320,200) cmds=1
+  20 Composite SrcOver None ref=0 tex=no src=11 aux=0 linear idx=6 verts=4 clip=(0,0,320,200)
+cache store 0: pass=20 src=13 tex=yes
+cache store 1: pass=20 src=8 tex=yes
+
+params 43800000 43480000 43000000 42c80000 00000000 3c000000 3c23d70a 3fc00000
+params 43000000 42c80000 42800000 42480000 00000000 3c800000 3ca3d70a 3fc00000
+params 42800000 42480000 42000000 41c80000 00000000 3d000000 3d23d70a 3fc00000
+params 43600000 43200000 42e00000 42a00000 3f800000 3c124925 3c4ccccd 3f800000
+params 00000000 40800000 00000000 00000000 3e26db0d 3e888935 3df59975 3ce8aa67
+params 3b6781b0 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 3fb80a9a 4056ec31
+params 40a923f2 40e7205c 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 3c124925
+params 3c4ccccd 00000000 3f800000 40800000 00000000 00000000 3e26db0d 3e888935
+params 3df59975 3ce8aa67 3b6781b0 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 3fb80a9a 4056ec31 40a923f2 40e7205c 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 3f800000 3f800000 00000000 00000000 00000000 00000000 3d19999a
+params 3f800000 00000000 00000000 00000000 3f000000 00000000 00000000 00000000
+params 3f800000 3b924925 3bcccccd 3f800000 00000000 40c00000 3f800000 3f800000
+params 3dec0fb7 3e551fe7 3e0db860 3d87f871 3cbc2f1a 3bbbcc8b 3a4348bd 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 3fbc0154 405b5dba 40ac656d 40eb2818 4114fd2e 41300000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 3b924925 3bcccccd 00000000 3f800000 40c00000
+params 3f800000 3f800000 3dec0fb7 3e551fe7 3e0db860 3d87f871 3cbc2f1a 3bbbcc8b
+params 3a4348bd 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 3fbc0154 405b5dba 40ac656d 40eb2818
+params 4114fd2e 41300000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 3c4ccccd 3f800000
+params 00000000 00000000 00000000 3ecccccd 3f800000 3f800000 3f800000 3f600000
+params 3f4ccccd 3dd00000 3e1eb852 3e26f0d5 3f9e343c be5b5894 bcb24a59 bd81a23d
+params 3f8aebd3 bcb46ba8 bd855446 be5d91b4 3fa4077a 3dcccccc 3dcccccd 3dcccccd
+params 3f800000 41000000 00000000 3f800000
+vertices 120 724fe0fd390db0bb
+indices 432 121f3c7c5fda1a03
+store pass 20 src 13 texture 6
+store pass 20 src 8 texture 7
+-- build 9
+target 320x200 vertices=104 indices=372 cmds=13 passes=14 params=45
+transient 1: 256x200 rgba8 stencil=0
+transient 2: 128x100 rgba8 stencil=0
+transient 3: 128x100 rgba8 stencil=0
+transient 4: 64x50 rgba8 stencil=0
+transient 5: 64x50 rgba8 stencil=0
+transient 6: 32x25 rgba8 stencil=0
+transient 7: 32x25 rgba8 stencil=0
+transient 8: 224x160 rgba8 stencil=0
+transient 9: 224x160 rgba8 stencil=0
+transient 10: 224x160 rgba8 stencil=0
+transient 11: 224x160 rgba8 stencil=0
+pass 0: target=0 clear=0 copy=0 from=0 view=(0,0,320,200) cmds=1
+  0 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=360 verts=96 clip=(0,0,320,200)
+pass 1: target=1 clear=0 copy=1 from=0 view=(17,0,256,200) cmds=0
+pass 2: target=2 clear=0 copy=0 from=0 view=(17,0,256,200) cmds=1
+  1 Effect Replace None ref=0 program=Downsample tex=no src=1 aux=0 linear idx=6 verts=4 clip=(17,0,256,200)
+pass 3: target=3 clear=0 copy=0 from=0 view=(17,0,256,200) cmds=1
+  2 Effect Replace None ref=0 program=Kawase tex=no src=2 aux=0 linear idx=6 verts=4 clip=(17,0,256,200)
+pass 4: target=4 clear=0 copy=0 from=0 view=(17,0,256,200) cmds=1
+  3 Effect Replace None ref=0 program=Downsample tex=no src=3 aux=0 linear idx=6 verts=4 clip=(17,0,256,200)
+pass 5: target=5 clear=0 copy=0 from=0 view=(17,0,256,200) cmds=1
+  4 Effect Replace None ref=0 program=Kawase tex=no src=4 aux=0 linear idx=6 verts=4 clip=(17,0,256,200)
+pass 6: target=6 clear=0 copy=0 from=0 view=(17,0,256,200) cmds=1
+  5 Effect Replace None ref=0 program=Downsample tex=no src=5 aux=0 linear idx=6 verts=4 clip=(17,0,256,200)
+pass 7: target=7 clear=0 copy=0 from=0 view=(17,0,256,200) cmds=1
+  6 Effect Replace None ref=0 program=Kawase tex=no src=6 aux=0 linear idx=6 verts=4 clip=(17,0,256,200)
+pass 8: target=8 clear=1 copy=0 from=0 view=(43,31,224,160) cmds=1
+  7 Texture SrcOver None ref=0 tex=yes src=0 aux=0 point idx=6 verts=4 clip=(43,31,224,160)
+pass 9: target=9 clear=1 copy=0 from=0 view=(43,31,224,160) cmds=1
+  8 Texture SrcOver None ref=0 tex=yes src=0 aux=0 point idx=6 verts=4 clip=(43,31,224,160)
+pass 10: target=10 clear=0 copy=0 from=0 view=(43,31,224,160) cmds=1
+  9 Effect Replace None ref=0 program=LevelMix tex=no src=5 aux=7 linear idx=6 verts=4 clip=(43,31,224,160)
+pass 11: target=11 clear=0 copy=0 from=0 view=(43,31,224,160) cmds=1
+  10 Effect Replace None ref=0 program=ColorMatrix tex=no src=10 aux=0 linear idx=6 verts=4 clip=(43,31,224,160)
+pass 12: target=10 clear=0 copy=0 from=0 view=(43,31,224,160) cmds=1
+  11 Effect Replace None ref=0 program=BackdropMasked mask=9 tex=no src=8 aux=11 linear idx=6 verts=4 clip=(43,31,224,160)
+pass 13: target=0 clear=0 copy=0 from=0 view=(0,0,320,200) cmds=1
+  12 Composite SrcOver None ref=0 tex=no src=10 aux=0 linear idx=6 verts=4 clip=(0,0,320,200)
+
+params 43800000 43480000 43000000 42c80000 00000000 3c000000 3c23d70a 3fc00000
+params 43000000 42c80000 42800000 42480000 00000000 3c800000 3ca3d70a 3fc00000
+params 42800000 42480000 42000000 41c80000 00000000 3d000000 3d23d70a 3fc00000
+params 3f600000 3f4ccccd 3dd00000 3e1eb852 3e26f0d5 3f9e343c be5b5894 bcb24a59
+params bd81a23d 3f8aebd3 bcb46ba8 bd855446 be5d91b4 3fa4077a 3dcccccc 3dcccccd
+params 3dcccccd 3f800000 41100000 00000000 3f800000
+vertices 104 f880530eea6fb9af
+indices 372 1a3a822617e0b0c3
+-- build 10
+target 320x200 vertices=120 indices=432 cmds=21 passes=22 params=372
+transient 1: 192x200 rgba8 stencil=0
+transient 2: 96x100 rgba8 stencil=0
+transient 3: 96x100 rgba8 stencil=0
+transient 4: 48x50 rgba8 stencil=0
+transient 5: 48x50 rgba8 stencil=0
+transient 6: 24x25 rgba8 stencil=0
+transient 7: 24x25 rgba8 stencil=0
+transient 8: 160x160 rgba8 stencil=1
+transient 9: 80x80 rgba8 stencil=0
+transient 10: 80x80 rgba8 stencil=0
+transient 11: 160x160 rgba8 stencil=0
+transient 12: 160x160 rgba8 stencil=0
+transient 13: 160x160 rgba8 stencil=0
+pass 0: target=0 clear=0 copy=0 from=0 view=(0,0,320,200) cmds=1
+  0 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=360 verts=96 clip=(0,0,320,200)
+pass 1: target=1 clear=0 copy=1 from=0 view=(0,0,192,200) cmds=0
+pass 2: target=2 clear=0 copy=0 from=0 view=(0,0,192,200) cmds=1
+  1 Effect Replace None ref=0 program=Downsample tex=no src=1 aux=0 linear idx=6 verts=4 clip=(0,0,192,200)
+pass 3: target=3 clear=0 copy=0 from=0 view=(0,0,192,200) cmds=1
+  2 Effect Replace None ref=0 program=Kawase tex=no src=2 aux=0 linear idx=6 verts=4 clip=(0,0,192,200)
+pass 4: target=4 clear=0 copy=0 from=0 view=(0,0,192,200) cmds=1
+  3 Effect Replace None ref=0 program=Downsample tex=no src=3 aux=0 linear idx=6 verts=4 clip=(0,0,192,200)
+pass 5: target=5 clear=0 copy=0 from=0 view=(0,0,192,200) cmds=1
+  4 Effect Replace None ref=0 program=Kawase tex=no src=4 aux=0 linear idx=6 verts=4 clip=(0,0,192,200)
+pass 6: target=6 clear=0 copy=0 from=0 view=(0,0,192,200) cmds=1
+  5 Effect Replace None ref=0 program=Downsample tex=no src=5 aux=0 linear idx=6 verts=4 clip=(0,0,192,200)
+pass 7: target=7 clear=0 copy=0 from=0 view=(0,0,192,200) cmds=1
+  6 Effect Replace None ref=0 program=Kawase tex=no src=6 aux=0 linear idx=6 verts=4 clip=(0,0,192,200)
+pass 8: target=8 clear=1 copy=0 from=0 view=(0,30,160,160) cmds=1
+  7 Solid SrcOver TestEqualRef ref=0 tex=no src=0 aux=0 linear idx=60 verts=16 clip=(0,0,320,200)
+pass 9: target=9 clear=0 copy=0 from=0 view=(0,30,160,160) cmds=1
+  8 Effect Replace None ref=0 program=Downsample tex=no src=8 aux=0 linear idx=6 verts=4 clip=(0,30,160,160)
+pass 10: target=10 clear=0 copy=0 from=0 view=(0,30,160,160) cmds=1
+  9 Effect Replace None ref=0 program=GaussScalar tex=no src=9 aux=0 linear idx=6 verts=4 clip=(0,30,160,160)
+pass 11: target=9 clear=0 copy=0 from=0 view=(0,30,160,160) cmds=1
+  10 Effect Replace None ref=0 program=GaussScalar tex=no src=10 aux=0 linear idx=6 verts=4 clip=(0,30,160,160)
+pass 12: target=11 clear=0 copy=0 from=0 view=(0,30,160,160) cmds=1
+  11 Effect Replace None ref=0 program=LevelMix tex=no src=9 aux=0 linear idx=6 verts=4 clip=(0,30,160,160)
+pass 13: target=12 clear=0 copy=0 from=0 view=(0,30,160,160) cmds=1
+  12 Effect Replace None ref=0 program=ShadowGlow tex=no src=8 aux=11 linear idx=6 verts=4 clip=(0,30,160,160)
+pass 14: target=11 clear=0 copy=0 from=0 view=(0,30,160,160) cmds=1
+  13 Effect Replace None ref=0 program=AlphaExtract tex=no src=12 aux=0 linear idx=6 verts=4 clip=(0,30,160,160)
+pass 15: target=13 clear=0 copy=0 from=0 view=(0,30,160,160) cmds=1
+  14 Effect Replace None ref=0 program=GaussScalar tex=no src=11 aux=0 linear idx=6 verts=4 clip=(0,30,160,160)
+pass 16: target=11 clear=0 copy=0 from=0 view=(0,30,160,160) cmds=1
+  15 Effect Replace None ref=0 program=GaussScalar tex=no src=13 aux=0 linear idx=6 verts=4 clip=(0,30,160,160)
+pass 17: target=13 clear=0 copy=0 from=0 view=(0,30,160,160) cmds=1
+  16 Effect Replace None ref=0 program=ShadowGlow tex=no src=12 aux=11 linear idx=6 verts=4 clip=(0,30,160,160)
+pass 18: target=11 clear=0 copy=0 from=0 view=(0,30,160,160) cmds=1
+  17 Effect Replace None ref=0 program=LevelMix tex=no src=5 aux=7 linear idx=6 verts=4 clip=(0,30,160,160)
+pass 19: target=12 clear=0 copy=0 from=0 view=(0,30,160,160) cmds=1
+  18 Effect Replace None ref=0 program=ColorMatrix tex=no src=11 aux=0 linear idx=6 verts=4 clip=(0,30,160,160)
+pass 20: target=11 clear=0 copy=0 from=0 view=(0,30,160,160) cmds=1
+  19 Effect Replace None ref=0 program=BackdropMasked mask=8 tex=no src=13 aux=12 linear idx=6 verts=4 clip=(0,30,160,160)
+pass 21: target=0 clear=0 copy=0 from=0 view=(0,0,320,200) cmds=1
+  20 Composite SrcOver None ref=0 tex=no src=11 aux=0 linear idx=6 verts=4 clip=(0,0,320,200)
+
+params 43400000 43480000 42c00000 42c80000 00000000 3c2aaaab 3c23d70a 3fc00000
+params 42c00000 42c80000 42400000 42480000 00000000 3caaaaab 3ca3d70a 3fc00000
+params 42400000 42480000 41c00000 41c80000 00000000 3d2aaaab 3d23d70a 3fc00000
+params 43200000 43200000 42a00000 42a00000 3f800000 3c4ccccd 3c4ccccd 3f800000
+params 00000000 40800000 00000000 00000000 3e26db0d 3e888935 3df59975 3ce8aa67
+params 3b6781b0 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 3fb80a9a 4056ec31
+params 40a923f2 40e7205c 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 3c4ccccd
+params 3c4ccccd 00000000 3f800000 40800000 00000000 00000000 3e26db0d 3e888935
+params 3df59975 3ce8aa67 3b6781b0 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 3fb80a9a 4056ec31 40a923f2 40e7205c 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 3f800000 3f800000 00000000 00000000 00000000 00000000 3d19999a
+params 3f800000 00000000 00000000 00000000 3f000000 00000000 00000000 00000000
+params 3f800000 3bcccccd 3bcccccd 3f800000 00000000 40c00000 3f800000 3f800000
+params 3dec0fb7 3e551fe7 3e0db860 3d87f871 3cbc2f1a 3bbbcc8b 3a4348bd 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 3fbc0154 405b5dba 40ac656d 40eb2818 4114fd2e 41300000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 3bcccccd 3bcccccd 00000000 3f800000 40c00000
+params 3f800000 3f800000 3dec0fb7 3e551fe7 3e0db860 3d87f871 3cbc2f1a 3bbbcc8b
+params 3a4348bd 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 3fbc0154 405b5dba 40ac656d 40eb2818
+params 4114fd2e 41300000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+params 00000000 00000000 00000000 00000000 00000000 00000000 3c4ccccd 3f800000
+params 00000000 00000000 00000000 3ecccccd 3f800000 3f800000 3f800000 3f555555
+params 3f4ccccd 00000000 3e19999a 3e26f0d5 3f9e343c be5b5894 bcb24a59 bd81a23d
+params 3f8aebd3 bcb46ba8 bd855446 be5d91b4 3fa4077a 3dcccccc 3dcccccd 3dcccccd
+params 3f800000 41000000 00000000 3f800000
+vertices 120 ea7358f582e14a9f
+indices 432 121f3c7c5fda1a03

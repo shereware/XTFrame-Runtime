@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "xt/compile/diagnostics.h"
+#include "xt/compile/expressions.h"
 
 /// `xt_compile`'s public compile entry points. See Docs/design/12-compiler.md §12.1,
 /// Docs/tasks/T-16.md "compile.h", Docs/tasks/T-23.md.
@@ -68,6 +69,13 @@ struct CompileOptions {
     /// a plain file stem (no `/`, `\`, `.` or `:`). Empty: such a link is an error ("no standard
     /// symbol library"). Other hrefs ignore it.
     std::string standardSymbolDir;
+    /// T-740 (Docs/design/56-symbol-identity-style-scope.md §56.3): the project's symbol directory
+    /// (`shared.symbols`, absolute or relative to `rootDir`). A linked symbol library file whose
+    /// directory sits directly in it (`<symbolsDir>/<ns>/<Name>.xt`) is in namespace `<ns>`: its
+    /// symbols are `<ns>/<name>`, and a bare symbol name written in it resolves to `<ns>/<name>`
+    /// first, then to the flat `<name>`. Empty: the same rule, with a directory named `symbols`
+    /// (the href's third path segment from the end) standing for the project's symbol directory.
+    std::string symbolsDir;
     /// Optional: maps every external (non-embedded) asset reference to the logical name written
     /// into ASST (Docs/design/22-bundle.md §22.3). Called once per distinct asset with the name as
     /// written in the source, the resolved path on disk (empty when the file was not found), and
@@ -119,6 +127,15 @@ struct CompileOptions {
     /// ... --lint --web-compat` and the Editor Service's `lint.run {webCompat: true}` turn it on. A
     /// strict compile does not fail on them (DiagnosticSink::webCount()).
     bool webCompat = false;
+    /// T-777 (tests only; Docs/design/58-value-functions-and-drivers.md §58.5): every timeline
+    /// expression is compiled into a run-time program of the IR's `TEXP` chunk, as one with run-time
+    /// inputs is, its time-only parts as ops wherever the run-time evaluator has them -- so the two
+    /// evaluators can be compared. false (the default): only expressions with run-time inputs are.
+    bool expressionsAtRunTime = false;
+    /// T-780 (editor only; 58 §58.5): stand-ins for the run-time inputs of timeline expressions
+    /// (ExpressionInputs) -- an entry with run-time inputs is then lowered to keys with them instead
+    /// of becoming a run-time program. Null (the default): unchanged. Borrowed for the compile.
+    const ExpressionInputs* expressionInputs = nullptr;
     /// T-452 (Docs/design/17-editor.md §17.25): when set, asked instead of the disk whether a file
     /// system entry exists at a UTF-8 path, wherever an asset reference is resolved: the search
     /// directory probe of `<img src>` / `<anim src>` / `@font-face src` (`searchDirs`) and the "not
@@ -193,6 +210,9 @@ struct CompileResult {
     /// (document order, the document's own tree only), so a caller can check its own references
     /// to them (a bundle's `.xtflow`). Empty otherwise.
     std::vector<std::string> strippedIds;
+    /// T-767 (58 §58.4): one outcome per `<expressions>` entry and timeline it applies to, in
+    /// section order (a symbol's entries per instance); filled whether or not the compile succeeded.
+    std::vector<ExpressionOutcome> expressions;
     /// True if compilation succeeded (`ir` is non-empty).
     bool ok() const { return !ir.empty(); }
 };

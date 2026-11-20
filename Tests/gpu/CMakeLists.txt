@@ -19,6 +19,9 @@ add_executable(xt_gpu_tests
     test_backdrop_shortcut.cpp  # T-728
     test_backdrop_mask.cpp  # T-729
     test_backdrop_cache.cpp  # T-730
+    test_offscreen_cull.cpp  # T-754
+    test_repainted_unchanged.cpp  # T-753
+    test_gpu_planar.cpp  # T-806
 )
 target_include_directories(xt_gpu_tests SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/Code/SDKs/doctest)
 target_compile_definitions(xt_gpu_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)
@@ -31,6 +34,8 @@ target_compile_definitions(xt_gpu_tests PRIVATE
 target_include_directories(xt_gpu_tests PRIVATE ${PROJECT_SOURCE_DIR}/Tests/golden)
 # The 3D case uses Code/Runtime/core/src's internal camera.h (cssPerspectiveViewProj), like Tests/gl/test_gl_3d.cpp.
 target_include_directories(xt_gpu_tests PRIVATE ${PROJECT_SOURCE_DIR}/Code/Runtime/core/src)
+# T-806: test_gpu_planar.cpp tests xt_gpu's internal planar_params.h (the pure conversion function).
+target_include_directories(xt_gpu_tests PRIVATE ${PROJECT_SOURCE_DIR}/Code/Runtime/gpu/src)
 target_link_libraries(xt_gpu_tests PRIVATE xt_gpu xt_core xt_compile xt_sw xt_golden_fixtures)
 if(XT_BUILD_TEXT)
     target_link_libraries(xt_gpu_tests PRIVATE xt_text)

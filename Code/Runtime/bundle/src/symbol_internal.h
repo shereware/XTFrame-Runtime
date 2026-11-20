@@ -132,6 +132,38 @@ inline bool isPlainSymbolName(std::string_view name) {
     return true;
 }
 
+/// T-741 (Docs/design/56-symbol-identity-style-scope.md 56.3 items 0, 2): a project symbol's
+/// qualified name -- a plain symbol name (flat), or one namespace segment with the characters of a
+/// group id (isGroupId()) and a plain name, `<ns>/<Name>`. Fills `ns` (empty when flat) and `bare`
+/// when it is one; false (both cleared) otherwise.
+inline bool splitQualifiedName(std::string_view name, std::string& ns, std::string& bare) {
+    ns.clear();
+    bare.clear();
+    const size_t slash = name.find('/');
+    if (slash == std::string_view::npos) {
+        if (!isPlainSymbolName(name)) {
+            return false;
+        }
+        bare = std::string(name);
+        return true;
+    }
+    const std::string_view first = name.substr(0, slash);
+    const std::string_view second = name.substr(slash + 1);
+    if (!isGroupId(first) || !isPlainSymbolName(second)) {
+        return false;
+    }
+    ns = std::string(first);
+    bare = std::string(second);
+    return true;
+}
+
+/// splitQualifiedName() as a test.
+inline bool isQualifiedSymbolName(std::string_view name) {
+    std::string ns;
+    std::string bare;
+    return splitQualifiedName(name, ns, bare);
+}
+
 /// Seconds since the epoch, for `.trash/<id>-<seconds>/`, kept-copy suffixes and staging names.
 inline std::string nowSeconds() {
     const auto seconds =
@@ -183,6 +215,43 @@ inline TokenSheet readTokenSheet(const std::filesystem::path& file) {
         sheet.faces[face.family].push_back(face.src);
     }
     return sheet;
+}
+
+/// T-739 (56.1 item 4): decides where useSymbols() puts `entry` of `library` / `group` in `project`
+/// (`root` its absolute, normalised root) and what is in the way. One function on purpose. T-741
+/// (56.3 item 1): with `namespaced` false the symbol's own place -- the project's copy of this very
+/// symbol, flat or in `<group id>/`, is used (Same); else a free flat name (None); else the namespace
+/// (Placed, or Same / NameTaken when `<group id>/<Name>.xt` exists); with `namespaced` true (it uses a
+/// symbol of its group that is in the namespace) only the namespace counts. `target` receives the
+/// absolute target file; false (target untouched, the result empty) when `shared.symbols`, the
+/// entry's file name or the group id is unusable. symbol_copy_source.cpp.
+bool useTargetOf(const UiProject& project, const std::filesystem::path& root, const SymbolLibrary& library,
+                 const SymbolGroup& group, const SymbolEntry& entry, bool namespaced,
+                 std::filesystem::path& target, UseTarget& out);
+
+/// T-741: one symbol a useSymbols() call copies or finds, and where (planCopies()).
+struct PlannedCopy {
+    const SymbolEntry* entry = nullptr;
+    /// The absolute target file.
+    std::filesystem::path target;
+    UseTarget place;
+    /// False for the requested symbol, true for a symbol it (transitively) uses.
+    bool dependency = false;
+};
+
+/// T-741 (56.3 item 1 "dependencies travel together"): the requested `entry` of `library` /
+/// `group` first, then the symbols of the same group it names in `<use symbol>` (transitively,
+/// read from the group's symbol files; names of other groups, qualified names and its own name
+/// ignored), each with useTargetOf(): its own place, then -- until nothing changes -- every one that
+/// uses a symbol going into (or already in) the namespace, or skipped as NameTaken, moved there too
+/// (`place.because`). `out` is empty when the requested entry has no usable target (useTargetOf()
+/// false); a dependency without one is left out. symbol_copy_source.cpp.
+void planCopies(const UiProject& project, const std::filesystem::path& root, const SymbolLibrary& library,
+                const SymbolGroup& group, const SymbolEntry& entry, std::vector<PlannedCopy>& out);
+
+/// T-741: `<shared.symbols>` of `project` (`shared/symbols` when unset).
+inline std::string projectSymbolsRel(const UiProject& project) {
+    return project.shared.symbols.empty() ? std::string("shared/symbols") : project.shared.symbols;
 }
 
 }  // namespace xt::bundle::detail

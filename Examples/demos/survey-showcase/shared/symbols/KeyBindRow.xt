@@ -1,0 +1,133 @@
+<xt version="2">
+
+  <symbol name="KeyBindRow" state-groups="Bind: Bound|Listening" requires="states: Hover, Focus, Disabled, Bound, Listening; slots: label">
+    <ports>
+      key: string in
+      listening: bool in
+      rebind: event out
+    </ports>
+    <div id="Box" tabindex="0" bind:state.Bound="listening | not" bind:state.Listening="listening"
+         on:click="sound(ui_confirm); emit(rebind)" on:key(Enter)="sound(ui_confirm); emit(rebind)"
+         on:port(listening)="if eq(1) play(pulse, loop) else stop(pulse)">
+      <span id="Label"><slot name="label">Interact</slot></span>
+      <div id="Field">
+        <span id="Key" bind:text="key"></span>
+        <span id="Prompt">Press a key</span>
+      </div>
+    </div>
+  </symbol>
+
+  <layout>
+    symbol(KeyBindRow) {
+      #Box {
+        display: flex;
+        align-items: center;
+        width: 380px;
+        height: var(--size-row);
+        padding: 0px var(--space-2);
+        column-gap: var(--space-3);
+      }
+      #Label {
+        flex-grow: 1;
+      }
+      #Field {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 96px;
+        height: var(--size-box);
+      }
+      #Prompt {
+        display: none;
+      }
+      #Box:state(Listening) #Key {
+        display: none;
+      }
+      #Box:state(Listening) #Prompt {
+        display: flex;
+      }
+    }
+  </layout>
+  <style>
+    symbol(KeyBindRow) {
+      #Box {
+        border-width: 0px 0px var(--rule-thin) 0px;
+        border-color: var(--color-line-hairline);
+        transition: background-color var(--motion-fast) ease-out;
+      }
+      #Label {
+        font-family: var(--font-body);
+        font-size: var(--font-size-m);
+        letter-spacing: 1px;
+        color: var(--color-text-label);
+        white-space: nowrap;
+      }
+      #Box:hover {
+        background-color: var(--color-surface-raised);
+      }
+      #Box:focus {
+        background-color: var(--color-surface-raised);
+      }
+      #Box:focus #Label {
+        color: var(--color-text-strong);
+      }
+      #Field {
+        background-color: var(--color-surface-sunken);
+        border-width: var(--rule-thin);
+        border-color: var(--color-border-strong);
+        transition: border-color var(--motion-fast) ease-out;
+      }
+      #Box:hover #Field {
+        border-color: var(--color-accent);
+      }
+      #Box:focus #Field {
+        border-color: var(--color-accent);
+      }
+      #Key {
+        font-family: var(--font-body);
+        font-size: var(--font-size-s);
+        color: var(--color-text);
+        white-space: nowrap;
+      }
+      #Prompt {
+        font-family: var(--font-body);
+        font-size: var(--font-size-s);
+        font-style: italic;
+        color: var(--color-text-dim);
+        white-space: nowrap;
+      }
+      #Box:state(Listening) #Field {
+        border-color: var(--color-accent);
+      }
+      #Box:state(Bound) #Field {
+        border-style: solid;
+      }
+      :disabled {
+        background-color: transparent !important;
+      }
+      :disabled #Label {
+        color: var(--color-disabled-text) !important;
+      }
+      :disabled #Key {
+        color: var(--color-disabled-text) !important;
+      }
+    }
+  </style>
+  <timelines>
+    symbol(KeyBindRow) {
+      @timeline pulse {
+        #Field {
+          0s {
+            opacity: 1;
+          }
+          0.25s ease-in-out {
+            opacity: 0.45;
+          }
+          0.5s ease-in-out {
+            opacity: 1;
+          }
+        }
+      }
+    }
+  </timelines>
+</xt>

@@ -551,6 +551,35 @@ void FlowRuntime::unload() { m_impl->unload(); }
 
 void FlowRuntime::tick(float dt) { m_impl->tick(dt); }
 
+bool FlowRuntime::needsTick() const {
+    const Impl& m = *m_impl;
+    if (!m.loaded || !m.enabled) {
+        return false;
+    }
+    if (!m.pendingList.empty() || !m.throttleWaiting.empty() || m.dirtyNodes > 0 || m.replacing() ||
+        !m.deferredBinds.empty() || documentOutputsMoveWithTime(m.docs)) {
+        return true;
+    }
+    for (const Impl::UiDoc& ui : m.uiDocs) {
+        if (ui.state != nullptr && documentOutputsMoveWithTime(*ui.state)) {
+            return true;
+        }
+    }
+    for (const int idx : m.timedNodes) {
+        const NodeRuntime& n = m.nodes[static_cast<size_t>(idx)];
+        if (n.type == NodeType::Clock) {
+            return true;
+        }
+        if (n.type == NodeType::Timer && n.timerRunning) {
+            const double interval = effectiveTimerInterval(m.paramNum(n, slots::timer::kInterval, 0.0));
+            if (interval > 0.0 && std::isfinite(interval)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 std::span<const PortValue> FlowRuntime::values() const {
     if (!m_impl->loaded) {
         return {};

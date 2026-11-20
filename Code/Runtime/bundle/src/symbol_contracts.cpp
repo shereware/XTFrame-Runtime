@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "bundle_json.h"
+#include "symbol_internal.h"
 #include "xt/compile/diagnostics.h"
 #include "xt/compile/dom.h"
 #include "xt/compile/parse_xt.h"
@@ -168,7 +169,10 @@ std::string symbolContractSummary(const SymbolContract& contract) {
 std::vector<SymbolContract> collectSymbolContracts(const std::string& rootDir, const std::string& symbolsDir,
                                                    const std::vector<std::string>& docs) {
     std::vector<SymbolContract> out;
-    auto add = [&](const fs::path& file) {
+    // T-741 (Docs/design/56-symbol-identity-style-scope.md 56.3 items 0, 7): a file in a namespace
+    // directory `<symbolsDir>/<ns>/` defines `<ns>/<name>` (the compiler's identity, T-740); names are
+    // deduplicated by that qualified name.
+    auto add = [&](const fs::path& file, const std::string& ns) {
         std::string text;
         if (!detail::readFile(pathToUtf8(file), text)) {
             return;
@@ -179,6 +183,9 @@ std::vector<SymbolContract> collectSymbolContracts(const std::string& rootDir, c
             rel = genericPathToUtf8(file);
         }
         for (SymbolContract& c : readSymbolContracts(text, rel)) {
+            if (!ns.empty()) {
+                c.name = ns + "/" + c.name;
+            }
             const bool known = std::any_of(out.begin(), out.end(),
                                            [&c](const SymbolContract& o) { return o.name == c.name; });
             if (!known) {
@@ -187,23 +194,40 @@ std::vector<SymbolContract> collectSymbolContracts(const std::string& rootDir, c
         }
     };
     // The symbol library first (sorted by file name, so the manifest does not depend on the
-    // directory order), then the UI documents' own definitions.
+    // directory order; T-741: the flat files, then each namespace directory in name order), then
+    // the UI documents' own definitions.
     std::error_code ec;
     const fs::path dir = pathFromUtf8(rootDir) / pathFromUtf8(symbolsDir);
     if (!symbolsDir.empty() && fs::is_directory(dir, ec)) {
         std::vector<fs::path> files;
+        std::vector<fs::path> namespaces;
         for (const fs::directory_entry& entry : fs::directory_iterator(dir, ec)) {
             if (entry.is_regular_file(ec) && entry.path().extension() == ".xt") {
                 files.push_back(entry.path());
+            } else if (entry.is_directory(ec) && detail::isGroupId(pathToUtf8(entry.path().filename()))) {
+                namespaces.push_back(entry.path());
             }
         }
         std::sort(files.begin(), files.end());
         for (const fs::path& file : files) {
-            add(file);
+            add(file, std::string());
+        }
+        std::sort(namespaces.begin(), namespaces.end());
+        for (const fs::path& nsDir : namespaces) {
+            std::vector<fs::path> nsFiles;
+            for (const fs::directory_entry& entry : fs::directory_iterator(nsDir, ec)) {
+                if (entry.is_regular_file(ec) && entry.path().extension() == ".xt") {
+                    nsFiles.push_back(entry.path());
+                }
+            }
+            std::sort(nsFiles.begin(), nsFiles.end());
+            for (const fs::path& file : nsFiles) {
+                add(file, pathToUtf8(nsDir.filename()));
+            }
         }
     }
     for (const std::string& doc : docs) {
-        add(pathFromUtf8(rootDir) / pathFromUtf8(doc));
+        add(pathFromUtf8(rootDir) / pathFromUtf8(doc), std::string());
     }
     return out;
 }

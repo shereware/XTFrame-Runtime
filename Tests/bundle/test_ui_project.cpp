@@ -1709,6 +1709,18 @@ TEST_CASE("T-408: diffStandardSymbols reports current / outdated / modified copi
     write(project / "shared" / "symbols" / "B.xt", editedB);
     write(project / "shared" / "symbols" / "C.xt", "<symbol name=\"C\"/>\r\n");
     write(project / "shared" / "symbols" / "D.xt", "<symbol name=\"D\"/>\n");  // Not a standard one.
+    // T-741 (56 §56.3 item 6): a copy is a standard symbol's by its recorded source only. E.xt has the
+    // standard name but no record (the project's own); other/B.xt is recorded from another group.
+    write(project / "shared" / "symbols" / "E.xt", "<symbol name=\"E\"/>\n");
+    write(project / "shared" / "symbols" / "index.json",
+          R"({"version": 1, "symbols": [
+            {"name": "A", "file": "shared/symbols/A.xt", "source": {"library": "x", "group": "library"}},
+            {"name": "B", "file": "shared/symbols/B.xt", "source": {"library": "x", "group": "library"}},
+            {"name": "C", "qualified": "C", "source": {"library": "x", "group": "library"}},
+            {"name": "E", "description": "mine"},
+            {"name": "B", "qualified": "other/B", "source": {"library": "x", "group": "other"}}]})");
+    fs::create_directories(project / "shared" / "symbols" / "other", ec);
+    write(project / "shared" / "symbols" / "other" / "B.xt", "<symbol name=\"B\"/>\n");
 
     UiProject ui;
     ui.rootDir = project.generic_string();
@@ -1735,7 +1747,29 @@ TEST_CASE("T-408: diffStandardSymbols reports current / outdated / modified copi
     std::ifstream in(project / "shared" / "symbols" / "A.xt", std::ios::binary);
     const std::string afterA((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     CHECK(afterA == oldA);
-    CHECK(!fs::exists(project / "shared" / "symbols" / "E.xt", ec));
+
+    // T-741: a namespaced copy recorded from this group is listed under its qualified name.
+    fs::create_directories(project / "shared" / "symbols" / "ns", ec);
+    write(project / "shared" / "symbols" / "ns" / "C.xt", "<symbol name=\"C\"/>\n");
+    std::string index = readText((project / "shared" / "symbols" / "index.json").string());
+    index.insert(index.rfind(']'),
+                 R"(, {"name": "C", "qualified": "ns/C", "source": {"library": "x", "group": "library"}})");
+    write(project / "shared" / "symbols" / "index.json", index);
+    REQUIRE(diffStandardSymbols(ui, library.generic_string(), rows) == Status::kOk);
+    REQUIRE(rows.size() == 4);
+    CHECK(rows[3].name == "ns/C");
+    CHECK(rows[3].file == "shared/symbols/ns/C.xt");
+    CHECK(rows[3].status == "current");
+    // A group directory inside a library also has to match the recorded library id.
+    const fs::path inLibrary = base / "lib" / "groups" / "library";
+    fs::create_directories(inLibrary, ec);
+    fs::copy(library, inLibrary, fs::copy_options::recursive, ec);
+    write(base / "lib" / "library.json", R"({"version": 1, "id": "y", "groups": ["library"]})");
+    REQUIRE(diffStandardSymbols(ui, inLibrary.generic_string(), rows) == Status::kOk);
+    CHECK(rows.empty());
+    write(base / "lib" / "library.json", R"({"version": 1, "id": "x", "groups": ["library"]})");
+    REQUIRE(diffStandardSymbols(ui, inLibrary.generic_string(), rows) == Status::kOk);
+    CHECK(rows.size() == 4);
 
     // No library index: kNotFound.
     CHECK(diffStandardSymbols(ui, (base / "none").generic_string(), rows) == Status::kNotFound);

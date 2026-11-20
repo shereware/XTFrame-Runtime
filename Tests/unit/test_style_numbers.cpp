@@ -242,13 +242,16 @@ TEST_CASE("T-272 bindings, triggers, <camera> and .xtfx numbers: exponent yes, n
 
 // -- animation iteration count 0 ------------------------------------------------------------------
 
-TEST_CASE("T-272 .xts animation: an iteration count of 0 removes the item with a warning") {
+// T-778: the item is kept (encoded with kIrAnimationNoPlay) so it holds its place in the lists; the
+// runtime leaves it out after the cascade.
+TEST_CASE("T-272 .xts animation: an iteration count of 0 is warned and does not play") {
     {
         compile::DiagnosticSink sink;
         auto decls = parseOneRule("animation: spin 1s 0;", sink);
         const compile::StyleDecl* d = findDecl(decls, compile::styleprop::Animation);
-        REQUIRE(d != nullptr);  // An empty list: `animation: none`.
-        CHECK(d->value.animations.empty());
+        REQUIRE(d != nullptr);
+        REQUIRE(d->value.animations.size() == 1);
+        CHECK(d->value.animations[0].iterations == 0);
         REQUIRE(sink.all().size() == 1);
         CHECK(sink.all()[0].level == compile::Diagnostic::Level::Warning);
         CHECK(sink.all()[0].message == "animation \"spin\": iteration count 0, the animation is not played");
@@ -258,9 +261,10 @@ TEST_CASE("T-272 .xts animation: an iteration count of 0 removes the item with a
         auto decls = parseOneRule("animation: a 1s 0, b 1s 2;", sink);
         const compile::StyleDecl* d = findDecl(decls, compile::styleprop::Animation);
         REQUIRE(d != nullptr);
-        REQUIRE(d->value.animations.size() == 1);
-        CHECK(d->value.animations[0].name == "b");
-        CHECK(d->value.animations[0].iterations == 2);
+        REQUIRE(d->value.animations.size() == 2);
+        CHECK(d->value.animations[0].iterations == 0);
+        CHECK(d->value.animations[1].name == "b");
+        CHECK(d->value.animations[1].iterations == 2);
         REQUIRE(sink.all().size() == 1);
         CHECK(sink.all()[0].message == "animation \"a\": iteration count 0, the animation is not played");
     }
@@ -269,7 +273,8 @@ TEST_CASE("T-272 .xts animation: an iteration count of 0 removes the item with a
         compile::DiagnosticSink sink;
         auto decls = parseOneRule("animation: spin 1s 0.5;", sink);
         REQUIRE(findDecl(decls, compile::styleprop::Animation) != nullptr);
-        CHECK(findDecl(decls, compile::styleprop::Animation)->value.animations.empty());
+        REQUIRE(findDecl(decls, compile::styleprop::Animation)->value.animations.size() == 1);
+        CHECK(findDecl(decls, compile::styleprop::Animation)->value.animations[0].iterations == 0);
         CHECK(sink.warningCount() == 1);
     }
     {

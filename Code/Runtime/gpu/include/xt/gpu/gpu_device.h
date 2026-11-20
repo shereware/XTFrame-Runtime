@@ -272,6 +272,21 @@ public:
     /// the sequential order -- the frames and pixels of before, which differ from the reference
     /// backends' (a translucent glass panel's shadows come out stronger). Asked once per build.
     virtual bool supportsBackdropMask() const { return false; }
+
+    /// T-764 (Docs/design/10-backends.md §10.18 B, the follow-up of T-730): true when the device reads
+    /// the trailing fields of `BackdropParams` (gpu_frame.h): a `BackdropMasked` command whose R' and / or
+    /// S is a texture (a cached result) sampled with its own uv mapping and sampler. The builder then
+    /// serves a backdrop pair from the effect cache without pasting the two textures into transients
+    /// first (two passes and two transients fewer per panel served). False (the default): the pair is
+    /// pasted -- the frames of before. Only asked when `supportsBackdropMask()` is true; once per build.
+    virtual bool supportsBackdropMaskTextures() const { return false; }
+
+    /// T-806 (Docs/design/23-host-integration.md §23.aj): true when the device implements
+    /// `Shading::TexturePlanar` (gpu_frame.h `PlanarParams`): a host texture holding Y'CbCr 4:2:0 planes
+    /// (AssetResolver::setExternalTexturePlanes) converted to RGB while sampling. False (the default): an
+    /// image whose external binding has a plane description is not drawn (`FrameBuilder::BuildStats::
+    /// planarSkipped`); without such bindings the frames are the frames of before. Asked once per build.
+    virtual bool supportsPlanarExternal() const { return false; }
 };
 
 }  // namespace xt::gpu

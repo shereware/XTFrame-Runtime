@@ -10,6 +10,7 @@
 #include "xt/asset_resolver.h"
 #include "xt/layout.h"
 #include "xt/node.h"
+#include "xt/perf.h"
 #include "xt/property.h"
 #include "xt/text_shaper.h"
 
@@ -287,6 +288,7 @@ void LayoutEngine::layoutTextNode(NodeArena& arena, NodeId textNode, const Compu
             data.placeholderKeyOrientation == style.textOrientation && data.placeholderKeyLang == lang &&
             data.placeholderKeyFeatures == features;
         if (!placeholderHit) {
+            XT_PERF_ZONE(m_perf, UpdateLayoutTextShape);  // T-753 (57 §57.2 item 3)
             m_shaper->shape(string(placeholderId), params, data.placeholderShaped);
             data.placeholderShapedValid = 1;
             data.placeholderKeyText = placeholderId;
@@ -300,6 +302,7 @@ void LayoutEngine::layoutTextNode(NodeArena& arena, NodeId textNode, const Compu
             data.placeholderKeyFeatures = features;
         }
     } else if (!cacheHit) {
+        XT_PERF_ZONE(m_perf, UpdateLayoutTextShape);  // T-753 (57 §57.2 item 3): the shaping cache missed
         if (transform != TextTransform::None) {
             // Converted before shaping, only on a cache miss. The case tables keep every code
             // point's UTF-8 length, so the style runs' byte offsets stay valid as they are.

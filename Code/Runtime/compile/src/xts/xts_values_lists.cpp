@@ -236,8 +236,8 @@ bool parseBackgroundImage(const std::vector<Tok>& toks, std::string& out) {
             out = inner[0].text;
             return true;
         }
-        // Unquoted url(...): reconstruct simple dotted filenames (Ident (Dot Ident)*). '/' isn't
-        // a lexer symbol, so an unquoted path containing '/' isn't supported -- quote it instead.
+        // T-808: a valid unquoted url(...) arrives as one String token (the lexer's url token) and
+        // is taken above. Kept from before: Ident (Dot Ident)*, for token lists built elsewhere.
         std::string path;
         for (size_t i = 0; i < inner.size(); ++i) {
             if (i % 2 == 0) {
@@ -378,12 +378,18 @@ bool parseTransitionItem(const std::vector<Tok>& item, std::string_view fileName
             sink.warn(std::string(fileName),
                       "unknown or non-animatable transition property \"" + std::string(nameTok.text) + "\"",
                       line);
+            // T-778: the item keeps its place in the lists (a `transition-*` longhand of another
+            // rule is indexed by item) and transitions nothing.
+            spec.prop = 0xFFFE;
+            spec.flags = kIrTransitionNoProp;
+            out.push_back(spec);
             return true;
         }
         single = info->prop;
     }
     for (size_t i = 0; i < propCount; ++i) {
         spec.prop = props[i];
+        spec.flags = i > 0 ? kIrTransitionSameItem : 0;  // T-778: one CSS item, several PropIds.
         out.push_back(spec);
     }
     return true;
@@ -461,12 +467,12 @@ bool parseAnimationList(const std::vector<Tok>& toks, std::string_view fileName,
             return false;
         }
         if (spec.iterations == 0) {
-            // T-272: a count of 0 (CSS: the animation does not play) is not emitted; IR's 0 means
-            // infinite. A list left empty is `animation: none`.
+            // T-272: a count of 0 (CSS: the animation does not play). T-778: kept, flagged
+            // kIrAnimationNoPlay when encoded, so it keeps its place in the lists; the runtime
+            // leaves it out after the cascade.
             sink.warn(std::string(fileName),
                       "animation \"" + spec.name + "\": iteration count 0, the animation is not played",
                       line);
-            continue;
         }
         out.push_back(spec);
     }

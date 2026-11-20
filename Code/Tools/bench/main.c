@@ -5,7 +5,8 @@
  * is identical -- Bundle, Context, flows, HostPorts and the software renderer behind the ABI.
  *
  * Usage: xtframe-bench <bundle dir> <ui id> [--size WxH] [--frames N] [--warmup N] [--dt S]
- *                      [--pointer] [--system-fonts] [--event "<spec>"]... [--json]
+ *                      [--pointer] [--system-fonts] [--event "<spec>"]... [--json] [--perf-csv <file>]
+ *                      [--perf-cpu] [--perf-detail N]
  *   --size    output pixels (default the UI's design size from the manifest)
  *   --frames  frames measured after the warm-up (default 300)
  *   --warmup  frames run and discarded first (default 60)
@@ -25,10 +26,24 @@
  *             refused (exit 2): the C ABI gives a host no element box to aim a pointer at, and no
  *             key or gamepad name table; click with "pointer down" + "pointer up" at a position.
  *   --json    one JSON object instead of the text summary (T-713: strings escaped)
+ *   --perf-csv (T-750, Docs/design/57-measurement.md 57.5 item 4) one row per frame (the warm-up
+ *             included, `steady` 0 there): FrameRecord v1 through the C ABI's column table
+ *             (xt_surface_frame_record, xt_frame_record_csv_header / _row), then the bench's own
+ *             host.wall_update_ms, host.wall_render_ms, host.wall_frame_ms. The C ABI does not mark
+ *             frames, so frame_wall_ms and unaccounted_ms stay 0; the summary output is unchanged.
+ * T-748 (Docs/design/23-host-integration.md §23.ag item 4): the surface's Context runs the static
+ * skip's verify mode -- every frame that would skip a paint paints and compares, and a mismatch
+ * (a write that moved no visual generation) aborts the run with the first differing command. The
+ * environment variable XT_VERIFY_VISUAL_GENERATION, when already set, wins (0 = off).
+ * T-753 (57.2 item 2): every frame is marked (xt_surface_mark_frame_start before the input and the
+ * update, xt_surface_mark_frame_end after the render), so the CSV's frame_wall_ms and unaccounted_ms are
+ * filled; --perf-cpu turns on xt_surface_set_thread_cpu_timing (the CSV's *_cpu_ms columns).
+ * T-749 (57.3 item 4): --perf-detail N (0, 1 or 2; default 0) sets xt_surface_set_perf_detail, so at
+ * N >= 1 the CSV's redundant_* / repainted_unchanged_* columns are counted (0 at level 0).
  * Exit code 0; 1 on a bundle / surface error (the message on stderr); 2 on a usage error.
  */
 #if !defined(_WIN32)
-#define _POSIX_C_SOURCE 199309L /* clock_gettime under -std=c99 */
+#define _POSIX_C_SOURCE 200112L /* clock_gettime and setenv under -std=c99 */
 #else
 #define _CRT_SECURE_NO_WARNINGS /* sscanf: the C99 source stays the same on every platform */
 #endif
@@ -114,10 +129,24 @@ static void printJsonString(const char* text) {
     putchar('"');
 }
 
+/* T-748: XT_VERIFY_VISUAL_GENERATION=1 unless the environment already says otherwise; read by every
+ * Context when it is constructed (xt_surface_create). */
+static void enableStaticSkipVerify(void) {
+#if defined(_WIN32)
+    size_t size = 0;
+    if (getenv_s(&size, NULL, 0, "XT_VERIFY_VISUAL_GENERATION") != 0 || size == 0) {
+        _putenv_s("XT_VERIFY_VISUAL_GENERATION", "1");
+    }
+#else
+    setenv("XT_VERIFY_VISUAL_GENERATION", "1", 0);
+#endif
+}
+
 static int usage(void) {
     fprintf(stderr,
             "usage: xtframe-bench <bundle dir> <ui id> [--size WxH] [--frames N] [--warmup N] [--dt S] "
-            "[--pointer] [--system-fonts] [--event \"<spec>\"]... [--json]\n");
+            "[--pointer] [--system-fonts] [--event \"<spec>\"]... [--json] [--perf-csv <file>] [--perf-cpu] "
+            "[--perf-detail N]\n");
     return 2;
 }
 
@@ -317,6 +346,9 @@ int main(int argc, char** argv) {
     long frames = 300, warmup = 60;
     double dt = 1.0 / 60.0;
     int pointer = 0, json = 0, systemFonts = 0;
+    const char* perfCsv = NULL; /* T-750 */
+    int perfCpu = 0;            /* T-753 */
+    int perfDetail = 0;         /* T-749 */
     Event* events = NULL;
     int eventCount = 0;
     for (int i = 3; i < argc; ++i) {
@@ -348,6 +380,19 @@ int main(int argc, char** argv) {
             ++eventCount;
         } else if (strcmp(argv[i], "--json") == 0) {
             json = 1;
+        } else if (strcmp(argv[i], "--perf-csv") == 0 && i + 1 < argc) {
+            perfCsv = argv[++i];
+        } else if (strcmp(argv[i], "--perf-cpu") == 0) {
+            perfCpu = 1; /* T-753 */
+        } else if (strcmp(argv[i], "--perf-detail") == 0 && i + 1 < argc) {
+            char* end = NULL;
+            const long level = strtol(argv[++i], &end, 10); /* T-749 */
+            if (end == argv[i] || *end != '\0' || level < 0 || level > 2) {
+                fprintf(stderr, "xtframe-bench: --perf-detail: expected 0, 1 or 2, got '%s'\n", argv[i]);
+                free(events);
+                return 2;
+            }
+            perfDetail = (int)level;
         } else {
             free(events);
             return usage();
@@ -393,6 +438,7 @@ int main(int argc, char** argv) {
     desc.device_pixel_ratio = 1.0f;
     desc.run_flow = 1;
     desc.system_fonts = systemFonts;
+    enableStaticSkipVerify();
     xt_surface* surface = xt_surface_create(bundle, uiId, &desc);
     if (surface == NULL) {
         fprintf(stderr, "xtframe-bench: cannot create surface: %s\n", xt_capi_last_error());
@@ -400,6 +446,12 @@ int main(int argc, char** argv) {
         return 1;
     }
     xt_surface_set_perf_enabled(surface, 1);
+    if (perfCpu) {
+        (void)xt_surface_set_thread_cpu_timing(surface, 1); /* T-753 */
+    }
+    if (xt_surface_set_perf_detail(surface, perfDetail) != XT_STATUS_OK) { /* T-749 */
+        fprintf(stderr, "xtframe-bench: set_perf_detail: %s\n", xt_capi_last_error());
+    }
 
     const size_t stride = (size_t)width * 4;
     uint8_t* rgba = (uint8_t*)calloc(stride, (size_t)height);
@@ -413,11 +465,26 @@ int main(int argc, char** argv) {
         fprintf(stderr, "xtframe-bench: out of memory\n");
         return 1;
     }
+    /* T-750: --perf-csv, the header first. */
+    FILE* csv = NULL;
+    const size_t csvCap = 16384;
+    char* csvLine = NULL;
+    if (perfCsv != NULL) {
+        csv = fopen(perfCsv, "wb");
+        csvLine = (char*)malloc(csvCap);
+        if (csv == NULL || csvLine == NULL) {
+            fprintf(stderr, "xtframe-bench: cannot write %s\n", perfCsv);
+            return 1;
+        }
+        (void)xt_frame_record_csv_header(csvLine, csvCap);
+        fprintf(csv, "%s,host.wall_update_ms,host.wall_render_ms,host.wall_frame_ms\n", csvLine);
+    }
 
     long changed = 0, full = 0;
     uint32_t draws = 0;
     const double t0 = nowMs();
     for (long frame = 0; frame < warmup + frames; ++frame) {
+        (void)xt_surface_mark_frame_start(surface); /* T-753: the frame's work starts here */
         if (pointer) {
             xt_input_event e;
             memset(&e, 0, sizeof(e));
@@ -441,6 +508,17 @@ int main(int argc, char** argv) {
             return 1;
         }
         const double c = nowMs();
+        (void)xt_surface_mark_frame_end(surface); /* T-753: after the render */
+        if (csv != NULL) {                        /* T-750 */
+            xt_frame_record rec;
+            memset(&rec, 0, sizeof(rec));
+            rec.struct_size = (uint32_t)sizeof(rec);
+            if (xt_surface_frame_record(surface, &rec) == XT_STATUS_OK) {
+                rec.steady = frame >= warmup ? 1u : 0u;
+                (void)xt_frame_record_csv_row(&rec, csvLine, csvCap);
+                fprintf(csv, "%s,%.4f,%.4f,%.4f\n", csvLine, b - a, c - b, c - a);
+            }
+        }
         if (frame < warmup) {
             continue;
         }
@@ -509,6 +587,10 @@ int main(int argc, char** argv) {
         printStats("wall frm", &sw, 0, 1);
     }
 
+    if (csv != NULL) {
+        fclose(csv);
+    }
+    free(csvLine);
     free(events);
     free(wallRender);
     free(wallUpdate);

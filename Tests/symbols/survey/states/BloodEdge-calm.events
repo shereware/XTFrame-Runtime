@@ -1,0 +1,3 @@
+# T-793: BloodEdge-calm (T-744: only levels below 0.6 are sent, so the image checks the Calm rule: #Edge at 0.85).
+port Hurt.level 0.4
+update 0.25

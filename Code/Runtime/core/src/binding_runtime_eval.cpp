@@ -726,10 +726,11 @@ void BindingRuntime::applySceneProp(const Binding& b, const BVal& r) {
         default:
             return;  // No scene node property of another type binds (T-243).
     }
-    setProperty(m_doc.m_arena, b.node, prop, pv);
+    setProperty(m_doc.m_arena, b.node, prop, pv, DirtyCause::Binding);
 }
 
 void BindingRuntime::apply(Binding& b, const BVal& r, bool initial) {
+    DirtyCauseScope causeScope(m_doc.m_arena, DirtyCause::Binding);  // T-747: setText, setStyle, ...
     Document& doc = m_doc;
     const IrBinding& ir = *b.ir;
     if (ir.sceneNode != kBindElementSelf) {
@@ -878,7 +879,8 @@ void BindingRuntime::apply(Binding& b, const BVal& r, bool initial) {
             for (size_t i = 0; i < assets.size(); ++i) {
                 if (assets[i].kind == 0 && doc.m_ir.string(assets[i].name) == name) {
                     doc.m_arena.element(b.node).imageAsset = static_cast<AssetId>(i);
-                    doc.m_arena.markDirty(b.node, static_cast<uint8_t>(kDirtyLayout | kDirtyPaint));
+                    doc.m_arena.markDirty(b.node, static_cast<uint8_t>(kDirtyLayout | kDirtyPaint),
+                                          DirtyCause::Binding);
                     return;
                 }
             }
@@ -934,8 +936,11 @@ void BindingRuntime::apply(Binding& b, const BVal& r, bool initial) {
             const uint16_t next = truthy(r) ? static_cast<uint16_t>(data.stateBits | bit)
                                             : static_cast<uint16_t>(data.stateBits & ~bit);
             if (next != data.stateBits) {
+                const uint16_t changed = static_cast<uint16_t>(next ^ data.stateBits);
                 data.stateBits = next;
-                markStyleDirtySubtree(doc.m_arena, b.node);
+                // T-763 (item 1): by the state dependency table (legacy mode included).
+                doc.m_events->restyleState(doc.m_arena, b.node, StateChange{changed, 0, 0},
+                                           DirtyCause::Binding);
             }
             return;
         }

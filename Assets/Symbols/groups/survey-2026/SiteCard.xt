@@ -1,0 +1,39 @@
+<xt version="2">
+
+  <symbol name="SiteCard" requires="slots: line1, line2, line3">
+    <div id="Box">
+      <span id="Line1" class="line"><slot name="line1">PLACE NAME</slot></span>
+      <span id="Line2" class="line"><slot name="line2">CITY, COUNTRY</slot></span>
+      <span id="Line3" class="line"><slot name="line3">YEAR - YEAR</slot></span>
+    </div>
+  </symbol>
+
+  <layout>
+    symbol(SiteCard) {
+      #Box {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        padding-right: var(--space-3);
+      }
+    }
+  </layout>
+  <style>
+    symbol(SiteCard) {
+      #Box {
+        border-width: 0px var(--rule-thin) 0px 0px;
+        border-color: var(--color-line);
+        border-style: solid;
+      }
+      .line {
+        font-family: var(--font-body);
+        font-size: var(--font-size-xs);
+        line-height: 17px;
+        letter-spacing: var(--letter-label);
+        color: var(--color-text-quiet);
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+    }
+  </style>
+</xt>

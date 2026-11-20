@@ -1,0 +1,36 @@
+<xt version="2">
+  <head>
+    <title>Pause</title>
+    <symbols src="../shared/symbols/ScreenShade.xt"/>
+    <symbols src="../shared/symbols/ChapterCard.xt"/>
+    <symbols src="../shared/symbols/ConfirmDialog.xt"/>
+    <symbols src="../shared/symbols/KeyHint.xt"/>
+  </head>
+
+  <ports>
+    resume: event out
+    leave: event out
+    active: bool in = true
+  </ports>
+
+  <body>
+    <div id="Screen" tabindex="0" autofocus on:port(active)="if eq(1) show() else hide()" on:key(Escape)="emit(resume)">
+      <use symbol="ScreenShade" id="Shade" variant:Kind="Vignette"/>
+      <use symbol="ConfirmDialog" id="Confirm" slot:title="Return to the main menu?" slot:body="Unsaved progress since the last save will be lost.">
+        <slot name="actions">
+          <use symbol="KeyHint" id="HintStay" slot:key="B" slot:label="Stay" on:click="emit(resume)"/>
+          <use symbol="KeyHint" id="HintLeave" variant:Sep="Before" slot:key="A" slot:label="Leave" on:click="emit(leave)"/>
+        </slot>
+      </use>
+      <use symbol="ChapterCard" id="Chapter"/>
+    </div>
+  </body>
+
+  <layout>
+    body { width: 1280px; height: 720px; position: relative; }
+    #Screen { position: absolute; left: 0px; top: 0px; width: 1280px; height: 720px; overflow: hidden; }
+    #Shade { position: absolute; left: 0px; top: 0px; }
+    #Shade/Box { width: 1280px; height: 720px; }
+    #Chapter { position: absolute; left: 0px; top: 72px; width: 1280px; display: flex; justify-content: center; }
+  </layout>
+</xt>

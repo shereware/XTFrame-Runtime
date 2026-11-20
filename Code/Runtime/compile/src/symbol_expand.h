@@ -22,11 +22,16 @@ struct SymbolLibraryFile {
     std::string name;
     /// The library's tree; only its `symbolDefs` are used.
     DomTree tree;
+    /// T-740 (56 §56.3): the file's namespace -- the name of its directory when that directory sits
+    /// directly in the project's `shared/symbols` -- or empty (a flat file). Its symbols are then
+    /// `<ns>/<name>`, and a bare name inside it resolves to `<ns>/<name>` first, then `<name>`.
+    std::string ns;
 };
 
 /// One expanded instance, in document order (an outer instance before the ones nested in it).
 struct ExpandedSymbolInstance {
-    /// `<symbol name>`.
+    /// The symbol's qualified name (T-740): `<symbol name>`, or `<ns>/<symbol name>` for a
+    /// definition from a namespaced library file (SymbolLibraryFile::ns).
     std::string symbol;
     /// Index into the expanded `DomTree::nodes` of the instance root.
     uint32_t instanceNode = 0;
@@ -37,6 +42,9 @@ struct ExpandedSymbolInstance {
     /// `class`, `style` or `state`), in source order, as carried onto the instance root: the
     /// candidates for literal port values (applyUseLiterals()).
     std::vector<DomAttr> useAttrs;
+    /// T-738 (56 §56.4): the instance root's `state-groups` was written on the `<use>` (so it
+    /// belongs to the enclosing origin), not copied from the definition.
+    bool rootStateGroupsFromUse = false;
 };
 
 /// Expands every `<use>` of `dom` in place (after parsing, before style compilation):
@@ -52,8 +60,11 @@ struct ExpandedSymbolInstance {
 ///     rule on the instance root, placed first (lowest priority);
 ///   - `<symbol>` definitions are removed.
 /// Validates names, `requires` contracts, cycles and the override allow-list. `libraries` supply
-/// additional definitions. Returns false if any error was reported (then `dom`/`rules` are left
-/// in an unspecified state). `instances` receives the SYMB table rows.
+/// additional definitions. T-740 (56 §56.3): a definition's identity is its qualified name
+/// (SymbolLibraryFile::ns); a `<use symbol>`, `symbol()` block or `@timeline` scope with a `/` names
+/// one directly, a bare one written in a namespaced file tries `<ns>/<name>` then `<name>`, and a
+/// bare one anywhere else names only the flat `<name>`. Returns false if any error was reported (then
+/// `dom`/`rules` are left in an unspecified state). `instances` receives the SYMB table rows.
 bool expandSymbols(DomTree& dom, const std::vector<SymbolLibraryFile>& libraries, RuleSet& rules,
                    std::string_view fileName, DiagnosticSink& sink,
                    std::vector<ExpandedSymbolInstance>& instances);

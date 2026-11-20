@@ -1,6 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "test_temp.h"
+#include "test_visual_check.h"
 #include "test_watchdog.h"
 
 #ifdef _MSC_VER
@@ -21,5 +22,6 @@ int main(int argc, char** argv) {
     _CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
 #endif
     xt::test::startWatchdog();
+    xt::test::enableVisualCheck();  // T-748: the static skip's verify mode in every Context.
     return xt::test::finishTempDir(doctest::Context(argc, argv).run());
 }

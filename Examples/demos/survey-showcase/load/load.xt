@@ -1,0 +1,55 @@
+<xt version="2">
+  <head>
+    <title>Load Game</title>
+    <symbols src="../shared/symbols/ScreenShade.xt"/>
+    <symbols src="../shared/symbols/Panel.xt"/>
+    <symbols src="../shared/symbols/SaveSlot.xt"/>
+    <symbols src="../shared/symbols/LoadingIndicator.xt"/>
+    <symbols src="../shared/symbols/KeyHint.xt"/>
+  </head>
+
+  <ports>
+    slot: number in = 0
+    loading: bool in = false
+    progress: number in = 62
+    load_save: event out
+    back: event out
+    active: bool in = true
+  </ports>
+
+  <body>
+    <div id="Screen" on:port(active)="if eq(1) show() else hide()">
+      <img id="Backdrop" src="../shared/img/backdrop.png"/>
+      <use symbol="ScreenShade" id="Shade" variant:Kind="Left"/>
+      <use symbol="Panel" id="Saves" slot:heading="Load Game" slot:description="Choose a save to continue.">
+        <slot name="body">
+          <use symbol="SaveSlot" id="Slot1" slot:chapter="Chapter One · Chapter Title" slot:location="Location Name" slot:stamp="Today 21:40" bind:selected="slot | eq(0)" on:click="set(slot, 0); emit(load_save)"/>
+          <use symbol="SaveSlot" id="Slot2" slot:chapter="Chapter One · Chapter Title" slot:location="Location Name" slot:stamp="Yesterday 18:05" bind:selected="slot | eq(1)" on:click="set(slot, 1); emit(load_save)"/>
+          <use symbol="SaveSlot" id="Slot3" slot:chapter="Chapter Two · Chapter Title" slot:location="Location Name" slot:stamp="3 days ago 23:12" bind:selected="slot | eq(2)" on:click="set(slot, 2); emit(load_save)"/>
+          <use symbol="SaveSlot" id="Slot4" variant:State="Empty" slot:chapter="Empty Slot"/>
+        </slot>
+      </use>
+      <use symbol="LoadingIndicator" id="Loading" bind:progress="progress" bind:display="loading"/>
+      <div id="Hints">
+        <use symbol="KeyHint" id="HintLoad" slot:key="E" slot:label="Load" on:click="emit(load_save)"/>
+        <use symbol="KeyHint" id="HintBack" variant:Sep="Before" slot:key="B" slot:label="Back" on:click="emit(back)"/>
+      </div>
+    </div>
+  </body>
+
+  <layout>
+    body { width: 1280px; height: 720px; position: relative; }
+    #Screen { position: absolute; left: 0px; top: 0px; width: 1280px; height: 720px; overflow: hidden; }
+    #Backdrop { position: absolute; left: 0px; top: 0px; width: 1280px; height: 720px; }
+    #Shade { position: absolute; left: 0px; top: 0px; }
+    #Shade/Box { width: 1280px; height: 720px; }
+    #Saves { position: absolute; left: 72px; top: 96px; }
+    #Saves/Box { width: 488px; }
+    #Loading { position: absolute; left: 72px; top: 520px; }
+    #Hints { position: absolute; right: 48px; bottom: 28px; display: flex; flex-direction: row; column-gap: 8px; }
+  </layout>
+  <style>
+    #Screen { background-color: var(--color-bg); }
+    #Backdrop { object-fit: cover; }
+  </style>
+</xt>

@@ -1,0 +1,44 @@
+<xt version="2">
+  <head>
+    <symbols src="../../../Assets/Symbols/groups/broadsheet-2026/Crosshair.xt"/>
+    <symbols src="../../../Assets/Symbols/groups/broadsheet-2026/HealthBar.xt"/>
+  </head>
+
+  <!-- T-738: two Survey-like symbols whose state groups conflict with Crosshair's Aim and
+       HealthBar's Level (same name with other members; another name sharing Normal / Low). -->
+  <symbol name="SurveyReticle" state-groups="Aim: Free|Target" requires="states: Free, Target">
+    <div id="Box"></div>
+  </symbol>
+  <symbol name="SurveyVital" state-groups="Vital: Normal|Low" requires="states: Normal, Low">
+    <div id="Box"></div>
+  </symbol>
+
+  <body>
+    <use symbol="Crosshair" id="Aim"/>
+    <use symbol="HealthBar" id="Hp"/>
+    <use symbol="SurveyReticle" id="Reticle"/>
+    <use symbol="SurveyVital" id="Vital"/>
+  </body>
+
+  <layout>
+    body {
+      width: 320px;
+      height: 240px;
+      display: flex;
+      flex-direction: column;
+    }
+  </layout>
+  <style src="../../../Assets/Symbols/groups/broadsheet-2026/tokens.xts"/>
+  <style>
+    symbol(SurveyReticle) {
+      #Box:state(Target) {
+        background-color: var(--color-focus);
+      }
+    }
+    symbol(SurveyVital) {
+      #Box:state(Low) {
+        background-color: var(--color-focus);
+      }
+    }
+  </style>
+</xt>

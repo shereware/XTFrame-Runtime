@@ -261,9 +261,11 @@ void printIssues(const xt::bundle::LintReport& report) {
     }
 }
 
-int runLint(const Args& args) {
+int runLint(const Args& args, const char* argv0) {
     xt::bundle::LintOptions options;
     options.indexOnly = args.indexOnly;
+    // T-743 (47 rule 3): extension textures and fonts are compared with the preset group's.
+    options.presetGroupDir = xt::bundle::defaultGroupDir(genericPathToUtf8(presetDir(args, argv0)));
     const std::vector<xt::bundle::LintReport> reports =
         xt::bundle::lintLibrary(pathFromUtf8(args.positional[0]), options);
     size_t errors = 0;
@@ -747,7 +749,7 @@ int symbolsMain(int argc, char** argv) {
         return 2;
     }
     if (c == "lint") {
-        return runLint(args);
+        return runLint(args, argv[0]);
     }
     if (c == "thumbnails") {
         return runThumbnails(args);

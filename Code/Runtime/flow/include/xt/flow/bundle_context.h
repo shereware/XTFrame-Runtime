@@ -116,6 +116,9 @@ private:
     void onShown(DocumentHandle document) override;
     void onHidden(DocumentHandle document) override;
     void onSystemEvent(std::string_view kind, std::string_view value) override;
+    /// T-749 (23 §23.ag item 6): Context::needsFrame() of context() asks whether the global or a
+    /// per-UI flow needs its next tick() (FlowRuntime::needsTick()).
+    bool needsFrame(const Context& context) const override;
 
     /// T-356: forwards the lifecycle events of a Context other than context().
     class OwnerListener : public ContextListener {

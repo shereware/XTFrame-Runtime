@@ -340,11 +340,15 @@ void Document::stepParticleNodes(float clock) {
             continue;  // The editor's canvas keeps this emitter still (T-202 item 6).
         }
         const Rect emitter{0, 0, std::max(0.0f, data.box.width), std::max(0.0f, data.box.height)};
+        const bool hadParticles = !x.particles.empty();
         if (x.burstPending != 0) {
             x.burstPending = 0;
             burstParticles(x, emitter, std::min(toUint32Sat(x.burst), x.maxParticles));
         }
         stepParticles(x, emitter, dt);
+        if (hadParticles || !x.particles.empty()) {
+            m_arena.noteVisualChange(DirtyCause::Clock, element);  // T-747: live particles move with time
+        }
     }
 }
 

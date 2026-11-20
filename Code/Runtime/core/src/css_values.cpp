@@ -694,6 +694,61 @@ bool parseFontFamilyList(const Tok* toks, size_t count, std::vector<std::string>
     return cur.atEnd() && !out.empty();
 }
 
+namespace {
+
+constexpr std::string_view kAnimDirections[] = {"normal", "reverse", "alternate", "alternate-reverse"};
+constexpr std::string_view kAnimFills[] = {"none", "forwards", "backwards", "both"};
+
+/// The index of `t`'s keyword in `words` (`n` of them), or false.
+bool animKeywordIndex(Dialect d, const Tok& t, const std::string_view* words, uint8_t n, uint8_t& out) {
+    if (t.kind != TokKind::Ident) {
+        return false;
+    }
+    for (uint8_t i = 0; i < n; ++i) {
+        if (matches(d, t.text, words[i])) {
+            out = i;
+            return true;
+        }
+    }
+    return false;
+}
+
+/// `infinite` or a non-negative count (truncated; the runtime saturates, the compiler clamps).
+bool parseAnimIterationTok(const Tok& t, Dialect d, Diag* diag, AnimationItem& out) {
+    if (isKeyword(d, t, "infinite")) {
+        out.infinite = true;
+        return true;
+    }
+    if (t.kind != TokKind::Number || !t.unit.empty() || t.num < 0) {
+        return false;
+    }
+    out.infinite = false;
+    if (d == Dialect::Runtime) {
+        out.iterations = toUint16Sat(t.num);  // T-258a: saturates (05.x).
+    } else if (t.num > static_cast<float>(kMaxFiniteIterations)) {
+        // T-258b (D11): a finite count stays below the IR's `infinite` sentinel 0xFFFF.
+        warn(diag, "animation iteration count clamped to " + std::to_string(kMaxFiniteIterations));
+        out.iterations = kMaxFiniteIterations;
+    } else {
+        out.iterations = static_cast<uint16_t>(t.num);  // A fractional count truncates.
+    }
+    return true;
+}
+
+/// One `<easing>` at the cursor, reporting the steps() clamp.
+bool parseAnimEasing(Cursor& cur, Dialect d, Diag* diag, Easing& out, std::vector<EasingPoint>* points) {
+    bool stepsClamped = false;
+    if (!parseEasingCursor(cur, d, out, &stepsClamped, points)) {
+        return false;
+    }
+    if (stepsClamped) {
+        warn(diag, kStepsClampedMessage);
+    }
+    return true;
+}
+
+}  // namespace
+
 AnimationItemResult parseAnimationItem(const Tok* toks, size_t count, Dialect d, Diag* diag,
                                        AnimationItem& out, std::vector<EasingPoint>* points) {
     Cursor cur(toks, count);
@@ -719,65 +774,26 @@ AnimationItemResult parseAnimationItem(const Tok* toks, size_t count, Dialect d,
             continue;
         }
         if (!haveEasing && isEasingStart(cur, d)) {
-            bool stepsClamped = false;
-            if (!parseEasingCursor(cur, d, out.easing, &stepsClamped, points)) {
+            if (!parseAnimEasing(cur, d, diag, out.easing, points)) {
                 return AnimationItemResult::BadValue;
-            }
-            if (stepsClamped) {
-                warn(diag, kStepsClampedMessage);
             }
             haveEasing = true;
             continue;
         }
-        if (!haveIter && isKeyword(d, t, "infinite")) {
-            out.infinite = true;
+        if (!haveIter && parseAnimIterationTok(t, d, diag, out)) {
             haveIter = true;
             cur.advance();
             continue;
         }
-        if (!haveIter && t.kind == TokKind::Number && t.unit.empty() && t.num >= 0) {
-            if (d == Dialect::Runtime) {
-                out.iterations = toUint16Sat(t.num);  // T-258a: saturates (05.x).
-            } else if (t.num > static_cast<float>(kMaxFiniteIterations)) {
-                // T-258b (D11): a finite count stays below the IR's `infinite` sentinel 0xFFFF.
-                warn(diag, "animation iteration count clamped to " + std::to_string(kMaxFiniteIterations));
-                out.iterations = kMaxFiniteIterations;
-            } else {
-                out.iterations = static_cast<uint16_t>(t.num);  // A fractional count truncates.
-            }
-            haveIter = true;
+        if (!haveDir && animKeywordIndex(d, t, kAnimDirections, 4, out.direction)) {
+            haveDir = true;
             cur.advance();
             continue;
         }
-        if (!haveDir && t.kind == TokKind::Ident) {
-            const std::string_view kDirections[] = {"normal", "reverse", "alternate", "alternate-reverse"};
-            bool hit = false;
-            for (uint8_t i = 0; i < 4 && !hit; ++i) {
-                if (matches(d, t.text, kDirections[i])) {
-                    out.direction = i;
-                    hit = true;
-                }
-            }
-            if (hit) {
-                haveDir = true;
-                cur.advance();
-                continue;
-            }
-        }
-        if (!haveFill && t.kind == TokKind::Ident) {
-            const std::string_view kFills[] = {"none", "forwards", "backwards", "both"};
-            bool hit = false;
-            for (uint8_t i = 0; i < 4 && !hit; ++i) {
-                if (matches(d, t.text, kFills[i])) {
-                    out.fill = i;
-                    hit = true;
-                }
-            }
-            if (hit) {
-                haveFill = true;
-                cur.advance();
-                continue;
-            }
+        if (!haveFill && animKeywordIndex(d, t, kAnimFills, 4, out.fill)) {
+            haveFill = true;
+            cur.advance();
+            continue;
         }
         if (!havePlay && (isKeyword(d, t, "running") || isKeyword(d, t, "paused"))) {
             out.playState = isKeyword(d, t, "paused") ? 1 : 0;
@@ -788,6 +804,79 @@ AnimationItemResult parseAnimationItem(const Tok* toks, size_t count, Dialect d,
         return AnimationItemResult::BadValue;
     }
     return AnimationItemResult::Ok;
+}
+
+const char* animationLonghandName(int longhand) {
+    static constexpr const char* kNames[kAnimationLonghandCount] = {
+        "animation-name",      "animation-duration",        "animation-timing-function",
+        "animation-delay",     "animation-iteration-count", "animation-direction",
+        "animation-fill-mode", "animation-play-state"};
+    return longhand >= 0 && longhand < kAnimationLonghandCount ? kNames[longhand] : "";
+}
+
+int animationLonghandIndex(std::string_view property) {
+    for (int i = 0; i < kAnimationLonghandCount; ++i) {
+        if (property == animationLonghandName(i)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+bool parseAnimationLonghandItem(int longhand, const Tok* toks, size_t count, Dialect d, Diag* diag,
+                                AnimationItem& out, std::vector<EasingPoint>* points) {
+    Cursor cur(toks, count);
+    if (cur.atEnd()) {
+        return false;
+    }
+    const Tok& t = cur.peek();
+    float seconds = 0;
+    switch (static_cast<AnimationLonghand>(longhand)) {
+        case AnimationLonghand::Name:
+            if (t.kind != TokKind::Ident) {
+                return false;
+            }
+            out.name = isKeyword(d, t, "none") ? std::string_view{} : t.text;
+            break;
+        case AnimationLonghand::Duration:
+            if (!parseTimeTok(t, out.duration)) {
+                return false;
+            }
+            break;
+        case AnimationLonghand::Delay:
+            if (!parseTimeTok(t, seconds)) {
+                return false;
+            }
+            out.delay = seconds;
+            break;
+        case AnimationLonghand::TimingFunction:
+            return isEasingStart(cur, d) && parseAnimEasing(cur, d, diag, out.easing, points) && cur.atEnd();
+        case AnimationLonghand::IterationCount:
+            if (!parseAnimIterationTok(t, d, diag, out)) {
+                return false;
+            }
+            break;
+        case AnimationLonghand::Direction:
+            if (!animKeywordIndex(d, t, kAnimDirections, 4, out.direction)) {
+                return false;
+            }
+            break;
+        case AnimationLonghand::FillMode:
+            if (!animKeywordIndex(d, t, kAnimFills, 4, out.fill)) {
+                return false;
+            }
+            break;
+        case AnimationLonghand::PlayState:
+            if (!isKeyword(d, t, "running") && !isKeyword(d, t, "paused")) {
+                return false;
+            }
+            out.playState = isKeyword(d, t, "paused") ? 1 : 0;
+            break;
+        default:
+            return false;
+    }
+    cur.advance();
+    return cur.atEnd();
 }
 
 // ---------------------------------------------------------------------------------------------

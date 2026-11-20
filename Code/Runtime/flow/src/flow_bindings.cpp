@@ -2171,6 +2171,8 @@ SinkPath applyResolvedInput(DocEndpointState& state, const Endpoint& sink, const
                             const InputValue& v, const std::string& param,
                             const StyleTemplate* styleTemplate) {
     Document& doc = *state.doc;
+    // T-747 (57 §57.3): what this sink writes through the Document's shared paths counts as Flow.
+    DirtyCauseScope causeScope(doc.arena(), DirtyCause::Flow);
     switch (cache.op) {
         case SinkOp::None:
             return SinkPath::Other;
@@ -2451,6 +2453,15 @@ void pollDocumentOutputs(DocEndpointState& state) {
         state.pollValue.n = (inst != 0) ? static_cast<double>(state.doc->animationTime(inst)) : 0.0;
         emitDocumentOutput(state, slot, state.pollValue, false);
     }
+}
+
+bool documentOutputsMoveWithTime(const DocEndpointState& state) {
+    for (uint32_t slot : state.docOutputSlots) {
+        if (slot < state.outputs.size() && state.outputs[slot].docPort == DocPort::Clock) {
+            return true;
+        }
+    }
+    return false;
 }
 
 DocPort docPortOf(const std::string& port) {

@@ -1,0 +1,108 @@
+<xt version="2">
+  <head>
+    <title>Title</title>
+    <symbols src="../shared/symbols/ScreenShade.xt"/>
+    <symbols src="../shared/symbols/FogBank.xt"/>
+    <symbols src="../shared/symbols/RainLayer.xt"/>
+    <symbols src="../shared/symbols/FilmGrain.xt"/>
+    <symbols src="../shared/symbols/TitleLockup.xt"/>
+    <symbols src="../shared/symbols/MenuItem.xt"/>
+    <symbols src="../shared/symbols/VersionTag.xt"/>
+    <symbols src="../shared/symbols/KeyHint.xt"/>
+  </head>
+
+  <ports>
+    new_game: event out
+    continue_game: event out
+    load_game: event out
+    open_options: event out
+    credits: event out
+    quit: event out
+    selection: number in = 0
+    active: bool in = true
+  </ports>
+
+  <body>
+    <div id="Screen" on:port(active)="if eq(1) show() else hide(); if eq(1) play(intro)">
+      <img id="Backdrop" src="../shared/img/backdrop.png"/>
+      <use symbol="ScreenShade" id="Shade" variant:Kind="Left"/>
+      <use symbol="FogBank" id="Fog" variant:Height="High"/>
+      <use symbol="RainLayer" id="Rain" variant:Density="Light"/>
+      <use symbol="FilmGrain" id="Grain"/>
+      <use symbol="TitleLockup" id="Lockup"/>
+      <div id="Menu">
+        <use symbol="MenuItem" id="NewGame" bind:selected="selection | eq(0)" slot:label="New Game" on:click="emit(new_game)"/>
+        <use symbol="MenuItem" id="Continue" bind:selected="selection | eq(1)" slot:label="Continue" on:click="emit(continue_game)"/>
+        <use symbol="MenuItem" id="LoadGame" bind:selected="selection | eq(2)" slot:label="Load Game" on:click="emit(load_game)"/>
+        <use symbol="MenuItem" id="Options" bind:selected="selection | eq(3)" slot:label="Options" on:click="emit(open_options)"/>
+        <use symbol="MenuItem" id="Credits" bind:selected="selection | eq(4)" slot:label="Credits" on:click="emit(credits)"/>
+        <use symbol="MenuItem" id="Quit" bind:selected="selection | eq(5)" slot:label="Quit" on:click="emit(quit)"/>
+      </div>
+      <use symbol="VersionTag" id="Version" slot:text="v1.0.0"/>
+      <div id="Hints">
+        <use symbol="KeyHint" id="HintSelect" variant:Keys="Two" slot:key="W" slot:key2="S" slot:label="Select"/>
+        <use symbol="KeyHint" id="HintConfirm" variant:Sep="Before" slot:key="E" slot:label="Confirm"/>
+      </div>
+    </div>
+  </body>
+
+  <layout>
+    body { width: 1280px; height: 720px; position: relative; }
+    #Screen { position: absolute; left: 0px; top: 0px; width: 1280px; height: 720px; overflow: hidden; }
+    #Backdrop { position: absolute; left: 0px; top: 0px; width: 1280px; height: 720px; }
+    #Shade { position: absolute; left: 0px; top: 0px; }
+    #Shade/Box { width: 1280px; height: 720px; }
+    #Fog { position: absolute; left: 0px; top: 560px; }
+    #Fog/Box { width: 1280px; height: 160px; }
+    #Rain { position: absolute; left: 0px; top: 0px; }
+    #Rain/Box { width: 1280px; height: 720px; }
+    #Grain { position: absolute; left: 0px; top: 0px; }
+    #Grain/Box { width: 1280px; height: 720px; }
+    #Lockup { position: absolute; left: 72px; top: 64px; }
+    #Menu { position: absolute; left: 56px; top: 260px; display: flex; flex-direction: column; row-gap: 4px; }
+    #Version { position: absolute; left: 72px; top: 676px; }
+    #Hints { position: absolute; right: 48px; bottom: 28px; display: flex; flex-direction: row; column-gap: 8px; }
+  </layout>
+  <style>
+    #Screen { background-color: var(--color-bg); }
+    #Backdrop { object-fit: cover; }
+  </style>
+  <timelines>
+    @timeline intro {
+      #Lockup {
+        0s { opacity: 0; }
+        0.40s ease-out { opacity: 1; }
+      }
+      #NewGame {
+        0s { opacity: 0; }
+        0.08s { opacity: 0; }
+        0.48s ease-out { opacity: 1; }
+      }
+      #Continue {
+        0s { opacity: 0; }
+        0.16s { opacity: 0; }
+        0.56s ease-out { opacity: 1; }
+      }
+      #LoadGame {
+        0s { opacity: 0; }
+        0.24s { opacity: 0; }
+        0.64s ease-out { opacity: 1; }
+      }
+      #Options {
+        0s { opacity: 0; }
+        0.32s { opacity: 0; }
+        0.72s ease-out { opacity: 1; }
+      }
+      #Credits {
+        0s { opacity: 0; }
+        0.40s { opacity: 0; }
+        0.80s ease-out { opacity: 1; }
+      }
+      #Quit {
+        0s { opacity: 0; }
+        0.48s { opacity: 0; }
+        0.88s ease-out { opacity: 1; }
+      }
+    }
+  </timelines>
+</xt>

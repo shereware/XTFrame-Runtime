@@ -408,35 +408,6 @@ Value Document::declareRuntimeAnimations(std::span<const IrAnimationSpec> specs)
     return v;
 }
 
-uint32_t Document::takeRuntimeDeclSlot(RuntimeDeclSlots& own, std::vector<RuntimeDeclSlot>& freeList,
-                                       uint32_t inUse, uint32_t need, size_t& poolSize) {
-    // T-270c: the slot written before the last one, unless the cascade still references it (two
-    // declarations within one frame): then the last one, which nothing resolved yet.
-    uint8_t k = static_cast<uint8_t>(own.last ^ 1u);
-    if (own.slot[k].cap != 0 && own.slot[k].offset == inUse) {
-        k = own.last;
-    }
-    own.last = k;
-    RuntimeDeclSlot& slot = own.slot[k];
-    if (slot.cap >= need) {
-        return slot.offset;
-    }
-    if (slot.cap != 0) {
-        freeList.push_back(slot);
-    }
-    auto fits = [need, inUse](const RuntimeDeclSlot& s) { return s.cap >= need && s.offset != inUse; };
-    auto freeIt = std::find_if(freeList.begin(), freeList.end(), fits);
-    if (freeIt != freeList.end()) {
-        slot = *freeIt;
-        freeList.erase(freeIt);
-    } else {
-        slot.offset = static_cast<uint32_t>(poolSize);
-        slot.cap = need;
-        poolSize += need;
-    }
-    return slot.offset;
-}
-
 Value Document::declareRuntimeGradientFor(NodeId node, const ElementGradient& gradient) {
     if (gradient.kind == GradientKind::None) {
         return declareRuntimeGradient(gradient);  // `none`: no pool entry.
@@ -496,6 +467,31 @@ Value Document::declareRuntimeAnimationsFor(NodeId node, std::span<const IrAnima
     return v;
 }
 
+Value Document::declareRuntimeAnimationLonghandFor(NodeId node, int longhand,
+                                                   std::span<const IrAnimationSpec> specs) {
+    if (specs.empty()) {
+        return declareRuntimeAnimations(specs);  // The initial value: no pool entry.
+    }
+    const ComputedStyle& style = m_arena.element(node).style;
+    const uint32_t cascaded = style.animationLonghandOffset[longhand];
+    const uint32_t inUse =
+        style.animationLonghandCount[longhand] != 0 && (cascaded & kRuntimeEffectOffsetBit) != 0
+            ? cascaded & ~kRuntimeEffectOffsetBit
+            : UINT32_MAX;
+    size_t poolSize = m_runtimeAnimations.size();
+    const uint32_t count = static_cast<uint32_t>(specs.size());
+    const uint64_t key = (static_cast<uint64_t>(node) << 3) | static_cast<uint64_t>(longhand);
+    const uint32_t offset = takeRuntimeDeclSlot(m_runtimeAnimationLonghandSlots[key], m_freeAnimationSlots,
+                                                inUse, count, poolSize);
+    m_runtimeAnimations.resize(poolSize);
+    std::copy(specs.begin(), specs.end(), m_runtimeAnimations.begin() + offset);
+    Value v;
+    v.type = ValueType::ListRef;
+    v.sid = kRuntimeEffectOffsetBit | offset;
+    v.floatCount = count;
+    return v;
+}
+
 void Document::releaseRuntimeDeclSlots(NodeId node) {
     // T-270d: a committed offset/count pair that points at a released slot is reset to `none`
     // (the runtime bit cleared, count 0) right here, whatever runs next.
@@ -532,7 +528,25 @@ void Document::releaseRuntimeDeclSlots(NodeId node) {
     release(m_runtimeAnimationSlots, m_freeAnimationSlots, [&](const RuntimeDeclSlot& slot) {
         forget(slot, style.animationOffset, style.animationCount);
         forget(slot, style.lastAnimationOffset, style.lastAnimationCount);
+        for (int i = 0; i < 8; ++i) {  // T-778: the shorthand sets every longhand.
+            forget(slot, style.animationLonghandOffset[i], style.animationLonghandCount[i]);
+        }
     });
+    for (int i = 0; i < 8; ++i) {  // T-778.
+        auto own = m_runtimeAnimationLonghandSlots.find((static_cast<uint64_t>(node) << 3) |
+                                                        static_cast<uint64_t>(i));
+        if (own == m_runtimeAnimationLonghandSlots.end()) {
+            continue;
+        }
+        for (const RuntimeDeclSlot& slot : own->second.slot) {
+            if (slot.cap != 0) {
+                forget(slot, style.animationLonghandOffset[i], style.animationLonghandCount[i]);
+                m_freeAnimationSlots.push_back(slot);
+            }
+        }
+        m_runtimeAnimationLonghandSlots.erase(own);
+    }
+    m_styleEngine.releaseCombinedSlots(node, style);  // T-778: the combined lists.
 }
 
 void Document::addWarning(std::string message) { m_warnings.push_back(std::move(message)); }
@@ -581,11 +595,11 @@ void Document::setLocalization(ILocalizationProvider* provider, std::string_view
     }
     m_arena.traversePreorder(m_root, [this](NodeId n) {
         if (m_arena.kind(n) == NodeKind::Element) {
-            m_arena.markDirty(n, static_cast<uint8_t>(kDirtyStyle));
-            m_arena.markDirty(n, static_cast<uint8_t>(kDirtyLayout));
+            m_arena.markDirty(n, static_cast<uint8_t>(kDirtyStyle), m_arena.ambientCause());
+            m_arena.markDirty(n, static_cast<uint8_t>(kDirtyLayout), m_arena.ambientCause());
         } else if (m_arena.kind(n) == NodeKind::Text) {
             m_arena.text(n).shapedValid = 0;
-            m_arena.markDirty(n, static_cast<uint8_t>(kDirtyLayout));
+            m_arena.markDirty(n, static_cast<uint8_t>(kDirtyLayout), m_arena.ambientCause());
         }
         return true;
     });
@@ -704,10 +718,10 @@ void Document::insertBefore(ElementRef parent, ElementRef child, ElementRef befo
         return;
     }
     m_arena.insertBefore(parent.node, child.node, beforeNode);  // Marks parent kDirtyTree|kDirtyLayout.
-    m_arena.markDirty(child.node, static_cast<uint8_t>(kDirtyStyle));
-    m_arena.markDirty(child.node, static_cast<uint8_t>(kDirtyLayout));
+    m_arena.markDirty(child.node, static_cast<uint8_t>(kDirtyStyle), m_arena.ambientCause());
+    m_arena.markDirty(child.node, static_cast<uint8_t>(kDirtyLayout), m_arena.ambientCause());
     m_arena.traversePreorder(child.node, [this](NodeId n) {
-        m_arena.markDirty(n, static_cast<uint8_t>(kDirtyStyle));
+        m_arena.markDirty(n, static_cast<uint8_t>(kDirtyStyle), m_arena.ambientCause());
         return true;
     });
     markSiblingsStyleDirty(parent.node);
@@ -724,9 +738,9 @@ void Document::markSiblingsStyleDirty(NodeId parent) {
         if (m_arena.kind(c) != NodeKind::Element) {
             continue;
         }
-        m_arena.markDirty(c, static_cast<uint8_t>(kDirtyStyle));
+        m_arena.markDirty(c, static_cast<uint8_t>(kDirtyStyle), m_arena.ambientCause());
         m_arena.traversePreorder(c, [this](NodeId n) {
-            m_arena.markDirty(n, static_cast<uint8_t>(kDirtyStyle));
+            m_arena.markDirty(n, static_cast<uint8_t>(kDirtyStyle), m_arena.ambientCause());
             return true;
         });
     }
@@ -905,7 +919,9 @@ void Document::handleAnimationFinished(uint32_t id) {
             // style is cheap and idempotent, so mark unconditionally rather than tracking props
             // separately (Docs/tasks/T-43c.md).
             if (m_arena.alive(info.node) && m_arena.kind(info.node) == NodeKind::Element) {
-                m_arena.markDirty(info.node, static_cast<uint8_t>(kDirtyStyle));
+                m_arena.markDirty(
+                    info.node, static_cast<uint8_t>(kDirtyStyle),
+                    info.source == AnimSource::Css ? DirtyCause::Animation : DirtyCause::Timeline);
             }
             break;
         }
@@ -939,7 +955,7 @@ void Document::handleTransitionEnd(NodeId node, PropId prop) {
     // (Docs/tasks/T-43c.md).
     if (prop >= prop::TranslateZ && prop <= prop::Orientation && m_arena.alive(node) &&
         m_arena.kind(node) == NodeKind::Element) {
-        m_arena.markDirty(node, static_cast<uint8_t>(kDirtyStyle));
+        m_arena.markDirty(node, static_cast<uint8_t>(kDirtyStyle), DirtyCause::Transition);
     }
     dispatchAnimationEvent(EventType::TransitionEnd, node, 0, kInvalidString);
 }
@@ -1010,6 +1026,7 @@ void Document::dispatchInput(const InputEvent& event) {
         event.kind != InputEvent::ExternalDragMove) {  // T-393: a move like PointerMove.
         m_triggers->flushContinuous();
     }
+    DirtyCauseScope causeScope(m_arena, DirtyCause::Input);  // T-747
     // T-174: triggers fired by this event run once its default actions are done.
     m_triggers->beginDefer();
     m_events->setTime(m_clock);  // T-194: gamepad repeat / long press.
@@ -1044,12 +1061,12 @@ Status Document::setNode3D(NodeId node, bool on) {
     NodeCommon& common = m_arena.common(node);
     bool was = common.is3D != 0;
     common.is3D = on ? 1 : 0;
-    m_arena.markDirty(node, static_cast<uint8_t>(kDirtyTransform | kDirtyTree));
+    m_arena.markDirty(node, static_cast<uint8_t>(kDirtyTransform | kDirtyTree), m_arena.ambientCause());
     if (was != on) {
         // §19.3: a descendant's is3D can flip an ancestor scene Group's isSpaceRoot (Docs/tasks/
         // T-43c.md "T-43b 遺留修正" 2) -- invalidate the cache up to the nearest existing root.
         m_arena.markDirtyAncestors(node, static_cast<uint8_t>(kDirtyTree),
-                                   nearestSpaceRootOrDocRoot(m_arena, node));
+                                   nearestSpaceRootOrDocRoot(m_arena, node), m_arena.ambientCause());
     }
     return Status::kOk;
 }
@@ -1284,7 +1301,7 @@ Status Document::setNodeProperty(NodeId node, PropId prop, const Value& value) {
     if (!propertyApplies(m_arena.kind(node), prop) || value.type != propertyType(prop)) {
         return Status::kInvalidArgument;
     }
-    xt::setProperty(m_arena, node, prop, value);
+    xt::setProperty(m_arena, node, prop, value, m_arena.ambientCause());
     return Status::kOk;
 }
 
@@ -1301,15 +1318,11 @@ void Document::setElementState(ElementRef ref, uint16_t stateBits, bool on) {
     if (data.stateBits == before) {
         return;
     }
-    // 05.8's conservative rule for class/state/style changes (mirrors element_ref.cpp's
-    // markStyleDirtySubtree(), private to that translation unit): this node's own kDirtyStyle bit
-    // (ancestors picked up automatically by markDirty()), plus every descendant explicitly, since
-    // a forced state can flip a descendant/child selector too.
-    arena.markDirty(ref.node, static_cast<uint8_t>(kDirtyStyle));
-    arena.traversePreorder(ref.node, [&arena](NodeId n) {
-        arena.markDirty(n, static_cast<uint8_t>(kDirtyStyle));
-        return true;
-    });
+    // T-763 (10 §10.16 W5): what the state dependency table says the changed bits reach -- nothing,
+    // the element, or its subtree (a forced state can flip a descendant / child selector).
+    ref.doc->m_events->restyleState(arena, ref.node,
+                                    StateChange{static_cast<uint16_t>(before ^ data.stateBits), 0, 0},
+                                    arena.ambientCause());
     const uint16_t checkedBit = static_cast<uint16_t>(kStateChecked);
     if (((before ^ data.stateBits) & checkedBit) != 0) {
         checkedChanged(ref.node, (data.stateBits & checkedBit) != 0);  // T-174: check / uncheck.
@@ -1349,7 +1362,7 @@ void Document::refreshCameraDefaults() {
             changed = true;
         }
         if (changed) {
-            m_arena.markDirty(data.cameraNode, static_cast<uint8_t>(kDirtyTransform));
+            m_arena.markDirty(data.cameraNode, static_cast<uint8_t>(kDirtyTransform), m_arena.lastCause());
         }
     }
 }
@@ -1452,7 +1465,8 @@ ElementRef Document::dragOver() const {
 Vec2 Document::dragGhostOffset() const { return m_events->dragGhostOffset(m_arena); }
 
 void Document::cancelDrag() {
-    DispatchGuard dispatch(m_context);  // T-260a.
+    DispatchGuard dispatch(m_context);                       // T-260a.
+    DirtyCauseScope causeScope(m_arena, DirtyCause::Input);  // T-747
     m_triggers->beginDefer();
     m_events->cancelDrag(m_arena);
     m_triggers->endDefer();
@@ -1738,7 +1752,7 @@ void Document::restoreSkippedLayout() {
     }
     m_layoutSkipped = false;
     m_arena.traversePreorder(m_root, [this](NodeId n) {
-        m_arena.markDirty(n, static_cast<uint8_t>(kDirtyLayout));
+        m_arena.markDirty(n, static_cast<uint8_t>(kDirtyLayout), m_arena.lastCause());
         return true;
     });
     m_forceTransform = true;
@@ -1794,6 +1808,7 @@ void Document::update(float clock) {
         stepTimelineGroups(clock);
         m_repeats->step(clock);    // T-177: timelines played for one `<repeat>` instance.
         stepExternalMedia(clock);  // T-191: sequences advance, autoplay starts.
+        checkExternalTextures();   // T-746: the resolver's bindings (sizes, content versions).
         m_animator.evaluate(clock, m_arena);
     }
     flushTimelineEvents();
@@ -1866,19 +1881,27 @@ void Document::update(float clock) {
         // the world transforms (constraint targets, the skeleton groups), before the dirty bits
         // (a `d` morph re-skins) are cleared below.
         evaluateRigs(clock);
+        m_timelineGroups->exprs.checkLayout();  // T-776: the boxes timeline expressions read.
     } else if (validateFocusAfterLayout()) {
         PerfScope styleScope(*m_perf, &FrameStats::styleMs);  // Hidden surface: style only.
         styled += m_styleEngine.resolve(m_arena, clock);
     }
+    // T-755: read (and reset) every frame, recorded or not.
+    const LayoutEngine::PassCounts layoutCounts = m_layoutEngine.takePassCounts();
     if (m_perf->enabled()) {
         // 21.1 group 2/3. Accumulated (+=) so several Documents in one Context add up; the
         // command-list counters are filled once per frame by Context::render().
         FrameStats& stats = m_perf->current();
         stats.styledElements += styled;
         stats.laidOutElements += layoutThisFrame ? m_layoutEngine.lastLaidOutElements() : 0u;
+        stats.layoutRoots += layoutCounts.layoutRoots;  // T-755
+        stats.layoutFullPasses += layoutCounts.fullPasses;
+        stats.partialLayoutMismatch += layoutCounts.mismatches;
+        stats.redundantLaidOut += layoutCounts.redundantBoxes;  // T-753 (detail level >= 1)
         stats.activeAnimations += m_animator.activeInstanceCount();
         stats.activeTransitions += m_animator.transitionCount();
         stats.animEvaluated += m_animator.evaluatedInstanceCount();  // T-717
+        stats.exprEvaluated += m_animator.exprEvaluatedCount();      // T-776
         stats.arenaNodes += m_arena.aliveCount();
         stats.rigBones += m_rigBones;            // T-244
         stats.skinnedPoints += m_skinnedPoints;  // T-244
@@ -1967,6 +1990,7 @@ bool Document::validateFocusAfterLayout() {
 void Document::evaluateRigs(float clock) {
     m_rigBones = 0;
     m_skinnedPoints = 0;
+    m_rigsMoving = false;  // T-749
     if (m_rigs->empty()) {
         return;
     }
@@ -1977,8 +2001,20 @@ void Document::evaluateRigs(float clock) {
         if (!m_arena.alive(rs.skeleton)) {
             continue;
         }
+        const uint32_t version = rs.version;
         m_rigBones += rig::evaluate(rs, m_arena, dt);
         m_skinnedPoints += rig::updateSkins(rs, m_arena);
+        bool spring = false;
+        for (NodeId c : rs.constraints) {
+            spring = spring || (m_arena.alive(c) && m_arena.kind(c) == NodeKind::Constraint &&
+                                m_arena.constraint(c).kind == ConstraintKind::Spring);
+        }
+        // T-749: a pose that moved may move again; a spring that got no time step may still move.
+        m_rigsMoving = m_rigsMoving || rs.version != version || (spring && !(dt > 0.0f));
+        if (rs.version != version) {
+            // T-747: the pose moved -- by a bone written earlier, or by a spring settling with time.
+            m_arena.noteVisualChange(spring ? DirtyCause::Clock : m_arena.lastCause(), rs.skeleton);
+        }
     }
 }
 
@@ -2026,7 +2062,7 @@ RigView Document::rigAt(size_t index) const {
 void Document::paint(CommandList& out) { paintAs(out, 0); }
 
 void Document::paintAs(CommandList& out, uint16_t source, bool boxShadowCommands) {
-    PerfScope paintScope(*m_perf, &FrameStats::paintMs);
+    PerfPhaseScope paintScope(*m_perf, &FrameStats::paintMs, &FrameStats::paintCpuMs);  // T-750
     ScopedLengthEnv lengthEnvScope(&m_lengthEnv);      // T-176: border-radius etc. in device units.
     if (m_root != kInvalidNode && m_surfaceVisible) {  // T-174: a hidden surface paints nothing.
         if (m_layoutSkipped) {
@@ -2049,6 +2085,7 @@ void Document::paintAs(CommandList& out, uint16_t source, bool boxShadowCommands
         m_painter.setEditStates(m_editStates.get());
         m_painter.setComposition(m_composition.get());
         m_painter.setIr(&m_ir);                // T-178: rich-text run styles and text effects.
+        m_painter.setAssets(m_assets);         // T-746: which external textures are versioned.
         m_painter.setShaders(&m_shaderTable);  // T-203: custom effect shaders.
         m_painter.setSource(source);           // T-263d: whose AssetIds the commands carry.
         // T-680: whether drop shadows may become DrawBoxShadow commands (Context / bake option).
@@ -2086,8 +2123,23 @@ void Document::paintAs(CommandList& out, uint16_t source, bool boxShadowCommands
         if (m_perf->enabled()) {
             // T-225b (21.1): accumulated like the other per-Document counters.
             m_perf->current().modifierVertices += m_painter.modifierVertices();
+            // T-737: the dashed / dotted border geometry cache.
+            const Painter::BorderDashCacheStats dash = m_painter.borderDashCacheStats();
+            m_perf->current().borderDashHits += dash.hits;
+            m_perf->current().borderDashMisses += dash.misses;
+            m_perf->current().borderDashEntries += dash.entries;
+            m_perf->current().borderDashBytes += dash.bytes;
         }
     }
+}
+
+void Document::setPerfTracker(PerfTracker* tracker) {
+    m_perf = tracker != nullptr ? tracker : &m_ownPerf;
+    m_arena.setPerfTracker(m_perf);  // T-747: the cause table
+    // T-753 (57 §57.2 item 3, §57.3 item 4): the redundant-work counts and the second-level zones.
+    m_styleEngine.setPerfTracker(m_perf);
+    m_layoutEngine.setPerfTracker(m_perf);
+    m_painter.setPerfTracker(m_perf);
 }
 
 void Document::setViewport(Rect logical) {
@@ -2097,7 +2149,7 @@ void Document::setViewport(Rect logical) {
         // when no element's own style changed, so mark the whole tree explicitly rather than
         // relying on some element already carrying kDirtyLayout.
         m_arena.traversePreorder(m_root, [this](NodeId n) {
-            m_arena.markDirty(n, static_cast<uint8_t>(kDirtyLayout));
+            m_arena.markDirty(n, static_cast<uint8_t>(kDirtyLayout), DirtyCause::Viewport);
             return true;
         });
     }
@@ -2151,7 +2203,8 @@ void Document::resolveGlyphs() {
         if (changed) {
             text.shapedValid = 0;  // The placeholder changes between an image box and `[key]`.
             NodeId parent = m_arena.parent(textNode);
-            m_arena.markDirty(parent != kInvalidNode ? parent : textNode, static_cast<uint8_t>(kDirtyLayout));
+            m_arena.markDirty(parent != kInvalidNode ? parent : textNode, static_cast<uint8_t>(kDirtyLayout),
+                              DirtyCause::Viewport);
         }
     }
 }
@@ -2189,7 +2242,7 @@ void Document::refreshLengthEnv(bool force) {
     }
     if (rescaled) {
         m_arena.traversePreorder(m_root, [this](NodeId n) {
-            m_arena.markDirty(n, static_cast<uint8_t>(kDirtyStyle | kDirtyLayout));
+            m_arena.markDirty(n, static_cast<uint8_t>(kDirtyStyle | kDirtyLayout), DirtyCause::Viewport);
             return true;
         });
         m_forceTransform = true;
@@ -2198,7 +2251,7 @@ void Document::refreshLengthEnv(bool force) {
         // §6.3: every length may depend on the device now; relayout from the root, and restyle the
         // elements whose font-size/translate turned a device unit into px at style time.
         m_arena.traversePreorder(m_root, [this](NodeId n) {
-            m_arena.markDirty(n, static_cast<uint8_t>(kDirtyLayout));
+            m_arena.markDirty(n, static_cast<uint8_t>(kDirtyLayout), DirtyCause::Viewport);
             return true;
         });
         m_styleEngine.markDeviceUsersDirty(m_arena);

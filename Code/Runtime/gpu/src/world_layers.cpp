@@ -160,9 +160,12 @@ struct WorldLayerBuilder::Impl {
         slot.used = false;
     }
 
-    /// True when the commands of `range` draw a host (`engine://`) texture, whose pixels change
-    /// without the commands changing.
-    static bool drawsExternal(const CommandList& list, const WorldLayerRange& range, const IrView* ir) {
+    /// True when the commands of `range` draw a host (`engine://`) texture whose pixels may change
+    /// without the commands changing: one without a content version (T-746, 23 §23.ah). The stamps of
+    /// the versioned ones it draws are folded into `stamps` (unchanged when there are none), so the
+    /// layer is drawn again when one of them moves.
+    static bool drawsExternal(const CommandList& list, const WorldLayerRange& range, const IrView* ir,
+                              const AssetResolver* assets, uint64_t& stamps) {
         const IrView* src = sourceIr(list, range.source, ir);
         if (src == nullptr) {
             return false;
@@ -188,9 +191,16 @@ struct WorldLayerBuilder::Impl {
                 default:
                     break;
             }
-            if (asset != kInvalidAsset && isExternalAsset(asset, *src)) {
+            if (asset == kInvalidAsset || !isExternalAsset(asset, *src)) {
+                continue;
+            }
+            const AssetResolver::ExternalTexture* ext =
+                assets != nullptr ? assets->externalTexture(asset, *src) : nullptr;
+            if (ext == nullptr || !ext->hasVersion) {
                 return true;
             }
+            const uint64_t stamp = externalTextureStamp(ext);
+            stamps = fnv1a(stamps, &stamp, sizeof(stamp));
         }
         return false;
     }
@@ -303,7 +313,7 @@ struct WorldLayerBuilder::Impl {
             if (hasCustomEffect(list, range)) {
                 hash = fnv1a(hash, &list.time, sizeof(list.time));
             }
-            const bool external = drawsExternal(list, range, ir);
+            const bool external = drawsExternal(list, range, ir, assets, hash);
             const bool unchanged = slot->drawn && slot->texture != 0 && slot->hash == hash && !external &&
                                    !slot->builder.wantsAnotherFrame();
             slot->hash = hash;

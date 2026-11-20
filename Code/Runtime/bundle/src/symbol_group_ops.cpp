@@ -297,7 +297,7 @@ std::vector<std::string> inPlacePaths(const UiProject& project, std::span<const 
     }
     paths.push_back(symbols + "/" + kIndexFile);
     for (const std::string_view name : names) {
-        if (isPlainSymbolName(name)) {
+        if (detail::isQualifiedSymbolName(name)) {  // T-741: `<ns>/<Name>` is `<symbols>/<ns>/<Name>.xt`.
             paths.push_back(symbols + "/" + std::string(name) + ".xt");
         }
     }
@@ -381,26 +381,22 @@ bool readSheet(const fs::path& file, Sheet& out) {
     return true;
 }
 
-/// `<Name>.xt` of the project copy's source group as `<shared.symbols>/index.json` records it.
-std::string recordedSourceGroup(const fs::path& symbolsDir, const std::string& name) {
-    nlohmann::ordered_json index;
-    bool missing = false;
-    if (!readOrderedObject(symbolsDir / kIndexFile, index, missing) || !index.contains("symbols") ||
-        !index["symbols"].is_array()) {
-        return std::string();
+/// T-739 (56.1 item 4): the mounted entry of the project copy `name`'s recorded source (library
+/// and group, readCopySource()); null without a recorded source or when it is not mounted -- never
+/// another library's symbol of the same name.
+/// T-741: `qualified` is the copy's key (`Name` or `<ns>/<Name>`), `name` the symbol's own name.
+const SymbolEntry* recordedSourceEntry(const LibraryMounts& mounts, const UiProject& project,
+                                       const std::string& qualified, const std::string& name,
+                                       const SymbolGroup** groupOut = nullptr) {
+    CopySource source;
+    if (!readCopySource(project, qualified, source)) {
+        return nullptr;
     }
-    for (const nlohmann::ordered_json& entry : index["symbols"]) {
-        if (!entry.is_object() || !entry.contains("name") || !entry["name"].is_string() ||
-            entry["name"].get<std::string>() != name) {
-            continue;
-        }
-        if (entry.contains("source") && entry["source"].is_object()) {
-            return getString(json(entry["source"]), "group");
-        }
-    }
-    return std::string();
+    return findSymbolIn(mounts, source.library, source.group, name, nullptr, groupOut);
 }
 
+/// The notes and thumbnail of the project `index.json` entry keyed `name` (T-741: its `qualified`
+/// name, else its `name`).
 std::string recordedDescription(const fs::path& symbolsDir, const std::string& name, std::string& thumbnail) {
     nlohmann::ordered_json index;
     bool missing = false;
@@ -410,10 +406,14 @@ std::string recordedDescription(const fs::path& symbolsDir, const std::string& n
         return std::string();
     }
     for (const nlohmann::ordered_json& entry : index["symbols"]) {
-        if (entry.is_object() && entry.contains("name") && entry["name"].is_string() &&
-            entry["name"].get<std::string>() == name) {
-            thumbnail = getString(json(entry), "thumbnail");
-            return getString(json(entry), "description");
+        if (!entry.is_object()) {
+            continue;
+        }
+        const json plain(entry);
+        const std::string qualified = getString(plain, "qualified");
+        if ((qualified.empty() ? getString(plain, "name") : qualified) == name) {
+            thumbnail = getString(plain, "thumbnail");
+            return getString(plain, "description");
         }
     }
     return std::string();
@@ -564,9 +564,16 @@ Status saveAsGroupImpl(const UiProject& project, std::span<const std::string_vie
                        const fs::path& libraryDir, std::string_view groupId, std::string_view name,
                        std::string* error, const LibraryMounts* mounts) {
     SaveContext ctx{project, {}, {}, error, {}, false, {}, {}, {}, {}, {}};
+    std::set<std::string> bareNames;
     for (const std::string_view symbol : names) {
-        if (!isPlainSymbolName(symbol)) {
+        std::string ns;
+        std::string bare;
+        if (!detail::splitQualifiedName(symbol, ns, bare)) {
             return ctx.fail(Status::kInvalidArgument, "'" + std::string(symbol) + "' is not a symbol name");
+        }
+        if (!bareNames.insert(bare).second) {
+            // T-741: a group holds one `<Name>.xt`; `Button` and `survey-2026/Button` cannot both go.
+            return ctx.fail(Status::kInvalidArgument, "two symbols named '" + bare + "'");
         }
     }
     if (!isPlainGroupId(groupId)) {
@@ -600,6 +607,9 @@ Status saveAsGroupImpl(const UiProject& project, std::span<const std::string_vie
 
     // The symbol files first: a missing one fails before anything is written.
     struct Source {
+        /// T-741: the project's qualified name (`<ns>/<Name>` for a namespaced copy) and the symbol's
+        /// own name, which the group uses.
+        std::string qualified;
         std::string name;
         std::string text;
     };
@@ -607,10 +617,12 @@ Status saveAsGroupImpl(const UiProject& project, std::span<const std::string_vie
     for (const std::string_view symbol : names) {
         fs::path file;
         Source source;
-        source.name = std::string(symbol);
-        if (!resolveInside(symbolsDir, source.name + ".xt", file) ||
+        std::string ns;
+        detail::splitQualifiedName(symbol, ns, source.name);
+        source.qualified = std::string(symbol);
+        if (!resolveInside(symbolsDir, source.qualified + ".xt", file) ||
             !readFile(genericPathToUtf8(file), source.text)) {
-            return ctx.fail(Status::kNotFound, "no " + symbolsRel + "/" + source.name + ".xt");
+            return ctx.fail(Status::kNotFound, "no " + symbolsRel + "/" + source.qualified + ".xt");
         }
         source.text = savedSymbolText(file, source.text);
         sources.push_back(std::move(source));
@@ -647,14 +659,10 @@ Status saveAsGroupImpl(const UiProject& project, std::span<const std::string_vie
     if (mounts != nullptr) {
         std::vector<const SymbolGroup*> groups;
         for (const Source& source : sources) {
-            const std::string recorded = recordedSourceGroup(symbolsDir, source.name);
-            if (recorded.empty()) {
-                continue;
-            }
-            for (const SymbolLibrary& lib : mounts->libraries) {
-                if (const SymbolGroup* g = groupOf(lib, recorded); g != nullptr && !g->dir.empty()) {
-                    groups.push_back(g);
-                }
+            const SymbolGroup* g = nullptr;
+            if (recordedSourceEntry(*mounts, project, source.qualified, source.name, &g) != nullptr &&
+                g != nullptr && !g->dir.empty()) {
+                groups.push_back(g);  // T-739: the recorded library's group first.
             }
         }
         for (const SymbolLibrary& lib : mounts->libraries) {
@@ -709,11 +717,12 @@ Status saveAsGroupImpl(const UiProject& project, std::span<const std::string_vie
         entry["file"] = source.name + ".xt";
         entry["thumbnail"] = "thumbnails/" + source.name + ".png";
         std::string thumbnail;
-        std::string description = recordedDescription(symbolsDir, source.name, thumbnail);
-        const std::string recordedGroup = recordedSourceGroup(symbolsDir, source.name);
+        std::string description = recordedDescription(symbolsDir, source.qualified, thumbnail);
         if (description.empty() && mounts != nullptr) {
-            // The project index holds only what the user wrote: a copy keeps its source's notes.
-            if (const SymbolEntry* origin = findSymbol(*mounts, source.name, recordedGroup);
+            // The project index holds only what the user wrote: a copy keeps its source's notes
+            // (T-739: its recorded source's; a symbol without one has no library notes).
+            if (const SymbolEntry* origin =
+                    recordedSourceEntry(*mounts, project, source.qualified, source.name);
                 origin != nullptr) {
                 description = origin->description;
             }
@@ -825,11 +834,10 @@ Status saveAsGroupImpl(const UiProject& project, std::span<const std::string_vie
             fs::is_regular_file(thumbnailFrom, ec)) {
             haveThumbnail = true;
         } else if (mounts != nullptr) {
+            // T-739: the recorded source only; no other library's symbol of the same name.
             const SymbolGroup* group = nullptr;
-            const SymbolEntry* found = findSymbol(*mounts, source.name, recordedGroup, nullptr, &group);
-            if (found == nullptr) {
-                found = findSymbol(*mounts, source.name, {}, nullptr, &group);
-            }
+            const SymbolEntry* found =
+                recordedSourceEntry(*mounts, project, source.qualified, source.name, &group);
             if (found != nullptr && group != nullptr && !found->thumbnail.empty() &&
                 resolveInside(pathFromUtf8(group->dir), found->thumbnail, thumbnailFrom) &&
                 fs::is_regular_file(thumbnailFrom, ec)) {

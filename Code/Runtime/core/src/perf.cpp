@@ -1,5 +1,8 @@
 #include "xt/perf.h"
 
+#include <algorithm>
+#include <cstring>
+
 /// PerfTracker's ring buffer and summary math. See Docs/design/21-perf-tracing.md §21.2,
 /// Docs/tasks/T-76a.md.
 
@@ -22,6 +25,38 @@ void PerfTracker::beginFrame(float timeSeconds) {
     slot = FrameStats{};
     slot.frameIndex = m_nextFrameIndex++;
     slot.timeSeconds = timeSeconds;
+    // T-747: empty cause-node slots (0 is a valid NodeId).
+    for (auto& row : slot.causeNodes) {
+        for (uint32_t& id : row) {
+            id = 0xFFFFFFFFu;  // kInvalidNode
+        }
+    }
+    // T-750: the host's pending markFrameStart() belongs to this record.
+    m_frameStarted = m_pendingStart;
+    m_frameWall = m_pendingWall;
+    m_frameCpu = m_pendingCpu;
+    m_pendingStart = false;
+}
+
+void PerfTracker::markFrameStart() {
+    if (!m_enabled) {
+        return;
+    }
+    m_pendingStart = true;
+    m_pendingCpu = m_threadCpu ? m_clock.nowMs() : 0.0;
+    m_pendingWall = std::chrono::steady_clock::now();
+}
+
+void PerfTracker::markFrameEnd() {
+    if (!m_enabled || !m_frameStarted || m_frames.empty()) {
+        return;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    FrameStats& f = m_frames[m_newest];
+    f.frameWallMs = std::chrono::duration<float, std::milli>(now - m_frameWall).count();
+    f.frameCpuMs = m_threadCpu ? static_cast<float>(m_clock.nowMs() - m_frameCpu) : 0.0f;
+    f.frameMarked = 1;
+    m_frameStarted = false;
 }
 
 void PerfTracker::endFrame() {
@@ -61,6 +96,7 @@ PerfSummary PerfTracker::summary(uint32_t lastN) const {
 #define XT_PERF_DECL_UINT(name) uint64_t name = 0;
         XT_FRAME_STATS_UINT_FIELDS(XT_PERF_DECL_UINT)
 #undef XT_PERF_DECL_UINT
+        uint64_t causes[kDirtyCauseCount][kDirtyKindCount] = {};  // T-747
     } sums;
 
     for (const FrameStats& f : window) {
@@ -78,6 +114,13 @@ PerfSummary PerfTracker::summary(uint32_t lastN) const {
     }
         XT_FRAME_STATS_UINT_FIELDS(XT_PERF_ACC_UINT)
 #undef XT_PERF_ACC_UINT
+        // T-747: the cause table, like the other counts.
+        for (uint32_t c = 0; c < kDirtyCauseCount; ++c) {
+            for (uint32_t k = 0; k < kDirtyKindCount; ++k) {
+                sums.causes[c][k] += f.causes[c][k];
+                out.max.causes[c][k] = std::max(out.max.causes[c][k], f.causes[c][k]);
+            }
+        }
     }
 
     out.frames = n;
@@ -89,6 +132,14 @@ PerfSummary PerfTracker::summary(uint32_t lastN) const {
     out.avg.name = static_cast<uint32_t>(static_cast<double>(sums.name) * inv + 0.5);
     XT_FRAME_STATS_UINT_FIELDS(XT_PERF_AVG_UINT)
 #undef XT_PERF_AVG_UINT
+    for (uint32_t c = 0; c < kDirtyCauseCount; ++c) {  // T-747
+        for (uint32_t k = 0; k < kDirtyKindCount; ++k) {
+            out.avg.causes[c][k] = static_cast<uint32_t>(static_cast<double>(sums.causes[c][k]) * inv + 0.5);
+        }
+    }
+    // The newest frame's cause nodes (an average of ids means nothing).
+    std::memcpy(out.avg.causeNodes, window.back().causeNodes, sizeof(out.avg.causeNodes));
+    std::memcpy(out.max.causeNodes, window.back().causeNodes, sizeof(out.max.causeNodes));
     out.avg.frameIndex = window.back().frameIndex;
     out.max.frameIndex = window.back().frameIndex;
 
@@ -108,7 +159,48 @@ void PerfTracker::reset() {
     m_newest = 0;
     m_nextFrameIndex = 0;
     m_sink = FrameStats{};
+    m_pendingStart = false;  // T-750
+    m_frameStarted = false;
+    m_zones = PerfZoneTotals{};  // T-753
+    m_zoneDepth = 0;
 }
+
+namespace {
+
+/// T-753: PerfZone's names, CSV names and phases, in enumeration order.
+struct ZoneInfo {
+    const char* name;
+    const char* csv;
+    const char* phase;
+};
+constexpr ZoneInfo kZoneInfo[kPerfZoneCount] = {
+    {"paint.text", "paint_text", "paint"},
+    {"paint.paths", "paint_paths", "paint"},
+    {"paint.borders", "paint_borders", "paint"},
+    {"paint.effects", "paint_effects", "paint"},
+    {"paint.images", "paint_images", "paint"},
+    {"update.style.match", "update_style_match", "update"},
+    {"update.style.cascade", "update_style_cascade", "update"},
+    {"update.layout.flex", "update_layout_flex", "update"},
+    {"update.layout.grid", "update_layout_grid", "update"},
+    {"update.layout.textShape", "update_layout_text_shape", "update"},
+    {"build.walk", "build_walk", "build"},
+    {"build.effects", "build_effects", "build"},
+    {"build.cache", "build_cache", "build"},
+};
+
+const ZoneInfo& zoneInfo(PerfZone zone) {
+    const uint32_t z = static_cast<uint32_t>(zone);
+    return kZoneInfo[z < kPerfZoneCount ? z : 0];
+}
+
+}  // namespace
+
+const char* perfZoneName(PerfZone zone) { return zoneInfo(zone).name; }
+
+const char* perfZoneCsvName(PerfZone zone) { return zoneInfo(zone).csv; }
+
+const char* perfZonePhase(PerfZone zone) { return zoneInfo(zone).phase; }
 
 }  // namespace xt
 

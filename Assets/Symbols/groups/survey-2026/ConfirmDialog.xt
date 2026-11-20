@@ -1,0 +1,137 @@
+<xt version="2">
+
+  <symbol name="ConfirmDialog" requires="slots: title, body, actions">
+    <ports>
+      cancel: event out
+    </ports>
+    <div id="Box" focus-trap
+         on:show="play(intro)" on:hide="play(outro) then hide" on:key(Escape)="sound(ui_back); emit(cancel)">
+      <div id="Scrim"></div>
+      <div id="Panel">
+        <span id="Title"><slot name="title">Return to the main menu?</slot></span>
+        <div id="Rule"></div>
+        <div id="Body"><slot name="body"><span id="BodyText">Unsaved progress will be lost.</span></slot></div>
+        <div id="Actions"><slot name="actions"></slot></div>
+      </div>
+    </div>
+  </symbol>
+
+  <layout>
+    symbol(ConfirmDialog) {
+      #Box {
+        position: absolute;
+        left: 0px;
+        top: 0px;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #Scrim {
+        position: absolute;
+        left: 0px;
+        top: 0px;
+        width: 100%;
+        height: 100%;
+      }
+      #Panel {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        width: 400px;
+        padding: var(--space-5) var(--space-6);
+      }
+      #Rule {
+        height: 1px;
+        margin: var(--space-3) 0px;
+      }
+      #Actions {
+        display: flex;
+        justify-content: flex-end;
+        column-gap: var(--space-2);
+        margin-top: var(--space-5);
+      }
+    }
+  </layout>
+  <style>
+    symbol(ConfirmDialog) {
+      #Scrim {
+        background-color: var(--color-scrim-strong);
+      }
+      #Panel {
+        background-color: var(--color-surface);
+        background-image: var(--tex-scratch);
+        background-repeat: repeat;
+        background-size: 256px 256px;
+        border-width: var(--rule-thin);
+        border-color: var(--color-border-strong);
+      }
+      #Title {
+        font-family: var(--font-display);
+        font-size: var(--font-size-l);
+        letter-spacing: 1.5px;
+        color: var(--color-text-strong);
+      }
+      #Rule {
+        background-color: var(--color-line);
+      }
+      #Body {
+        font-family: var(--font-body);
+        font-size: var(--font-size-text);
+        line-height: 21px;
+        color: var(--color-text);
+      }
+      #BodyText {
+        font-family: var(--font-body);
+        font-size: var(--font-size-text);
+        line-height: 21px;
+        color: var(--color-text);
+      }
+    }
+  </style>
+  <timelines>
+    symbol(ConfirmDialog) {
+      @timeline intro {
+        #Scrim {
+          0s {
+            opacity: 0;
+          }
+          0.3s linear {
+            opacity: 1;
+          }
+        }
+        #Panel {
+          0s {
+            opacity: 0;
+            transform: translateY(6px);
+          }
+          0.4s ease-out {
+            opacity: 1;
+            transform: translateY(0px);
+          }
+        }
+      }
+      @timeline outro {
+        #Scrim {
+          0s {
+            opacity: 1;
+          }
+          0.3s ease-in {
+            opacity: 0;
+          }
+        }
+        #Panel {
+          0s {
+            opacity: 1;
+            transform: translateY(0px);
+          }
+          0.3s ease-in {
+            opacity: 0;
+            transform: translateY(6px);
+          }
+        }
+      }
+    }
+  </timelines>
+</xt>

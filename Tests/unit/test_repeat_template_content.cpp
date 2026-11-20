@@ -275,7 +275,8 @@ TEST_CASE("T-624: recycled virtualized instances keep their <svg> scene and @key
     REQUIRE(doc->setPortText(doc->lookupPort("rows"), rows) == Status::kOk);
     float clock = 0.0f;
     auto scrollTo = [&](float y) {
-        setProperty(doc->arena(), doc->byId("Scroll").node, prop::ScrollY, Value::ofFloat(y));
+        setProperty(doc->arena(), doc->byId("Scroll").node, prop::ScrollY, Value::ofFloat(y),
+                    DirtyCause::HostApi);
         clock += 0.016f;
         ctx.update(clock);
     };

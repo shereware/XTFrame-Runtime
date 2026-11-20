@@ -1,12 +1,22 @@
 #include "xt/bundle/bundle.h"
 
 #include <algorithm>
+#include <chrono>
+#include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <json.hpp>
 #include <string>
 #include <system_error>
 #include <utility>
+#include <vector>
+
+#if defined(_WIN32)
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
 
 #include "bundle_json.h"
 #include "bundle_paths.h"
@@ -363,10 +373,207 @@ bool hashFileContent(const std::string& path, uint64_t& hash) {
     return ok;
 }
 
+/// T-807 (22, "`.xtb` unpack cache cap"): written into an unpacked copy once every entry is out,
+/// so a directory without it (an interrupted unpack, or a copy from before T-807) is never reused.
+/// It holds the id of the process that used the copy last; its modification time is that use.
+constexpr const char* kXtbDoneMarker = ".xtframe-unpacked";
+/// T-807: the default caps of the unpack cache (0 in the environment variable = no cap).
+constexpr uint64_t kXtbCacheMaxEntries = 8;
+constexpr uint64_t kXtbCacheMaxMb = 256;
+/// T-808 (22-bundle.md, T-807 record, supplementary rule 5): an unmarked directory modified this
+/// recently may be another process's unpack in progress and is not evicted.
+constexpr std::chrono::minutes kXtbUnpackGrace{10};
+
+unsigned long currentProcessId() {
+#if defined(_WIN32)
+    return static_cast<unsigned long>(_getpid());
+#else
+    return static_cast<unsigned long>(getpid());
+#endif
+}
+
+/// T-807: the leading decimal digits of `text`, or 0 when it starts with none.
+unsigned long leadingNumber(const std::string& text) {
+    unsigned long value = 0;
+    for (const char c : text) {
+        if (c < '0' || c > '9') {
+            break;
+        }
+        value = value * 10UL + static_cast<unsigned long>(c - '0');
+    }
+    return value;
+}
+
+/// T-807 rule 1: writes this process's id into `dir`'s completion marker, which also sets its
+/// modification time to now. Every error is ignored (the copy is still usable).
+void touchXtbMarker(const std::filesystem::path& dir) {
+    const std::filesystem::path marker = dir / kXtbDoneMarker;
+    const std::string text = std::to_string(currentProcessId()) + "\n";
+    if (std::FILE* file = detail::openFileUtf8(compile::genericPathToUtf8(marker), "wb")) {
+        std::fwrite(text.data(), 1, text.size(), file);
+        std::fclose(file);
+        return;
+    }
+    std::error_code ec;  // another process has it open for writing: at least refresh the time
+    std::filesystem::last_write_time(marker, std::filesystem::file_time_type::clock::now(), ec);
+}
+
+/// T-807 rule 3: environment variable `name` as a non-negative decimal number, or `fallback` when
+/// it is unset or anything else (a sign, a fraction, letters, more than 18 digits).
+uint64_t xtbCacheLimit(const char* name, uint64_t fallback) {
+    std::string text;
+#if defined(_MSC_VER)
+    size_t length = 0;
+    char buffer[32] = {0};
+    if (getenv_s(&length, buffer, sizeof(buffer), name) != 0 || length == 0) {
+        return fallback;
+    }
+    text = buffer;
+#else
+    if (const char* value = std::getenv(name)) {
+        text = value;
+    }
+#endif
+    if (text.empty() || text.size() > 18 || text.find_first_not_of("0123456789") != std::string::npos) {
+        return fallback;
+    }
+    uint64_t value = 0;
+    for (const char c : text) {
+        value = value * 10u + static_cast<uint64_t>(c - '0');
+    }
+    return value;
+}
+
+/// T-807: the sum of the regular file sizes under `dir`; what cannot be read counts as 0.
+uint64_t directoryBytes(const std::filesystem::path& dir) {
+    namespace fs = std::filesystem;
+    uint64_t total = 0;
+    std::error_code ec;
+    for (fs::recursive_directory_iterator it(dir, fs::directory_options::skip_permission_denied, ec), end;
+         !ec && it != end; it.increment(ec)) {
+        std::error_code fileEc;
+        if (it->is_regular_file(fileEc)) {
+            const uintmax_t size = it->file_size(fileEc);
+            total += fileEc ? 0u : static_cast<uint64_t>(size);
+        }
+    }
+    return total;
+}
+
+/// T-808: the newest modification time of `dir` itself and of everything under it.
+std::filesystem::file_time_type newestWriteTime(const std::filesystem::path& dir) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::file_time_type newest = fs::last_write_time(dir, ec);
+    if (ec) {
+        newest = fs::file_time_type::min();
+    }
+    for (fs::recursive_directory_iterator it(dir, fs::directory_options::skip_permission_denied, ec), end;
+         !ec && it != end; it.increment(ec)) {
+        std::error_code entryEc;
+        const fs::file_time_type time = it->last_write_time(entryEc);
+        if (!entryEc && time > newest) {
+            newest = time;
+        }
+    }
+    return newest;
+}
+
+/// T-807: takes the unpacked copy `dir` out of the cache. It is first renamed (Windows refuses
+/// while another process has a file in it open, so a copy in use elsewhere is left whole), then
+/// removed; a rest that cannot be removed has no completion marker under the new name, or keeps
+/// it and ages like any copy, and goes in a later eviction. False when the rename failed.
+bool evictXtbCopy(const std::filesystem::path& dir) {
+    std::filesystem::path doomed = dir;
+    doomed += ".evicted-" + std::to_string(currentProcessId());
+    std::error_code ec;
+    std::filesystem::rename(dir, doomed, ec);
+    if (ec) {
+        return false;
+    }
+    std::filesystem::remove_all(doomed, ec);
+    return true;
+}
+
+/// T-807: one directory under `<temp>/xtframe-bundle/`.
+struct XtbCacheCopy {
+    std::filesystem::path dir;
+    bool done = false;                       // has the completion marker
+    std::filesystem::file_time_type used{};  // the marker's modification time
+    uint64_t bytes = 0;
+    bool keep = false;  // in use by this process
+};
+
+/// T-807 rule 2, after `current` was unpacked into `cache`: evicts copies, least recently used
+/// first (copies without the marker before all others), until there are at most
+/// XTFRAME_BUNDLE_CACHE_MAX_ENTRIES of them holding at most XTFRAME_BUNDLE_CACHE_MAX_MB together.
+/// Kept: `current`, and every copy whose marker holds this process's id (this process unpacked or
+/// reused it last, so its Bundle may still read from it) -- no state outside the cache directory.
+/// T-808: also every copy without the marker modified in the last kXtbUnpackGrace (an unpack in
+/// progress in another process). A copy that cannot be evicted is skipped; nothing here fails the open.
+void trimXtbCache(const std::filesystem::path& cache, const std::filesystem::path& current) {
+    namespace fs = std::filesystem;
+    const uint64_t maxEntries = xtbCacheLimit("XTFRAME_BUNDLE_CACHE_MAX_ENTRIES", kXtbCacheMaxEntries);
+    const uint64_t maxMb = xtbCacheLimit("XTFRAME_BUNDLE_CACHE_MAX_MB", kXtbCacheMaxMb);
+    if (maxEntries == 0 && maxMb == 0) {
+        return;
+    }
+    constexpr uint64_t kMb = 1024u * 1024u;
+    const uint64_t maxBytes = maxMb > UINT64_MAX / kMb ? UINT64_MAX : maxMb * kMb;
+    const unsigned long self = currentProcessId();
+    const fs::file_time_type graceStart = fs::file_time_type::clock::now() - kXtbUnpackGrace;
+
+    std::vector<XtbCacheCopy> copies;
+    uint64_t totalBytes = 0;
+    std::error_code ec;
+    for (fs::directory_iterator it(cache, ec), end; !ec && it != end; it.increment(ec)) {
+        std::error_code entryEc;
+        if (!it->is_directory(entryEc)) {
+            continue;
+        }
+        XtbCacheCopy copy;
+        copy.dir = it->path();
+        const fs::path marker = copy.dir / kXtbDoneMarker;
+        copy.used = fs::last_write_time(marker, entryEc);
+        copy.done = !entryEc;
+        std::string owner;
+        copy.keep = copy.dir.filename() == current.filename() ||
+                    (copy.done && detail::readFile(compile::genericPathToUtf8(marker), owner) &&
+                     leadingNumber(owner) == self) ||
+                    (!copy.done && newestWriteTime(copy.dir) > graceStart);  // T-808 rule 5
+        copy.bytes = directoryBytes(copy.dir);
+        totalBytes += copy.bytes;
+        copies.push_back(std::move(copy));
+    }
+    std::sort(copies.begin(), copies.end(), [](const XtbCacheCopy& a, const XtbCacheCopy& b) {
+        if (a.done != b.done) {
+            return !a.done;
+        }
+        if (a.used != b.used) {
+            return a.used < b.used;
+        }
+        return a.dir.filename().native() < b.dir.filename().native();
+    });
+    uint64_t count = copies.size();
+    for (const XtbCacheCopy& copy : copies) {
+        const bool overCount = maxEntries != 0 && count > maxEntries;
+        const bool overBytes = maxMb != 0 && totalBytes > maxBytes;
+        if (!overCount && !overBytes) {
+            break;
+        }
+        if (copy.keep || !evictXtbCopy(copy.dir)) {
+            continue;
+        }
+        --count;
+        totalBytes -= copy.bytes;
+    }
+}
+
 /// T-500 (§22.5, the minimal `.xtb` form): unpacks the archive `file` into
-/// `<system temp>/xtframe-bundle/<content hash>/` unless that copy already holds a manifest.json,
-/// and returns the directory in `outDir`. Not read in place and not mapped: the host reads the
-/// unpacked directory as any other bundle.
+/// `<system temp>/xtframe-bundle/<content hash>/` unless that copy already holds the completion
+/// marker (T-807: then only the marker is refreshed), and returns the directory in `outDir`. Not
+/// read in place and not mapped: the host reads the unpacked directory as any other bundle. T-807:
+/// a new copy gets the marker and is followed by trimXtbCache(), whose failures are ignored.
 Status unpackXtb(std::string_view file, std::string& outDir, std::string* error) {
     namespace fs = std::filesystem;
     const std::string utf8(file);
@@ -383,8 +590,11 @@ Status unpackXtb(std::string_view file, std::string& outDir, std::string* error)
         setErrorBundle(error, "no temporary directory to unpack " + utf8 + " into");
         return Status::kIoError;
     }
-    const fs::path dir = root / "xtframe-bundle" / hex;
-    if (!fs::is_regular_file(dir / "manifest.json", ec)) {
+    const fs::path cache = root / "xtframe-bundle";
+    const fs::path dir = cache / hex;
+    if (fs::is_regular_file(dir / kXtbDoneMarker, ec)) {
+        touchXtbMarker(dir);  // T-807 rule 1: reused, nothing else is listed or measured
+    } else {
         fs::remove_all(dir, ec);
         fs::create_directories(dir.parent_path(), ec);
         ZipReadOptions limits;
@@ -393,9 +603,12 @@ Status unpackXtb(std::string_view file, std::string& outDir, std::string* error)
         std::string zipError;
         const Status status = unzipToDirectory(compile::pathFromUtf8(utf8), dir, limits, &zipError);
         if (status != Status::kOk) {
+            fs::remove_all(dir, ec);  // T-805: no half-unpacked copy left behind.
             setErrorBundle(error, utf8 + ": " + zipError);
             return status;
         }
+        touchXtbMarker(dir);       // T-807: complete, so reusable
+        trimXtbCache(cache, dir);  // T-807 rule 2
     }
     outDir = compile::genericPathToUtf8(dir);
     return Status::kOk;
@@ -451,6 +664,10 @@ void Bundle::commit(detail::BundleManifest&& manifest) {
     if (m_assets == nullptr) {
         return;  // A default-constructed Bundle has no resolver to register with.
     }
+    registerImageMeta(*m_assets);
+}
+
+void Bundle::registerImageMeta(AssetResolver& into) const {
     // T-199: manifest slices and `@2x` variants of plain assets, then every atlas cell (named as
     // the IR names it, `atlas:<page>#<asset>`, carrying the asset's slice too).
     for (const AssetInfo& info : m_assetTable) {
@@ -464,7 +681,7 @@ void Bundle::commit(detail::BundleManifest&& manifest) {
         }
         meta.variant2x = info.variant2x;
         meta.variant3x = info.variant3x;  // T-345
-        m_assets->setImageMeta(info.file, std::move(meta));
+        into.setImageMeta(info.file, std::move(meta));
     }
     for (const AtlasInfo& atlas : m_atlases) {
         for (const AtlasEntryInfo& entry : atlas.entries) {
@@ -492,8 +709,8 @@ void Bundle::commit(detail::BundleManifest&& manifest) {
                     }
                 }
             }
-            m_assets->setImageMeta(std::string(kAtlasAssetScheme) + atlas.name + "#" + entry.asset,
-                                   std::move(meta));
+            into.setImageMeta(std::string(kAtlasAssetScheme) + atlas.name + "#" + entry.asset,
+                              std::move(meta));
         }
     }
 }

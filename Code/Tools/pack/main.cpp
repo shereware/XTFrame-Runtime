@@ -36,7 +36,11 @@
 /// it prints one `removed N stale file(s)` line when it removed any. `--keep-stale` turns this off.
 ///
 /// T-687 (Docs/design/10-backends.md §10.13 rulings 5, 6): `--compress` overrides the UI Project's
-/// `publish.images.compress` (none | bc7 | auto; without either, none). Encoded DDS files are kept in
+/// `publish.images.compress` (none | bc7 | auto). T-714 (22 §22.17.1): without either, auto
+/// (xt::bundle::effectivePublishCompress(); BC7 for images whose sides are both >= 256 px) -- this
+/// is a publish entry point; write `"publish": {"images": {"compress": "none"}}` or pass
+/// `--compress none` for the old behaviour. A successful run ends with one `publish result:` line
+/// (xt::bundle::publishResultSummary()). Encoded DDS files are kept in
 /// `<out>/../.xtframe-cache/bc/` (`--cache-dir` names another directory, `--no-cache` turns it off);
 /// the bundle is the same byte for byte with or without it.
 ///        xtframe-pack --upgrade <bundle-dir>
@@ -151,7 +155,10 @@ void printUsage() {
                  "[--allow-placeholders] [--zip] [--verbose]\n"
                  "       xtframe-pack --upgrade <bundle-dir>\n"
                  "       xtframe-pack --upgrade --format 2 <project-dir | file.xt>\n"
-                 "       xtframe-pack --version\n");
+                 "       xtframe-pack --version\n"
+                 "--compress: default is the project's publish.images.compress, else auto (BC7 for images "
+                 "whose sides are both >= 256 px; the first run encodes, later runs use the encode cache); "
+                 "--compress none packs images as they are\n");
 }
 
 /// T-274: appended to the compiler's `vector.unbakedModifier` message, since the pack does not bake.
@@ -246,6 +253,7 @@ int runUpgradeFormat2(const std::string& input, const std::string& exePath) {
                 xt::Result<xt::bundle::UiProject> project = xt::bundle::UiProject::load(genericPathToUtf8(d));
                 if (project.ok()) {
                     compile.rootDir = project.value().rootDir;
+                    compile.symbolsDir = project.value().shared.symbols;  // T-741 (56 §56.3)
                     for (const std::string& style : project.value().shared.styles) {
                         std::error_code err;
                         const fs::path absolute =
@@ -294,6 +302,10 @@ int packMain(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "--version") {
             xt::tools::printVersion("xtframe-pack", stdout);
+            return 0;
+        }
+        if (std::string(argv[i]) == "--help") {  // T-714: the usage, with the publish defaults, and exit 0
+            printUsage();
             return 0;
         }
     }
@@ -495,6 +507,10 @@ int packMain(int argc, char** argv) {
         project = std::move(loaded.value());
     }
 
+    if (options.compress.empty()) {  // T-714 (22 §22.17.1): a publish entry point; unset = auto.
+        options.compress = xt::bundle::effectivePublishCompress(project);
+    }
+
     if (sawFontsFlag) {  // T-527: the flag wins over `publish.fonts`.
         project.publish.fonts = fontsFlag;
         options.fontsMode = fontsFlag;
@@ -617,6 +633,8 @@ int packMain(int argc, char** argv) {
     if (report.globalFlowWritten) {
         std::printf("xtframe-pack: packed global flow bundle.xtflow\n");
     }
+    // T-714 (22 §22.17.2): the publish result, the line the editor's Messages show too.
+    std::printf("xtframe-pack: publish result: %s\n", xt::bundle::publishResultSummary(report).c_str());
     if (zip) {  // T-500: the published directory as a store-mode `.xtb` next to it.
         fs::path outPath = pathFromUtf8(options.outDir);
         if (!outPath.has_filename()) {

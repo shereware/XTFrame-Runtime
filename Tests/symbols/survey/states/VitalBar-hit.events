@@ -1,0 +1,6 @@
+# T-793: VitalBar-hit.
+port Health.value 64
+port Stamina.value 22
+update 0.6
+port Health.hit 1
+update 0.1

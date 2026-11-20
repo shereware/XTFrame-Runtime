@@ -1,0 +1,12 @@
+{
+  "width": 300,
+  "height": 90,
+  "frames": 0,
+  "ports": {
+    "Loc.location": "Location Name",
+    "Loc.clock": "17:42"
+  },
+  "events": [
+    "update 0.6"
+  ]
+}

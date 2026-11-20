@@ -6,6 +6,7 @@ add_executable(xt_symbols_tests
     ${PROJECT_SOURCE_DIR}/Tests/unit/test_main.cpp
     test_symbols.cpp
     test_symbols_cli.cpp
+    test_symbols_survey.cpp
     ${PROJECT_SOURCE_DIR}/Code/Tools/symbols/preview_render.cpp
 )
 # T-499: the headless render of `xtframe-symbols thumbnails` (Code/Tools/symbols/preview_render.cpp).
@@ -20,6 +21,7 @@ target_link_libraries(xt_symbols_tests PRIVATE xt_nlohmann)
 target_compile_definitions(xt_symbols_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)
 target_compile_definitions(xt_symbols_tests PRIVATE
     XT_SYMBOLS_DIR="${PROJECT_SOURCE_DIR}/Assets/Symbols/groups/broadsheet-2026"
+    XT_SURVEY_DIR="${PROJECT_SOURCE_DIR}/Assets/Symbols/groups/survey-2026"
     XT_SYMBOLS_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
     XT_SYMBOLS_OUT_DIR="${CMAKE_CURRENT_BINARY_DIR}/out"
     XT_SYMBOLS_LIBRARY_DIR="${PROJECT_SOURCE_DIR}/Assets/Symbols"

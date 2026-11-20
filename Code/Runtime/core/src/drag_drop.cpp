@@ -384,7 +384,12 @@ void EventDispatcher::finishDrag(NodeArena& arena, bool drop, bool cancel) {
     dispatch(arena, end);
 }
 
-void EventDispatcher::cancelDrag(NodeArena& arena) { finishDrag(arena, /*drop=*/false, /*cancel=*/true); }
+void EventDispatcher::cancelDrag(NodeArena& arena) {
+    if (m_drag.active) {
+        arena.noteVisualChange(arena.ambientCause(), m_drag.source);  // T-747: the ghost goes away
+    }
+    finishDrag(arena, /*drop=*/false, /*cancel=*/true);
+}
 
 void EventDispatcher::handleExternalDrag(NodeArena& arena, NodeId root, const InputEvent& input) {
     if ((m_drag.active && !m_drag.external) || m_drag.pending) {

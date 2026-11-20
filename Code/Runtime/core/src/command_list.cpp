@@ -40,7 +40,9 @@ void CommandList::clear() {
     structureChecked = false;
     frameSerial = 0;
     sources.clear();
-    worldLayers.clear();  // T-701
+    worldLayers.clear();     // T-701
+    culledOffscreen = 0;     // T-754
+    clockDependent = false;  // T-747
     // viewport / devicePixelRatio intentionally left untouched.
 }
 
@@ -359,6 +361,8 @@ void dumpCommandList(const CommandList& list, std::string& out) {
                 appendFloat(out, layer.opacity);
                 out += " blend=";
                 out += blendModeName(layer.blend);
+                out += " known=";  // T-754
+                out += std::to_string(layer.boundsKnown);
                 break;
             }
             case CmdKind::PopLayer:
@@ -451,6 +455,8 @@ void dumpCommandList(const CommandList& list, std::string& out) {
                 appendXf(out, effect.xf);
                 out += " bounds=";
                 appendRect(out, effect.boundsHint);
+                out += " known=";  // T-754
+                out += std::to_string(effect.boundsKnown);
                 out += " content=";
                 appendRect(out, effect.contentBounds);
                 appendSource(out, list, effect.source);

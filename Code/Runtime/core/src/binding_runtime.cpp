@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <string>
 
@@ -33,8 +34,10 @@
 ///     is evaluated once at load (so bound text shows its format with the defaults); a `tween` or
 ///     `delay` step passes its first value straight through.
 ///   - Comparisons give a bool (1/0). `eq`/`ne` compare as text when either side is text (enum
-///     ports read as their value name), else as numbers. Text reads as a number via strtod (0 when
-///     it is none); truthiness: non-zero, non-empty text other than "false"/"0", a non-empty list.
+///     ports read as their value name), else as numbers. Text reads as a number as strtod did in the
+///     "C" locale, through xt::fromChars whatever the thread's locale (T-798; hexadecimal is not a
+///     number), 0 when it is none; truthiness: non-zero, non-empty text other than "false"/"0", a non-empty
+///     list.
 ///   - Numbers print in the shortest fixed form (up to 6 decimals); `thousands` rounds to an
 ///     integer; `percent` multiplies by 100; `time` floors to whole seconds, `mm` keeps counting
 ///     past 59 when the pattern has no hours.
@@ -97,29 +100,15 @@ bool isStylePropId(uint16_t id) {
 }
 
 void markStyleDirtySubtree(NodeArena& arena, NodeId node) {
-    arena.markDirty(node, static_cast<uint8_t>(kDirtyStyle));
+    arena.markDirty(node, static_cast<uint8_t>(kDirtyStyle), DirtyCause::Binding);
     arena.traversePreorder(node, [&arena](NodeId n) {
-        arena.markDirty(n, static_cast<uint8_t>(kDirtyStyle));
+        arena.markDirty(n, static_cast<uint8_t>(kDirtyStyle), DirtyCause::Binding);
         return true;
     });
 }
 
 void markStyleDirtyForDecl(NodeArena& arena, NodeId node, uint16_t propId, bool legacy) {
-    if (legacy) {
-        markStyleDirtySubtree(arena, node);
-        return;
-    }
-    arena.markStyleDirtySelf(node);
-    const bool reachesDescendants = style_decode::isInherited(propId) ||
-                                    propId == prop::TextDecorationColor ||
-                                    propId == prop::TextDecorationThickness;
-    if (!reachesDescendants) {
-        return;
-    }
-    arena.traversePreorder(node, [&arena](NodeId n) {
-        arena.markStyleDirtySelf(n);
-        return true;
-    });
+    markRuntimeDeclRestyle(arena, node, propId, legacy, DirtyCause::Binding);  // T-763: shared.
 }
 
 BVal num(double v, bool isBool) {
@@ -223,6 +212,68 @@ std::string colorText(const Color& c) {
     return buf;
 }
 
+/// T-798: the number strtod(p, &end) read in the "C" locale, through xt::fromChars so LC_NUMERIC
+/// does not matter (T-268's approach): leading whitespace and one '+' are skipped as strtod skipped
+/// them; a value out of range gives +-infinity or +-0 as strtod gave. Hexadecimal is not read (the
+/// "0" before the 'x' is). Returns the end of the number, or `p` when there is none.
+const char* readNumber(const char* p, double& value) {
+    const char* q = p;
+    while (*q == ' ' || (*q >= '\t' && *q <= '\r')) {
+        ++q;
+    }
+    if (*q == '+' && q[1] != '-') {
+        ++q;
+    }
+    double v = 0.0;
+    const std::from_chars_result r = xt::fromChars(q, q + std::strlen(q), v);
+    if (r.ec == std::errc::invalid_argument) {
+        return p;
+    }
+    if (r.ec == std::errc::result_out_of_range) {
+        // Decimal magnitude of the first significant digit: positive overflows, otherwise underflows.
+        const char* c = q;
+        const bool negative = *c == '-';
+        if (negative) {
+            ++c;
+        }
+        long magnitude = 0;
+        bool significant = false;
+        bool fraction = false;
+        for (; c < r.ptr && *c != 'e' && *c != 'E'; ++c) {
+            if (*c == '.') {
+                fraction = true;
+            } else if (!significant && *c == '0') {
+                if (fraction) {
+                    --magnitude;
+                }
+            } else if (!significant) {
+                significant = true;
+                magnitude += fraction ? -1 : 1;
+            } else if (!fraction) {
+                ++magnitude;
+            }
+        }
+        if (c < r.ptr) {
+            ++c;  // 'e' / 'E'
+            const bool negativeExponent = *c == '-';
+            if (*c == '-' || *c == '+') {
+                ++c;
+            }
+            long exponent = 0;
+            for (; c < r.ptr; ++c) {
+                exponent = std::min(exponent * 10 + (*c - '0'), 100000L);
+            }
+            magnitude += negativeExponent ? -exponent : exponent;
+        }
+        v = magnitude > 0 ? std::numeric_limits<double>::infinity() : 0.0;
+        if (negative) {
+            v = -v;
+        }
+    }
+    value = v;
+    return r.ptr;
+}
+
 }  // namespace
 
 namespace binding_runtime_detail {
@@ -273,9 +324,8 @@ double toNum(const BVal& b) {
             return b.num;
         case Kind::Str: {
             const char* s = b.str.c_str();
-            char* end = nullptr;
-            double v = std::strtod(s, &end);
-            return end == s ? 0.0 : v;
+            double v = 0.0;
+            return readNumber(s, v) == s ? 0.0 : v;
         }
         case Kind::Len:
             return b.v.len.value;
@@ -407,8 +457,8 @@ bool isEnumIndex(double v) { return std::isfinite(v) && v >= 0.0; }
 bool parseDouble(std::string_view text, double& out) {
     std::string s(text);
     const char* p = s.c_str();
-    char* end = nullptr;
-    double v = std::strtod(p, &end);
+    double v = 0.0;
+    const char* end = readNumber(p, v);
     if (s.empty() || end == p) {
         return false;
     }
@@ -727,6 +777,18 @@ void BindingRuntime::flushDirty() {
             m_dirtySpare = std::move(batch);
         }
     }
+}
+
+bool BindingRuntime::needsTick() const {
+    if (!m_dirty.empty()) {
+        return true;
+    }
+    for (const Binding& b : m_bindings) {
+        if (b.ticking) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void BindingRuntime::tick() {

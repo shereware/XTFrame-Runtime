@@ -7,11 +7,13 @@
 
 #include "../anchor_expand.h"    // T-588.
 #include "../web_compat_lint.h"  // T-594.
+#include "css_values.h"          // T-756: animationLonghandIndex().
 #include "xt/compile/aliases.h"
 #include "xt/compile/diagnostics.h"
 #include "xt/compile/parse_xts.h"
 #include "xt/compile/style_model.h"
-#include "xt/node.h"  // ElementState bits (kStateHover etc.), reused for SelectorPart::stateMask.
+#include "xt/node.h"             // ElementState bits (kStateHover etc.), reused for SelectorPart::stateMask.
+#include "xts_anim_longhands.h"  // T-756.
 #include "xts_lexer.h"
 #include "xts_props.h"
 #include "xts_sections.h"
@@ -432,6 +434,8 @@ private:
         size_t emitted = 0;
     };
     std::vector<TransitionPart>* m_transitionParts = nullptr;
+    // T-756: the `animation` / `animation-*` declarations of the block parseDecls() is reading.
+    std::vector<AnimationPart>* m_animationParts = nullptr;
     // T-329: the successfully parsed `transform` / `translate` / `rotate` / `scale` declarations of
     // the block being read, in source order (see mergeIndependentTransforms()).
     struct TransformPart {
@@ -516,15 +520,23 @@ private:
         std::vector<AnchorShorthandDecl> anchors;
         std::vector<AnchorShorthandDecl>* savedAnchors = m_anchorParts;
         m_anchorParts = &anchors;
+        std::vector<AnimationPart> animations;
+        std::vector<AnimationPart>* savedAnimations = m_animationParts;
+        m_animationParts = &animations;
         parseDeclsBody(decls, insideBraces, sawEnd);
         m_transitionParts = saved;
         m_transformParts = savedXforms;
         m_anchorParts = savedAnchors;
+        m_animationParts = savedAnimations;
         if (!anchors.empty()) {
             expandAnchorBlock(anchors, decls);  // Before the merges: only <layout> has shorthands.
         }
         mergeTransitionLonghands(parts, decls);
         mergeIndependentTransforms(xforms, decls);
+        // T-756: last, as it finds the block's `animation` declarations by property, not index.
+        const size_t sinkSizeBefore = m_sink.all().size();
+        mergeAnimationLonghands(animations, decls, m_fileName, m_sink, m_easingPoints);
+        syncErrorFlag(sinkSizeBefore);
     }
 
     // T-588 (54 §54.5.1): the block's anchor shorthands -> longhands, in place of the first one.
@@ -658,18 +670,122 @@ private:
         }
     }
 
+    // T-778 (05.6): the block's `transition-*` longhands. A `var()` one is a declaration of its own
+    // (VarSubst, substituted once the tokens are known), last on its longhand unless a later
+    // declaration of it follows. The rest: with a shorthand in the block, merged into it as T-322
+    // did; without one, one TransLonghands declaration of just the given longhands -- the runtime
+    // cascades each on its own (StyleProp 290-293) and combines them.
+    void mergeTransitionLonghands(const std::vector<TransitionPart>& parts, std::vector<StyleDecl>& decls) {
+        const TransitionPart* varPart[4] = {};
+        std::vector<TransitionPart> plain;
+        bool haveShorthand = false;
+        bool plainLonghand = false;
+        for (const TransitionPart& part : parts) {
+            if (part.longhand >= 0 && containsVarFunction(part.value)) {
+                varPart[part.longhand] = &part;
+                continue;
+            }
+            if (part.longhand < 0) {
+                std::fill(std::begin(varPart), std::end(varPart), nullptr);
+                haveShorthand = true;
+            } else {
+                varPart[part.longhand] = nullptr;
+                plainLonghand = true;
+            }
+            plain.push_back(part);
+        }
+        if (plainLonghand && haveShorthand) {
+            mergeTransitionWithShorthand(plain, decls);
+        } else if (plainLonghand) {
+            StyleDecl merged;
+            merged.prop = styleprop::Transition;
+            merged.value.kind = StyleValueKind::TransLonghands;
+            merged.value.transitionFields.resize(4);
+            for (const TransitionPart& part : plain) {
+                std::vector<TransitionSpec> items;
+                if (parseTransitionLonghandList(part, items)) {
+                    merged.value.transitionFields[static_cast<size_t>(part.longhand)] = std::move(items);
+                    merged.value.transitionMask =
+                        static_cast<uint8_t>(merged.value.transitionMask | (1u << part.longhand));
+                }
+                merged.important = part.important;
+                merged.line = reportLine(part.nameTok.line);
+            }
+            if (merged.value.transitionMask != 0) {
+                decls.push_back(std::move(merged));
+            }
+        }
+        for (const TransitionPart* part : varPart) {
+            if (part == nullptr) {
+                continue;
+            }
+            StyleDecl d;
+            d.prop = static_cast<uint16_t>(styleprop::TransitionProperty + part->longhand);
+            d.value.kind = StyleValueKind::VarSubst;
+            d.value.str = part->nameTok.text + ": " + tokensToText(part->value);
+            d.important = part->important;
+            d.line = reportLine(part->nameTok.line);
+            decls.push_back(std::move(d));
+        }
+    }
+
+    // T-778: one `transition-*` longhand's items, each parsed as a `transition` item around it
+    // (`<item> 0s`, `all <item>`, `all 0s <item>`): a property item gives its PropIds (flagged
+    // kIrTransitionSameItem after the first; an unknown one a kIrTransitionNoProp entry), every
+    // other item one entry. `transition-property: none` is one kIrTransitionNoProp entry. False
+    // (warned) when an item is malformed.
+    bool parseTransitionLonghandList(const TransitionPart& part, std::vector<TransitionSpec>& out) {
+        Token allTok;
+        allTok.kind = TokenKind::Ident;
+        allTok.text = "all";
+        Token zeroTok;
+        zeroTok.kind = TokenKind::Number;
+        zeroTok.text = "0";
+        zeroTok.unit = "s";
+        const std::vector<std::vector<Token>> items = splitTopLevelCommas(part.value);
+        const int line = reportLine(part.nameTok.line);
+        if (part.longhand == 0 && items.size() == 1 && items[0].size() == 1 &&
+            items[0][0].kind == TokenKind::Ident && items[0][0].text == "none") {
+            TransitionSpec none;
+            none.prop = 0xFFFE;
+            none.flags = kIrTransitionNoProp;
+            out.push_back(none);
+            return true;
+        }
+        for (const std::vector<Token>& item : items) {
+            std::vector<Token> toks;
+            if (part.longhand == 0) {
+                toks = item;
+                toks.push_back(zeroTok);
+            } else {
+                toks.push_back(allTok);
+                if (part.longhand != 1) {
+                    toks.push_back(zeroTok);
+                }
+                toks.insert(toks.end(), item.begin(), item.end());
+            }
+            std::vector<StyleDecl> one;
+            const size_t sinkSizeBefore = m_sink.all().size();
+            const bool ok = !item.empty() && parseAndExpandDecl(findProp("transition"), toks, m_fileName,
+                                                                line, m_sink, one, m_easingPoints);
+            syncErrorFlag(sinkSizeBefore);
+            if (!ok || one.size() != 1 || one[0].value.transitions.empty() ||
+                (part.longhand != 0 && one[0].value.transitions.size() != 1)) {
+                out.clear();
+                warn(part.nameTok, "invalid value for \"" + part.nameTok.text + "\"");
+                return false;
+            }
+            out.insert(out.end(), one[0].value.transitions.begin(), one[0].value.transitions.end());
+        }
+        return true;
+    }
+
     // T-322 (05.6): when a block holds `transition-*` longhands, the block's `transition`
     // declarations (shorthand and longhands, applied in source order, the later one winning) are
     // merged into one `transition` StyleDecl, placed where the last of them was. A block with only
     // the shorthand is left exactly as parseDeclsBody() produced it.
-    void mergeTransitionLonghands(const std::vector<TransitionPart>& parts, std::vector<StyleDecl>& decls) {
-        bool anyLonghand = false;
-        for (const TransitionPart& part : parts) {
-            anyLonghand = anyLonghand || part.longhand >= 0;
-        }
-        if (!anyLonghand) {
-            return;
-        }
+    void mergeTransitionWithShorthand(const std::vector<TransitionPart>& parts,
+                                      std::vector<StyleDecl>& decls) {
         // CSS initial values: `all`, `0s`; the easing and delay stay "not given" (the shorthand's
         // own defaults).
         Token allTok;
@@ -882,6 +998,15 @@ private:
                     continue;
                 }
             }
+            // T-756: likewise `animation` / `animation-*` for mergeAnimationLonghands().
+            const int animLonghand = css_values::animationLonghandIndex(nameTok.text);
+            if ((animLonghand >= 0 || nameTok.text == "animation") && m_animationParts != nullptr) {
+                m_animationParts->push_back(
+                    AnimationPart{animLonghand, valueToks, reportLine(nameTok.line), important, 0});
+                if (animLonghand >= 0) {
+                    continue;
+                }
+            }
             const PropInfo* info = findProp(nameTok.text);
             if (info == nullptr) {
                 // T-408 (43 §43.6): a registered property alias parses as its replacement.
@@ -923,6 +1048,9 @@ private:
             recordTransformPart(nameTok, valueToks, important, parsed);
             if (nameTok.text == "transition" && m_transitionParts != nullptr) {
                 m_transitionParts->back().emitted = decls.size() - m_transitionParts->back().declIndex;
+            }
+            if (nameTok.text == "animation" && m_animationParts != nullptr && parsed) {
+                m_animationParts->back().emitted = expanded.size();
             }
             syncErrorFlag(sinkSizeBefore);
         }
@@ -1541,6 +1669,17 @@ private:
         }
         std::string name = m_cur.text;
         advance();
+        if (isSlashToken(m_cur)) {
+            // T-740 (56 §56.3 item 2): a qualified name `symbol(<namespace>/<Name>)`, one '/'.
+            advance();
+            if (m_cur.kind != TokenKind::Ident) {
+                error(m_cur, "expected a symbol name after '" + name + "/' in symbol()");
+                recoverToNextRBrace();
+                return;
+            }
+            name += "/" + m_cur.text;
+            advance();
+        }
         if (m_cur.kind != TokenKind::RParen) {
             error(m_cur, "expected ')' after symbol name");
             recoverToNextRBrace();

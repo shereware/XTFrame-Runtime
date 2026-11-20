@@ -253,6 +253,21 @@ bool RepeatController::findInstance(NodeId node, Repeat*& repeat, Instance*& ins
     return false;
 }
 
+uint32_t RepeatController::templateElementOf(NodeId node) {
+    Repeat* repeat = nullptr;
+    Instance* instance = nullptr;
+    bool exiting = false;
+    if (!findInstance(node, repeat, instance, exiting)) {
+        return kNoItem;
+    }
+    for (size_t i = 0; i < instance->nodes.size() && i < repeat->tpl.size(); ++i) {
+        if (instance->nodes[i] == node) {
+            return repeat->tpl[i];
+        }
+    }
+    return kNoItem;
+}
+
 void RepeatController::renameInstance(Repeat& r, Instance& inst) {
     NodeArena& arena = m_doc.m_arena;
     const std::string rid(m_doc.string(r.id));  // Owned: setNodeText() below may grow the pools.
@@ -285,7 +300,7 @@ void RepeatController::renameInstance(Repeat& r, Instance& inst) {
         }
         const StringId known = m_doc.findString(text);
         d.id = known != kInvalidString ? known : m_doc.setNodeText(n, Document::kNodeTextElementId, text);
-        arena.markDirty(n, static_cast<uint8_t>(kDirtyStyle));
+        arena.markDirty(n, static_cast<uint8_t>(kDirtyStyle), DirtyCause::Load);
     }
 }
 
@@ -608,9 +623,9 @@ void RepeatController::attachInstance(Repeat& r, Instance& inst) {
         return;  // T-260b: defensive (a dead repeat never gets here through onListChanged()).
     }
     arena.insertBefore(r.element, root, anchorFor(r, inst.index));  // Marks the repeat dirty.
-    arena.markDirty(root, static_cast<uint8_t>(kDirtyStyle | kDirtyLayout));
+    arena.markDirty(root, static_cast<uint8_t>(kDirtyStyle | kDirtyLayout), DirtyCause::Load);
     arena.traversePreorder(root, [&arena](NodeId n) {
-        arena.markDirty(n, static_cast<uint8_t>(kDirtyStyle));
+        arena.markDirty(n, static_cast<uint8_t>(kDirtyStyle), DirtyCause::Load);
         return true;
     });
     m_doc.markSiblingsStyleDirty(r.element);
@@ -707,7 +722,7 @@ void RepeatController::resetFromTemplate(Repeat& r, Instance& inst) {
                 td.text = m_doc.setRuntimeText(t, m_doc.string(text));
             }
             td.shapedValid = 0;
-            arena.markDirty(t, static_cast<uint8_t>(kDirtyLayout));
+            arena.markDirty(t, static_cast<uint8_t>(kDirtyLayout), DirtyCause::Load);
             c = arena.nextSibling(c);
             t = arena.nextSibling(t);
         }
@@ -1174,11 +1189,11 @@ void RepeatController::releasePlayback(Playback& pb) {
         if (const Timeline* tl = m_doc.m_animator.timeline(pb.members[i].timeline)) {
             for (const Track& track : tl->tracks) {
                 if (track.prop < prop::kElementPropCount && data.styleResolvedOnce != 0) {
-                    setProperty(arena, node, track.prop, data.style.base[track.prop]);
+                    setProperty(arena, node, track.prop, data.style.base[track.prop], DirtyCause::Timeline);
                 }
             }
         }
-        arena.markDirty(node, static_cast<uint8_t>(kDirtyStyle));
+        arena.markDirty(node, static_cast<uint8_t>(kDirtyStyle), DirtyCause::Timeline);
     }
     pb.ids.clear();
     pb.playing = false;
@@ -1456,70 +1471,117 @@ void RepeatController::expireSpawned(float clock) {
     }
 }
 
+bool RepeatController::needsStep() const {
+    if (!m_spawned.empty() || !m_pendingEnds.empty() || !m_selfEnds.empty()) {
+        return true;
+    }
+    for (const Playback& pb : m_playbacks) {
+        if (pb.playing) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void RepeatController::step(float clock) {
     if (!m_spawned.empty()) {
         expireSpawned(clock);
     }
-    const NodeArena& arena = m_doc.m_arena;
     for (size_t i = 0; i < m_playbacks.size();) {
-        Playback& pb = m_playbacks[i];
-        if (!arena.alive(pb.scope) || arena.generation(pb.scope) != pb.scopeGeneration) {
-            releasePlayback(pb);
-            m_playbacks.erase(m_playbacks.begin() + static_cast<std::ptrdiff_t>(i));
-            continue;
-        }
-        if (!pb.playing) {
+        if (stepPlayback(i, clock)) {
             ++i;
-            continue;
         }
-        float dt = (clock - pb.lastClock) * pb.rate;
-        pb.lastClock = clock;
-        dt = dt < 0 ? 0 : dt;
-        bool ended = false;
-        if (!pb.reverse) {
-            float to = pb.t + dt;
-            if (pb.loop && pb.duration > 0) {
-                to = std::fmod(to, pb.duration);
-            } else if (to >= pb.duration) {
-                to = pb.duration;
-                ended = true;
-            }
-            pb.t = to;
-        } else {
-            float to = pb.t - dt;
-            if (pb.loop && pb.duration > 0) {
-                while (to < 0) {
-                    to += pb.duration;
-                }
-            } else if (to <= 0) {
-                to = 0;
-                ended = true;
-            }
-            pb.t = to;
-        }
-        applyPlayback(pb);
-        if (ended) {
-            pb.playing = false;
-            m_pendingEnds.emplace_back(pb.scope, pb.name);
-            if (!pb.hold) {
-                releasePlayback(pb);
-                m_playbacks.erase(m_playbacks.begin() + static_cast<std::ptrdiff_t>(i));
-                continue;
-            }
-        }
-        ++i;
     }
+    // T-783 (58 §58.3, T-774's cut for instance copies): a copy that ended where a trigger of its
+    // instance pauses, stops, seeks or replays it from a marker at its end has those actions applied
+    // now, at the end's time, and goes on with the rest of the step. (An instance copy has no marker
+    // events -- 27: markers and sounds do not fire for copies -- so the end is the only such point.)
+    for (int pass = 0; pass < kMaxSelfEndPasses && !m_selfEnds.empty(); ++pass) {
+        std::vector<SelfEnd> batch;
+        batch.swap(m_selfEnds);
+        for (const SelfEnd& end : batch) {
+            m_doc.m_triggers->applyInstanceSelfControl(end.scope, end.name);
+            for (size_t i = 0; i < m_playbacks.size(); ++i) {
+                Playback& pb = m_playbacks[i];
+                if (pb.scope == end.scope && pb.name == end.name && pb.playing) {
+                    pb.lastClock = clock - end.leftover;
+                    stepPlayback(i, clock);
+                    break;
+                }
+            }
+        }
+    }
+    m_selfEnds.clear();  // Past the pass limit: the rest of those steps is dropped, as before.
+}
+
+bool RepeatController::stepPlayback(size_t i, float clock) {
+    const NodeArena& arena = m_doc.m_arena;
+    Playback& pb = m_playbacks[i];
+    if (!arena.alive(pb.scope) || arena.generation(pb.scope) != pb.scopeGeneration) {
+        releasePlayback(pb);
+        m_playbacks.erase(m_playbacks.begin() + static_cast<std::ptrdiff_t>(i));
+        return false;
+    }
+    if (!pb.playing) {
+        return true;
+    }
+    float dt = (clock - pb.lastClock) * pb.rate;
+    pb.lastClock = clock;
+    dt = dt < 0 ? 0 : dt;
+    bool ended = false;
+    float overshoot = 0;  // Group seconds past the end.
+    if (!pb.reverse) {
+        float to = pb.t + dt;
+        if (pb.loop && pb.duration > 0) {
+            to = std::fmod(to, pb.duration);
+        } else if (to >= pb.duration) {
+            overshoot = to - pb.duration;
+            to = pb.duration;
+            ended = true;
+        }
+        pb.t = to;
+    } else {
+        float to = pb.t - dt;
+        if (pb.loop && pb.duration > 0) {
+            while (to < 0) {
+                to += pb.duration;
+            }
+        } else if (to <= 0) {
+            overshoot = -to;
+            to = 0;
+            ended = true;
+        }
+        pb.t = to;
+    }
+    applyPlayback(pb);
+    if (!ended) {
+        return true;
+    }
+    pb.playing = false;
+    TriggerRuntime& triggers = *m_doc.m_triggers;
+    const bool self = triggers.hasSelfControl() && triggers.instanceSelfControls(pb.scope, pb.name);
+    m_pendingEnds.push_back(PendingEnd{pb.scope, pb.name, self});
+    if (self) {
+        m_selfEnds.push_back(SelfEnd{pb.scope, pb.name, pb.rate > 0 ? overshoot / pb.rate : 0.0f});
+    }
+    if (!pb.hold) {
+        releasePlayback(pb);
+        m_playbacks.erase(m_playbacks.begin() + static_cast<std::ptrdiff_t>(i));
+        return false;
+    }
+    return true;
 }
 
 void RepeatController::flushEvents() {
     if (m_pendingEnds.empty()) {
         return;
     }
-    std::vector<std::pair<NodeId, StringId>> batch;
+    std::vector<PendingEnd> batch;
     batch.swap(m_pendingEnds);
-    for (const auto& [scope, name] : batch) {
-        m_doc.m_triggers->onInstanceTimelineEnd(scope, name);
+    for (const PendingEnd& end : batch) {
+        m_doc.m_triggers->onInstanceTimelineEnd(end.scope, end.name, end.selfApplied);
     }
+    m_doc.m_triggers->dropInstanceSelfApplied();  // T-783: outcomes no trigger run took.
 }
 
 // -- Lookups ------------------------------------------------------------------------------------

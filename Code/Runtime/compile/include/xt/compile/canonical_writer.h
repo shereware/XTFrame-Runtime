@@ -10,8 +10,9 @@
 /// T-587 (Docs/design/54-source-format-v2.md §54.9): the canonical writer of source format v2,
 /// shared by the editor, the importer and the migrator (T-589 / T-591 / T-592). The writer takes
 /// the document as sections (CanonicalXt) and writes them in the canonical order `<head>` ->
-/// `<symbol>`s -> `<ports>` -> `<body>` -> `<layout>` -> `<style>` -> `<timelines>`, two-space
-/// indentation, one selector per line and one declaration per line.
+/// `<symbol>`s -> `<ports>` -> `<body>` -> `<layout>` -> `<style>` -> `<timelines>` ->
+/// `<expressions>` (T-767), two-space indentation, one selector per line and one declaration per
+/// line.
 ///
 /// Order inside a section: `<layout>` keeps the caller's order (the caller sorts its rules by layer
 /// order and writes `#id` subjects, 54 §54.9 writer convention); `<style>` keeps source order (the
@@ -69,6 +70,27 @@ struct CanonicalPort {
     bool operator==(const CanonicalPort&) const = default;
 };
 
+/// T-767 (Docs/design/58-value-functions-and-drivers.md §58.4): one `<expressions>` entry,
+/// `<timeline> #<element> <row> [off] = <expression>`. Written after `<timelines>`, sorted by
+/// timeline name, then by the order of the element's track in that `@timeline` (elements without a
+/// track after, by path), the entries of one element in source order. A multi-line expression is
+/// written as `= {`, its lines re-indented (their common leading whitespace replaced by the
+/// section's indentation plus two spaces), and `}`; otherwise the text is kept as written.
+struct CanonicalExpression {
+    std::string timeline;
+    std::string element;  ///< Without its `#`.
+    std::string row;      ///< `property[.component]`.
+    bool off = false;
+    bool multiline = false;
+    /// The expression: one line, or the lines between the braces (dedented, no blank first or
+    /// last line, joined by line feeds).
+    std::string text;
+    /// The `//` comment lines directly above the entry, verbatim.
+    std::vector<std::string> comments;
+
+    bool operator==(const CanonicalExpression&) const = default;
+};
+
 /// One `<symbol>` (a direct child of `<xt>`).
 struct CanonicalSymbol {
     /// The `<symbol>` attributes (`name` first by convention), unescaped, in order.
@@ -80,6 +102,8 @@ struct CanonicalSymbol {
     std::vector<CanonicalSection> layout;
     std::vector<CanonicalSection> style;
     std::vector<CanonicalSection> timelines;
+    /// T-767: the symbol's `<expressions>` entries (none written when empty).
+    std::vector<CanonicalExpression> expressions;
 
     bool operator==(const CanonicalSymbol&) const = default;
 };
@@ -98,6 +122,8 @@ struct CanonicalXt {
     std::vector<CanonicalSection> layout;
     std::vector<CanonicalSection> style;
     std::vector<CanonicalSection> timelines;
+    /// T-767: the document's `<expressions>` entries (none written when empty).
+    std::vector<CanonicalExpression> expressions;
 
     bool operator==(const CanonicalXt&) const = default;
 };

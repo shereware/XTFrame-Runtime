@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -140,6 +141,18 @@ enum class Shading : uint8_t {
     /// formula at `u,v` (16-point Gauss-Legendre over y, A&S 7.1.26 erf, the same constants).
     /// Vertex `rgba` unused. T-683: two programs, chosen by `DrawCmd::boxShadowMulti`.
     BoxShadow = 10,
+    /// T-806 (Docs/design/23-host-integration.md §23.aj): a textured quad over a host texture holding
+    /// the Y'CbCr 4:2:0 planes of one picture in one R8 texture (AssetResolver::ExternalPlanes).
+    /// `texture` = that texture, sampled with `sampler`; `paramIndex` holds `PlanarParams`; `u,v` are
+    /// the picture's own 0..1 coordinates. Per plane p (Y, U, V, then A when `hasAlpha`):
+    /// `t = clamp(uv * scale_p + offset_p, clampMin_p, clampMax_p)` (per component), `s_p =
+    /// sample(texture, t).r`. `rgb = clamp(matrix * (s_Y, s_U, s_V, 1), 0, 1)` (three rows of four:
+    /// sRGB-encoded values, no transfer function); `a` = 1 without an alpha plane, else `s_A`, and the
+    /// colour becomes `rgb * a` unless `premultiplied`. Output = (rgb, a) * vertex `rgba` (premultiplied),
+    /// times the analytic clip coverage as every leaf. Only on a device whose
+    /// `GpuDevice::supportsPlanarExternal()` is true; a device that does not know the value must not
+    /// draw the command.
+    TexturePlanar = 11,
 };
 
 /// Output blending. Sources are premultiplied.
@@ -300,8 +313,8 @@ struct DrawCmd {
     /// `AnalyticClipParams` block in `GpuFrame::params` (never index 0) -- the fragment's output is
     /// multiplied by the product of the block's coverages at the fragment's surface pixel. Only on
     /// leaf draws (Solid, Gradient, Texture, TextureStraight, Glyph, BoxShadow, ParticleTexture,
-    /// ParticleSolid, with or without `coverage` / `mipLod`), never on StencilOnly, Composite or
-    /// Effect commands, and only when `GpuDevice::supportsAnalyticClip()` is true.
+    /// ParticleSolid, TexturePlanar (T-806), with or without `coverage` / `mipLod`), never on StencilOnly,
+    /// Composite or Effect commands, and only when `GpuDevice::supportsAnalyticClip()` is true.
     uint32_t clipParamIndex = 0;
 };
 
@@ -583,6 +596,36 @@ struct TextureLodParams {
     float pad = 0;
 };
 
+/// T-806 (Docs/design/23-host-integration.md §23.aj) `Shading::TexturePlanar`: 48 floats (12 vec4),
+/// the planes in the order Y, U, V, A.
+///  - `uv[p]` = (scaleU, scaleV, offU, offV): the picture's 0..1 coordinates onto the texture's 0..1
+///    coordinates of plane p (the chroma siting is folded into the U / V offsets);
+///  - `clampRect[p]` = (minU, minV, maxU, maxV): plane p's texel rectangle inset by half a texel, in
+///    texture coordinates -- a bilinear sample never reads the neighbouring plane;
+///  - `matrix` = three rows (R, G, B) of (cY, cU, cV, offset) over the sampled 0..1 plane values;
+///  - `hasAlpha` 1 when the A plane is present, `premultiplied` 1 when the colour planes hold colour
+///    already multiplied by alpha.
+/// Never with `DrawCmd::mipLod` (host textures have no mip chain), so it never meets TextureLodParams.
+struct PlanarParams {
+    float uv[4][4];
+    float clampRect[4][4];
+    float matrix[3][4];
+    float hasAlpha = 0;
+    float premultiplied = 0;
+    float pad[2] = {0, 0};
+};
+static_assert(sizeof(PlanarParams) == 48 * sizeof(float), "12 vec4, uploaded as it is");
+
+/// T-806: the PlanarParams of a TexturePlanar command at `p` (`available` floats from there): false
+/// when the block does not fit in the frame's parameters (the command is then not drawn).
+inline bool readPlanarParams(const float* p, size_t available, PlanarParams& out) {
+    if (p == nullptr || available * sizeof(float) < sizeof(PlanarParams)) {
+        return false;
+    }
+    std::memcpy(static_cast<void*>(&out), p, sizeof(out));  // GCC -Wclass-memaccess: trivially copyable
+    return true;
+}
+
 /// `Downsample` (T-343, Docs/design/18-effects.md §18.15): the target is `dstW x dstH` texels,
 /// `src` is `srcW x srcH` (`dst = ceil(src / 2)`). For the output texel `(x, y)` (top-down,
 /// `floor(uv * dst size)`; an OpenGL device flips its fragment row to top-down first), output =
@@ -622,22 +665,127 @@ struct LevelMixParams {
 /// third input (exact as a float; 0 = none), which shares `src`'s window like `aux`. Output =
 /// `src + aux * sample(mask).a * (1 - src.a)`: the blurred backdrop (`aux`), masked by the content's
 /// own alpha (`mask`), under R' (`src`). With `mask` = `src` it is `Backdrop`'s output.
+///
+/// T-764 (§10.18 B, the follow-up of T-730; `GpuDevice::supportsBackdropMaskTextures`): R' and S may be
+/// textures -- a backdrop pair served from the effect cache, sampled where it lies instead of being pasted
+/// into transients first. The fields after `mask` are present only when `mask` is
+/// `kBackdropMaskTextured`; otherwise the block is the one float of before (every frame without such a
+/// command is the frame of before). With them:
+///  - `topIsTexture` 1: R' is the texture `topTexture` (the command's `src` is then 0); 0: R' is `src`.
+///  - `maskIsTexture` 1: S is the texture `maskTexture`; 0: S is the target `maskTexture` names.
+///  - Handles are exact floats (at most `kBackdropHandleExactMax`).
+///  - `topUv` / `maskUv` = (scaleU, scaleV, offU, offV) of a texture input: `uvT = uv * scale + off` maps
+///    the target window's uv (top-down, as every effect pass's) onto the texture's own [0,1]^2. Outside
+///    [0,1)^2 the input is transparent (the cached result's quad covers nothing there).
+///  - `topSampler` / `maskSampler` = static_cast<float>(Sampler): PointClamp = the texel under `uvT`
+///    exactly (a whole-pixel offset, the same phase: T-735), LinearClamp = bilinear, clamped to the edge
+///    (a fractional offset).
+/// A target input is sampled as before (the window's uv, LinearClamp).
 struct BackdropParams {
     float mask;
+    float topIsTexture, maskIsTexture;  // T-764
+    float topTexture, maskTexture;
+    float topUv[4];
+    float maskUv[4];
+    float topSampler, maskSampler;
 };
 
-/// The third input target of a `BackdropMasked` command (`BackdropParams::mask`), or 0 when the
-/// command has none or names no transient of `frame`.
-inline TargetHandle backdropMaskTarget(const GpuFrame& frame, const DrawCmd& cmd) {
+/// T-764: `BackdropParams::mask` of a block with the trailing fields.
+inline constexpr float kBackdropMaskTextured = -1.0f;
+/// T-764: the largest handle a float of `BackdropParams` carries exactly (2^24).
+inline constexpr uint32_t kBackdropHandleExactMax = 1u << 24;
+
+/// T-764: the parameter block of a `BackdropMasked` command at `p` (`available` floats from there): true
+/// when it carries the trailing fields and they are well formed (flags 0 or 1, handles exact and non-zero,
+/// samplers known, uv finite), copied to `out`. False for the one-float block of before, or a malformed one.
+inline bool readBackdropTextured(const float* p, size_t available, BackdropParams& out) {
+    if (p == nullptr || available * sizeof(float) < sizeof(BackdropParams) || p[0] != kBackdropMaskTextured) {
+        return false;
+    }
+    BackdropParams bp;
+    std::memcpy(&bp, p, sizeof(bp));
+    auto flag = [](float f) { return f == 0.0f || f == 1.0f; };
+    auto handle = [](float f) {
+        return f >= 1.0f && f <= static_cast<float>(kBackdropHandleExactMax) &&
+               f == static_cast<float>(static_cast<uint32_t>(f));
+    };
+    auto sampler = [](float f) {
+        return f == static_cast<float>(Sampler::PointClamp) || f == static_cast<float>(Sampler::LinearClamp);
+    };
+    auto finite = [](const float* v) {
+        for (int i = 0; i < 4; ++i) {
+            if (!(v[i] - v[i] == 0.0f)) return false;  // NaN and infinities
+        }
+        return true;
+    };
+    if (!flag(bp.topIsTexture) || !flag(bp.maskIsTexture) || !handle(bp.maskTexture) ||
+        (bp.topIsTexture != 0.0f &&
+         (!handle(bp.topTexture) || !sampler(bp.topSampler) || !finite(bp.topUv))) ||
+        (bp.maskIsTexture != 0.0f && (!sampler(bp.maskSampler) || !finite(bp.maskUv)))) {
+        return false;
+    }
+    out = bp;
+    return true;
+}
+
+/// T-764: the inputs of a `BackdropMasked` command, as a device binds them.
+struct BackdropInputs {
+    TargetHandle maskTarget = 0;    ///< S as a target (0: none, or S is `maskTexture`)
+    TextureHandle topTexture = 0;   ///< R' as a texture (0: R' is the command's `src`)
+    TextureHandle maskTexture = 0;  ///< S as a texture (0: S is `maskTarget`)
+    BackdropParams params{};        ///< the whole block when `textured`
+    bool textured = false;          ///< the block has the (well-formed) trailing fields
+};
+
+/// T-764: parses the block of a `BackdropMasked` command of `frame` (false and an empty `out` for any
+/// other command). A target named that is not a transient of `frame` reads as 0; a malformed trailing
+/// block reads as no inputs at all.
+inline bool backdropInputs(const GpuFrame& frame, const DrawCmd& cmd, BackdropInputs& out) {
+    out = BackdropInputs{};
     if (cmd.shading != Shading::Effect || cmd.program != EffectProgram::BackdropMasked ||
         cmd.paramIndex >= frame.params.size()) {
-        return 0;
+        return false;
     }
-    const float m = frame.params[cmd.paramIndex];
-    if (!(m >= 1.0f) || m > static_cast<float>(frame.transients.size())) {
-        return 0;
+    auto target = [&frame](float m) -> TargetHandle {
+        if (!(m >= 1.0f) || m > static_cast<float>(frame.transients.size())) {
+            return 0;
+        }
+        return static_cast<TargetHandle>(m);
+    };
+    const float* p = frame.params.data() + cmd.paramIndex;
+    if (p[0] != kBackdropMaskTextured) {
+        out.maskTarget = target(p[0]);
+        return true;
     }
-    return static_cast<TargetHandle>(m);
+    if (!readBackdropTextured(p, frame.params.size() - cmd.paramIndex, out.params)) {
+        out.params = BackdropParams{};
+        return true;
+    }
+    out.textured = true;
+    if (out.params.topIsTexture != 0.0f) {
+        out.topTexture = static_cast<TextureHandle>(out.params.topTexture);
+    }
+    if (out.params.maskIsTexture != 0.0f) {
+        out.maskTexture = static_cast<TextureHandle>(out.params.maskTexture);
+    } else {
+        out.maskTarget = target(out.params.maskTexture);
+    }
+    return true;
+}
+
+/// T-764: the floats of a `BackdropMasked` command's block a shader reads -- the whole BackdropParams with
+/// (well-formed) texture inputs, else 0 (the one-float block of before is read by the device alone).
+inline uint32_t backdropTexturedFloats(const GpuFrame& frame, const DrawCmd& cmd) {
+    BackdropInputs in;
+    return backdropInputs(frame, cmd, in) && in.textured ? uint32_t(sizeof(BackdropParams) / sizeof(float))
+                                                         : 0u;
+}
+
+/// The third input target of a `BackdropMasked` command (`BackdropParams::mask`, or T-764's
+/// `maskTexture` naming a target), or 0 when the command has none or names no transient of `frame`.
+inline TargetHandle backdropMaskTarget(const GpuFrame& frame, const DrawCmd& cmd) {
+    BackdropInputs in;
+    return backdropInputs(frame, cmd, in) ? in.maskTarget : 0;
 }
 
 /// T-718 (Docs/design/10-backends.md §10.16 W1): the active analytic rounded-rect clips of a draw
@@ -683,6 +831,7 @@ static_assert(sizeof(DownsampleParams) % sizeof(float) == 0);
 static_assert(sizeof(KawaseParams) % sizeof(float) == 0);
 static_assert(sizeof(LevelMixParams) % sizeof(float) == 0);
 static_assert(sizeof(BackdropParams) % sizeof(float) == 0);
+static_assert(sizeof(PlanarParams) % sizeof(float) == 0);
 
 /// Debug/test serialization of a frame's structure (passes, commands, transients; no vertex
 /// data), one line per pass/command. Stable across runs; used by Tests/gpu's golden snapshots.

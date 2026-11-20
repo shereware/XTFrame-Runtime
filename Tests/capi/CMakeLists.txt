@@ -6,15 +6,15 @@ if(NOT TARGET xtframe-pack)
     return()
 endif()
 
-# xt_capi_pack_bundle(<out var> <name> <source dir>): packs <source dir> into
-# ${CMAKE_CURRENT_BINARY_DIR}/<name>-bundle/ (its manifest.json is the custom command's output).
+# xt_capi_pack_bundle(<out var> <name> <source dir> [<extra xtframe-pack argument>...]): packs <source dir>
+# into ${CMAKE_CURRENT_BINARY_DIR}/<name>-bundle/ (its manifest.json is the custom command's output).
 function(xt_capi_pack_bundle out name source)
     set(dir "${CMAKE_CURRENT_BINARY_DIR}/${name}-bundle")
     file(GLOB_RECURSE inputs CONFIGURE_DEPENDS "${source}/*")
     add_custom_command(
         OUTPUT "${dir}/manifest.json"
         COMMAND "${CMAKE_COMMAND}" -E rm -rf "${dir}"
-        COMMAND $<TARGET_FILE:xtframe-pack> "${source}" -o "${dir}" --no-thumbs
+        COMMAND $<TARGET_FILE:xtframe-pack> "${source}" -o "${dir}" --no-thumbs ${ARGN}
         DEPENDS xtframe-pack ${inputs}
         COMMENT "Packing ${name} for xt_capi_tests"
         VERBATIM)
@@ -41,8 +41,10 @@ xt_capi_pack_bundle(XT_CAPI_TEXT text "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/text
 # T-642: the npdo demo (hud / settings) for the partial-redraw equivalence cases (test_capi_partial.cpp).
 xt_capi_pack_bundle(XT_CAPI_NPDO npdo "${PROJECT_SOURCE_DIR}/Examples/demos/npdo/ui-project")
 # T-656: three 1024 x 1024 images on a 256 x 256 UI; test_capi_gpu.cpp copies the bundle and rewrites
-# its images with new pixels every round (the GPU target's image idle budget).
-xt_capi_pack_bundle(XT_CAPI_IMAGES images "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/images")
+# its images with new pixels every round (the GPU target's image idle budget). T-812: --compress none --
+# the cases count and rewrite the bundle's PNGs (BC7 content is made by the test itself), and since T-714
+# the publish default `auto` would turn these 1024 px images into DDS files.
+xt_capi_pack_bundle(XT_CAPI_IMAGES images "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/images" --compress none)
 # T-678: six large overlapping panels with shadows, glows and shine, whose frame borrows far more than
 # 16 MiB of transient targets (the transient pool budget case of test_capi_gpu.cpp).
 xt_capi_pack_bundle(XT_CAPI_EFFECTS effects "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/effects")
@@ -70,6 +72,7 @@ add_executable(xt_capi_tests
     test_capi_trim.cpp
     test_capi_partial.cpp
     test_capi_threads.cpp
+    test_capi_perf.cpp  # T-750
 )
 # T-689 (45 §45.8): the GPU target cases are exported with XTFrame-Backends and read from
 # XT_BACKENDS_SOURCE_DIR (the top-level CMakeLists.txt) in a build with xt_wgpu; without it

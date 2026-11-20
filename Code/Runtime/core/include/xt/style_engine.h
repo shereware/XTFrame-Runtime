@@ -4,6 +4,7 @@
 #include <deque>
 #include <functional>
 #include <map>
+#include <memory>
 #include <span>
 #include <string>
 #include <string_view>
@@ -24,7 +25,30 @@
 
 namespace xt {
 
+/// T-270c: a span of a runtime declaration pool an element owns (cap 0 = none).
+struct RuntimeDeclSlot {
+    uint32_t offset = 0;
+    uint32_t cap = 0;
+};
+/// T-270c: two slots per (element, property), written alternately: a declaration goes into the
+/// slot the element's cascaded value does not reference, so its offset always changes -- which is
+/// how StyleEngine sees a change (markNonAnimatableDirty repaints, applyAnimationDiff re-diffs) --
+/// and the pool holds at most two slots per element. Released with the element. T-778: also the
+/// element's combined `animation` / `transition` lists (StyleEngine).
+struct RuntimeDeclSlots {
+    RuntimeDeclSlot slot[2];
+    uint8_t last = 1;  ///< The slot written last.
+};
+/// Picks the slot of `own` to write next (`inUse` is the untagged pool offset the element's
+/// cascaded value references, UINT32_MAX when none) and makes it hold `need` entries: an outgrown
+/// slot goes to `freeList`, replaced by a released one that fits (first fit, never `inUse`) or a
+/// new one at `poolSize`'s end (`poolSize` grows; the caller resizes its pool to it). Returns the
+/// slot's offset.
+uint32_t takeRuntimeDeclSlot(RuntimeDeclSlots& own, std::vector<RuntimeDeclSlot>& freeList, uint32_t inUse,
+                             uint32_t need, size_t& poolSize);
+
 class Document;
+class PerfTracker;
 class TextShaper;
 
 /// One design-token value held outside the IR (Docs/design/05-style-and-css.md §5.9.2,
@@ -135,13 +159,17 @@ public:
     /// dereferences a ComputedStyle::animationOffset carrying kRuntimeEffectOffsetBit into it.
     /// The pointer must outlive this StyleEngine; unset (nullptr, the default) means a runtime
     /// `animation` declaration plays nothing.
-    void setRuntimeAnimations(const std::vector<IrAnimationSpec>* animations) {
-        m_runtimeAnimations = animations;
-    }
+    void setRuntimeAnimations(std::vector<IrAnimationSpec>* animations) { m_runtimeAnimations = animations; }
     /// T-616 (04 §4.13): the `animation` items a cascaded offset/count pair names (e.g.
     /// ComputedStyle::lastAnimationOffset/Count, ElementData::cssAnimations' list): the IR's, or the
     /// runtime pool's for a kRuntimeEffectOffsetBit offset. Empty when out of range or before init().
     std::span<const IrAnimationSpec> animationSpecs(uint32_t offset, uint32_t count) const;
+    /// T-778: the `transition` entries a ComputedStyle::transitionOffset/Count pair names: the IR's,
+    /// or the combined pool's for a kRuntimeEffectOffsetBit offset. Empty when out of range.
+    std::span<const IrTransitionSpec> transitionSpecs(uint32_t offset, uint32_t count) const;
+    /// T-778: releases `node`'s combined `animation` / `transition` slots (with the element); a
+    /// committed pair of `style` that points at one is reset to `none`.
+    void releaseCombinedSlots(NodeId node, ComputedStyle& style);
 
     /// T-199 (26 §26.3.4): binds the Document's AssetResolver so resolve() can read an image's
     /// atlas cell and manifest slice (AssetResolver::imageMeta) into ElementData::backgroundSubUv,
@@ -165,10 +193,14 @@ public:
     /// kDirtyStyle. Elements are visited in increasing NodeId order, which processes parents
     /// before children given this codebase's node-creation invariant (a node's parent is always
     /// created, hence assigned a smaller NodeId, before the node itself -- see
-    /// Code/Runtime/core/src/document_load.cpp and NodeArena::create()); a future dynamic-reparenting API that
-    /// breaks that invariant would need a real topological/preorder walk instead (uncovered case,
-    /// see Docs/tasks/T-24 report). Returns the number of Elements processed.
+    /// Code/Runtime/core/src/document_load.cpp and NodeArena::create()); a future dynamic-reparenting API
+    /// that breaks that invariant would need a real topological/preorder walk instead (uncovered case, see
+    /// Docs/tasks/T-24 report). Returns the number of Elements processed.
     uint32_t resolve(NodeArena& arena, float clock);
+    /// T-753 (Docs/design/57-measurement.md §57.2 item 3, §57.3 item 4): the tracker resolve() reports
+    /// to -- the redundant-style count (detail level >= 1, FrameStats::redundantStyled) and the
+    /// update.style.match / cascade zones (detail level >= 2). Null (the default): neither.
+    void setPerfTracker(PerfTracker* tracker) { m_perf = tracker; }
 
     /// T-170 (13.8.2): binds the token layers a `var(--name)` declaration is looked up in, most
     /// specific first: `overrides` (Context::setToken), then `theme` (Context::setTheme), then the
@@ -248,6 +280,9 @@ private:
     const IrView* m_ir = nullptr;
     Animator* m_animator = nullptr;
     TextShaper* m_shaper = nullptr;
+    PerfTracker* m_perf = nullptr;  // T-753: setPerfTracker().
+    // T-753: the element's style before its resolve (the redundant-style count; made on first use).
+    std::unique_ptr<ComputedStyle> m_styleBefore;
     // T-199: the Document's resolver, bound by setAssetResolver().
     AssetResolver* m_assets = nullptr;
     // T-218: scene-target rules -- the Document's instances, per-element state, and resolve()'s
@@ -278,8 +313,23 @@ private:
     const std::vector<ElementGradient>* m_runtimeGradients = nullptr;
     // T-332: Document's runtime `clip-path` shape pool, bound by setRuntimeClipShapes().
     const std::vector<ElementClipShape>* m_runtimeClipShapes = nullptr;
-    // T-123: Document's runtime `animation` pool, bound by setRuntimeAnimations().
-    const std::vector<IrAnimationSpec>* m_runtimeAnimations = nullptr;
+    // T-123: Document's runtime `animation` pool, bound by setRuntimeAnimations(). T-778: the
+    // combined lists are written into it too, into m_combinedAnimationSlots.
+    std::vector<IrAnimationSpec>* m_runtimeAnimations = nullptr;
+    // T-778 (05 §5.6): the per-element slots of the combined `animation` lists (in
+    // *m_runtimeAnimations) and `transition` lists (in m_combinedTransitions, tagged with
+    // kRuntimeEffectOffsetBit); combineLonghands() writes them.
+    std::unordered_map<NodeId, RuntimeDeclSlots> m_combinedAnimationSlots;
+    std::vector<RuntimeDeclSlot> m_freeCombinedAnimationSlots;
+    std::vector<IrTransitionSpec> m_combinedTransitions;
+    std::unordered_map<NodeId, RuntimeDeclSlots> m_combinedTransitionSlots;
+    std::vector<RuntimeDeclSlot> m_freeCombinedTransitionSlots;
+    std::vector<IrAnimationSpec> m_combineAnimScratch;
+    std::vector<IrTransitionSpec> m_combineTransScratch;
+    /// T-778: combines `next`'s cascaded `animation-*` / `transition-*` longhands into its
+    /// animationOffset/Count and transitionOffset/Count (`data` is the element's last committed
+    /// state).
+    void combineLonghands(const ElementData& data, ComputedStyle& next, NodeId node);
     // T-170: token layers (setTokenLayers), Document's runtime strings (setRuntimeStrings), the
     // per-NodeId "matched a var() declaration last resolve" flags, and resolve()'s scratch for the
     // declarations a var() resolved to (reserved up front so Entry pointers into it stay valid).

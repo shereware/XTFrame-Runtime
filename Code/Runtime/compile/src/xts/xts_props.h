@@ -15,8 +15,8 @@ namespace xt::compile {
 
 /// StyleProp numbers, Docs/design/05-style-and-css.md §5.4. Not animatable (PropId 0-159 covers
 /// the animatable range instead; see Code/Runtime/core/include/xt/property.h). T-413: the one table is core's
-/// (Code/Runtime/core/src/style_decode.h, which the runtime decodes with); the compiler names the same numbers
-/// through it.
+/// (Code/Runtime/core/src/style_decode.h, which the runtime decodes with); the compiler names the same
+/// numbers through it.
 namespace styleprop {
 using namespace xt::style_decode::styleprop;
 /// StyleProps share IrDecl's number space with the animatable PropIds. The shape-modifier /
@@ -27,7 +27,7 @@ static_assert(kLastLow < xt::prop::ModTrimStart, "StyleProp numbers collide with
 inline constexpr uint16_t kFirstHigh = 256;
 static_assert(kFirstHigh > xt::prop::ConstraintEnabled, "StyleProp numbers collide with rig PropIds");
 /// Highest StyleProp number.
-inline constexpr uint16_t kLast = WorldLayer;
+inline constexpr uint16_t kLast = TransitionDelay;
 static_assert(kLast == xt::kStylePropLast, "update kStylePropLast (ir_pod.h) and 02 §2.12");
 static_assert(kLast < xt::prop::kEffectPropBase, "StyleProp numbers collide with effect PropIds");
 }  // namespace styleprop

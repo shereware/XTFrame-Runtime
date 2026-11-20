@@ -213,7 +213,7 @@ TEST_CASE("layer_collect: collectSegmentItems splits a flat child's content at i
     std::vector<LayerEntry> items;
     std::vector<PieceRange> ranges(arena.capacity());
     uint32_t docOrder = 0;
-    CHECK(collectSegmentItems(arena, b, mat4Identity(), items, docOrder, ranges));
+    collectSegmentItems(arena, b, mat4Identity(), items, docOrder, ranges);
 
     // Document order: piece 0 (B, b1), the layer, piece 1 (b3, b3c).
     REQUIRE(items.size() == 3);
@@ -236,12 +236,73 @@ TEST_CASE("layer_collect: collectSegmentItems splits a flat child's content at i
     CHECK(ranges[b3c].first == 1u);
     CHECK_FALSE(pieceInRange(ranges[layer], 0));
     CHECK_FALSE(pieceInRange(ranges[layer], 1));
+}
 
-    // B with opacity < 1 spans both pieces: not split, its flat items removed again.
-    arena.common(b).opacity = 0.5f;
-    items.clear();
-    docOrder = 0;
-    CHECK_FALSE(collectSegmentItems(arena, b, mat4Identity(), items, docOrder, ranges));
-    REQUIRE(items.size() == 1);
-    CHECK(items[0].node == layer);
+TEST_CASE("layer_collect: a flat group keeps its 3D descendants in its own piece (T-762)") {
+    // child B (flat) = { b1, G (flat, the group) = { L (3D layer) = { inL }, g2 }, b3 }
+    NodeArena arena;
+    NodeId b = arena.create(NodeKind::Group);
+    NodeId b1 = arena.create(NodeKind::Group);
+    NodeId g = arena.create(NodeKind::Group);
+    NodeId layer = arena.create(NodeKind::Group);
+    NodeId inL = arena.create(NodeKind::Group);
+    NodeId g2 = arena.create(NodeKind::Group);
+    NodeId b3 = arena.create(NodeKind::Group);
+    arena.appendChild(b, b1);
+    arena.appendChild(b, g);
+    arena.appendChild(g, layer);
+    arena.appendChild(layer, inL);
+    arena.appendChild(g, g2);
+    arena.appendChild(b, b3);
+    arena.common(layer).is3D = 1;
+    arena.common(layer).world3 = mat4Translate(Vec3{0, 0, 5});
+
+    std::vector<LayerEntry> items;
+    std::vector<PieceRange> ranges(arena.capacity());
+    uint32_t docOrder = 0;
+
+    SUBCASE("no grouping property: the layer is an item of its own (T-727)") {
+        CHECK_FALSE(flattens3D(arena, g));
+        collectSegmentItems(arena, b, mat4Identity(), items, docOrder, ranges);
+        REQUIRE(items.size() == 3);
+        CHECK(items[1].node == layer);
+        CHECK(items[1].piece == kLayerItem);
+        CHECK_FALSE(pieceInRange(ranges[layer], 0));
+    }
+    SUBCASE("opacity < 1: one item, the layer and everything below G in piece 0") {
+        arena.common(g).opacity = 0.5f;
+        CHECK(flattens3D(arena, g));
+        collectSegmentItems(arena, b, mat4Identity(), items, docOrder, ranges);
+        REQUIRE(items.size() == 1);
+        CHECK(items[0].node == b);
+        CHECK(items[0].piece == 0u);
+        CHECK(items[0].depth == doctest::Approx(0.0f));
+        for (NodeId n : {b1, g, layer, inL, g2, b3}) {
+            CAPTURE(n);
+            CHECK(ranges[n].first == 0u);
+            CHECK(ranges[n].last == 0u);
+        }
+        CHECK(ranges[b].first == 0u);
+        CHECK(ranges[b].last == 0u);
+    }
+    SUBCASE("a blend mode, an effect, a Mask child: the same") {
+        SUBCASE("blend") { arena.common(g).blend = static_cast<uint8_t>(BlendMode::Multiply); }
+        SUBCASE("mask") {
+            NodeId mask = arena.create(NodeKind::Mask);
+            arena.insertBefore(g, mask, layer);
+            ranges.resize(arena.capacity());
+        }
+        CHECK(flattens3D(arena, g));
+        collectSegmentItems(arena, b, mat4Identity(), items, docOrder, ranges);
+        REQUIRE(items.size() == 1);
+        CHECK(pieceInRange(ranges[layer], 0));
+        CHECK(pieceInRange(ranges[inL], 0));
+    }
+    SUBCASE("the group is the segment child itself") {
+        arena.common(b).opacity = 0.5f;
+        collectSegmentItems(arena, b, mat4Identity(), items, docOrder, ranges);
+        REQUIRE(items.size() == 1);
+        CHECK(items[0].piece == 0u);
+        CHECK(pieceInRange(ranges[layer], 0));
+    }
 }

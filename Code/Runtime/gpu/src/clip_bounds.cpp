@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "point_bounds.h"   // Code/Runtime/core/src (T-800)
 #include "xt/box_shadow.h"  // commandBoundsInFrame (T-676)
 #include "xt/damage.h"
 
@@ -18,14 +19,7 @@ bool finiteRect(const Rect& r) {
 Rect mapRect(const Mat2x3& m, const Rect& r) {
     const Vec2 c[4] = {apply(m, Vec2{r.x, r.y}), apply(m, Vec2{r.x + r.w, r.y}),
                        apply(m, Vec2{r.x + r.w, r.y + r.h}), apply(m, Vec2{r.x, r.y + r.h})};
-    float x0 = c[0].x, y0 = c[0].y, x1 = c[0].x, y1 = c[0].y;
-    for (const Vec2& p : c) {
-        x0 = std::min(x0, p.x);
-        y0 = std::min(y0, p.y);
-        x1 = std::max(x1, p.x);
-        y1 = std::max(y1, p.y);
-    }
-    return Rect{x0, y0, x1 - x0, y1 - y0};
+    return pointBounds(c);
 }
 
 }  // namespace

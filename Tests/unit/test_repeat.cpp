@@ -435,7 +435,7 @@ std::string manyEntries(int n) {
 
 void scrollTo(Ui& ui, float y) {
     ElementRef scroll = ui.el("Scroll");
-    setProperty(ui.doc->arena(), scroll.node, prop::ScrollY, Value::ofFloat(y));
+    setProperty(ui.doc->arena(), scroll.node, prop::ScrollY, Value::ofFloat(y), DirtyCause::HostApi);
     ui.step(0.016f);
 }
 
@@ -1588,4 +1588,23 @@ TEST_CASE("T-546: a repeat instance's tween binding applies its first value dire
     REQUIRE(ui.doc->listInsert(ui.port("items"), 2, ui.entry("C", 70)) == Status::kOk);
     ui.step(0.016f);
     CHECK(ui.el("Item/2/Cell").layoutBox().width == doctest::Approx(70.0f));
+}
+
+TEST_CASE("T-783: an instance copy whose end replays it from a marker loops without losing the step's rest") {
+    Ui ui = open(page(R"(.cell { height: 20px; }
+        @timeline spin { duration: 1s; marker: loop 0.5s; #Cell { 0s { opacity: 0 } 1s { opacity: 1 } } })",
+                      R"X(<div id="P" port:items="list<struct{name: string}>"></div>
+        <repeat port="items" id="Item" item-enter="play(spin)">
+          <div id="Cell" class="cell" on:timeline(spin).end="play(spin, from=loop)"></div>
+        </repeat>)X"));
+    REQUIRE(ui.doc->listInsert(ui.port("items"), 0, ui.entry("A", 0)) == Status::kOk);
+    ui.step(0.0f);  // item-enter: the copy starts here.
+    ui.step(0.9f);
+    CHECK(ui.el("Item/0/Cell").property(prop::Opacity).f == doctest::Approx(0.9f).epsilon(1e-4));
+    ui.step(0.3f);  // 0.2 s past the end -> 0.7.
+    CHECK(ui.el("Item/0/Cell").property(prop::Opacity).f == doctest::Approx(0.7f).epsilon(1e-4));
+    ui.step(0.3f);  // Exactly the end -> the loop marker.
+    CHECK(ui.el("Item/0/Cell").property(prop::Opacity).f == doctest::Approx(0.5f).epsilon(1e-4));
+    ui.step(0.25f);
+    CHECK(ui.el("Item/0/Cell").property(prop::Opacity).f == doctest::Approx(0.75f).epsilon(1e-4));
 }

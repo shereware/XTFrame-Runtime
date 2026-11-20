@@ -444,6 +444,9 @@ uint32_t subscribeDocumentOutput(DocEndpointState& state, const Endpoint& source
 
 /// Reports every subscribed polled port's current value (change-only).
 void pollDocumentOutputs(DocEndpointState& state);
+/// T-749 (23 §23.ag item 6): a polled port changes with time alone (`#document.clock`); the others
+/// change with input, a viewport change or a playing `<anim>`, which keep the Context updating anyway.
+bool documentOutputsMoveWithTime(const DocEndpointState& state);
 
 /// The current value of one "#document.<port>" output port, written into `out` (T-476: a
 /// reused PortValue, so a poll constructs none).

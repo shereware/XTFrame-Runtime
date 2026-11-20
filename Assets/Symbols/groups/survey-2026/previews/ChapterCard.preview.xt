@@ -1,0 +1,41 @@
+<xt version="2">
+  <head>
+    <symbols src="../ChapterCard.xt"/>
+  </head>
+  <body>
+    <div id="Ground"/>
+    <div id="Stage">
+      <use symbol="ChapterCard" id="Card"/>
+    </div>
+  </body>
+  <layout>
+    body {
+      position: relative;
+      width: 480px;
+      height: 200px;
+    }
+    #Ground {
+      position: absolute;
+      left: 0px;
+      top: 0px;
+      width: 100%;
+      height: 100%;
+    }
+    #Stage {
+      position: relative;
+      display: flex;
+      justify-content: center;
+      padding: 8px;
+    }
+  </layout>
+  <style src="../tokens.xts"/>
+  <style>
+    body {
+      background-color: var(--color-text-dim);
+    }
+    #Ground {
+      background-color: var(--color-bg);
+      opacity: 0.85;
+    }
+  </style>
+</xt>

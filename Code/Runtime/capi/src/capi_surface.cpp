@@ -468,6 +468,21 @@ XT_CAPI xt_status xt_surface_update(xt_surface* s, float dt) {
     });
 }
 
+XT_CAPI xt_status xt_surface_needs_frame(const xt_surface* s, int* out_needs_frame) {
+    XT_CAPI_GUARD("xt_surface_needs_frame", {
+        XT_CAPI_REQUIRE_SURFACE(s, "xt_surface_needs_frame");
+        if (out_needs_frame == nullptr) {
+            return fail(XT_STATUS_INVALID_ARGUMENT, "xt_surface_needs_frame: out_needs_frame is NULL");
+        }
+        // T-749 (23 §23.ag item 6): the Context (its flows through BundleContext's listener), the host
+        // ports' polled `document.clock`, and a GPU build that held work back for the next frame.
+        const bool needs = s->ctx->needsFrame() || (s->ports != nullptr && s->ports->needsTick()) ||
+                           xt::capi::gpuWantsAnotherFrame(*s);
+        *out_needs_frame = needs ? 1 : 0;
+        return XT_STATUS_OK;
+    });
+}
+
 XT_CAPI xt_status xt_surface_render(xt_surface* s, void* rgba, int stride_bytes, xt_damage* out_damage) {
     XT_CAPI_GUARD("xt_surface_render", {
         XT_CAPI_REQUIRE_SURFACE(s, "xt_surface_render");
@@ -509,10 +524,15 @@ XT_CAPI xt_status xt_surface_render(xt_surface* s, void* rgba, int stride_bytes,
         // A buffer this renderer has not drawn into holds no previous frame to keep: repaint it all.
         const bool full = s->damage.full || newTarget;
         const xt::Color clear{0, 0, 0, 0};
-        if (full) {
-            s->renderer.clear(clear);
-        } else {
-            s->renderer.clearRects(clear, s->damage.rects);
+        {
+            // T-753 (57 §57.2 item 2): the clear is part of the SW frame's `build` phase.
+            xt::PerfPhaseScope clearScope(s->ctx->perf(), &xt::FrameStats::renderMs,
+                                          &xt::FrameStats::buildCpuMs);
+            if (full) {
+                s->renderer.clear(clear);
+            } else {
+                s->renderer.clearRects(clear, s->damage.rects);
+            }
         }
         s->renderer.render(s->list, s->owner->shaper.get(), &s->owner->bundle->assets(), nullptr,
                            &s->ctx->perf(), full ? nullptr : &s->damage);

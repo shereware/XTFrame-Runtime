@@ -9,6 +9,7 @@
 // BackdropBlur, a BackdropBlur followed by another kind of effect) get over three builds.
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -16,9 +17,11 @@
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
+#include <limits>
 #include <set>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "doctest.h"
@@ -38,13 +41,15 @@ constexpr int kW = 320, kH = 200;
 /// Executes nothing.
 class FakeDevice : public GpuDevice {
 public:
-    FakeDevice(bool cache, bool mask) : m_cache(cache), m_mask(mask) {}
+    FakeDevice(bool cache, bool mask, bool textures = false)
+        : m_cache(cache), m_mask(mask), m_textures(textures) {}
     bool supportsCoverageDraws() const override { return true; }
     bool supportsBoxShadowShading() const override { return true; }
     bool supportsAnalyticClip() const override { return true; }
     bool supportsAlphaChannelReads() const override { return true; }
     bool supportsDirectTarget() const override { return true; }
     bool supportsBackdropMask() const override { return m_mask; }
+    bool supportsBackdropMaskTextures() const override { return m_textures; }  // T-764
     TextureHandle createTexture(const char*, uint16_t, uint16_t, TextureFormat, const void*) override {
         return m_next++;
     }
@@ -65,6 +70,7 @@ public:
 private:
     bool m_cache;
     bool m_mask;
+    bool m_textures;
     TextureHandle m_next = 1;
 };
 
@@ -192,7 +198,8 @@ std::string fingerprint(const GpuFrame& frame) {
 }
 
 struct Built {
-    Built(bool cache, bool mask, int w = kW, int h = kH) : device(cache, mask) {
+    Built(bool cache, bool mask, int w = kW, int h = kH, bool textures = false)
+        : device(cache, mask, textures) {
         builder.init(device);
         builder.resize(w, h);
         builder.setEdgeFringe(true);
@@ -333,7 +340,33 @@ std::string fourBuilds(bool cache, bool mask, std::vector<EffectInstance> effect
     return out;
 }
 
+/// T-764: a panel over eleven builds -- at rest, under a backdrop that moves, a whole number of pixels
+/// away, by fractions of a pixel and settling, then cut by the surface edge -- each fingerprinted. On a
+/// device with `textures` the hits sample the cached pair directly; without, they paste it.
+std::string pairBuilds(bool textures) {
+    Built b(true, true, kW, kH, textures);
+    std::string out;
+    const Vec2 at[] = {{40, 30},     {40, 30},       {40, 30},       {40, 30},       {41, 30}, {43, 31},
+                       {43.25f, 31}, {43.5f, 31.5f}, {43.5f, 31.5f}, {43.5f, 31.5f}, {-50, 30}};
+    const float stripes[] = {0, 0, 0, 3, 3, 3, 3, 3, 3, 6, 6};
+    for (size_t i = 0; i < sizeof(at) / sizeof(at[0]); ++i) {
+        Spec s;
+        s.at = at[i];
+        s.stripes = stripes[i];
+        b.build(scene(s));
+        out += "-- build " + std::to_string(i) + "\n" + fingerprint(b.frame);
+    }
+    return out;
+}
+
 }  // namespace
+
+TEST_CASE(
+    "gpu backdrop cache: a device without the texture capability gets the frames of before, the pair "
+    "pasted (T-764)") {
+    // golden/backdrop_cache_paste.txt was written by the build before T-764.
+    checkSnapshot("backdrop_cache_paste.txt", pairBuilds(false));
+}
 
 TEST_CASE(
     "gpu backdrop cache: without the capability, without a cache, and for the stacks it does not cover, "
@@ -491,4 +524,328 @@ TEST_CASE("gpu backdrop cache: a pair over the budget is not stored and is drawn
         CHECK(b.builder.lastBuildStats().backdropPairMisses == 1u);
     }
     CHECK(b.device.cachedAlive == 0);
+}
+
+namespace {
+
+/// T-764: the BackdropMasked commands of a frame and their parsed inputs.
+std::vector<std::pair<DrawCmd, BackdropInputs>> maskedOf(const GpuFrame& f) {
+    std::vector<std::pair<DrawCmd, BackdropInputs>> out;
+    for (const DrawCmd& c : f.cmds) {
+        BackdropInputs in;
+        if (backdropInputs(f, c, in)) {
+            out.emplace_back(c, in);
+        }
+    }
+    return out;
+}
+
+size_t textureQuads(const GpuFrame& f) {
+    size_t n = 0;
+    for (const DrawCmd& c : f.cmds) {
+        n += c.shading == Shading::Texture ? 1u : 0u;
+    }
+    return n;
+}
+
+/// The same builds on a device with and one without the texture capability.
+struct TwoBuilds {
+    Built paste{true, true, kW, kH, false};
+    Built direct{true, true, kW, kH, true};
+    void build(const CommandList& cl) {
+        paste.build(cl);
+        direct.build(cl);
+    }
+};
+
+/// Two glass panels side by side (each its own pair).
+CommandList twoPanels(float stripes) {
+    Spec a;
+    a.stripes = stripes;
+    a.size = Vec2{80, 60};
+    CommandList cl = scene(a);
+    Spec b = a;
+    b.at = Vec2{180, 40};
+    const CommandList second = scene(b);
+    // The second list's panel (its PushEffect .. PopEffect, after its 12 stripes) appended to the first.
+    const uint32_t verbBase = static_cast<uint32_t>(cl.verbs.size());
+    const uint32_t pointBase = static_cast<uint32_t>(cl.points.size());
+    const uint32_t fillBase = static_cast<uint32_t>(cl.fills.size());
+    const uint32_t effectBase = static_cast<uint32_t>(cl.effects.size());
+    const uint32_t effectCmdBase = static_cast<uint32_t>(cl.effectCmds.size());
+    cl.verbs.insert(cl.verbs.end(), second.verbs.begin(), second.verbs.end());
+    cl.points.insert(cl.points.end(), second.points.begin(), second.points.end());
+    for (FillCmd fc : second.fills) {
+        fc.path.verbOffset += verbBase;
+        fc.path.pointOffset += pointBase;
+        cl.fills.push_back(fc);
+    }
+    cl.effects.insert(cl.effects.end(), second.effects.begin(), second.effects.end());
+    for (EffectCmd e : second.effectCmds) {
+        e.effectOffset += effectBase;
+        cl.effectCmds.push_back(e);
+    }
+    for (size_t i = 12; i < second.commands.size(); ++i) {
+        Command cmd = second.commands[i];
+        if (cmd.kind == CmdKind::FillPath) {
+            cmd.index += fillBase;
+        } else if (cmd.kind == CmdKind::PushEffect) {
+            cmd.index += effectCmdBase;
+        }
+        cl.commands.push_back(cmd);
+    }
+    return cl;
+}
+
+}  // namespace
+
+TEST_CASE(
+    "gpu backdrop cache: a device with the texture capability gets the frames of before on a miss (T-764)") {
+    TwoBuilds b;
+    Spec s;
+    for (int i = 0; i < 2; ++i) {  // drawn in full, then stored
+        b.build(scene(s));
+        CHECK(fingerprint(b.direct.frame) == fingerprint(b.paste.frame));
+    }
+    Spec content = s;
+    content.content = Color{1, 0.9f, 0.9f, 0.35f};
+    b.build(scene(content));  // another content: a miss
+    CHECK(b.direct.builder.lastBuildStats().backdropPairMisses == 1u);
+    CHECK(fingerprint(b.direct.frame) == fingerprint(b.paste.frame));
+    // A plain BackdropBlur and one followed by another kind of effect: not pairs.
+    for (const std::vector<EffectInstance>& effects :
+         {std::vector<EffectInstance>{blurFx()},
+          std::vector<EffectInstance>{blurFx(), outerFx(), adjustFx()}}) {
+        TwoBuilds o;
+        Spec e;
+        e.effects = effects;
+        for (int i = 0; i < 4; ++i) {
+            o.build(scene(e));
+            CHECK(fingerprint(o.direct.frame) == fingerprint(o.paste.frame));
+        }
+    }
+}
+
+TEST_CASE(
+    "gpu backdrop cache: a hit samples the cached pair directly, two passes and two transients fewer "
+    "(T-764)") {
+    TwoBuilds b;
+    Spec s;
+    b.build(scene(s));
+    b.build(scene(s));
+    for (int i = 0; i < 3; ++i) {
+        CAPTURE(i);
+        s.stripes = static_cast<float>(i) * 3.0f;
+        b.build(scene(s));
+        CHECK(b.direct.builder.lastBuildStats().backdropPairHits == 1u);
+        CHECK(b.paste.builder.lastBuildStats().backdropPairHits == 1u);
+        const Shape paste = shapeOf(b.paste.frame);
+        const Shape direct = shapeOf(b.direct.frame);
+        CHECK(paste.pastedInputs);
+        CHECK(direct.passes + 2u == paste.passes);
+        CHECK(b.direct.frame.transients.size() + 2u == b.paste.frame.transients.size());
+        CHECK(direct.masked == 1u);
+        CHECK(direct.levelMix == 1u);
+        CHECK(direct.shadowPasses == 0u);
+        CHECK(direct.copies == paste.copies);
+        CHECK(textureQuads(b.direct.frame) == 0u);
+        CHECK(textureQuads(b.paste.frame) == 2u);
+        const auto masked = maskedOf(b.direct.frame);
+        REQUIRE(masked.size() == 1u);
+        const DrawCmd& c = masked[0].first;
+        const BackdropInputs& in = masked[0].second;
+        CHECK(in.textured);
+        CHECK(c.src == 0u);
+        CHECK(c.aux != 0u);
+        CHECK(c.texture == 0u);  // DrawCmd::texture keeps its own use (the LUT), unused here
+        CHECK(in.maskTarget == 0u);
+        // The two cached textures, R' and S, are the ones the paste device pasted.
+        CHECK(std::set<TextureHandle>{in.topTexture, in.maskTexture} == paste.pastedTextures);
+        CHECK(in.topTexture != in.maskTexture);
+        // At rest: the same window, the identity mapping, the nearest texel.
+        for (const float* uv : {in.params.topUv, in.params.maskUv}) {
+            CHECK(uv[0] == 1.0f);
+            CHECK(uv[1] == 1.0f);
+            CHECK(uv[2] == 0.0f);
+            CHECK(uv[3] == 0.0f);
+        }
+        CHECK(in.params.topSampler == static_cast<float>(Sampler::PointClamp));
+        CHECK(in.params.maskSampler == static_cast<float>(Sampler::PointClamp));
+        std::string dump;
+        dumpGpuFrame(b.direct.frame, dump);
+        CHECK(dump.find("top=tex:point uv=(1,1,0,0) mask=tex:point uv=(1,1,0,0)") != std::string::npos);
+    }
+}
+
+TEST_CASE("gpu backdrop cache: two panels served directly, four passes fewer (T-764)") {
+    TwoBuilds b;
+    for (int i = 0; i < 4; ++i) {
+        CAPTURE(i);
+        b.build(twoPanels(static_cast<float>(i) * 2.0f));
+        if (i < 2) {
+            CHECK(fingerprint(b.direct.frame) == fingerprint(b.paste.frame));
+            continue;
+        }
+        CHECK(b.direct.builder.lastBuildStats().backdropPairHits == 2u);
+        CHECK(shapeOf(b.direct.frame).passes + 4u == shapeOf(b.paste.frame).passes);
+        // Four transients fewer are borrowed; the second panel's pastes reuse the first panel's released
+        // slots, so the frame declares two fewer.
+        CHECK(b.direct.frame.transients.size() + 2u == b.paste.frame.transients.size());
+        CHECK(maskedOf(b.direct.frame).size() == 2u);
+        CHECK(textureQuads(b.direct.frame) == 0u);
+        CHECK(textureQuads(b.paste.frame) == 4u);
+    }
+}
+
+namespace {
+
+/// The quad the paste device drew for a cached texture (its first Texture command): x0, y0, x1, y1.
+struct Quad {
+    float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f;
+};
+Quad pastedQuad(const GpuFrame& f) {
+    Quad q;
+    for (const DrawCmd& c : f.cmds) {
+        if (c.shading != Shading::Texture) continue;
+        for (uint32_t i = 0; i < c.indexCount; ++i) {
+            const Vertex& v = f.vertices[c.baseVertex + f.indices[c.firstIndex + i]];
+            q.x0 = std::min(q.x0, v.x);
+            q.y0 = std::min(q.y0, v.y);
+            q.x1 = std::max(q.x1, v.x);
+            q.y1 = std::max(q.y1, v.y);
+        }
+        break;
+    }
+    return q;
+}
+
+/// Where the texture inputs of the direct frame's BackdropMasked lie in surface pixels (the window of
+/// its pass mapped back through the uv scale and offset), and their sampler.
+Quad sampledQuad(const GpuFrame& f, float& sampler) {
+    Quad q;
+    for (const Pass& pass : f.passes) {
+        for (uint32_t k = pass.firstCmd; k < pass.firstCmd + pass.cmdCount; ++k) {
+            BackdropInputs in;
+            if (!backdropInputs(f, f.cmds[k], in) || !in.textured) continue;
+            const BackdropParams& bp = in.params;
+            for (int i = 0; i < 4; ++i) {
+                CHECK(bp.maskUv[i] == bp.topUv[i]);
+            }
+            CHECK(bp.maskSampler == bp.topSampler);
+            sampler = bp.topSampler;
+            const float w = static_cast<float>(pass.viewW) / bp.topUv[0];
+            const float h = static_cast<float>(pass.viewH) / bp.topUv[1];
+            q.x0 = static_cast<float>(pass.viewX) - bp.topUv[2] * w;
+            q.y0 = static_cast<float>(pass.viewY) - bp.topUv[3] * h;
+            q.x1 = q.x0 + w;
+            q.y1 = q.y0 + h;
+        }
+    }
+    return q;
+}
+
+void checkSameQuad(const GpuFrame& direct, const GpuFrame& paste, Sampler expected) {
+    float sampler = -1;
+    const Quad s = sampledQuad(direct, sampler);
+    const Quad p = pastedQuad(paste);
+    MESSAGE("pasted quad ", p.x0, ",", p.y0, " - ", p.x1, ",", p.y1, "; sampled ", s.x0, ",", s.y0, " - ",
+            s.x1, ",", s.y1);
+    CHECK(sampler == static_cast<float>(expected));
+    CHECK(s.x0 == doctest::Approx(p.x0).epsilon(1e-5));
+    CHECK(s.y0 == doctest::Approx(p.y0).epsilon(1e-5));
+    CHECK(s.x1 == doctest::Approx(p.x1).epsilon(1e-5));
+    CHECK(s.y1 == doctest::Approx(p.y1).epsilon(1e-5));
+}
+
+}  // namespace
+
+TEST_CASE(
+    "gpu backdrop cache: a moving panel samples the pair where the paste would have put it -- the nearest "
+    "texel at whole pixels, bilinearly at fractions (T-764)") {
+    TwoBuilds w;
+    Spec s;
+    for (int i = 0; i < 5; ++i) {
+        CAPTURE(i);
+        s.at = Vec2{40.0f + static_cast<float>(i), 30.0f + static_cast<float>(i / 2)};
+        w.build(scene(s));
+        if (i >= 2) {
+            REQUIRE(w.direct.builder.lastBuildStats().backdropPairHits == 1u);
+            checkSameQuad(w.direct.frame, w.paste.frame, Sampler::PointClamp);
+        }
+    }
+    TwoBuilds f;
+    const float xs[] = {40.0f, 40.25f, 40.5f, 40.75f, 41.125f};
+    for (int i = 0; i < 5; ++i) {
+        CAPTURE(i);
+        s.at = Vec2{xs[i], 30.0f + 0.375f * static_cast<float>(i)};
+        f.build(scene(s));
+        if (i >= 2) {
+            REQUIRE(f.direct.builder.lastBuildStats().backdropPairHits == 1u);
+            REQUIRE(f.direct.builder.lastBuildStats().effectCachePhaseHits == 1u);
+            checkSameQuad(f.direct.frame, f.paste.frame, Sampler::LinearClamp);
+        }
+    }
+    // It stops: the settle is drawn in full on both, then the pair is served again at the same phase.
+    f.build(scene(s));
+    CHECK(fingerprint(f.direct.frame) == fingerprint(f.paste.frame));
+    f.build(scene(s));
+    REQUIRE(f.direct.builder.lastBuildStats().backdropPairHits == 1u);
+    checkSameQuad(f.direct.frame, f.paste.frame, Sampler::PointClamp);
+}
+
+TEST_CASE(
+    "gpu backdrop cache: BackdropParams' trailing block is parsed only when it is well formed (T-764)") {
+    GpuFrame f;
+    f.transients.resize(3);
+    DrawCmd c;
+    c.shading = Shading::Effect;
+    c.program = EffectProgram::BackdropMasked;
+    BackdropParams bp{};
+    bp.mask = kBackdropMaskTextured;
+    bp.topIsTexture = 1;
+    bp.maskIsTexture = 0;
+    bp.topTexture = 7;
+    bp.maskTexture = 2;  // a target
+    bp.topUv[0] = bp.topUv[1] = 1;
+    bp.topSampler = static_cast<float>(Sampler::LinearClamp);
+    auto parse = [&](const BackdropParams& p, BackdropInputs& in) {
+        f.params.assign(sizeof(p) / sizeof(float), 0.0f);
+        std::memcpy(f.params.data(), &p, sizeof(p));
+        return backdropInputs(f, c, in);
+    };
+    BackdropInputs in;
+    REQUIRE(parse(bp, in));
+    CHECK(in.textured);
+    CHECK(in.topTexture == 7u);
+    CHECK(in.maskTexture == 0u);
+    CHECK(in.maskTarget == 2u);
+    BackdropParams bad = bp;
+    bad.topIsTexture = 0.5f;
+    REQUIRE(parse(bad, in));
+    CHECK_FALSE(in.textured);
+    CHECK(in.topTexture == 0u);
+    CHECK(in.maskTarget == 0u);
+    bad = bp;
+    bad.topTexture = 7.5f;
+    parse(bad, in);
+    CHECK_FALSE(in.textured);
+    bad = bp;
+    bad.topSampler = 3;
+    parse(bad, in);
+    CHECK_FALSE(in.textured);
+    bad = bp;
+    bad.topUv[2] = std::numeric_limits<float>::infinity();
+    parse(bad, in);
+    CHECK_FALSE(in.textured);
+    // Too short a block for the trailing fields.
+    f.params.assign(3, 0.0f);
+    f.params[0] = kBackdropMaskTextured;
+    REQUIRE(backdropInputs(f, c, in));
+    CHECK_FALSE(in.textured);
+    // The one-float block of before.
+    f.params.assign(1, 2.0f);
+    REQUIRE(backdropInputs(f, c, in));
+    CHECK_FALSE(in.textured);
+    CHECK(in.maskTarget == 2u);
+    CHECK(backdropMaskTarget(f, c) == 2u);
 }

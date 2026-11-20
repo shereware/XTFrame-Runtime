@@ -24,7 +24,7 @@
 
 namespace xt {
 
-Context::Context(const ContextConfig& config) : m_config(config) {}
+Context::Context(const ContextConfig& config) : m_config(config) { initVisualCheck(); }
 
 Context::~Context() = default;
 
@@ -46,8 +46,6 @@ Result<DocumentHandle> Context::loadDocument(IrBlob blob, bool takeOwnership) {
     if (status != Status::kOk) {
         return Result<DocumentHandle>::error(status);
     }
-    // Docs/design/21-perf-tracing.md §21.2: "Document 經 Context 取得" its PerfTracker.
-    doc->setPerfTracker(&m_perf);
     doc->m_context = this;  // T-260a: its dispatching calls defer unload / reload install.
     bindTimelineEvents(*doc);
     doc->setTokenLayers(activeThemeTokens(), &m_tokenOverrides);  // T-170.
@@ -58,6 +56,10 @@ Result<DocumentHandle> Context::loadDocument(IrBlob blob, bool takeOwnership) {
     doc->setUiScale(m_uiScale);
     doc->setLocalization(m_localization, m_language);  // T-179.
     doc->setGlyphProvider(m_glyphProvider);            // T-178.
+    // Docs/design/21-perf-tracing.md §21.2: "Document 經 Context 取得" its PerfTracker. T-747: after
+    // the setup above, so the load counts once, as Load (and the first update's work with it).
+    doc->setPerfTracker(&m_perf);
+    doc->noteVisualChange(DirtyCause::Load);
     m_documents.push_back(std::move(doc));
     m_surfaces.resize(m_documents.size());  // T-194: z 0, Block.
     DocumentHandle handle = static_cast<DocumentHandle>(m_documents.size());
@@ -110,7 +112,6 @@ Status Context::prepareReload(DocumentHandle handle, IrBlob blob, bool takeOwner
     if (status != Status::kOk) {
         return status;
     }
-    doc->setPerfTracker(&m_perf);
     doc->m_context = this;  // T-260a.
     bindTimelineEvents(*doc);
     doc->setTokenLayers(activeThemeTokens(), &m_tokenOverrides);  // T-170.
@@ -123,6 +124,8 @@ Status Context::prepareReload(DocumentHandle handle, IrBlob blob, bool takeOwner
     doc->setLocalization(m_localization, m_language);           // T-179.
     doc->setGlyphProvider(m_glyphProvider);                     // T-178.
     doc->setInstanceId(m_documents[handle - 1]->instanceId());  // T-175.
+    doc->setPerfTracker(&m_perf);  // T-747: after the setup, as in loadDocument()
+    doc->noteVisualChange(DirtyCause::Load);
     out = std::move(doc);
     return Status::kOk;
 }
@@ -319,12 +322,10 @@ const TokenMap* Context::activeThemeTokens() const {
 
 void Context::applyTokenLayers() {
     const TokenMap* theme = activeThemeTokens();
-    const size_t count = m_documents.size();  // T-260a: every m_documents walk is by index.
-    for (size_t i = 0; i < count; ++i) {
-        if (Document* doc = liveAt(i)) {
-            doc->setTokenLayers(theme, &m_tokenOverrides);
-        }
-    }
+    forEachLiveDocument([&](Document* doc) {
+        doc->setTokenLayers(theme, &m_tokenOverrides);
+        doc->noteVisualChange(DirtyCause::Viewport);  // T-747: paint-time tokens (placeholder color)
+    });
 }
 
 Status Context::defineTheme(std::string_view name, std::span<const TokenDef> tokens) {
@@ -412,15 +413,11 @@ void Context::setViewport(Rect logical, float devicePixelRatio) {
     if (logical != m_viewport || devicePixelRatio != m_devicePixelRatio) {
         // §23.2 step 5: a viewport or dpr change makes every pixel dirty.
         m_damageBaseValid = false;
+        noteVisualChangeAll(DirtyCause::Viewport);  // T-747: the dpr changes no node
     }
     m_viewport = logical;
     m_devicePixelRatio = devicePixelRatio;
-    const size_t count = m_documents.size();
-    for (size_t i = 0; i < count; ++i) {
-        if (Document* doc = liveAt(i)) {
-            doc->setViewport(logical);
-        }
-    }
+    forEachLiveDocument([&](Document* doc) { doc->setViewport(logical); });
 }
 
 Status Context::setDevice(const DeviceInfo& device) {
@@ -434,13 +431,10 @@ Status Context::setDevice(const DeviceInfo& device) {
     }
     m_device = device;
     m_damageBaseValid = false;  // §23.2 step 5: like a viewport change, everything may move.
-    const size_t count = m_documents.size();
-    for (size_t i = 0; i < count; ++i) {
-        if (Document* doc = liveAt(i)) {
-            doc->setViewport(m_viewport);
-            doc->setDevice(m_device);
-        }
-    }
+    forEachLiveDocument([&](Document* doc) {
+        doc->setViewport(m_viewport);
+        doc->setDevice(m_device);
+    });
     applyUiScale();  // T-345: the DPI floor follows the DPR.
     return Status::kOk;
 }
@@ -474,6 +468,7 @@ void Context::setHostTargetMode(HostTargetMode mode) {
     if (mode != m_hostTargetMode) {
         // The backends draw the whole surface differently under each mode: one full damage.
         m_damageBaseValid = false;
+        noteVisualChangeAll(DirtyCause::Viewport);  // T-747: a paint option
     }
     m_hostTargetMode = mode;
 }
@@ -510,23 +505,13 @@ void Context::applyUiScale() {
         m_damageBaseValid = false;
     }
     m_uiScale = scale;
-    const size_t count = m_documents.size();
-    for (size_t i = 0; i < count; ++i) {
-        if (Document* doc = liveAt(i)) {
-            doc->setUiScale(m_uiScale);
-        }
-    }
+    forEachLiveDocument([&](Document* doc) { doc->setUiScale(m_uiScale); });
 }
 
 void Context::setLocalizationProvider(ILocalizationProvider* provider) {
     DispatchGuard dispatch(this);  // T-260a: `localize` bindings may set states (triggers).
     m_localization = provider;
-    const size_t count = m_documents.size();
-    for (size_t i = 0; i < count; ++i) {
-        if (Document* doc = liveAt(i)) {
-            doc->setLocalization(m_localization, m_language);
-        }
-    }
+    forEachLiveDocument([&](Document* doc) { doc->setLocalization(m_localization, m_language); });
 }
 
 Status Context::setLanguage(std::string_view lang) {
@@ -542,12 +527,7 @@ Status Context::setLanguage(std::string_view lang) {
         m_damageBaseValid = false;  // Every text may change.
     }
     m_language.assign(lang);
-    const size_t count = m_documents.size();
-    for (size_t i = 0; i < count; ++i) {
-        if (Document* doc = liveAt(i)) {
-            doc->setLocalization(m_localization, m_language);
-        }
-    }
+    forEachLiveDocument([&](Document* doc) { doc->setLocalization(m_localization, m_language); });
     return Status::kOk;
 }
 
@@ -555,18 +535,28 @@ void Context::setGlyphProvider(IGlyphProvider* provider) {
     DispatchGuard dispatch(this);  // T-260a: every glyph re-resolves through `provider` (host).
     m_glyphProvider = provider;
     m_damageBaseValid = false;
-    const size_t count = m_documents.size();
-    for (size_t i = 0; i < count; ++i) {
-        if (Document* doc = liveAt(i)) {
-            doc->setGlyphProvider(provider);
-        }
-    }
+    forEachLiveDocument([&](Document* doc) { doc->setGlyphProvider(provider); });
 }
 
 Status Context::setInputDevice(InputKind input) {
     DeviceInfo device = m_device;
     device.input = input;
     return setDevice(device);
+}
+
+void Context::noteVisualChangeAll(DirtyCause cause) {
+    for (size_t i = 0; i < m_documents.size(); ++i) {
+        if (Document* doc = liveAt(i)) {
+            doc->noteVisualChange(cause);
+        }
+    }
+}
+
+void Context::setBoxShadowCommands(bool on) {
+    if (on != m_boxShadowCommands) {
+        noteVisualChangeAll(DirtyCause::Viewport);  // T-747: a paint option
+    }
+    m_boxShadowCommands = on;
 }
 
 Document* Context::foregroundDocument() const {
@@ -586,6 +576,7 @@ void fillCommandListStats(const CommandList& list, FrameStats& stats) {
     stats.commands = static_cast<uint32_t>(list.commands.size());
     stats.layers = static_cast<uint32_t>(list.layers.size());
     stats.effectLayers = static_cast<uint32_t>(list.effectCmds.size());
+    stats.culledOffscreen = list.culledOffscreen;  // T-754 (the SW backend's render adds its own)
     stats.projections = static_cast<uint32_t>(list.projections.size());
     stats.glyphs = static_cast<uint32_t>(list.glyphs.size());
     // CommandList::points holds two floats per path point.
@@ -642,7 +633,7 @@ void Context::update(float dt) {
     // §21.2: the frame opens here and stays addressable until the next beginFrame, so a backend can
     // still report renderMs into it after render() has returned.
     m_perf.beginFrame(m_clock);
-    PerfScope updateScope(m_perf, &FrameStats::updateMs);
+    PerfPhaseScope updateScope(m_perf, &FrameStats::updateMs, &FrameStats::updateCpuMs);  // T-750
     // T-260a: the Documents updated below are the ones loaded when this frame began: one a
     // callback loads (during input routing or another Document's update; m_documents may
     // reallocate) is updated from the next frame on.
@@ -655,7 +646,8 @@ void Context::update(float dt) {
     // frame's hover. The geometry this frame's bindings produce is judged at the next update().
     if (m_hoverSurface != 0) {
         if (Document* doc = liveAt(m_hoverSurface - 1); doc != nullptr && doc->m_surfaceVisible) {
-            PerfScope inputScope(m_perf, &FrameStats::inputMs);
+            PerfPhaseScope inputScope(m_perf, &FrameStats::inputMs, &FrameStats::inputCpuMs);
+            DirtyCauseScope causeScope(doc->m_arena, DirtyCause::Input);  // T-747
             doc->m_events->refreshHover(doc->m_arena, doc->m_root);
         }
     }
@@ -667,7 +659,7 @@ void Context::update(float dt) {
     {
         // 21.1 measures inputMs as a phase of update; the dispatch itself lives here rather than in
         // Document::update, so the scope does too.
-        PerfScope inputScope(m_perf, &FrameStats::inputMs);
+        PerfPhaseScope inputScope(m_perf, &FrameStats::inputMs, &FrameStats::inputCpuMs);
         m_updateEventsScratch.clear();
         m_updateRaysScratch.clear();
         m_updateRaysScratch.swap(m_pointerRays);  // T-701: indices into the drained queue
@@ -755,6 +747,9 @@ void Context::update(float dt) {
 void Context::releaseRenderScratch() {
     m_renderScratchHeld = false;
     m_damageBaseValid = false;  // The next render() reports `full`.
+    m_hashesSerial = 0;         // T-737
+    std::vector<uint64_t>().swap(m_prevHashes);
+    std::vector<uint64_t>().swap(m_curHashes);
     if (!m_listeners.empty()) {
         const std::vector<ContextListener*> listeners = m_listeners;  // Callbacks may edit the list.
         for (ContextListener* listener : listeners) {
@@ -791,14 +786,28 @@ void Context::render(CommandList& out, DamageList* damage) {
         // included, and never resolves an asset; with the table emptied nothing can.
         m_prevList.sources.clear();
     }
-    out.clear();
+    // T-194: bottom surface first (z ascending, then load order).
+    surfaceOrder(m_orderScratch);
+    beginVisualFrame();                               // T-747
+    const bool allSkipped = allPaintsSkip(haveBase);  // T-748 (23 §23.ag item 3)
+    if (allSkipped) {
+        std::swap(out, m_prevList);  // `out` is the previous list again; its sources were emptied.
+        for (size_t i = m_orderScratch.size(); i-- > 0;) {
+            Document* doc = m_documents[m_orderScratch[i] - 1].get();
+            out.sources.push_back(CommandSource{&doc->ir(), doc->ir().loadSerial()});
+            m_paintStates[m_orderScratch[i] - 1].frame = m_renderFrame;
+        }
+        if (m_perf.enabled()) {
+            m_perf.current().paintSkipped += static_cast<uint32_t>(m_orderScratch.size());
+        }
+    } else {
+        out.clear();
+    }
     out.viewport = m_viewport;
     out.devicePixelRatio = m_devicePixelRatio;
     out.hostTargetMode = m_hostTargetMode;  // T-343
     out.sceneStatic = m_sceneStatic;
-    // T-194: bottom surface first (z ascending, then load order).
-    surfaceOrder(m_orderScratch);
-    for (size_t i = m_orderScratch.size(); i-- > 0;) {
+    for (size_t i = m_orderScratch.size(); !allSkipped && i-- > 0;) {
         // T-263d: one CommandSource per painted Document, in paint order (a single Document is
         // no special case); the Painter stamps the Document's asset commands with its index, so
         // a backend resolves each AssetId against the IR that numbered it.
@@ -811,7 +820,16 @@ void Context::render(CommandList& out, DamageList* damage) {
         out.sources.push_back(CommandSource{&doc->ir(), doc->ir().loadSerial()});
         // T-701: a Document loaded since Context::setWorldLayerOutput was called.
         xt::setWorldLayerOutput(*doc, m_worldLayerOutput);
-        doc->paintAs(out, source, m_boxShadowCommands);  // T-680
+        // T-748: a skipping Document reuses its commands; the verify mode paints (and compares) it.
+        const bool skip = canSkipPaint(*doc, m_orderScratch[i], source, haveBase);
+        if (skip && !m_verifyVisual) {
+            reusePaint(m_orderScratch[i], out);
+            continue;
+        }
+        paintTracked(*doc, m_orderScratch[i], out, source);  // T-747: Document::paintAs + accounting
+        if (skip && m_perf.enabled()) {
+            ++m_perf.current().paintSkipped;
+        }
     }
     // T-263a: the Painter's own output; the backends need not check its structure every frame.
     // T-263b: Debug builds check it here, so a Painter bug that emits an unbalanced or
@@ -823,6 +841,7 @@ void Context::render(CommandList& out, DamageList* damage) {
     }
     // T-263c: process-wide, so a list of another Context is never taken for this one's.
     static std::atomic<uint32_t> nextFrameSerial{1};
+    const uint32_t previousSerial = out.frameSerial;  // T-748
     out.frameSerial = nextFrameSerial.fetch_add(1, std::memory_order_relaxed);
     if (out.frameSerial == 0) {
         out.frameSerial = nextFrameSerial.fetch_add(1, std::memory_order_relaxed);
@@ -831,30 +850,54 @@ void Context::render(CommandList& out, DamageList* damage) {
     if (!haveBase) {
         // T-191: nothing to report the external rebinds into; drop them.
         m_externalDamageScratch.clear();
-        const size_t count = m_documents.size();
-        for (size_t i = 0; i < count; ++i) {
-            if (Document* doc = liveAt(i)) {
-                doc->takeExternalDamage(m_externalDamageScratch);
-            }
-        }
+        forEachLiveDocument([&](Document* doc) { doc->takeExternalDamage(m_externalDamageScratch); });
     }
+    const float damageMsBefore = m_perf.current().damageMs;  // T-747
+    const std::vector<uint64_t>* outHashes = nullptr;        // T-748: for checkVisualFrame()
     if (damage != nullptr) {
-        PerfFieldScope damageScope(m_perf.enabled() ? &m_perf.current().damageMs : nullptr);
+        PerfPhaseScope damageScope(m_perf, &FrameStats::damageMs, &FrameStats::damageCpuMs);  // T-750
         damage->clear();
         Rect device{m_viewport.x * m_devicePixelRatio, m_viewport.y * m_devicePixelRatio,
                     m_viewport.w * m_devicePixelRatio, m_viewport.h * m_devicePixelRatio};
         damage->viewport = device;
+        if (allSkipped) {
+            // T-748: the same list as last frame; its kept hashes stay valid by T-737's test.
+            damage->full = false;
+            bool keep = false;
+            if (m_hashesSerial != 0 && m_hashesSerial == previousSerial &&
+                m_prevHashes.size() == out.commands.size()) {
+                commandListStorage(out, m_storageScratch);
+                keep = m_storageScratch == m_hashesStorage;
+            }
+            m_hashesSerial = keep ? out.frameSerial : 0;
+        } else if (haveBase) {
+            // T-737: the base's hashes from the last frame when the base is still exactly the list
+            // they were computed from (its serial, and its storage untouched); else hashed afresh.
+            bool reuseHashes = false;
+            if (m_hashesSerial != 0 && m_hashesSerial == m_prevList.frameSerial &&
+                m_prevHashes.size() == m_prevList.commands.size()) {
+                commandListStorage(m_prevList, m_storageScratch);
+                reuseHashes = m_storageScratch == m_hashesStorage;
+            }
+            // T-753 (57 §57.3 item 4): the commands painted again unchanged, at detail level >= 1.
+            computeDamageWithHashes(
+                m_prevList, reuseHashes ? &m_prevHashes : nullptr, out, device, *damage, m_curHashes,
+                m_perf.countsRedundantWork() ? &m_perf.current().redundantCommands : nullptr);
+            std::swap(m_prevHashes, m_curHashes);  // `out`'s hashes, for the next frame
+            m_hashesSerial = out.frameSerial;
+            commandListStorage(out, m_hashesStorage);
+            outHashes = &m_prevHashes;
+        } else {
+            // §23.2 step 5: first frame, viewport/dpr change, reload, no previous list kept, or
+            // (T-263c) a list that is not this Context's previous one.
+            damage->full = true;
+            m_hashesSerial = 0;  // T-737: `out` was not hashed
+        }
         if (haveBase) {
-            computeDamage(m_prevList, out, device, *damage);
             // T-191: a host that rebound (or refilled) an external texture changed pixels the
             // command diff cannot see.
             m_externalDamageScratch.clear();
-            const size_t count = m_documents.size();
-            for (size_t i = 0; i < count; ++i) {
-                if (Document* doc = liveAt(i)) {
-                    doc->takeExternalDamage(m_externalDamageScratch);
-                }
-            }
+            forEachLiveDocument([&](Document* doc) { doc->takeExternalDamage(m_externalDamageScratch); });
             for (const Rect& r : m_externalDamageScratch) {
                 if (damage->full) {
                     break;
@@ -874,17 +917,17 @@ void Context::render(CommandList& out, DamageList* damage) {
                     damage->full = true;
                 }
             }
-        } else {
-            // §23.2 step 5: first frame, viewport/dpr change, reload, no previous list kept, or
-            // (T-263c) a list that is not this Context's previous one.
-            damage->full = true;
         }
         m_damageBaseValid = true;
     } else {
         // Nothing tracks the frame on screen any more; the next damaged frame starts over.
         m_damageBaseValid = false;
         m_prevList.clear();
+        m_hashesSerial = 0;  // T-737
     }
+    noteExternalTextures(out, damage, allSkipped);               // T-746 (23 §23.ah)
+    checkVisualFrame(out, outHashes);                            // T-747, T-748
+    endVisualFrame(m_perf.current().damageMs - damageMsBefore);  // T-747
     if (m_perf.enabled()) {
         fillCommandListStats(out, m_perf.current());
     }
@@ -1029,16 +1072,12 @@ void Context::bindHostEvents(Document& doc, DocumentHandle handle) {
         }
     });
     doc.setExternalPlaceholders(m_externalPlaceholders);
+    applyPartialLayoutSettings(doc);  // T-755
 }
 
 void Context::setExternalPlaceholders(bool on) {
     m_externalPlaceholders = on;
-    const size_t count = m_documents.size();
-    for (size_t i = 0; i < count; ++i) {
-        if (Document* doc = liveAt(i)) {
-            doc->setExternalPlaceholders(on);
-        }
-    }
+    forEachLiveDocument([&](Document* doc) { doc->setExternalPlaceholders(on); });
 }
 
 Status Context::setCustomState(ElementRef element, std::string_view name, bool on) {
@@ -1132,6 +1171,9 @@ Cursor Context::cursor() const {
 Status Context::setSurfaceZ(DocumentHandle handle, int z) {
     if (handle == 0 || liveAt(handle - 1) == nullptr) {
         return Status::kInvalidArgument;
+    }
+    if (m_surfaces[handle - 1].z != z) {
+        liveAt(handle - 1)->noteVisualChange(liveAt(handle - 1)->arena().ambientCause());  // T-747
     }
     m_surfaces[handle - 1].z = z;
     m_damageBaseValid = false;  // The paint order changed.
@@ -1287,16 +1329,13 @@ void Context::routeInput(const InputEvent& event) {
             if (event.kind == InputEvent::PointerCancel) {
                 m_pointerCapture = 0;
             }
-            const size_t count = m_documents.size();
-            for (size_t i = 0; i < count; ++i) {
-                if (Document* doc = liveAt(i)) {
-                    if (event.kind == InputEvent::PointerCancel) {
-                        doc->cancelPointer();  // T-390 (08.13).
-                    } else {
-                        doc->dispatchInput(event);
-                    }
+            forEachLiveDocument([&](Document* doc) {
+                if (event.kind == InputEvent::PointerCancel) {
+                    doc->cancelPointer();  // T-390 (08.13).
+                } else {
+                    doc->dispatchInput(event);
                 }
-            }
+            });
             if (event.kind == InputEvent::PointerLeave) {
                 m_hoverSurface = 0;
             }

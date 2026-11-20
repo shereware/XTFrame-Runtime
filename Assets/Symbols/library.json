@@ -5,6 +5,7 @@
   "readOnly": true,
   "default": "broadsheet-2026",
   "groups": [
-    "broadsheet-2026"
+    "broadsheet-2026",
+    "survey-2026"
   ]
 }

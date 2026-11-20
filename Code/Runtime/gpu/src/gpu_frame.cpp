@@ -42,6 +42,8 @@ const char* shadingName(Shading s) {
             return "ParticleSolid";
         case Shading::BoxShadow:
             return "BoxShadow";
+        case Shading::TexturePlanar:  // T-806
+            return "TexturePlanar";
     }
     return "?";
 }
@@ -180,7 +182,22 @@ void dumpGpuFrame(const GpuFrame& frame, std::string& out) {
                 std::snprintf(buf, sizeof(buf), " program=%s", programName(cmd.program));
                 out += buf;
                 if (cmd.program == EffectProgram::BackdropMasked) {  // T-729: only on that program
-                    std::snprintf(buf, sizeof(buf), " mask=%u", backdropMaskTarget(frame, cmd));
+                    BackdropInputs in;
+                    backdropInputs(frame, cmd, in);
+                    const BackdropParams& bp = in.params;
+                    if (in.topTexture != 0) {  // T-764: a texture input, its sampler and uv mapping
+                        std::snprintf(buf, sizeof(buf), " top=tex:%s uv=(%g,%g,%g,%g)",
+                                      samplerName(static_cast<Sampler>(static_cast<int>(bp.topSampler))),
+                                      bp.topUv[0], bp.topUv[1], bp.topUv[2], bp.topUv[3]);
+                        out += buf;
+                    }
+                    if (in.maskTexture != 0) {
+                        std::snprintf(buf, sizeof(buf), " mask=tex:%s uv=(%g,%g,%g,%g)",
+                                      samplerName(static_cast<Sampler>(static_cast<int>(bp.maskSampler))),
+                                      bp.maskUv[0], bp.maskUv[1], bp.maskUv[2], bp.maskUv[3]);
+                    } else {
+                        std::snprintf(buf, sizeof(buf), " mask=%u", in.maskTarget);
+                    }
                     out += buf;
                 }
             }
@@ -193,6 +210,15 @@ void dumpGpuFrame(const GpuFrame& frame, std::string& out) {
             }
             if (cmd.mipLod != 0) {  // T-665: frames without minified mip draws dump as before
                 out += " mip=yes";
+            }
+            if (cmd.shading == Shading::TexturePlanar) {  // T-806: only on that shading
+                PlanarParams pp{};
+                const bool ok = cmd.paramIndex < frame.params.size() &&
+                                readPlanarParams(frame.params.data() + cmd.paramIndex,
+                                                 frame.params.size() - cmd.paramIndex, pp);
+                std::snprintf(buf, sizeof(buf), " planar=%s alpha=%g premul=%g", ok ? "ok" : "bad",
+                              pp.hasAlpha, pp.premultiplied);
+                out += buf;
             }
             if (cmd.boxShadowMulti != 0) {  // T-683: frames without outlined box shadows dump as before
                 out += " multi=yes";

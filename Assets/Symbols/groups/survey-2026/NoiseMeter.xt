@@ -1,0 +1,219 @@
+<xt version="2">
+
+  <symbol name="NoiseMeter" state-groups="Noise: Quiet|Alert|Loud" requires="states: Quiet, Alert, Loud; slots: label">
+    <ports>
+      level: number in
+      text: string in
+    </ports>
+    <div id="Box" bind:state.Quiet="level | lt(1)" bind:state.Alert="level | floor | eq(1)" bind:state.Loud="level | ge(2)"
+         on:show="play(pulse, loop)">
+      <div id="Icon">
+        <div id="Capsule" class="mic"></div>
+        <div id="Cradle" class="mic"></div>
+        <div id="Stem" class="mic"></div>
+        <div id="Base" class="mic"></div>
+      </div>
+      <span id="Label"><slot name="label">Noise</slot></span>
+      <div id="Wave">
+        <div id="B1" class="bar"></div>
+        <div id="B2" class="bar"></div>
+        <div id="B3" class="bar"></div>
+        <div id="B4" class="bar"></div>
+        <div id="B5" class="bar"></div>
+        <div id="B6" class="bar"></div>
+        <div id="B7" class="bar"></div>
+        <div id="B8" class="bar"></div>
+        <div id="B9" class="bar"></div>
+        <div id="B10" class="bar"></div>
+        <div id="B11" class="bar"></div>
+        <div id="B12" class="bar"></div>
+      </div>
+      <div id="Rest"></div>
+      <span id="Text" bind:text="text"></span>
+    </div>
+  </symbol>
+
+  <layout>
+    symbol(NoiseMeter) {
+      #Box {
+        display: flex;
+        align-items: center;
+        column-gap: var(--space-2);
+        width: 300px;
+        height: 34px;
+      }
+      #Icon {
+        position: relative;
+        width: 20px;
+        height: 20px;
+        flex-shrink: 0;
+      }
+      .mic {
+        position: absolute;
+      }
+      #Capsule {
+        left: 7.3px;
+        top: 2px;
+        width: 5.3px;
+        height: 9.3px;
+      }
+      #Cradle {
+        left: 5px;
+        top: 6px;
+        width: 10px;
+        height: 8px;
+      }
+      #Stem {
+        left: 10px;
+        top: 13.3px;
+        width: 3.3px;
+        height: 1.4px;
+        transform-origin: 0% 50%;
+        transform: rotate(90deg);
+      }
+      #Base {
+        left: 7px;
+        top: 16.6px;
+        width: 6px;
+        height: 1.4px;
+        transform-origin: 0% 50%;
+        transform: rotate(0deg);
+      }
+      #Label {
+        width: 64px;
+      }
+      #Wave {
+        display: flex;
+        align-items: center;
+        column-gap: 3px;
+        width: 60px;
+        height: 18px;
+        transform-origin: 50% 50%;
+      }
+      .bar {
+        width: 2px;
+        flex-shrink: 0;
+      }
+      #B1 {
+        height: 6px;
+      }
+      #B2 {
+        height: 12px;
+      }
+      #B3 {
+        height: 4px;
+      }
+      #B4 {
+        height: 16px;
+      }
+      #B5 {
+        height: 8px;
+      }
+      #B6 {
+        height: 14px;
+      }
+      #B7 {
+        height: 5px;
+      }
+      #B8 {
+        height: 10px;
+      }
+      #B9 {
+        height: 3px;
+      }
+      #B10 {
+        height: 7px;
+      }
+      #B11 {
+        height: 2px;
+      }
+      #B12 {
+        height: 2px;
+      }
+      #Rest {
+        flex-grow: 1;
+        height: 0px;
+        min-width: 24px;
+      }
+    }
+  </layout>
+  <style>
+    symbol(NoiseMeter) {
+      #Capsule {
+        background-color: transparent;
+        border-width: 1.4px;
+        border-color: var(--color-text);
+        border-radius: var(--radius-full);
+      }
+      #Cradle {
+        background-color: transparent;
+        border-width: 0px 1.4px 1.4px 1.4px;
+        border-color: var(--color-text);
+        border-radius: 0px 0px 5px 5px;
+      }
+      #Stem,
+      #Base {
+        background-color: var(--color-text);
+        border-radius: var(--radius-full);
+      }
+      #Label {
+        font-family: var(--font-body);
+        font-size: var(--font-size-xs);
+        letter-spacing: var(--letter-label);
+        text-transform: uppercase;
+        color: var(--color-text-label);
+      }
+      .bar {
+        background-color: var(--color-success);
+        border-radius: var(--radius-full);
+      }
+      #Rest {
+        border-width: var(--rule-thin) 0px 0px 0px;
+        border-style: dashed;
+        border-color: var(--color-border-strong);
+      }
+      #Text {
+        font-family: var(--font-body);
+        font-size: var(--font-size-s);
+        letter-spacing: 1px;
+        white-space: nowrap;
+        color: var(--color-success);
+      }
+      #Box:state(Quiet) .bar {
+        background-color: var(--color-success);
+      }
+      #Box:state(Quiet) #Text {
+        color: var(--color-success);
+      }
+      #Box:state(Alert) .bar {
+        background-color: var(--color-warning);
+      }
+      #Box:state(Alert) #Text {
+        color: var(--color-warning);
+      }
+      #Box:state(Loud) .bar {
+        background-color: var(--color-danger);
+      }
+      #Box:state(Loud) #Text {
+        color: var(--color-danger);
+      }
+    }
+  </style>
+  <timelines>
+    symbol(NoiseMeter) {
+      @timeline pulse {
+        #Wave {
+          0s {
+            transform: scaleY(1);
+          }
+          0.25s ease-in-out {
+            transform: scaleY(0.55);
+          }
+          0.5s ease-in-out {
+            transform: scaleY(1);
+          }
+        }
+      }
+    }
+  </timelines>
+</xt>

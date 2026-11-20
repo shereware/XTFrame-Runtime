@@ -1,13 +1,11 @@
 <xt version="2">
 
   <!-- T-727: group boundaries when a flat container's content is split around a 3D layer.
-       #g1: the container clips (overflow: hidden): its flat content is split, the clip is pushed
-            again around each piece: A, c1, c2, c3.
-       #g2: the container has opacity 0.5 (a Layer group): splitting would composite each piece on
-            its own, which the ruling leaves open, so the pre-T-727 order stays: d1 and d3 inside one
-            Layer before A, then d2.
-       #g3: the container has opacity 0.5 but its layer comes last, so its flat content is one
-            piece: A, then the Layer with e1, then e2. -->
+       T-762 (19 §19.y.2): a grouping container keeps its 3D children -- it is one item at depth 0,
+       drawn in document order with its 3D children inside.
+       #g1: the container clips (overflow: hidden): A, then the clip around c1, c2, c3.
+       #g2: the container has opacity 0.5 (a Layer group): A, then one Layer with d1, d2, d3.
+       #g3: the container has opacity 0.5: A, then one Layer with e1, e3, e2. -->
   <body>
     <div id="g1" class="stage">
       <div id="ga1" class="a"></div>

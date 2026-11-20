@@ -15,6 +15,7 @@ void setWorldLayerOutput(Document& document, bool on) {
         return;
     }
     state.output = on;
+    arena.noteVisualChange(DirtyCause::Viewport, kInvalidNode);  // T-747: a paint option
     state.overLimit = false;
     state.previousRects.clear();  // T-706: switching off and on again starts every layer afresh.
     const NodeId root = document.root().node;

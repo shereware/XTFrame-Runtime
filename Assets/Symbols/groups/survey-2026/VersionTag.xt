@@ -1,0 +1,17 @@
+<xt version="2">
+
+  <symbol name="VersionTag" requires="slots: text">
+    <span id="Box"><slot name="text">v1.0.0</slot></span>
+  </symbol>
+
+  <style>
+    symbol(VersionTag) {
+      #Box {
+        font-family: var(--font-body);
+        font-size: var(--font-size-caption);
+        letter-spacing: 1px;
+        color: var(--color-text-dim);
+      }
+    }
+  </style>
+</xt>

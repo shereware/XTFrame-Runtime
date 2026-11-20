@@ -34,6 +34,7 @@ add_executable(xt_tests
     unit/test_shape_modifiers.cpp
     unit/test_painter_3d.cpp
     unit/test_painter_3d_flat.cpp  # T-727
+    unit/test_painter_3d_flatten.cpp  # T-762
     unit/test_painter_element.cpp
     unit/test_rounded_rect_match.cpp  # T-718
     unit/test_lottie_parser.cpp
@@ -43,6 +44,9 @@ add_executable(xt_tests
     unit/test_sw_renderer.cpp
     unit/test_context.cpp
     unit/test_damage.cpp
+    unit/test_damage_hash_reuse.cpp  # T-737
+    unit/test_damage_t760.cpp  # T-760
+    unit/test_border_dash_cache.cpp  # T-737
     unit/test_command_hash_relative.cpp  # T-721
     unit/test_context_reload.cpp
     unit/test_tokens.cpp
@@ -108,13 +112,27 @@ add_executable(xt_tests
     unit/test_style_animation_integration.cpp
     unit/test_transition_target.cpp  # T-723
     unit/test_style_invalidation.cpp  # T-723
+    unit/test_state_invalidation.cpp  # T-763
     unit/test_animation_identity.cpp
+    unit/test_animation_longhands.cpp  # T-756
+    unit/test_animation_cascade.cpp  # T-778
+    unit/test_expr_noise.cpp  # T-766
+    unit/test_expr_syntax.cpp  # T-766
+    unit/test_expr_eval.cpp  # T-766
+    unit/test_expr_lower.cpp  # T-766
+    unit/test_expr_split.cpp  # T-766
+    unit/test_expressions_section.cpp  # T-767
+    unit/test_expressions_refs.cpp  # T-770
+    unit/test_expressions_runtime.cpp  # T-777
     unit/test_state_snapshot_v3.cpp
     unit/test_state_snapshot_v4.cpp
     unit/test_top_level_elements.cpp
     unit/test_command_simplifier.cpp
     unit/test_command_list_validate.cpp
     unit/test_painter_effects.cpp
+    unit/test_painter_offscreen.cpp  # T-754
+    unit/test_space_root_t760.cpp  # T-760
+    unit/test_project3d_homogeneous.cpp  # T-761
     unit/test_box_shadow.cpp  # T-668
     unit/test_plane_2d.cpp  # T-725
     unit/test_baked.cpp
@@ -123,17 +141,31 @@ add_executable(xt_tests
     unit/test_sw_effects.cpp
     unit/test_sw_backdrop_shadows.cpp  # T-729
     unit/test_perf.cpp
+    unit/test_dirty_causes.cpp  # T-747
+    unit/test_perf_record.cpp  # T-750
+    unit/test_perf_redundant.cpp  # T-753
+    unit/test_static_skip.cpp  # T-748
+    unit/test_needs_frame.cpp  # T-749
+    unit/test_external_texture_version.cpp  # T-746
+    unit/test_external_planes.cpp  # T-806
+    unit/test_engine_url_css.cpp  # T-808
+    unit/test_layout_partial.cpp  # T-755
     unit/test_public_headers.cpp
     unit/test_simd.cpp
     unit/test_sw_layer_simd.cpp  # T-643
     unit/test_field_fixes.cpp
     unit/test_timeline_group.cpp
     unit/test_timeline_hold.cpp  # T-717
+    unit/test_timeline_stationary.cpp  # T-783
+    unit/test_timeline_expr.cpp  # T-776
     unit/test_external_media.cpp
     unit/test_timeline_clips.cpp
     unit/test_svg_style_rules.cpp
     unit/test_triggers.cpp
+    unit/test_state_scope.cpp  # T-738
+    unit/test_symbol_namespaces.cpp  # T-740
     unit/test_bindings.cpp
+    unit/test_binding_numbers.cpp  # T-797
     unit/test_bind_diagnostics.cpp
     unit/test_web_compat.cpp
     unit/test_repeat.cpp
@@ -180,6 +212,13 @@ target_include_directories(xt_tests PRIVATE ${PROJECT_SOURCE_DIR}/Code/Runtime/c
 # test_sw_effect_math.cpp times its Gaussian blur perf case with Tests/perf's perf_clock.h.
 target_include_directories(xt_tests PRIVATE ${PROJECT_SOURCE_DIR}/Tests/perf)
 target_link_libraries(xt_tests PRIVATE xt_core xt_compile xt_sw)
+# T-797 (23 §23.ai): the Context hand-over test shares a real FtTextShaper between two Contexts.
+if(TARGET xt_text)
+    target_sources(xt_tests PRIVATE unit/test_context_handover.cpp
+        unit/test_text_hard_breaks.cpp)  # T-801: hard breaks in a port-bound text, real shaper
+    target_link_libraries(xt_tests PRIVATE xt_text)
+    target_compile_definitions(xt_tests PRIVATE XT_TEST_FONTS_DIR="${PROJECT_SOURCE_DIR}/Tests/fonts")
+endif()
 # T-240: SdlRwAssetResolver lives in xt_shell (SDL2).
 if(XT_BUILD_SHELL)
     target_sources(xt_tests PRIVATE unit/test_sdl_rw_asset_resolver.cpp unit/test_hit_region.cpp
@@ -228,7 +267,7 @@ endif()
 if(TARGET xtframe-symbols)
     include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/expect_exit.cmake")
     xt_add_expect_exit_test(xtframe-symbols_lint_preset CODE 0
-        OUTPUT "lint: 0 error\\(s\\), 0 warning\\(s\\) in 1 group\\(s\\)"
+        OUTPUT "lint: 0 error\\(s\\), 0 warning\\(s\\) in 2 group\\(s\\)"
         COMMAND $<TARGET_FILE:xtframe-symbols> lint "${PROJECT_SOURCE_DIR}/Assets/Symbols")
     xt_add_expect_exit_test(xtframe-symbols_lint_missing CODE 1 OUTPUT "group\\.notFound"
         COMMAND $<TARGET_FILE:xtframe-symbols> lint "${CMAKE_CURRENT_BINARY_DIR}/no-such-group")
@@ -524,6 +563,17 @@ if(TARGET xtframe-view AND TARGET xtframe-pack)
                  CONFIGURATIONS Release RelWithDebInfo)
         set_tests_properties(corpus_check PROPERTIES TIMEOUT 1800)
     endif()
+endif()
+
+# T-749 (Docs/design/23-host-integration.md §23.ag item 6): xtframe-view --idle-skip draws the same frames as a
+# run that never skips (Tests/capi/fixtures/flip: idle, a click, a 1 s transition, idle again).
+if(TARGET xtframe-view)
+    add_test(NAME xtframe-view_idle_skip
+             COMMAND ${CMAKE_COMMAND} "-DVIEW=$<TARGET_FILE:xtframe-view>"
+                     "-DPROJECT=${CMAKE_CURRENT_SOURCE_DIR}/capi/fixtures/flip/Flip fixture.xtui"
+                     "-DOUT=${CMAKE_CURRENT_BINARY_DIR}/view_idle_skip"
+                     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/view_idle_skip.cmake")
+    set_tests_properties(xtframe-view_idle_skip PROPERTIES TIMEOUT 300)
 endif()
 
 # T-713: the War Table benchmark runner's self-test -- its parsers on built-in text, then a shortened matrix

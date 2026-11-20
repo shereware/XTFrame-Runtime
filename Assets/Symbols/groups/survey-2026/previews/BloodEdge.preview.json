@@ -1,0 +1,11 @@
+{
+  "width": 320,
+  "height": 180,
+  "frames": 0,
+  "ports": {
+    "Hurt.level": 0.8
+  },
+  "events": [
+    "update 0.25"
+  ]
+}

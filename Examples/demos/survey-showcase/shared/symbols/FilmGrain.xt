@@ -1,0 +1,65 @@
+<xt version="2">
+
+  <symbol name="FilmGrain">
+    <div id="Box" on:show="play(jitter, loop)">
+      <div id="Sheet"></div>
+    </div>
+  </symbol>
+
+  <layout>
+    symbol(FilmGrain) {
+      #Box {
+        position: relative;
+        width: 640px;
+        height: 360px;
+        overflow: hidden;
+      }
+      #Sheet {
+        position: absolute;
+        left: -64px;
+        right: -64px;
+        top: -64px;
+        bottom: -64px;
+      }
+    }
+  </layout>
+  <style>
+    symbol(FilmGrain) {
+      #Box {
+        pointer-events: none;
+      }
+      #Sheet {
+        background-image: var(--tex-film-grain);
+        background-repeat: repeat;
+        background-size: 128px 128px;
+        opacity: 0.7;
+      }
+    }
+  </style>
+  <timelines>
+    symbol(FilmGrain) {
+      @timeline jitter {
+        #Sheet {
+          0s {
+            transform: translate(0px, 0px);
+          }
+          0.1s step-end {
+            transform: translate(23px, -17px);
+          }
+          0.2s step-end {
+            transform: translate(-31px, 9px);
+          }
+          0.3s step-end {
+            transform: translate(11px, 29px);
+          }
+          0.4s step-end {
+            transform: translate(-7px, -25px);
+          }
+          0.5s step-end {
+            transform: translate(0px, 0px);
+          }
+        }
+      }
+    }
+  </timelines>
+</xt>

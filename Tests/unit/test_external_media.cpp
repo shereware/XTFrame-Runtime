@@ -244,6 +244,51 @@ TEST_CASE("external content: intrinsic size from the first frame, atlas cell, ho
     CHECK(d.setPlayback(nodeOf(d, "E"), MediaState::Playing, 0) == Status::kInvalidArgument);
 }
 
+// T-809 (Docs/design/23-host-integration.md, "§23.8b 補充"): IExternalTexture::bindTexture has no
+// alpha parameter and keeps the straight-alpha flag the name's binding already has (T-808 item 6
+// recorded the old reset to false here).
+TEST_CASE("external content: bindTexture keeps the name's straight-alpha flag across a rebind") {
+    CountingResolver assets;
+    Loaded l = load(doc(R"~(<video id="V" src="a.mp4"></video>)~"), &assets);
+    Document& d = *l.doc;
+    d.update(0);
+    assets.setExternalTexture("video:V", 7, 64, 32, /*straightAlpha=*/true);
+    REQUIRE(assets.externalTexture("video:V") != nullptr);
+    REQUIRE(assets.externalTexture("video:V")->straightAlpha);
+    // Another handle, same size.
+    REQUIRE(d.bindTexture(nodeOf(d, "V"), 8, 64, 32) == Status::kOk);
+    REQUIRE(assets.externalTexture("video:V") != nullptr);
+    CHECK(assets.externalTexture("video:V")->texture == 8u);
+    CHECK(assets.externalTexture("video:V")->straightAlpha);
+    // Another handle and another size.
+    REQUIRE(d.bindTexture(nodeOf(d, "V"), 9, 128, 48) == Status::kOk);
+    REQUIRE(assets.externalTexture("video:V") != nullptr);
+    CHECK(assets.externalTexture("video:V")->texture == 9u);
+    CHECK(assets.externalTexture("video:V")->width == 128);
+    CHECK(assets.externalTexture("video:V")->straightAlpha);
+    // A premultiplied binding stays premultiplied.
+    assets.setExternalTexture("video:V", 10, 128, 48, /*straightAlpha=*/false);
+    REQUIRE(d.bindTexture(nodeOf(d, "V"), 11, 64, 32) == Status::kOk);
+    CHECK_FALSE(assets.externalTexture("video:V")->straightAlpha);
+}
+
+TEST_CASE("external content: bindTexture without an existing binding binds premultiplied") {
+    CountingResolver assets;
+    Loaded l = load(doc(R"~(<video id="V" src="a.mp4"></video>)~"), &assets);
+    Document& d = *l.doc;
+    d.update(0);
+    REQUIRE(assets.externalTexture("video:V") == nullptr);
+    REQUIRE(d.bindTexture(nodeOf(d, "V"), 7, 64, 32) == Status::kOk);
+    REQUIRE(assets.externalTexture("video:V") != nullptr);
+    CHECK(assets.externalTexture("video:V")->texture == 7u);
+    CHECK_FALSE(assets.externalTexture("video:V")->straightAlpha);
+    // After an unbind the next bindTexture starts from no binding again.
+    assets.setExternalTexture("video:V", 7, 64, 32, /*straightAlpha=*/true);
+    REQUIRE(d.unbindExternal(nodeOf(d, "V")) == Status::kOk);
+    REQUIRE(d.bindTexture(nodeOf(d, "V"), 8, 64, 32) == Status::kOk);
+    CHECK_FALSE(assets.externalTexture("video:V")->straightAlpha);
+}
+
 TEST_CASE("external content: a sequence plays itself, preloads ahead, loops and ends") {
     CountingResolver assets;
     Loaded l = load(doc(R"~(<sequence id="S" src="media/seq" fps="4" autoplay

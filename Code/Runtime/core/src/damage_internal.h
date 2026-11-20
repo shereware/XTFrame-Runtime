@@ -78,4 +78,21 @@ bool matchCommandHashes(const std::vector<uint64_t>& prev, const std::vector<uin
 /// is set to `viewportDevice`.
 void computeDamage(const CommandList& prev, const CommandList& cur, Rect viewportDevice, DamageList& out);
 
+/// T-737 (Docs/tasks/T-737.md B): computeDamage() with the previous list's hashes supplied by the
+/// caller and the current list's handed back. `prevHashes` must be exactly hashCommandList(prev)
+/// (the caller vouches for it; nullptr hashes `prev` here, as computeDamage() does). `curHashes` is
+/// left holding hashCommandList(cur) (capacity reused). The DamageList is computeDamage()'s.
+/// T-753 (57 §57.3 item 4): a non-null `matchedOut` receives how many commands of `cur` the alignment
+/// matched with an identical command of `prev` (all of them when the lists are identical).
+void computeDamageWithHashes(const CommandList& prev, const std::vector<uint64_t>* prevHashes,
+                             const CommandList& cur, Rect viewportDevice, DamageList& out,
+                             std::vector<uint64_t>& curHashes, uint32_t* matchedOut = nullptr);
+
+/// T-737: where `list`'s storage is -- the data pointer and the size of `commands` and of every
+/// payload and pool hashCommandList() reads -- written to `out` (resized; capacity reused). Two equal
+/// results of the same list mean nothing was added, removed, reallocated, moved or copied between
+/// them; Context::render keeps the previous frame's hashes only while this stays equal (with the
+/// list's frameSerial).
+void commandListStorage(const CommandList& list, std::vector<uintptr_t>& out);
+
 }  // namespace xt

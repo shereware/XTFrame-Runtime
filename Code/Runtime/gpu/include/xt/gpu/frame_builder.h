@@ -54,6 +54,8 @@
 ///    without the BackdropBlur's parameters; not reading the backdrop, it may be keyed independently of
 ///    its position); a hit reads the backdrop as the segment would, pastes the two into transients and
 ///    composes them with one BackdropMasked pass (BuildStats::backdropPair*).
+///    T-764: on a device that also reports `supportsBackdropMaskTextures()` the BackdropMasked pass
+///    samples the two cached textures where they lie instead (no paste: two passes fewer per hit).
 ///
 /// T-343 (Docs/design/23-host-integration.md §23.aa, Docs/tasks/T-343.md) adds the host's
 /// **Direct target mode** (`CommandList::hostTargetMode == HostTargetMode::Direct`, from
@@ -127,6 +129,9 @@ public:
     /// T-701: `sharedPages` (null, the default: this builder's own textures) is the device texture
     /// set of an atlas several builders draw from (GlyphAtlasTextures); the atlas must then be used
     /// by those builders only.
+    /// Threads (T-797): the atlas (and `sharedPages`) is not used concurrently -- not shared with a
+    /// builder or Context on another thread; it may be handed to another thread together with this
+    /// builder and its Context, one thread at a time. See Docs/design/23-host-integration.md §23.ai.
     void setGlyphAtlas(xt::text::GlyphAtlas* atlas, GlyphAtlasTextures* sharedPages = nullptr);
     /// T-701: true once after a `build` during which the glyph atlas was reset or grew (the frame
     /// itself was rebuilt, as ever): frames other builders made from the same atlas before that
@@ -350,7 +355,8 @@ public:
         /// BackdropBlur followed only by shadow-type effects, on a device that caches and runs
         /// BackdropMasked (`GpuDevice::supportsBackdropMask`), keep their source layer S and shadow result
         /// R' as one pair (two cached targets, two entries of the budget). Such segments drawn from
-        /// the pair (the backdrop read as ever, R' and S pasted, one BackdropMasked pass) ...
+        /// the pair (the backdrop read as ever, R' and S pasted -- T-764: or sampled where they lie --,
+        /// one BackdropMasked pass) ...
         uint32_t backdropPairHits = 0;
         /// ... drawn in full ...
         uint32_t backdropPairMisses = 0;
@@ -361,6 +367,16 @@ public:
         /// entries as counted against kEffectCacheBudgetBytes / kEffectCacheMaxEntries (a pair is two).
         uint64_t effectCacheBytes = 0;
         uint32_t effectCacheEntries = 0;
+        /// T-754 (Docs/design/10-backends.md §10.20): effects and layers not drawn because their
+        /// known bounds lie wholly outside the viewport -- those the Painter left out
+        /// (CommandList::culledOffscreen) plus the sections with a known, empty hint this build
+        /// skipped.
+        uint32_t culledOffscreen = 0;
+        /// T-806 (Docs/design/23-host-integration.md §23.aj): image draws of external bindings with a
+        /// plane description left out -- on a device without `GpuDevice::supportsPlanarExternal()`,
+        /// with a description externalPlanesValid() rejects (reported once in `lastError`), or as a
+        /// particle texture (reported once). 0 without planar bindings.
+        uint32_t planarSkipped = 0;
     };
     BuildStats lastBuildStats() const;
 

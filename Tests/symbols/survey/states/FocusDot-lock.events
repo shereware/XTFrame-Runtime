@@ -1,0 +1,6 @@
+# T-793: FocusDot-lock.
+port Aimed.target true
+update 0.6
+port Aimed.target false
+port Aimed.target true
+update 0.08

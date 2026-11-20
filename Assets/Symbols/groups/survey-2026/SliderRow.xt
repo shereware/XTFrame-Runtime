@@ -1,0 +1,125 @@
+<xt version="2">
+
+  <symbol name="SliderRow" requires="states: Hover, Focus, Disabled; slots: label">
+    <ports>
+      value: number in
+      min: number in
+      max: number in
+      decrease: event out
+      increase: event out
+    </ports>
+    <div id="Box" tabindex="0">
+      <span id="Label"><slot name="label">Camera Shake</slot></span>
+      <div id="Track" draggable="axis-x"
+           on:drag.value="set(value, event.value | range(0, 1, min, max) | round)"
+           on:nav.value="sound(ui_tick); if lt(0) emit(decrease) else emit(increase)">
+        <div id="Rail"></div>
+        <div id="Fill" bind:width="value | range(min, max, 0%, 100%)"></div>
+        <div id="Knob" bind:left="value | range(min, max, 0%, 100%)"></div>
+      </div>
+      <span id="Value" bind:text="value | round"></span>
+    </div>
+  </symbol>
+
+  <layout>
+    symbol(SliderRow) {
+      #Box {
+        display: flex;
+        align-items: center;
+        width: 380px;
+        height: var(--size-row);
+        padding: 0px var(--space-2);
+        column-gap: var(--space-3);
+      }
+      #Label {
+        flex-grow: 1;
+      }
+      #Track {
+        position: relative;
+        width: 132px;
+        height: 16px;
+      }
+      #Rail {
+        position: absolute;
+        left: 0px;
+        right: 0px;
+        top: 7px;
+        height: 2px;
+      }
+      #Fill {
+        position: absolute;
+        left: 0px;
+        top: 7px;
+        height: 2px;
+      }
+      #Knob {
+        position: absolute;
+        top: 2px;
+        width: 4px;
+        height: 12px;
+        margin-left: -2px;
+      }
+      #Value {
+        width: 28px;
+      }
+    }
+  </layout>
+  <style>
+    symbol(SliderRow) {
+      #Box {
+        border-width: 0px 0px var(--rule-thin) 0px;
+        border-color: var(--color-line-hairline);
+        transition: background-color var(--motion-fast) ease-out;
+      }
+      #Label {
+        font-family: var(--font-body);
+        font-size: var(--font-size-m);
+        letter-spacing: 1px;
+        color: var(--color-text-label);
+        white-space: nowrap;
+      }
+      #Box:hover {
+        background-color: var(--color-surface-raised);
+      }
+      #Box:focus {
+        background-color: var(--color-surface-raised);
+      }
+      #Box:focus #Label {
+        color: var(--color-text-strong);
+      }
+      #Rail {
+        background-color: var(--color-border);
+      }
+      #Fill {
+        background-color: var(--color-text-label);
+      }
+      #Knob {
+        background-color: var(--color-text-strong);
+      }
+      #Value {
+        font-family: var(--font-body);
+        font-size: var(--font-size-text);
+        color: var(--color-text);
+        text-align: right;
+      }
+      #Box:hover #Knob {
+        background-color: var(--color-accent-hover);
+      }
+      :disabled {
+        background-color: transparent !important;
+      }
+      :disabled #Label {
+        color: var(--color-disabled-text) !important;
+      }
+      :disabled #Value {
+        color: var(--color-disabled-text) !important;
+      }
+      :disabled #Fill {
+        background-color: var(--color-disabled-text) !important;
+      }
+      :disabled #Knob {
+        background-color: var(--color-disabled-text) !important;
+      }
+    }
+  </style>
+</xt>

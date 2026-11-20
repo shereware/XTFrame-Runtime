@@ -333,6 +333,7 @@ AI（skill、Claude Design）產出的 HTML/`.xt` 以 `data-xt-*` 標籤宣告�
 | `data-xt-state` | `Hover` / `Selected` … | 該元素是某狀態的外觀 → 併成狀態規則 |
 | `data-xt-trigger` | `hover:play(pulse); leave:play(pulse,reverse)` | `on:` 屬性 |
 | `data-xt-timeline` | `intro: 0 opacity 0, 400ms opacity 1` 或引用配方 | `@timeline` |
+| `data-xt-timeline-from-animations` | `<name>[ <秒>s][ loop\|once\|none][ markers]`（T-757） | 把這個容器子樹內共用週期的 CSS `animation` 收成一條 `@timeline`，收不進去的保留並給 finding |
 | `data-xt-port` | `hp:number in` | `port:` |
 | `data-xt-bind` | `width=hp\|range(0,hp_max,0%,100%)` | `bind:` |
 | `data-xt-token` | `color-primary` | 屬性值改引用 token |
@@ -353,6 +354,7 @@ AI（skill、Claude Design）產出的 HTML/`.xt` 以 `data-xt-*` 標籤宣告�
 - `data-xt-state`：內建狀態用偽類（Pressed → `:active`），自訂用 `:state(Name)`；只寫與 Normal 不同的 inline 宣告，同名子孫寫成 `#n:hover #child`；狀態元素本身不輸出。限制：Normal 有而狀態沒有的屬性無法表達「取消」。
 - `data-xt-trigger`：同事件合併；沒有 `event:` 開頭的片段視為上一條延續；事件名交給編譯器驗證。**指向不存在時間軸的 `play/stop/seek` 只刪該段動作並記 `tag.triggerWithoutTimeline`**（否則整份匯入因編譯錯誤失敗）；`on:timeline(x).end` 的 x 不存在則刪整個屬性；觸發只找自己範圍內的時間軸（文件層另納入 helmet 內的 `@timeline`）。
 - `data-xt-timeline`：`@timeline name { #id { 0ms {...} 400ms ease-out {...} } }`，不同元素同名合成一條多軌；無單位 = ms；`var()` 在時間軸內展開為字面值（編譯器拒收 var）；`loop` 只把單參數 `play(x)` 改為 `play(x, loop)`；不支援引用配方。
+- `data-xt-timeline-from-animations`（T-757 #712，2026-11-19）：放在根元素或任一容器（內層範圍先處理；`data-xt-symbol` 內忽略並警告）。規則：時間軸長度 T 未指定時取所有候選的 `delay + 次數 × duration` 的最大值（`infinite` 以一個週期計）；候選可收的條件——`delay ≥ 0`、在 T 內結束、`infinite` 時 `(T − delay) ÷ duration` 為整數、`direction` 為 `normal`／`alternate`（反向展開，緩動鏡像）、有 delay 時 fill 含 `backwards`、在 T 之前結束時 fill 含 `forwards`、屬性可動畫、每個屬性展開後 ≤ 256 鍵；一條規則同時套用到範圍內外的元素時整批保留；`:hover`／`@media` 等條件規則也設了 `animation` 的元素保留。`loop` 加 `on:show → play(name, loop)`、`once` 為 hold、`none` 不加；`markers` 在 opacity／visibility／display 由 0 轉為非 0 的時間點產生以元素 id 命名的標記。語意以執行期為準。同一功能的其他入口：`xtframe-import dc --animations-to-timeline <name>[,<秒>s][,loop|once|none][,markers]`（根元素已有標籤時以標籤為準）、op `timeline.fromAnimations`、時間軸面板「+」選單的「由 CSS 動畫建立時間軸…」。**`loop` 下與原本不同的兩類**：次數為 1 的動畫每一輪都重播（要一致用 `once`）；`infinite` 加 delay 的動畫第二輪起在 delay 區間停在首值。
 - `data-xt-port`：文件層 port 提升到 UI 根，符號內留在元素；重複宣告保留第一個並警告。`data-xt-bind` 原樣保留（未宣告 port 為編譯錯誤）。
 - `data-xt-token`／`-token-prop`：改 `var(--x)` 並寫進 `:root`；未指定屬性先 color 再 background；token 不在 `tokens.json` 則警告保留字面值。
 - `data-xt-sound`：在該事件動作串最前加 `sound(cue[, vol])`。

@@ -36,11 +36,11 @@ uint64_t hashPod(uint64_t hash, const T& value) {
 }
 
 /// T-402: the payloads with padding (PaintRef after `kind`, FillCmd's tail, StrokeCmd after
-/// `join`, GlyphsCmd after `rendering`, ClipPathCmd's tail, LayerCmd after `blend`, MaskCmd after
-/// `mode`) are hashed member by member, each member being padding-free. The size checks make a new
+/// `join`, GlyphsCmd after `rendering`, ClipPathCmd's tail, LayerCmd after `blend` and its tail, MaskCmd
+/// after `mode`) are hashed member by member, each member being padding-free. The size checks make a new
 /// member fail the build here until it is added to the matching overload.
 static_assert(sizeof(PaintRef) == 52 && sizeof(FillCmd) == 96 && sizeof(StrokeCmd) == 116 &&
-                  sizeof(GlyphsCmd) == 68 && sizeof(ClipPathCmd) == 44 && sizeof(LayerCmd) == 24 &&
+                  sizeof(GlyphsCmd) == 68 && sizeof(ClipPathCmd) == 44 && sizeof(LayerCmd) == 28 &&
                   sizeof(MaskCmd) == 20,
               "a padded command payload changed: update its hashFields() overload");
 
@@ -104,7 +104,8 @@ uint64_t hashFields(uint64_t hash, const ClipPathCmd& c) {
 uint64_t hashFields(uint64_t hash, const LayerCmd& c) {
     hash = hashPod(hash, c.opacity);
     hash = hashPod(hash, c.blend);
-    return hashPod(hash, c.boundsHint);
+    hash = hashPod(hash, c.boundsHint);
+    return hashPod(hash, c.boundsKnown);  // T-754 (EffectCmd's is part of its padding-free bytes)
 }
 
 uint64_t hashFields(uint64_t hash, const MaskCmd& c) {

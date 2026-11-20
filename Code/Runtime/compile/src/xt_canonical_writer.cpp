@@ -1,10 +1,12 @@
 #include <algorithm>
 #include <cstddef>
+#include <map>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
+#include "expressions_section.h"
 #include "ports_section.h"
 #include "xt/compile/canonical_writer.h"
 #include "xt/compile/dom.h"
@@ -307,6 +309,160 @@ void readCanonicalSections(const std::vector<XtSheetSection>& sheets, const std:
     }
 }
 
+/// T-767: a multi-line expression's text as CanonicalExpression keeps it: no blank first or last
+/// line, trailing whitespace removed, the lines' common leading whitespace removed (a first line
+/// written after the `{` is trimmed and does not count).
+std::string dedentExpression(std::string_view text) {
+    std::vector<std::string> lines;
+    size_t pos = 0;
+    while (pos <= text.size()) {
+        size_t eol = text.find('\n', pos);
+        if (eol == std::string_view::npos) {
+            eol = text.size();
+        }
+        std::string line(text.substr(pos, eol - pos));
+        while (!line.empty() && isCanonSpace(line.back())) {
+            line.pop_back();
+        }
+        lines.push_back(std::move(line));
+        pos = eol + 1;
+    }
+    if (!lines.empty()) {
+        const size_t b = lines.front().find_first_not_of(" \t");
+        lines.front() = b == std::string::npos ? std::string() : lines.front().substr(b);
+    }
+    size_t common = std::string::npos;
+    for (size_t i = 1; i < lines.size(); ++i) {
+        const size_t indent = lines[i].find_first_not_of(" \t");
+        if (indent != std::string::npos) {
+            common = std::min(common, indent);
+        }
+    }
+    for (size_t i = 1; i < lines.size(); ++i) {
+        if (!lines[i].empty() && common != std::string::npos) {
+            lines[i] = lines[i].substr(std::min(common, lines[i].size()));
+        }
+    }
+    while (!lines.empty() && lines.front().empty()) {
+        lines.erase(lines.begin());
+    }
+    while (!lines.empty() && lines.back().empty()) {
+        lines.pop_back();
+    }
+    std::string out;
+    for (size_t i = 0; i < lines.size(); ++i) {
+        if (i > 0) {
+            out.push_back('\n');
+        }
+        out += lines[i];
+    }
+    return out;
+}
+
+void readCanonicalExpressions(const std::vector<XtExpressionsSection>& sections, const std::string& symbol,
+                              std::vector<CanonicalExpression>& out) {
+    for (const XtExpressionsSection& section : sections) {
+        if (section.symbol != symbol) {
+            continue;
+        }
+        std::vector<ExpressionEntry> entries;
+        DiagnosticSink scratch;
+        parseExpressionsSection(section.text, section.lineOffset, section.colOffset, "", scratch, entries);
+        for (ExpressionEntry& entry : entries) {
+            CanonicalExpression e;
+            e.row = entry.row();
+            e.timeline = std::move(entry.timeline);
+            e.element = std::move(entry.element);
+            e.off = entry.off;
+            e.multiline = entry.multiline;
+            e.text = entry.multiline ? dedentExpression(entry.text) : std::move(entry.text);
+            e.comments = std::move(entry.comments);
+            out.push_back(std::move(e));
+        }
+    }
+}
+
+/// The `#path` tracks of every `@timeline` in `sections`, by timeline name, in first-appearance
+/// order.
+std::map<std::string, std::vector<std::string>> trackOrder(const std::vector<CanonicalSection>& sections) {
+    std::map<std::string, std::vector<std::string>> order;
+    for (const CanonicalSection& section : sections) {
+        for (const CanonicalItem& item : section.items) {
+            if (!item.block || item.prelude.compare(0, 10, "@timeline ") != 0) {
+                continue;
+            }
+            const size_t end = item.prelude.find(' ', 10);
+            std::vector<std::string>& paths =
+                order[item.prelude.substr(10, end == std::string::npos ? std::string::npos : end - 10)];
+            for (const CanonicalItem& track : item.children) {
+                if (track.block && !track.prelude.empty() && track.prelude[0] == '#') {
+                    std::string path = track.prelude.substr(1);
+                    if (std::find(paths.begin(), paths.end(), path) == paths.end()) {
+                        paths.push_back(std::move(path));
+                    }
+                }
+            }
+        }
+    }
+    return order;
+}
+
+void writeExpressions(std::string& out, int indent, const std::vector<CanonicalExpression>& expressions,
+                      const std::vector<CanonicalSection>& timelines) {
+    if (expressions.empty()) {
+        return;
+    }
+    const std::map<std::string, std::vector<std::string>> order = trackOrder(timelines);
+    auto rank = [&order](const CanonicalExpression& e) {
+        const auto it = order.find(e.timeline);
+        if (it != order.end()) {
+            const auto p = std::find(it->second.begin(), it->second.end(), e.element);
+            if (p != it->second.end()) {
+                return std::make_pair(static_cast<size_t>(p - it->second.begin()), std::string());
+            }
+        }
+        return std::make_pair(std::string::npos, e.element);
+    };
+    std::vector<const CanonicalExpression*> sorted;
+    for (const CanonicalExpression& e : expressions) {
+        sorted.push_back(&e);
+    }
+    std::stable_sort(sorted.begin(), sorted.end(),
+                     [&rank](const CanonicalExpression* a, const CanonicalExpression* b) {
+                         if (a->timeline != b->timeline) {
+                             return a->timeline < b->timeline;
+                         }
+                         return rank(*a) < rank(*b);
+                     });
+    const std::string pad(static_cast<size_t>(indent), ' ');
+    out += pad + "<expressions>\n";
+    for (const CanonicalExpression* e : sorted) {
+        for (const std::string& comment : e->comments) {
+            writeVerbatim(out, indent + 2, comment);
+        }
+        out += pad + "  " + e->timeline + " #" + e->element + " " + e->row + (e->off ? " off" : "") + " = ";
+        if (!e->multiline) {
+            out += e->text + "\n";
+            continue;
+        }
+        out += "{\n";
+        size_t pos = 0;
+        while (pos <= e->text.size()) {
+            size_t eol = e->text.find('\n', pos);
+            if (eol == std::string::npos) {
+                eol = e->text.size();
+            }
+            if (eol > pos) {
+                out += pad + "    " + e->text.substr(pos, eol - pos);
+            }
+            out += "\n";
+            pos = eol + 1;
+        }
+        out += pad + "  }\n";
+    }
+    out += pad + "</expressions>\n";
+}
+
 std::string sourceOf(std::string_view text, const DomNode& node) {
     if (node.sourceEnd <= node.sourceBegin || node.sourceEnd > text.size()) {
         return {};
@@ -354,6 +510,9 @@ bool readCanonicalXt(std::string_view text, std::string_view fileName, Diagnosti
         readCanonicalSections(tree.layoutSheets, name, symbol.layout);
         readCanonicalSections(tree.styleSheets, name, symbol.style);
         readCanonicalSections(tree.timelineSheets, name, symbol.timelines);
+        if (!name.empty()) {
+            readCanonicalExpressions(tree.expressionSections, name, symbol.expressions);
+        }
         out.symbols.push_back(std::move(symbol));
     }
     for (const XtPortsSection& ports : tree.portSections) {
@@ -367,6 +526,7 @@ bool readCanonicalXt(std::string_view text, std::string_view fileName, Diagnosti
     readCanonicalSections(tree.layoutSheets, std::string(), out.layout);
     readCanonicalSections(tree.styleSheets, std::string(), out.style);
     readCanonicalSections(tree.timelineSheets, std::string(), out.timelines);
+    readCanonicalExpressions(tree.expressionSections, std::string(), out.expressions);
     return true;
 }
 
@@ -395,6 +555,7 @@ std::string writeCanonicalXt(const CanonicalXt& doc) {
         writeSections(out, 4, "layout", symbol.layout, false);
         writeSections(out, 4, "style", symbol.style, false);
         writeSections(out, 4, "timelines", symbol.timelines, true);
+        writeExpressions(out, 4, symbol.expressions, symbol.timelines);
         out += "  </symbol>\n";
     }
     if (!doc.ports.empty()) {
@@ -405,12 +566,13 @@ std::string writeCanonicalXt(const CanonicalXt& doc) {
         out += "\n";
         writeVerbatim(out, 2, doc.body);
     }
-    if (!doc.layout.empty() || !doc.style.empty() || !doc.timelines.empty()) {
+    if (!doc.layout.empty() || !doc.style.empty() || !doc.timelines.empty() || !doc.expressions.empty()) {
         out += "\n";
     }
     writeSections(out, 2, "layout", doc.layout, false);
     writeSections(out, 2, "style", doc.style, false);
     writeSections(out, 2, "timelines", doc.timelines, true);
+    writeExpressions(out, 2, doc.expressions, doc.timelines);
     out += "</xt>\n";
     return out;
 }

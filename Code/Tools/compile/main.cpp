@@ -189,6 +189,7 @@ xt::compile::CompileOptions migrateCompileOptions(const std::string& xtPath,
         return options;
     }
     options.rootDir = project.rootDir;
+    options.symbolsDir = xt::tools::projectSymbolsDirOf(xt::compile::pathFromUtf8(xtPath));  // T-743
     for (const std::string& style : project.shared.styles) {
         std::error_code ec;
         const fs::path absolute =
@@ -402,6 +403,7 @@ static int run(int argc, char** argv) {
     options.lintLayoutSubjectId = lint && layoutSubjectId;  // T-587 (54 §54.13)
     options.webCompat = webCompat;                          // T-594 (54 §54.14 S4)
     options.standardSymbolDir = standardSymbols;
+    options.symbolsDir = isXt ? xt::tools::projectSymbolsDirOf(inputPath) : std::string();  // T-743
     if (standardSymbols.empty()) {
         std::error_code ec;
         const fs::path symbols =

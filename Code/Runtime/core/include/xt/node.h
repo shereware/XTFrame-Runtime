@@ -163,6 +163,25 @@ enum DirtyBits : uint8_t {
     kDirtyPaint = 1 << 3,
     /// Its children were added or removed.
     kDirtyTree = 1 << 4,
+    /// T-755 (06 §6.x "排版邊界與局部重排"): the nearest layout boundary at or above a kDirtyLayout
+    /// write (NodeArena::markDirty), whose subtree LayoutEngine::layout() lays out again; the
+    /// document root when the write reached it. Cleared with the other bits.
+    kLayoutRoot = 1 << 5,
+};
+
+/// T-755 (06 §6.x): ElementData::layoutFlags, written by every layout pass that sizes the element.
+enum LayoutFlags : uint8_t {
+    /// Its border-box width does not depend on its own content: a length (a `calc()` without a
+    /// percentage included), a percentage of a containing block whose width has this flag, or, when
+    /// absolutely positioned, `left` and `right` both set.
+    kLayoutDefiniteW = 1 << 0,
+    /// The same for the height (`height`, `top` + `bottom`).
+    kLayoutDefiniteH = 1 << 1,
+    /// A layout boundary (06 §6.x item 1): a kDirtyLayout write below it stops here.
+    kLayoutBoundary = 1 << 2,
+    /// A grid item every track of whose area is a length or `fr` (set by the grid pass before it
+    /// sizes the item).
+    kLayoutGridFixedTracks = 1 << 3,
 };
 
 /// See Docs/design/03-scene-and-properties.md §3.4.
@@ -502,6 +521,19 @@ struct ExternalNodeData {
     /// The text and size `label` was shaped from (rebuild key).
     std::string labelText;
     float labelSize = 0;
+};
+
+/// T-746 (Docs/design/23-host-integration.md §23.ah): one `engine://` asset of a Document's IR and
+/// what the Document last saw of its binding on the resolver (Document::checkExternalTextures()).
+struct ExternalTextureSeen {
+    AssetId asset = kInvalidAsset;
+    /// The binding's size (0 x 0 unbound): a new one lays the asset's users out again.
+    int width = 0;
+    int height = 0;
+    /// The binding had a content version (AssetResolver::setExternalTextureVersion()).
+    bool versioned = false;
+    /// externalTextureStamp() of the binding.
+    uint64_t stamp = 0;
 };
 
 /// `<particles shape>` (Docs/design/03-scene-and-properties.md §3.12.5, T-202): where new
@@ -948,8 +980,8 @@ struct TextNodeData {
 };
 
 // Non-animatable StyleProp enums (05.4). Numbering matches the compiler's xts_props.h/.cpp
-// (Code/Runtime/compile/src/xts) exactly; core does not include Code/Runtime/compile/ headers, so these are redefined here
-// (see Docs/tasks/T-24.md).
+// (Code/Runtime/compile/src/xts) exactly; core does not include Code/Runtime/compile/ headers, so these are
+// redefined here (see Docs/tasks/T-24.md).
 /// CSS `display`.
 enum class Display : uint8_t {
     Block = 0,  ///< CSS `block`.
@@ -1341,13 +1373,24 @@ struct ComputedStyle {
     TextRendering textRendering = TextRendering::Auto;
     /// The resolved `lang` (for IME/shaping); kInvalidString when unset.
     StringId lang = kInvalidString;
-    /// Offset into the IR transitions pool; 0,0 = none.
+    /// Offset into the IR transitions pool; 0,0 = none. T-778: tagged with kRuntimeEffectOffsetBit,
+    /// into StyleEngine's combined transition pool (StyleEngine::transitionSpecs()).
     uint32_t transitionOffset = 0;
     /// Count of transition entries.
     uint32_t transitionCount = 0;
-    /// -> IR animations pool; count 0 = none.
+    /// -> IR animations pool; count 0 = none. T-778: tagged with kRuntimeEffectOffsetBit, into
+    /// Document's runtime animation pool (a setStyle declaration or a combined list).
     uint32_t animationOffset = 0;  ///< Offset into the IR animations pool.
     uint32_t animationCount = 0;   ///< Count of animation entries; 0 = none.
+    /// T-778 (05 §5.6): the cascaded `animation-*` longhands (StyleProp 282-289, in that order),
+    /// each a ListRef like animationOffset/Count (count 0 = the initial value). StyleEngine combines
+    /// them into animationOffset/Count after the cascade.
+    uint32_t animationLonghandOffset[8] = {};
+    uint32_t animationLonghandCount[8] = {};
+    /// T-778: the cascaded `transition-*` longhands (StyleProp 290-293), combined into
+    /// transitionOffset/Count likewise.
+    uint32_t transitionLonghandOffset[4] = {};
+    uint32_t transitionLonghandCount[4] = {};
     /// CSS `effect` (StyleProp 187, Docs/design/18-effects.md §18.4, T-51b): the winning
     /// declaration's whole sequence, cascaded like `transition`/`animation` above (whole-sequence
     /// replace, not inherited; 0, 0 = `effect: none`, the initial value). Offset/count into the IR
@@ -1566,6 +1609,16 @@ struct ElementData {
     float perspectivePx = 0;
     /// CSS `perspective-origin`, resolved to px (06.10, 19.4).
     Vec2 perspectiveOriginPx{};
+    /// T-755 (06 §6.x): the arguments of the last LayoutEngine::layoutChild() call that sized this
+    /// element -- its containing block's content width, definite content height, the imposed
+    /// height and its depth -- which a partial relayout rooted here replays. layoutDepth < 0: never
+    /// sized by layoutChild() (the root, an absolutely positioned box, an element not laid out yet).
+    float layoutAvailW = 0;
+    float layoutAvailH = 0;
+    float layoutImposedH = 0;
+    int32_t layoutDepth = -1;
+    /// T-755: LayoutFlags bits from the last layout pass that sized this element.
+    uint8_t layoutFlags = 0;
     /// Event listener linked list head (see section 08).
     uint32_t listenerHead = 0xFFFFFFFFu;
     /// Raw style attribute string (debug only).

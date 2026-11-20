@@ -1,0 +1,40 @@
+<xt version="2">
+  <head>
+    <symbols src="../TitleLockup.xt"/>
+  </head>
+  <body>
+    <div id="Ground"/>
+    <div id="Stage">
+      <use symbol="TitleLockup" id="Title"/>
+    </div>
+  </body>
+  <layout>
+    body {
+      position: relative;
+      width: 640px;
+      height: 180px;
+    }
+    #Ground {
+      position: absolute;
+      left: 0px;
+      top: 0px;
+      width: 100%;
+      height: 100%;
+    }
+    #Stage {
+      position: relative;
+      padding: 24px;
+    }
+  </layout>
+  <style src="../tokens.xts"/>
+  <style>
+    body {
+      background-color: var(--color-text-dim);
+    }
+    #Ground {
+      background-color: var(--color-bg);
+      opacity: 0.85;
+    }
+
+  </style>
+</xt>

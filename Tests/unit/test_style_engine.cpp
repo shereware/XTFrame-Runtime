@@ -13,6 +13,7 @@
 
 #include "doctest.h"
 #include "style_decode.h"  // xt::style_decode::styleprop::* (Code/Runtime/core/src, test-only include dir).
+#include "style_invalidation.h"  // T-763: StyleInvalidationTestAccess (Code/Runtime/core/src).
 #include "xt/animator.h"
 #include "xt/compile/ir_writer.h"
 #include "xt/document.h"
@@ -332,12 +333,12 @@ TEST_CASE("StyleEngine: state pseudo-class re-resolution") {
     CHECK(arena.element(target.node).style.base[prop::Opacity].f == doctest::Approx(1.0f));
 
     arena.element(target.node).stateBits |= kStateHover;
-    arena.markDirty(target.node, static_cast<uint8_t>(kDirtyStyle));
+    arena.markDirty(target.node, static_cast<uint8_t>(kDirtyStyle), DirtyCause::HostApi);
     e.engine.resolve(arena, 0.0f);
     CHECK(arena.element(target.node).style.base[prop::Opacity].f == doctest::Approx(0.5f));
 
     arena.element(target.node).stateBits &= static_cast<uint16_t>(~kStateHover);
-    arena.markDirty(target.node, static_cast<uint8_t>(kDirtyStyle));
+    arena.markDirty(target.node, static_cast<uint8_t>(kDirtyStyle), DirtyCause::HostApi);
     e.engine.resolve(arena, 0.0f);
     CHECK(arena.element(target.node).style.base[prop::Opacity].f == doctest::Approx(1.0f));
 }
@@ -500,7 +501,12 @@ TEST_CASE("StyleEngine: dirty propagation - ancestors and descendants only") {
     CHECK(e.engine.resolve(arena, 0.0f) == 0);  // nothing dirty now
 
     ElementRef bRef = b.doc->byId("B");
+    // T-763: a state write marks what the state dependency table says -- no rule here tests it.
     CHECK(bRef.setState(kStateDisabled, true));
+    CHECK(e.engine.resolve(arena, 0.0f) == 0);
+    // The old full range (the equivalence check's legacy mode).
+    StyleInvalidationTestAccess::setLegacy(*b.doc, true);
+    CHECK(bRef.setState(kStateDisabled, false));
     // Dirty: xt, body, A, B (self+ancestors) + D (descendant of B). C is untouched.
     CHECK(e.engine.resolve(arena, 0.0f) == 5);
     CHECK(e.engine.resolve(arena, 0.0f) == 0);
@@ -530,7 +536,8 @@ TEST_CASE("StyleEngine: resolve does not depend on NodeId order (freed-slot reus
     REQUIRE(child < parent);
     arena.element(parent).id = parentId;
     arena.appendChild(parent, child);
-    arena.markDirty(child, static_cast<uint8_t>(kDirtyStyle));  // Propagates to `parent` too.
+    arena.markDirty(child, static_cast<uint8_t>(kDirtyStyle),
+                    DirtyCause::HostApi);  // Propagates to `parent` too.
 
     Animator animator;
     StyleEngine engine;
@@ -609,7 +616,7 @@ TEST_CASE("StyleEngine: :hover rotateY(45deg) makes the element is3D") {
     CHECK(arena.common(target.node).is3D == 0);
 
     arena.element(target.node).stateBits |= kStateHover;
-    arena.markDirty(target.node, static_cast<uint8_t>(kDirtyStyle));
+    arena.markDirty(target.node, static_cast<uint8_t>(kDirtyStyle), DirtyCause::HostApi);
     e.engine.resolve(arena, 0.0f);
     CHECK(arena.common(target.node).is3D == 1);
 }
@@ -655,7 +662,7 @@ TEST_CASE("StyleEngine: effect cascade - declaration and same-kind transition") 
     CHECK(arena.effects()[arena.common(target.node).effectOffset].params[0] == doctest::Approx(2.0f));
 
     arena.element(target.node).stateBits |= kStateHover;
-    arena.markDirty(target.node, static_cast<uint8_t>(kDirtyStyle));
+    arena.markDirty(target.node, static_cast<uint8_t>(kDirtyStyle), DirtyCause::HostApi);
     e.engine.resolve(arena, 0.0f);
     CHECK(e.animator.hasTransition(target.node, effectParam(0, 1)));
 
@@ -709,7 +716,7 @@ TEST_CASE("StyleEngine: effect cascade - kind change replaces without transition
     REQUIRE(target.valid());
 
     arena.element(target.node).stateBits |= kStateHover;
-    arena.markDirty(target.node, static_cast<uint8_t>(kDirtyStyle));
+    arena.markDirty(target.node, static_cast<uint8_t>(kDirtyStyle), DirtyCause::HostApi);
     e.engine.resolve(arena, 0.0f);
 
     CHECK(arena.common(target.node).effectCount == 1);
@@ -762,7 +769,7 @@ TEST_CASE("StyleEngine: effect cascade - custom effects compare their shader ass
         REQUIRE(target.valid());
 
         arena.element(target.node).stateBits |= kStateHover;
-        arena.markDirty(target.node, static_cast<uint8_t>(kDirtyStyle));
+        arena.markDirty(target.node, static_cast<uint8_t>(kDirtyStyle), DirtyCause::HostApi);
         e.engine.resolve(arena, 0.0f);
 
         const EffectInstance& slot = arena.effects()[arena.common(target.node).effectOffset];

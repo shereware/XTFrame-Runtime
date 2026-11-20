@@ -281,6 +281,27 @@ private:
         }
     }
 
+    /// T-742 (56 §56.3 item 0): `<namespace>/` for a symbol file directly in a namespace directory of
+    /// `shared.symbols` (its symbols are `symbol:<namespace>/<Name>`, so two same-named symbols stay two
+    /// nodes); empty otherwise.
+    std::string qualifier(const fs::path& file) const {
+        if (m_project.shared.symbols.empty()) {
+            return std::string();
+        }
+        const fs::path dir = (m_root / pathFromUtf8(m_project.shared.symbols)).lexically_normal();
+        const fs::path parent = file.lexically_normal().parent_path();
+        if (parent.parent_path() != dir) {
+            return std::string();
+        }
+        const std::string ns = pathToUtf8(parent.filename());
+        const bool ok =
+            !ns.empty() && ns.front() != '.' && ns.front() != '-' &&
+            std::all_of(ns.begin(), ns.end(), [](char c) {
+                return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '.' || c == '@';
+            });
+        return ok ? ns + "/" : std::string();
+    }
+
     const SymbolFileInfo& symbolFile(const fs::path& path) {
         const std::string key = genericPathToUtf8(path.lexically_normal());
         const auto found = m_symbolFiles.find(key);
@@ -329,7 +350,7 @@ private:
             }
         }
         for (const std::string& name : info.names) {
-            const std::string self = entryRef(EntryKind::Symbol, name);
+            const std::string self = entryRef(EntryKind::Symbol, qualifier(path) + name);
             node(self);
             for (const std::string& token : info.tokens) {
                 edge(self, entryRef(EntryKind::Token, token), "uses", true);
@@ -455,7 +476,8 @@ private:
                 edge(uiRef, entryRef(EntryKind::Token, token), "uses", true);
             }
             if (info.names.empty()) {
-                node(entryRef(EntryKind::Symbol, pathToUtf8(file.stem())));  // not pulled in yet
+                node(entryRef(EntryKind::Symbol,
+                              qualifier(file) + pathToUtf8(file.stem())));  // not pulled in yet
             }
         }
     }

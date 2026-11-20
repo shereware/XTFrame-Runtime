@@ -197,6 +197,9 @@ ui_text_rich ui_text_rich.xt 256 256 0 ffffff ui_text_rich.events
 # after `port hp 30` (the bar also turns :state(Low) via lt(40%)).
 ui_text_bind_hp_72 ui_text_bind_hp.xt 256 128 0 ffffff ui_text_bind_hp_72.events
 ui_text_bind_hp_30 ui_text_bind_hp.xt 256 128 0 ffffff ui_text_bind_hp_30.events
+# T-801 (07 7.2 supplement): port values with LF / CR LF / TAB / U+2028 (no glyph, a TAB is a space);
+# nowrap still breaks; centred and right-aligned lines leave the break out of their width.
+ui_text_hard_breaks ui_text_hard_breaks.xt 256 320 0 ffffff ui_text_hard_breaks.events
 # T-177 <repeat>: five rows from a list<struct> port; one inserted (item-in half way); one removed
 # (item-out half way, still in place until `then remove`).
 ui_repeat_list ui_repeat.xt 256 256 0 ffffff ui_repeat_list.events

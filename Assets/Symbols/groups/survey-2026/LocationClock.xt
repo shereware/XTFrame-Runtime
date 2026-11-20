@@ -1,0 +1,50 @@
+<xt version="2">
+
+  <symbol name="LocationClock">
+    <ports>
+      location: string in
+      clock: string in
+    </ports>
+    <div id="Box">
+      <span id="Name" bind:text="location"></span>
+      <div id="Line"></div>
+      <span id="Clock" bind:text="clock"></span>
+    </div>
+  </symbol>
+
+  <layout>
+    symbol(LocationClock) {
+      #Box {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        row-gap: 3px;
+        width: 260px;
+      }
+      #Line {
+        align-self: stretch;
+        height: 1px;
+      }
+    }
+  </layout>
+  <style>
+    symbol(LocationClock) {
+      #Name {
+        font-family: var(--font-body);
+        font-size: var(--font-size-text);
+        letter-spacing: 1.5px;
+        color: var(--color-text);
+        white-space: nowrap;
+      }
+      #Line {
+        background-color: var(--color-line);
+      }
+      #Clock {
+        font-family: var(--font-body);
+        font-size: var(--font-size-s);
+        letter-spacing: 2px;
+        color: var(--color-text-quiet);
+      }
+    }
+  </style>
+</xt>

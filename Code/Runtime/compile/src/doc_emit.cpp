@@ -541,13 +541,13 @@ bool emitDoc(const DomTree& dom, IrWriter& writer, StyleBuilder& style, DocBuild
                 } else {
                     el.inlineDeclOffset = static_cast<uint32_t>(doc.inlineDecls.size());
                     for (const StyleDecl& d : decls) {
-                        IrDecl decl{};
-                        if (!encodeDecl(writer, style, keyframesByName, d, fileName, sink, decl)) {
+                        std::vector<IrDecl> encoded;  // T-778: a shorthand writes its longhands.
+                        if (!encodeDeclList(writer, style, keyframesByName, d, fileName, sink, encoded)) {
                             ok = false;
                             continue;
                         }
-                        doc.inlineDecls.push_back(decl);
-                        ++el.inlineDeclCount;
+                        doc.inlineDecls.insert(doc.inlineDecls.end(), encoded.begin(), encoded.end());
+                        el.inlineDeclCount += static_cast<uint32_t>(encoded.size());
                     }
                 }
             }
@@ -603,13 +603,13 @@ bool emitDoc(const DomTree& dom, IrWriter& writer, StyleBuilder& style, DocBuild
                             d.value.kind == StyleValueKind::String && d.value.str != "none") {
                             imageAssetFor(d.value.str, attr.line, attr.col);  // T-199: its ASST entry.
                         }
-                        IrDecl decl{};
-                        if (!encodeDecl(writer, style, keyframesByName, d, fileName, sink, decl)) {
+                        std::vector<IrDecl> encoded;  // T-778: a shorthand writes its longhands.
+                        if (!encodeDeclList(writer, style, keyframesByName, d, fileName, sink, encoded)) {
                             ok = false;
                             continue;
                         }
-                        doc.inlineDecls.push_back(decl);
-                        ++el.inlineDeclCount;
+                        doc.inlineDecls.insert(doc.inlineDecls.end(), encoded.begin(), encoded.end());
+                        el.inlineDeclCount += static_cast<uint32_t>(encoded.size());
                     }
                 }
             } else if (l10n != nullptr && isLocalizableAttr(attr.name)) {

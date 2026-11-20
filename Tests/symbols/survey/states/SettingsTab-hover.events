@@ -1,0 +1,4 @@
+# T-793: SettingsTab-hover.
+port Gameplay.selected true
+update 0.6
+pointermove 60 98

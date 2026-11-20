@@ -1,0 +1,4 @@
+# T-793: SaveSlot-hover.
+port Picked.selected true
+update 0.6
+pointermove 200 40

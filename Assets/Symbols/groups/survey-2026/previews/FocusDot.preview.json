@@ -1,0 +1,11 @@
+{
+  "width": 120,
+  "height": 60,
+  "frames": 0,
+  "ports": {
+    "Aimed.target": true
+  },
+  "events": [
+    "update 0.6"
+  ]
+}

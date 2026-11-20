@@ -213,3 +213,30 @@ layoutFlex(container, availW, availH):
 ## 6.x 版面簡寫 `anchor` / `offset` / `offset-end` / `size`（2026-11-05；54 §54.5.1；T-588 #565）
 
 純編譯期糖，只准在 v2 `<layout>` 區段：展開對照表與 `size: fill` 三種情境（UI 根 `100vw`／`100vh`、自由子項 `100%`、堆疊子項 `flex-grow: 1; flex-basis: 0`／`align-self: stretch`）見 54 §54.5.1；實作與細則見 54 章 T-588 實作記錄。佈局引擎不認識這四個名字——它們到不了 IR。
+
+## 6.x 排版邊界與局部重排（2026-11-18 定案；修訂 §6.3「第一版：任一元素 dirty 即從根重排」）
+
+**量測**（v0.18.0，Sherefox `debate`）：每幀改一個文字 → update 0.058 → 0.261 ms，全部來自排版（laidOut 0 → 34＝整棵顯示中的樹；styled 仍為 0）；改 1 個或 5 個都是 34。原因：`setText` 只標該節點的 layout 髒位元，但髒位元一路傳到根，`LayoutEngine::layout` 見根髒就整份文件重排，再對整棵樹做絕對定位與變換。`NodeArena` 早已留了 `stopsLayoutPropagation()` 這個掛鉤，但它恆回 false。
+
+**規則**：
+
+1. **排版邊界**：一個元素若同時滿足下列條件，它內部的排版改變不會影響它自己的外框，因而不影響祖先與兄弟：
+   - 寬與高都是**確定的**：以長度指定（含 `calc()` 不含百分比者），或是絕對定位且兩軸各由「尺寸」或「兩側 inset」決定；百分比只在包含塊該軸確定時算確定。`min-`／`max-` 限制不影響判定（它們只會夾住確定值）。
+   - 它不是「主軸或交叉軸尺寸由內容決定」的 flex／grid 項目：flex 項目須 `flex-basis` 為確定長度（或 `auto` 而該軸尺寸確定）且 `flex-grow`／`flex-shrink` 的結果不依賴內容——保守起見，第一版只把 `flex: none`（或等效）且尺寸確定的項目、以及不在 flex／grid 容器內的元素算作邊界；grid 項目須所在軌道皆為確定長度或 `fr`。
+   - `overflow` 不是 `visible`（`hidden`／`clip`／`scroll`／`auto`），使內容溢出不改變祖先捲動容器的可捲動範圍；或它沒有任何會被溢出影響的祖先捲動容器（保守：第一版只接受非 `visible`）。
+   - 不參與基線對齊的傳遞（它不是 inline-level、不是以 `baseline` 對齊的 flex 項目）。
+   文件根永遠是邊界。
+2. **髒位元的傳播停在最近的邊界**（含自己不算：一個節點變髒，往上標到第一個邊界祖先為止，該祖先標為「重排根」）。邊界的判定用上一次的計算樣式；樣式改變使邊界性質改變的那一次，照舊往上傳到下一個邊界。
+3. **局部重排**：`LayoutEngine::layout` 對每個重排根只重排其子樹（以它上次確定的外框為包含塊）；絕對定位的子孫只處理包含塊在該子樹內者；`applyTransforms` 只走該子樹。多個重排根互為祖孫時取最外層。
+4. **更便宜的一步**（包在同一個機制裡）：重排根是文字節點的直接容器、且新文字的量測結果（行數、每行寬高）與之前相同時，仍照第 3 點走——不另開特例；單價由 57 章的階梯量測決定之後是否值得再細分。
+5. **防呆**：驗證模式 `LayoutEngine::setVerifyPartial(true)`——局部重排之後再從根完整重排一次並逐節點比對方框；不同即為邊界判定錯誤，記錄診斷（第一個不同的節點）並以完整重排的結果為準。所有測試、golden、corpus 回放預設開啟；任何不一致是測試失敗。總開關 `XT_PARTIAL_LAYOUT=0`。
+6. 給製作者的指引（寫進技能的 performance 參考檔）：頻繁改寫的文字放在寬高固定、`overflow: hidden` 的容器裡。
+
+**T-755 實作記錄（#714，2026-11-19）**：邊界判定快取在 `ElementData::layoutFlags`（寬確定、高確定、是邊界、grid 軌道固定）；`kDirtyLayout` 往上標到寫入節點上方最近的邊界，該邊界加標 `kLayoutRoot` 並記進 `NodeArena::layoutRoots()`；`layout_partial.cpp`。退回完整重排：文件根被標為重排根（結構改變、寫入上方沒有邊界、視口／安全區／uiscale 改變）、局部重排關閉（`XT_PARTIAL_LAYOUT=0`／`Context::setPartialLayout(false)`）、尚未做過完整重排、重排根沒有可重播的參數。驗證模式與 23 §23.ag 的同一個開關（`XT_VERIFY_VISUAL_GENERATION=1`）：每次局部重排後跑完整重排、逐節點逐位元比對，不一致即中止——所有測試、golden、corpus 開啟下零不一致。`ElementRef::setText` 改為只標文字節點（否則重排根永遠越過文字的直接容器）。局部重排處理重排根底下**所有**絕對定位子孫（設計寫的是包含塊在子樹內者；實作取較安全的超集合，追認）。`FrameStats::layoutRoots`／`layoutFullPasses`／`partialLayoutMismatch`。
+
+量測（Release、wgpu、1920×1080、釘效能核）：文字放在固定尺寸、`overflow:hidden` 的盒子裡時，單一文字變更的重排 370 → 1 個元素、update 0.78 → 0.031 ms；War Table storm 的 layout 0.167 → 0.046 ms（重排元素 1053 → 351）、focus 0.045 → 0.027 ms。**但 Sherefox `debate` 沒有改善（重排 34 → 32 個元素，layout 多約 6%）**：它的文字容器是 `overflow: visible` 的固定尺寸絕對定位元素——只差「overflow 不是 visible」這一條，第一個邊界因此是整個畫面。常見的寫法都是這樣，這條條件太嚴：T-782 放寬（固定尺寸、`overflow: visible` 的元素也是邊界；祖先捲動容器的捲動範圍在局部重排後另行更新）。
+
+**2026-11-19 修訂（T-782 #716）：邊界的條件去掉 overflow。** 本節第 1 點原本要求邊界的 overflow 兩軸都不是 `visible`，理由是「子孫溢出會擴大祖先捲動容器的捲動範圍」。這個理由在本引擎不成立：捲動範圍只來自**直接子元素**的方框（§6.5 的 `storeScrollSize`；略過絕對定位與 `display:none` 的子元素），孫輩以下的溢出本來就不往上傳，而邊界自己的方框不隨內容改變。layout 階段也沒有其他讀「子孫溢出後的範圍」的地方（sticky 未實作、沒有 CSS anchor 定位、`focus_nav` 不看溢出、效果範圍與 `projectionBoundsHint` 在 paint 階段、捲動夾限讀節點自己的範圍）。**現行規則**：寬高都確定（T-755 的規則）即為邊界，另加 flex 項目（grow 0、shrink 0）與 grid 項目（固定軌道）的條件；overflow 無關。日後若實作 sticky、CSS anchor 定位或讓捲動範圍納入子孫溢出，必須回頭檢查這條。沒有重排根時 `LayoutEngine::layout()` 直接返回（消掉 T-755 的 6% 回退）。
+
+量測（同 T-755 的條件）：Sherefox `debate` 每幀改一個文字——重排 32 → 6 個元素、layout 0.196 → 0.043 ms、update 0.263 → 0.092 ms（T-755 之前是 34／0.187／0.254）；War Table storm 的 layout 0.0455 → 0.0348 ms（重排元素 351 → 217）。驗證模式下所有測試、golden、corpus 零不一致。
+

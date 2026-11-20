@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "bundle_json.h"
+#include "style_internal.h"
 #include "symbol_internal.h"
 #include "xt/compile/diagnostics.h"
 #include "xt/compile/dom.h"
@@ -650,27 +651,6 @@ std::string rewriteReferences(std::string text, const std::vector<AssetRewrite>&
     return text;
 }
 
-/// The path a `url("...")` / `url(...)` value names; empty when the value has none.
-std::string urlPathOf(std::string_view value) {
-    const size_t at = value.find("url(");
-    if (at == std::string_view::npos) {
-        return std::string();
-    }
-    std::string_view rest = value.substr(at + 4);
-    const size_t close = rest.find(')');
-    if (close == std::string_view::npos) {
-        return std::string();
-    }
-    rest = rest.substr(0, close);
-    while (!rest.empty() && (rest.front() == ' ' || rest.front() == '"' || rest.front() == '\'')) {
-        rest.remove_prefix(1);
-    }
-    while (!rest.empty() && (rest.back() == ' ' || rest.back() == '"' || rest.back() == '\'')) {
-        rest.remove_suffix(1);
-    }
-    return std::string(rest);
-}
-
 struct UseContext {
     const UiProject& project;
     fs::path root;
@@ -684,7 +664,7 @@ struct UseContext {
 
     /// True when `value` names a `url()` file that is not among `rewrites`.
     bool referencesUncopied(std::string_view value) const {
-        const std::string path = urlPathOf(value);
+        const std::string path = detail::style::urlPath(value);
         if (path.empty()) {
             return false;
         }
@@ -801,10 +781,23 @@ std::string fontFaceText(const compile::FontFaceDef& face, const std::string& sr
     return text + " }";
 }
 
-/// Step 4: `<shared.symbols>/index.json` gets (or replaces) the entry for `symbolName`.
+/// T-741 (56.3 item 6): the key of a project `index.json` entry: `qualified`, else `name` (flat).
+std::string projectIndexKey(const nlohmann::ordered_json& item) {
+    if (item.contains("qualified") && item["qualified"].is_string() &&
+        !item["qualified"].get<std::string>().empty()) {
+        return item["qualified"].get<std::string>();
+    }
+    return item.contains("name") && item["name"].is_string() ? item["name"].get<std::string>()
+                                                             : std::string();
+}
+
+/// Step 4: `<shared.symbols>/index.json` gets (or updates) the entry for `qualified` (T-741: the
+/// key; `symbolName` is the file's symbol name): `name`, `qualified`, `file` and `source` are
+/// (re)written, its other keys (the notes, a thumbnail) kept (T-739). `librarySha` (the library
+/// file's hash) is recorded only when it differs from `sha` (the written copy's).
 void recordSource(UseContext& ctx, const fs::path& symbolsDir, const std::string& symbolName,
-                  const std::string& file, const SymbolLibrary& library, const SymbolGroup& group,
-                  const std::string& sha) {
+                  const std::string& qualified, const std::string& file, const SymbolLibrary& library,
+                  const SymbolGroup& group, const std::string& sha, const std::string& librarySha) {
     const fs::path indexPath = symbolsDir / kProjectIndexFile;
     nlohmann::ordered_json root;
     std::string text;
@@ -821,16 +814,21 @@ void recordSource(UseContext& ctx, const fs::path& symbolsDir, const std::string
     }
     root["version"] = kProjectIndexVersion;
     nlohmann::ordered_json symbols = nlohmann::ordered_json::array();
+    nlohmann::ordered_json entry = nlohmann::ordered_json::object();
     if (root.contains("symbols") && root["symbols"].is_array()) {
-        for (const nlohmann::ordered_json& entry : root["symbols"]) {
-            if (entry.is_object() && entry.contains("name") && entry["name"].is_string() &&
-                entry["name"].get<std::string>() != symbolName) {
-                symbols.push_back(entry);
+        for (const nlohmann::ordered_json& item : root["symbols"]) {
+            if (!item.is_object() || !item.contains("name") || !item["name"].is_string()) {
+                continue;
+            }
+            if (projectIndexKey(item) == qualified) {
+                entry = item;  // T-739: keep its other keys; the last one of the name wins.
+            } else {
+                symbols.push_back(item);
             }
         }
     }
-    nlohmann::ordered_json entry;
     entry["name"] = symbolName;
+    entry["qualified"] = qualified;  // T-741 (56.3 item 6): the key.
     entry["file"] = file;
     nlohmann::ordered_json source;
     source["library"] = library.id;
@@ -838,6 +836,9 @@ void recordSource(UseContext& ctx, const fs::path& symbolsDir, const std::string
     source["set"] = group.source.set;
     source["setVersion"] = group.source.setVersion;
     source["sha256"] = sha;
+    if (librarySha != sha) {
+        source["librarySha256"] = librarySha;
+    }
     entry["source"] = std::move(source);
     symbols.push_back(std::move(entry));
     root["symbols"] = std::move(symbols);
@@ -845,8 +846,12 @@ void recordSource(UseContext& ctx, const fs::path& symbolsDir, const std::string
                 root.dump(2, ' ', false, nlohmann::ordered_json::error_handler_t::replace) + "\n");
 }
 
+/// One symbol of a useSymbols() call (or updateCopy()) where planCopies() (T-741) put it: the
+/// symbol file at `plan.target` unless the place is the project's already (Same) or another
+/// symbol's (NameTaken), then its fonts, textures and tokens.
 void useOneSymbol(UseContext& ctx, const SymbolLibrary& library, const SymbolGroup& group,
-                  const SymbolEntry& entry) {
+                  const detail::PlannedCopy& plan) {
+    const SymbolEntry& entry = *plan.entry;
     const fs::path groupDir = pathFromUtf8(group.dir);
     const std::string symbolsRel =
         ctx.project.shared.symbols.empty() ? std::string("shared/symbols") : ctx.project.shared.symbols;
@@ -865,13 +870,10 @@ void useOneSymbol(UseContext& ctx, const SymbolLibrary& library, const SymbolGro
         ctx.report.skipped.push_back(entry.name + ": '" + entry.file + "' missing in the library");
         return;
     }
-    const std::string fileName = fileNameOf(entry.file);
-    fs::path target;
-    if (!isPlainSymbolName(pathToUtf8(fs::path(fileName).stem())) ||
-        !resolveInside(symbolsDir, fileName, target)) {
-        ctx.report.skipped.push_back(entry.name + ": '" + entry.file + "' is not a symbol file name");
-        return;
-    }
+    const fs::path& target = plan.target;
+    const UseTarget& place = plan.place;  // T-739/T-741: detail::useTargetOf() via planCopies().
+    ctx.report.symbols.push_back(
+        UsedSymbol{entry.name, place.qualified, place.path, library.id, group.id, plan.dependency});
 
     // Step 2 first: the renames decide how the symbol and token lines reference the files.
     ctx.rewrites.clear();
@@ -882,16 +884,29 @@ void useOneSymbol(UseContext& ctx, const SymbolLibrary& library, const SymbolGro
         copyAsset(ctx, groupDir, texture, "textures");
     }
 
-    // Step 1: the symbol file, never over the project's own (T-501 updateCopy(): over it).
-    std::error_code ec;
-    if (fs::exists(target, ec) && !ctx.overwrite) {
-        ctx.report.skipped.push_back(relativeText(ctx.root, target) +
-                                     ": the project already has it; using the project's");
+    // Step 1: the symbol file, never over the project's own (T-501 updateCopy(): over it). T-739:
+    // a skip says whether the project's file is this very symbol or another one of that name.
+    // T-741: a copy placed in the group's namespace is a clash the caller tells the user about.
+    const NameClash clash{entry.name,          place.path,      place.clash,  place.existingLibrary,
+                          place.existingGroup, place.qualified, place.because};
+    const bool skip = (place.clash == UseClash::Same || place.clash == UseClash::NameTaken) && !ctx.overwrite;
+    if (skip) {
+        const bool same = place.clash == UseClash::Same;
+        ctx.report.skipped.push_back(
+            place.path + (same ? ": same source; using the project's"
+                               : ": name taken by " + existingSourceText(place) + "; not copied"));
+        if (!same || !plan.dependency) {
+            ctx.report.clashes.push_back(clash);  // A dependency the project has is no clash.
+        }
     } else {
+        if (place.clash == UseClash::Placed) {
+            ctx.report.clashes.push_back(clash);
+        }
         const std::string written = rewriteReferences(symbolText, ctx.rewrites, target);
         if (noteWritten(ctx, target, written)) {
-            recordSource(ctx, symbolsDir, entry.name, symbolsRel + "/" + fileName, library, group,
-                         "sha256:" + util::sha256Hex(lfText(written)));
+            recordSource(ctx, symbolsDir, entry.name, place.qualified, relativeText(ctx.root, target),
+                         library, group, "sha256:" + util::sha256Hex(lfText(written)),
+                         "sha256:" + util::sha256Hex(lfText(symbolText)));
         }
     }
 
@@ -937,7 +952,7 @@ void useOneSymbol(UseContext& ctx, const SymbolLibrary& library, const SymbolGro
                     continue;
                 }
                 if (ctx.referencesUncopied(value)) {
-                    ctx.report.skipped.push_back(token.name + ": names " + urlPathOf(value) +
+                    ctx.report.skipped.push_back(token.name + ": names " + detail::style::urlPath(value) +
                                                  ", which the entry's fonts/textures do not list");
                     continue;
                 }
@@ -1005,7 +1020,7 @@ void useOneSymbol(UseContext& ctx, const SymbolLibrary& library, const SymbolGro
                 // guards a stale index: a value naming a file this call did not copy is not appended
                 // (it would dangle).
                 ctx.report.skipped.push_back(themeName + ":" + token.name + ": names " +
-                                             urlPathOf(it->second) +
+                                             detail::style::urlPath(it->second) +
                                              ", which the entry's fonts/textures do not list");
                 continue;
             }
@@ -1044,37 +1059,87 @@ UseReport useSymbolsImpl(const LibraryMounts& mounts, const UiProject& project,
             report.notFound.push_back(std::string(name));
             continue;
         }
-        useOneSymbol(ctx, *library, *group, *entry);
+        // T-741 (56.3 item 1): the symbol and the symbols of its group it uses, placed together.
+        std::vector<detail::PlannedCopy> plan;
+        detail::planCopies(project, ctx.root, *library, *group, *entry, plan);
+        if (plan.empty()) {
+            report.skipped.push_back(entry->name + ": '" + entry->file + "' is not a symbol file name");
+            continue;
+        }
+        for (const detail::PlannedCopy& copy : plan) {
+            // One row per library symbol per call: a symbol handled already (requested earlier or
+            // pulled in by an earlier one) is not copied or reported again.
+            const auto done =
+                std::find_if(report.symbols.begin(), report.symbols.end(), [&](const UsedSymbol& u) {
+                    return u.library == library->id && u.group == group->id && u.name == copy.entry->name;
+                });
+            if (done != report.symbols.end()) {
+                if (!copy.dependency) {
+                    done->dependency = false;
+                }
+                continue;
+            }
+            useOneSymbol(ctx, *library, *group, copy);
+        }
     }
     return report;
 }
 
-bool isCopyStaleImpl(const LibraryMounts& mounts, const UiProject& project, std::string_view name) {
-    if (project.rootDir.empty() || !isPlainSymbolName(name)) {
-        return false;
+/// T-739 updateCopy(): the recorded source only (copyStatus()); refused states write nothing.
+UseReport updateCopyImpl(const LibraryMounts& mounts, const UiProject& project, std::string_view name,
+                         bool overwriteLocal) {
+    UseReport report;
+    if (project.rootDir.empty() || !detail::isQualifiedSymbolName(name)) {
+        report.status = Status::kInvalidArgument;
+        return report;
     }
-    const SymbolGroup* group = nullptr;
-    const SymbolEntry* entry = findSymbol(mounts, name, {}, nullptr, &group);
-    if (entry == nullptr || group == nullptr || group->dir.empty()) {
-        return false;
+    const CopyStatus status = copyStatus(mounts, project, name);
+    report.copyState = status.state;
+    switch (status.state) {
+        case CopyState::NoCopy:
+        case CopyState::SourceMissing:
+            report.status = Status::kNotFound;
+            report.notFound.push_back(std::string(name));
+            return report;
+        case CopyState::NoSource:
+            report.status = Status::kUnsupported;
+            return report;
+        case CopyState::LocallyModified:
+        case CopyState::StaleAndModified:
+            if (!overwriteLocal) {
+                report.status = Status::kUnsupported;
+                return report;
+            }
+            break;
+        case CopyState::UpToDate:
+        case CopyState::Stale:
+            break;
     }
-    fs::path libraryFile;
-    if (!resolveInside(pathFromUtf8(group->dir), entry->file, libraryFile)) {
-        return false;
+    if (status.library == nullptr || status.group == nullptr || status.entry == nullptr) {
+        report.status = Status::kNotFound;
+        report.notFound.push_back(std::string(name));
+        return report;
     }
-    const std::string symbolsRel =
-        project.shared.symbols.empty() ? std::string("shared/symbols") : project.shared.symbols;
-    fs::path copy;
-    if (!resolveInside(pathFromUtf8(project.rootDir), symbolsRel + "/" + fileNameOf(entry->file), copy)) {
-        return false;
+    std::error_code ec;
+    UseContext ctx{
+        project, fs::absolute(pathFromUtf8(project.rootDir), ec).lexically_normal(), report, {}, true, false};
+    // T-741: the copy is rewritten where it is (flat or in its namespace), under its own key.
+    detail::PlannedCopy copy;
+    copy.entry = status.entry;
+    if (!resolveInside(ctx.root, detail::projectSymbolsRel(project) + "/" + std::string(name) + ".xt",
+                       copy.target)) {
+        report.status = Status::kNotFound;
+        report.notFound.push_back(std::string(name));
+        return report;
     }
-    std::string mine;
-    std::string theirs;
-    if (!detail::readFile(genericPathToUtf8(copy), mine) ||
-        !detail::readFile(genericPathToUtf8(libraryFile), theirs)) {
-        return false;
-    }
-    return util::sha256Hex(lfText(mine)) != util::sha256Hex(lfText(theirs));
+    copy.place.path = relativeText(ctx.root, copy.target);
+    copy.place.clash = UseClash::Same;
+    copy.place.qualified = std::string(name);
+    copy.place.existingLibrary = status.source.library;
+    copy.place.existingGroup = status.source.group;
+    useOneSymbol(ctx, *status.library, *status.group, copy);
+    report.clashes.clear();  // Not a drag-in: nothing to tell about.
+    return report;
 }
 
 }  // namespace
@@ -1257,26 +1322,17 @@ UseReport useSymbols(const LibraryMounts& mounts, const UiProject& project,
     return report;
 }
 
-UseReport updateCopy(const LibraryMounts& mounts, const UiProject& project, std::string_view name) {
+UseReport updateCopy(const LibraryMounts& mounts, const UiProject& project, std::string_view name,
+                     bool overwriteLocal) {
     UseReport report;
     const Status status = catchAll([&]() {
-        const std::string_view names[] = {name};
-        report = useSymbolsImpl(mounts, project, names, {}, true, false);
+        report = updateCopyImpl(mounts, project, name, overwriteLocal);
         return Status::kOk;
     });
     if (status != Status::kOk) {
         report.status = status;
     }
     return report;
-}
-
-bool isCopyStale(const LibraryMounts& mounts, const UiProject& project, std::string_view name) {
-    bool stale = false;
-    catchAll([&]() {
-        stale = isCopyStaleImpl(mounts, project, name);
-        return Status::kOk;
-    });
-    return stale;
 }
 
 std::string themeNameOf(std::string_view themeFile) {
@@ -1315,36 +1371,6 @@ std::vector<TokenDefault> sameAsDefaultTokens(const fs::path& projectTokensFile,
         return Status::kOk;
     });
     return out;
-}
-
-bool detectImpliedGroup(const std::string& rootDir, const std::vector<ProjectUi>& uis,
-                        const std::string& standardSymbolDir, SymbolGroup& out) {
-    if (standardSymbolDir.empty()) {
-        return false;
-    }
-    const fs::path groupDir = pathFromUtf8(standardSymbolDir);
-    if (loadGroup(groupDir, out) != Status::kOk) {
-        return false;  // Not a group directory (a bare symbol folder): no token layer to imply.
-    }
-    for (const ProjectUi& ui : uis) {
-        std::string text;
-        compile::DiagnosticSink sink;
-        compile::DomTree dom;
-        if (!detail::readFile(genericPathToUtf8(pathFromUtf8(rootDir) / pathFromUtf8(ui.doc)), text) ||
-            !compile::parseXt(text, ui.doc, sink, dom)) {
-            continue;  // The compile reports it.
-        }
-        for (const std::string& href : dom.symbolHrefs) {
-            if (href.rfind("xt-standard:", 0) == 0) {
-                return true;
-            }
-            const fs::path file = pathFromUtf8(href).filename();
-            if (!file.empty() && !detail::findStandardSymbol(groupDir, file).empty()) {
-                return true;
-            }
-        }
-    }
-    return false;
 }
 
 }  // namespace xt::bundle

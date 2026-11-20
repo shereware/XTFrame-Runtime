@@ -70,6 +70,9 @@ public:
     /// delivers changes; event-type outputs are delivered as the Document dispatches them (inside
     /// Context::update()), regardless of tick(). No-op when not bound.
     void tick(float dt);
+    /// T-749 (Docs/design/23-host-integration.md §23.ag item 6): tick() reports something with time
+    /// alone -- a `document.clock` output is listened to. False when not bound.
+    bool needsTick() const;
 
     /// The currently bound ports (same rows as connectionPoints()). Empty when not bound.
     std::span<const PortDesc> ports() const;

@@ -1,0 +1,104 @@
+<xt version="2">
+
+  <symbol name="KeyHint" variants="Keys=One|Two, Sep=None|Before" requires="states: Hover, Pressed; slots: key, key2, label">
+    <ports>
+      pressed: event out
+    </ports>
+    <button id="Box" on:hover="sound(ui_hover)" on:press="sound(ui_confirm); play(press)" on:click="emit(pressed)">
+      <div id="Sep"></div>
+      <span id="Key" class="cap"><slot name="key">E</slot></span>
+      <span id="Key2" class="cap"><slot name="key2">S</slot></span>
+      <span id="Label"><slot name="label">Confirm</slot></span>
+    </button>
+  </symbol>
+
+  <layout>
+    symbol(KeyHint) {
+      #Box {
+        display: flex;
+        align-items: center;
+        column-gap: var(--space-2);
+        height: 32px;
+        padding: 0px var(--space-2);
+      }
+      .cap {
+        align-items: center;
+        justify-content: center;
+        min-width: 20px;
+        height: 20px;
+        padding: 0px 4px;
+      }
+      #Sep {
+        display: none;
+        width: 1px;
+        height: 16px;
+        margin-right: var(--space-2);
+      }
+      .v-Sep-Before #Sep {
+        display: flex;
+      }
+      #Key {
+        display: flex;
+      }
+      #Key2 {
+        display: none;
+      }
+      .v-Keys-Two #Key2 {
+        display: flex;
+      }
+    }
+  </layout>
+  <style>
+    symbol(KeyHint) {
+      #Box {
+        background-color: transparent;
+        border-width: 0px;
+        transition: background-color var(--motion-fast) ease-out;
+      }
+      .cap {
+        border-width: var(--rule-thin);
+        border-color: var(--color-text-label);
+        border-style: solid;
+        border-radius: var(--radius-s);
+        font-family: var(--font-body);
+        font-size: var(--font-size-caption);
+        line-height: 18px;
+        text-align: center;
+        color: var(--color-text);
+      }
+      #Label {
+        font-family: var(--font-body);
+        font-size: var(--font-size-m);
+        letter-spacing: 1px;
+        color: var(--color-text-label);
+        white-space: nowrap;
+      }
+      #Sep {
+        background-color: var(--color-line);
+      }
+      #Box:hover {
+        background-color: var(--color-line-hairline);
+      }
+      #Box:hover #Label {
+        color: var(--color-text-strong);
+      }
+      #Box:active #Label {
+        color: var(--color-accent-pressed);
+      }
+    }
+  </style>
+  <timelines>
+    symbol(KeyHint) {
+      @timeline press {
+        #Box {
+          0s {
+            transform: translateY(1px);
+          }
+          0.14s ease-out {
+            transform: translateY(0px);
+          }
+        }
+      }
+    }
+  </timelines>
+</xt>

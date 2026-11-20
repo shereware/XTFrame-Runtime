@@ -1,0 +1,88 @@
+<xt version="2">
+
+  <symbol name="ChapterCard" requires="slots: number, title, date">
+    <div id="Box" on:show="play(intro)" on:hide="play(outro) then hide">
+      <span id="Number"><slot name="number">Chapter One</slot></span>
+      <span id="Title"><slot name="title">Chapter Title</slot></span>
+      <div id="Rule"></div>
+      <span id="Date"><slot name="date">Location, Year</slot></span>
+    </div>
+  </symbol>
+
+  <layout>
+    symbol(ChapterCard) {
+      #Box {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        row-gap: var(--space-2);
+        padding: var(--space-6);
+      }
+      #Rule {
+        width: 120px;
+        height: 1px;
+        margin: var(--space-1) 0px;
+      }
+    }
+  </layout>
+  <style>
+    symbol(ChapterCard) {
+      #Number {
+        font-family: var(--font-body);
+        font-size: var(--font-size-caption);
+        text-transform: uppercase;
+        letter-spacing: 4px;
+        color: var(--color-text-quiet);
+      }
+      #Title {
+        font-family: var(--font-display);
+        font-size: var(--font-size-chapter);
+        letter-spacing: 3px;
+        color: var(--color-text-strong);
+        white-space: nowrap;
+      }
+      #Rule {
+        background-color: var(--color-danger);
+      }
+      #Date {
+        font-family: var(--font-body);
+        font-style: italic;
+        font-size: var(--font-size-s);
+        letter-spacing: 1px;
+        color: var(--color-text-label);
+      }
+    }
+  </style>
+  <timelines>
+    symbol(ChapterCard) {
+      @timeline intro {
+        #Box {
+          0s {
+            opacity: 0;
+          }
+          0.5s ease-out {
+            opacity: 1;
+          }
+        }
+        #Title {
+          0s {
+            transform: translateY(8px);
+          }
+          0.5s ease-out {
+            transform: translateY(0px);
+          }
+        }
+      }
+      @timeline outro {
+        #Box {
+          0s {
+            opacity: 1;
+          }
+          0.4s ease-in {
+            opacity: 0;
+          }
+        }
+      }
+    }
+  </timelines>
+</xt>

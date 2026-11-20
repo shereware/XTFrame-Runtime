@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <utility>
 #include <vector>
@@ -22,6 +24,9 @@ namespace xt {
 
 struct EditState;  // Code/Runtime/core/src/text_edit.h (private); only ever used through a pointer here.
 struct CompositionState;  // Code/Runtime/core/src/composition.h (private); likewise.
+class BorderDashCache;
+class AssetResolver;  // T-746
+class PerfTracker;    // T-753    // Code/Runtime/core/src/border_dash_cache.h (private, T-737); likewise.
 
 // Code/Runtime/core/src/layer_collect.h (private); only ever used as std::vector element types below, with
 // Painter's ctor/dtor defined out-of-line (painter.cpp, where layer_collect.h is included) --
@@ -86,6 +91,14 @@ public:
     /// T-327 (05 §5.9.8): true when the last paint() drew some element's `background-repeat`
     /// stretched because it needed more than 4096 tiles; reset by every paint().
     bool backgroundTilesCapped() const { return m_backgroundTilesCapped; }
+    /// T-747 (57 §57.3, 23 §23.ag item 2): true when the last paint() drew something that changes
+    /// with time alone -- a focused input's caret, a Wiggle modifier, a Custom effect (`xtTime`),
+    /// particles, an external (`engine://`) texture -- T-746: one without a content version
+    /// (setAssets()). paint() also sets CommandList::clockDependent.
+    bool clockDependent() const { return m_clockDependent; }
+    /// T-747: while set, enterNode() appends (the command count so far, the node) to `marks`, so a
+    /// diagnostic can name the node a command came from. nullptr (the default) records nothing.
+    void setNodeMarks(std::vector<std::pair<uint32_t, NodeId>>* marks) { m_nodeMarks = marks; }
 
     /// T-225: the paint (fill, stroke, stops, dashes) of a Path or Shape node; defined in
     /// painter.cpp, only used by the Painter's own emit functions.
@@ -102,6 +115,10 @@ public:
     /// entries live in it). nullptr (the default) paints text runs in the element's style with no
     /// text effects.
     void setIr(const IrView* ir) { m_ir = ir; }
+    /// T-746 (Docs/design/23-host-integration.md §23.ah): the resolver whose external bindings say
+    /// which `engine://` textures have a content version -- those are not clock-dependent (see
+    /// clockDependent()). nullptr (the default): every external texture is.
+    void setAssets(const AssetResolver* assets) { m_assets = assets; }
     /// T-203 (18.7): the document's custom effect shaders. Every enabled Custom effect a frame
     /// paints gets its ShaderRef copied into the CommandList (once per asset) and its boundsHint
     /// expanded by customEffectExpand(). nullptr (the default) = no shaders: Custom effects still
@@ -157,7 +174,31 @@ public:
         m_layerRects = rects;
     }
 
+    /// T-737 (Docs/tasks/T-737.md A): the dashed / dotted border geometry cache's counters -- the
+    /// sides drawn from it and the sides computed (and stored) in the last paint(), and the entries
+    /// and bytes of path data (verbs + points) it holds now.
+    struct BorderDashCacheStats {
+        uint32_t hits = 0;
+        uint32_t misses = 0;
+        uint32_t entries = 0;
+        uint32_t bytes = 0;
+    };
+    BorderDashCacheStats borderDashCacheStats() const;
+    /// T-737: for tests and measurements only. true (the default) draws a dashed / dotted side from
+    /// the cache when it holds the same inputs (the command list is byte-identical either way);
+    /// false computes every side (the entries then age out like unused ones).
+    void setBorderDashCacheEnabled(bool on);
+    /// T-753 (Docs/design/57-measurement.md §57.2 item 3): the tracker the paint.* zones are timed into
+    /// (detail level >= 2). Null (the default): none.
+    void setPerfTracker(PerfTracker* tracker) { m_perf = tracker; }
+    bool borderDashCacheEnabled() const;
+    /// T-737: for tests only: other limits than the defaults (2 MiB of path data, 256 entries).
+    void setBorderDashCacheLimits(size_t bytes, size_t entries);
+
 private:
+    /// T-737: one per Painter (never shared); see border_dash_cache.h.
+    std::unique_ptr<BorderDashCache> m_borderDashCache;
+
     // T-701 (33 §33.2): world-layer output (NodeArena::WorldLayerState::output). paint() emits the
     // base layer's range (the ordinary traversal, which queues every world layer it meets instead
     // of painting it), then one range per queued layer; layers met inside a layer are inserted
@@ -240,6 +281,11 @@ private:
     std::vector<NodeId> m_levelLayers;
     /// planeIsAffine()'s scratch: the entries' planeWorld3 while the layers' are swapped in.
     std::vector<Mat4> m_planeSaveScratch;
+    /// T-779: puts every m_mappingStack entry on the plane of its current layer (m_levelLayers, which
+    /// must be as long), saving the entries' own planes in m_planeSaveScratch; restoreLevelPlanes()
+    /// puts them back. (planeIsAffine()'s swap, shared with nestedSpaceReach().)
+    void swapInLevelPlanes(const NodeArena& arena);
+    void restoreLevelPlanes();
     /// planeIsAffine()'s last answer and the plane it is for: the m_mappingStack push it was computed
     /// under (m_spaceSerial), the stack's depth and the top entry's layer (the entries below cannot
     /// change while the top one is there).
@@ -315,6 +361,9 @@ private:
     uint32_t m_modifierVertices = 0;
     // T-327: see backgroundTilesCapped().
     bool m_backgroundTilesCapped = false;
+    // T-747: see clockDependent() and setNodeMarks().
+    bool m_clockDependent = false;
+    std::vector<std::pair<uint32_t, NodeId>>* m_nodeMarks = nullptr;
 
     // T-33: caret blink phase and the editable-value pool (see setClock/setEditStates).
     float m_clock = 0;
@@ -322,6 +371,8 @@ private:
     const CompositionState* m_composition = nullptr;
     // T-178: see setIr().
     const IrView* m_ir = nullptr;
+    const AssetResolver* m_assets = nullptr;  // T-746: setAssets()
+    PerfTracker* m_perf = nullptr;            // T-753: setPerfTracker()
     // T-203: see setShaders().
     const ShaderTable* m_shaders = nullptr;
     // T-263d: see setSource().
@@ -333,6 +384,19 @@ private:
     // T-44b (Docs/design/19-3d-space.md §19.5-19.6): per-node "subtree contains an is3D node"
     // cache, indexed by NodeId like m_drawableCount, recomputed every paint() call.
     std::vector<uint8_t> m_has3D;
+    // T-754 (Docs/design/10-backends.md §10.20): per node, whether some descendant (not the node
+    // itself) is drawn outside the node's own command range or projected -- a `layer: overlay`
+    // root, an active world layer, a 3D space root. Such a subtree is never left out as offscreen
+    // (its deferred parts must still be found, its projected extent is not bounded by
+    // subtreeBounds). Indexed by NodeId, recomputed every paint() call like m_has3D.
+    // T-779: a bit set -- kBelowDeferred (an overlay root or a world layer: never left out) and
+    // kBelowSpace (a 3D space root: bounded by its projection when that is known).
+    std::vector<uint8_t> m_deferredBelow;
+    static constexpr uint8_t kBelowDeferred = 1;
+    static constexpr uint8_t kBelowSpace = 2;
+    // T-754: true while paintGhost() runs -- the ghost's commands are moved after they are emitted,
+    // so their viewport clamp says nothing about where they end up: no bounds are known there.
+    bool m_ghostPainting = false;
     // Scratch for one sorted segment's collected 3D layers (flushSection()); cleared and refilled
     // per segment, capacity retained across segments and across paint() calls.
     std::vector<layer_collect::LayerEntry> m_layerScratch;
@@ -346,7 +410,8 @@ private:
     // PushProjection; used by isBackface() while flushSection() decides a layer's draw order (not
     // by the deferred command emission, which happens later via m_stack -- see painter_3d.cpp).
     std::vector<project3d::Mapping> m_mappingStack;
-    // The 3D layer currently being entered via an EnterNodeLayer action (painter_3d.cpp);
+    // The 3D layer currently being entered via an EnterNodeLayer action (painter_3d.cpp), or (T-762)
+    // the embedded layer being drawn inside a flattening group (enterEmbeddedLayer());
     // kInvalidNode outside of one (including for EnterNode2D actions -- see enterNode()'s new
     // is3D-skip branch, which only lets `n == m_currentLayer` through).
     NodeId m_currentLayer = kInvalidNode;
@@ -359,8 +424,6 @@ private:
     // Per-node pieces of the sorted segments' flat content (flushSection()), indexed by NodeId;
     // only the entries of the nodes walked by the segment being drawn are read.
     std::vector<layer_collect::PieceRange> m_pieceRanges;
-    // Scratch: a sorted segment's children whose flat content is drawn whole (flushSection()).
-    std::vector<NodeId> m_wholeScratch;
     // T-194 (08.9 `layer: overlay`): overlay subtree roots met during the main traversal, with
     // the alpha they inherit (their parent's world opacity), painted after the root in this order;
     // m_overlayEntering is the overlay root being entered by that pass (let through enterNode()).
@@ -375,6 +438,10 @@ private:
     /// T-194: the overlay pass and the drag ghost, after the main traversal.
     void paintOverlays(const NodeArena& arena, CommandList& out);
     void paintGhost(const NodeArena& arena, CommandList& out);
+    /// T-747: sets m_clockDependent / CommandList::clockDependent from what this paint appended
+    /// (the pools' sizes when paint() began).
+    void noteClockDependence(CommandList& out, size_t firstImage, size_t firstQuad, size_t firstMesh,
+                             size_t firstParticles, size_t firstEffectEntry);
 
     void computeDrawableCount(const NodeArena& arena, NodeId root);
     /// `elementChildrenOnly` drops the non-Element children from the plan (T-119: a
@@ -424,7 +491,7 @@ private:
     // to m_planScratch, in draw order: its 3D layers (EnterNodeLayer, each wrapped in its own
     // PushTransform3D{world3}/PopTransform3D pair, backface-culled) and its flat-content pieces
     // (EnterNode2D with a piece, wrapped in PushTransform3D{I}) depth-sorted together, ties in
-    // document order; a child whose flat content cannot be split is drawn whole before them.
+    // document order. T-762: a flat group's 3D descendants are no items (enterEmbeddedLayer()).
     // `view` is the root's CameraSetup::view (19.4 step 2), for §19.6's depth formula.
     void flushSection(const NodeArena& arena, std::span<const NodeId> orderedChildren,
                       const layer_collect::Section& section, const Mat4& view, float alpha);
@@ -434,7 +501,38 @@ private:
     // the largest per-node effect expansion in the subtree and clipped to `viewport`. Falls back
     // to `viewport` when a corner fails to project (w <= 1e-6), when the subtree holds a nested
     // space root, or when no node in it has a shape.
-    Rect projectionBoundsHint(const NodeArena& arena, NodeId root, Rect viewport);
+    // T-795: `bounded`, when given, is set to whether the hint is the (clipped) projected extent --
+    // finite and clipped to a valid `viewport` -- rather than that fallback.
+    Rect projectionBoundsHint(const NodeArena& arena, NodeId root, Rect viewport, bool* bounded = nullptr);
+    // T-779: projectionBoundsHint()'s walk -- the unclamped screen AABB (effect reach included) into
+    // `bounds`; false where projectionBoundsHint() falls back to the viewport.
+    bool projectedSubtreeBounds(const NodeArena& arena, NodeId root, Rect& bounds);
+    // T-762: the same walk from any node `root` lying on `startPlane` (the top mapping's planeWorld3
+    // for it); `startIsRoot` = a space root, whose own box is drawn with the identity and whose own
+    // effects count (otherwise `root`'s world is used and its own effects are left to the caller).
+    bool projectedBoundsFrom(const NodeArena& arena, NodeId root, const Mat4& startPlane, bool startIsRoot,
+                             Rect& bounds);
+    // T-762 (Docs/design/19-3d-space.md §19.y.2): enterNode() meets the 3D layer `n` while drawing a
+    // flat piece: it lies in a flattening group and is drawn in place -- false when it faces away
+    // (backface-visibility: hidden, nothing drawn); otherwise its plane is opened (PopTransform3D,
+    // PushTransform3D{world3}), it becomes m_currentLayer and a LeaveEmbeddedLayer action is pushed.
+    bool enterEmbeddedLayer(const NodeArena& arena, NodeId n, CommandList& out);
+    // T-762: does `n`, drawn in a flat piece, hold such layers (a child subtree with a 3D layer)?
+    bool holdsEmbeddedLayers(const NodeArena& arena, NodeId n) const;
+    // T-762: the unclamped screen AABB of `n`'s subtree with its embedded layers on their own planes
+    // (projectedBoundsFrom()); `viewport` when it is not known.
+    Rect embeddedSubtreeBounds(const NodeArena& arena, NodeId n, Rect viewport);
+    // T-779 (Docs/tasks/T-779.md item 1): for a space root `root` below the node being entered, the
+    // unclamped extent its PushProjection's hint will be computed from (projectedSubtreeBounds() with
+    // the root's own mapping pushed on m_mappingStack and every open level on the plane of its current
+    // layer, as the consumers have them). False when it is not known: a corner fails to project (the
+    // plane crosses the eye), a nested space or no shape below it, a non-finite (degenerate)
+    // projection, or an open level whose layer is not tracked.
+    bool nestedSpaceReach(const NodeArena& arena, NodeId root, Rect& bounds);
+    // T-779: unions into `acc` (tracked by `any`) nestedSpaceReach() of every painted space root in
+    // `n`'s subtree (walking only the children whose m_deferredBelow has kBelowSpace); false when one
+    // of them is not known.
+    bool unionNestedSpaceReach(const NodeArena& arena, NodeId n, Rect& acc, bool& any);
 
     // T-52 (Docs/design/18-effects.md §18.1, §18.5): emits an immediate PushEffect command for
     // node `n` (which must have at least one enabled effect and non-empty drawable content --
@@ -442,7 +540,28 @@ private:
     // stops) into `out.effects`/`out.stops`, computes EffectCmd::xf (c.world, or -- inside a 3D
     // space root's subtree -- project3d::jacobianAt) and boundsHint/contentBounds from
     // subtreeBounds(). Does not push the matching Action::Kind::PopEffect; the caller does that.
-    void pushEffectCmd(const NodeArena& arena, NodeId n, CommandList& out);
+    // T-754: `boundsKnown` goes into EffectCmd::boundsKnown.
+    // T-779: `pre` holds what the caller already computed for `n` with nothing changed since --
+    // contentScreenBounds(n, c.world), effectXf(n) and effectStackExpand() under it -- (else they
+    // are computed here); `window`, when given, is the unclamped hint instead of content + reach.
+    struct EffectPre {
+        Rect content{};
+        Mat2x3 xf{};
+        float expand = 0.0f;
+    };
+    void pushEffectCmd(const NodeArena& arena, NodeId n, CommandList& out, const EffectPre* pre = nullptr,
+                       bool boundsKnown = false, const Rect* window = nullptr);
+    // T-754 (Docs/design/10-backends.md §10.20 rule 2): the summed reach (screen px) of `c`'s
+    // enabled effects under `xf` -- what pushEffectCmd() outsets the content AABB by.
+    float effectStackExpand(const NodeArena& arena, const NodeCommon& c, const Mat2x3& xf) const;
+    // T-754 (§10.20 rule 3): unions into `acc` (tracked by `any`) the screen reach of the effects
+    // in `n`'s subtree (not `n` itself): for each nearest descendant with effects, its content AABB
+    // outset by its stack's reach (an effect's own window clips what is nested in it). Overlay
+    // roots, world layers, 3D space roots and (inside a 3D space) 3D layers are not walked into.
+    void unionDescendantReach(const NodeArena& arena, NodeId n, Rect viewport, Rect& acc, bool& any);
+    // T-754: EffectCmd::xf of node `n` -- its world transform outside 3D spaces, the Jacobian of its
+    // plane at its anchor inside one (what pushEffectCmd() writes).
+    Mat2x3 effectXf(const NodeArena& arena, NodeId n);
 
     // T-133 (Docs/design/09-command-list.md's LayerCmd line): `n`'s subtreeBounds() mapped to
     // screen space -- `transformBounds(xf, ...)` outside any 3D space root, the AABB of the four

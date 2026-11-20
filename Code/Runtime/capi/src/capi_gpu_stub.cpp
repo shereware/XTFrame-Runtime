@@ -34,6 +34,8 @@ bool gpuDrawCounts(const xt_surface& /*surface*/, uint32_t& /*executed*/, uint32
     return false;
 }
 
+bool gpuWantsAnotherFrame(const xt_surface& /*surface*/) { return false; }
+
 }  // namespace xt::capi
 
 namespace {

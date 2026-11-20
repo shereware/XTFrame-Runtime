@@ -349,6 +349,30 @@ private:
     std::span<const IrTimelineGroupMember> m_members;
 };
 
+/// Optional `TEXP` chunk (T-776, Docs/design/58-value-functions-and-drivers.md §58.5): the run-time
+/// programs of timeline rows. Every range, op and reference is validated by `IrView::open`.
+class TimelineExprChunk {
+public:
+    /// Returns whether the optional `TEXP` chunk was present in the blob.
+    bool present() const { return m_present; }
+    /// One record per row with a program.
+    std::span<const IrTimelineExpr> exprs() const { return m_exprs; }
+    /// The op pool (each expression's program is a range of it).
+    std::span<const IrExprOp> ops() const { return m_ops; }
+    /// The hidden curve pool (each expression's curves are a range of it).
+    std::span<const IrExprCurve> curves() const { return m_curves; }
+    /// The curve key pool.
+    std::span<const IrExprKey> keys() const { return m_keys; }
+
+private:
+    friend class IrView;
+    bool m_present = false;
+    std::span<const IrTimelineExpr> m_exprs;
+    std::span<const IrExprOp> m_ops;
+    std::span<const IrExprCurve> m_curves;
+    std::span<const IrExprKey> m_keys;
+};
+
 /// Optional `VARS` chunk: the design-token table (Docs/design/05-style-and-css.md §5.9.2, 12.7,
 /// T-170) -- `tokens[]` then `fallbacks[]`. Absent (both empty) for a document without tokens and
 /// for every `.xtir` written before T-170.
@@ -435,6 +459,28 @@ private:
     bool m_present = false;
     std::span<const uint32_t> m_names;
     std::span<const IrStateGroup> m_groups;
+};
+
+/// Optional `STGS` chunk (T-738, Docs/design/56-symbol-identity-style-scope.md §56.4): the
+/// symbol-scoped state groups and the instance roots they apply under. Absent for every document
+/// whose state groups do not conflict across origins.
+class StateScopeChunk {
+public:
+    /// Returns whether the optional `STGS` chunk was present in the blob.
+    bool present() const { return m_present; }
+    /// One record per symbol with scoped groups.
+    std::span<const IrStateScope> scopes() const { return m_scopes; }
+    /// The scoped groups (each scope is a range of them).
+    std::span<const IrStateGroup> groups() const { return m_groups; }
+    /// The instance roots, ascending by element.
+    std::span<const IrStateScopeRoot> roots() const { return m_roots; }
+
+private:
+    friend class IrView;
+    bool m_present = false;
+    std::span<const IrStateScope> m_scopes;
+    std::span<const IrStateGroup> m_groups;
+    std::span<const IrStateScopeRoot> m_roots;
 };
 
 /// Optional `TRIG` chunk: per-element trigger tables (Docs/design/03-scene-and-properties.md
@@ -717,6 +763,8 @@ public:
     const SymbolChunk& symbols() const { return m_symbols; }
     /// Returns the optional `TGRP` chunk (`present() == false` when the blob has none).
     const TimelineGroupChunk& timelineGroups() const { return m_timelineGroups; }
+    /// Returns the optional `TEXP` timeline expression programs (T-776).
+    const TimelineExprChunk& timelineExprs() const { return m_timelineExprs; }
     /// Returns the optional `VARS` token table (T-170).
     const VarsChunk& vars() const { return m_vars; }
     /// Returns the optional `CALC` program table (T-176).
@@ -725,6 +773,8 @@ public:
     const MediaChunk& media() const { return m_media; }
     /// Returns the optional `STAT` custom-state table (T-174).
     const CustomStateChunk& customStates() const { return m_customStates; }
+    /// Returns the optional `STGS` symbol-scoped state groups (T-738).
+    const StateScopeChunk& stateScopes() const { return m_stateScopes; }
     /// Returns the optional `TRIG` trigger tables (T-174).
     const TriggerChunk& triggers() const { return m_triggers; }
     /// Returns the optional `STRS` localization table (T-179).
@@ -790,6 +840,7 @@ private:
     static bool parseCalcs(const uint8_t* payload, size_t payloadSize, CalcChunk& out);
     static bool parseMedia(const uint8_t* payload, size_t payloadSize, MediaChunk& out);
     static bool parseCustomStates(const uint8_t* payload, size_t payloadSize, CustomStateChunk& out);
+    static bool parseStateScopes(const uint8_t* payload, size_t payloadSize, StateScopeChunk& out);
     static bool parseTriggers(const uint8_t* payload, size_t payloadSize, TriggerChunk& out);
     static bool parseLocalization(const uint8_t* payload, size_t payloadSize, LocalizationChunk& out);
     static bool parsePorts(const uint8_t* payload, size_t payloadSize, PortChunk& out);
@@ -800,6 +851,10 @@ private:
     static bool parseShaders(const uint8_t* payload, size_t payloadSize, ShaderChunk& out);
     static bool parseClipShapes(const uint8_t* payload, size_t payloadSize, ClipShapeChunk& out);
     static bool parseGrid(const uint8_t* payload, size_t payloadSize, GridChunk& out);
+    /// T-776: the `TEXP` chunk (Code/Runtime/core/src/ir_view_texp.cpp), and its cross-reference
+    /// checks (run by validate(); `detail` names the failed rule for openError()).
+    static bool parseTimelineExprs(const uint8_t* payload, size_t payloadSize, TimelineExprChunk& out);
+    static Status validateTimelineExprs(const IrView& view, std::string* detail);
 
     IrBlob m_blob;
     uint32_t m_loadSerial = 0;
@@ -814,10 +869,12 @@ private:
     uint16_t m_formatMinor = kIrFormatMinor;
     SymbolChunk m_symbols;
     TimelineGroupChunk m_timelineGroups;
+    TimelineExprChunk m_timelineExprs;
     VarsChunk m_vars;
     CalcChunk m_calcs;
     MediaChunk m_media;
     CustomStateChunk m_customStates;
+    StateScopeChunk m_stateScopes;
     TriggerChunk m_triggers;
     LocalizationChunk m_localization;
     PortChunk m_ports;

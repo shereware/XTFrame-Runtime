@@ -50,14 +50,20 @@ struct StyleTemplate;
 class Document;  // Defined below.
 /// The Context that loaded a Document (see xt/context.h).
 class Context;
-class EventDispatcher;    // Code/Runtime/core/src/event_dispatcher.h (private; Document owns one via pimpl).
-struct EditState;         // Code/Runtime/core/src/text_edit.h (private; Document owns the pool, see m_editStates).
-struct CompositionState;  // Code/Runtime/core/src/composition.h (private; Document owns one, see m_composition).
-struct TimelineGroupSet;  // Code/Runtime/core/src/timeline_group.h (private; Document owns one, see m_timelineGroups).
-class TriggerRuntime;     // Code/Runtime/core/src/trigger_runtime.h (private; Document owns one, see m_triggers).
-class BindingRuntime;     // Code/Runtime/core/src/binding_runtime.h (private; Document owns one, see m_bindings).
-class RepeatController;   // Code/Runtime/core/src/repeat_controller.h (private; Document owns one, see m_repeats).
-struct DocumentState;     // Code/Runtime/core/src/document_state.h (private; T-398 snapshot / hotReload carry-over).
+class EventDispatcher;  // Code/Runtime/core/src/event_dispatcher.h (private; Document owns one via pimpl).
+struct EditState;  // Code/Runtime/core/src/text_edit.h (private; Document owns the pool, see m_editStates).
+struct CompositionState;  // Code/Runtime/core/src/composition.h (private; Document owns one, see
+                          // m_composition).
+struct TimelineGroupSet;  // Code/Runtime/core/src/timeline_group.h (private; Document owns one, see
+                          // m_timelineGroups).
+class TriggerRuntime;     // Code/Runtime/core/src/trigger_runtime.h (private; Document owns one, see
+                          // m_triggers).
+class BindingRuntime;     // Code/Runtime/core/src/binding_runtime.h (private; Document owns one, see
+                          // m_bindings).
+class RepeatController;   // Code/Runtime/core/src/repeat_controller.h (private; Document owns one, see
+                          // m_repeats).
+struct DocumentState;     // Code/Runtime/core/src/document_state.h (private; T-398 snapshot / hotReload
+                          // carry-over).
 class RuntimeState;       // xt/runtime_state.h (T-616: captureRuntimeState() / restoreRuntimeState()).
 namespace rig {
 struct RigState;  // Code/Runtime/core/src/rig_eval.h (private; Document owns the pool, see m_rigs).
@@ -267,12 +273,12 @@ struct ElementRef {
     Value property(PropId prop) const;
 
     /// Cascaded value for either an animatable PropId (0-108, delegates to `property()`) or a
-    /// non-animatable StyleProp number (160-188, Code/Runtime/core/src/style_decode.h): read straight off this
-    /// element's `ComputedStyle`. Only `ComputedStyle` fields that are themselves an `enum class`
-    /// are supported for the StyleProp branch (encoded via `Value::ofEnum`); every other
-    /// StyleProp -- and an unrecognized `propOrStyleProp` -- returns a default-constructed
-    /// `Value{}` (`!valid()` too). Used by the editor's property panel and `Document::style()`'s
-    /// cascade fallback (Docs/design/17-editor.md §17.7, Docs/tasks/T-59.md).
+    /// non-animatable StyleProp number (160-188, Code/Runtime/core/src/style_decode.h): read straight off
+    /// this element's `ComputedStyle`. Only `ComputedStyle` fields that are themselves an `enum class` are
+    /// supported for the StyleProp branch (encoded via `Value::ofEnum`); every other StyleProp -- and an
+    /// unrecognized `propOrStyleProp` -- returns a default-constructed `Value{}` (`!valid()` too). Used by
+    /// the editor's property panel and `Document::style()`'s cascade fallback (Docs/design/17-editor.md
+    /// §17.7, Docs/tasks/T-59.md).
     Value computedStyleValue(uint16_t propOrStyleProp) const;
 
     // Effects (Docs/design/18-effects.md §18.4, Docs/tasks/T-51b.md). The node's current, final
@@ -331,11 +337,9 @@ struct ElementRef {
     /// Inserts `cls` into the element's sorted class list if absent. Returns true if it changed
     /// anything (i.e. the class was actually added).
     bool addClass(std::string_view cls);
-    /// Removes `cls` from the element's class list if present. Returns true if it changed
-    /// anything.
+    /// Removes `cls` from the element's class list if present. Returns true if it changed anything.
     bool removeClass(std::string_view cls);
-    /// Adds `cls` when absent, removes it when present. Returns true if the class is set
-    /// afterwards.
+    /// Adds `cls` when absent, removes it when present. Returns true if the class is set afterwards.
     bool toggleClass(std::string_view cls);
 
     /// True when every bit set in `state` is currently set on this element.
@@ -552,8 +556,7 @@ public:
     /// `:hover/:active/:focus/:disabled/:checked`, descendant (space) and child (`>`)
     /// combinators -- matched against every Element in the tree, in preorder. `out` is cleared
     /// first. Selector groups (`,`) and everything 05.3 lists as unsupported (attribute
-    /// selectors, `:nth-*`, `::before`, `:not()`, `+`) return kInvalidArgument with an empty
-    /// `out`.
+    /// selectors, `:nth-*`, `::before`, `:not()`, `+`) return kInvalidArgument with an empty `out`.
     Status query(std::string_view selector, std::vector<ElementRef>& out);
 
     /// Creates a detached Element (parent == kInvalidNode) with `tag` interned, default style and
@@ -830,8 +833,7 @@ public:
     /// included (default 8; 1 = only the shown frame).
     void setSequencePreload(uint32_t frames) { m_sequencePreload = frames == 0 ? 1 : frames; }
     uint32_t sequencePreload() const { return m_sequencePreload; }
-    /// Context: appends the logical AABBs of the elements whose external binding changed since
-    /// the last call, then forgets them.
+    /// Context: appends (and forgets) the logical AABBs of the elements whose binding changed.
     void takeExternalDamage(std::vector<Rect>& out);
 
     // Particles (Docs/design/03-scene-and-properties.md §3.12.5, T-202; particles.cpp). `node` is
@@ -913,11 +915,14 @@ public:
     /// The document's Animator (mutable access).
     Animator& animator() { return m_animator; }
 
-    /// Docs/design/21-perf-tracing.md §21.2: binds the PerfTracker update()/paint() report their
-    /// phase times and workload counts into. Context calls this for every Document it loads; a
-    /// standalone Document (tests) keeps its own, permanently disabled tracker. `tracker` must
-    /// outlive this Document; nullptr restores the built-in one.
-    void setPerfTracker(PerfTracker* tracker) { m_perf = tracker != nullptr ? tracker : &m_ownPerf; }
+    /// Docs/design/21-perf-tracing.md §21.2: binds the PerfTracker update()/paint() (T-747: and the
+    /// cause table) report into. Context calls this for every Document it loads; a standalone Document
+    /// keeps its own, never-enabled one. `tracker` must outlive this Document; nullptr = the built-in.
+    void setPerfTracker(PerfTracker* tracker);
+    /// T-747 (57 §57.3, 23 §23.ag): NodeArena::visualGeneration() -- moves at every paint-changing write.
+    uint64_t visualGeneration() const { return m_arena.visualGeneration(); }
+    /// T-747: a write that changes the paint without a dirty bit (moves visualGeneration()).
+    void noteVisualChange(DirtyCause cause) { m_arena.noteVisualChange(cause, kInvalidNode); }
 
     /// T-244 (Docs/design/32-rigging-and-deformation.md §32.2.3): zeroes every Spring constraint's
     /// simulation state, for an editor that scrubs to a frame and simulates forward from it.
@@ -1109,7 +1114,7 @@ private:
     friend class RepeatController;
     friend struct DocumentTestAccess;     // T-260b: Tests/unit reads the private runtimes' counters.
     friend struct RuntimePoolTestAccess;  // T-270a: Tests/unit reads the runtime pools' sizes.
-
+    friend struct ExprTestAccess;         // T-776: Tests/unit sets the play seeds, reads history.
     Document();
 
     /// paint() with every asset command stamped `source` (T-263d; Context::render, after appending
@@ -1134,8 +1139,7 @@ private:
     void applyClasses(const DocumentState& state);
     void missingState(const DocumentState& state, std::vector<std::string>& missing) const;
     void applyState(const DocumentState& state, bool exact);
-    // `@timeline` group runtime (Code/Runtime/core/src/timeline_group.cpp, T-172).
-    void loadTimelineGroups();
+    void loadTimelineGroups();  // `@timeline` group runtime (src/timeline_group.cpp, T-172).
     int findTimelineGroup(std::string_view scopePath, std::string_view name) const;
     void activateTimelineGroup(size_t index);
     void releaseTimelineGroup(size_t index);
@@ -1144,6 +1148,7 @@ private:
     void queueTimelineMarkers(size_t index, float from, float to, bool inclusiveFrom);
     void captureTimelineRestores(size_t index);
     void stepTimelineGroups(float clock);
+    bool advanceTimelineGroup(size_t index, float& dt, bool inclusive, bool cut);  // T-774
     void flushTimelineEvents();
     void forgetTimelineNode(NodeId node);
     /// T-35 remove(): undoes everything this Document tracks for a node about to be destroyed (listeners,
@@ -1261,6 +1266,10 @@ private:
     std::vector<NodeId> m_externalElements;  // `video`/`sequence`/`external` elements.
     std::vector<NodeId> m_pendingMediaEnds;  // Elements that ended since the last flush.
     std::vector<NodeId> m_externalDamaged;   // Elements whose binding changed (damage).
+    // T-746 (23 §23.ah, external_media.cpp): the IR's `engine://` assets and what was last seen of each.
+    std::vector<ExternalTextureSeen> m_externalTextures;
+    void checkExternalTextures();               // update(): relayout on a new size, generation if versioned
+    uint64_t externalTextureSignature() const;  // Context::canSkipPaint(): the bindings' stamps now
     ExternalRequestListener m_externalRequestListener;
     bool m_externalPlaceholders = false;
     uint32_t m_sequencePreload = 8;
@@ -1417,36 +1426,25 @@ private:
     // T-332: runtime `clip-path` shape pool (declareRuntimeClipShapeFor()), slots like
     // m_runtimeGradients.
     std::vector<ElementClipShape> m_runtimeClipShapes;
-    // T-270c: a span of m_runtimeGradients / m_runtimeAnimations an element owns (cap 0 = none).
-    struct RuntimeDeclSlot {
-        uint32_t offset = 0;
-        uint32_t cap = 0;
-    };
-    // Two slots per (element, property), written alternately: a declaration goes into the slot
-    // the element's cascaded value does not reference, so its offset always changes -- which is
-    // how StyleEngine sees a change (markNonAnimatableDirty repaints, applyAnimationDiff re-diffs)
-    // -- and the pool holds at most two slots per element. Released with the element.
-    struct RuntimeDeclSlots {
-        RuntimeDeclSlot slot[2];
-        uint8_t last = 1;  ///< The slot written last.
-    };
+    // T-270c: element-owned slots of m_runtimeGradients / m_runtimeAnimations / m_runtimeClipShapes
+    // (RuntimeDeclSlots, xt/style_engine.h).
     std::unordered_map<NodeId, RuntimeDeclSlots> m_runtimeGradientSlots;
     std::unordered_map<NodeId, RuntimeDeclSlots> m_runtimeClipShapeSlots;  // T-332.
     std::unordered_map<NodeId, RuntimeDeclSlots> m_runtimeAnimationSlots;
     std::vector<RuntimeDeclSlot> m_freeGradientSlots;
     std::vector<RuntimeDeclSlot> m_freeClipShapeSlots;  // T-332.
     std::vector<RuntimeDeclSlot> m_freeAnimationSlots;
-    /// Picks the slot of `own` to write next (see RuntimeDeclSlots; `inUse` is the untagged pool
-    /// offset the element's cascaded value references, UINT32_MAX when none) and makes it hold
-    /// `need` entries: an outgrown slot goes to `freeList`, replaced by a released one that fits
-    /// (first fit, never `inUse`) or a new one at `poolSize`'s end (`poolSize` grows; the caller
-    /// resizes its pool to it). Returns the slot's offset.
-    static uint32_t takeRuntimeDeclSlot(RuntimeDeclSlots& own, std::vector<RuntimeDeclSlot>& freeList,
-                                        uint32_t inUse, uint32_t need, size_t& poolSize);
+    // T-778: setStyle's `animation-*` longhand declarations, two slots per (element, longhand),
+    // keyed (node << 3) | longhand; free slots go to m_freeAnimationSlots.
+    std::unordered_map<uint64_t, RuntimeDeclSlots> m_runtimeAnimationLonghandSlots;
     /// declareRuntimeGradient() / declareRuntimeAnimations() for `node`'s own setStyle declaration:
     /// writes into one of the node's two slots instead of appending. Same returned Value.
     Value declareRuntimeGradientFor(NodeId node, const ElementGradient& gradient);
     Value declareRuntimeAnimationsFor(NodeId node, std::span<const IrAnimationSpec> specs);
+    /// T-778: the same for `node`'s setStyle `animation-*` longhand `longhand` (0-7, StyleProp
+    /// 282 + longhand): `specs` carry that longhand's field. An empty list is the initial value.
+    Value declareRuntimeAnimationLonghandFor(NodeId node, int longhand,
+                                             std::span<const IrAnimationSpec> specs);
     /// T-332: the same for `node`'s own setStyle `clip-path:` declaration; returns the Enum Value
     /// to cascade (0 for `none`, else kRuntimeEffectOffsetBit | the slot's offset).
     Value declareRuntimeClipShapeFor(NodeId node, const ElementClipShape& shape);
@@ -1486,7 +1484,7 @@ private:
     // NodeArena's side table, and publishes the bones' `<id>.world` / `<id>.angle` ports.
     std::unique_ptr<std::vector<rig::RigState>> m_rigs;
     float m_rigClock = 0;
-    bool m_rigClockValid = false;
+    bool m_rigClockValid = false, m_rigsMoving = true;  // T-749: m_rigsMoving, see evaluateRigs()
     uint32_t m_rigBones = 0;       // Bones evaluated by the last update() (FrameStats::rigBones).
     uint32_t m_skinnedPoints = 0;  // Points skinned by the last update() (FrameStats::skinnedPoints).
     /// Builds m_rigs from the scene instances (document_load.cpp).

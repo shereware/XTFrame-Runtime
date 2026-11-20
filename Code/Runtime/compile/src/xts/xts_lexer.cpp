@@ -65,6 +65,10 @@ void Lexer::skipWhitespaceAndComments() {
 }
 
 Token Lexer::next() {
+    if (m_rawUrl == 2) {
+        m_rawUrl = 0;
+        return lexRawUrl();  // before the comment skip: a leading `/*` is part of the URL
+    }
     const size_t before = m_pos;
     skipWhitespaceAndComments();
     m_wsBefore = m_pos != before;
@@ -114,6 +118,9 @@ Token Lexer::next() {
             return makeToken(TokenKind::Star, line, col);
         case '(':
             advance();
+            if (m_rawUrl == 1) {
+                m_rawUrl = 2;  // T-808: the raw URL is the next token
+            }
             return makeToken(TokenKind::LParen, line, col);
         case ')':
             advance();
@@ -211,8 +218,68 @@ Token Lexer::lexIdent() {
     while (isIdentCont(peek())) {
         out.push_back(advance());
     }
+    // T-808: `url(` followed by an unquoted URL. CSS's url token: the `url` name is ASCII
+    // case-insensitive and its `(` follows with nothing in between.
+    if (out.size() == 3 && (out[0] | 0x20) == 'u' && (out[1] | 0x20) == 'r' && (out[2] | 0x20) == 'l' &&
+        peek() == '(' && rawUrlFollows()) {
+        m_rawUrl = 1;
+    }
     Token t = makeToken(TokenKind::Ident, line, col);
     t.text = std::move(out);
+    return t;
+}
+
+namespace {
+
+bool isUrlSpace(char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f'; }
+
+}  // namespace
+
+// T-808 (CSS Syntax 3 "consume a url token"): true when the `(` at the cursor opens an unquoted URL
+// that is valid as one token -- after optional whitespace, a non-empty run without whitespace,
+// quotes, `(`, `\` or control characters, then optional whitespace and `)`. Anything else (a quoted
+// URL, `url()`, an escape, a space inside) is lexed token by token as before.
+bool Lexer::rawUrlFollows() const {
+    size_t i = m_pos + 1;
+    while (i < m_text.size() && isUrlSpace(m_text[i])) {
+        ++i;
+    }
+    if (i >= m_text.size() || m_text[i] == '"' || m_text[i] == '\'' || m_text[i] == ')') {
+        return false;
+    }
+    for (; i < m_text.size(); ++i) {
+        const auto c = static_cast<unsigned char>(m_text[i]);
+        if (c == ')') {
+            return true;
+        }
+        if (isUrlSpace(static_cast<char>(c))) {
+            while (i < m_text.size() && isUrlSpace(m_text[i])) {
+                ++i;
+            }
+            return i < m_text.size() && m_text[i] == ')';
+        }
+        if (c == '"' || c == '\'' || c == '(' || c == '\\' || c < 0x20 || c == 0x7f) {
+            return false;
+        }
+    }
+    return false;
+}
+
+// T-808: the raw contents of an unquoted `url(...)` (rawUrlFollows() held) as a String token; the
+// surrounding whitespace is skipped and the `)` is left for next().
+Token Lexer::lexRawUrl() {
+    const size_t before = m_pos;
+    while (!atEnd() && isUrlSpace(peek())) {
+        advance();
+    }
+    m_wsBefore = m_pos != before;
+    Token t = makeToken(TokenKind::String, m_line, m_col);
+    while (!atEnd() && peek() != ')' && !isUrlSpace(peek())) {
+        t.text.push_back(advance());
+    }
+    while (!atEnd() && isUrlSpace(peek())) {
+        advance();
+    }
     return t;
 }
 

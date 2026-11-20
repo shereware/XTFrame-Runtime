@@ -7,6 +7,7 @@
 
 #include "bundle_json.h"
 #include "design_internal.h"
+#include "symbol_internal.h"
 #include "xt/bundle/ui_project.h"
 #include "xt/compile/utf8_path.h"
 
@@ -137,6 +138,61 @@ std::string unifiedDiffSymbolSync(const std::string& a, const std::string& b, co
     return out;
 }
 
+/// T-741: one recorded copy of the project's `<shared.symbols>/index.json`.
+struct RecordedCopy {
+    /// The entry's key: `qualified`, else `name` (flat).
+    std::string key;
+    /// The symbol's own name.
+    std::string name;
+    std::string library;
+    std::string group;
+};
+
+/// The entries of `<symbolsDir>/index.json` with a recorded source (`source.library` and
+/// `source.group` both set: readCopySource()'s rule), in file order.
+std::vector<RecordedCopy> recordedCopies(const fs::path& symbolsDir) {
+    std::vector<RecordedCopy> out;
+    std::string text;
+    if (!detail::readFile(genericPathToUtf8(symbolsDir / "index.json"), text)) {
+        return out;
+    }
+    std::string error;
+    const nlohmann::json index = detail::parseBounded(text, detail::kMaxJsonDepth, error);
+    if (!error.empty() || !index.is_object() || !index.contains("symbols") || !index["symbols"].is_array()) {
+        return out;
+    }
+    for (const nlohmann::json& entry : index["symbols"]) {
+        if (!entry.is_object() || !entry.contains("source") || !entry["source"].is_object()) {
+            continue;
+        }
+        RecordedCopy copy;
+        copy.name = detail::getString(entry, "name");
+        const std::string qualified = detail::getString(entry, "qualified");
+        copy.key = qualified.empty() ? copy.name : qualified;
+        copy.library = detail::getString(entry["source"], "library");
+        copy.group = detail::getString(entry["source"], "group");
+        if (!copy.key.empty() && !copy.name.empty() && !copy.library.empty() && !copy.group.empty()) {
+            out.push_back(std::move(copy));
+        }
+    }
+    return out;
+}
+
+/// The id of the library the group directory `groupDir` sits in (`<library>/groups/<id>`); empty
+/// when it sits in none.
+std::string libraryIdOf(const fs::path& groupDir) {
+    if (genericPathToUtf8(groupDir.parent_path().filename()) != "groups") {
+        return std::string();
+    }
+    std::string text;
+    if (!detail::readFile(genericPathToUtf8(groupDir.parent_path().parent_path() / "library.json"), text)) {
+        return std::string();
+    }
+    std::string error;
+    const nlohmann::json library = detail::parseBounded(text, detail::kMaxJsonDepth, error);
+    return error.empty() && library.is_object() ? detail::getString(library, "id") : std::string();
+}
+
 }  // namespace
 
 Status diffStandardSymbols(const UiProject& project, std::string_view standardSymbolDir,
@@ -158,43 +214,59 @@ Status diffStandardSymbols(const UiProject& project, std::string_view standardSy
     std::error_code ec;
     const fs::path root = fs::absolute(pathFromUtf8(project.rootDir), ec).lexically_normal();
     const fs::path symbolsDir = (root / pathFromUtf8(project.shared.symbols)).lexically_normal();
+    // T-741 (56 §56.3 item 6): a project symbol is a copy of a standard symbol only by its recorded
+    // source -- this group (and, when the group sits in a library, that library) -- never by its file
+    // name; a symbol without a recorded source is the project's own.
+    const fs::path groupDir = fs::absolute(library, ec).lexically_normal();
+    const std::string groupId = genericPathToUtf8(groupDir.filename());
+    const std::string libraryId = libraryIdOf(groupDir);
+    const std::vector<RecordedCopy> copies = recordedCopies(symbolsDir);
     std::set<std::string> seen;  // A copy is compared once (the root entry wins over a subset's).
     for (const nlohmann::json& entry : index["symbols"]) {
         if (!entry.is_object() || !entry.contains("file") || !entry["file"].is_string()) {
             continue;
         }
         const std::string standard = entry["file"].get<std::string>();
+        const std::string standardName = entry.value("name", std::string());
         const fs::path standardPath = library / pathFromUtf8(standard);
-        const fs::path copyPath = symbolsDir / standardPath.filename();
-        const std::string copyName = genericPathToUtf8(standardPath.filename());
-        std::string copyText;
         std::string standardText;
-        if (seen.count(copyName) != 0 || !fs::is_regular_file(copyPath, ec) ||
-            !detail::readFile(genericPathToUtf8(copyPath), copyText) ||
-            !detail::readFile(genericPathToUtf8(standardPath), standardText)) {
+        if (!detail::readFile(genericPathToUtf8(standardPath), standardText)) {
             continue;
         }
-        seen.insert(copyName);
-        copyText = lfTextSymbolSync(copyText);
         standardText = lfTextSymbolSync(standardText);
-        StandardSymbolDiff row;
-        row.name = entry.value("name", std::string());
-        row.file = genericPathToUtf8(copyPath.lexically_relative(root));
-        row.standard = standard;
-        if (copyText == standardText) {
-            row.status = "current";
-        } else {
-            const std::string hash = design::detail::contentHash(copyText);
-            bool earlier = false;
-            if (entry.contains("previousContent") && entry["previousContent"].is_array()) {
-                for (const nlohmann::json& previous : entry["previousContent"]) {
-                    earlier = earlier || (previous.is_string() && previous.get<std::string>() == hash);
-                }
+        for (const RecordedCopy& copy : copies) {
+            if (copy.name != standardName || copy.group != groupId ||
+                (!libraryId.empty() && copy.library != libraryId)) {
+                continue;
             }
-            row.status = earlier ? "outdated" : "modified";
-            row.diff = unifiedDiffSymbolSync(standardText, copyText, "standard/" + standard, row.file);
+            fs::path copyPath;
+            std::string copyText;
+            if (seen.count(copy.key) != 0 || !detail::resolveInside(symbolsDir, copy.key + ".xt", copyPath) ||
+                !fs::is_regular_file(copyPath, ec) ||
+                !detail::readFile(genericPathToUtf8(copyPath), copyText)) {
+                continue;
+            }
+            seen.insert(copy.key);
+            copyText = lfTextSymbolSync(copyText);
+            StandardSymbolDiff row;
+            row.name = copy.key;  // T-741: the qualified name (`Name` for a flat copy).
+            row.file = genericPathToUtf8(copyPath.lexically_relative(root));
+            row.standard = standard;
+            if (copyText == standardText) {
+                row.status = "current";
+            } else {
+                const std::string hash = design::detail::contentHash(copyText);
+                bool earlier = false;
+                if (entry.contains("previousContent") && entry["previousContent"].is_array()) {
+                    for (const nlohmann::json& previous : entry["previousContent"]) {
+                        earlier = earlier || (previous.is_string() && previous.get<std::string>() == hash);
+                    }
+                }
+                row.status = earlier ? "outdated" : "modified";
+                row.diff = unifiedDiffSymbolSync(standardText, copyText, "standard/" + standard, row.file);
+            }
+            out.push_back(std::move(row));
         }
-        out.push_back(std::move(row));
     }
     std::sort(out.begin(), out.end(),
               [](const StandardSymbolDiff& a, const StandardSymbolDiff& b) { return a.file < b.file; });

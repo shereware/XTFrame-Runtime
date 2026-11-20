@@ -4,19 +4,23 @@
 #include <cmath>
 #include <cstring>
 #include <functional>
+#include <optional>
 #include <span>
 #include <string_view>
 #include <vector>
 
 #include "camera.h"
+#include "css_values.h"  // toIrEasing() (T-778).
 #include "mini_css.h"
 #include "modifier_props.h"
 #include "selector_match.h"
+#include "style_compare.h"
 #include "style_decode.h"
 #include "xt/assert.h"
 #include "xt/asset_resolver.h"
 #include "xt/document.h"
 #include "xt/effect_utils.h"
+#include "xt/perf.h"
 #include "xt/property.h"
 #include "xt/text_shaper.h"
 
@@ -329,13 +333,31 @@ void applyGeneralDecl(const IrView& ir, ComputedStyle& next, Length& originX, Le
         return;
     }
     if (decl.prop == style_decode::styleprop::Transition) {
-        next.transitionOffset = irValueU32(decl.value, 0);
-        next.transitionCount = irValueU32(decl.value, 1);
+        // T-778: only an IR before 3.3 has it -- the four longhands at once (combineLonghands()).
+        for (int i = 0; i < 4; ++i) {
+            next.transitionLonghandOffset[i] = irValueU32(decl.value, 0);
+            next.transitionLonghandCount[i] = irValueU32(decl.value, 1);
+        }
         return;
     }
     if (decl.prop == style_decode::styleprop::Animation) {
-        next.animationOffset = irValueU32(decl.value, 0);
-        next.animationCount = irValueU32(decl.value, 1);
+        // T-778: only an IR before 3.3 has it -- the eight longhands at once.
+        for (int i = 0; i < 8; ++i) {
+            next.animationLonghandOffset[i] = irValueU32(decl.value, 0);
+            next.animationLonghandCount[i] = irValueU32(decl.value, 1);
+        }
+        return;
+    }
+    if (style_decode::styleprop::isAnimationLonghand(decl.prop)) {  // T-778 (05 §5.6).
+        const int i = decl.prop - style_decode::styleprop::AnimationName;
+        next.animationLonghandOffset[i] = irValueU32(decl.value, 0);
+        next.animationLonghandCount[i] = irValueU32(decl.value, 1);
+        return;
+    }
+    if (style_decode::styleprop::isTransitionLonghand(decl.prop)) {
+        const int i = decl.prop - style_decode::styleprop::TransitionProperty;
+        next.transitionLonghandOffset[i] = irValueU32(decl.value, 0);
+        next.transitionLonghandCount[i] = irValueU32(decl.value, 1);
         return;
     }
     if (decl.prop == style_decode::styleprop::Effect) {
@@ -563,9 +585,21 @@ void applyRuntimeDecl(const IrView& ir, const SelectorMatchContext& strings, Com
         // 17.6 (T-123): ElementRef::setStyle encodes the declaration as a ListRef whose `sid` is
         // Document::declareRuntimeAnimations()' tagged offset (kRuntimeEffectOffsetBit | index)
         // and whose `floatCount` is the list's length -- same convention as `effect` above.
+        // T-778: every longhand at once.
         if (value.type == ValueType::ListRef) {
-            next.animationOffset = value.sid;
-            next.animationCount = value.floatCount;
+            for (int i = 0; i < 8; ++i) {
+                next.animationLonghandOffset[i] = value.sid;
+                next.animationLonghandCount[i] = value.floatCount;
+            }
+        }
+        return;
+    }
+    if (style_decode::styleprop::isAnimationLonghand(decl.prop)) {
+        // T-778: ElementRef::setStyle's longhands, the same ListRef convention.
+        if (value.type == ValueType::ListRef) {
+            const int i = decl.prop - style_decode::styleprop::AnimationName;
+            next.animationLonghandOffset[i] = value.sid;
+            next.animationLonghandCount[i] = value.floatCount;
         }
         return;
     }
@@ -615,9 +649,11 @@ bool transitionCovers(const IrTransitionSpec& spec, PropId prop) {
 /// did) because it's out of range for an effect-parameter PropId (18-effects.md §18.4/T-51b):
 /// `next.base` is sized for the general/Element PropIds (0-108) only, and effect parameter values
 /// live in NodeArena::effects(), not ComputedStyle.
-bool maybeRegisterTransition(Animator& animator, const IrView& ir, const ComputedStyle& next, NodeId node,
-                             PropId prop, const Value& fromFinal, const Value& toFinal, float clock,
-                             bool firstResolve, NodeId target = kInvalidNode) {
+/// `specs` is `next`'s `transition` list (StyleEngine::transitionSpecs(), T-778).
+bool maybeRegisterTransition(Animator& animator, std::span<const IrTransitionSpec> specs,
+                             const ComputedStyle& next, NodeId node, PropId prop, const Value& fromFinal,
+                             const Value& toFinal, float clock, bool firstResolve,
+                             NodeId target = kInvalidNode) {
     if (firstResolve || next.transitionCount == 0) {
         return false;
     }
@@ -625,13 +661,8 @@ bool maybeRegisterTransition(Animator& animator, const IrView& ir, const Compute
     if (vt == ValueType::Enum || vt == ValueType::StringRef || vt == ValueType::ListRef) {
         return false;  // Discrete types never transition (03.10).
     }
-    std::span<const IrTransitionSpec> all = ir.style().transitions();
-    if (uint64_t{next.transitionOffset} + next.transitionCount > all.size()) {
-        return false;  // Defensive; IrView::open already validated this range.
-    }
-    std::span<const IrTransitionSpec> specs = all.subspan(next.transitionOffset, next.transitionCount);
     for (const IrTransitionSpec& spec : specs) {
-        if (transitionCovers(spec, prop)) {
+        if ((spec.flags & kIrTransitionNoProp) == 0 && transitionCovers(spec, prop)) {
             Transition tr;
             tr.node = node;
             tr.prop = prop;
@@ -791,12 +822,45 @@ void markNonAnimatableDirty(NodeArena& arena, NodeId node, const ComputedStyle& 
         // T-327 (05 §5.9.8): background placement and image sampling.
         oldStyle.backgroundRepeat != next.backgroundRepeat || oldStyle.imageRendering != next.imageRendering;
     if (layoutChanged) {
-        arena.markDirty(node, static_cast<uint8_t>(kDirtyLayout));
+        arena.markDirty(node, static_cast<uint8_t>(kDirtyLayout), arena.lastCause());
     }
     if (paintChanged) {
-        arena.markDirty(node, static_cast<uint8_t>(kDirtyPaint));
+        arena.markDirty(node, static_cast<uint8_t>(kDirtyPaint), arena.lastCause());
     }
 }
+
+}  // namespace
+
+uint32_t takeRuntimeDeclSlot(RuntimeDeclSlots& own, std::vector<RuntimeDeclSlot>& freeList, uint32_t inUse,
+                             uint32_t need, size_t& poolSize) {
+    // T-270c: the slot written before the last one, unless the cascade still references it (two
+    // declarations within one frame): then the last one, which nothing resolved yet.
+    uint8_t k = static_cast<uint8_t>(own.last ^ 1u);
+    if (own.slot[k].cap != 0 && own.slot[k].offset == inUse) {
+        k = own.last;
+    }
+    own.last = k;
+    RuntimeDeclSlot& slot = own.slot[k];
+    if (slot.cap >= need) {
+        return slot.offset;
+    }
+    if (slot.cap != 0) {
+        freeList.push_back(slot);
+    }
+    auto fits = [need, inUse](const RuntimeDeclSlot& s) { return s.cap >= need && s.offset != inUse; };
+    auto freeIt = std::find_if(freeList.begin(), freeList.end(), fits);
+    if (freeIt != freeList.end()) {
+        slot = *freeIt;
+        freeList.erase(freeIt);
+    } else {
+        slot.offset = static_cast<uint32_t>(poolSize);
+        slot.cap = need;
+        poolSize += need;
+    }
+    return slot.offset;
+}
+
+namespace {
 
 /// The `animation` items of a cascaded offset/count pair: T-123, a runtime `animation`
 /// declaration (ElementRef::setStyle) tags its offset with kRuntimeEffectOffsetBit and indexes
@@ -831,6 +895,7 @@ PlayParams cssAnimationParams(const IrAnimationSpec& spec, NodeId node) {
     params.fill = static_cast<FillMode>(spec.fill);
     params.layer = 0;
     params.overrideEasing = toEasing(spec.easing);
+    params.css = 1;  // T-747: DirtyCause::Animation
     if (spec.iterations == 0) {
         params.loop = isAlternate ? LoopMode::PingPong : LoopMode::Loop;
         params.iterations = 0;
@@ -1224,8 +1289,9 @@ void resolveGrid(const IrView& ir, const ComputedStyle& next, ElementGrid& out) 
 /// diffs each animatable parameter and registers a transition per Docs/design's `transition`
 /// rules (`effect` covers every effect parameter, see transitionCovers() above); otherwise
 /// cancels every in-flight effect-parameter transition on `node` and replaces the stack outright.
-void applyEffectCascade(Animator& animator, const IrView& ir, const ComputedStyle& next, NodeArena& arena,
-                        NodeId node, const std::vector<EffectInstance>* runtimeEffects,
+void applyEffectCascade(Animator& animator, const IrView& ir, std::span<const IrTransitionSpec> transitions,
+                        const ComputedStyle& next, NodeArena& arena, NodeId node,
+                        const std::vector<EffectInstance>* runtimeEffects,
                         const std::vector<GradientStop>* runtimeStops, float clock, bool firstResolve) {
     constexpr uint32_t kMaxEffects = kMaxEffectSequence;
     constexpr uint32_t kMaxStops = kMaxEffects * 16;
@@ -1283,14 +1349,51 @@ void applyEffectCascade(Animator& animator, const IrView& ir, const ComputedStyl
             fromValues[i][k] = getProperty(arena, node, p);
         }
     }
+    // T-763 (05 §5.6a for effect parameters): the end values of the effect-parameter transitions
+    // running on the node now -- each one's target; "changed" is decided against it, not against
+    // the value it is animating through (copied: addTransition() below may move them).
+    struct RunningEnd {
+        PropId prop;
+        Value to;
+    };
+    RunningEnd running[kMaxEffects * kAnimatableEffectParamCount];
+    size_t runningCount = 0;
+    for (const Transition& t : animator.transitions()) {
+        if (t.written() == node && t.prop >= prop::kEffectPropBase && runningCount < std::size(running)) {
+            running[runningCount++] = RunningEnd{t.prop, t.to};
+        }
+    }
     arena.assignEffects(node, newEffects, newStops);
     for (size_t i = 0; i < newEffects.size(); ++i) {
         for (size_t k = 0; k < kAnimatableEffectParamCount; ++k) {
             PropId p = effectParam(static_cast<uint32_t>(i), kAnimatableEffectParams[k]);
             Value toFinal = getProperty(arena, node, p);
-            if (!valueEquals(fromValues[i][k], toFinal)) {
-                maybeRegisterTransition(animator, ir, next, node, p, fromValues[i][k], toFinal, clock,
-                                        firstResolve);
+            const RunningEnd* run = nullptr;
+            for (size_t r = 0; r < runningCount; ++r) {
+                if (running[r].prop == p) {
+                    run = &running[r];
+                    break;
+                }
+            }
+            if (run == nullptr) {
+                if (!valueEquals(fromValues[i][k], toFinal)) {
+                    maybeRegisterTransition(animator, transitions, next, node, p, fromValues[i][k], toFinal,
+                                            clock, firstResolve);
+                }
+                continue;
+            }
+            if (valueEquals(toFinal, run->to)) {
+                // Rule 2: the target is unchanged; the running transition goes on from the value
+                // it had reached (assignEffects() above wrote the target into the slot).
+                setProperty(arena, node, p, fromValues[i][k], arena.lastCause());
+                continue;
+            }
+            // Rule 3: retarget from the current animated value, full duration and delay; a new
+            // target equal to that value, or a parameter no longer transitioned, ends it there.
+            if (valueEquals(fromValues[i][k], toFinal) ||
+                !maybeRegisterTransition(animator, transitions, next, node, p, fromValues[i][k], toFinal,
+                                         clock, firstResolve)) {
+                animator.cancelTransitionsForNodeRange(node, p, p);
             }
         }
     }
@@ -1701,9 +1804,9 @@ uint32_t StyleEngine::updateMedia(NodeArena& arena, const LengthEnv& env, const 
                 !matchRule(arena, *m_ir, node, rules[ri], selParts, classIds, matchCtx)) {
                 continue;
             }
-            arena.markDirty(node, static_cast<uint8_t>(kDirtyStyle));
+            arena.markDirty(node, static_cast<uint8_t>(kDirtyStyle), DirtyCause::Viewport);
             arena.traversePreorder(node, [&arena](NodeId n) {
-                arena.markDirty(n, static_cast<uint8_t>(kDirtyStyle));
+                arena.markDirty(n, static_cast<uint8_t>(kDirtyStyle), DirtyCause::Viewport);
                 return true;
             });
         }
@@ -1719,9 +1822,9 @@ uint32_t StyleEngine::markDeviceUsersDirty(NodeArena& arena) {
             continue;
         }
         ++count;
-        arena.markDirty(node, static_cast<uint8_t>(kDirtyStyle));
+        arena.markDirty(node, static_cast<uint8_t>(kDirtyStyle), DirtyCause::Viewport);
         arena.traversePreorder(node, [&arena](NodeId n) {
-            arena.markDirty(n, static_cast<uint8_t>(kDirtyStyle));
+            arena.markDirty(n, static_cast<uint8_t>(kDirtyStyle), DirtyCause::Viewport);
             return true;
         });
     }
@@ -1735,9 +1838,9 @@ uint32_t StyleEngine::markTokenUsersDirty(NodeArena& arena) {
             continue;
         }
         ++count;
-        arena.markDirty(node, static_cast<uint8_t>(kDirtyStyle));
+        arena.markDirty(node, static_cast<uint8_t>(kDirtyStyle), DirtyCause::Viewport);
         arena.traversePreorder(node, [&arena](NodeId n) {
-            arena.markDirty(n, static_cast<uint8_t>(kDirtyStyle));
+            arena.markDirty(n, static_cast<uint8_t>(kDirtyStyle), DirtyCause::Viewport);
             return true;
         });
     }
@@ -1782,6 +1885,207 @@ void StyleEngine::resolveImageMeta(const IrView& ir, const ComputedStyle& next, 
 std::span<const IrAnimationSpec> StyleEngine::animationSpecs(uint32_t offset, uint32_t count) const {
     return m_ir != nullptr ? animationSpecsIn(*m_ir, m_runtimeAnimations, offset, count)
                            : std::span<const IrAnimationSpec>{};
+}
+
+std::span<const IrTransitionSpec> StyleEngine::transitionSpecs(uint32_t offset, uint32_t count) const {
+    std::span<const IrTransitionSpec> all =
+        m_ir != nullptr ? m_ir->style().transitions() : std::span<const IrTransitionSpec>{};
+    if ((offset & kRuntimeEffectOffsetBit) != 0) {
+        offset &= ~kRuntimeEffectOffsetBit;
+        all = m_combinedTransitions;
+    }
+    if (static_cast<uint64_t>(offset) + count > all.size()) {
+        return {};
+    }
+    return all.subspan(offset, count);
+}
+
+namespace {
+
+/// T-778: whether the `n` longhand pairs all name the same list (the shorthand set them all).
+bool sameRefs(const uint32_t* offsets, const uint32_t* counts, int n) {
+    for (int i = 1; i < n; ++i) {
+        if (offsets[i] != offsets[0] || counts[i] != counts[0]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool sameTransitionSpec(const IrTransitionSpec& a, const IrTransitionSpec& b) {
+    return a.prop == b.prop && a.flags == b.flags && a.duration == b.duration && a.delay == b.delay &&
+           std::memcmp(&a.easing, &b.easing, sizeof(IrEasing)) == 0;
+}
+
+/// Writes `list` into one of `node`'s two slots of `pool` (the one `inUse` does not name) and
+/// returns the tagged offset.
+template <typename T>
+uint32_t writeCombinedSlot(std::vector<T>& pool, RuntimeDeclSlots& own,
+                           std::vector<RuntimeDeclSlot>& freeList, uint32_t inUse,
+                           const std::vector<T>& list) {
+    size_t poolSize = pool.size();
+    const uint32_t offset =
+        takeRuntimeDeclSlot(own, freeList, inUse, static_cast<uint32_t>(list.size()), poolSize);
+    pool.resize(poolSize);
+    std::copy(list.begin(), list.end(), pool.begin() + offset);
+    return kRuntimeEffectOffsetBit | offset;
+}
+
+uint32_t untaggedInUse(uint32_t offset, uint32_t count) {
+    return count != 0 && (offset & kRuntimeEffectOffsetBit) != 0 ? offset & ~kRuntimeEffectOffsetBit
+                                                                 : UINT32_MAX;
+}
+
+}  // namespace
+
+void StyleEngine::combineLonghands(const ElementData& data, ComputedStyle& next, NodeId node) {
+    // --- animation (CSS Animations 1 §4: one item per animation-name item; the other lists repeat
+    // when shorter and are cut when longer; `none` and iteration-count-0 items play nothing).
+    const uint32_t* aOff = next.animationLonghandOffset;
+    const uint32_t* aCnt = next.animationLonghandCount;
+    bool direct = sameRefs(aOff, aCnt, 8);
+    if (direct) {
+        for (const IrAnimationSpec& spec : animationSpecs(aOff[0], aCnt[0])) {
+            direct = direct && spec.flags == 0;
+        }
+    }
+    if (direct) {
+        // The shorthand (or an IR before 3.3): its list is the combined one.
+        next.animationOffset = aCnt[0] != 0 ? aOff[0] : 0;
+        next.animationCount = aCnt[0];
+    } else {
+        std::span<const IrAnimationSpec> lists[8];
+        for (int i = 0; i < 8; ++i) {
+            lists[i] = animationSpecs(aOff[i], aCnt[i]);
+        }
+        std::vector<IrAnimationSpec>& out = m_combineAnimScratch;
+        out.clear();
+        for (size_t k = 0; k < lists[0].size(); ++k) {
+            auto item = [&](int i) -> const IrAnimationSpec* {
+                return lists[i].empty() ? nullptr : &lists[i][k % lists[i].size()];
+            };
+            const IrAnimationSpec& name = lists[0][k];
+            if ((name.flags & kIrAnimationNoName) != 0) {
+                continue;
+            }
+            IrAnimationSpec spec{};
+            spec.timeline = name.timeline;
+            spec.iterations = 1;  // The initial values; the easing is the .xts shorthand's `linear`.
+            spec.easing = css_values::toIrEasing(Easing::linear());
+            if (const IrAnimationSpec* v = item(1)) spec.duration = v->duration;
+            if (const IrAnimationSpec* v = item(2)) spec.easing = v->easing;
+            if (const IrAnimationSpec* v = item(3)) spec.delay = v->delay;
+            if (const IrAnimationSpec* v = item(4)) {
+                if ((v->flags & kIrAnimationNoPlay) != 0) {
+                    continue;
+                }
+                spec.iterations = v->iterations;
+            }
+            if (const IrAnimationSpec* v = item(5)) spec.direction = v->direction;
+            if (const IrAnimationSpec* v = item(6)) spec.fill = v->fill;
+            if (const IrAnimationSpec* v = item(7)) spec.playState = v->playState;
+            out.push_back(spec);
+        }
+        // The list the element plays now, item for item: keep its range (no rewrite, no restart).
+        const uint32_t lastOffset = data.style.lastAnimationOffset;
+        const uint32_t lastCount = data.style.lastAnimationCount;
+        const std::span<const IrAnimationSpec> last = animationSpecs(lastOffset, lastCount);
+        bool same = last.size() == out.size();
+        for (size_t k = 0; same && k < out.size(); ++k) {
+            same = sameAnimationSpec(last[k], out[k]);
+        }
+        if (out.empty()) {
+            next.animationOffset = 0;
+            next.animationCount = 0;
+        } else if (same) {
+            next.animationOffset = lastOffset;
+            next.animationCount = lastCount;
+        } else if (m_runtimeAnimations != nullptr) {
+            next.animationOffset =
+                writeCombinedSlot(*m_runtimeAnimations, m_combinedAnimationSlots[node],
+                                  m_freeCombinedAnimationSlots, untaggedInUse(lastOffset, lastCount), out);
+            next.animationCount = static_cast<uint32_t>(out.size());
+        }
+    }
+
+    // --- transition (CSS Transitions 1 §2: one item per transition-property item, likewise).
+    const uint32_t* tOff = next.transitionLonghandOffset;
+    const uint32_t* tCnt = next.transitionLonghandCount;
+    if (sameRefs(tOff, tCnt, 4)) {
+        next.transitionOffset = tCnt[0] != 0 ? tOff[0] : 0;
+        next.transitionCount = tCnt[0];
+        return;
+    }
+    std::span<const IrTransitionSpec> lists[4];
+    for (int i = 0; i < 4; ++i) {
+        lists[i] = transitionSpecs(tOff[i], tCnt[i]);
+    }
+    // Item counts of the duration / timing / delay lists (one entry per item there).
+    std::vector<IrTransitionSpec>& out = m_combineTransScratch;
+    out.clear();
+    IrTransitionSpec all{};
+    all.prop = 0xFFFFu;  // `transition-property`'s initial value.
+    const std::span<const IrTransitionSpec> props =
+        lists[0].empty() ? std::span<const IrTransitionSpec>(&all, 1) : lists[0];
+    size_t itemIndex = 0;
+    for (size_t e = 0; e < props.size(); ++e) {
+        if (e > 0 && (props[e].flags & kIrTransitionSameItem) == 0) {
+            ++itemIndex;
+        }
+        IrTransitionSpec spec{};
+        spec.prop = props[e].prop;
+        spec.flags = static_cast<uint16_t>(props[e].flags & kIrTransitionNoProp);
+        if (!lists[1].empty()) spec.duration = lists[1][itemIndex % lists[1].size()].duration;
+        if (!lists[2].empty()) spec.easing = lists[2][itemIndex % lists[2].size()].easing;
+        if (!lists[3].empty()) spec.delay = lists[3][itemIndex % lists[3].size()].delay;
+        out.push_back(spec);
+    }
+    const std::span<const IrTransitionSpec> last =
+        transitionSpecs(data.style.transitionOffset, data.style.transitionCount);
+    bool same = last.size() == out.size();
+    for (size_t k = 0; same && k < out.size(); ++k) {
+        same = sameTransitionSpec(last[k], out[k]);
+    }
+    if (same) {
+        next.transitionOffset = data.style.transitionOffset;
+        next.transitionCount = data.style.transitionCount;
+        return;
+    }
+    next.transitionOffset = writeCombinedSlot(
+        m_combinedTransitions, m_combinedTransitionSlots[node], m_freeCombinedTransitionSlots,
+        untaggedInUse(data.style.transitionOffset, data.style.transitionCount), out);
+    next.transitionCount = static_cast<uint32_t>(out.size());
+}
+
+void StyleEngine::releaseCombinedSlots(NodeId node, ComputedStyle& style) {
+    auto release = [node](std::unordered_map<NodeId, RuntimeDeclSlots>& owners,
+                          std::vector<RuntimeDeclSlot>& freeList, uint32_t* offsets[2], uint32_t* counts[2]) {
+        auto own = owners.find(node);
+        if (own == owners.end()) {
+            return;
+        }
+        for (const RuntimeDeclSlot& slot : own->second.slot) {
+            if (slot.cap == 0) {
+                continue;
+            }
+            for (int i = 0; i < 2; ++i) {
+                if (offsets[i] != nullptr && *counts[i] != 0 &&
+                    (*offsets[i] & kRuntimeEffectOffsetBit) != 0 &&
+                    (*offsets[i] & ~kRuntimeEffectOffsetBit) == slot.offset) {
+                    *offsets[i] = 0;
+                    *counts[i] = 0;
+                }
+            }
+            freeList.push_back(slot);
+        }
+        owners.erase(own);
+    };
+    uint32_t* animOffsets[2] = {&style.animationOffset, &style.lastAnimationOffset};
+    uint32_t* animCounts[2] = {&style.animationCount, &style.lastAnimationCount};
+    release(m_combinedAnimationSlots, m_freeCombinedAnimationSlots, animOffsets, animCounts);
+    uint32_t* transOffsets[2] = {&style.transitionOffset, nullptr};
+    uint32_t* transCounts[2] = {&style.transitionCount, nullptr};
+    release(m_combinedTransitionSlots, m_freeCombinedTransitionSlots, transOffsets, transCounts);
 }
 
 void StyleEngine::init(const IrView& ir, Animator& animator, TextShaper* shaper) {
@@ -1863,12 +2167,12 @@ void StyleEngine::updateFocusWithin(NodeArena& arena) {
             arena.kind(n) != NodeKind::Element) {
             continue;
         }
-        arena.markDirty(n, static_cast<uint8_t>(kDirtyStyle));
+        arena.markDirty(n, static_cast<uint8_t>(kDirtyStyle), arena.lastCause());
         NodeId parent = arena.parent(n);
         const bool topmost = parent == kInvalidNode || m_focusWithin[parent] == m_focusWithinNext[parent];
         if (m_focusWithinDeep && topmost) {
             arena.traversePreorder(n, [&arena](NodeId d) {
-                arena.markDirty(d, static_cast<uint8_t>(kDirtyStyle));
+                arena.markDirty(d, static_cast<uint8_t>(kDirtyStyle), arena.lastCause());
                 return true;
             });
         }
@@ -1898,6 +2202,9 @@ uint32_t StyleEngine::resolve(NodeArena& arena, float clock) {
     static thread_local std::vector<Entry> entries;
     static thread_local std::vector<Entry> sceneEntries;  // T-218: the element's scene-target declarations.
     uint32_t processed = 0;
+    // T-753 (57 §57.3 item 4): the redundant-style count, at detail level >= 1 only.
+    const bool countRedundant = m_perf != nullptr && m_perf->countsRedundantWork();
+    uint32_t redundant = 0;
 
     // T-173: the condition-part inputs of selector matching (selector_match.h).
     SelectorMatchContext matchCtx;
@@ -1964,6 +2271,18 @@ uint32_t StyleEngine::resolve(NodeArena& arena, float clock) {
             }
             ++processed;
             ElementData& data = arena.element(node);
+            // T-753 (57 §57.2 item 3): this element's resolve in two zones, its matching declarations
+            // (steps 1-2) and the rest (detail level >= 2; one test each otherwise).
+            PerfZoneScope cascadeZone(m_perf, PerfZone::UpdateStyleCascade);
+            std::optional<PerfZoneScope> matchZone(std::in_place, m_perf, PerfZone::UpdateStyleMatch);
+            // T-753 (57 §57.3 item 4): the style as it is before this resolve writes any of it (step 5's
+            // setProperty() writes data.style.base), for the redundant-style count.
+            if (countRedundant && data.styleResolvedOnce != 0) {
+                if (m_styleBefore == nullptr) {
+                    m_styleBefore = std::make_unique<ComputedStyle>();
+                }
+                *m_styleBefore = data.style;
+            }
 
             // 1. Collect matching declarations (rules + inline), 2. sort by (important, specificity,
             // source order).
@@ -2096,6 +2415,7 @@ uint32_t StyleEngine::resolve(NodeArena& arena, float clock) {
                 std::stable_sort(sceneEntries.begin(), sceneEntries.end(), cascadeLess);
             }
             std::stable_sort(entries.begin(), entries.end(), cascadeLess);
+            matchZone.reset();  // T-753: back in update.style.cascade
 
             // 3. Start from inherited/initial values.
             NodeId parentNode = arena.parent(node);
@@ -2250,7 +2570,7 @@ uint32_t StyleEngine::resolve(NodeArena& arena, float clock) {
                 if (data.styleResolvedOnce != 0 &&
                     data.style.base[prop::FontSize].len.value != fontSizeSelfPx) {
                     arena.traversePreorder(node, [&arena](NodeId n) {
-                        arena.markDirty(n, static_cast<uint8_t>(kDirtyStyle));
+                        arena.markDirty(n, static_cast<uint8_t>(kDirtyStyle), arena.lastCause());
                         return true;
                     });
                 }
@@ -2385,6 +2705,11 @@ uint32_t StyleEngine::resolve(NodeArena& arena, float clock) {
                 next.writingMode = WritingMode::HorizontalTb;
             }
 
+            // T-778 (05 §5.6): the cascaded longhands into the element's animation / transition lists.
+            combineLonghands(data, next, node);
+            const std::span<const IrTransitionSpec> nextTransitions =
+                transitionSpecs(next.transitionOffset, next.transitionCount);
+
             // 5. Write base values, registering transitions for changed, interpolable props.
             // T-723: setProperty() below writes data.style.base; keep what the children inherited.
             Value inheritedBefore[6];
@@ -2416,18 +2741,18 @@ uint32_t StyleEngine::resolve(NodeArena& arena, float clock) {
                                        : valueEquals(next.base[p], data.style.base[p])) {
                     return;  // Rule 2: the target is unchanged; a running transition goes on.
                 }
-                setProperty(arena, node, p, next.base[p]);
+                setProperty(arena, node, p, next.base[p], arena.lastCause());
                 if (running == nullptr) {
-                    maybeRegisterTransition(animator, ir, next, node, p, fromFinal, toFinal, clock,
-                                            noTransition);
+                    maybeRegisterTransition(animator, nextTransitions, next, node, p, fromFinal, toFinal,
+                                            clock, noTransition);
                     return;
                 }
                 // Rule 3: retarget from the current animated value with the full duration and
                 // delay (addTransition replaces the running one); a new target equal to that value,
                 // or a property no longer transitioned, ends the transition there (rules 3, 4).
                 if (sameTransitionValue(p, fromFinal, toFinal) ||
-                    !maybeRegisterTransition(animator, ir, next, node, p, fromFinal, toFinal, clock,
-                                             noTransition)) {
+                    !maybeRegisterTransition(animator, nextTransitions, next, node, p, fromFinal, toFinal,
+                                             clock, noTransition)) {
                     animator.cancelTransitionsForNodeRange(node, p, p);
                 }
                 collectNodeTransitions(animator, node);  // The pointers above may be stale now.
@@ -2437,7 +2762,7 @@ uint32_t StyleEngine::resolve(NodeArena& arena, float clock) {
             }
             // T-228: auto-orient is a discrete Enum -- never transitioned.
             if (!valueEquals(next.base[prop::AutoOrient], data.style.base[prop::AutoOrient])) {
-                setProperty(arena, node, prop::AutoOrient, next.base[prop::AutoOrient]);
+                setProperty(arena, node, prop::AutoOrient, next.base[prop::AutoOrient], arena.lastCause());
             }
             for (PropId p = prop::Width; p <= prop::LetterSpacing; ++p) {
                 commitBase(p);
@@ -2467,13 +2792,13 @@ uint32_t StyleEngine::resolve(NodeArena& arena, float clock) {
             // T-336 (05 §5.9.8): `order` is not animatable -- committed without a transition (layout
             // through setProperty's kDirtyLayout).
             if (!valueEquals(next.base[prop::Order], data.style.base[prop::Order])) {
-                setProperty(arena, node, prop::Order, next.base[prop::Order]);
+                setProperty(arena, node, prop::Order, next.base[prop::Order], arena.lastCause());
             }
             if (originX.value != data.originX.value || originX.unit != data.originX.unit ||
                 originY.value != data.originY.value || originY.unit != data.originY.unit) {
                 data.originX = originX;
                 data.originY = originY;
-                arena.markDirty(node, static_cast<uint8_t>(kDirtyTransform));
+                arena.markDirty(node, static_cast<uint8_t>(kDirtyTransform), arena.lastCause());
             }
 
             // 5b. Font matching (Docs/tasks/T-30.md goal 1): resolvedFont =
@@ -2505,7 +2830,7 @@ uint32_t StyleEngine::resolve(NodeArena& arena, float clock) {
                 }
             }
             if (next.resolvedFont != data.style.resolvedFont) {
-                arena.markDirty(node, static_cast<uint8_t>(kDirtyLayout));
+                arena.markDirty(node, static_cast<uint8_t>(kDirtyLayout), arena.lastCause());
             }
 
             // 5c. T-218 (31 31.5.1): scene-target rules -> the element's inline <svg> nodes, with
@@ -2542,7 +2867,8 @@ uint32_t StyleEngine::resolve(NodeArena& arena, float clock) {
             // 6b. `effect` cascade (18-effects.md §18.4/T-51b): assigns the node's actual effect
             // stack from `next.effectOffset/effectCount`, run before commit per the design's
             // cascade paragraph.
-            applyEffectCascade(animator, ir, next, arena, node, m_runtimeEffects, m_runtimeEffectStops, clock,
+            applyEffectCascade(animator, ir, transitionSpecs(next.transitionOffset, next.transitionCount),
+                               next, arena, node, m_runtimeEffects, m_runtimeEffectStops, clock,
                                noTransition);
 
             // 6c. `background-gradient` (05.5c/T-115): decode the winning declaration into
@@ -2569,9 +2895,13 @@ uint32_t StyleEngine::resolve(NodeArena& arena, float clock) {
             if (data.styleResolvedOnce != 0 && inheritedPartChanged(data.style, inheritedBefore, next)) {
                 for (NodeId c = arena.firstChild(node); c != kInvalidNode; c = arena.nextSibling(c)) {
                     if (arena.kind(c) == NodeKind::Element) {
-                        arena.markStyleDirtySelf(c);
+                        arena.markStyleDirtySelf(c, arena.lastCause());
                     }
                 }
+            }
+            // T-753 (57 §57.3 item 4): a re-style that produced the style the element already had.
+            if (countRedundant && data.styleResolvedOnce != 0 && sameComputedStyle(*m_styleBefore, next)) {
+                ++redundant;
             }
             data.style = next;
             data.styleResolvedOnce = 1;
@@ -2591,7 +2921,8 @@ uint32_t StyleEngine::resolve(NodeArena& arena, float clock) {
                 // own in world-layer output, so a change recomputes the transforms below it.
                 if (common.worldLayer != next.worldLayer) {
                     common.worldLayer = next.worldLayer;
-                    arena.markDirty(node, static_cast<uint8_t>(kDirtyTransform | kDirtyTree));
+                    arena.markDirty(node, static_cast<uint8_t>(kDirtyTransform | kDirtyTree),
+                                    arena.lastCause());
                 }
                 common.flags2 = next.pointerWatch != 0
                                     ? (common.flags2 | kPointerWatch)
@@ -2606,14 +2937,18 @@ uint32_t StyleEngine::resolve(NodeArena& arena, float clock) {
                 // node carries, so Painter::enterNode's PushLayer(opacity, blend) rule applies.
                 common.blend = next.mixBlendMode;
                 if (was != now3D) {
-                    arena.markDirty(node, static_cast<uint8_t>(kDirtyTransform | kDirtyTree));
+                    arena.markDirty(node, static_cast<uint8_t>(kDirtyTransform | kDirtyTree),
+                                    arena.lastCause());
                     arena.markDirtyAncestors(node, static_cast<uint8_t>(kDirtyTree),
-                                             nearestSpaceRootOrDocRoot(arena, node));
+                                             nearestSpaceRootOrDocRoot(arena, node), arena.lastCause());
                 }
             }
         }
     }
 
+    if (redundant != 0) {
+        m_perf->current().redundantStyled += redundant;  // T-753
+    }
     return processed;
 }
 
@@ -2931,11 +3266,22 @@ void StyleEngine::applySceneOverrides(NodeArena& arena, NodeId element, const El
         }
         return nullptr;
     };
+    // Called only for a changed target (the applied value above is the previous target: 05 §5.6a
+    // rules 1-2). T-763: rule 3 -- a running transition is retargeted from the current animated
+    // value; a new target equal to that value, or a property no longer transitioned, ends it there.
     auto write = [&](NodeId n, PropId p, const Value& v) {
         const Value from = getProperty(arena, n, p);
-        setProperty(arena, n, p, v);
+        setProperty(arena, n, p, v, arena.lastCause());
+        const bool running = m_animator->hasTransition(n, p);
         if (p != prop::PathData && p != prop::DashArray) {  // `d` and dash arrays jump (31 §31.5.1).
-            maybeRegisterTransition(*m_animator, *m_ir, next, element, p, from, v, clock, firstResolve, n);
+            if (running && valueEquals(from, v)) {
+                m_animator->cancelTransitionsForNodeRange(n, p, p);
+            } else if (!maybeRegisterTransition(*m_animator,
+                                                transitionSpecs(next.transitionOffset, next.transitionCount),
+                                                next, element, p, from, v, clock, firstResolve, n) &&
+                       running) {
+                m_animator->cancelTransitionsForNodeRange(n, p, p);
+            }
         }
     };
 

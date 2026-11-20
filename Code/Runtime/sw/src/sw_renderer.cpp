@@ -417,6 +417,9 @@ struct SwRenderer::Impl {
             case CmdKind::PushLayer: {
                 PerfFieldScope layerScope(timer(&FrameStats::swLayerMs));
                 const LayerCmd& c = list.layers[cmd.index];
+                if (knownEmpty(c.boundsKnown, c.boundsHint)) {
+                    return cullSection(list, ci, CmdKind::PushLayer, CmdKind::PopLayer);  // T-754
+                }
                 // T-133: LayerCmd::boundsHint is the subtree's content AABB in world units,
                 // already clamped to the viewport by the Painter; scaling by dpr puts it in the
                 // same device-px space as the root target, exactly like PushEffect below.
@@ -541,6 +544,9 @@ struct SwRenderer::Impl {
             // unrelated to this pair.
             case CmdKind::PushEffect: {
                 const EffectCmd& c = list.effectCmds[cmd.index];
+                if (knownEmpty(c.boundsKnown, c.boundsHint)) {
+                    return cullSection(list, ci, CmdKind::PushEffect, CmdKind::PopEffect);  // T-754
+                }
                 Mat2x3 screenXf = mul(deviceScale(dpr), c.xf);
                 Mat2x3 invScreenXf;
                 if (!invert(screenXf, invScreenXf)) {
@@ -1356,6 +1362,31 @@ struct SwRenderer::Impl {
             }
         }
         XT_ASSERT(false);
+        return list.commands.size() - 1;
+    }
+
+    /// T-754 (Docs/design/10-backends.md §10.20 rules 1-2): a known, empty hint -- the section's
+    /// output lies wholly outside the viewport (the Painter leaves such sections out; a list from
+    /// elsewhere may carry one). An unknown, empty hint keeps the old meaning.
+    static bool knownEmpty(uint8_t boundsKnown, const Rect& hint) {
+        return boundsKnown != 0 && (!(hint.w > 0.0f) || !(hint.h > 0.0f));
+    }
+
+    /// T-754: skips such a section whole (counted in FrameStats::culledOffscreen); returns the
+    /// index of its closing command. A list that never closes it ends at the last command.
+    size_t cullSection(const CommandList& list, size_t open, CmdKind pushKind, CmdKind popKind) {
+        if (stats != nullptr) {
+            ++stats->culledOffscreen;
+        }
+        int depth = 0;
+        for (size_t i = open; i < list.commands.size(); ++i) {
+            const CmdKind kind = list.commands[i].kind;
+            if (kind == pushKind) {
+                ++depth;
+            } else if (kind == popKind && --depth == 0) {
+                return i;
+            }
+        }
         return list.commands.size() - 1;
     }
 
@@ -2431,7 +2462,11 @@ void SwRenderer::render(const CommandList& list, TextShaper* shaper, AssetResolv
     // valid for the whole call (PerfTracker only advances its ring buffer in beginFrame()).
     FrameStats* stats = (perf != nullptr && perf->enabled()) ? &perf->current() : nullptr;
     m_impl->stats = stats;
-    PerfFieldScope renderScope(stats != nullptr ? &stats->renderMs : nullptr);
+    // T-750: the SW raster is FrameRecord's `build` phase (its thread CPU time too).
+    PerfPhaseScope renderScope(perf, &FrameStats::renderMs, &FrameStats::buildCpuMs);
+    if (stats != nullptr) {
+        stats->backend = static_cast<uint32_t>(PerfBackend::Sw);
+    }
     const float dpr = list.devicePixelRatio;
     m_impl->currentDpr = dpr;
     if (m_impl->directMode) {

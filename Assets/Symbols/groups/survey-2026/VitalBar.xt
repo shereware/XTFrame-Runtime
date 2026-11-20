@@ -1,0 +1,266 @@
+<xt version="2">
+
+  <symbol name="VitalBar" variants="Icon=Pulse|Runner" state-groups="Level: Normal|Low" requires="states: Normal, Low; slots: label">
+    <ports>
+      value: number in
+      hit: event in
+    </ports>
+    <div id="Box" bind:state.Normal="value | ge(30)" bind:state.Low="value | lt(30)" on:port(hit)="play(hit)">
+      <div id="Icon">
+        <div id="PulseIcon">
+          <div id="P1" class="ln"></div>
+          <div id="P2" class="ln"></div>
+          <div id="P3" class="ln"></div>
+          <div id="P4" class="ln"></div>
+          <div id="P5" class="ln"></div>
+          <div id="P6" class="ln"></div>
+        </div>
+        <div id="RunnerIcon">
+          <div id="Head" class="ring"></div>
+          <div id="Body1" class="ln"></div>
+          <div id="Body2" class="ln"></div>
+          <div id="Body3" class="ln"></div>
+          <div id="Arm1" class="ln"></div>
+          <div id="Arm2" class="ln"></div>
+          <div id="Arm3" class="ln"></div>
+          <div id="Leg1" class="ln"></div>
+          <div id="Leg2" class="ln"></div>
+        </div>
+      </div>
+      <span id="Label"><slot name="label">Health</slot></span>
+      <div id="Track">
+        <div id="Fill" bind:scale-x="value | clamp(0, 100) | range(0, 100, 0, 1) | tween(0.3s, ease-out)"></div>
+      </div>
+    </div>
+  </symbol>
+
+  <layout>
+    symbol(VitalBar) {
+      #Box {
+        display: flex;
+        align-items: center;
+        column-gap: var(--space-2);
+        height: 34px;
+      }
+      #Icon {
+        position: relative;
+        width: 20px;
+        height: 20px;
+        flex-shrink: 0;
+      }
+      #PulseIcon,
+      #RunnerIcon {
+        position: absolute;
+        left: 0px;
+        top: 0px;
+        width: 20px;
+        height: 20px;
+      }
+      .ln,
+      .ring {
+        position: absolute;
+      }
+      #RunnerIcon {
+        display: none;
+      }
+      .v-Icon-Runner #PulseIcon {
+        display: none;
+      }
+      .v-Icon-Runner #RunnerIcon {
+        display: block;
+      }
+      #Label {
+        width: 64px;
+      }
+      #Track {
+        position: relative;
+        width: 120px;
+        height: 5px;
+      }
+      #Fill {
+        position: absolute;
+        left: 0px;
+        top: 0px;
+        width: 100%;
+        height: 100%;
+        transform-origin: 0% 50%;
+      }
+      #P1 {
+        left: 1.3px;
+        top: 9.3px;
+        width: 4.7px;
+        height: 1.4px;
+        transform-origin: 0% 50%;
+        transform: rotate(0deg);
+      }
+      #P2 {
+        left: 6px;
+        top: 9.3px;
+        width: 4.35px;
+        height: 1.4px;
+        transform-origin: 0% 50%;
+        transform: rotate(-67deg);
+      }
+      #P3 {
+        left: 7.7px;
+        top: 5.3px;
+        width: 9px;
+        height: 1.4px;
+        transform-origin: 0% 50%;
+        transform: rotate(75.2deg);
+      }
+      #P4 {
+        left: 10px;
+        top: 14px;
+        width: 7.67px;
+        height: 1.4px;
+        transform-origin: 0% 50%;
+        transform: rotate(-74.9deg);
+      }
+      #P5 {
+        left: 12px;
+        top: 6.6px;
+        width: 3.19px;
+        height: 1.4px;
+        transform-origin: 0% 50%;
+        transform: rotate(57.8deg);
+      }
+      #P6 {
+        left: 13.7px;
+        top: 9.3px;
+        width: 5px;
+        height: 1.4px;
+        transform-origin: 0% 50%;
+        transform: rotate(0deg);
+      }
+      #Head {
+        left: 10.7px;
+        top: 1.7px;
+        width: 3.2px;
+        height: 3.2px;
+      }
+      #Body1 {
+        left: 11.3px;
+        top: 5.6px;
+        width: 5.23px;
+        height: 1.4px;
+        transform-origin: 0% 50%;
+        transform: rotate(116.1deg);
+      }
+      #Body2 {
+        left: 9px;
+        top: 10.3px;
+        width: 3.78px;
+        height: 1.4px;
+        transform-origin: 0% 50%;
+        transform: rotate(37.5deg);
+      }
+      #Body3 {
+        left: 12px;
+        top: 12.6px;
+        width: 4.81px;
+        height: 1.4px;
+        transform-origin: 0% 50%;
+        transform: rotate(102deg);
+      }
+      #Arm1 {
+        left: 6.3px;
+        top: 8px;
+        width: 3.84px;
+        height: 1.4px;
+        transform-origin: 0% 50%;
+        transform: rotate(-38.7deg);
+      }
+      #Arm2 {
+        left: 9.3px;
+        top: 5.6px;
+        width: 3.8px;
+        height: 1.4px;
+        transform-origin: 0% 50%;
+        transform: rotate(26.6deg);
+      }
+      #Arm3 {
+        left: 12.7px;
+        top: 7.3px;
+        width: 3.05px;
+        height: 1.4px;
+        transform-origin: 0% 50%;
+        transform: rotate(41deg);
+      }
+      #Leg1 {
+        left: 9px;
+        top: 10.3px;
+        width: 3.86px;
+        height: 1.4px;
+        transform-origin: 0% 50%;
+        transform: rotate(121.2deg);
+      }
+      #Leg2 {
+        left: 7px;
+        top: 13.6px;
+        width: 3.37px;
+        height: 1.4px;
+        transform-origin: 0% 50%;
+        transform: rotate(168deg);
+      }
+    }
+  </layout>
+  <style>
+    symbol(VitalBar) {
+      .ln {
+        background-color: var(--color-text);
+      }
+      .ring {
+        background-color: transparent;
+        border-width: 1.4px;
+        border-color: var(--color-text);
+        border-radius: var(--radius-full);
+      }
+      #Label {
+        font-family: var(--font-body);
+        font-size: var(--font-size-xs);
+        letter-spacing: var(--letter-label);
+        text-transform: uppercase;
+        color: var(--color-text-label);
+      }
+      #Track {
+        background-color: var(--color-track);
+        border-width: var(--rule-thin);
+        border-color: var(--color-border);
+      }
+      #Fill {
+        background-color: var(--color-text);
+        transition: background-color var(--motion-normal) linear;
+      }
+      #Box:state(Normal) #Fill {
+        background-color: var(--color-text);
+      }
+      #Box:state(Low) #Fill {
+        background-color: var(--color-danger);
+      }
+      #Box:state(Low) .ln {
+        background-color: var(--color-danger);
+      }
+      #Box:state(Low) .ring {
+        border-color: var(--color-danger);
+      }
+    }
+  </style>
+  <timelines>
+    symbol(VitalBar) {
+      @timeline hit {
+        #Box {
+          0s {
+            opacity: 1;
+          }
+          0.1s linear {
+            opacity: 0.35;
+          }
+          0.2s linear {
+            opacity: 1;
+          }
+        }
+      }
+    }
+  </timelines>
+</xt>

@@ -139,6 +139,18 @@ struct XtPortsSection {
     std::string symbol;
 };
 
+/// T-767 (Docs/design/58-value-functions-and-drivers.md §58.4): the raw text of one `<expressions>`
+/// section of a v2 file; its entries are read by expressions_section.cpp at compile time.
+struct XtExpressionsSection {
+    /// The section's raw content.
+    std::string text;
+    /// 1-based file line and column of the first content character.
+    int lineOffset = 0;
+    int colOffset = 0;
+    /// The owning `<symbol>`'s `name`; empty for the document's own `<expressions>`.
+    std::string symbol;
+};
+
 /// The full tree produced by `parseXt()`, plus the document-level references gathered while
 /// walking it.
 struct DomTree {
@@ -172,6 +184,8 @@ struct DomTree {
     /// `<body>` (document) or of the symbol's first element (symbol), so emitPorts() reads them as
     /// it reads v1's attributes; the text is kept for the canonical writer.
     std::vector<XtPortsSection> portSections;
+    /// T-767: a v2 file's `<expressions>` sections (document and symbol level), in appearance order.
+    std::vector<XtExpressionsSection> expressionSections;
 };
 
 }  // namespace xt::compile

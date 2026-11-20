@@ -225,28 +225,6 @@ NodeId findNavTarget(const NodeArena& arena, NodeId root, NodeId from, NavDirect
 
 namespace {
 
-void markDirtySubtree(NodeArena& arena, NodeId node) {
-    arena.markDirty(node, static_cast<uint8_t>(kDirtyStyle));
-    arena.traversePreorder(node, [&arena](NodeId n) {
-        arena.markDirty(n, static_cast<uint8_t>(kDirtyStyle));
-        return true;
-    });
-}
-
-/// Same as event_dispatcher.cpp's helper (a local copy: that one is file-private).
-void setStateBit(NodeArena& arena, NodeId node, uint16_t bit, bool on) {
-    if (!isElementNode(arena, node)) {
-        return;
-    }
-    ElementData& data = arena.element(node);
-    if (((data.stateBits & bit) != 0) == on) {
-        return;
-    }
-    data.stateBits =
-        on ? static_cast<uint16_t>(data.stateBits | bit) : static_cast<uint16_t>(data.stateBits & ~bit);
-    markDirtySubtree(arena, node);
-}
-
 /// T-390 (27.3.2): `node` or an element ancestor is disabled (the state is subtree-wide).
 bool disabledElement(const NodeArena& arena, NodeId node) {
     for (NodeId n = node; isElementNode(arena, n); n = arena.parent(n)) {
@@ -316,6 +294,20 @@ bool EventDispatcher::navigate(NodeArena& arena, NodeId root, NavDirection dir, 
     return false;
 }
 
+bool EventDispatcher::needsTick() const {
+    if (m_autoScrolled || (m_drag.active && !m_drag.gamepad)) {
+        return true;  // autoScroll() steps every frame while a pointer drag is on.
+    }
+    for (uint8_t p = 0; p < kMaxPlayers; ++p) {
+        const PadState& pad = m_pads[p];
+        if (pad.holdDir >= 0 || (pad.aNode != kInvalidNode && !pad.aDragged && !m_drag.active) ||
+            m_pendingFocus[p] != kInvalidNode) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void EventDispatcher::tick(NodeArena& arena, NodeId root, float time) {
     m_time = time;
     autoScroll(arena, root, time);  // T-388 (08.12): a pointer drag at a scroll container's edge.
@@ -347,7 +339,7 @@ void EventDispatcher::tick(NodeArena& arena, NodeId root, float time) {
 
 void EventDispatcher::clearActiveChain(NodeArena& arena, std::vector<NodeId>& chain) {
     for (NodeId n : chain) {
-        setStateBit(arena, n, static_cast<uint16_t>(kStateActive), false);
+        setStateBit(arena, n, static_cast<uint16_t>(kStateActive), false);  // T-763: the table.
     }
     chain.clear();
 }

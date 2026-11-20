@@ -106,7 +106,10 @@ void lowerSpawnPools(DomTree& tree, uint32_t& counter) {
             use.line = line;
             use.col = col;
             use.attrs.push_back(DomAttr{"symbol", symbol, line, col});
-            use.attrs.push_back(DomAttr{"id", id + "-" + symbol, line, col});
+            // T-740: a qualified symbol name's '/' would make the id a path id.
+            std::string idSymbol = symbol;
+            std::replace(idSymbol.begin(), idSymbol.end(), '/', '-');
+            use.attrs.push_back(DomAttr{"id", id + "-" + idSymbol, line, col});
             pool.children.push_back(poolIndex + 1);
             tree.nodes.push_back(std::move(pool));
             tree.nodes.push_back(std::move(use));

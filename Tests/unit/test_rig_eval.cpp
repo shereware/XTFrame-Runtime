@@ -460,7 +460,7 @@ TEST_CASE("rig eval: the cache -- a static frame skins nothing, a morph or a pos
     CHECK(rig::updateSkins(r.rs, r.arena) == 0u);  // Nothing moved.
     // Morph + skin: `d` changes (setProperty marks kDirtyPaint), the skin follows.
     float pts[4] = {0, 0, 30, 0};
-    setProperty(r.arena, p, prop::PathData, Value::ofPath(pts, 4));
+    setProperty(r.arena, p, prop::PathData, Value::ofPath(pts, 4), DirtyCause::HostApi);
     r.eval();
     CHECK(rig::updateSkins(r.rs, r.arena) == 2u);
     const SkinnedGeometry* g = r.arena.skinned(p);

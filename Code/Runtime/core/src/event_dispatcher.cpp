@@ -41,19 +41,6 @@ namespace xt {
 
 namespace {
 
-/// Same rule as ElementRef::setState/document.cpp's markStyleDirtySubtree (05.8): a state-bit
-/// change re-resolves `node`, every ancestor (automatic, via NodeArena::markDirty) and every
-/// descendant (explicit, since a `:hover .child` descendant selector may now match differently).
-/// Duplicated here (rather than shared) because document.cpp's copy is a local, unexported
-/// anonymous-namespace helper -- see the T-32 report's "uncovered cases" for this tradeoff.
-void markStyleDirtySubtree(NodeArena& arena, NodeId node) {
-    arena.markDirty(node, static_cast<uint8_t>(kDirtyStyle));
-    arena.traversePreorder(node, [&arena](NodeId n) {
-        arena.markDirty(n, static_cast<uint8_t>(kDirtyStyle));
-        return true;
-    });
-}
-
 /// Sets or clears one ElementState bit directly (unlike ElementRef::setState, every bit is allowed
 /// here -- hover/active are pointer-driven, see Docs/tasks/T-32.md "kStateHover 的設定/清除走
 /// ElementRef::setState 的內部版本"). No-op if `node` isn't alive or isn't an Element, or the bit
@@ -73,23 +60,11 @@ void setElementStateBit(const StateDependencyTable& deps, bool legacy, NodeArena
     data.stateBits =
         on ? static_cast<uint16_t>(data.stateBits | bit) : static_cast<uint16_t>(data.stateBits & ~bit);
     if (legacy) {
-        markStyleDirtySubtree(arena, node);
+        markStyleDirtyFullRange(arena, node, arena.ambientCause());
         return;
     }
-    switch (stateChangeRestyle(deps, arena, node, bit)) {
-        case StateRestyle::None:
-            break;
-        case StateRestyle::Self:
-            arena.markStyleDirtySelf(node);
-            break;
-        case StateRestyle::Subtree:
-            arena.markStyleDirtySelf(node);
-            arena.traversePreorder(node, [&arena](NodeId n) {
-                arena.markStyleDirtySelf(n);
-                return true;
-            });
-            break;
-    }
+    markStateChange(arena, node, stateChangeRestyle(deps, arena, node, bit), StateChange{bit, 0, 0},
+                    arena.ambientCause());
 }
 
 /// T-390 (27.3.2, XF-068): kStateDisabled is subtree-wide for pointer and keyboard dispatch --
@@ -169,6 +144,28 @@ void EventDispatcher::init(const IrView* ir, std::vector<EditState>* editStates,
     if (ir != nullptr) {
         buildStateDependencies(*ir, m_stateDeps);  // T-723 (B.1).
     }
+}
+
+void EventDispatcher::restyleState(NodeArena& arena, NodeId node, const StateChange& change,
+                                   DirtyCause cause) const {
+    if (m_legacyStyleInvalidation) {
+        markStyleDirtyFullRange(arena, node, cause);
+        return;
+    }
+    markStateChange(arena, node, stateChangeRestyle(m_stateDeps, arena, node, change), change, cause);
+}
+
+void EventDispatcher::restyleClasses(NodeArena& arena, NodeId node, std::span<const StringId> before,
+                                     std::span<const StringId> after, DirtyCause cause) const {
+    if (m_legacyStyleInvalidation) {
+        markStyleDirtyFullRange(arena, node, cause);
+        return;
+    }
+    markRestyle(arena, node, classChangeRestyle(m_stateDeps, before, after), cause);
+}
+
+void EventDispatcher::setStateBit(NodeArena& arena, NodeId node, uint16_t bit, bool on) {
+    setElementStateBit(m_stateDeps, m_legacyStyleInvalidation, arena, node, bit, on);
 }
 
 uint32_t EventDispatcher::addListener(NodeArena& arena, NodeId target, EventType type, EventListener fn) {
@@ -528,7 +525,7 @@ void EventDispatcher::setPointerMove(NodeArena& arena, NodeId root, const InputE
         EditState* state = editStateOf(arena, m_editStates, m_dragEdit);
         if (state != nullptr) {
             placeCaretAt(arena, m_dragEdit, *state, input.pos, /*extend=*/true);
-            arena.markDirty(m_dragEdit, static_cast<uint8_t>(kDirtyPaint));
+            arena.markDirty(m_dragEdit, static_cast<uint8_t>(kDirtyPaint), arena.ambientCause());
         }
     }
 
@@ -733,7 +730,7 @@ void EventDispatcher::handlePointerDown(NodeArena& arena, NodeId root, const Inp
         return;
     }
     placeCaretAt(arena, target, *state, input.pos, (input.modifiers & kShift) != 0);
-    arena.markDirty(target, static_cast<uint8_t>(kDirtyPaint));
+    arena.markDirty(target, static_cast<uint8_t>(kDirtyPaint), arena.ambientCause());
     m_dragEdit = target;
 }
 
@@ -992,7 +989,8 @@ void EventDispatcher::setFocus(NodeArena& arena, NodeId node, uint8_t player) {
         // T-194: `:focus` stays while another player still focuses the element.
         setElementStateBit(m_stateDeps, m_legacyStyleInvalidation, arena, previous,
                            static_cast<uint16_t>(kStateFocus), data.focusPlayers != 0);
-        markStyleDirtySubtree(arena, previous);  // `:focus-player(n)`.
+        // T-763 (item 1): `:focus-player(n)` by the state dependency table.
+        restyleState(arena, previous, StateChange{0, 0, bit}, arena.ambientCause());
         Event ev;
         ev.type = EventType::Blur;
         ev.target = previous;
@@ -1013,7 +1011,7 @@ void EventDispatcher::setFocus(NodeArena& arena, NodeId node, uint8_t player) {
         data.focusPlayers = static_cast<uint8_t>(data.focusPlayers | bit);
         setElementStateBit(m_stateDeps, m_legacyStyleInvalidation, arena, target,
                            static_cast<uint16_t>(kStateFocus), true);
-        markStyleDirtySubtree(arena, target);
+        restyleState(arena, target, StateChange{0, 0, bit}, arena.ambientCause());  // T-763.
         Event ev;
         ev.type = EventType::Focus;
         ev.target = target;
@@ -1197,16 +1195,16 @@ void invalidateDisplayString(NodeArena& arena, NodeId element) {
     NodeId textNode = firstTextChild(arena, element);
     if (textNode != kInvalidNode) {
         arena.text(textNode).shapedValid = 0;
-        arena.markDirty(textNode, static_cast<uint8_t>(kDirtyLayout));
+        arena.markDirty(textNode, static_cast<uint8_t>(kDirtyLayout), arena.ambientCause());
     }
-    arena.markDirty(element, static_cast<uint8_t>(kDirtyLayout));
+    arena.markDirty(element, static_cast<uint8_t>(kDirtyLayout), arena.ambientCause());
 }
 
 }  // namespace
 
 void EventDispatcher::afterEdit(NodeArena& arena, NodeId element, bool valueChanged) {
     if (!valueChanged) {
-        arena.markDirty(element, static_cast<uint8_t>(kDirtyPaint));
+        arena.markDirty(element, static_cast<uint8_t>(kDirtyPaint), arena.ambientCause());
         return;
     }
     invalidateDisplayString(arena, element);
@@ -1472,6 +1470,19 @@ void EventDispatcher::handleCompositionEnd(NodeArena& arena, NodeId root, const 
 }
 
 void EventDispatcher::handleInput(NodeArena& arena, NodeId root, const InputEvent& input) {
+    // T-747 (57 §57.3): the drag ghost is painted from m_drag (it follows the pointer); a change to
+    // it is a visual change of its own.
+    struct GhostWatch {
+        const DragState& drag;
+        NodeArena& arena;
+        DragState before;
+        ~GhostWatch() {
+            if (drag.active != before.active || drag.source != before.source || drag.pos != before.pos ||
+                drag.start != before.start) {
+                arena.noteVisualChange(arena.ambientCause(), drag.active ? drag.source : before.source);
+            }
+        }
+    } ghostWatch{m_drag, arena, m_drag};
     // T-194: every event dispatched while this input is handled carries its player.
     struct PlayerScope {
         uint8_t& slot;
@@ -1601,10 +1612,10 @@ bool EventDispatcher::setScroll(NodeArena& arena, NodeId node, float x, float y,
         return false;
     }
     if (newX != curX) {
-        setProperty(arena, node, prop::ScrollX, Value::ofFloat(newX));
+        setProperty(arena, node, prop::ScrollX, Value::ofFloat(newX), arena.ambientCause());
     }
     if (newY != curY) {
-        setProperty(arena, node, prop::ScrollY, Value::ofFloat(newY));
+        setProperty(arena, node, prop::ScrollY, Value::ofFloat(newY), arena.ambientCause());
     }
     if (notify) {
         Event ev;

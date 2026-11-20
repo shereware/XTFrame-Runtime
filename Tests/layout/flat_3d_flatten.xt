@@ -1,0 +1,130 @@
+<xt version="2">
+
+  <!-- T-762 (19 §19.y.2): a flat node with a grouping property inside a 3D space is one sort item
+       holding its 3D descendants, which keep their transforms and perspective but are drawn inside
+       the group in document order; the group's opacity / effect / mask / blend applies once to all
+       of it. Each stage (180x140, perspective 400px, white) holds #gN with kN1 (translateZ(40px),
+       red) and kN2 (translateZ(-40px), blue) overlapping, then #mN (translateZ(10px), green) whose
+       depth lies between them:
+         #s1: #g1 opacity 0.5;
+         #s2: #g2 a hard drop shadow (8px 8px, black);
+         #s3: #g3 a uniform gradient mask of alpha 0x88 (uniform: inside a 3D space a gradient
+              mask's points are taken relative to the element's anchor today, a separate issue);
+         #s4: #g4 mix-blend-mode multiply over the stage's yellow background.
+       Before T-762 k2 was drawn below mN and k1 above it, each on its own. -->
+  <body>
+    <div id="s1" class="stage">
+      <div id="g1" class="g half">
+        <div id="k11" class="k near"></div>
+        <div id="k12" class="k far"></div>
+      </div>
+      <div id="m1" class="m"></div>
+    </div>
+    <div id="s2" class="stage">
+      <div id="g2" class="g shadowed">
+        <div id="k21" class="k near"></div>
+        <div id="k22" class="k far"></div>
+      </div>
+      <div id="m2" class="m"></div>
+    </div>
+    <div id="s3" class="stage">
+      <div id="g3" class="g masked">
+        <div id="k31" class="k near"></div>
+        <div id="k32" class="k far"></div>
+      </div>
+      <div id="m3" class="m"></div>
+    </div>
+    <div id="s4" class="stage yellow">
+      <div id="g4" class="g multiply">
+        <div id="k41" class="k near"></div>
+        <div id="k42" class="k far"></div>
+      </div>
+      <div id="m4" class="m"></div>
+    </div>
+  </body>
+
+  <layout>
+    .stage {
+      position: absolute;
+      width: 180px;
+      height: 140px;
+      perspective: 400px;
+    }
+    #s1 {
+      left: 0px;
+      top: 0px;
+    }
+    #s2 {
+      left: 200px;
+      top: 0px;
+    }
+    #s3 {
+      left: 0px;
+      top: 150px;
+    }
+    #s4 {
+      left: 200px;
+      top: 150px;
+    }
+    .g {
+      position: absolute;
+      left: 0px;
+      top: 0px;
+      width: 180px;
+      height: 140px;
+    }
+    .k {
+      position: absolute;
+      width: 80px;
+    }
+    .near {
+      left: 30px;
+      top: 30px;
+      height: 70px;
+      transform: translateZ(40px);
+    }
+    .far {
+      left: 70px;
+      top: 40px;
+      height: 70px;
+      transform: translateZ(-40px);
+    }
+    .m {
+      position: absolute;
+      left: 50px;
+      top: 80px;
+      width: 80px;
+      height: 20px;
+      transform: translateZ(10px);
+    }
+  </layout>
+  <style>
+    .stage {
+      background-color: #ffffff;
+    }
+    .yellow {
+      background-color: #ffff00;
+    }
+    .near {
+      background-color: #ff0000;
+    }
+    .far {
+      background-color: #0000ff;
+    }
+    .m {
+      background-color: #00ff00;
+    }
+    .half {
+      opacity: 0.5;
+    }
+    .shadowed {
+      effect: shadow(8px 8px 0px #000000ff);
+    }
+    .masked {
+      effect: gradient-mask(linear, 0px 0px, 180px 0px, #fff8 0%, #fff8 100%);
+    }
+    .multiply {
+      mix-blend-mode: multiply;
+    }
+  </style>
+</xt>

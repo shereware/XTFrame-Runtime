@@ -217,6 +217,39 @@ public:
     /// is atlased, else the whole image {0, 0, 1, 1}.
     Rect imageSubUv(AssetId asset, const IrView& view) const;
 
+    /// T-806 (Docs/design/23-host-integration.md §23.aj): what the texture of an external binding
+    /// holds. `Rgba` = no plane description (a colour texture, as before); the packed layouts are
+    /// one single-channel (R8) texture holding the Y'CbCr 4:2:0 planes of one picture -- Y at full
+    /// size, U and V at half width and height (rounded up), and for `PackedYuva420` an alpha plane
+    /// at full size -- at the texel rectangles of ExternalPlanes.
+    enum class ExternalLayout : uint8_t { Rgba = 0, PackedYuv420 = 1, PackedYuva420 = 2 };
+    /// The Y'CbCr matrix of the planes (Kr / Kb of ITU-R BT.601 or BT.709).
+    enum class ExternalMatrix : uint8_t { Bt601 = 0, Bt709 = 1 };
+    /// `Limited`: Y in 16..235, U / V in 16..240 (of 255); `Full`: 0..255.
+    enum class ExternalRange : uint8_t { Limited = 0, Full = 1 };
+    /// Where the chroma samples sit relative to the luma ones (§23.aj "色度位置").
+    enum class ChromaSiting : uint8_t { Left = 0, Center = 1, TopLeft = 2 };
+    /// A rectangle of texels inside the planes' texture.
+    struct ExternalPlaneRect {
+        int x = 0, y = 0, w = 0, h = 0;
+
+        bool operator==(const ExternalPlaneRect&) const = default;
+    };
+    /// T-806: the plane description of an external binding (setExternalTexturePlanes()).
+    struct ExternalPlanes {
+        ExternalLayout layout = ExternalLayout::Rgba;  ///< Rgba = no plane description
+        ExternalMatrix matrix = ExternalMatrix::Bt709;
+        ExternalRange range = ExternalRange::Limited;
+        ChromaSiting siting = ChromaSiting::Left;
+        /// The colour planes hold colour already multiplied by alpha (PackedYuva420 only).
+        bool premultipliedPlanes = false;
+        /// The texel size of the R8 texture holding the planes.
+        int textureWidth = 0, textureHeight = 0;
+        ExternalPlaneRect y, u, v, a;  ///< `a` only with PackedYuva420
+
+        bool operator==(const ExternalPlanes&) const = default;
+    };
+
     /// External (host-provided) textures, Docs/tasks/T-150.md. An `<img src="engine://<name>">`
     /// is never decoded: the host binds `name` to a texture it owns on the GPU backend, and this
     /// registry (kept on the resolver so layout and the GPU FrameBuilder read one table) supplies
@@ -236,6 +269,15 @@ public:
         /// is), borrowed from the host, for software renderers -- the SW backend draws these where
         /// it would otherwise draw nothing. nullptr = none. Set by setExternalPixels().
         const ImageData* pixels = nullptr;
+        /// T-746 (Docs/design/23-host-integration.md §23.ah item 1): set by
+        /// setExternalTextureVersion() -- the host's promise that the texture's pixels change only
+        /// when `version` does. Without it (the default) the texture may change every frame.
+        bool hasVersion = false;
+        uint64_t version = 0;
+        /// T-806 (§23.aj): set by setExternalTexturePlanes(). With a packed layout `texture` is the
+        /// R8 texture of the planes, `width` x `height` stay the picture's size and `straightAlpha`
+        /// is not used. `layout == Rgba` (the default): a colour texture, as before.
+        ExternalPlanes planes;
     };
 
     /// Binds `name` (without the `engine://` prefix) to `texture` of `width` x `height`;
@@ -258,11 +300,53 @@ public:
     /// asset or `name` is not bound.
     const ExternalTexture* externalTexture(AssetId asset, const IrView& view) const;
 
+    /// T-746 (Docs/design/23-host-integration.md §23.ah item 1): declares the content version of
+    /// `name`'s binding (creating a size-only binding with texture 0 when there is none). The host
+    /// raises it whenever the texture's pixels change; while it stays the same the texture counts as
+    /// still: a paint may be skipped (§23.ag), an effect over it cached, a world layer holding it kept,
+    /// and a frame whose version moved reports the texture's draws as damage. A change of the binding
+    /// itself (texture, size, alpha flag, CPU pixels) is noticed whatever the version says. A later
+    /// setExternalTexture() / setExternalPixels() keeps the version; clearExternalTexture() drops it
+    /// with the binding (the name may then change every frame again, as one never versioned).
+    void setExternalTextureVersion(std::string_view name, uint64_t version);
+
+    /// T-806 (Docs/design/23-host-integration.md §23.aj): describes the planes `name`'s texture holds
+    /// (creating a size-only binding with texture 0 when there is none). The description belongs to
+    /// the binding like the content version: a later setExternalTexture() keeps it,
+    /// clearExternalTexture() drops it, `planes = {}` (layout Rgba) goes back to a colour texture.
+    /// A packed layout and CPU pixels exclude each other: setting one removes the other (the
+    /// software renderer draws only CPU pixels, so a planar binding is transparent there). The host
+    /// sets a packed layout only when its GpuDevice::supportsPlanarExternal() is true; a device
+    /// without it, or a description that is not valid (externalPlanesValid), draws nothing for the
+    /// name. A change of the description is a change of the binding (externalTextureStamp).
+    void setExternalTexturePlanes(std::string_view name, const ExternalPlanes& planes);
+
+    /// T-746 (§23.ah item 2): how the last render() used an external texture.
+    struct ExternalTextureUse {
+        /// A command of the list sampled it inside the target and its clips, with opacity > 0.
+        bool drawn = false;
+        /// The largest size, in device pixels, at which such a command draws the whole texture: its
+        /// destination's device size divided by the share of the texture it samples. 0 when not drawn.
+        int maxPixelWidth = 0;
+        int maxPixelHeight = 0;
+    };
+    /// T-746: `name`'s use in the last Context::render() drawing with this resolver (a render that
+    /// skipped every paint, §23.ag, keeps the answer of the one before); {false, 0, 0} for a name
+    /// never drawn. One resolver shared by several Contexts answers for the last one that rendered.
+    ExternalTextureUse externalTextureUse(std::string_view name) const;
+    /// T-746: Context::render()'s side of externalTextureUse(): forgets the last render's use (every
+    /// name not drawn) ...
+    void beginExternalTextureUse();
+    /// ... then records one draw of `name` at a size in device pixels.
+    void noteExternalTextureUse(std::string_view name, int pixelWidth, int pixelHeight);
+
 private:
     // Scratch for the default imageView(); unused by resolvers that override it.
     ImageData m_viewScratch;
     // T-150: `name` -> binding, unsorted (a handful of entries at most).
     std::vector<std::pair<std::string, ExternalTexture>> m_external;
+    // T-746: `name` -> its use in the last render (kept across bindings; a handful of entries).
+    std::vector<std::pair<std::string, ExternalTextureUse>> m_externalUse;
     // T-199: `name` -> ImageMeta, unsorted; read at load/resolve time, never per frame.
     std::vector<std::pair<std::string, ImageMeta>> m_imageMeta;
 };
@@ -296,6 +380,10 @@ using FileStatusFn = bool (*)(std::string_view utf8Path, uint64_t& size, uint64_
 /// is not re-decoded on every call. T-261e: root directories and asset names are UTF-8; on
 /// Windows the files are opened through the wide API. T-261f: a path that is not valid UTF-8
 /// is treated as missing.
+///
+/// Threads (T-797): not thread-safe and not to be used concurrently -- it is not shared with a Context
+/// on another thread. It may be handed to another thread together with its Context (one thread at a
+/// time, each hand-over with a happens-before edge). See Docs/design/23-host-integration.md §23.ai.
 class FileAssetResolver : public AssetResolver {
 public:
     /// `decode` is used for every image decode; pass nullptr if decoding is not needed/available.
@@ -659,5 +747,14 @@ bool isExternalAssetName(std::string_view name);
 std::string_view externalAssetName(std::string_view name);
 /// true when `asset` is a valid ASST entry of `view` whose name is external.
 bool isExternalAsset(AssetId asset, const IrView& view);
+/// T-746 (Docs/design/23-host-integration.md §23.ah): one number for everything of the binding `ext`
+/// the drawn pixels depend on -- texture, size, alpha flag, CPU pixels and content version (with
+/// whether there is one); nullptr (unbound) has a stamp of its own. Equal stamps of a versioned
+/// binding mean the same pixels.
+uint64_t externalTextureStamp(const AssetResolver::ExternalTexture* ext);
+/// T-806 (§23.aj rule 5): true when `planes` can be drawn -- a packed layout with a non-zero texture
+/// size whose plane rectangles (y, u, v; a for PackedYuva420) have a positive size and lie inside the
+/// texture. False for layout Rgba (no planes to draw).
+bool externalPlanesValid(const AssetResolver::ExternalPlanes& planes);
 
 }  // namespace xt

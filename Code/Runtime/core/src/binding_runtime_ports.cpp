@@ -694,6 +694,7 @@ void BindingRuntime::notifyListeners(PortEventKind kind, uint32_t index, uint32_
 }
 
 void BindingRuntime::fireTriggers(uint32_t index) {
+    DirtyCauseScope causeScope(m_doc.m_arena, DirtyCause::Binding);  // T-747: a port trigger's actions
     const Slot& s = m_slots[index];
     if (s.triggerNodes.empty()) {
         return;
@@ -707,7 +708,27 @@ void BindingRuntime::fireTriggers(uint32_t index) {
     }
 }
 
+float BindingRuntime::portNumber(uint32_t index) const {
+    if (index >= m_slots.size()) {
+        return 0.0f;
+    }
+    switch (static_cast<PortValueType>(m_slots[index].ir.type)) {
+        case PortValueType::Number:
+        case PortValueType::Bool:
+        case PortValueType::Enum:
+        case PortValueType::Entity:
+            return static_cast<float>(m_slots[index].num);
+        default:
+            return 0.0f;
+    }
+}
+
 void BindingRuntime::notify(uint32_t index, PortEventKind kind, uint32_t listIndex) {
+    const PortValueType type = static_cast<PortValueType>(m_slots[index].ir.type);
+    if (kind == PortEventKind::Changed && (type == PortValueType::Number || type == PortValueType::Bool ||
+                                           type == PortValueType::Enum || type == PortValueType::Entity)) {
+        ++m_numberGeneration;  // T-776: timeline expressions reading a port run again.
+    }
     if (m_doc.behavior() >= kBehaviorFlowSignalCoalescing) {
         // T-389 (27 §27.4.1): marked, evaluated once by the next Document::update() (flushDirty()).
         for (uint32_t b : m_slots[index].bindings) {

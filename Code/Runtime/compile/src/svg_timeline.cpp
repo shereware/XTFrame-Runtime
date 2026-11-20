@@ -199,6 +199,8 @@ void emitInlineSvgs(const DomTree& dom, RuleSet& ruleSet, IrWriter& writer, cons
         // Pull this svg's tracks out of every timeline.
         TimelineDef* owner = nullptr;
         std::map<TrackKey, std::vector<Sample>> samples;
+        // T-781: (track path, the row's property as written) of each single-node row, by its key.
+        std::vector<std::pair<TrackKey, std::pair<std::string, uint16_t>>> rowsByKey;
         bool ok = true;
         if (!svgId.empty()) {
             const std::string prefix = svgId + "/";
@@ -240,6 +242,35 @@ void emitInlineSvgs(const DomTree& dom, RuleSet& ruleSet, IrWriter& writer, cons
                     for (const uint32_t target : targets) {
                         NodeKind kind = static_cast<NodeKind>(scene.nodes[target].kind);
                         for (const TimelineKey& key : track.keys) {
+                            if (targets.size() == 1) {
+                                for (const StyleDecl& d : key.decls) {
+                                    // T-781: the row's track, for a run-time expression on it.
+                                    const ConstraintKind ck0 =
+                                        kind == NodeKind::Constraint &&
+                                                scene.nodes[target].kindIndex < scene.constraints.size()
+                                            ? static_cast<ConstraintKind>(
+                                                  scene.constraints[scene.nodes[target].kindIndex].kind)
+                                            : ConstraintKind::Ik;
+                                    const uint16_t mapped = svgNodeProp(d.prop, kind, ck0);
+                                    const bool trimRow =
+                                        (kind == NodeKind::Path || kind == NodeKind::Shape) &&
+                                        mapped >= prop::ModTrimStart && mapped <= prop::ModTrimOffset;
+                                    if (d.prop == styleprop::Visibility || mapped == prop::ModTrimOffset) {
+                                        continue;  // Not a number as written / converted on the way.
+                                    }
+                                    const TrackKey tk{
+                                        target, trimRow ? static_cast<uint16_t>(prop::TrimStart +
+                                                                                (mapped - prop::ModTrimStart))
+                                                        : mapped};
+                                    const auto row = std::make_pair(track.path, d.prop);
+                                    const bool seen =
+                                        std::any_of(rowsByKey.begin(), rowsByKey.end(),
+                                                    [&](const auto& r) { return r.second == row; });
+                                    if (!seen) {
+                                        rowsByKey.emplace_back(tk, row);
+                                    }
+                                }
+                            }
                             if (!key.effectDecls.empty()) {
                                 sink.error(
                                     def.fileName,
@@ -316,6 +347,7 @@ void emitInlineSvgs(const DomTree& dom, RuleSet& ruleSet, IrWriter& writer, cons
         float lastKey = 0;
         mergeMotionTranslate(samples, tl, svgId, owner != nullptr ? owner->fileName : fileName, sink,
                              lastKey);
+        std::map<TrackKey, uint32_t> trackOf;  // T-781: the track index each key's samples became.
         for (auto& [key, list] : samples) {
             std::stable_sort(list.begin(), list.end(),
                              [](const Sample& a, const Sample& b) { return a.time < b.time; });
@@ -479,6 +511,7 @@ void emitInlineSvgs(const DomTree& dom, RuleSet& ruleSet, IrWriter& writer, cons
                 track.type = static_cast<uint8_t>(isColor ? ValueType::Color : ValueType::Float);
             }
             track.kfCount = static_cast<uint32_t>(tl.keyframes.size()) - track.kfOffset;
+            trackOf[key] = static_cast<uint32_t>(tl.tracks.size());
             tl.tracks.push_back(track);
             lastKey = std::max(lastKey, list.back().time);
         }
@@ -488,11 +521,17 @@ void emitInlineSvgs(const DomTree& dom, RuleSet& ruleSet, IrWriter& writer, cons
         const bool animated = !tl.tracks.empty();
         SceneId sceneId = writer.addScene(std::move(scene));
         TimelineId timelineId = writer.addTimeline(std::move(tl));
-        (void)timelineId;
         sceneBySrc.emplace(inlineSvgSceneKey(domIndex), sceneId);
         if (owner != nullptr && animated) {
             owner->sceneMembers.emplace_back(domIndex, sceneId);
             owner->sceneLastKey = std::max(owner->sceneLastKey, lastKey);
+            for (const auto& [key, row] : rowsByKey) {
+                const auto found = trackOf.find(key);
+                if (found != trackOf.end()) {
+                    owner->sceneRows.push_back(
+                        TimelineDef::SceneRow{row.first, row.second, timelineId, found->second});
+                }
+            }
         }
     }
 }

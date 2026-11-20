@@ -2,7 +2,8 @@
 """Project-level golden corpus check (T-401, Docs/design/43-compatibility-and-versions.md 43.4).
 
 For every project under Tests/corpus/<project>/ (project.json): copy the source UI Project to a
-work directory, pack it with `xtframe-pack --strict --fonts bundled` (T-527d: the bundle carries
+work directory, pack it with `xtframe-pack --strict --fonts bundled --compress none` (T-810: the
+corpus compares rendering, not image compression; T-527d: the bundle carries
 the standard fonts, Docs/design/22-bundle.md 22.10.3, so the renders do not depend on the
 machine's fonts), render every UI headless (SW path) at the listed frames, run the behaviour
 scripts (one xtframe-view run per step: the events of every step so far, a screenshot and the
@@ -31,8 +32,14 @@ T-623 (Docs/design/22-bundle.md 22.16): a project.json may name `"lang": "<tag>"
 xtframe-view run as `--lang`; without it xtframe-view starts a bundle with strings tables in its
 manifest `spec.defaultLanguage` (else the first table), so no project renders raw `@key` text.
 
+T-749 (Docs/design/23-host-integration.md 23.ag item 6): --idle-skip passes `--idle-skip` to every
+xtframe-view run (update and render are skipped while Context::needsFrame() is false) and compares with
+the same expected/ -- skipping idle frames must not change a frame, a log line or a port table. (The four
+corpus projects of this repository animate without end, so they skip no frame today; CTest
+xtframe-view_idle_skip covers a UI that idles.)
+
 Usage: corpus_check.py [--update] [--project <name>] [--skip-missing-fonts] [--view EXE] [--pack EXE]
-                       [--work DIR] [--migrate]
+                       [--work DIR] [--migrate] [--idle-skip]
   --update (or XT_CORPUS_UPDATE=1) rewrites expected/ from this run instead of comparing.
   --migrate (T-589, Docs/design/54-source-format-v2.md 54.11): the work copy of each source is first
     migrated to source format 2 in place (`xtframe-pack --upgrade --format 2`), then packed and compared
@@ -236,7 +243,10 @@ def find_tool(name, given):
 
 
 def run(cmd, log_path=None):
-    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL)
+    # T-747: every replay runs with the visual-generation check (a mismatch aborts the tool).
+    env = dict(os.environ)
+    env.setdefault("XT_VERIFY_VISUAL_GENERATION", "1")
+    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL, env=env)
     out = proc.stdout.decode("utf-8", "replace").replace("\r\n", "\n")
     err = proc.stderr.decode("utf-8", "replace").replace("\r\n", "\n")
     if log_path:
@@ -310,6 +320,8 @@ class Checker:
                "--width", str(ui["width"]), "--height", str(ui["height"]), "--screenshot", screenshot] + extra
         if self.langs.get(project):
             cmd += ["--lang", self.langs[project]]
+        if self.args.idle_skip:
+            cmd += ["--idle-skip"]  # T-749
         rc, out, err = run(cmd, runlog)
         if rc != 0 or not os.path.isfile(screenshot):
             self.fail(project, "%s: xtframe-view exited %d (see %s)" % (label, rc, runlog))
@@ -354,9 +366,12 @@ class Checker:
                 return
         bundle = os.path.join(work, "bundle")
         # T-527d (43 §43.4): only the standard fonts the bundle carries are rendered, never system fonts.
-        rc, out, err = run([self.args.pack, "--strict", "--fonts", "bundled", src, "-o", bundle], runlog)
+        # T-810: --compress none -- the corpus compares rendering, not image compression (the publish
+        # default became auto in T-714, which would turn the large images into BC7).
+        rc, out, err = run([self.args.pack, "--strict", "--fonts", "bundled", "--compress", "none", src, "-o", bundle],
+                           runlog)
         if rc != 0:
-            self.fail(name, "xtframe-pack --strict --fonts bundled exited %d (see %s)" % (rc, runlog))
+            self.fail(name, "xtframe-pack --strict --fonts bundled --compress none exited %d (see %s)" % (rc, runlog))
             return
         shutil.copyfile(os.path.join(bundle, "manifest.json"), os.path.join(actual, "manifest.raw.json"))
         with open(os.path.join(actual, "manifest.json"), "w", encoding="utf-8", newline="\n") as f:
@@ -466,7 +481,12 @@ def main():
     parser.add_argument("--skip-missing-fonts", action="store_true",
                         help="skip (instead of failing) a project whose `fonts` are not all installed "
                              "(or are a different build)")
+    parser.add_argument("--idle-skip", action="store_true",
+                        help="T-749: run xtframe-view with --idle-skip (the renders must not change)")
     args = parser.parse_args()
+    if args.idle_skip and (args.update or os.environ.get("XT_CORPUS_UPDATE", "") == "1"):
+        print("corpus_check: --idle-skip compares with expected/ and cannot --update it")
+        return 2
     if args.migrate and (args.update or os.environ.get("XT_CORPUS_UPDATE", "") == "1"):
         print("corpus_check: --migrate compares with expected/ and cannot --update it")
         return 2

@@ -245,6 +245,7 @@ T-527 實作後的補充（2026-10-29）：
 - **獨立編輯器**（17 §17.1.1）：File → **New UI Project…**（精靈：名稱、id、位置、範本 = `Examples/ui-project-starter` 或空白）、Open…（`ui-project.json`／`bundle.xtproj`／`.xt`）、Save、Save As…、**Save As UI Project…**、**Publish…**（對話框：目標資料夾，預設 `<project>/publish/`，記在 `ui-project.json:publish.outDir`；最近的發佈目標記在 `publish.targets[]`；沒有任何宿主專屬的發佈類型——要發到引擎專案就選那個目錄；T-304 移除了 `ce-dir` 類型與「Publish to CryEngine project…」）。T-212（#211）已實作，細節 17 §17.1.1.1。Bundle 選單的「Output directory」與「Publish on save」併入 Publish 對話框（publish on save = 對最後一次目標）。標題列 `<project name> — <ui id>`；UI Project 面板頂端顯示專案路徑與最後發佈位置／時間；首次啟動顯示 **Welcome 頁**（New／Open／Recent + 三層圖一段話）。
 - **`xtframe-pack <UI Project 目錄> -o <bundle 目錄>`**（既有）。
 - **`xtframe-view`**：開 bundle 目錄、`manifest.json`、`.xtir`、`.xt`、UI Project（自動打包到 `%TEMP%`）。T-213（#212）：UI Project 目錄／`ui-project.json`／`bundle.xtproj`（記憶體升級）→ 打包到 `%TEMP%/xtframe-view/<id>-<路徑 FNV64>`（無縮圖、關 atlas、不回寫 assets.yaml、prune），印 `packed <dir> -> <bundle>`，再當 Bundle 開（套 manifest 的 flow／fit／size／`spec.safeArea`／`logicalHeight`）；多 UI 未給 `--ui` 列出 id 後 exit 2；R 重新打包；`--project <dir>` 為別名（保留 T-193 載入全部 UI + 全域流圖，改自打包後 manifest；不可與位置參數同給）。限制：自動打包不複製標準符號庫進來源（連到來源沒有的標準符號要先 `xtframe-pack`）；xtframe-view 的 resolver 不登記 atlas meta，`--atlas` 打的 bundle 圖可能不顯示。
+  - T-759（#709，2026-11-18）：`void Bundle::registerImageMeta(AssetResolver& into) const`——把這個 bundle 的全部影像中繼資料（assetTable 的 9-slice 與 @2x／@3x 變體、每個圖集格的頁檔、子矩形、sub-UV）登記到宿主自建的 resolver；`Bundle` 自己的 resolver 也走它。**自建 resolver 而不用 `bundle.assets()` 的宿主必須在 `loadInto` 之前呼叫**，否則開了圖集的 bundle 會把整張圖集頁畫出來（`xtframe-view` 與 Android 範例原本就是這個錯）。`xtframe-view` 的 headless 與視窗路徑都已呼叫；視窗模式按 R 重新載入時先清掉舊名稱再重新登記。回歸測試：同一個場景打包時加不加 `--atlas`，三個後端的截圖逐位元組相同（sw 的粒子另列：圖集格的 sub-UV 經 sw 光柵化的浮點捨入可差 1 級——已知問題，PENDING）。
 - **宿主執行時與宿主編輯器窗格**（各宿主倉）：執行時只讀 Bundle，宿主若另有容器則目錄 bundle 與容器在功能上必須完全等價，不得有只支援容器的路徑；錯誤訊息指向「'x' is not a published bundle (no manifest.json) — publish the UI Project first」。窗格的動詞是 **「Open UI Project…」**（接受舊格式升級）與 **「Publish…」**（目錄 bundle 一定可選）。CryEngine 的落地細節在 CE 插件倉 `docs/08-xtframe-integration-log.md`。
 - **skill `xtui`**：輸出 UI Project（`ui-project.json`），驗證與開編輯器都用它；`xtui-editor` 經服務，`project.*` op 提供 New／Save As／Publish（29 §29.10 補三個 op：`project.create`、`project.saveAs`、`project.publish`）。
 - **文件用語**：22 章標題「bundle」指發佈產物；凡指來源一律寫 UI Project；`bundle.xtproj` 只出現在「舊格式」段落。
@@ -369,3 +370,30 @@ T-527 實作後的補充（2026-10-29）：
 ### 22.17.4 不做
 
 逐影像的壓縮覆寫入口維持在資產匯入對話框（既有）；ASTC／ETC2；圖集的逐資產排除；容器層壓縮。
+
+**`.xtb` 解壓快取的上限（2026-11-20 裁決；T-807）**
+
+`unpackXtb` 把封裝檔解到 `<暫存目錄>/xtframe-bundle/<內容雜湊>/`，同一份內容下次直接重用。以前沒有淘汰：每個不同內容的 `.xtb` 留一份（一台開發機上量到 63 個目錄、161 MB，且只會增加）。規則：
+1. **用到就碰一下**：重用既有的解壓目錄時，更新該目錄裡標記檔的修改時間（解壓完成時寫入的標記檔；沒有標記檔的舊目錄視為最舊）。
+2. **每次解壓（新建一份）之後清理一次**：依標記檔的修改時間由舊到新刪除，直到同時滿足「不超過 8 份」與「合計不超過 256 MB」；**本次行程正在使用的那一份不刪**；刪除失敗（別的行程正開著其中的檔）就跳過該份，不視為錯誤。
+3. 兩個上限可由環境變數調整：`XTFRAME_BUNDLE_CACHE_MAX_ENTRIES`、`XTFRAME_BUNDLE_CACHE_MAX_MB`（0＝該項不限）。這是開發機的磁碟衛生，不是執行期語意——宿主以自己的方式載入 bundle（目錄 bundle、自訂 resolver）時完全不經過這裡。
+4. 不改快取的位置與目錄名（別的行程可能同時在用同一份）。
+
+**解壓快取上限的實作記錄（T-807 #748，2026-11-20）**
+- 完成標記 `.xtframe-unpacked`（內容是寫入它的行程 PID），解壓成功後才寫；只有帶標記的目錄會被重用（以前以 `manifest.json` 存在判斷）。重用時只重寫標記。**T-807 之前留下、沒有標記的目錄不再被重用**，第一次開啟會重新解壓，並最先被淘汰。
+- 清理 `trimXtbCache` 只在新建一份之後執行；淘汰＝先改名為 `<名稱>.evicted-<pid>` 再刪，改名失敗（別的行程開著其中的檔）就跳過。
+- 「本行程使用中」：本次剛解的那一份，加上標記內容等於本行程 PID 的每一份（資訊存在快取目錄裡，沒有全域狀態）。限制：別的行程之後重用同一份並改寫標記後，本行程不再保護它。
+- **補充規則 5（2026-11-20 裁決，T-808 實作）**：沒有標記、且目錄內最新的修改時間在 10 分鐘以內的目錄不淘汰——它可能是另一個行程正在解壓的。
+- bundle 297／297。未編譯 GCC／Clang；POSIX 分支未跑。
+
+**§22.17 的實作記錄（T-714 #750，2026-11-20）**
+- 發佈入口（以 `effectivePublishCompress(project)` 解析，專案沒寫＝`auto`）：`xtframe-pack`（沒有 `--compress` 時）、`EditorSession::publish`（Publish 對話框、Publish Current UI、存檔時發佈、UI 清單的 Publish、經 GUI 編輯器的 `project.publish`；程式搬到 `editor_session_publish.cpp`）、`FileServiceHost::publish`（headless 的 `project.publish`）。開發用的打包明確傳 `none`：`xtframe-view` 的自動打包（**以前照專案設定，現在一律不壓縮**）、Bundle 瀏覽器的預覽打包。編輯器的預覽與展示空間不呼叫 `pack()`。函式庫的預設不變。
+- `PackReport` 的發佈結果與 `publishResultSummary()`（一行摘要）：只計 1x 影像（`@2x`／`@3x` 不另加）、SVG 不計、圖集頁承擔併入其中的影像的顯示記憶體、`bundleBytes` 是輸出目錄下全部檔案。實例（War Table 的複本）：bundle 25.2 MB、83 張壓縮／13 張未壓縮、估計顯示記憶體 24.8 MB（未壓縮 65.7 MB）。
+- 對話框（`publish.*` 的 objectName 照 §22.17.2）：只有在 `.xtui` 原本就有值、或使用者選了 Auto 以外的值時才寫 `publish.images.compress`（沒動過的專案檔不變）；圖集頁尺寸不是 1024／2048／4096 的既有值以第四個選項顯示而不改它。發佈在 UI 執行緒同步執行，期間忙碌游標加狀態列文字。
+- Service：`project.setPublishSettings`（每個欄位可選、有一個不合法就全部不寫）；`project.get` 的 `publish.images.effectiveCompress`；`project.publish` 回報多 `result`。op 數 212 → 213。新增 bundle 的 `PublishSettings`／`publishSettings`／`validatePublishSettings`／`applyPublishSettings`／`setPublishSettings`、`ServiceHost::setPublishSettings`（追認）。
+- `xtframe-pack` 多 `--help`（exit 0）與結尾的 `publish result:` 一行。
+- **與 §22.17.1 的出入（T-810 修正）**：實作把「有 `publish.images` 物件但沒有 `compress` 鍵」當成 `none`；規格是「沒寫回 `auto`」——沒有 `compress` 鍵就是沒寫。
+- 因新預設而改的既有測試：`Tests/backends/view_atlas.cmake` 的三項（圖集頁 ≥ 256 px 在 `auto` 下變成 BC7，與未壓縮的小圖截圖不再相同）兩邊都改傳 `--compress none`（該測試比的是圖集格與原圖，不是壓縮）。
+- 待處理（T-810）：corpus 的專案有 ≥ 256 px 的影像、打包時沒有 `--compress`——`corpus_check` 改傳 `--compress none`（corpus 比的是渲染）；`T-501 Symbols tab` 的搜尋測試因 T-744 新增的符號庫而失敗（與本單無關）；對話框的說明文字改成一行不換行後，路徑長時視窗寬到約 1100 px。
+- bundle 297／297、editor_service 279／279、ctest 194／194、editor_qt 959／960（那一項是上述 T-501）。翻譯以手動插入 `.ts`。未跑 corpus、editor_qt 的 slow／gl。未編譯 GCC／Clang、Qt 6。
+

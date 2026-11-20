@@ -95,4 +95,12 @@ TargetHandle applyEffectStack(FrameEmitter& emit, GradientLutCache& luts, const 
 TargetHandle applyBackdropUnder(FrameEmitter& emit, GradientLutCache& luts, const EffectStackInput& in,
                                 TargetHandle top);
 
+/// T-764 (§10.18 B, the follow-up of T-730): `applyBackdropUnder` with R' and S read straight from the
+/// cached textures `bp` names (`bp.mask` = kBackdropMaskTextured, both flags set; gpu_frame.h
+/// BackdropParams), over `window` (`in.src` is 0). The device must report
+/// `supportsBackdropMaskTextures()`.
+TargetHandle applyBackdropUnderTextures(FrameEmitter& emit, GradientLutCache& luts,
+                                        const EffectStackInput& in, const Scissor& window,
+                                        const BackdropParams& bp);
+
 }  // namespace xt::gpu::detail

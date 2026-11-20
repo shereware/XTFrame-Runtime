@@ -193,6 +193,21 @@ FlowRuntime* BundleContext::uiFlowRuntime(DocumentHandle handle) {
     return nullptr;
 }
 
+bool BundleContext::needsFrame(const Context& context) const {
+    if (&context != &m_context) {
+        return false;
+    }
+    if (m_global->needsTick()) {
+        return true;
+    }
+    for (const Ui& ui : m_uis) {
+        if (ui.flow != nullptr && ui.flow->needsTick()) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void BundleContext::tick(float dt) {
     m_retired.clear();  // T-260b: removeUi()'s runtimes; no callback of theirs is running now.
     m_global->tick(dt);

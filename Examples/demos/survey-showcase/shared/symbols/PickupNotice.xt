@@ -1,0 +1,85 @@
+<xt version="2">
+
+  <symbol name="PickupNotice" requires="slots: title, detail">
+    <div id="Box" on:show="play(intro)" on:hide="play(outro) then hide">
+      <div id="Mark"></div>
+      <div id="Col">
+        <span id="Title"><slot name="title">Item acquired</slot></span>
+        <span id="Detail"><slot name="detail">Item Name</slot></span>
+      </div>
+    </div>
+  </symbol>
+
+  <layout>
+    symbol(PickupNotice) {
+      #Box {
+        display: flex;
+        column-gap: var(--space-3);
+        width: 300px;
+        padding: var(--space-2) var(--space-4) var(--space-2) var(--space-3);
+      }
+      #Mark {
+        width: 2px;
+        align-self: stretch;
+      }
+      #Col {
+        display: flex;
+        flex-direction: column;
+        row-gap: 2px;
+      }
+    }
+  </layout>
+  <style>
+    symbol(PickupNotice) {
+      #Box {
+        background-color: var(--color-surface);
+        border-width: var(--rule-thin);
+        border-color: var(--color-border);
+      }
+      #Mark {
+        background-color: var(--color-accent);
+      }
+      #Title {
+        font-family: var(--font-body);
+        font-size: var(--font-size-xs);
+        text-transform: uppercase;
+        letter-spacing: var(--letter-label);
+        color: var(--color-text-label);
+      }
+      #Detail {
+        font-family: var(--font-display);
+        font-size: var(--font-size-m);
+        letter-spacing: 1px;
+        color: var(--color-text-strong);
+      }
+    }
+  </style>
+  <timelines>
+    symbol(PickupNotice) {
+      @timeline intro {
+        #Box {
+          0s {
+            opacity: 0;
+            transform: translateX(16px);
+          }
+          0.3s ease-out {
+            opacity: 1;
+            transform: translateX(0px);
+          }
+        }
+      }
+      @timeline outro {
+        #Box {
+          0s {
+            opacity: 1;
+            transform: translateX(0px);
+          }
+          0.3s ease-in {
+            opacity: 0;
+            transform: translateX(16px);
+          }
+        }
+      }
+    }
+  </timelines>
+</xt>

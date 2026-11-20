@@ -618,7 +618,7 @@ TEST_CASE("Animator integration: timelineFromIr + evalTrack + resolveTrackTarget
     NodeId target = resolveTrackTarget(inst, track.target);
     REQUIRE(target != kInvalidNode);
     REQUIRE(target != kSelfNode);
-    setProperty(arena, target, track.prop, v);
+    setProperty(arena, target, track.prop, v, DirtyCause::HostApi);
 
     CHECK(arena.common(target).opacity == doctest::Approx(0.5f));
 }

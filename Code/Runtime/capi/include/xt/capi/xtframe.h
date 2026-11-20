@@ -563,6 +563,91 @@ XT_CAPI xt_status xt_world_layer_unproject(const float box_to_dest[16], float de
    -z through it (33 §33.12). */
 XT_CAPI xt_status xt_surface_push_input_ray(xt_surface* s, const xt_input_event* e, const float origin[3],
                                             const float direction[3]);
+
+/* T-750 (Docs/design/57-measurement.md 57.2, 57.5): FrameRecord v1, the runtime's one per-frame record
+   (xt/perf_record.h, field for field; xt_frame_stats stays as it is). Times in milliseconds; *_cpu_ms
+   are thread CPU time (0 unless the host turned thread CPU timing on: T-753
+   xt_surface_set_thread_cpu_timing); input .. wait are the eight exclusive phases and unaccounted_ms =
+   frame_wall_ms - their sum for a frame the host marked (frame_marked 1: T-753
+   xt_surface_mark_frame_start / _end; an unmarked frame has frame_wall_ms and unaccounted_ms 0). causes[cause][kind]: DirtyCause Animation, Timeline, Transition,
+   Binding, Flow, HostApi, Input, Viewport, External, Clock, Load x style, layout, transform, paint.
+   backend: 0 none, 1 sw, 2 gl, 3 wgpu. Fields are only ever added at the end. */
+typedef struct xt_frame_record {
+    uint32_t struct_size;      /* = sizeof(xt_frame_record), set by the caller */
+    uint32_t version, frame, steady;
+    float time_s;
+    uint32_t backend, frame_marked;
+    float frame_wall_ms, frame_cpu_ms, unaccounted_ms, input_ms, input_cpu_ms, update_ms;
+    float update_cpu_ms, flow_ms, flow_cpu_ms, paint_ms, paint_cpu_ms, damage_ms;
+    float damage_cpu_ms, build_ms, build_cpu_ms, submit_ms, submit_cpu_ms, wait_ms;
+    float wait_cpu_ms, update_style_ms, update_layout_ms, update_animate_ms;
+    float update_transform_ms, submit_plan_ms, submit_upload_ms, submit_encode_ms;
+    float submit_queue_ms;
+    uint32_t styled_elements, laid_out_elements, layout_roots, layout_full_passes;
+    uint32_t active_animations, active_transitions, anim_evaluated, expr_evaluated;
+    uint32_t set_style_calls, flow_signals, flow_node_evals, flow_sink_writes, commands;
+    uint32_t layers, effect_layers, projections, glyphs, path_points, image_draws;
+    uint32_t culled_offscreen, border_dash_hits, border_dash_misses, bands, band_redraws;
+    uint32_t passes, draw_calls, pipeline_binds, bind_groups, upload_bytes, transient_creates;
+    uint32_t frame_reused, effect_cache_hits, effect_cache_misses, coverage_hits;
+    uint32_t coverage_misses;
+    float idle_paint_ms;
+    uint32_t paint_skipped, static_skip_mismatch, partial_layout_mismatch, arena_nodes;
+    uint32_t command_bytes, effect_cache_bytes, transient_pool_bytes;
+    uint32_t causes[11][4];
+    /* T-753 (57.3 item 4; appended, version still 1): work that changed nothing, counted only at perf
+       detail level >= 1 (T-749: xt_surface_set_perf_detail; 0 at the default level 0): re-styled elements whose
+       computed style did not change, laid-out elements whose box did not change, painted commands the
+       damage diff matched unchanged; effect segments / layers drawn in full although their commands
+       hashed as in the last build, by why: not cacheable, cache key changed, cache full, first repeat. */
+    uint32_t redundant_styled, redundant_laid_out, redundant_commands;
+    uint32_t repainted_unchanged_not_cacheable, repainted_unchanged_key_changed;
+    uint32_t repainted_unchanged_budget, repainted_unchanged_first_sight;
+} xt_frame_record;
+/* The current frame's record of `s` (the frame the last xt_surface_update opened; perf must be on,
+   xt_surface_set_perf_enabled). Writes only the fields out->struct_size covers; struct_size below
+   8 (no version), a NULL surface or a NULL out -> XT_STATUS_INVALID_ARGUMENT. */
+XT_CAPI xt_status xt_surface_frame_record(const xt_surface* s, xt_frame_record* out);
+/* The CSV form of the record, through the runtime's one column table: the header (column names,
+   comma separated) and one row of `r` (the fields r->struct_size does not cover written as 0), with
+   no line end -- a host appends its own ",host.<name>" columns and the line end. Writes into `buf`,
+   NUL-terminated and truncated to cap - 1 characters, and returns the length the whole text needs
+   (excluding the NUL), like snprintf; buf may be NULL when cap is 0. NULL r -> 0. */
+XT_CAPI size_t xt_frame_record_csv_header(char* buf, size_t cap);
+XT_CAPI size_t xt_frame_record_csv_row(const xt_frame_record* r, char* buf, size_t cap);
+/* T-753 (57.2 item 2; appended, ABI version unchanged): the host marks its whole frame, so the record
+   closes its budget (frame_wall_ms, frame_cpu_ms, frame_marked, unaccounted_ms) --
+   xt_surface_mark_frame_start before the frame's work (before xt_surface_update), xt_surface_mark_frame_end
+   after the last of it (after xt_surface_render and any wait of the host's). The start is held until the
+   next xt_surface_update opens the frame's record; a frame without both marks keeps frame_marked 0. No-ops
+   while perf is off. NULL surface -> XT_STATUS_INVALID_ARGUMENT. */
+XT_CAPI xt_status xt_surface_mark_frame_start(xt_surface* s);
+XT_CAPI xt_status xt_surface_mark_frame_end(xt_surface* s);
+/* T-753 (57.2 item 4): also record the thread CPU time of every phase and of the marked frame (the
+   record's *_cpu_ms). Off by default; turning it on the first time calibrates the surface's thread clock
+   (on Windows a busy loop of about 200 ms, once). NULL surface -> XT_STATUS_INVALID_ARGUMENT. */
+XT_CAPI xt_status xt_surface_set_thread_cpu_timing(xt_surface* s, int enabled);
+/* T-749 (57.3 item 2, T-753's levels; appended, ABI version unchanged): the perf detail level -- 0 (the
+   default), 1 (also the cause table's node ids and the record's redundant_* / repainted_unchanged_*
+   counts; about +0.03 ms a frame), 2 (also the second-level zone timing; about +2% frame CPU). A level
+   outside 0..2 or a NULL surface -> XT_STATUS_INVALID_ARGUMENT. */
+XT_CAPI xt_status xt_surface_set_perf_detail(xt_surface* s, int level);
+/* T-749 (Docs/design/23-host-integration.md 23.ag item 6; appended, ABI version unchanged): whether the
+   host has to update and render `s` for its next frame. *out_needs_frame 0: nothing would change --
+   xt_surface_update at any dt writes nothing and calls back nothing, and a render gives the previous
+   picture again (xt_surface_render reports no damage; xt_surface_render_gpu rebuilds nothing) -- so the
+   host may skip both, still pumping its own events, until it pushes input, writes a port, changes the
+   surface (size, device, language, theme, visibility, a reload ...) or the value turns 1 again. Time
+   keeps passing meanwhile: the dt of the next xt_surface_update is the host's (the time since the last
+   one), as without skipping. 1: something moves on with time (an animation, transition or timeline,
+   including one in its delay; a flow timer or clock; a caret, live particles, a custom shader or an
+   external texture; a held gamepad direction; a GPU build that held work back), input, writes or
+   lifecycle notifications wait, or the current state has not been rendered yet. A host that clears and
+   redraws its own target every frame still composites the surface (xt_surface_render_gpu, which then only
+   composites). The update hook (xt_surface_set_update_hook) runs only inside xt_surface_update: a host
+   whose hook writes every frame keeps calling it. NULL surface or NULL out_needs_frame ->
+   XT_STATUS_INVALID_ARGUMENT. */
+XT_CAPI xt_status xt_surface_needs_frame(const xt_surface* s, int* out_needs_frame);
 /* clang-format on */
 
 #ifdef __cplusplus
