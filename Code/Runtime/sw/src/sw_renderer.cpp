@@ -2177,6 +2177,23 @@ struct SwRenderer::Impl {
         paintContours(glyphPoints, glyphStarts, FillRule::NonZero, eval, dst);
     }
 
+    /// T-835 (Docs/design/10-backends.md, the 10.2.5 amendment): what a draw of `image` (asset
+    /// `asset`, the host binding `ext` when `external`) samples -- nothing for point sampling; for a
+    /// host's CPU pixels their premultiplied copy; else SwMipCache::levelsFor (the chain only when
+    /// `wantChain`).
+    SwImageLevels smoothLevels(uint8_t smooth, bool external, const AssetResolver::ExternalTexture* ext,
+                               AssetResolver* assets, const IrView& ir, AssetId asset, float scale,
+                               const ImageData& image, bool wantChain) {
+        if (smooth == 0) {
+            return {};
+        }
+        if (external) {
+            return SwImageLevels{
+                nullptr, ext != nullptr ? mipCache.externalPremultiplied(assets, ir, asset, *ext) : nullptr};
+        }
+        return mipCache.levelsFor(assets, ir, asset, scale, image, wantChain);
+    }
+
     void drawImageCmd(const CommandList& list, const ImageCmd& cmd, float dpr, AssetResolver* assets,
                       const IrView* ir) {
         if (assets == nullptr || ir == nullptr) {
@@ -2186,10 +2203,12 @@ struct SwRenderer::Impl {
         }
         (void)list;
         const ImageData* view = nullptr;
-        if (isExternalAsset(cmd.asset, *ir)) {
+        const AssetResolver::ExternalTexture* ext = nullptr;
+        const bool external = isExternalAsset(cmd.asset, *ir);
+        if (external) {
             // T-150: a host (engine://) texture has no CPU pixels and draws as transparent --
             // unless the host also bound CPU pixels for it (T-191, setExternalPixels).
-            const AssetResolver::ExternalTexture* ext = assets->externalTexture(cmd.asset, *ir);
+            ext = assets->externalTexture(cmd.asset, *ir);
             view = ext != nullptr ? ext->pixels : nullptr;
         } else {
             // T-199: the `@2x` variant at dpr >= 1.5; T-345: `@3x` at >= 2.5, times the element's
@@ -2204,18 +2223,19 @@ struct SwRenderer::Impl {
         Target dst = layers.currentTarget(rootTarget());
         const uint8_t* clipPtr = clipData();
         const WriteRegion region = drawRegion(dst);
+        // T-665: the chain (resolver's or built here) of a smooth, non-host image; under a 3D
+        // projection, for a host texture and for point sampling there is none. T-835: a smooth draw
+        // filters the premultiplied level 0 (none for a block-compressed source or a host texture
+        // flagged straight alpha).
+        const SwImageLevels levels = smoothLevels(cmd.smooth, external, ext, assets, *ir, cmd.asset,
+                                                  dpr * cmd.variantScale, image, !projecting());
         if (!projecting()) {
-            // T-665: the chain (resolver's or built here) of a smooth, non-host image; under a 3D
-            // projection, for a host texture and for point sampling there is none.
-            const ImageMipChain* mips =
-                cmd.smooth != 0 && !isExternalAsset(cmd.asset, *ir)
-                    ? mipCache.chainFor(assets, *ir, cmd.asset, dpr * cmd.variantScale, image)
-                    : nullptr;
             // Docs/tasks/T-128.md step 1: image sampling is its own per-pixel loop, timed separately
             // from swSpanMs (see FrameStats::swSpanImageMs). Asset decode above is deliberately
             // outside the scope -- it is cached by the resolver, not per-pixel work.
             PerfFieldScope imageScope(timer(&FrameStats::swSpanImageMs));
-            drawImage(dst, raster, deviceXf, cmd, image, clipPtr, target.width, imageScratch, &region, mips);
+            drawImage(dst, raster, deviceXf, cmd, image, clipPtr, target.width, imageScratch, &region,
+                      levels.mips, levels.premultiplied);
             return;
         }
         PerfFieldScope imageScope(timer(&FrameStats::swSpanImageMs));
@@ -2236,7 +2256,7 @@ struct SwRenderer::Impl {
             }
         }
         drawImageQuad(dst, raster, q, cmd.srcUv, cmd.opacity, cmd.smooth, image, clipPtr, target.width,
-                      imageScratch, &region);
+                      imageScratch, &region, nullptr, levels.premultiplied);
     }
 
     /// T-202 (Docs/tasks/T-202.md item 4): one rotated quad per particle; no texture (or no way to
@@ -2249,12 +2269,15 @@ struct SwRenderer::Impl {
             return;
         }
         const ImageData* image = nullptr;
+        const ImageData* premultiplied = nullptr;  // T-835: the texture is filtered premultiplied
         if (cmd.texture != kInvalidAsset) {
             if (assets == nullptr || ir == nullptr) {
                 return;
             }
-            if (isExternalAsset(cmd.texture, *ir)) {
-                const AssetResolver::ExternalTexture* ext = assets->externalTexture(cmd.texture, *ir);
+            const AssetResolver::ExternalTexture* ext = nullptr;
+            const bool external = isExternalAsset(cmd.texture, *ir);
+            if (external) {
+                ext = assets->externalTexture(cmd.texture, *ir);
                 image = ext != nullptr ? ext->pixels : nullptr;
             } else {
                 image = assets->imageView(cmd.texture, *ir, dpr);
@@ -2262,6 +2285,8 @@ struct SwRenderer::Impl {
             if (image == nullptr) {
                 return;
             }
+            premultiplied =
+                smoothLevels(1, external, ext, assets, *ir, cmd.texture, dpr, *image, false).premultiplied;
         }
         Mat2x3 deviceXf = mul(deviceScale(dpr), cmd.xf);
         Target dst = layers.currentTarget(rootTarget());
@@ -2270,7 +2295,7 @@ struct SwRenderer::Impl {
         PerfFieldScope imageScope(timer(&FrameStats::swSpanImageMs));
         drawParticles(dst, raster, deviceXf, list.particleInstances.data() + cmd.instanceOffset, cmd.count,
                       cmd.blend == ParticleBlend::Additive, image, clipPtr, target.width, imageScratch,
-                      &region);
+                      &region, premultiplied);
     }
 
     void drawImageQuadCmd(const ImageQuadCmd& cmd, float dpr, AssetResolver* assets, const IrView* ir) {
@@ -2278,9 +2303,11 @@ struct SwRenderer::Impl {
             return;  // Same "no way to resolve the asset" rule as DrawImage.
         }
         const ImageData* view = nullptr;
-        if (isExternalAsset(cmd.asset, *ir)) {
+        const AssetResolver::ExternalTexture* ext = nullptr;
+        const bool external = isExternalAsset(cmd.asset, *ir);
+        if (external) {
             // T-150/T-191: same as DrawImage.
-            const AssetResolver::ExternalTexture* ext = assets->externalTexture(cmd.asset, *ir);
+            ext = assets->externalTexture(cmd.asset, *ir);
             view = ext != nullptr ? ext->pixels : nullptr;
         } else {
             // T-199: the `@2x` variant at dpr >= 1.5; T-345: `@3x` at >= 2.5, times the element's
@@ -2307,14 +2334,13 @@ struct SwRenderer::Impl {
         Target dst = layers.currentTarget(rootTarget());
         const uint8_t* clipPtr = clipData();
         const WriteRegion region = drawRegion(dst);
-        // T-665: as DrawImage (no chain under a 3D projection, for a host texture or point sampling).
-        const ImageMipChain* mips =
-            cmd.smooth != 0 && !projecting() && !isExternalAsset(cmd.asset, *ir)
-                ? mipCache.chainFor(assets, *ir, cmd.asset, dpr * cmd.variantScale, image)
-                : nullptr;
+        // T-665: as DrawImage (no chain under a 3D projection, for a host texture or point sampling);
+        // T-835: the premultiplied level 0 as DrawImage.
+        const SwImageLevels levels = smoothLevels(cmd.smooth, external, ext, assets, *ir, cmd.asset,
+                                                  dpr * cmd.variantScale, image, !projecting());
         PerfFieldScope imageScope(timer(&FrameStats::swSpanImageMs));
         drawImageQuad(dst, raster, q, cmd.srcUv, cmd.opacity, cmd.smooth, image, clipPtr, target.width,
-                      imageScratch, &region, mips);
+                      imageScratch, &region, levels.mips, levels.premultiplied);
     }
 
     /// T-245 (Docs/design/32-rigging-and-deformation.md §32.2.4): the vertices go through the
@@ -2328,8 +2354,10 @@ struct SwRenderer::Impl {
             return;
         }
         const ImageData* view = nullptr;
-        if (isExternalAsset(cmd.asset, *ir)) {
-            const AssetResolver::ExternalTexture* ext = assets->externalTexture(cmd.asset, *ir);
+        const AssetResolver::ExternalTexture* ext = nullptr;
+        const bool external = isExternalAsset(cmd.asset, *ir);
+        if (external) {
+            ext = assets->externalTexture(cmd.asset, *ir);
             view = ext != nullptr ? ext->pixels : nullptr;
         } else {
             view = assets->imageView(cmd.asset, *ir, dpr);
@@ -2337,6 +2365,9 @@ struct SwRenderer::Impl {
         if (view == nullptr) {
             return;
         }
+        // T-835: a smooth mesh filters the premultiplied level 0 (no chain: meshes sample one level).
+        const ImageData* premultiplied =
+            smoothLevels(cmd.smooth, external, ext, assets, *ir, cmd.asset, dpr, *view, false).premultiplied;
         // T-700: on an affine plane the fold comes before the dpr scale.
         const Mat2x3 dprXf = foldActive ? mul(deviceScale(dpr), planeFold) : deviceScale(dpr);
         const bool project = projecting();
@@ -2359,7 +2390,7 @@ struct SwRenderer::Impl {
         PerfFieldScope imageScope(timer(&FrameStats::swSpanImageMs));
         drawImageMesh(dst, meshScratch.data(), cmd.vertexCount, list.meshIndices.data() + cmd.indexOffset,
                       cmd.indexCount, cmd.opacity, cmd.smooth, *view, clipPtr, target.width, imageScratch,
-                      &region);
+                      &region, premultiplied);
     }
 };
 

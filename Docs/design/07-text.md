@@ -211,3 +211,60 @@ struct TextLine { Rect rect; float baseline; uint32_t firstRun, runCount; uint32
 - 未涵蓋（裁決：接受）：字型沒有 U+0020 字形時，替換後的字形編號仍是 0、仍會畫出 .notdef——沒有空白字形的字型不是支援的對象。
 - 未跑：capi、editor 各套件、gl。未編譯 GCC／Clang。合併時 rebase 後的組合未經 `merge_task.sh` 的建置檢查（代理第一次用了工作樹裡舊的腳本）——主模型另在 main 上重跑 core／text／golden 確認。
 
+## 7.21 字型寬度與家族名稱（2026-11-22；§7.21.1～§7.21.3 定案，§7.21.4 以後為草案待使用者看過）
+
+**實測到的問題（2026-11-22，`E:/coding3/xt-bench/font-axes/`；Release v0.19.2、Windows 系統字型）。**
+
+| 寫法 | 畫出來的 | 原因 |
+|---|---|---|
+| `font-family: "Arial"` | **Arial Narrow**（寬度 264，Arial 應為 322） | 家族名只取 nameID 16（`ARIALN.TTF` 的 ID16 也是 `Arial`）；同家族同字重同斜體時取先註冊者，而路徑以位元組排序、`ARIALN.TTF` 在 `arial.ttf` 之前 |
+| `font-family: "Arial"; font-weight: 700` | Arial Narrow Bold | 同上 |
+| `font-family: "Myriad Pro"` | Myriad Pro Cond | 同上 |
+| `"Arial Narrow"`、`"Segoe UI Semibold"`、`"Sitka Text"` | 落到下一個家族 | 這些是 nameID 1（舊式家族名）；每個字面只存一個家族字串（ID16 優先） |
+| `"Bahnschrift SemiCondensed"`、`"Bahnschrift Condensed"` | 落到下一個家族 | 可變字型的具名寬度只存在 `fvar` 實例與 `STAT`；自家碼只接了 `wght` 一軸（FreeType 與 HarfBuzz 都支援任意軸） |
+
+前兩類是缺陷（指定 Arial 卻畫成 Narrow），照 CSS 修正；第三類是功能。
+
+### 7.21.1 字面的寬度
+
+每個字面有一個**寬度**（百分比，CSS `font-stretch` 的尺度：50～200，100＝正常）：
+
+- 可變字型有 `wdth` 軸：寬度是一個範圍（軸的 min～max），預設值是軸的 default。
+- 靜態字面：OS/2 `usWidthClass` 對應 1→50、2→62.5、3→75、4→87.5、5→100、6→112.5、7→125、8→150、9→200——**但只有名稱也這麼說時才採信**：該字面的 nameID 17（沒有就 ID2）或 ID1 含寬度字（`Narrow`、`Condensed`、`Cond`、`Compressed`、`Compact`、`Extended`、`Expanded`、`Wide`，可帶 `Semi`／`Extra`／`Ultra` 前綴；不分大小寫、整字比對）時用 `usWidthClass`，否則一律 100。原因：`usWidthClass` 不可靠（Comfortaa 的 Light＝3、Bold＝7，其實都是正常寬度），照單全收會讓正常的字重被排除而改走合成粗體。名稱有寬度字而 `usWidthClass`＝5 的：`Narrow`／`Condensed` 類當 75、`Extended`／`Expanded`／`Wide` 類當 125。
+
+掃描（`readFontNameTable`，不開 FreeType）因此多讀：OS/2 `usWidthClass`、nameID 1／2／17、`fvar` 的 `wdth` 軸。維持「掃描不開檔解析字形」。
+
+### 7.21.2 家族名稱
+
+一個字面可由兩個家族名找到：**排版家族**（nameID 16，沒有就 ID1；現行）與**舊式家族**（nameID 1，與排版家族不同時才登記）。`font-family` 比對兩者，不分大小寫。
+
+- 以排版家族命中：候選是該家族的全部字面（`"Arial"` → Arial、Arial Narrow、Arial Black…）。
+- 以舊式家族命中：候選只有 ID1 等於該名的字面（`"Arial Narrow"` → 四個 Narrow；`"Segoe UI Semibold"` → Semibold 與 Semibold Italic）。在這個集合內照 §7.21.3 選——所以 `"Segoe UI Semibold"`＋`font-weight: 400` 得到 Semibold（集合裡最接近 400 的就是它），與瀏覽器在 Windows 上的結果一致。
+- 兩個名字撞在一起時（某家族的 ID16 等於另一家族的 ID1）排版家族優先。
+- `--list-fonts`、`FontDesc` 與「缺字型」的訊息仍以排版家族為主；舊式家族名另列（`--list-fonts` 加一欄或加註，格式由實作單定，corpus 雜湊前去掉的規則照 T-569）。
+
+### 7.21.3 選字面的順序
+
+候選集合內依序（CSS Fonts 4 §5.2 的順序）：
+
+1. **寬度**：要求值目前恆為 100（沒有 `font-stretch` 屬性之前）。候選中有寬度範圍包含要求值的取之；否則要求 ≤ 100 時先取較窄中最接近的、再取較寬中最接近的，> 100 反之。**只留下寬度最合的那一組**再往下比。
+2. **斜體**（現行）。
+3. **字重**（現行 §7.20）。
+4. 仍同分取先註冊者（現行）。
+
+不合成寬度（沒有窄體就用正常體，不做水平壓縮）。可變字型的 `wdth` 軸在沒有 `font-stretch` 時設為 100 落在範圍內的值（Bahnschrift：100），等同現行的預設值。
+
+**行為變更**：以系統字型或專案字型畫 `Arial`、`Myriad Pro`、`Bodoni MT`、`Goudy Old Style`、`Minion Pro` 等「同一排版家族含窄體檔」的家族時，從窄體改為正常體；`"Arial Narrow"` 等舊式家族名從回退改為命中。只裝了窄體的機器不變（寬度那一關沒有更合的候選）。
+
+### 7.21.4 可變字型的具名寬度與光學尺寸（草案）
+
+`STAT` 表對 `wdth` 軸列出的具名值（非 elidable 者）登記成家族別名 `"<排版家族> <值名>"`（Bahnschrift：`Bahnschrift SemiCondensed`＝87.5、`Bahnschrift Condensed`＝75）；命中別名＝命中該可變字面並把 `wdth` 釘在該值，字重仍由 `font-weight` 決定。`opsz` 軸的具名值同理（`Segoe UI Variable Display`／`Text`／`Small`、`Sitka Text`…；格式 2 的範圍值取 nominal）。沒有 `STAT` 的可變字型不產生別名。實例的鍵由 `(base, wght, embolden)` 擴成帶各軸座標；下游快取都以 FontId 為鍵，不必動。
+
+### 7.21.5 `font-stretch` 屬性（草案）
+
+新樣式屬性 `font-stretch`（別名 `font-width`；可繼承；StyleProp 第二段下一個空號）：九個關鍵字（`ultra-condensed`…`ultra-expanded`）或 50%～200% 的百分比；進 `FontRequest`、回退快取的鍵、解析與 run 層的請求，成為 §7.21.3 第 1 步的要求值；可變字型把 `wdth` 設成夾在軸範圍內的要求值。可動畫（數值內插）與否待定。匯入器：`font-stretch`、`font` 簡寫裡的寬度關鍵字改為保留。工作量與 T-331（`font-variant-numeric`）同級、但走字型匹配那條路，約 25～30 檔。
+
+### 7.21.6 之後（草案，未排）
+
+編輯器的字型選單改用執行期的掃描結果（含舊式家族名與別名；目前取自專案字型的檔名與 Qt 的家族清單，兩邊不一致）；`@font-face` 的 `font-family`／`font-weight`／`font-style` 描述子在執行期被忽略（家族名一律取字型自己的 name 表，`document_load.cpp:514-533`）——要不要讓描述子生效另議；`font-variation-settings`、`font-optical-sizing: auto` 不在本節。
+

@@ -238,7 +238,10 @@ def find_tool(name, given):
         if patterns[0] == "bin/*/*/%s%s":
             found = [f for f in found if "-" not in os.path.basename(os.path.dirname(f))]
         if found:
-            return max(found, key=os.path.getmtime)
+            # A Release build wins over a newer Debug one: the expected output is produced by
+            # Release, and a Debug rebuild must not silently change which tool replays the corpus.
+            release = [f for f in found if os.path.basename(os.path.dirname(f)).startswith("Release")]
+            return max(release or found, key=os.path.getmtime)
     return None
 
 

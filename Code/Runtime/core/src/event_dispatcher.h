@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <span>
+#include <string_view>
 #include <vector>
 
 #include "style_state_deps.h"
@@ -98,6 +99,19 @@ NodeId focusScope(const NodeArena& arena, NodeId root, NodeId from);
 /// better. `eligible` is false when `to` is not ahead of `from` inside the direction cone. See
 /// focus_nav.cpp for the formula.
 float navScore(Rect from, Rect to, NavDirection dir, bool& eligible);
+/// T-840: `value` without leading and trailing ASCII white space (space, tab, LF, VT, FF, CR: the
+/// set std::isspace has in the C locale, which the compiler's trim uses), so the runtime reads an
+/// interaction attribute value (`draggable=" any-button "`) the way the compiler checked it.
+constexpr std::string_view trimAsciiSpace(std::string_view value) {
+    auto space = [](char c) { return c == ' ' || (c >= '\t' && c <= '\r'); };
+    while (!value.empty() && space(value.front())) {
+        value.remove_prefix(1);
+    }
+    while (!value.empty() && space(value.back())) {
+        value.remove_suffix(1);
+    }
+    return value;
+}
 /// Where navigation starts with nothing focused: the first focusable `autofocus` element inside
 /// `scope`, else the first navigable focusable element of `scope` in document order.
 NodeId firstNavTarget(const NodeArena& arena, NodeId scope, const std::vector<NodeId>& autofocus);

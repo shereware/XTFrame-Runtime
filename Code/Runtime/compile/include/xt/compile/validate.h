@@ -19,6 +19,28 @@ namespace xt::compile {
 /// `hover`, `key(Enter)`, `port(hp)`, `timeline(intro).end`, `state(Low).enter`.
 bool validateTriggerEvent(std::string_view event, std::string& error);
 
+/// T-844: what an editor offers for an event argument (a port, timeline, state or media id picker;
+/// anything else is typed).
+enum class TriggerEventArgKind : uint8_t { Text, Port, Timeline, State, Media };
+
+/// T-844: an event spelling the trigger compiler accepts (27.2.2). compile's parseEvent() reads its
+/// plain names and button filters from this table; editors list the entries that are not aliases.
+struct TriggerEventInfo {
+    const char* pattern;  ///< `{0}` / `{1}` stand for the arguments: `port({0})`.
+    uint8_t args;         ///< How many of `{0}` / `{1}` the pattern has.
+    TriggerEventArgKind kinds[2];
+    bool alias;  ///< Normalized to another entry (`pointerdown` -> `press`); editors do not list it.
+};
+std::span<const TriggerEventInfo> triggerEventTable();
+
+/// T-844: an action the trigger compiler accepts (27.2.3); `bare`: it may also be written without
+/// parentheses (`then hide`, `then remove`).
+struct TriggerActionInfo {
+    const char* name;
+    bool bare;
+};
+std::span<const TriggerActionInfo> triggerActionTable();
+
 /// T-571 (Docs/design/08-events.md §8.20, `xtframe-view --event "<frame> key <name>"`): the KeyCode
 /// (as uint32_t) a `key(<name>)` trigger names -- the same name table as the compiler's (`Enter`,
 /// `Escape`, `Space`, `ArrowUp`, `A`..`Z`, `KeyA`, `0`..`9`, `Digit0`, `F1`..`F12`, ...). False

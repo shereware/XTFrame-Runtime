@@ -504,6 +504,11 @@ long FtTextShaper::fontFaceIndex(FontId id) const {
     return impl_->fonts.fontFaceIndex(id);
 }
 
+std::string FtTextShaper::fontLegacyFamily(FontId id) const {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    return impl_->fonts.legacyFamily(id);
+}
+
 std::string FtTextShaper::missingCjkFamily(const std::vector<std::string>& stack) const {
     std::lock_guard<std::mutex> lock(impl_->mutex);
     return impl_->fonts.missingCjkFamily(stack);

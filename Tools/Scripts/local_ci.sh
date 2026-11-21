@@ -41,27 +41,12 @@
 set -u
 cd "$(dirname "$0")/../.."
 ROOT="$(pwd)"
-# T-442: the newest Code/SDKs/Qt/<series>*[/Qt] holding lib/cmake/Qt5 and bin/qmake(.exe), as an absolute
-# path; empty when there is none. Same rule as Tools/CMake/xt_qt.cmake (XT_QT_DIR, else 5.15, else 5.12).
-xt_qt_sdk_dir() {
-  local best="" bestv="" d p v
-  for d in Code/SDKs/Qt/"$1"*; do
-    for p in "$d/Qt" "$d"; do
-      [ -d "$p/lib/cmake/Qt5" ] && { [ -f "$p/bin/qmake.exe" ] || [ -f "$p/bin/qmake" ]; } || continue
-      v="$(sed -n 's/^ *set(PACKAGE_VERSION "*\([0-9.]*\)"*).*/\1/p' "$p/lib/cmake/Qt5/Qt5ConfigVersion.cmake" 2>/dev/null | head -n 1)"
-      case "$v" in "$1".*)
-        if [ -z "$bestv" ] || [ "$(printf '%s\n%s\n' "$bestv" "$v" | sort -V | tail -n 1)" = "$v" ]; then best="$p"; bestv="$v"; fi;;
-      esac
-      break
-    done
-  done
-  [ -n "$best" ] && (cd "$best" && { pwd -W 2>/dev/null || pwd; })
-}
-[ -z "${XT_QT_DIR:-}" ] && XT_QT_DIR="$(xt_qt_sdk_dir 5.15)"
-[ -z "${XT_QT_DIR:-}" ] && XT_QT_DIR="$(xt_qt_sdk_dir 5.12)"
-if [ -n "${XT_QT_DIR:-}" ]; then export XT_QT_DIR; else unset XT_QT_DIR; fi
-# T-442 (17 §17.9): the Qt 5.12 the syntax-check stage reads its headers from.
-[ -z "${XT_QT512_DIR:-}" ] && XT_QT512_DIR="$(xt_qt_sdk_dir 5.12)"
+# T-442 / T-852: XT_QT_DIR (and XT_QT512_DIR), when unset, from Code/SDKs/Qt of this checkout, else of
+# the main worktree (Tools/Scripts/xt_qt_env.sh; same rule as Tools/CMake/xt_qt.cmake).
+. Tools/Scripts/xt_qt_env.sh
+xt_qt_resolve
+# T-442 (17 §17.9): XT_QT512_DIR (set by xt_qt_resolve above) is the Qt 5.12 the syntax-check stage
+# reads its headers from.
 CLANG="${XT_CLANG:-C:/Users/Bigspring/scoop/apps/llvm/current/bin/clang++.exe}"
 fail=0
 CLEAN=""

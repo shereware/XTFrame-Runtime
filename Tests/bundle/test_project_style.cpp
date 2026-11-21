@@ -395,6 +395,46 @@ TEST_CASE("T-743 duplicate and detach: the copy keeps its look when the style ch
     CHECK(widthT743(project, links, body, "B/Bg") == doctest::Approx(alphaWidth));  // Detached.
 }
 
+TEST_CASE("T-843 duplicate and detach: the symbol's .xtanim.json goes with the copy") {
+    const UiProject project = projectT743("xt_t843_detach_anim");
+    const fs::path root = compile::pathFromUtf8(project.rootDir);
+    const fs::path symbols = root / "shared" / "symbols";
+    const std::string anim = "{ \"version\": 1, \"timelines\": [{ \"name\": \"spin\", \"duration\": 1 }] }\n";
+    writeT743(symbols / "Spinner.xt",
+              "<xt><head><symbol name=\"Spinner\"><div id=\"S\"></div></symbol></head>"
+              "<timelines>@timeline spin from \"Spinner.xtanim.json#spin\";</timelines></xt>\n");
+    writeT743(symbols / "Spinner.xtanim.json", anim);
+    writeT743(symbols / "Plain.xt",
+              "<xt><head><symbol name=\"Plain\"><div id=\"P\"></div></symbol></head></xt>\n");
+
+    const DetachReport report = duplicateDetached(project, "Spinner", "Whirl");
+    REQUIRE_MESSAGE(report.status == Status::kOk, report.error);
+    CHECK(std::any_of(report.changes.begin(), report.changes.end(), [](const FileChange& c) {
+        return c.path == "shared/symbols/Whirl.xtanim.json" && !c.existed;
+    }));
+    REQUIRE(writeFileChanges(project, report.changes) == Status::kOk);
+    // Both exist with the same content; the copy reads its own file.
+    CHECK(readT743(symbols / "Whirl.xtanim.json") == anim);
+    CHECK(readT743(symbols / "Spinner.xtanim.json") == anim);
+    const std::string copy = readT743(symbols / "Whirl.xt");
+    CHECK(copy.find("from \"Whirl.xtanim.json#spin\"") != std::string::npos);
+    CHECK(copy.find("Spinner.xtanim.json") == std::string::npos);
+    CHECK(readT743(symbols / "Spinner.xt").find("from \"Spinner.xtanim.json#spin\"") != std::string::npos);
+    // Independent: changing one leaves the other.
+    writeT743(symbols / "Whirl.xtanim.json", "{}\n");
+    CHECK(readT743(symbols / "Spinner.xtanim.json") == anim);
+
+    // A second copy cannot take a name whose .xtanim.json is already there.
+    writeT743(symbols / "Orbit.xtanim.json", "{}\n");
+    CHECK(duplicateDetached(project, "Spinner", "Orbit").status == Status::kInvalidArgument);
+
+    // No .xtanim.json: no animation file is planned (unchanged behaviour).
+    const DetachReport plain = duplicateDetached(project, "Plain", "Plain2");
+    REQUIRE_MESSAGE(plain.status == Status::kOk, plain.error);
+    CHECK(std::none_of(plain.changes.begin(), plain.changes.end(),
+                       [](const FileChange& c) { return c.path.find(".xtanim.json") != std::string::npos; }));
+}
+
 TEST_CASE("T-743 implied layer of a project with several groups (47 rule 5)") {
     LibT743 lib("xt_t743_implied_lib");
     const UiProject created = projectT743("xt_t743_implied");

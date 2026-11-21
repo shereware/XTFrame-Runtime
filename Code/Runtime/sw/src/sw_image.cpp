@@ -29,6 +29,13 @@
 /// reassociated where the row blend swaps the lerp order, so golden images stay within the
 /// Docs/design/15-testing.md §15.3 tolerance.
 ///
+/// T-835 (Docs/design/10-backends.md, the 10.2.5 amendment of 2026-11-21): the bilinear and trilinear
+/// filters read the premultiplied level 0 the caller passes (SwMipCache keeps it) and only scale the
+/// filtered sample by coverage and opacity, so a translucent edge no longer shows the colour stored in
+/// the transparent texels beside it (the GPU filters premultiplied textures the same way). Without one
+/// (block-compressed sources, host textures flagged straight alpha) the straight texels are filtered
+/// and premultiplied afterwards, as before. Point sampling reads the straight image unchanged.
+///
 /// T-642 (Docs/design/23-host-integration.md §23.3): every draw takes an optional WriteRegion. The
 /// rasterizer then sweeps only the region's rows, and each span is sampled and blended only over its
 /// pieces inside the region -- but always from the span's own anchor (the axis map is built at the
@@ -86,6 +93,23 @@ inline f32x4 alphaLaneMask() {
 inline f32x4 premulSample(f32x4 s, f32x4 k, f32x4 alphaMask) {
     const f32x4 a = simd::mul(simd::splatW(s), k);
     return simd::blend(simd::mul(s, a), a, alphaMask);
+}
+/// T-835 (Docs/design/10-backends.md, the 10.2.5 amendment): a filtered sample -> premultiplied
+/// times `k`. Filtered from premultiplied texels (`premulTexels`), the sample is premultiplied
+/// already and only scaled; from straight texels it is premultiplied here (premulSample). For an
+/// opaque sample (alpha exactly 1) both give the same bits.
+inline f32x4 finishSample(f32x4 s, f32x4 k, bool premulTexels, f32x4 alphaMask) {
+    return premulTexels ? simd::mul(s, k) : premulSample(s, k, alphaMask);
+}
+
+/// T-835: `premul` when it is level 0 of `image` premultiplied (same size), else nullptr -- the
+/// straight texels are filtered then, as before.
+inline const ImageData* level0For(const ImageData& image, const ImageData* premul) {
+    if (premul == nullptr || premul->width != image.width || premul->height != image.height ||
+        premul->rgba.size() != image.rgba.size()) {
+        return nullptr;
+    }
+    return premul;
 }
 
 inline int clampi(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
@@ -177,12 +201,14 @@ inline f32x4 sampleLevelAt(const ImageMipLevel& lv, float fx, float fy, f32x4 kv
 }
 
 /// T-665: one trilinear sample at normalized (u, v) (already clamped to [0, 1]), premultiplied and
-/// times `kv`. Level 0 is sampled as the single-level path samples it.
-inline f32x4 sampleTrilinear(const ImageData& image, const ImageMipChain& mips, const LodPick& pick, float u,
-                             float v, f32x4 kv, f32x4 alphaMask) {
+/// times `kv`. Level 0 is sampled as the single-level path samples it (T-835: from `premul`, the
+/// premultiplied level 0, when there is one).
+inline f32x4 sampleTrilinear(const ImageData& image, const ImageData* premul, const ImageMipChain& mips,
+                             const LodPick& pick, float u, float v, f32x4 kv, f32x4 alphaMask) {
     auto level = [&](int k) {
         if (k == 0) {
-            return premulSample(sampleBilinear(image, u, v), kv, alphaMask);
+            return finishSample(sampleBilinear(premul != nullptr ? *premul : image, u, v), kv,
+                                premul != nullptr, alphaMask);
         }
         const ImageMipLevel& lv = mips.levels[static_cast<size_t>(k - 1)];
         // T-686: a stored DDS level spans its logical part only (levelUvScale is 1 otherwise, which
@@ -358,9 +384,11 @@ AxisMap makeAxisMap(double k, double c, double dstOrigin, double dstSize, double
 /// (times `kv`) into `span[0, end - begin)`. The filter path is chosen from the whole span (T-642: a
 /// piece of a span is sampled exactly as the whole span would sample it). Returns true when every
 /// texel the piece read is known to be opaque (the caller still folds coverage and opacity into its
-/// `allOpaque`).
-bool sampleAxisSpan(const ImageData& image, bool smooth, const AxisMap& xm, int64_t fy, int n, int begin,
-                    int end, f32x4 kv, f32x4 alphaMask, float* span, float* rowBlend) {
+/// `allOpaque`). T-835: the bilinear filter reads `premul` (the premultiplied level 0) when non-null;
+/// point sampling always reads `image`.
+bool sampleAxisSpan(const ImageData& image, const ImageData* premul, bool smooth, const AxisMap& xm,
+                    int64_t fy, int n, int begin, int end, f32x4 kv, f32x4 alphaMask, float* span,
+                    float* rowBlend) {
     const int W = image.width;
     const int H = image.height;
     const int sy0 = fixedFloor(fy);
@@ -378,10 +406,12 @@ bool sampleAxisSpan(const ImageData& image, bool smooth, const AxisMap& xm, int6
     uint8_t alphaAnd = 255;
     bool alphaKnown = false;
     if (smooth) {
+        const bool pm = premul != nullptr;
+        const uint8_t* texels = pm ? premul->rgba.data() : image.rgba.data();
         const int y0c = clampi(sy0, 0, H - 1);
         const int y1c = clampi(sy0 + 1, 0, H - 1);
-        const uint8_t* r0 = image.rgba.data() + static_cast<size_t>(y0c) * static_cast<size_t>(W) * 4;
-        const uint8_t* r1 = image.rgba.data() + static_cast<size_t>(y1c) * static_cast<size_t>(W) * 4;
+        const uint8_t* r0 = texels + static_cast<size_t>(y0c) * static_cast<size_t>(W) * 4;
+        const uint8_t* r1 = texels + static_cast<size_t>(y1c) * static_cast<size_t>(W) * 4;
         const f32x4 ty = vsplat(fixedFrac(fy));
         if (cCount <= 2 * n) {
             // Pre-blend the two source rows once over the touched columns, then one
@@ -399,7 +429,7 @@ bool sampleAxisSpan(const ImageData& image, bool smooth, const AxisMap& xm, int6
                 const int xb = clampi(sx0 + 1, 0, W - 1);
                 const f32x4 s = vlerp(vload(rowBlend + static_cast<size_t>(xa) * 4),
                                       vload(rowBlend + static_cast<size_t>(xb) * 4), vsplat(fixedFrac(fx)));
-                simd::store(span + static_cast<size_t>(i - begin) * 4, premulSample(s, kv, alphaMask));
+                simd::store(span + static_cast<size_t>(i - begin) * 4, finishSample(s, kv, pm, alphaMask));
             }
         } else {
             // Strong minification: fewer texels are read by sampling four per pixel than by
@@ -414,7 +444,7 @@ bool sampleAxisSpan(const ImageData& image, bool smooth, const AxisMap& xm, int6
                 const f32x4 s = vlerp(vlerp(vloadU8(r0 + xa), vloadU8(r0 + xb), tx),
                                       vlerp(vloadU8(r1 + xa), vloadU8(r1 + xb), tx), ty);
                 minv = simd::min(minv, s);
-                simd::store(span + static_cast<size_t>(i - begin) * 4, premulSample(s, kv, alphaMask));
+                simd::store(span + static_cast<size_t>(i - begin) * 4, finishSample(s, kv, pm, alphaMask));
             }
             float mins[4];
             simd::store(mins, minv);
@@ -466,7 +496,7 @@ void sampleLevelAxisSpan(const ImageMipLevel& lv, const AxisMap& xm, int64_t fy,
 void drawImageAxisAligned(Target& target, Rasterizer& raster, const Mat2x3& inverse, const ImageCmd& cmd,
                           const ImageData& image, const uint8_t* clipMask, int clipWidth,
                           ImageScratch& scratch, const WriteRegion* region, const ImageMipChain* mips,
-                          const LodPick& pick) {
+                          const LodPick& pick, const ImageData* premul) {
     const int W = image.width;
     const int H = image.height;
     const bool smooth = cmd.smooth != 0;
@@ -509,7 +539,8 @@ void drawImageAxisAligned(Target& target, Rasterizer& raster, const Mat2x3& inve
             // T-665: trilinear -- each level keeps its own maps, anchored at the span's first pixel.
             auto sampleLevel = [&](int level, int a, int b, float* out) {
                 if (level == 0) {
-                    sampleAxisSpan(image, true, xm, fy, n, a - x0, b - x0, kv, alphaMask, out, rowBlend);
+                    sampleAxisSpan(image, premul, true, xm, fy, n, a - x0, b - x0, kv, alphaMask, out,
+                                   rowBlend);
                     return;
                 }
                 const ImageMipLevel& lv = mips->levels[static_cast<size_t>(level - 1)];
@@ -537,8 +568,8 @@ void drawImageAxisAligned(Target& target, Rasterizer& raster, const Mat2x3& inve
             return;
         }
         forPieces(region, y, x0, x1, hint, [&](int a, int b) {
-            const bool opaqueSrc =
-                sampleAxisSpan(image, smooth, xm, fy, n, a - x0, b - x0, kv, alphaMask, span, rowBlend);
+            const bool opaqueSrc = sampleAxisSpan(image, premul, smooth, xm, fy, n, a - x0, b - x0, kv,
+                                                  alphaMask, span, rowBlend);
             const bool allOpaque = opaqueSrc && coverage == 255 && opacity == 1.0f;
             blendSpan(row, a, b - a, span, clipRow, allOpaque);
         });
@@ -548,10 +579,14 @@ void drawImageAxisAligned(Target& target, Rasterizer& raster, const Mat2x3& inve
 /// General DrawImage (rotation/shear): per-pixel inverse mapping, SIMD lerps.
 void drawImageGeneral(Target& target, Rasterizer& raster, const Mat2x3& inverse, const ImageCmd& cmd,
                       const ImageData& image, const uint8_t* clipMask, int clipWidth, ImageScratch& scratch,
-                      const WriteRegion* region, const ImageMipChain* mips, const LodPick& pick) {
+                      const WriteRegion* region, const ImageMipChain* mips, const LodPick& pick,
+                      const ImageData* premul) {
     const bool smooth = cmd.smooth != 0;
     const float opacity = cmd.opacity;
     const f32x4 alphaMask = alphaLaneMask();
+    // T-835: the bilinear filter reads the premultiplied level 0 when there is one.
+    const ImageData& smoothSrc = premul != nullptr ? *premul : image;
+    const bool pm = smooth && premul != nullptr;
     scratch.span.resize(static_cast<size_t>(target.w) * 4);
     float* span = scratch.span.data();
     size_t hint = 0;
@@ -582,13 +617,13 @@ void drawImageGeneral(Target& target, Rasterizer& raster, const Mat2x3& inverse,
                 const float sv = std::clamp(cmd.srcUv.y + v * cmd.srcUv.h, 0.0f, 1.0f);
                 if (pick.active) {  // T-665
                     simd::store(span + static_cast<size_t>(i) * 4,
-                                sampleTrilinear(image, *mips, pick, su, sv, kv, alphaMask));
+                                sampleTrilinear(image, premul, *mips, pick, su, sv, kv, alphaMask));
                     minv = vsplat(0.0f);
                     continue;
                 }
-                const f32x4 s = smooth ? sampleBilinear(image, su, sv) : sampleNearest(image, su, sv);
+                const f32x4 s = smooth ? sampleBilinear(smoothSrc, su, sv) : sampleNearest(image, su, sv);
                 minv = simd::min(minv, s);
-                simd::store(span + static_cast<size_t>(i) * 4, premulSample(s, kv, alphaMask));
+                simd::store(span + static_cast<size_t>(i) * 4, finishSample(s, kv, pm, alphaMask));
             }
             float mins[4];
             simd::store(mins, minv);
@@ -628,10 +663,12 @@ void addSpan(const DstRow& row, int x, int n, const float* src, const uint8_t* c
 
 void drawParticles(Target& target, Rasterizer& raster, const Mat2x3& deviceXf,
                    const ParticleInstance* instances, uint32_t count, bool additive, const ImageData* image,
-                   const uint8_t* clipMask, int clipWidth, ImageScratch& scratch, const WriteRegion* region) {
+                   const uint8_t* clipMask, int clipWidth, ImageScratch& scratch, const WriteRegion* region,
+                   const ImageData* premultiplied) {
     if (image != nullptr && (image->width <= 0 || image->height <= 0 || image->rgba.empty())) {
         return;  // A texture that did not decode draws nothing (like DrawImage).
     }
+    premultiplied = image != nullptr ? level0For(*image, premultiplied) : nullptr;
     const f32x4 alphaMask = alphaLaneMask();
     const f32x4 one = vsplat(1.0f);
     scratch.span.resize(static_cast<size_t>(target.w) * 4);
@@ -685,7 +722,10 @@ void drawParticles(Target& target, Rasterizer& raster, const Mat2x3& deviceXf,
                         const float v = std::clamp(uv.y, 0.0f, 1.0f);
                         const float su = p.uv0.x + u * (p.uv1.x - p.uv0.x);
                         const float sv = p.uv0.y + v * (p.uv1.y - p.uv0.y);
-                        texel = premulSample(sampleBilinear(*image, su, sv), one, alphaMask);
+                        // T-835: filtered premultiplied when the premultiplied level 0 is there.
+                        texel = premultiplied != nullptr
+                                    ? sampleBilinear(*premultiplied, su, sv)
+                                    : premulSample(sampleBilinear(*image, su, sv), one, alphaMask);
                     }
                     simd::store(out, simd::mul(simd::mul(texel, tintV), kv));
                 }
@@ -701,10 +741,11 @@ void drawParticles(Target& target, Rasterizer& raster, const Mat2x3& deviceXf,
 
 void drawImage(Target& target, Rasterizer& raster, const Mat2x3& deviceXf, const ImageCmd& cmd,
                const ImageData& image, const uint8_t* clipMask, int clipWidth, ImageScratch& scratch,
-               const WriteRegion* region, const ImageMipChain* mips) {
+               const WriteRegion* region, const ImageMipChain* mips, const ImageData* premultiplied) {
     if (image.width <= 0 || image.height <= 0 || image.rgba.empty()) {
         return;
     }
+    premultiplied = level0For(image, premultiplied);
     if (cmd.dst.w == 0.0f || cmd.dst.h == 0.0f) {
         return;
     }
@@ -735,19 +776,21 @@ void drawImage(Target& target, Rasterizer& raster, const Mat2x3& deviceXf, const
             : LodPick{};
     if (deviceXf.b == 0.0f && deviceXf.c == 0.0f) {
         drawImageAxisAligned(target, raster, inverse, cmd, image, clipMask, clipWidth, scratch, region, mips,
-                             pick);
+                             pick, premultiplied);
     } else {
         drawImageGeneral(target, raster, inverse, cmd, image, clipMask, clipWidth, scratch, region, mips,
-                         pick);
+                         pick, premultiplied);
     }
 }
 
 void drawImageQuad(Target& target, Rasterizer& raster, const Vec2 q[4], Rect srcUv, float opacity,
                    uint8_t smooth, const ImageData& image, const uint8_t* clipMask, int clipWidth,
-                   ImageScratch& scratch, const WriteRegion* region, const ImageMipChain* mips) {
+                   ImageScratch& scratch, const WriteRegion* region, const ImageMipChain* mips,
+                   const ImageData* premultiplied) {
     if (image.width <= 0 || image.height <= 0 || image.rgba.empty()) {
         return;
     }
+    premultiplied = level0For(image, premultiplied);
     Vec2 unitSquare[4] = {Vec2{0, 0}, Vec2{1, 0}, Vec2{1, 1}, Vec2{0, 1}};
     Mat3 hinv;
     if (!homographyFromQuad(q, unitSquare, hinv)) {
@@ -769,9 +812,12 @@ void drawImageQuad(Target& target, Rasterizer& raster, const Vec2 q[4], Rect src
         cmd.srcUv = srcUv;
         cmd.opacity = opacity;
         cmd.smooth = smooth;
-        drawImage(target, raster, cmd.xf, cmd, image, clipMask, clipWidth, scratch, region, mips);
+        drawImage(target, raster, cmd.xf, cmd, image, clipMask, clipWidth, scratch, region, mips,
+                  premultiplied);
         return;
     }
+    const ImageData& smoothSrc = premultiplied != nullptr ? *premultiplied : image;  // T-835
+    const bool pm = smooth != 0 && premultiplied != nullptr;
     // T-665: a parallelogram (an affine quad) samples trilinearly at its lod; a projective one keeps
     // the single-level sampling.
     LodPick pick;
@@ -822,13 +868,15 @@ void drawImageQuad(Target& target, Rasterizer& raster, const Vec2 q[4], Rect src
                 const float su = std::clamp(srcUv.x + uv.x * srcUv.w, 0.0f, 1.0f);
                 const float sv = std::clamp(srcUv.y + uv.y * srcUv.h, 0.0f, 1.0f);
                 if (pick.active) {  // T-665
-                    simd::store(out, sampleTrilinear(image, *mips, pick, su, sv, kv, alphaMask));
+                    simd::store(out,
+                                sampleTrilinear(image, premultiplied, *mips, pick, su, sv, kv, alphaMask));
                     minv = zero;
                     continue;
                 }
-                const f32x4 s = smooth != 0 ? sampleBilinear(image, su, sv) : sampleNearest(image, su, sv);
+                const f32x4 s =
+                    smooth != 0 ? sampleBilinear(smoothSrc, su, sv) : sampleNearest(image, su, sv);
                 minv = simd::min(minv, s);
-                simd::store(out, premulSample(s, kv, alphaMask));
+                simd::store(out, finishSample(s, kv, pm, alphaMask));
             }
             float mins[4];
             simd::store(mins, minv);
@@ -922,7 +970,8 @@ void axisFromVertices(const double pos[3], const double uv[3], double& origin, d
 /// path (sampleAxisSpan); any other triangle maps every pixel center back to (u, v).
 void drawAffineTriangle(Target& target, const MeshVertex& m0, const MeshVertex& m1, const MeshVertex& m2,
                         float opacity, bool smooth, const ImageData& image, const uint8_t* clipMask,
-                        int clipWidth, ImageScratch& scratch, const WriteRegion* region) {
+                        int clipWidth, ImageScratch& scratch, const WriteRegion* region,
+                        const ImageData* premul) {
     const MeshVertex* v[3] = {&m0, &m1, &m2};
     for (const MeshVertex* p : v) {
         if (!(std::fabs(p->p.x) <= kTriMaxCoord) || !(std::fabs(p->p.y) <= kTriMaxCoord) ||
@@ -982,6 +1031,8 @@ void drawAffineTriangle(Target& target, const MeshVertex& m0, const MeshVertex& 
 
     const f32x4 alphaMask = alphaLaneMask();
     const f32x4 kv = vsplat(opacity);
+    const ImageData& smoothSrc = premul != nullptr ? *premul : image;  // T-835
+    const bool pm = smooth && premul != nullptr;
     scratch.span.resize(static_cast<size_t>(target.w) * 4);
     float* span = scratch.span.data();
 
@@ -1035,8 +1086,8 @@ void drawAffineTriangle(Target& target, const MeshVertex& m0, const MeshVertex& 
                     makeAxisMap(1.0, 0.0, oy, sizeY, 0.0, 1.0, static_cast<double>(image.height), offset, y);
                 AxisMap xm = xmAnchor;
                 xm.base += xm.step * static_cast<int64_t>(sx0 - static_cast<int>(colLo));
-                opaqueSrc = sampleAxisSpan(image, smooth, xm, ym.at(0), n, x0 - sx0, x1 - sx0, kv, alphaMask,
-                                           span, scratch.row.data());
+                opaqueSrc = sampleAxisSpan(image, premul, smooth, xm, ym.at(0), n, x0 - sx0, x1 - sx0, kv,
+                                           alphaMask, span, scratch.row.data());
             } else {
                 f32x4 minv = vsplat(1.0f);
                 const float cy = static_cast<float>(y) + 0.5f;
@@ -1044,9 +1095,9 @@ void drawAffineTriangle(Target& target, const MeshVertex& m0, const MeshVertex& 
                     const Vec2 uv = apply(toUv, Vec2{static_cast<float>(x0 + i) + 0.5f, cy});
                     const float su = std::clamp(uv.x, 0.0f, 1.0f);
                     const float sv = std::clamp(uv.y, 0.0f, 1.0f);
-                    const f32x4 s = smooth ? sampleBilinear(image, su, sv) : sampleNearest(image, su, sv);
+                    const f32x4 s = smooth ? sampleBilinear(smoothSrc, su, sv) : sampleNearest(image, su, sv);
                     minv = simd::min(minv, s);
-                    simd::store(span + static_cast<size_t>(i) * 4, premulSample(s, kv, alphaMask));
+                    simd::store(span + static_cast<size_t>(i) * 4, finishSample(s, kv, pm, alphaMask));
                 }
                 float mins[4];
                 simd::store(mins, minv);
@@ -1061,10 +1112,12 @@ void drawAffineTriangle(Target& target, const MeshVertex& m0, const MeshVertex& 
 
 void drawImageMesh(Target& target, const MeshVertex* vertices, uint32_t vertexCount, const uint16_t* indices,
                    uint32_t indexCount, float opacity, uint8_t smooth, const ImageData& image,
-                   const uint8_t* clipMask, int clipWidth, ImageScratch& scratch, const WriteRegion* region) {
+                   const uint8_t* clipMask, int clipWidth, ImageScratch& scratch, const WriteRegion* region,
+                   const ImageData* premultiplied) {
     if (image.width <= 0 || image.height <= 0 || image.rgba.empty() || !(opacity > 0.0f)) {
         return;
     }
+    premultiplied = level0For(image, premultiplied);
     for (uint32_t t = 0; t + 2 < indexCount; t += 3) {
         const uint16_t i0 = indices[t];
         const uint16_t i1 = indices[t + 1];
@@ -1073,7 +1126,7 @@ void drawImageMesh(Target& target, const MeshVertex* vertices, uint32_t vertexCo
             continue;  // Out-of-range index (never produced by the Painter): skipped.
         }
         drawAffineTriangle(target, vertices[i0], vertices[i1], vertices[i2], opacity, smooth != 0, image,
-                           clipMask, clipWidth, scratch, region);
+                           clipMask, clipWidth, scratch, region, premultiplied);
     }
 }
 

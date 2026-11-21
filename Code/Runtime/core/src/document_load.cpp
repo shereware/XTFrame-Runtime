@@ -314,7 +314,8 @@ Status Document::loadInternal(IrBlob blob, bool takeOwnership, TextShaper* shape
         // the focus between them; autofocus is the surface's initial focus).
         for (const auto& entry : data.attributes) {
             const std::string_view name = m_ir.string(entry.first);
-            const std::string_view value = m_ir.string(entry.second);
+            // T-840: trimmed as the compiler's check trims it (`draggable=" false "` is off).
+            const std::string_view value = trimAsciiSpace(m_ir.string(entry.second));
             const bool on = value != "false";
             NodeCommon& common = m_arena.common(node);
             if (name == "draggable" && value == "axis-x") {

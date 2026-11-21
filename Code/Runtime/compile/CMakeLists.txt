@@ -26,6 +26,7 @@ add_library(xt_compile STATIC
     src/bind_emit.cpp
     src/repeat_emit.cpp
     src/trigger_emit.cpp
+    src/trigger_tables.cpp
     src/parse_svg.cpp
     src/svg_path.cpp
     src/svg_timeline.cpp
@@ -101,6 +102,8 @@ set_source_files_properties(src/expr/expr_lexer.cpp src/expr/expr_parser.cpp src
     src/expr/expr_builtins.cpp src/expr/expr_eval.cpp src/expr/expr_eval_calls.cpp src/expr/expr_exact.cpp
     src/expr/expr_lower.cpp src/expr/expr_split.cpp src/expr/expr_split_eval.cpp src/expr/expr_runtime.cpp
     PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
+# T-844: the trigger event / action tables, likewise (so adding them does not regroup the batches).
+set_source_files_properties(src/trigger_tables.cpp PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
 # T-767: the `<expressions>` section, likewise.
 set_source_files_properties(src/expressions_section.cpp src/expressions_lower.cpp src/expressions_texp.cpp
     PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)

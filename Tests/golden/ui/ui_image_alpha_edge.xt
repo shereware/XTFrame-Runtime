@@ -1,0 +1,64 @@
+<xt version="2">
+
+  <!-- T-835 (10, the 10.2.5 amendment): alpha_edge.png is an opaque red square whose transparent
+       texels store green. Magnified, rotated, minified (lod about 0.5, trilinear) and as a
+       background-image, the translucent edges must stay red over grey: no green fringe. -->
+  <body>
+    <img id="up" src="alpha_edge.png"/>
+    <img id="rot" src="alpha_edge.png"/>
+    <img id="down" src="alpha_edge.png"/>
+    <div id="bg"></div>
+  </body>
+
+  <layout>
+    body {
+      margin: 0;
+    }
+    #up {
+      position: absolute;
+      left: 8px;
+      top: 8px;
+      width: 118.4px;
+      height: 118.4px;
+    }
+    #rot {
+      position: absolute;
+      left: 140px;
+      top: 16px;
+      width: 73.6px;
+      height: 73.6px;
+      transform: rotate(20deg);
+      transform-origin: 50% 50%;
+    }
+    #down {
+      position: absolute;
+      left: 140px;
+      top: 104px;
+      width: 22.4px;
+      height: 22.4px;
+    }
+    #bg {
+      position: absolute;
+      left: 176px;
+      top: 104px;
+      width: 72px;
+      height: 44px;
+    }
+  </layout>
+
+  <style>
+    #up {
+      object-fit: fill;
+    }
+    #rot {
+      object-fit: fill;
+    }
+    #down {
+      object-fit: fill;
+    }
+    #bg {
+      background-image: url(alpha_edge.png);
+      background-size: 100% 100%;
+    }
+  </style>
+</xt>

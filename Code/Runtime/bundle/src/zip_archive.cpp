@@ -264,8 +264,7 @@ Status zipDirectoryImpl(const fs::path& dir, const fs::path& outFile, const ZipW
             return failWith(Status::kIoError, "cannot write " + genericPathToUtf8(outFile));
         }
     }
-    fs::rename(temp, outFile, ec);
-    if (ec) {
+    if (!moveReplacing(temp, outFile)) {  // T-845: the short retry of writeFile() (T-840).
         return failWith(Status::kIoError, "cannot move " + tempUtf8 + " over " + genericPathToUtf8(outFile));
     }
     return Status::kOk;

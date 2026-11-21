@@ -9,6 +9,7 @@
 #include "doctest.h"
 #include "test_temp.h"
 #include "xt/bundle/bundle.h"
+#include "xt/bundle/zip_archive.h"
 
 /// T-262b (Docs/tasks/T-262b.md F15, F17): every file path a bundle manifest names stays inside
 /// the bundle directory, and bundle::detail::writeFile() replaces its target atomically.
@@ -188,3 +189,109 @@ TEST_CASE("T-262b writeFile: a target that cannot be replaced keeps its contents
     CHECK(fs::is_directory(target / "inner"));
     CHECK_FALSE(fs::exists(dir / "blocked.tmp"));
 }
+
+#if defined(_WIN32)
+
+// T-840 (Docs/tasks/T-840.md): writeFile() retries the replace for a moment while another program
+// holds the target without delete sharing (a virus scanner, the search indexer), as the editor's
+// replaceFile() does; a target that stays held still fails cleanly.
+
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+
+#include <chrono>
+#include <thread>
+
+namespace {
+
+/// Opens `path` for reading without FILE_SHARE_WRITE / FILE_SHARE_DELETE, so it cannot be replaced.
+HANDLE holdFile(const fs::path& path) {
+    return CreateFileW(path.wstring().c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+                       FILE_ATTRIBUTE_NORMAL, nullptr);
+}
+
+}  // namespace
+
+TEST_CASE("T-840 writeFile: a target held for a moment is replaced once released") {
+    const fs::path dir = freshDir("t840_held_briefly");
+    const fs::path target = dir / "file.txt";
+    writeText(target, "old");
+    HANDLE held = holdFile(target);
+    REQUIRE(held != INVALID_HANDLE_VALUE);
+    std::thread releaser([held] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        CloseHandle(held);
+    });
+    const bool ok = bundle::detail::writeFile(target.generic_string(), "new");
+    releaser.join();
+    CHECK(ok);
+    CHECK(readText(target) == "new");
+    CHECK_FALSE(fs::exists(dir / "file.txt.tmp"));
+}
+
+TEST_CASE("T-840 writeFile: a target that stays held fails in bounded time and keeps its contents") {
+    const fs::path dir = freshDir("t840_held");
+    const fs::path target = dir / "file.txt";
+    writeText(target, "old");
+    HANDLE held = holdFile(target);
+    REQUIRE(held != INVALID_HANDLE_VALUE);
+    const auto start = std::chrono::steady_clock::now();
+    const bool ok = bundle::detail::writeFile(target.generic_string(), "new");
+    const auto elapsed = std::chrono::steady_clock::now() - start;
+    CloseHandle(held);
+    CHECK_FALSE(ok);
+    CHECK(elapsed < std::chrono::seconds(5));
+    CHECK(readText(target) == "old");
+    CHECK_FALSE(fs::exists(dir / "file.txt.tmp"));
+}
+
+// T-845 (Docs/tasks/T-845.md): zipDirectory() moves its finished archive over the target through
+// the same short retry as writeFile().
+
+TEST_CASE("T-845 zipDirectory: a target held for a moment is replaced once released") {
+    const fs::path dir = freshDir("t845_zip_held_briefly");
+    fs::create_directories(dir / "in");
+    writeText(dir / "in" / "a.txt", "alpha");
+    const fs::path target = dir / "out.zip";
+    writeText(target, "old");
+    HANDLE held = holdFile(target);
+    REQUIRE(held != INVALID_HANDLE_VALUE);
+    std::thread releaser([held] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        CloseHandle(held);
+    });
+    std::string error;
+    const Status status = zipDirectory(dir / "in", target, {}, &error);
+    releaser.join();
+    CHECK(status == Status::kOk);
+    CHECK(error.empty());
+    CHECK(readText(target) != "old");
+    CHECK_FALSE(fs::exists(dir / "out.zip.tmp"));
+}
+
+TEST_CASE("T-845 zipDirectory: a target that stays held fails in bounded time and leaves no temporary") {
+    const fs::path dir = freshDir("t845_zip_held");
+    fs::create_directories(dir / "in");
+    writeText(dir / "in" / "a.txt", "alpha");
+    const fs::path target = dir / "out.zip";
+    writeText(target, "old");
+    HANDLE held = holdFile(target);
+    REQUIRE(held != INVALID_HANDLE_VALUE);
+    const auto start = std::chrono::steady_clock::now();
+    std::string error;
+    const Status status = zipDirectory(dir / "in", target, {}, &error);
+    const auto elapsed = std::chrono::steady_clock::now() - start;
+    CloseHandle(held);
+    CHECK(status == Status::kIoError);
+    CHECK_FALSE(error.empty());
+    CHECK(elapsed < std::chrono::seconds(5));
+    CHECK(readText(target) == "old");
+    CHECK_FALSE(fs::exists(dir / "out.zip.tmp"));
+}
+
+#endif  // _WIN32

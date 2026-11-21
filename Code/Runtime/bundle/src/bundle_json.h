@@ -39,6 +39,12 @@ bool readFile(const std::string& path, std::string& out);
 /// T-262b: atomic -- written to `<path>.tmp` and moved over `path` (MoveFileExW / rename); on any
 /// failure the temporary file is removed and `path` is left untouched.
 bool writeFile(const std::string& path, const std::string& text);
+/// T-845: moves the finished file `from` over `to` (replacing it), as writeFile() places its
+/// temporary file. Windows: MoveFileExW (replace, write through); a refusal because another program
+/// holds `to` for a moment (sharing / lock violation, access denied) is retried for about a quarter
+/// of a second (T-840), any other failure is final. Elsewhere one rename. False when `to` was not
+/// replaced; `from` is left where it was (the caller removes it).
+bool moveReplacing(const std::filesystem::path& from, const std::filesystem::path& to);
 
 /// T-241 / T-382 (23 §23.11.2): the standard-library copy of symbol file `fileName` -- the
 /// library root first, then its `mobile/` and `list/` subsets; empty when none is a regular file.

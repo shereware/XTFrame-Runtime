@@ -2434,6 +2434,46 @@ TEST_CASE("T-394: only the primary button drags, unless draggable=\"any-button\"
     CHECK(hasError(bad, "draggable must be true or false"));
 }
 
+TEST_CASE("T-840: the runtime trims draggable / drop-target / autofocus values as the compiler does") {
+    // Flags the loader sets for `<div id="Src" draggable="<value>">`.
+    auto dragFlags = [](std::string_view value) {
+        Loaded l = load(doc(kDragStyle, "<div id=\"Src\" draggable=\"" + std::string(value) +
+                                            "\"></div><div id=\"Dst\" drop-target></div>"));
+        return l.doc->arena().common(l.el("Src").node).flags2 & (kDraggable | kDragAxisX);
+    };
+    CHECK(dragFlags("false") == 0u);
+    CHECK(dragFlags(" false ") == 0u);
+    CHECK(dragFlags("true") == kDraggable);
+    CHECK(dragFlags(" true ") == kDraggable);
+    CHECK(dragFlags("axis-x") == kDragAxisX);
+    CHECK(dragFlags(" axis-x ") == kDragAxisX);
+    CHECK(dragFlags("\tany-button\n") == kDraggable);
+    // " any-button " lets the secondary button start a drag; " true " does not.
+    auto rightDrags = [](std::string_view value) {
+        Loaded l = load(doc(kDragStyle, "<div id=\"Src\" draggable=\"" + std::string(value) +
+                                            "\"></div><div id=\"Dst\" drop-target></div>"));
+        pointerButton(l, InputEvent::PointerDown, 10, 10, PointerButton::Right);
+        l.pointer(InputEvent::PointerMove, 60, 10);
+        const bool dragging = l.doc->dragSource().valid();
+        pointerButton(l, InputEvent::PointerUp, 60, 10, PointerButton::Right);
+        return dragging;
+    };
+    CHECK(rightDrags("any-button"));
+    CHECK(rightDrags(" any-button "));
+    CHECK_FALSE(rightDrags(" true "));
+    // drop-target and autofocus: " false " is off, like "false".
+    Loaded off = load(doc(kDragStyle,
+                          "<div id=\"Src\" draggable autofocus=\" false \"></div>"
+                          "<div id=\"Dst\" drop-target=\" false \"></div>"));
+    CHECK((off.doc->arena().common(off.el("Dst").node).flags2 & kDropTarget) == 0u);
+    CHECK(off.focusId() != "Src");
+    Loaded on = load(doc(kDragStyle,
+                         "<div id=\"Src\" draggable autofocus=\" true \"></div>"
+                         "<div id=\"Dst\" drop-target=\" true \"></div>"));
+    CHECK((on.doc->arena().common(on.el("Dst").node).flags2 & kDropTarget) == kDropTarget);
+    CHECK(on.focusId() == "Src");
+}
+
 TEST_CASE("T-394: the edge auto-scroll dispatches DragOver again every frame") {
     Loaded l = load(doc("", reorderList("")));
     REQUIRE(l.doc->setPortText(l.doc->lookupPort("items"), manyRows(200)) == Status::kOk);

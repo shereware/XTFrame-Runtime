@@ -1712,3 +1712,99 @@ TEST_CASE(
     CHECK(again.attribute("data-k") == "u");
     CHECK(again.hasState(kStateChecked));
 }
+
+// -- T-845: the tree operations refuse a pooled <repeat> instance node as ElementRef's setters do --
+
+namespace {
+
+/// A document with one recycled instance: `row` (Item/0/Row) waits in the pool, detached.
+struct PooledTree {
+    Ui ui;
+    PortId items = 0;
+    ElementRef row;
+    ElementRef name;
+    ElementRef other;
+};
+
+PooledTree openPooledTree() {
+    PooledTree t{open(page(".row { width: 50px; height: 10px; }", kPooledCallsDoc)), 0, {}, {}, {}};
+    t.items = t.ui.port("items");
+    REQUIRE(t.ui.doc->setPortText(t.items, itemsJson(1)) == Status::kOk);
+    t.ui.step();
+    t.ui.step();
+    t.row = t.ui.doc->byId("Item/0/Row");
+    t.name = t.ui.doc->byId("Item/0/Name");
+    t.other = t.ui.doc->byId("Other");
+    REQUIRE(t.row.valid());
+    REQUIRE(t.name.valid());
+    REQUIRE(t.other.valid());
+    REQUIRE(t.ui.doc->setPortText(t.items, itemsJson(0)) == Status::kOk);
+    t.ui.step();
+    t.ui.step();
+    REQUIRE(t.ui.doc->repeatInstances("Item").empty());
+    REQUIRE(t.row.valid());
+    REQUIRE(t.ui.doc->arena().parent(t.row.node) == kInvalidNode);
+    return t;
+}
+
+size_t childCount(const Document& doc, NodeId node) {
+    size_t n = 0;
+    for (NodeId c = doc.arena().firstChild(node); c != kInvalidNode; c = doc.arena().nextSibling(c)) {
+        ++n;
+    }
+    return n;
+}
+
+/// The instance is reused in place: the same root node, attached under the repeat again.
+void checkReused(PooledTree& t) {
+    REQUIRE(t.ui.doc->setPortText(t.items, itemsJson(1)) == Status::kOk);
+    t.ui.step();
+    t.ui.step();
+    ElementRef again = t.ui.doc->byId("Item/0/Row");
+    REQUIRE(again.valid());
+    CHECK(again.node == t.row.node);
+    CHECK(t.ui.doc->arena().parent(again.node) != t.other.node);
+    CHECK(t.ui.doc->arena().parent(again.node) != kInvalidNode);
+    CHECK(childCount(*t.ui.doc, again.node) == 1);  // Only its <span>.
+    CHECK(again.layoutBox().width == doctest::Approx(50.0f));
+}
+
+}  // namespace
+
+TEST_CASE("T-845: appendChild refuses a pooled child") {
+    PooledTree t = openPooledTree();
+    const size_t before = childCount(*t.ui.doc, t.other.node);
+    t.ui.doc->appendChild(t.other, t.row);
+    CHECK(t.ui.doc->arena().parent(t.row.node) == kInvalidNode);
+    CHECK(childCount(*t.ui.doc, t.other.node) == before);
+    checkReused(t);
+}
+
+TEST_CASE("T-845: insertBefore refuses a pooled child, with and without a before node") {
+    PooledTree t = openPooledTree();
+    ElementRef first = t.ui.doc->createElement("div");
+    t.ui.doc->appendChild(t.other, first);
+    REQUIRE(t.ui.doc->arena().parent(first.node) == t.other.node);
+    const size_t before = childCount(*t.ui.doc, t.other.node);
+    t.ui.doc->insertBefore(t.other, t.row, first);
+    CHECK(t.ui.doc->arena().parent(t.row.node) == kInvalidNode);
+    t.ui.doc->insertBefore(t.other, t.row, ElementRef{});
+    CHECK(t.ui.doc->arena().parent(t.row.node) == kInvalidNode);
+    CHECK(childCount(*t.ui.doc, t.other.node) == before);
+    checkReused(t);
+}
+
+TEST_CASE("T-845: appendChild / insertBefore refuse a pooled parent") {
+    PooledTree t = openPooledTree();
+    ElementRef fresh = t.ui.doc->createElement("div");
+    t.ui.doc->appendChild(t.row, fresh);
+    CHECK(t.ui.doc->arena().parent(fresh.node) == kInvalidNode);
+    t.ui.doc->appendChild(t.name, fresh);  // A pooled node below the instance root.
+    CHECK(t.ui.doc->arena().parent(fresh.node) == kInvalidNode);
+    t.ui.doc->insertBefore(t.row, fresh, t.name);
+    CHECK(t.ui.doc->arena().parent(fresh.node) == kInvalidNode);
+    // The detached node stays usable elsewhere.
+    t.ui.doc->appendChild(t.other, fresh);
+    CHECK(t.ui.doc->arena().parent(fresh.node) == t.other.node);
+    checkReused(t);
+}

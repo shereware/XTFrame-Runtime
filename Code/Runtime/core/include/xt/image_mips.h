@@ -72,6 +72,12 @@ void premultiplyRgba8(const uint8_t* src, size_t count, uint8_t* dst);
 /// `out` empty, for an image without pixels.
 bool buildImageMipChain(const ImageData& image, ImageMipChain& out);
 
+/// T-835 (Docs/design/10-backends.md, the 10.2.5 amendment): builds levels 1..n-1 from `level0`, the
+/// `w` x `h` level 0 already premultiplied with premultiplyRgba8 (tightly packed), into `out` -- what
+/// buildImageMipChain() does after premultiplying, for a caller that keeps that level 0 (the software
+/// renderer filters it). False, with `out` empty, for no pixels.
+bool buildImageMipChainPremultiplied(const uint8_t* level0, int w, int h, ImageMipChain& out);
+
 /// One box step of the chain: `dst` (`max(1, w >> 1)` x `max(1, h >> 1)`) from `src` (`w` x `h`),
 /// both premultiplied RGBA8, `s / 4` rounded to nearest with ties to even (as a GPU stores the mean into
 /// a unorm level: the GPU chain then stays within one step of this one at every level).

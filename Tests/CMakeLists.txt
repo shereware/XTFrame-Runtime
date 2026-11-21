@@ -61,6 +61,7 @@ add_executable(xt_tests
     unit/test_sw_layer_mask.cpp
     unit/test_sw_stroke_image.cpp
     unit/test_image_mips.cpp  # T-665
+    unit/test_sw_premul_sampling.cpp  # T-835
     unit/test_sw_3d.cpp
     unit/test_sw_partial.cpp
     unit/test_sw_direct.cpp
@@ -163,6 +164,7 @@ add_executable(xt_tests
     unit/test_timeline_clips.cpp
     unit/test_svg_style_rules.cpp
     unit/test_triggers.cpp
+    unit/test_trigger_validate.cpp  # T-844
     unit/test_state_scope.cpp  # T-738
     unit/test_symbol_namespaces.cpp  # T-740
     unit/test_bindings.cpp

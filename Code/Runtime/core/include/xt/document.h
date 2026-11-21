@@ -567,7 +567,8 @@ public:
     /// Appends `child` (which must be valid, detached and from this Document) to `parent`. Marks
     /// `parent` kDirtyTree|kDirtyLayout and the whole attached subtree kDirtyStyle (first resolve).
     /// No-op when the preconditions do not hold, and (T-255b) when the insert would put a node at
-    /// depth kMaxElementDepth or deeper (the bound a loaded tree has).
+    /// depth kMaxElementDepth or deeper (the bound a loaded tree has), and (T-845) when `parent` or
+    /// `child` is a pooled `<repeat>` instance node (refused as ElementRef's mutators refuse it).
     void appendChild(ElementRef parent, ElementRef child);
     /// Same, inserting before `before` (which must be a current child of `parent`; an invalid
     /// `before` behaves like appendChild).

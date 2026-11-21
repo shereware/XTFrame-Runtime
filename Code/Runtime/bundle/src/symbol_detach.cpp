@@ -126,6 +126,29 @@ std::string rebasePathsDetach(std::string text, const fs::path& fromDir, const f
     return out;
 }
 
+/// T-843: every quoted reference `"<from>#..."` / `"./<from>..."` (either quote) of `text` naming
+/// `to` instead -- the `@timeline <n> from "<file>#<timeline>"` of a symbol's `.xtanim.json`.
+std::string renameAnimRefDetach(std::string text, const std::string& from, const std::string& to) {
+    for (size_t at = 0; at < text.size(); ++at) {
+        const char quote = text[at];
+        if (quote != '"' && quote != '\'') {
+            continue;
+        }
+        size_t start = at + 1;
+        if (text.compare(start, 2, "./") == 0) {
+            start += 2;
+        }
+        const size_t end = start + from.size();
+        if (text.compare(start, from.size(), from) != 0 || end >= text.size() ||
+            (text[end] != '#' && text[end] != quote)) {
+            continue;
+        }
+        text.replace(at + 1, end - (at + 1), to);
+        at += to.size();
+    }
+    return text;
+}
+
 std::string lowerAsciiDetach(std::string text) {
     for (char& c : text) {
         if (c >= 'A' && c <= 'Z') {
@@ -192,6 +215,20 @@ void detachImplDetach(const UiProject& project, std::string_view qualifiedIn, st
         }
         text = rebasePathsDetach(text, nsDir.lexically_normal(), symbolsDir.lexically_normal());
     }
+    // T-843: the symbol's `<bare>.xtanim.json` beside it (28; the name the library copy and the
+    // move use) goes with the copy as `<newName>.xtanim.json`, and the copy reads its own.
+    const fs::path sourceAnim = source.parent_path() / pathFromUtf8(bare + ".xtanim.json");
+    const fs::path targetAnim = target.parent_path() / pathFromUtf8(newName + ".xtanim.json");
+    bool haveAnim = false;
+    const std::string animText =
+        fs::is_regular_file(sourceAnim, ec) ? st::readText(sourceAnim, &haveAnim) : std::string();
+    if (haveAnim) {
+        if (fs::exists(targetAnim, ec)) {
+            return fail(Status::kInvalidArgument,
+                        "the project already has " + detail::relativeText(root, targetAnim));
+        }
+        text = renameAnimRefDetach(text, bare + ".xtanim.json", newName + ".xtanim.json");
+    }
 
     // The tokens: the project's values now (implied layer underneath), var() resolved.
     fs::path tokensFile;
@@ -230,6 +267,9 @@ void detachImplDetach(const UiProject& project, std::string_view qualifiedIn, st
     report.name = newName;
     report.file = detail::relativeText(root, target);
     changes.push_back(FileChange{report.file, false, std::string(), text});
+    if (haveAnim) {
+        changes.push_back(FileChange{detail::relativeText(root, targetAnim), false, std::string(), animText});
+    }
     if (haveTokens && !appended.empty()) {
         FileChange change;
         change.path = detail::relativeText(root, tokensFile);

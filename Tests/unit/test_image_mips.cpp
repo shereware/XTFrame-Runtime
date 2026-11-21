@@ -250,10 +250,13 @@ TEST_CASE("T-665 SwMipCache: built once, resolver chains, compressed without lev
     CHECK(first->levels.size() == 5);
     CHECK(cache.chainFor(&resolver, view, a, 1.0f, *ia) == first);
     CHECK(cache.entries() == 1);
-    CHECK(cache.bytes() == first->byteSize());
-    // The resolver's own chain is used as it is, nothing built here.
+    // T-835: the premultiplied level 0 (32x32) is kept and counted with the chain.
+    CHECK(cache.bytes() == first->byteSize() + 32 * 32 * 4);
+    // The resolver's own chain is used as it is, nothing built here (T-835: only the premultiplied
+    // level 0 is kept, in an entry of its own).
     CHECK(cache.chainFor(&resolver, view, b, 1.0f, *resolver.imageView(b, view)) == &resolver.ownChain);
-    CHECK(cache.entries() == 1);
+    CHECK(cache.entries() == 2);
+    CHECK(cache.bytes() == (16 * 16 + 8 * 8 + 4 * 4 + 2 * 2 + 1) * 4 + 32 * 32 * 4 + 8 * 8 * 4);
     // A block-compressed GPU form without a stored chain keeps the single level.
     CHECK(cache.chainFor(&resolver, view, comp, 1.0f, *resolver.imageView(comp, view)) == nullptr);
     // T-686 (10 §10.13 ruling 3): one with a stored chain samples the stored levels, decoded (8x8 BC7:
@@ -270,12 +273,12 @@ TEST_CASE("T-665 SwMipCache: built once, resolver chains, compressed without lev
     CHECK(stored->levels.size() == 3);
     CHECK(stored->levels[0].width == 4);
     CHECK(stored->levels[2].width == 1);
-    CHECK(cache.entries() == 2);
+    CHECK(cache.entries() == 3);
     cache.invalidateAsset(comp, nullptr);
-    CHECK(cache.entries() == 1);
+    CHECK(cache.entries() == 2);
     // The 2x variant is another entry.
     cache.chainFor(&resolver, view, a, 2.0f, *ia);
-    CHECK(cache.entries() == 2);
+    CHECK(cache.entries() == 3);
     cache.invalidateAll();
     CHECK(cache.entries() == 0);
     cache.chainFor(&resolver, view, a, 1.0f, *ia);

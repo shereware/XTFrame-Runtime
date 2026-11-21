@@ -28,6 +28,7 @@
 #include <dxgi1_4.h>
 // clang-format on
 #pragma comment(lib, "dxgi.lib")
+#pragma comment(lib, "dxguid.lib")  // IID_* (T-848: clang rejects __uuidof as an extension)
 #endif
 
 namespace {
@@ -61,12 +62,12 @@ double privateMb() {
 [[maybe_unused]] double videoMb() {
 #ifdef _WIN32
     IDXGIFactory1* factory = nullptr;
-    if (FAILED(CreateDXGIFactory1(__uuidof(IDXGIFactory1), reinterpret_cast<void**>(&factory)))) return 0.0;
+    if (FAILED(CreateDXGIFactory1(IID_IDXGIFactory1, reinterpret_cast<void**>(&factory)))) return 0.0;
     double total = 0.0;
     IDXGIAdapter1* adapter = nullptr;
     for (UINT i = 0; factory->EnumAdapters1(i, &adapter) != DXGI_ERROR_NOT_FOUND; ++i) {
         IDXGIAdapter3* a3 = nullptr;
-        if (SUCCEEDED(adapter->QueryInterface(__uuidof(IDXGIAdapter3), reinterpret_cast<void**>(&a3)))) {
+        if (SUCCEEDED(adapter->QueryInterface(IID_IDXGIAdapter3, reinterpret_cast<void**>(&a3)))) {
             DXGI_QUERY_VIDEO_MEMORY_INFO info{};
             if (SUCCEEDED(a3->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &info)))
                 total += static_cast<double>(info.CurrentUsage);

@@ -686,8 +686,8 @@ void EventDispatcher::handlePointerDown(NodeArena& arena, NodeId root, const Inp
     // T-394 (08.15): only the primary button starts one, unless `draggable="any-button"`.
     for (NodeId n = h; n != kInvalidNode; n = arena.parent(n)) {
         if (arena.kind(n) == NodeKind::Element && (arena.common(n).flags2 & kDraggable) != 0) {
-            const bool buttonOk =
-                input.button == PointerButton::Left || attributeOf(arena, n, "draggable") == "any-button";
+            const bool buttonOk = input.button == PointerButton::Left ||
+                                  trimAsciiSpace(attributeOf(arena, n, "draggable")) == "any-button";
             if (buttonOk && !isDisabled(arena, n) && !m_drag.active) {
                 m_drag = DragState{};
                 m_drag.pending = true;

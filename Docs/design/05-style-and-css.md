@@ -66,15 +66,15 @@ CSS 子集。解析器自寫。
 
 | 屬性 | StyleProp | 型別 | 值 | 初始值 | 繼承 |
 |---|---|---|---|---|---|
-| `display` | 160 | Enum | `block`, `flex`, `none` | block | 否 |
+| `display` | 160 | Enum | `block`, `flex`, `none`, `grid` | block | 否 |
 | `position` | 161 | Enum | `static`, `relative`, `absolute` | static | 否 |
 | `flex-direction` | 162 | Enum | `row`, `column`, `row-reverse`, `column-reverse` | row | 否 |
-| `flex-wrap` | 163 | Enum | `nowrap`, `wrap` | nowrap | 否 |
-| `justify-content` | 164 | Enum | `flex-start`, `flex-end`, `center`, `space-between`, `space-around`, `space-evenly` | flex-start | 否 |
+| `flex-wrap` | 163 | Enum | `nowrap`, `wrap`, `wrap-reverse` | nowrap | 否 |
+| `justify-content` | 164 | Enum | `flex-start`, `flex-end`, `center`, `space-between`, `space-around`, `space-evenly`, `stretch` | flex-start | 否 |
 | `align-items` | 165 | Enum | `stretch`, `flex-start`, `flex-end`, `center` | stretch | 否 |
 | `align-self` | 166 | Enum | `auto` + align-items 的值 | auto | 否 |
 | `align-content` | 167 | Enum | 同 justify-content + `stretch` | stretch | 否 |
-| `overflow` | 168 | Enum | `visible`, `hidden`, `scroll` | visible | 否 |
+| `overflow` | 168 | Enum | `visible`, `hidden`, `scroll`, `auto` | visible | 否 |
 | `z-index` | 169 | Float | 整數 | 0 | 否 |
 | `visibility` | 170 | Enum | `visible`, `hidden` | visible | 是 |
 | `pointer-events` | 171 | Enum | `auto`, `none` | auto | 是 |

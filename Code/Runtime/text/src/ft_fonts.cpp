@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <climits>
 #include <cstdio>
+#include <span>
 
 #include FT_MULTIPLE_MASTERS_H
 #include FT_TRUETYPE_TABLES_H
@@ -106,6 +108,21 @@ int weightRank(uint16_t lo, uint16_t hi, uint16_t target) {
     if (target < 400) return heavier ? 2000 + distance : 1000 + distance;
     return heavier ? 1000 + distance : 2000 + distance;
 }
+
+// T-853 (07 §7.21.3 step 1): font-stretch matching over a face's width range [lo, hi] (tenths of
+// a percent). A range containing `target` wins; otherwise for a target <= 100% narrower faces
+// first (closest first), then wider ones (closest first); above 100% the other way round. Returns
+// a key, lower = better.
+int widthRank(uint16_t lo, uint16_t hi, uint16_t target) {
+    if (lo <= target && target <= hi) return 0;
+    const bool wider = lo > target;
+    const int distance = wider ? lo - target : target - hi;
+    const bool preferNarrower = target <= 1000;
+    return (wider != preferNarrower ? 100000 : 200000) + distance;
+}
+
+// T-853: the width a request asks for until `font-stretch` exists (07 §7.21.3): normal, 100%.
+constexpr uint16_t kRequestedWidth = 1000;
 
 // T-569: synthetic-bold strength (fraction of the em) for a request `requested` >= 600 on a family
 // whose heaviest face is `heaviest` < 600. 400 -> 700 gives em / 36 (FreeType's own
@@ -211,6 +228,12 @@ uint16_t fixedWeight(FT_Fixed value) {
     return static_cast<uint16_t>(std::clamp<long>(static_cast<long>((value + 0x8000) >> 16), 1, 1000));
 }
 
+// T-853: a 16.16 `wdth` axis value (percent) in tenths of a percent (1..10000).
+uint16_t fixedTenths(FT_Fixed value) {
+    const long long tenths = (static_cast<long long>(value) * 10 + 0x8000) >> 16;
+    return static_cast<uint16_t>(std::clamp<long long>(tenths, 1, 10000));
+}
+
 bool isCollectionPath(std::string_view path) {
     if (path.size() < 4) return false;
     const std::string_view ext = path.substr(path.size() - 4);
@@ -285,7 +308,32 @@ bool FontTable::loadFace(std::vector<uint8_t> memory, RegisteredFont& out) const
     out.memory = std::move(memory);
     setFamily(out, face->family_name != nullptr ? face->family_name : "");
     readFaceFacts(face, out);
+    // T-853: the legacy family and the static width come from the same name-table scan a
+    // deferred font is registered with.
+    FontNameInfo info;
+    if (readFontNameTable(std::span<const uint8_t>(out.memory), info)) setNameFacts(out, info);
     return true;
+}
+
+void FontTable::setNameFacts(RegisteredFont& font, const FontNameInfo& info) {
+    font.legacyFamily.clear();
+    font.legacyKey.clear();
+    font.legacyHash = 0;
+    if (!info.legacyFamily.empty() && !iequals(info.legacyFamily, font.family)) {
+        font.legacyFamily = info.legacyFamily;
+        font.legacyKey.resize(font.legacyFamily.size());
+        for (size_t i = 0; i < font.legacyFamily.size(); ++i) {
+            font.legacyKey[i] =
+                static_cast<char>(std::tolower(static_cast<unsigned char>(font.legacyFamily[i])));
+        }
+        font.legacyHash = lowerHash(font.legacyFamily);
+    }
+    if (font.variableWidth) return;  // An open face's `wdth` axis (readFaceFacts()) stands.
+    const FaceWidth width = faceWidth(info);
+    font.widthMin = width.min;
+    font.widthMax = width.max;
+    font.widthDefault = width.def;
+    font.variableWidth = info.variableWidth && width.min <= width.max;
 }
 
 void FontTable::readFaceFacts(FT_Face face, RegisteredFont& font) const {
@@ -306,15 +354,26 @@ void FontTable::readFaceFacts(FT_Face face, RegisteredFont& font) const {
     font.weightMin = font.weight;
     font.weightMax = font.weight;
     font.variable = false;
+    font.variableWidth = false;
     FT_MM_Var* mm = nullptr;
     if (FT_HAS_MULTIPLE_MASTERS(face) && FT_Get_MM_Var(face, &mm) == 0 && mm != nullptr) {
         for (FT_UInt a = 0; a < mm->num_axis; ++a) {
-            if (mm->axis[a].tag != FT_MAKE_TAG('w', 'g', 'h', 't')) continue;
-            font.variable = true;
-            font.weightMin = fixedWeight(mm->axis[a].minimum);
-            font.weightMax = fixedWeight(mm->axis[a].maximum);
-            font.weight = fixedWeight(mm->axis[a].def);
-            break;
+            if (mm->axis[a].tag == FT_MAKE_TAG('w', 'g', 'h', 't') && !font.variable) {
+                font.variable = true;
+                font.weightMin = fixedWeight(mm->axis[a].minimum);
+                font.weightMax = fixedWeight(mm->axis[a].maximum);
+                font.weight = fixedWeight(mm->axis[a].def);
+            } else if (mm->axis[a].tag == FT_MAKE_TAG('w', 'd', 't', 'h') && !font.variableWidth) {
+                // T-853 (07 §7.21.1): the `wdth` axis range, the same as the deferred scan.
+                const uint16_t lo = fixedTenths(mm->axis[a].minimum);
+                const uint16_t hi = fixedTenths(mm->axis[a].maximum);
+                if (lo <= hi) {
+                    font.variableWidth = true;
+                    font.widthMin = lo;
+                    font.widthMax = hi;
+                    font.widthDefault = std::clamp(fixedTenths(mm->axis[a].def), lo, hi);
+                }
+            }
         }
         FT_Done_MM_Var(library_, mm);
     }
@@ -357,7 +416,8 @@ uint32_t FontTable::addFontFileDeferred(std::string_view path, uint32_t maxFaces
         font.path = std::string(path);
         font.faceIndex = static_cast<long>(index);
         font.collection = faces > 1 || isCollectionPath(path);
-        setFamily(font, std::move(info.family));
+        setFamily(font, info.family);
+        setNameFacts(font, info);  // T-853: legacy family, width
         font.subfamily = std::move(info.subfamily);
         font.postScriptName = std::move(info.postScriptName);
         if (info.weightClass != 0) {
@@ -413,13 +473,22 @@ long FontTable::fontFaceIndex(FontId id) const {
     return fonts_[id].faceIndex;
 }
 
+std::string FontTable::legacyFamily(FontId id) const {
+    if (id >= fonts_.size()) return std::string();
+    return fonts_[id].legacyFamily;
+}
+
 float FontTable::embolden(FontId id) const { return id < fonts_.size() ? fonts_[id].embolden : 0.0f; }
 
 std::string FontTable::missingCjkFamily(const std::vector<std::string>& stack) const {
     return firstMissingCjkFamily(stack, [this](std::string_view family) {
         FamilyPresence state = FamilyPresence::kAbsent;
         for (const RegisteredFont& f : fonts_) {
-            if (f.broken || f.base != kInvalidFont || !iequals(f.family, family)) continue;
+            // T-853 (07 §7.21.2): a legacy family name is installed too.
+            if (f.broken || f.base != kInvalidFont ||
+                (!iequals(f.family, family) && (f.legacyFamily.empty() || !iequals(f.legacyFamily, family)))) {
+                continue;
+            }
             if (f.cjk) return FamilyPresence::kInstalledCjk;
             state = FamilyPresence::kInstalled;
         }
@@ -427,9 +496,9 @@ std::string FontTable::missingCjkFamily(const std::vector<std::string>& stack) c
     });
 }
 
-FontId FontTable::instanceOf(FontId base, uint16_t wght, float strength) const {
-    if (wght == 0 && strength <= 0.0f) return base;
-    const auto key = std::make_tuple(base, wght, static_cast<int>(std::lround(strength * 1000.0f)));
+FontId FontTable::instanceOf(FontId base, uint16_t wght, uint16_t width, float strength) const {
+    if (wght == 0 && width == 0 && strength <= 0.0f) return base;
+    const auto key = std::make_tuple(base, wght, width, static_cast<int>(std::lround(strength * 1000.0f)));
     const auto found = instances_.find(key);
     if (found != instances_.end()) return found->second;
     if (face(base) == nullptr) return base;  // Opens a deferred base; a broken one stays itself.
@@ -443,15 +512,21 @@ FontId FontTable::instanceOf(FontId base, uint16_t wght, float strength) const {
         instances_.emplace(key, base);
         return base;
     }
-    if (wght != 0) {
+    if (wght != 0 || width != 0) {
         // T-569 (07 §7.20): a variable face's `wght` axis set to the matched weight, the other
-        // axes left at their defaults.
+        // axes left at their defaults. T-853 (07 §7.21.3): `wdth` set to `width` when given.
         FT_MM_Var* mm = nullptr;
         if (FT_Get_MM_Var(instanceFace, &mm) == 0 && mm != nullptr) {
             std::vector<FT_Fixed> coords(mm->num_axis);
             for (FT_UInt a = 0; a < mm->num_axis; ++a) {
-                const bool weightAxis = mm->axis[a].tag == FT_MAKE_TAG('w', 'g', 'h', 't');
-                coords[a] = weightAxis ? static_cast<FT_Fixed>(wght) * 65536 : mm->axis[a].def;
+                const FT_ULong tag = mm->axis[a].tag;
+                if (wght != 0 && tag == FT_MAKE_TAG('w', 'g', 'h', 't')) {
+                    coords[a] = static_cast<FT_Fixed>(wght) * 65536;
+                } else if (width != 0 && tag == FT_MAKE_TAG('w', 'd', 't', 'h')) {
+                    coords[a] = static_cast<FT_Fixed>(width) * 65536 / 10;
+                } else {
+                    coords[a] = mm->axis[a].def;
+                }
             }
             FT_Set_Var_Design_Coordinates(instanceFace, mm->num_axis, coords.data());
             FT_Done_MM_Var(library_, mm);
@@ -466,6 +541,13 @@ FontId FontTable::instanceOf(FontId base, uint16_t wght, float strength) const {
     inst.hintGroups = b.hintGroups;
     inst.subfamily = b.subfamily;
     inst.postScriptName = b.postScriptName;
+    inst.legacyFamily = b.legacyFamily;
+    inst.legacyKey = b.legacyKey;
+    inst.legacyHash = b.legacyHash;
+    inst.widthDefault = width != 0 ? width : b.widthDefault;
+    inst.widthMin = width != 0 ? width : b.widthMin;
+    inst.widthMax = width != 0 ? width : b.widthMax;
+    inst.variableWidth = width == 0 && b.variableWidth;
     inst.path = b.path;
     inst.faceIndex = b.faceIndex;
     inst.collection = b.collection;
@@ -476,6 +558,7 @@ FontId FontTable::instanceOf(FontId base, uint16_t wght, float strength) const {
     inst.cjk = b.cjk;
     inst.base = base;
     inst.instanceWeight = wght;
+    inst.instanceWidth = width;
     inst.embolden = strength;
     fonts_.push_back(std::move(inst));
     const auto id = static_cast<FontId>(fonts_.size() - 1);
@@ -529,17 +612,45 @@ FT_Face FontTable::openDeferred(size_t index) const {
 }
 
 FontId FontTable::matchFamily(std::string_view family, uint16_t weight, bool italic) const {
-    // T-569 (07 §7.20): italic match first, then CSS Fonts 4 weight ranking (weightRank()), ties
-    // to the earlier-registered face. The family's heaviest face decides synthetic bold.
-    // T-673: compared against each font's precomputed lower-cased family (hash first).
+    // T-853 (07 §7.21.2): the candidates are the faces whose typographic family is `family`; only
+    // when there is none, the faces whose legacy family (nameID 1) is. T-673: compared against
+    // each font's precomputed lower-cased names (hash first).
     const uint64_t hash = lowerHash(family);
+    const auto typographic = [&](const RegisteredFont& f) {
+        return f.familyHash == hash && keyEquals(f.familyKey, family);
+    };
+    const auto legacy = [&](const RegisteredFont& f) {
+        return !f.legacyKey.empty() && f.legacyHash == hash && keyEquals(f.legacyKey, family);
+    };
+    const auto usable = [](const RegisteredFont& f) { return !f.broken && f.base == kInvalidFont; };
+    bool byLegacy = true;
+    for (const RegisteredFont& f : fonts_) {
+        if (usable(f) && typographic(f)) {
+            byLegacy = false;
+            break;
+        }
+    }
+    const auto candidate = [&](const RegisteredFont& f) {
+        return usable(f) && (byLegacy ? legacy(f) : typographic(f));
+    };
+    // T-853 (07 §7.21.3 step 1): only the faces of the best width go on to the italic and weight
+    // steps (widthRank()).
+    int bestWidth = INT_MAX;
+    for (const RegisteredFont& f : fonts_) {
+        if (candidate(f)) bestWidth = std::min(bestWidth, widthRank(f.widthMin, f.widthMax, kRequestedWidth));
+    }
+    if (bestWidth == INT_MAX) return kInvalidFont;
+    const auto inWidthGroup = [&](const RegisteredFont& f) {
+        return candidate(f) && widthRank(f.widthMin, f.widthMax, kRequestedWidth) == bestWidth;
+    };
+    // T-569 (07 §7.20): italic match first, then CSS Fonts 4 weight ranking (weightRank()), ties
+    // to the earlier-registered face. The heaviest face of the group decides synthetic bold.
     FontId best = kInvalidFont;
     int bestRank = 0;
     bool bestItalic = false;
     for (size_t i = 0; i < fonts_.size(); ++i) {
         const RegisteredFont& f = fonts_[i];
-        if (f.broken || f.base != kInvalidFont) continue;
-        if (f.familyHash != hash || !keyEquals(f.familyKey, family)) continue;
+        if (!inWidthGroup(f)) continue;
         const int rank = weightRank(f.weightMin, f.weightMax, weight);
         const bool italicMatch = f.italic == italic;
         if (best == kInvalidFont || (italicMatch && !bestItalic) ||
@@ -552,15 +663,16 @@ FontId FontTable::matchFamily(std::string_view family, uint16_t weight, bool ita
     if (best == kInvalidFont) return best;
     uint16_t heaviest = 0;
     for (const RegisteredFont& f : fonts_) {
-        if (!f.broken && f.base == kInvalidFont && f.italic == fonts_[best].italic && f.familyHash == hash &&
-            keyEquals(f.familyKey, family)) {
-            heaviest = std::max(heaviest, f.weightMax);
-        }
+        if (f.italic == fonts_[best].italic && inWidthGroup(f)) heaviest = std::max(heaviest, f.weightMax);
     }
     const RegisteredFont& chosen = fonts_[best];
     const uint16_t effective = std::clamp(weight, chosen.weightMin, chosen.weightMax);
     const uint16_t wght = chosen.variable && effective != chosen.weight ? effective : 0;
-    return instanceOf(best, wght, emboldenFor(weight, heaviest));
+    // T-853 (07 §7.21.3): a `wdth` axis whose default is not 100% but whose range holds it is set
+    // to 100%; any other axis default stays (Bahnschrift's default is 100%: unchanged).
+    const bool setWidth = chosen.variableWidth && chosen.widthDefault != kRequestedWidth &&
+                          chosen.widthMin <= kRequestedWidth && kRequestedWidth <= chosen.widthMax;
+    return instanceOf(best, wght, setWidth ? kRequestedWidth : 0, emboldenFor(weight, heaviest));
 }
 
 FontId FontTable::match(const FontRequest& request) const {

@@ -10,8 +10,9 @@
 #include <utility>
 #include <vector>
 
-#include "css_number.h"  // Code/Runtime/core/src: the CSS number (T-272).
-#include "style_emit.h"  // selectorMatchesStatically().
+#include "css_number.h"      // Code/Runtime/core/src: the CSS number (T-272).
+#include "style_emit.h"      // selectorMatchesStatically().
+#include "trigger_tables.h"  // T-844: the event / action tables.
 #include "xt/compile/aliases.h"
 #include "xt/compile/validate.h"
 #include "xt/input.h"  // KeyCode, for `key(<k>)`.
@@ -413,8 +414,13 @@ bool parseEvent(std::string_view raw, ParsedEvent& out, std::string& err) {
     }
     // T-390 (08.13): `press(<button>)`, `release(...)`, `click(...)`, `dblclick(...)`,
     // `pointermove(...)` (and the pointerdown / pointerup spellings) filter on the button.
-    for (const char* base :
-         {"press", "release", "click", "dblclick", "pointermove", "pointerdown", "pointerup"}) {
+    // T-844: the Button rows of the event table (trigger_tables.cpp), `<base>({0})`.
+    for (const TriggerEventRow& row : triggerEventRows()) {
+        if (row.form != TriggerEventForm::Button) {
+            continue;
+        }
+        const std::string_view pattern = row.info.pattern;
+        const std::string_view base = pattern.substr(0, pattern.size() - 5);  // Without `({0})`.
         std::string arg;
         std::string_view rest;
         if (!splitCall(text, base, arg, rest)) {
@@ -422,7 +428,7 @@ bool parseEvent(std::string_view raw, ParsedEvent& out, std::string& err) {
         }
         PointerButton button = PointerButton::Left;
         if (!rest.empty() || !pointerButtonFromName(arg, button)) {
-            err = std::string("expected ") + base + "(left|middle|right)";
+            err = "expected " + std::string(base) + "(left|middle|right)";
             return false;
         }
         if (!parseEvent(base, out, err)) {
@@ -432,41 +438,11 @@ bool parseEvent(std::string_view raw, ParsedEvent& out, std::string& err) {
         out.canonical += "(" + arg + ")";
         return true;
     }
-    struct Simple {
-        const char* name;
-        TriggerEvent event;
-    };
-    static constexpr Simple kSimple[] = {
-        {"hover", TriggerEvent::Hover},
-        {"leave", TriggerEvent::Leave},
-        {"press", TriggerEvent::Press},
-        {"release", TriggerEvent::Release},
-        {"click", TriggerEvent::Click},
-        {"dblclick", TriggerEvent::DoubleClick},  // T-379 (08.10).
-        // T-386 (08.11): `pointerdown` / `pointerup` are `press` / `release` (same canonical name).
-        {"pointerdown", TriggerEvent::Press},
-        {"pointerup", TriggerEvent::Release},
-        {"pointermove", TriggerEvent::PointerMove},
-        {"pointercancel", TriggerEvent::PointerCancel},
-        {"pointerdrag", TriggerEvent::PointerDrag},    // T-394 (08.15).
-        {"scroll", TriggerEvent::Scroll},              // T-387 (08.12).
-        {"outsidepress", TriggerEvent::OutsidePress},  // T-387 (08.12): light-dismiss.
-        {"focus", TriggerEvent::Focus},
-        {"blur", TriggerEvent::Blur},
-        {"focusin", TriggerEvent::FocusIn},    // T-397 (08.17): bubbling focus.
-        {"focusout", TriggerEvent::FocusOut},  // T-397 (08.17).
-        {"check", TriggerEvent::Check},
-        {"uncheck", TriggerEvent::Uncheck},
-        {"show", TriggerEvent::Show},
-        {"hide", TriggerEvent::Hide},
-        {"item-enter", TriggerEvent::ItemEnter},  // T-177: `<repeat item-enter>` (template root).
-        {"item-exit", TriggerEvent::ItemExit},    // T-177: `<repeat item-exit>`.
-        {"change", TriggerEvent::Change},         // T-392 (27.3.5).
-        {"input", TriggerEvent::Input},           // T-392 (27.3.5).
-    };
-    for (const Simple& s : kSimple) {
-        if (text == s.name) {
-            out.event = s.event;
+    // T-844: the Simple rows of the event table (trigger_tables.cpp); `pointerdown` / `pointerup`
+    // (T-386, 08.11) are `press` / `release` with the same canonical name.
+    for (const TriggerEventRow& row : triggerEventRows()) {
+        if (row.form == TriggerEventForm::Simple && text == row.info.pattern) {
+            out.event = row.event;
             out.alias = findNameAlias(AliasKind::Trigger, text);  // T-408: pointerdown / pointerup.
             out.canonical = out.alias != nullptr ? out.alias->replacement : text;
             return true;
@@ -661,6 +637,77 @@ struct CallTriggerEmit {
     std::vector<Arg> args;
     bool hasParens = false;
 };
+
+/// T-844: the forms of a `set()` value, read by the compiler (Emitter::setValue()) and by
+/// validateTriggerActions() alike.
+enum class SetValueForm : uint8_t { String, Toggle, Number, Pointer, ElementValue, EventValue, Source };
+
+/// T-844: classifies a `set()` value (27.2.3; T-386 pointer values, T-392 `value`, T-411 bind
+/// sources). `number` receives a Number's value (`true` = 1, `false` = 0), `pointer` a Pointer's
+/// source and `converters` the text after the `|` of a Pointer / ElementValue / EventValue. False
+/// with `err` when the value is malformed or has none of the forms.
+bool parseSetValue(const Arg& v, SetValueForm& form, float& number, SetSource& pointer,
+                   std::string& converters, std::string& err) {
+    if (v.isString) {
+        form = SetValueForm::String;
+        return true;
+    }
+    if (v.value == "toggle") {
+        form = SetValueForm::Toggle;
+        return true;
+    }
+    if (v.value == "true" || v.value == "false") {
+        form = SetValueForm::Number;
+        number = v.value == "true" ? 1.0f : 0.0f;
+        return true;
+    }
+    if (parseNumberTriggerEmit(v.value, number)) {
+        form = SetValueForm::Number;
+        return true;
+    }
+    if (v.value.rfind("pointer.", 0) == 0) {
+        // T-386 (08.11): the element id is resolved per element (emitElements).
+        form = SetValueForm::Pointer;
+        std::string id;
+        return parsePointerValue(v.value, pointer, id, converters, err) == 1;
+    }
+    if (v.value.rfind("event.value", 0) == 0 || isElementValue(v.value)) {
+        // T-392 (27.3.5): `value` is the trigger element's text (checked per trigger event).
+        const bool element = v.value.rfind("event.value", 0) != 0;
+        const size_t head = element ? 5 : 11;
+        form = element ? SetValueForm::ElementValue : SetValueForm::EventValue;
+        const std::string rest = trimCopyTriggerEmit(std::string_view(v.value).substr(head));
+        if (!rest.empty()) {
+            if (rest[0] != '|' || trimCopyTriggerEmit(std::string_view(rest).substr(1)).empty()) {
+                err = "set() value \"" + v.value + "\": expected '|' and a converter after " +
+                      (element ? "value" : "event.value");
+                return false;
+            }
+            converters = trimCopyTriggerEmit(std::string_view(rest).substr(1));
+        }
+        return true;
+    }
+    if (isSourceValue(v.value)) {
+        form = SetValueForm::Source;  // T-411 (27 §27.2.3): compiled per element.
+        return true;
+    }
+    err =
+        "set() value must be a number, true, false, toggle, a quoted string, event.value [| "
+        "<converter> ...], value [| <converter> ...], pointer.fraction|local(#<id>).x|.y, "
+        "port(<name>), item(<field>), item(), repeat.index or repeat.count [| <converter> ...], "
+        "got \"" +
+        v.value + "\"";
+    return false;
+}
+
+/// T-844: a `spawn()` `lifetime=` value, a positive time (makeSpawn() and validateTriggerActions()).
+bool parseSpawnLifetime(const std::string& value, float& seconds, std::string& err) {
+    if (!parseSecondsTriggerEmit(value, seconds) || !(seconds > 0.0f)) {
+        err = "spawn() lifetime must be a positive time, got \"" + value + "\"";
+        return false;
+    }
+    return true;
+}
 
 /// T-390 (08.13): one term of an `if` condition list (`[not] <term> and ...`).
 struct CondTerm {
@@ -1645,7 +1692,7 @@ private:
                                                       : TriggerMode::Toggle);
             return true;
         };
-        if (!c.hasParens && c.name != "show" && c.name != "hide" && c.name != "remove") {
+        if (!c.hasParens && !triggerActionBare(c.name)) {  // T-844: show, hide, remove.
             err = "expected '(' after \"" + c.name + "\"";
             return false;
         }
@@ -1976,8 +2023,7 @@ private:
                                                                         : SpawnAt::Element);
             } else if (a.key == "lifetime") {
                 float t = 0;
-                if (!parseSecondsTriggerEmit(a.value, t) || !(t > 0.0f)) {
-                    err = "spawn() lifetime must be a positive time, got \"" + a.value + "\"";
+                if (!parseSpawnLifetime(a.value, t, err)) {
                     return false;
                 }
                 out.arg2 = t;
@@ -2051,59 +2097,50 @@ private:
         out.arg1 = 0;
         out.extra = 0;
         const Arg& v = c.args[1];
+        // T-844: the value's form is read by parseSetValue(), shared with validateTriggerActions().
+        SetValueForm form = SetValueForm::Number;
         float number = 0;
-        if (v.isString) {
-            out.flags = static_cast<uint8_t>(SetSource::String);
-            const uint32_t id = m_writer.intern(v.value);
-            std::memcpy(&out.arg2, &id, sizeof(id));
-        } else if (v.value == "toggle") {
-            out.flags = static_cast<uint8_t>(SetSource::Toggle);
-        } else if (v.value == "true" || v.value == "false") {
-            out.flags = static_cast<uint8_t>(SetSource::Number);
-            out.arg2 = v.value == "true" ? 1.0f : 0.0f;
-        } else if (parseNumberTriggerEmit(v.value, number)) {
-            out.flags = static_cast<uint8_t>(SetSource::Number);
-            out.arg2 = number;
-        } else if (v.value.rfind("pointer.", 0) == 0) {
-            // T-386 (08.11): the element id (arg2) is resolved per element (emitElements).
-            SetSource source = SetSource::PointerFractionX;
-            std::string id;
-            if (parsePointerValue(v.value, source, id, converters, err) != 1) {
-                return false;
-            }
-            out.flags = static_cast<uint8_t>(source);
-        } else if (v.value.rfind("event.value", 0) == 0 || isElementValue(v.value)) {
-            // T-392 (27.3.5): `value` is the trigger element's text (checked per trigger event).
-            const bool element = v.value.rfind("event.value", 0) != 0;
-            const size_t head = element ? 5 : 11;
-            out.flags = static_cast<uint8_t>(element ? SetSource::ElementValue : SetSource::EventValue);
-            const std::string rest = trimCopyTriggerEmit(std::string_view(v.value).substr(head));
-            if (!rest.empty()) {
-                if (rest[0] != '|' || trimCopyTriggerEmit(std::string_view(rest).substr(1)).empty()) {
-                    err = "set() value \"" + v.value + "\": expected '|' and a converter after " +
-                          (element ? "value" : "event.value");
-                    return false;
-                }
-                converters = trimCopyTriggerEmit(std::string_view(rest).substr(1));
-            }
-        } else if (isSourceValue(v.value)) {
-            // T-411 (27 §27.2.3): port(<name>) / item(...) / repeat.* / a constant, then converters.
-            const bool port = v.value.rfind("port(", 0) == 0;
-            const bool item = !port && (v.value.rfind("item(", 0) == 0 || v.value.rfind("repeat.", 0) == 0 ||
-                                        v.value.rfind("outer.", 0) == 0);
-            out.flags =
-                static_cast<uint8_t>(port ? SetSource::Port : (item ? SetSource::Item : SetSource::Number));
-            if (sourceText != nullptr) {
-                *sourceText = v.value;
-            }
-        } else {
-            err =
-                "set() value must be a number, true, false, toggle, a quoted string, event.value [| "
-                "<converter> ...], value [| <converter> ...], pointer.fraction|local(#<id>).x|.y, "
-                "port(<name>), item(<field>), item(), repeat.index or repeat.count [| <converter> ...], "
-                "got \"" +
-                v.value + "\"";
+        SetSource pointer = SetSource::PointerFractionX;
+        if (!parseSetValue(v, form, number, pointer, converters, err)) {
             return false;
+        }
+        switch (form) {
+            case SetValueForm::String: {
+                out.flags = static_cast<uint8_t>(SetSource::String);
+                const uint32_t id = m_writer.intern(v.value);
+                std::memcpy(&out.arg2, &id, sizeof(id));
+                break;
+            }
+            case SetValueForm::Toggle:
+                out.flags = static_cast<uint8_t>(SetSource::Toggle);
+                break;
+            case SetValueForm::Number:
+                out.flags = static_cast<uint8_t>(SetSource::Number);
+                out.arg2 = number;
+                break;
+            case SetValueForm::Pointer:
+                // T-386 (08.11): the element id (arg2) is resolved per element (emitElements).
+                out.flags = static_cast<uint8_t>(pointer);
+                break;
+            case SetValueForm::ElementValue:
+                out.flags = static_cast<uint8_t>(SetSource::ElementValue);
+                break;
+            case SetValueForm::EventValue:
+                out.flags = static_cast<uint8_t>(SetSource::EventValue);
+                break;
+            case SetValueForm::Source: {
+                // T-411 (27 §27.2.3): port(<name>) / item(...) / repeat.* / a constant, then converters.
+                const bool port = v.value.rfind("port(", 0) == 0;
+                const bool item =
+                    !port && (v.value.rfind("item(", 0) == 0 || v.value.rfind("repeat.", 0) == 0 ||
+                              v.value.rfind("outer.", 0) == 0);
+                out.flags = static_cast<uint8_t>(port ? SetSource::Port
+                                                      : (item ? SetSource::Item : SetSource::Number));
+                if (sourceText != nullptr) {
+                    *sourceText = v.value;
+                }
+                break;
+            }
         }
         return true;
     }
@@ -2795,7 +2832,7 @@ private:
             }
             return true;
         };
-        if (!c.hasParens && c.name != "show" && c.name != "hide") {
+        if (!c.hasParens && !triggerActionBare(c.name)) {  // T-844: the same table as makeAction().
             err = "expected '(' after \"" + c.name + "\"";
             return false;
         }
@@ -2827,7 +2864,11 @@ private:
         }
         if (c.name == "state") {
             for (size_t i = 0; i < c.args.size(); ++i) {
-                if (c.args[i].key == "target") {  // T-201.
+                if (c.args[i].key == "target") {                          // T-201.
+                    if (c.args[i].value.empty() || c.args[i].isString) {  // T-844: as makeAction().
+                        err = "state() target must be #<id>";
+                        return false;
+                    }
                     CallTriggerEmit own = c;
                     own.args.erase(own.args.begin() + static_cast<std::ptrdiff_t>(i));
                     return checkActionShape(own, err);
@@ -2861,6 +2902,13 @@ private:
         if (c.name == "show" || c.name == "hide" || c.name == "consume") {  // T-394: consume().
             if (!c.args.empty()) {
                 err = c.name + "() takes no argument";
+                return false;
+            }
+            return true;
+        }
+        if (c.name == "remove") {  // T-844: as makeAction() (T-177; the event is checked by compile()).
+            if (!c.args.empty()) {
+                err = "remove takes no argument";
                 return false;
             }
             return true;
@@ -2902,54 +2950,48 @@ private:
             return argCount(1, 1) && plain(0);
         }
         if (c.name == "set") {  // T-201: the port and the value's form (converters not resolved).
-            if (c.args.size() != 2 || !plain(0) || c.args[0].value.empty()) {
+            if (c.args.size() != 2 || !plain(0) || c.args[0].value.empty() || c.args[0].isString) {
                 err = "set() takes a port and a value";
                 return false;
             }
-            const Arg& v = c.args[1];
+            // T-844: the compiler's own reading of the value (setValue()); ports, converters and
+            // pointer ids are resolved when compiled.
+            SetValueForm form = SetValueForm::Number;
             float number = 0;
-            if (v.isString || v.value == "toggle" || v.value == "true" || v.value == "false" ||
-                parseNumberTriggerEmit(v.value, number) || v.value == "event.value" ||
-                (v.value.rfind("event.value", 0) == 0 &&
-                 trimCopyTriggerEmit(std::string_view(v.value).substr(11))[0] == '|') ||
-                (!v.isString && isElementValue(v.value))) {  // T-392 (27.3.5).
-                return true;
-            }
-            if (!v.isString && v.value.rfind("pointer.", 0) == 0) {  // T-386 (08.11).
-                SetSource source = SetSource::PointerFractionX;
-                std::string id;
-                std::string converters;
-                return parsePointerValue(v.value, source, id, converters, err) == 1;
-            }
-            if (!v.isString && isSourceValue(v.value)) {
-                return true;  // T-411: checked against the scope when compiled.
-            }
-            err =
-                "set() value must be a number, true, false, toggle, a quoted string, event.value [| "
-                "<converter> ...], value [| <converter> ...], pointer.fraction|local(#<id>).x|.y, "
-                "port(<name>), "
-                "item(<field>), item(), repeat.index or repeat.count [| <converter> ...]";
-            return false;
+            SetSource pointer = SetSource::PointerFractionX;
+            std::string converters;
+            return parseSetValue(c.args[1], form, number, pointer, converters, err);
         }
         if (c.name == "spawn") {  // T-201: a symbol and at / lifetime / timeline options.
-            if (c.args.empty() || !plain(0)) {
+            if (c.args.empty() || !plain(0) || c.args[0].value.empty()) {
                 err = "spawn() needs a symbol name";
                 return false;
             }
             bool lifetime = false;
             for (size_t i = 1; i < c.args.size(); ++i) {
-                const std::string& key = c.args[i].key;
-                if (key != "at" && key != "lifetime" && key != "timeline") {
-                    err = "unknown spawn() option \"" + (key.empty() ? c.args[i].value : key) + "\"";
+                const Arg& a = c.args[i];
+                if (a.key != "at" && a.key != "lifetime" && a.key != "timeline") {
+                    err = "unknown spawn() option \"" + (a.key.empty() ? a.value : a.key + "=" + a.value) +
+                          "\"";
                     return false;
                 }
-                lifetime = lifetime || key == "lifetime";
+                float seconds = 0;
+                if (a.key == "lifetime" && !parseSpawnLifetime(a.value, seconds, err)) {  // T-844.
+                    return false;
+                }
+                lifetime = lifetime || a.key == "lifetime";
             }
             if (!lifetime) {
                 err = "spawn() needs lifetime=<time>";
                 return false;
             }
             return true;
+        }
+        // T-844: a registered action alias is checked as its replacement, as makeAction() compiles it.
+        if (const NameAlias* alias = findNameAlias(AliasKind::Action, c.name)) {
+            CallTriggerEmit renamed = c;
+            renamed.name = alias->replacement;
+            return checkActionShape(renamed, err);
         }
         err = "unknown action \"" + c.name + "\"";
         return false;

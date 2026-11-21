@@ -704,6 +704,12 @@ void Document::insertBefore(ElementRef parent, ElementRef child, ElementRef befo
     if (m_arena.parent(child.node) != kInvalidNode || child.node == parent.node) {
         return;  // 13.2: the child must be detached.
     }
+    // T-845: a pooled `<repeat>` instance node (detached, alive, waiting for reuse) is refused as
+    // ElementRef's mutators refuse it (T-270f): attached elsewhere, its reuse would insert an
+    // attached node; a child put under it would become part of the reused instance.
+    if (((m_arena.common(parent.node).flags2 | m_arena.common(child.node).flags2) & kPooled) != 0) {
+        return;
+    }
     NodeId beforeNode = kInvalidNode;
     if (before.valid() && before.doc == this) {
         if (m_arena.parent(before.node) != parent.node) {

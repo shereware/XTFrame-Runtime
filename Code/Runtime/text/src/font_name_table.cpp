@@ -4,6 +4,7 @@
 #include <climits>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -13,9 +14,14 @@ namespace xt::text {
 
 namespace {
 
-/// The open font file; closed when it goes out of scope.
+/// The open font file (closed when it goes out of scope), or a font already in memory (T-853:
+/// FontTable::addFontMemory()) when `file` is null.
 struct FontFile {
     std::FILE* file = nullptr;
+    std::span<const uint8_t> memory;
+    FontFile() = default;
+    FontFile(const FontFile&) = delete;
+    FontFile& operator=(const FontFile&) = delete;
     ~FontFile() {
         if (file != nullptr) std::fclose(file);
     }
@@ -25,6 +31,11 @@ struct FontFile {
 // out before `length` bytes are read (a truncated/corrupt file).
 bool readBytes(FontFile& in, uint64_t offset, size_t length, std::vector<unsigned char>& out) {
     out.assign(length, 0);
+    if (in.file == nullptr) {
+        if (offset > in.memory.size() || length > in.memory.size() - offset) return false;
+        if (length != 0) std::memcpy(out.data(), in.memory.data() + offset, length);
+        return true;
+    }
 #if defined(_WIN32)
     if (offset > static_cast<uint64_t>(INT64_MAX) ||
         _fseeki64(in.file, static_cast<int64_t>(offset), SEEK_SET) != 0)
@@ -119,6 +130,31 @@ bool endsWith(std::string_view text, std::string_view suffix) {
     return text.size() >= suffix.size() && text.substr(text.size() - suffix.size()) == suffix;
 }
 
+// T-853: a 16.16 `wdth` axis value (percent) in tenths of a percent, kept within 1..10000.
+uint16_t fixedToTenths(uint32_t fixed) {
+    const int64_t value = static_cast<int32_t>(fixed);
+    const int64_t tenths = (value * 10 + 0x8000) >> 16;
+    return static_cast<uint16_t>(tenths < 1 ? 1 : (tenths > 10000 ? 10000 : tenths));
+}
+
+// T-853: the width word a single lower-cased word is, its Semi/Extra/Ultra prefix removed.
+WidthWord widthWordOf(std::string_view word) {
+    for (const std::string_view prefix : {std::string_view("semi"), std::string_view("extra"),
+                                          std::string_view("ultra")}) {
+        if (word.size() > prefix.size() && word.substr(0, prefix.size()) == prefix) {
+            word.remove_prefix(prefix.size());
+            break;
+        }
+    }
+    for (const char* narrow : {"narrow", "condensed", "cond", "compressed", "compact"}) {
+        if (word == narrow) return WidthWord::kNarrow;
+    }
+    for (const char* wide : {"extended", "expanded", "wide"}) {
+        if (word == wide) return WidthWord::kWide;
+    }
+    return WidthWord::kNone;
+}
+
 // The offset of face `faceIndex`'s sfnt table directory, or false when the file is not sfnt/ttc
 // or the index is out of range. `header` receives that directory's first 12 bytes.
 bool locateFace(FontFile& in, uint32_t faceIndex, uint64_t& sfntOffset, std::vector<unsigned char>& header) {
@@ -157,11 +193,9 @@ uint32_t fontFaceCount(std::string_view path) {
     return tag == 0x00010000u || tag == 0x4F54544Fu || tag == 0x74727565u ? 1 : 0;
 }
 
-bool readFontNameTable(std::string_view path, FontNameInfo& out, uint32_t faceIndex) {
-    FontFile in;
-    in.file = openFileUtf8(std::string(path).c_str(), "rb");  // T-261e: `path` is UTF-8.
-    if (in.file == nullptr) return false;
+namespace {
 
+bool readFaceTables(FontFile& in, FontNameInfo& out, uint32_t faceIndex) {
     std::vector<unsigned char> header;
     uint64_t sfntOffset = 0;
     if (!locateFace(in, faceIndex, sfntOffset, header)) return false;
@@ -236,9 +270,11 @@ bool readFontNameTable(std::string_view path, FontNameInfo& out, uint32_t faceIn
     out.postScriptName = values[2];
     out.family = !values[3].empty() ? values[3] : values[0];
     out.subfamily = !values[4].empty() ? values[4] : values[1];
+    out.legacyFamily = values[0];  // T-853 (07 §7.21.2)
+    out.legacySubfamily = values[1];
 
-    // OS/2: usWeightClass at 4, ulUnicodeRange1..4 at 42, fsSelection at 62, ulCodePageRange1 at
-    // 78 (version >= 1).
+    // OS/2: usWeightClass at 4, usWidthClass at 6 (T-853), ulUnicodeRange1..4 at 42, fsSelection
+    // at 62, ulCodePageRange1 at 78 (version >= 1).
     if (os2Offset != 0 && os2Length >= 64) {
         std::vector<unsigned char> os2;
         const size_t length = os2Length >= 82 ? 82 : 64;
@@ -246,6 +282,7 @@ bool readFontNameTable(std::string_view path, FontNameInfo& out, uint32_t faceIn
             int weight = be16(os2, 4);
             if (weight > 0 && weight < 10) weight *= 100;  // A few old fonts store 1..9.
             out.weightClass = weight == 0 ? 0 : clampWeight(weight);
+            out.widthClass = be16(os2, 6);
             const uint16_t selection = be16(os2, 62);
             out.italic = (selection & 0x0001) != 0 || (selection & 0x0200) != 0;
             const uint32_t range2 = be32(os2, 46);
@@ -260,7 +297,7 @@ bool readFontNameTable(std::string_view path, FontNameInfo& out, uint32_t faceIn
     }
 
     // fvar: axesArrayOffset at 4, axisCount at 8, axisSize at 10; an axis record is tag, min,
-    // default, max (16.16 Fixed).
+    // default, max (16.16 Fixed). T-853: every axis is looked at (`wght` and `wdth`).
     if (fvarOffset != 0 && fvarLength >= 16) {
         std::vector<unsigned char> fvar;
         if (readBytes(in, fvarOffset, 16, fvar)) {
@@ -272,16 +309,80 @@ bool readFontNameTable(std::string_view path, FontNameInfo& out, uint32_t faceIn
                 if (!readBytes(in, fvarOffset + axesOffset + static_cast<uint64_t>(a) * axisSize, 16, axis)) {
                     break;
                 }
-                if (be32(axis, 0) != 0x77676874u) continue;  // wght
-                out.variableWeight = true;
-                out.weightMin = clampWeight(fixedToInt(be32(axis, 4)));
-                out.weightDefault = clampWeight(fixedToInt(be32(axis, 8)));
-                out.weightMax = clampWeight(fixedToInt(be32(axis, 12)));
-                break;
+                const uint32_t tag = be32(axis, 0);
+                if (tag == 0x77676874u && !out.variableWeight) {  // wght
+                    out.variableWeight = true;
+                    out.weightMin = clampWeight(fixedToInt(be32(axis, 4)));
+                    out.weightDefault = clampWeight(fixedToInt(be32(axis, 8)));
+                    out.weightMax = clampWeight(fixedToInt(be32(axis, 12)));
+                } else if (tag == 0x77647468u && !out.variableWidth) {  // wdth (T-853)
+                    out.variableWidth = true;
+                    out.widthMin = fixedToTenths(be32(axis, 4));
+                    out.widthDefault = fixedToTenths(be32(axis, 8));
+                    out.widthMax = fixedToTenths(be32(axis, 12));
+                }
             }
         }
     }
     return !out.family.empty() || !out.postScriptName.empty();
+}
+
+}  // namespace
+
+bool readFontNameTable(std::string_view path, FontNameInfo& out, uint32_t faceIndex) {
+    FontFile in;
+    in.file = openFileUtf8(std::string(path).c_str(), "rb");  // T-261e: `path` is UTF-8.
+    if (in.file == nullptr) return false;
+    return readFaceTables(in, out, faceIndex);
+}
+
+bool readFontNameTable(std::span<const uint8_t> bytes, FontNameInfo& out, uint32_t faceIndex) {
+    FontFile in;
+    in.memory = bytes;
+    return readFaceTables(in, out, faceIndex);
+}
+
+WidthWord widthWordIn(std::string_view name) {
+    // Words are runs of ASCII letters and digits; a `Semi`/`Extra`/`Ultra` standing alone is not a
+    // width word itself, and the word after it is checked on its own (`Semi Condensed`).
+    std::string word;
+    for (size_t i = 0; i <= name.size(); ++i) {
+        const auto c = i < name.size() ? static_cast<unsigned char>(name[i]) : static_cast<unsigned char>(' ');
+        if (std::isalnum(c) != 0 && c < 0x80) {
+            word.push_back(static_cast<char>(std::tolower(c)));
+            continue;
+        }
+        if (!word.empty()) {
+            const WidthWord found = widthWordOf(word);
+            if (found != WidthWord::kNone) return found;
+            word.clear();
+        }
+    }
+    return WidthWord::kNone;
+}
+
+FaceWidth faceWidth(const FontNameInfo& info) {
+    FaceWidth width;
+    if (info.variableWidth && info.widthMin <= info.widthMax) {
+        width.min = info.widthMin;
+        width.max = info.widthMax;
+        width.def = info.widthDefault < info.widthMin   ? info.widthMin
+                    : info.widthDefault > info.widthMax ? info.widthMax
+                                                        : info.widthDefault;
+        return width;
+    }
+    // 07 §7.21.1: usWidthClass only when the subfamily (nameID 17, else 2) or the legacy family
+    // (nameID 1) says the face is not of normal width.
+    WidthWord word = widthWordIn(info.subfamily);
+    if (word == WidthWord::kNone) word = widthWordIn(info.legacyFamily);
+    if (word == WidthWord::kNone) return width;
+    static const uint16_t kClassWidth[10] = {0, 500, 625, 750, 875, 1000, 1125, 1250, 1500, 2000};
+    uint16_t value = info.widthClass >= 1 && info.widthClass <= 9 ? kClassWidth[info.widthClass] : 1000;
+    if (value == 1000) value = word == WidthWord::kNarrow ? 750 : 1250;
+    width.min = value;
+    width.max = value;
+    width.def = value;
+    return width;
 }
 
 bool isGenericFamily(std::string_view family) {

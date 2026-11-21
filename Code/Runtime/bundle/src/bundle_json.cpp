@@ -5,8 +5,10 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <limits>
 #include <string>
+#include <system_error>
 
 #include "json_bounded.h"  // Code/Runtime/compile/src: T-262c, the one bounded parse (T-414)
 #include "xt/bundle/bundle.h"
@@ -21,7 +23,7 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-#include <windows.h>  // MoveFileExW (T-262b).
+#include <windows.h>  // MoveFileExW (T-262b, T-845 moveReplacing).
 #endif
 
 /// See bundle_json.h. Every accessor checks the JSON type before reading, so a hand-edited
@@ -113,20 +115,38 @@ bool writeFile(const std::string& path, const std::string& text) {
     const size_t written = text.empty() ? 0 : std::fwrite(text.data(), 1, text.size(), file);
     bool ok = written == text.size() && std::ferror(file) == 0;
     ok = std::fclose(file) == 0 && ok;
-#if defined(_WIN32)
-    const std::wstring wideTemp = pathFromUtf8(temp).wstring();
-    ok = ok && MoveFileExW(wideTemp.c_str(), pathFromUtf8(path).wstring().c_str(),
-                           MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+    ok = ok && moveReplacing(pathFromUtf8(temp), pathFromUtf8(path));
     if (!ok) {
-        _wremove(wideTemp.c_str());
+        std::error_code ec;
+        std::filesystem::remove(pathFromUtf8(temp), ec);
+    }
+    return ok;
+}
+
+bool moveReplacing(const std::filesystem::path& from, const std::filesystem::path& to) {
+#if defined(_WIN32)
+    // T-840: another process may hold the target for a moment without FILE_SHARE_DELETE (a virus
+    // scanner, the search indexer, a hot reload reading it). Those refusals are retried for about
+    // a quarter of a second, as the editor's replaceFile() (file_io.cpp) does; others fail at once.
+    constexpr int kReplaceAttempts = 10;
+    constexpr DWORD kReplacePauseMs = 25;
+    for (int attempt = 0;; ++attempt) {
+        if (MoveFileExW(from.c_str(), to.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0) {
+            return true;
+        }
+        const DWORD code = GetLastError();
+        const bool held =
+            code == ERROR_SHARING_VIOLATION || code == ERROR_LOCK_VIOLATION || code == ERROR_ACCESS_DENIED;
+        if (!held || attempt + 1 >= kReplaceAttempts) {
+            return false;
+        }
+        Sleep(kReplacePauseMs);
     }
 #else
-    ok = ok && std::rename(temp.c_str(), path.c_str()) == 0;
-    if (!ok) {
-        std::remove(temp.c_str());
-    }
+    std::error_code ec;
+    std::filesystem::rename(from, to, ec);
+    return !ec;
 #endif
-    return ok;
 }
 
 std::string joinPath(std::string_view dir, std::string_view name) {

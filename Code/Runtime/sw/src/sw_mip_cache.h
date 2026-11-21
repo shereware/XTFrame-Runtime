@@ -14,19 +14,47 @@
 /// the borrowed image (address and size) under an epoch; entries go with invalidateAsset(),
 /// invalidateAll(), clear() (the renderer's releaseScratch() and destruction) and when their source
 /// falls out of the kMaxSources most recently rendered ones.
+///
+/// T-835 (Docs/design/10-backends.md, the 10.2.5 amendment of 2026-11-21): an entry also keeps the
+/// image's level 0 premultiplied (xt::premultiplyRgba8, the GPU upload's rounding) -- the texels the
+/// smooth filters read -- and a chain built here starts from that same level 0. Every image whose GPU
+/// form is not block-compressed has one (resolver chain or not); a host's CPU pixels have one unless
+/// the binding is flagged straight alpha. bytes() counts it with the chains, and it goes with them.
 
 namespace xt::sw {
+
+/// What a smooth draw of an image samples (T-835).
+struct SwImageLevels {
+    /// The image's mip chain (levels >= 1), or nullptr -- see SwMipCache::chainFor().
+    const ImageMipChain* mips = nullptr;
+    /// Level 0 premultiplied (same size as the image), or nullptr: the straight texels are filtered
+    /// (a block-compressed GPU form, which the GPU filters straight too).
+    const ImageData* premultiplied = nullptr;
+};
 
 class SwMipCache {
 public:
     /// Sources kept besides those the render in progress uses (gpu::FrameBuilder's kMaxAssetSources).
     static constexpr size_t kMaxSources = 2;
 
-    /// The chain of `image` (what assets->imageView(asset, ir, scale) returned): the resolver's own,
-    /// else one built and kept here; nullptr when the image must keep its single level (the asset's
-    /// GPU form is block-compressed without a stored chain, so the GPU samples one level too).
+    /// T-835: the levels a smooth draw of `image` (what assets->imageView(asset, ir, scale) returned)
+    /// samples. `wantChain` false (the paths that sample no chain: particles,
+    /// meshes, a 3D projection) leaves `mips` null and builds no chain. Both pointers are valid until
+    /// the next call on this cache.
+    SwImageLevels levelsFor(AssetResolver* assets, const IrView& ir, AssetId asset, float scale,
+                            const ImageData& image, bool wantChain);
+    /// The chain of `image`: the resolver's own, else one built and kept here; nullptr when the image
+    /// must keep its single level (the asset's GPU form is block-compressed without a stored chain, so
+    /// the GPU samples one level too). Same as levelsFor(..., true).mips.
     const ImageMipChain* chainFor(AssetResolver* assets, const IrView& ir, AssetId asset, float scale,
                                   const ImageData& image);
+    /// T-835 (amendment item 4): the premultiplied copy of the host's CPU pixels `ext.pixels` bound to
+    /// the external asset `asset`, or nullptr when there are none or the binding is flagged straight
+    /// alpha (the GPU filters that texture straight). Made again when externalTextureStamp() changes,
+    /// and once per render while the binding has no content version (its pixels may change every
+    /// frame, Docs/design/23-host-integration.md §23.ah). Valid until the next call on this cache.
+    const ImageData* externalPremultiplied(AssetResolver* assets, const IrView& ir, AssetId asset,
+                                           const AssetResolver::ExternalTexture& ext);
     /// Ends one SwRenderer::render(): sources beyond kMaxSources that it did not use go, with their
     /// chains.
     void endRender();
@@ -36,7 +64,7 @@ public:
     void invalidateAll();
     /// Frees everything (releaseScratch, shutdown).
     void clear();
-    /// Bytes of the chains held now (tests).
+    /// Bytes of the chains and premultiplied levels 0 held now (tests).
     size_t bytes() const;
     size_t entries() const { return m_entries.size(); }
 
@@ -55,8 +83,20 @@ private:
         const ImageData* image = nullptr;
         int width = 0;
         int height = 0;
+        /// T-835: level 0 premultiplied (empty until a draw asks for it, and for a stored DDS chain).
+        ImageData premultiplied;
+        /// T-835: an external entry's externalTextureStamp() and the render that last premultiplied it.
+        uint64_t stamp = 0;
+        uint64_t builtRender = 0;
+        /// The chain, once built (chainState 1) or failed (2); 0 = not asked for yet.
+        uint8_t chainState = 0;
         ImageMipChain chain;
     };
+    /// The entry of (assets, ir, asset, variant, image), made (and the stale one of the same asset
+    /// dropped) when there is none; the source is marked used by this render.
+    Entry& entryFor(AssetResolver* assets, const IrView& ir, AssetId asset, uint8_t variant,
+                    const ImageData& image);
+
     std::vector<Source> m_sources;
     std::vector<Entry> m_entries;
     uint64_t m_render = 1;

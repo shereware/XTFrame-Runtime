@@ -75,6 +75,10 @@ public:
     /// T-569: the face index of font `id` within its `.ttc`/`.otc` collection file, or -1 when it
     /// is not a collection face. `xtframe-view --list-fonts` prints such a face as `path#index`.
     long fontFaceIndex(FontId id) const;
+    /// T-853 (Docs/design/07-text.md §7.21.2): the legacy family name (nameID 1) of font `id` when
+    /// it differs from the typographic family `fonts()` lists (`Arial Narrow` for a face of the
+    /// `Arial` family), else "". Tooling only (`xtframe-view --list-fonts`).
+    std::string fontLegacyFamily(FontId id) const;
     /// T-569 (Docs/design/07-text.md §7.20): the first CJK family of the `font-family` list `stack`
     /// (generic families skipped) when no registered font has that family name, else "". A family
     /// counts as CJK by its name, or -- when installed -- by its OS/2 CJK coverage bits.

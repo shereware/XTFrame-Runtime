@@ -430,9 +430,17 @@ struct ImageScratch {
 /// levels floor(lod) and ceil(lod) bilinearly and mixes them by the fraction; level 0 is sampled as
 /// before (straight bilinear, then premultiplied), the levels >= 1 are premultiplied. Null `mips` or
 /// lod 0: exactly the single-level sampling of before.
+///
+/// T-835 (Docs/design/10-backends.md, the 10.2.5 amendment of 2026-11-21): `premultiplied`, when
+/// non-null, is level 0 of `image` premultiplied (xt::premultiplyRgba8, same size). The bilinear and
+/// trilinear filters then interpolate those texels and only scale the result by coverage and opacity,
+/// as the GPU filters its premultiplied textures. Null: the straight texels are filtered and
+/// premultiplied afterwards (a block-compressed source, or a host texture flagged straight alpha,
+/// which the GPU filters straight). Point sampling always reads `image`.
 void drawImage(Target& target, Rasterizer& raster, const Mat2x3& deviceXf, const ImageCmd& cmd,
                const ImageData& image, const uint8_t* clipMask, int clipWidth, ImageScratch& scratch,
-               const WriteRegion* region = nullptr, const ImageMipChain* mips = nullptr);
+               const WriteRegion* region = nullptr, const ImageMipChain* mips = nullptr,
+               const ImageData* premultiplied = nullptr);
 
 /// Draws `image` warped into device-space quad `q` (4 corners, clockwise from top-left) via a
 /// perspective homography: `homographyFromQuad` maps `q` to the unit square, then every covered
@@ -443,10 +451,11 @@ void drawImage(Target& target, Rasterizer& raster, const Mat2x3& deviceXf, const
 /// Docs/tasks/T-45.md.
 /// T-665: `mips` as for drawImage, used only when `q` is a parallelogram (xt::imageQuadLod); the
 /// caller passes null under a 3D projection (which keeps the single-level sampling).
+/// T-835: `premultiplied` as for drawImage.
 void drawImageQuad(Target& target, Rasterizer& raster, const Vec2 q[4], Rect srcUv, float opacity,
                    uint8_t smooth, const ImageData& image, const uint8_t* clipMask, int clipWidth,
                    ImageScratch& scratch, const WriteRegion* region = nullptr,
-                   const ImageMipChain* mips = nullptr);
+                   const ImageMipChain* mips = nullptr, const ImageData* premultiplied = nullptr);
 
 /// Draws the triangles of a DrawImageMesh (Docs/design/32-rigging-and-deformation.md §32.2.4,
 /// T-245): `indices` (3 per triangle, relative to `vertices`) over `vertices` already in *device*
@@ -454,21 +463,21 @@ void drawImageQuad(Target& target, Rasterizer& raster, const Vec2 q[4], Rect src
 /// centers inside it under the top-left rule (no antialiasing, so adjacent triangles neither leave
 /// a seam nor blend a pixel twice) and samples like drawImage (nearest / bilinear per `smooth`,
 /// premultiplied, `opacity`, `clipMask`, `region`). Degenerate triangles and out-of-range indices
-/// are skipped.
+/// are skipped. T-835: `premultiplied` as for drawImage.
 void drawImageMesh(Target& target, const MeshVertex* vertices, uint32_t vertexCount, const uint16_t* indices,
                    uint32_t indexCount, float opacity, uint8_t smooth, const ImageData& image,
                    const uint8_t* clipMask, int clipWidth, ImageScratch& scratch,
-                   const WriteRegion* region = nullptr);
+                   const WriteRegion* region = nullptr, const ImageData* premultiplied = nullptr);
 
 /// Draws the instances of a DrawParticles command (Docs/tasks/T-202.md item 4): one rotated quad
 /// per instance, mapped through `deviceXf`, in instance order. With `image` each covered pixel is
 /// the bilinear texel at the instance's [uv0, uv1] (premultiplied) times the instance color;
 /// without, the instance color alone (a filled square). `additive` adds the premultiplied source
 /// to the destination (clamped to 1) instead of source-over. Coverage, the clip mask and `region`
-/// apply as for drawImage.
+/// apply as for drawImage. T-835: `premultiplied` (level 0 of `image` premultiplied) as for drawImage.
 void drawParticles(Target& target, Rasterizer& raster, const Mat2x3& deviceXf,
                    const ParticleInstance* instances, uint32_t count, bool additive, const ImageData* image,
                    const uint8_t* clipMask, int clipWidth, ImageScratch& scratch,
-                   const WriteRegion* region = nullptr);
+                   const WriteRegion* region = nullptr, const ImageData* premultiplied = nullptr);
 
 }  // namespace xt::sw

@@ -117,23 +117,33 @@ void downsampleBox(const uint8_t* src, int w, int h, uint8_t* dst) {
 }
 
 bool buildImageMipChain(const ImageData& image, ImageMipChain& out) {
+    const int w0 = image.width;
+    const int h0 = image.height;
+    const bool valid =
+        w0 > 0 && h0 > 0 && image.rgba.size() >= static_cast<size_t>(w0) * static_cast<size_t>(h0) * 4;
+    if (!valid || imageMipLevelCount(w0, h0) <= 1) {
+        // No pixels (false, `out` empty) or a 1x1 image (no level to build): nothing to premultiply.
+        return buildImageMipChainPremultiplied(valid ? image.rgba.data() : nullptr, w0, h0, out);
+    }
+    std::vector<uint8_t> level0(static_cast<size_t>(w0) * static_cast<size_t>(h0) * 4);
+    premultiplyRgba8(image.rgba.data(), static_cast<size_t>(w0) * static_cast<size_t>(h0), level0.data());
+    return buildImageMipChainPremultiplied(level0.data(), w0, h0, out);
+}
+
+bool buildImageMipChainPremultiplied(const uint8_t* level0, int w0, int h0, ImageMipChain& out) {
     out.levels.clear();
     out.straight = false;  // T-686: a built chain is premultiplied and covers each whole level
     out.levelUvScaleX = 1.0f;
     out.levelUvScaleY = 1.0f;
-    const int w0 = image.width;
-    const int h0 = image.height;
-    if (w0 <= 0 || h0 <= 0 || image.rgba.size() < static_cast<size_t>(w0) * static_cast<size_t>(h0) * 4) {
+    if (level0 == nullptr || w0 <= 0 || h0 <= 0) {
         return false;
     }
     const int count = imageMipLevelCount(w0, h0);
     if (count <= 1) {
         return true;
     }
-    std::vector<uint8_t> level0(static_cast<size_t>(w0) * static_cast<size_t>(h0) * 4);
-    premultiplyRgba8(image.rgba.data(), static_cast<size_t>(w0) * static_cast<size_t>(h0), level0.data());
     out.levels.resize(static_cast<size_t>(count - 1));
-    const uint8_t* src = level0.data();
+    const uint8_t* src = level0;
     int w = w0;
     int h = h0;
     for (int k = 1; k < count; ++k) {

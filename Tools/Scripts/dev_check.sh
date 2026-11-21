@@ -11,7 +11,8 @@
 #           Tools/Scripts/check_test_temp.sh too (both must pass), no build;
 #           testtemp = Tools/Scripts/check_test_temp.sh alone (T-267d, no test uses the system temp directory
 #           directly), no build;
-#           editor_qt runs xt_editor_qt_tests without the doctest suites `gl` and `slow` (T-361: editor_qt_slow
+#           editor_qt runs xt_editor_qt_tests without the doctest suites `gl` and `slow`, in XT_EDITOR_QT_SHARDS
+#           processes at once (T-838; default 4, 1 = one process; see run_editor_qt) (T-361: editor_qt_slow
 #           runs the separate xt_editor_qt_tests_slow, built from the test files holding `slow` cases), and also runs
 #           Tools/Scripts/check_symbols_index.sh; editor_qt_slow runs only the `slow` suite (perf / stress cases);
 #           editor_qt_gl runs only the `gl` suite, on the native platform (hidden windows, a real GL
@@ -36,7 +37,8 @@
 #           (must pass; T-443, 46 §46.4) and Tools/Scripts/check_effect_catalog.py (must pass; T-463, 46 §46.13.4), no build;
 #           skills = Tools/Scripts/sync_skill_mirror.sh --check (T-485: .claude/skills/{xtui,xtui-editor} must equal
 #           Skills/skills/ byte for byte; --changed adds it for every change) and Tools/Scripts/check_skill_extras.sh
-#           (T-550: the built-in agent's reference copies, tokens.json == xtframe-symbols tokens-json), no build;
+#           (T-550: the built-in agent's reference copies, tokens.json == xtframe-symbols tokens-json) and
+#           Tools/Scripts/check_generated_tables.sh (T-834: gen_property_table.py's C++ outputs == the committed files), no build;
 #           qt512 = Tools/Scripts/qt512_syntax_check.sh over the Code/Editor .cpp files changed or added relative to
 #           origin/main (git diff origin/main...HEAD plus the work tree; XT_CHANGED_FILES replaces git), flags from this
 #           tree's xt_clang_check lists, against the Qt 5.12 headers (T-470, 17 §17.9; no Qt 5.12 or no clang++: SKIP);
@@ -69,30 +71,16 @@
 # idle CPU. --changed adds the targets and suites the changes touch (git diff origin/main...HEAD plus
 # the work tree; see changed_selection below); --dry-run prints the selection and exits.
 #   Tools/Scripts/dev_check.sh --changed            Tools/Scripts/dev_check.sh --changed --dry-run
-# Qt: XT_QT_DIR, else the newest Qt 5.15, then 5.12, under Code/SDKs/Qt (T-442; Code/SDKs/Qt/README.md).
+# Qt: XT_QT_DIR, else the newest Qt 5.15, then 5.12, under Code/SDKs/Qt (T-442; Code/SDKs/Qt/README.md),
+# else the same under the main worktree when this is a git worktree (T-852).
 # Not a C++ file: never run clang-format on it.
 set -u
 cd "$(dirname "$0")/../.."
 CFG=Debug; BUILD=1; PRESET=vs2022-editor
-# T-442: the newest Code/SDKs/Qt/<series>*[/Qt] holding lib/cmake/Qt5 and bin/qmake(.exe), as an absolute
-# path; empty when there is none. Same rule as Tools/CMake/xt_qt.cmake (XT_QT_DIR, else 5.15, else 5.12).
-xt_qt_sdk_dir() {
-  local best="" bestv="" d p v
-  for d in Code/SDKs/Qt/"$1"*; do
-    for p in "$d/Qt" "$d"; do
-      [ -d "$p/lib/cmake/Qt5" ] && { [ -f "$p/bin/qmake.exe" ] || [ -f "$p/bin/qmake" ]; } || continue
-      v="$(sed -n 's/^ *set(PACKAGE_VERSION "*\([0-9.]*\)"*).*/\1/p' "$p/lib/cmake/Qt5/Qt5ConfigVersion.cmake" 2>/dev/null | head -n 1)"
-      case "$v" in "$1".*)
-        if [ -z "$bestv" ] || [ "$(printf '%s\n%s\n' "$bestv" "$v" | sort -V | tail -n 1)" = "$v" ]; then best="$p"; bestv="$v"; fi;;
-      esac
-      break
-    done
-  done
-  [ -n "$best" ] && (cd "$best" && { pwd -W 2>/dev/null || pwd; })
-}
-[ -z "${XT_QT_DIR:-}" ] && XT_QT_DIR="$(xt_qt_sdk_dir 5.15)"
-[ -z "${XT_QT_DIR:-}" ] && XT_QT_DIR="$(xt_qt_sdk_dir 5.12)"
-if [ -n "${XT_QT_DIR:-}" ]; then export XT_QT_DIR; else unset XT_QT_DIR; fi
+# T-442 / T-852: XT_QT_DIR (and XT_QT512_DIR), when unset, from Code/SDKs/Qt of this checkout, else of
+# the main worktree (Tools/Scripts/xt_qt_env.sh; same rule as Tools/CMake/xt_qt.cmake).
+. Tools/Scripts/xt_qt_env.sh
+xt_qt_resolve
 targets=(); suites=(); CHANGED=0; DRY_RUN=0; NO_QT512=0; NO_BUILD_ARG=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -127,7 +115,7 @@ changed_selection() {
       Code/Runtime/text/*|Tests/text/*|Code/Runtime/core/src/text*|Code/Runtime/core/src/layout_text*)
                                       targets+=(xt_tests); suites+=(core golden text symbols);;
       Code/Runtime/core/*)            targets+=(xt_tests); suites+=(core golden);;
-      Code/Runtime/sw/*)              targets+=(xt_tests); suites+=(core golden);;
+      Code/Runtime/sw/*)              targets+=(xt_tests); suites+=(core golden corpus);;  # corpus: T-855
       Code/Runtime/gpu/*|Tests/gpu/*) suites+=(gpu gl wgpu golden);;
       Code/Runtime/gl/*|Tests/gl/*)   suites+=(gl);;
       Tests/common/*)                 suites+=(core gpu gl wgpu);;
@@ -136,7 +124,8 @@ changed_selection() {
       # capi: its tests pack bundles through xtframe-pack (the T-714 publish default broke one and
       # only the WSL leg of the version gate saw it).
       Code/Runtime/bundle/*)          suites+=(bundle editor_service roundtrip capi);;
-      Code/Tools/pack/*)              suites+=(bundle capi ctest);;
+      Code/Tools/pack/*)              suites+=(bundle capi ctest corpus);;  # corpus: T-855
+      VERSION.txt)                    suites+=(corpus);;  # T-855: the compiler version is in every .xtir, so in every manifest hash
       Code/Tools/import/*)            suites+=(import ctest);;
       Code/Tools/symbols/*|Assets/Symbols/*|Tests/symbols/*) suites+=(symbols);;
       Code/Runtime/flow/*)            suites+=(flow editor_qt);;
@@ -268,7 +257,7 @@ if [ "$BUILD" = 1 ]; then
     # T-799: both presets this script uses (vs2022-editor, vs2022-agent) pass $env{XT_QT_DIR} to CMake;
     # without it (and no Qt under Code/SDKs/Qt, above) the configure fails half way.
     if [ -z "${XT_QT_DIR:-}" ]; then
-      echo "dev_check: XT_QT_DIR is not set and Code/SDKs/Qt has no Qt 5.15 / 5.12; export XT_QT_DIR (preset $PRESET needs it) and rerun"
+      echo "dev_check: XT_QT_DIR is not set and Code/SDKs/Qt (here or in the main worktree) has no Qt 5.15 / 5.12; export XT_QT_DIR (preset $PRESET needs it) and rerun"
       exit 2
     fi
     # T-799: a failed configure leaves a partial CMakeCache.txt, and the next run would skip the
@@ -341,14 +330,14 @@ if [ "$BUILD" = 1 ]; then
   # XT_BUILD_JOBS=<n> caps the number of projects built at once (two task trees share this machine);
   # unset = the generator's default. The compiler's own /MP is capped separately with _CL_=-MP<n>.
   PAR=(--parallel); [ -n "${XT_BUILD_JOBS:-}" ] && PAR=(--parallel "$XT_BUILD_JOBS")
-  errs="$(cmake --build --preset "$PRESET-$(echo $CFG | tr A-Z a-z)" "${PAR[@]}" "${args[@]}" 2>&1 | grep -E " error |error LNK|warning C|CMake Error|MSB[0-9]+: " | grep -v _deps | head -20)"
+  errs="$(cmake --build --preset "$PRESET-$(echo $CFG | tr A-Z a-z)" "${PAR[@]}" "${args[@]}" 2>&1 | grep -E " error |error LNK|warning C|CMake Error|error MSB[0-9]+: " | grep -v _deps | head -20)"
   [ -n "$errs" ] && { echo "$errs"; echo "build FAILED"; exit 2; }
   echo "build OK (${targets[*]})"
   # T-401: the corpus suite renders with the Release tools whatever $CFG is.
   case " ${suites[*]} " in
     *" corpus "*) if [ "$CFG" != Release ]; then
                     errs="$(cmake --build --preset "$PRESET-release" --parallel --target xtframe-view --target xtframe-pack 2>&1 |
-                            grep -E " error |error LNK|CMake Error|MSB[0-9]+: " | grep -v _deps | head -20)"
+                            grep -E " error |error LNK|CMake Error|error MSB[0-9]+: " | grep -v _deps | head -20)"
                     [ -n "$errs" ] && { echo "$errs"; echo "build FAILED (Release tools for corpus)"; exit 2; }
                     echo "build OK (Release xtframe-view xtframe-pack for corpus)"
                   fi;;
@@ -418,6 +407,121 @@ run() {
   echo "$out" | grep -q "test cases: *0 |" && { echo "$name: no test case ran"; fail=1; }
   [ $rc -ne 0 ] && { echo "$name: exit code $rc"; fail=1; }
 }
+# T-838: editor_qt runs in XT_EDITOR_QT_SHARDS processes at once (default 4; 1 = the single process of
+# before, with T-810's 2874 s limit). Measured 2026-11-21 (Debug, 974 cases): one process 707 s.
+# A case belongs to the shard of its source file, hash("<salt>:<file name>") mod N, so it stays in its
+# shard while the file keeps its name (index ranges, --first/--last, move every case when one is added);
+# salt 41 puts 2026-11-21's per-file times for N=4 at 174 / 180 / 182 / 152 s. The files of
+# EDITOR_QT_SERIAL_FILES (they decode the fixture video through Qt Multimedia, which misses its first
+# frame or blocks when the CPU is saturated: 1 in 10 beside three busy test processes, 3 in 40 with
+# four decoding processes, measured 2026-11-21; T-610) run afterwards in one more process, alone.
+# Each process gets its own TMP / TEMP / APPDATA / LOCALAPPDATA / XDG_* directories under
+# $B/editor_qt_shards/<k>: the product code writes service.json and the logs under LOCALAPPDATA, the
+# symbol user library under APPDATA, the bundle browser's packs, the crash log and its scratch
+# directories under the temp directory (fixed names; T-838 sheet, step 1). Each has its own 1500 s
+# timeout and keeps its output in $B/editor_qt_shards/<k>/out.txt. A failing shard fails the suite,
+# and the cases run must equal, shard by shard and in total, what --list-test-cases counts for the
+# unsharded run (no case falls between two shards).
+EDITOR_QT_SHARD_SALT=41
+EDITOR_QT_SERIAL_FILES="test_video_frame_source.cpp test_preview_capture.cpp test_reference_viewer.cpp test_media_preview.cpp"
+# editor_qt_shard_start <exe> <key> <files>: one shard in the background (its pid in $shard_pid).
+editor_qt_shard_start() {
+  local exe="$1" key="$2" files="$3" d w
+  d="$B/editor_qt_shards/$key"; mkdir -p "$d/tmp" "$d/appdata" "$d/localappdata" "$d/xdg"
+  w="$(cd "$d" && { pwd -W 2>/dev/null || pwd; })"
+  printf '%s\n' "$files" >"$d/files"
+  ( s0=$SECONDS
+    TMP="$w/tmp" TEMP="$w/tmp" TMPDIR="$w/tmp" APPDATA="$w/appdata" LOCALAPPDATA="$w/localappdata" \
+      XDG_CONFIG_HOME="$w/xdg/config" XDG_DATA_HOME="$w/xdg/data" XDG_CACHE_HOME="$w/xdg/cache" \
+      XDG_STATE_HOME="$w/xdg/state" QT_QPA_PLATFORM=offscreen \
+      timeout 1500 "$exe" --test-suite-exclude=gl,slow "--source-file=$files" >"$d/out.txt" 2>&1 </dev/null
+    echo "$? $((SECONDS - s0))" >"$d/rc" ) &
+  shard_pid=$!
+}
+# editor_qt_shard_report <exe> <key> <label> <expected cases> <files count>: waits for the shard,
+# prints its summary, adds its counts to sum / psum / fsum and sets fail=1 when it failed.
+editor_qt_shard_report() {
+  local exe="$1" key="$2" label="$3" exp="$4" nfiles="$5" d out rc=1 secs=? ran passed failed bad=0
+  d="$B/editor_qt_shards/$key"
+  read -r rc secs <"$d/rc"
+  out="$(tr -d '\r' <"$d/out.txt")"
+  echo "--- editor_qt $label: $nfiles files, $exp cases, $secs s ($d/out.txt)"
+  summarize "$out"
+  read -r ran passed failed < <(printf '%s\n' "$out" |
+    sed -n 's/^\[doctest\] test cases: *\([0-9]*\) | *\([0-9]*\) passed | *\([0-9]*\) failed.*/\1 \2 \3/p' | tail -1)
+  ran="${ran:-0}"; sum=$((sum + ran)); psum=$((psum + ${passed:-0})); fsum=$((fsum + ${failed:-0}))
+  if [ "$rc" = 124 ]; then
+    if echo "$out" | grep -q "TEST TIMEOUT:"; then echo "editor_qt $label: TIMEOUT in test case"; echo "$out" | grep "TEST TIMEOUT:"
+    else echo "editor_qt $label: TIMEOUT (killed after 1500 s)"; fi
+    bad=1
+  fi
+  echo "$out" | grep -q "Status: SUCCESS" || bad=1
+  [ "$rc" != 0 ] && [ "$rc" != 124 ] && { echo "editor_qt $label: exit code $rc"; bad=1; }
+  [ "$ran" != "$exp" ] && { echo "editor_qt $label: ran $ran cases, its files hold $exp"; bad=1; }
+  [ "$bad" = 0 ] && return 0
+  fail=1
+  echo "  rerun the shard: TMP=$d/tmp TEMP=$d/tmp QT_QPA_PLATFORM=offscreen $exe --test-suite-exclude=gl,slow --source-file=$(cat "$d/files")"
+  # One rerun line per failed case (doctest filters: "\" and "," escaped with a backslash).
+  printf '%s\n' "$out" | awk '
+    /^===============/ { name = ""; next }
+    /^TEST CASE:  / { name = substr($0, 13); next }
+    /Allowed to fail so marking it as not failed/ { if (name != "") mayfail[name] = 1; next }
+    /ERROR:/ { if (name != "" && !(name in seen)) { seen[name] = 1; order[++n] = name } }
+    END { for (i = 1; i <= n && i <= 30; i++) if (!(order[i] in mayfail)) print order[i] }' |
+  while IFS= read -r name; do
+    name="${name//\\/\\\\}"; name="${name//,/\\,}"; name="${name//\"/\\\"}"
+    echo "  rerun the case: QT_QPA_PLATFORM=offscreen $exe --test-suite-exclude=gl,slow \"--test-case=$name\""
+  done
+  return 0
+}
+run_editor_qt() {
+  local exe="$1" n="${XT_EDITOR_QT_SHARDS:-4}" filter=--test-suite-exclude=gl,slow
+  case "$n" in ''|*[!0-9]*) n=0;; esac
+  if [ "$n" -lt 1 ]; then echo "editor_qt: XT_EDITOR_QT_SHARDS must be a positive integer (got '${XT_EDITOR_QT_SHARDS:-}')"; fail=1; return; fi
+  if [ "$n" = 1 ]; then run editor_qt 2874 1 "$exe" "$filter"; return; fi
+  [ -f "$exe" ] || { echo "editor_qt: MISSING $exe"; fail=1; return; }
+  local list plan total
+  rm -rf "$B/editor_qt_shards"; mkdir -p "$B/editor_qt_shards"
+  list="$(QT_QPA_PLATFORM=offscreen timeout 300 "$exe" "$filter" --list-test-cases --reporters=xml 2>&1 </dev/null)"
+  # One line "<shard 0..N-1 or serial> <file name> <cases>" per source file, then "total <cases>".
+  plan="$(printf '%s\n' "$list" | tr -d '\r' | awk -v n="$n" -v salt="$EDITOR_QT_SHARD_SALT" -v serial="$EDITOR_QT_SERIAL_FILES" '
+    BEGIN { for (i = 32; i < 127; i++) ord[sprintf("%c", i)] = i
+            ns = split(serial, sl, " "); for (i = 1; i <= ns; i++) alone[sl[i]] = 1 }
+    function hash(s,  v, i) { v = 0; for (i = 1; i <= length(s); i++) v = (v * 131 + ord[substr(s, i, 1)]) % 2147483647; return v }
+    /<TestCase / { if (!match($0, /filename="[^"]*"/)) next
+                   f = substr($0, RSTART + 10, RLENGTH - 11); sub(/.*[\\\/]/, "", f)
+                   if (!(f in c)) order[++nf] = f
+                   c[f]++; total++ }
+    END { for (i = 1; i <= nf; i++) print ((order[i] in alone) ? "serial" : hash(salt ":" order[i]) % n), order[i], c[order[i]]
+          print "total", total + 0 }')"
+  total="$(printf '%s\n' "$plan" | awk '$1 == "total" { print $2 }')"
+  if [ "${total:-0}" -eq 0 ]; then
+    echo "editor_qt: listing the test cases found none"; printf '%s\n' "$list" | tail -5; fail=1; return
+  fi
+  # shard_files <key> / shard_cases <key> / shard_count <key>: from the plan.
+  shard_files() { printf '%s\n' "$plan" | awk -v k="$1" '$1 == k { printf "%s*%s", (s++ ? "," : ""), $2 }'; }
+  shard_cases() { printf '%s\n' "$plan" | awk -v k="$1" '$1 == k { s += $3 } END { print s + 0 }'; }
+  shard_count() { printf '%s\n' "$plan" | awk -v k="$1" '$1 == k { s++ } END { print s + 0 }'; }
+  local k files t0=$SECONDS shard_pid pids=() sum=0 psum=0 fsum=0
+  for ((k = 0; k < n; k++)); do
+    files="$(shard_files "$k")"
+    [ -z "$files" ] && continue
+    editor_qt_shard_start "$exe" "$k" "$files"; pids[$k]=$shard_pid
+  done
+  for ((k = 0; k < n; k++)); do
+    [ -n "${pids[$k]:-}" ] || continue
+    wait "${pids[$k]}"
+    editor_qt_shard_report "$exe" "$k" "shard $((k + 1))/$n" "$(shard_cases "$k")" "$(shard_count "$k")"
+  done
+  files="$(shard_files serial)"
+  if [ -n "$files" ]; then
+    editor_qt_shard_start "$exe" serial "$files"; wait "$shard_pid"
+    editor_qt_shard_report "$exe" serial "serial shard (Qt Multimedia, alone)" "$(shard_cases serial)" "$(shard_count serial)"
+  fi
+  echo "editor_qt (all shards): test cases: $sum | $psum passed | $fsum failed; unsharded count $total; wall $((SECONDS - t0)) s"
+  [ "$sum" != "$total" ] && { echo "editor_qt: the shards ran $sum cases, the unsharded run has $total"; fail=1; }
+  return 0
+}
 # run_suite <suite>: one suite; sets fail=1 on failure (the caller runs it in a subshell).
 run_suite() {
   local s="$1"
@@ -427,7 +531,7 @@ run_suite() {
     editor_service) run editor_service 1800 1 "$BIN/tests/xt_editor_service_tests.exe";;
     # T-810: twice a standalone run of the whole suite (measured 2026-11-20: 1437 s for 961 cases, Debug,
     # other builds on the machine); 1500 s was hit twice while other builds ran (T-714).
-    editor_qt) run editor_qt 2874 1 "$BIN/tests/xt_editor_qt_tests.exe" --test-suite-exclude=gl,slow
+    editor_qt) run_editor_qt "$BIN/tests/xt_editor_qt_tests.exe"  # T-838: in shards (see run_editor_qt)
                # Translation check (Tools/Scripts/check_i18n.sh): a warning only, never fails the suite.
                if i18n="$(bash Tools/Scripts/check_i18n.sh 2>&1)"; then echo "$i18n" | tail -2
                else echo "$i18n"; echo "WARNING: untranslated editor strings (Tools/Scripts/check_i18n.sh)"; fi
@@ -501,7 +605,9 @@ run_suite() {
                out="$(python Tools/Scripts/check_effect_catalog.py 2>&1)"; echo "$out" | tail -12; echo "$out" | grep -q "effect catalog check OK" || fail=1;;
     # T-485: the skill mirror (.claude/skills/{xtui,xtui-editor} = Skills/skills/).
     skills)    out="$(bash Tools/Scripts/sync_skill_mirror.sh --check 2>&1)"; echo "$out" | tail -20; echo "$out" | grep -q "SKILL MIRROR: PASS" || fail=1
-               bash Tools/Scripts/check_skill_extras.sh || fail=1;;  # T-550: AI reference copies, tokens-json
+               bash Tools/Scripts/check_skill_extras.sh || fail=1  # T-550: AI reference copies, tokens-json
+               # T-834: the four C++ outputs of gen_property_table.py equal the committed files.
+               out="$(bash Tools/Scripts/check_generated_tables.sh 2>&1)"; echo "$out" | tail -8; echo "$out" | grep -q "GENERATED TABLES: PASS" || fail=1;;
     # T-470: the Qt 5.12 headers syntax check (Tools/Scripts/qt512_syntax_check.sh), changed files / all files.
     qt512)     q="$(changed_files | grep -E '^Code/Editor/.*\.cpp$')"
                if [ -z "$q" ]; then echo "qt512: nothing to check"

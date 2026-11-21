@@ -5,7 +5,8 @@ A Tests/corpus/<project>/project.json `fonts` element is either a family name (`
 the family must be installed) or an object `{"family": "Georgia", "sha256": "<hex>"}`: the family
 must be installed from a file with that SHA-256 (a different build of the same font renders
 different glyph edges, so the expected/ images cannot match). This module reads
-`xtframe-view --list-fonts` (`family<TAB>path` lines) and hashes the font files; Tools/Scripts/corpus_check.py
+`xtframe-view --list-fonts` (`family<TAB>path` lines; T-853: a legacy family name adds
+`<TAB>alias-of=<family>`) and hashes the font files; Tools/Scripts/corpus_check.py
 uses it for the check, and `--update` here (also run by `corpus_check.py --update`) rewrites every
 project's `fonts` to objects carrying this machine's hashes.
 
@@ -42,6 +43,9 @@ def list_fonts(view):
         if not line.strip():
             continue
         family, _, path = line.partition("\t")
+        # T-853: a legacy family name line carries a third column, `alias-of=<family>`; that name
+        # is installed too (matching finds it) and maps to the same file.
+        path = path.split("\t")[0]
         # T-569: a face of a .ttc/.otc collection is listed as `path#<face index>`; the file is
         # what is hashed.
         path = re.sub(r"#[0-9]+$", "", path)

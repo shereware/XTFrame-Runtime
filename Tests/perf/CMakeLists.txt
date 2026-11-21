@@ -78,7 +78,7 @@ if(TARGET xt_capi AND TARGET xt_wgpu)
     add_executable(xt_gpu_mem_probe "${xt_perf_backends_dir}/gpu_mem_probe.cpp")
     target_link_libraries(xt_gpu_mem_probe PRIVATE xt_capi)
     if(WIN32)
-        target_link_libraries(xt_gpu_mem_probe PRIVATE dxgi)
+        target_link_libraries(xt_gpu_mem_probe PRIVATE dxgi dxguid) # dxguid: IID_* (T-848)
         add_custom_command(TARGET xt_gpu_mem_probe POST_BUILD
             COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:xt_capi>" "$<TARGET_FILE_DIR:xt_gpu_mem_probe>"
             VERBATIM)

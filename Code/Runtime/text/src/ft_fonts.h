@@ -20,6 +20,8 @@
 
 namespace xt::text {
 
+struct FontNameInfo;  // font_name_table.h
+
 /// One registered font: an FT_Face plus (if loaded from addFontMemory) the memory buffer FT_Face
 /// points into, which must outlive the face. A font registered via addFontFileDeferred()
 /// (addFontDir/addSystemFonts, Docs/tasks/T-104.md) starts with `face == nullptr` and `deferred
@@ -38,6 +40,11 @@ struct RegisteredFont {
     uint8_t hintGroups = 0;
     std::string subfamily;
     std::string postScriptName;
+    /// T-853 (07 §7.21.2): the legacy family (nameID 1) when it differs from `family` (case-
+    /// insensitively), else empty; lower-cased and hashed like `familyKey`/`familyHash`.
+    std::string legacyFamily;
+    std::string legacyKey;
+    uint64_t legacyHash = 0;
     uint16_t weight = 400;
     bool italic = false;
     /// True until FontTable::face() opens `face` from `path` on first use.
@@ -59,6 +66,13 @@ struct RegisteredFont {
     uint16_t weightMin = 400;
     uint16_t weightMax = 400;
     bool variable = false;
+    /// T-853 (07 §7.21.1): the width range the face covers, in tenths of a percent (1000 =
+    /// normal): the `fvar` `wdth` axis range for a face with that axis (`widthDefault` = the axis
+    /// default), the static width otherwise (font_name_table.h faceWidth()).
+    uint16_t widthMin = 1000;
+    uint16_t widthMax = 1000;
+    uint16_t widthDefault = 1000;
+    bool variableWidth = false;
     /// T-569: OS/2 says the face covers a CJK block (FontTable::missingCjkFamily()).
     bool cjk = false;
     /// T-569: a weight instance FontTable made of font `base` for a request its static weights or
@@ -67,6 +81,9 @@ struct RegisteredFont {
     /// base's path or memory) and is never listed by fonts().
     FontId base = kInvalidFont;
     uint16_t instanceWeight = 0;
+    /// T-853: the `wdth` axis value of a variable instance, in tenths of a percent (0 = the
+    /// axis default).
+    uint16_t instanceWidth = 0;
     float embolden = 0.0f;
 };
 
@@ -100,6 +117,9 @@ public:
     /// T-569: the face index of font `id` within its `.ttc`/`.otc` collection file, or -1 when the
     /// font is not a collection face (or `id` is unknown).
     long fontFaceIndex(FontId id) const;
+    /// T-853 (07 §7.21.2): the legacy family (nameID 1) of font `id` when it differs from its
+    /// typographic family, else "".
+    std::string legacyFamily(FontId id) const;
     /// T-569: synthetic-bold strength of font `id` as a fraction of the em (0 = none).
     float embolden(FontId id) const;
     /// T-569 (07 §7.20): the first CJK family of `stack` when no registered font has that family
@@ -137,16 +157,23 @@ private:
     mutable std::vector<RegisteredFont> fonts_;
     mutable std::vector<FontId> fallback_;
     mutable uint32_t openedCount_ = 0;
-    // T-569: (base, wght, embolden in 1/1000 em) -> instance FontId.
-    mutable std::map<std::tuple<FontId, uint16_t, int>, FontId> instances_;
+    // T-569: (base, wght, embolden in 1/1000 em) -> instance FontId. T-853: plus the `wdth`
+    // value in tenths of a percent (0 = the axis default).
+    mutable std::map<std::tuple<FontId, uint16_t, uint16_t, int>, FontId> instances_;
 
     bool loadFace(std::vector<uint8_t> memory, RegisteredFont& out) const;
     // Best-matching registered font whose family name equals `family` (case-insensitive), or
-    // kInvalidFont if no font has that family name. Skips broken entries.
+    // kInvalidFont if no font has that family name. Skips broken entries. T-853 (07 §7.21.2,
+    // §7.21.3): the typographic family first, the legacy family (nameID 1) only when no face has
+    // that typographic family; within that set width, then italic, then weight.
     FontId matchFamily(std::string_view family, uint16_t weight, bool italic) const;
     // T-569: the instance of `base` at variable weight `wght` (0 = the face's own) with synthetic
     // bold `embolden`, made on first use; `base` itself when neither applies or opening fails.
-    FontId instanceOf(FontId base, uint16_t wght, float embolden) const;
+    // T-853: and at `wdth` == `width` tenths of a percent (0 = the axis default).
+    FontId instanceOf(FontId base, uint16_t wght, uint16_t width, float embolden) const;
+    // T-853 (07 §7.21.1-§7.21.2): sets the legacy family and the static width (unless the face
+    // has a `wdth` axis) of `font` from its name-table scan.
+    static void setNameFacts(RegisteredFont& font, const FontNameInfo& info);
     // T-673: sets `font.family` and its normalized forms (familyKey, familyHash, hintGroups).
     static void setFamily(RegisteredFont& font, std::string family);
     // Reads weight/italic/variable range/CJK coverage from an open face (OS/2, fvar).
