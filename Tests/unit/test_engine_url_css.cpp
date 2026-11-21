@@ -190,3 +190,77 @@ TEST_CASE("T-808 imageSize: a background / border image naming an external textu
         CHECK(l.element("b").borderImageSize.y == doctest::Approx(32.0f));
     }
 }
+
+// T-828 (Docs/tasks/T-828.md): the T-806 report re-checked on the current compiler; the rest of the
+// sheet's test list that T-808 did not cover.
+namespace {
+
+/// The messages of `result`'s warnings, in order.
+std::vector<std::string> warningsT828(const CompileResult& result) {
+    std::vector<std::string> out;
+    for (const Diagnostic& d : result.diagnostics) {
+        if (d.level == Diagnostic::Level::Warning) {
+            out.push_back(d.message);
+        }
+    }
+    return out;
+}
+
+}  // namespace
+
+TEST_CASE("T-828 url(): stylesheet and style attribute, quoted and unquoted, give the same element") {
+    FileAssetResolver assets{std::string(XT_TEST_XT_DIR), nullptr};
+    assets.setExternalTexture("a", 5, 40, 20);
+    const char* const kBox = "width: 100px; height: 60px; border-width: 4px; ";
+    for (const char* url : {"url(engine://a)", "url('engine://a')"}) {
+        for (const bool inlineStyle : {false, true}) {
+            CAPTURE(url);
+            CAPTURE(inlineStyle);
+            const std::string decls = std::string(kBox) + "background-image: " + url +
+                                      "; background-repeat: no-repeat; border-image-source: " + url + ";";
+            const std::string text = inlineStyle
+                                         ? pageT808("", R"(<div id="a" style=")" + decls + R"("></div>)")
+                                         : pageT808("#a { " + decls + " }", R"(<div id="a"></div>)");
+            LoadedT808 l = loadT808(text, assets);
+            const ElementData& e = l.element("a");
+            REQUIRE(e.style.backgroundImage != kInvalidAsset);
+            CHECK(isExternalAsset(e.style.backgroundImage, l.doc->ir()));
+            REQUIRE(e.style.borderImage != kInvalidAsset);
+            CHECK(isExternalAsset(e.style.borderImage, l.doc->ir()));
+            CHECK(e.backgroundImageSize.x == doctest::Approx(40.0f));
+            CHECK(e.borderImageSize.y == doctest::Approx(20.0f));
+        }
+    }
+}
+
+TEST_CASE("T-828 url(): an unquoted url with // that is not engine:// is reported by its address") {
+    const std::string body = R"(<div id="a"></div>)";
+    const CompileResult unquoted =
+        compileT808(pageT808("#a { background-image: url(http://example.invalid/pic.png); }", body));
+    const CompileResult quoted =
+        compileT808(pageT808(R"(#a { background-image: url("http://example.invalid/pic.png"); })", body));
+    test::requireCompiled(unquoted);
+    const std::vector<std::string> w = warningsT828(unquoted);
+    REQUIRE(w.size() == 1);
+    CHECK(w[0].find("\"http://example.invalid/pic.png\"") != std::string::npos);
+    CHECK(w[0].find("not found") != std::string::npos);
+    CHECK(w == warningsT828(quoted));
+    CHECK(unquoted.ir == quoted.ir);
+
+    // The same in a style attribute: the declaration is kept (not dropped as malformed).
+    const CompileResult inl = compileT808(pageT808(
+        "", R"x(<div id="a" style="background-image: url(http://example.invalid/pic.png)"></div>)x"));
+    test::requireCompiled(inl);
+    const std::vector<std::string> wi = warningsT828(inl);
+    REQUIRE(wi.size() == 1);
+    CHECK(wi[0].find("\"http://example.invalid/pic.png\"") != std::string::npos);
+}
+
+TEST_CASE("T-828 CSS comments: /* */ still goes; // is not a comment outside url()") {
+    const std::string body = R"(<div id="a"></div>)";
+    CHECK(irT808(pageT808("#a { /* x // y */ width: 10px; }", body)) ==
+          irT808(pageT808("#a { width: 10px; }", body)));
+    // `//` is not CSS comment syntax: the declaration it starts is reported, not skipped silently.
+    const CompileResult slashes = compileT808(pageT808("#a { // width: 10px;\n height: 5px; }", body));
+    CHECK_FALSE(slashes.diagnostics.empty());
+}

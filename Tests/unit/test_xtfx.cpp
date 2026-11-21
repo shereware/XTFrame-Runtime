@@ -926,6 +926,187 @@ TEST_CASE("xtframe-compile: T-534 shadow offset @keyframes expand to the Vec2 tr
     CHECK(trackType(result, effectParam(0, 2)) == 0xFF);
 }
 
+// T-826 (Docs/design/18-effects.md §18.4, §18.12): `@keyframes` expands a custom() effect's
+// parameters into tracks with the same PropId and type `@timeline` gives them.
+namespace {
+
+// amp -> params[0] (PropId 1), ofs -> params[1..2] (Vec2 track 64 + 1), tint -> colors[0] (32).
+const char* const kKfFx =
+    "name: Kf\n"
+    "param amp float 4\n"
+    "param ofs vec2 1 2\n"
+    "param tint color #ffffff\n"
+    "---\n"
+    "float4 xtMain(XtInput i) { return xtSample(i.uv + ofs * amp * i.texelSize) * tint; }\n";
+
+std::string kfDoc(const std::string& from, const std::string& to) {
+    return "<xt><head><style>@keyframes k { from { effect: " + from + "; } to { effect: " + to +
+           "; } }#a { position: absolute; left: 0px; top: 0px; width: 40px; height: 40px;"
+           " background-color: #ff0000; effect: custom(\"kf.xtfx\"); animation: k 1s; }</style></head>"
+           "<body><div id=\"a\"></div></body></xt>";
+}
+
+CompileResult compileKf(const char* dirName, const std::string& from, const std::string& to) {
+    return compileWithAsset(dirName, kfDoc(from, to), "kf.xtfx", kKfFx);
+}
+
+CompileResult compileKfTimeline(const char* dirName, const std::string& timeline) {
+    return compileWithAsset(dirName, effectDoc("custom(\"kf.xtfx\")", timeline), "kf.xtfx", kKfFx);
+}
+
+struct EffectTrack {
+    PropId prop = 0;
+    uint8_t type = 0;
+    std::vector<std::vector<float>> values;  ///< Per keyframe, `components` floats.
+};
+
+/// Every effect-parameter track of every timeline of `result`, with its keyframe values.
+std::vector<EffectTrack> effectTracks(const CompileResult& result, int components) {
+    std::vector<EffectTrack> out;
+    Result<IrView> view = IrView::open(IrBlob{result.ir.data(), result.ir.size()}, IrReadOptions{});
+    REQUIRE(view.ok());
+    for (uint32_t t = 0; t < view.value().timelineCount(); ++t) {
+        const auto timeline = view.value().timeline(t);
+        for (const IrTrack& track : timeline.tracks()) {
+            if (!isEffectProp(track.prop)) {
+                continue;
+            }
+            EffectTrack et;
+            et.prop = track.prop;
+            et.type = track.type;
+            for (uint32_t k = 0; k < track.kfCount; ++k) {
+                const IrKeyframe& kf = timeline.keyframes()[track.kfOffset + k];
+                std::vector<float> v;
+                for (int c = 0; c < components; ++c) {
+                    v.push_back(irValueF32(kf.value, c));
+                }
+                et.values.push_back(std::move(v));
+            }
+            out.push_back(std::move(et));
+        }
+    }
+    return out;
+}
+
+}  // namespace
+
+TEST_CASE("xtframe-compile: T-826 @keyframes animates a custom() float parameter like @timeline") {
+    CompileResult kf =
+        compileKf("xt_t826_float", "custom(\"kf.xtfx\", amp 0)", "custom(\"kf.xtfx\", amp 16)");
+    checkNoErrors(kf);
+    REQUIRE(kf.ok());
+    const std::vector<EffectTrack> kfTracks = effectTracks(kf, 1);
+    REQUIRE(kfTracks.size() == 1);
+    CHECK(kfTracks[0].prop == effectParam(0, prop::kEffectParamFloatBase + 0));
+    CHECK(kfTracks[0].type == static_cast<uint8_t>(ValueType::Float));
+    REQUIRE(kfTracks[0].values.size() == 2);
+    CHECK(kfTracks[0].values[0][0] == doctest::Approx(0.0f));
+    CHECK(kfTracks[0].values[1][0] == doctest::Approx(16.0f));
+
+    CompileResult tl = compileKfTimeline(
+        "xt_t826_float_tl", "@timeline m { #a { 0s { effect.Kf.amp: 0; } 1s { effect.Kf.amp: 16; } } }");
+    checkNoErrors(tl);
+    REQUIRE(tl.ok());
+    const std::vector<EffectTrack> tlTracks = effectTracks(tl, 1);
+    REQUIRE(tlTracks.size() == 1);
+    CHECK(tlTracks[0].prop == kfTracks[0].prop);
+    CHECK(tlTracks[0].type == kfTracks[0].type);
+
+    // The runtime applies the track to the custom effect's params[0].
+    std::unique_ptr<Document> doc;
+    REQUIRE(Document::load(IrBlob{kf.ir.data(), kf.ir.size()}, false, nullptr, nullptr, doc) == Status::kOk);
+    doc->setViewport(Rect{0, 0, 64, 64});
+    doc->update(0.0f);
+    doc->update(0.5f);
+    ElementRef a = doc->byId("a");
+    REQUIRE(a.effectCount() == 1);
+    CHECK(a.effect(0).params[0] == doctest::Approx(8.0f));
+    CHECK(a.effect(0).params[1] == doctest::Approx(1.0f));  // ofs keeps its header default
+    CHECK(a.effect(0).params[2] == doctest::Approx(2.0f));
+}
+
+TEST_CASE("xtframe-compile: T-826 @keyframes animates custom() vec2 and color parameters like @timeline") {
+    CompileResult vec =
+        compileKf("xt_t826_vec2", "custom(\"kf.xtfx\", ofs 0 0)", "custom(\"kf.xtfx\", ofs 10px 20px)");
+    checkNoErrors(vec);
+    REQUIRE(vec.ok());
+    const std::vector<EffectTrack> vecTracks = effectTracks(vec, 2);
+    REQUIRE(vecTracks.size() == 1);
+    CHECK(vecTracks[0].prop == effectParam(0, prop::kEffectParamVec2Base + 1));
+    CHECK(vecTracks[0].type == static_cast<uint8_t>(ValueType::Vec2));
+    REQUIRE(vecTracks[0].values.size() == 2);
+    CHECK(vecTracks[0].values[1][0] == doctest::Approx(10.0f));
+    CHECK(vecTracks[0].values[1][1] == doctest::Approx(20.0f));
+    CompileResult vecTl = compileKfTimeline(
+        "xt_t826_vec2_tl",
+        "@timeline m { #a { 0s { effect.Kf.ofs: 0 0; } 1s { effect.Kf.ofs: 10px 20px; } } }");
+    checkNoErrors(vecTl);
+    REQUIRE(vecTl.ok());
+    const std::vector<EffectTrack> vecTlTracks = effectTracks(vecTl, 2);
+    REQUIRE(vecTlTracks.size() == 1);
+    CHECK(vecTlTracks[0].prop == vecTracks[0].prop);
+    CHECK(vecTlTracks[0].type == vecTracks[0].type);
+
+    CompileResult col =
+        compileKf("xt_t826_color", "custom(\"kf.xtfx\", tint #000000)", "custom(\"kf.xtfx\", tint #ff0000)");
+    checkNoErrors(col);
+    REQUIRE(col.ok());
+    const std::vector<EffectTrack> colTracks = effectTracks(col, 4);
+    REQUIRE(colTracks.size() == 1);
+    CHECK(colTracks[0].prop == effectParam(0, prop::kEffectParamColorBase + 0));
+    CHECK(colTracks[0].type == static_cast<uint8_t>(ValueType::Color));
+    REQUIRE(colTracks[0].values.size() == 2);
+    CHECK(colTracks[0].values[0][0] == doctest::Approx(0.0f));
+    CHECK(colTracks[0].values[1][0] == doctest::Approx(1.0f));
+    CHECK(colTracks[0].values[1][3] == doctest::Approx(1.0f));
+    CompileResult colTl = compileKfTimeline(
+        "xt_t826_color_tl",
+        "@timeline m { #a { 0s { effect.Kf.tint: #000000; } 1s { effect.Kf.tint: #ff0000; } } }");
+    checkNoErrors(colTl);
+    REQUIRE(colTl.ok());
+    const std::vector<EffectTrack> colTlTracks = effectTracks(colTl, 4);
+    REQUIRE(colTlTracks.size() == 1);
+    CHECK(colTlTracks[0].prop == colTracks[0].prop);
+    CHECK(colTlTracks[0].type == colTracks[0].type);
+}
+
+TEST_CASE("xtframe-compile: T-826 a parameter a stop leaves out counts as its header default") {
+    CompileResult omitted = compileKf("xt_t826_omit", "custom(\"kf.xtfx\")", "custom(\"kf.xtfx\", amp 10)");
+    checkNoErrors(omitted);
+    REQUIRE(omitted.ok());
+    const std::vector<EffectTrack> tracks = effectTracks(omitted, 1);
+    REQUIRE(tracks.size() == 1);
+    CHECK(tracks[0].prop == effectParam(0, prop::kEffectParamFloatBase + 0));
+    REQUIRE(tracks[0].values.size() == 2);
+    CHECK(tracks[0].values[0][0] == doctest::Approx(4.0f));  // `amp`'s default
+    CHECK(tracks[0].values[1][0] == doctest::Approx(10.0f));
+
+    // Left out on one stop, written as its default on the other: no difference, no track.
+    CompileResult same = compileKf("xt_t826_omit_same", "custom(\"kf.xtfx\", amp 4)", "custom(\"kf.xtfx\")");
+    checkNoErrors(same);
+    REQUIRE(same.ok());
+    CHECK(effectTracks(same, 1).empty());
+}
+
+TEST_CASE("xtframe-compile: T-826 identical custom() stops make no track; a different asset stays an error") {
+    CompileResult same = compileKf("xt_t826_same", "custom(\"kf.xtfx\", amp 3, ofs 5 6, tint #ff0000)",
+                                   "custom(\"kf.xtfx\", amp 3, ofs 5 6, tint #ff0000)");
+    checkNoErrors(same);
+    REQUIRE(same.ok());
+    CHECK(effectTracks(same, 1).empty());
+
+    fs::path dir = freshTempDir("xt_t826_assets");
+    writeText(dir / "kf.xtfx", kKfFx);
+    writeText(dir / "other.xtfx", kWobble);
+    const std::string xt = kfDoc("custom(\"kf.xtfx\", amp 1)", "custom(\"other.xtfx\")");
+    SourceFile files[1] = {SourceFile{"main.xt", xt}};
+    CompileOptions options;
+    options.rootDir = dir.string();
+    options.emitMeta = false;
+    CompileResult mixed = compileDocumentFromStrings(files, "main.xt", options);
+    CHECK(hasError(mixed, "effect keyframes must use the same effect sequence"));
+}
+
 TEST_CASE("IrView: T-534 a 2.x header is rejected and versionError() says to recompile") {
     CompileResult result = compileFull("xt_t534_major", "");
     REQUIRE(result.ok());

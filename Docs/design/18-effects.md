@@ -358,3 +358,37 @@ T-544 把 `bind:effect.<效果>.<參數>` 做在第 0 層（`setProperty` 直寫
 黏在內容上的效果（光束、光暈、掃描線對位）用 `local`；`vec2` 參數是原始數值，shader 作者自行決定拿它和 `uv` 還是 `local` 比較——**之後的畫布控制點（座標參數可拖曳）以 `local` 為準**，header 的參數宣告屆時加 `space: local` 註記（本單不做 UI）。實作：`gpu_effects.cpp` 的 `applyCustom` 比照 `applyGradientMask` 以 `invScreenXf · translate(window.origin)` 得到節點本地座標，另傳節點的 border box；GL、wgpu 兩個包裝同步；SW 仍只套 `fallback`。宿主的 HLSL 包裝（23 章升級須知）要補這兩個欄位，未補的宿主兩欄為 0。內建範例 `starter.xtfx` 改用 `local` 示範。
 
 `shine` 的 `position`：解析與面板的範圍由 0..1 放寬為 −1..2（光條可從盒外掃入、掃出）；執行期本來就不夾。
+
+**§18.3 補正（2026-11-21，T-819 回報）**：ColorAdjust 的參數共七個，索引 0～6 為 `brightness`、`contrast`、`saturation`、`hue`、`opacity`、`invert`、`sepia`（§18.3 的表只列到 4；`invert`／`sepia` 見 05 §5.9.8）。`color-adjust()` 的語法同樣接受 `invert()`、`sepia()`。時間軸位址用這七個名字（`effect.color-adjust.<name>`）。
+
+**§18.13 補正：匯入器把 CSS 的 `filter: brightness()` 換算成等效的 ColorAdjust（2026-11-21 定案，T-824）**
+
+§18.3 的定義不變（Brightness 是加法、Contrast 以 0.5 為支點）。但兩者合起來是一條直線 `c′ = s·c + o`，其中 `s = 1 + contrast`、`o = s·(brightness − 0.5) + 0.5`，所以 CSS 的乘法亮度可以用一組 contrast＋brightness 表達，不必只發警告：
+
+1. 匯入器把同一個 `filter` 值裡的 `brightness()` 與 `contrast()` **依書寫順序**合成一條直線（CSS：`brightness(x)` 是 `c·x`、`contrast(y)` 是 `(c − 0.5)·y + 0.5`），再輸出 `contrast = s − 1`、`brightness = 0.5 + (o − 0.5) / s`。只有一個 `brightness(x)` 時即 `contrast = x − 1`、`brightness = 0.5 − 0.5 / x`（例：`brightness(0.4)` → contrast −0.6、brightness −0.75）。`saturate()`／`grayscale()`／`hue-rotate()` 不改變灰階軸，與這條直線可交換，照舊各自輸出。
+2. **算得出且兩個參數都在 −1..1 之內**（單一 `brightness(x)` 是 1/3 ≤ x ≤ 2）：結果與 CSS 相同（CSS 各函式之間的截斷除外），**不發 `effect.degraded`**。
+3. 單一 `brightness(x)` 超出範圍時取連續的近似並保留警告：
+   - `x = 0`：brightness −1、contrast 0（全黑，與 CSS 相同，不警告）。
+   - `0 < x < 1/3`：brightness −1、contrast `−2x`（白色的結果正確，暗部比 CSS 更早壓成黑）；警告說明這一點。
+   - `x > 2`：contrast 1、brightness 0.25（等於 `brightness(2)`）；沿用「超出範圍、已截斷」的警告。
+4. 同一個 `filter` 值裡有 `invert()`、`sepia()` 或 `opacity()`（它們與直線不可交換），或合成後超出範圍而不屬於第 3 點：維持舊的逐函式換算（`brightness(x)` → `x − 1`）與 T-821 的警告。
+5. `backdrop-filter` 的 `brightness()` 不變（`backdrop-blur` 沒有 contrast 參數，仍是加法＋警告）。
+6. 關鍵影格（`@keyframes`／transition 的 `filter`）逐值換算：端點與 CSS 相同，中間值因 `0.5 − 0.5/x` 不是 x 的線性函數而略有出入（較暗，估計不超過 0.1；未量測）。
+7. 代價：面板上看到的是 contrast 與 brightness 兩個數字，不是作者寫的那一個。真正的乘法亮度參數（gain）仍是待設計的項目（PENDING），有了之後第 1～4 點改為直接輸出 gain。
+
+面板與 op 的行為都不變——這一節只規定匯入器（`.dc.html` → `.xt` 的 `filter` 換算）。
+
+**T-824 實作記錄（#763，2026-11-21）**：公式以測試驗證成立。兩項事實補記：(1) 執行期**不**把 brightness／contrast 截斷到 −1..1（`parseColorAdjustFn` 與 `colorAdjustMatrix` 都不夾；−1..1 只是面板的範圍與匯入器的舊換算），所以第 3 點的近似是為了讓數值留在面板可調的範圍內，不是執行期的限制——放寬面板範圍後可改成全範圍精確（待裁決，PENDING）。(2) `Hue(0)` 不是精確的單位矩陣（YIQ 係數三位小數，飽和色偏差最多約 2.4e-3，小於 1/255；灰階軸為 0），所有 ColorAdjust 都如此，與換算無關。輸出一律兩項都寫（`brightness(1)` → `contrast(0) brightness(0)`，讓關鍵影格有軌道可內插）；單獨的 `contrast()` 也經同一條路徑輸出。常數項在半透明像素上正確（SW 以測試、GL／wgpu 以讀碼：先除 alpha、套矩陣、再乘回）。
+
+**`XtInput.local`／`boxSize` 在場景節點上的定義（2026-11-21 定案，T-831；補 T-818 沒涵蓋的情況）**
+
+`<svg>` 內的形狀與群組（Path、Group 等場景節點）沒有 border box。這類節點掛自訂效果時：
+
+- **盒 ＝ 節點自身幾何在節點本地座標的外框，不含描邊**（與 SVG 的 `objectBoundingBox` 同一個定義——漸層的 `objectBoundingBox` 用的就是它，兩者對同一個形狀給出同一個盒）。群組取所有後代幾何在群組本地座標的聯集。
+- `local` 是該盒內的 0..1 座標（盒的左上角為 0,0——盒的原點不一定在節點本地座標的原點），`boxSize` 是該盒的寬高（CSS px，不含 dpr）。描邊與 `expand` 的外擴區落在 0..1 之外，與 Element 的規則一致。
+- 盒是空的（沒有幾何、或寬或高為 0）時維持現狀：`local` 與 `boxSize` 讀到 0。
+- 幾何有動畫（路徑變形、子節點移動）時盒每幀跟著變；只在效果堆疊含自訂效果時才計算（其他效果不讀它）。
+- Element 的定義不變（border box，原點 0,0）。
+
+面板與 op 不變。宿主的 HLSL 包裝仍待 CE 的渲染器單（23 章升級須知）。
+

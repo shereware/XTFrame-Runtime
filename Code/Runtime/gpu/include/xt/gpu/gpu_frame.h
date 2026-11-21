@@ -577,8 +577,8 @@ struct MaskApplyParams {
 /// relative to the window's top-left corner (`XtInput.uv * layerSize`), to the node's local
 /// coordinates normalised to its border box: local.x = a x + c y + e, local.y = b x + d y + f
 /// (0..1 inside the box, below 0 / above 1 in the `expand` margin). `boxW/H` = the border box size
-/// in CSS px, without dpr (`XtInput.boxSize`). All eight are 0 for a node without a border box
-/// (EffectCmd::localBox empty).
+/// in CSS px, without dpr (`XtInput.boxSize`); for a scene node the box is its geometry box (T-831,
+/// EffectCmd::localBox). All eight are 0 when EffectCmd::localBox is empty.
 struct CustomEffectParams {
     float program;
     float time;

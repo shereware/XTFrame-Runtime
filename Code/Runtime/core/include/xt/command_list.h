@@ -394,9 +394,11 @@ struct EffectCmd {
     /// T-818 (Docs/design/18-effects.md §18.7.x): the node's own border box in its plane (the space
     /// `xf` maps from), CSS px -- an Element's (0, 0, width, height), without its children's
     /// overflow. Custom effects derive `XtInput.local` (0..1 across this box) and `XtInput.boxSize`
-    /// from it. Zero for a scene node (it has no border box) and in a baked or hand-made list
-    /// that does not set it: `local` and `boxSize` are then 0. Kept last (appended after the
-    /// fields above).
+    /// from it. T-831: for a scene node with a custom effect, its geometry box in its local space
+    /// without the stroke (a group: the union of its descendants'), whose origin need not be 0,0.
+    /// Zero for a scene node without a custom effect or without geometry, and in a baked or
+    /// hand-made list that does not set it: `local` and `boxSize` are then 0. Kept last (appended
+    /// after the fields above).
     Rect localBox{};
 };
 

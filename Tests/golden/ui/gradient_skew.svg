@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- T-829: linear gradients whose gradient-to-user-space map is not a similarity. -->
+  <defs>
+    <!-- Top: a horizontal gradient under skewX(45): the bands slant at 45 degrees. -->
+    <linearGradient id="skew" gradientUnits="userSpaceOnUse" x1="40" y1="0" x2="200" y2="0"
+                    gradientTransform="skewX(45)">
+      <stop offset="0" stop-color="#ff3b30"/>
+      <stop offset="0.5" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#1144ee"/>
+    </linearGradient>
+    <!-- Bottom: a diagonal objectBoundingBox gradient on a 224 x 96 rect: the white middle band
+         runs from the top-right corner to the bottom-left corner. -->
+    <linearGradient id="diag" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff3b30"/>
+      <stop offset="0.5" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#1144ee"/>
+    </linearGradient>
+  </defs>
+  <rect x="16" y="16" width="224" height="96" fill="url(#skew)"/>
+  <rect x="16" y="144" width="224" height="96" fill="url(#diag)"/>
+</svg>

@@ -25,6 +25,24 @@ inline constexpr int kMaxXtDepth = 256;
 /// 1 (or no version) reads exactly as before.
 inline constexpr int kXtFormatVersion = 2;
 
+/// The attributes a `.xt` start tag may write without a value (`<img inline>`, `<video loop>`,
+/// `<repeat virtualize>`, `draggable`, `focus-trap`, `editor-only`, ...); they read as an empty
+/// value. Docs/design/05-style-and-css.md §5.9.1, 03 §3.13. T-825: the editor's source scanner
+/// accepts exactly this list.
+inline constexpr std::string_view kXtBareAttributes[] = {
+    "inline",    "virtualize",  "loop",      "autoplay",   "sync",
+    "draggable", "drop-target", "autofocus", "focus-trap", "editor-only"};
+
+/// True when `lowerName` (an attribute name, lower-cased) is in kXtBareAttributes.
+constexpr bool isXtBareAttribute(std::string_view lowerName) {
+    for (std::string_view name : kXtBareAttributes) {
+        if (name == lowerName) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /// Parses `text` (the contents of a `.xt` file named `fileName`, used only for diagnostics) into
 /// `out`. Returns false and leaves `out` in an unspecified state if any error diagnostic is
 /// produced; warnings do not affect the return value.

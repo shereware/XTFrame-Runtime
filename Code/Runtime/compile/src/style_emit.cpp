@@ -115,14 +115,76 @@ bool sameEffectSequence(const std::vector<EffectDeclEntry>& a, const std::vector
     return true;
 }
 
+// T-826 (18.4, 18.12): the tracks of custom() effect slot `i`. resolveCustomEffects() has already
+// written every stop's parameters (header defaults, then the stop's overrides) into
+// `params`/`colors` per the `.xtfx` slots, so a parameter a stop leaves out counts as its default.
+// Each parameter whose value differs across the stops gets the track `@timeline effect.<fx>.<name>`
+// would (matchCustomEffectParam(): Float -> kEffectParamFloatBase + slot, Vec2 whole ->
+// kEffectParamVec2Base + slot, Color -> kEffectParamColorBase + slot). Every `.xtfx` parameter
+// type (float / vec2 / color) interpolates, so none is left out.
+void emitCustomEffectKeyframeTracks(const std::map<float, const KeyframeStop*>& stopByOffset, size_t i,
+                                    const ShaderBuilder& shader, TimelineBuilder& tb) {
+    for (const XtfxParam& p : xtfxParamsOf(shader)) {
+        const int width = p.type == 2 ? 4 : (p.type == 1 ? 2 : 1);
+        auto valueOf = [&](const KeyframeStop& stop, float out[4]) {
+            const EffectDeclEntry& e = effectDeclOf(stop)->value.effects[i];
+            if (p.type == 2) {
+                const Color c = e.colors[p.slot];
+                out[0] = c.r;
+                out[1] = c.g;
+                out[2] = c.b;
+                out[3] = c.a;
+            } else {
+                out[0] = e.params[p.slot];
+                out[1] = p.type == 1 ? e.params[p.slot + 1] : 0.0f;
+            }
+        };
+        bool differs = false;
+        float first[4] = {};
+        float v[4] = {};
+        valueOf(*stopByOffset.begin()->second, first);
+        for (const auto& [offset, stopPtr] : stopByOffset) {
+            valueOf(*stopPtr, v);
+            for (int c = 0; c < width; ++c) {
+                differs = differs || v[c] != first[c];
+            }
+        }
+        if (!differs) {
+            continue;
+        }
+        uint32_t paramIndex = 0;
+        if (matchCustomEffectParam(p.name, p.name, p.type, p.slot, paramIndex) != CustomParamMatch::Ok) {
+            continue;  // Unreachable for a header the compiler accepted.
+        }
+        IrTrack track{};
+        track.target = kSelfNode;
+        track.prop = xt::effectParam(static_cast<uint32_t>(i), paramIndex);
+        track.type = static_cast<uint8_t>(xt::propertyType(track.prop));
+        track.kfOffset = static_cast<uint32_t>(tb.keyframes.size());
+        for (const auto& [offset, stopPtr] : stopByOffset) {
+            IrKeyframe kf{};
+            kf.time = offset / 100.0f;
+            kf.easing = toIrEasing(stopPtr->hasTiming ? stopPtr->timing : Easing::linear());
+            valueOf(*stopPtr, v);
+            for (int c = 0; c < width; ++c) {
+                irSetValueF32(kf.value, c, v[c]);
+            }
+            tb.keyframes.push_back(kf);
+        }
+        track.kfCount = static_cast<uint32_t>(tb.keyframes.size()) - track.kfOffset;
+        tb.tracks.push_back(track);
+    }
+}
+
 // `@keyframes` for `effect` (18.4): expands into per-effect-slot, per-parameter Tracks
 // (`prop = effectParam(effectIndex, paramIndex)`), one only for a parameter whose value differs
 // across at least two stops ("全相同者不產生"). Adds nothing to `tb` (reports an error instead) if
 // some stop of `kdef` has no `effect` decl at all, or if the effect sequences (kind, count, order)
 // aren't identical across every stop that does -- 18.4: "效果無恆等", so unlike `transform` there
-// is no identity value to fill a missing/mismatched stop with.
-void emitEffectKeyframeTracks(const KeyframesDef& kdef, TimelineBuilder& tb, std::string_view fileName,
-                              DiagnosticSink& sink) {
+// is no identity value to fill a missing/mismatched stop with. A custom() slot's parameters come
+// from its `.xtfx` header, which `writer` holds (T-826).
+void emitEffectKeyframeTracks(const KeyframesDef& kdef, const IrWriter& writer, TimelineBuilder& tb,
+                              std::string_view fileName, DiagnosticSink& sink) {
     std::map<float, const KeyframeStop*> stopByOffset;
     for (const KeyframeStop& stop : kdef.stops) {
         stopByOffset[stop.offset] = &stop;  // Later same-offset stop wins (12.3's generalized rule).
@@ -146,6 +208,13 @@ void emitEffectKeyframeTracks(const KeyframesDef& kdef, TimelineBuilder& tb, std
 
     for (size_t i = 0; i < refSeq.size(); ++i) {
         EffectKind kind = refSeq[i].kind;
+
+        if (kind == EffectKind::Custom) {
+            if (const ShaderBuilder* shader = writer.shaderForAsset(refSeq[i].shaderAsset)) {
+                emitCustomEffectKeyframeTracks(stopByOffset, i, *shader, tb);
+            }
+            continue;
+        }
 
         if (kind == EffectKind::DropShadow) {
             bool differs = false;
@@ -745,7 +814,7 @@ void emitKeyframesTimelines(const RuleSet& ruleSet, IrWriter& writer, StyleBuild
         if (std::find(propOrder.begin(), propOrder.end(), styleprop::Effect) != propOrder.end()) {
             propOrder.erase(std::remove(propOrder.begin(), propOrder.end(), styleprop::Effect),
                             propOrder.end());
-            emitEffectKeyframeTracks(kdef, tb, fileName, sink);
+            emitEffectKeyframeTracks(kdef, writer, tb, fileName, sink);
         }
 
         for (uint16_t propId : propOrder) {

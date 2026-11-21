@@ -1382,3 +1382,325 @@ TEST_CASE("svg: T-822 url(#id) of a <pattern> says so; a missing id points at th
     CHECK(p.path(0).fillColor == Color{0, 0, 0, 1});
     CHECK(p.path(0).fillKind == static_cast<uint8_t>(PaintKind::Solid));
 }
+
+// T-829: a linear gradient under a gradient-space -> user-space map M that is not a similarity
+// (skew, non-uniform scale, an objectBoundingBox on a non-square box). The definition is
+// t(x) = (M^-1 x - p0) . d / |d|^2 (d = p1 - p0, gradient space); the two-point form the IR stores
+// is p0' = M p0, p1' = p0' + g / |g|^2 with g = M^-T d / |d|^2.
+namespace {
+
+float dot2(Vec2 a, Vec2 b) { return a.x * b.x + a.y * b.y; }
+Vec2 sub2(Vec2 a, Vec2 b) { return Vec2{a.x - b.x, a.y - b.y}; }
+
+/// The definition: the gradient parameter of user-space point `x`.
+float definitionT(const Mat2x3& m, Vec2 p0, Vec2 p1, Vec2 x) {
+    Mat2x3 inv{};
+    REQUIRE(invert(m, inv));
+    const Vec2 d = sub2(p1, p0);
+    return dot2(sub2(apply(inv, x), p0), d) / dot2(d, d);
+}
+
+/// The two-point form the renderer evaluates.
+float twoPointT(Vec2 a, Vec2 b, Vec2 x) {
+    const Vec2 d = sub2(b, a);
+    return dot2(sub2(x, a), d) / dot2(d, d);
+}
+
+/// The sheet's p1' (T-829), computed in the test.
+Vec2 formulaP1(const Mat2x3& m, Vec2 p0, Vec2 p1) {
+    const Vec2 d = sub2(p1, p0);
+    const float dd = dot2(d, d);
+    const float det = m.a * m.d - m.b * m.c;
+    const Vec2 g{(m.d * d.x - m.b * d.y) / (det * dd), (-m.c * d.x + m.a * d.y) / (det * dd)};
+    const float gg = dot2(g, g);
+    const Vec2 q0 = apply(m, p0);
+    return Vec2{q0.x + g.x / gg, q0.y + g.y / gg};
+}
+
+/// Points spread over and around the 0..100 square.
+std::vector<Vec2> samplePoints() {
+    std::vector<Vec2> pts;
+    for (float y = -20.0f; y <= 120.0f; y += 35.0f) {
+        for (float x = -20.0f; x <= 120.0f; x += 35.0f) {
+            pts.push_back(Vec2{x, y});
+        }
+    }
+    return pts;
+}
+
+/// The parse result's two-point t matches the definition under `m` at every sample point.
+void checkMatchesDefinition(const Mat2x3& m, Vec2 p0, Vec2 p1, Vec2 outP0, Vec2 outP1) {
+    for (Vec2 x : samplePoints()) {
+        CAPTURE(x.x);
+        CAPTURE(x.y);
+        CHECK(twoPointT(outP0, outP1, x) == doctest::Approx(definitionT(m, p0, p1, x)).epsilon(1e-4));
+    }
+}
+
+Mat2x3 boxMatrix(float x, float y, float w, float h) { return Mat2x3{w, 0, 0, h, x, y}; }
+
+}  // namespace
+
+TEST_CASE("svg: T-829 step 1 -- the two-point form p0' = M p0, p1' = p0' + g/|g|^2 equals the definition") {
+    const float c30 = std::cos(0.5235988f);
+    const float s30 = std::sin(0.5235988f);
+    struct Case {
+        const char* name;
+        Mat2x3 m;
+        Vec2 p0;
+        Vec2 p1;
+    };
+    const Case cases[] = {
+        {"rotate(30)", Mat2x3{c30, s30, -s30, c30, 5, 7}, Vec2{10, 20}, Vec2{60, 20}},
+        {"scale(2)", Mat2x3{2, 0, 0, 2, 0, 0}, Vec2{0, 0}, Vec2{30, 40}},
+        {"skewX(45)", Mat2x3{1, 0, 1, 1, 0, 0}, Vec2{0, 0}, Vec2{100, 0}},
+        {"scale(2,1) diagonal", Mat2x3{2, 0, 0, 1, 0, 0}, Vec2{0, 0}, Vec2{10, 10}},
+        {"objectBoundingBox 80x40 diagonal", boxMatrix(10, 20, 80, 40), Vec2{0, 0}, Vec2{1, 1}},
+        {"objectBoundingBox 80x40 x skewX(30)",
+         mul(boxMatrix(10, 20, 80, 40), Mat2x3{1, 0, 0.57735f, 1, 0, 0}), Vec2{0.1f, 0.2f}, Vec2{0.9f, 0.4f}},
+    };
+    for (const Case& c : cases) {
+        CAPTURE(c.name);
+        const Vec2 q0 = apply(c.m, c.p0);
+        const Vec2 q1 = formulaP1(c.m, c.p0, c.p1);
+        for (Vec2 x : samplePoints()) {
+            CAPTURE(x.x);
+            CAPTURE(x.y);
+            CHECK(twoPointT(q0, q1, x) == doctest::Approx(definitionT(c.m, c.p0, c.p1, x)).epsilon(1e-4));
+        }
+    }
+    // For a similarity the formula is M p1 (the current two-point mapping).
+    const Vec2 r = formulaP1(cases[0].m, cases[0].p0, cases[0].p1);
+    const Vec2 m1 = apply(cases[0].m, cases[0].p1);
+    CHECK(r.x == doctest::Approx(m1.x));
+    CHECK(r.y == doctest::Approx(m1.y));
+}
+
+TEST_CASE("svg: T-829 a skewX(45) horizontal linear gradient gets slanted bands (fill and stroke)") {
+    ParsedSvg p = parseBody(
+        "<linearGradient id=\"sk\" gradientUnits=\"userSpaceOnUse\" x1=\"0\" y1=\"0\" x2=\"100\" y2=\"0\""
+        " gradientTransform=\"skewX(45)\">"
+        "<stop offset=\"0\" stop-color=\"white\"/><stop offset=\"1\" stop-color=\"black\"/></linearGradient>"
+        "<rect width=\"100\" height=\"100\" fill=\"url(#sk)\" stroke=\"url(#sk)\"/>");
+    REQUIRE(p.status == Status::kOk);
+    CHECK(p.sink.warningCount() == 0);
+    const IrPathData& d = p.path(0);
+    // t(x, y) = (x - y) / 100: p1' = (50, -50).
+    CHECK(d.fillP0.x == doctest::Approx(0.0f));
+    CHECK(d.fillP0.y == doctest::Approx(0.0f));
+    CHECK(d.fillP1.x == doctest::Approx(50.0f));
+    CHECK(d.fillP1.y == doctest::Approx(-50.0f));
+    CHECK(d.strokeP1.x == doctest::Approx(50.0f));
+    CHECK(d.strokeP1.y == doctest::Approx(-50.0f));
+    checkMatchesDefinition(Mat2x3{1, 0, 1, 1, 0, 0}, Vec2{0, 0}, Vec2{100, 0}, d.fillP0, d.fillP1);
+}
+
+TEST_CASE("svg: T-829 scale(2,1) with a diagonal linear gradient") {
+    ParsedSvg p = parseBody(
+        "<linearGradient id=\"sd\" gradientUnits=\"userSpaceOnUse\" x1=\"0\" y1=\"0\" x2=\"10\" y2=\"10\""
+        " gradientTransform=\"scale(2,1)\">"
+        "<stop offset=\"0\" stop-color=\"white\"/><stop offset=\"1\" stop-color=\"black\"/></linearGradient>"
+        "<rect width=\"100\" height=\"100\" fill=\"url(#sd)\"/>");
+    REQUIRE(p.status == Status::kOk);
+    const IrPathData& d = p.path(0);
+    CHECK(d.fillP1.x == doctest::Approx(8.0f));
+    CHECK(d.fillP1.y == doctest::Approx(16.0f));
+    checkMatchesDefinition(Mat2x3{2, 0, 0, 1, 0, 0}, Vec2{0, 0}, Vec2{10, 10}, d.fillP0, d.fillP1);
+}
+
+TEST_CASE("svg: T-829 objectBoundingBox diagonal gradient on a non-square rect") {
+    ParsedSvg p = parseBody(
+        "<linearGradient id=\"ob\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"1\">"
+        "<stop offset=\"0\" stop-color=\"white\"/><stop offset=\"1\" stop-color=\"black\"/></linearGradient>"
+        "<rect x=\"10\" y=\"20\" width=\"80\" height=\"40\" fill=\"url(#ob)\" stroke=\"url(#ob)\"/>");
+    REQUIRE(p.status == Status::kOk);
+    CHECK(p.sink.warningCount() == 0);
+    const IrPathData& d = p.path(0);
+    // The other diagonal's corners are t = 0.5: p1' = (10, 20) + (32, 64).
+    CHECK(d.fillP0.x == doctest::Approx(10.0f));
+    CHECK(d.fillP0.y == doctest::Approx(20.0f));
+    CHECK(d.fillP1.x == doctest::Approx(42.0f));
+    CHECK(d.fillP1.y == doctest::Approx(84.0f));
+    CHECK(d.strokeP1.x == doctest::Approx(42.0f));
+    CHECK(d.strokeP1.y == doctest::Approx(84.0f));
+    CHECK(twoPointT(d.fillP0, d.fillP1, Vec2{90, 20}) == doctest::Approx(0.5f));
+    CHECK(twoPointT(d.fillP0, d.fillP1, Vec2{10, 60}) == doctest::Approx(0.5f));
+    checkMatchesDefinition(boxMatrix(10, 20, 80, 40), Vec2{0, 0}, Vec2{1, 1}, d.fillP0, d.fillP1);
+}
+
+TEST_CASE(
+    "svg: T-829 objectBoundingBox applies gradientTransform in the box's unit space (box x transform)") {
+    ParsedSvg p = parseBody(
+        "<defs>"
+        "<linearGradient id=\"tr\" gradientTransform=\"translate(0.5,0)\">"
+        "<stop offset=\"0\" stop-color=\"white\"/><stop offset=\"1\" stop-color=\"black\"/></linearGradient>"
+        "<linearGradient id=\"ro\" gradientTransform=\"rotate(90)\">"
+        "<stop offset=\"0\" stop-color=\"white\"/><stop offset=\"1\" stop-color=\"black\"/></linearGradient>"
+        "<linearGradient id=\"sk\" x1=\"0.1\" y1=\"0.2\" x2=\"0.9\" y2=\"0.4\" "
+        "gradientTransform=\"skewX(30)\">"
+        "<stop offset=\"0\" stop-color=\"white\"/><stop offset=\"1\" stop-color=\"black\"/></linearGradient>"
+        "</defs>"
+        "<rect x=\"10\" y=\"20\" width=\"80\" height=\"40\" fill=\"url(#tr)\"/>"
+        "<rect x=\"10\" y=\"20\" width=\"80\" height=\"40\" fill=\"url(#ro)\"/>"
+        "<rect x=\"10\" y=\"20\" width=\"80\" height=\"40\" fill=\"url(#sk)\"/>");
+    REQUIRE(p.status == Status::kOk);
+    const IrPathData& a = p.path(0);
+    CHECK(a.fillP0.x == doctest::Approx(50.0f));
+    CHECK(a.fillP0.y == doctest::Approx(20.0f));
+    CHECK(a.fillP1.x == doctest::Approx(130.0f));
+    CHECK(a.fillP1.y == doctest::Approx(20.0f));
+    const IrPathData& b = p.path(1);
+    CHECK(b.fillP0.x == doctest::Approx(10.0f));
+    CHECK(b.fillP0.y == doctest::Approx(20.0f));
+    CHECK(b.fillP1.x == doctest::Approx(10.0f));
+    CHECK(b.fillP1.y == doctest::Approx(60.0f));
+    const IrPathData& c = p.path(2);
+    const Mat2x3 m = mul(boxMatrix(10, 20, 80, 40), Mat2x3{1, 0, std::tan(0.5235988f), 1, 0, 0});
+    checkMatchesDefinition(m, Vec2{0.1f, 0.2f}, Vec2{0.9f, 0.4f}, c.fillP0, c.fillP1);
+}
+
+TEST_CASE("svg: T-829 similarity and axis-aligned cases keep M p1") {
+    ParsedSvg p = parseBody(
+        "<defs>"
+        "<linearGradient id=\"ro\" gradientUnits=\"userSpaceOnUse\" x1=\"10\" y1=\"20\" x2=\"60\" y2=\"20\""
+        " gradientTransform=\"translate(5,7) rotate(30)\">"
+        "<stop offset=\"0\" stop-color=\"white\"/><stop offset=\"1\" stop-color=\"black\"/></linearGradient>"
+        "<linearGradient id=\"un\" gradientUnits=\"userSpaceOnUse\" x1=\"0\" y1=\"0\" x2=\"30\" y2=\"40\""
+        " gradientTransform=\"scale(2)\">"
+        "<stop offset=\"0\" stop-color=\"white\"/><stop offset=\"1\" stop-color=\"black\"/></linearGradient>"
+        "<linearGradient id=\"h\">"
+        "<stop offset=\"0\" stop-color=\"white\"/><stop offset=\"1\" stop-color=\"black\"/></linearGradient>"
+        "</defs>"
+        "<rect width=\"100\" height=\"100\" fill=\"url(#ro)\"/>"
+        "<rect width=\"100\" height=\"100\" fill=\"url(#un)\"/>"
+        "<rect x=\"10\" y=\"20\" width=\"80\" height=\"40\" fill=\"url(#h)\"/>");
+    REQUIRE(p.status == Status::kOk);
+    CHECK(p.sink.warningCount() == 0);
+    const float c30 = std::cos(0.5235988f);
+    const float s30 = std::sin(0.5235988f);
+    const Mat2x3 ro{c30, s30, -s30, c30, 5, 7};
+    const IrPathData& a = p.path(0);
+    const Vec2 e1 = apply(ro, Vec2{60, 20});
+    CHECK(a.fillP1.x == doctest::Approx(e1.x));
+    CHECK(a.fillP1.y == doctest::Approx(e1.y));
+    checkMatchesDefinition(ro, Vec2{10, 20}, Vec2{60, 20}, a.fillP0, a.fillP1);
+    const IrPathData& b = p.path(1);
+    CHECK(b.fillP1.x == 60.0f);
+    CHECK(b.fillP1.y == 80.0f);
+    // objectBoundingBox horizontal on a non-square box: exactly the box's right edge.
+    const IrPathData& c = p.path(2);
+    CHECK(c.fillP0.x == 10.0f);
+    CHECK(c.fillP0.y == 20.0f);
+    CHECK(c.fillP1.x == 90.0f);
+    CHECK(c.fillP1.y == 20.0f);
+}
+
+TEST_CASE("svg: T-829 a singular linear gradientTransform keeps the mapped end points and warns once") {
+    ParsedSvg p = parseBody(
+        "<linearGradient id=\"z\" gradientUnits=\"userSpaceOnUse\" x1=\"0\" y1=\"0\" x2=\"100\" y2=\"0\""
+        " gradientTransform=\"matrix(1,1,1,1,0,0)\">"
+        "<stop offset=\"0\" stop-color=\"white\"/><stop offset=\"1\" stop-color=\"black\"/></linearGradient>"
+        "<rect width=\"100\" height=\"100\" fill=\"url(#z)\" stroke=\"url(#z)\"/>");
+    REQUIRE(p.status == Status::kOk);
+    CHECK(warnCount(p, "linearGradient \"#z\": the gradient-to-user-space map is singular") == 1);
+    CHECK(p.sink.warningCount() == 1);
+    const IrPathData& d = p.path(0);
+    CHECK(d.fillP1.x == doctest::Approx(100.0f));
+    CHECK(d.fillP1.y == doctest::Approx(100.0f));
+}
+
+// T-830: a radial gradient's objectBoundingBox applies gradientTransform first, then the box
+// (M = box x gradientTransform, as T-829 does for linear gradients). The radius keeps T-822's
+// circle rule: the gradient-space radius vector (r, 0) goes through gradientTransform's linear part
+// and is scaled by the mean of the box's width and height.
+TEST_CASE("svg: T-830 objectBoundingBox radial applies gradientTransform before the box") {
+    ParsedSvg p = parseBody(
+        "<defs>"
+        "<radialGradient id=\"tr\" gradientTransform=\"translate(0.5,0)\">"
+        "<stop offset=\"0\" stop-color=\"white\"/><stop offset=\"1\" stop-color=\"black\"/></radialGradient>"
+        "<radialGradient id=\"sc\" gradientTransform=\"scale(0.5)\">"
+        "<stop offset=\"0\" stop-color=\"white\"/><stop offset=\"1\" stop-color=\"black\"/></radialGradient>"
+        "<radialGradient id=\"ro\" gradientTransform=\"rotate(90 0.5 0.5)\">"
+        "<stop offset=\"0\" stop-color=\"white\"/><stop offset=\"1\" stop-color=\"black\"/></radialGradient>"
+        "</defs>"
+        "<rect x=\"10\" y=\"20\" width=\"80\" height=\"80\" fill=\"url(#tr)\" stroke=\"url(#tr)\"/>"
+        "<rect x=\"10\" y=\"20\" width=\"80\" height=\"80\" fill=\"url(#sc)\"/>"
+        "<rect x=\"10\" y=\"20\" width=\"80\" height=\"80\" fill=\"url(#ro)\"/>");
+    REQUIRE(p.status == Status::kOk);
+    CHECK(p.sink.warningCount() == 0);
+    // translate(0.5,0): centre (0.5,0.5) -> (1,0.5) -> box (90,60); radius 0.5 * 80 = 40.
+    const IrPathData& a = p.path(0);
+    CHECK(a.fillKind == static_cast<uint8_t>(PaintKind::Radial));
+    CHECK(a.fillP0.x == doctest::Approx(90.0f));
+    CHECK(a.fillP0.y == doctest::Approx(60.0f));
+    CHECK(a.fillP1.x == doctest::Approx(130.0f));
+    CHECK(a.fillP1.y == doctest::Approx(60.0f));
+    CHECK(a.strokeP0.x == doctest::Approx(90.0f));
+    CHECK(a.strokeP1.x == doctest::Approx(130.0f));
+    // scale(0.5): centre -> (0.25,0.25) -> box (30,40); radius 0.25 * 80 = 20.
+    const IrPathData& b = p.path(1);
+    CHECK(b.fillP0.x == doctest::Approx(30.0f));
+    CHECK(b.fillP0.y == doctest::Approx(40.0f));
+    CHECK(b.fillP1.x == doctest::Approx(50.0f));
+    CHECK(b.fillP1.y == doctest::Approx(40.0f));
+    // rotate(90 0.5 0.5): the centre stays at the box centre (50,60); radius 40, turned to +y.
+    const IrPathData& c = p.path(2);
+    CHECK(c.fillP0.x == doctest::Approx(50.0f));
+    CHECK(c.fillP0.y == doctest::Approx(60.0f));
+    CHECK(c.fillP1.x == doctest::Approx(50.0f));
+    CHECK(c.fillP1.y == doctest::Approx(100.0f));
+}
+
+TEST_CASE(
+    "svg: T-830 radial objectBoundingBox + gradientTransform on a non-square box keeps the circle rule") {
+    ParsedSvg p = parseBody(
+        "<radialGradient id=\"tr\" gradientTransform=\"translate(0.5,0)\">"
+        "<stop offset=\"0\" stop-color=\"white\"/><stop offset=\"1\" stop-color=\"black\"/></radialGradient>"
+        "<rect x=\"10\" y=\"20\" width=\"80\" height=\"40\" fill=\"url(#tr)\"/>");
+    REQUIRE(p.status == Status::kOk);
+    CHECK(warnCount(p,
+                    "radialGradient \"#tr\": objectBoundingBox on a non-square shape is drawn as a circle") ==
+          1);
+    CHECK(p.sink.warningCount() == 1);
+    // Centre (1,0.5) -> (90,40); radius 0.5 * (80 + 40) / 2 = 30.
+    const IrPathData& d = p.path(0);
+    CHECK(d.fillP0.x == doctest::Approx(90.0f));
+    CHECK(d.fillP0.y == doctest::Approx(40.0f));
+    CHECK(d.fillP1.x == doctest::Approx(120.0f));
+    CHECK(d.fillP1.y == doctest::Approx(40.0f));
+}
+
+TEST_CASE("svg: T-830 radial without gradientTransform, or userSpaceOnUse with one, is unchanged") {
+    ParsedSvg p = parseBody(
+        "<defs>"
+        "<radialGradient id=\"ob\">"
+        "<stop offset=\"0\" stop-color=\"white\"/><stop offset=\"1\" stop-color=\"black\"/></radialGradient>"
+        "<radialGradient id=\"us\" gradientUnits=\"userSpaceOnUse\" cx=\"40\" cy=\"50\" r=\"25\""
+        " gradientTransform=\"translate(10,0)\">"
+        "<stop offset=\"0\" stop-color=\"white\"/><stop offset=\"1\" stop-color=\"black\"/></radialGradient>"
+        "<radialGradient id=\"ur\" gradientUnits=\"userSpaceOnUse\" cx=\"40\" cy=\"50\" r=\"25\""
+        " gradientTransform=\"rotate(90 40 50)\">"
+        "<stop offset=\"0\" stop-color=\"white\"/><stop offset=\"1\" stop-color=\"black\"/></radialGradient>"
+        "</defs>"
+        "<rect x=\"10\" y=\"20\" width=\"80\" height=\"80\" fill=\"url(#ob)\"/>"
+        "<rect x=\"10\" y=\"20\" width=\"80\" height=\"80\" fill=\"url(#us)\"/>"
+        "<rect x=\"10\" y=\"20\" width=\"80\" height=\"80\" fill=\"url(#ur)\"/>");
+    REQUIRE(p.status == Status::kOk);
+    CHECK(p.sink.warningCount() == 0);
+    const IrPathData& a = p.path(0);
+    CHECK(a.fillP0.x == 50.0f);
+    CHECK(a.fillP0.y == 60.0f);
+    CHECK(a.fillP1.x == 90.0f);
+    CHECK(a.fillP1.y == 60.0f);
+    const IrPathData& b = p.path(1);
+    CHECK(b.fillP0.x == 50.0f);
+    CHECK(b.fillP0.y == 50.0f);
+    CHECK(b.fillP1.x == 75.0f);
+    CHECK(b.fillP1.y == 50.0f);
+    // userSpaceOnUse keeps mapping both points by gradientTransform: (40,50) and (40,75).
+    const IrPathData& c = p.path(2);
+    CHECK(c.fillP0.x == doctest::Approx(40.0f));
+    CHECK(c.fillP0.y == doctest::Approx(50.0f));
+    CHECK(c.fillP1.x == doctest::Approx(40.0f));
+    CHECK(c.fillP1.y == doctest::Approx(75.0f));
+}

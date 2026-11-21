@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "../Common/ir_load_error.h"
 #include "xt/asset_resolver.h"
 #include "xt/charconv.h"
 #include "xt/command_list.h"
@@ -124,7 +125,9 @@ bool renderPreview(const fs::path& groupDir, const bundle::PreviewSpec& spec, Im
     Result<DocumentHandle> handle =
         ctx.loadDocument(IrBlob{result.ir.data(), result.ir.size()}, /*takeOwnership=*/true);
     if (!handle.ok()) {
-        error = spec.xtFile + " does not load (" + statusName(handle.status()) + ")";
+        error = spec.xtFile + " does not load (" +
+                tools::irLoadFailure(handle.status(), IrBlob{result.ir.data(), result.ir.size()}) +
+                ")";  // T-827
         return false;
     }
     Document* doc = ctx.document(handle.value());

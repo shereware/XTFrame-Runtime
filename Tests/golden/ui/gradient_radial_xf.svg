@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- T-830: objectBoundingBox radial gradients apply gradientTransform before the box. -->
+  <defs>
+    <!-- Top left: translate(0.25,0): the white centre sits at three quarters of the box width. -->
+    <radialGradient id="tr" gradientTransform="translate(0.25,0)">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#1144ee"/>
+    </radialGradient>
+    <!-- Top right: scale(0.5): a half-size circle centred at the box's quarter point. -->
+    <radialGradient id="sc" gradientTransform="scale(0.5)">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#ff3b30"/>
+    </radialGradient>
+    <!-- Bottom: rotate(90 0.5 0.5) about the box centre leaves the circle centred in the box. -->
+    <radialGradient id="ro" gradientTransform="rotate(90 0.5 0.5)">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.5" stop-color="#ffcc00"/>
+      <stop offset="1" stop-color="#118833"/>
+    </radialGradient>
+  </defs>
+  <rect x="16" y="16" width="104" height="104" fill="url(#tr)"/>
+  <rect x="136" y="16" width="104" height="104" fill="url(#sc)"/>
+  <rect x="76" y="136" width="104" height="104" fill="url(#ro)"/>
+</svg>

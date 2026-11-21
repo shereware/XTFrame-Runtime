@@ -586,6 +586,31 @@ if(TARGET xtframe-view)
     set_tests_properties(xtframe-view_advance PROPERTIES TIMEOUT 300)
 endif()
 
+# T-827: the CLI tools say why an IR is rejected (an IR major 2 file: "recompile the source"), and
+# xtframe-view shows a UI whose own flow is broken (`flow: <ui>: <problem>`, exit 0).
+if(TARGET xtframe-view AND TARGET xtframe-pack)
+    set(_t827_probe)
+    if(TARGET xtframe-gpu-probe)
+        set(_t827_probe "-DPROBE=$<TARGET_FILE:xtframe-gpu-probe>")
+    endif()
+    foreach(_t827_mode old_ir bad_flow)
+        add_test(NAME xtframe-view_t827_${_t827_mode}
+                 COMMAND ${CMAKE_COMMAND} -DMODE=${_t827_mode} "-DPACK=$<TARGET_FILE:xtframe-pack>"
+                         "-DVIEW=$<TARGET_FILE:xtframe-view>" ${_t827_probe}
+                         "-DPROJECT=${CMAKE_CURRENT_SOURCE_DIR}/capi/fixtures/flip"
+                         "-DOLD_IR=${CMAKE_CURRENT_SOURCE_DIR}/ir/fixtures/v2.9.xtir"
+                         "-DOUT=${CMAKE_CURRENT_BINARY_DIR}/t827_${_t827_mode}"
+                         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/t827_tools.cmake")
+        set_tests_properties(xtframe-view_t827_${_t827_mode} PROPERTIES TIMEOUT 300)
+    endforeach()
+endif()
+if(TARGET xtframe-bake)
+    xt_add_expect_exit_test(xtframe-bake_t827_old_ir CODE 1
+        OUTPUT "v2\\.9\\.xtir' is not a valid \\.xtir file \\(kInvalidIr: IR major 2 is not supported[^\n]*recompile the source\\)"
+        COMMAND $<TARGET_FILE:xtframe-bake> "${CMAKE_CURRENT_SOURCE_DIR}/ir/fixtures/v2.9.xtir"
+                -o "${CMAKE_CURRENT_BINARY_DIR}/t827_bake.xtcl" --fps 10)
+endif()
+
 # T-713: the War Table benchmark runner's self-test -- its parsers on built-in text, then a shortened matrix
 # on a copy of Examples/demos/world-layers with this build's tools (optimised configurations only, like
 # corpus_check: a Debug software render is far slower).

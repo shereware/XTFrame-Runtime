@@ -262,6 +262,75 @@ TEST_CASE("colorAdjustMatrix: T-334 invert is applied after hue and before sepia
     CHECK(s.get(0, 0).b == doctest::Approx(0.937f).epsilon(0.004));
 }
 
+// T-824 (18 §18.13 amendment): the importer writes CSS's multiplicative brightness(x) as
+// contrast x - 1 with brightness 0.5 - 0.5 / x; this matrix must then be the line c * x.
+// Hue(0) is not exactly the identity (the YIQ coefficients have three decimals: up to about 2.4e-3 on a
+// saturated colour, 0 on the grey axis), so a colour is compared with the unadjusted matrix applied to
+// c * x, and a grey with c * x itself.
+TEST_CASE("colorAdjustMatrix: T-824 contrast x-1 with brightness 0.5-0.5/x is CSS brightness(x)") {
+    const auto apply = [](const ColorMatrix& m, const float (&c)[3], float scale, int ch) {
+        const float* row = m.m + ch * 5;
+        // Unclamped matrix output on the straight colour; alpha's column must not contribute.
+        return row[0] * c[0] * scale + row[1] * c[1] * scale + row[2] * c[2] * scale + row[3] * 0.5f + row[4];
+    };
+    const ColorMatrix plain = colorAdjustMatrix(0.0f, 0.0f, 0.0f, 0.0f);
+    const float factors[] = {0.4f, 0.5f, 1.5f, 2.0f};
+    const float colours[][3] = {
+        {0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}, {0.3f, 0.3f, 0.3f}, {0.2f, 0.45f, 0.5f}, {0.9f, 0.1f, 0.35f}};
+    for (float x : factors) {
+        CAPTURE(x);
+        const ColorMatrix m = colorAdjustMatrix(0.5f - 0.5f / x, x - 1.0f, 0.0f, 0.0f);
+        for (const auto& c : colours) {
+            for (int ch = 0; ch < 3; ++ch) {
+                CAPTURE(ch);
+                const float out = apply(m, c, 1.0f, ch);
+                CHECK(std::fabs(out - apply(plain, c, x, ch)) <= 1e-4f);
+                if (c[0] == c[1] && c[1] == c[2]) {
+                    CHECK(std::fabs(out - c[ch] * x) <= 1e-4f);
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("colorAdjustMatrix: T-824 brightness+contrast compose in CSS source order") {
+    // CSS brightness(0.5) contrast(1.4): (0.5c - 0.5) * 1.4 + 0.5 = 0.7c - 0.2.
+    // Line s = 0.7, o = -0.2 -> contrast s - 1 = -0.3, brightness 0.5 + (o - 0.5) / s = -0.5.
+    // CSS contrast(1.4) brightness(0.5): ((c - 0.5) * 1.4 + 0.5) * 0.5 = 0.7c - 0.1.
+    // Line s = 0.7, o = -0.1 -> contrast -0.3, brightness 0.5 - 0.6 / 0.7.
+    struct Case {
+        float brightness;
+        float contrast;
+        float cssOffset;
+    };
+    const Case cases[] = {{-0.5f, -0.3f, -0.2f}, {0.5f - 0.6f / 0.7f, -0.3f, -0.1f}};
+    const float greys[] = {0.0f, 0.3f, 0.5f, 0.8f, 1.0f};
+    for (const Case& k : cases) {
+        CAPTURE(k.cssOffset);
+        const ColorMatrix m = colorAdjustMatrix(k.brightness, k.contrast, 0.0f, 0.0f);
+        for (float g : greys) {
+            const float out = m.m[0] * g + m.m[1] * g + m.m[2] * g + m.m[4];
+            CHECK(std::fabs(out - (0.7f * g + k.cssOffset)) <= 1e-4f);
+        }
+    }
+}
+
+TEST_CASE("applyColorMatrix: T-824 the constant term is applied to the straight colour") {
+    // A semi-transparent pixel: the converted brightness(0.4) must scale the colour the viewer sees
+    // (premultiplied channel / alpha) by 0.4 and leave alpha alone; were the offset added to the
+    // premultiplied channel, the result would differ by (1 - a) * offset.
+    const ColorMatrix m = colorAdjustMatrix(-0.75f, -0.6f, 0.0f, 0.0f);
+    Surface s = makeSurface(1, 1);
+    s.set(0, 0,
+          Color{0.5f * 0.5f, 0.9f * 0.5f, 0.25f * 0.5f, 0.5f});  // Premultiplied (0.5, 0.9, 0.25) @ 0.5.
+    applyColorMatrix(s, m, 1.0f);
+    const Color c = s.get(0, 0);
+    CHECK(c.a == doctest::Approx(0.5f).epsilon(0.004));
+    CHECK(c.r / c.a == doctest::Approx(0.5f * 0.4f).epsilon(0.01));
+    CHECK(c.g / c.a == doctest::Approx(0.9f * 0.4f).epsilon(0.01));
+    CHECK(c.b / c.a == doctest::Approx(0.25f * 0.4f).epsilon(0.01));
+}
+
 TEST_CASE("applyColorMatrix: opacity halves alpha") {
     ColorMatrix m = colorAdjustMatrix(0.0f, 0.0f, 0.0f, 0.0f);
     Surface s = makeSurface(1, 1);

@@ -145,4 +145,4 @@ MIT. See [`LICENSE`](LICENSE). Third-party components and their licenses are lis
 
 ---
 
-Exported from XTFrame d57ace8db4a0 (2026-11-21, version 0.19.1).
+Exported from XTFrame c053ecb673df (2026-11-21, version 0.19.2).

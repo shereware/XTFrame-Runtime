@@ -515,3 +515,130 @@ TEST_CASE("Painter effects 12: localBox is the element's border box, zero for a 
     CHECK(sceneCmds.effectCmds[0].localBox.w == 0.0f);
     CHECK(sceneCmds.effectCmds[0].localBox.h == 0.0f);
 }
+
+// T-831 (Docs/design/18-effects.md, XtInput.local / boxSize on scene nodes): a scene node with a
+// custom effect gets its own geometry box in its local coordinates, without the stroke (a group: the
+// union of its descendants' geometry); the origin is not necessarily 0,0.
+namespace {
+
+EffectInstance makeCustom() {
+    EffectInstance e{};
+    e.kind = EffectKind::Custom;
+    e.enabled = 1;
+    e.shader = 1;
+    return e;
+}
+
+void fillWhite(Paint& paint) {
+    paint.kind = PaintKind::Solid;
+    paint.color = Color{1, 1, 1, 1};
+}
+
+void strokeWide(Paint& paint, Stroke& style) {
+    paint.kind = PaintKind::Solid;
+    paint.color = Color{1, 0, 0, 1};
+    style.width = 6.0f;
+}
+
+NodeId makeRectShape(NodeArena& arena, NodeId parent, float x, float y, float w, float h) {
+    NodeId id = arena.create(NodeKind::Shape);
+    arena.appendChild(parent, id);
+    ShapeNodeData& s = arena.shape(id);
+    s.kind = ShapeKind::Rect;
+    s.params[0] = x;
+    s.params[1] = y;
+    s.params[2] = w;
+    s.params[3] = h;
+    fillWhite(s.fill);
+    strokeWide(s.stroke, s.strokeStyle);
+    return id;
+}
+
+NodeId makeTrianglePath(NodeArena& arena, NodeId parent, Vec2 a, Vec2 b, Vec2 c) {
+    NodeId id = arena.create(NodeKind::Path);
+    arena.appendChild(parent, id);
+    PathNodeData& p = arena.path(id);
+    p.verbs = {PathVerb::Move, PathVerb::Line, PathVerb::Line, PathVerb::Close};
+    p.points = {a.x, a.y, b.x, b.y, c.x, c.y};
+    fillWhite(p.fill);
+    strokeWide(p.stroke, p.strokeStyle);
+    return id;
+}
+
+NodeId makeSvgRoot(NodeArena& arena) {
+    NodeId root = makeElement(arena, kInvalidNode);
+    arena.element(root).box.width = 400;
+    arena.element(root).box.height = 400;
+    return root;
+}
+
+void checkBox(const Rect& r, float x, float y, float w, float h) {
+    CHECK(r.x == doctest::Approx(x));
+    CHECK(r.y == doctest::Approx(y));
+    CHECK(r.w == doctest::Approx(w));
+    CHECK(r.h == doctest::Approx(h));
+}
+
+}  // namespace
+
+TEST_CASE("Painter effects 13: a translated rect shape with a custom effect: its geometry box (T-831)") {
+    NodeArena arena;
+    NodeId root = makeSvgRoot(arena);
+    NodeId rect = makeRectShape(arena, root, 30, 40, 20, 10);
+    arena.common(rect).translate = Vec2{5, 7};  // the node transform does not enter the local box
+    EffectInstance custom = makeCustom();
+    REQUIRE(arena.assignEffects(rect, std::span<const EffectInstance>(&custom, 1), {}) == Status::kOk);
+    CommandList cmds;
+    paintDump(arena, root, cmds);
+    REQUIRE(cmds.effectCmds.size() == 1);
+    checkBox(cmds.effectCmds[0].localBox, 30, 40, 20, 10);  // stroke (width 6) left out
+}
+
+TEST_CASE("Painter effects 14: a path with a custom effect: its geometry box (T-831)") {
+    NodeArena arena;
+    NodeId root = makeSvgRoot(arena);
+    NodeId path = makeTrianglePath(arena, root, Vec2{10, 20}, Vec2{50, 20}, Vec2{50, 60});
+    EffectInstance custom = makeCustom();
+    REQUIRE(arena.assignEffects(path, std::span<const EffectInstance>(&custom, 1), {}) == Status::kOk);
+    CommandList cmds;
+    paintDump(arena, root, cmds);
+    REQUIRE(cmds.effectCmds.size() == 1);
+    checkBox(cmds.effectCmds[0].localBox, 10, 20, 40, 40);
+}
+
+TEST_CASE("Painter effects 15: a group of two shapes with a custom effect: the union in its space (T-831)") {
+    NodeArena arena;
+    NodeId root = makeSvgRoot(arena);
+    NodeId group = arena.create(NodeKind::Group);
+    arena.appendChild(root, group);
+    arena.common(group).translate = Vec2{100, 100};
+    NodeId rect = makeRectShape(arena, group, 20, 30, 10, 10);  // (20,30)-(30,40)
+    arena.common(rect).translate = Vec2{10, 0};                 // in the group: (30,30)-(40,40)
+    makeTrianglePath(arena, group, Vec2{-5, -5}, Vec2{0, -5}, Vec2{0, 0});
+    EffectInstance custom = makeCustom();
+    REQUIRE(arena.assignEffects(group, std::span<const EffectInstance>(&custom, 1), {}) == Status::kOk);
+    CommandList cmds;
+    paintDump(arena, root, cmds);
+    REQUIRE(cmds.effectCmds.size() == 1);
+    checkBox(cmds.effectCmds[0].localBox, -5, -5, 45, 45);
+}
+
+TEST_CASE("Painter effects 16: no custom effect, or an empty group: localBox stays empty (T-831)") {
+    NodeArena arena;
+    NodeId root = makeSvgRoot(arena);
+    NodeId rect = makeRectShape(arena, root, 30, 40, 20, 10);
+    EffectInstance blur = makeBlur(2);
+    REQUIRE(arena.assignEffects(rect, std::span<const EffectInstance>(&blur, 1), {}) == Status::kOk);
+    NodeId empty = arena.create(NodeKind::Group);
+    arena.appendChild(root, empty);
+    EffectInstance custom = makeCustom();
+    REQUIRE(arena.assignEffects(empty, std::span<const EffectInstance>(&custom, 1), {}) == Status::kOk);
+    CommandList cmds;
+    paintDump(arena, root, cmds);
+    REQUIRE(!cmds.effectCmds.empty());
+    checkBox(cmds.effectCmds[0].localBox, 0, 0, 0, 0);  // the rect's blur: not computed
+    for (const EffectCmd& ec : cmds.effectCmds) {
+        CHECK(ec.localBox.w == 0.0f);  // the empty group (when it is pushed at all)
+        CHECK(ec.localBox.h == 0.0f);
+    }
+}

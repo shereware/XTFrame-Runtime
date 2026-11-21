@@ -1,0 +1,23 @@
+<xt version="2">
+
+  <!-- T-829: SVG linear gradients under skewX and an objectBoundingBox on a non-square box; the
+       stripes follow the gradient's map instead of staying perpendicular to the two end points. -->
+  <body>
+    <img id="icon" src="gradient_skew.svg"/>
+  </body>
+
+  <layout>
+    body {
+      margin: 0;
+    }
+    #icon {
+      width: 256px;
+      height: 256px;
+    }
+  </layout>
+  <style>
+    #icon {
+      object-fit: fill;
+    }
+  </style>
+</xt>

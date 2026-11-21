@@ -150,6 +150,12 @@ ui_svg_unsupported ui_svg_unsupported.xt 256 256 0 ffffff
 # T-822: SVG gradients with a transparent first stop (linear / radial, fill / stroke) draw; the
 # first stop's alpha no longer scales the whole gradient.
 ui_svg_gradient_alpha ui_svg_gradient_alpha.xt 256 256 0 ffffff
+# T-829: SVG linear gradients under skewX(45) and a diagonal objectBoundingBox gradient on a
+# non-square rect; the stripes follow the gradient-to-user-space map.
+ui_svg_gradient_skew ui_svg_gradient_skew.xt 256 256 0 ffffff
+# T-830: SVG objectBoundingBox radial gradients under translate / scale / rotate gradientTransform;
+# the transform applies before the box.
+ui_svg_gradient_radial_xf ui_svg_gradient_radial_xf.xt 256 256 0 ffffff
 # T-218: vector properties in the cascade -- token fill, :hover recolour of an inline <svg> icon.
 ui_svg_hover ui_svg_hover.xt 256 256 0 ffffff ui_svg_hover.events
 # T-225b (31 §31.6.1, §31.5.3): runtime shape modifiers in an inline <svg> (the timeline animates

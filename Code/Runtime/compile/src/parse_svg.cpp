@@ -611,6 +611,7 @@ constexpr uint8_t kGradientWarnFocal = 1;
 constexpr uint8_t kGradientWarnSpread = 2;
 constexpr uint8_t kGradientWarnTransform = 4;
 constexpr uint8_t kGradientWarnBox = 8;
+constexpr uint8_t kGradientWarnSingular = 16;  ///< T-829: linear M not invertible.
 
 struct BuildCtxParseSvg {
     SceneBuilder& scene;
@@ -1102,34 +1103,85 @@ void resolvePaint(BuildCtxParseSvg& ctx, const SvgPaintSpec& spec, float alpha, 
                  "circle is used");
     }
 
+    // T-829 / T-830: M = box x gradientTransform maps gradient space to the shape's user space
+    // (gradientTransform first, then the objectBoundingBox box), for linear and radial gradients.
+    const float boxW = bounds.maxX - bounds.minX;
+    const float boxH = bounds.maxY - bounds.minY;
+    auto toUserSpace = [&](Vec2 p) {
+        if (def.hasTransform) {
+            p = apply(def.transform, p);
+        }
+        if (!def.userSpace) {
+            p = Vec2{bounds.minX + p.x * boxW, bounds.minY + p.y * boxH};
+        }
+        return p;
+    };
+    Mat2x3 linear{};  // M's linear part.
+    if (def.hasTransform) {
+        linear = Mat2x3{def.transform.a, def.transform.b, def.transform.c, def.transform.d, 0, 0};
+    }
+    if (!def.userSpace) {
+        linear = mul(Mat2x3{boxW, 0, 0, boxH, 0, 0}, linear);
+    }
+
     Vec2 p0 = def.p0;
     Vec2 p1 = def.p1;
     if (def.radial) {
         float r = def.p1.x;
         if (!def.userSpace) {
-            float w = bounds.maxX - bounds.minX;
-            float h = bounds.maxY - bounds.minY;
-            p0 = Vec2{bounds.minX + p0.x * w, bounds.minY + p0.y * h};
             // objectBoundingBox radii are relative to the box's diagonal-normalized size; the
             // renderer's radial paint only takes one radius, so use the box's mean extent.
-            r *= (w + h) * 0.5f;
-            if (w > 0 && h > 0 && std::max(w, h) / std::min(w, h) > 1.01f) {
+            r *= (boxW + boxH) * 0.5f;
+            if (boxW > 0 && boxH > 0 && std::max(boxW, boxH) / std::min(boxW, boxH) > 1.01f) {
                 warnOnce(
                     kGradientWarnBox,
                     "objectBoundingBox on a non-square shape is drawn as a circle (radius from the mean of "
                     "width and height), not an ellipse");
             }
         }
-        p1 = Vec2{p0.x + r, p0.y};
-    } else if (!def.userSpace) {
-        float w = bounds.maxX - bounds.minX;
-        float h = bounds.maxY - bounds.minY;
-        p0 = Vec2{bounds.minX + p0.x * w, bounds.minY + p0.y * h};
-        p1 = Vec2{bounds.minX + p1.x * w, bounds.minY + p1.y * h};
-    }
-    if (def.hasTransform) {
-        p0 = apply(def.transform, p0);
-        p1 = apply(def.transform, p1);
+        if (!def.hasTransform) {
+            p0 = toUserSpace(p0);
+            p1 = Vec2{p0.x + r, p0.y};
+        } else if (def.userSpace) {
+            p1 = Vec2{p0.x + r, p0.y};
+            p0 = apply(def.transform, p0);
+            p1 = apply(def.transform, p1);
+        } else {
+            // T-830: the centre goes through M; the radius vector (r, 0) through gradientTransform's
+            // linear part, already scaled by the box's mean extent (T-822's circle rule).
+            p0 = toUserSpace(p0);
+            const Vec2 rv = applyVector(def.transform, Vec2{r, 0});
+            p1 = Vec2{p0.x + rv.x, p0.y + rv.y};
+        }
+    } else {
+        // T-829: mapping both end points by M is exact only when M keeps the stripes perpendicular
+        // to the gradient vector; otherwise the second point is p0' + g / |g|^2 with
+        // g = M^-T d / |d|^2 (d = p1 - p0).
+        const Vec2 d{p1.x - p0.x, p1.y - p0.y};
+        p0 = toUserSpace(p0);
+        p1 = toUserSpace(p1);
+        const float dd = d.x * d.x + d.y * d.y;
+        const float det = determinant(linear);
+        if (dd > 0) {
+            const float scale = std::max(
+                {std::fabs(linear.a), std::fabs(linear.b), std::fabs(linear.c), std::fabs(linear.d)});
+            if (!(std::fabs(det) > 1e-6f * scale * scale)) {
+                warnOnce(kGradientWarnSingular,
+                         "the gradient-to-user-space map is singular (zero-area gradientTransform or "
+                         "bounding box); the end points are mapped as they are");
+            } else {
+                const Vec2 md = applyVector(linear, d);
+                const Vec2 mn = applyVector(linear, Vec2{-d.y, d.x});
+                const float skewDot = md.x * mn.x + md.y * mn.y;  // 0: stripes stay perpendicular.
+                const float lengths = std::sqrt((md.x * md.x + md.y * md.y) * (mn.x * mn.x + mn.y * mn.y));
+                if (std::fabs(skewDot) > 1e-5f * lengths) {
+                    const Vec2 g{(linear.d * d.x - linear.b * d.y) / (det * dd),
+                                 (-linear.c * d.x + linear.a * d.y) / (det * dd)};
+                    const float gg = g.x * g.x + g.y * g.y;
+                    p1 = Vec2{p0.x + g.x / gg, p0.y + g.y / gg};
+                }
+            }
+        }
     }
 
     outKind = static_cast<uint8_t>(def.radial ? PaintKind::Radial : PaintKind::Linear);

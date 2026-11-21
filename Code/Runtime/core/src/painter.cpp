@@ -318,6 +318,35 @@ Mat2x3 shapeLocal(const NodeArena& arena, NodeId n) {
     return skinnedPointsOf(arena, n) == nullptr ? arena.common(n).local : Mat2x3{};
 }
 
+namespace {
+
+/// The hull of Path `n`'s points (control points included) in its own space, without stroke; false
+/// for a path with no points. T-244: a skinned path's skinned points (in its parent's space) are
+/// brought back into its own space.
+bool pathPointHull(const NodeArena& arena, NodeId n, Rect& out) {
+    const std::vector<float>* skinned = skinnedPointsOf(arena, n);
+    const std::vector<float>& pts = skinned != nullptr ? *skinned : arena.path(n).points;
+    if (pts.empty()) {
+        return false;
+    }
+    float minX = pts[0], maxX = pts[0];
+    float minY = pts[1], maxY = pts[1];
+    for (size_t i = 0; i + 1 < pts.size(); i += 2) {
+        minX = std::min(minX, pts[i]);
+        maxX = std::max(maxX, pts[i]);
+        minY = std::min(minY, pts[i + 1]);
+        maxY = std::max(maxY, pts[i + 1]);
+    }
+    out = Rect{minX, minY, maxX - minX, maxY - minY};
+    Mat2x3 invLocal;
+    if (skinned != nullptr && invert(arena.common(n).local, invLocal)) {
+        out = transformBounds(invLocal, out);
+    }
+    return true;
+}
+
+}  // namespace
+
 Rect nodeOwnBounds(const NodeArena& arena, NodeId n, bool& hasShape) {
     Rect acc{};
     bool any = false;
@@ -333,22 +362,8 @@ Rect nodeOwnBounds(const NodeArena& arena, NodeId n, bool& hasShape) {
             const PathNodeData& p = arena.path(n);
             // T-244: a skinned path's bounds come from its skinned points (in its parent's space),
             // brought back into its own space so the callers' `local` mapping holds.
-            const std::vector<float>* skinned = skinnedPointsOf(arena, n);
-            const std::vector<float>& pts = skinned != nullptr ? *skinned : p.points;
-            if (!pts.empty()) {
-                float minX = pts[0], maxX = pts[0];
-                float minY = pts[1], maxY = pts[1];
-                for (size_t i = 0; i + 1 < pts.size(); i += 2) {
-                    minX = std::min(minX, pts[i]);
-                    maxX = std::max(maxX, pts[i]);
-                    minY = std::min(minY, pts[i + 1]);
-                    maxY = std::max(maxY, pts[i + 1]);
-                }
-                Rect r{minX, minY, maxX - minX, maxY - minY};
-                Mat2x3 invLocal;
-                if (skinned != nullptr && invert(arena.common(n).local, invLocal)) {
-                    r = transformBounds(invLocal, r);
-                }
+            Rect r{};
+            if (pathPointHull(arena, n, r)) {
                 if (p.stroke.kind != PaintKind::None && p.strokeStyle.width > 0.0f) {
                     float ex = strokeOutset(p.strokeStyle.width, p.strokeStyle.cap, p.strokeStyle.join,
                                             p.strokeStyle.miterLimit) *
@@ -516,6 +531,67 @@ Rect nodeOwnBounds(const NodeArena& arena, NodeId n, bool& hasShape) {
     hasShape = any;
     return any ? acc : Rect{0, 0, 0, 0};
 }
+
+namespace {
+
+/// T-831 (18, XtInput.local / boxSize on scene nodes): unions into `acc` the geometry box of `n`
+/// in its own space, without stroke -- SVG's objectBoundingBox, the box the importer's gradients use
+/// (a path's point hull, a shape's parameter box) -- and its visible descendants' boxes mapped by
+/// their `local`. Stroke, outline and text-effect outsets are paint, not geometry, and modifiers are
+/// not applied (the geometry before them). A nested Element counts as its border box.
+void unionGeometryBox(const NodeArena& arena, NodeId n, Rect& acc, bool& any) {
+    Rect r{};
+    switch (arena.kind(n)) {
+        case NodeKind::Path:
+            if (pathPointHull(arena, n, r)) {
+                unionRect(acc, any, r);
+            }
+            break;
+        case NodeKind::Shape: {
+            const ShapeNodeData& s = arena.shape(n);
+            if (modifiers::shapeBounds(s.kind, s.params, r)) {
+                unionRect(acc, any, r);
+            }
+            break;
+        }
+        case NodeKind::Element: {
+            const ElementData& data = arena.element(n);
+            unionRect(acc, any, Rect{0, 0, data.box.width, data.box.height});
+            break;
+        }
+        case NodeKind::Text:
+            for (const TextLine& line : arena.text(n).lines) {
+                unionRect(acc, any, line.rect);
+            }
+            break;
+        case NodeKind::Image:
+        case NodeKind::Mesh:
+        case NodeKind::Particles: {
+            bool has = false;
+            r = nodeOwnBounds(arena, n, has);  // no stroke or outset for these kinds
+            if (has) {
+                unionRect(acc, any, r);
+            }
+            break;
+        }
+        default:
+            break;  // Group / Mask / Modifier / Camera...: no geometry of their own.
+    }
+    arena.forEachChild(n, [&](NodeId c) {
+        const NodeCommon& cc = arena.common(c);
+        if (cc.visible == 0 || arena.kind(c) == NodeKind::Camera) {
+            return;
+        }
+        Rect child{};
+        bool childAny = false;
+        unionGeometryBox(arena, c, child, childAny);
+        if (childAny) {
+            unionRect(acc, any, transformBounds(cc.local, child));
+        }
+    });
+}
+
+}  // namespace
 
 void sortedElementChildren(const NodeArena& arena, NodeId node, std::vector<NodeId>& out) {
     out.clear();
@@ -2113,6 +2189,7 @@ void Painter::pushEffectCmd(const NodeArena& arena, NodeId n, CommandList& out, 
     const std::vector<EffectInstance>& pool = arena.effects();
     const std::vector<GradientStop>& poolStops = arena.effectStops();
     uint32_t enabledCount = 0;
+    bool hasCustom = false;
     for (uint32_t i = 0; i < c.effectCount; ++i) {
         const EffectInstance& e = pool[c.effectOffset + i];
         if (e.enabled == 0) {
@@ -2124,8 +2201,11 @@ void Painter::pushEffectCmd(const NodeArena& arena, NodeId n, CommandList& out, 
             out.stops.insert(out.stops.end(), poolStops.begin() + e.stopOffset,
                              poolStops.begin() + e.stopOffset + e.stopCount);
         }
-        if (e.kind == EffectKind::Custom && m_shaders != nullptr) {
-            m_shaders->copyTo(e.shader, m_source, out);  // T-203: once per asset per frame.
+        if (e.kind == EffectKind::Custom) {
+            hasCustom = true;
+            if (m_shaders != nullptr) {
+                m_shaders->copyTo(e.shader, m_source, out);  // T-203: once per asset per frame.
+            }
         }
         out.effects.push_back(copy);
         ++enabledCount;
@@ -2147,10 +2227,18 @@ void Painter::pushEffectCmd(const NodeArena& arena, NodeId n, CommandList& out, 
     ec.xf = xf;
     ec.contentBounds = content;
     // T-818 (18 §18.7.x): the node's own border box in its plane, for custom effects' XtInput.local /
-    // boxSize; a scene node has no border box (left empty: both read 0).
+    // boxSize. T-831: a scene node gets its geometry box (not at 0,0 in general), computed only when
+    // the stack holds a custom effect (no other effect reads it); an empty box stays empty (both 0).
     if (arena.kind(n) == NodeKind::Element) {
         const ElementData& el = arena.element(n);
         ec.localBox = Rect{0, 0, el.box.width, el.box.height};
+    } else if (hasCustom) {
+        Rect box{};
+        bool any = false;
+        unionGeometryBox(arena, n, box, any);
+        if (any && box.w > 0.0f && box.h > 0.0f) {
+            ec.localBox = box;
+        }
     }
 
     // The enabled effects in pool order -- the ones just copied into out.effects.

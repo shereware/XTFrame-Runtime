@@ -1,0 +1,23 @@
+<xt version="2">
+
+  <!-- T-830: SVG objectBoundingBox radial gradients with a gradientTransform (translate, scale,
+       rotate about the centre); the transform applies in the box's unit space, before the box. -->
+  <body>
+    <img id="icon" src="gradient_radial_xf.svg"/>
+  </body>
+
+  <layout>
+    body {
+      margin: 0;
+    }
+    #icon {
+      width: 256px;
+      height: 256px;
+    }
+  </layout>
+  <style>
+    #icon {
+      object-fit: fill;
+    }
+  </style>
+</xt>

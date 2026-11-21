@@ -577,15 +577,11 @@ private:
                 }
             }
             skipInlineWs();
-            if ((attrName == "inline" || attrName == "virtualize" || attrName == "loop" ||
-                 attrName == "autoplay" || attrName == "sync" || attrName == "draggable" ||
-                 attrName == "drop-target" || attrName == "autofocus" || attrName == "focus-trap" ||
-                 attrName == "editor-only") &&
-                (eof() || peek() != '=')) {
+            if (isXtBareAttribute(attrName) && (eof() || peek() != '=')) {
                 // T-191 (5.9.1): `<video loop autoplay sync>` / `<sequence loop sync>` flags too.
                 // T-178 (5.9.1 `<img inline>`) and T-177 (`<repeat virtualize>`): bare attributes.
                 // T-194 (5.9.1): `draggable`, `drop-target`, `autofocus`; T-201: `focus-trap`.
-                // T-342 (03 §3.13): `editor-only`.
+                // T-342 (03 §3.13): `editor-only`. T-825: the list is kXtBareAttributes (parse_xt.h).
                 attrs.push_back(DomAttr{attrName, std::string(), attrLine, attrCol});
                 continue;
             }

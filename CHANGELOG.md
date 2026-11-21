@@ -4,6 +4,22 @@ An excerpt of the XTFrame changelog: for each release, the behaviour changes and
 integration notes. Version numbers are those of the XTFrame release the snapshot was
 exported from.
 
+## [0.19.2] - 2026-11-21
+
+### Behaviour changes
+- Import: `filter: brightness()` is converted to look as on the web. The `brightness()` and `contrast()` of one `filter` are composed in the order written and written as an equivalent pair, `contrast(s - 1) brightness(0.5 + (o - 0.5) / s)`, inside the merged `color-adjust()` (`brightness(0.4)` becomes `contrast(-0.6) brightness(-0.75)`); between `brightness(1/3)` and `brightness(2)` the picture matches the web with no `effect.degraded` finding, and `brightness(1)` also writes the (identity) pair. `brightness(0)` is black with no finding; below 1/3 a new finding says dark tones turn black sooner than on the web and suggests a black overlay; above 2 it is clamped to `brightness(2)` with the existing finding. A `filter` that also holds `invert()`, `sepia()` or `opacity()` keeps the old additive conversion with its note, and `backdrop-filter: brightness()` is still additive. Re-importing an existing board makes such elements lighter or darker, as on the web (#763).
+- SVG linear gradients under `skewX` / `skewY`, a non-uniform scale not aligned with the gradient, or a diagonal `objectBoundingBox` gradient on a non-square shape draw slanted stripes as browsers do (the other diagonal's corners are t = 0.5); a singular gradient-to-user-space map keeps the old mapping and warns (#767).
+- SVG gradients with `objectBoundingBox` and a `gradientTransform` apply the transform in the box's unit space, then the box (SVG's order; it was box first, then transform): linear (#767) and radial -- a radial gradient's centre moves to where SVG puts it, its radius is unchanged (#769).
+- `xtframe-view`: a UI's automatically loaded flow (the Bundle manifest's `flow`, or the `.xtflow` next to a `.xt`) that does not load prints `xtframe-view: flow: <ui>: <problem>` and the UI is shown without it, instead of exiting 2; a flow given with `--flow` that does not load still exits 2 (#768).
+- `@keyframes` that differ in `custom()` effect parameters animate them (float, vec2 and color parameters, one track each, as the same animation on a `@timeline`); they compiled to no track before, with no diagnostic (#765).
+- Custom effects on a scene node (a shape, path or group inside an `<svg>`) read `XtInput.local` and `XtInput.boxSize` from the node's geometry box in its local space without the stroke (a group: the union of its visible descendants'); they read 0 before. Elements are unchanged; a node without geometry still reads 0 (#770).
+
+### Host integration
+- No new C ABI function and no interface change. Custom `GpuDevice` backends: the existing `XtInput.local` / `boxSize` fields of `CustomEffectParams` are now filled for scene nodes too (a box whose origin need not be 0,0), so a wrapper that supports them gets non-zero values there (#770).
+
+The full gate (local_ci) was not run for this release; each change passed dev_check --changed.
+Not tested: the GPU backends against the new goldens (`ui_svg_gradient_skew`, `ui_svg_gradient_radial_xf`) beyond each change's own run, and Linux / macOS builds.
+
 ## [0.19.1] - 2026-11-21
 
 ### Behaviour changes
