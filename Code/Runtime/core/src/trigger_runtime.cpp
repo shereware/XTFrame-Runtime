@@ -105,6 +105,25 @@ void queueSurfaceNotify(uint8_t& queue, uint8_t entry) {
 
 void TriggerRuntime::load() {
     indexSelfActions();  // T-774.
+    // T-871: the elements whose turn / grab point a press starts tracking.
+    for (const IrTriggerAction& act : m_doc.m_ir.triggers().actions()) {
+        const bool add = act.kind == static_cast<uint8_t>(TriggerAction::Add);
+        if (!add && act.kind != static_cast<uint8_t>(TriggerAction::Set)) {
+            continue;
+        }
+        const uint8_t source = add ? static_cast<uint8_t>(act.flags & kAddSourceMask) : act.flags;
+        if (source != static_cast<uint8_t>(SetSource::PointerTurn) &&
+            source != static_cast<uint8_t>(SetSource::PointerGrabX) &&
+            source != static_cast<uint8_t>(SetSource::PointerGrabY)) {
+            continue;
+        }
+        uint32_t bits = 0;
+        std::memcpy(&bits, &act.arg2, sizeof(bits));
+        if (bits != kInvalidString &&
+            std::find(m_trackIds.begin(), m_trackIds.end(), bits) == m_trackIds.end()) {
+            m_trackIds.push_back(bits);
+        }
+    }
     // T-738: the symbol-scoped state groups' instance roots (those of a `<repeat>` template are
     // looked up through their copies, see scopeOf()).
     for (const IrStateScopeRoot& root : m_doc.m_ir.stateScopes().roots()) {
@@ -155,6 +174,7 @@ void TriggerRuntime::load() {
                 m_doc.m_events->watchOutsidePress(m_doc.m_arena, node);
             }
         }
+        indexChannelTriggers(node);  // T-873 (trigger_channels.cpp).
     }
 }
 
@@ -162,6 +182,7 @@ void TriggerRuntime::onDomEvent(const Event& event, NodeId node) {
     TriggerEvent ev = TriggerEvent::None;
     uint32_t arg0 = kInvalidString;
     uint32_t arg1 = kInvalidString;
+    float value = 0.0f;  // T-871: the event value of `wheel`, `gesture(pinch)` and `scroll`.
     switch (event.type) {
         // T-194 (27.2.2, 27.7).
         case EventType::Back:
@@ -187,6 +208,9 @@ void TriggerRuntime::onDomEvent(const Event& event, NodeId node) {
             ev = TriggerEvent::Gesture;
             arg0 = static_cast<uint32_t>(event.gesture);
             arg1 = static_cast<uint32_t>(event.direction);
+            if (event.gesture == GestureKind::Pinch) {
+                value = event.gestureScale;  // T-871 (60 §60.3.2): the scale.
+            }
             break;
         case EventType::PointerEnter:
             ev = TriggerEvent::Hover;
@@ -215,8 +239,28 @@ void TriggerRuntime::onDomEvent(const Event& event, NodeId node) {
         case EventType::DragCancel:  // T-388 (08.12).
             ev = TriggerEvent::DragCancel;
             break;
-        case EventType::Scroll:  // T-387 (08.12).
+        case EventType::Scroll: {  // T-387 (08.12).
             ev = TriggerEvent::Scroll;
+            // T-871 (60 §60.3.2): the container's position 0..1 on its scroll axis (the vertical one
+            // when both scroll).
+            const ElementRef container{
+                &m_doc, event.target,
+                m_doc.m_arena.alive(event.target) ? m_doc.m_arena.generation(event.target) : 0u};
+            const Vec2 max = container.maxScroll();
+            value =
+                max.y > 0.0f ? event.scrollPos.y / max.y : (max.x > 0.0f ? event.scrollPos.x / max.x : 0.0f);
+            break;
+        }
+        case EventType::Wheel:  // T-871 (60 §60.3.2): bubbles like the Wheel event.
+            ev = TriggerEvent::Wheel;
+            value = event.wheelDelta.y;
+            break;
+        case EventType::KeyUp:  // T-871 (60 §60.3.2): `key(<k>).release`, on the focused element.
+            if (node != event.target) {
+                return;
+            }
+            ev = TriggerEvent::KeyRelease;
+            arg0 = static_cast<uint32_t>(event.key);
             break;
         case EventType::OutsidePress:  // T-387 (08.12): delivered only to registered elements.
             ev = TriggerEvent::OutsidePress;
@@ -259,6 +303,13 @@ void TriggerRuntime::onDomEvent(const Event& event, NodeId node) {
         ~PointerScope() { slot = saved; }
     } pointerScope{m_firePointer, m_firePointer};
     m_firePointer = event.pos;
+    // T-871: the movement of the pointer input being handled, the press point, a wheel's delta.
+    PointerScope deltaScope{m_fireDelta, m_fireDelta};
+    PointerScope pressScope{m_firePress, m_firePress};
+    PointerScope wheelScope{m_fireWheel, m_fireWheel};
+    m_fireDelta = m_doc.m_events->inputDelta();
+    m_firePress = m_doc.m_events->pressPosition();
+    m_fireWheel = event.type == EventType::Wheel ? event.wheelDelta : Vec2{};
     // T-390 (08.13): the button trigger filters and `if button()` compare; a move reports the
     // button held (none without a press in progress).
     struct ButtonScope {
@@ -275,7 +326,7 @@ void TriggerRuntime::onDomEvent(const Event& event, NodeId node) {
         event.dragSource == kInvalidNode) {
         m_fireButton = static_cast<uint8_t>(m_fireButton | kFireExternal);
     }
-    fire(node, ev, arg0, arg1, 0.0f, 0xFFFFFFFFu, event.player);
+    fire(node, ev, arg0, arg1, value, 0xFFFFFFFFu, event.player);
     if (ev == TriggerEvent::Change) {
         // T-392 (27.3.5): core's Change fires once per edit, so it is also the `input` trigger.
         fire(node, TriggerEvent::Input, arg0, arg1, 0.0f, 0xFFFFFFFFu, event.player);
@@ -398,9 +449,11 @@ void TriggerRuntime::fire(NodeId node, TriggerEvent event, uint32_t arg0, uint32
     // T-394 (08.15): `pointerdrag` is coalesced like `pointermove`. T-407 (43 §43.3): held back
     // only from behavior 1 (`flow-signal-coalescing`) on; behavior 0 runs every continuous event's
     // triggers at once, as before T-389.
-    const bool continuous = (event == TriggerEvent::PointerMove || event == TriggerEvent::Scroll ||
-                             event == TriggerEvent::DragOver || event == TriggerEvent::PointerDrag) &&
-                            m_doc.behavior() >= kBehaviorFlowSignalCoalescing;
+    // T-871 (60 §60.3.2): `wheel` is new, so it runs once a frame at every behavior.
+    const bool continuous = event == TriggerEvent::Wheel ||
+                            ((event == TriggerEvent::PointerMove || event == TriggerEvent::Scroll ||
+                              event == TriggerEvent::DragOver || event == TriggerEvent::PointerDrag) &&
+                             m_doc.behavior() >= kBehaviorFlowSignalCoalescing);
     const NodeArena& arena = m_doc.m_arena;
     if (node == kInvalidNode || !arena.alive(node) || arena.kind(node) != NodeKind::Element) {
         return;
@@ -423,6 +476,7 @@ void TriggerRuntime::fire(NodeId node, TriggerEvent event, uint32_t arg0, uint32
         }
         switch (event) {
             case TriggerEvent::Key:
+            case TriggerEvent::KeyRelease:  // T-871.
                 // T-573 (27.8): `key(any)`; a gamepad button matches nothing else.
                 if (trig.arg0 == kTriggerKeyAny ? !anyKeyMatches(arg0) : trig.arg0 != arg0) {
                     continue;
@@ -455,7 +509,10 @@ void TriggerRuntime::fire(NodeId node, TriggerEvent event, uint32_t arg0, uint32
                     continue;
                 }
                 break;
-            case TriggerEvent::Player:  // T-194: player index and inner event.
+            case TriggerEvent::Player:       // T-194: player index and inner event.
+            case TriggerEvent::InputChange:  // T-873: channel name and player.
+            case TriggerEvent::InputPress:
+            case TriggerEvent::InputRelease:
                 if (trig.arg0 != arg0 || trig.arg1 != arg1) {
                     continue;
                 }
@@ -463,16 +520,25 @@ void TriggerRuntime::fire(NodeId node, TriggerEvent event, uint32_t arg0, uint32
             default:
                 break;
         }
-        const Job job{node,   arena.generation(node), index,       0, value, port,
-                      player, m_firePointer,          m_fireButton};
+        Job job{node, arena.generation(node), index, 0, value, port, player, m_firePointer, m_fireButton};
+        job.delta = m_fireDelta;  // T-871.
+        job.press = m_firePress;
+        job.wheel = m_fireWheel;
         if (continuous) {
             // T-389 (27 §27.4.1): a continuous event runs once per frame per trigger, with the
-            // frame's last event (flushContinuous()).
+            // frame's last event (flushContinuous()). T-871 (60 §60.2): the pointer movements of
+            // the coalesced events are summed, and a wheel's deltas (its event value too).
             bool replaced = false;
             for (Job& held : m_continuous) {
                 if (held.node == job.node && held.generation == job.generation &&
                     held.trigger == job.trigger) {
+                    const Vec2 delta = held.delta + job.delta;
+                    const Vec2 wheel = held.wheel + job.wheel;
+                    const float summed = event == TriggerEvent::Wheel ? held.value + job.value : job.value;
                     held = job;
+                    held.delta = delta;
+                    held.wheel = wheel;
+                    held.value = summed;
                     replaced = true;
                     break;
                 }
@@ -509,8 +575,7 @@ void TriggerRuntime::onTimelineEvent(StringId timeline, TimelineEventKind kind, 
                 ++i;
                 continue;
             }
-            m_queue.push_back(
-                Job{w.node, w.generation, w.trigger, w.next, w.value, w.port, w.player, w.pointer, w.button});
+            m_queue.push_back(resumeJob(w));
             m_waiters.erase(m_waiters.begin() + static_cast<std::ptrdiff_t>(i));
         }
     }
@@ -570,8 +635,7 @@ void TriggerRuntime::onInstanceTimelineEnd(NodeId scope, StringId timeline, bool
             ++i;
             continue;
         }
-        m_queue.push_back(
-            Job{w.node, w.generation, w.trigger, w.next, w.value, w.port, w.player, w.pointer, w.button});
+        m_queue.push_back(resumeJob(w));
         m_waiters.erase(m_waiters.begin() + static_cast<std::ptrdiff_t>(i));
     }
     const NodeArena& arena = m_doc.m_arena;
@@ -596,8 +660,7 @@ void TriggerRuntime::onMediaEnd(StringId id) {
             ++i;
             continue;
         }
-        m_queue.push_back(
-            Job{w.node, w.generation, w.trigger, w.next, w.value, w.port, w.player, w.pointer, w.button});
+        m_queue.push_back(resumeJob(w));
         m_waiters.erase(m_waiters.begin() + static_cast<std::ptrdiff_t>(i));
     }
     for (const auto& [node, index] : m_timelineTriggers) {
@@ -634,6 +697,7 @@ void TriggerRuntime::bindNode(NodeId node) {
             m_doc.m_events->watchOutsidePress(m_doc.m_arena, node);  // T-387 (08.12).
         }
     }
+    indexChannelTriggers(node);  // T-873.
 }
 
 void TriggerRuntime::endDefer() {
@@ -686,6 +750,13 @@ void TriggerRuntime::runJob(const Job& job) {
         ~ButtonScope() { slot = saved; }
     } buttonScope{m_runButton, m_runButton};
     m_runButton = job.button;  // T-390: `if button()`.
+    // T-871: the pointer movement, press point and wheel delta set() / add() read.
+    PointerScope deltaScope{m_runDelta, m_runDelta};
+    PointerScope pressScope{m_runPress, m_runPress};
+    PointerScope wheelScope{m_runWheel, m_runWheel};
+    m_runDelta = job.delta;
+    m_runPress = job.press;
+    m_runWheel = job.wheel;
     if (job.start != 0) {
         runChain(job.node, job.trigger, job.start, job.value, job.port, job.player);
         return;
@@ -744,6 +815,9 @@ void TriggerRuntime::runChain(NodeId node, uint32_t trigger, uint16_t index, flo
                                 m_waiters.end());
                 m_waiters.push_back(Waiter{node, generation, trigger, action.next, waitFor, value, port,
                                            waitScope, player, waitGroup, m_runPointer, m_runButton});
+                m_waiters.back().delta = m_runDelta;  // T-871.
+                m_waiters.back().press = m_runPress;
+                m_waiters.back().wheel = m_runWheel;
             }
             return;
         }
@@ -843,6 +917,16 @@ std::string TriggerRuntime::currentSource() const {
             return "trigger on:focusin";
         case TriggerEvent::FocusOut:
             return "trigger on:focusout";
+        case TriggerEvent::Wheel:
+            return "trigger on:wheel";
+        case TriggerEvent::KeyRelease:
+            return "trigger on:key.release";
+        case TriggerEvent::InputChange:  // T-873 (60 §60.3.2).
+            return "trigger on:input(" + name(trig.arg0) + ")";
+        case TriggerEvent::InputPress:
+            return "trigger on:input(" + name(trig.arg0) + ").press";
+        case TriggerEvent::InputRelease:
+            return "trigger on:input(" + name(trig.arg0) + ").release";
         case TriggerEvent::None:
             break;
     }
@@ -1136,31 +1220,24 @@ TriggerRuntime::Outcome TriggerRuntime::perform(NodeId node, const IrTriggerActi
             return Outcome::Done;
         }
         case TriggerAction::Set:
+        case TriggerAction::Add: {
             // T-201: an `in` port is set (its bindings and `port()` triggers react); an `out`
-            // port takes the value and emits it.
-            if (action.flags >= static_cast<uint8_t>(SetSource::PointerFractionX) &&
-                action.flags <= static_cast<uint8_t>(SetSource::PointerLocalY)) {
-                // T-386 (08.11): `pointer.fraction(#id)` / `pointer.local(#id)` -- the firing
-                // event's position relative to that element, then the EventValue path (converters).
-                uint32_t bits = 0;
-                std::memcpy(&bits, &action.arg2, sizeof(bits));
-                const ElementRef target = doc.byId(ir.string(bits));
-                const SetSource src = static_cast<SetSource>(action.flags);
-                const bool fraction =
-                    src == SetSource::PointerFractionX || src == SetSource::PointerFractionY;
-                const bool yAxis = src == SetSource::PointerFractionY || src == SetSource::PointerLocalY;
-                Vec2 p{};
-                if (target.valid()) {
-                    p = fraction ? doc.fractionIn(target.node, m_runPointer)
-                                 : doc.localPosIn(target.node, m_runPointer);
-                }
+            // port takes the value and emits it. T-871 (60 §60.3.4): `add()` adds to it the same way.
+            const bool add = static_cast<TriggerAction>(action.kind) == TriggerAction::Add;
+            const uint8_t source = add ? static_cast<uint8_t>(action.flags & kAddSourceMask) : action.flags;
+            float computed = 0.0f;
+            if (runtimeSourceValue(source, action.arg2, computed)) {
+                // T-386 (08.11) / T-871: a value read from the firing event (`pointer.*`,
+                // `event.dx` / `event.dy`), then the EventValue path (converters).
                 IrTriggerAction asValue = action;
-                asValue.flags = static_cast<uint8_t>(SetSource::EventValue);
-                doc.m_bindings->setAction(node, asValue, yAxis ? p.y : p.x, 0xFFFFFFFFu);
+                asValue.flags = static_cast<uint8_t>((action.flags & ~kAddSourceMask) |
+                                                     static_cast<uint8_t>(SetSource::EventValue));
+                doc.m_bindings->setAction(node, asValue, computed, 0xFFFFFFFFu);
                 return Outcome::Done;
             }
             doc.m_bindings->setAction(node, action, value, port);
             return Outcome::Done;
+        }
         case TriggerAction::Sound:
         case TriggerAction::Haptic: {
             if (!doc.m_hostEventListener || doc.m_unloading) {  // T-260a.
@@ -1600,7 +1677,7 @@ void Document::sendSurfaceNotify(bool shown) {
     }
 }
 
-void Document::notifyInitialShow(float clock) {
+void Document::notifyInitialShow(double clock) {
     // T-603 (53 §53.102 item 8): a surface visible at its first update() is shown once, in the
     // order lifecycle.shown -> OnShown (the Context's listeners: the host, a BundleContext's global
     // flow `ui#<id>.shown`). A surface hidden then is first shown by requestShow() (applyShow()).
@@ -1614,7 +1691,7 @@ void Document::notifyInitialShow(float clock) {
     }
     // A play() from these callbacks starts at the clock of the update() it precedes (its time 0 is
     // that frame); update() still flushes the held-back input at the clock it arrived at (T-389).
-    const float savedClock = m_clock;
+    const double savedClock = m_clock;
     m_clock = clock;
     if (initial) {
         m_initialShown = true;

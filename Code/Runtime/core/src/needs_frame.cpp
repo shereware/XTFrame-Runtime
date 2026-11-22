@@ -78,8 +78,9 @@ bool Context::documentNeedsUpdate(const Document& d) {
         d.m_bindings->needsTick()) {
         return true;
     }
-    // Gamepad repeats, long presses, pointer-drag auto-scroll, a pending focus().
-    if (d.m_events->needsTick()) {
+    // Gamepad repeats, long presses, pointer-drag auto-scroll, a pending focus(). T-873 (60 §60.5):
+    // input channels waiting for their commit, or a listened one held.
+    if (d.m_events->needsTick() || d.m_channels.settling() || d.m_channels.listenedHeld()) {
         return true;
     }
     // Animations, transitions, overrides; `@timeline` groups; `<repeat>` instance timelines and
@@ -117,7 +118,7 @@ bool Context::documentNeedsUpdate(const Document& d) {
 bool Context::needsFrame() const {
     // Input and ray events queued, surface requests or document operations waiting.
     if (!m_inputQueue.empty() || !m_pointerRays.empty() || m_surfaceRequestsPending ||
-        !m_pendingDocOps.empty()) {
+        !m_pendingDocOps.empty() || m_channels.settling()) {  // T-873: the Context's channels.
         return true;
     }
     // A hover to re-judge against moved geometry (Context::update() runs it on the hovered surface).

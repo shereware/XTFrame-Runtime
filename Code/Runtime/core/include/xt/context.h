@@ -336,8 +336,16 @@ public:
     /// shader, an external texture without a content version), or -- T-746 -- an external texture's
     /// binding or content version moved since that paint.
     bool needsFrame() const;
-    /// Current shared clock value (seconds), as advanced by update().
-    float clock() const { return m_clock; }
+    /// Current shared clock value (seconds), as advanced by update(). T-870 (59 §59.7): the clock
+    /// is kept and accumulated in double; this is it rounded to float (clockSeconds() is exact).
+    float clock() const { return static_cast<float>(m_clock); }
+    /// T-870: the shared clock in double, as kept (animations take their local time from it).
+    double clockSeconds() const { return m_clock; }
+    /// T-870 (59 §59.7 item 3): sets the shared clock to `seconds` without stepping (no Document is
+    /// updated; the next update() advances from it). Everything already running keeps its start
+    /// clock, so a jump forward moves it on as if that time had passed. A negative or non-finite
+    /// value is ignored.
+    void setClock(double seconds);
 
     /// This Context's frame statistics recorder (Docs/design/21-perf-tracing.md §21.2). Disabled
     /// by default; `perf().setEnabled(true)` starts recording on the next update(). Every Document
@@ -407,6 +415,17 @@ public:
     /// T-393 (08.14): an ExternalDrop's `paths` are copied the same way (each string and the
     /// array of views), valid until the update() that dispatches it.
     void pushInput(const InputEvent& event);
+    /// T-873 (Docs/design/60-input-channels.md §60.5): the id of input channel `name` (60 §60.2's
+    /// names, no player prefix; added when new); kInvalidChannel for a malformed name. A host pushes
+    /// an InputEvent::Channel with this id. The existing input events move the standard channels
+    /// (pad.*, key.*, wheel.*, pointer.*) by themselves. Every Document of this Context sees every
+    /// channel, whichever surface has the focus or the pointer.
+    ChannelId inputChannel(std::string_view name);
+    /// T-873: the channel's value for `player` as of the last update() (an axis position, a button's
+    /// 0 / 1, a relative channel's sum over that update's input).
+    float channelValue(ChannelId id, uint8_t player = 0) const;
+    /// T-873: this Context's channel table and state.
+    const InputChannels& inputChannels() const { return m_channels; }
     /// T-386 (Docs/design/08-events.md §8.11): queues an InputEvent::PointerCancel. At the next
     /// update() the Document holding the active element (a press in progress) sends it
     /// EventType::PointerCancel and clears the active state, without PointerUp / Click; the
@@ -709,6 +728,10 @@ private:
     void surfaceOrder(std::vector<DocumentHandle>& out) const;
     /// T-194: routes one queued InputEvent through the surface stack (SurfaceInput).
     void routeInput(const InputEvent& event);
+    /// T-873 (context_channels.cpp): moves this Context's channels for `event` and sends the
+    /// channel values to every live Document; true when `event` is a Channel event (nothing else to
+    /// route).
+    bool routeChannels(const InputEvent& event);
     /// T-194: the surface keyboard / gamepad input goes to (0 = none).
     DocumentHandle keyTarget() const;
     /// T-194: the topmost surface taking a press at `pos` (0 = none).
@@ -779,8 +802,10 @@ private:
     bool m_surfaceRequestsPending = false;
     Rect m_viewport{};
     float m_devicePixelRatio = 1;
-    float m_clock = 0;
+    double m_clock = 0;  // T-870: double (59 §59.7).
     std::vector<InputEvent> m_inputQueue;
+    InputChannels m_channels;                          // T-873: inputChannel(), channelValue().
+    std::vector<InputChannels::Push> m_channelPushes;  // T-873: routeChannels()' scratch.
     // §23.2 step 1: the previous frame's command list, swapped out of the caller's `out` at the
     // top of render() so no copy is ever made. m_damageBaseValid is false whenever it does not
     // hold the frame that is currently on screen (first frame, viewport/dpr change, reload, or a

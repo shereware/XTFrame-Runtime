@@ -768,14 +768,20 @@ void BindingRuntime::setAction(NodeId node, const IrTriggerAction& action, float
         return;
     }
     BVal v;
+    // T-871 (60 §60.3.4): an add() has set()'s fields; its flags also carry kAddRange / kAddWrap,
+    // and with a range the last of its `extra` steps holds min / max instead of a converter.
+    const bool add = action.kind == static_cast<uint8_t>(TriggerAction::Add);
+    const bool range = add && (action.flags & kAddRange) != 0 && action.extra != 0;
+    const uint16_t steps = range ? static_cast<uint16_t>(action.extra - 1u) : action.extra;
+    const uint8_t source = add ? static_cast<uint8_t>(action.flags & kAddSourceMask) : action.flags;
     // T-411 (27 §27.2.3): the converter steps of a constant / Port / Item value.
     auto convert = [&](BVal in, EvalCtx& ctx) {
         ctx.node = node;
-        return action.extra != 0 ? run(m_doc.m_ir.triggers().conditions().subspan(action.arg0, action.extra),
-                                       std::move(in), ctx)
-                                 : in;
+        return steps != 0
+                   ? run(m_doc.m_ir.triggers().conditions().subspan(action.arg0, steps), std::move(in), ctx)
+                   : in;
     };
-    switch (static_cast<SetSource>(action.flags)) {
+    switch (static_cast<SetSource>(source)) {
         case SetSource::Number: {
             EvalCtx ctx;
             v = convert(num(action.arg2), ctx);
@@ -830,8 +836,8 @@ void BindingRuntime::setAction(NodeId node, const IrTriggerAction& action, float
                 v = portValue(port);
                 ctx.maxPort = m_slots[port].maxPort;
             }
-            if (action.extra != 0) {
-                v = run(m_doc.m_ir.triggers().conditions().subspan(action.arg0, action.extra), v, ctx);
+            if (steps != 0) {
+                v = run(m_doc.m_ir.triggers().conditions().subspan(action.arg0, steps), v, ctx);
             }
             break;
         }
@@ -839,9 +845,9 @@ void BindingRuntime::setAction(NodeId node, const IrTriggerAction& action, float
             // T-392 (27 §27.3.5): `value`, the trigger element's current text (an input's value).
             v.kind = Kind::Str;
             v.str = std::string(ElementRef{&m_doc, node, m_doc.m_arena.generation(node)}.text());
-            if (action.extra != 0) {
+            if (steps != 0) {
                 EvalCtx ctx;
-                v = run(m_doc.m_ir.triggers().conditions().subspan(action.arg0, action.extra), v, ctx);
+                v = run(m_doc.m_ir.triggers().conditions().subspan(action.arg0, steps), v, ctx);
             }
             break;
         }
@@ -850,6 +856,30 @@ void BindingRuntime::setAction(NodeId node, const IrTriggerAction& action, float
     }
     const Slot& s = m_slots[index];
     const PortValueType type = static_cast<PortValueType>(s.ir.type);
+    if (add) {
+        // T-871: the port's value plus the value, clamped to (or with `wrap`, wrapped around in)
+        // [min, max). Only a Number port takes it (the compiler rejects the others).
+        if (type != PortValueType::Number) {
+            return;
+        }
+        double result = toNum(portValue(index)) + toNum(v);
+        if (range) {
+            const IrConverterStep& bounds = m_doc.m_ir.triggers().conditions()[action.arg0 + steps];
+            const double lo = std::min(bounds.args[0], bounds.args[1]);
+            const double hi = std::max(bounds.args[0], bounds.args[1]);
+            if ((action.flags & kAddWrap) == 0) {
+                result = std::clamp(result, lo, hi);
+            } else if (hi > lo) {
+                result = lo + std::fmod(result - lo, hi - lo);
+                if (result < lo) {
+                    result += hi - lo;
+                }
+            } else {
+                result = lo;
+            }
+        }
+        v = num(result);
+    }
     bool changed = false;
     if (type == PortValueType::String || type == PortValueType::Texture || type == PortValueType::Enum) {
         // T-270c: the text goes straight into the port (what set()/assign() of an interned

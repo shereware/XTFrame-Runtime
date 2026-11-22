@@ -21,19 +21,23 @@ namespace {
 /// T-345 (05 §5.9.9): a keyframe or override value of an Element's px property is design px, so
 /// it is multiplied by the element's `ui-scale` factor (ComputedStyle::uiScaleEff), as the cascade
 /// does with its own px lengths. Transition ends come from the cascade and are already scaled.
-void scaleElementPx(const NodeArena& arena, NodeId node, PropId p, Value& v) {
+/// T-869: `inverse` divides (an element's scaled base value into a keyframe's design px).
+void scaleElementPx(const NodeArena& arena, NodeId node, PropId p, Value& v, bool inverse = false) {
     if (arena.kind(node) != NodeKind::Element) {
         return;
     }
-    const float s = arena.element(node).style.uiScaleEff;
-    if (s == 1.0f) {
+    const float factor = arena.element(node).style.uiScaleEff;
+    if (factor == 1.0f || (inverse && !(factor > 0.0f))) {
         return;
     }
+    const float s = inverse ? 1.0f / factor : factor;
     if (p == prop::TranslateX || p == prop::TranslateY) {
         if (v.type == ValueType::Float) {
             v.f *= s;
         } else if (v.type == ValueType::Length && v.len.unit == LengthUnit::Px) {
             v.len.value *= s;
+        } else if (v.type == ValueType::Vec2) {
+            v.v2.x *= s;  // T-869: the (px, %) form of a base value met by a keyframe; px part only.
         }
         return;
     }
@@ -264,7 +268,7 @@ const Animator::Instance* Animator::findInstance(uint32_t id) const {
     return nullptr;
 }
 
-uint32_t Animator::play(const PlayParams& params, float clock) {
+uint32_t Animator::play(const PlayParams& params, double clock) {
     m_changedSinceEvaluate = true;  // T-749
     const Timeline* tl = timeline(params.timeline);
     if (tl == nullptr) {
@@ -292,6 +296,7 @@ uint32_t Animator::play(const PlayParams& params, float clock) {
     inst.layer = params.layer;
     inst.group = params.group;
     inst.css = params.css;
+    inst.reverse = params.reverse;  // T-872
     inst.overrideEasing = params.overrideEasing;
 
     m_instances.push_back(inst);
@@ -312,20 +317,19 @@ void Animator::stop(uint32_t id) {
     }
 }
 
-void Animator::pause(uint32_t id, float clock) {
+void Animator::pause(uint32_t id, double clock) {
     m_changedSinceEvaluate = true;  // T-749
     Instance* inst = findInstance(id);
     if (inst == nullptr) {
         return;
     }
-    float elapsed = (clock - inst->startClock - inst->delay) * inst->speed;
-    inst->pausedAt = elapsed;
+    inst->pausedAt = (clock - inst->startClock - inst->delay) * inst->speed;  // T-870: in double
     inst->paused = 1;
     inst->held = 0;     // T-717
     inst->settled = 0;  // T-783
 }
 
-void Animator::resume(uint32_t id, float clock) {
+void Animator::resume(uint32_t id, double clock) {
     m_changedSinceEvaluate = true;  // T-749
     Instance* inst = findInstance(id);
     if (inst == nullptr || inst->paused == 0) {
@@ -339,7 +343,7 @@ void Animator::resume(uint32_t id, float clock) {
     inst->settled = 0;  // T-783
 }
 
-void Animator::seek(uint32_t id, float localT, float clock) {
+void Animator::seek(uint32_t id, float localT, double clock) {
     m_changedSinceEvaluate = true;  // T-749
     Instance* inst = findInstance(id);
     if (inst == nullptr) {
@@ -351,8 +355,8 @@ void Animator::seek(uint32_t id, float localT, float clock) {
     } else if (!std::isfinite(localT)) {
         localT = 0.0f;
     }
-    // Treated as iteration 0, forward segment: elapsed == frac.
-    float elapsed = (localT - inst->segStart) * inst->durationScale;
+    // Treated as iteration 0: elapsed == frac (T-872: a reversed one runs from segEnd).
+    float elapsed = (inst->reverse ? inst->segEnd - localT : localT - inst->segStart) * inst->durationScale;
     // T-783: a paused instance seeked onto the very position it was last evaluated at (a group whose
     // time did not move re-applies it every step) keeps what it applied there.
     const bool samePlace = inst->paused != 0 && inst->everEvaluated != 0 && inst->pausedAt == elapsed &&
@@ -375,7 +379,7 @@ void Animator::seek(uint32_t id, float localT, float clock) {
     inst->prevLocalT = localT;
 }
 
-void Animator::setSpeed(uint32_t id, float speed, float clock) {
+void Animator::setSpeed(uint32_t id, float speed, double clock) {
     m_changedSinceEvaluate = true;  // T-749
     Instance* inst = findInstance(id);
     if (inst == nullptr) {
@@ -384,7 +388,7 @@ void Animator::setSpeed(uint32_t id, float speed, float clock) {
     if (!std::isfinite(speed)) {
         speed = 0.0f;  // T-255b: a NaN / infinite rate stops the animation instead of poisoning its clock.
     }
-    float elapsedOld = inst->paused ? inst->pausedAt : (clock - inst->startClock - inst->delay) * inst->speed;
+    const double elapsedOld = elapsedAt(*inst, clock);
     inst->speed = speed;
     inst->held = 0;     // T-717
     inst->settled = 0;  // T-783
@@ -395,22 +399,21 @@ void Animator::setSpeed(uint32_t id, float speed, float clock) {
     }
 }
 
-float Animator::activeElapsed(const Instance& inst, float clock) const {
+double Animator::activeElapsed(const Instance& inst, double clock) const {
     if (inst.speed == 0.0f) {
-        return 0.0f;
+        return 0.0;
     }
-    const float elapsed =
-        inst.paused != 0 ? inst.pausedAt : (clock - inst.startClock - inst.delay) * inst.speed;
+    const double elapsed = elapsedAt(inst, clock);
     const float origin = inst.speed < 0.0f ? (inst.segEnd - inst.segStart) * inst.durationScale : 0.0f;
     return (elapsed - origin) / inst.speed;
 }
 
-void Animator::setActiveElapsed(Instance& inst, float seconds, float clock) {
+void Animator::setActiveElapsed(Instance& inst, double seconds, double clock) {
     if (inst.speed == 0.0f || !std::isfinite(seconds)) {
         return;
     }
     const float origin = inst.speed < 0.0f ? (inst.segEnd - inst.segStart) * inst.durationScale : 0.0f;
-    const float elapsed = origin + seconds * inst.speed;
+    const double elapsed = origin + seconds * inst.speed;
     if (inst.paused != 0) {
         inst.pausedAt = elapsed;
     } else {
@@ -418,7 +421,7 @@ void Animator::setActiveElapsed(Instance& inst, float seconds, float clock) {
     }
 }
 
-void Animator::resyncAfterJump(Instance& inst, float clock, bool quietFinish) {
+void Animator::resyncAfterJump(Instance& inst, double clock, bool quietFinish) {
     inst.held = 0;     // T-717: updateParams() / setElapsedSeconds() changed the instance.
     inst.settled = 0;  // T-783
     const LocalState st = computeLocalState(inst, clock);
@@ -437,14 +440,14 @@ void Animator::resyncAfterJump(Instance& inst, float clock, bool quietFinish) {
     inst.prevLocalT = st.localT;
 }
 
-bool Animator::updateParams(uint32_t id, const PlayParams& params, float clock) {
+bool Animator::updateParams(uint32_t id, const PlayParams& params, double clock) {
     m_changedSinceEvaluate = true;  // T-749
     Instance* inst = findInstance(id);
     const Timeline* tl = inst != nullptr ? timeline(inst->timeline) : nullptr;
     if (tl == nullptr) {
         return false;
     }
-    const float seconds = activeElapsed(*inst, clock);
+    const double seconds = activeElapsed(*inst, clock);
     const bool wasFinished = inst->finished != 0;
     inst->delay = params.delay;
     inst->speed = std::isfinite(params.speed) ? params.speed : 0.0f;
@@ -455,6 +458,7 @@ bool Animator::updateParams(uint32_t id, const PlayParams& params, float clock) 
     inst->iterations = params.loop == LoopMode::Once ? uint16_t{1} : params.iterations;  // As play().
     inst->fill = params.fill;
     inst->layer = params.layer;
+    inst->reverse = params.reverse;  // T-872
     inst->overrideEasing = params.overrideEasing;
     setActiveElapsed(*inst, seconds, clock);
     // Already finished and still past the end: no second onFinished.
@@ -474,29 +478,28 @@ bool Animator::retarget(uint32_t id, TimelineId timelineId) {
         inst->segEnd = next->duration;
     }
     inst->timeline = timelineId;
-    inst->held = 0;     // T-717
-    inst->settled = 0;  // T-783
+    inst->held = 0;        // T-717
+    inst->settled = 0;     // T-783
+    dropNeutralBases(id);  // T-869: they name tracks of the previous timeline.
     growScratchForTimeline(*next);
     growPendingCapacity(next->tracks.size());
     return true;
 }
 
-double Animator::elapsedSeconds(uint32_t id, float clock) const {
+double Animator::elapsedSeconds(uint32_t id, double clock) const {
     const Instance* inst = findInstance(id);
     if (inst == nullptr || inst->speed == 0.0f) {
         return 0.0;
     }
     // activeElapsed() in double (T-651): sums and differences of a few floats are exact there.
     const double speed = inst->speed;
-    const double elapsed = inst->paused != 0
-                               ? static_cast<double>(inst->pausedAt)
-                               : (static_cast<double>(clock) - inst->startClock - inst->delay) * speed;
+    const double elapsed = elapsedAt(*inst, clock);
     const double origin =
         speed < 0.0 ? static_cast<double>((inst->segEnd - inst->segStart) * inst->durationScale) : 0.0;
     return (elapsed - origin) / speed;
 }
 
-void Animator::setElapsedSeconds(uint32_t id, double seconds, float clock) {
+void Animator::setElapsedSeconds(uint32_t id, double seconds, double clock) {
     m_changedSinceEvaluate = true;  // T-749
     Instance* inst = findInstance(id);
     if (inst == nullptr || inst->speed == 0.0f || !std::isfinite(seconds)) {
@@ -509,9 +512,9 @@ void Animator::setElapsedSeconds(uint32_t id, double seconds, float clock) {
         speed < 0.0 ? static_cast<double>((inst->segEnd - inst->segStart) * inst->durationScale) : 0.0;
     const double elapsed = origin + seconds * speed;
     if (inst->paused != 0) {
-        inst->pausedAt = static_cast<float>(elapsed);
+        inst->pausedAt = elapsed;
     } else {
-        inst->startClock = static_cast<float>(static_cast<double>(clock) - inst->delay - elapsed / speed);
+        inst->startClock = clock - inst->delay - elapsed / speed;
     }
     resyncAfterJump(*inst, clock, /*quietFinish=*/true);
 }
@@ -531,7 +534,7 @@ bool Animator::isFinished(uint32_t id) const {
     return inst != nullptr && inst->finished != 0;
 }
 
-float Animator::localTime(uint32_t id, float clock) const {
+float Animator::localTime(uint32_t id, double clock) const {
     const Instance* inst = findInstance(id);
     if (inst == nullptr) {
         return 0.0f;
@@ -712,7 +715,7 @@ Animator::DebugCapacities Animator::debugCapacities() const {
     return caps;
 }
 
-std::vector<Animator::InstanceInfo> Animator::debugInstances(float clock) const {
+std::vector<Animator::InstanceInfo> Animator::debugInstances(double clock) const {
     std::vector<InstanceInfo> out;
     out.reserve(m_instances.size());
     for (const Instance& inst : m_instances) {
@@ -739,17 +742,19 @@ std::vector<Animator::InstanceInfo> Animator::debugInstances(float clock) const 
     return out;
 }
 
-Animator::LocalState Animator::computeLocalState(const Instance& inst, float clock) const {
+Animator::LocalState Animator::computeLocalState(const Instance& inst, double clock) const {
     LocalState st;
-    float elapsed = inst.paused != 0 ? inst.pausedAt : (clock - inst.startClock - inst.delay) * inst.speed;
+    // T-870 (59 §59.7): the elapsed time and the iteration split in double; `frac` is rounded.
+    const double elapsed = elapsedAt(inst, clock);
     float segLen = (inst.segEnd - inst.segStart) * inst.durationScale;
 
-    if (elapsed < 0.0f) {
+    if (elapsed < 0.0) {
         bool hasBackward = fillHas(inst.fill, FillMode::Backwards);
-        st.localT = inst.speed < 0.0f ? inst.segEnd : inst.segStart;
+        st.localT = (inst.speed < 0.0f) != (inst.reverse != 0) ? inst.segEnd : inst.segStart;  // T-872
         st.iter = 0;
         st.finished = false;
         st.skip = !hasBackward;
+        st.beforeStart = hasBackward;  // T-869
         return st;
     }
 
@@ -766,28 +771,24 @@ Animator::LocalState Animator::computeLocalState(const Instance& inst, float clo
     // (half-open interval on the right) rather than the opening instant of the next one -- e.g.
     // for a 1-iteration, 1-second segment, elapsed == 1.0 is still iteration 0's final frame
     // (localT == segEnd), not the (already out-of-range) start of iteration 1.
-    float ratio = elapsed / segLen;
+    const double ratio = elapsed / static_cast<double>(segLen);
     // T-255b: saturated, not a plain cast (undefined past the uint32 range, e.g. a huge clock).
     uint32_t iter = toUint32Sat(std::floor(ratio));
-    if (iter > 0 && ratio == static_cast<float>(iter)) {
+    if (iter > 0 && ratio == static_cast<double>(iter)) {
         iter -= 1;
     }
     st.iter = iter;
 
     if (inst.iterations != 0 && iter >= inst.iterations) {
         st.finished = true;
-        bool lastForward = true;
-        if (inst.loop == LoopMode::PingPong) {
-            uint32_t lastIter = static_cast<uint32_t>(inst.iterations - 1);
-            lastForward = (lastIter % 2) == 0;
-        }
-        bool effectiveForward = lastForward != (inst.speed < 0.0f);
+        const bool lastForward = inst.loop != LoopMode::PingPong || ((inst.iterations - 1u) % 2u) == 0u;
+        bool effectiveForward = (lastForward != (inst.speed < 0.0f)) != (inst.reverse != 0);  // T-872
         st.localT = effectiveForward ? inst.segEnd : inst.segStart;
         return st;
     }
 
-    float frac = elapsed - static_cast<float>(iter) * segLen;
-    if (inst.loop == LoopMode::PingPong && (iter % 2) == 1) {
+    float frac = static_cast<float>(elapsed - static_cast<double>(iter) * static_cast<double>(segLen));
+    if ((inst.loop == LoopMode::PingPong && (iter % 2) == 1) != (inst.reverse != 0)) {  // T-872: reverse
         frac = segLen - frac;
     }
     st.localT = inst.segStart + frac / inst.durationScale;
@@ -822,10 +823,12 @@ bool Animator::internEasingPoints(std::span<const EasingPoint> points, uint16_t&
 }
 
 Value Animator::evalTrackAdvancing(const Timeline& tl, const Track& track, float t,
-                                   const Easing* overrideLinear, size_t& floatCursor, size_t& stopCursor) {
+                                   const Easing* overrideLinear, size_t& floatCursor, size_t& stopCursor,
+                                   const Value* base) {
     float* sf = m_scratchFloats.empty() ? nullptr : m_scratchFloats.data() + floatCursor;
     GradientStop* sg = m_scratchStops.empty() ? nullptr : m_scratchStops.data() + stopCursor;
-    Value v = evalTrack(tl, track, t, sf, sg, overrideLinear, m_easingPoints);
+    Value v = base != nullptr ? evalTrackWithBase(tl, track, t, *base, sf, sg, overrideLinear, m_easingPoints)
+                              : evalTrack(tl, track, t, sf, sg, overrideLinear, m_easingPoints);
     if (sf != nullptr && v.floats == sf && (v.type == ValueType::Path || v.type == ValueType::FloatArray)) {
         floatCursor += v.floatCount;
     }
@@ -882,6 +885,8 @@ void Animator::checkMarkers(Instance& inst, const LocalState& st, const NodeAren
                                    : (inst.speed >= 0.0f);
             bool curForward = inst.loop == LoopMode::PingPong ? ((st.iter % 2 == 0) != (inst.speed < 0.0f))
                                                               : (inst.speed >= 0.0f);
+            prevForward = prevForward != (inst.reverse != 0);  // T-872
+            curForward = curForward != (inst.reverse != 0);
             float tailBoundary = prevForward ? inst.segEnd : inst.segStart;
             float headBoundary = curForward ? inst.segStart : inst.segEnd;
             hit = segmentContains(inst.prevLocalT, tailBoundary, marker.start) ||
@@ -1113,7 +1118,7 @@ bool Animator::heldTargetsTouched(const Instance& inst, const Timeline& tl, cons
     return false;
 }
 
-void Animator::evaluate(float clock, NodeArena& arena) {
+void Animator::evaluate(double clock, NodeArena& arena) {
     // T-749 (needsEvaluate()): a call a callback of this evaluate() makes sets the flag again.
     m_changedSinceEvaluate = false;
     bool idle = m_transitions.empty();
@@ -1135,7 +1140,7 @@ void Animator::evaluate(float clock, NodeArena& arena) {
     // Step 2: Transitions.
     for (size_t i = 0; i < m_transitions.size();) {
         Transition& tr = m_transitions[i];
-        float p = (clock - tr.startClock - tr.delay) / tr.duration;
+        float p = static_cast<float>(clock - tr.startClock - tr.delay) / tr.duration;  // T-870
         if (p < 0.0f) {
             ++i;
             continue;
@@ -1319,13 +1324,17 @@ void Animator::evaluate(float clock, NodeArena& arena) {
                     if (stationary) {
                         m_heldTargets.push_back(node);  // T-717: its stale bit is cleared after step 5.
                     }
+                    const size_t trackIndex = static_cast<size_t>(&track - tl->tracks.data());
+                    // T-869 (12 §12.3): Neutral keys read the base value (none in a Backwards delay).
+                    Value base =
+                        st.beforeStart ? Value::neutral() : neutralBase(inst, *tl, track, node, arena);
+                    scaleElementPx(arena, node, track.prop, base, /*inverse=*/true);
                     Value v = evalTrackAdvancing(*tl, track, st.localT, &inst.overrideEasing, floatCursor,
-                                                 stopCursor);
+                                                 stopCursor, base.isNeutral() ? nullptr : &base);
                     if (v.isNeutral()) {
                         continue;
                     }
                     // T-776: a program's output replaces its component, before the px scaling.
-                    const size_t trackIndex = static_cast<size_t>(&track - tl->tracks.data());
                     bool exprWrote = false;
                     if (withExprs) {
                         applyExprs(inst, trackIndex, v, exprStale, exprCursor);
@@ -1363,6 +1372,7 @@ void Animator::evaluate(float clock, NodeArena& arena) {
         }
         if (st.finished && !forwardsFill) {
             m_toRemove.push_back(inst.id);
+            restoreCascadeValues(inst, arena);  // T-869: a CSS animation's general properties.
         }
     }
 
@@ -1404,7 +1414,7 @@ void Animator::evaluate(float clock, NodeArena& arena) {
             ov.tweenState = ov.fromKnown && sameTweenShape(ov.from, ov.value) ? 2 : 0;
         }
         if (ov.tweenState == 2) {
-            const float p = (clock - ov.startClock) / ov.duration;
+            const float p = static_cast<float>(clock - ov.startClock) / ov.duration;  // T-870
             if (p >= 1.0f) {
                 ov.tweenState = 0;
             } else if (p > 0.0f) {
@@ -1464,12 +1474,14 @@ void Animator::evaluate(float clock, NodeArena& arena) {
             arena.common(n).flags2 &= ~kAnimBits;
         }
     }
+    neutralBasesApplied(arena);  // T-869
 
     // Step 6: Remove finished (non-Forwards-fill) instances, then fire onFinished once for every
     // instance that just became finished (Forwards-fill instances stay in the pool).
     for (uint32_t id : m_toRemove) {
         stop(id);
     }
+    dropNeutralBases(0);  // T-869: those of instances no longer in the pool.
     // T-260a: the transition-end / iteration / marker notifications steps 2-3 queued, in order.
     dispatchNotes(arena);
     // T-260a: by index, the count taken now and the size re-checked: a callback that re-enters

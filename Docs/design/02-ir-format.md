@@ -17,7 +17,7 @@
 |---|---|---|
 | 0 | char[4] | `"XTIR"` |
 | 4 | uint16 | major = **3**（T-534，2026-10-30：`IrEffect` 80 → 144 bytes、效果參數 PropId 重編（18 §18.2）；2.x 檔拒收）；歷史：2（T-42c）|
-| 6 | uint16 | minor = **3**（3.3，T-778：StyleProp 282～293 `animation-*`／`transition-*` 長屬性與 `IrAnimationSpec.flags`／`IrTransitionSpec.flags`；3.2 為 T-776 的 TEXP；3.1，T-701：StyleProp 281 `world-layer`；3.0 為 T-534。2.x 的 minor 歷史保留如下供考古）。2.x：minor = **9**（T-411：`SetSource` 追加 Port 9、Item 10，Number／String 的 set() 值可帶轉換器步驟（§2.v.1）；版面不變）；歷史：0 無 gradientPool → 1 gradientPool（T-115）→ 2 STYL `floatPool[]`（T-218）→ 3 SCEN `modifiers[]`／`shapes[]`（T-225）→ 4 筆畫漸細欄位（T-233）→ 5 綁定與變形尾段（T-243）→ 6 STYL `easingPoints[]` + `LengthUnit::Rem = 14`（T-335）→ 7 PORT `defaults[]`（T-358）→ 8 T-380～T-399 的欄位與列舉正式化（版面不變）、`hit-slop` 改寫為 StyleProp 277～280 的 Length 宣告（§2.6.2）、`META` 選用的 `behavior` 尾段（§2.10）（T-405，43 §43.5）→ 9。讀取端對較舊 minor 以「缺少的尾段視為空」處理（`IrView::formatMinor()` 供需要依 minor 分支的讀取點，目前只有 §2.6.2 的 `hit-slop`）；較新 minor 依 §2.1 規則忽略未知區塊與尾段，但含 `Rem` 的宣告會被 minor ≤ 5 的驗證器拒收，含 `SetSource` 9／10 的 Set 動作會被 minor ≤ 8 的驗證器拒收 |
+| 6 | uint16 | minor = **5**（3.5，T-873：TriggerEvent InputChange 44／InputPress 45／InputRelease 46、ConverterOp Input 44；版面不變。相容：綁定鏈含 Input 步驟的檔會被 minor ≤ 4 的驗證器拒收；新事件在舊執行期不會觸發。T-874：SHDR 的 `.xtfx` `time:` 存於 `IrShaderRef.fallback._pad`，版面不變；3.4，T-871：TriggerEvent Wheel 42／KeyRelease 43、TriggerAction Add 21、SetSource 11～21；版面不變。相容：含 SetSource 11～21 的 Set 動作會被 minor ≤ 3 的驗證器拒收（比照 2.9 的 9／10）；新事件在舊執行期不會觸發、Add 動作被略過；3.3，T-778：StyleProp 282～293 `animation-*`／`transition-*` 長屬性與 `IrAnimationSpec.flags`／`IrTransitionSpec.flags`；3.2 為 T-776 的 TEXP；3.1，T-701：StyleProp 281 `world-layer`；3.0 為 T-534。2.x 的 minor 歷史保留如下供考古）。2.x：minor = **9**（T-411：`SetSource` 追加 Port 9、Item 10，Number／String 的 set() 值可帶轉換器步驟（§2.v.1）；版面不變）；歷史：0 無 gradientPool → 1 gradientPool（T-115）→ 2 STYL `floatPool[]`（T-218）→ 3 SCEN `modifiers[]`／`shapes[]`（T-225）→ 4 筆畫漸細欄位（T-233）→ 5 綁定與變形尾段（T-243）→ 6 STYL `easingPoints[]` + `LengthUnit::Rem = 14`（T-335）→ 7 PORT `defaults[]`（T-358）→ 8 T-380～T-399 的欄位與列舉正式化（版面不變）、`hit-slop` 改寫為 StyleProp 277～280 的 Length 宣告（§2.6.2）、`META` 選用的 `behavior` 尾段（§2.10）（T-405，43 §43.5）→ 9。讀取端對較舊 minor 以「缺少的尾段視為空」處理（`IrView::formatMinor()` 供需要依 minor 分支的讀取點，目前只有 §2.6.2 的 `hit-slop`）；較新 minor 依 §2.1 規則忽略未知區塊與尾段，但含 `Rem` 的宣告會被 minor ≤ 5 的驗證器拒收，含 `SetSource` 9／10 的 Set 動作會被 minor ≤ 8 的驗證器拒收 |
 | 8 | uint32 | 區塊數 |
 | 12 | uint32 | 檔案總長度（含標頭） |
 
@@ -437,9 +437,9 @@ IrTriggerAction (20 bytes):
   u16 extra           // T-201：Set 的轉換器步數（arg0 起，在 conditions[]）；Spawn 的生成池序號
 ```
 
-**TriggerEvent**（上限 `kTriggerEventLast`；更大的碼不是錯誤，該觸發不會發生）：None 0、Hover 1、Leave 2、Press 3、Release 4、Click 5、Focus 6、Blur 7、Check 8、Uncheck 9、Show 10、Hide 11、Port 12、TimelineEnd 13、TimelineMarker 14、StateEnter 15、StateExit 16、DragStart 17、DragOver 18、Drop 19、Key 20、Gesture 21、Player 22、ItemEnter 23、ItemExit 24、MediaEnd 25、DragLeave 26、Back 27、NavBlocked 28、DragValue 29、NavValue 30、DoubleClick 31（T-379）、PointerCancel 32、PointerMove 33（T-386）、DragCancel 34（T-388）、Scroll 35、OutsidePress 36（T-387）、Change 37、Input 38（T-392）、PointerDrag 39（T-394）、FocusIn 40、FocusOut 41（T-397）。
+**TriggerEvent**（上限 `kTriggerEventLast`；更大的碼不是錯誤，該觸發不會發生）：None 0、Hover 1、Leave 2、Press 3、Release 4、Click 5、Focus 6、Blur 7、Check 8、Uncheck 9、Show 10、Hide 11、Port 12、TimelineEnd 13、TimelineMarker 14、StateEnter 15、StateExit 16、DragStart 17、DragOver 18、Drop 19、Key 20、Gesture 21、Player 22、ItemEnter 23、ItemExit 24、MediaEnd 25、DragLeave 26、Back 27、NavBlocked 28、DragValue 29、NavValue 30、DoubleClick 31（T-379）、PointerCancel 32、PointerMove 33（T-386）、DragCancel 34（T-388）、Scroll 35、OutsidePress 36（T-387）、Change 37、Input 38（T-392）、PointerDrag 39（T-394）、FocusIn 40、FocusOut 41（T-397）。 Wheel 42、KeyRelease 43（T-871，3.4；60 §60.3.2）。 InputChange 44、InputPress 45、InputRelease 46（T-873，3.5；60 §60.3.2；arg0＝通道的正規名 StringId、arg1＝玩家；不看焦點與命中，每通道每幀至多一次）。
 
-**TriggerAction**（上限 `kTriggerActionLast`；更大的碼略過）：None 0、Play 1、Stop 2、Seek 3、State 4、Class 5、Show 6、Hide 7、Sound 8、Set 9、Emit 10、If 11、Focus 12（arg0 = 目標 id，`kInvalidString` = 觸發元素自身，T-392）、Spawn 13、Haptic 14、Layer 15、Remove 16、Consume 17（只在 `on:outsidepress`，T-394）、Reset 18（`reset(value)`，只在有 `bind:value` 的元素，T-399）、Pause 19、Resume 20（`pause(<timeline>)`／`resume(<timeline>)`，arg0 = 時間軸名，T-573）。
+**TriggerAction**（上限 `kTriggerActionLast`；更大的碼略過）：None 0、Play 1、Stop 2、Seek 3、State 4、Class 5、Show 6、Hide 7、Sound 8、Set 9、Emit 10、If 11、Focus 12（arg0 = 目標 id，`kInvalidString` = 觸發元素自身，T-392）、Spawn 13、Haptic 14、Layer 15、Remove 16、Consume 17（只在 `on:outsidepress`，T-394）、Reset 18（`reset(value)`，只在有 `bind:value` 的元素，T-399）、Pause 19、Resume 20（`pause(<timeline>)`／`resume(<timeline>)`，arg0 = 時間軸名，T-573）。 Add 21（`add(<port>, <值>[, min, max[, wrap]])`，欄位同 Set；flags 低 6 位是 SetSource（`kAddSourceMask` 0x3F），`kAddRange` 0x80 表示 `extra` 的最後一步是 Operands、args[0]＝min、args[1]＝max，`kAddWrap` 0x40 表示超出 [min, max) 時繞回、必須與 `kAddRange` 同時出現；只能用在 number port；T-871，3.4；60 §60.3.4）。
 
 **動作旗標**：
 
@@ -449,7 +449,7 @@ IrTriggerAction (20 bytes):
 | State | 低位 `TriggerMode`（On 0／Off 1／Toggle 2）；`kStateBuiltin` 0x40（T-390／T-392）：設定內建 ElementState 而非自訂狀態——arg0 = 0 為 Disabled，否則為 ElementState bit 本身（Focus／Hover／Active／Checked／Disabled 之一，其他值無效）；`kStateTarget` 0x80（T-201）：arg1 = 目標元素（路徑）id 的 StringId |
 | Class | `TriggerMode` |
 | Spawn | `SpawnAt`：Self 0、Pointer 1、Element 2 |
-| Set | `SetSource`（上限 `kSetSourceLast`）：Number 0、String 1、Toggle 2、EventValue 3、PointerFractionX 4、PointerFractionY 5、PointerLocalX 6、PointerLocalY 7（4～7：arg2 位元為元素 id StringId，T-386）、ElementValue 8（T-392）、Port 9（arg2 位元為 PORT 索引）、Item 10（輸入為觸發元素所在 `<repeat>` 實例的項目，第一步讀欄位／序號／數量）（T-411，2.9）；EventValue、4～10 與 2.9 起的 Number／String 經 arg0／`extra` 的轉換器步驟 |
+| Set | `SetSource`（上限 `kSetSourceLast`）：Number 0、String 1、Toggle 2、EventValue 3、PointerFractionX 4、PointerFractionY 5、PointerLocalX 6、PointerLocalY 7（4～7：arg2 位元為元素 id StringId，T-386）、ElementValue 8（T-392）、Port 9（arg2 位元為 PORT 索引）、Item 10（輸入為觸發元素所在 `<repeat>` 實例的項目，第一步讀欄位／序號／數量）（T-411，2.9）；EventValue、4～10 與 2.9 起的 Number／String 經 arg0／`extra` 的轉換器步驟；PointerDeltaX 11、PointerDeltaY 12、PointerFromPressX 13、PointerFromPressY 14、PointerAngle 15、PointerTurn 16、PointerDistance 17、PointerGrabX 18、PointerGrabY 19（11～19：arg2 位元是元素 id 的 StringId，沒寫 `(#id)` 時為 kInvalidString）、EventDx 20、EventDy 21（T-871，3.4；60 §60.3.3） |
 | Layer | 1 overlay、0 normal |
 | If | 0 = arg0／arg1 是一條比較鏈（conditions[] 的範圍）；`kIfActive` 1（T-386）：條件為 `active`，範圍為空；`kIfTerms` 2（T-390）：範圍是一串須全部成立（and）的項；兩旗標不併用，其他值無效 |
 
@@ -468,7 +468,7 @@ IrTriggerAction (20 bytes):
 - **PORT**：`u32 n, IrPort{u32 name, u8 type, u8 dir, u8 flags(kPortExpose=1), u8 entryType（T-381，§2.s.3）, u32 element, u32 scope (實例根或 0xFFFFFFFF), u32 fieldOffset, u32 fieldCount}[n]`（24 B）；`u32 m, IrPortField{u32 name, u8 type, pad3}[m]`（struct/list 欄位與 enum 值名）。`PortValueType`：Number 1、String 2、Bool 3、Color 4、Vec2 5、Vec3 6、Entity 7、Enum 8、Struct 9、List 10、Texture 11、Event 12；`PortDir` In 0、Out 1、Call 2。
 - **BIND**：`u32 n, IrBinding{u32 element, u8 target, u8 flags, u16 targetId, u32 targetName, u32 sourceOffset, u16 sourceCount, u16 stepCount, u32 stepOffset}[n]`（24 B）；`u32 m, u32 sources[]`（PORT 索引，輸入 port 在前）；`u32 k, IrConverterStep[]`。`BindTarget`：Prop 1（targetId = PropId/StyleProp、targetName = CSS 名）、Text 2、Src 3、Visible 4、State 5（targetId = 狀態 bit）、Class 6、Variant 7（targetName = `v-<Prop>-` 前綴）；flags `kBindAfterLayout` 1、`kBindNoPrimary` 2。NodeCommon 未加 `bindingTable`（BIND 以元素索引）。
 - `IrConverterStep` 仍 20 B：T-174 的 pad 改為 `u8 argCount` + `u16 argKinds`（每引數 4 bit：Number 0、String 1、Port 2、Percent 3、None 4；T-174 的零值讀為全 Number）。op 0 = `Operands`（前一步的續行引數）；宿主自訂 = 0x80 並在 args[0] 帶名，執行時註冊回 0x80+i。TRIG：Port 事件與 Emit 動作的 `arg1` = PORT 索引 + 1（0 = 未宣告）。
-- **ConverterOp**：range 1、clamp 2、round 3、abs 4、scale 5、offset 6、lt 7、le 8、gt 9、ge 10、eq 11、ne 12、between 13、not 14、and 15、or 16、format 17、thousands 18、fixed 19、percent 20、time 21、upper 22、lower 23、select 24、step 25、lerpColor 26、fromToken 27、localize 28、concat 29、glyph 30、tween 31、delay 32、count 33、index 34、item 35、elemProp 36。
+- **ConverterOp**：range 1、clamp 2、round 3、abs 4、scale 5、offset 6、lt 7、le 8、gt 9、ge 10、eq 11、ne 12、between 13、not 14、and 15、or 16、format 17、thousands 18、fixed 19、percent 20、time 21、upper 22、lower 23、select 24、step 25、lerpColor 26、fromToken 27、localize 28、concat 29、glyph 30、tween 31、delay 32、count 33、index 34、item 35、elemProp 36。 Input 44（`input(<通道>)`，T-873，3.5；60 §60.3.1；`kBindNoPrimary` 鏈的第一步；args[0]＝通道名 String、args[1]＝玩家）。
 
 ### 2.s.1 T-200 追加（#198）
 
@@ -596,16 +596,16 @@ uint32 textLength;  uint8 text[]            // UTF-8；source 與 glsl 都是它
 | 種類 | 名稱 | 值 |
 |---|---|---|
 | limit | `kBindTargetLast` | 14 |
-| limit | `kConverterOpLast` | 43 |
+| limit | `kConverterOpLast` | 44 |
 | limit | `kExprOpLast` | 57 |
 | limit | `kIfTermLast` | 6 |
-| limit | `kIrFormatMinor` | 3 |
+| limit | `kIrFormatMinor` | 5 |
 | limit | `kIrSelCondLast` | 17 |
 | limit | `kPortTypeLast` | 12 |
-| limit | `kSetSourceLast` | 10 |
+| limit | `kSetSourceLast` | 21 |
 | limit | `kStylePropLast` | 293 |
-| limit | `kTriggerActionLast` | 20 |
-| limit | `kTriggerEventLast` | 41 |
+| limit | `kTriggerActionLast` | 21 |
+| limit | `kTriggerEventLast` | 46 |
 | struct | `EasingPoint` | 8 |
 | struct | `IrAnimationSpec` | 48 |
 | struct | `IrAsset` | 16 |
@@ -687,4 +687,8 @@ uint32 textLength;  uint8 text[]            // UTF-8；source 與 glsl 都是它
 **IR 3.0 落地記錄（#553，2026-11-04）**：`kIrFormatMajor = 3`、`kIrFormatMinor = 0`；`IrEffect` 144 B、`IrShaderRef` 176 B（`layout.txt`）；2.x 檔 `IrView::open` 回 `kInvalidIr`；bundle `manifest.json` 的 `irMajor` 由常數帶出（3）；語料庫 4 專案 `fileHash` 重產、截圖逐位元組相同。T-585（`BCHN` 子鏈池）與 T-586（綁定 Calc 池）在 3.0 內追加（03 §3.12.11）。CE 同步 CE-64。
 
 **IR 3.3 落地記錄（T-778 #730，2026-11-19）**：`kIrFormatMinor = 3`、`kStylePropLast = 293`。`animation-*` 八個與 `transition-*` 四個長屬性各是一個 StyleProp（282～293），值是既有的 ListRef（不新增種類）。原本的填充位元組改為旗標：`IrAnimationSpec.flags`——`kIrAnimationNoName`（名稱為 `none` 的項）、`kIrAnimationNoPlay`（iteration-count 0）；`IrTransitionSpec.flags`——`kIrTransitionSameItem`（同一個 CSS 項展開成多個 PropId，例如 `transform`）、`kIrTransitionNoProp`（這一項不過渡任何屬性）。編譯器把簡寫寫成 8 個（或 4 個）長屬性宣告、全部指向同一段清單；**180／181 不再輸出，但照讀**（視為一次設定全部長屬性）。為了跨規則時清單對齊，編譯器保留 iteration-count 0 的項與不認得的 transition 屬性項（帶旗標，執行期不播）。相容：3.2 的執行期讀 3.3 的檔會忽略新宣告——CSS 動畫與 transition 不播（照 §2.2 的規則不是錯誤；發佈端與執行期須同版）。凍結檔 `Tests/ir/fixtures/v3.3.xtir`。
+
+**IR 3.4 落地記錄（T-871，2026-11-22；60 章階段 I1）**：`kIrFormatMinor = 4`、`kTriggerEventLast = 43`、`kTriggerActionLast = 21`、`kSetSourceLast = 21`；記錄的版面不變（只有列舉值增加）。驗證器（`ir_view.cpp`）對 Add：沒有範圍卻帶 wrap、值是字串或 toggle、範圍步驟不是 Operands，都拒收。凍結夾具 `Tests/ir/fixtures/v3.4.xtir`。語料庫四個專案的 `manifest.json` 因表頭的 minor 改變而只有 `fileHash` 不同（截圖、port 記錄、腳本記錄不變），隨本單更新。文件快照（23 章，XF-097 v4）多了選用的 `pointer.press`／`pointer.track`（按住期間的按下點與各元素的累積轉角、抓取點），只有帶資訊時才寫，舊快照的文字不變。
+
+**IR 3.5 落地記錄（T-873，2026-11-22；60 章階段 I2）**：`kIrFormatMinor = 5`、`kTriggerEventLast = 46`、`kConverterOpLast = 44`；記錄的版面不變。通道名在 IR 裡是正規化後的字串（`midi.cc(07)` → `midi.cc(7)`、`key.Left` → `key.ArrowLeft`），執行期載入時內化成 id。凍結夾具 `Tests/ir/fixtures/v3.5.xtir`。語料庫四個專案的 `manifest.json` 因 minor 改變而只有 `fileHash` 不同。 **T-874 #811**（同一個尚未發佈的 3.5）：`IrShaderRef.fallback._pad`（fallback 那筆 `IrEffect` 的 2 bytes padding；fallback 不會是 Custom，這兩個位元組不另作他用）存 `.xtfx` 的 `time:`，u16 little-endian——0＝未寫（週期 3600 s；T-874 之前寫出的檔皆為 0）、0xFFFF＝`unbounded`（`kIrShaderTimeUnbounded`）、其他＝週期的整數秒（1～65534）；驗證器接受任何值；以 `irShaderTimePeriod()`／`setIrShaderTimePeriod()` 讀寫。`IrShaderRef` 176 B、`IrEffect` 144 B 不變。
 

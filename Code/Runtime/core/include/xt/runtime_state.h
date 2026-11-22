@@ -29,13 +29,13 @@ public:
 
     /// True when nothing was captured (restoreRuntimeState() then does nothing).
     bool empty() const { return m_state == nullptr; }
-    /// The captured Document's clock.
-    float clock() const { return m_clock; }
+    /// The captured Document's clock (T-870: kept in double; this is it rounded to float).
+    float clock() const { return static_cast<float>(m_clock); }
 
 private:
     friend class Document;
     std::unique_ptr<DocumentState> m_state;
-    float m_clock = 0;
+    double m_clock = 0;
 };
 
 }  // namespace xt

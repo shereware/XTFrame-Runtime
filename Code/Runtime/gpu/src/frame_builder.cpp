@@ -611,8 +611,8 @@ struct FrameBuilder::Impl {
         MaskMode mode = MaskMode::Alpha;
         // Effect frames:
         std::vector<EffectInstance> screenParams;
-        /// T-203: CommandList::time (custom effects' xtTime).
-        float time = 0;
+        /// T-203: the clock custom effects' xtTime is taken from (T-874: CommandList::clockSeconds).
+        double clock = 0;
         Mat2x3 invScreenXf;
         Rect contentBoundsPx;
         /// T-818: EffectCmd::localBox (custom effects' XtInput.local / boxSize).
@@ -5835,7 +5835,7 @@ struct FrameBuilder::Impl {
             in.screenParams = std::span<const EffectInstance>(&screenFirst, 1);
             in.stops = list->stops;
             in.pyramid = pyramid;
-            in.time = list->time;
+            in.clock = list->clockSeconds;
             const TargetHandle result = detail::applyBackdropUnderTextures(
                 emit, luts, in, window, cachedPairParams(entry, offset, window));
             detail::releaseBackdropPyramid(emit, f.ownPyramid);
@@ -5850,7 +5850,7 @@ struct FrameBuilder::Impl {
         in.stops = list->stops;
         in.src = mask;
         in.pyramid = pyramid;
-        in.time = list->time;
+        in.clock = list->clockSeconds;
         const TargetHandle result = detail::applyBackdropUnder(emit, luts, in, top);
         detail::releaseBackdropPyramid(emit, f.ownPyramid);
         compositeOnto(f.parent, result, BlendMode::Normal, 1.0f);
@@ -5968,6 +5968,9 @@ struct FrameBuilder::Impl {
         if (program != 0) {
             out = e;
             out.shader = program;
+            // T-874: the effect's `time:` period goes along in the padding (gpu_effects.h).
+            static_assert(sizeof(out._pad) == sizeof(ref->timePeriod));
+            std::memcpy(out._pad, &ref->timePeriod, sizeof(ref->timePeriod));
             return true;
         }
         if (ref->fallback.kind == EffectKind::None || ref->fallback.kind == EffectKind::Custom) {
@@ -6063,7 +6066,7 @@ struct FrameBuilder::Impl {
             }
             f.screenParams.push_back(effectToScreen(e, screenXf));
         }
-        f.time = list->time;
+        f.clock = list->clockSeconds;
         // T-203: a custom shader may read xtTime, so its result is never cached.
         f.cacheable = seg.cacheable && !hasCustom;
         f.cacheHash = seg.key;
@@ -6096,7 +6099,7 @@ struct FrameBuilder::Impl {
         in.src = f.a;
         in.pyramid =
             f.sharedPyramid != nullptr ? f.sharedPyramid : (f.hasOwnPyramid ? &f.ownPyramid : nullptr);
-        in.time = f.time;
+        in.clock = f.clock;
         in.shadowsUnderBackdrop = f.shadowsUnderBackdrop;  // T-729
         // T-730: a backdrop pair being stored keeps R' (0 when the stack ran in order: the result is R').
         TargetHandle shadows = 0;

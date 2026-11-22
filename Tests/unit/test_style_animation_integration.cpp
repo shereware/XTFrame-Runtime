@@ -334,12 +334,12 @@ TEST_CASE("integration: a trailing neutral keyframe never writes NaN into the ar
     doc->pause(anims[0]);  // Scrub by hand, like the editor's timeline playhead does.
 
     // The compiled track is [0 -> 100px, 0.5 -> 200px, 1.0 -> neutral] in the timeline's own
-    // (normalized) domain. 0.5..1.0 has a neutral end, so the whole span writes nothing and the
-    // base style value (100px) stays -- finite, never the marker's bit pattern.
+    // (normalized) domain. 0.5..1.0 has a neutral end, which T-869 (12 §12.3) interpolates toward
+    // the base style value (100px) -- finite, never the marker's bit pattern.
     doc->seek(anims[0], 0.75f);
     doc->update(0.0f);
     CHECK(std::isfinite(box.property(prop::Width).f));
-    CHECK(box.property(prop::Width).f == doctest::Approx(100.0f));
+    CHECK(box.property(prop::Width).f == doctest::Approx(150.0f));
 
     doc->seek(anims[0], 1.0f);
     doc->update(0.0f);
@@ -352,10 +352,11 @@ TEST_CASE("integration: a trailing neutral keyframe never writes NaN into the ar
     doc->update(0.0f);
     CHECK(box.property(prop::Width).f == doctest::Approx(200.0f));
 
-    // Back inside the neutral span: the last written value stays put, and is still finite.
+    // On the neutral end again: the base value, not the 50% stop just written.
     doc->seek(anims[0], 1.0f);
     doc->update(0.0f);
     CHECK(std::isfinite(box.property(prop::Width).f));
+    CHECK(box.property(prop::Width).f == doctest::Approx(100.0f));
 }
 
 // Regression (reported from the HUD demo): an element with a 3D transform but no space root above

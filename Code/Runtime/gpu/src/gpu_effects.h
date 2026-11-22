@@ -69,10 +69,13 @@ struct EffectStackInput {
     /// BackdropMasked composition above, R' is not released but handed to the caller here (who releases
     /// it, unless it is `src` itself); left alone otherwise (the stack ran in order).
     TargetHandle* keepShadows = nullptr;
-    /// T-203: `xtTime` of Custom entries. A Custom entry of `screenParams` carries the device's
-    /// custom program id in its `shader` field (frame_builder.cpp resolved it; an effect the
-    /// device cannot run was already replaced by its fallback there).
-    float time = 0;
+    /// T-203: the clock `xtTime` of Custom entries is taken from. A Custom entry of `screenParams`
+    /// carries the device's custom program id in its `shader` field and (T-874) its
+    /// ShaderRef::timePeriod in its two `_pad` bytes (host order; frame_builder.cpp resolved both;
+    /// an effect the device cannot run was already replaced by its fallback there).
+    /// T-874: CommandList::clockSeconds, not wrapped; each Custom entry's `xtTime` is
+    /// customEffectTime(clock, its timePeriod).
+    double clock = 0;
     /// T-818: EffectCmd::localBox (the node's border box in its plane, CSS px; T-831: a scene
     /// node's geometry box, origin not necessarily 0,0; empty for a node without one) --
     /// `XtInput.local` / `boxSize` of Custom entries.

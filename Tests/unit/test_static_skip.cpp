@@ -280,7 +280,14 @@ TEST_CASE("static skip: an animation that finished and holds at forwards skips f
         }
     }
     REQUIRE(reached >= 0);
-    CHECK(ui->frame().paintSkipped == 0);  // Finishes.
+    // T-870: the clock is a double sum of the float steps, so the frame that reaches the last value
+    // may already be past the end and finish the instance too (6 x 1/60f s = 0.1000000052 s > 0.1f s;
+    // the float clock used to land on 0.1f exactly, the closing instant of the iteration).
+    const std::vector<uint32_t> ids = ui->doc().animationsOf(ui->el("x"));
+    const bool finishedOnReach = ids.empty() || ui->doc().animator().isFinished(ids.front());
+    if (!finishedOnReach) {
+        CHECK(ui->frame().paintSkipped == 0);  // Finishes.
+    }
     CHECK(ui->frame().paintSkipped == 0);  // The first frame after it: applied over the restyle.
     const uint64_t held = ui->doc().visualGeneration();
     const std::string shown = ui->fresh();

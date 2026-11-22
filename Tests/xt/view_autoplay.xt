@@ -1,0 +1,17 @@
+<xt version="2">
+  <body>
+    <!-- T-874: xtframe-view --clock. An <anim autoplay> (a 2 s Lottie clip, a red solid moving right over
+         its first second) starts with the document, whatever the starting clock. -->
+    <anim id="clip" src="../lottie/min_solid_anim.json"></anim>
+  </body>
+  <layout>
+    body {
+      width: 100px;
+      height: 100px;
+    }
+    #clip {
+      width: 100px;
+      height: 100px;
+    }
+  </layout>
+</xt>

@@ -393,11 +393,11 @@ TEST_CASE("compileDocument: doc_effect.xt -- effect STYL encoding, transition, @
     CHECK(rebuilt.finish() == result.ir);
 }
 
-TEST_CASE("compileDocument: @keyframes effect with mismatched effect kind sequence is an error") {
+TEST_CASE("compileDocument: @keyframes effect with mismatched effect kind sequence warns (T-869)") {
     CompileOptions options;
     CompileResult result = compileDocument(xtPath("doc_err_effect_keyframes.xt"), options);
-    CHECK(!result.ok());
-    CHECK(hasErrorContaining(result, "effect keyframes must use the same effect sequence"));
+    CHECK(result.ok());
+    CHECK(hasWarningContaining(result, "use different effect sequences"));
 }
 
 namespace {

@@ -312,6 +312,8 @@ struct WorldLayerBuilder::Impl {
                          size_t(range.commandCount) * sizeof(uint64_t));
             if (hasCustomEffect(list, range)) {
                 hash = fnv1a(hash, &list.time, sizeof(list.time));
+                // T-874: an effect with `time: unbounded` or its own period changes with the clock.
+                hash = fnv1a(hash, &list.clockSeconds, sizeof(list.clockSeconds));
             }
             const bool external = drawsExternal(list, range, ir, assets, hash);
             const bool unchanged = slot->drawn && slot->texture != 0 && slot->hash == hash && !external &&

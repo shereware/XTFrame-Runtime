@@ -433,7 +433,7 @@ TEST_CASE("T-568 F43: floor and ceil converters") {
         compileSrc(page("", "<div port:v=\"number\"></div><span bind:text=\"v | floor(1)\"></span>")).ok());
     CHECK(static_cast<int>(ConverterOp::Floor) == 42);
     CHECK(static_cast<int>(ConverterOp::Ceil) == 43);
-    CHECK(kConverterOpLast == 43);
+    CHECK(kConverterOpLast == 44);  // T-873: ConverterOp::Input (44) follows Ceil.
 }
 
 TEST_CASE("T-568 F110: the effect-missing warning names the element and the track") {

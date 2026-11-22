@@ -648,6 +648,29 @@ XT_CAPI xt_status xt_surface_set_perf_detail(xt_surface* s, int level);
    whose hook writes every frame keeps calling it. NULL surface or NULL out_needs_frame ->
    XT_STATUS_INVALID_ARGUMENT. */
 XT_CAPI xt_status xt_surface_needs_frame(const xt_surface* s, int* out_needs_frame);
+/* T-873 (Docs/design/60-input-channels.md 60.2, 60.5; appended, ABI version unchanged): input channels,
+   named quantities the UI reads by name (`input(pad.rx)` bindings, `on:input(midi.cc(21))` triggers).
+   xt_input_channel: the id of channel `name_utf8` (60.2's names without a player prefix: pad.*, key.*,
+   wheel.*, pointer.*, midi.note(n), midi.cc(n), midi.pitch, midi.pressure, midi.ch(c).*, host.<name>,
+   action:<name>); 0 for a NULL or malformed name. Ids are process-wide (the same name, the same id, for
+   every bundle and surface) and stay valid for the life of the library; callable from any thread.
+   xt_surface_push_channel: one value for the surface's next xt_surface_update (as xt_surface_push_input):
+   an axis takes `value`, a relative channel adds it (the pushes of one update are summed), a button is
+   down while value >= 0.5; `strength` 0..1 (a button's velocity / pressure; 1 when the device has none);
+   `flags` XT_CHANNEL_RELATIVE / XT_CHANNEL_BUTTON give the kind of a channel whose name does not fix it
+   (host.*, action:*, midi.cc(n); the first push decides, no flag = an axis), ignored for the others;
+   `player` 0..7. The existing input events (xt_surface_push_input) move pad.*, key.*, wheel.* and
+   pointer.* by themselves. Id 0 / unknown, a player above 7, a non-finite value or a NULL surface ->
+   XT_STATUS_INVALID_ARGUMENT.
+   xt_surface_channel_value: the channel's value for `player` as of the last xt_surface_update (a button
+   0 / 1, a relative channel the sum of that update's pushes); 0 for an unknown id, a NULL surface or a
+   player above 7. */
+#define XT_CHANNEL_RELATIVE 1u
+#define XT_CHANNEL_BUTTON   2u
+XT_CAPI uint32_t  xt_input_channel(const char* name_utf8);
+XT_CAPI xt_status xt_surface_push_channel(xt_surface* s, uint32_t channel, float value, float strength,
+                                          uint32_t flags, uint32_t player);
+XT_CAPI float     xt_surface_channel_value(const xt_surface* s, uint32_t channel, uint32_t player);
 /* clang-format on */
 
 #ifdef __cplusplus

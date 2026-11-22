@@ -11,6 +11,7 @@
 #include "xt/compile/diagnostics.h"
 #include "xt/compile/parse_value.h"
 #include "xt/compile/xtfx.h"
+#include "xt/ir_pod.h"    // kIrShaderTimeUnbounded (T-874).
 #include "xt/property.h"  // prop::kEffectParam*.
 
 /// `.xtfx` header parser (Docs/design/18-effects.md §18.7, Docs/tasks/T-203.md item 1).
@@ -66,6 +67,25 @@ bool parseFloatWord(std::string_view w, float& out) {
         return false;
     }
     out = static_cast<float>(v);
+    return true;
+}
+
+/// T-874: the value of a `time:` header line (see XtfxHeader::timePeriod); an `s` suffix is allowed.
+bool parseTimePeriod(std::string_view w, uint16_t& out) {
+    if (w == "unbounded") {
+        out = kIrShaderTimeUnbounded;
+        return true;
+    }
+    double v = 0;
+    size_t length = 0;
+    if (!css_number::read(w, v, length)) {
+        return false;
+    }
+    std::string_view rest = trimXtfxParse(w.substr(length));
+    if ((!rest.empty() && rest != "s") || !(v >= 1.0 && v <= 65534.0) || v != std::floor(v)) {
+        return false;
+    }
+    out = static_cast<uint16_t>(v);
     return true;
 }
 
@@ -266,6 +286,7 @@ bool parseXtfxHeader(std::string_view text, XtfxHeader& out, std::string& body, 
     size_t pos = 0;
     bool sawName = false;
     bool sawBlurb = false;
+    bool sawTime = false;  // T-874
     bool warnedBlurb = false;
     while (pos <= text.size()) {
         size_t nl = text.find('\n', pos);
@@ -334,6 +355,17 @@ bool parseXtfxHeader(std::string_view text, XtfxHeader& out, std::string& body, 
                         return failXtfxParse(err, "expand: expected a non-negative length in px", line);
                     }
                     out.expandPx = px;
+                } else if (key == "time") {
+                    // T-874 (59 §59.7 item 2): `unbounded`, or the period in whole seconds.
+                    if (sawTime) {
+                        return failXtfxParse(err, "header: duplicate 'time:'", line);
+                    }
+                    sawTime = true;
+                    if (!parseTimePeriod(value, out.timePeriod)) {
+                        return failXtfxParse(
+                            err, "time: expected 'unbounded' or a whole number of seconds from 1 to 65534",
+                            line);
+                    }
                 } else {
                     return failXtfxParse(err, "header: unknown key '" + std::string(key) + "'", line);
                 }

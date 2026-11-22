@@ -1,6 +1,6 @@
 XTFrame runtime export (Tools/Scripts/export_runtime.sh)
-source-commit: 0c65c1932c6e26d63aa27dd9e853c9b8207b12e6
-source-short: 0c65c1932c6e
+source-commit: e45386f9830ee73a5ca531c4f224a2484af20de4
+source-short: e45386f9830e
 source-date: 2026-11-22
-version: 0.19.3
-files: 3235 exported + 6 generated
+version: 0.20.0
+files: 3262 exported + 6 generated

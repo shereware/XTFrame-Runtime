@@ -122,6 +122,8 @@ xtframe/
 | 56-symbol-identity-style-scope.md | 混用符號庫（定案 2026-11-18）：專案只有一個樣式（套用樣式、複製並獨立）、同名元件在專案內以來源區分（`<組>/<名>`）、狀態互斥群組的作用域收進符號；章號 55 由 Survey 2026 分支使用 |
 | 57-measurement.md | 量測（定案 2026-11-18）：三個固定的問題——時間去哪了（封閉的帳）、為什麼做（原因記帳與浪費指標）、單價（階梯場景與成本模型）；執行期產生的統一記錄 `FrameRecord`、五種情境、Huge 系列 |
 | 58-value-functions-and-drivers.md | 時間軸表達式（定案 2026-11-18，第六版）：做動畫的人在時間軸屬性列上寫一行 AE 式的表達式（`wiggle`、`loopOut`、`valueAtTime`、`time`、`value`、`index`、`layer()`），存於 `.xt` 的 `<expressions>` 區段，**編譯時**轉譯成關鍵幀與既有的動畫行為——執行期與 IR 不變；轉不了的寫法（讀遊戲數值等）待討論；標記上的動作入口與停點精度；只在編輯器提供。T-766～T-775 |
+| 59-visual-feedback.md | 視覺回饋（定案 v1，2026-11-22）：AI 看得到它做出來的東西——`view.capture`（GPU／SW／現場、指定時鐘與時間軸、多格接觸印樣、局部放大）、每個結果帶狀態標籤（哪個渲染器、哪些效果沒有執行）、`view.compare`、動態表 `view.sample`、`effect.inspect`；時鐘改 `double`、`xtTime` 的定義 |
+| 60-input-channels.md | 輸入通道（定案 v1，2026-11-22）：滾輪、拖曳的量（位移、角度、抓取點）、手把的搖桿與扳機、MIDI 與任何連續輸入以「有名字的通道」進到 UI——綁定來源 `input()`、觸發 `wheel`／`input()`、動作 `add()`、動作對照（`.xtui` 的 `inputs`，宿主可覆寫）；裝置的取得在外殼與宿主（SDL、`xt_midi`），核心只認通道 |
 | 53-flow-language.md | Flow 語言規格（T-559 整理，2026-10-31）：`.xtflow` 格式與反推 JSON Schema、型別、23 種節點目錄、連接點反射、規則與錯誤字串、宿主介面與 C ABI 對應、conformance 測試集、文件與實作不一致表 |
 | 18-effects.md | 效果與 shader（0.2）：內建效果、模板、自訂 HLSL 片段、後端與引擎整合 |
 | 19-3d-space.md | 3D 空間（0.2）：AE 式 2.5D 圖層、攝影機、深度排序、投影繪製 |

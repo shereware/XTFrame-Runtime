@@ -10,6 +10,7 @@ set(xt_capi_sources
     src/capi_library.cpp
     src/capi_bundle.cpp
     src/capi_surface.cpp
+    src/capi_channels.cpp  # T-873
     src/capi_ports.cpp
     src/capi_perf.cpp  # T-750: xt_frame_record and its CSV form
     src/capi_world_layers.cpp  # T-709: the world-layer camera helpers (pure math, every build)

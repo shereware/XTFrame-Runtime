@@ -48,8 +48,11 @@ Document::Document()
 Document::~Document() = default;
 
 Status Document::load(IrBlob blob, bool takeOwnership, TextShaper* shaper, AssetResolver* assets,
-                      std::unique_ptr<Document>& out) {
+                      std::unique_ptr<Document>& out, double startClock) {
     std::unique_ptr<Document> doc(new Document());
+    // T-874 (59 §59.7): set before loadInternal() starts the `<anim autoplay>` instances, which then
+    // play from this clock, not from 0 (Context::loadDocument() passes its own clock).
+    doc->m_clock = std::isfinite(startClock) && startClock >= 0.0 ? startClock : 0.0;
     Status status = doc->loadInternal(blob, takeOwnership, shaper, assets);
     if (status != Status::kOk) {
         return status;
@@ -1022,6 +1025,17 @@ uint32_t Document::addListener(ElementRef target, EventType type, EventListener 
 void Document::removeListener(uint32_t id) { m_events->removeListener(m_arena, id); }
 
 void Document::dispatchInput(const InputEvent& event) {
+    // T-873 (60 §60.5): a channel value only moves the channel state (commitChannels() makes it
+    // current at the next update); without a Context the existing events move the standard
+    // channels here (a Context derives them itself and sends them to every Document).
+    if (event.kind == InputEvent::Channel) {
+        m_channels.push(event.channel, event.channelValue, event.channelStrength, event.channelFlags,
+                        event.player);
+        return;
+    }
+    if (m_context == nullptr) {
+        m_channels.applyEvent(event);
+    }
     DispatchGuard dispatch(m_context);  // T-260a: listeners and triggers run below.
     if (m_root == kInvalidNode || !m_surfaceVisible) {
         return;  // T-174: a hidden surface takes no input.
@@ -1035,7 +1049,7 @@ void Document::dispatchInput(const InputEvent& event) {
     DirtyCauseScope causeScope(m_arena, DirtyCause::Input);  // T-747
     // T-174: triggers fired by this event run once its default actions are done.
     m_triggers->beginDefer();
-    m_events->setTime(m_clock);  // T-194: gamepad repeat / long press.
+    m_events->setTime(static_cast<float>(m_clock));  // T-194: gamepad repeat / long press.
     // T-379 (08.10): the document's `key-activation`, unless the Context turned it off.
     m_events->setKeyboardActivation(m_keyActivation &&
                                     (m_context == nullptr || m_context->keyboardActivation()));
@@ -1420,7 +1434,7 @@ void Document::setFocus(ElementRef element, uint8_t player) {
     }
     NodeId node = (element.valid() && element.doc == this) ? element.node : kInvalidNode;
     m_triggers->beginDefer();
-    m_events->setTime(m_clock);
+    m_events->setTime(static_cast<float>(m_clock));
     m_events->setFocus(m_arena, node, player);
     m_triggers->endDefer();
 }
@@ -1431,7 +1445,7 @@ bool Document::navigate(NavDirection dir, uint8_t player) {
         return false;
     }
     m_triggers->beginDefer();
-    m_events->setTime(m_clock);
+    m_events->setTime(static_cast<float>(m_clock));
     const bool moved = m_events->navigate(m_arena, m_root, dir, player);
     m_triggers->endDefer();
     return moved;
@@ -1764,7 +1778,9 @@ void Document::restoreSkippedLayout() {
     m_forceTransform = true;
 }
 
-void Document::update(float clock) {
+void Document::update(float clock) { updateAt(static_cast<double>(clock)); }
+
+void Document::updateAt(double clock) {
     // T-260a: triggers, listeners and animation events run below; an unload / reload a callback
     // asks for waits until this (or the outermost dispatching call) returns.
     DispatchGuard dispatch(m_context);
@@ -1772,6 +1788,7 @@ void Document::update(float clock) {
     // triggers (once each, with the last event) and the bindings of every port set (once each) --
     // runs first, at the clock those inputs arrived at, so a `tween` starts where it did before.
     m_triggers->flushContinuous();
+    commitChannels();  // T-873: before the bindings, so `input()` bindings see this frame.
     m_bindings->flushDirty();
     m_clock = clock;
     ++m_frame;  // T-650: the snapshot's `clock.frame`.
@@ -1791,7 +1808,7 @@ void Document::update(float clock) {
     // T-194 (08.9): held d-pad / stick repeats and the A long press of a gamepad drag.
     if (m_root != kInvalidNode && m_surfaceVisible) {
         m_triggers->beginDefer();
-        m_events->tick(m_arena, m_root, clock);
+        m_events->tick(m_arena, m_root, static_cast<float>(clock));
         m_triggers->endDefer();
     }
     // T-175: `tween` / `delay` binding steps advance with the clock. T-389: tick() first evaluates
@@ -1982,7 +1999,7 @@ bool Document::validateFocusAfterLayout() {
     // shows this frame and the Focus / Blur triggers' changes are not dropped with the dirty bits).
     bool dropped = false;
     m_triggers->beginDefer();
-    m_events->setTime(m_clock);
+    m_events->setTime(static_cast<float>(m_clock));
     bool changed = m_events->applyPendingFocus(m_arena, dropped);
     m_triggers->endDefer();
     changed = m_events->validateFocus(m_arena) || changed;
@@ -1993,14 +2010,14 @@ bool Document::validateFocusAfterLayout() {
     return changed;
 }
 
-void Document::evaluateRigs(float clock) {
+void Document::evaluateRigs(double clock) {
     m_rigBones = 0;
     m_skinnedPoints = 0;
     m_rigsMoving = false;  // T-749
     if (m_rigs->empty()) {
         return;
     }
-    const float dt = m_rigClockValid ? std::max(0.0f, clock - m_rigClock) : 0.0f;
+    const float dt = m_rigClockValid ? static_cast<float>(std::max(0.0, clock - m_rigClock)) : 0.0f;
     m_rigClock = clock;
     m_rigClockValid = true;
     for (rig::RigState& rs : *m_rigs) {
@@ -2086,8 +2103,11 @@ void Document::paintAs(CommandList& out, uint16_t source, bool boxShadowCommands
         }
         // Docs/tasks/T-33.md "Painter": the caret blink phase and the EditState pool the caret /
         // selection geometry comes from are handed to the Painter just before it runs.
-        m_painter.setClock(m_clock);
-        m_painter.setTime(m_clock);  // T-225: wiggle modifiers sample the document time.
+        // T-870 (59 §59.7 item 2): the caret blink (1 s) and `xtTime` (CommandList::time) take the
+        // clock modulo kEffectTimePeriod, in double first, so the float keeps sub-millisecond steps.
+        m_painter.setClock(static_cast<float>(std::fmod(m_clock, kEffectTimePeriod)));
+        m_painter.setClockSeconds(m_clock);              // T-874: custom effects wrap it at their own period.
+        m_painter.setTime(static_cast<float>(m_clock));  // T-225: wiggle modifiers sample the document time.
         m_painter.setEditStates(m_editStates.get());
         m_painter.setComposition(m_composition.get());
         m_painter.setIr(&m_ir);                // T-178: rich-text run styles and text effects.

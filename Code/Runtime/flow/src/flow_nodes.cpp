@@ -448,7 +448,8 @@ void FlowRuntime::Impl::seedInitialOutputs() {
             case NodeType::Filter:
                 break;  // T-543: event-driven only.
             case NodeType::Lifecycle:
-                break;  // T-601: event-driven only.
+            case NodeType::Input:
+                break;  // T-601: event-driven only; T-873: driven by the channel.
             case NodeType::Throttle:
                 pushNumberOutput(idx, slots::throttle::kDropped, 0);
                 break;
@@ -1216,6 +1217,40 @@ void FlowRuntime::Impl::bindLifecycleNodes() {
             lifecycleNodes(shown);
         }
     }));
+}
+
+void FlowRuntime::Impl::tickInputNode(int nodeIndex) {
+    NodeRuntime& n = nodes[static_cast<size_t>(nodeIndex)];
+    Document* doc = liveDocument(docs);
+    for (size_t i = 0; doc == nullptr && i < uiDocs.size(); ++i) {
+        doc = uiDocs[i].state != nullptr ? liveDocument(*uiDocs[i].state) : nullptr;
+    }
+    if (doc == nullptr) {
+        return;
+    }
+    if (doc != n.inputDoc) {
+        n.inputDoc = doc;
+        std::string canonical;
+        n.inputChannel = parseChannelRef(paramText(n, slots::input::kChannel), canonical, n.inputPlayer)
+                             ? doc->inputChannel(canonical)
+                             : 0u;
+    }
+    const InputChannels& channels = doc->inputChannels();
+    const ChannelId id = n.inputChannel;
+    const uint8_t player = n.inputPlayer;
+    if (id == 0) {
+        return;
+    }
+    if (channels.moved(id, player)) {
+        pushNumberOutput(nodeIndex, slots::input::kValue, static_cast<double>(channels.value(id, player)));
+        pushNumberOutput(nodeIndex, slots::input::kDelta, static_cast<double>(channels.delta(id, player)));
+    }
+    if (channels.pressed(id, player)) {
+        firePulseOutput(nodeIndex, slots::input::kPressed);
+    }
+    if (channels.released(id, player)) {
+        firePulseOutput(nodeIndex, slots::input::kReleased);
+    }
 }
 
 void FlowRuntime::Impl::lifecycleNodes(bool shown) {

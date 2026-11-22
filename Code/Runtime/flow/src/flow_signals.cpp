@@ -442,7 +442,7 @@ void FlowRuntime::Impl::fanOut(uint32_t key, const RtValue& v) {
         // load()'s initial seeding is not a delivery (FlowRuntime::edgeLastFired()): it only
         // establishes each node's starting output, before any runtime time has passed.
         if (!seeding) {
-            edgeLastFiredList[i] = docs.clockAccum;
+            edgeLastFiredList[i] = static_cast<float>(docs.clockAccum);
         }
         perfCount(&FrameStats::flowFanOutEdges);  // T-475.
         applyToSink(i, local);

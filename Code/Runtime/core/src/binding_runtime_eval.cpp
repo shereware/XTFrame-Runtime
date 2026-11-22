@@ -249,7 +249,7 @@ BVal BindingRuntime::applyStep(ConverterOp op, const std::vector<Arg>& args, siz
     StepState* state = ctx.binding != nullptr && ctx.subDepth == 0 && stepIndex < ctx.binding->state.size()
                            ? &ctx.binding->state[stepIndex]
                            : nullptr;
-    const float clock = m_doc.m_clock;
+    const double clock = m_doc.m_clock;  // T-870: double, as the Document clock.
     switch (op) {
         case ConverterOp::Range: {
             double inMin = an(0, 0, true), inMax = an(1, 1, true);
@@ -429,8 +429,10 @@ BVal BindingRuntime::applyStep(ConverterOp op, const std::vector<Arg>& args, siz
                     easing.y2 = args[5].f;
                 }
             }
-            auto at = [&](float now) {
-                float p = duration > 0 ? std::clamp((now - state->start) / duration, 0.0f, 1.0f) : 1.0f;
+            auto at = [&](double now) {
+                float p = duration > 0
+                              ? std::clamp(static_cast<float>(now - state->start) / duration, 0.0f, 1.0f)
+                              : 1.0f;
                 return std::make_pair(lerpB(state->from, state->to, evalEasing(easing, p)), p);
             };
             if (!state->init) {
@@ -523,6 +525,18 @@ BVal BindingRuntime::applyStep(ConverterOp op, const std::vector<Arg>& args, siz
         }
         case ConverterOp::ElemProp:
             return elemProp(args, state);
+        case ConverterOp::Input: {
+            // T-873 (60 §60.3.1): the channel's value this frame.
+            ChannelId channel = ctx.binding != nullptr ? ctx.binding->channel : kInvalidChannel;
+            uint8_t player = ctx.binding != nullptr ? ctx.binding->channelPlayer : uint8_t{0};
+            if (channel == kInvalidChannel && !args.empty() && args[0].kind == ConverterArg::String) {
+                channel = m_doc.m_channels.intern(m_doc.string(args[0].u));
+                player = args.size() > 1 && args[1].f >= 0.0f && args[1].f < static_cast<float>(kMaxPlayers)
+                             ? static_cast<uint8_t>(args[1].f)
+                             : uint8_t{0};
+            }
+            return num(m_doc.m_channels.value(channel, player));
+        }
         case ConverterOp::X:
         case ConverterOp::Y:
         case ConverterOp::Z:
@@ -1029,7 +1043,12 @@ void BindingRuntime::applyWorldAnchor(NodeId node, const BVal& r) {
     // `left` / `top` semantics: the margin box's top-left lands on the anchor; the run-time
     // translate moves the element there without relaying anything else out.
     const Vec2 origin = layoutOrigin(arena, node);
-    const float target[2] = {ax + data.box.margin.left - origin.x, ay + data.box.margin.top - origin.y};
+    // T-863 (13 §13.8.13, 25 §25.4.2.x): the anchor and the layout are logical px, but a px
+    // translate is design px that the cascade multiplies by the element's factor, so the offset is
+    // written divided by it (otherwise it lands on origin + factor x (anchor - origin)).
+    const float s = data.style.uiScaleEff > 0.0f ? data.style.uiScaleEff : 1.0f;
+    const float target[2] = {(ax + data.box.margin.left - origin.x) / s,
+                             (ay + data.box.margin.top - origin.y) / s};
     const PropId props[2] = {prop::TranslateX, prop::TranslateY};
     bool moved = false;
     for (int i = 0; i < 2; ++i) {

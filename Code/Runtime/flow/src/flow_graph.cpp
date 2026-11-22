@@ -554,6 +554,8 @@ std::span<const NodeTypeDesc> nodeTypeTable() {
         {NodeType::Throttle, "throttle", {"unit", "rate", "trailing"}, {"in", "rate", "reset"}},
         // T-601 (53 §53.102): the UI's own shown / hidden; no inputs, no params.
         {NodeType::Lifecycle, "lifecycle", {}, {}},
+        // T-873 (60 §60.3.5): one input channel (`channel`: pad.rx, midi.cc(1), player(1).pad.a ...).
+        {NodeType::Input, "input", {"channel"}, {}},
     };
     // clang-format on
 

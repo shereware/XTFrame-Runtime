@@ -103,13 +103,128 @@ const StyleDecl* effectDeclOf(const KeyframeStop& stop) {
     return found;
 }
 
-bool sameEffectSequence(const std::vector<EffectDeclEntry>& a, const std::vector<EffectDeclEntry>& b) {
-    if (a.size() != b.size()) {
+/// T-872: whether `prefix` is a prefix of `seq` by effect kind (`none`, the empty list, is a prefix
+/// of every sequence).
+bool isEffectSequencePrefix(const std::vector<EffectDeclEntry>& prefix,
+                            const std::vector<EffectDeclEntry>& seq) {
+    if (prefix.size() > seq.size()) {
         return false;
     }
-    for (size_t i = 0; i < a.size(); ++i) {
-        if (a[i].kind != b[i].kind || a[i].customAsset != b[i].customAsset) {
+    for (size_t i = 0; i < prefix.size(); ++i) {
+        if (prefix[i].kind != seq[i].kind || prefix[i].customAsset != seq[i].customAsset) {
             return false;
+        }
+    }
+    return true;
+}
+
+/// T-872 (18 §18.3.1): `other` turned into its effect's neutral parameters -- "applied, it draws
+/// the same picture as no effect". The parameters the table lists get the neutral value; every
+/// other parameter keeps `other`'s value, so only the listed ones move when interpolated. A neutral
+/// color is `other`'s color with alpha 0. ColorAdjust's invert / sepia (params 5 / 6, T-334), which
+/// 18.3.1's table predates, are 0: the value that changes nothing. False for an effect without a
+/// neutral parameter (BackdropBlur, GradientMask, custom()).
+bool neutralEffectEntry(const EffectDeclEntry& other, EffectDeclEntry& out) {
+    out = other;
+    switch (other.kind) {
+        case EffectKind::Blur:
+            out.params[0] = 0.0f;  // radiusX
+            out.params[1] = 0.0f;  // radiusY
+            return true;
+        case EffectKind::DropShadow:
+            out.params[0] = 0.0f;  // offsetX
+            out.params[1] = 0.0f;  // offsetY
+            out.params[2] = 0.0f;  // blur
+            out.params[3] = 0.0f;  // spread
+            out.colors[0].a = 0.0f;
+            return true;
+        case EffectKind::Glow:
+            out.params[1] = 0.0f;  // intensity
+            return true;
+        case EffectKind::Outline:
+            out.params[0] = 0.0f;  // radius
+            out.colors[0].a = 0.0f;
+            return true;
+        case EffectKind::ColorAdjust:
+            out.params[0] = 0.0f;  // brightness
+            out.params[1] = 0.0f;  // contrast
+            out.params[2] = 0.0f;  // saturation
+            out.params[3] = 0.0f;  // hue
+            out.params[4] = 1.0f;  // opacity
+            out.params[5] = 0.0f;  // invert
+            out.params[6] = 0.0f;  // sepia
+            return true;
+        case EffectKind::Shine:
+            out.params[4] = 0.0f;  // intensity
+            return true;
+        default:
+            return false;
+    }
+}
+
+/// T-872 (12 §12.3 "effect keyframe sequences"): the effect sequence of every stop of
+/// `stopByOffset`, padded to the longest one with neutral effects (18 §18.3.1). Each padded entry
+/// takes its other parameters from the nearest earlier stop that has that effect, else the nearest
+/// later one. False (nothing padded) when some stop's sequence is not a prefix of the longest -- an
+/// adjacent pair of different kinds or order, or two longer sequences that diverge after a shorter
+/// one -- or when a missing effect has no neutral parameters, or when the sequences differ and one
+/// of them holds an effect without neutral parameters (18.3.1: such sequences are not padded).
+bool padEffectSequences(const std::map<float, const KeyframeStop*>& stopByOffset,
+                        std::vector<std::vector<EffectDeclEntry>>& padded, const StyleDecl*& offending) {
+    std::vector<const StyleDecl*> decls;
+    std::vector<const std::vector<EffectDeclEntry>*> seqs;
+    const std::vector<EffectDeclEntry>* longest = nullptr;
+    for (const auto& [offset, stopPtr] : stopByOffset) {
+        decls.push_back(effectDeclOf(*stopPtr));
+        seqs.push_back(&decls.back()->value.effects);
+        if (longest == nullptr || seqs.back()->size() > longest->size()) {
+            longest = seqs.back();
+        }
+    }
+    offending = nullptr;
+    for (size_t s = 0; s < seqs.size(); ++s) {
+        if (!isEffectSequencePrefix(*seqs[s], *longest)) {
+            offending = decls[s];
+            return false;
+        }
+        if (offending == nullptr && seqs[s]->size() != longest->size()) {
+            offending = decls[s];  // The first shorter stop, reported if padding is impossible.
+        }
+    }
+    padded.clear();
+    for (const std::vector<EffectDeclEntry>* s : seqs) {
+        padded.push_back(*s);
+    }
+    if (offending == nullptr) {
+        return true;  // The same sequence everywhere.
+    }
+    for (const EffectDeclEntry& e : *longest) {
+        EffectDeclEntry probe;
+        if (!neutralEffectEntry(e, probe)) {
+            return false;
+        }
+    }
+    offending = nullptr;
+    for (size_t i = 0; i < longest->size(); ++i) {
+        for (size_t s = 0; s < padded.size(); ++s) {
+            if (seqs[s]->size() > i) {
+                continue;
+            }
+            size_t from = seqs.size();
+            for (size_t k = s; k-- > 0;) {
+                if (seqs[k]->size() > i) {
+                    from = k;
+                    break;
+                }
+            }
+            for (size_t k = s + 1; from == seqs.size() && k < seqs.size(); ++k) {
+                if (seqs[k]->size() > i) {
+                    from = k;
+                }
+            }
+            EffectDeclEntry neutral;
+            neutralEffectEntry((*seqs[from])[i], neutral);
+            padded[s].push_back(neutral);
         }
     }
     return true;
@@ -123,7 +238,7 @@ bool sameEffectSequence(const std::vector<EffectDeclEntry>& a, const std::vector
 // kEffectParamVec2Base + slot, Color -> kEffectParamColorBase + slot). Every `.xtfx` parameter
 // type (float / vec2 / color) interpolates, so none is left out.
 void emitCustomEffectKeyframeTracks(const std::map<float, const KeyframeStop*>& stopByOffset, size_t i,
-                                    const ShaderBuilder& shader, TimelineBuilder& tb) {
+                                    const ShaderBuilder& shader, bool missingEnd, TimelineBuilder& tb) {
     for (const XtfxParam& p : xtfxParamsOf(shader)) {
         const int width = p.type == 2 ? 4 : (p.type == 1 ? 2 : 1);
         auto valueOf = [&](const KeyframeStop& stop, float out[4]) {
@@ -139,7 +254,7 @@ void emitCustomEffectKeyframeTracks(const std::map<float, const KeyframeStop*>& 
                 out[1] = p.type == 1 ? e.params[p.slot + 1] : 0.0f;
             }
         };
-        bool differs = false;
+        bool differs = missingEnd;  // T-869: a missing 0% / 100% interpolates against the base value.
         float first[4] = {};
         float v[4] = {};
         valueOf(*stopByOffset.begin()->second, first);
@@ -176,52 +291,97 @@ void emitCustomEffectKeyframeTracks(const std::map<float, const KeyframeStop*>& 
     }
 }
 
+/// T-869 (12 §12.3): gives every track `tb` gained from index `firstTrack` on a Neutral key at 0%
+/// (`start`) and / or at 100% (`end`), the stop the `@keyframes` block leaves out.
+void addNeutralEnds(TimelineBuilder& tb, size_t firstTrack, bool start, bool end) {
+    if (firstTrack >= tb.tracks.size() || (!start && !end)) {
+        return;
+    }
+    std::vector<IrKeyframe> rebuilt(tb.keyframes.begin(),
+                                    tb.keyframes.begin() + tb.tracks[firstTrack].kfOffset);
+    for (size_t t = firstTrack; t < tb.tracks.size(); ++t) {
+        IrTrack& track = tb.tracks[t];
+        const uint32_t offset = static_cast<uint32_t>(rebuilt.size());
+        if (start) {
+            rebuilt.push_back(makeNeutralKeyframe(0.0f));
+        }
+        rebuilt.insert(rebuilt.end(), tb.keyframes.begin() + track.kfOffset,
+                       tb.keyframes.begin() + track.kfOffset + track.kfCount);
+        if (end) {
+            rebuilt.push_back(makeNeutralKeyframe(1.0f));
+        }
+        track.kfOffset = offset;
+        track.kfCount = static_cast<uint32_t>(rebuilt.size()) - offset;
+    }
+    tb.keyframes = std::move(rebuilt);
+}
+
 // `@keyframes` for `effect` (18.4): expands into per-effect-slot, per-parameter Tracks
 // (`prop = effectParam(effectIndex, paramIndex)`), one only for a parameter whose value differs
-// across at least two stops ("全相同者不產生"). Adds nothing to `tb` (reports an error instead) if
-// some stop of `kdef` has no `effect` decl at all, or if the effect sequences (kind, count, order)
-// aren't identical across every stop that does -- 18.4: "效果無恆等", so unlike `transform` there
-// is no identity value to fill a missing/mismatched stop with. A custom() slot's parameters come
-// from its `.xtfx` header, which `writer` holds (T-826).
+// across at least two stops ("全相同者不產生"), or for every parameter when the block leaves out
+// 0% or 100% (T-869: that end is a Neutral key, 12 §12.3). Stops without an `effect` decl are not
+// effect keyframes (T-869). Sequences of different length are padded with neutral effects when
+// every one is a prefix of the longest (T-872, 18 §18.3.1); otherwise adds nothing to `tb` and
+// warns. A custom() slot's parameters come from its `.xtfx` header, which `writer` holds (T-826).
 void emitEffectKeyframeTracks(const KeyframesDef& kdef, const IrWriter& writer, TimelineBuilder& tb,
                               std::string_view fileName, DiagnosticSink& sink) {
+    // T-869 (12 §12.3, CSS): a stop that does not declare `effect` is not an effect keyframe; the
+    // effect interpolates between the stops that do (and toward the base value at a missing end).
     std::map<float, const KeyframeStop*> stopByOffset;
     for (const KeyframeStop& stop : kdef.stops) {
-        stopByOffset[stop.offset] = &stop;  // Later same-offset stop wins (12.3's generalized rule).
-    }
-    for (const auto& [offset, stopPtr] : stopByOffset) {
-        if (effectDeclOf(*stopPtr) == nullptr) {
-            int line = stopPtr->decls.empty() ? 0 : stopPtr->decls.front().line;
-            sink.error(std::string(fileName), "effect keyframes must use the same effect sequence", line);
-            return;
+        if (effectDeclOf(stop) != nullptr) {
+            stopByOffset[stop.offset] = &stop;  // Later same-offset stop wins (12.3's generalized rule).
         }
     }
-    const StyleDecl* refDecl = effectDeclOf(*stopByOffset.begin()->second);
-    const std::vector<EffectDeclEntry>& refSeq = refDecl->value.effects;
-    for (const auto& [offset, stopPtr] : stopByOffset) {
-        const StyleDecl* d = effectDeclOf(*stopPtr);
-        if (!sameEffectSequence(d->value.effects, refSeq)) {
-            sink.error(std::string(fileName), "effect keyframes must use the same effect sequence", d->line);
-            return;
-        }
+    if (stopByOffset.empty()) {
+        return;
     }
+    // T-872 (12 §12.3, 18 §18.3.1): a shorter sequence that is a prefix of the longest (or `none`)
+    // is padded with neutral effects. Anything else is a warning and no effect track at all (never
+    // a track that animates some effects and not others); the sequence itself does not animate
+    // (18.4), so the effect keeps its static value.
+    std::vector<std::vector<EffectDeclEntry>> padded;
+    const StyleDecl* offending = nullptr;
+    if (!padEffectSequences(stopByOffset, padded, offending)) {
+        const StyleDecl* at = offending != nullptr ? offending : effectDeclOf(*stopByOffset.begin()->second);
+        sink.warn(
+            std::string(fileName),
+            "@keyframes \"" + kdef.name +
+                "\": the effect keyframes use different effect sequences that cannot be padded (only a "
+                "prefix of the same effects, or none, can; backdrop-blur, gradient-mask and custom() "
+                "have no neutral parameters); they do not animate and the effect keeps its static value",
+            at->line);
+        return;
+    }
+    std::map<const KeyframeStop*, size_t> stopIndex;
+    for (const auto& [offset, stopPtr] : stopByOffset) {
+        const size_t next = stopIndex.size();
+        stopIndex[stopPtr] = next;
+    }
+    auto seqOf = [&](const KeyframeStop* stop) -> const std::vector<EffectDeclEntry>& {
+        return padded[stopIndex.find(stop)->second];
+    };
+    const std::vector<EffectDeclEntry>& refSeq = padded.front();
+    const bool missingStart = stopByOffset.begin()->first != 0.0f;
+    const bool missingEnd = stopByOffset.rbegin()->first != 100.0f;
+    const size_t firstTrack = tb.tracks.size();
 
     for (size_t i = 0; i < refSeq.size(); ++i) {
         EffectKind kind = refSeq[i].kind;
 
         if (kind == EffectKind::Custom) {
             if (const ShaderBuilder* shader = writer.shaderForAsset(refSeq[i].shaderAsset)) {
-                emitCustomEffectKeyframeTracks(stopByOffset, i, *shader, tb);
+                emitCustomEffectKeyframeTracks(stopByOffset, i, *shader, missingStart || missingEnd, tb);
             }
             continue;
         }
 
         if (kind == EffectKind::DropShadow) {
-            bool differs = false;
+            bool differs = missingStart || missingEnd;
             bool haveFirst = false;
             float first0 = 0, first1 = 0;
             for (const auto& [offset, stopPtr] : stopByOffset) {
-                const float* p = effectDeclOf(*stopPtr)->value.effects[i].params;
+                const float* p = seqOf(stopPtr)[i].params;
                 if (!haveFirst) {
                     first0 = p[0];
                     first1 = p[1];
@@ -238,7 +398,7 @@ void emitEffectKeyframeTracks(const KeyframesDef& kdef, const IrWriter& writer, 
                 track.kfOffset = static_cast<uint32_t>(tb.keyframes.size());
                 for (const auto& [offset, stopPtr] : stopByOffset) {
                     const KeyframeStop& stop = *stopPtr;
-                    const float* p = effectDeclOf(stop)->value.effects[i].params;
+                    const float* p = seqOf(&stop)[i].params;
                     IrKeyframe kf{};
                     kf.time = offset / 100.0f;
                     kf.easing = toIrEasing(stop.hasTiming ? stop.timing : Easing::linear());
@@ -254,11 +414,11 @@ void emitEffectKeyframeTracks(const KeyframesDef& kdef, const IrWriter& writer, 
         for (const EffectParamSlot& slot : effectParamSlots(kind)) {
             if (!slot.isColor) {
                 size_t arrIdx = slot.paramIndex - 1;
-                bool differs = false;
+                bool differs = missingStart || missingEnd;
                 bool haveFirst = false;
                 float first = 0;
                 for (const auto& [offset, stopPtr] : stopByOffset) {
-                    float v = effectDeclOf(*stopPtr)->value.effects[i].params[arrIdx];
+                    float v = seqOf(stopPtr)[i].params[arrIdx];
                     if (!haveFirst) {
                         first = v;
                         haveFirst = true;
@@ -279,18 +439,18 @@ void emitEffectKeyframeTracks(const KeyframesDef& kdef, const IrWriter& writer, 
                     IrKeyframe kf{};
                     kf.time = offset / 100.0f;
                     kf.easing = toIrEasing(stop.hasTiming ? stop.timing : Easing::linear());
-                    irSetValueF32(kf.value, 0, effectDeclOf(stop)->value.effects[i].params[arrIdx]);
+                    irSetValueF32(kf.value, 0, seqOf(&stop)[i].params[arrIdx]);
                     tb.keyframes.push_back(kf);
                 }
                 track.kfCount = static_cast<uint32_t>(tb.keyframes.size()) - track.kfOffset;
                 tb.tracks.push_back(track);
             } else {
                 uint32_t colorIdx = slot.paramIndex - xt::prop::kEffectParamColorBase;
-                bool differs = false;
+                bool differs = missingStart || missingEnd;
                 bool haveFirst = false;
                 Color first{};
                 for (const auto& [offset, stopPtr] : stopByOffset) {
-                    Color c = effectDeclOf(*stopPtr)->value.effects[i].colors[colorIdx];
+                    Color c = seqOf(stopPtr)[i].colors[colorIdx];
                     if (!haveFirst) {
                         first = c;
                         haveFirst = true;
@@ -308,7 +468,7 @@ void emitEffectKeyframeTracks(const KeyframesDef& kdef, const IrWriter& writer, 
                 track.kfOffset = static_cast<uint32_t>(tb.keyframes.size());
                 for (const auto& [offset, stopPtr] : stopByOffset) {
                     const KeyframeStop& stop = *stopPtr;
-                    Color c = effectDeclOf(stop)->value.effects[i].colors[colorIdx];
+                    Color c = seqOf(&stop)[i].colors[colorIdx];
                     IrKeyframe kf{};
                     kf.time = offset / 100.0f;
                     kf.easing = toIrEasing(stop.hasTiming ? stop.timing : Easing::linear());
@@ -323,6 +483,7 @@ void emitEffectKeyframeTracks(const KeyframesDef& kdef, const IrWriter& writer, 
             }
         }
     }
+    addNeutralEnds(tb, firstTrack, missingStart, missingEnd);
 }
 
 // -------------------------------------------------------------------------------------------
@@ -868,6 +1029,9 @@ void emitKeyframesTimelines(const RuleSet& ruleSet, IrWriter& writer, StyleBuild
                         (v.len.unit != xt::LengthUnit::Px && v.len.unit != xt::LengthUnit::Percent)) {
                         continue;  // Skipped with a warning below.
                     }
+                    if (v.len.value == 0.0f) {
+                        continue;  // T-869: zero is zero in either unit (`none`, a composed 0px).
+                    }
                     const int unit = static_cast<int>(v.len.unit);
                     if (v.len.unit == xt::LengthUnit::Percent) {
                         percentTranslate = true;
@@ -926,6 +1090,8 @@ void emitKeyframesTimelines(const RuleSet& ruleSet, IrWriter& writer, StyleBuild
                     if (!percentTranslate) {
                         vt = ValueType::Float;
                         bytes[4] = 0;
+                    } else if (irValueF32(bytes, 0) == 0.0f) {
+                        bytes[4] = static_cast<uint8_t>(xt::LengthUnit::Percent);  // T-869: 0px == 0%.
                     }
                 }
                 if (visibility && vt == ValueType::Enum) {
@@ -1811,6 +1977,7 @@ AssetId ensureShaderAsset(IrWriter& writer, const std::string& src, std::string_
     }
     sb.expandPx = r.header.expandPx;
     sb.fallback = toFallbackIrEffect(r.header.fallback);
+    sb.timePeriod = r.header.timePeriod;  // T-874
     sb.name = !r.header.name.empty() ? r.header.name : pathToUtf8(full.stem());
     writer.addShader(std::move(sb));
     return id;

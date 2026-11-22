@@ -618,6 +618,12 @@ void LayoutEngine::applyElementTransform(NodeArena& arena, NodeId node) {
         Rect content = data.box.contentBox();
         Vec2 scale, translate;
         computeObjectFit(data.style.objectFit, content, scene.width(), scene.height(), scale, translate);
+        // T-867: the scene root's own translate is the SVG viewBox origin (-min-x, -min-y, 12.2);
+        // it is applied inside the fit, so viewBox (min-x, min-y) lands on the fitted top-left.
+        if (!scene.nodes().empty()) {
+            const Vec2 own = scene.nodes()[0].translate;
+            translate = Vec2{translate.x + own.x * scale.x, translate.y + own.y * scale.y};
+        }
         NodeCommon& groupCommon = arena.common(data.sceneRoot);
         groupCommon.scale = scale;
         groupCommon.translate = translate;

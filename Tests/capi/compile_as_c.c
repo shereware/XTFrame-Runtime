@@ -15,6 +15,14 @@ int main(void) {
     event.kind = XT_INPUT_POINTER_MOVE;
     (void)status;
     (void)damage;
+    /* T-873 (60.5): the input-channel functions and flags, compiled as C99. */
+    if (xt_input_channel("pad.rx") == 0 || xt_input_channel("pad.nope") != 0 ||
+        xt_surface_channel_value(NULL, 1u, 0u) != 0.0f ||
+        xt_surface_push_channel(NULL, 1u, 0.5f, 1.0f, XT_CHANNEL_RELATIVE | XT_CHANNEL_BUTTON, 0u) !=
+            XT_STATUS_INVALID_ARGUMENT) {
+        fprintf(stderr, "xt_capi_c_compile: the input-channel functions failed\n");
+        return 1;
+    }
     {
         /* T-709 (50 af): the world-layer struct and the camera helpers, which work in every build. */
         xt_world_layer layer = {0};

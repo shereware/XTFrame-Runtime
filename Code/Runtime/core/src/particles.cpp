@@ -315,8 +315,8 @@ Status Document::stopParticles(NodeId node) {
     return Status::kOk;
 }
 
-void Document::stepParticleNodes(float clock) {
-    const float dt = m_particleClockValid ? std::max(0.0f, clock - m_particleClock) : 0.0f;
+void Document::stepParticleNodes(double clock) {
+    const float dt = m_particleClockValid ? static_cast<float>(std::max(0.0, clock - m_particleClock)) : 0.0f;
     m_particleClock = clock;
     m_particleClockValid = true;
     // Elements that died (a recycled `<repeat>` / spawn instance) leave the list.

@@ -219,7 +219,10 @@ struct InputEvent {
         ExternalDragEnter,  ///< An OS drag (files from outside) entered the viewport; `pos` valid.
         ExternalDragMove,   ///< The OS drag moved over the viewport; `pos` valid.
         ExternalDragLeave,  ///< The OS drag left the viewport or was cancelled.
-        ExternalDrop        ///< The OS drag was released; `pos` / `paths` valid.
+        ExternalDrop,       ///< The OS drag was released; `pos` / `paths` valid.
+        // --- T-873 (Docs/design/60-input-channels.md §60.5): appended kind. ---
+        Channel  ///< An input channel's value; `channel`/`channelValue`/`channelStrength`/
+                 ///< `channelFlags`/`player` valid (xt/input_channels.h).
     };
     /// Which kind of input event this is; determines which fields are valid.
     Kind kind = PointerMove;
@@ -277,6 +280,17 @@ struct InputEvent {
     /// valid for the duration of the pushInput() call: Context::pushInput copies them, and the
     /// queued event points at that copy until the update() that dispatches it.
     std::span<const std::string_view> paths;
+    // --- T-873 (60 §60.5): tail additions. ---
+    /// Channel: the channel id (Context::inputChannel(); Document::inputChannel() for an event
+    /// dispatched into a Document directly).
+    uint32_t channel = 0;
+    /// Channel: the value (an axis position, a button's 0 / 1, a relative channel's increment).
+    float channelValue = 0;
+    /// Channel: a button's strength 0..1 (MIDI velocity, analog pressure); 1 when the device has none.
+    float channelStrength = 1;
+    /// Channel: kChannelRelative / kChannelButton (xt/input_channels.h), the kind of a channel whose
+    /// name does not fix it.
+    uint8_t channelFlags = 0;
 };
 
 /// T-194 (08.9): most local players one Document tracks a focus for.

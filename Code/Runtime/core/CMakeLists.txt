@@ -33,11 +33,14 @@ add_library(xt_core STATIC
     src/scene_instance.cpp
     src/animator.cpp
     src/animator_expr.cpp  # T-776
+    src/animator_neutral.cpp  # T-869
     src/timeline_group.cpp
     src/timeline_expr.cpp  # T-776
     src/external_media.cpp
     src/trigger_runtime.cpp
     src/trigger_self_control.cpp  # T-774
+    src/trigger_pointer.cpp  # T-871
+    src/trigger_channels.cpp  # T-873
     src/repeat_controller.cpp
     src/repeat_template_content.cpp
     src/binding_runtime.cpp
@@ -76,6 +79,7 @@ add_library(xt_core STATIC
     src/painter_text.cpp
     src/painter_caret.cpp
     src/document.cpp
+    src/document_channels.cpp  # T-873
     src/element_ref.cpp
     src/mini_css.cpp
     src/style_template.cpp
@@ -84,6 +88,8 @@ add_library(xt_core STATIC
     src/selector_query.cpp
     src/document_load.cpp
     src/context.cpp
+    src/context_channels.cpp  # T-873
+    src/input_channels.cpp  # T-873
     src/context_visual.cpp
     src/needs_frame.cpp  # T-749
     src/external_texture_use.cpp  # T-746

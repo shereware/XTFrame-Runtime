@@ -38,7 +38,8 @@ enum class NodeType : uint8_t {
     State,   // T-541 (27 §27.4.4).
     Filter,  // T-543.
     Throttle,
-    Lifecycle  // T-601 (53 §53.102): the UI's own `shown` / `hidden`.
+    Lifecycle,  // T-601 (53 §53.102): the UI's own `shown` / `hidden`.
+    Input       // T-873 (60 §60.3.5): one input channel's value and edges.
 };
 
 /// Which of a node's three slot tables a name is looked up in.
@@ -106,6 +107,8 @@ inline constexpr std::string_view kThrottleIn[] = {"in", "rate", "reset"};
 inline constexpr std::string_view kThrottleOut[] = {"out", "passed", "dropped"};
 inline constexpr std::string_view kThrottleParams[] = {"unit", "rate", "trailing"};
 inline constexpr std::string_view kLifecycleOut[] = {"shown", "hidden"};  // T-601.
+inline constexpr std::string_view kInputOut[] = {"value", "pressed", "released", "delta"};  // T-873.
+inline constexpr std::string_view kInputParams[] = {"channel"};
 // clang-format on
 }  // namespace slot_names
 
@@ -162,6 +165,8 @@ constexpr NodeSlotTable nodeSlotTable(NodeType type) {
             return {S{kThrottleIn}, S{kThrottleOut}, S{kThrottleParams}};
         case NodeType::Lifecycle:
             return {S{}, S{kLifecycleOut}, S{}};
+        case NodeType::Input:
+            return {S{}, S{kInputOut}, S{kInputParams}};
     }
     return {};
 }
@@ -283,6 +288,10 @@ inline constexpr uint16_t kUnit = 0, kRateParam = 1, kTrailing = 2;
 namespace lifecycle {  // T-601 (53 §53.102).
 inline constexpr uint16_t kShown = 0, kHidden = 1;
 }  // namespace lifecycle
+namespace input {  // T-873 (60 §60.3.5).
+inline constexpr uint16_t kValue = 0, kPressed = 1, kReleased = 2, kDelta = 3;
+inline constexpr uint16_t kChannel = 0;
+}  // namespace input
 }  // namespace slots
 
 // The slot constants above must name the table entries they stand for.
@@ -324,5 +333,7 @@ static_assert(slotOf(NodeType::Throttle, SlotKind::Input, "rate") == slots::thro
 static_assert(slotOf(NodeType::Throttle, SlotKind::Output, "dropped") == slots::throttle::kDropped);
 static_assert(slotOf(NodeType::Throttle, SlotKind::Param, "trailing") == slots::throttle::kTrailing);
 static_assert(slotOf(NodeType::Lifecycle, SlotKind::Output, "hidden") == slots::lifecycle::kHidden);
+static_assert(slotOf(NodeType::Input, SlotKind::Output, "delta") == slots::input::kDelta);
+static_assert(slotOf(NodeType::Input, SlotKind::Param, "channel") == slots::input::kChannel);
 
 }  // namespace xt::flow

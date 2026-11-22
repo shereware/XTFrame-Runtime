@@ -17,6 +17,7 @@
 #include "mini_json.h"
 #include "text_edit.h"
 #include "timeline_group.h"
+#include "trigger_runtime.h"
 #include "xt/charconv.h"
 #include "xt/context.h"
 #include "xt/document.h"
@@ -43,7 +44,7 @@
 ///    "transitions":[{"id":"<element id>","property":"<PropId name>","from":"<value>","to":"<value>",
 ///                    "elapsed":S,"duration":S,"easing":"<timing function>"}, ...],
 ///    "pointer":{"<player>":{"x":X,"y":Y,"buttons":N,"hover":"<element id>","pressed":"<element id>",
-///               "inside":B}}}
+///               "inside":B,"press":[X,Y],"track":{"<element id>":[TURN,GX,GY], ...}}}}
 /// T-650 (23 XF-097 "快照版本 2"): `classes` lists the id'd DOCT elements whose runtime classes differ
 /// from their IR classes (both sides sorted); `clock` is the document clock (%.17g, so the float comes
 /// back bit for bit) and its update() count; `shown` says the initial show was done. A member left out
@@ -66,6 +67,9 @@
 /// `pointer` is the pointer state machine's state, keyed by the player of the last pointer input
 /// (the document has one pointer): position, held buttons (bit = PointerButton), hover and pressed
 /// element ids, inside the viewport. restoreState() sets it directly, dispatching nothing.
+/// T-871 (60 §60.3.3): with a press in progress also `press` (its point, for `pointer.fromPress`)
+/// and `track` (`pointer.turn` degrees and the `pointer.grab` point of each element those values
+/// name); both are optional (absent: the press point is the position, the turns restart at 0).
 /// Port values are text so restoreState() can hand them to setPortText() as they are: numbers with
 /// 9 significant digits (a float round-trips), Bool `true`/`false`, Enum the value name, Color
 /// `#rrggbb[aa]`, vec2/vec3 `x,y[,z]`, Struct / List the JSON setPortText() reads.
@@ -559,6 +563,24 @@ void parseVersion4(const Json& root, DocumentState& out) {
         entry.hover = hover != nullptr && hover->kind == Json::Kind::Str ? hover->s : std::string();
         entry.pressed = pressed != nullptr && pressed->kind == Json::Kind::Str ? pressed->s : std::string();
         entry.inside = boolOr(member(v, "inside"), false);
+        // T-871: the press point and the tracked turns, both optional.
+        if (const Json* press = member(v, "press");
+            press != nullptr && press->kind == Json::Kind::Arr && press->items.size() == 2) {
+            entry.hasPress = true;
+            entry.pressX = static_cast<float>(numberOr(&press->items[0], 0));
+            entry.pressY = static_cast<float>(numberOr(&press->items[1], 0));
+        }
+        if (const Json* track = member(v, "track"); track != nullptr && track->kind == Json::Kind::Obj) {
+            for (const auto& [id, t] : track->fields) {
+                if (t.kind != Json::Kind::Arr || t.items.size() != 3) {
+                    continue;
+                }
+                entry.tracks.push_back(
+                    DocumentState::Pointer::Track{id, static_cast<float>(numberOr(&t.items[0], 0)),
+                                                  static_cast<float>(numberOr(&t.items[1], 0)),
+                                                  static_cast<float>(numberOr(&t.items[2], 0))});
+            }
+        }
         out.hasPointer = true;
         out.pointer = std::move(entry);  // One pointer: the last entry wins.
     }
@@ -599,7 +621,33 @@ void appendVersion4(std::string& out, const DocumentState& state) {
     appendString(out, p.hover);
     out += ",\"pressed\":";
     appendString(out, p.pressed);
-    out += std::string(",\"inside\":") + (p.inside ? "true" : "false") + "}}";
+    out += std::string(",\"inside\":") + (p.inside ? "true" : "false");
+    if (p.hasPress) {  // T-871.
+        out += ",\"press\":[";
+        appendDigits(out, p.pressX, 9);
+        out += ',';
+        appendDigits(out, p.pressY, 9);
+        out += ']';
+        if (!p.tracks.empty()) {
+            out += ",\"track\":{";
+            for (size_t i = 0; i < p.tracks.size(); ++i) {
+                const DocumentState::Pointer::Track& t = p.tracks[i];
+                if (i > 0) {
+                    out += ',';
+                }
+                appendString(out, t.id);
+                out += ":[";
+                appendDigits(out, t.turn, 9);
+                out += ',';
+                appendDigits(out, t.grabX, 9);
+                out += ',';
+                appendDigits(out, t.grabY, 9);
+                out += ']';
+            }
+            out += '}';
+        }
+    }
+    out += "}}";
 }
 
 /// The `transition` entry of `style` that covers `prop` (the first one, as StyleEngine picks), or
@@ -618,7 +666,7 @@ const IrTransitionSpec* transitionSpecFor(const StyleEngine& styles, const Compu
 
 /// T-654: the in-flight transitions of id'd elements on their own properties (not a scene node's,
 /// not an effect parameter's), sorted by (id, property) so equal states write equal text.
-void collectTransitions(const Document& doc, const NodeArena& arena, const Animator& animator, float clock,
+void collectTransitions(const Document& doc, const NodeArena& arena, const Animator& animator, double clock,
                         std::vector<DocumentState::Transition>& out) {
     for (const Transition& tr : animator.transitions()) {
         if (tr.written() != tr.node || !arena.alive(tr.node) || arena.kind(tr.node) != NodeKind::Element ||
@@ -632,8 +680,7 @@ void collectTransitions(const Document& doc, const NodeArena& arena, const Anima
             continue;
         }
         entry.id = std::string(doc.string(arena.element(tr.node).id));
-        entry.elapsed =
-            static_cast<double>(clock) - static_cast<double>(tr.startClock) - static_cast<double>(tr.delay);
+        entry.elapsed = clock - tr.startClock - static_cast<double>(tr.delay);
         entry.duration = tr.duration;
         entry.easing = easingText(tr.easing);
         out.push_back(std::move(entry));
@@ -657,7 +704,7 @@ bool fitsProperty(PropId prop, const Value& v) {
 /// gets the delay (and, when the snapshot has none, the easing) of the element's own `transition`
 /// for the property, and the start that puts it `elapsed` seconds past that delay at `clock`.
 void applyTransitions(const Document& doc, const NodeArena& arena, const StyleEngine& styles,
-                      Animator& animator, float clock,
+                      Animator& animator, double clock,
                       const std::vector<DocumentState::Transition>& transitions) {
     for (const DocumentState::Transition& snap : transitions) {
         const NodeId node = doc.byId(snap.id).node;
@@ -680,8 +727,7 @@ void applyTransitions(const Document& doc, const NodeArena& arena, const StyleEn
         if (!parseEasingText(snap.easing, tr.easing)) {
             tr.easing = spec != nullptr ? easingFromIr(spec->easing) : Easing::linear();
         }
-        tr.startClock =
-            static_cast<float>(static_cast<double>(clock) - snap.elapsed - static_cast<double>(tr.delay));
+        tr.startClock = clock - snap.elapsed - static_cast<double>(tr.delay);
         animator.addTransition(tr);  // Replaces one the style pass started on the same property.
     }
 }
@@ -1005,6 +1051,17 @@ void Document::collectState(DocumentState& out, bool withPorts) {
     out.pointer.hover = idOf(pointer.hover);
     out.pointer.pressed = idOf(pointer.pressed);
     out.pointer.inside = pointer.inside;
+    // T-871: the press point (only when it is not the position, which restores it as before) and
+    // the tracked turns, while a press is in progress.
+    out.pointer.hasPress = pointer.hasPress && !(pointer.press == pointer.pos);
+    out.pointer.pressX = pointer.press.x;
+    out.pointer.pressY = pointer.press.y;
+    if (pointer.hasPress) {
+        out.pointer.hasPress = out.pointer.hasPress || !m_triggers->trackStates().empty();
+        for (const TriggerRuntime::TrackState& t : m_triggers->trackStates()) {
+            out.pointer.tracks.push_back(DocumentState::Pointer::Track{t.id, t.turn, t.grab.x, t.grab.y});
+        }
+    }
 }
 
 void Document::collectClasses(DocumentState& out) const {
@@ -1206,8 +1263,17 @@ void Document::applyState(const DocumentState& state, bool exact) {
         pointer.hover = state.pointer.hover.empty() ? kInvalidNode : byId(state.pointer.hover).node;
         pointer.pressed = state.pointer.pressed.empty() ? kInvalidNode : byId(state.pointer.pressed).node;
         pointer.inside = state.pointer.inside;
-        m_events->setTime(m_clock);  // The press time of a restored press.
+        pointer.hasPress = state.pointer.hasPress;  // T-871.
+        pointer.press = Vec2{state.pointer.pressX, state.pointer.pressY};
+        m_events->setTime(static_cast<float>(m_clock));  // The press time of a restored press.
         m_events->restorePointerState(m_arena, pointer);
+        // T-871: `pointer.turn` / `pointer.grab` go on from the restored position.
+        std::vector<TriggerRuntime::TrackState> tracks;
+        for (const DocumentState::Pointer::Track& t : state.pointer.tracks) {
+            tracks.push_back(TriggerRuntime::TrackState{t.id, t.turn, Vec2{t.grabX, t.grabY}});
+        }
+        m_triggers->restoreTracks(tracks, m_events->activeNode() != kInvalidNode, pointer.pos,
+                                  m_events->pressPosition());
     }
     // 5. Timeline groups: exactly the listed ones stay active, at their position.
     std::vector<bool> keep(m_timelineGroups->groups.size(), false);
@@ -1342,7 +1408,7 @@ Status Document::restoreState(std::string_view json) {
     // are set against it. It is the Context's clock while this is the Context's only document (a
     // C ABI surface): the frames that follow run on the same clock values as the saved run's.
     if (state.hasClock) {
-        m_clock = static_cast<float>(state.clockSeconds);
+        m_clock = state.clockSeconds;  // T-870: the clock is double.
         m_frame = state.clockFrame;
         if (m_context != nullptr && alone) {
             m_context->m_clock = m_clock;

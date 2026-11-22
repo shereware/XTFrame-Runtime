@@ -468,7 +468,8 @@ TEST_CASE("Animator: Transition evaluation and replace") {
     CHECK(getProperty(fx.arena, fx.n1, prop::Opacity).f == doctest::Approx(10.0f));
 }
 
-TEST_CASE("Animator: Neutral keyframe keeps the base value until a real keyframe is reached") {
+TEST_CASE("Animator: a Neutral keyframe interpolates from the base value") {
+    // T-869 (12 §12.3): the Neutral key stands for the property's value without the animation.
     Fixture fx;
     Timeline tl = makeNeutralTimeline();
     Animator anim;
@@ -479,8 +480,16 @@ TEST_CASE("Animator: Neutral keyframe keeps the base value until a real keyframe
     PlayParams p = basicParams(tid, fx);
     anim.play(p, 0.0f);
 
-    anim.evaluate(0.5f, fx.arena);
+    anim.evaluate(0.0f, fx.arena);
     CHECK(getProperty(fx.arena, fx.n1, prop::Opacity).f == doctest::Approx(0.42f));
+
+    anim.evaluate(0.5f, fx.arena);
+    CHECK(getProperty(fx.arena, fx.n1, prop::Opacity).f == doctest::Approx(0.71f));
+
+    // A host write in between is the new base value.
+    setProperty(fx.arena, fx.n1, prop::Opacity, Value::ofFloat(0.0f), DirtyCause::HostApi);
+    anim.evaluate(0.75f, fx.arena);
+    CHECK(getProperty(fx.arena, fx.n1, prop::Opacity).f == doctest::Approx(0.75f));
 
     anim.evaluate(1.0f, fx.arena);
     CHECK(getProperty(fx.arena, fx.n1, prop::Opacity).f == doctest::Approx(1.0f));

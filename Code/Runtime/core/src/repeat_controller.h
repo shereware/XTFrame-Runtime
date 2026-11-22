@@ -65,7 +65,7 @@ public:
     void onSubtreeRemoved(NodeId root);
 
     /// Advances the instance timelines (before the Animator evaluates the frame).
-    void step(float clock);
+    void step(double clock);
     /// Sends the instance timelines' End events to the trigger runtime.
     void flushEvents();
     /// T-749 (23 §23.ag item 6): step() / flushEvents() have work at a later update(): an instance
@@ -187,7 +187,8 @@ private:
         NodeId spacerAfter = kInvalidNode;
         float spacerBeforeH = -1;
         float spacerAfterH = -1;
-        float itemHeight = 0;
+        float itemHeight = 0;       // Logical px, measured from the first live entry.
+        float itemHeightScale = 0;  // T-864: the `<repeat>` element's ui-scale factor then.
         uint32_t windowBegin = 0;
         uint32_t windowEnd = 1;  // Before the first measurement: entry 0 only.
         uint32_t poolCap = 3;
@@ -201,7 +202,7 @@ private:
         StringId name = kInvalidString;
         float duration = 0;
         float t = 0;
-        float lastClock = 0;
+        double lastClock = 0;  // T-870: the Document clock is double.
         float rate = 1;
         bool reverse = false;
         bool loop = false;
@@ -265,7 +266,7 @@ private:
     void stopPlaybacks(NodeId scope);
     void releasePlayback(Playback& pb);
     /// One step of m_playbacks[i] (step()); false when it was released and erased.
-    bool stepPlayback(size_t i, float clock);
+    bool stepPlayback(size_t i, double clock);
     void applyPlayback(Playback& pb);
     uint32_t count(const Repeat& r) const;
 
@@ -273,10 +274,10 @@ private:
     struct Spawned {
         NodeId root = kInvalidNode;
         uint32_t generation = 0;
-        float expires = 0;
+        double expires = 0;  // T-870
         uint32_t repeat = 0;
     };
-    void expireSpawned(float clock);
+    void expireSpawned(double clock);
 
     Document& m_doc;
     std::deque<Repeat> m_repeats;  // T-391: a deque, nested copies are added while others run.

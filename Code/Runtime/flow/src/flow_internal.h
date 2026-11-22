@@ -258,7 +258,7 @@ struct DocEndpointState {
     std::vector<uint32_t> docOutputSlots;      // The "#document.<port>" output slots, polled.
     std::vector<uint32_t> animLocalTimeSlots;  // The <anim> "localTime" output slots, polled.
     bool pointerSubscribed = false;            // The document-root pointer listeners are registered.
-    float clockAccum = 0;                      // "#document.clock": the sum of every tick() `dt`.
+    double clockAccum = 0;  // "#document.clock": the sum of every tick() `dt` (T-870: double).
 
     // Pointer connection-point state (T-77), fed by the document-root PointerMove/Down/Up
     // listeners and read back by documentPortValue().
@@ -574,6 +574,10 @@ struct NodeRuntime {
     uint16_t eventCount = 0;
     uint16_t stateCurrent = 0;
     bool stateSetReported = false;  // An unknown `set` name was already reported for this node.
+    // `input` (T-873): the channel in the Document the node reads (resolved when that changes).
+    const Document* inputDoc = nullptr;
+    uint32_t inputChannel = 0;
+    uint8_t inputPlayer = 0;
     double counterValue = 0;
     bool toggleValue = false;
     bool timerRunning = false;
@@ -1041,6 +1045,9 @@ struct xt::flow::FlowRuntime::Impl {
     void bindDocumentEndpoints();
     /// Gives `state`'s output slot `slot` a source binding for external slot `external`.
     void bindSource(DocEndpointState& state, uint32_t slot, uint32_t external);
+    /// T-867: delivers the current value (the declared default until a set()) of every declared
+    /// value-type `out` port `state` has a source binding for, as seeding (not a delivery).
+    void seedDeclaredPortSources(DocEndpointState& state);
     /// Delivers `v` along edge `edgeIndex` into its sink.
     /// `only` (T-583): when set, a `ui#` sink is written in that endpoint state alone.
     void applyToSink(uint32_t edgeIndex, const RtValue& v, const DocEndpointState* only = nullptr);
@@ -1079,6 +1086,11 @@ struct xt::flow::FlowRuntime::Impl {
     /// Output slot `slot` of node `nodeIndex`: stores `v` and fans it out when it changed.
     void pushRawOutput(int nodeIndex, uint16_t slot, const RtValue& v);
     void pushNumberOutput(int nodeIndex, uint16_t slot, double v);
+    /// T-873 (60 §60.3.5): an `input` node's outputs from the channel state of the frame the
+    /// Document last committed: `value` / `delta` when the value moved, `pressed` / `released` on an
+    /// edge. A UI flow reads its own Document, the global flow its first UI's (every Document of a
+    /// Context sees the same channels).
+    void tickInputNode(int nodeIndex);
     void pushBoolOutput(int nodeIndex, uint16_t slot, bool v);
     /// The node's `scratch` text as its String output `slot` (swapped in, no copy).
     void pushScratchOutput(int nodeIndex, uint16_t slot);

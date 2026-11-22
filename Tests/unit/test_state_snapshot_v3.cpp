@@ -153,7 +153,8 @@ TEST_CASE("t651: an animation the snapshot does not list starts from 0; the list
     REQUIRE(b.doc().restoreState(snap) == Status::kOk);
     const std::vector<uint32_t> fresh = b.doc().animationsOf(b.doc().byId("fresh"));
     REQUIRE(fresh.size() == 1);
-    CHECK(b.doc().animator().elapsedSeconds(fresh[0], b.ctx.clock()) == 0.0);
+    // T-870: the animation started at the double clock (clock() is it rounded to float).
+    CHECK(b.doc().animator().elapsedSeconds(fresh[0], b.ctx.clockSeconds()) == 0.0);
     for (int f = 0; f < 30; ++f) {
         a.frame();
         b.frame();

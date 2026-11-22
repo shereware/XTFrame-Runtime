@@ -558,8 +558,8 @@ Status Document::setMediaLoop(NodeId node, bool loop) {
 
 // --- Per frame -------------------------------------------------------------------------------
 
-void Document::stepExternalMedia(float clock) {
-    const float dt = m_mediaClockValid ? std::max(0.0f, clock - m_mediaClock) : 0.0f;
+void Document::stepExternalMedia(double clock) {
+    const float dt = m_mediaClockValid ? static_cast<float>(std::max(0.0, clock - m_mediaClock)) : 0.0f;
     m_mediaClock = clock;
     m_mediaClockValid = true;
     for (NodeId element : m_externalElements) {

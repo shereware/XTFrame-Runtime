@@ -296,6 +296,10 @@ TEST_CASE("xtfx: the starter example compiles and uses local") {
     XtfxResult r = run(text);
     REQUIRE_MESSAGE(r.ok, r.error.message);
     CHECK(contains(r.glsl, "i.local"));
+    // T-870: the hash the starter's header suggests (no sin()) is valid in the subset.
+    CHECK(
+        accepts("float2 p = floor(i.local * 32) + xtTime; float2 q = frac(p * float2(0.1031, 0.1137));"
+                " q += dot(q, q.yx + 19.19); float h = frac(q.x * q.y);"));
 }
 
 TEST_CASE("xtfx subset: if/else and constant-bounded for") {
@@ -1088,7 +1092,7 @@ TEST_CASE("xtframe-compile: T-826 a parameter a stop leaves out counts as its he
     CHECK(effectTracks(same, 1).empty());
 }
 
-TEST_CASE("xtframe-compile: T-826 identical custom() stops make no track; a different asset stays an error") {
+TEST_CASE("xtframe-compile: T-826 identical custom() stops make no track; a different asset warns (T-869)") {
     CompileResult same = compileKf("xt_t826_same", "custom(\"kf.xtfx\", amp 3, ofs 5 6, tint #ff0000)",
                                    "custom(\"kf.xtfx\", amp 3, ofs 5 6, tint #ff0000)");
     checkNoErrors(same);
@@ -1104,7 +1108,14 @@ TEST_CASE("xtframe-compile: T-826 identical custom() stops make no track; a diff
     options.rootDir = dir.string();
     options.emitMeta = false;
     CompileResult mixed = compileDocumentFromStrings(files, "main.xt", options);
-    CHECK(hasError(mixed, "effect keyframes must use the same effect sequence"));
+    CHECK(mixed.ok());
+    CHECK(effectTracks(mixed, 1).empty());
+    bool warned = false;
+    for (const Diagnostic& d : mixed.diagnostics) {
+        warned = warned || (d.level == Diagnostic::Level::Warning &&
+                            d.message.find("different effect sequences") != std::string::npos);
+    }
+    CHECK(warned);
 }
 
 TEST_CASE("IrView: T-534 a 2.x header is rejected and versionError() says to recompile") {
@@ -1369,7 +1380,9 @@ TEST_CASE("CommandListSimplifier: T-263e a kept custom effect keeps its ShaderRe
             CHECK(b.paramCount == a.paramCount);
             CHECK(b.expandPx == a.expandPx);
             CHECK(b.fallback.kind == a.fallback.kind);
+            CHECK(b.timePeriod == a.timePeriod);  // T-874
         }
+        CHECK(result.clockSeconds == 0.25);  // T-874: the unwrapped clock, for each effect's own period
         CHECK(result.shaderParams.size() == original.shaderParams.size());
         CHECK(result.shaderText == original.shaderText);
         // The source table and every command's index into it.
@@ -1429,4 +1442,101 @@ TEST_CASE("CommandListSimplifier: T-263e a kept custom effect keeps its ShaderRe
         CHECK_FALSE(out.structureChecked);
         CHECK_FALSE(validateCommandList(out));
     }
+}
+
+// T-874 (Docs/design/59-visual-feedback.md §59.7 item 2): the optional `time:` header -- the period
+// `xtTime` wraps at. Absent = 0 (the default 3600 s); `unbounded` = kIrShaderTimeUnbounded; else
+// whole seconds 1..65534 (an `s` suffix is allowed).
+TEST_CASE("xtfx header: T-874 time:") {
+    const std::string body = "---\nfloat4 xtMain(XtInput i) { return xtSample(i.uv); }\n";
+    XtfxResult none = run(body);
+    REQUIRE(none.ok);
+    CHECK(none.header.timePeriod == 0);
+
+    XtfxResult unbounded = run("time: unbounded\n" + body);
+    REQUIRE_MESSAGE(unbounded.ok, unbounded.error.message);
+    CHECK(unbounded.header.timePeriod == kIrShaderTimeUnbounded);
+
+    XtfxResult ten = run("time: 10\n" + body);
+    REQUIRE_MESSAGE(ten.ok, ten.error.message);
+    CHECK(ten.header.timePeriod == 10);
+    XtfxResult tenS = run("time:  10s \n" + body);
+    REQUIRE_MESSAGE(tenS.ok, tenS.error.message);
+    CHECK(tenS.header.timePeriod == 10);
+    XtfxResult hour = run("time: 3600\n" + body);
+    REQUIRE(hour.ok);
+    CHECK(hour.header.timePeriod == 3600);
+    XtfxResult largest = run("time: 65534\n" + body);
+    REQUIRE(largest.ok);
+    CHECK(largest.header.timePeriod == 65534);
+
+    for (const char* bad : {"time: 0", "time: -5", "time: 1.5", "time: 65535", "time: 1e9", "time: abc",
+                            "time:", "time: 10px", "time: Unbounded"}) {
+        CAPTURE(bad);
+        XtfxResult r = run(std::string("name: X\n") + bad + "\n" + body);
+        CHECK_FALSE(r.ok);
+        CHECK(r.error.line == 2);
+        CHECK(contains(r.error.message, "time:"));
+    }
+    XtfxResult twice = run("time: 10\ntime: 20\n" + body);
+    CHECK_FALSE(twice.ok);
+    CHECK(twice.error.line == 2);
+    CHECK(contains(twice.error.message, "duplicate 'time:'"));
+}
+
+// T-874: `time:` lives in IrShaderRef::fallback._pad (no IR record changes size, the minor stays 5),
+// the validator takes every value, and Document's ShaderRef carries it as `timePeriod` (the
+// fallback EffectInstance's padding is 0 again there).
+TEST_CASE("xtframe-compile: T-874 time: is written to SHDR and read back as ShaderRef::timePeriod") {
+    static_assert(sizeof(IrShaderRef) == 176);
+    static_assert(sizeof(IrEffect) == 144);
+    static_assert(sizeof(ShaderRef) == 188);
+    const std::string xt =
+        "<xt><head><style>#a { width: 40px; height: 40px; background-color: #f00;"
+        " effect: custom(\"fx.xtfx\"); }</style></head><body><div id=\"a\"></div></body></xt>";
+    const std::string body = "---\nfloat4 xtMain(XtInput i) { return xtSample(i.uv) * frac(xtTime); }\n";
+    struct Case {
+        const char* header;
+        uint16_t period;
+    };
+    const Case timeCases[] = {
+        {"", 0}, {"time: 10\n", 10}, {"time: unbounded\n", kIrShaderTimeUnbounded}, {"time: 65534\n", 65534}};
+    for (const Case& c : timeCases) {
+        CAPTURE(c.header);
+        CompileResult result = compileWithAsset("xt_t874_time", xt, "fx.xtfx",
+                                                std::string("fallback: blur(2px)\n") + c.header + body);
+        REQUIRE(result.ok());
+        Result<IrView> view = IrView::open(IrBlob{result.ir.data(), result.ir.size()}, IrReadOptions{});
+        REQUIRE(view.ok());
+        CHECK(view.value().formatMinor() == 5);
+        const ShaderChunk& shdr = view.value().shaders();
+        REQUIRE(shdr.shaders().size() == 1);
+        const IrShaderRef& ref = shdr.shaders()[0];
+        CHECK(irShaderTimePeriod(ref) == c.period);
+        CHECK(ref.fallback.kind == static_cast<uint8_t>(EffectKind::Blur));
+
+        NullTextShaper shaper;
+        std::unique_ptr<Document> doc;
+        REQUIRE(Document::load(IrBlob{result.ir.data(), result.ir.size()}, false, &shaper, nullptr, doc) ==
+                Status::kOk);
+        const ShaderRef* sr = doc->shaderRef(0);
+        REQUIRE(sr != nullptr);
+        CHECK(sr->timePeriod == c.period);
+        CHECK(sr->fallback._pad[0] == 0);
+        CHECK(sr->fallback._pad[1] == 0);
+        CHECK(sr->fallback.kind == EffectKind::Blur);
+    }
+}
+
+// T-874: `xtTime` of one custom effect at a clock: the clock modulo its period, in double first.
+TEST_CASE("customEffectTime: T-874 default, custom and unbounded periods") {
+    CHECK(customEffectTime(7200.5, 0) == 0.5f);  // 7200.5 mod 3600
+    CHECK(customEffectTime(7200.5, 3600) == 0.5f);
+    CHECK(customEffectTime(7200.5, 10) == 0.5f);
+    CHECK(customEffectTime(7212.5, 10) == 2.5f);
+    CHECK(customEffectTime(7212.5, 0) == 12.5f);
+    CHECK(customEffectTime(7200.5, kEffectTimeUnbounded) == 7200.5f);
+    CHECK(customEffectTime(36000.25, kEffectTimeUnbounded) == 36000.25f);
+    CHECK(customEffectTime(0.0, 7) == 0.0f);
+    CHECK(kEffectTimeUnbounded == kIrShaderTimeUnbounded);
 }

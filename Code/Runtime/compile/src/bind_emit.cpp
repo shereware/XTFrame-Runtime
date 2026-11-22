@@ -15,6 +15,7 @@
 #include "xt/compile/parse_xt.h"
 #include "xt/compile/parse_xts.h"
 #include "xt/compile/validate.h"
+#include "xt/input_channels.h"  // T-873: `input(<channel>)`.
 #include "xt/ir_pod.h"
 #include "xt/timeline.h"
 #include "xt/util/hex.h"
@@ -1826,6 +1827,24 @@ private:
                 PortValueType::List) {
                 m_listValue = port;  // T-381: `<list port> | item(<n>)`.
             }
+            return true;
+        }
+        if (c.name == "input") {
+            // T-873 (60 §60.3.1): `input(<channel>)`, the channel's value each frame (no input port).
+            std::string canonical;
+            uint8_t player = 0;
+            if (c.args.size() != 1 || !parseChannelRef(c.args[0], canonical, player, &err)) {
+                if (c.args.size() != 1) {
+                    err = "input() takes one channel name (input(pad.rx), input(midi.cc(1)), ...)";
+                }
+                return false;
+            }
+            ArgVal name;
+            name.kind = ConverterArg::String;
+            name.u = m_writer.intern(canonical);
+            ArgVal who;
+            who.f = static_cast<float>(player);
+            appendSteps(steps, ConverterOp::Input, {name, who});
             return true;
         }
         if (c.name == "format") {

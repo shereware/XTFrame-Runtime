@@ -81,6 +81,8 @@ public:
     /// The document clock the caret's 1-second blink phase is taken from (Docs/tasks/T-33.md
     /// "Painter"); Document::paint() sets it every frame. 0 (the default) means "always visible".
     void setClock(float clock) { m_clock = clock; }
+    /// T-874 (59 §59.7 item 2): the Document clock, not wrapped: CommandList::clockSeconds.
+    void setClockSeconds(double clock) { m_clockSeconds = clock; }
     /// T-225 (Docs/design/31-vector-authoring.md §31.6.1): the document time, in seconds, that a
     /// Wiggle modifier's noise is sampled at (04's clock); Document::paint() sets it every frame.
     /// 0 (the default) is a valid time: the output depends only on it, so scrubbing is stable.
@@ -367,6 +369,7 @@ private:
 
     // T-33: caret blink phase and the editable-value pool (see setClock/setEditStates).
     float m_clock = 0;
+    double m_clockSeconds = 0;  // T-874: see setClockSeconds().
     const std::vector<EditState>* m_editStates = nullptr;
     const CompositionState* m_composition = nullptr;
     // T-178: see setIr().

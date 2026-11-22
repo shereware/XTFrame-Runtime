@@ -537,8 +537,29 @@ struct ShaderRef {
     /// T-263d: which entry of CommandList::sources `asset` belongs to (see CommandSource); 0 in a
     /// list that names no source. Not serialized by the baked format.
     uint16_t source = 0;
-    uint16_t _pad = 0;  ///< Padding, unused (0).
+    /// T-874 (59 §59.7 item 2): the `.xtfx` `time:` header, the period its `xtTime` wraps at (was
+    /// padding, so the struct keeps its size): 0 = kEffectTimePeriod, kEffectTimeUnbounded = not
+    /// wrapped, else whole seconds. See customEffectTime().
+    uint16_t timePeriod = 0;
 };
+
+/// T-870 (59 §59.7 item 2): the period, in seconds, of `xtTime` (CommandList::time): the Context
+/// clock modulo this. An effect whose own period divides it shows no seam at the wrap.
+inline constexpr double kEffectTimePeriod = 3600.0;
+/// T-874: ShaderRef::timePeriod of `time: unbounded` (the same value as kIrShaderTimeUnbounded).
+inline constexpr uint16_t kEffectTimeUnbounded = 0xFFFF;
+
+/// T-874 (59 §59.7 item 2): `xtTime` of a custom effect whose ShaderRef::timePeriod is `period`, at
+/// Context clock `clock` (CommandList::clockSeconds): the clock modulo the period (0 =
+/// kEffectTimePeriod), taken in double and then rounded; kEffectTimeUnbounded = the clock itself.
+/// What the backends put in CustomEffectParams::time, and what a host's own wrapper should upload.
+inline float customEffectTime(double clock, uint16_t period) {
+    if (period == kEffectTimeUnbounded) {
+        return static_cast<float>(clock);
+    }
+    return static_cast<float>(
+        std::fmod(clock, period == 0 ? kEffectTimePeriod : static_cast<double>(period)));
+}
 
 /// T-203: where a custom effect's declared parameters live in its EffectInstance (and so which
 /// `effectParam()` PropId animates each). In declaration order a Float takes `params[s]`, a Vec2
@@ -694,7 +715,15 @@ struct CommandList {
     float devicePixelRatio = 1;
     /// T-203 (tail): the Context clock (seconds) when this list was produced; custom effects read
     /// it as `xtTime` (Docs/design/18-effects.md §18.7). Not serialized by the baked format.
+    /// T-870 (59 §59.7 item 2): the clock modulo kEffectTimePeriod, taken in double and then
+    /// rounded, so it keeps about 0.24 ms of resolution however long the UI runs; it wraps to 0
+    /// once every kEffectTimePeriod seconds. T-874: a custom effect with its own `time:` period
+    /// reads customEffectTime(clockSeconds, its ShaderRef::timePeriod) instead.
     float time = 0;
+    /// T-874 (59 §59.7 item 2): the Context clock (seconds) when this list was produced, not wrapped
+    /// -- what each custom effect's `xtTime` is taken from (customEffectTime()). Not serialized by
+    /// the baked format.
+    double clockSeconds = 0;
     /// True when the library itself built this list (Context) or already checked it
     /// (BakedPlayer::frame, CommandListSimplifier): the backends then skip validateCommandList().
     /// A list a host fills by hand leaves it false and is checked on every render. Not serialized;

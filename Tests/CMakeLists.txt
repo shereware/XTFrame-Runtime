@@ -43,6 +43,7 @@ add_executable(xt_tests
     unit/test_coverage_bitmap.cpp  # T-660a
     unit/test_sw_renderer.cpp
     unit/test_context.cpp
+    unit/test_clock_precision.cpp  # T-870
     unit/test_damage.cpp
     unit/test_damage_hash_reuse.cpp  # T-737
     unit/test_damage_t760.cpp  # T-760
@@ -53,6 +54,14 @@ add_executable(xt_tests
     unit/test_selectors_ext.cpp
     unit/test_adaptive.cpp
     unit/test_responsive.cpp
+    unit/test_uiscale_t863.cpp  # T-863
+    unit/test_uiscale_t864.cpp  # T-864
+    unit/test_visibility_inherit.cpp  # T-867
+    unit/test_svg_viewbox_origin.cpp  # T-867
+    unit/test_keyframes_neutral.cpp  # T-869
+    unit/test_animation_direction.cpp  # T-872
+    unit/test_effect_keyframe_padding.cpp  # T-872
+    unit/test_transform_compose_units.cpp  # T-869
     unit/test_app_region.cpp
     unit/test_localization.cpp
     unit/test_input_placeholder.cpp
@@ -165,6 +174,8 @@ add_executable(xt_tests
     unit/test_svg_style_rules.cpp
     unit/test_triggers.cpp
     unit/test_trigger_validate.cpp  # T-844
+    unit/test_input_quantities.cpp  # T-871
+    unit/test_input_channels.cpp  # T-873
     unit/test_state_scope.cpp  # T-738
     unit/test_symbol_namespaces.cpp  # T-740
     unit/test_bindings.cpp

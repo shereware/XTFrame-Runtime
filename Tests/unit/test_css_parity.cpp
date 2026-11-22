@@ -388,6 +388,7 @@ TEST_CASE("css parity: transform") {
                             "transform: rotate(10deg) translate(10px, 5px) rotate(-10deg)",
                             "transform: matrix(1, 0, 0, 1, 10, 20)",
                             "transform: matrix(0, 1, -1, 0, 0, 0)",
+                            "transform: translateX(5px) translateY(1em)",  // T-869: composed, em kept
                             "translate: 10px",
                             "translate: 10px 20%",
                             "translate: 1px 2px 3px",
@@ -414,26 +415,14 @@ TEST_CASE("css parity: transform") {
                             "background-size: 50%"}) {
         sameAccepted(css);
     }
-    for (const char* css : {"transform: none rotate(10deg)",
-                            "transform: translateZ(10%)",
-                            "transform: rotate3d(1, 0, 0, 10deg)",
-                            "transform: perspective(100px)",
-                            "transform: wobble(1px)",
-                            "transform: rotate(10px)",
-                            "transform: translate(1em) rotate(10deg) translate(2px)",
-                            "transform: translateX(5px) translateY(1em)",
-                            "transform: scale(1px)",
-                            "transform: translate(10px",
-                            "translate: 1px 2px 3%",
-                            "translate: 1px 2px 3px 4px",
-                            "rotate: x 10deg",
-                            "rotate: 10px",
-                            "scale: 1px",
-                            "scale: 1 2 3",
-                            "transform-origin: top left",
-                            "transform-origin: 1px 2px 3px",
-                            "background-size: -5px",
-                            "background-size: cover cover"}) {
+    for (const char* css :
+         {"transform: none rotate(10deg)", "transform: translateZ(10%)",
+          "transform: rotate3d(1, 0, 0, 10deg)", "transform: perspective(100px)", "transform: wobble(1px)",
+          "transform: rotate(10px)", "transform: translate(1em) rotate(10deg) translate(2px)",
+          "transform: scale(1px)", "transform: translate(10px", "translate: 1px 2px 3%",
+          "translate: 1px 2px 3px 4px", "rotate: x 10deg", "rotate: 10px", "scale: 1px", "scale: 1 2 3",
+          "transform-origin: top left", "transform-origin: 1px 2px 3px", "background-size: -5px",
+          "background-size: cover cover"}) {
         bothReject(css);
     }
 }

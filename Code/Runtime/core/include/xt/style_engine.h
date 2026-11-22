@@ -196,7 +196,7 @@ public:
     /// Code/Runtime/core/src/document_load.cpp and NodeArena::create()); a future dynamic-reparenting API
     /// that breaks that invariant would need a real topological/preorder walk instead (uncovered case, see
     /// Docs/tasks/T-24 report). Returns the number of Elements processed.
-    uint32_t resolve(NodeArena& arena, float clock);
+    uint32_t resolve(NodeArena& arena, double clock);
     /// T-753 (Docs/design/57-measurement.md §57.2 item 3, §57.3 item 4): the tracker resolve() reports
     /// to -- the redundant-style count (detail level >= 1, FrameStats::redundantStyled) and the
     /// update.style.match / cascade zones (detail level >= 2). Null (the default): neither.
@@ -301,7 +301,7 @@ private:
     /// T-218: writes m_sceneSet to `element`'s scene nodes (restoring the ones no rule overrides
     /// any more), with transitions per `next`'s `transition` list.
     void applySceneOverrides(NodeArena& arena, NodeId element, const ElementData& data,
-                             const ComputedStyle& next, float clock, bool firstResolve);
+                             const ComputedStyle& next, double clock, bool firstResolve);
     // Scratch for the FontRequest family list (string_views into the IR string table), refilled
     // once per element; resolve() is single-threaded, so reuse across elements is safe.
     std::vector<std::string_view> m_familyScratch;

@@ -536,6 +536,7 @@ std::vector<uint8_t> IrWriter::finish() const {
             params.insert(params.end(), sb.params.begin(), sb.params.end());
             ref.expandPx = sb.expandPx;
             ref.fallback = sb.fallback;
+            setIrShaderTimePeriod(ref, sb.timePeriod);  // T-874: in the fallback's padding
             refs.push_back(ref);
         }
         std::vector<uint8_t> payload;
@@ -827,6 +828,7 @@ IrWriter IrWriter::fromView(const IrView& view) {
             }
             sb.expandPx = ref.expandPx;
             sb.fallback = ref.fallback;
+            sb.timePeriod = irShaderTimePeriod(ref);  // T-874
             writer.addShader(std::move(sb));
         }
     }

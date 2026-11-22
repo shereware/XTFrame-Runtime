@@ -253,9 +253,26 @@ enum class TriggerEvent : uint8_t {
     /// T-397 (08.17): `focusout` (EventType::FocusOut: the element or a descendant lost the focus;
     /// bubbles).
     FocusOut = 41,
+    /// T-871 (60 §60.3.2, IR 3.4): `wheel` (EventType::Wheel on the element or a descendant;
+    /// bubbles). Runs at most once per frame: the event value is the frame's summed vertical
+    /// notches, `event.dx` / `event.dy` the summed deltas.
+    Wheel = 42,
+    /// T-871 (60 §60.3.2, IR 3.4): `key(<key>).release` on the focused element (KeyUp); arg0 = the
+    /// KeyCode, or kTriggerKeyAny.
+    KeyRelease = 43,
+    // T-873 (60 §60.3.2, IR 3.5): input channels. arg0 = StringId of the channel's canonical name
+    // (xt/input_channels.h, without a player prefix), arg1 = the player (0..kMaxPlayers-1). They fire
+    // on whichever element they are written on, regardless of focus and hit testing, at most once a
+    // frame per channel (Document::update(), before the bindings).
+    /// `input(<channel>)`: the value changed (an axis moved, a relative channel's frame sum is not 0,
+    /// a button changed); the event value is the new value (a relative channel's: the frame's sum).
+    InputChange = 44,
+    InputPress = 45,  ///< `input(<button channel>).press`: a press edge; the event value is the strength.
+    InputRelease =
+        46,  ///< `input(<button channel>).release`: a release edge; the event value is the strength.
 };
 /// Highest TriggerEvent code (02 §2.v). A larger code is not an error: the trigger never fires.
-inline constexpr uint8_t kTriggerEventLast = 41;
+inline constexpr uint8_t kTriggerEventLast = 46;
 /// T-573 (27.8, 08 §8.20): IrTrigger::arg0 of a Key trigger written `key(any)` (no KeyCode has
 /// this value): any key that is not a modifier (Shift / Control / Alt / Meta) on its own, and any
 /// gamepad button. An older runtime compares it as a key code and never fires it.
@@ -299,9 +316,22 @@ enum class TriggerAction : uint8_t {
     /// T-573 (27.8): `resume(<timeline>)`; arg0 = timeline name. A paused (or seeked) group that
     /// has not reached its end plays on from where it is; otherwise nothing happens.
     Resume = 20,
+    /// T-871 (60 §60.3.4, IR 3.4): `add(<port>, <value>[, <min>, <max>[, wrap]])`: the value is
+    /// added to a Number port. The fields are Set's (flags = SetSource; arg1 = PORT index + 1; arg2;
+    /// converter steps at arg0 / `extra`), except that with kAddRange in the flags the last of the
+    /// `extra` steps is an Operands step holding min (args[0]) and max (args[1]), not a converter.
+    Add = 21,
 };
 /// Highest TriggerAction code (02 §2.v). A larger code is not an error: the action is skipped.
-inline constexpr uint8_t kTriggerActionLast = 20;
+inline constexpr uint8_t kTriggerActionLast = 21;
+
+/// T-871: IrTriggerAction::flags of an Add action, OR-ed into the SetSource: a range is given
+/// (the last converter step holds it, see TriggerAction::Add).
+inline constexpr uint8_t kAddRange = 0x80u;
+/// T-871: with kAddRange, `wrap`: a result outside [min, max) wraps around instead of clamping.
+inline constexpr uint8_t kAddWrap = 0x40u;
+/// T-871: the SetSource bits of an Add action's flags.
+inline constexpr uint8_t kAddSourceMask = 0x3Fu;
 
 /// IrTriggerAction::flags of a Play action (27.2.3 `play(<tl>[, reverse|loop|once|hold])`).
 inline constexpr uint8_t kPlayReverse = 1u;
@@ -356,9 +386,34 @@ enum class SetSource : uint8_t {
     /// entry of the `<repeat>` instance holding the trigger's element, and its first step reads the
     /// field / index / count (as a kBindRepeatItem binding). Nothing is set outside a live instance.
     Item = 10,
+    // T-871 (60 §60.3.3, IR 3.4): pointer quantities, through the converter steps at arg0 /
+    // `extra` like EventValue. arg2's bits are the (path) id StringId of the element of `(#id)`, or
+    // kInvalidString for the forms without one (delta / fromPress in root coordinates). Only in
+    // Pointer* / Click triggers. Lengths are in the units of `pointer.local()`.
+    /// `pointer.delta[(#id)].x`: the pointer movement since this trigger last ran (the events a
+    /// frame coalesces are summed); with `(#id)` along that element's local axes.
+    PointerDeltaX = 11,
+    PointerDeltaY = 12,  ///< `pointer.delta[(#id)].y`.
+    /// `pointer.fromPress[(#id)].x`: the movement since the press point (the last PointerDown).
+    PointerFromPressX = 13,
+    PointerFromPressY = 14,  ///< `pointer.fromPress[(#id)].y`.
+    /// `pointer.angle(#id)`: the pointer's bearing from the element's centre in degrees (0 = right,
+    /// clockwise positive, -180..180), measured in root (viewport) coordinates.
+    PointerAngle = 15,
+    /// `pointer.turn(#id)`: the angle turned around the element's centre since the press,
+    /// accumulated across +-180 (two clockwise turns = 720).
+    PointerTurn = 16,
+    PointerDistance = 17,  ///< `pointer.distance(#id)`: the distance to the element's centre.
+    /// `pointer.grab(#id).x`: where the press was within the element's border box (0..1), taken
+    /// at the press.
+    PointerGrabX = 18,
+    PointerGrabY = 19,  ///< `pointer.grab(#id).y`.
+    /// T-871 (60 §60.3.2): `event.dx` / `event.dy` of a `wheel` trigger (the summed notches).
+    EventDx = 20,
+    EventDy = 21,
 };
 /// Highest SetSource value.
-inline constexpr uint8_t kSetSourceLast = 10;
+inline constexpr uint8_t kSetSourceLast = 21;
 
 /// T-386 (08.11): IrTriggerAction::flags of an If action. kIfActive: the condition is `active`
 /// (the trigger's element has ElementState kStateActive: a press on it or inside it is in
@@ -451,12 +506,17 @@ enum class ConverterOp : uint8_t {
     Vec = 41,
     Floor = 42,  ///< T-568: floor (rounds toward -infinity).
     Ceil = 43,   ///< T-568: ceil (rounds toward +infinity).
+    /// T-873 (60 §60.3.1, IR 3.5): `input(<channel>)`, a binding chain's source (the first step of a
+    /// kBindNoPrimary chain): replaces the value with the channel's value this frame (an axis
+    /// position, a button's 0 / 1, a relative channel's frame sum). args[0] = StringId of the
+    /// canonical channel name (String), args[1] = the player (Number).
+    Input = 44,
     /// Host converters (13.8.1 registerConverter) are numbered from here at run time; in the IR
     /// every host converter is this op with args[0] = its name (a String argument).
     Custom = 0x80,
 };
-/// Highest catalog op (ConverterOp::Ceil, T-568).
-inline constexpr uint8_t kConverterOpLast = 43;
+/// Highest catalog op (ConverterOp::Input, T-873).
+inline constexpr uint8_t kConverterOpLast = 44;
 
 /// Kind of one IrConverterStep argument, 4 bits per argument in IrConverterStep::argKinds
 /// (T-175). Kind 0 keeps T-174's all-constant conditions valid.
@@ -584,8 +644,14 @@ enum class MediaFeature : uint8_t {
 /// `animations[]` / `transitions[]`, cascaded one by one and combined at run time); the compiler no
 /// longer writes StyleProp 180 / 181 (still read: a declaration of every longhand at once); the
 /// IrAnimationSpec / IrTransitionSpec `flags` bytes (formerly padding). A 3.2 runtime ignores the new
-/// declarations, so it plays no CSS animation or transition of a 3.3 file.
-inline constexpr uint16_t kIrFormatMinor = 3;
+/// declarations, so it plays no CSS animation or transition of a 3.3 file. 3.4 (T-871, 60 §60.3):
+/// TriggerEvent Wheel 42 / KeyRelease 43, TriggerAction Add 21 (kAddRange / kAddWrap) and SetSource
+/// 11-21 (pointer quantities, `event.dx` / `event.dy`); no layout change. A 3.3 runtime never fires
+/// the new events and skips `add`, but its validator rejects a Set action with a SetSource above 10.
+/// 3.5 (T-873, 60 §60.3.1-§60.3.2): TriggerEvent InputChange 44 / InputPress 45 / InputRelease 46 and
+/// ConverterOp Input 44 (the `input(<channel>)` binding source); no layout change. A 3.4 runtime never
+/// fires the new events, but its validator rejects a file whose binding chain has the Input step.
+inline constexpr uint16_t kIrFormatMinor = 5;
 
 /// T-405 (02 §2.6): the highest StyleProp number an IR of this minor may carry (Code/Runtime/core/src/
 /// style_decode.h and Code/Runtime/compile/src/xts/xts_props.h static_assert their last StyleProp against
@@ -1902,7 +1968,8 @@ struct IrShaderParam {
 };
 static_assert(sizeof(IrShaderParam) == 32);
 
-/// One custom effect asset (176 bytes since IR 3.0).
+/// One custom effect asset (176 bytes since IR 3.0). T-874 (IR 3.5): the `.xtfx` `time:` header is
+/// stored in `fallback._pad` (see irShaderTimePeriod()).
 struct IrShaderRef {
     /// ASST index of the `.xtfx` asset (kind 2).
     uint32_t asset;
@@ -1919,6 +1986,21 @@ struct IrShaderRef {
     IrEffect fallback;
 };
 static_assert(sizeof(IrShaderRef) == 176);
+
+/// T-874 (Docs/design/59-visual-feedback.md §59.7 item 2, IR 3.5): the `.xtfx` `time:` header -- the
+/// period, in seconds, its `xtTime` wraps at -- lives in the two padding bytes of IrShaderRef::fallback
+/// (`fallback._pad`, a little-endian uint16; a fallback is never Custom, so nothing else reads them):
+/// 0 = no `time:` (the default period, xt::kEffectTimePeriod = 3600 s; every IR written before T-874
+/// holds 0 there), kIrShaderTimeUnbounded = `time: unbounded` (the clock is not wrapped), any other
+/// value = `time: <seconds>`, whole seconds 1..65534. Every value is valid.
+inline constexpr uint16_t kIrShaderTimeUnbounded = 0xFFFF;
+inline uint16_t irShaderTimePeriod(const IrShaderRef& ref) {
+    return static_cast<uint16_t>(ref.fallback._pad[0] | (ref.fallback._pad[1] << 8));
+}
+inline void setIrShaderTimePeriod(IrShaderRef& ref, uint16_t period) {
+    ref.fallback._pad[0] = static_cast<uint8_t>(period & 0xFFu);
+    ref.fallback._pad[1] = static_cast<uint8_t>(period >> 8);
+}
 
 // -------------------------------------------------------------------------------------------
 // CLIP (Docs/design/05-style-and-css.md §5.9.8, T-332). Optional, after DOCT; at most once.

@@ -770,6 +770,8 @@ uint32_t BindingRuntime::addInstanceBinding(uint32_t irBinding, NodeId node, uin
     b.tweenEasing = tpl.tweenEasing;
     b.usesCustom = tpl.usesCustom;
     b.usesLocalize = tpl.usesLocalize;
+    b.channel = tpl.channel;  // T-873: listed below, once the copy has its index.
+    b.channelPlayer = tpl.channelPlayer;
     b.state.resize(b.steps.size());
     b.node = node;
     if (b.ir->sceneNode != kBindElementSelf) {
@@ -806,6 +808,10 @@ uint32_t BindingRuntime::addInstanceBinding(uint32_t irBinding, NodeId node, uin
     if ((m_bindings[index].ir->flags & kBindAfterLayout) != 0) {
         m_afterLayout.push_back(index);
     }
+    if (m_bindings[index].channel != kInvalidChannel &&
+        std::find(m_channelBindings.begin(), m_channelBindings.end(), index) == m_channelBindings.end()) {
+        m_channelBindings.push_back(index);  // T-873.
+    }
     return index;
 }
 
@@ -836,6 +842,8 @@ void BindingRuntime::removeBinding(uint32_t binding) {
     }
     m_afterLayout.erase(std::remove(m_afterLayout.begin(), m_afterLayout.end(), binding),
                         m_afterLayout.end());
+    m_channelBindings.erase(std::remove(m_channelBindings.begin(), m_channelBindings.end(), binding),
+                            m_channelBindings.end());  // T-873.
     Binding& b = m_bindings[binding];
     b = Binding{};
     b.instance = true;

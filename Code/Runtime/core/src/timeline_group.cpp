@@ -585,10 +585,10 @@ void Document::captureTimelineRestores(size_t index) {
     }
 }
 
-void Document::stepTimelineGroups(float clock) {
+void Document::stepTimelineGroups(double clock) {
     std::vector<TimelineGroupRuntime>& groups = m_timelineGroups->groups;
     // T-776 (58 §58.5): one port-history record per update, while a timeline reading it plays.
-    m_timelineGroups->exprs.recordPortHistory(clock, groups);
+    m_timelineGroups->exprs.recordPortHistory(static_cast<float>(clock), groups);
     const bool selfControl = m_triggers->hasSelfControl();  // T-774
     for (size_t index = 0; index < groups.size(); ++index) {
         TimelineGroupRuntime& g = groups[index];
@@ -598,7 +598,7 @@ void Document::stepTimelineGroups(float clock) {
         if (!g.active || !g.playing) {
             continue;
         }
-        float dt = (clock - g.lastClock) * g.rate;
+        float dt = static_cast<float>(clock - g.lastClock) * g.rate;  // T-870: the difference in double
         g.lastClock = clock;
         if (dt < 0) {
             dt = 0;

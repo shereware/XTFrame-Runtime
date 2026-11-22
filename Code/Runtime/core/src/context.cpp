@@ -42,11 +42,15 @@ void releaseSourceOf(AssetResolver* assets, const Document* doc) {
 
 Result<DocumentHandle> Context::loadDocument(IrBlob blob, bool takeOwnership) {
     std::unique_ptr<Document> doc;
-    Status status = Document::load(blob, takeOwnership, m_config.shaper, m_config.assets, doc);
+    // T-874: the Document starts at this Context's clock, its `<anim autoplay>` instances too.
+    Status status = Document::load(blob, takeOwnership, m_config.shaper, m_config.assets, doc, m_clock);
     if (status != Status::kOk) {
         return Result<DocumentHandle>::error(status);
     }
     doc->m_context = this;  // T-260a: its dispatching calls defer unload / reload install.
+    // T-870: what the host plays before the Document's first update() starts at this Context's
+    // clock (setClock(), or the time already run), not at 0.
+    doc->m_clock = m_clock;
     bindTimelineEvents(*doc);
     doc->setTokenLayers(activeThemeTokens(), &m_tokenOverrides);  // T-170.
     // 13 §13.8.14 ruling (T-236): a new Document starts from this Context's current viewport, so
@@ -60,6 +64,7 @@ Result<DocumentHandle> Context::loadDocument(IrBlob blob, bool takeOwnership) {
     // the setup above, so the load counts once, as Load (and the first update's work with it).
     doc->setPerfTracker(&m_perf);
     doc->noteVisualChange(DirtyCause::Load);
+    doc->m_channels.seedFrom(m_channels);  // T-873: a held stick or button holds here too.
     m_documents.push_back(std::move(doc));
     m_surfaces.resize(m_documents.size());  // T-194: z 0, Block.
     DocumentHandle handle = static_cast<DocumentHandle>(m_documents.size());
@@ -108,7 +113,8 @@ Status Context::prepareReload(DocumentHandle handle, IrBlob blob, bool takeOwner
         return Status::kInvalidArgument;
     }
     std::unique_ptr<Document> doc;
-    Status status = Document::load(blob, takeOwnership, m_config.shaper, m_config.assets, doc);
+    // T-874: like loadDocument(), from this Context's clock (hot reload then carries the old one).
+    Status status = Document::load(blob, takeOwnership, m_config.shaper, m_config.assets, doc, m_clock);
     if (status != Status::kOk) {
         return status;
     }
@@ -126,6 +132,7 @@ Status Context::prepareReload(DocumentHandle handle, IrBlob blob, bool takeOwner
     doc->setInstanceId(m_documents[handle - 1]->instanceId());  // T-175.
     doc->setPerfTracker(&m_perf);  // T-747: after the setup, as in loadDocument()
     doc->noteVisualChange(DirtyCause::Load);
+    doc->m_channels.seedFrom(m_channels);  // T-873.
     out = std::move(doc);
     return Status::kOk;
 }
@@ -621,6 +628,12 @@ void fillCommandListStats(const CommandList& list, FrameStats& stats) {
 
 }  // namespace
 
+void Context::setClock(double seconds) {
+    if (std::isfinite(seconds) && seconds >= 0.0) {
+        m_clock = seconds;
+    }
+}
+
 void Context::update(float dt) {
     // T-260a: first, so it is destroyed last: an unload or reload install a callback asked for
     // runs after every Document has updated (nothing below may touch a member after it).
@@ -629,10 +642,10 @@ void Context::update(float dt) {
     if (!(dt > 0.0f) || !std::isfinite(dt)) {
         dt = 0.0f;
     }
-    m_clock += dt;
+    m_clock += static_cast<double>(dt);  // T-870: accumulated in double (59 §59.7).
     // §21.2: the frame opens here and stays addressable until the next beginFrame, so a backend can
     // still report renderMs into it after render() has returned.
-    m_perf.beginFrame(m_clock);
+    m_perf.beginFrame(static_cast<float>(m_clock));
     PerfPhaseScope updateScope(m_perf, &FrameStats::updateMs, &FrameStats::updateCpuMs);  // T-750
     // T-260a: the Documents updated below are the ones loaded when this frame began: one a
     // callback loads (during input routing or another Document's update; m_documents may
@@ -685,6 +698,7 @@ void Context::update(float dt) {
             }
             routeInput(event);
         }
+        m_channels.commit();  // T-873: channelValue() reads this update's input.
         // T-270a (C12): the batch is dispatched (the dispatcher copies the composition text), so
         // its pooled strings are no longer referenced -- unless a listener queued another
         // CompositionUpdate meanwhile, in which case the pool is emptied on a later frame.
@@ -725,7 +739,7 @@ void Context::update(float dt) {
 
     for (size_t i = 0; i < count; ++i) {  // By index (see `count` above).
         if (Document* doc = liveAt(i)) {
-            doc->update(m_clock);
+            doc->updateAt(m_clock);  // T-870: the double clock (Document::update() takes float).
         }
     }
 
@@ -1277,6 +1291,9 @@ DocumentHandle Context::pressTarget(Vec2 pos) const {
 void Context::routeInput(const InputEvent& event) {
     // T-260a: a surface whose unload a callback queued is gone here too, even halfway through.
     auto live = [this](DocumentHandle h) { return h != 0 && liveAt(h - 1) != nullptr; };
+    if (routeChannels(event)) {
+        return;  // T-873: a channel value reaches every Document (context_channels.cpp).
+    }
     switch (event.kind) {
         case InputEvent::PointerMove: {
             DocumentHandle target = live(m_pointerCapture) ? m_pointerCapture : 0;

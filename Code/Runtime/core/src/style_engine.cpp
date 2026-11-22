@@ -654,7 +654,7 @@ bool transitionCovers(const IrTransitionSpec& spec, PropId prop) {
 /// `specs` is `next`'s `transition` list (StyleEngine::transitionSpecs(), T-778).
 bool maybeRegisterTransition(Animator& animator, std::span<const IrTransitionSpec> specs,
                              const ComputedStyle& next, NodeId node, PropId prop, const Value& fromFinal,
-                             const Value& toFinal, float clock, bool firstResolve,
+                             const Value& toFinal, double clock, bool firstResolve,
                              NodeId target = kInvalidNode) {
     if (firstResolve || next.transitionCount == 0) {
         return false;
@@ -898,31 +898,24 @@ PlayParams cssAnimationParams(const IrAnimationSpec& spec, NodeId node) {
     params.layer = 0;
     params.overrideEasing = toEasing(spec.easing);
     params.css = 1;  // T-747: DirtyCause::Animation
-    if (spec.iterations == 0) {
-        params.loop = isAlternate ? LoopMode::PingPong : LoopMode::Loop;
-        params.iterations = 0;
-        params.speed = 1;
-    } else {
-        params.loop = LoopMode::Once;
-        params.iterations = spec.iterations;
-        params.speed = isReverse ? -1.0f : 1.0f;
-    }
+    // T-872: a reversed direction flips each pass (PlayParams::reverse) instead of playing the
+    // instance backwards (speed -1 from its end), which lost the delay, ended in the backwards
+    // fill's value (100% instead of 0%) and never finished.
+    params.speed = 1;
+    params.reverse = isReverse ? 1 : 0;
+    // T-872: a finite count repeats too (it was LoopMode::Once, which 04 §4.5 plays exactly once:
+    // `2` stopped after one pass and `alternate` never ran back). 0 = infinite.
+    params.loop = isAlternate ? LoopMode::PingPong : LoopMode::Loop;
+    params.iterations = spec.iterations;
     return params;
 }
 
 /// Plays one CSS `animation` item and returns its instance id.
-uint32_t playCssAnimation(Animator& animator, const IrView& ir, const IrAnimationSpec& spec, NodeId node,
-                          float clock, const std::function<void(uint32_t, NodeId)>& onAnimationPlay) {
+uint32_t playCssAnimation(Animator& animator, const IrView& /*ir*/, const IrAnimationSpec& spec, NodeId node,
+                          double clock, const std::function<void(uint32_t, NodeId)>& onAnimationPlay) {
     uint32_t id = animator.play(cssAnimationParams(spec, node), clock);
     if (onAnimationPlay) {
         onAnimationPlay(id, node);
-    }
-    if ((spec.direction == 1 || spec.direction == 3) && spec.iterations != 0) {
-        // "reverse 系列 -> speed = -1 並 seek 到尾" (T-24.md). localT is in the timeline's own
-        // (unscaled) time domain, i.e. its segEnd == duration (the compiler always builds
-        // @keyframes timelines with duration == 1, see
-        // Code/Runtime/compile/src/style_emit.cpp emitKeyframesTimelines).
-        animator.seek(id, ir.timeline(spec.timeline).duration(), clock);
     }
     if (spec.playState == 1 /* paused */) {
         animator.pause(id, clock);
@@ -963,7 +956,7 @@ uint32_t timelineOccurrence(std::span<const IrAnimationSpec> specs, size_t index
 /// start, as xt_flow's `playAnimation` relies on (53, "playAnimation ... restarts").
 void applyAnimationDiff(Animator& animator, const IrView& ir,
                         const std::vector<IrAnimationSpec>* runtimeAnimations, ElementData& data,
-                        ComputedStyle& next, NodeId node, float clock,
+                        ComputedStyle& next, NodeId node, double clock,
                         const std::function<void(uint32_t, NodeId)>& onAnimationPlay) {
     const uint32_t lastOffset = data.style.lastAnimationOffset;
     const uint32_t lastCount = data.style.lastAnimationCount;
@@ -1247,7 +1240,8 @@ void resolveClipShape(const IrView& ir, const std::vector<ElementClipShape>* run
 
 /// 06 §6.15 (T-338): decodes `next.gridColumns` / `gridRows` / `gridAreas` (0 = none, else 1 + a
 /// `GRID` list index) into `out`. An out-of-range reference (defensive; a validated IR never has
-/// one) decodes as `none`.
+/// one) decodes as `none`. T-863 (25 §25.4.2): a `px` track is design px, multiplied by the
+/// element's factor like every other px length (the gaps are scaled by scaleStylePx()).
 void resolveGrid(const IrView& ir, const ComputedStyle& next, ElementGrid& out) {
     out.columns.clear();
     out.rows.clear();
@@ -1255,7 +1249,8 @@ void resolveGrid(const IrView& ir, const ComputedStyle& next, ElementGrid& out) 
     out.areaRows = 0;
     out.areaCols = 0;
     const GridChunk& grid = ir.grid();
-    const auto tracks = [&grid](uint32_t ref, std::vector<GridTrack>& dst) {
+    const float pxScale = next.uiScaleEff;
+    const auto tracks = [&grid, pxScale](uint32_t ref, std::vector<GridTrack>& dst) {
         if (ref == 0 || ref > grid.trackLists().size()) {
             return;
         }
@@ -1266,7 +1261,8 @@ void resolveGrid(const IrView& ir, const ComputedStyle& next, ElementGrid& out) 
         dst.reserve(list.count);
         for (uint32_t i = 0; i < list.count; ++i) {
             const IrGridTrack& t = grid.tracks()[list.offset + i];
-            dst.push_back(GridTrack{static_cast<GridTrackKind>(t.kind), t.value});
+            const auto kind = static_cast<GridTrackKind>(t.kind);
+            dst.push_back(GridTrack{kind, kind == GridTrackKind::Px ? t.value * pxScale : t.value});
         }
     };
     tracks(next.gridColumns, out.columns);
@@ -1294,7 +1290,7 @@ void resolveGrid(const IrView& ir, const ComputedStyle& next, ElementGrid& out) 
 void applyEffectCascade(Animator& animator, const IrView& ir, std::span<const IrTransitionSpec> transitions,
                         const ComputedStyle& next, NodeArena& arena, NodeId node,
                         const std::vector<EffectInstance>* runtimeEffects,
-                        const std::vector<GradientStop>* runtimeStops, float clock, bool firstResolve) {
+                        const std::vector<GradientStop>* runtimeStops, double clock, bool firstResolve) {
     constexpr uint32_t kMaxEffects = kMaxEffectSequence;
     constexpr uint32_t kMaxStops = kMaxEffects * 16;
     EffectInstance scratchEffects[kMaxEffects];
@@ -2180,7 +2176,7 @@ void StyleEngine::updateFocusWithin(NodeArena& arena) {
     m_focusWithin.swap(m_focusWithinNext);
 }
 
-uint32_t StyleEngine::resolve(NodeArena& arena, float clock) {
+uint32_t StyleEngine::resolve(NodeArena& arena, double clock) {
     XT_ASSERT(m_ir != nullptr && m_animator != nullptr);
     const IrView& ir = *m_ir;
     Animator& animator = *m_animator;
@@ -3191,7 +3187,7 @@ bool StyleEngine::decodeSceneValue(const IrDecl* decl, const RuntimeStyleDecl* r
 }
 
 void StyleEngine::applySceneOverrides(NodeArena& arena, NodeId element, const ElementData& data,
-                                      const ComputedStyle& next, float clock, bool firstResolve) {
+                                      const ComputedStyle& next, double clock, bool firstResolve) {
     const SceneInstance* inst = nullptr;
     if (m_sceneInstances != nullptr && data.scene != kInvalidScene &&
         data.sceneInstanceIndex < m_sceneInstances->size()) {

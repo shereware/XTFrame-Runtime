@@ -70,6 +70,11 @@ bool tryEnter(const NodeArena& arena, NodeId node, Vec2 pos, HitMode mode, HitFr
         return false;
     }
     const NodeCommon& c = arena.common(node);
+    // T-867: a node the Painter skips with its subtree (`Visible` 0, e.g. `visibility: hidden` in
+    // an @keyframes / @timeline key, 05 §5.4 T-229) is not hit either, nor is its subtree.
+    if (c.visible == 0) {
+        return false;
+    }
     Mat2x3 inv{};
     if (!invert(c.world, inv)) {
         return false;  // Singular transform: no point in this node's local space is well-defined.

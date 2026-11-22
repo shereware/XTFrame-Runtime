@@ -10,7 +10,7 @@
 #include "xt/effect_utils.h"         // EffectSlotName / effectSlotParamIndex (T-534).
 
 /// `.xtfx` custom effect assets (Docs/design/18-effects.md §18.7, Docs/tasks/T-203.md): the
-/// header (`name:`, `param`, `fallback:`, `expand:`, `---`), the HLSL-subset body parser and the
+/// header (`name:`, `param`, `fallback:`, `expand:`, `time:`, `---`), the HLSL-subset body parser and the
 /// GLSL 330 translation. Everything here is compile-time: `xtframe-compile` runs it when a
 /// stylesheet uses `custom("<asset>")`, the editor runs the header part to build the effect
 /// panel's parameter UI.
@@ -50,6 +50,10 @@ struct XtfxHeader {
     EffectDeclEntry fallback;
     /// `expand:` in local px (0 when absent).
     float expandPx = 0;
+    /// T-874 (Docs/design/59-visual-feedback.md §59.7 item 2): `time:`, the period `xtTime` wraps
+    /// at, as IrShaderRef stores it (xt::irShaderTimePeriod): 0 when absent (3600 s),
+    /// kIrShaderTimeUnbounded for `unbounded`, else whole seconds 1..65534.
+    uint16_t timePeriod = 0;
     /// T-532 (18.7): `blurb:`, the effect catalog's one-line description (trimmed, UTF-8; empty
     /// when absent; the last line wins). Read by the editor only: not in the IR or `ShaderRef`.
     std::string blurb;

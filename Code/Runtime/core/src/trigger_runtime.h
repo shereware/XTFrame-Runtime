@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "event_dispatcher.h"
+#include "xt/input_channels.h"
 #include "xt/ir_pod.h"
 #include "xt/timeline.h"
 #include "xt/types.h"
@@ -46,6 +47,27 @@ public:
     bool consumesOutsidePress(NodeId node) override;
     bool hasPointerDrag(NodeId node) override;
     uint32_t dropIndexOf(NodeId target, Vec2 pos, uint32_t targetItem, Vec2 fraction) override;
+    // T-871 (60 §60.3.3; trigger_pointer.cpp).
+    void onPointerSample(PointerSample kind, Vec2 pos) override;
+    bool consumesWheel(NodeId node) override;
+
+    /// T-873 (60 §60.3.2; trigger_channels.cpp): fires the `input(<channel>)`, `.press` and
+    /// `.release` triggers of the channels the Document's last commit changed, once each.
+    void fireChannels();
+
+    /// T-871: one element's `pointer.turn` / `pointer.grab` state of the press in progress, as a
+    /// snapshot keeps it (Document::snapshotState()).
+    struct TrackState {
+        std::string id;  // The element's (path) id.
+        float turn = 0;
+        Vec2 grab{};
+    };
+    /// T-871: the tracked elements' states while a press is in progress (empty otherwise).
+    std::vector<TrackState> trackStates() const;
+    /// T-871: after a restored pointer state: with a press in progress, the tracked elements start
+    /// again from `pos` with the turn and grab point of `states` (an element they do not list: 0
+    /// and its grab point at `press`); without one, nothing is tracked.
+    void restoreTracks(const std::vector<TrackState>& states, bool pressed, Vec2 pos, Vec2 press);
 
     /// Queues every trigger of `node` for `event` whose arguments match, then runs the queue unless
     /// deferred or already running. `value` is the compared value of an `if` (0 for T-174 events).
@@ -147,6 +169,11 @@ private:
         Vec2 pointer{};               // T-386: the firing pointer event's `pos` (root coordinates).
         uint8_t button = 0;           // T-390: the firing pointer event's PointerButton + 1, 0 = none.
         bool selfApplied = false;     // T-774: its self-control actions already ran.
+        // T-871 (60 §60.3.3): the pointer movement (summed over the events a frame coalesces), the
+        // press point, and a wheel event's (summed) delta.
+        Vec2 delta{};
+        Vec2 press{};
+        Vec2 wheel{};
     };
     struct Waiter {
         NodeId node = kInvalidNode;
@@ -161,7 +188,12 @@ private:
         NodeId group = kInvalidNode;  // T-201: the timeline group's scope element (root or instance).
         Vec2 pointer{};               // T-386: Job::pointer, carried across the wait.
         uint8_t button = 0;           // T-390: Job::button, carried across the wait.
+        Vec2 delta{};                 // T-871: Job::delta / press / wheel, carried across the wait.
+        Vec2 press{};
+        Vec2 wheel{};
     };
+    /// T-871: the Job that resumes `w` at its `next` action.
+    static Job resumeJob(const Waiter& w);
     enum class Outcome : uint8_t { Done, Wait, Stop };
 
     void runJob(const Job& job);
@@ -185,6 +217,35 @@ private:
                          NodeId& waitScope, NodeId& waitGroup);
     Outcome perform(NodeId node, const IrTriggerAction& action, StringId& waitTimeline, NodeId& waitScope,
                     NodeId& waitGroup, float value, uint32_t port, uint8_t player);
+
+    /// T-871 (trigger_pointer.cpp): the value of a set() / add() source read when the action runs
+    /// from the firing event (`pointer.*`, `event.dx` / `event.dy`); false for any other source.
+    bool runtimeSourceValue(uint8_t source, float arg2, float& out) const;
+    /// T-871: `node`'s border-box centre in root coordinates.
+    Vec2 centreOf(NodeId node) const;
+    /// T-871: the turn / grab state of the element whose (path) id is `id`, or null.
+    struct Tracker {
+        StringId id = kInvalidString;
+        NodeId node = kInvalidNode;
+        uint32_t generation = 0;
+        float lastAngle = 0;  // Degrees, -180..180.
+        float turn = 0;
+        Vec2 grab{};
+    };
+    const Tracker* trackerOf(StringId id) const;
+    /// T-873: one element's input-channel trigger (each (event, channel, player) once per element).
+    struct ChannelTrigger {
+        NodeId node = kInvalidNode;
+        uint32_t generation = 0;
+        TriggerEvent event = TriggerEvent::None;
+        StringId name = kInvalidString;  // IrTrigger::arg0.
+        uint8_t player = 0;              // IrTrigger::arg1.
+        ChannelId channel = kInvalidChannel;
+    };
+    std::vector<ChannelTrigger> m_channelTriggers;
+    /// T-873: lists `node`'s input-channel triggers (load(), bindNode()).
+    void indexChannelTriggers(NodeId node);
+    Tracker startTracker(StringId id, NodeId node, Vec2 pos, Vec2 press) const;
 
     /// `node` is the trigger's element (T-386: `if active` reads its state).
     bool condition(NodeId node, const IrTriggerAction& action, float value, uint32_t port) const;
@@ -242,6 +303,18 @@ private:
     // `pointer.local()` values of set()).
     Vec2 m_firePointer{};
     Vec2 m_runPointer{};
+    // T-871 (60 §60.3.3): the same for the pointer movement, the press point and a wheel's delta.
+    Vec2 m_fireDelta{};
+    Vec2 m_firePress{};
+    Vec2 m_fireWheel{};
+    Vec2 m_runDelta{};
+    Vec2 m_runPress{};
+    Vec2 m_runWheel{};
+    // T-871: the element ids `pointer.turn(#id)` / `pointer.grab(#id)` name (load()), and their
+    // state for the press in progress (m_tracking: a press is held).
+    std::vector<StringId> m_trackIds;
+    std::vector<Tracker> m_trackers;
+    bool m_tracking = false;
     // T-390 (08.13): the same for the pointer button (PointerButton + 1, 0 = none): trigger
     // button filters compare m_fireButton, `if button()` reads m_runButton.
     // T-393 (08.14): kFireExternal is OR-ed into both (and Job / Waiter::button) for a drag event

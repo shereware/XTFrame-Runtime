@@ -865,7 +865,8 @@ SimplifyStats flatten3DPass(CommandList& out, const CommandList& list, TextShape
 void copyListHeader(const CommandList& in, CommandList& out) {
     out.viewport = in.viewport;
     out.devicePixelRatio = in.devicePixelRatio;
-    out.time = in.time;  // Custom effects read it as xtTime.
+    out.time = in.time;                  // Custom effects read it as xtTime.
+    out.clockSeconds = in.clockSeconds;  // T-874: ... at their own `time:` period.
     // T-263d: every asset command a pass copies or derives keeps its `source` (the ImageQuadCmd
     // made from a DrawImage takes the image's), so the table goes along as it is.
     out.sources.assign(in.sources.begin(), in.sources.end());

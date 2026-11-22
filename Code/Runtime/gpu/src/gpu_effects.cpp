@@ -5,6 +5,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <vector>
 
 #include "effect_math.h"  // Code/Runtime/core/src: shared with xt::sw (T-414)
@@ -643,7 +644,10 @@ private:
         }
         CustomEffectParams cp{};
         cp.program = static_cast<float>(p.shader);
-        cp.time = m_in.time;
+        // T-874 (59 §59.7 item 2): the clock modulo this effect's own `time:` period.
+        uint16_t period = 0;
+        std::memcpy(&period, p._pad, sizeof(period));
+        cp.time = customEffectTime(m_in.clock, period);
         cp.layerW = static_cast<float>(std::max(1, m_window.w));
         cp.layerH = static_cast<float>(std::max(1, m_window.h));
         for (int i = 0; i < 16; ++i) {

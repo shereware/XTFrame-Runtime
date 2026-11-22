@@ -515,3 +515,7 @@ void setExternalTexturePlanes(std::string_view name, const ExternalPlanes& plane
 
 **升級須知（T-859，2026-11-22；下一個版本標起）**：`HostPreviewDevice` 新增 `setCommandList(const CommandList*)`（預設空實作，既有宿主不用改）。要讓宿主窗格（借宿主 GPU 裝置畫的編輯器預覽，17 §17.34a）跑自訂 shader，覆寫它並把列表交給自己的 `GpuDevice`，供 `prepareCustomEffect` 找該效果在宿主著色語言的來源；`nullptr` 表示這一幀結束、指標失效。另：宿主自己驅動的畫面，凡是 build 的入口（含預熱、讀回）都要先設好命令列表——漏設時自訂效果會被當成沒有來源；建議「沒有來源」不要快取成永久失敗。
 
+**升級須知（T-870，2026-11-22；下一個版本標起）**：`Context` 的時鐘以 `double` 保存與累加（長時間執行不再漂移：實測 3600.5 秒時 2 秒週期的動畫相位誤差由 0.795 秒降到 1 µs 以下）。`Context::update(float)`、`Context::clock()`（回傳轉成 `float` 的值）、`Document::update(float)` 與 C ABI 不變；新增 `Context::clockSeconds()`（原值）與 `Context::setClock(double)`。新載入的 Document 從 Context 目前的時鐘起算（原本首次 update 前是 0，晚載入的文件在首幀前 play 的時間軸會一口氣跳過整段時鐘）。直接使用 `Animator`／`StyleEngine` 的宿主：它們的 `clock` 參數與 `Transition::startClock` 改為 `double`（原始碼相容，需重新編譯）。自訂效果收到的時間對 3600 取餘（18 §18.7 補記）——宿主自己的 shader 包裝若另外累加時間，請改用 `CommandList::time`。
+
+**升級須知（T-874，2026-11-22；0.20.0 起）**：自訂效果的時間由前端依各效果的 `time:` 算好後寫進 `CustomEffectParams::time`（結構大小與欄位位移不變，176 B）。自己從 `CommandList` 包裝 shader 的宿主：改用 `customEffectTime(list.clockSeconds, ref.timePeriod)`（`command_list.h`）；沿用 `CommandList::time` 的宿主行為不變——每個 shader 都是預設的 3600 秒週期，`.xtfx` 的 `time:` 在該宿主不生效。`ShaderRef::_pad` 改名為 `timePeriod`（大小不變）；`CommandList` 多一個 `double clockSeconds`。`Document::load()` 多一個有預設值的 `startClock` 參數（`Context::loadDocument()` 會傳入目前的時鐘：帶 `autoplay` 的動畫在晚載入的文件上從 0 秒開始，不再跳過整段時鐘）。
+

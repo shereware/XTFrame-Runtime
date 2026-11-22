@@ -90,7 +90,7 @@ std::vector<FlowLintFinding> lint(const char* json) {
 
 TEST_CASE("lifecycle: the node type, its ports and the .xtflow round-trip") {
     std::span<const NodeTypeDesc> table = nodeTypeTable();
-    REQUIRE(table.size() == 24);
+    REQUIRE(table.size() == 25);  // T-873: `input` appended after it.
     CHECK(table[23].type == "lifecycle");
     CHECK(table[23].params.empty());
     CHECK(table[23].inputs.empty());

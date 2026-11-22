@@ -700,6 +700,7 @@ void BindingRuntime::load() {
         // T-585: sub-chain steps count too.
         b.usesCustom = chainUses(b.steps, static_cast<int>(ConverterOp::Custom));
         b.usesLocalize = chainUses(b.steps, static_cast<int>(ConverterOp::Localize));
+        setupChannel(b, static_cast<uint32_t>(i));  // T-873.
         // A final tween on an animatable Float/Length/Color property: an Animator transition.
         if (static_cast<BindTarget>(b.ir->target) == BindTarget::Prop && !isStylePropId(b.ir->targetId) &&
             b.ir->sceneNode == kBindElementSelf) {
@@ -742,6 +743,36 @@ void BindingRuntime::load() {
 }
 
 // -- Per frame ----------------------------------------------------------------------------------
+
+void BindingRuntime::setupChannel(Binding& b, uint32_t index) {
+    if (b.steps.empty() || b.steps[0].op != static_cast<uint8_t>(ConverterOp::Input) ||
+        converterArgKind(b.steps[0], 0) != ConverterArg::String) {
+        return;
+    }
+    uint32_t name = 0;
+    std::memcpy(&name, &b.steps[0].args[0], sizeof(name));
+    b.channel = m_doc.m_channels.intern(m_doc.string(name));
+    const float player = b.steps[0].args[1];
+    b.channelPlayer = player >= 0.0f && player < static_cast<float>(kMaxPlayers)
+                          ? static_cast<uint8_t>(player)
+                          : uint8_t{0};
+    if (b.channel == kInvalidChannel || b.templateOnly) {
+        return;
+    }
+    m_doc.m_channels.listen(b.channel);
+    if (std::find(m_channelBindings.begin(), m_channelBindings.end(), index) == m_channelBindings.end()) {
+        m_channelBindings.push_back(index);
+    }
+}
+
+void BindingRuntime::channelsChanged() {
+    for (uint32_t index : m_channelBindings) {
+        const Binding& b = m_bindings[index];
+        if (!b.free && m_doc.m_channels.moved(b.channel, b.channelPlayer)) {
+            markDirty(index);
+        }
+    }
+}
 
 void BindingRuntime::markDirty(uint32_t b) {
     if (b >= m_dirtyFlag.size()) {

@@ -51,6 +51,12 @@ constexpr TriggerEventRow kEventRows[] = {
     {{"state({0}).enter", 1, {K::State, K::Text}, false}, F::Coded, E::None},
     {{"state({0}).exit", 1, {K::State, K::Text}, false}, F::Coded, E::None},
     {{"key({0})", 1, {K::Text, K::Text}, false}, F::Coded, E::None},
+    {{"key({0}).release", 1, {K::Text, K::Text}, false}, F::Coded, E::None},  // T-871 (60 §60.3.2).
+    {{"wheel", 0, {K::Text, K::Text}, false}, F::Simple, E::Wheel},           // T-871 (60 §60.3.2).
+    // T-873 (60 §60.3.2): input channels.
+    {{"input({0})", 1, {K::Text, K::Text}, false}, F::Coded, E::None},
+    {{"input({0}).press", 1, {K::Text, K::Text}, false}, F::Coded, E::None},
+    {{"input({0}).release", 1, {K::Text, K::Text}, false}, F::Coded, E::None},
     {{"media({0}).end", 1, {K::Media, K::Text}, false}, F::Coded, E::None},   // T-191 (13.8.3).
     {{"item-enter", 0, {K::Text, K::Text}, false}, F::Simple, E::ItemEnter},  // T-177.
     {{"item-exit", 0, {K::Text, K::Text}, false}, F::Simple, E::ItemExit},    // T-177.
@@ -93,6 +99,7 @@ constexpr TriggerActionInfo kActions[] = {
     {"hide", true},    {"sound", false},  {"set", false},     {"emit", false},
     {"focus", false},  {"haptic", false}, {"spawn", false},   {"layer", false},
     {"remove", true},  {"reset", false},  {"consume", false},  // T-177, T-399, T-394.
+    {"add", false},                                            // T-871 (60 §60.3.4).
 };
 
 }  // namespace

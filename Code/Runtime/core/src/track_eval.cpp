@@ -7,6 +7,7 @@
 
 #include "xt/ir.h"
 #include "xt/ir_pod.h"
+#include "xt/property.h"
 #include "xt/timeline.h"
 
 /// Track evaluation (Docs/design/04-timeline.md §4.3) and Timeline <- IR conversion
@@ -61,55 +62,84 @@ uint32_t findSegmentIndex(const Track& track, const std::vector<Keyframe>& keyfr
     return idx;
 }
 
-}  // namespace
+/// T-869: the (px, %) parts of an Element translate value (Float / Length px = px, Length % = %,
+/// Vec2 = both), the form a base value and a key of another unit interpolate in; false otherwise.
+bool translateParts(const Value& v, Vec2& out) {
+    if (v.type == ValueType::Float) {
+        out = Vec2{v.f, 0};
+        return true;
+    }
+    if (v.type == ValueType::Length && v.len.unit == LengthUnit::Px) {
+        out = Vec2{v.len.value, 0};
+        return true;
+    }
+    if (v.type == ValueType::Length && v.len.unit == LengthUnit::Percent) {
+        out = Vec2{0, v.len.value};
+        return true;
+    }
+    if (v.type == ValueType::Vec2) {
+        out = v.v2;
+        return true;
+    }
+    return false;
+}
 
-Value evalTrack(const Timeline& timeline, const Track& track, float t, float* scratchFloats,
-                GradientStop* scratchStops, const Easing* overrideLinear,
-                std::span<const EasingPoint> easingPoints) {
+/// evalTrack() and evalTrackWithBase(): `base` (null for evalTrack) stands in for a Neutral key.
+Value evalTrackImpl(const Timeline& timeline, const Track& track, float t, const Value* base,
+                    float* scratchFloats, GradientStop* scratchStops, const Easing* overrideLinear,
+                    std::span<const EasingPoint> easingPoints) {
     if (track.kfCount == 0) {
         XT_ASSERT(false && "evalTrack: empty track");
         return Value::ofFloat(0);
     }
 
-    const Keyframe* base = timeline.keyframes.data() + track.kfOffset;
-    const Keyframe& first = base[0];
-    const Keyframe& last = base[track.kfCount - 1];
+    const Keyframe* keys = timeline.keyframes.data() + track.kfOffset;
+    const Keyframe& first = keys[0];
+    const Keyframe& last = keys[track.kfCount - 1];
 
     // T-255: a NaN would pass both boundary tests and the segment search would overrun. T-255b: NaN
     // and -Inf read as 0; +Inf is the end (the `t >= last.time` test below returns the last key).
     if (std::isnan(t) || t == -std::numeric_limits<float>::infinity()) {
         t = 0.0f;
     }
+    // T-869 (12 §12.3): a Neutral key reads as `base` when there is one (the property's value
+    // without this animation); without one (evalTrack) it stays Neutral, as before.
+    const bool substitute = base != nullptr && !base->isNeutral();
+    auto valueOf = [&](const Keyframe& kf) -> const Value& {
+        return substitute && kf.value.isNeutral() ? *base : kf.value;
+    };
     if (t <= first.time) {
-        return first.value;
+        return valueOf(first);
     }
     if (t >= last.time) {
-        return last.value;
+        return valueOf(last);
     }
 
     uint32_t i = findSegmentIndex(track, timeline.keyframes, t);
-    const Keyframe& kfA = base[i];
-    const Keyframe& kfB = base[i + 1];
+    const Keyframe& kfA = keys[i];
+    const Keyframe& kfB = keys[i + 1];
+    const Value& valueA = valueOf(kfA);
+    const Value& valueB = valueOf(kfB);
 
     // Neutral markers (Docs/design/12-compiler.md §12.3) have no real value to interpolate
-    // to/from (their type is Enum, unrelated to the track's real ValueType), so any segment
-    // touching one stays neutral for its whole span; the caller (Animator) then keeps the
-    // property's current base value instead of writing.
-    if (kfA.value.isNeutral() || kfB.value.isNeutral()) {
+    // to/from (their type is Enum, unrelated to the track's real ValueType). Without a base value
+    // to stand in, a segment touching one stays neutral for its whole span (the caller writes
+    // nothing); with one, only a segment whose two ends are both Neutral does.
+    if (valueA.isNeutral() || valueB.isNeutral()) {
         // Exactly on a declared stop, that stop's own value still applies: the neutral span covers
         // the interval leading to the marker, not the instant the real keyframe sits at. Without
         // this, seeking to the boundary of a trailing neutral span (e.g. t == 0.5 for
         // `0% {} 50% {} <neutral 100%>`) would write nothing at all (Docs/tasks/T-70.md B).
         // findSegmentIndex() guarantees kfA.time <= t < kfB.time, so kfA is the only such stop.
-        if (!kfA.value.isNeutral() && t == kfA.time) {
-            return kfA.value;
+        if (!valueA.isNeutral() && t == kfA.time) {
+            return valueA;
         }
         return Value::neutral();
     }
 
     // See Docs/design/04-timeline.md §4.3.
     if (kfA.easing.kind == EasingKind::Hold) {
-        return kfA.value;
+        return valueA;
     }
 
     float p = (t - kfA.time) / (kfB.time - kfA.time);
@@ -136,23 +166,56 @@ Value evalTrack(const Timeline& timeline, const Track& track, float t, float* sc
             break;
     }
 
-    if (track.type == ValueType::Vec2 && kfA.hasSpatial) {
+    // T-869: an Element's translate base in another unit than the key beside it (`translate(-50%)`
+    // against a px key) interpolates in the (px, %) form setProperty() takes; any other base of
+    // another type than the key (a Float against a Length) does not interpolate: CSS's discrete
+    // rule, the switch at 50%.
+    const bool mixedUnits = valueA.type != valueB.type ||
+                            (valueA.type == ValueType::Length && valueA.len.unit != valueB.len.unit);
+    if (mixedUnits && substitute && (kfA.value.isNeutral() || kfB.value.isNeutral()) &&
+        (track.prop == prop::TranslateX || track.prop == prop::TranslateY)) {
+        Vec2 a{};
+        Vec2 b{};
+        if (translateParts(valueA, a) && translateParts(valueB, b)) {
+            return Value::ofVec2(a + (b - a) * e);
+        }
+    }
+    if (valueA.type != valueB.type) {
+        return e < 0.5f ? valueA : valueB;
+    }
+    if (track.type == ValueType::Vec2 && kfA.hasSpatial && valueA.type == ValueType::Vec2) {
         Vec2 tanOut2 = Vec2{kfA.tanOut.x, kfA.tanOut.y};
         Vec2 tanIn2 = Vec2{kfA.tanIn.x, kfA.tanIn.y};
-        Vec2 p0 = kfA.value.v2;
+        Vec2 p0 = valueA.v2;
         Vec2 p1 = p0 + tanOut2;
-        Vec2 p3 = kfB.value.v2;
+        Vec2 p3 = valueB.v2;
         Vec2 p2 = p3 + tanIn2;
         return Value::ofVec2(cubicBezierPoint(p0, p1, p2, p3, e));
     }
-    if (track.type == ValueType::Vec3 && kfA.hasSpatial) {
-        Vec3 p0 = kfA.value.v3;
+    if (track.type == ValueType::Vec3 && kfA.hasSpatial && valueA.type == ValueType::Vec3) {
+        Vec3 p0 = valueA.v3;
         Vec3 p1 = Vec3{p0.x + kfA.tanOut.x, p0.y + kfA.tanOut.y, p0.z + kfA.tanOut.z};
-        Vec3 p3 = kfB.value.v3;
+        Vec3 p3 = valueB.v3;
         Vec3 p2 = Vec3{p3.x + kfA.tanIn.x, p3.y + kfA.tanIn.y, p3.z + kfA.tanIn.z};
         return Value::ofVec3(cubicBezierPoint(p0, p1, p2, p3, e));
     }
-    return lerpValue(kfA.value, kfB.value, e, scratchFloats, scratchStops);
+    return lerpValue(valueA, valueB, e, scratchFloats, scratchStops);
+}
+
+}  // namespace
+
+Value evalTrack(const Timeline& timeline, const Track& track, float t, float* scratchFloats,
+                GradientStop* scratchStops, const Easing* overrideLinear,
+                std::span<const EasingPoint> easingPoints) {
+    return evalTrackImpl(timeline, track, t, nullptr, scratchFloats, scratchStops, overrideLinear,
+                         easingPoints);
+}
+
+Value evalTrackWithBase(const Timeline& timeline, const Track& track, float t, const Value& base,
+                        float* scratchFloats, GradientStop* scratchStops, const Easing* overrideLinear,
+                        std::span<const EasingPoint> easingPoints) {
+    return evalTrackImpl(timeline, track, t, &base, scratchFloats, scratchStops, overrideLinear,
+                         easingPoints);
 }
 
 bool evalTrackDirection(const Timeline& timeline, const Track& track, float t, Vec2& out,

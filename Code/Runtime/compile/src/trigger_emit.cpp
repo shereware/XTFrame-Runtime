@@ -15,7 +15,8 @@
 #include "trigger_tables.h"  // T-844: the event / action tables.
 #include "xt/compile/aliases.h"
 #include "xt/compile/validate.h"
-#include "xt/input.h"  // KeyCode, for `key(<k>)`.
+#include "xt/input.h"           // KeyCode, for `key(<k>)`.
+#include "xt/input_channels.h"  // T-873: key names, `input(<channel>)`.
 #include "xt/ir_pod.h"
 #include "xt/node.h"  // T-390: ElementState bits for `if state(<built-in>)`.
 
@@ -155,73 +156,18 @@ bool lexActions(std::string_view text, std::vector<Tok>& out, std::string& err) 
 // -- Keys -------------------------------------------------------------------------------------
 
 bool keyFromName(std::string_view name, uint32_t& out) {
-    struct Entry {
-        const char* name;
-        KeyCode code;
-    };
-    static constexpr Entry kNamed[] = {
-        {"Enter", KeyCode::Enter},
-        {"Escape", KeyCode::Escape},
-        {"Backspace", KeyCode::Backspace},
-        {"Tab", KeyCode::Tab},
-        {"Space", KeyCode::Space},
-        {"Delete", KeyCode::Delete},
-        {"Home", KeyCode::Home},
-        {"End", KeyCode::End},
-        {"Left", KeyCode::Left},
-        {"Right", KeyCode::Right},
-        {"Up", KeyCode::Up},
-        {"Down", KeyCode::Down},
-        {"ArrowLeft", KeyCode::Left},
-        {"ArrowRight", KeyCode::Right},
-        {"ArrowUp", KeyCode::Up},
-        {"ArrowDown", KeyCode::Down},
-        {"PageUp", KeyCode::PageUp},
-        {"PageDown", KeyCode::PageDown},
-        {"Insert", KeyCode::Insert},
-        {"F1", KeyCode::F1},
-        {"F2", KeyCode::F2},
-        {"F3", KeyCode::F3},
-        {"F4", KeyCode::F4},
-        {"F5", KeyCode::F5},
-        {"F6", KeyCode::F6},
-        {"F7", KeyCode::F7},
-        {"F8", KeyCode::F8},
-        {"F9", KeyCode::F9},
-        {"F10", KeyCode::F10},
-        {"F11", KeyCode::F11},
-        {"F12", KeyCode::F12},
-    };
-    for (const Entry& e : kNamed) {
-        if (name == e.name) {
-            out = static_cast<uint32_t>(e.code);
-            return true;
-        }
-    }
     if (name == "any") {  // T-573 (27.8): any non-modifier key, gamepad buttons included.
         out = kTriggerKeyAny;
         return true;
     }
-    // `A`..`Z` / `KeyA`..`KeyZ`, `0`..`9` / `Digit0`..`Digit9`.
-    std::string_view s = name;
-    if (s.size() == 4 && s.substr(0, 3) == "Key") {
-        s = s.substr(3);
-    } else if (s.size() == 6 && s.substr(0, 5) == "Digit") {
-        s = s.substr(5);
+    // T-873 (60 §60.2): the key names live in core (xt/input_channels.h), shared with `key.<name>`
+    // channels; they now include the modifiers, punctuation and the numeric keypad.
+    KeyCode code = KeyCode::Unknown;
+    if (!keyCodeFromName(name, code)) {
+        return false;
     }
-    if (s.size() == 1 && s[0] >= 'A' && s[0] <= 'Z') {
-        out = static_cast<uint32_t>(KeyCode::KeyA) + static_cast<uint32_t>(s[0] - 'A');
-        return true;
-    }
-    if (s.size() == 1 && s[0] >= '1' && s[0] <= '9') {
-        out = static_cast<uint32_t>(KeyCode::Key1) + static_cast<uint32_t>(s[0] - '1');
-        return true;
-    }
-    if (s.size() == 1 && s[0] == '0') {
-        out = static_cast<uint32_t>(KeyCode::Key0);
-        return true;
-    }
-    return false;
+    out = static_cast<uint32_t>(code);
+    return true;
 }
 
 /// Parses `<n>`, `<n>s` or `<n>ms` into seconds.
@@ -280,6 +226,9 @@ bool splitCall(std::string_view text, std::string_view name, std::string& arg, s
 
 /// T-386 (08.11): a set() value `pointer.fraction(#id).x|y` / `pointer.local(#id).x|y`, optionally
 /// followed by `| <converter> ...`. 0 = not a pointer value, 1 = parsed, -1 = malformed (`err`).
+/// T-871 (60 §60.3.3): also `pointer.delta[(#id)].x|y`, `pointer.fromPress[(#id)].x|y`,
+/// `pointer.angle|turn|distance(#id)` and `pointer.grab(#id).x|y`; `id` stays empty for the
+/// forms written without `(#id)`.
 int parsePointerValue(std::string_view text, SetSource& source, std::string& id, std::string& converters,
                       std::string& err) {
     if (text.rfind("pointer.", 0) != 0) {
@@ -301,20 +250,66 @@ int parsePointerValue(std::string_view text, SetSource& source, std::string& id,
             head.push_back(c);
         }
     }
-    std::string arg;
-    std::string_view rest;
-    const bool fraction = splitCall(head, "pointer.fraction", arg, rest);
-    if ((!fraction && !splitCall(head, "pointer.local", arg, rest)) || arg.size() < 2 || arg[0] != '#' ||
-        (rest != ".x" && rest != ".y")) {
-        err = "set() value \"" + std::string(text) +
-              "\": expected pointer.fraction(#<id>).x|.y or pointer.local(#<id>).x|.y";
-        return -1;
+    struct Form {
+        const char* name;
+        bool needsId;  // `(#id)` must be written.
+        bool axis;     // `.x` / `.y` must follow.
+        SetSource x;
+        SetSource y;
+    };
+    static constexpr Form kForms[] = {
+        {"pointer.fraction", true, true, SetSource::PointerFractionX, SetSource::PointerFractionY},
+        {"pointer.local", true, true, SetSource::PointerLocalX, SetSource::PointerLocalY},
+        {"pointer.delta", false, true, SetSource::PointerDeltaX, SetSource::PointerDeltaY},
+        {"pointer.fromPress", false, true, SetSource::PointerFromPressX, SetSource::PointerFromPressY},
+        {"pointer.grab", true, true, SetSource::PointerGrabX, SetSource::PointerGrabY},
+        {"pointer.angle", true, false, SetSource::PointerAngle, SetSource::PointerAngle},
+        {"pointer.turn", true, false, SetSource::PointerTurn, SetSource::PointerTurn},
+        {"pointer.distance", true, false, SetSource::PointerDistance, SetSource::PointerDistance},
+    };
+    const std::string expected = "set() value \"" + std::string(text) +
+                                 "\": expected pointer.fraction(#<id>).x|.y or pointer.local(#<id>).x|.y, "
+                                 "pointer.delta[(#<id>)].x|.y, pointer.fromPress[(#<id>)].x|.y, "
+                                 "pointer.angle|turn|distance(#<id>) or pointer.grab(#<id>).x|.y";
+    for (const Form& form : kForms) {
+        const std::string_view name = form.name;
+        if (head.compare(0, name.size(), name) != 0) {
+            continue;
+        }
+        const std::string_view after = std::string_view(head).substr(name.size());
+        if (!after.empty() && after[0] != '(' && after[0] != '.') {
+            continue;  // A longer name.
+        }
+        std::string arg;
+        std::string_view rest = after;
+        if (!after.empty() && after[0] == '(') {
+            if (!splitCall(head, name, arg, rest) || arg.size() < 2 || arg[0] != '#') {
+                err = expected;
+                return -1;
+            }
+            id = arg.substr(1);
+        } else if (form.needsId) {
+            err = expected;
+            return -1;
+        }
+        if (form.axis ? (rest != ".x" && rest != ".y") : !rest.empty()) {
+            err = expected;
+            return -1;
+        }
+        source = rest == ".y" ? form.y : form.x;
+        return 1;
     }
-    id = arg.substr(1);
-    const bool y = rest == ".y";
-    source = fraction ? (y ? SetSource::PointerFractionY : SetSource::PointerFractionX)
-                      : (y ? SetSource::PointerLocalY : SetSource::PointerLocalX);
-    return 1;
+    err = expected;
+    return -1;
+}
+
+/// T-871: the SetSource values read from the firing pointer event when the action runs (T-386's
+/// fraction / local and 60 §60.3.3's quantities).
+bool isPointerSource(uint8_t source) {
+    return (source >= static_cast<uint8_t>(SetSource::PointerFractionX) &&
+            source <= static_cast<uint8_t>(SetSource::PointerLocalY)) ||
+           (source >= static_cast<uint8_t>(SetSource::PointerDeltaX) &&
+            source <= static_cast<uint8_t>(SetSource::PointerGrabY));
 }
 
 /// T-411 (27 §27.2.3): whether a set() value is a bind-source expression, compiled per element by
@@ -450,14 +445,55 @@ bool parseEvent(std::string_view raw, ParsedEvent& out, std::string& err) {
     }
     std::string arg;
     std::string_view rest;
-    if (splitCall(text, "key", arg, rest) && rest.empty()) {
+    // T-871 (60 §60.3.2): `key(<k>).release` fires on the key-up.
+    if (splitCall(text, "key", arg, rest) && (rest.empty() || rest == ".release")) {
         if (!keyFromName(arg, out.key)) {
             err = "unknown key \"" + arg + "\" in key()";
             return false;
         }
-        out.event = TriggerEvent::Key;
+        const bool release = !rest.empty();
+        out.event = release ? TriggerEvent::KeyRelease : TriggerEvent::Key;
         out.arg0 = arg;
-        out.canonical = "key(" + std::to_string(out.key) + ")";
+        out.canonical = "key(" + std::to_string(out.key) + ")" + (release ? ".release" : "");
+        return true;
+    }
+    // T-873 (60 §60.3.2): `input(<channel>)`, `input(<channel>).press`, `.release` (the channel name
+    // may hold parentheses itself: `input(midi.cc(21))`, `input(player(1).pad.a)`).
+    if (text.rfind("input(", 0) == 0) {
+        size_t depth = 0;
+        size_t close = std::string::npos;
+        for (size_t i = 5; i < text.size(); ++i) {
+            if (text[i] == '(') {
+                ++depth;
+            } else if (text[i] == ')' && --depth == 0) {
+                close = i;
+                break;
+            }
+        }
+        const std::string_view tail =
+            close == std::string::npos ? std::string_view{} : std::string_view(text).substr(close + 1);
+        if (close == std::string::npos || (!tail.empty() && tail != ".press" && tail != ".release")) {
+            err = "expected input(<channel>), input(<channel>).press or input(<channel>).release";
+            return false;
+        }
+        std::string canonical;
+        uint8_t player = 0;
+        if (!parseChannelRef(std::string_view(text).substr(6, close - 6), canonical, player, &err)) {
+            return false;
+        }
+        ChannelKind kind = ChannelKind::Axis;
+        if (!tail.empty() && fixedChannelKind(canonical, kind) && kind != ChannelKind::Button) {
+            err = "input(" + canonical + ")" + std::string(tail) + ": " + canonical +
+                  " is not a button channel (.press / .release need one)";
+            return false;
+        }
+        out.event = tail.empty()       ? TriggerEvent::InputChange
+                    : tail == ".press" ? TriggerEvent::InputPress
+                                       : TriggerEvent::InputRelease;
+        out.arg0 = canonical;
+        out.key = player;
+        out.canonical = "input(" + (player != 0 ? "player(" + std::to_string(player) + ")." : std::string()) +
+                        canonical + ")" + std::string(tail);
         return true;
     }
     if (splitCall(text, "port", arg, rest) && rest.empty() && !arg.empty()) {
@@ -640,7 +676,17 @@ struct CallTriggerEmit {
 
 /// T-844: the forms of a `set()` value, read by the compiler (Emitter::setValue()) and by
 /// validateTriggerActions() alike.
-enum class SetValueForm : uint8_t { String, Toggle, Number, Pointer, ElementValue, EventValue, Source };
+/// T-871: EventAxis = `event.dx` / `event.dy` of a `wheel` trigger.
+enum class SetValueForm : uint8_t {
+    String,
+    Toggle,
+    Number,
+    Pointer,
+    ElementValue,
+    EventValue,
+    Source,
+    EventAxis
+};
 
 /// T-844: classifies a `set()` value (27.2.3; T-386 pointer values, T-392 `value`, T-411 bind
 /// sources). `number` receives a Number's value (`true` = 1, `false` = 0), `pointer` a Pointer's
@@ -671,6 +717,22 @@ bool parseSetValue(const Arg& v, SetValueForm& form, float& number, SetSource& p
         std::string id;
         return parsePointerValue(v.value, pointer, id, converters, err) == 1;
     }
+    if (v.value.rfind("event.dx", 0) == 0 || v.value.rfind("event.dy", 0) == 0) {
+        // T-871 (60 §60.3.2): a wheel trigger's summed deltas (checked per trigger event).
+        const std::string rest = trimCopyTriggerEmit(std::string_view(v.value).substr(8));
+        if (rest.empty() || rest[0] == '|') {
+            form = SetValueForm::EventAxis;
+            pointer = v.value[7] == 'x' ? SetSource::EventDx : SetSource::EventDy;
+            if (!rest.empty()) {
+                converters = trimCopyTriggerEmit(std::string_view(rest).substr(1));
+                if (converters.empty()) {
+                    err = "set() value \"" + v.value + "\": expected a converter after '|'";
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
     if (v.value.rfind("event.value", 0) == 0 || isElementValue(v.value)) {
         // T-392 (27.3.5): `value` is the trigger element's text (checked per trigger event).
         const bool element = v.value.rfind("event.value", 0) != 0;
@@ -693,11 +755,58 @@ bool parseSetValue(const Arg& v, SetValueForm& form, float& number, SetSource& p
     }
     err =
         "set() value must be a number, true, false, toggle, a quoted string, event.value [| "
-        "<converter> ...], value [| <converter> ...], pointer.fraction|local(#<id>).x|.y, "
+        "<converter> ...], event.dx, event.dy, value [| <converter> ...], "
+        "pointer.fraction|local(#<id>).x|.y, "
+        "pointer.delta|fromPress[(#<id>)].x|.y, pointer.angle|turn|distance(#<id>), "
+        "pointer.grab(#<id>).x|.y, "
         "port(<name>), item(<field>), item(), repeat.index or repeat.count [| <converter> ...], "
         "got \"" +
         v.value + "\"";
     return false;
+}
+
+/// T-871 (60 §60.3.4): the range of `add(<port>, <value>[, <min>, <max>[, wrap]])`.
+struct AddRange {
+    bool given = false;
+    bool wrap = false;
+    float min = 0;
+    float max = 0;
+};
+
+/// T-871: the argument shape of add() (makeAdd() and validateTriggerActions()); the value (args[1])
+/// is read by parseSetValue().
+bool parseAddArgs(const std::vector<Arg>& args, AddRange& out, std::string& err) {
+    if ((args.size() != 2 && args.size() != 4 && args.size() != 5) || !args[0].key.empty() ||
+        args[0].value.empty() || args[0].isString) {
+        err = "add() takes a port, a value and optionally min, max and wrap";
+        return false;
+    }
+    for (size_t i = 2; i < args.size(); ++i) {
+        if (!args[i].key.empty() || args[i].isString) {
+            err = "add() takes a port, a value and optionally min, max and wrap";
+            return false;
+        }
+    }
+    if (args.size() >= 4) {
+        if (!parseNumberTriggerEmit(args[2].value, out.min) ||
+            !parseNumberTriggerEmit(args[3].value, out.max)) {
+            err = "add() min and max must be numbers";
+            return false;
+        }
+        if (out.min > out.max) {
+            err = "add() min must not exceed max";
+            return false;
+        }
+        out.given = true;
+    }
+    if (args.size() == 5) {
+        if (args[4].value != "wrap") {
+            err = "add() takes wrap after min and max, got \"" + args[4].value + "\"";
+            return false;
+        }
+        out.wrap = true;
+    }
+    return true;
 }
 
 /// T-844: a `spawn()` `lifetime=` value, a positive time (makeSpawn() and validateTriggerActions()).
@@ -741,11 +850,17 @@ struct CompiledTrigger {
         std::string port;
         std::string converters;  // After `event.value |` (T-386: or a pointer value's `|`); empty = none.
         std::string source;      // T-411: a bind-source value (isSourceValue()), compiled per element.
+        bool add = false;        // T-871: an add() action (number ports only).
+        bool range = false;      // T-871: add()'s min / max (an Operands step after the converters).
+        float min = 0;
+        float max = 0;
     };
     // T-386 (08.11): (action index, `#id` text) of a `pointer.fraction()` / `pointer.local()` value.
     std::vector<std::pair<size_t, std::string>> pointerRefs;
-    bool usesElementValue = false;                             // T-392 (27.3.5): a set(..., value) action.
-    std::vector<SetPort> setPorts;                             // T-201: set() targets, resolved per element.
+    bool usesElementValue = false;  // T-392 (27.3.5): a set(..., value) action.
+    bool usesPointer = false;       // T-871: a pointer.* value (with or without id).
+    bool usesEventAxis = false;     // T-871: an event.dx / event.dy value.
+    std::vector<SetPort> setPorts;  // T-201: set() targets, resolved per element.
     std::vector<std::pair<size_t, std::string>> stateTargets;  // T-201: (action index, `#id`).
     struct SpawnRef {
         size_t slot = 0;
@@ -1327,8 +1442,9 @@ private:
         std::string_view text;  // T-201: the lexed text (set()'s raw value).
 
         /// T-201: `set(<port>, <value>)`'s value up to the closing ')', kept as raw text (it may
-        /// be `event.value | <converter>(...) ...`).
-        bool parseSetValue(CallTriggerEmit& out) {
+        /// be `event.value | <converter>(...) ...`). T-871: also add()'s value, which may be
+        /// followed by `, <min>, <max>[, wrap]` (`more`: a ',' ended it).
+        bool parseSetValue(CallTriggerEmit& out, bool& more) {
             const size_t first = pos;
             int depth = 0;
             while (cur().kind != Tk::End &&
@@ -1336,8 +1452,10 @@ private:
                 depth += cur().kind == Tk::LParen ? 1 : (cur().kind == Tk::RParen ? -1 : 0);
                 ++pos;
             }
-            if (cur().kind != Tk::RParen || pos == first) {
-                err = "set() takes a port and a value";
+            more = cur().kind == Tk::Comma && out.name == "add";
+            if ((cur().kind != Tk::RParen && !more) || pos == first) {
+                err = out.name == "add" ? "add() takes a port, a value and optionally min, max and wrap"
+                                        : "set() takes a port and a value";
                 return false;
             }
             Arg arg;
@@ -1349,7 +1467,7 @@ private:
                     trimCopyTriggerEmit(text.substr(toks[first].pos, toks[pos].pos - toks[first].pos));
             }
             out.args.push_back(std::move(arg));
-            ++pos;  // ')'.
+            ++pos;  // ')' (or add()'s ',').
             return true;
         }
 
@@ -1393,9 +1511,17 @@ private:
                     ++pos;
                 }
                 out.args.push_back(std::move(arg));
-                if (cur().kind == Tk::Comma && out.name == "set" && out.args.size() == 1) {
+                if (cur().kind == Tk::Comma && (out.name == "set" || out.name == "add") &&
+                    out.args.size() == 1) {
                     ++pos;
-                    return parseSetValue(out);
+                    bool more = false;
+                    if (!parseSetValue(out, more)) {
+                        return false;
+                    }
+                    if (!more) {
+                        return true;
+                    }
+                    continue;  // T-871: add()'s min, max and wrap.
                 }
                 if (cur().kind == Tk::Comma) {
                     ++pos;
@@ -1989,6 +2115,9 @@ private:
         if (c.name == "set") {
             return makeSet(c, out, err);
         }
+        if (c.name == "add") {
+            return makeAdd(c, out, err);
+        }
         if (c.name == "spawn") {
             return makeSpawn(c, out, err);
         }
@@ -2084,6 +2213,32 @@ private:
         return setValue(c, out, converters, err);
     }
 
+    /// T-871 (60 §60.3.4): `add(<port>, <value>[, <min>, <max>[, wrap]])` -- set()'s value forms
+    /// except a string or `toggle`; the port (a number port) and the range step are resolved per
+    /// element (emitElements).
+    bool makeAdd(const CallTriggerEmit& c, IrTriggerAction& out, std::string& err) {
+        AddRange range;
+        if (!parseAddArgs(c.args, range, err)) {
+            return false;
+        }
+        CallTriggerEmit value = c;
+        value.args.resize(2);
+        std::string converters;
+        if (!setValue(value, out, converters, err)) {
+            return false;
+        }
+        if (out.flags == static_cast<uint8_t>(SetSource::String) ||
+            out.flags == static_cast<uint8_t>(SetSource::Toggle)) {
+            err = "add() takes a number value, got \"" + c.args[1].value + "\"";
+            return false;
+        }
+        out.kind = static_cast<uint8_t>(TriggerAction::Add);
+        if (range.given) {
+            out.flags = static_cast<uint8_t>(out.flags | kAddRange | (range.wrap ? kAddWrap : 0u));
+        }
+        return true;
+    }
+
     /// T-411: `sourceText` (may be null) receives a bind-source value (isSourceValue()), whose flags
     /// here are provisional (Port, Item, else Number); emitElements() compiles it per element.
     bool setValue(const CallTriggerEmit& c, IrTriggerAction& out, std::string& converters, std::string& err,
@@ -2118,8 +2273,15 @@ private:
                 out.flags = static_cast<uint8_t>(SetSource::Number);
                 out.arg2 = number;
                 break;
-            case SetValueForm::Pointer:
-                // T-386 (08.11): the element id (arg2) is resolved per element (emitElements).
+            case SetValueForm::Pointer: {
+                // T-386 (08.11): the element id (arg2) is resolved per element (emitElements);
+                // T-871: kInvalidString for a form written without `(#id)`.
+                out.flags = static_cast<uint8_t>(pointer);
+                const uint32_t none = kInvalidString;
+                std::memcpy(&out.arg2, &none, sizeof(none));
+                break;
+            }
+            case SetValueForm::EventAxis:  // T-871: `event.dx` / `event.dy`.
                 out.flags = static_cast<uint8_t>(pointer);
                 break;
             case SetValueForm::ElementValue:
@@ -2246,7 +2408,14 @@ private:
         out.trigger.arg1 = kInvalidString;
         switch (ev.event) {
             case TriggerEvent::Key:
+            case TriggerEvent::KeyRelease:  // T-871.
                 out.trigger.arg0 = ev.key;
+                break;
+            case TriggerEvent::InputChange:  // T-873: the canonical channel name and the player.
+            case TriggerEvent::InputPress:
+            case TriggerEvent::InputRelease:
+                out.trigger.arg0 = m_writer.intern(ev.arg0);
+                out.trigger.arg1 = ev.key;
                 break;
             case TriggerEvent::Port:
                 out.trigger.arg0 = m_writer.intern(ev.arg0);
@@ -2371,25 +2540,41 @@ private:
                         }
                     }
                 }
-                if (act.kind == static_cast<uint8_t>(TriggerAction::Set)) {
+                const bool add = act.kind == static_cast<uint8_t>(TriggerAction::Add);  // T-871.
+                if (act.kind == static_cast<uint8_t>(TriggerAction::Set) || add) {
                     CompiledTrigger::SetPort sp;
                     sp.slot = slot;
                     sp.port = seq[k].args[0].value;
-                    IrTriggerAction scratch{};
+                    sp.add = add;
+                    CallTriggerEmit valueCall = seq[k];
                     std::string ignored;
-                    setValue(seq[k], scratch, sp.converters, ignored, &sp.source);
+                    if (add) {
+                        AddRange range;
+                        parseAddArgs(seq[k].args, range, ignored);
+                        sp.range = range.given;
+                        sp.min = range.min;
+                        sp.max = range.max;
+                        valueCall.args.resize(2);
+                    }
+                    IrTriggerAction scratch{};
+                    setValue(valueCall, scratch, sp.converters, ignored, &sp.source);
                     const bool sourceValue = !sp.source.empty();
                     out.setPorts.push_back(std::move(sp));
-                    if (act.flags == static_cast<uint8_t>(SetSource::ElementValue)) {
+                    const uint8_t source = add ? static_cast<uint8_t>(act.flags & kAddSourceMask) : act.flags;
+                    if (source == static_cast<uint8_t>(SetSource::ElementValue)) {
                         out.usesElementValue = true;  // T-392 (27.3.5).
-                    } else if (!sourceValue &&
-                               act.flags >= static_cast<uint8_t>(SetSource::PointerFractionX) &&
-                               act.flags <= static_cast<uint8_t>(SetSource::PointerLocalY)) {
-                        SetSource source = SetSource::PointerFractionX;
+                    } else if (!sourceValue && isPointerSource(source)) {
+                        out.usesPointer = true;
+                        SetSource parsed = SetSource::PointerFractionX;
                         std::string id;
                         std::string conv;
-                        parsePointerValue(seq[k].args[1].value, source, id, conv, ignored);
-                        out.pointerRefs.emplace_back(slot, id);  // Resolved per element.
+                        parsePointerValue(valueCall.args[1].value, parsed, id, conv, ignored);
+                        if (!id.empty()) {
+                            out.pointerRefs.emplace_back(slot, id);  // Resolved per element.
+                        }
+                    } else if (!sourceValue && (source == static_cast<uint8_t>(SetSource::EventDx) ||
+                                                source == static_cast<uint8_t>(SetSource::EventDy))) {
+                        out.usesEventAxis = true;
                     }
                 }
             }
@@ -2448,21 +2633,45 @@ private:
             return out;
         }
         // T-394 (08.15): `consume()` takes the press of an OutsidePress; nowhere else.
-        for (const IrTriggerAction& act : out.actions) {
-            if (act.kind == static_cast<uint8_t>(TriggerAction::Consume) &&
-                ev.event != TriggerEvent::OutsidePress) {
-                error(file,
-                      "invalid actions for " + ev.canonical + ": consume() is only valid in outsidepress",
-                      line, col);
-                return out;
+        // T-871 (60 §60.3.2): and in `wheel`, only as the unconditional head of the first statement.
+        for (size_t a = 0; a < out.actions.size(); ++a) {
+            if (out.actions[a].kind != static_cast<uint8_t>(TriggerAction::Consume) ||
+                ev.event == TriggerEvent::OutsidePress) {
+                continue;
             }
-        }
-        // T-386 (08.11): `pointer.fraction()` / `pointer.local()` read the firing pointer event.
-        if (!out.pointerRefs.empty() && !isPointerTriggerEvent(ev.event)) {
+            if (ev.event == TriggerEvent::Wheel) {
+                if (a != 0) {
+                    error(file,
+                          "invalid actions for " + ev.canonical +
+                              ": in wheel, consume() must come first, outside any if",
+                          line, col);
+                    return out;
+                }
+                continue;
+            }
             error(file,
                   "invalid actions for " + ev.canonical +
-                      ": pointer.fraction() / pointer.local() are only valid in pointer triggers (press, "
-                      "release, click, dblclick, hover, leave, pointermove, pointercancel, pointerdrag)",
+                      ": consume() is only valid in outsidepress and at the start of wheel",
+                  line, col);
+            return out;
+        }
+        // T-386 (08.11): `pointer.fraction()` / `pointer.local()` read the firing pointer event;
+        // T-871: so do the other pointer.* values.
+        if (out.usesPointer && !isPointerTriggerEvent(ev.event)) {
+            error(file,
+                  "invalid actions for " + ev.canonical +
+                      ": pointer values (pointer.fraction(), pointer.local(), pointer.delta ...) are only "
+                      "valid "
+                      "in pointer triggers (press, release, click, dblclick, hover, leave, pointermove, "
+                      "pointercancel, pointerdrag)",
+                  line, col);
+            return out;
+        }
+        // T-871 (60 §60.3.2): `event.dx` / `event.dy` are a wheel trigger's.
+        if (out.usesEventAxis && ev.event != TriggerEvent::Wheel) {
+            error(file,
+                  "invalid actions for " + ev.canonical +
+                      ": event.dx / event.dy are only valid in wheel triggers",
                   line, col);
             return out;
         }
@@ -2682,9 +2891,10 @@ private:
                 for (const CompiledTrigger::SetPort& sp : ct.setPorts) {
                     // T-201: the port as seen from this element; its converters after the conditions.
                     const std::string where = "invalid actions for " + ct.canonical + ": ";
+                    const std::string fn = sp.add ? "add()" : "set()";  // T-871.
                     const int port = m_ports.resolve(sp.port, element);
                     if (port < 0) {
-                        error(ct.file, where + "set(): no port \"" + sp.port + "\" is declared here", ct.line,
+                        error(ct.file, where + fn + ": no port \"" + sp.port + "\" is declared here", ct.line,
                               ct.col);
                         condOk = false;
                         continue;
@@ -2697,6 +2907,12 @@ private:
                         error(ct.file,
                               where + "set() cannot set the call, list or struct port \"" + sp.port + "\"",
                               ct.line, ct.col);
+                        condOk = false;
+                        continue;
+                    }
+                    if (sp.add && static_cast<PortValueType>(decl.type) != PortValueType::Number) {
+                        error(ct.file, where + "add() needs a number port, \"" + sp.port + "\" is not one",
+                              ct.line, ct.col);  // T-871 (60 §60.3.4).
                         condOk = false;
                         continue;
                     }
@@ -2715,29 +2931,39 @@ private:
                         if (!compileActionValue(m_dom, m_ports, m_repeats, m_writer, element, sp.source,
                                                 value, err) ||
                             value.steps.size() > 0xFFFFu) {
-                            error(ct.file, where + "set(): " + (err.empty() ? "invalid value" : err), ct.line,
+                            error(ct.file, where + fn + ": " + (err.empty() ? "invalid value" : err), ct.line,
                                   ct.col);
                             condOk = false;
                             continue;
                         }
+                        if (sp.add && value.head == ActionValue::Head::String) {
+                            error(ct.file, where + "add() takes a number value", ct.line, ct.col);  // T-871.
+                            condOk = false;
+                            continue;
+                        }
+                        // T-871: an add()'s range bits stay (a set()'s flags have none).
+                        const auto withSource = [&act](SetSource s) {
+                            act.flags =
+                                static_cast<uint8_t>((act.flags & ~kAddSourceMask) | static_cast<uint8_t>(s));
+                        };
                         uint32_t bits = 0;
                         switch (value.head) {
                             case ActionValue::Head::Number:
-                                act.flags = static_cast<uint8_t>(SetSource::Number);
+                                withSource(SetSource::Number);
                                 act.arg2 = value.number;
                                 break;
                             case ActionValue::Head::String:
-                                act.flags = static_cast<uint8_t>(SetSource::String);
+                                withSource(SetSource::String);
                                 bits = m_writer.intern(value.text);
                                 std::memcpy(&act.arg2, &bits, sizeof(bits));
                                 break;
                             case ActionValue::Head::Port:
-                                act.flags = static_cast<uint8_t>(SetSource::Port);
+                                withSource(SetSource::Port);
                                 bits = static_cast<uint32_t>(value.port);
                                 std::memcpy(&act.arg2, &bits, sizeof(bits));
                                 break;
                             case ActionValue::Head::Item:
-                                act.flags = static_cast<uint8_t>(SetSource::Item);
+                                withSource(SetSource::Item);
                                 act.arg2 = 0;
                                 break;
                         }
@@ -2752,7 +2978,7 @@ private:
                         if (!compileConverterChain(m_dom, m_ports, m_writer, element, sp.converters, steps,
                                                    err) ||
                             steps.size() > 0xFFFFu) {
-                            error(ct.file, where + "set(): " + (err.empty() ? "invalid converters" : err),
+                            error(ct.file, where + fn + ": " + (err.empty() ? "invalid converters" : err),
                                   ct.line, ct.col);
                             condOk = false;
                             continue;
@@ -2760,6 +2986,18 @@ private:
                         act.arg0 = static_cast<uint32_t>(conditions.size());
                         act.extra = static_cast<uint16_t>(steps.size());
                         conditions.insert(conditions.end(), steps.begin(), steps.end());
+                    }
+                    if (sp.range) {
+                        // T-871: add()'s min / max, an Operands step right after its converters.
+                        IrConverterStep step{};
+                        step.op = static_cast<uint8_t>(ConverterOp::Operands);
+                        step.args[0] = sp.min;
+                        step.args[1] = sp.max;
+                        if (act.extra == 0) {
+                            act.arg0 = static_cast<uint32_t>(conditions.size());
+                        }
+                        conditions.push_back(step);
+                        act.extra = static_cast<uint16_t>(act.extra + 1u);
                     }
                 }
                 if (!condOk) {
@@ -2769,7 +3007,9 @@ private:
                 uint32_t condBase = static_cast<uint32_t>(out.conditions.size());
                 for (IrTriggerAction act : actions) {
                     if (act.kind == static_cast<uint8_t>(TriggerAction::If) ||
-                        (act.kind == static_cast<uint8_t>(TriggerAction::Set) && act.extra != 0)) {
+                        ((act.kind == static_cast<uint8_t>(TriggerAction::Set) ||
+                          act.kind == static_cast<uint8_t>(TriggerAction::Add)) &&
+                         act.extra != 0)) {
                         act.arg0 += condBase;
                     }
                     out.actions.push_back(act);
@@ -2961,6 +3201,24 @@ private:
             SetSource pointer = SetSource::PointerFractionX;
             std::string converters;
             return parseSetValue(c.args[1], form, number, pointer, converters, err);
+        }
+        if (c.name == "add") {  // T-871 (60 §60.3.4): as makeAdd().
+            AddRange range;
+            if (!parseAddArgs(c.args, range, err)) {
+                return false;
+            }
+            SetValueForm form = SetValueForm::Number;
+            float number = 0;
+            SetSource pointer = SetSource::PointerFractionX;
+            std::string converters;
+            if (!parseSetValue(c.args[1], form, number, pointer, converters, err)) {
+                return false;
+            }
+            if (form == SetValueForm::String || form == SetValueForm::Toggle) {
+                err = "add() takes a number value, got \"" + c.args[1].value + "\"";
+                return false;
+            }
+            return true;
         }
         if (c.name == "spawn") {  // T-201: a symbol and at / lifetime / timeline options.
             if (c.args.empty() || !plain(0) || c.args[0].value.empty()) {

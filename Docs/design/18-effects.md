@@ -392,3 +392,23 @@ T-544 把 `bind:effect.<效果>.<參數>` 做在第 0 層（`setProperty` 直寫
 
 面板與 op 不變。宿主的 HLSL 包裝仍待 CE 的渲染器單（23 章升級須知）。
 
+### 18.3.1 各效果的中性參數（2026-11-22；12 §12.3 效果關鍵幀補齊用）
+
+「中性」＝套上去與沒有這個效果的畫面相同。效果關鍵幀的序列一長一短（前綴或 `none`）時，短的那邊以它補齊再內插——`filter: none` → `blur(8px)` 因此是模糊半徑由 0 長到 8。
+
+| 效果 | 中性參數 |
+|---|---|
+| Blur | 半徑 0 |
+| DropShadow | 位移 0、模糊 0、擴張 0、顏色完全透明 |
+| Glow | 強度 0（其餘取另一端的值，內插時不變） |
+| Outline | 半徑 0、顏色完全透明 |
+| ColorAdjust | brightness 0、contrast 0、saturation 0、hue 0、opacity 1 |
+| Shine | 強度 0（其餘取另一端的值） |
+| BackdropBlur、GradientMask、`custom()` | **沒有中性參數**（BackdropBlur 半徑 0 仍會建立取樣層、GradientMask 沒有恆等的遮罩、自訂效果的參數語意未知）——含這些的序列不補齊，照 12 §12.3 給警告、不動畫 |
+
+「其餘取另一端的值」：補出來的那一端，除了表中列出的參數外，其他參數（顏色、角度、寬度等）複製另一端的值，所以內插時只有列出的參數在動。
+
+**§18.3.1 補記（T-872 #807，2026-11-22；認可的細節）**：ColorAdjust 的 invert、sepia 中性值也是 0。中性的顏色取另一端的 RGB、alpha 為 0（接近預乘內插的視覺結果）。補出來的效果，表外的參數複製自「前面最近一格有這個效果的」，沒有才取後面的。判定以**最長的那條序列**為準：每一格都必須是它的前綴；兩條較長的序列在共同前綴之後分岔（`blur shadow → blur → blur glow`）時整條軌警告、不動畫。效果動畫仍要求元素自己的 `effect` 列出最長的那條序列（軌道寫的是層疊產生的效果堆疊）。
+
+**§18.7 補記：`xtTime`（T-870 #808，2026-11-22；59 §59.7）**：`xtTime` 是文件時鐘（秒）**對 3600 取餘**——在 `double` 上取餘後才轉成 `float`（解析度約 0.24 ms），GL、wgpu 與交給宿主的 `CustomEffectParams` 讀同一個值（`CommandList::time`，常數 `kEffectTimePeriod`）。每 3600 秒歸零一次：週期能整除 3600 的效果看不出接縫，其他效果每小時有一次不連續。作者請避免依賴 `sin` 精度的雜湊（`frac(sin(x) * 大數)` 在不同的 GPU 與時鐘值下結果不穩）；`Assets/Fx/starter.xtfx` 的註解附了一個不用 `sin` 的雜湊。標頭的 **`time: unbounded | <整數秒>`**（選用；T-874 #811；可帶 `s`；1～65534）設定這個效果的取餘週期：沒寫＝ 3600；`unbounded` 不取餘（精度由作者負責）。只收整數秒（IR 只有 16 位元可放；小數週期不支援——需要時取能整除的整數）。每個自訂效果的 `xtTime` ＝ `customEffectTime(CommandList::clockSeconds, ShaderRef::timePeriod)`；`CommandList::time` 仍是對 3600 取餘的值（給沒寫 `time:` 的效果與尚未跟進的宿主）；`CustomEffectParams` 的版面不變。
+

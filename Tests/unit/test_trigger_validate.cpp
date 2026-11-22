@@ -232,6 +232,8 @@ std::string sampleEvent(std::string pattern) {
         sub("{0}", "left");
     } else if (starts("key(")) {
         sub("{0}", "Enter");
+    } else if (starts("input(")) {
+        sub("{0}", "pad.a");  // T-873.
     } else if (starts("port(")) {
         sub("{0}", "p");
     } else if (starts("timeline(")) {

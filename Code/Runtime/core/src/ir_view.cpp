@@ -2263,19 +2263,24 @@ Status IrView::validateNoted(const IrView& view, RejectNote* note) {
             return Status::kInvalidIr;
         }
         const TriggerEvent ev = static_cast<TriggerEvent>(t.event);
+        // T-873: the input-channel events: arg0 = the channel name, arg1 = the player.
+        const bool channelEvent = ev == TriggerEvent::InputChange || ev == TriggerEvent::InputPress ||
+                                  ev == TriggerEvent::InputRelease;
         const bool stringArg = ev == TriggerEvent::Port || ev == TriggerEvent::TimelineEnd ||
-                               ev == TriggerEvent::TimelineMarker || ev == TriggerEvent::MediaEnd;
+                               ev == TriggerEvent::TimelineMarker || ev == TriggerEvent::MediaEnd ||
+                               channelEvent;
         const bool stateArg = ev == TriggerEvent::StateEnter || ev == TriggerEvent::StateExit;
         // T-175: a Port event's arg1 is a PORT index + 1 (0 / kInvalidString = none).
         // T-194: Gesture / Player / NavBlocked carry small codes, not StringIds.
         const bool codeArgs =
             ev == TriggerEvent::Gesture || ev == TriggerEvent::Player || ev == TriggerEvent::NavBlocked;
-        if ((ev == TriggerEvent::Player && t.arg0 >= kMaxPlayers) || t.button > 3) {
+        if ((ev == TriggerEvent::Player && t.arg0 >= kMaxPlayers) ||
+            (channelEvent && t.arg1 >= kMaxPlayers) || t.button > 3) {
             return Status::kInvalidIr;  // T-390: button = PointerButton + 1, 0 = any.
         }
         const bool portArg1Ok = ev == TriggerEvent::Port
                                     ? (t.arg1 == 0 || t.arg1 == kInvalidString || t.arg1 <= portCount)
-                                    : (codeArgs || validStringId(t.arg1, stringCount));
+                                    : (codeArgs || channelEvent || validStringId(t.arg1, stringCount));
         if ((stringArg && t.arg0 >= stringCount) || (stateArg && t.arg0 >= states.names().size()) ||
             !portArg1Ok) {
             return Status::kInvalidIr;
@@ -2342,19 +2347,39 @@ Status IrView::validateNoted(const IrView& view, RejectNote* note) {
                         return Status::kInvalidIr;
                     }
                     break;
-                case TriggerAction::Set: {
+                case TriggerAction::Set:
+                case TriggerAction::Add: {
                     // T-201: arg1 = PORT index + 1 (always declared); a String value is a StringId.
+                    // T-871: Add has Set's fields, its flags also carry kAddRange / kAddWrap.
+                    const bool add = static_cast<TriggerAction>(act.kind) == TriggerAction::Add;
+                    const uint8_t source = add ? static_cast<uint8_t>(act.flags & kAddSourceMask) : act.flags;
                     uint32_t bits = 0;
                     std::memcpy(&bits, &act.arg2, sizeof(bits));
                     // T-386: a pointer source's element id is a StringId too.
-                    const bool idBits = act.flags == static_cast<uint8_t>(SetSource::String) ||
-                                        (act.flags >= static_cast<uint8_t>(SetSource::PointerFractionX) &&
-                                         act.flags <= static_cast<uint8_t>(SetSource::PointerLocalY));
+                    const bool idBits = source == static_cast<uint8_t>(SetSource::String) ||
+                                        (source >= static_cast<uint8_t>(SetSource::PointerFractionX) &&
+                                         source <= static_cast<uint8_t>(SetSource::PointerLocalY));
+                    // T-871: 60 §60.3.3's pointer quantities: an element id or kInvalidString (none).
+                    const bool optionalIdBits = source >= static_cast<uint8_t>(SetSource::PointerDeltaX) &&
+                                                source <= static_cast<uint8_t>(SetSource::PointerGrabY);
                     // T-411: a Port source's arg2 bits are a PORT index.
-                    const bool portBits = act.flags == static_cast<uint8_t>(SetSource::Port);
-                    if (act.arg1 == 0 || act.arg1 > portCount || act.flags > kSetSourceLast ||
-                        (idBits && bits >= stringCount) || (portBits && bits >= portCount) ||
-                        (act.extra != 0 && !inPool(act.arg0, act.extra, trig.conditions().size()))) {
+                    const bool portBits = source == static_cast<uint8_t>(SetSource::Port);
+                    const auto conds = trig.conditions();
+                    // T-871: an Add's range is the last of its steps, an Operands step; no wrap without it;
+                    // a string or toggle value cannot be added.
+                    const bool range = add && (act.flags & kAddRange) != 0;
+                    const bool badAdd =
+                        add && (((act.flags & kAddWrap) != 0 && !range) ||
+                                source == static_cast<uint8_t>(SetSource::String) ||
+                                source == static_cast<uint8_t>(SetSource::Toggle) ||
+                                (range && (act.extra == 0 || !inPool(act.arg0, act.extra, conds.size()) ||
+                                           conds[act.arg0 + act.extra - 1u].op !=
+                                               static_cast<uint8_t>(ConverterOp::Operands))));
+                    if (act.arg1 == 0 || act.arg1 > portCount || source > kSetSourceLast ||
+                        (idBits && bits >= stringCount) ||
+                        (optionalIdBits && bits != kInvalidString && bits >= stringCount) ||
+                        (portBits && bits >= portCount) ||
+                        (act.extra != 0 && !inPool(act.arg0, act.extra, conds.size())) || badAdd) {
                         return Status::kInvalidIr;
                     }
                     break;

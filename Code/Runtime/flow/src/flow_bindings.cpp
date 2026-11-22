@@ -73,6 +73,8 @@ bool parseNodeType(std::string_view name, NodeType& out) {
         out = NodeType::Throttle;
     } else if (name == "lifecycle") {
         out = NodeType::Lifecycle;  // T-601.
+    } else if (name == "input") {
+        out = NodeType::Input;  // T-873.
     } else {
         return false;
     }
@@ -90,6 +92,8 @@ const char* requiredStringParam(NodeType type) {
             return "port";
         case NodeType::Timeline:
             return "name";
+        case NodeType::Input:
+            return "channel";  // T-873.
         default:
             return nullptr;
     }
@@ -612,6 +616,17 @@ bool nodePortInfo(NodeType type, const NodeDesc& node, const std::string& port, 
         case NodeType::Lifecycle:
             // T-601 (53 §53.102): driven by the Document's surface lifecycle; outputs only.
             if (isSource && (port == "shown" || port == "hidden")) {
+                outType = PortType::Pulse;
+                return true;
+            }
+            return false;
+        case NodeType::Input:
+            // T-873 (60 §60.3.5): driven by the Document's input channel; outputs only.
+            if (isSource && (port == "value" || port == "delta")) {
+                outType = PortType::Number;
+                return true;
+            }
+            if (isSource && (port == "pressed" || port == "released")) {
                 outType = PortType::Pulse;
                 return true;
             }
@@ -1173,6 +1188,21 @@ Status validateGraph(const FlowGraph& graph, Document* doc, std::vector<std::str
             }
         } else if (doc != nullptr && hasUi) {
             errors.push_back("node '" + node.id + "': 'ui' is only valid in the global flow");
+        }
+    }
+    // T-873 (60 §60.3.5): an `input` node's channel is a channel name (xt/input_channels.h).
+    for (const NodeDesc& node : graph.nodes) {
+        NodeType type;
+        if (!parseNodeType(node.type, type) || type != NodeType::Input) {
+            continue;
+        }
+        auto channel = node.params.find("channel");
+        std::string canonical;
+        uint8_t player = 0;
+        std::string why;
+        if (channel != node.params.end() && channel->second.type == PortType::String &&
+            !parseChannelRef(channel->second.s, canonical, player, &why)) {
+            errors.push_back("node '" + node.id + "': " + why);
         }
     }
     // T-601 (53 §53.102): `lifecycle` is the UI's own shown / hidden; the global flow has none.
@@ -2492,7 +2522,7 @@ void documentPortValue(const DocEndpointState& state, DocPort port, PortValue& v
     }
     v.type = PortType::Number;
     if (port == DocPort::Clock) {
-        v.n = static_cast<double>(state.clockAccum);
+        v.n = state.clockAccum;
         return;
     }
     // Everything below is expressed in the viewport box the document lays out into, which is the
@@ -2691,6 +2721,41 @@ void FlowRuntime::Impl::bindSource(DocEndpointState& state, uint32_t slot, uint3
     source.nowHome = strings.addBuffer();
     state.outputs[slot].tag = static_cast<uint32_t>(sources.size());
     sources.push_back(source);
+}
+
+void FlowRuntime::Impl::seedDeclaredPortSources(DocEndpointState& state) {
+    // T-867 (27 §27.3: a port starts at its declared default, in and out alike): a declared `out`
+    // port only reports changes, so without this an edge from it read the typed zero until the
+    // first set(). Its current value is delivered once, as part of the seeding (no `changed`),
+    // unless it is the typed zero, which is what the sinks hold before anything arrives.
+    Document* doc = liveDocument(state);
+    if (doc == nullptr) {
+        return;
+    }
+    const bool wasSeeding = seeding;
+    seeding = true;
+    for (uint32_t slot = 0; slot < state.outputs.size(); ++slot) {
+        DocOutput& output = state.outputs[slot];
+        if (output.owner != Endpoint::Owner::Port || output.type == PortType::Pulse ||
+            output.tag >= sources.size()) {
+            continue;
+        }
+        const PortId port = doc->lookupPort(declaredPortName(output.elementId, output.port));
+        if (port == kInvalidPort) {
+            continue;
+        }
+        const PortValue current = declaredPortValue(*doc, port, output.type);
+        if (valuesEqual(current, typedValue(output.type))) {
+            continue;  // The typed zero every sink already starts from: nothing to seed.
+        }
+        output.last = current;
+        output.hasLast = true;  // emitDocumentOutput()'s change filter starts from this value.
+        SourceBinding& source = sources[output.tag];
+        RtValue now;
+        assignFromPort(source.nowHome, now, output.last);
+        deliverExternal(source.external, source.state, now);
+    }
+    seeding = wasSeeding;
 }
 
 void FlowRuntime::Impl::applyToSink(uint32_t edgeIndex, const RtValue& v, const DocEndpointState* only) {

@@ -170,6 +170,7 @@ void FlowRuntime::Impl::bindUi(const std::string& uiId, Context& context, Docume
     uiDocs.push_back(std::move(ui));
     bindUiState(uiId, *state);
     resendCurrentValues(uiId, *state);  // T-583.
+    seedDeclaredPortSources(*state);    // T-867: this instance's out ports, as load() does.
 }
 
 void FlowRuntime::Impl::bindUiState(const std::string& uiId, DocEndpointState& state) {
@@ -242,7 +243,7 @@ void FlowRuntime::Impl::resendCurrentValues(const std::string& uiId, DocEndpoint
         if (current->type == kNoValue || current->type == PortType::Pulse) {
             continue;  // No value yet: nothing to resend.
         }
-        edgeLastFiredList[i] = docs.clockAccum;
+        edgeLastFiredList[i] = static_cast<float>(docs.clockAccum);
         applyToSink(static_cast<uint32_t>(i), *current, &state);
     }
 }

@@ -6364,3 +6364,82 @@ TEST_CASE("gpu: T-683 the builder picks the one-shape or the multi-shape box sha
     CHECK(first != std::string::npos);
     CHECK(dump.find(" multi=yes", first + 1) == std::string::npos);
 }
+
+// T-874 (Docs/design/59-visual-feedback.md §59.7 item 2): each custom effect's CustomEffectParams::time
+// is the clock modulo its own `.xtfx` `time:` period -- what the GL and wgpu wrappers (and a host's
+// device) upload as `xtTime`. Three squares in one list: `time: unbounded`, `time: 10`, no `time:`.
+TEST_CASE("gpu: T-874 each custom effect's xtTime follows its own time: header") {
+    const std::filesystem::path dir = xt::test::tempDir() / "xt_t874_time_gpu";
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+    std::filesystem::create_directories(dir, ec);
+    struct Fx {
+        const char* file;
+        const char* header;
+        const char* marker;  // in the shader body, so its GLSL module names it
+    };
+    const Fx fxs[3] = {
+        {"u.xtfx", "time: unbounded\n", "0.25"}, {"t.xtfx", "time: 10\n", "0.5"}, {"d.xtfx", "", "0.75"}};
+    std::string style;
+    std::string body;
+    for (int i = 0; i < 3; ++i) {
+        std::ofstream f(dir / fxs[i].file, std::ios::binary);
+        f << "fallback: none\n"
+          << fxs[i].header << "---\nfloat4 xtMain(XtInput i)\n{\n    return xtSample(i.uv) * "
+          << fxs[i].marker << " * frac(xtTime);\n}\n";
+        const std::string id(1, static_cast<char>('a' + i));
+        style += "#" + id + " { position: absolute; left: " + std::to_string(4 + 20 * i) +
+                 "px; top: 4px; width: 16px; height: 16px; background-color: #ffffff; effect: custom(\"" +
+                 fxs[i].file + "\"); }";
+        body += "<div id=\"" + id + "\"></div>";
+    }
+    const std::string xt =
+        "<xt><head><style>" + style + "</style></head><body style=\"padding: 0\">" + body + "</body></xt>";
+    compile::SourceFile file{"doc.xt", xt};
+    compile::CompileOptions options;
+    options.rootDir = dir.string();
+    const std::vector<uint8_t> ir =
+        compile::compileDocumentFromStrings(std::span<const compile::SourceFile>(&file, 1), "doc.xt", options)
+            .ir;
+    REQUIRE(!ir.empty());
+    {
+        FileAssetResolver assets(dir.string(), sw::decodeImageBytes);
+        NullTextShaper shaper;
+        Context ctx(ContextConfig{&shaper, &assets});
+        ctx.setViewport(Rect{0, 0, 64, 24}, 1.0f);
+        Result<DocumentHandle> handle = ctx.loadDocument(IrBlob{ir.data(), ir.size()}, false);
+        REQUIRE(handle.ok());
+        const Document* doc = ctx.document(handle.value());
+        // The xtTime of the pass whose module holds `marker`, at `clock`.
+        auto timeAt = [&](double clock, const char* marker) {
+            ctx.setClock(clock);
+            ctx.update(0.0f);
+            CommandList list;
+            ctx.render(list);
+            Built b;
+            b.device.customPrograms = true;
+            buildInto(b, list, 64, 24, &shaper, &assets, &doc->ir());
+            float found = -1.0f;
+            int passes = 0;
+            for (const DrawCmd& c : b.frame.cmds) {
+                if (c.shading != Shading::Effect || c.program != EffectProgram::Custom) continue;
+                ++passes;
+                CustomEffectParams cp{};
+                std::memcpy(&cp, &b.frame.params[c.paramIndex], sizeof(cp));
+                const size_t id = static_cast<size_t>(cp.program);
+                REQUIRE(id >= 1);
+                REQUIRE(id <= b.device.customGlsl.size());
+                if (hasText(b.device.customGlsl[id - 1], marker)) found = cp.time;
+            }
+            CHECK(passes == 3);
+            return found;
+        };
+        CHECK(timeAt(7200.5, "0.25") == 7200.5f);  // unbounded
+        CHECK(timeAt(7200.5, "0.5") == 0.5f);      // 7200.5 mod 10
+        CHECK(timeAt(7200.5, "0.75") == 0.5f);     // 7200.5 mod 3600
+        CHECK(timeAt(7212.5, "0.25") == 7212.5f);
+        CHECK(timeAt(7212.5, "0.5") == 2.5f);
+        CHECK(timeAt(7212.5, "0.75") == 12.5f);
+    }
+    std::filesystem::remove_all(dir, ec);
+}

@@ -173,6 +173,9 @@ struct xt_bundle {
 /// BundleContext + one HostPorts). It is also the ContextListener that reports onShown/onHidden.
 struct xt_surface : public xt::ContextListener {
     xt_bundle* owner = nullptr;
+    /// T-873 (capi_channels.cpp): xt_input_channel()'s process-wide id - 1 -> this surface's Context
+    /// channel id (0 = not looked up yet).
+    std::vector<uint32_t> channelIds;
     std::string uiId;
     xt::bundle::BundleSpec spec;
     // Teardown order (50.3): ports -> bundle context (with its flows) -> context; see teardown().

@@ -88,6 +88,19 @@ struct DocumentState {
         std::string hover;    // "" = none (or an element without an id).
         std::string pressed;
         bool inside = false;
+        // T-871 (60 §60.3.3): with a press in progress, its point and the `pointer.turn` /
+        // `pointer.grab` state of the tracked elements (written only then; absent = the press point
+        // is the position, the turns start at 0).
+        bool hasPress = false;
+        float pressX = 0;
+        float pressY = 0;
+        struct Track {
+            std::string id;
+            float turn = 0;
+            float grabX = 0;
+            float grabY = 0;
+        };
+        std::vector<Track> tracks;
     };
 
     std::vector<Port> ports;

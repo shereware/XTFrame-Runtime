@@ -565,10 +565,11 @@ struct MaskApplyParams {
 };
 
 /// `Custom` (T-203): `program` = the device's custom program id (exact as a float below 2^24);
-/// `time` = `CommandList::time` (`xtTime`); `layerW/H` = the pass window in surface pixels
-/// (`XtInput.layerSize`, `texelSize` = its reciprocal); `params`/`colors` = the effect's
-/// EffectInstance `params[16]` and `colors[4]` (RGBA; T-534), from which the device fills the
-/// parameter uniforms per xt::customParamSlots().
+/// `time` = `xtTime`: T-874 customEffectTime(CommandList::clockSeconds, the effect's
+/// ShaderRef::timePeriod) -- `CommandList::time` for an effect without a `.xtfx` `time:` header;
+/// `layerW/H` = the pass window in surface pixels (`XtInput.layerSize`, `texelSize` = its
+/// reciprocal); `params`/`colors` = the effect's EffectInstance `params[16]` and `colors[4]` (RGBA;
+/// T-534), from which the device fills the parameter uniforms per xt::customParamSlots().
 ///
 /// T-818 (Docs/design/18-effects.md §18.7.x) appended `localXf` and `boxW/H` after `colors`; the
 /// fields before them keep their offsets, so a custom GpuDevice that reads only those still works
@@ -588,6 +589,8 @@ struct CustomEffectParams {
     float localXf[6];
     float boxW, boxH;
 };
+// T-874: host engines mirror this block; its size and field offsets do not change.
+static_assert(sizeof(CustomEffectParams) == 44 * sizeof(float), "mirrored by hosts");
 
 /// T-202 `DrawKind::Particles`: `xf` = (a, b, c, d, e, f) maps particle space to surface pixels
 /// (x' = a x + c y + e, y' = b x + d y + f); `straight != 0` when `texture` holds straight alpha.

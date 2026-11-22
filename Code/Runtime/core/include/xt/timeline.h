@@ -213,6 +213,16 @@ Value evalTrack(const Timeline& timeline, const Track& track, float t, float* sc
                 GradientStop* scratchStops, const Easing* overrideLinear = nullptr,
                 std::span<const EasingPoint> easingPoints = {});
 
+/// T-869 (Docs/design/12-compiler.md §12.3): evalTrack() with `base` -- the property's value
+/// without this animation -- standing in for every Neutral keyframe, interpolated with the key on
+/// the other side of the segment (a type other than that key's switches at 50%). Only a segment
+/// whose two ends are both Neutral still returns Value::neutral(). A Neutral `base` is the same as
+/// evalTrack().
+Value evalTrackWithBase(const Timeline& timeline, const Track& track, float t, const Value& base,
+                        float* scratchFloats, GradientStop* scratchStops,
+                        const Easing* overrideLinear = nullptr,
+                        std::span<const EasingPoint> easingPoints = {});
+
 /// T-228 (31 §31.7.2, auto-orient): the direction of motion of `track` at `t`. A Vec2 track
 /// yields its spatial-bezier derivative (the chord for a plain segment, or when the derivative
 /// vanishes); a Float track yields its per-second chord slope in `out.x` (`out.y` = 0). Before the

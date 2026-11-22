@@ -77,6 +77,10 @@ struct PlayParams {
     /// T-747: 1 = a CSS `animation` item; its writes count as DirtyCause::Animation, every other
     /// instance's as DirtyCause::Timeline (57 §57.3).
     uint8_t css = 0;
+    /// T-872: 1 = every iteration runs from segEnd to segStart (CSS `animation-direction: reverse`;
+    /// with PingPong, `alternate-reverse`). Unlike a negative `speed` it keeps the delay, the
+    /// iteration count and the fill of a forward instance; only the direction of each pass flips.
+    uint8_t reverse = 0;
 };
 
 /// A dynamically created CSS-transition-style tween. See Docs/design/04-timeline.md §4.6.
@@ -90,8 +94,8 @@ struct Transition {
     Value from;
     /// Value at the end of the transition.
     Value to;
-    /// Clock time (seconds) the transition was added at.
-    float startClock;
+    /// Clock time (seconds) the transition was added at (T-870: double, as the Context clock).
+    double startClock;
     /// Seconds to wait before the transition starts.
     float delay;
     /// Transition duration in seconds.
@@ -131,18 +135,18 @@ public:
 
     /// Returns the new instance id (1-based; 0 is invalid; monotonically increasing, never reused),
     /// or 0 -- and starts nothing -- when `params.timeline` is not registered.
-    uint32_t play(const PlayParams& params, float clock);
+    uint32_t play(const PlayParams& params, double clock);
     /// Immediately removes the instance; fill is NOT applied. No-op for an invalid id.
     void stop(uint32_t id);
     /// Pauses the instance at `clock`. No-op for an invalid or already-finished id.
-    void pause(uint32_t id, float clock);
+    void pause(uint32_t id, double clock);
     /// Resumes a paused instance so its local time continues from where it was paused.
-    void resume(uint32_t id, float clock);
+    void resume(uint32_t id, double clock);
     /// Sets startClock so the given clock corresponds to localT, and resets the iteration count
     /// (treated as iteration 0).
-    void seek(uint32_t id, float localT, float clock);
+    void seek(uint32_t id, float localT, double clock);
     /// Keeps the current localT from jumping.
-    void setSpeed(uint32_t id, float speed, float clock);
+    void setSpeed(uint32_t id, float speed, double clock);
     /// T-616 (04 §4.13, a CSS `animation` item whose identity did not change): replaces the
     /// instance's delay, speed, durationScale, segment, loop, iterations, fill, layer and
     /// overrideEasing with `params`' (its timeline, local-to-arena table, self node and group are
@@ -150,7 +154,7 @@ public:
     /// elapsed (elapsedSeconds()): a new duration keeps the elapsed seconds, not the fraction, and
     /// an instance now past its last iteration finishes as its fill says on the next evaluate().
     /// The paused state is kept. False (nothing changed) for an unknown id or a timeline-less one.
-    bool updateParams(uint32_t id, const PlayParams& params, float clock);
+    bool updateParams(uint32_t id, const PlayParams& params, double clock);
     /// T-616 (04 §4.13 item 4, a `@keyframes` whose content changed): the instance plays
     /// `timeline` from now on at the same local time; a segment end at the old timeline's duration
     /// moves to the new one's. False for an unknown id or an unregistered `timeline`.
@@ -160,12 +164,12 @@ public:
     /// CSS animation), not counting paused time; negative while its delay runs. 0 for an unknown id.
     /// T-651: computed in double, where the float differences are exact, so setElapsedSeconds() at
     /// the same clock puts the instance back bit for bit (a state snapshot's frames stay identical).
-    double elapsedSeconds(uint32_t id, float clock) const;
+    double elapsedSeconds(uint32_t id, double clock) const;
     /// T-616: puts the instance at `seconds` of elapsedSeconds() (Document's runtime-state restore,
     /// 04 §4.13). Quiet: an instance this lands past its end counts as already finished (no
     /// onFinished), and no iteration or marker crossed by the jump is reported. No-op for an
     /// unknown id or a zero speed.
-    void setElapsedSeconds(uint32_t id, double seconds, float clock);
+    void setElapsedSeconds(uint32_t id, double seconds, double clock);
     /// T-616: true if the instance exists and is paused.
     bool isPaused(uint32_t id) const;
     /// True if the instance exists and is not finished.
@@ -173,7 +177,7 @@ public:
     /// True if the instance exists and is finished (still in the pool when fill has Forwards).
     bool isFinished(uint32_t id) const;
     /// Returns 0 if the instance does not exist.
-    float localTime(uint32_t id, float clock) const;
+    float localTime(uint32_t id, double clock) const;
     /// Docs/tasks/T-70.md: the wall-clock length of one iteration of the instance's played segment,
     /// in seconds, i.e. `(segEnd - segStart) * durationScale`. Returns 0 if the instance does not
     /// exist. Lets a caller map a position given in playback seconds onto the timeline's own
@@ -232,7 +236,7 @@ public:
     /// being walked, so they may play, stop or clear freely. A notification whose node was
     /// destroyed by an earlier callback is dropped; one raised inside a callback (a nested
     /// evaluate()) is delivered by the next evaluate().
-    void evaluate(float clock, NodeArena& arena);
+    void evaluate(double clock, NodeArena& arena);
     /// T-702 (19 §19.3): sets is3D = 1 again on every Element the last evaluate() wrote a PropId
     /// 16-22 to. A style resolve run after evaluate() in the same frame (Document::update's extra
     /// pass, e.g. for a `forwards` animation that just finished and stays in the pool) re-derives
@@ -323,7 +327,7 @@ public:
     };
     /// Every instance currently in the pool (active, paused or finished-with-fill), in play order.
     /// `localT` is each instance's local time at `clock`. See InstanceInfo.
-    std::vector<InstanceInfo> debugInstances(float clock) const;
+    std::vector<InstanceInfo> debugInstances(double clock) const;
 
 private:
     /// T-776: one program on one track component of an instance, with its last run.
@@ -344,7 +348,7 @@ private:
         const NodeId* localToArena = nullptr;
         uint32_t localCount = 0;
         NodeId selfNode = kInvalidNode;
-        float startClock = 0;
+        double startClock = 0;
         float delay = 0;
         float speed = 1;
         float durationScale = 1;
@@ -354,9 +358,10 @@ private:
         FillMode fill = FillMode::Forwards;
         uint8_t layer = 0;
         uint8_t group = 0;
-        uint8_t css = 0;  // T-747: PlayParams::css.
+        uint8_t css = 0;      // T-747: PlayParams::css.
+        uint8_t reverse = 0;  // T-872: PlayParams::reverse.
         uint8_t paused = 0;
-        float pausedAt = 0;
+        double pausedAt = 0;  // T-870: double, as the clocks (an infinite animation's grows).
         uint8_t finished = 0;
         // T-717: 1 once a group member held at its end stop has applied its values there (cleared
         // when it leaves the stop and by every call that moves or changes it); `heldSkipped` is 1
@@ -396,7 +401,7 @@ private:
         // T-545 tween state; all in the entry, so a tween allocates nothing.
         Value from;   // Valid when fromKnown.
         Value shown;  // The value the last evaluate() applied (valid when shownValid).
-        float startClock = 0;
+        double startClock = 0;
         float duration = 0;
         Easing easing{};
         uint8_t tweenState = 0;  // 0 = none, 1 = starts at the next evaluate(), 2 = running.
@@ -431,22 +436,62 @@ private:
         // True only for "not yet started, fill has no Backwards": the instance contributes
         // nothing this frame (no track writes, no marker/iteration events, no bookkeeping update).
         bool skip = false;
+        // T-869: in the delay of a Backwards fill (a Neutral start key writes nothing then).
+        bool beforeStart = false;
     };
 
-    LocalState computeLocalState(const Instance& inst, float clock) const;
+    // T-869 (12 §12.3): the base value a Neutral key of track `track` of instance `instance`
+    // stands in for, when it is read back from the node (a property the Animator writes over its
+    // only copy): `base` is the value seen when nothing but the cascade, a host or a layer below
+    // had written it since -- i.e. whenever the node's value is not the one `applied` after the
+    // last evaluate(). Entries of stopped instances are dropped by evaluate().
+    struct NeutralBase {
+        uint32_t instance = 0;
+        uint32_t track = 0;
+        NodeId node = kInvalidNode;
+        PropId prop = 0;
+        Value base{};
+        Value applied{};
+        uint8_t hasApplied = 0;
+        uint8_t used = 0;  // Read this evaluate(): `applied` is taken after step 5.
+    };
+
+    LocalState computeLocalState(const Instance& inst, double clock) const;
     // T-616: elapsedSeconds() / setElapsedSeconds() of one instance, and the event bookkeeping
     // after such a jump (`quietFinish`: an instance now past its end counts as notified).
-    float activeElapsed(const Instance& inst, float clock) const;
-    void setActiveElapsed(Instance& inst, float seconds, float clock);
-    void resyncAfterJump(Instance& inst, float clock, bool quietFinish);
+    double activeElapsed(const Instance& inst, double clock) const;
+    void setActiveElapsed(Instance& inst, double seconds, double clock);
+    void resyncAfterJump(Instance& inst, double clock, bool quietFinish);
+    /// T-870 (59 §59.7): the instance's elapsed seconds at `clock` (its paused position while
+    /// paused), in double as the clocks: a float holds an infinite animation's 36000 s to 4 ms.
+    static double elapsedAt(const Instance& inst, double clock) {
+        return inst.paused != 0 ? inst.pausedAt : (clock - inst.startClock - inst.delay) * inst.speed;
+    }
     Instance* findInstance(uint32_t id);
     const Instance* findInstance(uint32_t id) const;
     void growScratchForTimeline(const Timeline& tl);
     void growScratchFor(const Value& value);
     void growPendingCapacity(size_t additionalSlots);
     void growOrderCapacity();
+    /// `base`: T-869, evalTrackWithBase()'s stand-in for a Neutral key (null: evalTrack()).
     Value evalTrackAdvancing(const Timeline& tl, const Track& track, float t, const Easing* overrideLinear,
-                             size_t& floatCursor, size_t& stopCursor);
+                             size_t& floatCursor, size_t& stopCursor, const Value* base = nullptr);
+    /// T-869 (12 §12.3, 04 §4.7; animator_neutral.cpp): for a track with a Neutral end, the value
+    /// its Neutral key stands for -- what the property of `node` is without this instance: the
+    /// write a lower layer queued this evaluate() (a transition, an earlier instance), else an
+    /// Element's cascade value for a general property, else the node's value tracked by a
+    /// NeutralBase entry; scaled px, as the node holds it. Value::neutral() for a track without a
+    /// Neutral end, or when there is none (a pool-backed value, a missing effect).
+    Value neutralBase(const Instance& inst, const Timeline& tl, const Track& track, NodeId node,
+                      NodeArena& arena);
+    /// T-869: after step 5, the value each NeutralBase entry read this evaluate() now holds.
+    void neutralBasesApplied(const NodeArena& arena);
+    /// T-869: drops the NeutralBase entries of `instance`, or (0) of every instance not in the pool.
+    void dropNeutralBases(uint32_t instance);
+    /// T-869: a CSS animation that ends without a `forwards` fill leaves its Elements' general
+    /// properties (opacity, the transform components) at their cascade values again -- the restyle
+    /// that follows keeps those values apart from what the Animator wrote, so it would not.
+    void restoreCascadeValues(const Instance& inst, NodeArena& arena);
     void checkMarkers(Instance& inst, const LocalState& st, const NodeArena& arena);
     /// T-260a: calls the queued notifications (m_notes) after step 6.
     void dispatchNotes(const NodeArena& arena);
@@ -486,6 +531,7 @@ private:
     std::vector<Transition> m_transitions;
     std::vector<Override> m_overrides;  // Sorted by (node, prop); binary search.
     std::vector<Pending> m_pending;
+    std::vector<NeutralBase> m_neutralBases;  // T-869
     // T-228 auto-orient: per-node direction of motion gathered from this evaluate()'s Translate /
     // TranslateX / TranslateY tracks; resolved into NodeCommon::orientPathDeg after step 3.
     struct OrientDir {

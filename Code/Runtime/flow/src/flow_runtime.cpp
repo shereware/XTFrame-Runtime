@@ -312,7 +312,8 @@ Status FlowRuntime::Impl::loadGraph(const FlowGraph& graph, std::vector<std::str
             nodePortInfo(nodes[i].type, paramsOnly, port, /*isSource=*/true, t);
             valueList.push_back(typedValue(t));
         }
-        if (nodes[i].type == NodeType::Clock || nodes[i].type == NodeType::Timer) {
+        if (nodes[i].type == NodeType::Clock || nodes[i].type == NodeType::Timer ||
+            nodes[i].type == NodeType::Input) {  // T-873: read once per tick, after the update.
             timedNodes.push_back(static_cast<int>(i));
         }
     }
@@ -329,6 +330,7 @@ Status FlowRuntime::Impl::loadGraph(const FlowGraph& graph, std::vector<std::str
     loaded = true;
     seeding = true;
     seedInitialOutputs();
+    seedDeclaredPortSources(docs);  // T-867: after the nodes, so an edge's sink sees the port's value.
     seeding = false;
     return Status::kOk;
 }
@@ -377,6 +379,7 @@ Status FlowRuntime::Impl::rebind(Document& document, std::vector<std::string>& w
     edgeLastFiredList = std::move(keptLastFired);
     compileEdges();
     bindDocumentEndpoints();
+    seedDeclaredPortSources(docs);  // T-867: the new Document's out ports, as load() does.
     return Status::kOk;
 }
 
@@ -426,7 +429,9 @@ void FlowRuntime::Impl::tick(float dt) {
         const int idx = timedNodes[t];
         NodeRuntime& n = nodes[static_cast<size_t>(idx)];
         if (n.type == NodeType::Clock) {
-            pushNumberOutput(idx, 0, static_cast<double>(docs.clockAccum));
+            pushNumberOutput(idx, 0, docs.clockAccum);
+        } else if (n.type == NodeType::Input) {
+            tickInputNode(idx);  // T-873 (flow_nodes.cpp).
         } else if (n.type == NodeType::Timer && n.timerRunning) {
             // T-258a: (0, kMinTimerInterval) runs at kMinTimerInterval; 0, negative and non-finite
             // never fire.

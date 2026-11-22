@@ -45,6 +45,11 @@ void ShaderTable::build(const IrView& ir) {
         ref.expandPx = src.expandPx;
         static_assert(sizeof(EffectInstance) == sizeof(IrEffect));
         std::memcpy(static_cast<void*>(&ref.fallback), &src.fallback, sizeof(EffectInstance));
+        // T-874: `time:` rides in the IR fallback's padding; here it has a field of its own.
+        static_assert(kEffectTimeUnbounded == kIrShaderTimeUnbounded);
+        ref.timePeriod = irShaderTimePeriod(src);
+        ref.fallback._pad[0] = 0;
+        ref.fallback._pad[1] = 0;
         refs.push_back(ref);
     }
 }

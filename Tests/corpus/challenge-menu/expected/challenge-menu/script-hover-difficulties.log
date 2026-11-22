@@ -2,12 +2,12 @@
 ## step 1: frame 40 hover Recruit
 xtframe-view: port changed listShift = 0 (frame 9)
 xtframe-view: port changed panelShift = 0 (frame 9)
-xtframe-view: port changed nx = -0.790577 (frame 20)
+xtframe-view: port changed nx = -0.790578 (frame 20)
 xtframe-view: port changed ny = -0.394818 (frame 20)
 ## step 2: frame 80 hover Veteran
 xtframe-view: port changed listShift = 0 (frame 9)
 xtframe-view: port changed panelShift = 0 (frame 9)
-xtframe-view: port changed nx = -0.790577 (frame 20)
+xtframe-view: port changed nx = -0.790578 (frame 20)
 xtframe-view: port changed ny = -0.394818 (frame 20)
 xtframe-view: port changed nx = -0.444781 (frame 60)
 xtframe-view: port changed ny = -0.146394 (frame 60)

@@ -263,6 +263,8 @@ struct ShaderBuilder {
     float expandPx = 0;
     /// `fallback:` (`kind == None` = none).
     IrEffect fallback{};
+    /// T-874: `time:` (xt::irShaderTimePeriod's encoding; written into `fallback._pad`).
+    uint16_t timePeriod = 0;
     /// Compiler-only: the header's `name:` (empty = the asset file's stem).
     std::string name;
     /// Compiler-only: `params[i]`'s name, parallel to `params`.

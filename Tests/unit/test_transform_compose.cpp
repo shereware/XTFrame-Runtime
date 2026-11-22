@@ -227,8 +227,8 @@ TEST_CASE("transform compose: a 3D shear is a compile error") {
     CHECK(sink.all()[0].file == "t.xts");
 }
 
-// 05.5: a `%`/`em` translate cannot be folded into a matrix at compile time.
-TEST_CASE("transform compose: a non-px length in a reordered sequence is a compile error") {
+// 05.5 / T-869: a `%`/`em` translate after a rotation cannot be held by the translate component.
+TEST_CASE("transform compose: a non-px length after a rotation in a reordered sequence is a compile error") {
     compile::DiagnosticSink sink;
     bool ok = false;
     std::vector<compile::StyleDecl> decls = parseTransformDecl("rotate(30deg) translate(10%, 0px)", sink, ok);
@@ -236,7 +236,7 @@ TEST_CASE("transform compose: a non-px length in a reordered sequence is a compi
     CHECK(sink.hasErrors());
     CHECK(decls.empty());
     REQUIRE(sink.all().empty() == false);
-    CHECK(sink.all()[0].message.find("must be px") != std::string::npos);
+    CHECK(sink.all()[0].message.find("after a rotate or skew") != std::string::npos);
 }
 
 // 05.5: a decomposed skew beyond +/-89 degrees warns but still compiles.

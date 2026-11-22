@@ -865,6 +865,19 @@ bool RepeatController::sync(Repeat& r, uint32_t begin, uint32_t end) {
     return changed;
 }
 
+namespace {
+
+/// T-864 (25 §25.4.2): the ui-scale factor a `px` style written on `node` is multiplied by; a node
+/// whose style was never resolved (a fresh instance, a new spacer) inherits `parent`'s.
+float uiScaleOf(const NodeArena& arena, NodeId node, NodeId parent) {
+    const ElementData& data = arena.element(node);
+    const float s =
+        data.styleResolvedOnce != 0 ? data.style.uiScaleEff : arena.element(parent).style.uiScaleEff;
+    return s > 0.0f ? s : 1.0f;
+}
+
+}  // namespace
+
 bool RepeatController::setSpacers(Repeat& r) {
     if (!r.virtualize) {
         return false;
@@ -878,12 +891,17 @@ bool RepeatController::setSpacers(Repeat& r) {
     bool changed = false;
     NodeArena& arena = m_doc.m_arena;
     auto apply = [&](NodeId spacer, float value, float& last) {
-        if (spacer == kInvalidNode || !arena.alive(spacer) || value == last) {
+        if (spacer == kInvalidNode || !arena.alive(spacer)) {
             return;
         }
-        last = value;
-        ElementRef{&m_doc, spacer, arena.generation(spacer)}.setStyle("height: " + std::to_string(value) +
-                                                                      "px");
+        // T-864: `value` is logical px (rows measured from the layout); the `height` written is
+        // design px, which the cascade multiplies by the spacer's factor.
+        const float px = value / uiScaleOf(arena, spacer, r.element);
+        if (px == last) {
+            return;
+        }
+        last = px;
+        ElementRef{&m_doc, spacer, arena.generation(spacer)}.setStyle("height: " + std::to_string(px) + "px");
         changed = true;
     };
     apply(r.spacerBefore, before, r.spacerBeforeH);
@@ -1084,11 +1102,18 @@ bool RepeatController::afterLayout() {
             continue;
         }
         const uint32_t n = count(r);
+        // T-864: a ui-scale change (a window resize) changes every row's logical height, so the
+        // rows are measured again.
+        const float scale = arena.element(r.element).style.uiScaleEff;
+        if (r.itemHeight > 0 && r.itemHeightScale != scale) {
+            r.itemHeight = 0;
+        }
         if (r.itemHeight <= 0 && !r.live.empty() && arena.alive(r.live.front().nodes[0])) {
             const LayoutBox& box = arena.element(r.live.front().nodes[0]).box;
             const float h = box.height + box.margin.top + box.margin.bottom;
             if (h > 0) {
                 r.itemHeight = h;
+                r.itemHeightScale = scale;
             }
         }
         uint32_t a = 0;
@@ -1415,9 +1440,14 @@ bool RepeatController::spawn(NodeId node, uint32_t pool, Vec2 at, float lifetime
     const NodeId root = r->live.back().nodes[0];
     attachInstance(*r, r->live.back());
     const Rect origin = ElementRef{&m_doc, r->element, arena.generation(r->element)}.boundingBox();
+    // T-864 (25 §25.4.2): `at` and the box are logical (viewport) px, but a `left` / `top` px is
+    // design px that the cascade multiplies by the instance's factor, so the offset is written
+    // divided by it (otherwise the instance lands on origin + factor x (at - origin)). A fresh
+    // instance has no resolved style yet: it inherits the `<repeat>` element's factor.
+    const float s = uiScaleOf(arena, root, r->element);
     ElementRef{&m_doc, root, arena.generation(root)}.setStyle(
-        "position: absolute; left: " + std::to_string(at.x - origin.x) +
-        "px; top: " + std::to_string(at.y - origin.y) + "px; pointer-events: none");
+        "position: absolute; left: " + std::to_string((at.x - origin.x) / s) +
+        "px; top: " + std::to_string((at.y - origin.y) / s) + "px; pointer-events: none");
     // Evaluated once through a fresh lookup (a binding may spawn again), then frozen: a spawned
     // instance keeps the values it was spawned with. T-260b: looked up again after the
     // evaluation, which may have spawned (or removed) and so moved `live`.
@@ -1442,7 +1472,7 @@ bool RepeatController::spawn(NodeId node, uint32_t pool, Vec2 at, float lifetime
     return true;
 }
 
-void RepeatController::expireSpawned(float clock) {
+void RepeatController::expireSpawned(double clock) {
     const NodeArena& arena = m_doc.m_arena;
     for (size_t i = 0; i < m_spawned.size();) {
         const Spawned s = m_spawned[i];
@@ -1483,7 +1513,7 @@ bool RepeatController::needsStep() const {
     return false;
 }
 
-void RepeatController::step(float clock) {
+void RepeatController::step(double clock) {
     if (!m_spawned.empty()) {
         expireSpawned(clock);
     }
@@ -1514,7 +1544,7 @@ void RepeatController::step(float clock) {
     m_selfEnds.clear();  // Past the pass limit: the rest of those steps is dropped, as before.
 }
 
-bool RepeatController::stepPlayback(size_t i, float clock) {
+bool RepeatController::stepPlayback(size_t i, double clock) {
     const NodeArena& arena = m_doc.m_arena;
     Playback& pb = m_playbacks[i];
     if (!arena.alive(pb.scope) || arena.generation(pb.scope) != pb.scopeGeneration) {
@@ -1525,7 +1555,7 @@ bool RepeatController::stepPlayback(size_t i, float clock) {
     if (!pb.playing) {
         return true;
     }
-    float dt = (clock - pb.lastClock) * pb.rate;
+    float dt = static_cast<float>(clock - pb.lastClock) * pb.rate;  // T-870: the difference in double
     pb.lastClock = clock;
     dt = dt < 0 ? 0 : dt;
     bool ended = false;

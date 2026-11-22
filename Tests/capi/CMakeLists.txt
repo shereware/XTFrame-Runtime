@@ -76,6 +76,7 @@ add_executable(xt_capi_tests
     test_capi_partial.cpp
     test_capi_threads.cpp
     test_capi_perf.cpp  # T-750
+    test_capi_channels.cpp  # T-873
 )
 # T-689 (45 §45.8): the GPU target cases are exported with XTFrame-Backends and read from
 # XT_BACKENDS_SOURCE_DIR (the top-level CMakeLists.txt) in a build with xt_wgpu; without it

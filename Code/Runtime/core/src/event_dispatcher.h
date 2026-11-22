@@ -143,6 +143,9 @@ struct Listener {
     uint8_t dead = 0;
 };
 
+/// T-871 (60 §60.3.3): what a pointer input is, for TriggerSink::onPointerSample().
+enum class PointerSample : uint8_t { Press, Move, Release };
+
 /// Receives every event the dispatcher delivers, per visited node, after that node's listeners ran
 /// (T-174: Document's trigger runtime turns them into trigger events). Also told about a Checked
 /// toggle by the checkbox default action.
@@ -176,6 +179,13 @@ public:
     virtual uint32_t dropIndexOf(NodeId /*target*/, Vec2 /*pos*/, uint32_t targetItem, Vec2 fraction) {
         return targetItem == 0xFFFFFFFFu ? 0xFFFFFFFFu : targetItem + (fraction.y >= 0.5f ? 1u : 0u);
     }
+    /// T-871 (60 §60.3.3): every pointer press, move and release (`pos`, root coordinates), before
+    /// its events are dispatched (`pointer.turn` / `pointer.grab` follow the press from here).
+    virtual void onPointerSample(PointerSample /*kind*/, Vec2 /*pos*/) {}
+    /// T-871 (60 §60.3.2): true when one of `node`'s `on:wheel` triggers starts with an
+    /// unconditional `consume()` (asked after the Wheel was delivered, before a scroll container
+    /// above `node` takes it; the triggers themselves run later).
+    virtual bool consumesWheel(NodeId /*node*/) { return false; }
 
 protected:
     ~TriggerSink() = default;
@@ -202,6 +212,12 @@ public:
     /// T-201: the position of the last pointer move, press or release (viewport px), for
     /// `spawn(..., at=pointer)`.
     Vec2 pointerPosition() const { return m_lastPointer; }
+    /// T-871 (60 §60.3.3): the movement of the pointer input being handled (its position minus
+    /// the previous pointer move / press / release; zero for the first one, any other input and
+    /// outside handleInput()).
+    Vec2 inputDelta() const { return m_inputDelta; }
+    /// T-871: where the last PointerDown was (`pointer.fromPress`).
+    Vec2 pressPosition() const { return m_pressPos; }
     /// T-552 (27 §27.4.1): true between a pointer move over this document and the pointer leaving
     /// it (PointerLeave): the hover it set still stands at m_pointerPos.
     bool pointerIn() const { return m_pointerIn; }
@@ -266,6 +282,8 @@ public:
         NodeId hover = kInvalidNode;
         NodeId pressed = kInvalidNode;  // The element the press in progress is on.
         bool inside = false;            // pointerIn().
+        Vec2 press{};                   // T-871: the press point (pressPosition()).
+        bool hasPress = false;          // T-871: `press` is known (else a restore takes `pos`).
     };
     PointerState pointerState() const;
     /// Sets the pointer state directly, dispatching nothing: the Hover / Active state bits move to
@@ -572,6 +590,8 @@ private:
     bool m_pointerIn = false;     // T-552: see pointerIn().
     bool m_hoverStale = false;    // T-552: see markHoverStale().
     Vec2 m_lastPointer{};         // T-201: see pointerPosition().
+    Vec2 m_inputDelta{};          // T-871: see inputDelta().
+    bool m_hasPointer = false;    // T-871: m_lastPointer holds a pointer input's position.
     uint8_t m_pointerPlayer = 0;  // T-654: the player of the last pointer move / press / release.
     // T-201: the `draggable="axis-x"` element a pointer press is dragging along (drag_drop.cpp).
     NodeId m_axisDrag = kInvalidNode;

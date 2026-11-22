@@ -295,6 +295,7 @@ std::vector<uint8_t> reserialize(const IrView& view) {
             }
             sb.expandPx = ref.expandPx;
             sb.fallback = ref.fallback;
+            sb.timePeriod = irShaderTimePeriod(ref);  // T-874
             w.addShader(std::move(sb));
         }
     }

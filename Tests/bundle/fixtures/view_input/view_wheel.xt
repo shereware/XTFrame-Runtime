@@ -1,0 +1,34 @@
+<xt version="2">
+
+  <ports>
+    freq: number in = 100
+    sv: number in
+  </ports>
+
+  <body id="Root">
+    <div id="Dial" on:wheel="add(freq, event.value | scale(-0.1), 87.5, 108)"></div>
+    <div id="List" on:scroll="set(sv, event.value)"><div id="Rows"></div></div>
+  </body>
+
+  <layout>
+    #Dial {
+      position: absolute;
+      left: 0px;
+      top: 0px;
+      width: 100px;
+      height: 40px;
+    }
+    #List {
+      position: absolute;
+      left: 0px;
+      top: 50px;
+      width: 100px;
+      height: 100px;
+      overflow: auto;
+    }
+    #Rows {
+      width: 100px;
+      height: 400px;
+    }
+  </layout>
+</xt>

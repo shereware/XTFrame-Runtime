@@ -65,7 +65,7 @@ struct TimelineGroupRuntime {
     float t = 0;
     float rate = 1;
     /// Document clock of the last step.
-    float lastClock = 0;
+    double lastClock = 0;  // T-870: the Document clock is double.
     /// Animator instance per member (parallel to `members`; 0 = none).
     std::vector<uint32_t> memberInstances;
     /// T-190 (11.9): 1 for a member that is an inline `<svg>`'s scene timeline (seconds, played

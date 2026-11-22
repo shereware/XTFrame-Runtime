@@ -972,9 +972,19 @@ bool transformNeedsCompose(const Tok* toks, size_t count) {
     return needs;
 }
 
-/// Parses the whole sequence into 4x4-composable functions. Lengths must be px: a `%` or `em`
-/// translate cannot be folded into a matrix (its value depends on the box or font size).
-bool parseTransformFnList(const Tok* toks, size_t count, Diag* diag, std::vector<TransformFn>& out) {
+/// T-869: an x or y translate argument of a composed sequence that is not px (`%`, `em`, `rem`):
+/// it depends on the box or the font size, so it stays out of the matrix (`TransformFn` holds 0
+/// for it) and is added to the decomposed translate afterwards (parseTransformComposed()).
+struct UnitTranslate {
+    size_t fn = 0;  ///< Index in the function list of the translate it belongs to.
+    int axis = 0;   ///< 0 = x, 1 = y.
+    Length len{};
+};
+
+/// Parses the whole sequence into 4x4-composable functions. A z length must be px; an x / y
+/// translate length that is not px goes to `unitTranslates` (T-869).
+bool parseTransformFnList(const Tok* toks, size_t count, Diag* diag, std::vector<TransformFn>& out,
+                          std::vector<UnitTranslate>& unitTranslates) {
     Cursor cur(toks, count);
     while (!cur.atEnd()) {
         const std::string_view fn = cur.peek().text;
@@ -992,6 +1002,25 @@ bool parseTransformFnList(const Tok* toks, size_t count, Diag* diag, std::vector
                 return false;
             }
             v = len.value;
+            cur.advance();
+            return true;
+        };
+        // T-869: an x / y argument may also be `%`, `em` or `rem`, kept aside with its unit.
+        auto readXY = [&](float& v, int axis) -> bool {
+            Length len;
+            if (!parseLengthTok(cur.peek(), Dialect::Compiler, len)) {
+                return false;
+            }
+            if (len.unit == LengthUnit::Px) {
+                v = len.value;
+            } else if (len.unit == LengthUnit::Percent || len.unit == LengthUnit::Em ||
+                       len.unit == LengthUnit::Rem) {
+                v = 0;
+                unitTranslates.push_back(UnitTranslate{out.size(), axis, len});
+            } else {
+                nonPx = true;
+                return false;
+            }
             cur.advance();
             return true;
         };
@@ -1019,22 +1048,17 @@ bool parseTransformFnList(const Tok* toks, size_t count, Diag* diag, std::vector
         TransformFn f;
         if (transformCategory(fn) == 0) {
             f.kind = TransformFn::Kind::Translate;
-            float v = 0;
-            ok = readPx(v);
-            if (ok) {
-                if (iequals(fn, "translateX") || iequals(fn, "translate")) {
-                    f.a = v;
-                } else if (iequals(fn, "translateY")) {
-                    f.b = v;
-                } else if (iequals(fn, "translateZ")) {
-                    f.c = v;
-                } else {  // translate3d
-                    f.a = v;
-                    ok = comma() && readPx(f.b) && comma() && readPx(f.c);
-                }
-                if (ok && iequals(fn, "translate") && cur.peek().kind == TokKind::Comma) {
+            if (iequals(fn, "translateZ")) {
+                ok = readPx(f.c);
+            } else if (iequals(fn, "translateY")) {
+                ok = readXY(f.b, 1);
+            } else {
+                ok = readXY(f.a, 0);
+                if (ok && iequals(fn, "translate3d")) {
+                    ok = comma() && readXY(f.b, 1) && comma() && readPx(f.c);
+                } else if (ok && iequals(fn, "translate") && cur.peek().kind == TokKind::Comma) {
                     cur.advance();
-                    ok = readPx(f.b);
+                    ok = readXY(f.b, 1);
                 }
             }
         } else if (iequals(fn, "rotateX") || iequals(fn, "rotateY") || iequals(fn, "rotate") ||
@@ -1101,8 +1125,8 @@ bool parseTransformFnList(const Tok* toks, size_t count, Diag* diag, std::vector
             if (diag != nullptr) {
                 if (nonPx) {
                     diag->error(
-                        "transform sequence needs matrix composition, so its lengths must be px "
-                        "(% and em cannot be resolved at compile time): " +
+                        "transform sequence needs matrix composition, so its translateZ length must be px "
+                        "and its x / y lengths px, %, em or rem: " +
                         transformDeclText(toks, count));
                 } else {
                     diag->warn("invalid value for \"transform\": bad arguments to \"" + std::string(fn) +
@@ -1117,12 +1141,61 @@ bool parseTransformFnList(const Tok* toks, size_t count, Diag* diag, std::vector
     return true;
 }
 
+/// T-869: one axis of the decomposed translate -- the px part from the matrix plus the `%` / `em` /
+/// `rem` parts added after it. False when two units are left with a value (a component holds one).
+bool foldTranslateAxis(float px, const std::vector<UnitTranslate>& parts, const std::vector<TransformFn>& fns,
+                       int axis, Length& out) {
+    out = Length{px, LengthUnit::Px};
+    for (const UnitTranslate& part : parts) {
+        if (part.axis != axis) {
+            continue;
+        }
+        // The linear part of the functions before this translate scales it; parseTransformComposed()
+        // has already refused a rotation or skew there, so only the scales matter.
+        float factor = 1;
+        for (size_t k = 0; k < part.fn; ++k) {
+            if (fns[k].kind == TransformFn::Kind::Scale) {
+                factor *= axis == 0 ? fns[k].a : fns[k].b;
+            }
+        }
+        const float v = part.len.value * factor;
+        if (v == 0.0f) {
+            continue;
+        }
+        if (out.value == 0.0f || out.unit == part.len.unit) {
+            out = Length{(out.unit == part.len.unit ? out.value : 0.0f) + v, part.len.unit};
+        } else {
+            return false;
+        }
+    }
+    return true;
+}
+
 /// 05.5's slow path (T-120): compose the sequence into one 4x4 matrix and decompose it back into
-/// 03.3's component set, so any order is legal.
+/// 03.3's component set, so any order is legal. T-869: an x / y translate in `%`, `em` or `rem`
+/// stays out of the matrix and is added to the translate component in its own unit, which the
+/// fold resolves at run time against the element's border box or font size -- exact as long as
+/// no rotation or skew comes before it (only then is the translate a sum of per-axis parts).
 bool parseTransformComposed(const Tok* toks, size_t count, Diag* diag, std::vector<PropValue>& out) {
     std::vector<TransformFn> fns;
-    if (!parseTransformFnList(toks, count, diag, fns)) {
+    std::vector<UnitTranslate> unitTranslates;
+    if (!parseTransformFnList(toks, count, diag, fns, unitTranslates)) {
         return false;
+    }
+    for (const UnitTranslate& part : unitTranslates) {
+        for (size_t k = 0; k < part.fn; ++k) {
+            const TransformFn& f = fns[k];
+            const bool linear = f.kind != TransformFn::Kind::Translate && f.kind != TransformFn::Kind::Scale;
+            if (linear && (f.a != 0.0f || f.b != 0.0f)) {
+                if (diag != nullptr) {
+                    diag->error(
+                        "transform sequence has a % / em translate after a rotate or skew, which "
+                        "XTFrame cannot represent yet (put the translate first): " +
+                        transformDeclText(toks, count));
+                }
+                return false;
+            }
+        }
     }
     TransformComponents c;
     if (decomposeTransformSequence(fns.data(), fns.size(), c) != TransformDecomposeStatus::Ok) {
@@ -1136,7 +1209,21 @@ bool parseTransformComposed(const Tok* toks, size_t count, Diag* diag, std::vect
         diag->warn("transform sequence decomposes to a skew beyond +/-89 degrees: " +
                    transformDeclText(toks, count));
     }
+    Length tx{};
+    Length ty{};
+    if (!foldTranslateAxis(c.translateX, unitTranslates, fns, 0, tx) ||
+        !foldTranslateAxis(c.translateY, unitTranslates, fns, 1, ty)) {
+        if (diag != nullptr) {
+            diag->error(
+                "transform sequence leaves px and % / em together on one translate axis, which "
+                "XTFrame cannot represent yet: " +
+                transformDeclText(toks, count));
+        }
+        return false;
+    }
     pushComponents(c, out);
+    out[out.size() - 10].value = Value::ofLength(tx.value, tx.unit);  // TranslateX (pushComponents' order).
+    out[out.size() - 9].value = Value::ofLength(ty.value, ty.unit);   // TranslateY.
     return true;
 }
 

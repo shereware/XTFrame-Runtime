@@ -15,6 +15,7 @@
 #include "xt/command_list.h"
 #include "xt/event.h"
 #include "xt/input.h"
+#include "xt/input_channels.h"
 #include "xt/ir.h"
 #include "xt/layout.h"
 #include "xt/node_arena.h"
@@ -224,12 +225,11 @@ struct ElementRef {
     /// later setAttribute(). `id`/`class`/`style` are stored as their own fields and are NOT
     /// visible here (use id()/hasClass()); an absent attribute returns an empty view.
     std::string_view attribute(std::string_view name) const;
-    /// 05.2/13.3's "attributes with a meaning": `id` (element id), `class` (the whole class list),
-    /// `style` (setStyle), `disabled`/`checked` ("true" -> the matching ElementState), `value`
-    /// (setValue on an editable `input`). Anything else is stored verbatim. Returns
-    /// kUnsupported for `src` (assets are resolved at compile time; see Docs/tasks/T-35.md),
-    /// kInvalidArgument when !valid() or when `style`'s text has invalid declarations (the valid
-    /// ones still apply), else kOk.
+    /// 05.2/13.3's "attributes with a meaning": `id` (element id), `class` (the whole class list), `style`
+    /// (setStyle), `disabled`/`checked` ("true" -> the matching ElementState), `value` (setValue on an
+    /// editable `input`). Anything else is stored verbatim. Returns kUnsupported for `src` (assets are
+    /// resolved at compile time; see Docs/tasks/T-35.md), kInvalidArgument when !valid() or when `style`'s
+    /// text has invalid declarations (the valid ones still apply), else kOk.
     Status setAttribute(std::string_view name, std::string_view value);
 
     /// The text of this element's first Text child (its EditState value for an editable `input`).
@@ -242,13 +242,12 @@ struct ElementRef {
     /// kDirtyLayout. Routed through setValue() for an editable `input`.
     void setText(std::string_view text);
 
-    /// Parses `cssDeclarations` ("width: 200px; color: red") with core's runtime mini parser and
-    /// stores the result as this element's runtime declaration list, which cascades exactly like
-    /// the `style` attribute's (same specificity, applied after it). Replaces any previous
-    /// declaration of the same property, keeps the others, and marks kDirtyStyle (05.8's
-    /// propagation), so transitions trigger the same way they do for any other style change.
-    /// Returns kUnsupported when the text contains a `transition`/`animation` declaration (those
-    /// are compile-time only, 05.6; the declaration is ignored, the rest still applies),
+    /// Parses `cssDeclarations` ("width: 200px; color: red") with core's runtime mini parser and stores the
+    /// result as this element's runtime declaration list, which cascades exactly like the `style` attribute's
+    /// (same specificity, applied after it). Replaces any previous declaration of the same property, keeps
+    /// the others, and marks kDirtyStyle (05.8's propagation), so transitions trigger the same way they do
+    /// for any other style change. Returns kUnsupported when the text contains a `transition`/`animation`
+    /// declaration (those are compile-time only, 05.6; the declaration is ignored, the rest still applies),
     /// kInvalidArgument when a declaration could not be parsed (likewise ignored), else kOk.
     Status setStyle(std::string_view cssDeclarations);
     /// T-477 (27 §27.4.2 item 4): setStyle(`cssDeclarations`) for a text of `tmpl`'s shape (its
@@ -281,9 +280,8 @@ struct ElementRef {
     /// §17.7, Docs/tasks/T-59.md).
     Value computedStyleValue(uint16_t propOrStyleProp) const;
 
-    // Effects (Docs/design/18-effects.md §18.4, Docs/tasks/T-51b.md). The node's current, final
-    // effect stack (after the cascade -- see StyleEngine::resolve's effect cascade), not the
-    // declaration that produced it.
+    // Effects (Docs/design/18-effects.md §18.4, Docs/tasks/T-51b.md). The node's current, final effect stack
+    // (after the cascade -- see StyleEngine::resolve's effect cascade), not the declaration that produced it.
     /// Number of effects in this element's current effect stack; 0 when !valid().
     uint32_t effectCount() const;
     /// A copy of effect stack slot `index`; a default-constructed (kind == None) EffectInstance
@@ -304,13 +302,12 @@ struct ElementRef {
     /// This element's layout box (Docs/design/06-layout.md §6.2), all-zero when !valid().
     LayoutBox layoutBox() const;
 
-    /// Moves the document focus to this element (Document::setFocus). T-397 (08 §8.17):
-    /// kUnsupported, without touching the focus, for an element that is not laid out (`display:
-    /// none` on it or an ancestor) -- show it first, or focus it from `on:show="focus()"`;
-    /// kInvalidArgument when !valid(); else kOk. T-399 (08 §8.18): when a pending change may show
-    /// it this frame (a port set since the last update(), a restyle of the hiding element), kOk
-    /// and the focus moves in the next update() after style / layout -- or, still `display: none`
-    /// then, stays where it was (reported once in Document::warnings()).
+    /// Moves the document focus to this element (Document::setFocus). T-397 (08 §8.17): kUnsupported, without
+    /// touching the focus, for an element that is not laid out (`display: none` on it or an ancestor) -- show
+    /// it first, or focus it from `on:show="focus()"`; kInvalidArgument when !valid(); else kOk. T-399 (08
+    /// §8.18): when a pending change may show it this frame (a port set since the last update(), a restyle of
+    /// the hiding element), kOk and the focus moves in the next update() after style / layout -- or, still
+    /// `display: none` then, stays where it was (reported once in Document::warnings()).
     Status focus();
 
     /// A named node inside this `anim` element's instantiated scene (e.g. a Lottie layer name), or
@@ -408,12 +405,12 @@ public:
     Document(const Document&) = delete;
     Document& operator=(const Document&) = delete;
 
-    /// Opens `blob` (IrView::open with verifyCrc = false), then builds the Element/Text tree,
-    /// instantiates `anim` scenes and registers timelines. `takeOwnership == true` copies `blob`'s
-    /// bytes into Document-owned storage; otherwise the caller keeps it alive for the Document's
-    /// whole lifetime. On failure `out` is left untouched and a Status other than kOk is returned.
+    /// Opens `blob` (IrView::open, verifyCrc = false), builds the Element/Text tree, instantiates
+    /// `anim` scenes (autoplay ones start at `startClock`, T-874) and registers timelines. With
+    /// `takeOwnership` `blob`'s bytes are copied, else the caller keeps them alive for the Document's
+    /// lifetime. On failure `out` is left untouched and a Status other than kOk is returned.
     static Status load(IrBlob blob, bool takeOwnership, TextShaper* shaper, AssetResolver* assets,
-                       std::unique_ptr<Document>& out);
+                       std::unique_ptr<Document>& out, double startClock = 0.0);
 
     /// The document's immutable IR view (the loaded blob's parsed structure).
     const IrView& ir() const { return m_ir; }
@@ -460,40 +457,35 @@ public:
     ElementRef byId(std::string_view id) const;
     /// DOCT element index -> ElementRef; out-of-range returns an invalid ref.
     ElementRef elementAt(uint32_t docElementIndex) const;
-    /// StringId -> text. Ids below kRuntimeStringBase come from the immutable IR string table,
-    /// ids at or above it from this Document's runtime string pool (see intern()), ids at or above
-    /// kRuntimeTextBase from the Text nodes' own runtime text (ElementRef::setText; such a view is
-    /// valid until that node's text changes or the node is removed -- T-270b: so not across a
-    /// setText(), an update() or a port write, which may run a `bind:text` binding; copy it to keep
-    /// it. Such an id is no key for the text either: the slot is overwritten in place, and reused by
-    /// another node once this one is removed). An unknown id (including kInvalidString) returns an
-    /// empty view.
+    /// StringId -> text. Ids below kRuntimeStringBase come from the immutable IR string table, ids at or
+    /// above it from this Document's runtime string pool (see intern()), ids at or above kRuntimeTextBase
+    /// from the Text nodes' own runtime text (ElementRef::setText; such a view is valid until that node's
+    /// text changes or the node is removed -- T-270b: so not across a setText(), an update() or a port write,
+    /// which may run a `bind:text` binding; copy it to keep it. Such an id is no key for the text either: the
+    /// slot is overwritten in place, and reused by another node once this one is removed). An unknown id
+    /// (including kInvalidString) returns an empty view.
     std::string_view string(StringId id) const;
-    /// Docs/design/13-api.md §13.2's runtime string pool (01.7's exception rule): returns `s`'s
-    /// existing StringId when the IR string table or the runtime pool already holds it, otherwise
-    /// appends it to the runtime pool and returns its new id (kRuntimeStringBase + index). The
-    /// returned id stays valid for this Document's lifetime; the text it points at is stable
-    /// (std::deque, never reallocating its elements).
+    /// Docs/design/13-api.md §13.2's runtime string pool (01.7's exception rule): returns `s`'s existing
+    /// StringId when the IR string table or the runtime pool already holds it, otherwise appends it to the
+    /// runtime pool and returns its new id (kRuntimeStringBase + index). The returned id stays valid for this
+    /// Document's lifetime; the text it points at is stable (std::deque, never reallocating its elements).
     StringId intern(std::string_view s);
-    /// Docs/design/18-effects.md §18.4/T-51b: appends `effects`/`stops` to this Document's
-    /// runtime effect declaration pool (a separate, append-only pool from NodeArena::effects(),
-    /// which holds each node's final assigned stack), rebasing each entry's stopOffset/stopCount
-    /// from being relative to `stops` to indexing the pool's own stop storage -- mirrors
-    /// NodeArena::assignEffects()'s rebasing contract. Returns the ListRef Value to cascade for
-    /// it: `value.sid` is `kRuntimeEffectOffsetBit | (the appended sequence's start index)`
-    /// (mirrors intern()'s kRuntimeStringBase-tagged StringId), `value.floatCount` is
-    /// `effects.size()` (a ListRef Value has no second u32 slot the way an IrDecl's raw bytes do,
-    /// so the count rides along in that otherwise-unused field; see RuntimeStyleDecl). The pool
-    /// only grows -- 0.2 does not reclaim a sequence that stops being referenced by any
-    /// runtimeDecls (a known limitation, like compactEffects() not touching this pool either) --
-    /// so a returned offset never becomes invalid. ElementRef::setStyle's `effect:` declarations
-    /// and ElementRef::setEffects() do not use it (T-270a): they write into one segment per element
-    /// that is reused on every change and released with the element.
+    /// Docs/design/18-effects.md §18.4/T-51b: appends `effects`/`stops` to this Document's runtime effect
+    /// declaration pool (a separate, append-only pool from NodeArena::effects(), which holds each node's
+    /// final assigned stack), rebasing each entry's stopOffset/stopCount from being relative to `stops` to
+    /// indexing the pool's own stop storage -- mirrors NodeArena::assignEffects()'s rebasing contract.
+    /// Returns the ListRef Value to cascade for it: `value.sid` is `kRuntimeEffectOffsetBit | (the appended
+    /// sequence's start index)` (mirrors intern()'s kRuntimeStringBase-tagged StringId), `value.floatCount`
+    /// is `effects.size()` (a ListRef Value has no second u32 slot the way an IrDecl's raw bytes do, so the
+    /// count rides along in that otherwise-unused field; see RuntimeStyleDecl). The pool only grows -- 0.2
+    /// does not reclaim a sequence that stops being referenced by any runtimeDecls (a known limitation, like
+    /// compactEffects() not touching this pool either) -- so a returned offset never becomes invalid.
+    /// ElementRef::setStyle's `effect:` declarations and ElementRef::setEffects() do not use it (T-270a):
+    /// they write into one segment per element that is reused on every change and released with the element.
     Value declareRuntimeEffects(std::span<const EffectInstance> effects, std::span<const GradientStop> stops);
-    /// The runtime effect declaration pool appended to by declareRuntimeEffects(); bound into
-    /// StyleEngine at load time (document_load.cpp's StyleEngine::setRuntimeEffects call) so the
-    /// cascade can resolve a runtime `effect` ListRef's high-bit-tagged offset (xt/node.h's
-    /// kRuntimeEffectOffsetBit).
+    /// The runtime effect declaration pool appended to by declareRuntimeEffects(); bound into StyleEngine at
+    /// load time (document_load.cpp's StyleEngine::setRuntimeEffects call) so the cascade can resolve a
+    /// runtime `effect` ListRef's high-bit-tagged offset (xt/node.h's kRuntimeEffectOffsetBit).
     const std::vector<EffectInstance>& runtimeEffects() const { return m_runtimeEffects; }
     /// The gradient-stop pool referenced by runtimeEffects()' GradientMask entries.
     const std::vector<GradientStop>& runtimeEffectStops() const { return m_runtimeEffectStops; }
@@ -875,6 +867,7 @@ public:
     /// Docs/design/01-architecture.md §1.5 step 3, restricted to this task's subset: Animator
     /// evaluation, world transform update, dirty-flag clear.
     void update(float clock);
+    void updateAt(double clock);  ///< T-870 (59 §59.7): update() at Context's double clock.
     /// T-394 (08.15, 08 §8.17): runs the pending style, layout, virtualized `<repeat>` window and
     /// world-transform passes now, outside update(), so layout-dependent queries (boundingBox,
     /// maxScroll, scrollIntoView) see the changes made since the last frame (e.g. a `listInsert`).
@@ -950,6 +943,12 @@ public:
     void dispatchInput(const InputEvent& event);
     /// Topmost Element under `pos` (08.2); kInvalidNode if nothing hits (e.g. no root yet).
     NodeId hitTest(Vec2 pos) const;
+
+    /// T-873 (60 §60.5): channel `name`'s id in this Document's table (added when new; 0 = malformed), as an
+    /// InputEvent::Channel given to dispatchInput() names it. update() makes the input since the last frame
+    /// current in inputChannels(); without a Context, dispatchInput() moves the standard channels itself.
+    ChannelId inputChannel(std::string_view name);
+    const InputChannels& inputChannels() const { return m_channels; }  ///< T-873: the channel state.
 
     // 3D space (Docs/design/19-3d-space.md).
     /// Sets `node`'s NodeCommon::is3D (§19.3). Scene nodes only; an Element (whose is3D is
@@ -1148,7 +1147,7 @@ private:
     void setTimelineGroupPaused(size_t index, bool paused);  // T-573 (27.8): pause() / resume().
     void queueTimelineMarkers(size_t index, float from, float to, bool inclusiveFrom);
     void captureTimelineRestores(size_t index);
-    void stepTimelineGroups(float clock);
+    void stepTimelineGroups(double clock);
     bool advanceTimelineGroup(size_t index, float& dt, bool inclusive, bool cut);  // T-774
     void flushTimelineEvents();
     void forgetTimelineNode(NodeId node);
@@ -1173,7 +1172,7 @@ private:
     /// T-349 (27.2.4): the surface's `show` (true) / `hide` (false) triggers on the surface element
     /// and, when it is `<body>`, on each direct Element child in document order, in one trigger run.
     void fireSurfaceEvent(bool show);
-    void notifyInitialShow(float clock);  // T-603 (53 §53.102 item 8): the first show; T-605: pending.
+    void notifyInitialShow(double clock);  // T-603 (53 §53.102 item 8): the first show; T-605: pending.
     // T-397 (08 §8.17): requestShow() / requestHide() made while dispatching wait for the end of
     // the outermost dispatching call; trigger actions call applyShow() / applyHide() directly.
     static constexpr uint8_t kSurfaceRequestNone = 0, kSurfaceRequestShow = 1, kSurfaceRequestHide = 2;
@@ -1242,6 +1241,8 @@ private:
     // depth the DispatchGuard of every callback-running entry point counts; null when standalone.
     Context* m_context = nullptr;
     bool m_keyActivation = true;  // T-379: keyboardActivation().
+    InputChannels m_channels;     // T-873: the input channels (document_channels.cpp).
+    void commitChannels();  // T-873: at update(): fires `input(...)` triggers, marks `input()` bindings.
     // T-260a: Context::unloadDocument() was called for this Document while a dispatch was running;
     // it is freed once the outermost dispatching call returns. From the moment this is set the
     // Document is dead to the host: every host callback it would emit is skipped.
@@ -1274,7 +1275,7 @@ private:
     ExternalRequestListener m_externalRequestListener;
     bool m_externalPlaceholders = false;
     uint32_t m_sequencePreload = 8;
-    float m_mediaClock = 0;
+    double m_mediaClock = 0;
     bool m_mediaClockValid = false;
     /// Creates `element`'s External child from its attributes (document_load.cpp).
     void loadExternal(NodeId element);
@@ -1282,7 +1283,7 @@ private:
     /// (bit = 1 << ExternalSourceKind), else kInvalidNode.
     NodeId externalFor(NodeId node, uint32_t mask) const;
     /// Advances playing sequences, handles autoplay; before layout (update()).
-    void stepExternalMedia(float clock);
+    void stepExternalMedia(double clock);
     /// Sets a sequence's time and shown frame (preloading ahead while `preload`).
     void setSequenceTime(NodeId ext, float time, bool preload);
     /// Placeholder flags and labels, after layout (update()).
@@ -1300,12 +1301,12 @@ private:
     // T-202: particle emitters (particles.cpp).
     std::vector<NodeId> m_particleElements;  // `<particles>` elements, document order.
     bool m_particleEditorMode = false;
-    float m_particleClock = 0;
+    double m_particleClock = 0;
     bool m_particleClockValid = false;
     /// Creates `element`'s Particles child from its attributes (document_load.cpp).
     void loadParticles(NodeId element);
     /// Mirrors the element PropIds and advances every emitter to `clock`; after layout (update()).
-    void stepParticleNodes(float clock);
+    void stepParticleNodes(double clock);
     std::vector<Timeline> m_timelines;
     std::vector<SceneInstance> m_instances;
     std::vector<NodeId> m_docElementNodes;  // DOCT element index -> Element NodeId.
@@ -1317,7 +1318,7 @@ private:
     NodeId m_root = kInvalidNode;
     TextShaper* m_shaper = nullptr;
     AssetResolver* m_assets = nullptr;
-    float m_clock = 0;
+    double m_clock = 0;    // T-870: double, as Context's (59 §59.7).
     uint64_t m_frame = 0;  // T-650: update() calls (the snapshot's `clock.frame`).
     Rect m_viewport{};
     // T-176: setDevice()/setUiScale() state and the LengthEnv derived from them + m_viewport.
@@ -1484,14 +1485,14 @@ private:
     // evaluates them after the world transforms (dt = the clock difference), re-skins into
     // NodeArena's side table, and publishes the bones' `<id>.world` / `<id>.angle` ports.
     std::unique_ptr<std::vector<rig::RigState>> m_rigs;
-    float m_rigClock = 0;
+    double m_rigClock = 0;
     bool m_rigClockValid = false, m_rigsMoving = true;  // T-749: m_rigsMoving, see evaluateRigs()
     uint32_t m_rigBones = 0;       // Bones evaluated by the last update() (FrameStats::rigBones).
     uint32_t m_skinnedPoints = 0;  // Points skinned by the last update() (FrameStats::skinnedPoints).
     /// Builds m_rigs from the scene instances (document_load.cpp).
     void loadRigs();
     /// Evaluates every rig and refreshes the skinned geometry (update(), after the transforms).
-    void evaluateRigs(float clock);
+    void evaluateRigs(double clock);
     /// Writes the bone output ports (update(), at its end).
     void publishBonePorts();
 };

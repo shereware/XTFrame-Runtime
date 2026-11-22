@@ -106,4 +106,32 @@ if(TARGET xtframe-view)
         COMMAND $<TARGET_FILE:xtframe-view> "${_t627}" --headless --frames 1 --print-text L --port title "\"\"")
     xt_add_expect_exit_test(xtframe-view_t627_port_omitted CODE 0 OUTPUT "text=abc"
         COMMAND $<TARGET_FILE:xtframe-view> "${_t627}" --headless --frames 1 --print-text L)
+
+    # T-871 (60 §60.7): --event "[<frame>] wheel <dx> <dy> [<x> <y>]" drives on:wheel (add() with a
+    # range) and a scroll container (on:scroll's event.value); the same script logs the same port
+    # values on every run (the two entries replay it and expect the exact values).
+    set(_t871 "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/view_input/view_wheel.xt")
+    set(_t871_out "port changed freq = 100[.]3[0-9]* [(]frame 1[)].*port changed freq = 100[.]1[0-9]* [(]frame 2[)].*port changed sv = 0[.]1333[0-9]* [(]frame 3[)]")
+    foreach(_run 1 2)
+        xt_add_expect_exit_test(xtframe-view_t871_wheel_${_run} CODE 0 OUTPUT "${_t871_out}"
+            COMMAND $<TARGET_FILE:xtframe-view> "${_t871}" --headless --frames 4 --log-ports
+                    --event "1 wheel 0 -3 50 20" --event "2 wheel 0 2 50 20" --event "3 wheel 0 1 50 100")
+    endforeach()
+    xt_add_expect_exit_test(xtframe-view_t871_wheel_bad CODE 2 OUTPUT "a wheel event is"
+        COMMAND $<TARGET_FILE:xtframe-view> "${_t871}" --headless --frames 1 --event "1 wheel 0")
+
+    # T-873 (60 §60.7): --event "channel ...", "axis ..." and "key down|up ..." drive on:input(...)
+    # triggers (a relative host channel summed per frame, a player-prefixed button edge, the right
+    # stick through the existing axis event, key.Shift from a sided key); replayed twice, same log.
+    set(_t873 "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/view_input/view_channel.xt")
+    set(_t873_out "port changed knob = 5 [(]frame 1[)].*port changed lever = 0[.]5 [(]frame 2[)].*port changed hits = 1 [(]frame 3[)].*port changed shift = 1 [(]frame 4[)].*port changed shift = 0 [(]frame 5[)]")
+    foreach(_run 1 2)
+        xt_add_expect_exit_test(xtframe-view_t873_channel_${_run} CODE 0 OUTPUT "${_t873_out}"
+            COMMAND $<TARGET_FILE:xtframe-view> "${_t873}" --headless --frames 6 --log-ports
+                    --event "1 channel host.knob 2 1 relative" --event "1 channel host.knob 3 1 relative"
+                    --event "2 axis pad.rx 0.5" --event "3 channel player(1).host.trig 1 0.8 button"
+                    --event "4 key down ShiftLeft" --event "5 key up ShiftLeft")
+    endforeach()
+    xt_add_expect_exit_test(xtframe-view_t873_channel_bad CODE 2 OUTPUT "a channel value is"
+        COMMAND $<TARGET_FILE:xtframe-view> "${_t873}" --headless --frames 1 --event "1 channel pad.zz 1")
 endif()

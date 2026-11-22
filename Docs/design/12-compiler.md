@@ -55,7 +55,9 @@ CompileResult compileLottie(std::string_view jsonPath, const CompileOptions&);
 
 → Timeline `duration = 1.0`，對每個出現過的 PropId 建一條 Track，`target = kSelfNode`：
 - 關鍵幀時間 = 百分比 / 100。
-- 某 PropId 在某個百分比未宣告時，該幀**不產生關鍵幀**（CSS 語意：在有宣告的幀之間插值）。`0%` 或 `100%` 缺少時，執行時以「動畫開始時的基底值」補：編譯器在該位置寫入特殊關鍵幀 `value.type = ValueType::Enum, e = 0xFFFFFFFF`（**Neutral 標記**），Animator 遇到時以該屬性當下基底值代入。求值規則：被插值區段的**任一端**為 Neutral 時整段輸出 Neutral（不寫入，保持基底），因此 Neutral 只影響其相鄰區段。
+- 某 PropId 在某個百分比未宣告時，該幀**不產生關鍵幀**（CSS 語意：在有宣告的幀之間插值）。`0%` 或 `100%` 缺少時，執行時以「動畫開始時的基底值」補：編譯器在該位置寫入特殊關鍵幀 `value.type = ValueType::Enum, e = 0xFFFFFFFF`（**Neutral 標記**），Animator 遇到時以該屬性當下基底值代入。求值規則（**2026-11-22 改為 CSS 的語意**，T-869；舊規則是「任一端為 Neutral 時整段不寫入」——只寫 `from` 的動畫因此整段停在起始值，與網頁不同）：Neutral 端代入該屬性**此刻的基底值**（沒有這個動畫時的計算值；每幀重新取，基底在動畫期間改變時跟著變），與另一端照一般規則內插——`@keyframes grow { from { transform: scaleY(0) } }` 由 `scaleY(0)` 走到元素自己的 transform。兩端都是 Neutral 的區段不寫入。不可內插的型別（列舉等）照 CSS 的離散規則在 50% 切換。變換與效果序列和基底不相容時照各自既有的「序列不一致」規則（變換走矩陣分解；效果序列不同則在 50% 切換）。填充：結束後 `forwards`／`both` 而 100% 是 Neutral——停在基底值（等同不再寫入）；開始前 `backwards`／`both` 而 0% 是 Neutral——延遲期間不寫入。Neutral 只影響其相鄰區段。
+- **效果關鍵幀的序列（2026-11-22，T-869／T-872）**：某格沒有宣告 `effect`（`filter`）時，該格不是效果關鍵幀（在有宣告的格之間內插；缺 0%／100% 走上一條的 Neutral）。各格的效果序列相同 → 逐參數內插（現行）。一格的序列是另一格的**前綴**，或其中一格是 `none` → 短的那邊以 18 §18.3.1 的**中性參數**補齊後內插。其他情形（種類或順序不同、含沒有中性參數的效果、含 `custom()`）→ 編譯**警告**、不產生效果軌、效果保持靜態值（序列本身不可動畫，18 §18.4）。
+- **需要矩陣合成的變換序列中的 `%`／`em`／`rem`（2026-11-22，T-869）**：序列「需要矩陣合成」是指函式順序不合固定順序、同類函式重複、或含 `matrix()`。x／y 的 `%`、`em`、`rem` 位移若**前面沒有 rotate／skew**，且每軸合成後只剩一種單位，就不放進矩陣——分解完再依單位存入 translate 分量，由執行期依邊框盒或字級解析（靜態宣告與關鍵幀皆然；元素尺寸改變時跟著變）。其餘情形（位移在 rotate／skew 之後、或同一軸同時剩 px 與 `%`）仍是編譯錯誤：現有的變換分量表達不了「依另一軸尺寸取百分比」與「px 加 %」——待 IR 的變換分量擴充（未排）。
 - 每幀的 easing 取該幀區塊內 `animation-timing-function` 宣告，否則取 `animation` 宣告的 easing（執行時由 AnimationSpec 覆蓋 Linear 佔位：編譯器寫 Linear，Animator 播放時若 Track 的 keyframe easing 為 Linear 且 AnimationSpec.easing 非 Linear，套用 AnimationSpec 的）。
 
 ## 12.4 `xtframe-compile` CLI

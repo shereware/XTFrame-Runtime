@@ -1,0 +1,24 @@
+<xt version="2">
+
+  <ports>
+    knob: number in
+    lever: number in
+    hits: number in
+    shift: number in
+  </ports>
+
+  <body id="Root" on:input(host.knob)="add(knob, event.value)" on:input(pad.rx)="set(lever, event.value)"
+        on:input(player(1).host.trig).press="add(hits, 1)" on:input(key.Shift)="set(shift, event.value)">
+    <div id="Bar" bind:opacity="input(pad.rx) | range(-1, 1, 0, 1)"></div>
+  </body>
+
+  <layout>
+    #Bar {
+      position: absolute;
+      left: 0px;
+      top: 0px;
+      width: 100px;
+      height: 40px;
+    }
+  </layout>
+</xt>

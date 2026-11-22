@@ -46,6 +46,9 @@ public:
     void tick();
     /// T-389: evaluates every binding marked dirty since the last call, once each.
     void flushDirty();
+    /// T-873 (60 §60.3.1): marks the `input(<channel>)` bindings whose channel moved in the frame
+    /// the Document just committed (InputChannels::moved()).
+    void channelsChanged();
     /// T-399: true while port changes wait for the next flushDirty() (ElementRef::focus() then
     /// accepts a `display: none` element as a pending focus).
     bool hasDirty() const { return !m_dirty.empty(); }
@@ -282,8 +285,8 @@ private:
         BVal from;  // tween: the start of the running interpolation.
         BVal to;    // tween: its target; delay: the last input seen.
         BVal out;   // delay: the value passed through so far.
-        float start = 0;
-        std::deque<std::pair<float, BVal>> queue;  // delay: (due clock, value).
+        double start = 0;                           // T-870: clocks are double.
+        std::deque<std::pair<double, BVal>> queue;  // delay: (due clock, value).
         NodeId elem = kInvalidNode;                // elemProp: the referenced element.
         uint32_t elemGeneration = 0;
     };
@@ -326,6 +329,10 @@ private:
         // T-399: `bind:value` only: the element was `display: none` (itself or an ancestor) at the
         // last reapplyShownValues().
         bool valueHidden = false;
+        // T-873 (60 §60.3.1): an `input(<channel>)` chain: the channel (in the Document's table)
+        // and player its first step reads; kInvalidChannel for any other chain.
+        ChannelId channel = kInvalidChannel;
+        uint8_t channelPlayer = 0;
     };
     struct Arg {
         ConverterArg kind = ConverterArg::Number;
@@ -423,6 +430,11 @@ private:
     bool m_documentWrite = false;
 
     void evaluate(uint32_t binding, bool initial);
+    /// T-873: when `b`'s chain starts with an `input(<channel>)` step, resolves its channel and lists
+    /// binding `index` in m_channelBindings (not for a template-only record).
+    void setupChannel(Binding& b, uint32_t index);
+    /// T-873: the bindings whose chain starts with an `input(<channel>)` step.
+    std::vector<uint32_t> m_channelBindings;
     BVal run(std::span<const IrConverterStep> steps, BVal v, EvalCtx& ctx);
     size_t gather(std::span<const IrConverterStep> steps, size_t i, std::vector<Arg>& out) const;
     BVal argValue(const Arg& a, bool relativePercent, const EvalCtx& ctx);

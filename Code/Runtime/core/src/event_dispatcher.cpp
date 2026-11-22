@@ -808,6 +808,8 @@ EventDispatcher::PointerState EventDispatcher::pointerState() const {
     out.hover = m_hoverNode;
     out.pressed = m_activeNode;
     out.inside = m_pointerIn;
+    out.press = m_pressPos;  // T-871.
+    out.hasPress = m_activeNode != kInvalidNode;
     return out;
 }
 
@@ -870,12 +872,13 @@ void EventDispatcher::restorePointerState(NodeArena& arena, const PointerState& 
             }
         }
         m_pressTime = m_time;
-        m_pressPos = state.pos;
+        m_pressPos = state.hasPress ? state.press : state.pos;  // T-871: `pointer.fromPress`.
         m_pressClicks = 0;
     }
     m_heldButtons = state.buttons;
     m_pointerPos = state.pos;
     m_lastPointer = state.pos;
+    m_hasPointer = true;  // T-871: the next move's `pointer.delta` starts from the restored position.
     m_pointerLocalPos = Vec2{};
     m_pointerIn = state.inside;
     m_hoverStale = false;
@@ -957,6 +960,11 @@ void EventDispatcher::handleWheel(NodeArena& arena, NodeId root, const InputEven
                 const float newX = liveX ? curX + input.wheelDelta.x * 40.0f : curX;
                 const float newY = liveY ? curY + input.wheelDelta.y * 40.0f : curY;
                 setScroll(arena, n, newX, newY, /*notify=*/true);
+                break;
+            }
+            // T-871 (60 §60.3.2): an `on:wheel` starting with `consume()` keeps the wheel of this
+            // element and its descendants from the enclosing scroll containers.
+            if (m_triggerSink != nullptr && m_triggerSink->consumesWheel(n)) {
                 break;
             }
         }
@@ -1501,10 +1509,24 @@ void EventDispatcher::handleInput(NodeArena& arena, NodeId root, const InputEven
         input.kind == InputEvent::ExternalDragMove || input.kind == InputEvent::ExternalDragLeave ||
         input.kind == InputEvent::ExternalDrop;
     m_curModifiers = pointerInput ? input.modifiers : static_cast<uint8_t>(0);
+    // T-871 (60 §60.3.3): the movement this pointer input makes (`pointer.delta`), for the events
+    // it dispatches only.
+    struct DeltaScope {
+        Vec2& slot;
+        ~DeltaScope() { slot = Vec2{}; }
+    } deltaScope{m_inputDelta};
     if (input.kind == InputEvent::PointerMove || input.kind == InputEvent::PointerDown ||
         input.kind == InputEvent::PointerUp) {
+        m_inputDelta = m_hasPointer ? input.pos - m_lastPointer : Vec2{};
+        m_hasPointer = true;
         m_lastPointer = input.pos;      // T-201.
         m_pointerPlayer = m_curPlayer;  // T-654.
+        if (m_triggerSink != nullptr) {
+            m_triggerSink->onPointerSample(input.kind == InputEvent::PointerDown ? PointerSample::Press
+                                           : input.kind == InputEvent::PointerUp ? PointerSample::Release
+                                                                                 : PointerSample::Move,
+                                           input.pos);
+        }
     }
     switch (input.kind) {
         case InputEvent::PointerMove:
@@ -1582,6 +1604,8 @@ void EventDispatcher::handleInput(NodeArena& arena, NodeId root, const InputEven
         case InputEvent::ExternalDrop:
             handleExternalDrag(arena, root, input);  // T-393 (08.14).
             break;
+        case InputEvent::Channel:
+            break;  // T-873: Document keeps the channel state; no DOM event.
     }
 }
 
