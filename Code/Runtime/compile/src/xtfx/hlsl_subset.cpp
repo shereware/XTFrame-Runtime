@@ -9,6 +9,8 @@
 #include <utility>
 #include <vector>
 
+#include "xt/xtfx_reserved.h"  // T-892: the wrappers' names
+
 /// HLSL subset lexer + recursive-descent parser + type checker (Docs/design/18-effects.md §18.7,
 /// Docs/tasks/T-203.md item 1). One pass: every expression is typed as it is built, so the
 /// emitter (glsl_emit.cpp) only inserts the int -> float / scalar -> vector promotions.
@@ -288,8 +290,9 @@ bool isTextureTypeName(std::string_view n) {
     return false;
 }
 
-/// GLSL keywords, GLSL-only builtins and the wrapper's names: an HLSL identifier spelled like
-/// one of these cannot keep its name in the translation, so it is rejected up front.
+/// GLSL keywords, GLSL-only builtins and the wrappers' names (xt/xtfx_reserved.h): an HLSL
+/// identifier spelled like one of these cannot keep its name in the translation, so it is rejected
+/// up front.
 bool isGlslReserved(std::string_view n) {
     static const char* const kNames[] = {
         // GLSL keywords / reserved words.
@@ -501,25 +504,12 @@ bool isGlslReserved(std::string_view n) {
         "packUnorm2x16",
         "unpackUnorm2x16",
         "modf",
-        // The wrapper's own names (Code/Runtime/gl/src/gl_effects.cpp).
-        "uLayer",
-        "uNdc",
-        "vUV",
-        "fragColor",
-        "uTexelSize",
-        "uLayerSize",
-        "xtFmod",
-        "xtSample",
-        "xtMain",
-        "xtTexCoord",
-        "xtIn",
-        "XtInput",
-        "xtTime",
-        // T-818: the wrappers' uniforms behind XtInput.local / boxSize (gl_effects.cpp, wgpu_custom.cpp).
-        "xtLocalRowX",
-        "xtLocalRowY",
     };
     if (n.rfind("gl_", 0) == 0 || n.rfind("__", 0) == 0) {
+        return true;
+    }
+    // T-892: the translation's and every back end's wrapper names, one list (xt/xtfx_reserved.h).
+    if (isXtfxWrapperName(n)) {
         return true;
     }
     for (const char* k : kNames) {

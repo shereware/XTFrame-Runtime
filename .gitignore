@@ -18,6 +18,8 @@ debug.log
 
 # T-357: derived per-project caches (offline UI thumbnails, 40 §40.3.3)
 .xtcache/
+# T-883 (36 §36.4): history is on by default; a project's .xtvc/ never enters this repository.
+.xtvc/
 
 # Qt SDKs live beside the other SDKs but are never committed (45 §45.3); only the README is
 # (Code/SDKs/Qt/README.md: auto-detection, XT_QT_DIR / XT_QT512_DIR / XT_QT6_DIR; T-442).

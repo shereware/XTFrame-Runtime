@@ -1,0 +1,22 @@
+// XTFrame built-in shader example (Docs/design/18-effects.md §18.16.3): a swirl around a center
+// point with a channel swap (a vec2 parameter and a loop).
+name: Swirl
+blurb: Twists the layer around a center point
+param center vec2 0.5 0.5 [0, 1]
+param strength float 0.5 [0, 2]
+fallback: none
+---
+float4 xtMain(XtInput i)
+{
+    float2 d = i.uv - center;
+    float r = length(d);
+    float a = strength * saturate(1 - r * 2);
+    float2 uv = center + float2(d.x * cos(a) - d.y * sin(a), d.x * sin(a) + d.y * cos(a));
+    float4 sum = float4(0, 0, 0, 0);
+    for (int k = 0; k < 4; k++)
+    {
+        sum += xtSample(uv + float2(k, 0) * i.texelSize) * 0.25;
+    }
+    if (sum.a > 0.5) { sum.rgb = lerp(sum.rgb, sum.gbr, 0.5); }
+    return sum;
+}

@@ -716,22 +716,29 @@ TEST_CASE("T-743 core vocabulary: core-tokens.json == chapter 47 == coreTokens()
     }
     CHECK(fromData == fromCode);
     // Chapter 47's list: the backticked names between its two bold headings, in order.
-    const std::string doc = readText(repo / "Docs" / "design" / "47-symbol-visual-style.md");
-    const size_t start = doc.find("**共同詞彙（52 個）**");
-    const size_t end = doc.find("**不屬於共同詞彙", start);
-    REQUIRE(start != std::string::npos);
-    REQUIRE(end != std::string::npos);
-    std::vector<std::string> fromDoc;
-    for (size_t at = doc.find("`--", start); at < end; at = doc.find("`--", at + 1)) {
-        const size_t close = doc.find('`', at + 1);
-        fromDoc.push_back(doc.substr(at + 1, close - at - 1));
-        at = close;
+    // T-878: the runtime export (Tools/Export/runtime.lst) leaves chapter 47 out; only this part skips.
+    const fs::path docPath = repo / "Docs" / "design" / "47-symbol-visual-style.md";
+    if (!fs::is_regular_file(docPath)) {
+        MESSAGE("chapter 47 comparison skipped: " << docPath.generic_string()
+                                                  << " is absent (runtime export)");
+    } else {
+        const std::string doc = readText(docPath);
+        const size_t start = doc.find("**共同詞彙（52 個）**");
+        const size_t end = doc.find("**不屬於共同詞彙", start);
+        REQUIRE(start != std::string::npos);
+        REQUIRE(end != std::string::npos);
+        std::vector<std::string> fromDoc;
+        for (size_t at = doc.find("`--", start); at < end; at = doc.find("`--", at + 1)) {
+            const size_t close = doc.find('`', at + 1);
+            fromDoc.push_back(doc.substr(at + 1, close - at - 1));
+            at = close;
+        }
+        std::vector<std::string> names;
+        for (const auto& [name, type] : fromData) {
+            names.push_back(name);
+        }
+        CHECK(fromDoc == names);
     }
-    std::vector<std::string> names;
-    for (const auto& [name, type] : fromData) {
-        names.push_back(name);
-    }
-    CHECK(fromDoc == names);
     // The preset group declares every core token with a value of its type (lint token.core), and
     // the extension rules have nothing to say about it.
     bundle::LintOptions options;

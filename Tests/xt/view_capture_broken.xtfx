@@ -1,0 +1,11 @@
+// T-892 fixture (Tests/xt/view_capture_broken.xt): valid for the compiler, rejected by the
+// wgpu GLSL frontend (1e40 is out of the 32-bit float range).
+name: Broken
+param amount float 1 [0, 4]
+fallback: blur(2px)
+---
+float4 xtMain(XtInput i)
+{
+    float big = 1e40;
+    return xtSample(i.uv) * amount * big;
+}

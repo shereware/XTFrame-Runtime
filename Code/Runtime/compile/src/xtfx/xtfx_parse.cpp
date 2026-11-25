@@ -11,8 +11,9 @@
 #include "xt/compile/diagnostics.h"
 #include "xt/compile/parse_value.h"
 #include "xt/compile/xtfx.h"
-#include "xt/ir_pod.h"    // kIrShaderTimeUnbounded (T-874).
-#include "xt/property.h"  // prop::kEffectParam*.
+#include "xt/ir_pod.h"         // kIrShaderTimeUnbounded (T-874).
+#include "xt/property.h"       // prop::kEffectParam*.
+#include "xt/xtfx_reserved.h"  // kXtfxBuiltinNames (T-892).
 
 /// `.xtfx` header parser (Docs/design/18-effects.md §18.7, Docs/tasks/T-203.md item 1).
 
@@ -189,7 +190,7 @@ bool parseParamLine(std::string_view rest, int line, XtfxHeader& out, XtfxError&
             return failXtfxParse(err, "param: duplicate parameter '" + p.name + "'", line);
         }
     }
-    if (p.name == "xtTime" || p.name == "xtSample" || p.name == "xtMain" || p.name == "XtInput") {
+    if (isXtfxBuiltinName(p.name)) {
         return failXtfxParse(err, "param: '" + p.name + "' is reserved", line);
     }
     uint32_t slotIndex = 0;

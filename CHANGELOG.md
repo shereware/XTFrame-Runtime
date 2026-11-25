@@ -4,6 +4,63 @@ An excerpt of the XTFrame changelog: for each release, the behaviour changes and
 integration notes. Version numbers are those of the XTFrame release the snapshot was
 exported from.
 
+## [0.21.0] - 2026-11-26
+
+### Behaviour changes
+- History (36 §36.4, T-883 #816): the GUI editor turns project history (built-in version control)
+  on by default -- a new project gets `.xtvc/` and the checkpoint "Start" unless the wizard's box is
+  cleared, and opening a project without `.xtvc/` turns it on after the open, with the Messages line
+  "History is now on for this project." and a Turn off action. It is not turned on when the
+  directory cannot be written, the project's sidecar says off, or the preference is off; headless
+  and Editor Service opens never turn it on (`history.*` still answers `kUnsupported` there).
+  Turning it off never deletes `.xtvc/`; turning it on again reuses it.
+- The flow `clock` node and `#document.clock` accumulate in double: each `tick(float dt)` adds the
+  float `dt`, widened to double, to a double sum (it was a float sum), so an external flow executor
+  that must match tick for tick has to do the same (53 §53.4.5). This shipped in 0.20.0 and was
+  added to its list on 2026-11-25; there is no code change in 0.21.0.
+- `.xtfx` (18 §18.7, T-892 #827): a parameter or local variable named `xtU`, `xtLayerTex`,
+  `xtLayerSmp`, `XtCustomBlock` or `texture2D` (names of the wgpu wrapper) is now a compile error
+  (`identifier '<name>' is reserved in the translation; rename it`, for a parameter `parameter name
+  '<name>' is reserved in the translation`); it compiled before and then never ran on wgpu. The
+  translation output, the wrapper text and the custom-effect cache keys are unchanged.
+- Scenario budgets (59 §59.3, T-890 #826): `shader` and `effects` allow 8 screenshots / 24 video
+  frames, `add-animation` and `create` 4 / 24 (all were 2 / 6).
+- `scene.screenshot` (T-879 #815, T-885 #817, T-887 #823): now the alias of `view.capture
+  {renderer: "sw"}` -- a single shot is redrawn in software in a scratch scene instead of borrowing
+  the live preview, with a `stamp` in the reply; its arguments and fields are unchanged and
+  `timelineScope` works as before. The scratch scene's document clock starts at 0, so a shot taken
+  while a CSS animation is running shows the animation at clock 0.
+- `xtframe-view` (T-880 #814, T-882 #819, T-887 #823): a windowed run reads connected game
+  controllers by default; `--gamepad` is accepted and does nothing; without `--players` one player
+  slot is opened (with `--gamepad` and no `--players` it was 8). Every `--screenshot` prints an
+  extra `stamp:` line on stdout; the image files are bit-identical without the new flags.
+  `--frames` is still only a frame count.
+- Game controllers' sticks and triggers pass the dead zones before they reach `pad.*`, so a stick
+  at rest gives exactly 0 and `needsFrame()` turns false; `--event axis` values and host-pushed
+  InputEvents are not filtered (T-884 #818).
+
+### Host integration
+- A host can give `view.capture` a GPU renderer: implement `ICaptureRenderer` and return it from
+  `ServiceHost::captureRenderer()` (a new virtual with a default; hosts that derive from
+  `ServiceHost` recompile), or pass a factory to `FileServiceHost::setCaptureRendererFactory()` /
+  `runServiceCli(..., captureFactory)`. `xt_editor_service`, `xt_editor_cli` and `xtframe-service`
+  must not link a GPU backend (`check_layering.sh` rule 7) (#824, #826).
+- Mirrored headers since 0.20.0: `gpu_frame.h` (`CustomEffectParams` 176 B), `command_list.h`
+  (`ShaderRef` 188 B, `CommandList` 800 B), `input.h` (`InputEvent` 128 B), `xtframe.h` and
+  `host_preview.h` are unchanged. `gpu_device.h`: `GpuDevice::customEffectFailure(glsl)` appended (a
+  virtual with a default empty result; a host device returns its compile message to fill
+  `effects[].reason`). `frame_builder.h`: `FrameBuilder::EffectReport` (64 B, Windows x64, with
+  `failure`), `setEffectReport()`, `effectFailureReason()`; `FrameBuilder` itself is unchanged (8
+  B, pimpl). Renderers: `SwRenderer::setEffectReport()` (`SwEffectReport`),
+  `GlRenderer::setEffectReport()` / `deviceName()`, `WgpuRenderer::setEffectReport()`.
+- A host's own shader wrapper around `.xtfx` bodies must avoid the reserved names in
+  `xt/xtfx_reserved.h`; the compiler now rejects them in user code (#827).
+- Backends: `PlatformSdl2::setEventHook(std::function<bool(const SDL_Event&, Context&)>)` sees every
+  event before translation (true consumes); `PlatformSdl2` grows from 72 to 136 B (Windows x64)
+  (T-884, #818). `RendererSw::renderer()` and a const `RendererGl3::renderer()` (#819).
+- `xt_shell`: `WindowConfig` gains `gamepad`, `gamepadPlayers` and the three dead zones; a host that
+  embeds `xt_shell::App` and handles controllers itself sets `gamepad = false` (#814, #818).
+
 ## [0.20.0] - 2026-11-22
 
 ### Behaviour changes
@@ -27,6 +84,7 @@ exported from.
   - `vw` / `vh` / `vmin` / `vmax` in `transform`, `translate`, shadows and filters, and `Q` everywhere, are dropped by the importer with the unit, the property and a suggestion, instead of reaching the compiler as `invalid value` (T-866, #802).
   - The no-break space at the edge of a mixed-content text run is written as U+00A0 (`C2 A0`); it was the mojibake `C3 82 C2 A0` (`Â ` before bold text) since T-113 (T-869, #806).
 - Diagnostic source label: a node hidden by a `wheel` or `key(...).release` trigger reports `trigger on:wheel` / `trigger on:key.release` instead of the generic `trigger` (T-875, #809).
+- (Added to this list on 2026-11-25; the behaviour shipped in 0.20.0.) The flow `clock` node and `#document.clock` accumulate in double: each `tick(float dt)` adds the float `dt`, widened to double, to a double sum (it was a float sum). A flow executor outside the runtime that must match tick for tick has to do the same; a float sum differs by one tick at `%.1f` rounding boundaries (at 60 Hz, tick 15 formats as "0.3" where the float sum gave "0.2"). `timer` (float, reset on every fire) and `throttle` (already double) are unchanged. Docs/design/53-flow-language.md §53.4.5.
 
 ### Host integration
 - Clock (23, upgrade note of T-870): `Context::update(float)`, `Context::clock()` (now the double clock rounded to float), `Document::update(float)` and the C ABI keep their signatures; `Context::clockSeconds()` gives the exact clock and `Context::setClock(double)` sets it without stepping. Hosts that use `Animator` / `StyleEngine` directly: their `clock` parameters and `Transition::startClock` are `double` now (source compatible, recompile). A host shader wrapper that accumulates its own time should use `CommandList::time` (#808).

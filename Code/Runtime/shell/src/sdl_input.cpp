@@ -188,36 +188,7 @@ KeyCode mapScancode(SDL_Scancode sc) {
 
 }  // namespace
 
-/// T-194 (08.9): SDL game controller button / axis -> InputEvent (the player slot is set by the
-/// caller). SDL's button and axis numbering equals GamepadButton / GamepadAxis. False for anything
-/// else (or an unknown button / axis).
-bool translateSdlGamepadEvent(const SDL_Event& event, InputEvent& out) {
-    switch (event.type) {
-        case SDL_CONTROLLERBUTTONDOWN:
-        case SDL_CONTROLLERBUTTONUP:
-            if (event.cbutton.button > SDL_CONTROLLER_BUTTON_DPAD_RIGHT) {
-                return false;
-            }
-            out = InputEvent{};
-            out.kind = event.type == SDL_CONTROLLERBUTTONDOWN ? InputEvent::GamepadButtonDown
-                                                              : InputEvent::GamepadButtonUp;
-            out.gamepadButton = static_cast<GamepadButton>(event.cbutton.button);
-            return true;
-        case SDL_CONTROLLERAXISMOTION: {
-            if (event.caxis.axis > SDL_CONTROLLER_AXIS_TRIGGERRIGHT) {
-                return false;
-            }
-            out = InputEvent{};
-            out.kind = InputEvent::GamepadAxisMotion;
-            out.gamepadAxis = static_cast<GamepadAxis>(event.caxis.axis);
-            const float v = static_cast<float>(event.caxis.value) / 32767.0f;
-            out.axisValue = v < -1.0f ? -1.0f : (v > 1.0f ? 1.0f : v);
-            return true;
-        }
-        default:
-            return false;
-    }
-}
+// T-881a: translateSdlGamepadEvent (T-194) moved to gamepad.cpp, in xt_gamepad.
 
 bool translateSdlEvent(const SDL_Event& event, float dpr, InputEvent& out) {
     (void)dpr;

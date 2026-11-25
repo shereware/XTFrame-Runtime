@@ -11,6 +11,7 @@
 #include "xt/context.h"
 #include "xt/document.h"
 #include "xt/gesture.h"
+#include "xt/shell/gamepad.h"
 #include "xt/shell/sdl_rw_asset_resolver.h"
 #include "xt/shell/window.h"
 #ifdef XT_SHELL_SW
@@ -233,8 +234,16 @@ public:
     /// plugged ones) and forwards their buttons and axes as GamepadButtonDown/Up and
     /// GamepadAxisMotion InputEvents. Controllers get player slots 0, 1, ... in connection order
     /// (up to `maxPlayers`, at most kMaxPlayers); a slot freed by an unplugged controller is
-    /// reused. Returns false when SDL's game controller subsystem cannot start.
+    /// reused. Returns false when SDL's game controller subsystem cannot start. T-880: the
+    /// constructor calls it with WindowConfig::gamepadPlayers unless WindowConfig::gamepad is false;
+    /// calling it again only changes the slot limit (controllers already open keep their slots).
+    /// T-884: the axes pass the dead zones (WindowConfig::gamepadDeadzone*, setGamepadDeadzones);
+    /// the work is xt_shell's GamepadInput (xt/shell/gamepad.h), which other event loops share.
     bool enableGamepad(uint8_t maxPlayers = kMaxPlayers);
+    /// T-880: true once enableGamepad() started SDL's game controller subsystem.
+    bool gamepadEnabled() const { return m_gamepads.enabled(); }
+    /// T-884 (60 §60.6): the dead zones the controllers' axes pass from now on.
+    void setGamepadDeadzones(const GamepadDeadzones& deadzones) { m_gamepads.setDeadzones(deadzones); }
     /// T-194 (27.7): the touch gesture thresholds (SDL finger events -> GestureRecognizer ->
     /// InputEvent::Gesture); the defaults of GestureConfig until called.
     void setGestureConfig(const GestureConfig& config) { mainWindow().setGestureConfig(config); }
@@ -377,8 +386,7 @@ private:
     /// any frame -- or while a frame is inside pollEvents(), which is where the OS modal size /
     /// move loop runs -- it syncs the viewport and runs one frame without polling. Returns 1.
     static int SDLCALL liveResizeWatch(void* userdata, SDL_Event* event);
-    /// T-194: controller hot-plug and button/axis events; touch fingers into the recognizer.
-    bool handleGamepadEvent(const SDL_Event& event);
+    /// T-194: touch fingers into the recognizer (T-884: controllers are m_gamepads').
     bool handleTouchEvent(const SDL_Event& event, Window& window);
     /// T-393 (08.14): SDL_DROPBEGIN / DROPFILE / DROPTEXT / DROPCOMPLETE (the non-Windows file
     /// drop) into the window the event names.
@@ -399,15 +407,8 @@ private:
     bool m_platformDrop = false;  // T-393: initPlatformFileDrop() ran (shut down in ~App).
     std::function<bool(const SDL_Event&)> m_eventHook;  // T-240.
     std::function<void(App&)> m_framePoll;              // T-598.
-    // T-194: open controllers (SDL instance id -> player slot).
-    struct Pad {
-        SDL_GameController* controller = nullptr;
-        int32_t instance = -1;
-        uint8_t player = 0;
-    };
-    std::vector<Pad> m_pads;
-    bool m_gamepad = false;
-    uint8_t m_maxPlayers = kMaxPlayers;
+    // T-194: open controllers; T-884: hot plug, player slots and dead zones in GamepadInput.
+    GamepadInput m_gamepads;
     // T-377: live resize. m_inRun: inside run(). T-384b: m_inFrame: inside a frame (poll and
     // every window's update / render); m_inPoll: that frame is inside pollEvents(); m_inWatch:
     // the frame was started by liveResizeWatch().

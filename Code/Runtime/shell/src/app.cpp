@@ -31,7 +31,6 @@ namespace xt::shell {
 // Declared in sdl_input.cpp (no header -- see that file's top comment).
 bool translateSdlEvent(const SDL_Event& event, float dpr, InputEvent& out);
 size_t translateSdlTextInput(const SDL_Event& event, InputEvent* out, size_t maxOut);
-bool translateSdlGamepadEvent(const SDL_Event& event, InputEvent& out);  // T-194.
 uint8_t sdlModifiers(uint16_t sdlMod);                                   // T-387.
 // T-393 (08.14): SDL_DROP* -> one ExternalDrop (sdl_input.cpp).
 bool translateSdlDrop(const SDL_Event& event, std::vector<std::string>& pending,
@@ -206,6 +205,12 @@ App::App(const WindowConfig& config) : m_assets(std::string(), sw::decodeImageBy
         m_liveResize = true;
     }
     m_ok = true;
+    // T-880 (60 §60.6): game controllers are on by default; no controller support is not an error.
+    m_gamepads.setDeadzones(GamepadDeadzones{config.gamepadDeadzoneLeft, config.gamepadDeadzoneRight,
+                                             config.gamepadDeadzoneTrigger});  // T-884
+    if (config.gamepad && !enableGamepad(config.gamepadPlayers)) {
+        SDL_Log("xt_shell: game controllers unavailable: %s", SDL_GetError());
+    }
 }
 
 App::~App() {
@@ -216,94 +221,12 @@ App::~App() {
     if (m_platformDrop) {
         shutdownPlatformFileDrop();  // T-393: after every window revoked its drop target.
     }
-    for (Pad& pad : m_pads) {
-        if (pad.controller != nullptr) {
-            SDL_GameControllerClose(pad.controller);
-        }
-    }
+    m_gamepads.shutdown();  // Before SDL_Quit.
     SDL_Quit();
 }
 
 bool App::enableGamepad(uint8_t maxPlayers) {
-    m_maxPlayers = maxPlayers == 0 || maxPlayers > kMaxPlayers ? kMaxPlayers : maxPlayers;
-    if (!m_gamepad) {
-        if (SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER) != 0) {
-            return false;
-        }
-        m_gamepad = true;
-    }
-    // Controllers already connected; SDL also queues a CONTROLLERDEVICEADDED for each of them,
-    // which handleGamepadEvent() ignores once the instance is open.
-    for (int i = 0; i < SDL_NumJoysticks(); ++i) {
-        SDL_Event added{};
-        added.type = SDL_CONTROLLERDEVICEADDED;
-        added.cdevice.which = i;
-        handleGamepadEvent(added);
-    }
-    return true;
-}
-
-bool App::handleGamepadEvent(const SDL_Event& event) {
-    if (!m_gamepad) {
-        return false;
-    }
-    switch (event.type) {
-        case SDL_CONTROLLERDEVICEADDED: {
-            const int index = event.cdevice.which;
-            if (!SDL_IsGameController(index)) {
-                return true;
-            }
-            const SDL_JoystickID instance = SDL_JoystickGetDeviceInstanceID(index);
-            for (const Pad& pad : m_pads) {
-                if (pad.instance == instance) {
-                    return true;  // Already open.
-                }
-            }
-            uint8_t player = 0;
-            while (player < m_maxPlayers &&
-                   std::any_of(
-                       m_pads.begin(), m_pads.end(), [player](const Pad& p) { return p.player == player; })) {
-                ++player;
-            }
-            if (player >= m_maxPlayers) {
-                return true;  // Every player slot is taken.
-            }
-            SDL_GameController* controller = SDL_GameControllerOpen(index);
-            if (controller != nullptr) {
-                m_pads.push_back(Pad{controller, instance, player});
-            }
-            return true;
-        }
-        case SDL_CONTROLLERDEVICEREMOVED:
-            for (size_t i = 0; i < m_pads.size(); ++i) {
-                if (m_pads[i].instance == event.cdevice.which) {
-                    SDL_GameControllerClose(m_pads[i].controller);
-                    m_pads.erase(m_pads.begin() + static_cast<std::ptrdiff_t>(i));
-                    break;
-                }
-            }
-            return true;
-        case SDL_CONTROLLERBUTTONDOWN:
-        case SDL_CONTROLLERBUTTONUP:
-        case SDL_CONTROLLERAXISMOTION: {
-            const SDL_JoystickID which =
-                event.type == SDL_CONTROLLERAXISMOTION ? event.caxis.which : event.cbutton.which;
-            for (const Pad& pad : m_pads) {
-                if (pad.instance != which) {
-                    continue;
-                }
-                InputEvent input;
-                if (translateSdlGamepadEvent(event, input)) {
-                    input.player = pad.player;
-                    focusWindow().m_context->pushInput(input);  // T-384b (23 §23.ad).
-                }
-                break;
-            }
-            return true;
-        }
-        default:
-            return false;
-    }
+    return m_gamepads.enable(maxPlayers);  // T-884: the shared xt_shell GamepadInput.
 }
 
 bool App::handleTouchEvent(const SDL_Event& event, Window& window) {
@@ -686,7 +609,9 @@ void App::pollEvents() {
             }
             continue;
         }
-        if (handleGamepadEvent(event)) {  // T-194; T-384b: to the focus window.
+        // T-194; T-384b: to the focus window. T-884: GamepadInput (dead zones, hot plug).
+        if (GamepadInput::isControllerEvent(event) &&
+            m_gamepads.handleEvent(event, *focusWindow().m_context)) {
             continue;
         }
         if (event.type == SDL_DROPBEGIN || event.type == SDL_DROPFILE || event.type == SDL_DROPTEXT ||

@@ -891,3 +891,53 @@ TEST_CASE("SwEffects: EffectScratch capacities stop growing after the first fram
         }
     }
 }
+
+// T-879 (Docs/design/59-visual-feedback.md §59.4): SwRenderer reports what it did with the effects a
+// capture's stamp lists -- a Custom effect drawn as its fallback or not at all, and a clamped radius.
+TEST_CASE("SwEffects: T-879 the effect report names custom fallbacks and clamped radii") {
+    Fixture fx;
+    CommandList cl = makeList();
+    EffectInstance custom{};
+    custom.kind = EffectKind::Custom;
+    custom.shader = 7;
+    EffectInstance other = custom;
+    other.shader = 8;
+    ShaderRef withFallback{};
+    withFallback.asset = 7;
+    withFallback.fallback = blurFx(2, 2);
+    ShaderRef none{};
+    none.asset = 8;
+    none.fallback.kind = EffectKind::None;
+    cl.shaders.push_back(withFallback);
+    cl.shaders.push_back(none);
+    const Rect content{20, 20, 10, 10};
+    addPushEffect(cl, {custom, blurFx(80, 2)}, Mat2x3{}, Rect{0, 0, 64, 64}, content);
+    addFillRect(cl, content.x, content.y, content.w, content.h, Color{1, 0, 0, 1});
+    addPopEffect(cl);
+    addPushEffect(cl, {other}, Mat2x3{}, Rect{0, 0, 64, 64}, content);
+    addFillRect(cl, content.x, content.y, content.w, content.h, Color{1, 0, 0, 1});
+    addPopEffect(cl);
+
+    fx.renderer.render(cl, nullptr, nullptr);  // No report set: nothing collected, nothing breaks.
+    std::vector<SwEffectReport> report;
+    fx.renderer.setEffectReport(&report);
+    fx.renderer.render(cl, nullptr, nullptr);
+    REQUIRE(report.size() == 3);
+    CHECK(report[0].command == 0);
+    CHECK(report[0].stackIndex == 0);
+    CHECK(report[0].kind == EffectKind::Custom);
+    CHECK(report[0].shader == 7);
+    CHECK_FALSE(report[0].executed);
+    CHECK(report[0].drawnInstead == EffectKind::Blur);
+    CHECK(report[0].contentPx.x == 20.0f);
+    CHECK(report[1].kind == EffectKind::Blur);
+    CHECK(report[1].stackIndex == 1);
+    CHECK(report[1].executed);
+    CHECK(report[1].clamped);
+    CHECK(report[2].command == 3);
+    CHECK(report[2].shader == 8);
+    CHECK(report[2].drawnInstead == EffectKind::None);
+    fx.renderer.setEffectReport(nullptr);
+    fx.renderer.render(cl, nullptr, nullptr);
+    CHECK(report.size() == 3);
+}

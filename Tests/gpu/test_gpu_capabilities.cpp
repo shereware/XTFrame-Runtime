@@ -166,3 +166,27 @@ TEST_CASE("gpu capabilities: applyDeviceCapabilities only ever turns box-shadow 
     CHECK(!base.GpuDevice::supportsCoverageDraws());  // the defaults
     CHECK(!base.GpuDevice::supportsBoxShadowShading());
 }
+
+// T-892 (Docs/design/59-visual-feedback.md §59.4): the `effects[].reason` of a shader the device could
+// not compile -- the first non-empty line of its message, trimmed, at most 300 bytes; empty without one
+// (the default device has none).
+TEST_CASE("gpu: T-892 effectFailureReason takes the first line of the compile message") {
+    CHECK(FrameBuilder::effectFailureReason("gl",
+                                            "shader compile error: 0(12) : error C7011: implicit cast\n"
+                                            "0(13) : error C1000: second\n") ==
+          "shader failed to compile on gl: shader compile error: 0(12) : error C7011: implicit cast");
+    CHECK(FrameBuilder::effectFailureReason("wgpu", "\n  \r\n  Shader validation error: x  \r\nmore") ==
+          "shader failed to compile on wgpu: Shader validation error: x");
+    CHECK(FrameBuilder::effectFailureReason("wgpu", "").empty());
+    CHECK(FrameBuilder::effectFailureReason("wgpu", " \n\t\n").empty());
+    const std::string longLine(400, 'e');
+    const std::string reason = FrameBuilder::effectFailureReason("gl", longLine + "\nnext");
+    CHECK(reason == "shader failed to compile on gl: " + std::string(300, 'e'));
+    // A cut never splits a UTF-8 sequence: 299 ASCII bytes then a 2-byte character keeps 299.
+    const std::string utf8 = std::string(299, 'a') + "\xC3\xA9" + "tail";
+    CHECK(FrameBuilder::effectFailureReason("gl", utf8) ==
+          "shader failed to compile on gl: " + std::string(299, 'a'));
+    CapsDevice plain(false, false);
+    const GpuDevice& base = plain;
+    CHECK(base.customEffectFailure("void main() {}").empty());
+}

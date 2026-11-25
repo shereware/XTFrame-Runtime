@@ -612,6 +612,7 @@ struct SwRenderer::Impl {
                         // T-203 (Docs/design/18-effects.md §18.7): SW never runs the shader body;
                         // it applies the asset's `fallback` (nothing for `none` or a missing
                         // ShaderRef). T-263d: the shader id is this PushEffect's source's.
+                        EffectKind drawn = EffectKind::None;
                         for (const ShaderRef& s : list.shaders) {
                             if (s.asset == e.shader && s.source == c.source &&
                                 s.fallback.kind != EffectKind::None &&
@@ -619,12 +620,17 @@ struct SwRenderer::Impl {
                                 EffectInstance fb = effectToScreen(s.fallback, screenXf);
                                 fb.enabled = 1;
                                 ef.screenParams.push_back(fb);
+                                drawn = fb.kind;
                                 break;
                             }
                         }
+                        reportEffect(ci, i, e, c, dpr, false, drawn, false);  // T-879
                         continue;
                     }
                     ef.screenParams.push_back(effectToScreen(e, screenXf));
+                    if (effectReport != nullptr && radiusClamped(ef.screenParams.back())) {
+                        reportEffect(ci, i, e, c, dpr, true, EffectKind::None, true);  // T-879
+                    }
                 }
                 // T-642: a per-pixel stack's buffer is cropped to what the damage can see; any
                 // other stack keeps its whole hint and needs every pixel of its content.
@@ -695,6 +701,42 @@ struct SwRenderer::Impl {
 
     // --- T-343 Direct target mode --------------------------------------------------------------
 
+    /// T-879: SwRenderer::setEffectReport()'s list (null: nothing is reported).
+    std::vector<SwEffectReport>* effectReport = nullptr;
+    void reportEffect(size_t command, uint32_t stackIndex, const EffectInstance& e, const EffectCmd& c,
+                      float dpr, bool executed, EffectKind drawn, bool clamped) {
+        if (effectReport == nullptr) {
+            return;
+        }
+        SwEffectReport r;
+        r.command = static_cast<uint32_t>(command);
+        r.stackIndex = stackIndex;
+        r.kind = e.kind;
+        r.shader = e.shader;
+        r.source = c.source;
+        r.executed = executed;
+        r.drawnInstead = drawn;
+        r.clamped = clamped;
+        r.contentPx = Rect{c.contentBounds.x * dpr, c.contentBounds.y * dpr, c.contentBounds.w * dpr,
+                           c.contentBounds.h * dpr};
+        effectReport->push_back(r);
+    }
+    /// T-879: a built-in effect (screen space, device px) one of whose radius-like parameters is over
+    /// the 64 device px cap that sw_effects.cpp clamps it to (18 §18.3).
+    static bool radiusClamped(const EffectInstance& p) {
+        constexpr float kCap = 64.0f;
+        switch (p.kind) {
+            case EffectKind::DropShadow:
+                return p.params[2] > kCap || p.params[3] > kCap;
+            case EffectKind::Glow:
+                return p.params[0] > kCap;
+            case EffectKind::Blur:
+            case EffectKind::Outline:
+                return p.params[0] > kCap || p.params[1] > kCap;
+            default:
+                return false;
+        }
+    }
     static float backdropSigma(const EffectInstance& screenParams) {
         return effect_math::backdropSigma(screenParams);
     }
@@ -2535,6 +2577,8 @@ size_t SwRenderer::mipCacheBytes() const { return m_impl->mipCache.bytes(); }
 void SwRenderer::setBoxShadowCacheBudget(size_t bytes) { m_impl->shadowCache.setBudget(bytes); }
 
 size_t SwRenderer::boxShadowCacheBytes() const { return m_impl->shadowCache.bytes(); }
+
+void SwRenderer::setEffectReport(std::vector<SwEffectReport>* out) { m_impl->effectReport = out; }
 
 void SwRenderer::releaseScratch() {
     Impl& m = *m_impl;

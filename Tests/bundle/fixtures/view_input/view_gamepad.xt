@@ -1,0 +1,97 @@
+<xt version="2">
+
+  <!-- T-880: the user's acceptance fixture for a real game controller (xtframe-view, windowed).
+       One row per gamepad axis (the value, and a bar: half full at rest for a stick, empty for a
+       trigger), one square per button
+       (lit while held); player 0. -->
+
+  <body id="Root">
+    <div class="row"><span class="name">lx</span><span id="LxValue" class="value" bind:text="input(pad.lx) | round(2)">0</span>
+      <div class="track"><div id="LxBar" class="bar" bind:width="input(pad.lx) | range(-1, 1, 0px, 300px)"></div></div></div>
+    <div class="row"><span class="name">ly</span><span id="LyValue" class="value" bind:text="input(pad.ly) | round(2)">0</span>
+      <div class="track"><div id="LyBar" class="bar" bind:width="input(pad.ly) | range(-1, 1, 0px, 300px)"></div></div></div>
+    <div class="row"><span class="name">rx</span><span id="RxValue" class="value" bind:text="input(pad.rx) | round(2)">0</span>
+      <div class="track"><div id="RxBar" class="bar" bind:width="input(pad.rx) | range(-1, 1, 0px, 300px)"></div></div></div>
+    <div class="row"><span class="name">ry</span><span id="RyValue" class="value" bind:text="input(pad.ry) | round(2)">0</span>
+      <div class="track"><div id="RyBar" class="bar" bind:width="input(pad.ry) | range(-1, 1, 0px, 300px)"></div></div></div>
+    <div class="row"><span class="name">lt</span><span id="LtValue" class="value" bind:text="input(pad.lt) | round(2)">0</span>
+      <div class="track"><div id="LtBar" class="bar" bind:width="input(pad.lt) | range(0, 1, 0px, 300px)"></div></div></div>
+    <div class="row"><span class="name">rt</span><span id="RtValue" class="value" bind:text="input(pad.rt) | round(2)">0</span>
+      <div class="track"><div id="RtBar" class="bar" bind:width="input(pad.rt) | range(0, 1, 0px, 300px)"></div></div></div>
+    <div class="buttons">
+      <div id="BtnA" class="btn" bind:opacity="input(pad.a) | range(0, 1, 0.2, 1)">A</div>
+      <div id="BtnB" class="btn" bind:opacity="input(pad.b) | range(0, 1, 0.2, 1)">B</div>
+      <div id="BtnX" class="btn" bind:opacity="input(pad.x) | range(0, 1, 0.2, 1)">X</div>
+      <div id="BtnY" class="btn" bind:opacity="input(pad.y) | range(0, 1, 0.2, 1)">Y</div>
+      <div id="BtnLb" class="btn" bind:opacity="input(pad.lb) | range(0, 1, 0.2, 1)">LB</div>
+      <div id="BtnRb" class="btn" bind:opacity="input(pad.rb) | range(0, 1, 0.2, 1)">RB</div>
+      <div id="BtnStart" class="btn" bind:opacity="input(pad.start) | range(0, 1, 0.2, 1)">ST</div>
+      <div id="BtnUp" class="btn" bind:opacity="input(pad.up) | range(0, 1, 0.2, 1)">UP</div>
+    </div>
+  </body>
+
+  <layout>
+    #Root {
+      display: flex;
+      flex-direction: column;
+      padding: 16px;
+      gap: 8px;
+    }
+    .row {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 12px;
+      height: 28px;
+    }
+    .name {
+      width: 32px;
+    }
+    .value {
+      width: 64px;
+    }
+    .track {
+      width: 300px;
+      height: 12px;
+    }
+    .bar {
+      height: 12px;
+    }
+    .buttons {
+      display: flex;
+      flex-direction: row;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .btn {
+      width: 48px;
+      height: 48px;
+    }
+  </layout>
+  <style>
+    #Root {
+      background-color: #20242a;
+    }
+    .name {
+      color: #c8ccd2;
+      font-size: 18px;
+    }
+    .value {
+      color: #ffffff;
+      font-size: 18px;
+    }
+    .track {
+      background-color: #3a4048;
+    }
+    .bar {
+      background-color: #4caf50;
+    }
+    .btn {
+      background-color: #e0a030;
+      color: #000000;
+      font-size: 16px;
+      text-align: center;
+      line-height: 48px;
+    }
+  </style>
+</xt>

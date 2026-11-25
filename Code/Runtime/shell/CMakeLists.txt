@@ -1,3 +1,15 @@
+# T-881a (60 §60.6): the game controllers -> pad.* layer (GamepadInput, translateSdlGamepadEvent) is a
+# library of its own: SDL2 and xt_core only -- no window, GL or SW presentation -- so the editor
+# preview links it without xt_shell. Its header stays xt/shell/gamepad.h.
+add_library(xt_gamepad STATIC
+    src/gamepad.cpp  # T-884
+)
+target_include_directories(xt_gamepad PUBLIC include)
+target_link_libraries(xt_gamepad PUBLIC xt_core SDL2::SDL2-static)
+xt_enable_exceptions(xt_gamepad)  # As xt_shell (the STL headers under MSVC).
+xt_no_rtti(xt_gamepad)
+xt_set_warnings(xt_gamepad)
+
 add_library(xt_shell STATIC
     src/app.cpp
     src/window.cpp
@@ -17,7 +29,7 @@ else()
 endif()
 # T-598: no xt_compile here -- a shipped desktop host links xt_shell without the compiler; the
 # `--watch` hot reload lives in xt_shell_watch below.
-target_link_libraries(xt_shell PUBLIC xt_core xt_sw SDL2::SDL2-static)
+target_link_libraries(xt_shell PUBLIC xt_core xt_sw xt_gamepad SDL2::SDL2-static)
 if(WIN32)
     target_link_libraries(xt_shell PUBLIC SDL2::SDL2main)
 endif()

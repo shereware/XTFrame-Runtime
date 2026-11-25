@@ -54,7 +54,7 @@ xt_sdk(harfbuzz GIT https://github.com/harfbuzz/harfbuzz.git 10.1.0
     USED_BY "`Code/Runtime/text/`" PURPOSE "Text shaping (glyph selection, positioning, OpenType features)")
 xt_sdk(sdl2 GIT https://github.com/libsdl-org/SDL.git release-2.30.9
     TITLE "SDL2" HOME "https://github.com/libsdl-org/SDL" VERSION "release-2.30.9" LICENSE "zlib"
-    USED_BY "`Code/Runtime/gl/` (tests), `Code/Runtime/shell/`" PURPOSE "Window, input, and GL context creation")
+    USED_BY "`Code/Runtime/gl/` (tests), `Code/Runtime/shell/`, `Code/Editor/Qt/` (game controllers only)" PURPOSE "Window, input, and GL context creation; the editor preview's game controllers")
 xt_sdk(clipper2 URL https://github.com/AngusJohnson/Clipper2/archive/refs/tags/Clipper2_1.5.4.tar.gz
     9d8a35a29d04cd1b7b45f542c0ba48015feece1210036ea9e4efaad3140af4b0
     TITLE "Clipper2" HOME "https://github.com/AngusJohnson/Clipper2"

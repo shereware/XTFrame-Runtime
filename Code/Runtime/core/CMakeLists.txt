@@ -88,6 +88,7 @@ add_library(xt_core STATIC
     src/selector_query.cpp
     src/document_load.cpp
     src/context.cpp
+    src/advance_plan.cpp  # T-879
     src/context_channels.cpp  # T-873
     src/input_channels.cpp  # T-873
     src/context_visual.cpp

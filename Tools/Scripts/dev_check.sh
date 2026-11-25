@@ -4,7 +4,7 @@
 # each test suite once with a timeout so a hung process never blocks the caller.
 #   Tools/Scripts/dev_check.sh [--release] [--no-build] [--agent] [--no-qt512] <target>... -- <suite>...
 #   suites: editor | editor_service | editor_qt | editor_qt_slow | editor_qt_gl | flow | bundle | capi | history | net | ai | core | golden |
-#           gpu | gl | wgpu | backends | text | agent | import | lottie | symbols | templates | headers | layering | testtemp | import-py | scripts-py | ctest | corpus | ir |
+#           gpu | gl | wgpu | capture_wgpu | backends | text | agent | import | lottie | symbols | templates | headers | layering | testtemp | import-py | scripts-py | ctest | corpus | ir |
 #           roundtrip | shape | skills | qt512 | qt512-all | wasm
 #          (ctest = ctest -E '^xt_.*_tests$', the command-line tests (T-267d); headers = Tools/Scripts/check_public_headers.sh, no build;
 #           layering = Tools/Scripts/check_layering.sh (T-274, R never includes / links E) and, since T-267d,
@@ -57,6 +57,8 @@
 # adapter is a SKIP inside them, not a failure.
 # T-437: wgpu runs xt_wgpu_tests (Docs/design/10-backends.md §10.10.3); its "SKIP: no WebGPU adapter" exit
 # (0, no doctest run) is a failure here, like a missing GL context, unless XT_ALLOW_NO_GL=1.
+# T-889: capture_wgpu runs xt_editor_capture_wgpu_tests (view.capture on the wgpu capture renderer,
+# Code/Editor/CaptureWgpu); its "SKIP: no WebGPU adapter" is a failure in the same way.
 # T-267a: XT_REQUIRE_GL=1 is exported for every suite, so `gl` and `editor_qt_gl` FAIL when no GL
 # context can be created. Set XT_ALLOW_NO_GL=1 yourself to get the old "no context = skipped" behaviour.
 # Each doctest suite prints its summary, every failing test case (name + first failing check, at most
@@ -132,17 +134,28 @@ changed_selection() {
       Code/Runtime/capi/*|Tests/capi/*) suites+=(capi);;  # T-504
       # ai: the tool host counts the service's operations per scenario (three new timeline ops
       # went uncounted until the version gate).
-      Code/Editor/Service/*)  suites+=(editor_service editor_qt ai);;
+      Code/Editor/Service/*)  suites+=(editor_service editor_qt ai capture_wgpu);;
       Code/Editor/Contracts/*|Assets/Schemas/*) suites+=(editor_service ai);;
-      Code/Editor/Qt/*|Code/Editor/App/*) targets+=(xtframe-editor); suites+=(editor_qt);;
+      # App: xtframe-editor_service_gpu_capture (T-890) is a ctest case registered there.
+      Code/Editor/App/*) targets+=(xtframe-editor); suites+=(editor_qt ctest);;
+      Code/Editor/Qt/*) targets+=(xtframe-editor); suites+=(editor_qt);;
       Code/Editor/Core/*)     suites+=(editor editor_service editor_qt);;
       Code/Editor/History/*)  suites+=(history editor_qt);;
       Code/Editor/Net/*)      suites+=(net ai);;  # T-517: xt_ai sits on xt_net
       Code/Editor/AI/*)       suites+=(ai editor_qt);;  # T-517: the AI panel's mode (c) too
       Code/Editor/Cli/*) targets+=(xtframe-service); suites+=(editor_service ai);;  # T-518: --service, --agent
       Code/Tools/view/*) suites+=(ctest);;
+      # 2026-11-25 (T-880 .. T-890 ran these by hand): the shell's gamepad code is tested in xt_tests
+      # and by xtframe-view's ctest cases, and the editor preview links xt_gamepad.
+      Code/Runtime/shell/*|Tests/shell/*) targets+=(xt_tests xtframe-view); suites+=(core ctest backends editor_qt);;
+      Tools/CMake/xt_sdl2.cmake)      targets+=(xt_tests xtframe-view); suites+=(core ctest backends);;
+      # ctest cases written as CMake scripts, their fixtures, and the lists that register them.
+      Tests/cmake/*|Tests/xt/*|Tests/CMakeLists.txt) suites+=(ctest);;
+      Code/Editor/CMakeLists.txt)     targets+=(xtframe-editor); suites+=(editor_service editor_qt);;
       Code/Tools/wasm/*|Tools/Scripts/*wasm*|Tools/CMake/xt_wasm.cmake) suites+=(wasm);;  # T-579 (T-520)
-      Code/Runtime/wgpu/*|Tests/wgpu/*|Tools/CMake/xt_wgpu.cmake) suites+=(wgpu);;  # T-437
+      Code/Runtime/wgpu/*|Tests/wgpu/*|Tools/CMake/xt_wgpu.cmake) suites+=(wgpu capture_wgpu);;  # T-437, T-889
+      Code/Editor/CaptureWgpu/*) targets+=(xtframe-editor); suites+=(capture_wgpu editor_qt ctest);;  # T-889: + the preview's loaders; T-890: the --service end-to-end case
+      Tests/editor_capture_wgpu/*) suites+=(capture_wgpu);;  # T-889
       Code/Backends/*|Tests/backends/*|Examples/backends/*|Code/Tools/view/view_renderer*) suites+=(backends);;  # T-439
       Assets/Templates/*|Tests/templates/*) suites+=(templates);;  # T-424
       Skills/*|.claude/skills/*|Tools/Scripts/sync_skill_mirror.sh|Tools/Scripts/check_skill_extras.sh) suites+=(skills);;  # T-485, T-550
@@ -201,6 +214,7 @@ for s in "${suites[@]}"; do
     gpu)       targets+=(xt_gpu_tests);;
     gl)        targets+=(xt_gl_tests);;
     wgpu)      targets+=(xt_wgpu_tests);;  # T-437
+    capture_wgpu) targets+=(xt_editor_capture_wgpu_tests);;  # T-889
     backends)  targets+=(xt_backends_tests xtframe-view xtframe-pack minimal_sdl2_wgpu);;  # T-439
     text)      targets+=(xt_text_tests);;
     agent)     targets+=(xt_agent_tests);;
@@ -577,6 +591,7 @@ run_suite() {
     text)      run text 900 1 "$BIN/tests/xt_text_tests.exe";;
     gl)        run gl 600 0 "$BIN/tests/xt_gl_tests.exe";;
     wgpu)      run wgpu 600 0 "$BIN/tests/xt_wgpu_tests.exe";;  # T-437
+    capture_wgpu) run capture_wgpu 600 0 "$BIN/tests/xt_editor_capture_wgpu_tests.exe";;  # T-889
     backends)  run backends 600 0 "$BIN/tests/xt_backends_tests.exe"  # T-439
                out="$(cd "$B" && timeout 900 ctest -C "$CFG" -R '^backend_smoke_|^xtframe-view_renderer_|^example_minimal_sdl2_wgpu' \
                       --no-tests=error 2>&1 </dev/null)"; rc=$?

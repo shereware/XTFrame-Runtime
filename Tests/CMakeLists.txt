@@ -42,6 +42,7 @@ add_executable(xt_tests
     unit/test_sw_raster.cpp
     unit/test_coverage_bitmap.cpp  # T-660a
     unit/test_sw_renderer.cpp
+    unit/test_capture_util.cpp  # T-879
     unit/test_context.cpp
     unit/test_clock_precision.cpp  # T-870
     unit/test_damage.cpp
@@ -237,8 +238,14 @@ endif()
 if(XT_BUILD_SHELL)
     target_sources(xt_tests PRIVATE unit/test_sdl_rw_asset_resolver.cpp unit/test_hit_region.cpp
         unit/test_live_resize.cpp unit/test_multi_window.cpp  # T-376, T-377, T-384b
-        shell/test_source_watcher.cpp)  # T-595
+        shell/test_source_watcher.cpp  # T-595
+        shell/test_gamepad.cpp)  # T-880
     target_link_libraries(xt_tests PRIVATE xt_shell xt_shell_watch)  # T-598: SourceWatcher
+    # T-884: xtframe-view's --renderer window (Code/Backends' PlatformSdl2) with xt_shell's GamepadInput.
+    if(TARGET xt_platform_sdl2)
+        target_sources(xt_tests PRIVATE shell/test_gamepad_platform.cpp)
+        target_link_libraries(xt_tests PRIVATE xt_platform_sdl2)
+    endif()
 endif()
 xt_enable_exceptions(xt_tests)
 xt_no_rtti(xt_tests)
@@ -407,6 +414,10 @@ endif()
 if((XT_BUILD_EDITOR OR XT_BUILD_EDITOR_CLI) AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/editor/CMakeLists.txt")
     add_subdirectory(editor)
     add_subdirectory(editor_service)
+    # T-889: view.capture on the wgpu capture renderer (Code/Editor/CaptureWgpu, built when xt_wgpu is).
+    if(TARGET xt_editor_capture_wgpu)
+        add_subdirectory(editor_capture_wgpu)
+    endif()
     if(XT_EDITOR_HISTORY)
         add_subdirectory(history)
     endif()
@@ -597,6 +608,16 @@ if(TARGET xtframe-view)
                      "-DOUT=${CMAKE_CURRENT_BINARY_DIR}/view_advance"
                      -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/view_advance.cmake")
     set_tests_properties(xtframe-view_advance PROPERTIES TIMEOUT 300)
+    # T-882 (59 §59.4, §59.8): the state stamp, --crop, --max-edge, --times / --sheet and JPEG
+    # output on the software renderer (the GPU renderers' `executed`: Tests/backends).
+    foreach(_t882_mode stamp sw_effect crop max_edge frames frame_count sheet limit conflict jpeg)
+        add_test(NAME xtframe-view_capture_${_t882_mode}
+                 COMMAND ${CMAKE_COMMAND} "-DVIEW=$<TARGET_FILE:xtframe-view>"
+                         "-DDOC=${CMAKE_CURRENT_SOURCE_DIR}/xt/view_capture.xt" -DMODE=${_t882_mode}
+                         "-DOUT=${CMAKE_CURRENT_BINARY_DIR}/view_capture_${_t882_mode}"
+                         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/view_capture.cmake")
+        set_tests_properties(xtframe-view_capture_${_t882_mode} PROPERTIES TIMEOUT 300)
+    endforeach()
 endif()
 
 # T-827: the CLI tools say why an IR is rejected (an IR major 2 file: "recompile the source"), and

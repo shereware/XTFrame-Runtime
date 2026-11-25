@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <string_view>
 
 #include "xt/gpu/gpu_frame.h"
@@ -92,6 +93,15 @@ public:
         (void)types;
         (void)count;
         return 0;
+    }
+
+    /// T-892 (Docs/design/59-visual-feedback.md §59.4 `effects[].reason`): the device's compile
+    /// message for a module `prepareCustomEffect` returned 0 for (kept with the cached failure, so
+    /// every later frame gets the same text), or empty when the module compiled, was never
+    /// prepared, or the device has no message (the default).
+    virtual std::string customEffectFailure(std::string_view glsl) const {
+        (void)glsl;
+        return std::string();
     }
 
     // -- Device limits (Docs/tasks/T-263d.md). Appended with a default implementation: a device

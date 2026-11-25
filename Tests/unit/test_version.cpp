@@ -3,4 +3,4 @@
 #include "doctest.h"
 #include "xt/version.h"
 
-TEST_CASE("versionString returns 0.20.0") { CHECK(std::string_view(xt::versionString()) == "0.20.0"); }
+TEST_CASE("versionString returns 0.21.0") { CHECK(std::string_view(xt::versionString()) == "0.21.0"); }

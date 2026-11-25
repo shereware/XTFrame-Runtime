@@ -1,6 +1,9 @@
 #pragma once
 
 #include <memory>
+#include <string>
+#include <string_view>
+#include <vector>
 
 #include "xt/command_list.h"
 #include "xt/damage.h"
@@ -230,6 +233,32 @@ public:
     /// until a build makes it again). The gradient tables and the glyph atlas pages stay, so a later
     /// build does not make them again. The last frame is forgotten (the next `build` is a full one).
     void trim();
+
+    /// T-882 (Docs/design/59-visual-feedback.md §59.4 `effects[]`): what one build did with one Custom
+    /// effect of a PushEffect -- ran the device's program, or scheduled the asset's `fallback` (or
+    /// nothing) because the device could not run it (see GpuDevice::prepareCustomEffect).
+    struct EffectReport {
+        uint32_t command = 0;            ///< Index of the PushEffect in CommandList::commands.
+        uint32_t stackIndex = 0;         ///< The effect's index in that PushEffect's (enabled) stack.
+        AssetId shader = kInvalidAsset;  ///< The shader asset (the list's id, not the program).
+        uint16_t source = 0;             ///< The CommandSource of `shader`.
+        bool executed = false;           ///< True when the device's program ran.
+        EffectKind drawnInstead = EffectKind::None;  ///< Not executed: the fallback drawn (None: nothing).
+        Rect contentPx;                              ///< The PushEffect's content bounds, target pixels.
+        /// T-892: not executed because the device could not compile the shader -- its compile
+        /// message (GpuDevice::customEffectFailure; the same text every frame); empty otherwise.
+        std::string failure;
+    };
+    /// T-882: while `out` is set (not null), every `build` / `buildRange` first clears it, then appends
+    /// an EffectReport for each Custom effect it draws (in paint order), so after a frame it holds the
+    /// last build's -- also when the host submits that frame again (static frame reuse). An effect
+    /// segment culled as off-screen is not drawn and not listed. Null (the default) reports nothing.
+    void setEffectReport(std::vector<EffectReport>* out);
+    /// T-892 (59 §59.4): the `effects[].reason` of a custom effect `renderer` ("gl", "wgpu", ...)
+    /// could not compile: "shader failed to compile on <renderer>: <the first non-empty line of
+    /// `failure`, trimmed, at most 300 bytes>"; empty when `failure` has no text (the caller then
+    /// keeps its generic sentence).
+    static std::string effectFailureReason(std::string_view renderer, std::string_view failure);
 
     /// T-162 static frame reuse: true when the `GpuFrame` the last `build` wrote may be submitted
     /// again, unchanged, for a frame whose CommandList is identical to that build's (the host

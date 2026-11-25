@@ -134,4 +134,24 @@ if(TARGET xtframe-view)
     endforeach()
     xt_add_expect_exit_test(xtframe-view_t873_channel_bad CODE 2 OUTPUT "a channel value is"
         COMMAND $<TARGET_FILE:xtframe-view> "${_t873}" --headless --frames 1 --event "1 channel pad.zz 1")
+
+    # T-880 (60 §60.6): the acceptance fixture for a real controller shows the six axes; --gamepad
+    # (now the default, no effect) and --no-gamepad are both accepted, the --event path unchanged.
+    set(_t880 "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/view_input/view_gamepad.xt")
+    xt_add_expect_exit_test(xtframe-view_t880_no_gamepad CODE 0 OUTPUT "text=0[.]5\n.*text=-0[.]25\n.*text=1\n"
+        COMMAND $<TARGET_FILE:xtframe-view> "${_t880}" --headless --no-gamepad --frames 3
+                --event "1 axis pad.rx 0.5" --event "1 axis pad.ry -0.25" --event "1 axis pad.rt 1"
+                --print-text RxValue --print-text RyValue --print-text RtValue)
+    xt_add_expect_exit_test(xtframe-view_t880_gamepad_flag CODE 0 OUTPUT "text=0[.]75\n"
+        COMMAND $<TARGET_FILE:xtframe-view> "${_t880}" --headless --gamepad --frames 3
+                --event "1 axis pad.lt 0.75" --print-text LtValue)
+    # T-884 (60 §60.6): --gamepad-deadzone takes three numbers 0..0.9; --event axis values bypass it.
+    xt_add_expect_exit_test(xtframe-view_t884_deadzone_range CODE 2
+        OUTPUT "--gamepad-deadzone: expected three numbers 0-0[.]9 .*got '1'"
+        COMMAND $<TARGET_FILE:xtframe-view> "${_t880}" --headless --gamepad-deadzone 0.24 1 0.12)
+    xt_add_expect_exit_test(xtframe-view_t884_deadzone_missing CODE 2 OUTPUT "--gamepad-deadzone"
+        COMMAND $<TARGET_FILE:xtframe-view> "${_t880}" --headless --gamepad-deadzone 0.24 0.2)
+    xt_add_expect_exit_test(xtframe-view_t884_deadzone_event_bypass CODE 0 OUTPUT "text=0[.]25\n"
+        COMMAND $<TARGET_FILE:xtframe-view> "${_t880}" --headless --frames 3 --gamepad-deadzone 0.5 0.5 0.5
+                --event "1 axis pad.rx 0.25" --print-text RxValue)
 endif()

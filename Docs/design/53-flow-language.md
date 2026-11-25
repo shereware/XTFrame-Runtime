@@ -349,7 +349,9 @@ flow 在遊戲端由宿主執行（宿主插件內建 `xt_flow`；宿主可關�
 
 測試：`clock: \`seconds\` accumulates tick() dt`。
 
-**精度與時序（2026-10-31 補，XTAtrium conformance 定案）**：累計器是**單精度**（`float clockAccum += dt`，`dt` 即 `tick(float)` 的參數），輸出時才放寬成 double（`seconds = double(float 累計值)`），與 `#document.clock` 同一條規則（每個 UI 各自一個 float 累計器；`clock` 節點讀的是全域流圖的那一個）。載入時初始推送 `0`；之後在每個 tick 的 (4) 步推出含**本幀** `dt` 的累計值，下游重算型節點同 tick 的 (6) 步結算（不暫存到下一 tick）。外部執行器要逐 tick 等價，必須同樣以 float 累加、再轉 double 做格式化；以 double 累加或用 `tick × dt` 相乘，會在 `%.1f` 的進位邊界（x.x5）差一個 tick。
+**精度與時序（2026-10-31 補，XTAtrium conformance 定案；適用到 0.19.x 為止，0.20.0 起見下一段）**：累計器是**單精度**（`float clockAccum += dt`，`dt` 即 `tick(float)` 的參數），輸出時才放寬成 double（`seconds = double(float 累計值)`），與 `#document.clock` 同一條規則（每個 UI 各自一個 float 累計器；`clock` 節點讀的是全域流圖的那一個）。載入時初始推送 `0`；之後在每個 tick 的 (4) 步推出含**本幀** `dt` 的累計值，下游重算型節點同 tick 的 (6) 步結算（不暫存到下一 tick）。外部執行器要逐 tick 等價，必須同樣以 float 累加、再轉 double 做格式化；以 double 累加或用 `tick × dt` 相乘，會在 `%.1f` 的進位邊界（x.x5）差一個 tick。
+
+**0.20.0 起的規則（2026-11-25 裁決；T-870 的實作，本段補記）**：累計器是**雙精度**——`double clockAccum += double(dt)`，`dt` 仍是 `tick(float)` 的單精度參數（先把這個 float 值原樣放寬成 double 再相加；不是 `tick × dt` 相乘，也不是把名目的 1/60 以 double 計算）。`seconds` 直接輸出這個 double。`#document.clock`（每個 UI 各一個累計器）同一條規則。理由：float 累計器在長時間執行後解析度不足（約 4.6 小時後已粗於 1 ms），59 §59.7 要求時鐘不漂移。外部執行器要逐 tick 等價，必須以 double 累加 float 的 `dt`；仍以 float 累加者，會在 `%.1f` 的進位邊界差一個 tick（60 Hz 下第 15 tick：float 和＝0.25 → "0.2"，double 和＝0.2500000130 → "0.3"）。**沒有改變的**：`timer` 的 `timerElapsed` 仍是 float（每次觸發後減去或歸零，不會長期累加）；`throttle` 的秒數視窗（`tickTime`）自 T-543 起就是 double，規則與本段相同；邊的「上次觸發時間」仍以 float 保存（由 double 累計值轉換）。載入時初始推送 `0`、tick 內 (4) 步推出、(6) 步結算的時序不變。CHANGELOG [0.20.0] 當時漏列這一項，已補。
 
 
 ### 53.4.6 `random`

@@ -23,6 +23,12 @@
 #      only from the CMakeLists.txt files in MINIZ_USERS below (xt_bundle's `.xtsymbols` / `.xtb`
 #      zip and the editor's history core), and `miniz.h` is included only from MINIZ_INCLUDERS
 #      (Code/Runtime/bundle/src/zip_archive.cpp and Code/Editor/History/src/objects.cpp).
+#   7. the GPU-free service (T-889, Docs/design/17-editor.md §17.3, 59 §59.3 note "階段 V3 的做法"): the
+#      CMakeLists.txt of Code/Editor/Service and Code/Editor/Cli (xt_editor_service, xt_editor_cli,
+#      xtframe-service) never link a GPU backend (xt_gpu, xt_gl, xt_wgpu, xt::wgpu_native) or
+#      xt_editor_capture_wgpu, and no C/C++ file under them includes a GPU header (xt/gpu/, xt/gl/,
+#      xt/wgpu/, webgpu/, xt/editor_capture_wgpu/): a host injects its capture renderer
+#      (xt/editor_service/capture_renderer.h). Code/Editor/CaptureWgpu itself may use xt_wgpu.
 # §6.2 point 3 (P features entered through xt::license::has) waits until an xt_pro_* target exists.
 # Prints every violation as `file:line: ...`, then `LAYERING: PASS` or `LAYERING: FAIL (<n>
 # violation(s))`; exits 0 / 1.
@@ -140,6 +146,22 @@ while IFS= read -r f; do
 done < <(grep -rlE '^[[:space:]]*#[[:space:]]*include[[:space:]]*[<"]miniz\.h[>"]' \
            --include='*.h' --include='*.hpp' --include='*.c' --include='*.cc' --include='*.cpp' --include='*.mm' \
            Code Tests Examples 2>/dev/null | grep -v '^Code/SDKs/')
+
+# 7. The service and its command line link and include no GPU backend (T-889).
+GPU_FREE_DIRS="Code/Editor/Service Code/Editor/Cli"
+GPU_LINK_RE='(^|[^A-Za-z0-9_])(xt_gpu|xt_gl|xt_wgpu|xt_editor_capture_wgpu)([^A-Za-z0-9_]|$)|xt::wgpu_native'
+GPU_INCLUDE_RE='^[[:space:]]*#[[:space:]]*include[[:space:]]*[<"](xt/(gpu|gl|wgpu|editor_capture_wgpu)|webgpu)/'
+for d in $GPU_FREE_DIRS; do
+  [ -d "$d" ] || continue
+  while IFS= read -r f; do
+    awk -v re="$GPU_LINK_RE" -v file="$f" '
+      { line = $0; sub(/#.*/, "", line) }
+      line ~ re { printf "%s:%d: %s  [GPU-free service links a GPU backend]\n", file, NR, $0 }
+    ' "$f" >>"$viol"
+  done < <(find "$d" -name CMakeLists.txt -o -name '*.cmake' 2>/dev/null)
+  grep -rnE "$GPU_INCLUDE_RE" --include='*.h' --include='*.hpp' --include='*.cpp' --include='*.cc' "$d" 2>/dev/null |
+    sed 's/$/  [GPU-free service includes a GPU header]/' >>"$viol"
+done
 
 # 4. Directories (T-267a): tracked and untracked (not ignored) files, so build output never counts.
 SRC_RE='(^|/)CMakeLists\.txt$|\.(c|cc|cpp|cxx|h|hh|hpp|hxx|inl|ipp|m|mm)$'

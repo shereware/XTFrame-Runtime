@@ -329,7 +329,7 @@
       ],
       "contract": "7c2d401e35650fb2",
       "file": "ui/hud.xtir",
-      "fileHash": 15345155712287776087,
+      "fileHash": 4862668101738483319,
       "fit": "native",
       "flow": "ui/hud.xtflow",
       "flowInterface": {
@@ -4488,7 +4488,7 @@
       ],
       "contract": "20bab9dce93055ba",
       "file": "ui/main-menu.xtir",
-      "fileHash": 1378113673531940206,
+      "fileHash": 4863906833247256290,
       "fit": "native",
       "flow": "ui/main-menu.xtflow",
       "flowInterface": {
@@ -8561,7 +8561,7 @@
       ],
       "contract": "dad32e6f443164f6",
       "file": "ui/settings.xtir",
-      "fileHash": 15461284686223182217,
+      "fileHash": 9156176068567403684,
       "fit": "native",
       "flow": "ui/settings.xtflow",
       "flowInterface": {

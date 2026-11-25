@@ -59,6 +59,19 @@ for arg in "$@"; do
     --no-editor) NO_EDITOR=1 ;;
   esac
 done
+# The full run writes about 60 GB under build/ and bin/. On a slot whose build/ is linked to the RAM
+# disk that does not fit, and a full disk shows up as dozens of unrelated failures (2026-11-23), so
+# refuse up front. Take the slot with real directories instead: XT_SLOT_DISK=1 Tools/Scripts/wt.sh take <name>.
+XT_CI_FULL_NEED_GB="${XT_CI_FULL_NEED_GB:-70}"
+if [ -z "$QUICK" ] && [ -z "${XT_CI_STAGE:-}" ] && [ "$1" != "--fuzz" ]; then
+  mkdir -p build
+  free_gb=$(df -P -BG build 2>/dev/null | awk 'NR==2 {gsub("G","",$4); print $4}')
+  if [ -n "$free_gb" ] && [ "$free_gb" -lt "$XT_CI_FULL_NEED_GB" ]; then
+    echo "LOCAL CI: REFUSED - build/ is on a volume with ${free_gb} GB free; the full run needs about ${XT_CI_FULL_NEED_GB} GB."
+    echo "  Use a slot on a real disk: XT_SLOT_DISK=1 Tools/Scripts/wt.sh take <name>   (XT_CI_FULL_NEED_GB overrides)"
+    exit 2
+  fi
+fi
 step() { echo; echo "=== $1"; }
 # Note: never `tee /dev/stderr` here; when stderr is a redirected log file, opening /dev/stderr
 # truncates it (the log ends up NUL-filled).

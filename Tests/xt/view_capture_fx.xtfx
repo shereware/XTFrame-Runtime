@@ -1,0 +1,9 @@
+// T-882 fixture: a custom effect for xtframe-view's stamp (Tests/xt/view_capture.xt).
+name: Brighten
+param amount float 1 [0, 4]
+fallback: blur(2px)
+---
+float4 xtMain(XtInput i)
+{
+    return xtSample(i.uv) * amount;
+}

@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <memory>
 #include <span>
+#include <vector>
 
 #include "xt/asset_resolver.h"
 #include "xt/command_list.h"
@@ -46,6 +47,22 @@ struct SwTarget {
 
 /// CPU rasterizer for CommandList. Stage 3 (T-30): DrawGlyphs through TextShaper::glyphOutline
 /// (Docs/design/10-backends.md §10.2.6). Supports every CmdKind.
+/// T-879 (Docs/design/59-visual-feedback.md §59.4 `effects[]`): what one render() did with one effect
+/// of a PushEffect, as SwRenderer::setEffectReport() collects it -- every Custom effect it met (SW never
+/// runs a shader body: it draws the asset's fallback, or nothing) and every built-in effect whose
+/// radius-like parameter it clamped to the 64 device px cap (18 §18.3).
+struct SwEffectReport {
+    uint32_t command = 0;     ///< Index of the PushEffect in CommandList::commands.
+    uint32_t stackIndex = 0;  ///< The effect's index in that PushEffect's (enabled) stack.
+    EffectKind kind = EffectKind::None;
+    AssetId shader = kInvalidAsset;              ///< Custom: the shader asset.
+    uint16_t source = 0;                         ///< Custom: the CommandSource of `shader`.
+    bool executed = false;                       ///< True when the effect itself ran (never for Custom).
+    EffectKind drawnInstead = EffectKind::None;  ///< Custom: the fallback drawn (None: nothing).
+    bool clamped = false;                        ///< A radius-like parameter was clamped to 64 device px.
+    Rect contentPx;                              ///< The PushEffect's content bounds, target pixels.
+};
+
 class SwRenderer {
 public:
     /// Constructs a renderer with no render target set; call setTarget() before render().
@@ -101,6 +118,11 @@ public:
     /// `damage` is additive (defaulted) so existing call sites keep compiling unchanged.
     void render(const CommandList& list, TextShaper* shaper, AssetResolver* assets,
                 const IrView* ir = nullptr, PerfTracker* perf = nullptr, const DamageList* damage = nullptr);
+
+    /// T-879: while `out` is set (not null), every later render() appends an SwEffectReport to it for
+    /// each Custom effect and each clamped built-in effect it draws (in paint order; `out` is not
+    /// cleared). Null (the default) reports nothing.
+    void setEffectReport(std::vector<SwEffectReport>* out);
 
     /// T-641 (Docs/design/50-c-abi.md §50.aa items 1-2): frees the renderer's frame scratch -- the
     /// offscreen layer pool, the effect buffers, the clip and damage masks, the Direct-mode bands --

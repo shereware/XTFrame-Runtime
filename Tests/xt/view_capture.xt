@@ -1,0 +1,78 @@
+<xt version="2">
+
+  <body>
+    <!-- T-882: xtframe-view --stamp-json / --crop / --max-edge / --frames / --sheet. #card carries a
+         custom effect (view_capture_fx.xtfx, fallback blur(2px)): the software renderer draws the
+         fallback, the GPU renderers run the shader. #slider moves with a looping CSS animation, so
+         every time point paints a different picture; `slide` is a root timeline for --play. -->
+    <div id="card"></div>
+    <div id="slider"></div>
+    <div id="fade"></div>
+  </body>
+
+  <layout>
+    body {
+      width: 160px;
+      height: 64px;
+    }
+    #card {
+      position: absolute;
+      left: 100px;
+      top: 12px;
+      width: 40px;
+      height: 32px;
+    }
+    #slider {
+      position: absolute;
+      left: 4px;
+      top: 8px;
+      width: 12px;
+      height: 12px;
+    }
+    #fade {
+      position: absolute;
+      left: 4px;
+      top: 40px;
+      width: 16px;
+      height: 16px;
+    }
+  </layout>
+  <style>
+    body {
+      background-color: #101820;
+    }
+    #card {
+      background-color: #ffcc33;
+      effect: custom("view_capture_fx.xtfx", amount 1.5);
+    }
+    @keyframes slide-right {
+      from {
+        left: 4px;
+      }
+      to {
+        left: 84px;
+      }
+    }
+    #slider {
+      background-color: #30c0ff;
+      animation: slide-right 3s linear infinite;
+    }
+    #fade {
+      background-color: #40ff60;
+      opacity: 0.2;
+    }
+  </style>
+  <timelines>
+    @timeline slide {
+      duration: 1s;
+      #fade {
+        0s {
+          opacity: 0;
+        }
+        1s {
+          opacity: 1;
+        }
+      }
+    }
+  </timelines>
+</xt>

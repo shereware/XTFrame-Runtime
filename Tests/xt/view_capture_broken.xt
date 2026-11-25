@@ -1,0 +1,32 @@
+<xt version="2">
+
+  <body>
+    <!-- T-892: #card carries a custom effect the device's GLSL frontend rejects although the compiler
+         accepts it (view_capture_broken.xtfx: a float literal out of range); xtframe-view's stamp then
+         says why in effects[].reason ("shader failed to compile on wgpu: ..."). -->
+    <div id="card"></div>
+  </body>
+
+  <layout>
+    body {
+      width: 160px;
+      height: 64px;
+    }
+    #card {
+      position: absolute;
+      left: 100px;
+      top: 12px;
+      width: 40px;
+      height: 32px;
+    }
+  </layout>
+  <style>
+    body {
+      background-color: #101820;
+    }
+    #card {
+      background-color: #ffcc33;
+      effect: custom("view_capture_broken.xtfx", amount 1.5);
+    }
+  </style>
+</xt>

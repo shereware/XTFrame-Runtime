@@ -17,6 +17,7 @@ endif()
 add_library(xt_sw STATIC
     src/sw_renderer.cpp
     src/sw_png.cpp
+    src/capture_util.cpp  # T-879
     src/sw_paint.cpp
     src/sw_blend.cpp
     src/sw_layer.cpp

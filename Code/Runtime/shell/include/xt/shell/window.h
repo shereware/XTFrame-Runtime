@@ -172,6 +172,20 @@ struct WindowConfig {
     /// (SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, set when the window is created; the hint is global,
     /// so the most recently created window's value applies to all).
     bool minimizeOnFocusLoss = false;
+    /// T-880 (Docs/design/60-input-channels.md §60.6): the App constructor calls
+    /// App::enableGamepad(gamepadPlayers) after the main window is created, so connected game
+    /// controllers work without the host asking; a failure is logged (SDL_Log), not an error. False
+    /// leaves SDL's game controller subsystem uninitialised. Read for the main window only.
+    bool gamepad = true;
+    /// T-880: the player slots the game controllers get with `gamepad` (in connection order,
+    /// 1..kMaxPlayers, 0 = kMaxPlayers as in enableGamepad(); controllers beyond it are ignored).
+    uint8_t gamepadPlayers = 1;
+    /// T-884 (§60.6): the controllers' dead zones (GamepadDeadzones in xt/shell/gamepad.h): the
+    /// left / right stick radius (circular, rescaled) and each trigger's, as a fraction of full
+    /// deflection; 0 = off (the raw value). Defaults are XInput's. Read for the main window only.
+    float gamepadDeadzoneLeft = 0.24f;
+    float gamepadDeadzoneRight = 0.265f;
+    float gamepadDeadzoneTrigger = 0.12f;
 };
 
 /// One SDL window with its renderer and Context (T-384a). Created only by App; App's per-window

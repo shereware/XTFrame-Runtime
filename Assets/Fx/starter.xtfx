@@ -1,0 +1,27 @@
+// XTFrame shader starter (Docs/design/18-effects.md §18.7, §18.7.x, §18.16.3). The header declares
+// the parameters the editor shows; the body below `---` is the HLSL subset of 18.7.
+// i.uv is screen space (0..1 across the effect window); i.local follows the layer (0..1 across its
+// border box, through its transforms) and i.boxSize is that box in CSS px. Here the tint fades in
+// from the layer's top-left corner to its bottom-right one, wherever the layer moves or turns.
+// xtTime is the UI clock in seconds modulo 3600 (about 0.24 ms resolution however long the game
+// runs); it jumps back to 0 once an hour. A motion whose period divides 3600 s shows no seam there:
+// frac(xtTime * 0.5) loops every 2 s. A header line `time: <whole seconds>` wraps it at another
+// period instead, `time: unbounded` not at all (float precision is then yours to manage). For noise,
+// a hash that does not depend on sin() precision (frac(sin(x) * 43758.5) differs between GPUs and
+// breaks down for large x):
+//     float2 q = frac(p * float2(0.1031, 0.1137));
+//     q += dot(q, q.yx + 19.19);
+//     float h = frac(q.x * q.y);   // 0..1 for any float2 p, e.g. floor(i.local * 32) + xtTime
+name: Starter
+blurb: A minimal shader to start from: tint and strength
+param strength float 1 [0, 2]
+param tint color #ffffff
+fallback: none
+expand: 0px
+---
+float4 xtMain(XtInput i)
+{
+    float4 c = xtSample(i.uv);
+    float t = saturate((i.local.x + i.local.y) * 0.5);
+    return float4(c.rgb * lerp(float3(1, 1, 1), tint.rgb, t) * strength, c.a);
+}

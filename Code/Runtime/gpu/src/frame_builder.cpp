@@ -194,6 +194,8 @@ struct FrameBuilder::Impl {
     int targetWidth = 0;
     int targetHeight = 0;
     std::string lastError;
+    /// T-882: FrameBuilder::setEffectReport's list (null: nothing is reported).
+    std::vector<FrameBuilder::EffectReport>* effectReport = nullptr;
     /// FrameBuilder::setEdgeFringe: 1 px coverage fringe on convex fills (off under MSAA).
     bool edgeFringe = true;
     /// T-691 (10 §10.14): the device's capabilities, asked once per build.
@@ -5939,8 +5941,10 @@ struct FrameBuilder::Impl {
     /// else the asset's screen-converted `fallback`. False when neither applies (no ShaderRef in
     /// the list, or a `none` fallback): the effect is skipped. T-263d: `source` is the
     /// PushEffect's -- the shader id is that source's, and so is the ShaderRef.
+    /// T-892: `failure` (when not null) receives the device's compile message for a shader it could
+    /// not compile (GpuDevice::customEffectFailure), else is left empty.
     bool resolveCustomEffect(const EffectInstance& e, uint16_t source, const Mat2x3& screenXf,
-                             EffectInstance& out) {
+                             EffectInstance& out, std::string* failure = nullptr) {
         const ShaderRef* ref = nullptr;
         for (const ShaderRef& s : list->shaders) {
             if (s.asset == e.shader && s.source == source) {
@@ -5964,6 +5968,9 @@ struct FrameBuilder::Impl {
             const std::string_view glsl(list->shaderText.data() + ref->glslOffset, ref->glslLength);
             const std::string names(list->shaderText.data() + ref->namesOffset, ref->namesLength);
             program = device->prepareCustomEffect(glsl, names.c_str(), types, ref->paramCount);
+            if (program == 0 && failure != nullptr) {
+                *failure = device->customEffectFailure(glsl);
+            }
         }
         if (program != 0) {
             out = e;
@@ -6021,7 +6028,7 @@ struct FrameBuilder::Impl {
         }
     }
 
-    void doPushEffect(const EffectCmd& c, float dpr, const Segment& seg) {
+    void doPushEffect(const EffectCmd& c, float dpr, const Segment& seg, size_t ci) {
         flushPendingClears();
         Mat2x3 screenXf = mul(scaling(Vec2{dpr, dpr}), c.xf);
         Mat2x3 invScreenXf;
@@ -6059,8 +6066,24 @@ struct FrameBuilder::Impl {
                 // T-203 (18.7): run the shader when the device can, else its fallback.
                 hasCustom = true;
                 EffectInstance resolved;
-                if (resolveCustomEffect(e, c.source, screenXf, resolved)) {
+                std::string failure;  // T-892: the device's compile message, for the report
+                const bool drawn = resolveCustomEffect(e, c.source, screenXf, resolved,
+                                                       effectReport != nullptr ? &failure : nullptr);
+                if (drawn) {
                     f.screenParams.push_back(resolved);
+                }
+                if (effectReport != nullptr) {
+                    // T-882: as SwRenderer::setEffectReport -- what this draw path did with it.
+                    FrameBuilder::EffectReport r;
+                    r.command = static_cast<uint32_t>(ci);
+                    r.stackIndex = i;
+                    r.shader = e.shader;
+                    r.source = c.source;
+                    r.executed = drawn && resolved.kind == EffectKind::Custom;
+                    r.drawnInstead = drawn && !r.executed ? resolved.kind : EffectKind::None;
+                    r.contentPx = f.contentBoundsPx;
+                    r.failure = std::move(failure);
+                    effectReport->push_back(std::move(r));
                 }
                 continue;
             }
@@ -6532,7 +6555,7 @@ struct FrameBuilder::Impl {
                     }
                     const bool pending = countRepaintedEffect(cl, ci, c, seg);  // T-753
                     const size_t depth = frameStack.size();
-                    doPushEffect(c, dpr, seg);
+                    doPushEffect(c, dpr, seg, ci);
                     if (pending && frameStack.size() > depth) {
                         frameStack.back().unchangedPending = true;
                     }
@@ -6990,6 +7013,9 @@ struct FrameBuilder::Impl {
         lastBuildValid = false;
         lastCacheStats = FrameBuilder::EffectCacheStats{};
         lastBudgetFallbacks = 0;  // T-662
+        if (effectReport != nullptr) {
+            effectReport->clear();  // T-882: the list holds this build's effects only
+        }
         XT_ASSERT(device != nullptr);
         if (device == nullptr) {
             out.clear();
@@ -7367,6 +7393,44 @@ void FrameBuilder::invalidateAsset(AssetId asset, const IrView* source) {
 void FrameBuilder::invalidateAllAssets() { m_impl->invalidateAllAssets(); }
 
 void FrameBuilder::trim() { m_impl->trim(); }
+
+void FrameBuilder::setEffectReport(std::vector<EffectReport>* out) { m_impl->effectReport = out; }
+
+std::string FrameBuilder::effectFailureReason(std::string_view renderer, std::string_view failure) {
+    constexpr size_t kMaxLine = 300;
+    const auto isSpace = [](char c) { return c == ' ' || c == '\t' || c == '\r' || c == '\n'; };
+    std::string_view line;
+    size_t pos = 0;
+    while (pos < failure.size() && line.empty()) {
+        size_t end = failure.find('\n', pos);
+        if (end == std::string_view::npos) {
+            end = failure.size();
+        }
+        line = failure.substr(pos, end - pos);
+        while (!line.empty() && isSpace(line.front())) {
+            line.remove_prefix(1);
+        }
+        while (!line.empty() && isSpace(line.back())) {
+            line.remove_suffix(1);
+        }
+        pos = end + 1;
+    }
+    if (line.empty()) {
+        return std::string();
+    }
+    if (line.size() > kMaxLine) {
+        size_t cut = kMaxLine;
+        while (cut > 0 && (static_cast<unsigned char>(line[cut]) & 0xC0u) == 0x80u) {
+            --cut;  // never split a UTF-8 sequence
+        }
+        line = line.substr(0, cut);
+    }
+    std::string out = "shader failed to compile on ";
+    out.append(renderer);
+    out += ": ";
+    out.append(line);
+    return out;
+}
 
 void FrameBuilder::setEdgeFringe(bool enabled) {
     if (enabled != m_impl->edgeFringe) {

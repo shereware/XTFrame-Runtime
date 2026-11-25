@@ -7,6 +7,7 @@
 #include "stb_image.h"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <algorithm>
 #include <cstdio>
 #include <string>
 
@@ -63,6 +64,30 @@ bool encodePng(const uint8_t* rgba, int width, int height, int strideBytes, std:
     }
     out.assign(png, png + length);
     STBIW_FREE(png);
+    return true;
+}
+
+namespace {
+
+void appendBytes(void* context, void* data, int size) {
+    auto* out = static_cast<std::vector<uint8_t>*>(context);
+    const auto* bytes = static_cast<const uint8_t*>(data);
+    out->insert(out->end(), bytes, bytes + size);
+}
+
+}  // namespace
+
+bool encodeJpeg(const uint8_t* rgb, int width, int height, int quality, std::vector<uint8_t>& out) {
+    if (rgb == nullptr || width <= 0 || height <= 0) {
+        return false;
+    }
+    std::vector<uint8_t> bytes;
+    const int ok =
+        stbi_write_jpg_to_func(appendBytes, &bytes, width, height, 3, rgb, std::clamp(quality, 1, 100));
+    if (ok == 0 || bytes.empty()) {
+        return false;
+    }
+    out = std::move(bytes);
     return true;
 }
 

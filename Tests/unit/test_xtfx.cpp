@@ -20,6 +20,7 @@
 #include "xt/property.h"
 #include "xt/sw/sw_renderer.h"
 #include "xt/text_shaper.h"
+#include "xt/xtfx_reserved.h"
 
 /// T-203 (Docs/design/18-effects.md §18.7, §18.4, §18.12): the `.xtfx` header, the HLSL subset
 /// (one allowed and one rejected example per rule), the GLSL translation table, the loop cap,
@@ -325,6 +326,87 @@ TEST_CASE("xtfx subset: local variables and scopes") {
     CHECK(rejects("a = 1;"));                     // undeclared
     CHECK(rejects("float mix = 1;"));             // a GLSL name
     CHECK(rejects("float a = 1, b = 2;"));
+}
+
+// T-892 (18 §18.7): the wgpu wrapper's own names (xt/xtfx_reserved.h) are reserved like the GL
+// wrapper's: as a parameter and as a local variable, with the existing messages.
+TEST_CASE("xtfx subset: T-892 the wgpu wrapper's names are reserved") {
+    for (const char* name : {"xtU", "xtLayerTex", "xtLayerSmp"}) {
+        INFO(name);
+        XtfxResult param = run(std::string("param ") + name +
+                               " float 1\n---\nfloat4 xtMain(XtInput i) { return xtSample(i.uv); }\n");
+        CHECK_FALSE(param.ok);
+        CHECK(contains(param.error.message, std::string("'") + name + "' is reserved in the translation"));
+        XtfxResult local = run(mainWith(std::string("float ") + name + " = 1;"));
+        CHECK_FALSE(local.ok);
+        CHECK(local.error.message ==
+              std::string("identifier '") + name + "' is reserved in the translation; rename it");
+        XtfxResult input = run(
+            withBody(std::string("float4 xtMain(XtInput ") + name + ") { return float4(1, 1, 1, 1); }\n"));
+        CHECK_FALSE(input.ok);
+        XtfxResult counter = run(mainWith(std::string("float s = 0; for (int ") + name + " = 0; " + name +
+                                          " < 4; " + name + "++) { s += 1; }"));
+        CHECK_FALSE(counter.ok);
+    }
+    // Every listed name is refused as a local; a name only sharing the prefix is not.
+    for (std::string_view name : kXtfxWrapperNames) {
+        INFO(std::string(name));
+        CHECK(rejects("float " + std::string(name) + " = 1;"));
+    }
+    CHECK(accepts("float xtGlow = 1; float xtU2 = xtGlow;"));
+    XtfxResult prefixed =
+        run("param xtStrength float 1\n---\n"
+            "float4 xtMain(XtInput i) { return xtSample(i.uv) * xtStrength; }\n");
+    CHECK_MESSAGE(prefixed.ok, prefixed.error.message);
+}
+
+// T-892: the translation's own module text only declares listed `xt` / `Xt` names.
+TEST_CASE("xtfx translation: T-892 the module's xt names are all in the reserved list") {
+    XtfxResult r =
+        run("param k float 1\nparam tint color #fff\n---\n"
+            "float4 xtMain(XtInput i) { float2 m = fmod(i.uv, float2(0.5, 0.5)) + i.local * i.boxSize;"
+            " return xtSample(m) * tint * k * xtTime; }\n");
+    REQUIRE_MESSAGE(r.ok, r.error.message);
+    const std::vector<std::string> unlisted = xtfxUnlistedWrapperNames(r.glsl);
+    CHECK_MESSAGE(unlisted.empty(), (unlisted.empty() ? std::string() : unlisted.front()));
+}
+
+// T-892: the check logic itself -- a wrapper text with a name the list lacks is caught.
+TEST_CASE("xtfxUnlistedWrapperNames: T-892 an unlisted xt name in a wrapper text is reported") {
+    const char* const fake =
+        "// xtComment is not code\n"
+        "uniform vec4 xtLocalRowX;\n"
+        "float xtFoo;\n"
+        "vec4 XtBar(vec2 xtU) { return vec4(xtFoo) + texture(uLayer, xtTexCoord(xtU)); }\n"
+        "float xtFoo2 = 1e5; float xt = 2.0; float next = xtFoo;\n";
+    const std::vector<std::string> unlisted = xtfxUnlistedWrapperNames(fake);
+    REQUIRE(unlisted.size() == 4);
+    CHECK(unlisted[0] == "xtFoo");
+    CHECK(unlisted[1] == "XtBar");
+    CHECK(unlisted[2] == "xtFoo2");
+    CHECK(unlisted[3] == "xt");
+    CHECK(xtfxUnlistedWrapperNames("vec4 xtSample(vec2 uv); XtInput xtIn;").empty());
+}
+
+// T-892: every `.xtfx` the repository ships or tests with (Assets/Fx, Tests/; Examples/ has none
+// when this was written, and is read if it gets any) still compiles.
+TEST_CASE("xtfx: T-892 every .xtfx file of the repository compiles") {
+    const fs::path root = fs::path(XT_EXAMPLES_DIR).parent_path();
+    int seen = 0;
+    for (const char* dir : {"Assets", "Tests", "Examples"}) {
+        std::error_code ec;
+        for (fs::recursive_directory_iterator it(root / dir, ec), end; !ec && it != end; it.increment(ec)) {
+            if (!it->is_regular_file() || it->path().extension() != ".xtfx") {
+                continue;
+            }
+            std::ifstream in(it->path(), std::ios::binary);
+            const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            XtfxResult r = run(text);
+            CHECK_MESSAGE(r.ok, it->path().string() << ": " << r.error.message);
+            ++seen;
+        }
+    }
+    CHECK(seen >= 7);
 }
 
 TEST_CASE("xtfx subset: rejected constructs") {

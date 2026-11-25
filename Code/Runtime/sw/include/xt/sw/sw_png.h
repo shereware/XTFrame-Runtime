@@ -21,6 +21,11 @@ bool writePng(std::string_view path, const uint8_t* rgba, int width, int height,
 /// T-237: encodes an RGBA8 buffer as PNG bytes into `out`, for callers that write the file
 /// themselves (e.g. through a UTF-8 path). Returns false on failure, leaving `out` unchanged.
 bool encodePng(const uint8_t* rgba, int width, int height, int strideBytes, std::vector<uint8_t>& out);
+/// T-879 (Docs/design/59-visual-feedback.md §59.3 `format: "jpeg"`): encodes a tightly packed RGB8
+/// buffer (`width` x `height`, 3 bytes a pixel, no alpha) as baseline JPEG bytes at `quality` (clamped
+/// to 1..100) into `out`, with the vendored stb_image_write that encodePng() uses. Returns false on
+/// failure, leaving `out` unchanged.
+bool encodeJpeg(const uint8_t* rgb, int width, int height, int quality, std::vector<uint8_t>& out);
 /// Reads the PNG at `path` into `rgba` as tightly packed RGBA8 (stride == width * 4), setting
 /// `width`/`height`. Returns false on failure, leaving `rgba`/`width`/`height` unchanged.
 bool readPng(std::string_view path, std::vector<uint8_t>& rgba, int& width, int& height);
